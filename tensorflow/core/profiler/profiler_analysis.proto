@@ -1,12 +1,15 @@
 syntax = "proto3";
+
 package tensorflow;
 
 import "tensorflow/core/profiler/profiler_service.proto";
 
 message NewProfileSessionRequest {
   ProfileRequest request = 1;
+  // The place where we will dump profile data. We will normally use
+  // MODEL_DIR/plugins/profile as the repository root.
   string repository_root = 2;
-  repeated string hosts = 3;
+  repeated string hosts = 3;  // host or host:port, port will be ignored.
   string session_id = 4;
 }
 
@@ -36,6 +39,8 @@ message EnumProfileSessionsAndToolsResponse {
 }
 
 message ProfileSessionDataRequest {
+  // The place where we will read profile data. We will normally use
+  // MODEL_DIR/plugins/profile as the repository root.
   string repository_root = 1;
   string session_id = 2;
   // Which host the data is associated. if empty, data from all hosts are
@@ -69,10 +74,8 @@ service ProfileAnalysis {
   }
   // Enumerate existing sessions and return available profile tools.
   rpc EnumSessions(EnumProfileSessionsAndToolsRequest)
-      returns (EnumProfileSessionsAndToolsResponse) {
-  }
+      returns (EnumProfileSessionsAndToolsResponse) {}
   // Retrieve specific tool's data for specific session.
   rpc GetSessionToolData(ProfileSessionDataRequest)
-      returns (ProfileSessionDataResponse) {
-  }
+      returns (ProfileSessionDataResponse) {}
 }

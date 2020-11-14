@@ -53,5 +53,5 @@ def compute_capability_from_device_desc(device_attrs):
   # LINT.ThenChange(//tensorflow/core/common_runtime/gpu/gpu_device.cc)
   if not match:
     return GpuInfo(None, None)
-  cc = int(match.group(2)), int(match.group(3)) if match.group(2) else None
+  cc = (int(match.group(2)), int(match.group(3))) if match.group(2) else None
   return GpuInfo(match.group(1), cc)

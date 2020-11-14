@@ -14,13 +14,14 @@ limitations under the License.
 ==============================================================================*/
 package org.tensorflow.ovic;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -105,7 +106,7 @@ public class OvicDetector implements AutoCloseable {
   private static List<String> loadLabelList(InputStream labelInputStream) throws IOException {
     List<String> labelList = new ArrayList<>();
     try (BufferedReader reader =
-        new BufferedReader(new InputStreamReader(labelInputStream, StandardCharsets.UTF_8))) {
+        new BufferedReader(new InputStreamReader(labelInputStream, UTF_8))) {
       String line;
       while ((line = reader.readLine()) != null) {
         labelList.add(line);
@@ -131,10 +132,11 @@ public class OvicDetector implements AutoCloseable {
     Object[] inputArray = {imgData};
     tflite.runForMultipleInputsOutputs(inputArray, outputMap);
 
-    Long latency = getLastNativeInferenceLatencyMilliseconds();
+    Long latencyMilli = getLastNativeInferenceLatencyMilliseconds();
+    Long latencyNano = getLastNativeInferenceLatencyNanoseconds();
 
     // Update the results.
-    result.resetTo(latency, imageId);
+    result.resetTo(latencyMilli, latencyNano, imageId);
     for (int i = 0; i < NUM_RESULTS; i++) {
       // The model returns normalized coordinates [start_y, start_x, end_y, end_x].
       // The boxes expect pixel coordinates [x1, y1, x2, y2].
@@ -154,7 +156,7 @@ public class OvicDetector implements AutoCloseable {
   /*
    * Get native inference latency of last image detection run.
    *  @throws RuntimeException if model is uninitialized.
-   *  @return The inference latency in millisecond.
+   *  @return The inference latency in milliseconds.
    */
   public Long getLastNativeInferenceLatencyMilliseconds() {
     if (tflite == null) {
@@ -162,6 +164,19 @@ public class OvicDetector implements AutoCloseable {
     }
     Long latency = tflite.getLastNativeInferenceDurationNanoseconds();
     return (latency == null) ? null : (Long) (latency / 1000000);
+  }
+
+  /*
+   * Get native inference latency of last image detection run.
+   *  @throws RuntimeException if model is uninitialized.
+   *  @return The inference latency in nanoseconds.
+   */
+  public Long getLastNativeInferenceLatencyNanoseconds() {
+    if (tflite == null) {
+      throw new IllegalStateException(
+          TAG + ": ImageNet classifier has not been initialized; Failed.");
+    }
+    return tflite.getLastNativeInferenceDurationNanoseconds();
   }
 
   public int[] getInputDims() {

@@ -17,7 +17,7 @@ limitations under the License.
 #include <memory.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/time.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "tensorflow/c/c_api.h"
@@ -58,12 +58,8 @@ int main(int argc, char** argv) {
   }
 
   char file_name[100];
-  struct timeval t;
-  if (gettimeofday(&t, NULL)) {
-    perror("gettimeofday failed");
-    return 1;
-  }
-  snprintf(file_name, sizeof(file_name), "test-%d-%ld.txt", getpid(), t.tv_sec);
+  time_t t = time(NULL);
+  snprintf(file_name, sizeof(file_name), "test-%d-%ld.txt", getpid(), t);
 
   size_t length = 2 + strlen(path) + strlen(file_name);
   char* full_path = malloc(length);

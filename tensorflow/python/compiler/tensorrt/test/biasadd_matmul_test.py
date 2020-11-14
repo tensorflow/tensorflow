@@ -65,7 +65,8 @@ class BiasaddMatMulTest(trt_test.TfTrtIntegrationTestBase):
     x5 = math_ops.matmul(x, b)
     b = self._ConstOp((48,))
     x5 = nn.bias_add(x5, b)
-    x5 = gen_array_ops.reshape(x5, [4, -1])
+    # TODO(b/154672994): Put the reshape back when the bug is fixed.
+    # x5 = gen_array_ops.reshape(x5, [4, -1])
 
     x6 = gen_array_ops.reshape(x, [4, 24, 6])
     b = self._ConstOp((6,))
@@ -114,7 +115,7 @@ class BiasaddMatMulTest(trt_test.TfTrtIntegrationTestBase):
         run_params=run_params,
         conversion_params=conversion_params,
         # Disable layout optimizer, since it will convert BiasAdd with NHWC
-        # format to NCHW format under four dimentional input.
+        # format to NCHW format under four dimensional input.
         disable_non_trt_optimizers=True)
     return conversion_params._replace(
         rewriter_config_template=rewrite_config_with_trt)

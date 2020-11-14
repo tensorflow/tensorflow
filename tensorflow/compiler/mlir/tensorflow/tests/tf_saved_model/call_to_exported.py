@@ -45,8 +45,8 @@ class TestModule(tf.Module):
   # modify signatures interprocedurally).
   #
   # CHECK:      func {{@[a-zA-Z_0-9]+}}(
-  # CHECK-SAME:   %arg0: tensor<f32> {tf_saved_model.index_path = [0]},
-  # CHECK-SAME:   %arg1: tensor<*x!tf.resource> {tf_saved_model.bound_input = {{@[a-zA-Z_0-9]+}}}
+  # CHECK-SAME:   %arg0: tensor<f32> {tf._user_specified_name = "x", tf_saved_model.index_path = [0]},
+  # CHECK-SAME:   %arg1: tensor<!tf.resource<{{.*}}>> {tf_saved_model.bound_input = {{@[a-zA-Z_0-9]+}}}
   # CHECK-SAME: ) -> (
   # CHECK-SAME:   tensor<f32> {tf_saved_model.index_path = [0]},
   # CHECK-SAME:   tensor<f32> {tf_saved_model.index_path = [1]})
@@ -54,15 +54,15 @@ class TestModule(tf.Module):
   # CHECK:        "tf.StatefulPartitionedCall"{{.*}}f = @[[CALLEE_INTERNAL:[a-zA-Z_0-9]+]]
   #
   # CHECK:      func {{@[a-zA-Z_0-9]+}}(
-  # CHECK-SAME:   %arg0: tensor<f32> {tf_saved_model.index_path = [0]},
-  # CHECK-SAME:   %arg1: tensor<*x!tf.resource> {tf_saved_model.bound_input = {{@[a-zA-Z_0-9]+}}}
+  # CHECK-SAME:   %arg0: tensor<f32> {tf._user_specified_name = "x", tf_saved_model.index_path = [0]},
+  # CHECK-SAME:   %arg1: tensor<!tf.resource<{{.*}}>> {tf_saved_model.bound_input = {{@[a-zA-Z_0-9]+}}}
   # CHECK-SAME: ) -> (
   # CHECK-SAME:   tensor<f32> {tf_saved_model.index_path = [0]},
   # CHECK-SAME:   tensor<*xf32> {tf_saved_model.index_path = [1]})
   # CHECK-SAME: attributes{{.*}}tf_saved_model.exported_names = ["caller"]
   # CHECK:        "tf.StatefulPartitionedCall"{{.*}}f = @[[CALLEE_INTERNAL]]
   #
-  # CHECK:      func @[[CALLEE_INTERNAL]]
+  # CHECK:      func private @[[CALLEE_INTERNAL]]
   # CHECK-NOT:    tf_saved_model.exported_names
 
   @tf.function(input_signature=[tf.TensorSpec([], tf.float32)])

@@ -76,7 +76,7 @@ class LinearOperatorHouseholderTest(
     return operator, matrix
 
   def test_scalar_reflection_axis_raises(self):
-    with self.assertRaisesRegexp(ValueError, "must have at least 1 dimension"):
+    with self.assertRaisesRegex(ValueError, "must have at least 1 dimension"):
       householder.LinearOperatorHouseholder(1.)
 
   def test_householder_adjoint_type(self):

@@ -26,7 +26,6 @@ namespace {
 TEST(TypesTest, DeviceTypeName) {
   EXPECT_EQ("CPU", DeviceTypeString(DeviceType(DEVICE_CPU)));
   EXPECT_EQ("GPU", DeviceTypeString(DeviceType(DEVICE_GPU)));
-  EXPECT_EQ("SYCL", DeviceTypeString(DeviceType(DEVICE_SYCL)));
 }
 
 TEST(TypesTest, kDataTypeRefOffset) {

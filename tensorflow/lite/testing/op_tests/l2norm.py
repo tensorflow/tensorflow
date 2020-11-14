@@ -18,7 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -35,9 +35,14 @@ def make_l2norm_tests(options):
       "epsilon": [None, 1e-12, 1e-3],
       "fully_quantize": [False],
   }, {
-      "input_shape": [[5, 7], [1, 1, 1, 1], [1, 3, 4, 3], [3, 15, 14, 3]],
-      "dim": [0, 1, 2, 3, [2, 3], -2],
-      "epsilon": [None, 1e-12, 1e-3],
+      "input_shape": [[1, 1, 1, 1], [1, 3, 4, 3], [3, 15, 14, 3]],
+      "dim": [3],
+      "epsilon": [None, 1e-12],
+      "fully_quantize": [True],
+  }, {  # use another group of test so the dim is set to fuse to tfl.l2norm
+      "input_shape": [[5, 7]],
+      "dim": [1],
+      "epsilon": [None, 1e-12],
       "fully_quantize": [True],
   }]
 
@@ -62,4 +67,4 @@ def make_l2norm_tests(options):
       test_parameters,
       build_graph,
       build_inputs,
-      expected_tf_failures=18)
+      expected_tf_failures=9)

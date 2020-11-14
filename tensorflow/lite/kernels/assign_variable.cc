@@ -13,17 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <string.h>
+#include <stdint.h>
 
-#include <memory>
-
-#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/experimental/resource/resource_variable.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
 
 namespace tflite {
 namespace ops {
@@ -44,8 +40,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   //   everything still works fine when variable ops aren't used.
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 0);
 
-  const TfLiteTensor* input_resource_id_tensor =
-      GetInput(context, node, kInputVariableId);
+  const TfLiteTensor* input_resource_id_tensor;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputVariableId,
+                                          &input_resource_id_tensor));
   TF_LITE_ENSURE_EQ(context, input_resource_id_tensor->type, kTfLiteInt32);
   TF_LITE_ENSURE_EQ(context, NumElements(input_resource_id_tensor), 1);
 
@@ -55,9 +52,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   Subgraph* subgraph = reinterpret_cast<Subgraph*>(context->impl_);
 
-  const TfLiteTensor* input_resource_id_tensor =
-      GetInput(context, node, kInputVariableId);
-  const TfLiteTensor* input_value_tensor = GetInput(context, node, kInputValue);
+  const TfLiteTensor* input_resource_id_tensor;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputVariableId,
+                                          &input_resource_id_tensor));
+  const TfLiteTensor* input_value_tensor;
+  TF_LITE_ENSURE_OK(
+      context, GetInputSafe(context, node, kInputValue, &input_value_tensor));
 
   int resource_id = input_resource_id_tensor->data.i32[0];
   auto& resources = subgraph->resources();

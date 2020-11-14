@@ -120,31 +120,31 @@ void GlTexture::Invalidate() {
   }
 }
 
-Status GlTexture::BindImage(uint32_t index, GLenum access) const {
+absl::Status GlTexture::BindImage(uint32_t index, GLenum access) const {
   return TFLITE_GPU_CALL_GL(glBindImageTexture, index, id_, /* level = */ 0,
                             /* layered = */ GL_TRUE, layer_, access, format_);
 }
 
-Status GlTexture::BindAsReadonlyImage(uint32_t index) const {
+absl::Status GlTexture::BindAsReadonlyImage(uint32_t index) const {
   return BindImage(index, GL_READ_ONLY);
 }
 
-Status GlTexture::BindAsWriteonlyImage(uint32_t index) const {
+absl::Status GlTexture::BindAsWriteonlyImage(uint32_t index) const {
   return BindImage(index, GL_WRITE_ONLY);
 }
 
-Status GlTexture::BindAsReadWriteImage(uint32_t index) const {
+absl::Status GlTexture::BindAsReadWriteImage(uint32_t index) const {
   return BindImage(index, GL_READ_WRITE);
 }
 
-Status GlTexture::BindAsSampler2D(uint32_t index) const {
+absl::Status GlTexture::BindAsSampler2D(uint32_t index) const {
   RETURN_IF_ERROR(TFLITE_GPU_CALL_GL(glActiveTexture, GL_TEXTURE0 + index));
   return TFLITE_GPU_CALL_GL(glBindTexture, GL_TEXTURE_2D, id_);
 }
 
 namespace {
 
-Status SetTextureWrapAndFilter(GLenum target, GLenum texture_format) {
+absl::Status SetTextureWrapAndFilter(GLenum target, GLenum texture_format) {
   if (texture_format == GL_RGBA32F) {
     RETURN_IF_ERROR(TFLITE_GPU_CALL_GL(glTexParameteri, target,
                                        GL_TEXTURE_WRAP_S, GL_REPEAT));
@@ -177,14 +177,16 @@ Status SetTextureWrapAndFilter(GLenum target, GLenum texture_format) {
     RETURN_IF_ERROR(TFLITE_GPU_CALL_GL(glTexParameteri, target,
                                        GL_TEXTURE_MIN_FILTER, GL_LINEAR));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status CreateReadOnlyRgba2dImageTexture(DataType data_type, const uint2& size,
-                                        const void* data, size_t byte_size,
-                                        GlTexture* gl_texture) {
+absl::Status CreateReadOnlyRgba2dImageTexture(DataType data_type,
+                                              const uint2& size,
+                                              const void* data,
+                                              size_t byte_size,
+                                              GlTexture* gl_texture) {
   if (byte_size != /* RGBA=*/4 * SizeOf(data_type) * size.x * size.y) {
-    return InvalidArgumentError(
+    return absl::InvalidArgumentError(
         "Creating image texture failed. Source data size is not matching "
         "expected dimensions.");
   }
@@ -202,14 +204,16 @@ Status CreateReadOnlyRgba2dImageTexture(DataType data_type, const uint2& size,
                                      0, 0, size.x, size.y, format, type, data));
   *gl_texture = GlTexture(kTarget, id.Release(), internal_format, byte_size, 0,
                           /*owned=*/true);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status CreateReadOnlyRgba3dImageTexture(DataType data_type, const uint3& size,
-                                        const void* data, size_t byte_size,
-                                        GlTexture* gl_texture) {
+absl::Status CreateReadOnlyRgba3dImageTexture(DataType data_type,
+                                              const uint3& size,
+                                              const void* data,
+                                              size_t byte_size,
+                                              GlTexture* gl_texture) {
   if (byte_size != /* RGBA=*/4 * SizeOf(data_type) * size.x * size.y * size.z) {
-    return InvalidArgumentError(
+    return absl::InvalidArgumentError(
         "Creating image texture failed. Source data is larger than dimensions "
         "product.");
   }
@@ -228,53 +232,54 @@ Status CreateReadOnlyRgba3dImageTexture(DataType data_type, const uint3& size,
                                      type, data));
   *gl_texture = GlTexture(kTarget, id.Release(), internal_format, byte_size, 0,
                           /*owned=*/true);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
 
-Status CreateReadOnlyImageTexture(const uint2& size,
-                                  absl::Span<const float> data,
-                                  GlTexture* gl_texture) {
+absl::Status CreateReadOnlyImageTexture(const uint2& size,
+                                        absl::Span<const float> data,
+                                        GlTexture* gl_texture) {
   return CreateReadOnlyRgba2dImageTexture(DataType::FLOAT32, size, data.data(),
                                           data.size() * sizeof(float),
                                           gl_texture);
 }
 
-Status CreateReadOnlyImageTexture(const uint3& size,
-                                  absl::Span<const float> data,
-                                  GlTexture* gl_texture) {
+absl::Status CreateReadOnlyImageTexture(const uint3& size,
+                                        absl::Span<const float> data,
+                                        GlTexture* gl_texture) {
   return CreateReadOnlyRgba3dImageTexture(DataType::FLOAT32, size, data.data(),
                                           data.size() * sizeof(float),
                                           gl_texture);
 }
 
-Status CreateReadOnlyImageTextureU8(const uint2& size,
-                                    absl::Span<const uint8_t> data,
-                                    GlTexture* gl_texture) {
+absl::Status CreateReadOnlyImageTextureU8(const uint2& size,
+                                          absl::Span<const uint8_t> data,
+                                          GlTexture* gl_texture) {
   return CreateReadOnlyRgba2dImageTexture(DataType::UINT8, size, data.data(),
                                           data.size() * sizeof(uint8_t),
                                           gl_texture);
 }
 
-Status CreateReadOnlyImageTextureF16(const uint2& size,
-                                     absl::Span<const uint16_t> data,
-                                     GlTexture* gl_texture) {
+absl::Status CreateReadOnlyImageTextureF16(const uint2& size,
+                                           absl::Span<const uint16_t> data,
+                                           GlTexture* gl_texture) {
   return CreateReadOnlyRgba2dImageTexture(DataType::FLOAT16, size, data.data(),
                                           data.size() * sizeof(uint16_t),
                                           gl_texture);
 }
 
-Status CreateReadOnlyImageTextureF16(const uint3& size,
-                                     absl::Span<const uint16_t> data,
-                                     GlTexture* gl_texture) {
+absl::Status CreateReadOnlyImageTextureF16(const uint3& size,
+                                           absl::Span<const uint16_t> data,
+                                           GlTexture* gl_texture) {
   return CreateReadOnlyRgba3dImageTexture(DataType::FLOAT16, size, data.data(),
                                           data.size() * sizeof(uint16_t),
                                           gl_texture);
 }
 
-Status CreateReadWriteRgbaImageTexture(DataType data_type, const uint2& size,
-                                       GlTexture* gl_texture) {
+absl::Status CreateReadWriteRgbaImageTexture(DataType data_type,
+                                             const uint2& size,
+                                             GlTexture* gl_texture) {
   const GLenum kTarget = GL_TEXTURE_2D;
   const GLenum internal_format = ToTextureInternalFormat(data_type);
   gl_texture_internal::TextureId id;
@@ -287,11 +292,12 @@ Status CreateReadWriteRgbaImageTexture(DataType data_type, const uint2& size,
   *gl_texture = GlTexture(kTarget, id.Release(), internal_format, byte_size,
                           /* layer = */ 0,
                           /* owned = */ true);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status CreateReadWriteRgbaImageTexture(DataType data_type, const uint3& size,
-                                       GlTexture* gl_texture) {
+absl::Status CreateReadWriteRgbaImageTexture(DataType data_type,
+                                             const uint3& size,
+                                             GlTexture* gl_texture) {
   const GLenum kTarget = GL_TEXTURE_2D_ARRAY;
   GLenum internal_format = ToTextureInternalFormat(data_type);
   gl_texture_internal::TextureId id;
@@ -305,7 +311,7 @@ Status CreateReadWriteRgbaImageTexture(DataType data_type, const uint3& size,
   *gl_texture = GlTexture(kTarget, id.Release(), internal_format, byte_size,
                           /* layer = */ 0,
                           /* owned = */ true);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace gl

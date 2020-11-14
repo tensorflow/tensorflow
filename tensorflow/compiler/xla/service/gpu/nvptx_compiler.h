@@ -30,6 +30,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+void WarnIfBadDriverJITVersion();
+
 // NVPTXCompiler generates efficient GPU executables for NVPTX target.
 class NVPTXCompiler : public GpuCompiler {
  public:
@@ -62,8 +64,8 @@ class NVPTXCompiler : public GpuCompiler {
   // We cache the cuda_data_dir() and the result of our search, so that if the
   // next module we have to compile has the same cuda_data_dir(), we can skip
   // the search.
-  string cached_cuda_data_dir_ GUARDED_BY(mutex_);
-  string cached_libdevice_dir_ GUARDED_BY(mutex_);
+  string cached_cuda_data_dir_ TF_GUARDED_BY(mutex_);
+  string cached_libdevice_dir_ TF_GUARDED_BY(mutex_);
 
   // Tries to compile the given ptx string to cubin.  Returns a vector with the
   // compiled cubin.  If compilation was unsuccessful, returns an empty vector.
@@ -116,7 +118,7 @@ class NVPTXCompiler : public GpuCompiler {
   // is critical here.
   absl::node_hash_map<CompilationCacheKey, CompilationCacheValue,
                       CompilationCacheHash, CompilationCacheEq>
-      compilation_cache_ GUARDED_BY(mutex_);
+      compilation_cache_ TF_GUARDED_BY(mutex_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(NVPTXCompiler);
 };

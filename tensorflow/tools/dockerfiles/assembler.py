@@ -558,7 +558,7 @@ def main(argv):
       # Only build images for host architecture
       proc_arch = platform.processor()
       is_x86 = proc_arch.startswith('x86')
-      if (is_x86 and any([arch in tag for arch in ['ppc64le']]) or
+      if (is_x86 and any(arch in tag for arch in ['ppc64le']) or
           not is_x86 and proc_arch not in tag):
         continue
 
@@ -656,7 +656,7 @@ def main(argv):
                 eprint('>>> No test standard out.')
               if err:
                 eprint('>>> Output stderr:')
-                eprint(out.decode('utf-8'))
+                eprint(err.decode('utf-8'))
               else:
                 eprint('>>> No test standard err.')
               if code != 0:

@@ -20,6 +20,12 @@ namespace {
 constexpr char kNodeName[] = "fixed_length_record_dataset";
 constexpr int kOpVersion = 2;
 
+tstring LocalTempFilename() {
+  std::string path;
+  CHECK(Env::Default()->LocalTempFilename(&path));
+  return tstring(path);
+}
+
 class FixedLengthRecordDatasetParams : public DatasetParams {
  public:
   FixedLengthRecordDatasetParams(const std::vector<tstring>& filenames,
@@ -105,9 +111,7 @@ Status CreateTestFiles(const std::vector<tstring>& filenames,
 
 // Test case 1: multiple fixed-length record files with ZLIB compression.
 FixedLengthRecordDatasetParams FixedLengthRecordDatasetParams1() {
-  std::vector<tstring> filenames = {
-      absl::StrCat(testing::TmpDir(), "/text_line_ZLIB_1"),
-      absl::StrCat(testing::TmpDir(), "/text_line_ZLIB_2")};
+  std::vector<tstring> filenames = {LocalTempFilename(), LocalTempFilename()};
   std::vector<string> contents = {
       absl::StrCat("HHHHH", "111", "222", "333", "FF"),
       absl::StrCat("HHHHH", "aaa", "bbb", "FF")};
@@ -128,9 +132,7 @@ FixedLengthRecordDatasetParams FixedLengthRecordDatasetParams1() {
 
 // Test case 2: multiple fixed-length record files with GZIP compression.
 FixedLengthRecordDatasetParams FixedLengthRecordDatasetParams2() {
-  std::vector<tstring> filenames = {
-      absl::StrCat(testing::TmpDir(), "/text_line_GZIP_1"),
-      absl::StrCat(testing::TmpDir(), "/text_line_GZIP_2")};
+  std::vector<tstring> filenames = {LocalTempFilename(), LocalTempFilename()};
   std::vector<string> contents = {
       absl::StrCat("HHHHH", "111", "222", "333", "FF"),
       absl::StrCat("HHHHH", "aaa", "bbb", "FF")};
@@ -150,9 +152,7 @@ FixedLengthRecordDatasetParams FixedLengthRecordDatasetParams2() {
 
 // Test case 3: multiple fixed-length record files without compression.
 FixedLengthRecordDatasetParams FixedLengthRecordDatasetParams3() {
-  std::vector<tstring> filenames = {
-      absl::StrCat(testing::TmpDir(), "/text_line_UNCOMPRESSED_1"),
-      absl::StrCat(testing::TmpDir(), "/text_line_UNCOMPRESSED_2")};
+  std::vector<tstring> filenames = {LocalTempFilename(), LocalTempFilename()};
   std::vector<string> contents = {
       absl::StrCat("HHHHH", "111", "222", "333", "FF"),
       absl::StrCat("HHHHH", "aaa", "bbb", "FF")};

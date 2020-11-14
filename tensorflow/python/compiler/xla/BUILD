@@ -24,6 +24,9 @@ cuda_py_test(
     name = "jit_test",
     size = "small",
     srcs = ["jit_test.py"],
+    tags = [
+        "no_windows",  # TODO(b/171385770)
+    ],
     xla_enabled = True,
     deps = [
         ":compiler_py",
@@ -92,18 +95,18 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "experimental_compile_test",
-    srcs = ["experimental_compile_test.py"],
-    additional_deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:resource_variable_ops",
-    ],
+    name = "jit_compile_test",
+    srcs = ["jit_compile_test.py"],
     python_version = "PY3",
     tags = [
         "no_mac",
         "no_windows",
     ],
     xla_enabled = True,
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:resource_variable_ops",
+    ],
 )

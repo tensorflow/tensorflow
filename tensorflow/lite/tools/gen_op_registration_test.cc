@@ -36,7 +36,7 @@ class GenOpRegistrationTest : public ::testing::Test {
   std::map<string, std::pair<int, int>> custom_ops_;
 };
 
-TEST_F(GenOpRegistrationTest, TestNonExistantFiles) {
+TEST_F(GenOpRegistrationTest, TestNonExistentFiles) {
   ReadOps("/tmp/tflite_model_1234");
   EXPECT_EQ(builtin_ops_.size(), 0);
   EXPECT_EQ(custom_ops_.size(), 0);
@@ -100,7 +100,7 @@ TEST_F(GenOpRegistrationTest, TestNormalizeCustomOpName) {
 }  // namespace tflite
 
 int main(int argc, char** argv) {
-  // On Linux, add: FLAGS_logtostderr = true;
+  // On Linux, add: absl::SetFlag(&FLAGS_logtostderr, true);
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

@@ -33,14 +33,6 @@ class LayoutUtilTest : public ::testing::Test {
     *shape.mutable_layout() = LayoutUtil::MakeLayout(minor_to_major);
     return shape;
   }
-
-  Shape MakeShapeWithSparseLayout(PrimitiveType element_type,
-                                  absl::Span<const int64> dimensions,
-                                  int64 max_sparse_elements) {
-    Shape shape = ShapeUtil::MakeShape(element_type, dimensions);
-    *shape.mutable_layout() = LayoutUtil::MakeSparseLayout(max_sparse_elements);
-    return shape;
-  }
 };
 
 TEST_F(LayoutUtilTest, TupleLayoutComparison) {
@@ -92,29 +84,6 @@ TEST_F(LayoutUtilTest, CopyLayoutArray) {
   EXPECT_FALSE(dst.has_layout());
 }
 
-TEST_F(LayoutUtilTest, CopyLayoutSparse) {
-  Shape src = MakeShapeWithSparseLayout(F32, {2, 3}, 2);
-  Shape dst = MakeShapeWithLayout(F32, {2, 3}, {1, 0});
-
-  EXPECT_FALSE(LayoutUtil::LayoutsInShapesEqual(src, dst));
-  EXPECT_IS_OK(LayoutUtil::CopyLayoutBetweenShapes(src, &dst));
-  EXPECT_TRUE(LayoutUtil::LayoutsInShapesEqual(src, dst));
-
-  // Should work if destination has no layout.
-  dst.clear_layout();
-  EXPECT_FALSE(LayoutUtil::LayoutsInShapesEqual(src, dst));
-  EXPECT_IS_OK(LayoutUtil::CopyLayoutBetweenShapes(src, &dst));
-  EXPECT_TRUE(LayoutUtil::LayoutsInShapesEqual(src, dst));
-
-  // If source is cleared, then destination should be cleared.
-  src.clear_layout();
-  EXPECT_FALSE(LayoutUtil::LayoutsInShapesEqual(src, dst));
-  EXPECT_TRUE(dst.has_layout());
-  EXPECT_IS_OK(LayoutUtil::CopyLayoutBetweenShapes(src, &dst));
-  EXPECT_TRUE(LayoutUtil::LayoutsInShapesEqual(src, dst));
-  EXPECT_FALSE(dst.has_layout());
-}
-
 TEST_F(LayoutUtilTest, CopyLayoutTuple) {
   Shape src = ShapeUtil::MakeTupleShape(
       {MakeShapeWithLayout(F32, {2, 3}, {0, 1}),
@@ -134,34 +103,8 @@ TEST_F(LayoutUtilTest, CopyLayoutTuple) {
   EXPECT_TRUE(LayoutUtil::LayoutsInShapesEqual(src, dst));
 }
 
-TEST_F(LayoutUtilTest, CopyLayoutTupleSparse) {
-  Shape src = ShapeUtil::MakeTupleShape(
-      {MakeShapeWithSparseLayout(F32, {2, 3}, 4),
-       MakeShapeWithSparseLayout(F32, {42, 123}, 4),
-       ShapeUtil::MakeTupleShape(
-           {MakeShapeWithLayout(F32, {}, {}),
-            MakeShapeWithSparseLayout(F32, {1, 2, 3}, 6)})});
-  Shape dst = ShapeUtil::MakeTupleShape(
-      {MakeShapeWithLayout(F32, {2, 3}, {1, 0}),
-       MakeShapeWithLayout(F32, {42, 123}, {1, 0}),
-       ShapeUtil::MakeTupleShape(
-           {MakeShapeWithLayout(F32, {}, {}),
-            MakeShapeWithLayout(F32, {1, 2, 3}, {1, 2, 0})})});
-
-  EXPECT_FALSE(LayoutUtil::LayoutsInShapesEqual(src, dst));
-  EXPECT_IS_OK(LayoutUtil::CopyLayoutBetweenShapes(src, &dst));
-  EXPECT_TRUE(LayoutUtil::LayoutsInShapesEqual(src, dst));
-}
-
 TEST_F(LayoutUtilTest, CopyLayoutNotCompatibleSameRank) {
   Shape src = MakeShapeWithLayout(F32, {123, 42, 7}, {2, 0, 1});
-  Shape dst = MakeShapeWithLayout(F32, {2, 3, 5}, {1, 0});
-  ASSERT_IS_OK(LayoutUtil::CopyLayoutBetweenShapes(src, &dst));
-  EXPECT_TRUE(LayoutUtil::LayoutsInShapesEqual(src, dst));
-}
-
-TEST_F(LayoutUtilTest, CopyLayoutSparseNotCompatibleSameRank) {
-  Shape src = MakeShapeWithSparseLayout(F32, {123, 42, 7}, 6);
   Shape dst = MakeShapeWithLayout(F32, {2, 3, 5}, {1, 0});
   ASSERT_IS_OK(LayoutUtil::CopyLayoutBetweenShapes(src, &dst));
   EXPECT_TRUE(LayoutUtil::LayoutsInShapesEqual(src, dst));
@@ -170,15 +113,6 @@ TEST_F(LayoutUtilTest, CopyLayoutSparseNotCompatibleSameRank) {
 TEST_F(LayoutUtilTest, CopyLayoutNotCompatibleDifferentRank) {
   Shape src = MakeShapeWithLayout(F32, {123, 42, 7}, {2, 0, 1});
   Shape dst = MakeShapeWithLayout(F32, {2, 3}, {1, 0});
-  auto status = LayoutUtil::CopyLayoutBetweenShapes(src, &dst);
-  EXPECT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
-              ::testing::ContainsRegex("cannot copy layout from shape"));
-}
-
-TEST_F(LayoutUtilTest, CopyLayoutSparseNotCompatibleDifferentRank) {
-  Shape src = MakeShapeWithLayout(F32, {123, 42, 7}, {2, 0, 1});
-  Shape dst = MakeShapeWithSparseLayout(F32, {2, 3}, 4);
   auto status = LayoutUtil::CopyLayoutBetweenShapes(src, &dst);
   EXPECT_FALSE(status.ok());
   EXPECT_THAT(status.error_message(),

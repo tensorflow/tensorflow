@@ -18,7 +18,6 @@ limitations under the License.
 
 // Functor definitions for Reduction ops, must be compilable by nvcc.
 
-#include <iostream>
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -57,6 +56,29 @@ struct ReduceEigenImpl {
     out.device(d) = in.reduce(reduction_axes, reducer);
   }
 };
+
+// Specialization for BF16 Reducer to fix accuracy.
+// TODO: All BF16 reducers should have specializations to fix accuracy.
+#define CASTING_SPECIALIZATION(Reducer, ScalarType, IntermediateType)        \
+  template <typename Device, typename OUT_T, typename IN_T,                  \
+            typename ReductionAxes>                                          \
+  struct ReduceEigenImpl<Device, OUT_T, IN_T, ReductionAxes,                 \
+                         Reducer<ScalarType>> {                              \
+    void operator()(const Device& d, OUT_T out, IN_T in,                     \
+                    const ReductionAxes& reduction_axes,                     \
+                    const Reducer<ScalarType>& reducer) {                    \
+      static_assert(std::is_same<ScalarType, typename OUT_T::Scalar>::value, \
+                    "");                                                     \
+      Reducer<IntermediateType> intermediate_reducer;                        \
+      auto in_as_intermediate = in.template cast<IntermediateType>();        \
+      out.device(d) =                                                        \
+          in_as_intermediate.reduce(reduction_axes, intermediate_reducer)    \
+              .template cast<ScalarType>();                                  \
+    }                                                                        \
+  };
+
+CASTING_SPECIALIZATION(Eigen::internal::SumReducer, bfloat16, float);
+#undef CASTING_SPECIALIZATION
 
 template <typename Device, typename OUT_T, typename IN_T,
           typename ReductionAxes, typename Scalar>

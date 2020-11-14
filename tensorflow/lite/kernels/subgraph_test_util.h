@@ -20,6 +20,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_SUBGRAPH_TEST_UTIL_H_
 #define TENSORFLOW_LITE_KERNELS_SUBGRAPH_TEST_UTIL_H_
 
+#include <stdint.h>
+
+#include <memory>
+#include <vector>
+
 #include <gtest/gtest.h>
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/interpreter.h"
@@ -63,7 +68,7 @@ class SubgraphBuilder {
   void BuildLessEqualCondSubgraph(Subgraph* subgraph, int rhs);
 
   // An accumulate loop body subgraph. Used to produce triangle number
-  // seqeuence. 2 inputs and 2 outpus
+  // sequence. 2 inputs and 2 outputs
   //   Equivalent to (counter, value) -> (counter + 1, counter + 1 + value)
   void BuildAccumulateLoopBodySubgraph(Subgraph* subgraph);
 
@@ -79,6 +84,14 @@ class SubgraphBuilder {
   // Build a subgraph with a single While op.
   // 2 inputs, 2 outputs.
   void BuildWhileSubgraph(Subgraph* subgraph);
+
+  // Build a subgraph that assigns a random value to a variable.
+  // No input/output.
+  void BuildAssignRandomValueToVariableSubgraph(Subgraph* graph);
+
+  // Build a subgraph with CallOnce op and ReadVariable op.
+  // No input and 1 output.
+  void BuildCallOnceAndReadVariableSubgraph(Subgraph* graph);
 
  private:
   void CreateConstantInt32Tensor(Subgraph* subgraph, int tensor_index,

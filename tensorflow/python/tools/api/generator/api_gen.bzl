@@ -42,8 +42,15 @@ def gen_api_init_files(
         api_version = 2,
         compat_api_versions = [],
         compat_init_templates = [],
-        packages = ["tensorflow.python", "tensorflow.lite.python.lite"],
-        package_deps = ["//tensorflow/python:no_contrib"],
+        packages = [
+            "tensorflow.python",
+            "tensorflow.lite.python.lite",
+            "tensorflow.python.modules_with_exports",
+        ],
+        package_deps = [
+            "//tensorflow/python:no_contrib",
+            "//tensorflow/python:modules_with_exports",
+        ],
         output_package = "tensorflow",
         output_dir = "",
         root_file_name = "__init__.py"):
@@ -132,7 +139,7 @@ def gen_api_init_files(
             " --use_relative_imports=True $(OUTS)"
         ),
         srcs = srcs,
-        tools = [":" + api_gen_binary_target],
+        exec_tools = [":" + api_gen_binary_target],
         visibility = [
             "//tensorflow:__pkg__",
             "//tensorflow/tools/api/tests:__pkg__",

@@ -1,7 +1,7 @@
 # Understand the C++ library
 
 The TensorFlow Lite for Microcontrollers C++ library is part of the
-[TensorFlow repository](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro).
+[TensorFlow repository](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro).
 It is designed to be readable, easy to modify, well-tested, easy to integrate,
 and compatible with regular TensorFlow Lite.
 
@@ -11,7 +11,7 @@ provides information about creating your own project.
 ## File structure
 
 The
-[`micro`](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro)
+[`micro`](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro)
 root directory has a relatively simple structure. However, since it is located
 inside of the extensive TensorFlow repository, we have created scripts and
 pre-generated project files that provide the relevant source files in isolation
@@ -22,7 +22,7 @@ within various embedded development environments.
 The most important files for using the TensorFlow Lite for Microcontrollers
 interpreter are located in the root of the project, accompanied by tests:
 
--   [`all_ops_resolver.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/kernels/all_ops_resolver.h)
+-   [`all_ops_resolver.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/all_ops_resolver.h)
     or
     [`micro_mutable_op_resolver.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/micro_mutable_op_resolver.h)
     can be used to provide the operations used by the interpreter to run the

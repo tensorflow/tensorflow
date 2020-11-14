@@ -129,6 +129,7 @@ class TensorContractionInputMapper<
     m_colStride = patch_rows;
 
     m_outputRows = tensor.impl().outputRows();
+    m_outputCols = tensor.impl().outputCols();
     m_row_strides = tensor.impl().userRowStride();
     m_col_strides = tensor.impl().userColStride();
 
@@ -187,6 +188,7 @@ class TensorContractionInputMapper<
     m_inputCols = base_mapper.m_inputCols;
 
     m_outputRows = base_mapper.m_outputRows;
+    m_outputCols = base_mapper.m_outputCols;
     m_row_strides = base_mapper.m_row_strides;
     m_col_strides = base_mapper.m_col_strides;
 
@@ -361,7 +363,7 @@ class TensorContractionInputMapper<
   // the elements corresponding to the column (specified through colOffset) are
   // loaded and the rest of the elements are zero-filled into the 'partial'
   // packet. This function is called from loadPacketStandardFromTwoColumns().
-  // This code path is exercied only when the packet type supports masked load
+  // This code path is exercised only when the packet type supports masked load
   // and when the partial packet load is available in the TensorEvaluator.
   EIGEN_DEVICE_FUNC
   EIGEN_ALWAYS_INLINE Packet loadPartialPacketStandard(
@@ -474,7 +476,7 @@ class TensorContractionInputMapper<
   // Load standard packet from a patch specified by the "within patch offset"
   // (patchId) and the precomputed indices of the first element of the patch.
   // This function will be called if partial packet loading is not available
-  // for the TesnorEvaluator or if the packet type does not support masked
+  // for the TensorEvaluator or if the packet type does not support masked
   // load.
   template <typename PacketT, typename TensorEvaluatorT>
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE typename std::enable_if<
@@ -516,7 +518,7 @@ class TensorContractionInputMapper<
   // Load standard packet from a patch specified by the "within patch offset"
   // (patchId) and the precomputed indices of the first element of the patch.
   // This function will be called if partial packet loading is available for
-  // the TesnorEvaluator and if the packet type supports masked load.
+  // the TensorEvaluator and if the packet type supports masked load.
   // The only difference between this and the other case is that if the packet
   // to load is split across two columns, then in this case instead of going to
   // the slow (element-by-element) load, we load two packets - each containing
@@ -652,7 +654,8 @@ class TensorContractionInputMapper<
   Index m_inputRows;  // Number of rows in the input tensor
   Index m_inputCols;  // Number of cols in the input tensor
 
-  Index m_outputRows;  // Number of patch rows
+  Index m_outputRows;  // Number of convolution output rows
+  Index m_outputCols;  // Number of convolution output column
 
   Index m_row_strides;  // User specified row stride
   Index m_col_strides;  // User specified col stride
@@ -870,6 +873,28 @@ class TensorContractionSubMapper<
     const Index inputIndex = depth + baseIndex;
     return m_base_mapper.m_impl.template partialPacket<PacketT>(
         inputIndex, mask<PacketT>(0, num_coeffs));
+  }
+  EIGEN_DEVICE_FUNC
+  EIGEN_ALWAYS_INLINE bool hasPadding() const {
+    // TODO(ezhulenev): It does seems that for inflated filter it's still
+    // possible to guarantee "no padding or skipping" for non-standard packing.
+    if (nonStandardPatches()) return true;
+
+    // Non zero padding before.
+    if (m_base_mapper.m_rowPaddingTop > 0) return true;
+    if (m_base_mapper.m_colPaddingLeft > 0) return true;
+
+    // Non zero padding after in rows.
+    const Index last_row =
+        (m_base_mapper.m_outputRows - 1) * m_base_mapper.m_row_strides;
+    if (last_row + (patchRows() - 1) >= m_base_mapper.m_inputRows) return true;
+
+    // Non zero padding after in cols.
+    const Index last_col =
+        (m_base_mapper.m_outputCols - 1) * m_base_mapper.m_col_strides;
+    if (last_col + (patchCols() - 1) >= m_base_mapper.m_inputCols) return true;
+
+    return false;
   }
   EIGEN_DEVICE_FUNC
   EIGEN_ALWAYS_INLINE bool padRow(const Index row) const {
@@ -1629,16 +1654,14 @@ EIGEN_DEVICE_FUNC
     case PADDING_VALID: {
       const TensorIndex InputRowsEff = InputRows + padding_top + padding_bottom;
       const TensorIndex InputColsEff = InputCols + padding_left + padding_right;
-      out_height = numext::ceil((InputRowsEff - kernelRowsEff + 1.f) /
-                                static_cast<float>(row_stride));
-      out_width = numext::ceil((InputColsEff - kernelColsEff + 1.f) /
-                               static_cast<float>(col_stride));
+      out_height = divup(InputRowsEff - kernelRowsEff + 1, row_stride);
+      out_width = divup(InputColsEff - kernelColsEff + 1, col_stride);
       break;
     }
     case PADDING_SAME: {
       eigen_assert(!padding_explicit);
-      out_height = numext::ceil(InputRows / static_cast<float>(row_stride));
-      out_width = numext::ceil(InputCols / static_cast<float>(col_stride));
+      out_height = divup(InputRows, row_stride);
+      out_width = divup(InputCols, col_stride);
       break;
     }
     default: {

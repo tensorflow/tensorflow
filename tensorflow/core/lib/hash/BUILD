@@ -1,7 +1,12 @@
+load("//tensorflow:tensorflow.bzl", "filegroup")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_linux_x86_64",
     "tf_copts",
+)
+load(
+    "//tensorflow/core/platform:rules_cc.bzl",
+    "cc_library",
 )
 
 package(
@@ -49,20 +54,30 @@ cc_library(
     ],
 )
 
+# Export source files needed for mobile builds, which do not use granular targets.
 filegroup(
-    name = "legacy_lib_hash_all_headers",
+    name = "mobile_srcs_no_runtime",
     srcs = [
-        "crc32c.h",
         "hash.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
 
 filegroup(
-    name = "legacy_lib_hash_all_srcs",
+    name = "mobile_srcs_only_runtime",
     srcs = [
         "crc32c.cc",
+        "crc32c.h",
         "crc32c_accelerate.cc",
+    ],
+    visibility = ["//tensorflow/core:__pkg__"],
+)
+
+filegroup(
+    name = "legacy_lib_hash_all_headers",
+    srcs = [
+        "crc32c.h",
+        "hash.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

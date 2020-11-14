@@ -37,8 +37,6 @@ setup(
         'Intended Audience :: Education',
         'Intended Audience :: Science/Research',
         'License :: OSI Approved :: Apache Software License',
-        'Programming Language :: Python :: 2',
-        'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.4',
         'Programming Language :: Python :: 3.5',
@@ -52,5 +50,5 @@ setup(
     ],
     license='Apache 2.0',
     keywords='tensorflow tpu',
-    install_requires=['google-api-python-client', 'oauth2client']
+    install_requires=['google-api-python-client==1.8.0', 'oauth2client']
 )

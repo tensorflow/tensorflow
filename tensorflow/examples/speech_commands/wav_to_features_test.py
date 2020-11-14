@@ -30,7 +30,7 @@ from tensorflow.python.platform import test
 class WavToFeaturesTest(test.TestCase):
 
   def _getWavData(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       sample_data = tf.zeros([32000, 2])
       wav_encoder = tf.audio.encode_wav(sample_data, 16000)
       wav_data = self.evaluate(wav_encoder)
@@ -63,7 +63,7 @@ class WavToFeaturesTest(test.TestCase):
                                     input_file_path, output_file_path)
     with open(output_file_path, "rb") as f:
       content = f.read()
-      self.assertTrue(b"const unsigned char g_input_data" in content)
+      self.assertIn(b"const unsigned char g_input_data", content)
 
   @test_util.run_deprecated_v1
   def testWavToFeaturesMicro(self):

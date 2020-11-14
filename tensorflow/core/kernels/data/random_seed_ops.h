@@ -25,38 +25,113 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
-// A random seed generator resource.
-class RandomSeedGenerator : public ResourceBase {
+// Represents a pair of random seeds. By TensorFlow convention, if both seeds
+// are 0, then pseudo-random values are used instead.
+class RandomSeeds {
  public:
-  RandomSeedGenerator(int64 seed, int64 seed2)
-      : seed_(seed),
-        seed2_(seed2),
-        parent_generator_(seed, seed2),
-        generator_(&parent_generator_) {}
+  RandomSeeds(int64 seed, int64 seed2)
+      : input_seed_(seed),
+        input_seed2_(seed2),
+        seed_((seed | seed2) == 0 ? random::New64() : seed),
+        seed2_((seed | seed2) == 0 ? random::New64() : seed2) {}
 
-  int64 num_random_samples();
-  void set_num_random_samples(int64 num_random_samples);
-
-  string DebugString() const override;
-  void GenerateRandomSeeds(int64* seed1, int64* seed2);
-  void Reset();
-  void Serialize(OpKernelContext* ctx);
+  int64 input_seed() const { return input_seed_; }
+  int64 input_seed2() const { return input_seed2_; }
+  int64 seed() const { return seed_; }
+  int64 seed2() const { return seed2_; }
 
  private:
+  const int64 input_seed_;
+  const int64 input_seed2_;
   const int64 seed_;
   const int64 seed2_;
-  mutex mu_;
-  random::PhiloxRandom parent_generator_ GUARDED_BY(mu_);
-  random::SingleSampleAdapter<random::PhiloxRandom> generator_ GUARDED_BY(mu_);
-  int64 num_random_samples_ GUARDED_BY(mu_) = 0;
 };
 
-// Creates an instance of random seed generator resource and transfers ownership
-// to the caller.
-class AnonymousRandomSeedGeneratorHandleOp
-    : public AnonymousResourceOp<RandomSeedGenerator> {
+// Base class for seed generator resources. Subclasses customize how seeds are
+// generated.
+class SeedGenerator {
  public:
-  explicit AnonymousRandomSeedGeneratorHandleOp(OpKernelConstruction* ctx);
+  virtual ~SeedGenerator() {}
+
+  virtual int64 seed() const = 0;
+  virtual int64 seed2() const = 0;
+  virtual bool reshuffle_each_iteration() const = 0;
+
+  virtual void GenerateSeeds(int64* seed1, int64* seed2) = 0;
+  virtual void Reset() = 0;
+
+  virtual int64 num_random_samples() const {
+    tf_shared_lock l(mu_);
+    return num_random_samples_;
+  }
+  virtual void set_num_random_samples(int64 num_random_samples) {
+    mutex_lock l(mu_);
+    num_random_samples_ = num_random_samples;
+  }
+
+ protected:
+  mutable mutex mu_;
+  int64 num_random_samples_ TF_GUARDED_BY(mu_) = 0;
+};
+
+// A resource wrapping a shared instance of a seed generator.
+class SeedGeneratorManager : public ResourceBase {
+ public:
+  explicit SeedGeneratorManager(SeedGenerator* seed_generator)
+      : seed_generator_(seed_generator) {}
+
+  std::string DebugString() const override;
+
+  std::shared_ptr<SeedGenerator> get() { return seed_generator_; }
+
+ private:
+  std::shared_ptr<SeedGenerator> seed_generator_;
+};
+
+// Always generates the specified seed values.
+class FixedSeedGenerator : public SeedGenerator {
+ public:
+  explicit FixedSeedGenerator(RandomSeeds seeds) : seeds_(std::move(seeds)) {}
+
+  int64 seed() const override { return seeds_.seed(); }
+  int64 seed2() const override { return seeds_.seed(); }
+  bool reshuffle_each_iteration() const override { return false; }
+
+  void GenerateSeeds(int64* seed1, int64* seed2) override;
+  void Reset() override {}
+
+ private:
+  const RandomSeeds seeds_;
+};
+
+// Generates different (but deterministically chosen) seed values.
+class RandomSeedGenerator : public SeedGenerator {
+ public:
+  explicit RandomSeedGenerator(RandomSeeds seeds)
+      : seeds_(std::move(seeds)),
+        parent_generator_(seeds_.seed(), seeds_.seed2()),
+        generator_(&parent_generator_) {}
+
+  int64 seed() const override { return seeds_.seed(); }
+  int64 seed2() const override { return seeds_.seed2(); }
+  bool reshuffle_each_iteration() const override { return true; }
+
+  void GenerateSeeds(int64* seed1, int64* seed2) override;
+  void Reset() override;
+
+ private:
+  const RandomSeeds seeds_;
+  random::PhiloxRandom parent_generator_ TF_GUARDED_BY(mu_);
+  random::SingleSampleAdapter<random::PhiloxRandom> generator_
+      TF_GUARDED_BY(mu_);
+};
+
+// Creates an instance of seed generator resource and transfers ownership
+// to the caller.
+class AnonymousSeedGeneratorHandleOp
+    : public AnonymousResourceOp<SeedGeneratorManager> {
+ public:
+  explicit AnonymousSeedGeneratorHandleOp(OpKernelConstruction* ctx);
   void Compute(OpKernelContext* ctx) override;
 
  private:
@@ -65,17 +140,17 @@ class AnonymousRandomSeedGeneratorHandleOp
                         std::unique_ptr<FunctionLibraryDefinition> flib_def,
                         std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
                         FunctionLibraryRuntime* lib,
-                        RandomSeedGenerator** resource) override;
+                        SeedGeneratorManager** manager) override;
 
-  int64 seed_;
-  int64 seed2_;
+  mutex mu_;
+  std::unique_ptr<RandomSeeds> seeds_ TF_GUARDED_BY(mu_);
+  bool reshuffle_;
 };
 
-// Deletes an instance of random seed generator resource.
-class DeleteRandomSeedGeneratorOp : public OpKernel {
+// Deletes an instance of seed generator resource.
+class DeleteSeedGeneratorOp : public OpKernel {
  public:
-  explicit DeleteRandomSeedGeneratorOp(OpKernelConstruction* ctx)
-      : OpKernel(ctx) {}
+  explicit DeleteSeedGeneratorOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override;
 };

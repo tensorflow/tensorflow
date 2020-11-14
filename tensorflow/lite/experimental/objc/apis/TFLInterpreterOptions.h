@@ -26,6 +26,27 @@ NS_ASSUME_NONNULL_BEGIN
 @property(nonatomic) NSUInteger numberOfThreads;
 
 /**
+ * Experimental: Enable an optimized set of floating point CPU kernels (provided by XNNPACK).
+ *
+ * Enabling this flag will enable use of a new, highly optimized set of CPU kernels provided via the
+ * XNNPACK delegate. Currently, this is restricted to a subset of floating point operations.
+ * Eventually, we plan to enable this by default, as it can provide significant performance benefits
+ * for many classes of floating point models. See
+ * https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/xnnpack/README.md
+ * for more details.
+ *
+ * Things to keep in mind when enabling this flag:
+ *
+ *     * Startup time and resize time may increase.
+ *     * Baseline memory consumption may increase.
+ *     * Compatibility with other delegates (e.g., GPU) has not been fully validated.
+ *     * Quantized models will not see any benefit.
+ *
+ * WARNING: This is an experimental interface that is subject to change.
+ */
+@property(nonatomic) BOOL useXNNPACK;
+
+/**
  * Initializes a new instance of `TFLInterpreterOptions`.
  *
  * @return A new instance of `TFLInterpreterOptions`.

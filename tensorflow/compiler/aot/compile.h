@@ -42,8 +42,11 @@ struct CompileResult {
 // that performs the graph operations.
 //
 // The XLA compilation options are specified in the flags.
-Status CompileGraph(const GraphDef& graph_def, const tf2xla::Config& config,
+Status CompileGraph(GraphDef graph_def, const tf2xla::Config& config,
                     const MainFlags& flags, CompileResult* compile_result);
+
+// The full compilation method, for reuse in a library setting.
+Status Main(const MainFlags& flags);
 
 }  // namespace tfcompile
 }  // namespace tensorflow

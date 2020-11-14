@@ -173,8 +173,8 @@ def _RGBToHSVGrad(op, grad):
 
   This function is a piecewise continuous function as defined here:
   https://en.wikipedia.org/wiki/HSL_and_HSV#From_RGB
-  We perform the multi variate derivative and compute all partial derivates
-  seperately before adding them in the end. Formulas are given before each
+  We perform the multivariate derivative and compute all partial derivatives
+  separately before adding them in the end. Formulas are given before each
   partial derivative calculation.
 
   Args:
@@ -248,7 +248,7 @@ def _RGBToHSVGrad(op, grad):
   # dh_dr_1 ->
   # if red was MAX, then derivative = 60 * -1 * (G-B)/square(MAX-MIN) == 60 *\
   #  -1 * (greens-blues) * reciprocal(square(saturation)) * \
-  #  reciprical(square(value))
+  #  reciprocal(square(value))
   # elif green was MAX, there are two subcases
   # ie when red was MIN and when red was NOT MIN
   #   dh_dr_2 ->

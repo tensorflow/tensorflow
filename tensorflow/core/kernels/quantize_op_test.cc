@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <random>
+
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -61,6 +63,7 @@ template <typename T>
 std::vector<T> ScalePerSliceAlongAxis(std::vector<int64> dims, int axis,
                                       const std::vector<T>& data) {
   uint32 seed = 123;
+  std::minstd_rand rng(seed);
   int64 out_size = 1;
   for (int dim : dims) {
     out_size *= dim;
@@ -72,7 +75,7 @@ std::vector<T> ScalePerSliceAlongAxis(std::vector<int64> dims, int axis,
   std::vector<T> out(out_size);
   int num_slices = (axis == -1) ? 1 : dims[axis];
   for (int out_idx = 0; out_idx < out_size; ++out_idx) {
-    int in_idx = rand_r(&seed) % data.size();
+    int in_idx = rng() % data.size();
     T multiplier = ((out_idx / minor_size) % num_slices) + 1;
     out[out_idx] = data[in_idx] * multiplier;
   }

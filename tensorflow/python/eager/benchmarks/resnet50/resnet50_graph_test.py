@@ -109,7 +109,7 @@ class ResNet50Benchmarks(tf.test.Benchmark):
 
         model = resnet50.ResNet50(data_format())
         logits = model(images, training=True)
-        loss = tf.losses.softmax_cross_entropy(
+        loss = tf.compat.v1.losses.softmax_cross_entropy(
             logits=logits, onehot_labels=labels)
         optimizer = tf.train.GradientDescentOptimizer(learning_rate=1.0)
         train_op = optimizer.minimize(loss)

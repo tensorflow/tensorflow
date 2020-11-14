@@ -289,7 +289,7 @@ TEST_F(LocalRendezvousTest, RandomSendRecv) {
   // configured with only 16 threads. Furthermore, because the
   // threadpool may execute the closures in an arbitrary order, we
   // must use RecvAsync below. Otherwise, blocking Recv() may run
-  // before all all the Send() and deadlock.
+  // before all the Send() and deadlock.
   static const int N = 100;
   random::PhiloxRandom philox(testing::RandomSeed(), 17);
   random::SimplePhilox rnd(&philox);
@@ -434,83 +434,89 @@ TEST_F(LocalRendezvousTest, TransferDummyDeviceContext) {
   args1.device_context->Unref();
 }
 
-void BM_SendRecv(int iters) {
+void BM_SendRecv(::testing::benchmark::State& state) {
   Rendezvous* rendez = NewLocalRendezvous();
   Tensor orig = V("val");
   Tensor val(DT_STRING, TensorShape({}));
   bool is_dead = false;
   Rendezvous::Args args;
-  if (iters > 0) {
-    while (iters--) {
-      TF_CHECK_OK(rendez->Send(KeyFoo(), args, orig, is_dead));
-      TF_CHECK_OK(rendez->Recv(KeyFoo(), args, &val, &is_dead));
-    }
-    CHECK_EQ(V(val), V(orig));
+
+  for (auto s : state) {
+    TF_CHECK_OK(rendez->Send(KeyFoo(), args, orig, is_dead));
+    TF_CHECK_OK(rendez->Recv(KeyFoo(), args, &val, &is_dead));
   }
+  CHECK_EQ(V(val), V(orig));
+
   rendez->Unref();
 }
 BENCHMARK(BM_SendRecv);
 
-void BM_RecvSend(int iters) {
+void BM_RecvSend(::testing::benchmark::State& state) {
   Rendezvous* rendez = NewLocalRendezvous();
   Tensor orig = V("val");
   Tensor val(DT_STRING, TensorShape({}));
   bool is_dead = false;
   Rendezvous::Args args;
-  if (iters > 0) {
-    while (iters--) {
-      bool received = false;
-      rendez->RecvAsync(
-          KeyFoo(), args,
-          [&val, &received](const Status& s, const Rendezvous::Args& send_args,
-                            const Rendezvous::Args& recv_args,
-                            const Tensor& tensor, bool is_dead) {
-            val = tensor;
-            received = true;
-          });
-      TF_CHECK_OK(rendez->Send(KeyFoo(), args, orig, is_dead));
-      CHECK(received);
-    }
-    CHECK_EQ(V(val), V(orig));
+
+  for (auto s : state) {
+    bool received = false;
+    rendez->RecvAsync(
+        KeyFoo(), args,
+        [&val, &received](const Status& /*s*/,
+                          const Rendezvous::Args& /*send_args*/,
+                          const Rendezvous::Args& /*recv_args*/,
+                          const Tensor& tensor, bool /*is_dead*/) {
+          val = tensor;
+          received = true;
+        });
+    TF_CHECK_OK(rendez->Send(KeyFoo(), args, orig, is_dead));
+    CHECK(received);
   }
+  CHECK_EQ(V(val), V(orig));
+
   rendez->Unref();
 }
 BENCHMARK(BM_RecvSend);
 
-void BM_PingPong(int iters) {
-  CHECK_GT(iters, 0);
+void BM_PingPong(::testing::benchmark::State& state) {
+  const int messages_count = state.range(0);
   auto* cm = new CancellationManager();
   thread::ThreadPool* pool = new thread::ThreadPool(Env::Default(), "test", 1);
 
-  // The main thread sends "foo" for iters times and receives "bar"
-  // for iters times.  The other thread sends "bar" for iters times
-  // and receives "foo" for iters times.
-  Rendezvous* rendez = NewLocalRendezvous();
-  pool->Schedule([rendez, iters]() {
-    Tensor bar = V("bar");
-    Tensor foo(DT_STRING, TensorShape({}));
+  // Benchmark loop
+  // In each iteration:
+  // The main thread sends "foo" for messages_count times and receives "bar"
+  // for messages_count times.  The other thread sends "bar" for
+  // messages_count times and receives "foo" for messages_count times.
+  for (auto s : state) {
+    Rendezvous* rendez = NewLocalRendezvous();
+    pool->Schedule([rendez, messages_count]() {
+      Tensor bar = V("bar");
+      Tensor foo(DT_STRING, TensorShape({}));
+      bool is_dead = false;
+      Rendezvous::Args args;
+      for (int i = 0; i < messages_count; ++i) {
+        TF_CHECK_OK(rendez->Recv(KeyFoo(), args, &foo, &is_dead));
+        TF_CHECK_OK(rendez->Send(KeyBar(), args, bar, is_dead));
+      }
+      CHECK_EQ("foo", V(foo));
+    });
+    Tensor foo = V("foo");
+    Tensor bar(DT_STRING, TensorShape({}));
     bool is_dead = false;
     Rendezvous::Args args;
-    for (int i = 0; i < iters; ++i) {
-      TF_CHECK_OK(rendez->Recv(KeyFoo(), args, &foo, &is_dead));
-      TF_CHECK_OK(rendez->Send(KeyBar(), args, bar, is_dead));
+    args.cancellation_manager = cm;
+    for (int i = 0; i < messages_count; ++i) {
+      TF_CHECK_OK(rendez->Send(KeyFoo(), args, foo, is_dead));
+      TF_CHECK_OK(rendez->Recv(KeyBar(), args, &bar, &is_dead));
     }
-    CHECK_EQ("foo", V(foo));
-  });
-  Tensor foo = V("foo");
-  Tensor bar(DT_STRING, TensorShape({}));
-  bool is_dead = false;
-  Rendezvous::Args args;
-  args.cancellation_manager = cm;
-  for (int i = 0; i < iters; ++i) {
-    TF_CHECK_OK(rendez->Send(KeyFoo(), args, foo, is_dead));
-    TF_CHECK_OK(rendez->Recv(KeyBar(), args, &bar, &is_dead));
+    CHECK_EQ("bar", V(bar));
   }
-  CHECK_EQ("bar", V(bar));
+  state.SetItemsProcessed(messages_count * state.iterations());
   delete pool;
   delete cm;
 }
-BENCHMARK(BM_PingPong);
+BENCHMARK(BM_PingPong)->Arg(100)->Arg(200)->Arg(300);
 
 }  // namespace
 }  // namespace tensorflow

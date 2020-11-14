@@ -11,5 +11,4 @@ inline void sleep(unsigned int seconds) { Sleep(1000*seconds); }
 // prevent clashes.
 #undef DeleteFile
 #undef ERROR
-#undef LoadLibrary
 #endif  // _WIN32

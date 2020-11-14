@@ -27,12 +27,12 @@ namespace port {
 using tensorflow::Env;
 using tensorflow::Thread;
 
-inline Status FileExists(const string& filename) {
+inline Status FileExists(const std::string& filename) {
   return Env::Default()->FileExists(filename);
 }
 
 inline Status FileExists(const absl::string_view& filename) {
-  return Env::Default()->FileExists(string(filename));
+  return Env::Default()->FileExists(std::string(filename));
 }
 
 }  // namespace port

@@ -15,25 +15,24 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_CPU_CHECK_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_CPU_CHECK_H_
 
-#include "tensorflow/lite/kernels/cpu_backend_context.h"
+// This include is superfluous. However, it's been here for a while, and a
+// number of files have been relying on it to include neon_check.h for them.
+// This should be removed, but with a global run of presubmits to catch
+// any such issues. This requires running more than just TFLite presubmits.
 #include "tensorflow/lite/kernels/internal/optimized/neon_check.h"
 
 namespace tflite {
+
+// On A64, returns true if the dotprod extension is present.
+// On other architectures, returns false unconditionally.
+bool DetectArmNeonDotprod();
 
 struct CpuFlags {
   bool neon_dotprod = false;
 };
 
-inline void GetCpuFlags(CpuBackendContext* cpu_backend_context,
-                        CpuFlags* cpu_flags) {
-#if RUY_PLATFORM(ARM)
-  ruy::Context* ruy_context = cpu_backend_context->ruy_context();
-  cpu_flags->neon_dotprod =
-      ruy_context != nullptr && (ruy_context->GetRuntimeEnabledPaths() &
-                                 ruy::Path::kNeonDotprod) != ruy::Path::kNone;
-#else
-  cpu_flags->neon_dotprod = false;
-#endif
+inline void GetCpuFlags(CpuFlags* cpu_flags) {
+  cpu_flags->neon_dotprod = DetectArmNeonDotprod();
 }
 
 }  // namespace tflite

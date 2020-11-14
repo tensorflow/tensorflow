@@ -32,7 +32,7 @@ namespace tensorflow {
 // TODO(b/143949615): After all filesystems are converted, this file will be
 // moved to core/platform, and this class can become a singleton and replace the
 // need for `Env::Default()`. At that time, we might decide to remove the need
-// for `Env::Default()` altoghether, but that's a different project, not in
+// for `Env::Default()` altogether, but that's a different project, not in
 // scope for now. I'm just mentioning this here as that transition will mean
 // removal of the registration part from `Env` and adding it here instead: we
 // will need tables to hold for each scheme the function tables that implement
@@ -46,45 +46,61 @@ class ModularFileSystem final : public FileSystem {
       std::unique_ptr<const TF_RandomAccessFileOps> random_access_file_ops,
       std::unique_ptr<const TF_WritableFileOps> writable_file_ops,
       std::unique_ptr<const TF_ReadOnlyMemoryRegionOps>
-          read_only_memory_region_ops)
+          read_only_memory_region_ops,
+      std::function<void*(size_t)> plugin_memory_allocate,
+      std::function<void(void*)> plugin_memory_free)
       : filesystem_(std::move(filesystem)),
         ops_(std::move(filesystem_ops)),
         random_access_file_ops_(std::move(random_access_file_ops)),
         writable_file_ops_(std::move(writable_file_ops)),
-        read_only_memory_region_ops_(std::move(read_only_memory_region_ops)) {}
+        read_only_memory_region_ops_(std::move(read_only_memory_region_ops)),
+        plugin_memory_allocate_(std::move(plugin_memory_allocate)),
+        plugin_memory_free_(std::move(plugin_memory_free)) {}
 
   ~ModularFileSystem() override { ops_->cleanup(filesystem_.get()); }
 
+  TF_USE_FILESYSTEM_METHODS_WITH_NO_TRANSACTION_SUPPORT;
+
   Status NewRandomAccessFile(
-      const std::string& fname,
+      const std::string& fname, TransactionToken* token,
       std::unique_ptr<RandomAccessFile>* result) override;
-  Status NewWritableFile(const std::string& fname,
+  Status NewWritableFile(const std::string& fname, TransactionToken* token,
                          std::unique_ptr<WritableFile>* result) override;
-  Status NewAppendableFile(const std::string& fname,
+  Status NewAppendableFile(const std::string& fname, TransactionToken* token,
                            std::unique_ptr<WritableFile>* result) override;
   Status NewReadOnlyMemoryRegionFromFile(
-      const std::string& fname,
+      const std::string& fname, TransactionToken* token,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override;
-  Status FileExists(const std::string& fname) override;
+  Status FileExists(const std::string& fname, TransactionToken* token) override;
   bool FilesExist(const std::vector<std::string>& files,
+                  TransactionToken* token,
                   std::vector<Status>* status) override;
-  Status GetChildren(const std::string& dir,
+  Status GetChildren(const std::string& dir, TransactionToken* token,
                      std::vector<std::string>* result) override;
-  Status GetMatchingPaths(const std::string& pattern,
+  Status GetMatchingPaths(const std::string& pattern, TransactionToken* token,
                           std::vector<std::string>* results) override;
-  Status DeleteFile(const std::string& fname) override;
-  Status DeleteRecursively(const std::string& dirname, int64* undeleted_files,
+  Status DeleteFile(const std::string& fname, TransactionToken* token) override;
+  Status DeleteRecursively(const std::string& dirname, TransactionToken* token,
+                           int64* undeleted_files,
                            int64* undeleted_dirs) override;
-  Status DeleteDir(const std::string& dirname) override;
-  Status RecursivelyCreateDir(const std::string& dirname) override;
-  Status CreateDir(const std::string& dirname) override;
-  Status Stat(const std::string& fname, FileStatistics* stat) override;
-  Status IsDirectory(const std::string& fname) override;
-  Status GetFileSize(const std::string& fname, uint64* file_size) override;
-  Status RenameFile(const std::string& src, const std::string& target) override;
-  Status CopyFile(const std::string& src, const std::string& target) override;
+  Status DeleteDir(const std::string& dirname,
+                   TransactionToken* token) override;
+  Status RecursivelyCreateDir(const std::string& dirname,
+                              TransactionToken* token) override;
+  Status CreateDir(const std::string& dirname,
+                   TransactionToken* token) override;
+  Status Stat(const std::string& fname, TransactionToken* token,
+              FileStatistics* stat) override;
+  Status IsDirectory(const std::string& fname,
+                     TransactionToken* token) override;
+  Status GetFileSize(const std::string& fname, TransactionToken* token,
+                     uint64* file_size) override;
+  Status RenameFile(const std::string& src, const std::string& target,
+                    TransactionToken* token) override;
+  Status CopyFile(const std::string& src, const std::string& target,
+                  TransactionToken* token) override;
   std::string TranslateName(const std::string& name) const override;
-  void FlushCaches() override;
+  void FlushCaches(TransactionToken* token) override;
 
  private:
   std::unique_ptr<TF_Filesystem> filesystem_;
@@ -93,6 +109,8 @@ class ModularFileSystem final : public FileSystem {
   std::unique_ptr<const TF_WritableFileOps> writable_file_ops_;
   std::unique_ptr<const TF_ReadOnlyMemoryRegionOps>
       read_only_memory_region_ops_;
+  std::function<void*(size_t)> plugin_memory_allocate_;
+  std::function<void(void*)> plugin_memory_free_;
   TF_DISALLOW_COPY_AND_ASSIGN(ModularFileSystem);
 };
 
@@ -155,6 +173,9 @@ class ModularReadOnlyMemoryRegion final : public ReadOnlyMemoryRegion {
   const TF_ReadOnlyMemoryRegionOps* ops_;  // not owned
   TF_DISALLOW_COPY_AND_ASSIGN(ModularReadOnlyMemoryRegion);
 };
+
+// Registers a filesystem plugin so that core TensorFlow can use it.
+Status RegisterFilesystemPlugin(const std::string& dso_path);
 
 }  // namespace tensorflow
 

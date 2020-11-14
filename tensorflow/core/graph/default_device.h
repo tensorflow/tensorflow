@@ -26,7 +26,7 @@ namespace graph {
 
 // Sets the default device for all nodes in graph_def to "device",
 // only if not already set.
-inline void SetDefaultDevice(const string& device, GraphDef* graph_def) {
+inline void SetDefaultDevice(const std::string& device, GraphDef* graph_def) {
   for (int i = 0; i < graph_def->node_size(); ++i) {
     auto node = graph_def->mutable_node(i);
     if (node->device().empty()) {

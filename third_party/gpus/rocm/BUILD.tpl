@@ -108,6 +108,7 @@ cc_library(
         ":rocfft",
         ":hiprand",
         ":miopen",
+        ":hipsparse",
     ],
 )
 
@@ -134,6 +135,18 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "@local_config_rocm//rocm:rocm_headers",
+    ],
+)
+
+cc_library(
+    name = "hipsparse",
+    data = ["rocm/lib/%{hipsparse_lib}"],
+)
+
+filegroup(
+    name = "rocm_root",
+    srcs = [
+        "rocm/bin/clang-offload-bundler",
     ],
 )
 

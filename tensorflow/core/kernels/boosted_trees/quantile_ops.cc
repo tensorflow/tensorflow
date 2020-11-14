@@ -104,7 +104,7 @@ class BoostedTreesCreateQuantileStreamResourceOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     // Only create one, if one does not exist already. Report status for all
     // other exceptions. If one already exists, it unrefs the new one.
-    // An epsilon value of zero could cause perfoamance issues and is therefore,
+    // An epsilon value of zero could cause performance issues and is therefore,
     // disallowed.
     const Tensor* epsilon_t;
     OP_REQUIRES_OK(context, context->input(kEpsilonName, &epsilon_t));

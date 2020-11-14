@@ -55,7 +55,7 @@ class ExcludeUnsupportedInt32Test(trt_test.TfTrtIntegrationTestBase):
         run_params=run_params,
         conversion_params=conversion_params,
         # Disable layout optimizer, since it will convert BiasAdd with NHWC
-        # format to NCHW format under four dimentional input.
+        # format to NCHW format under four dimensional input.
         disable_non_trt_optimizers=True)
     return conversion_params._replace(
         rewriter_config_template=rewrite_config_with_trt)
@@ -81,7 +81,8 @@ class CalibrationInt32Support(trt_test.TfTrtIntegrationTestBase):
     # Although test passes with all configurations but only
     # execute INT8 with use_calibration=True because
     # that is the purpose of the test.
-    return trt_test.IsQuantizationWithCalibration(run_params)
+    return trt_test.IsQuantizationWithCalibration(
+        run_params), 'test calibration and INT8'
 
   def ExpectedEnginesToBuild(self, run_params):
     return ['TRTEngineOp_0']

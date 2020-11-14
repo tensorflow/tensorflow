@@ -141,7 +141,7 @@ Status UpdateResourceUsageFromFunctionBodyAnalysis(
         caller_source_to_path) {
   std::unordered_map<std::string, Node*> node_name_index =
       fbody.graph->BuildNodeNameIndex();
-  for (auto it : called_function_source_to_path) {
+  for (const auto& it : called_function_source_to_path) {
     ResourceUsageAnalysis::NodeInfo src_node_info = it.first;
 
     // If source is an _Arg, then the true source is actually corresponding
@@ -309,7 +309,7 @@ Status AnalyzeResourceUsage(
     }
   }
 
-  for (auto it : user_to_source) {
+  for (const auto& it : user_to_source) {
     (*source_to_path)[it.second].emplace(function_name, it.first->dst()->name(),
                                          it.first->dst()->type_string());
   }

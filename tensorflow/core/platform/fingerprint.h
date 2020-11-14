@@ -90,6 +90,15 @@ inline uint64 Fingerprint64(const StringPiece s) {
 #endif
 }
 
+// 32-bit variant of Fingerprint64 above (same properties and caveats apply).
+inline uint32 Fingerprint32(const StringPiece s) {
+#ifdef USE_OSS_FARMHASH
+  return ::util::Fingerprint32(s.data(), s.size());
+#else
+  return farmhash::Fingerprint32(s.data(), s.size());
+#endif
+}
+
 // 128-bit variant of Fingerprint64 above (same properties and caveats apply).
 inline Fprint128 Fingerprint128(const StringPiece s) {
 #ifdef USE_OSS_FARMHASH

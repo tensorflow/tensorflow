@@ -183,7 +183,7 @@ XLA_TEST_F(ScalarComputationsTest, MulThreeScalarsF64) {
       ConstantR0<double>(&builder, 0.5772156649015328));
 
   ComputeAndCompareR0<double>(&builder, 4.929268367422896, {},
-                              ErrorSpec{0x1p-48});
+                              ErrorSpec{3.6e-15});
 }
 
 XLA_TEST_F(ScalarComputationsTest, MulTwoScalarsS32) {

@@ -16,7 +16,6 @@ limitations under the License.
 #ifdef INTEL_MKL
 
 #include "tensorflow/core/common_runtime/threadpool_device.h"
-
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
@@ -25,7 +24,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-#ifdef _OPENMP
+#if defined(_OPENMP) && !defined(ENABLE_MKLDNN_THREADPOOL)
 TEST(MKLThreadPoolDeviceTest, TestOmpDefaults) {
   SessionOptions options;
   unsetenv("OMP_NUM_THREADS");
@@ -37,16 +36,7 @@ TEST(MKLThreadPoolDeviceTest, TestOmpDefaults) {
   EXPECT_EQ(omp_get_max_threads(), (port::NumSchedulableCPUs() + ht - 1) / ht);
 }
 
-TEST(MKLThreadPoolDeviceTest, TestOmpPreSets) {
-  SessionOptions options;
-  setenv("OMP_NUM_THREADS", "314", 1);
-
-  ThreadPoolDevice* tp = new ThreadPoolDevice(
-      options, "/device:CPU:0", Bytes(256), DeviceLocality(), cpu_allocator());
-
-  EXPECT_EQ(omp_get_max_threads(), 314);
-}
-#endif  // _OPENMP
+#endif  // defined(_OPENMP) && !defined(ENABLE_MKLDNN_THREADPOOL)
 
 }  // namespace tensorflow
 

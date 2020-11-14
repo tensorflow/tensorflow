@@ -75,7 +75,7 @@ class XentTest(test.TestCase):
         loss, backprop = gen_nn_ops.softmax_cross_entropy_with_logits(
             np_features, np_labels)
         tf_loss, tf_backprop = self.evaluate([loss, backprop])
-    self.assertAllCloseAccordingToType(np_loss, tf_loss)
+    self.assertAllCloseAccordingToType(np_loss, tf_loss, half_rtol=1e-2)
     self.assertAllCloseAccordingToType(np_backprop, tf_backprop)
 
   def _testXentWrapper(self, np_features, np_labels, dim=-1, use_gpu=False):
@@ -117,9 +117,9 @@ class XentTest(test.TestCase):
                                                     4.]]]).astype(dtype)
       np_labels = np.array([[[0., 0., 0., 1.]], [[0., .5, .5,
                                                   0.]]]).astype(dtype)
-      self.assertRaisesRegexp(ValueError, "rank 2, but is rank 3",
-                              gen_nn_ops.softmax_cross_entropy_with_logits,
-                              np_features, np_labels)
+      self.assertRaisesRegex(ValueError, "rank 2, but is rank 3",
+                             gen_nn_ops.softmax_cross_entropy_with_logits,
+                             np_features, np_labels)
 
   def testNpXent(self):
     # We create 2 batches of logits for testing.
@@ -241,6 +241,7 @@ class XentTest(test.TestCase):
           op.op_def.name for op in sess.graph.get_operations() if op.op_def
       ]
       self.assertNotIn("BatchMatMul", op_names)
+      self.assertNotIn("BatchMatMulV2", op_names)
 
     print("cross entropy gradient err = ", err)
     self.assertLess(err, 5e-8)

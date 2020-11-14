@@ -13,7 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/c/builtin_op_data.h"
+#include <math.h>
+#include <stdint.h>
+#include <stdlib.h>
+
+#include <functional>
+#include <type_traits>
+
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
@@ -35,8 +41,8 @@ template <typename T>
 TfLiteStatus GetSize(TfLiteContext* context, T start, T limit, T delta,
                      int* size) {
   TF_LITE_ENSURE(context, !std::equal_to<T>()(delta, 0));
-  TF_LITE_ENSURE(context,
-                 (start > limit && delta < 0) || (start < limit && delta > 0));
+  TF_LITE_ENSURE(
+      context, (start >= limit && delta < 0) || (start <= limit && delta > 0));
   *size =
       (std::is_integral<T>::value
            ? ((std::abs(limit - start) + std::abs(delta) - 1) / std::abs(delta))
@@ -77,9 +83,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  const TfLiteTensor* start = GetInput(context, node, kStartTensor);
-  const TfLiteTensor* limit = GetInput(context, node, kLimitTensor);
-  const TfLiteTensor* delta = GetInput(context, node, kDeltaTensor);
+  const TfLiteTensor* start;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kStartTensor, &start));
+  const TfLiteTensor* limit;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kLimitTensor, &limit));
+  const TfLiteTensor* delta;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kDeltaTensor, &delta));
   // Make sure all the inputs are scalars.
   TF_LITE_ENSURE_EQ(context, NumDimensions(start), 0);
   TF_LITE_ENSURE_EQ(context, NumDimensions(limit), 0);
@@ -94,10 +103,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     return kTfLiteError;
   }
 
-  TF_LITE_ENSURE_EQ(context, limit->type, dtype);
-  TF_LITE_ENSURE_EQ(context, delta->type, dtype);
+  TF_LITE_ENSURE_TYPES_EQ(context, limit->type, dtype);
+  TF_LITE_ENSURE_TYPES_EQ(context, delta->type, dtype);
 
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
   output->type = dtype;
 
   if (IsConstantTensor(start) && IsConstantTensor(limit) &&
@@ -124,11 +135,16 @@ void EvalImpl(const TfLiteTensor* start, const TfLiteTensor* delta,
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* start = GetInput(context, node, kStartTensor);
-  const TfLiteTensor* limit = GetInput(context, node, kLimitTensor);
-  const TfLiteTensor* delta = GetInput(context, node, kDeltaTensor);
+  const TfLiteTensor* start;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kStartTensor, &start));
+  const TfLiteTensor* limit;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kLimitTensor, &limit));
+  const TfLiteTensor* delta;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kDeltaTensor, &delta));
 
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
 
   if (IsDynamicTensor(output)) {
     TF_LITE_ENSURE_OK(context,

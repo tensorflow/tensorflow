@@ -20,7 +20,7 @@ from __future__ import print_function
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.python import pywrap_tensorflow as tf_opt
+from tensorflow.python import _pywrap_tf_optimizer as tf_opt
 from tensorflow.python.grappler import cluster as gcluster
 
 
@@ -52,12 +52,8 @@ def OptimizeGraph(config_proto,
                     type(config_proto))
   if cluster is None:
     cluster = gcluster.Cluster()
-  ret_from_swig = tf_opt.TF_OptimizeGraph(cluster.tf_cluster,
-                                          config_proto.SerializeToString(),
-                                          metagraph.SerializeToString(),
-                                          verbose, graph_id,
-                                          strip_default_attributes)
-  if ret_from_swig is None:
-    return None
-  out_graph = graph_pb2.GraphDef().FromString(ret_from_swig)
-  return out_graph
+  out_graph = tf_opt.TF_OptimizeGraph(cluster.tf_cluster,
+                                      config_proto.SerializeToString(),
+                                      metagraph.SerializeToString(), verbose,
+                                      graph_id, strip_default_attributes)
+  return graph_pb2.GraphDef().FromString(out_graph)

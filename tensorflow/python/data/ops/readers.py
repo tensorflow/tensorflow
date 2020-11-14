@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import convert
@@ -27,9 +29,15 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
+from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
 _DEFAULT_READER_BUFFER_SIZE_BYTES = 256 * 1024  # 256 KB
+
+
+def _normalise_fspath(path):
+  """Convert pathlib-like objects to str (__fspath__ compatibility, PEP 519)."""
+  return os.fspath(path) if isinstance(path, os.PathLike) else path
 
 
 def _create_or_validate_filenames_dataset(filenames):
@@ -52,6 +60,7 @@ def _create_or_validate_filenames_dataset(filenames):
           "`filenames` must be a `tf.data.Dataset` of scalar `tf.string` "
           "elements.")
   else:
+    filenames = nest.map_structure(_normalise_fspath, filenames)
     filenames = ops.convert_to_tensor(filenames, dtype_hint=dtypes.string)
     if filenames.dtype != dtypes.string:
       raise TypeError(
@@ -248,8 +257,6 @@ class ParallelInterleaveDataset(dataset_ops.UnaryDataset):
         cycle_length, dtype=dtypes.int64, name="cycle_length")
     self._block_length = ops.convert_to_tensor(
         block_length, dtype=dtypes.int64, name="block_length")
-    self._sloppy = ops.convert_to_tensor(
-        sloppy, dtype=dtypes.bool, name="sloppy")
     self._buffer_output_elements = convert.optional_param_to_tensor(
         "buffer_output_elements",
         buffer_output_elements,
@@ -258,15 +265,21 @@ class ParallelInterleaveDataset(dataset_ops.UnaryDataset):
         "prefetch_input_elements",
         prefetch_input_elements,
         argument_default=2 * cycle_length)
-    variant_tensor = ged_ops.parallel_interleave_dataset(
+    if sloppy is None:
+      self._deterministic = "default"
+    elif sloppy:
+      self._deterministic = "false"
+    else:
+      self._deterministic = "true"
+    variant_tensor = ged_ops.legacy_parallel_interleave_dataset_v2(
         self._input_dataset._variant_tensor,  # pylint: disable=protected-access
         self._map_func.function.captured_inputs,
         self._cycle_length,
         self._block_length,
-        self._sloppy,
         self._buffer_output_elements,
         self._prefetch_input_elements,
         f=self._map_func.function,
+        deterministic=self._deterministic,
         **self._flat_structure)
     super(ParallelInterleaveDataset, self).__init__(input_dataset,
                                                     variant_tensor)

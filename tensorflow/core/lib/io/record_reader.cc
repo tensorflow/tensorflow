@@ -31,26 +31,26 @@ namespace io {
 RecordReaderOptions RecordReaderOptions::CreateRecordReaderOptions(
     const string& compression_type) {
   RecordReaderOptions options;
+
+#if defined(IS_SLIM_BUILD)
+  if (compression_type != compression::kNone) {
+    LOG(ERROR) << "Compression is not supported but compression_type is set."
+               << " No compression will be used.";
+  }
+#else
   if (compression_type == compression::kZlib) {
     options.compression_type = io::RecordReaderOptions::ZLIB_COMPRESSION;
-#if defined(IS_SLIM_BUILD)
-    LOG(ERROR) << "Compression is not supported but compression_type is set."
-               << " No compression will be used.";
-#else
     options.zlib_options = io::ZlibCompressionOptions::DEFAULT();
-#endif  // IS_SLIM_BUILD
   } else if (compression_type == compression::kGzip) {
     options.compression_type = io::RecordReaderOptions::ZLIB_COMPRESSION;
-#if defined(IS_SLIM_BUILD)
-    LOG(ERROR) << "Compression is not supported but compression_type is set."
-               << " No compression will be used.";
-#else
     options.zlib_options = io::ZlibCompressionOptions::GZIP();
-#endif  // IS_SLIM_BUILD
+  } else if (compression_type == compression::kSnappy) {
+    options.compression_type = io::RecordReaderOptions::SNAPPY_COMPRESSION;
   } else if (compression_type != compression::kNone) {
     LOG(ERROR) << "Unsupported compression_type:" << compression_type
                << ". No compression will be used.";
   }
+#endif
   return options;
 }
 
@@ -63,20 +63,26 @@ RecordReader::RecordReader(RandomAccessFile* file,
     input_stream_.reset(new BufferedInputStream(input_stream_.release(),
                                                 options.buffer_size, true));
   }
-  if (options.compression_type == RecordReaderOptions::ZLIB_COMPRESSION) {
-// We don't have zlib available on all embedded platforms, so fail.
 #if defined(IS_SLIM_BUILD)
-    LOG(FATAL) << "Zlib compression is unsupported on mobile platforms.";
-#else   // IS_SLIM_BUILD
+  if (options.compression_type != RecordReaderOptions::NONE) {
+    LOG(FATAL) << "Compression is unsupported on mobile platforms.";
+  }
+#else
+  if (options.compression_type == RecordReaderOptions::ZLIB_COMPRESSION) {
     input_stream_.reset(new ZlibInputStream(
         input_stream_.release(), options.zlib_options.input_buffer_size,
         options.zlib_options.output_buffer_size, options.zlib_options, true));
-#endif  // IS_SLIM_BUILD
+  } else if (options.compression_type ==
+             RecordReaderOptions::SNAPPY_COMPRESSION) {
+    input_stream_.reset(
+        new SnappyInputStream(input_stream_.release(),
+                              options.snappy_options.output_buffer_size, true));
   } else if (options.compression_type == RecordReaderOptions::NONE) {
     // Nothing to do.
   } else {
     LOG(FATAL) << "Unrecognized compression type :" << options.compression_type;
   }
+#endif
 }
 
 // Read n+4 bytes from file, verify that checksum of first n bytes is
@@ -161,10 +167,9 @@ Status RecordReader::GetMetadata(Metadata* md) {
   return Status::OK();
 }
 
-Status RecordReader::ReadRecord(uint64* offset, tstring* record) {
-  // Position the input stream.
+Status RecordReader::PositionInputStream(uint64 offset) {
   int64 curr_pos = input_stream_->Tell();
-  int64 desired_pos = static_cast<int64>(*offset);
+  int64 desired_pos = static_cast<int64>(offset);
   if (curr_pos > desired_pos || curr_pos < 0 /* EOF */ ||
       (curr_pos == desired_pos && last_read_failed_)) {
     last_read_failed_ = false;
@@ -174,6 +179,11 @@ Status RecordReader::ReadRecord(uint64* offset, tstring* record) {
     TF_RETURN_IF_ERROR(input_stream_->SkipNBytes(desired_pos - curr_pos));
   }
   DCHECK_EQ(desired_pos, input_stream_->Tell());
+  return Status::OK();
+}
+
+Status RecordReader::ReadRecord(uint64* offset, tstring* record) {
+  TF_RETURN_IF_ERROR(PositionInputStream(*offset));
 
   // Read header data.
   Status s = ReadChecksummed(*offset, sizeof(uint64), record);
@@ -188,13 +198,46 @@ Status RecordReader::ReadRecord(uint64* offset, tstring* record) {
   if (!s.ok()) {
     last_read_failed_ = true;
     if (errors::IsOutOfRange(s)) {
-      s = errors::DataLoss("truncated record at ", *offset);
+      s = errors::DataLoss("truncated record at ", *offset, "' failed with ",
+                           s.error_message());
     }
     return s;
   }
 
   *offset += kHeaderSize + length + kFooterSize;
   DCHECK_EQ(*offset, input_stream_->Tell());
+  return Status::OK();
+}
+
+Status RecordReader::SkipRecords(uint64* offset, int num_to_skip,
+                                 int* num_skipped) {
+  TF_RETURN_IF_ERROR(PositionInputStream(*offset));
+
+  Status s;
+  tstring record;
+  *num_skipped = 0;
+  for (int i = 0; i < num_to_skip; ++i) {
+    s = ReadChecksummed(*offset, sizeof(uint64), &record);
+    if (!s.ok()) {
+      last_read_failed_ = true;
+      return s;
+    }
+    const uint64 length = core::DecodeFixed64(record.data());
+
+    // Skip data
+    s = input_stream_->SkipNBytes(length + kFooterSize);
+    if (!s.ok()) {
+      last_read_failed_ = true;
+      if (errors::IsOutOfRange(s)) {
+        s = errors::DataLoss("truncated record at ", *offset, "' failed with ",
+                             s.error_message());
+      }
+      return s;
+    }
+    *offset += kHeaderSize + length + kFooterSize;
+    DCHECK_EQ(*offset, input_stream_->Tell());
+    (*num_skipped)++;
+  }
   return Status::OK();
 }
 

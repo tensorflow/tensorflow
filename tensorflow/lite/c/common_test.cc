@@ -78,6 +78,7 @@ TEST(Types, TestTypeNames) {
     return std::string(TfLiteTypeGetName(t));
   };
   EXPECT_EQ(type_name(kTfLiteNoType), "NOTYPE");
+  EXPECT_EQ(type_name(kTfLiteFloat64), "FLOAT64");
   EXPECT_EQ(type_name(kTfLiteFloat32), "FLOAT32");
   EXPECT_EQ(type_name(kTfLiteFloat16), "FLOAT16");
   EXPECT_EQ(type_name(kTfLiteInt16), "INT16");
@@ -87,6 +88,7 @@ TEST(Types, TestTypeNames) {
   EXPECT_EQ(type_name(kTfLiteInt64), "INT64");
   EXPECT_EQ(type_name(kTfLiteBool), "BOOL");
   EXPECT_EQ(type_name(kTfLiteComplex64), "COMPLEX64");
+  EXPECT_EQ(type_name(kTfLiteComplex128), "COMPLEX128");
   EXPECT_EQ(type_name(kTfLiteString), "STRING");
 }
 
@@ -95,6 +97,7 @@ TEST(Quantization, TestQuantizationFree) {
   // Set these values, otherwise TfLiteTensorFree has uninitialized values.
   t.allocation_type = kTfLiteArenaRw;
   t.dims = nullptr;
+  t.dims_signature = nullptr;
   t.quantization.type = kTfLiteAffineQuantization;
   t.sparsity = nullptr;
   auto* params = reinterpret_cast<TfLiteAffineQuantization*>(
@@ -110,6 +113,7 @@ TEST(Sparsity, TestSparsityFree) {
   // Set these values, otherwise TfLiteTensorFree has uninitialized values.
   t.allocation_type = kTfLiteArenaRw;
   t.dims = nullptr;
+  t.dims_signature = nullptr;
 
   // A dummy CSR sparse matrix.
   t.sparsity = static_cast<TfLiteSparsity*>(malloc(sizeof(TfLiteSparsity)));

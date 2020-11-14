@@ -26,8 +26,7 @@ TensorFlow Lite offers native iOS libraries written in
 [Swift](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/swift)
 and
 [Objective-C](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/objc).
-To get started quickly writing your own iOS code, we recommend using our
-[Swift image classification example](https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/ios)
+Start writing your own iOS code using the [Swift image classification example](https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/ios)
 as a starting point.
 
 The sections below demonstrate how to add TensorFlow Lite Swift or Objective-C
@@ -57,19 +56,29 @@ There are stable releases, and nightly releases available for both
 version constraint as in the above examples, CocoaPods will pull the latest
 stable release by default.
 
-You can also specify a version contraint. For example, if you wish to depend on
+You can also specify a version constraint. For example, if you wish to depend on
 version 2.0.0, you can write the dependency as:
 
 ```ruby
 pod 'TensorFlowLiteSwift', '~> 2.0.0'
 ```
 
-This will ensure the latest available 2.x.y version of `TensorFlowLiteSwift` pod
-is used in your app. Alternatively, if you want to depend on the nightly builds,
-you can write:
+This will ensure the latest available 2.x.y version of the `TensorFlowLiteSwift`
+pod is used in your app. Alternatively, if you want to depend on the nightly
+builds, you can write:
 
 ```ruby
-pod 'TensorFlowLiteSwift', '0.0.1-nightly'
+pod 'TensorFlowLiteSwift', '~> 0.0.1-nightly'
+```
+
+For nightly version, by default
+[GPU](https://www.tensorflow.org/lite/performance/gpu) and
+[Core ML delegates](https://www.tensorflow.org/lite/performance/coreml_delegate)
+are excluded from the pod to reduce the binary size. You can include them by
+specifying subspec:
+
+```ruby
+pod 'TensorFlowLiteSwift', '~> 0.0.1-nightly', :subspecs => ['CoreML', 'Metal']
 ```
 
 This will allow you to use the latest features added to TensorFlow Lite. Note
@@ -101,6 +110,28 @@ swift_library(
 objc_library(
   deps = [
       "//tensorflow/lite/experimental/objc:TensorFlowLite",
+  ],
+)
+```
+
+#### C/C++ API
+
+Alternatively, you can use
+[C API](https://www.tensorflow.org/code/tensorflow/lite/c/c_api.h)
+or [C++ API](https://tensorflow.org/lite/api_docs/cc)
+
+```python
+# Using C API directly
+objc_library(
+  deps = [
+      "//tensorflow/lite/c:c_api",
+  ],
+)
+
+# Using C++ API directly
+objc_library(
+  deps = [
+      "//third_party/tensorflow/lite:framework",
   ],
 )
 ```

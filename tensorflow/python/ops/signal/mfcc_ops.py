@@ -22,10 +22,12 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.signal import dct_ops
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export('signal.mfccs_from_log_mel_spectrograms')
+@dispatch.add_dispatch_support
 def mfccs_from_log_mel_spectrograms(log_mel_spectrograms, name=None):
   """Computes [MFCCs][mfcc] of `log_mel_spectrograms`.
 

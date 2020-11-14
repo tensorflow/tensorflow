@@ -7,10 +7,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files([
-    "LICENSE",
-])
-
 py_binary(
     name = "accuracy_utils_py",
     srcs = ["accuracy_utils.py"],
@@ -48,7 +44,6 @@ py_binary(
         ":recognize_commands_py",
         "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
@@ -172,8 +167,6 @@ py_library(
         ":input_data",
         ":models",
         "//tensorflow:tensorflow_py",
-        "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
@@ -216,8 +209,6 @@ py_library(
         ":input_data",
         ":models",
         "//tensorflow:tensorflow_py",
-        "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
@@ -261,7 +252,6 @@ py_library(
         ":models",
         "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 

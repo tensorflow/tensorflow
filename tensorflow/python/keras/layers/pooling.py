@@ -164,8 +164,9 @@ class MaxPooling1D(Pooling1D):
       for each pooling step.
       If None, it will default to `pool_size`.
     padding: One of `"valid"` or `"same"` (case-insensitive).
-      "valid" adds no padding.  "same" adds padding such that if the stride
-      is 1, the output shape is the same as the input shape.
+      `"valid"` means no padding. `"same"` results in padding evenly to 
+      the left/right or up/down of the input such that output has the same 
+      height/width dimension as the input.
     data_format: A string,
       one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
@@ -209,6 +210,9 @@ class AveragePooling1D(Pooling1D):
       E.g. 2 will halve the input.
       If None, it will default to `pool_size`.
     padding: One of `"valid"` or `"same"` (case-insensitive).
+      `"valid"` means no padding. `"same"` results in padding evenly to 
+      the left/right or up/down of the input such that output has the same 
+      height/width dimension as the input.
     data_format: A string,
       one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
@@ -370,6 +374,24 @@ class MaxPooling2D(Pooling2D):
             [[10.],
              [11.],
              [12.]]]], dtype=float32)>
+             
+  Usage Example:
+  
+  >>> input_image = tf.constant([[[[1.], [1.], [2.], [4.]],
+  ...                            [[2.], [2.], [3.], [2.]],
+  ...                            [[4.], [1.], [1.], [1.]],
+  ...                            [[2.], [2.], [1.], [4.]]]]) 
+  >>> output = tf.constant([[[[1], [0]],
+  ...                       [[0], [1]]]]) 
+  >>> model = tf.keras.models.Sequential()
+  >>> model.add(tf.keras.layers.MaxPooling2D(pool_size=(2, 2), 
+  ...    input_shape=(4,4,1)))
+  >>> model.compile('adam', 'mean_squared_error')
+  >>> model.predict(input_image, steps=1)
+  array([[[[2.],
+           [4.]],
+          [[4.],
+           [4.]]]], dtype=float32)
 
   For example, for stride=(1,1) and padding="same":
 
@@ -401,8 +423,9 @@ class MaxPooling2D(Pooling2D):
       Strides values.  Specifies how far the pooling window moves
       for each pooling step. If None, it will default to `pool_size`.
     padding: One of `"valid"` or `"same"` (case-insensitive).
-      "valid" adds no zero padding.  "same" adds padding such that if the stride
-      is 1, the output shape is the same as input shape.
+      `"valid"` means no padding. `"same"` results in padding evenly to 
+      the left/right or up/down of the input such that output has the same 
+      height/width dimension as the input.
     data_format: A string,
       one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
@@ -457,6 +480,9 @@ class AveragePooling2D(Pooling2D):
       Strides values.
       If None, it will default to `pool_size`.
     padding: One of `"valid"` or `"same"` (case-insensitive).
+      `"valid"` means no padding. `"same"` results in padding evenly to 
+      the left/right or up/down of the input such that output has the same 
+      height/width dimension as the input.
     data_format: A string,
       one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
@@ -599,6 +625,9 @@ class MaxPooling3D(Pooling3D):
       `(2, 2, 2)` will halve the size of the 3D input in each dimension.
     strides: tuple of 3 integers, or None. Strides values.
     padding: One of `"valid"` or `"same"` (case-insensitive).
+      `"valid"` means no padding. `"same"` results in padding evenly to 
+      the left/right or up/down of the input such that output has the same 
+      height/width dimension as the input.
     data_format: A string,
       one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
@@ -649,6 +678,9 @@ class AveragePooling3D(Pooling3D):
       `(2, 2, 2)` will halve the size of the 3D input in each dimension.
     strides: tuple of 3 integers, or None. Strides values.
     padding: One of `"valid"` or `"same"` (case-insensitive).
+      `"valid"` means no padding. `"same"` results in padding evenly to 
+      the left/right or up/down of the input such that output has the same 
+      height/width dimension as the input.
     data_format: A string,
       one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
@@ -696,7 +728,6 @@ class GlobalPooling1D(Layer):
     super(GlobalPooling1D, self).__init__(**kwargs)
     self.input_spec = InputSpec(ndim=3)
     self.data_format = conv_utils.normalize_data_format(data_format)
-    self._supports_ragged_inputs = True
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
@@ -718,6 +749,14 @@ class GlobalPooling1D(Layer):
               'keras.layers.GlobalAvgPool1D')
 class GlobalAveragePooling1D(GlobalPooling1D):
   """Global average pooling operation for temporal data.
+
+  Examples:
+
+  >>> input_shape = (2, 3, 4)
+  >>> x = tf.random.normal(input_shape)
+  >>> y = tf.keras.layers.GlobalAveragePooling1D()(x)
+  >>> print(y.shape)
+  (2, 4)
 
   Arguments:
     data_format: A string,
@@ -768,7 +807,26 @@ class GlobalAveragePooling1D(GlobalPooling1D):
 
 @keras_export('keras.layers.GlobalMaxPool1D', 'keras.layers.GlobalMaxPooling1D')
 class GlobalMaxPooling1D(GlobalPooling1D):
-  """Global max pooling operation for temporal data.
+  """Global max pooling operation for 1D temporal data.
+
+  Downsamples the input representation by taking the maximum value over
+  the time dimension.
+
+  For example:
+
+  >>> x = tf.constant([[1., 2., 3.], [4., 5., 6.], [7., 8., 9.]])
+  >>> x = tf.reshape(x, [3, 3, 1])
+  >>> x
+  <tf.Tensor: shape=(3, 3, 1), dtype=float32, numpy=
+  array([[[1.], [2.], [3.]],
+         [[4.], [5.], [6.]],
+         [[7.], [8.], [9.]]], dtype=float32)>
+  >>> max_pool_1d = tf.keras.layers.GlobalMaxPooling1D()
+  >>> max_pool_1d(x)
+  <tf.Tensor: shape=(3, 1), dtype=float32, numpy=
+  array([[3.],
+         [6.],
+         [9.], dtype=float32)>
 
   Arguments:
     data_format: A string,
@@ -804,7 +862,6 @@ class GlobalPooling2D(Layer):
     super(GlobalPooling2D, self).__init__(**kwargs)
     self.data_format = conv_utils.normalize_data_format(data_format)
     self.input_spec = InputSpec(ndim=4)
-    self._supports_ragged_inputs = True
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
@@ -826,6 +883,14 @@ class GlobalPooling2D(Layer):
               'keras.layers.GlobalAvgPool2D')
 class GlobalAveragePooling2D(GlobalPooling2D):
   """Global average pooling operation for spatial data.
+
+  Examples:
+
+  >>> input_shape = (2, 4, 5, 3)
+  >>> x = tf.random.normal(input_shape)
+  >>> y = tf.keras.layers.GlobalAveragePooling2D()(x)
+  >>> print(y.shape)
+  (2, 3)
 
   Arguments:
       data_format: A string,
@@ -859,6 +924,14 @@ class GlobalAveragePooling2D(GlobalPooling2D):
 @keras_export('keras.layers.GlobalMaxPool2D', 'keras.layers.GlobalMaxPooling2D')
 class GlobalMaxPooling2D(GlobalPooling2D):
   """Global max pooling operation for spatial data.
+
+  Examples:
+
+  >>> input_shape = (2, 4, 5, 3)
+  >>> x = tf.random.normal(input_shape)
+  >>> y = tf.keras.layers.GlobalMaxPool2D()(x)
+  >>> print(y.shape)
+  (2, 3)
 
   Arguments:
     data_format: A string,
@@ -896,7 +969,6 @@ class GlobalPooling3D(Layer):
     super(GlobalPooling3D, self).__init__(**kwargs)
     self.data_format = conv_utils.normalize_data_format(data_format)
     self.input_spec = InputSpec(ndim=5)
-    self._supports_ragged_inputs = True
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()

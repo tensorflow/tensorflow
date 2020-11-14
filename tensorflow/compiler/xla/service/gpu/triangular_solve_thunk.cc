@@ -32,12 +32,12 @@ namespace xla {
 namespace gpu {
 
 TriangularSolveThunk::TriangularSolveThunk(
-    const TriangularSolveOptions& options,
+    ThunkInfo thunk_info, const TriangularSolveOptions& options,
     const BufferAllocation::Slice& a_buffer,
     const BufferAllocation::Slice& b_buffer, PrimitiveType type,
     int64 batch_size, int64 m, int64 n, int64 a_batch_stride,
-    int64 b_batch_stride, const HloInstruction* hlo)
-    : Thunk(Kind::kTriangularSolve, hlo),
+    int64 b_batch_stride)
+    : Thunk(Kind::kTriangularSolve, thunk_info),
       uplo_(options.lower() ? se::blas::UpperLower::kLower
                             : se::blas::UpperLower::kUpper),
       side_(options.left_side() ? se::blas::Side::kLeft

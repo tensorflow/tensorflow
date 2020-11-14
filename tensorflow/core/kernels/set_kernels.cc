@@ -15,7 +15,7 @@ limitations under the License.
 
 // Ops for operating with sets. They are not checked in
 // to TensorFlow because we would first like to demonstrate successful
-// end-to-end use of these ops in eval and polush the api a bit like taking two
+// end-to-end use of these ops in eval and polish the api a bit like taking two
 // SparseTensor rather than on edense and one sparse.
 
 #define EIGEN_USE_THREADS
@@ -680,7 +680,7 @@ void SetOperationOp<T>::ComputeSparseToSparse(OpKernelContext* ctx) const {
 }
 
 // Given set1 of shape [b, n1] and data_2 of shape [b, n2], populate result
-// sparse tendor with [b, n3] values, where each row `i` contains the result of
+// sparse tensor with [b, n3] values, where each row `i` contains the result of
 // the set operation on elements from set1[i] and set2[i]. `n3` is the number
 // of elements in that result row.
 template <typename T>

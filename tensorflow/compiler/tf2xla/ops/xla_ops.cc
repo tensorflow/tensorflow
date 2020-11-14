@@ -291,6 +291,29 @@ dimension_numbers: a serialized xla::DotDimensionNumbers proto.
 precision_config: a serialized xla::PrecisionConfig proto.
 )doc");
 
+REGISTER_OP("XlaSetBound")
+    .Input("input: int32")
+    .Input("bound: int32")
+    .Output("output: int32")
+    .SetShapeFn(shape_inference::UnknownShape)
+    .Doc(
+        R"doc(Set a bound for the given input value as a hint to Xla compiler,
+        returns the same value.
+)doc");
+
+REGISTER_OP("XlaSetDynamicDimensionSize")
+    .Input("input: T")
+    .Input("dim_index: int32")
+    .Input("size: int32")
+    .Output("output: T")
+    .Attr("T: type")
+    // Use unknown shape to prevent constant folding.
+    .SetShapeFn(shape_inference::UnknownShape)
+    .Doc(
+        R"doc(Make a static dimension into a xla bounded dynamic dimension.
+        The current static dimension size will become the bound and the second
+        operand becomes the dynamic size of the dimension.)doc");
+
 REGISTER_OP("XlaDynamicSlice")
     .Input("input: T")
     .Input("start_indices: Tindices")
@@ -441,7 +464,8 @@ REGISTER_OP("XlaReduce")
         auto dim_in_range = [rank](int64 dim) {
           return dim >= 0 && dim < rank;
         };
-        if (rank < dimensions_to_reduce.size() ||
+        const int dimensions_to_reduce_size = dimensions_to_reduce.size();
+        if (rank < dimensions_to_reduce_size ||
             dims_set.size() != dimensions_to_reduce.size() ||
             !absl::c_all_of(dimensions_to_reduce, dim_in_range)) {
           return errors::InvalidArgument(
@@ -460,6 +484,60 @@ Wraps the XLA Reduce operator, documented at
 
 input: the input tensor
 init_value: a scalar representing the initial value for the reduction
+reducer: a reducer function to apply
+dimensions_to_reduce: dimension numbers over which to reduce
+)doc");
+
+REGISTER_OP("XlaVariadicReduce")
+    .Input("input: N * T")
+    .Input("init_value: N * T")
+    .Attr("N: int >= 1")
+    .Attr("T: numbertype")
+    .Attr("dimensions_to_reduce: list(int)")
+    .Attr("reducer: func")
+    .Output("output: N * T")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      int n;
+      TF_RETURN_IF_ERROR(c->GetAttr("N", &n));
+      for (int i = 0; i < n; i++) {
+        for (int j = 0; j < n; j++) {
+          c->MergeInput(i, c->input(j));
+        }
+      }
+      if (c->RankKnown(c->input(0))) {
+        int rank = c->Rank(c->input(0));
+        std::vector<int64> dimensions_to_reduce;
+        TF_RETURN_IF_ERROR(
+            c->GetAttr("dimensions_to_reduce", &dimensions_to_reduce));
+        std::set<int64> dims_set(dimensions_to_reduce.begin(),
+                                 dimensions_to_reduce.end());
+        auto dim_in_range = [rank](int64 dim) {
+          return dim >= 0 && dim < rank;
+        };
+        const int dimensions_to_reduce_size = dimensions_to_reduce.size();
+        if (rank < dimensions_to_reduce_size ||
+            dims_set.size() != dimensions_to_reduce.size() ||
+            !absl::c_all_of(dimensions_to_reduce, dim_in_range)) {
+          return errors::InvalidArgument(
+              "Invalid dimensions_to_reduce argument to XlaVariadicReduce");
+        }
+        for (int i = 0; i < n; i++) {
+          c->set_output(
+              i, c->UnknownShapeOfRank(rank - dimensions_to_reduce.size()));
+        }
+      } else {
+        for (int i = 0; i < n; i++) {
+          c->set_output(i, c->input(i));
+        }
+      }
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Wraps the variadic XLA Reduce operator, documented at
+ https://www.tensorflow.org/performance/xla/operation_semantics#variadic_reduce.
+
+input: the input tensor(s)
+init_value: scalar initial value(s) for the reduction
 reducer: a reducer function to apply
 dimensions_to_reduce: dimension numbers over which to reduce
 )doc");
@@ -648,6 +726,62 @@ This op has better TPU performance since it doesn't have explicitly reshape and
 transpose operations as tf.einsum does.
 )doc");
 
+REGISTER_OP("XlaSpmdFullToShardShape")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("manual_sharding: string")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      auto input_handle = c->input(0);
+      if (!c->RankKnown(input_handle)) {
+        return shape_inference::UnknownShape(c);
+      }
+      string sharding_attr;
+      TF_RETURN_IF_ERROR(c->GetAttr("manual_sharding", &sharding_attr));
+      std::vector<shape_inference::DimensionHandle> dims;
+      for (int64 i = 0; i < c->Rank(input_handle); ++i) {
+        auto dim = c->Value(c->Dim(input_handle, i));
+        xla::OpSharding sharding;
+        sharding.ParseFromString(sharding_attr);
+        int64 partitions_i = sharding.tile_assignment_dimensions(i);
+        if (dim != shape_inference::InferenceContext::kUnknownDim &&
+            sharding.type() == xla::OpSharding::OTHER && partitions_i != 1) {
+          dim = (dim + partitions_i - 1) / partitions_i;
+        }
+        dims.push_back(c->MakeDim(dim));
+      }
+      c->set_output(0, c->MakeShape(dims));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+An op used by XLA SPMD partitioner to switch from automatic partitioning to
+manual partitioning. It annotates the input (full-shape, to be automatically
+partitioned) with the same sharding used by manual partitioning, and outputs a
+shard-shaped tensor to be consumed by later manually-partitioned ops. If the
+shape is not evenly partitionable, the padding region will be masked with 0s.
+)doc");
+
+REGISTER_OP("XlaSpmdShardToFullShape")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("manual_sharding: string")
+    .Attr("full_shape: shape")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      TensorShape shape_attr;
+      TF_RETURN_IF_ERROR(c->GetAttr("full_shape", &shape_attr));
+      shape_inference::ShapeHandle s;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromTensorShape(shape_attr, &s));
+      c->set_output(0, s);
+      return Status::OK();
+    })
+    .Doc(R"doc(
+An op used by XLA SPMD partitioner to switch from manual partitioning to
+automatic partitioning. It converts the shard-shaped, manually partitioned input
+into full-shaped tensor to be partitioned automatically with the same sharding
+used by manual partitioning.
+)doc");
+
 REGISTER_OP("XlaSharding")
     .Input("input: T")
     .Output("output: T")
@@ -671,10 +805,10 @@ REGISTER_OP("XlaGather")
     .Input("slice_sizes: Tindices")
     .Attr("dimension_numbers: string")
     .Attr("indices_are_sorted: bool")
-    .Attr("T: numbertype")
+    .Attr("T: {numbertype, bool}")
     .Attr("Tindices: {int32, int64}")
     .Output("output: T")
-    .SetShapeFn(UnchangedRank)
+    .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 Wraps the XLA Gather operator documented at
   https://www.tensorflow.org/xla/operation_semantics#gather
@@ -692,10 +826,10 @@ REGISTER_OP("XlaScatter")
     .Attr("update_computation: func")
     .Attr("dimension_numbers: string")
     .Attr("indices_are_sorted: bool")
-    .Attr("T: numbertype")
+    .Attr("T: {numbertype, bool}")
     .Attr("Tindices: {int32, int64}")
     .Output("output: T")
-    .SetShapeFn(UnchangedRank)
+    .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Wraps the XLA Scatter operator documented at
   https://www.tensorflow.org/xla/operation_semantics#scatter.

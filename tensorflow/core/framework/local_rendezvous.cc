@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/gtl/manual_constructor.h"
+#include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
@@ -111,6 +112,16 @@ Status LocalRendezvous::Send(const Rendezvous::ParsedKey& key,
   uint64 key_hash = KeyHash(key.FullKey());
   DVLOG(2) << "Send " << this << " " << key_hash << " " << key.FullKey();
 
+  if (is_dead) {
+    static auto* rendezvous_dead_values_sent = monitoring::Counter<2>::New(
+        "/tensorflow/core/rendezvous_dead_values_sent",
+        "The number of dead values sent between a pair of devices.",
+        "send_device", "recv_device");
+    rendezvous_dead_values_sent
+        ->GetCell(string(key.src_device), string(key.dst_device))
+        ->IncrementBy(1);
+  }
+
   mu_.lock();
   if (!status_.ok()) {
     // Rendezvous has been aborted.
@@ -176,6 +187,20 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
     CancellationToken token = CancellationManager::kInvalidToken;
     bool already_cancelled = false;
     if (cm != nullptr) {
+      // Increment the refcount when cancellation manager is present, to make
+      // sure the rendezvous outlives the recv and its cancel callbacks.
+      // This refcount is dropped in exactly one of the following cases:
+      // (1) Recv registers cancellation callback to cm, and then cm is
+      //     cancelled, unref in the cancellation callback;
+      // (2) Recv registers cancellation callback to cm, but cm is already
+      //     cancelled, unref in the already_cancelled check;
+      // (3) Recv is successful, and item done callback finishes deregistering
+      //     the cancellation callback, unref in the item done callback;
+      // (4) Recv is successful, but the item done callback fails to deregister
+      //     the cancellation callback because cm already StartCancel, in this
+      //     case the cancellation callback will be invoked by the cm anyway,
+      //     unref in the cancellation callback.
+      if (rc_owner_) rc_owner_->Ref();
       token = cm->get_cancellation_token();
       already_cancelled = !cm->RegisterCallback(token, [this, token, key_hash] {
         Item* item = nullptr;
@@ -219,10 +244,14 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
               Rendezvous::Args(), item->args, Tensor(), /*is_dead=*/false);
           delete item;
         }
+        // Unref case (1) and (4)
+        if (rc_owner_) rc_owner_->Unref();
       });
     }
     if (already_cancelled) {
       mu_.unlock();
+      // Unref case (2)
+      if (rc_owner_) rc_owner_->Unref();
       done(StatusGroup::MakeDerived(
                errors::Cancelled("RecvAsync is cancelled.")),
            Rendezvous::Args(), recv_args, Tensor(), /*is_dead=*/false);
@@ -239,10 +268,17 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
       // cancellation manager may no longer be live after `done` is called.
       queue->push_back(new Item(
           recv_args,
-          [cm, token, done = std::move(done)](
+          [this, cm, token, done = std::move(done)](
               const Status& s, const Rendezvous::Args& send_args,
               const Rendezvous::Args& recv_args, const Tensor& v, bool dead) {
-            cm->TryDeregisterCallback(token);
+            // TryDeregisterCallback returns true when the cancellation callback
+            // is successfully deregistered. If it fails because the CM already
+            // StartAbort, Unref will happen inside the cancellation callback
+            // when called by the CM.
+            if (cm->TryDeregisterCallback(token)) {
+              // Unref case (3)
+              if (this->rc_owner_) this->rc_owner_->Unref();
+            }
             done(s, send_args, recv_args, v, dead);
           },
           token));

@@ -18,7 +18,7 @@ See the [TFDBG](https://www.tensorflow.org/guide/debugger) guide.
 
 @@add_debug_tensor_watch
 @@watch_graph
-@@watch_graph_with_blacklists
+@@watch_graph_with_denylists
 @@DebugTensorDatum
 @@DebugDumpDir
 @@load_tensor_from_event
@@ -57,7 +57,7 @@ from tensorflow.python.debug.lib.debug_graphs import reconstruct_non_debug_graph
 
 from tensorflow.python.debug.lib.debug_utils import add_debug_tensor_watch
 from tensorflow.python.debug.lib.debug_utils import watch_graph
-from tensorflow.python.debug.lib.debug_utils import watch_graph_with_blacklists
+from tensorflow.python.debug.lib.debug_utils import watch_graph_with_denylists
 
 from tensorflow.python.debug.wrappers.dumping_wrapper import DumpingDebugWrapperSession
 from tensorflow.python.debug.wrappers.framework import WatchOptions

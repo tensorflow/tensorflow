@@ -21,8 +21,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/strided_slice_op_gpu_impl.h"
 
 namespace tensorflow {
-TF_CALL_complex64(DEFINE_GPU_KERNELS);
-TF_CALL_complex128(DEFINE_GPU_KERNELS);
+TF_CALL_COMPLEX_TYPES(DEFINE_GPU_KERNELS);
 }  // end namespace tensorflow
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -347,74 +348,17 @@ TEST_F(OpKernelTest, MatchSignatureFailes) {
 
 class DummyDevice : public DeviceBase {
  public:
-  DummyDevice(Env* env, bool save) : DeviceBase(env), save_(save) {}
-  bool RequiresRecordingAccessedTensors() const override { return save_; }
+  explicit DummyDevice(Env* env) : DeviceBase(env) {}
   Allocator* GetAllocator(AllocatorAttributes /*attr*/) override {
     return cpu_allocator();
   }
-
- private:
-  bool save_;
 };
-
-TEST_F(OpKernelTest, SaveTempFalse) {
-  Env* env = Env::Default();
-  OpKernelContext::Params params;
-  params.record_tensor_accesses = false;
-  auto device =
-      absl::make_unique<DummyDevice>(env, params.record_tensor_accesses);
-  params.device = device.get();
-  Status status;
-  std::unique_ptr<OpKernel> op(
-      CreateOpKernel(DEVICE_CPU, params.device, cpu_allocator(),
-                     CreateNodeDef("Test1", {DT_FLOAT, DT_INT32}),
-                     TF_GRAPH_DEF_VERSION, &status));
-  EXPECT_TRUE(status.ok());
-  params.op_kernel = op.get();
-  auto ctx = absl::make_unique<OpKernelContext>(&params);
-
-  Tensor t;
-  TF_EXPECT_OK(ctx->allocate_temp(DT_FLOAT, TensorShape(), &t));
-
-  TensorReferenceVector referenced_tensors;
-  ctx->retrieve_accessed_tensors(&referenced_tensors);
-  EXPECT_EQ(0, referenced_tensors.size());
-}
-
-TEST_F(OpKernelTest, SaveTempTrue) {
-  Env* env = Env::Default();
-  OpKernelContext::Params params;
-  params.record_tensor_accesses = true;
-  auto device =
-      absl::make_unique<DummyDevice>(env, params.record_tensor_accesses);
-  params.device = device.get();
-  Status status;
-  std::unique_ptr<OpKernel> op(
-      CreateOpKernel(DEVICE_CPU, params.device, cpu_allocator(),
-                     CreateNodeDef("Test1", {DT_FLOAT, DT_INT32}),
-                     TF_GRAPH_DEF_VERSION, &status));
-  EXPECT_TRUE(status.ok());
-  params.op_kernel = op.get();
-  auto ctx = absl::make_unique<OpKernelContext>(&params);
-
-  Tensor t;
-  TF_EXPECT_OK(ctx->allocate_temp(DT_FLOAT, TensorShape(), &t));
-
-  TensorReferenceVector referenced_tensors;
-  ctx->retrieve_accessed_tensors(&referenced_tensors);
-  EXPECT_EQ(1, referenced_tensors.size());
-  for (auto& ref : referenced_tensors) {
-    ref.Unref();
-  }
-}
 
 TEST_F(OpKernelTest, InputDtype) {
   Env* env = Env::Default();
   OpKernelContext::Params params;
-  params.record_tensor_accesses = false;
-  auto device =
-      absl::make_unique<DummyDevice>(env, params.record_tensor_accesses);
-  params.device = device.get();
+  DummyDevice device(env);
+  params.device = &device;
   Status status;
   std::unique_ptr<OpKernel> op(
       CreateOpKernel(DEVICE_CPU, params.device, cpu_allocator(),
@@ -498,7 +442,6 @@ class ScopedAllocatorDevice : public DeviceBase {
 TEST_F(OpKernelTest, ScopedAllocationTest) {
   Env* env = Env::Default();
   OpKernelContext::Params params;
-  params.record_tensor_accesses = false;
   auto sa_device = absl::make_unique<ScopedAllocatorDevice>(env);
   params.device = sa_device.get();
   Status status;
@@ -787,10 +730,8 @@ REGISTER_KERNEL_BUILDER(Name("ListOut").Device(tensorflow::DEVICE_CPU),
 TEST_F(OpKernelBuilderTest, OpOutputList) {
   Env* env = Env::Default();
   OpKernelContext::Params params;
-  params.record_tensor_accesses = false;
-  auto device =
-      absl::make_unique<DummyDevice>(env, params.record_tensor_accesses);
-  params.device = device.get();
+  DummyDevice device(env);
+  params.device = &device;
   Status status;
   std::unique_ptr<OpKernel> op(CreateOpKernel(
       DEVICE_CPU, params.device, cpu_allocator(),
@@ -1061,34 +1002,31 @@ TEST_F(LabelTest, Duplicate) {
                 error::INVALID_ARGUMENT);
 }
 
-void BM_InputRangeHelper(int iters, const NodeDef& node_def,
-                         const char* input_name, int expected_start,
-                         int expected_stop) {
+void BM_InputRangeHelper(::testing::benchmark::State& state,
+                         const NodeDef& node_def, const char* input_name,
+                         int expected_start, int expected_stop) {
   Status status;
-  auto device = absl::make_unique<DummyDevice>(Env::Default(), false);
+  auto device = absl::make_unique<DummyDevice>(Env::Default());
 
   std::unique_ptr<OpKernel> op(CreateOpKernel(DEVICE_CPU, device.get(),
                                               cpu_allocator(), node_def,
                                               TF_GRAPH_DEF_VERSION, &status));
   TF_CHECK_OK(status);
 
-  testing::StartTiming();
-  for (int i = 0; i < iters; ++i) {
+  for (auto s : state) {
     int start;
     int stop;
     TF_CHECK_OK(op->InputRange(input_name, &start, &stop));
     EXPECT_EQ(expected_start, start);
     EXPECT_EQ(expected_stop, stop);
   }
-  testing::StopTiming();
 }
 
 REGISTER_KERNEL_BUILDER(Name("ConcatV2").Device(DEVICE_CPU), DummyKernel);
 REGISTER_KERNEL_BUILDER(Name("Select").Device(DEVICE_CPU), DummyKernel);
+REGISTER_KERNEL_BUILDER(Name("MatMul").Device(DEVICE_CPU), DummyKernel);
 
-void BM_ConcatInputRange(int iters) {
-  testing::StopTiming();
-
+void BM_ConcatInputRange(::testing::benchmark::State& state) {
   // Create a ConcatV2 NodeDef with 4 inputs (plus the axis).
   NodeDef node_def;
   node_def.set_name("concat-op");
@@ -1106,12 +1044,10 @@ void BM_ConcatInputRange(int iters) {
     node_def.add_input(strings::StrCat("a:", i));
   }
 
-  BM_InputRangeHelper(iters, node_def, "values", 0, 4);
+  BM_InputRangeHelper(state, node_def, "values", 0, 4);
 }
 
-void BM_SelectInputRange(int iters) {
-  testing::StopTiming();
-
+void BM_SelectInputRange(::testing::benchmark::State& state) {
   // Create a Select NodeDef with 3 inputs.
   NodeDef node_def;
   node_def.set_name("select-op");
@@ -1123,11 +1059,52 @@ void BM_SelectInputRange(int iters) {
     node_def.add_input(strings::StrCat("a:", i));
   }
 
-  BM_InputRangeHelper(iters, node_def, "condition", 0, 1);
+  BM_InputRangeHelper(state, node_def, "condition", 0, 1);
+}
+
+void BM_TraceString(::testing::benchmark::State& state) {
+  const int verbose = state.range(0);
+
+  // Create a MatMul NodeDef with 2 inputs.
+  NodeDef node_def;
+  node_def.set_name("gradient_tape/model_1/dense_1/MatMul_1");
+  node_def.set_op("MatMul");
+  AttrValue transpose_a, transpose_b, attr_t;
+  attr_t.set_type(DT_FLOAT);
+  node_def.mutable_attr()->insert({"T", attr_t});
+  transpose_a.set_b(true);
+  node_def.mutable_attr()->insert({"transpose_a", transpose_a});
+  transpose_b.set_b(true);
+  node_def.mutable_attr()->insert({"transpose_b", transpose_b});
+  for (size_t i = 0; i < 2; ++i) {
+    node_def.add_input(strings::StrCat("a:", i));
+  }
+
+  // Build OpKernel and OpKernelContext
+  Status status;
+  auto device = absl::make_unique<DummyDevice>(Env::Default());
+  std::unique_ptr<OpKernel> op(CreateOpKernel(DEVICE_CPU, device.get(),
+                                              cpu_allocator(), node_def,
+                                              TF_GRAPH_DEF_VERSION, &status));
+  TF_CHECK_OK(status);
+
+  OpKernelContext::Params params;
+  params.device = device.get();
+  params.op_kernel = op.get();
+  Tensor a(DT_FLOAT, TensorShape({99000, 256}));
+  Tensor b(DT_FLOAT, TensorShape({256, 256}));
+  gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&a), TensorValue(&b)};
+  params.inputs = &inputs;
+  auto ctx = absl::make_unique<OpKernelContext>(&params);
+
+  for (auto s : state) {
+    auto trace = op->TraceString(*ctx, verbose);
+  }
 }
 
 BENCHMARK(BM_ConcatInputRange);
 BENCHMARK(BM_SelectInputRange);
+BENCHMARK(BM_TraceString)->Arg(1)->Arg(0);
 
 TEST(RegisteredKernels, CanCallGetAllRegisteredKernels) {
   auto kernel_list = GetAllRegisteredKernels();
@@ -1165,6 +1142,19 @@ TEST(RegisteredKernels, GetRegisteredKernelsForOp) {
   ASSERT_EQ(kernel_list.kernel_size(), 1);
   EXPECT_EQ(kernel_list.kernel(0).op(), "Test1");
   EXPECT_EQ(kernel_list.kernel(0).device_type(), "CPU");
+}
+
+// EXTRACT_KERNEL_NAME_TO_STRING wraps TF_EXTRACT_KERNEL_NAME for testing
+// (it involves quite a bit of macro-magic).
+#define EXTRACT_KERNEL_NAME_TO_STRING_IMPL(name, kernel_builder, ...) name
+#define EXTRACT_KERNEL_NAME_TO_STRING(kernel_builder) \
+  TF_EXTRACT_KERNEL_NAME(EXTRACT_KERNEL_NAME_TO_STRING_IMPL, kernel_builder)
+
+TEST(RegisterKernelMacro, ExtractName) {
+  static constexpr char const* kName = "Foo";
+  static constexpr char const* kExtractedName =
+      EXTRACT_KERNEL_NAME_TO_STRING(Name(kName).Label("Label"));
+  EXPECT_THAT(kExtractedName, ::testing::StrEq(kName));
 }
 
 }  // namespace

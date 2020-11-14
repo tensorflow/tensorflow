@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xrt/xrt.pb.h"
 #include "tensorflow/compiler/xrt/xrt_device.h"
 #include "tensorflow/compiler/xrt/xrt_memory_manager.h"
+#include "tensorflow/compiler/xrt/xrt_metrics.h"
 #include "tensorflow/compiler/xrt/xrt_state.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -46,6 +47,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/lib/monitoring/percentile_sampler.h"
+#include "tensorflow/core/lib/monitoring/timed.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -170,16 +173,17 @@ class XRTAllocateOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     VLOG(1) << "XRTAllocateOp::Compute";
+    auto timed = monitoring::MakeTimed(xrt_metrics::GetAllocateCell());
 
     const Tensor& allocation_info = ctx->input(0);
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(allocation_info.shape()),
                 errors::Internal("allocation input should be a string scalar"));
     xrt::XLAAllocation allocation_proto;
-    OP_REQUIRES(
-        ctx,
-        allocation_proto.ParseFromString(allocation_info.scalar<tstring>()()),
-        errors::InvalidArgument(
-            "Unable to parse allocation input to XLAAllocation"));
+    OP_REQUIRES(ctx,
+                ParseFromTString(allocation_info.scalar<tstring>()(),
+                                 &allocation_proto),
+                errors::InvalidArgument(
+                    "Unable to parse allocation input to XLAAllocation"));
 
     xla::Literal literal;
     OP_REQUIRES_OK(
@@ -223,6 +227,8 @@ class XRTAllocateUninitializedOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     VLOG(1) << "XRTAllocateUninitializedOp::Compute";
+    auto timed =
+        monitoring::MakeTimed(xrt_metrics::GetAllocateUninitializedCell());
     ResourceMgr* rm;
     OP_REQUIRES_OK(ctx, DeviceAccessor::GetResourceManager(ctx, &rm));
 
@@ -294,6 +300,8 @@ class XRTAllocateFromTensorOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     VLOG(1) << "XRTAllocateFromTensorOp::Compute";
+    auto timed =
+        monitoring::MakeTimed(xrt_metrics::GetAllocateFromTensorCell());
 
     OpInputList values;
     OP_REQUIRES_OK(ctx, ctx->input_list("inputs", &values));
@@ -362,6 +370,7 @@ class XRTSubTupleOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     VLOG(1) << "XRTSubTupleOp::Compute";
+    auto timed = monitoring::MakeTimed(xrt_metrics::GetSubTupleCell());
 
     const Tensor& handle_tensor = ctx->input(0);
     OP_REQUIRES(
@@ -412,6 +421,7 @@ class XRTMakeTupleOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     VLOG(1) << "XRTMakeTupleOp::Compute";
+    auto timed = monitoring::MakeTimed(xrt_metrics::GetMakeTupleCell());
 
     const Tensor& tuple_info = ctx->input(0);
     OP_REQUIRES(
@@ -419,7 +429,7 @@ class XRTMakeTupleOp : public OpKernel {
         errors::Internal("tuple description input should be a string scalar"));
     xrt::XLATupleNode tuple_proto;
     OP_REQUIRES(
-        ctx, tuple_proto.ParseFromString(tuple_info.scalar<tstring>()()),
+        ctx, ParseFromTString(tuple_info.scalar<tstring>()(), &tuple_proto),
         errors::InvalidArgument("Unable to parse tuple input to XLATupleNode"));
 
     OpInputList arg_list;
@@ -482,6 +492,7 @@ class XRTReadLiteralOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     VLOG(1) << "XRTReadLiteralOp::Compute";
+    auto timed = monitoring::MakeTimed(xrt_metrics::GetReadLiteralCell());
 
     const Tensor& handle_tensor = ctx->input(0);
     OP_REQUIRES(
@@ -532,6 +543,7 @@ class XRTReadToTensorOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     VLOG(1) << "XRTReadToTensorOp::Compute";
+    auto timed = monitoring::MakeTimed(xrt_metrics::GetReadToTensorCell());
 
     const Tensor& handle_tensor = ctx->input(0);
     // TODO(phawkins,dlibenzi): accept multiple handles (i.e., vectors, not
@@ -615,6 +627,7 @@ class XRTWriteLiteralOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     VLOG(1) << "XRTWriteLiteralOp::Compute";
+    auto timed = monitoring::MakeTimed(xrt_metrics::GetWriteLiteralCell());
 
     const Tensor& handle_tensor = ctx->input(0);
     OP_REQUIRES(
@@ -626,10 +639,10 @@ class XRTWriteLiteralOp : public OpKernel {
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(literal_info.shape()),
                 errors::Internal("literal input should be a string scalar"));
     xla::LiteralProto literal_proto;
-    OP_REQUIRES(ctx,
-                literal_proto.ParseFromString(literal_info.scalar<tstring>()()),
-                errors::InvalidArgument(
-                    "Unable to parse allocation input to LiteralProto"));
+    OP_REQUIRES(
+        ctx, ParseFromTString(literal_info.scalar<tstring>()(), &literal_proto),
+        errors::InvalidArgument(
+            "Unable to parse allocation input to LiteralProto"));
     xla::Literal literal;
     OP_REQUIRES_OK(ctx, XRTStateHelpers::MakeLiteral(literal_proto, &literal));
 
@@ -665,6 +678,7 @@ class XRTReleaseAllocationOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     VLOG(1) << "XRTReleaseAllocationOp::Compute";
+    auto timed = monitoring::MakeTimed(xrt_metrics::GetReleaseAllocationCell());
 
     ResourceMgr* rm;
     OP_REQUIRES_OK(ctx, DeviceAccessor::GetResourceManager(ctx, &rm));
@@ -693,6 +707,8 @@ class XRTReleaseAllAllocationsOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     VLOG(1) << "XRTReleaseAllAllocationsOp::Compute";
+    auto timed =
+        monitoring::MakeTimed(xrt_metrics::GetReleaseAllAllocationsCell());
 
     ResourceMgr* rm;
     OP_REQUIRES_OK(ctx, DeviceAccessor::GetResourceManager(ctx, &rm));
@@ -710,6 +726,8 @@ class XRTCompactAllocationsOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     VLOG(1) << "XRTCompactAllocationsOp::Compute";
+    auto timed =
+        monitoring::MakeTimed(xrt_metrics::GetCompactAllocationsCell());
 
     ResourceMgr* rm;
     OP_REQUIRES_OK(ctx, DeviceAccessor::GetResourceManager(ctx, &rm));
@@ -718,6 +736,42 @@ class XRTCompactAllocationsOp : public OpKernel {
     OP_REQUIRES_OK(ctx, DeviceAccessor::InitScopedRef(ctx, &device_ref));
     OP_REQUIRES_OK(ctx, memory_manager->CompactAllocations(
                             device_ref.backend(), device_ref.device_ordinal()));
+  }
+};
+
+template <class DeviceAccessor>
+class XRTMemoryInfoOp : public OpKernel {
+ public:
+  explicit XRTMemoryInfoOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  ~XRTMemoryInfoOp() override = default;
+  XRTMemoryInfoOp(const XRTMemoryInfoOp&) = delete;
+  XRTMemoryInfoOp& operator=(const XRTMemoryInfoOp&) = delete;
+
+  void Compute(OpKernelContext* ctx) override {
+    auto kernel_fn = [&]() -> Status {
+      VLOG(1) << "XRTMemoryInfoOp::Compute";
+
+      class DeviceAccessor::ScopedRef device_ref;
+      TF_RETURN_IF_ERROR(DeviceAccessor::InitScopedRef(ctx, &device_ref));
+      TF_ASSIGN_OR_RETURN(
+          se::StreamExecutor * stream_executor,
+          device_ref.backend()->stream_executor(device_ref.device_ordinal()));
+      int64 mem_free = -1;
+      int64 mem_total = -1;
+      if (!stream_executor->DeviceMemoryUsage(&mem_free, &mem_total)) {
+        VLOG(2) << "Device " << ctx->device()->name()
+                << " does not expose memory information";
+      }
+      xrt::MemoryInfo mem_info;
+      mem_info.set_kb_total((mem_total >= 0) ? mem_total / 1024 : -1);
+      mem_info.set_kb_free((mem_free >= 0) ? mem_free / 1024 : -1);
+
+      Tensor output(DT_STRING, TensorShape({}));
+      output.scalar<tstring>()() = mem_info.SerializeAsString();
+      ctx->set_output(0, output);
+      return Status::OK();
+    };
+    OP_REQUIRES_OK(ctx, kernel_fn());
   }
 };
 

@@ -32,9 +32,6 @@ limitations under the License.
 using ::tflite::gpu::BHWC;
 using ::tflite::gpu::metal::ComputeTaskDescriptorPtr;
 using ::tflite::gpu::metal::RuntimeOptions;
-using ::tflite::gpu::InternalError;
-using ::tflite::gpu::OkStatus;
-using ::tflite::gpu::Status;
 using ::tflite::gpu::ValueId;
 using ::tflite::gpu::AlignByN;
 using ::tflite::gpu::HalfBits;
@@ -43,15 +40,17 @@ using ::tflite::gpu::TensorUsageRecord;
 
 @implementation TFLInferenceContext {
   std::vector<TFLComputeTask*> _computeTasks;
+  // contains indexes of _computeTasks
+  std::vector<int> _taskIdsWithInOutBuffers;
   std::vector<ValueId> _outputIds;
   id<MTLDevice> _device;
   RuntimeOptions _options;
 }
 
-- (Status)compileModelWithDevice:(id<MTLDevice>)device
-                 taskDescriptors:(const std::vector<ComputeTaskDescriptorPtr>&)taskDescriptors
-                 outputBufferIDs:(const std::vector<ValueId>&)requestedOutputBufferIDs
-                  runtimeOptions:(const RuntimeOptions&)options {
+- (absl::Status)compileModelWithDevice:(id<MTLDevice>)device
+                       taskDescriptors:(const std::vector<ComputeTaskDescriptorPtr>&)taskDescriptors
+                       outputBufferIDs:(const std::vector<ValueId>&)requestedOutputBufferIDs
+                        runtimeOptions:(const RuntimeOptions&)options {
   _device = device;
   _outputIds = requestedOutputBufferIDs;
   _options = options;
@@ -61,12 +60,12 @@ using ::tflite::gpu::TensorUsageRecord;
     RETURN_IF_ERROR([task compileWithDevice:_device taskDescriptor:node runtimeOptions:_options]);
     _computeTasks.emplace_back(task);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-- (Status)setInputDimensions:(const std::map<ValueId, BHWC>&)inputDimensions
-            outputDimensions:(std::map<ValueId, BHWC>*)outputDimensions
-             taskDescriptors:(const std::vector<ComputeTaskDescriptorPtr>&)taskDescriptors {
+- (absl::Status)setInputDimensions:(const std::map<ValueId, BHWC>&)inputDimensions
+                  outputDimensions:(std::map<ValueId, BHWC>*)outputDimensions
+                   taskDescriptors:(const std::vector<ComputeTaskDescriptorPtr>&)taskDescriptors {
   // These maps contain all input/output/intermediate buffers shared across model.
   std::map<ValueId, BHWC> dimensions = inputDimensions;
   std::map<ValueId, id<MTLBuffer>> buffers;
@@ -97,7 +96,7 @@ using ::tflite::gpu::TensorUsageRecord;
       if (!usageRecordIds.count(outputId)) {
         const auto it = dimensions.find(outputId);
         if (it == dimensions.end()) {
-          return InternalError("Dimensions for intermediate tensor not found.");
+          return absl::InternalError("Dimensions for intermediate tensor not found.");
         }
         usageRecordIds[outputId] = usageRecords.size();
         usageRecords.emplace_back(it->second.w * it->second.h * AlignByN(it->second.c, 4), i, i);
@@ -133,36 +132,44 @@ using ::tflite::gpu::TensorUsageRecord;
       error += std::to_string(assignment.object_ids[i]) +
                " with size: " + std::to_string(bufferSize) +
                " exceeds MTLDevice maxBufferLength: " + std::to_string([_device maxBufferLength]);
-      return ::tflite::gpu::ResourceExhaustedError(error);
+      return absl::ResourceExhaustedError(error);
     }
 #endif
 #if defined(__MAC_10_12) && __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_12
     if ([_device currentAllocatedSize] + bufferSize > [_device recommendedMaxWorkingSetSize]) {
       std::string error("Out of memory in MTLBuffer allocation. Currently allocated: ");
       error += std::to_string([_device currentAllocatedSize]);
-      return ::tflite::gpu::ResourceExhaustedError(error);
+      return absl::ResourceExhaustedError(error);
     }
 #endif
 
     sharedBuffers[i] = [_device newBufferWithLength:bufferSize
                                             options:MTLResourceStorageModeShared];
   }
-  for (auto& task : _computeTasks) {
+  for (int i = 0; i < _computeTasks.size(); ++i) {
+    auto& task = _computeTasks[i];
+    if ([task hasInOutIds:preallocatedIds]) {
+      _taskIdsWithInOutBuffers.push_back(i);
+    }
     RETURN_IF_ERROR([task assignBuffers:&buffers
                               outputIds:_outputIds
                          usageRecordIds:usageRecordIds
                         sharedBufferIds:assignment.object_ids
                           sharedBuffers:sharedBuffers]);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 - (void)encodeWithEncoder:(id<MTLComputeCommandEncoder>)commandEncoder
        inputOutputBuffers:(const std::map<ValueId, id<MTLBuffer>>&)inputOutputBuffers
              encoderBlock:(id<MTLComputeCommandEncoder> (^)(bool isLast))encoderBlock {
+  for (auto& task_index : _taskIdsWithInOutBuffers) {
+    auto& task = _computeTasks[task_index];
+    [task updateBuffers:inputOutputBuffers];
+  }
   for (int i = 0; i < _computeTasks.size(); ++i) {
     auto& task = _computeTasks[i];
-    [task encodeWithEncoder:commandEncoder inputOutputBuffers:inputOutputBuffers];
+    [task encodeWithEncoder:commandEncoder];
     if (encoderBlock != nil) {
       commandEncoder = encoderBlock(i == _computeTasks.size() - 1);
     }

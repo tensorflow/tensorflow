@@ -18,6 +18,9 @@ limitations under the License.
 
 namespace tensorflow {
 
+// Adjust value in third_party/tensorflow/python/client/tf_session_wrapper.cc
+// in the get_tensor_handle_key function if adjusting the value for
+// kTensorHandleResourceTypeName.
 const char* SessionState::kTensorHandleResourceTypeName = "TensorHandle";
 
 Status SessionState::GetTensor(const string& handle, Tensor* tensor) {

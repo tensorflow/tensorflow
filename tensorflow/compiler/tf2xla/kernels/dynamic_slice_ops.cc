@@ -28,6 +28,15 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+absl::InlinedVector<xla::XlaOp, 4> SliceVector(xla::XlaOp input, int64 rank) {
+  absl::InlinedVector<xla::XlaOp, 4> scalar_indices;
+  scalar_indices.reserve(rank);
+  for (int i = 0; i < rank; i++)
+    scalar_indices.push_back(
+        xla::Reshape(xla::Slice(input, {i}, {i + 1}, {1}), {}));
+  return scalar_indices;
+}
+
 class DynamicUpdateSliceOp : public XlaOpKernel {
  public:
   explicit DynamicUpdateSliceOp(OpKernelConstruction* context)
@@ -41,21 +50,23 @@ class DynamicUpdateSliceOp : public XlaOpKernel {
     const TensorShape update_shape = ctx->InputShape("update");
     const TensorShape index_shape = ctx->InputShape("indices");
 
+    int64 rank = input_shape.dims();
     OP_REQUIRES(
         ctx,
         TensorShapeUtils::IsVector(index_shape) &&
-            index_shape.num_elements() == input_shape.dims(),
+            index_shape.num_elements() == rank,
         errors::InvalidArgument("index must be a vector with length equal to "
                                 "the number of input dimensions"));
     OP_REQUIRES(
-        ctx, input_shape.dims() == update_shape.dims(),
+        ctx, rank == update_shape.dims(),
         errors::InvalidArgument("input and update must have the same rank,"
                                 " input shape is ",
                                 input_shape.DebugString(), "; update shape is ",
                                 update_shape.DebugString()));
 
+    xla::XlaOp indices = ctx->Input("indices");
     xla::XlaOp result = xla::DynamicUpdateSlice(
-        ctx->Input("input"), ctx->Input("update"), ctx->Input("indices"));
+        ctx->Input("input"), ctx->Input("update"), SliceVector(indices, rank));
     ctx->SetOutput(0, result);
   }
 };
@@ -76,17 +87,18 @@ class DynamicSliceOp : public XlaOpKernel {
     const TensorShape start_indices_shape = ctx->InputShape("start_indices");
     const TensorShape size_indices_shape = ctx->InputShape("size_indices");
 
+    int64 rank = input_shape.dims();
     OP_REQUIRES(ctx,
                 TensorShapeUtils::IsVector(start_indices_shape) &&
-                    start_indices_shape.num_elements() == input_shape.dims(),
+                    start_indices_shape.num_elements() == rank,
                 errors::InvalidArgument(
                     "start_indices must be a vector with length equal to "
                     "input rank, but input rank is ",
-                    input_shape.dims(), " and start_indices has shape ",
+                    rank, " and start_indices has shape ",
                     start_indices_shape.DebugString()));
     OP_REQUIRES(ctx,
                 TensorShapeUtils::IsVector(size_indices_shape) &&
-                    size_indices_shape.num_elements() == input_shape.dims(),
+                    size_indices_shape.num_elements() == rank,
                 errors::InvalidArgument(
                     "size_indices must be a vector with length equal to "
                     "input rank, but input rank is ",
@@ -96,8 +108,10 @@ class DynamicSliceOp : public XlaOpKernel {
     std::vector<int64> size_indices;
     OP_REQUIRES_OK(
         ctx, ctx->ConstantInputAsIntVector("size_indices", &size_indices));
+
+    xla::XlaOp start_indices = ctx->Input("start_indices");
     xla::XlaOp result = xla::DynamicSlice(
-        ctx->Input("input"), ctx->Input("start_indices"), size_indices);
+        ctx->Input("input"), SliceVector(start_indices, rank), size_indices);
     ctx->SetOutput(0, result);
   }
 };

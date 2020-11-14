@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_EXECUTOR_H_
 
 #include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/common_runtime/local_executor_params.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/session_state.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -83,9 +83,6 @@ class Executor {
   //
   // RunAsync() dispatches closures to "runner". Typically, "runner"
   // is backed up by a bounded threadpool.
-  typedef std::function<Status(const int64, const DeviceMgr*, Rendezvous** r)>
-      RendezvousFactory;
-
   struct Args {
     int64 step_id = 0;
     RendezvousInterface* rendezvous = nullptr;
@@ -106,6 +103,10 @@ class Executor {
     typedef std::function<void()> Closure;
     typedef std::function<void(Closure)> Runner;
     Runner runner = nullptr;
+
+    // If true, all kernels will be treated as "inexpensive", and hence executed
+    // on the scheduling thread.
+    bool run_all_kernels_inline = false;
   };
   typedef std::function<void(const Status&)> DoneCallback;
   virtual void RunAsync(const Args& args, DoneCallback done) = 0;
@@ -130,22 +131,6 @@ class Executor {
 //
 // "params" provides a set of context for the executor. We expect that
 // different context would provide different implementations.
-struct LocalExecutorParams {
-  Device* device;
-
-  const SessionMetadata* session_metadata = nullptr;
-
-  // The library runtime support.
-  FunctionLibraryRuntime* function_library = nullptr;
-
-  // create_kernel returns an instance of op kernel based on NodeDef.
-  // delete_kernel is called for every kernel used by the executor
-  // when the executor is deleted.
-  std::function<Status(const NodeDef&, OpKernel**)> create_kernel;
-  std::function<void(OpKernel*)> delete_kernel;
-
-  Executor::RendezvousFactory rendezvous_factory;
-};
 ::tensorflow::Status NewLocalExecutor(const LocalExecutorParams& params,
                                       const Graph& graph, Executor** executor);
 
@@ -182,8 +167,8 @@ class ExecutorBarrier {
   StatusCallback done_cb_ = nullptr;
 
   mutable mutex mu_;
-  int pending_ GUARDED_BY(mu_) = 0;
-  StatusGroup status_group_ GUARDED_BY(mu_);
+  int pending_ TF_GUARDED_BY(mu_) = 0;
+  StatusGroup status_group_ TF_GUARDED_BY(mu_);
 
   void WhenDone(const Status& s) {
     Rendezvous* error_rendez = nullptr;
@@ -236,12 +221,12 @@ class ExecutorBarrier {
 
 // A few helpers to facilitate create/delete kernels.
 
-// Creates a kernel based on "ndef" on device "device". The kernel can
+// Creates a kernel based on "props" on device "device". The kernel can
 // access the functions in the "flib". The caller takes ownership of
 // returned "*kernel".
 Status CreateNonCachedKernel(Device* device, FunctionLibraryRuntime* flib,
-                             const NodeDef& ndef, int graph_def_version,
-                             OpKernel** kernel);
+                             const std::shared_ptr<const NodeProperties>& props,
+                             int graph_def_version, OpKernel** kernel);
 
 // Deletes "kernel" returned by CreateKernel.
 void DeleteNonCachedKernel(OpKernel* kernel);

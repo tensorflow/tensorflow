@@ -16,10 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_LOWER_CASE_OP_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_LOWER_CASE_OP_H_
 
-#include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
+
+class Graph;
+class Node;
 
 // Replaces Case node `n` with a lowered form that uses _SwitchN/Merge nodes.
 Status RewriteCaseNode(Node* n, Graph* g, bool keep_node_fetchable);

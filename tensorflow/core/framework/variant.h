@@ -32,10 +32,10 @@ limitations under the License.
 namespace tensorflow {
 
 template <typename T>
-string TypeNameVariant(const T& value);
+std::string TypeNameVariant(const T& value);
 
 template <typename T>
-string DebugStringVariant(const T& value);
+std::string DebugStringVariant(const T& value);
 
 // Allows for specializations of Variant Decoding.  `data` may be modified in
 // the process of decoding to `value`.
@@ -43,13 +43,13 @@ template <typename T>
 bool DecodeVariant(VariantTensorData* data, T* value);
 
 template <typename T>
-bool DecodeVariant(string* buf, T* value);
+bool DecodeVariant(std::string* buf, T* value);
 
 template <typename T>
 void EncodeVariant(const T& value, VariantTensorData* data);
 
 template <typename T>
-void EncodeVariant(const T& value, string* buf);
+void EncodeVariant(const T& value, std::string* buf);
 
 // This is an implementation of a type-erased container that can store an
 // object of any type. The implementation is very similar to std::any, but has
@@ -144,7 +144,7 @@ void EncodeVariant(const T& value, string* buf);
 //   Variant y_type_unknown = serialized_proto_f;  // Store serialized Variant.
 //
 //   EXPECT_EQ(x.TypeName(), y_type_unknown.TypeName());  // Looks like Foo.
-//   EXPECT_EQ(MakeTypeIndex<VariantTensorDataProto>(),
+//   EXPECT_EQ(TypeIndex::Make<VariantTensorDataProto>(),
 //             y_type_unknown.TypeId());
 //
 class Variant {
@@ -198,6 +198,25 @@ class Variant {
     return *this;
   }
 
+  // Constructs a value of type T with the given args in-place in this Variant.
+  // Returns a reference to the newly constructed value.
+  // The signature is based on std::variant<Types...>::emplace() in C++17.
+  template <typename T, class... Args>
+  T& emplace(Args&&... args) {
+    ResetMemory();
+    is_inline_ = CanInlineType<T>();
+    if (is_inline_) {
+      new (&inline_value_)
+          InlineValue(InlineValue::Tag<T>{}, std::forward<Args>(args)...);
+      return static_cast<Variant::Value<T>*>(inline_value_.AsValueInterface())
+          ->value;
+    } else {
+      new (&heap_value_) HeapValue(
+          absl::make_unique<Value<T>>(InPlace(), std::forward<Args>(args)...));
+      return static_cast<Variant::Value<T>*>(heap_value_.get())->value;
+    }
+  }
+
   bool is_empty() const { return GetValue() == nullptr; }
 
   void clear() noexcept;
@@ -208,14 +227,14 @@ class Variant {
   // of the original type when a TensorValueDataProto is stored as the
   // value.  In this case, it returns the TypeIndex of TensorValueDataProto.
   TypeIndex TypeId() const {
-    const TypeIndex VoidTypeIndex = MakeTypeIndex<void>();
+    const TypeIndex VoidTypeIndex = TypeIndex::Make<void>();
     if (is_empty()) {
       return VoidTypeIndex;
     }
     return GetValue()->TypeId();
   }
 
-  string DebugString() const {
+  std::string DebugString() const {
     return strings::StrCat(
         "Variant<type: ", TypeName(),
         " value: ", is_empty() ? "[empty]" : GetValue()->DebugString(), ">");
@@ -225,7 +244,7 @@ class Variant {
   // otherwise.
   template <typename T>
   T* get() {
-    const TypeIndex TTypeIndex = MakeTypeIndex<T>();
+    const TypeIndex TTypeIndex = TypeIndex::Make<T>();
     if (is_empty() || (TTypeIndex != TypeId())) return nullptr;
     return std::addressof(static_cast<Variant::Value<T>*>(GetValue())->value);
   }
@@ -234,7 +253,7 @@ class Variant {
   // otherwise.
   template <typename T>
   const T* get() const {
-    const TypeIndex TTypeIndex = MakeTypeIndex<T>();
+    const TypeIndex TTypeIndex = TypeIndex::Make<T>();
     if (is_empty() || (TTypeIndex != TypeId())) return nullptr;
     return std::addressof(
         static_cast<const Variant::Value<T>*>(GetValue())->value);
@@ -245,7 +264,7 @@ class Variant {
   // In the special case that a serialized Variant is stored (value
   // is a VariantTensorDataProto), returns value.TypeName(), the
   // TypeName field stored in the VariantTensorDataProto buffer.
-  string TypeName() const {
+  std::string TypeName() const {
     if (is_empty()) {
       return "";
     }
@@ -263,12 +282,12 @@ class Variant {
   bool Decode(VariantTensorData data);
 
   // Helper methods to directly serialize/deserialize from strings.
-  void Encode(string* buf) const {
+  void Encode(std::string* buf) const {
     if (!is_empty()) {
       GetValue()->Encode(buf);
     }
   }
-  bool Decode(string buf) {
+  bool Decode(std::string buf) {
     if (!is_empty()) {
       return GetValue()->Decode(std::move(buf));
     }
@@ -294,12 +313,12 @@ class Variant {
     virtual void CloneInto(ValueInterface* memory) const = 0;
     virtual void MoveAssign(ValueInterface* memory) = 0;
     virtual void MoveInto(ValueInterface* memory) = 0;
-    virtual string TypeName() const = 0;
-    virtual string DebugString() const = 0;
+    virtual std::string TypeName() const = 0;
+    virtual std::string DebugString() const = 0;
     virtual void Encode(VariantTensorData* data) const = 0;
     virtual bool Decode(VariantTensorData data) = 0;
-    virtual void Encode(string* buf) const = 0;
-    virtual bool Decode(string data) = 0;
+    virtual void Encode(std::string* buf) const = 0;
+    virtual bool Decode(std::string data) = 0;
   };
 
   template <typename T>
@@ -314,7 +333,7 @@ class Variant {
 
     TypeIndex TypeId() const final {
       const TypeIndex value_type_index =
-          MakeTypeIndex<typename std::decay<T>::type>();
+          TypeIndex::Make<typename std::decay<T>::type>();
       return value_type_index;
     }
 
@@ -340,9 +359,9 @@ class Variant {
       new (memory) Value(InPlace(), std::move(value));
     }
 
-    string TypeName() const final { return TypeNameVariant(value); }
+    std::string TypeName() const final { return TypeNameVariant(value); }
 
-    string DebugString() const final { return DebugStringVariant(value); }
+    std::string DebugString() const final { return DebugStringVariant(value); }
 
     void Encode(VariantTensorData* data) const final {
       EncodeVariant(value, data);
@@ -352,9 +371,9 @@ class Variant {
       return DecodeVariant(&data, &value);
     }
 
-    void Encode(string* buf) const final { EncodeVariant(value, buf); }
+    void Encode(std::string* buf) const final { EncodeVariant(value, buf); }
 
-    bool Decode(string buf) final { return DecodeVariant(&buf, &value); }
+    bool Decode(std::string buf) final { return DecodeVariant(&buf, &value); }
 
     T value;
   };

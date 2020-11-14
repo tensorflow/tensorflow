@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/c/tf_status.h"
 
 #include "tensorflow/c/tf_status_internal.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/error.h"
+#include "tensorflow/core/platform/status.h"
 
 using ::tensorflow::IOError;
 using ::tensorflow::Status;

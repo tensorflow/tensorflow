@@ -29,19 +29,13 @@ limitations under the License.
 //   When indices are out of bound, the ops will not succeed.
 //
 
-#include <cassert>
-#include <cmath>
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
-#include <iostream>
-#include <limits>
+#include <stdint.h>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
+#include <cstring>
+
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
 
 namespace tflite {
 namespace ops {
@@ -52,14 +46,17 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  const TfLiteTensor* lookup = GetInput(context, node, 0);
+  const TfLiteTensor* lookup;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &lookup));
   TF_LITE_ENSURE_EQ(context, NumDimensions(lookup), 1);
   TF_LITE_ENSURE_EQ(context, lookup->type, kTfLiteInt32);
 
-  const TfLiteTensor* value = GetInput(context, node, 1);
+  const TfLiteTensor* value;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 1, &value));
   TF_LITE_ENSURE(context, NumDimensions(value) >= 2);
 
-  TfLiteTensor* output = GetOutput(context, node, 0);
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
   TfLiteIntArray* outputSize = TfLiteIntArrayCreate(NumDimensions(value));
 
   outputSize->data[0] = SizeOfDimension(lookup, 0);
@@ -135,9 +132,12 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* lookup = GetInput(context, node, 0);
-  const TfLiteTensor* value = GetInput(context, node, 1);
-  TfLiteTensor* output = GetOutput(context, node, 0);
+  const TfLiteTensor* lookup;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &lookup));
+  const TfLiteTensor* value;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 1, &value));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
   switch (value->type) {
     case kTfLiteFloat32:
       return EvalSimple(context, node, lookup, value, output);

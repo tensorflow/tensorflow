@@ -1,4 +1,4 @@
-// RUN: tf-mlir-translate -mlir-to-graphdef %s -o - | FileCheck %s --dump-input-on-failure
+// RUN: tf-mlir-translate -mlir-to-graphdef %s -o - | FileCheck %s
 
 // Check that attributes that define derived shapes are exported.
 
@@ -16,10 +16,13 @@
 // CHECK: size: 10
 
 func @main() {
-  %0 = "tf.Const"() {dtype = "tfdtype$DT_INT32", value = dense<0> : tensor<10xi32>} : () -> (tensor<10xi32>)
-  %1 = "tf.Const"() {dtype = "tfdtype$DT_INT32", value = dense<0> : tensor<i32>} : () -> (tensor<i32>)
-  %2 = "tf.PlaceholderWithDefault"(%1) {type = i32} : (tensor<i32>) -> tensor<*xi32> loc("unranked")
-  %3 = "tf.PlaceholderWithDefault"(%1) {type = i32} : (tensor<i32>) -> tensor<i32> loc("static")
-  %4 = "tf.PlaceholderWithDefault"(%0) {type = i32} : (tensor<10xi32>) -> tensor<10xi32> loc("static_10")
+  tf_executor.graph {
+    %0:2 = tf_executor.island wraps "tf.Const"() {dtype = "tfdtype$DT_INT32", value = dense<0> : tensor<10xi32>} : () -> tensor<10xi32>
+    %1:2 = tf_executor.island wraps "tf.Const"() {dtype = "tfdtype$DT_INT32", value = dense<0> : tensor<i32>} : () -> tensor<i32>
+    %2:2 = tf_executor.island wraps "tf.PlaceholderWithDefault"(%1#0) {type = i32} : (tensor<i32>) -> tensor<*xi32> loc("unranked")
+    %3:2 = tf_executor.island wraps "tf.PlaceholderWithDefault"(%1#0) {type = i32} : (tensor<i32>) -> tensor<i32> loc("static")
+    %4:2 = tf_executor.island wraps "tf.PlaceholderWithDefault"(%0#0) {type = i32} : (tensor<10xi32>) -> tensor<10xi32> loc("static_10")
+    tf_executor.fetch
+  }
   return
 }

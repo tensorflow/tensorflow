@@ -23,41 +23,47 @@ namespace tensorflow {
 
 Status ProtoToHumanReadableJson(const protobuf::Message& proto, string* result,
                                 bool ignore_accuracy_loss) {
-#ifdef TENSORFLOW_LITE_PROTOS
-  *result = "[human readable output not available on Android]";
-  return Status::OK();
-#else
   result->clear();
 
-  auto status = protobuf::util::MessageToJsonString(proto, result);
+  protobuf::util::JsonPrintOptions json_options;
+  json_options.preserve_proto_field_names = true;
+  json_options.always_print_primitive_fields = true;
+  auto status =
+      protobuf::util::MessageToJsonString(proto, result, json_options);
   if (!status.ok()) {
     // Convert error_msg google::protobuf::StringPiece to
     // tensorflow::StringPiece.
-    auto error_msg = status.error_message();
+    auto error_msg = status.message();
     return errors::Internal(
         strings::StrCat("Could not convert proto to JSON string: ",
                         StringPiece(error_msg.data(), error_msg.length())));
   }
   return Status::OK();
-#endif
+}
+
+Status ProtoToHumanReadableJson(const protobuf::MessageLite& proto,
+                                string* result, bool ignore_accuracy_loss) {
+  *result = "[human readable output not available for lite protos]";
+  return Status::OK();
 }
 
 Status HumanReadableJsonToProto(const string& str, protobuf::Message* proto) {
-#ifdef TENSORFLOW_LITE_PROTOS
-  return errors::Internal("Cannot parse JSON protos on Android");
-#else
   proto->Clear();
   auto status = protobuf::util::JsonStringToMessage(str, proto);
   if (!status.ok()) {
     // Convert error_msg google::protobuf::StringPiece to
     // tensorflow::StringPiece.
-    auto error_msg = status.error_message();
+    auto error_msg = status.message();
     return errors::Internal(
         strings::StrCat("Could not convert JSON string to proto: ",
                         StringPiece(error_msg.data(), error_msg.length())));
   }
   return Status::OK();
-#endif
+}
+
+Status HumanReadableJsonToProto(const string& str,
+                                protobuf::MessageLite* proto) {
+  return errors::Internal("Cannot parse JSON protos on Android");
 }
 
 }  // namespace tensorflow

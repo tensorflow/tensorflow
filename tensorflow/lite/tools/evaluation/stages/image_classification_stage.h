@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/lite/tools/evaluation/evaluation_delegate_provider.h"
 #include "tensorflow/lite/tools/evaluation/evaluation_stage.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_config.pb.h"
 #include "tensorflow/lite/tools/evaluation/stages/image_preprocessing_stage.h"
@@ -36,7 +37,8 @@ class ImageClassificationStage : public EvaluationStage {
   explicit ImageClassificationStage(const EvaluationStageConfig& config)
       : EvaluationStage(config) {}
 
-  TfLiteStatus Init() override;
+  TfLiteStatus Init() override { return Init(nullptr); }
+  TfLiteStatus Init(const DelegateProviders* delegate_providers);
 
   TfLiteStatus Run() override;
 
@@ -78,10 +80,10 @@ struct ImageLabel {
   std::string label;
 };
 
-// Reads a file containing newline-separated blacklisted image indices and
+// Reads a file containing newline-separated denylisted image indices and
 // filters them out from image_labels.
-TfLiteStatus FilterBlackListedImages(const std::string& blacklist_file_path,
-                                     std::vector<ImageLabel>* image_labels);
+TfLiteStatus FilterDenyListedImages(const std::string& denylist_file_path,
+                                    std::vector<ImageLabel>* image_labels);
 
 }  // namespace evaluation
 }  // namespace tflite

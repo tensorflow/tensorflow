@@ -60,12 +60,9 @@ def _execute_and_check_ret_code(repo_ctx, cmd_and_args):
 def _repos_are_siblings():
     return Label("@foo//bar").workspace_root.startswith("../")
 
-# Apply a patch_file to the repository root directory
-# Runs 'patch -p1' on both Windows and Unix.
+# Apply a patch_file to the repository root directory.
 def _apply_patch(ctx, patch_file):
-    patch_command = ["patch", "-p1", "-d", ctx.path("."), "-i", ctx.path(patch_file)]
-    cmd = _wrap_bash_cmd(ctx, patch_command)
-    _execute_and_check_ret_code(ctx, cmd)
+    ctx.patch(patch_file, strip = 1)
 
 def _apply_delete(ctx, paths):
     for path in paths:
@@ -87,6 +84,15 @@ def _tf_http_archive(ctx):
              "someone will come along shortly thereafter and mirror the file.")
 
     use_syslib = _use_system_lib(ctx, ctx.attr.name)
+
+    # Work around the bazel bug that redownloads the whole library.
+    # Remove this after https://github.com/bazelbuild/bazel/issues/10515 is fixed.
+    if ctx.attr.additional_build_files:
+        for internal_src in ctx.attr.additional_build_files:
+            _ = ctx.path(Label(internal_src))
+
+    # End of workaround.
+
     if not use_syslib:
         ctx.download_and_extract(
             ctx.attr.urls,
@@ -123,10 +129,12 @@ def _tf_http_archive(ctx):
             ctx.symlink(Label(internal_src), ctx.path(external_dest))
 
 tf_http_archive = repository_rule(
-    implementation = _tf_http_archive,
     attrs = {
         "sha256": attr.string(mandatory = True),
-        "urls": attr.string_list(mandatory = True, allow_empty = False),
+        "urls": attr.string_list(
+            mandatory = True,
+            allow_empty = False,
+        ),
         "strip_prefix": attr.string(),
         "type": attr.string(),
         "delete": attr.string_list(),
@@ -139,7 +147,9 @@ tf_http_archive = repository_rule(
     environ = [
         "TF_SYSTEM_LIBS",
     ],
+    implementation = _tf_http_archive,
 )
+
 """Downloads and creates Bazel repos for dependencies.
 
 This is a swappable replacement for both http_archive() and
@@ -204,10 +214,12 @@ def _third_party_http_archive(ctx):
 # For link_files, specify each dict entry as:
 # "//path/to/source:file": "localfile"
 third_party_http_archive = repository_rule(
-    implementation = _third_party_http_archive,
     attrs = {
         "sha256": attr.string(mandatory = True),
-        "urls": attr.string_list(mandatory = True, allow_empty = False),
+        "urls": attr.string_list(
+            mandatory = True,
+            allow_empty = False,
+        ),
         "strip_prefix": attr.string(),
         "type": attr.string(),
         "delete": attr.string_list(),
@@ -220,4 +232,5 @@ third_party_http_archive = repository_rule(
     environ = [
         "TF_SYSTEM_LIBS",
     ],
+    implementation = _third_party_http_archive,
 )

@@ -48,9 +48,8 @@ static const NSUInteger kInvalidInputTensorIndex = 1U;
 /** Invalid output tensor index. */
 static const NSUInteger kInvalidOutputTensorIndex = 1U;
 
-/** Accurary used in comparing floating numbers. */
+/** Accuracy used in comparing floating numbers. */
 static const float kTestAccuracy = 1E-5F;
-
 /**
  * Unit tests for TFLInterpreter.
  */
@@ -97,7 +96,7 @@ static const float kTestAccuracy = 1E-5F;
 
 - (void)testSuccessfulFullRunAddFloatModel {
   // Shape for both input and output tensor.
-  NSArray<NSNumber *> *shape = @[@(kAddModelTensorFirstDimensionSize)];
+  NSArray<NSNumber *> *shape = @[ @(kAddModelTensorFirstDimensionSize) ];
 
   // Creates the interpreter options.
   TFLInterpreterOptions *options = [[TFLInterpreterOptions alloc] init];
@@ -108,6 +107,7 @@ static const float kTestAccuracy = 1E-5F;
   NSError *error;
   TFLInterpreter *customInterpreter = [[TFLInterpreter alloc] initWithModelPath:self.floatModelPath
                                                                         options:options
+                                                                      delegates:@[]
                                                                           error:&error];
   XCTAssertNil(error);
   XCTAssertNotNil(customInterpreter);
@@ -134,7 +134,7 @@ static const float kTestAccuracy = 1E-5F;
   XCTAssertNil(error);
   XCTAssertTrue([inputTensor.name isEqualToString:@"input"]);
   XCTAssertEqual(inputTensor.dataType, TFLTensorDataTypeFloat32);
-  NSArray *inputTensorShape = [inputTensor shapeWithError:&error];
+  NSArray<NSNumber *> *inputTensorShape = [inputTensor shapeWithError:&error];
   XCTAssertNil(error);
   XCTAssertTrue([shape isEqualToArray:inputTensorShape]);
 
@@ -157,7 +157,7 @@ static const float kTestAccuracy = 1E-5F;
   XCTAssertNil(error);
   XCTAssertTrue([outputTensor.name isEqualToString:@"output"]);
   XCTAssertEqual(outputTensor.dataType, TFLTensorDataTypeFloat32);
-  NSArray *outputTensorShape = [outputTensor shapeWithError:&error];
+  NSArray<NSNumber *> *outputTensorShape = [outputTensor shapeWithError:&error];
   XCTAssertNil(error);
   XCTAssertTrue([shape isEqualToArray:outputTensorShape]);
 
@@ -180,7 +180,7 @@ static const float kTestAccuracy = 1E-5F;
 
 - (void)testSuccessfulFullRunQuantizedModel {
   // Shape for both input and output tensor.
-  NSArray<NSNumber *> *shape = @[@(kAddModelTensorFirstDimensionSize)];
+  NSArray<NSNumber *> *shape = @[ @(kAddModelTensorFirstDimensionSize) ];
 
   // Creates the interpreter options.
   TFLInterpreterOptions *options = [[TFLInterpreterOptions alloc] init];
@@ -193,8 +193,10 @@ static const float kTestAccuracy = 1E-5F;
 
   // Creates the interpreter.
   NSError *error;
-  TFLInterpreter *customInterpreter =
-      [[TFLInterpreter alloc] initWithModelPath:quantizedModelPath options:options error:&error];
+  TFLInterpreter *customInterpreter = [[TFLInterpreter alloc] initWithModelPath:quantizedModelPath
+                                                                        options:options
+                                                                      delegates:@[]
+                                                                          error:&error];
   XCTAssertNil(error);
   XCTAssertNotNil(customInterpreter);
 
@@ -223,7 +225,7 @@ static const float kTestAccuracy = 1E-5F;
   XCTAssertEqualWithAccuracy(inputTensor.quantizationParameters.scale, kAddQuantizedModelScale,
                              kTestAccuracy);
   XCTAssertEqual(inputTensor.quantizationParameters.zeroPoint, kAddQuantizedModelZeroPoint);
-  NSArray *inputTensorShape = [inputTensor shapeWithError:&error];
+  NSArray<NSNumber *> *inputTensorShape = [inputTensor shapeWithError:&error];
   XCTAssertNil(error);
   XCTAssertTrue([shape isEqualToArray:inputTensorShape]);
 
@@ -249,7 +251,7 @@ static const float kTestAccuracy = 1E-5F;
   XCTAssertEqualWithAccuracy(outputTensor.quantizationParameters.scale, kAddQuantizedModelScale,
                              kTestAccuracy);
   XCTAssertEqual(outputTensor.quantizationParameters.zeroPoint, kAddQuantizedModelZeroPoint);
-  NSArray *outputTensorShape = [outputTensor shapeWithError:&error];
+  NSArray<NSNumber *> *outputTensorShape = [outputTensor shapeWithError:&error];
   XCTAssertNil(error);
   XCTAssertTrue([shape isEqualToArray:outputTensorShape]);
 
@@ -299,7 +301,7 @@ static const float kTestAccuracy = 1E-5F;
 }
 
 - (void)testResizeInputTensorAtIndex_invalidIndex {
-  NSArray<NSNumber *> *shape = @[@(kAddModelTensorFirstDimensionSize)];
+  NSArray<NSNumber *> *shape = @[ @(kAddModelTensorFirstDimensionSize) ];
   NSError *error;
   XCTAssertFalse([self.interpreter resizeInputTensorAtIndex:kInvalidInputTensorIndex
                                                     toShape:shape
@@ -308,14 +310,14 @@ static const float kTestAccuracy = 1E-5F;
 }
 
 - (void)testResizeInputTensorAtIndex_emptyShape {
-  NSMutableArray *emptyShape = [NSMutableArray arrayWithCapacity:0];
+  NSMutableArray<NSNumber *> *emptyShape = [NSMutableArray arrayWithCapacity:0];
   NSError *error;
   XCTAssertFalse([self.interpreter resizeInputTensorAtIndex:0 toShape:emptyShape error:&error]);
   XCTAssertEqual(error.code, TFLInterpreterErrorCodeInvalidShape);
 }
 
 - (void)testResizeInputTensorAtIndex_zeroDimensionSize {
-  NSArray<NSNumber *> *shape = @[@0];
+  NSArray<NSNumber *> *shape = @[ @0 ];
   NSError *error;
   XCTAssertFalse([self.interpreter resizeInputTensorAtIndex:0 toShape:shape error:&error]);
   XCTAssertEqual(error.code, TFLInterpreterErrorCodeInvalidShape);
@@ -347,6 +349,25 @@ static const float kTestAccuracy = 1E-5F;
   XCTAssertNil(error);
   XCTAssertFalse([outputTensor copyData:data error:&error]);
   XCTAssertEqual(error.code, TFLInterpreterErrorCodeCopyDataToOutputTensorNotAllowed);
+}
+
+- (void)testNilCDelegate {
+  // Creates the interpreter options.
+  TFLInterpreterOptions *options = [[TFLInterpreterOptions alloc] init];
+
+  // Creates the interpreter.
+  NSError *error;
+  TFLDelegate *delegate = [[TFLDelegate alloc] init];  // Base delegate's cDelegate is nil.
+  TFLInterpreter *customInterpreter = [[TFLInterpreter alloc] initWithModelPath:self.floatModelPath
+                                                                        options:options
+                                                                      delegates:@[ delegate ]
+                                                                          error:&error];
+  XCTAssertNil(error);
+  XCTAssertNotNil(customInterpreter);
+
+  // Allocates memory for tensors.
+  XCTAssertTrue([customInterpreter allocateTensorsWithError:&error]);
+  XCTAssertNil(error);
 }
 
 @end

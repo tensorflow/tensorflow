@@ -3,6 +3,14 @@ tf_class {
   is_instance: "<class \'tensorflow.python.training.checkpoint_management.CheckpointManager\'>"
   is_instance: "<type \'object\'>"
   member {
+    name: "checkpoint"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "checkpoint_interval"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "checkpoints"
     mtype: "<type \'property\'>"
   }
@@ -16,10 +24,14 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'checkpoint\', \'directory\', \'max_to_keep\', \'keep_checkpoint_every_n_hours\', \'checkpoint_name\'], varargs=None, keywords=None, defaults=[\'None\', \'ckpt\'], "
+    argspec: "args=[\'self\', \'checkpoint\', \'directory\', \'max_to_keep\', \'keep_checkpoint_every_n_hours\', \'checkpoint_name\', \'step_counter\', \'checkpoint_interval\', \'init_fn\'], varargs=None, keywords=None, defaults=[\'None\', \'ckpt\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "restore_or_initialize"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "save"
-    argspec: "args=[\'self\', \'checkpoint_number\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'self\', \'checkpoint_number\', \'check_interval\'], varargs=None, keywords=None, defaults=[\'None\', \'True\'], "
   }
 }

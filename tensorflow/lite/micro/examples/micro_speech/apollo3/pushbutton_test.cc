@@ -17,9 +17,9 @@ limitations under the License.
  * micro_speech_test.cc */
 
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/micro/all_ops_resolver.h"
+#include "tensorflow/lite/micro/examples/micro_speech/simple_features/model.h"
 #include "tensorflow/lite/micro/examples/micro_speech/simple_features/simple_features_generator.h"
-#include "tensorflow/lite/micro/examples/micro_speech/simple_features/tiny_conv_simple_features_model_data.h"
-#include "tensorflow/lite/micro/kernels/all_ops_resolver.h"
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
@@ -60,17 +60,16 @@ TF_LITE_MICRO_TEST(TestSimpleFeaturesGenerator) {
 
   // Map the model into a usable data structure. This doesn't involve any
   // copying or parsing, it's a very lightweight operation.
-  const tflite::Model* model =
-      ::tflite::GetModel(g_tiny_conv_simple_features_model_data);
+  const tflite::Model* model = ::tflite::GetModel(g_model);
   if (model->version() != TFLITE_SCHEMA_VERSION) {
-    error_reporter->Report(
-        "Model provided is schema version %d not equal "
-        "to supported version %d.\n",
-        model->version(), TFLITE_SCHEMA_VERSION);
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "Model provided is schema version %d not equal "
+                         "to supported version %d.\n",
+                         model->version(), TFLITE_SCHEMA_VERSION);
   }
 
   // This pulls in all the operation implementations we need.
-  tflite::ops::micro::AllOpsResolver resolver;
+  tflite::AllOpsResolver resolver;
 
   // Create an area of memory to use for input, output, and intermediate arrays.
   const int tensor_arena_size = 10 * 1024;
@@ -102,7 +101,7 @@ TF_LITE_MICRO_TEST(TestSimpleFeaturesGenerator) {
   // Run the model on this input and make sure it succeeds.
   TfLiteStatus invoke_status = interpreter.Invoke();
   if (invoke_status != kTfLiteOk) {
-    error_reporter->Report("Invoke failed\n");
+    TF_LITE_REPORT_ERROR(error_reporter, "Invoke failed\n");
   }
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, invoke_status);
 
@@ -126,7 +125,7 @@ TF_LITE_MICRO_TEST(TestSimpleFeaturesGenerator) {
   g_yes_score = output->data.uint8[kYesIndex];
   g_no_score = output->data.uint8[kNoIndex];
 
-  error_reporter->Report("Ran successfully\n");
+  TF_LITE_REPORT_ERROR(error_reporter, "Ran successfully\n");
 }
 
 TF_LITE_MICRO_TESTS_END

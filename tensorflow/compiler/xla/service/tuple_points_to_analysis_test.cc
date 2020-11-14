@@ -333,10 +333,10 @@ TEST_F(TuplePointsToAnalysisTest, CopyStartAndCopyDone) {
   auto builder = HloComputation::Builder(TestName());
   auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
-  auto copy_start = builder.AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeTupleShape(
-          {constant->shape(), ShapeUtil::MakeShape(U32, {})}),
-      HloOpcode::kCopyStart, constant));
+  auto copy_start = builder.AddInstruction(HloInstruction::CreateCopyStart(
+      ShapeUtil::MakeTupleShape({constant->shape(), constant->shape(),
+                                 ShapeUtil::MakeShape(U32, {})}),
+      constant));
   auto copy_done = builder.AddInstruction(HloInstruction::CreateUnary(
       constant->shape(), HloOpcode::kCopyDone, copy_start));
 
@@ -351,6 +351,7 @@ TEST_F(TuplePointsToAnalysisTest, CopyStartAndCopyDone) {
       points_to_analysis_->GetPointsToSet(copy_start).element({}),
       {copy_start});
   ExpectHasBufferAliases(copy_start, {0}, {{copy_start, {0}}, {copy_done, {}}});
+  ExpectHasBufferAliases(constant, {}, {{constant, {}}, {copy_start, {1}}});
 }
 
 TEST_F(TuplePointsToAnalysisTest, SendAndSendDone) {
@@ -595,7 +596,7 @@ TEST_F(TuplePointsToAnalysisTest, TupleWithBitcast) {
 
 TEST_F(TuplePointsToAnalysisTest, PointsToTupleConstantElements) {
   // Construct a tuple constant and kCopy it. Verify the points-to set of the
-  // copy correctly correctly points into the nested elements of the constant.
+  // copy correctly points into the nested elements of the constant.
   auto builder = HloComputation::Builder(TestName());
   Literal elements[] = {LiteralUtil::CreateR2<float>({{1.0}, {2.0}}),
                         LiteralUtil::CreateR1<float>({2.0, 42})};

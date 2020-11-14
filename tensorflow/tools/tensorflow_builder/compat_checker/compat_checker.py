@@ -117,7 +117,7 @@ def _get_func_name():
 
 
 class ConfigCompatChecker(object):
-  """Class that checks configuration versions and depencency compatibilities.
+  """Class that checks configuration versions and dependency compatibilities.
 
   `ConfigCompatChecker` checks a given set of configurations and their versions
   against supported versions and dependency rules defined in `.ini` config file.
@@ -180,7 +180,7 @@ class ConfigCompatChecker(object):
       """Prints a requirement and its components.
 
       Returns:
-        String that has concantenated information about a requirement.
+        String that has concatenated information about a requirement.
       """
       info = {
           "section": self._section,
@@ -200,7 +200,7 @@ class ConfigCompatChecker(object):
       req_str += "Range: {range}\n"
       req_str += "Exclude: {exclude}\n"
       req_str += "Include: {include}\n"
-      req_str += "Initilalized: {init}\n\n"
+      req_str += "Initialized: {init}\n\n"
 
       return req_str.format(**info)
 
@@ -214,7 +214,7 @@ class ConfigCompatChecker(object):
         [1] String that includes `range` indicating range syntax for defining
             a requirement.
               e.g. `range(1.0, 2.0) include(3.0) exclude(1.5)`
-        [2] List that includes inidividual supported versions or items.
+        [2] List that includes individual supported versions or items.
               e.g. [`1.0`, `3.0`, `7.1`]
 
       For a list type requirement, it directly stores the list to
@@ -380,7 +380,7 @@ class ConfigCompatChecker(object):
     parser.read(self.req_file)
 
     if not parser.sections():
-      err_msg = "[Error] Empty confie file. "
+      err_msg = "[Error] Empty config file. "
       err_msg += "(file = %s, " % str(self.req_file)
       err_msg += "parser sectons = %s)" % str(parser.sections())
       self.error_msg.append(err_msg)
@@ -427,7 +427,7 @@ class ConfigCompatChecker(object):
             self.warning_msg.append(warn_msg)
 
           # Last dependency item may only or not have `]` depending
-          # on the identation style in the config (.ini) file.
+          # on the indentation style in the config (.ini) file.
           # If it has `[`, then either skip or remove from string.
           if spec_split[-1] == "]":
             spec_split = spec_split[:-1]

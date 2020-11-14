@@ -91,7 +91,7 @@ class DType(_dtypes.DType):
 
   @property
   def real_dtype(self):
-    """Returns the dtype correspond to this dtype's real part."""
+    """Returns the `DType` corresponding to this `DType`'s real part."""
     base = self.base_dtype
     if base == complex64:
       return float32
@@ -102,7 +102,7 @@ class DType(_dtypes.DType):
 
   @property
   def as_numpy_dtype(self):
-    """Returns a `numpy.dtype` based on this `DType`."""
+    """Returns a Python `type` object based on this `DType`."""
     return _TF_TO_NP[self._type_enum]
 
   @property
@@ -607,6 +607,9 @@ assert len(_ANY_TO_TF) == sum(
 def as_dtype(type_value):
   """Converts the given `type_value` to a `DType`.
 
+  Note: `DType` values are interned. When passed a new `DType` object,
+  `as_dtype` always returns the interned value.
+
   Args:
     type_value: A value that can be converted to a `tf.DType` object. This may
       currently be a `tf.DType` object, a [`DataType`
@@ -620,7 +623,7 @@ def as_dtype(type_value):
     TypeError: If `type_value` cannot be converted to a `DType`.
   """
   if isinstance(type_value, DType):
-    return type_value
+    return _INTERN_TABLE[type_value.as_datatype_enum]
 
   if isinstance(type_value, np.dtype):
     try:
@@ -630,7 +633,8 @@ def as_dtype(type_value):
 
   try:
     return _ANY_TO_TF[type_value]
-  except KeyError:
+  except (KeyError, TypeError):
+    # TypeError indicates that type_value is not hashable.
     pass
 
   if hasattr(type_value, "dtype"):
@@ -638,6 +642,9 @@ def as_dtype(type_value):
       return _NP_TO_TF[np.dtype(type_value.dtype).type]
     except (KeyError, TypeError):
       pass
+
+  if isinstance(type_value, _dtypes.DType):
+    return _INTERN_TABLE[type_value.as_datatype_enum]
 
   raise TypeError("Cannot convert value %r to a TensorFlow DType." %
                   (type_value,))

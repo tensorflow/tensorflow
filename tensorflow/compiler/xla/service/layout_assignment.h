@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -338,6 +339,9 @@ class LayoutAssignment : public HloModulePass {
       const ResultLayoutConstraint& layout_constraint,
       LayoutConstraints* constraints);
 
+  virtual Layout GetUnconstrainedLayout(const LogicalBuffer& buffer) {
+    return LayoutUtil::GetDefaultLayoutForShape(buffer.shape());
+  }
   // Called after layouts of an instruction have been finalized to allow
   // subclasses to check for platform specific assumptions.
   virtual Status Verify(const HloInstruction* instruction) {
@@ -394,10 +398,10 @@ class LayoutAssignment : public HloModulePass {
     return Status::OK();
   }
 
-  // Construct contraints and assign layouts to all instructions in the
+  // Construct constraints and assign layouts to all instructions in the
   // computation satisfying the given ComputationLayout, if not nullptr.
   // Otherwise the ComputationLayout will be calculated by propagating the
-  // computation instruction contraints.
+  // computation instruction constraints.
   // Layouts constraints are added, then propagated until all LogicalBuffers in
   // the computation are constrained.
   Status RunOnComputation(ComputationLayout* computation_layout,

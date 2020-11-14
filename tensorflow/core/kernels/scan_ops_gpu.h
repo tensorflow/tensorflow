@@ -24,29 +24,14 @@ limitations under the License.
 #define CUB_USE_COOPERATIVE_GROUPS
 #endif  // CUDA_VERSION >= 9000
 
-#if GOOGLE_CUDA
-#include "third_party/cub/block/block_load.cuh"
-#include "third_party/cub/block/block_scan.cuh"
-#include "third_party/cub/block/block_store.cuh"
-#include "third_party/cub/iterator/counting_input_iterator.cuh"
-#include "third_party/cub/iterator/transform_input_iterator.cuh"
-#include "third_party/gpus/cuda/include/cuComplex.h"
-#elif TENSORFLOW_USE_ROCM
-#include "rocm/include/hipcub/hipcub.hpp"
-#endif
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/kernels/gpu_prim.h"
 #include "tensorflow/core/kernels/scan_ops.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/gpu_launch_config.h"
 #include "tensorflow/core/util/permutation_input_iterator.h"
 #include "tensorflow/core/util/permutation_output_iterator.h"
-
-#if GOOGLE_CUDA
-namespace gpuprim = ::cub;
-#elif TENSORFLOW_USE_ROCM
-namespace gpuprim = ::hipcub;
-#endif
 
 namespace tensorflow {
 
@@ -263,6 +248,8 @@ void LaunchScan(const GPUDevice& d, typename TTypes<T, 3>::ConstTensor in,
   int num_blocks = dimx * dimz;
 
   int ideal_block_size = dimy / items_per_thread;
+  const int rocm_threads_per_warp = 64;
+  ideal_block_size = std::max(ideal_block_size, rocm_threads_per_warp);
 
   // There seems to be a bug when the type is not float and block_size 1024.
   // Launch on the smallest power of 2 block size that we can.
@@ -290,7 +277,13 @@ void LaunchScan(const GPUDevice& d, typename TTypes<T, 3>::ConstTensor in,
         GpuLaunchKernel(scan_kernel<T, Op, block_size, items_per_thread>,
                         num_blocks, block_size, 0, d.stream(), in.data(),
                         out.data(), dimx, dimy, dimz, exclusive, reverse, op));
+#if TENSORFLOW_COMPILER_IS_HIP_CLANG
+    // HIP-CLANG has some kind of problem here with 32 threads (possibly because
+    // the warpsize is 64). Reenable when working properly
+  } else if (true) {
+#else
   } else if (ideal_block_size >= 64) {
+#endif
     const int block_size = 64;
     TF_CHECK_OK(
         GpuLaunchKernel(scan_kernel<T, Op, block_size, items_per_thread>,

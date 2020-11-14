@@ -48,7 +48,7 @@ class FtrlOptimizerTest(xla_test.XLATestCase):
         l1_regularization_strength=0.0,
         l2_regularization_strength=0.0)
     ftrl_update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-    variables.global_variables_initializer().run()
+    self.evaluate(variables.global_variables_initializer())
     # Fetch params to validate initial values
     self.assertAllClose([0.0, 0.0], self.evaluate(var0))
     self.assertAllClose([0.0, 0.0], self.evaluate(var1))
@@ -63,7 +63,7 @@ class FtrlOptimizerTest(xla_test.XLATestCase):
     var0, var1, grads0, grads1 = self.initVariableAndGradient(dtype)
     opt = adagrad.AdagradOptimizer(3.0, initial_accumulator_value=0.1)
     adagrad_update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-    variables.global_variables_initializer().run()
+    self.evaluate(variables.global_variables_initializer())
     # Fetch params to validate initial values
     self.assertAllClose([0.0, 0.0], self.evaluate(var0))
     self.assertAllClose([0.0, 0.0], self.evaluate(var1))
@@ -83,7 +83,7 @@ class FtrlOptimizerTest(xla_test.XLATestCase):
         l1_regularization_strength=0.0,
         l2_regularization_strength=0.0)
     ftrl_update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-    variables.global_variables_initializer().run()
+    self.evaluate(variables.global_variables_initializer())
     # Fetch params to validate initial values
     self.assertAllClose([0.0, 0.0], self.evaluate(var0))
     self.assertAllClose([0.0, 0.0], self.evaluate(var1))
@@ -98,7 +98,7 @@ class FtrlOptimizerTest(xla_test.XLATestCase):
     var0, var1, grads0, grads1 = self.initVariableAndGradient(dtype)
     opt = gradient_descent.GradientDescentOptimizer(3.0, name="sgd")
     sgd_update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-    variables.global_variables_initializer().run()
+    self.evaluate(variables.global_variables_initializer())
     # Fetch params to validate initial values
     self.assertAllClose([0.0, 0.0], self.evaluate(var0))
     self.assertAllClose([0.0, 0.0], self.evaluate(var1))
@@ -122,7 +122,7 @@ class FtrlOptimizerTest(xla_test.XLATestCase):
             l1_regularization_strength=0.0,
             l2_regularization_strength=0.0)
         ftrl_update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         # Fetch params to validate initial values
         self.assertAllClose([0.0, 0.0], self.evaluate(var0))
         self.assertAllClose([0.0, 0.0], self.evaluate(var1))
@@ -156,7 +156,7 @@ class FtrlOptimizerTest(xla_test.XLATestCase):
             l1_regularization_strength=0.0,
             l2_regularization_strength=0.0)
         ftrl_update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         # Fetch params to validate initial values
         self.assertAllClose([1.0, 2.0], self.evaluate(var0))
         self.assertAllClose([4.0, 3.0], self.evaluate(var1))
@@ -189,7 +189,7 @@ class FtrlOptimizerTest(xla_test.XLATestCase):
             l1_regularization_strength=0.001,
             l2_regularization_strength=0.0)
         ftrl_update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         # Fetch params to validate initial values
         self.assertAllClose([1.0, 2.0], self.evaluate(var0))
         self.assertAllClose([4.0, 3.0], self.evaluate(var1))
@@ -223,7 +223,7 @@ class FtrlOptimizerTest(xla_test.XLATestCase):
             l1_regularization_strength=0.001,
             l2_regularization_strength=2.0)
         ftrl_update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         # Fetch params to validate initial values
         self.assertAllClose([1.0, 2.0], self.evaluate(var0))
         self.assertAllClose([4.0, 3.0], self.evaluate(var1))
@@ -262,7 +262,7 @@ class FtrlOptimizerTest(xla_test.XLATestCase):
             l2_regularization_strength=2.0,
             l2_shrinkage_regularization_strength=0.1)
         ftrl_update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         # Fetch params to validate initial values
         self.assertAllCloseAccordingToType([1.0, 2.0], self.evaluate(var0))
         self.assertAllCloseAccordingToType([4.0, 3.0], self.evaluate(var1))
@@ -303,7 +303,7 @@ class FtrlOptimizerTest(xla_test.XLATestCase):
             l2_regularization_strength=2.0)
         update0 = opt0.apply_gradients([(grads0, var0)])
         update1 = opt1.apply_gradients([(grads1, var1)])
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         self.assertAllCloseAccordingToType([1.0, 2.0], self.evaluate(var0))
         self.assertAllCloseAccordingToType([1.0, 2.0], self.evaluate(var1))

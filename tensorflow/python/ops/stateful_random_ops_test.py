@@ -22,6 +22,7 @@ import re
 
 from absl.testing import parameterized
 import numpy as np
+import six
 
 from tensorflow.python.distribute import values as dist_values
 from tensorflow.python.distribute.mirrored_strategy import MirroredStrategy
@@ -273,7 +274,7 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
     with self.cached_session() as sess:
       gen1 = random.Generator.from_seed(seed)
       gen2 = random.Generator.from_non_deterministic_state()
-      sess.run((gen1._state_var.initializer, gen2._state_var.initializer))
+      sess.run((gen1.state.initializer, gen2.state.initializer))
       r1 = gen1.normal(shape, dtype=dtypes.float32)
       r2 = gen2.normal(shape, dtype=dtypes.float32)
       def f():
@@ -371,7 +372,7 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
     gen = random.Generator(state=[counter, 0, key], alg=random.RNG_ALG_PHILOX)
     delta = 432
     gen.skip(delta)
-    new_counter = gen._state_var[0]
+    new_counter = gen.state[0]
     self.assertAllEqual(counter + delta * 256, new_counter)
 
   def _sameAsOldRandomOps(self, device, floats):
@@ -393,7 +394,7 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
         with ops.device(device):
           return new(dtype, gen)
 
-      for _ in range(100):
+      for _ in range(5):
         self.assertAllEqual(run_old(), run_new())
 
     shape = constant_op.constant([4, 7])
@@ -560,16 +561,38 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
         "For the Philox algorithm, the size of state must be at least"):
       gen_stateful_random_ops.stateful_standard_normal_v2(
           var.handle, random.RNG_ALG_PHILOX, shape)
+    with self.assertRaisesWithPredicateMatch(
+        ValueError,
+        "minval must be a scalar; got a tensor of shape "):
+      @def_function.function
+      def f():
+        gen.uniform(shape=shape, minval=array_ops.zeros(shape, "int32"),
+                    maxval=100, dtype="int32")
+      f()
+    with self.assertRaisesWithPredicateMatch(
+        ValueError,
+        "maxval must be a scalar; got a tensor of shape "):
+      @def_function.function
+      def f2():
+        gen.uniform(
+            shape=shape, minval=0, maxval=array_ops.ones(shape, "int32") * 100,
+            dtype="int32")
+      f2()
 
   @test_util.run_v2_only
   def testGetGlobalGeneratorWithXla(self):
     """Demonstrates using the global generator with XLA."""
+    # This test was passing before because soft placement silently picked the
+    # CPU kernel.
+    # TODO(wangpeng): Remove this skip
+    self.skipTest("NonDeterministicInts lacks XLA kernel.")
+
     if not config.list_physical_devices("XLA_CPU"):
       self.skipTest("No XLA_CPU device available.")
 
     random.set_global_generator(None)
 
-    @def_function.function(experimental_compile=True)
+    @def_function.function(jit_compile=True)
     def make_seed():
       generator = random.get_global_generator()
       state = array_ops.identity(generator.state, name="state")
@@ -614,6 +637,17 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(g1.state.read_value(), g2.state.read_value())
 
   @test_util.run_v2_only
+  def testFunArgAlgIsInt(self):
+    """Tests that `algorithm` is `int` when reconstructed from composite tensor.
+    """
+    @def_function.function
+    def f(g):
+      self.assertIsInstance(g.algorithm, six.integer_types)
+      return g.make_seeds(), g
+    gen = random.Generator.from_seed(123, alg="philox")
+    f(gen)
+
+  @test_util.run_v2_only
   def testLimitedRetracingWithCompositeTensors(self):
     """Tests that RNGs with the same shape/dtype won't cause retracing.
     """
@@ -646,17 +680,16 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
           random.GeneratorSpec(shape=(2, 3), dtype=dtypes.int64))
 
   @test_util.run_v2_only
-  @test_util.run_cuda_only
-  def testMirroredStratSeq(self):
+  def testCreateOutsideMirroredStrat(self):
     """Tests RNG/MirrorStrategy interaction #1.
 
-    If an RNG is created outside strategy.scope(), all replicas will access the
+    If an RNG is created outside a DS scope, all replicas will access the
     same RNG object, and accesses are serialized.
     """
     shape = [3, 4]
     dtype = dtypes.int32
     gen = random.Generator.from_seed(1234)
-    strat = MirroredStrategy(devices=["/cpu:0", test_util.gpu_device_name()])
+    strat = MirroredStrategy(devices=["cpu:0", "cpu:1"])
     with strat.scope():
       def f():
         t1 = gen.uniform_full_int(shape=shape, dtype=dtype)
@@ -715,10 +748,23 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
         return t
       results = strat.extended.call_for_each_replica(
           fn=f, args=gens)
-      values = results.values
-      self.assertAllEqual(2, len(values))
-      self.assertAllDifferent(values)
+      local_results = strat.experimental_local_results(results)
+      self.assertAllEqual(2, len(local_results))
+      self.assertAllDifferent(local_results)
+
+  @test_util.run_v2_only
+  def testUniformFullInt(self):
+    """Tests full-range int uniform.
+    """
+    shape = [3, 4]
+    dtype = dtypes.int32
+    g = random.Generator.from_seed(1)
+    r1 = g.uniform(shape=shape, dtype=dtype, minval=None)
+    g = random.Generator.from_seed(1)
+    r2 = g.uniform_full_int(shape=shape, dtype=dtype)
+    self.assertAllEqual(r1, r2)
 
 
 if __name__ == "__main__":
+  config.set_soft_device_placement(False)
   test.main()

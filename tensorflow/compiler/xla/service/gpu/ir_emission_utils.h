@@ -20,8 +20,10 @@ limitations under the License.
 
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
 // TODO(jlebar): Move functions related to cublas/cudnn to a separate file; they
 // don't belong in "ir_emission_utils".
@@ -175,7 +177,8 @@ struct ReductionDimensions {
   std::array<int64, 3> dimensions;
 };
 
-// Given the reduction operation, returns ReductionDimensions.
+// Given the input shape and dimensions to reduce for a reduction, returns
+// ReductionDimensions.
 //
 // Prerequisite: the reduction instruction passes the check
 // IsReductionFromOrToContiguousDimensions, which guarantees either the
@@ -183,9 +186,14 @@ struct ReductionDimensions {
 ReductionDimensions GetReductionKindAndContiguousComponents(
     const HloInstruction& reduce);
 
-// Get tiling per thread for the given reduction in dimensions [D, H, W].
+// Get tiling per thread for the given reduction in dimensions [D, H, W] per
+// thread.
+// If the device isn't known pass null for device_description and you will get
+// non-optimized value.
 std::array<int64, 3> GetReductionTiling(
-    const ReductionDimensions& reduction_dimensions);
+    const ReductionDimensions& reduction_dimensions,
+    int smallest_input_dtype_bits,
+    absl::optional<CudaComputeCapability> cuda_compute_capability);
 
 // Emits call to "vprintf" with given format and arguments.
 llvm::Value* EmitPrintf(absl::string_view fmt,

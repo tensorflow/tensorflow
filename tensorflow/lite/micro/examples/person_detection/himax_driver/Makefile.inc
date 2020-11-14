@@ -9,6 +9,5 @@ ifeq ($(TARGET),$(filter $(TARGET),apollo3evb sparkfun_edge))
   tensorflow/lite/micro/examples/person_detection/himax_driver/HM01B0_debug.h \
   tensorflow/lite/micro/examples/person_detection/himax_driver/HM01B0_optimized.h \
   tensorflow/lite/micro/examples/person_detection/himax_driver/HM01B0_RAW8_QVGA_8bits_lsb_5fps.h \
-  tensorflow/lite/micro/examples/person_detection/himax_driver/HM01B0_Walking1s_01.h \
-  tensorflow/lite/micro/examples/person_detection/himax_driver/platform_Sparkfun_Edge.h
+  tensorflow/lite/micro/examples/person_detection/himax_driver/HM01B0_Walking1s_01.h
 endif

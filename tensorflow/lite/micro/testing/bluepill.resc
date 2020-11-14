@@ -1,4 +1,4 @@
-# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ machine LoadPlatformDescription @platforms/cpus/stm32f103.repl
 machine LoadPlatformDescriptionFromString "uartSemihosting: UART.SemihostingUart @ cpu"
 showAnalyzer cpu.uartSemihosting Antmicro.Renode.Analyzers.LoggingUartAnalyzer
 
-logFile @/tmp/renode_bluepill_log.txt
+logFile $logfile
 
 macro reset
 """

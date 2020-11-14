@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
@@ -126,17 +127,30 @@ bool IsCublasGemm(const HloInstruction& hlo) {
 }
 
 std::array<int64, 3> GetReductionTiling(
-    const ReductionDimensions& reduction_dimensions) {
+    const ReductionDimensions& reduction_dimensions,
+    int smallest_input_dtype_bits,
+    absl::optional<CudaComputeCapability> cuda_compute_capability) {
   if (reduction_dimensions.is_row_reduction) {
-    int64 tile_z = std::min(reduction_dimensions.dimensions[0], 8LL);
+    int64 tile_z = std::min(reduction_dimensions.dimensions[0], int64{8});
     if (reduction_dimensions.dimensions[1] == 1) {
       CHECK_EQ(reduction_dimensions.dimensions[0], 1);
       return {tile_z, 1, 16};
     }
-    if (reduction_dimensions.dimensions[2] % (kWarpSize * 64) == 0) {
+    if (reduction_dimensions.dimensions[2] % (kWarpSize * kWarpSize * 64) ==
+        0) {
       return {tile_z, 1, 64};
     }
-    return {tile_z, 1, 8};
+    int cc_major = 0;
+    if (cuda_compute_capability) {
+      cc_major = cuda_compute_capability->cc_major;
+    }
+    int unroll_x = 8;
+    if (cc_major >= 6 && smallest_input_dtype_bits == 16) {
+      unroll_x = 16;
+    } else if (cc_major >= 6 && smallest_input_dtype_bits == 8) {
+      unroll_x = 64;
+    }
+    return {tile_z, 1, unroll_x};
   }
 
   // Column reduction.
@@ -212,6 +226,11 @@ bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce) {
       dims_to_keep.push_back(dim);
     }
   }
+
+  // We support fast codegen for three cases:
+  // 1) Row reduction: (K, R)
+  // 2) Column reduction: (K, R, K)
+  // 3) "Batched" row reduction: (R, K, R)
   if (!LayoutUtil::AreDimensionsConsecutive(input->shape().layout(),
                                             dims_to_keep) &&
       !LayoutUtil::AreDimensionsConsecutive(input->shape().layout(),
@@ -308,26 +327,52 @@ llvm::Value* EmitPrintf(absl::string_view fmt,
                         absl::Span<llvm::Value* const> arguments,
                         llvm::IRBuilder<>* builder) {
   std::vector<llvm::Type*> argument_types;
+
+  // Variadic arguments implicit promotion [1] converts float to double,
+  // and bool/char/short are converted to int.
+  // [1] https://en.cppreference.com/w/cpp/language/variadic_arguments
+  auto requires_int32_promotion = [](llvm::Type* type) {
+    return type->isIntegerTy(/*BitWidth=*/1) ||
+           type->isIntegerTy(/*BitWidth=*/8) ||
+           type->isIntegerTy(/*BitWidth=*/16);
+  };
+  auto requires_double_promotion = [](llvm::Type* type) {
+    return type->isFloatingPointTy();
+  };
+
   for (auto argument : arguments) {
-    argument_types.push_back(argument->getType());
+    llvm::Type* type = argument->getType();
+    if (requires_double_promotion(type)) {
+      argument_types.push_back(builder->getDoubleTy());
+    } else if (requires_int32_promotion(type)) {
+      argument_types.push_back(builder->getInt32Ty());
+    } else {
+      argument_types.push_back(type);
+    }
   }
   auto* arguments_type = llvm::StructType::create(argument_types);
   llvm::Value* arguments_ptr = builder->CreateAlloca(arguments_type);
   for (size_t i = 0; i < arguments.size(); ++i) {
+    llvm::Value* value = arguments[i];
+    llvm::Type* type = value->getType();
+    if (requires_double_promotion(type)) {
+      value = builder->CreateFPCast(value, builder->getDoubleTy());
+    } else if (requires_int32_promotion(type)) {
+      value = builder->CreateIntCast(value, builder->getInt32Ty(),
+                                     /*isSigned=*/true);
+    }
     builder->CreateStore(
-        arguments[i],
-        builder->CreateGEP(arguments_ptr,
-                           {builder->getInt64(0), builder->getInt32(i)}));
+        value, builder->CreateGEP(arguments_ptr, {builder->getInt64(0),
+                                                  builder->getInt32(i)}));
   }
+  llvm::Type* ptr_ty = builder->getInt8Ty()->getPointerTo();
   return builder->CreateCall(
       builder->GetInsertBlock()->getParent()->getParent()->getOrInsertFunction(
           "vprintf",
-          llvm::FunctionType::get(builder->getInt32Ty(),
-                                  {builder->getInt8Ty()->getPointerTo(),
-                                   arguments_type->getPointerTo()},
+          llvm::FunctionType::get(builder->getInt32Ty(), {ptr_ty, ptr_ty},
                                   /*isVarArg=*/false)),
       {builder->CreateGlobalStringPtr(llvm_ir::AsStringRef(fmt)),
-       arguments_ptr});
+       builder->CreatePointerCast(arguments_ptr, ptr_ty)});
 }
 
 // Helper function to emit call to AMDGPU shfl_down function.
@@ -388,7 +433,7 @@ llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
       builder->CreateZExt(
           builder->CreateBitCast(value, builder->getIntNTy(bit_width)),
           builder->getIntNTy(32 * num_segments)),
-      llvm::VectorType::get(builder->getInt32Ty(), num_segments));
+      llvm::VectorType::get(builder->getInt32Ty(), num_segments, false));
   for (int i = 0; i < num_segments; ++i) {
     llvm::Value* insert_val;
     if (target_triple.isNVPTX()) {
@@ -441,13 +486,14 @@ string CudnnConvKindToString(CudnnConvKind kind) {
 }
 
 llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b) {
-  return b->CreateAnd(
-      b->CreateICmpEQ(
-          b->getInt32(0),
-          EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b)),
-      b->CreateICmpEQ(
-          b->getInt32(0),
-          EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b)));
+  llvm::Value* is_thread0 = b->CreateICmpEQ(
+      b->getInt32(0),
+      EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b));
+
+  llvm::Value* is_block0 = b->CreateICmpEQ(
+      b->getInt32(0),
+      EmitCallToTargetIntrinsic(TargetIntrinsicID::kBlockIdx, {}, {}, b));
+  return b->CreateAnd(is_thread0, is_block0);
 }
 
 bool AreFusedReductionOutputsConsistent(

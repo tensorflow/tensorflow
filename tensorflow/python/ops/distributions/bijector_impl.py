@@ -442,7 +442,7 @@ class Bijector(object):
   Non injective maps `g` are supported, provided their domain `D` can be
   partitioned into `k` disjoint subsets, `Union{D1, ..., Dk}`, such that,
   ignoring sets of measure zero, the restriction of `g` to each subset is a
-  differentiable bijection onto `g(D)`.  In particular, this imples that for
+  differentiable bijection onto `g(D)`.  In particular, this implies that for
   `y in g(D)`, the set inverse, i.e. `g^{-1}(y) = {x in D : g(x) = y}`, always
   contains exactly `k` distinct points.
 
@@ -1071,7 +1071,7 @@ class Bijector(object):
       return math_ops.range(-reduce_ndims, 0)
 
   def _check_valid_event_ndims(self, min_event_ndims, event_ndims):
-    """Check whether event_ndims is atleast min_event_ndims."""
+    """Check whether event_ndims is at least min_event_ndims."""
     event_ndims = ops.convert_to_tensor(event_ndims, name="event_ndims")
     event_ndims_ = tensor_util.constant_value(event_ndims)
     assertions = []

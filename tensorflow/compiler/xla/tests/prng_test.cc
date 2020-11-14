@@ -103,7 +103,8 @@ INSTANTIATE_TEST_SUITE_P(
         ::testing::Values(
             // The largest negative number smaller than zero in bf16 that's not
             // denormalized.
-            std::make_pair(static_cast<float>(-bfloat16::min_positive_normal()),
+            std::make_pair(static_cast<float>(
+                               -std::numeric_limits<Eigen::bfloat16>::min()),
                            0.0f),
             // Test odd and even values.
             std::make_pair(32.75f, 33.00f), std::make_pair(32.50f, 32.75f),
@@ -121,7 +122,7 @@ XLA_TEST_F(PrngTest, DISABLED_ON_INTERPRETER(DISABLED_ON_GPU(
   bfloat16 interval = static_cast<bfloat16>(0.25);
   std::vector<int32> counts(static_cast<int64>((high - low) / interval), 0);
 
-  constexpr int64 count = 100;
+  constexpr int64 count = 1000;
   for (int64 seed = 0; seed < count; ++seed) {
     auto result = UniformTest<bfloat16>(low, high, {}, /*seed=*/seed);
     result.EachCell<bfloat16>([&](absl::Span<const int64>, bfloat16 value) {

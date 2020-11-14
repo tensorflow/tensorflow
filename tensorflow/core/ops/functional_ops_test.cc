@@ -21,6 +21,36 @@ limitations under the License.
 
 namespace tensorflow {
 
+TEST(FunctionalOpsTest, Arg_ShapeFn) {
+  ShapeInferenceTestOp op("_Arg");
+  std::vector<DataType> out_type_list;
+  out_type_list.emplace_back(DT_RESOURCE);
+  TF_ASSERT_OK(NodeDefBuilder("test", "_Arg")
+                   .Attr("T", DataType::DT_RESOURCE)
+                   .Attr("index", 0)
+                   .Attr("_output_shapes", {TensorShape({5, 4})})
+                   .Attr("_handle_shapes", {TensorShape({3, 7})})
+                   .Attr("_handle_dtypes", {DataType::DT_FLOAT})
+                   .Finalize(&op.node_def));
+
+  const OpRegistrationData* op_reg_data;
+  TF_ASSERT_OK(OpRegistry::Global()->LookUp(op.name, &op_reg_data));
+  shape_inference::InferenceContext c(
+      op.graph_def_version, op.node_def, op_reg_data->op_def,
+      std::vector<shape_inference::ShapeHandle>{}, op.input_tensors, {}, {});
+  TF_ASSERT_OK(c.Run(op_reg_data->shape_inference_fn));
+  auto output = c.output(0);
+  ASSERT_EQ(c.Value(c.Rank(output)), 2);
+  EXPECT_EQ(c.Value(c.Dim(output, 0)), 5);
+  EXPECT_EQ(c.Value(c.Dim(output, 1)), 4);
+
+  auto outputs = c.output_handle_shapes_and_types(0);
+  ASSERT_EQ(outputs->size(), 1);
+  EXPECT_EQ(outputs->front().dtype, DataType::DT_FLOAT);
+  EXPECT_EQ(c.Value(c.Dim(outputs->front().shape, 0)), 3);
+  EXPECT_EQ(c.Value(c.Dim(outputs->front().shape, 1)), 7);
+}
+
 TEST(FunctionalOpsTest, SymbolicGradient_ShapeFn) {
   ShapeInferenceTestOp op("SymbolicGradient");
   int num_inputs = 4;

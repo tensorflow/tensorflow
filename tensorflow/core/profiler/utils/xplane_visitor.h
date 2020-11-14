@@ -15,10 +15,15 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_XPLANE_VISITOR_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_XPLANE_VISITOR_H_
 
-#include <functional>
+#include <stddef.h>
 
+#include <functional>
+#include <string>
+#include <vector>
+
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/lib/gtl/map_util.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/time_utils.h"
@@ -27,17 +32,22 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
+class XPlaneVisitor;
+
 class XStatVisitor {
  public:
-  XStatVisitor(const XPlane* plane, const XStat* stat)
-      : stat_(stat),
-        metadata_(&gtl::FindWithDefault(plane->stat_metadata(),
-                                        stat_->metadata_id(),
-                                        XStatMetadata::default_instance())) {}
+  // REQUIRED: plane and stat cannot be nullptr.
+  XStatVisitor(const XPlaneVisitor* plane, const XStat* stat);
+
+  // REQUIRED: plane, stat and metadata cannot be nullptr.
+  XStatVisitor(const XPlaneVisitor* plane, const XStat* stat,
+               const XStatMetadata* metadata, absl::optional<int64> type);
 
   int64 Id() const { return stat_->metadata_id(); }
 
   absl::string_view Name() const { return metadata_->name(); }
+
+  absl::optional<int64> Type() const { return type_; }
 
   absl::string_view Description() const { return metadata_->description(); }
 
@@ -47,35 +57,75 @@ class XStatVisitor {
 
   uint64 UintValue() const { return stat_->uint64_value(); }
 
+  uint64 IntOrUintValue() const {
+    return ValueCase() == XStat::kUint64Value ? UintValue()
+                                              : static_cast<uint64>(IntValue());
+  }
+
   double DoubleValue() const { return stat_->double_value(); }
 
-  absl::string_view StrValue() const { return stat_->str_value(); }
+  // Returns a string view.
+  // REQUIRED: the value type should be string type or reference type.
+  absl::string_view StrOrRefValue() const;
 
   const XStat& RawStat() const { return *stat_; }
+
+  // Return a string representation of all value type.
+  std::string ToString() const;
 
  private:
   const XStat* stat_;
   const XStatMetadata* metadata_;
+  const XPlaneVisitor* plane_;
+  absl::optional<int64> type_;
 };
 
-class XEventVisitor {
+template <class T>
+class XStatsOwner {
  public:
-  XEventVisitor(const XPlane* plane, const XLine* line, const XEvent* event)
-      : plane_(plane),
-        line_(line),
-        event_(event),
-        metadata_(&gtl::FindWithDefault(plane_->event_metadata(),
-                                        event_->metadata_id(),
-                                        XEventMetadata::default_instance())) {}
+  // REQUIRED: metadata and stats_owner cannot be nullptr.
+  XStatsOwner(const XPlaneVisitor* metadata, const T* stats_owner)
+      : stats_owner_(stats_owner), metadata_(metadata) {}
+
+  // For each plane level stats, call the specified lambda.
+  template <typename ForEachStatFunc>
+  void ForEachStat(ForEachStatFunc&& for_each_stat) const {
+    for (const XStat& stat : stats_owner_->stats()) {
+      for_each_stat(XStatVisitor(metadata_, &stat));
+    }
+  }
+
+  // Shortcut to get a specific stat type, nullopt if absent.
+  // This function performs a linear search for the requested stat value.
+  // Prefer ForEachStat above when multiple stat values are necessary.
+  absl::optional<XStatVisitor> GetStat(int64 stat_type) const;
+
+ private:
+  const T* stats_owner_;
+  const XPlaneVisitor* metadata_;
+};
+
+using XEventMetadataVisitor = XStatsOwner<XEventMetadata>;
+
+class XEventVisitor : public XStatsOwner<XEvent> {
+ public:
+  // REQUIRED: plane, line and event cannot be nullptr.
+  XEventVisitor(const XPlaneVisitor* plane, const XLine* line,
+                const XEvent* event);
+
+  XEventMetadataVisitor MetadataStats() const {
+    return XEventMetadataVisitor(plane_, metadata_);
+  }
 
   int64 Id() const { return event_->metadata_id(); }
 
   absl::string_view Name() const { return metadata_->name(); }
 
-  absl::string_view DisplayName() const {
-    return !metadata_->display_name().empty() ? metadata_->display_name()
-                                              : metadata_->name();
-  }
+  absl::optional<int64> Type() const { return type_; }
+
+  bool HasDisplayName() const { return !metadata_->display_name().empty(); }
+
+  absl::string_view DisplayName() const { return metadata_->display_name(); }
 
   absl::string_view Metadata() const { return metadata_->metadata(); }
 
@@ -101,29 +151,26 @@ class XEventVisitor {
 
   int64 NumOccurrences() const { return event_->num_occurrences(); }
 
-  template <typename ForEachStatFunc>
-  void ForEachStat(ForEachStatFunc&& for_each_stat) const {
-    for (const XStat& stat : event_->stats()) {
-      for_each_stat(XStatVisitor(plane_, &stat));
-    }
-  }
-
   bool operator<(const XEventVisitor& other) const {
     return GetTimespan() < other.GetTimespan();
   }
 
- private:
+  const XEventMetadata* metadata() const { return metadata_; }
+
   Timespan GetTimespan() const { return Timespan(TimestampPs(), DurationPs()); }
 
-  const XPlane* plane_;
+ private:
+  const XPlaneVisitor* plane_;
   const XLine* line_;
   const XEvent* event_;
   const XEventMetadata* metadata_;
+  absl::optional<int64> type_;
 };
 
 class XLineVisitor {
  public:
-  XLineVisitor(const XPlane* plane, const XLine* line)
+  // REQUIRED: plane and line cannot be nullptr.
+  XLineVisitor(const XPlaneVisitor* plane, const XLine* line)
       : plane_(plane), line_(line) {}
 
   int64 Id() const { return line_->id(); }
@@ -153,13 +200,20 @@ class XLineVisitor {
   }
 
  private:
-  const XPlane* plane_;
+  const XPlaneVisitor* plane_;
   const XLine* line_;
 };
 
-class XPlaneVisitor {
+using TypeGetter = std::function<absl::optional<int64>(absl::string_view)>;
+using TypeGetterList = std::vector<TypeGetter>;
+
+class XPlaneVisitor : public XStatsOwner<XPlane> {
  public:
-  explicit XPlaneVisitor(const XPlane* plane) : plane_(plane) {}
+  // REQUIRED: plane cannot be nullptr.
+  explicit XPlaneVisitor(
+      const XPlane* plane,
+      const TypeGetterList& event_type_getter_list = TypeGetterList(),
+      const TypeGetterList& stat_type_getter_list = TypeGetterList());
 
   int64 Id() const { return plane_->id(); }
 
@@ -170,13 +224,54 @@ class XPlaneVisitor {
   template <typename ForEachLineFunc>
   void ForEachLine(ForEachLineFunc&& for_each_line) const {
     for (const XLine& line : plane_->lines()) {
-      for_each_line(XLineVisitor(plane_, &line));
+      for_each_line(XLineVisitor(this, &line));
     }
   }
 
+  // Returns event metadata given its id. Returns a default value if not found.
+  const XEventMetadata* GetEventMetadata(int64 event_metadata_id) const;
+
+  // Returns the type of an event given its id.
+  absl::optional<int64> GetEventType(int64 event_metadata_id) const;
+
+  // Returns stat metadata given its id. Returns a default value if not found.
+  const XStatMetadata* GetStatMetadata(int64 stat_metadata_id) const;
+
+  // Returns stat metadata given its type. Returns nullptr if not found.
+  // Use as an alternative to GetStatMetadata above.
+  const XStatMetadata* GetStatMetadataByType(int64 stat_type) const;
+
+  // Returns the type of an stat given its id.
+  absl::optional<int64> GetStatType(int64 stat_metadata_id) const;
+
  private:
+  void BuildEventTypeMap(const XPlane* plane,
+                         const TypeGetterList& event_type_getter_list);
+  void BuildStatTypeMap(const XPlane* plane,
+                        const TypeGetterList& stat_type_getter_list);
+
   const XPlane* plane_;
+
+  absl::flat_hash_map<int64 /*metadata_id*/, int64 /*EventType*/>
+      event_type_by_id_;
+  absl::flat_hash_map<int64 /*metadata_id*/, int64 /*StatType*/>
+      stat_type_by_id_;
+  absl::flat_hash_map<int64 /*StatType*/, const XStatMetadata*>
+      stat_metadata_by_type_;
 };
+
+template <class T>
+absl::optional<XStatVisitor> XStatsOwner<T>::GetStat(int64 stat_type) const {
+  const auto* stat_metadata = metadata_->GetStatMetadataByType(stat_type);
+  if (stat_metadata != nullptr) {
+    for (const XStat& stat : stats_owner_->stats()) {
+      if (stat.metadata_id() == stat_metadata->id()) {
+        return XStatVisitor(metadata_, &stat, stat_metadata, stat_type);
+      }
+    }
+  }
+  return absl::nullopt;  // type does not exist in this owner.
+}
 
 }  // namespace profiler
 }  // namespace tensorflow

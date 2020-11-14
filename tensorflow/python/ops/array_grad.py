@@ -18,8 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.compiler.tf2xla.ops import gen_xla_ops
 from tensorflow.python import pywrap_tfe
+from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -58,7 +59,7 @@ def _ConcatGradHelper(op, grad, start_value_index, end_value_index, dim_index):
       each output of the op.
     start_value_index: An integer index of the first value in the op.inputs.
     end_value_index: An integer index of the last value in the op.inputs.
-    dim_index: An interger index of concat_dim or axis parameter in op.inputs.
+    dim_index: An integer index of concat_dim or axis parameter in op.inputs.
 
   Returns:
     Tensors representing the partial gradients with respect to each input
@@ -247,6 +248,9 @@ def _SliceGrad(op, grad):
   begin_vec = op.inputs[1]
   input_rank = array_ops.rank(input_vec)
   slice_size = array_ops.shape(op.outputs[0])
+  if control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()):
+    return gen_xla_ops.xla_dynamic_update_slice(array_ops.zeros_like(input_vec),
+                                                grad, begin_vec), None, None
 
   shape = array_ops.stack([input_rank, 1])
   before_pad = array_ops.reshape(begin_vec, shape)
@@ -268,6 +272,15 @@ def _StridedSliceGrad(op, grad):
   # We could choose any of {begin|end|strides}.dtype since they are required to
   # be the same.
   x = array_ops.shape(op.inputs[0], out_type=begin.dtype)
+
+  x_static = tensor_util.constant_value(x)
+  x = x_static if x_static is not None else x
+  begin_static = tensor_util.constant_value(begin)
+  begin = begin_static if begin_static is not None else begin
+  end_static = tensor_util.constant_value(end)
+  end = end_static if end_static is not None else end
+  strides_static = tensor_util.constant_value(strides)
+  strides = strides_static if strides_static is not None else strides
 
   return array_ops.strided_slice_grad(
       x,
@@ -299,6 +312,30 @@ def _StridedSliceGradGrad(op, grad):
       ellipsis_mask=op.get_attr("ellipsis_mask"),
       new_axis_mask=op.get_attr("new_axis_mask"),
       shrink_axis_mask=op.get_attr("shrink_axis_mask"))
+
+
+@ops.RegisterGradient("TensorStridedSliceUpdate")
+def _TensorStridedSliceUpdateGrad(op, grad):  # pylint:disable=missing-function-docstring
+  begin = op.inputs[1]
+  end = op.inputs[2]
+  strides = op.inputs[3]
+  begin_mask = op.get_attr("begin_mask")
+  end_mask = op.get_attr("end_mask")
+  ellipsis_mask = op.get_attr("ellipsis_mask")
+  new_axis_mask = op.get_attr("new_axis_mask")
+  shrink_axis_mask = op.get_attr("shrink_axis_mask")
+  def Apply(f, *args):
+    return f(*args,
+             begin_mask=begin_mask,
+             end_mask=end_mask,
+             shrink_axis_mask=shrink_axis_mask,
+             new_axis_mask=new_axis_mask,
+             ellipsis_mask=ellipsis_mask)
+  dy = Apply(array_ops.strided_slice,
+             grad, begin, end, strides)
+  dx = Apply(array_ops.tensor_strided_slice_update,
+             grad, begin, end, strides, array_ops.zeros_like(dy))
+  return dx, None, None, None, dy
 
 
 @ops.RegisterGradient("Split")
@@ -628,7 +665,8 @@ def _GatherV2Grad(op, grad):
   # For axis 0 gathers, build an appropriately shaped IndexedSlices.
   if axis_static == 0:
     if context.executing_eagerly():
-      params_tail_shape = params_shape.cpu()[1:]
+      with ops.device(indices_size.device):
+        params_tail_shape = array_ops.identity(params_shape)[1:]
     else:
       params_tail_shape = params_shape[1:]
     values_shape = array_ops.concat([indices_size, params_tail_shape], 0)
@@ -638,7 +676,7 @@ def _GatherV2Grad(op, grad):
     params_grad = ops.IndexedSlices(values, indices, params_shape)
   else:
     # Handle axis by transposing the axis dimension to be the first non-batch
-    # dimension, compute the gradiend and transpose the result back.
+    # dimension, compute the gradient and transpose the result back.
     outer_shape = params_shape[:axis]
     inner_shape = params_shape[axis:][1:]
     values_shape = array_ops.concat([outer_shape, [-1], inner_shape], 0)
@@ -833,7 +871,7 @@ def _PadGrad(op, grad):
                                array_ops.stack([array_ops.rank(x), 1]))
   # Make it a 1-D tensor.
   begin = array_ops.reshape(pad_before, [-1])
-  sizes = array_ops.shape(x)
+  sizes = array_ops.shape(x, out_type=begin.dtype)
   x_grad = array_ops.slice(grad, begin, sizes)
   if len(op.inputs) == 3:
     return x_grad, None, None
@@ -1102,6 +1140,37 @@ def _TensorScatterAddGrad(op, grad):
   return [tensor_grad, None, updates_grad]
 
 
+def _TensorScatterMinOrMaxGrad(op, grad):
+  """Gradient for TensorScatterMin and TensorScatterMax."""
+  indices = op.inputs[1]
+  x = op.inputs[0]
+  y = op.inputs[2]
+  output = op.outputs[0]
+  x_indicators = math_ops.cast(math_ops.equal(x, output), grad.dtype)
+  y_output = array_ops.gather_nd(output, indices)
+  y_indicators = math_ops.cast(math_ops.equal(y, y_output), grad.dtype)
+  ys_indicators = array_ops.scatter_nd(indices, y_indicators,
+                                       array_ops.shape(x))
+  indicators = x_indicators + ys_indicators  # All elements are >= 1.
+  # If there are multiple minimum or maximum elements then the gradient will be
+  # divided between them.
+  x_grad = grad * x_indicators / indicators
+  y_grad = array_ops.gather_nd(grad / indicators, indices) * y_indicators
+  return [x_grad, None, y_grad]
+
+
+@ops.RegisterGradient("TensorScatterMax")
+def _TensorScatterMaxGrad(op, grad):
+  """Gradient for TensorScatterMax op."""
+  return _TensorScatterMinOrMaxGrad(op, grad)
+
+
+@ops.RegisterGradient("TensorScatterMin")
+def _TensorScatterMinGrad(op, grad):
+  """Gradient for TensorScatterMin op."""
+  return _TensorScatterMinOrMaxGrad(op, grad)
+
+
 @ops.RegisterGradient("TensorScatterSub")
 def _TensorScatterSubGrad(op, grad):
   indices = op.inputs[1]
@@ -1122,9 +1191,9 @@ def _BroadcastToGrad(op, grad):
   input_value = op.inputs[0]
   broadcast_shape = op.inputs[1]
   input_value_shape = array_ops.shape(input_value)
-  if not context.executing_eagerly():
+  if not isinstance(broadcast_shape, ops.EagerTensor):
     broadcast_shape_static = tensor_shape.TensorShape(
-        pywrap_tensorflow.TF_TryEvaluateConstant_wrapper(
+        pywrap_tf_session.TF_TryEvaluateConstant_wrapper(
             broadcast_shape.graph._c_graph, broadcast_shape._as_tf_output()))  # pylint: disable=protected-access
     if broadcast_shape_static.is_fully_defined():
       broadcast_shape = constant_op.constant(

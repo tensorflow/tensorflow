@@ -22,8 +22,14 @@ import os
 import shutil
 import tempfile
 
+from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.data import Dataset
+from tensorflow.python.keras import keras_parameterized
+from tensorflow.python.keras import layers
+from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.preprocessing import image as preprocessing_image
 from tensorflow.python.platform import test
 
@@ -51,7 +57,43 @@ def _generate_test_images():
   return [rgb_images, gray_images]
 
 
-class TestImage(test.TestCase):
+class TestImage(keras_parameterized.TestCase):
+
+  @testing_utils.run_v2_only
+  def test_smart_resize(self):
+    test_input = np.random.random((20, 40, 3))
+    output = preprocessing_image.smart_resize(test_input, size=(50, 50))
+    self.assertIsInstance(output, np.ndarray)
+    self.assertListEqual(list(output.shape), [50, 50, 3])
+    output = preprocessing_image.smart_resize(test_input, size=(10, 10))
+    self.assertListEqual(list(output.shape), [10, 10, 3])
+    output = preprocessing_image.smart_resize(test_input, size=(100, 50))
+    self.assertListEqual(list(output.shape), [100, 50, 3])
+    output = preprocessing_image.smart_resize(test_input, size=(5, 15))
+    self.assertListEqual(list(output.shape), [5, 15, 3])
+
+  @parameterized.named_parameters(
+      ('size1', (50, 50)),
+      ('size2', (10, 10)),
+      ('size3', (100, 50)),
+      ('size4', (5, 15)))
+  @testing_utils.run_v2_only
+  def test_smart_resize_tf_dataset(self, size):
+    test_input_np = np.random.random((2, 20, 40, 3))
+    test_ds = Dataset.from_tensor_slices(test_input_np)
+
+    resize = lambda img: preprocessing_image.smart_resize(img, size=size)
+    test_ds = test_ds.map(resize)
+    for sample in test_ds.as_numpy_iterator():
+      self.assertIsInstance(sample, np.ndarray)
+      self.assertListEqual(list(sample.shape), [size[0], size[1], 3])
+
+  def test_smart_resize_errors(self):
+    with self.assertRaisesRegex(ValueError, 'a tuple of 2 integers'):
+      preprocessing_image.smart_resize(
+          np.random.random((20, 20, 2)), size=(10, 5, 3))
+    with self.assertRaisesRegex(ValueError, 'incorrect rank'):
+      preprocessing_image.smart_resize(np.random.random((20, 40)), size=(10, 5))
 
   def test_image_data_generator(self):
     if PIL is None:
@@ -122,8 +164,7 @@ class TestImage(test.TestCase):
       generator = preprocessing_image.ImageDataGenerator(
           data_format='unknown')
 
-    generator = preprocessing_image.ImageDataGenerator(
-        zoom_range=(2, 2))
+    generator = preprocessing_image.ImageDataGenerator(zoom_range=(2., 2.))
 
   def test_image_data_generator_fit(self):
     generator = preprocessing_image.ImageDataGenerator(
@@ -298,14 +339,21 @@ class TestImage(test.TestCase):
     self.assertEqual(
         len(set(train_iterator.filenames) & set(filenames)), num_training)
 
+    model = sequential.Sequential([layers.Flatten(), layers.Dense(2)])
+    model.compile(optimizer='sgd', loss='mse')
+    model.fit(train_iterator, epochs=1)
+
     shutil.rmtree(tmp_folder)
 
+  @keras_parameterized.run_all_keras_modes
   def test_directory_iterator_with_validation_split_25_percent(self):
     self.directory_iterator_with_validation_split_test_helper(0.25)
 
+  @keras_parameterized.run_all_keras_modes
   def test_directory_iterator_with_validation_split_40_percent(self):
     self.directory_iterator_with_validation_split_test_helper(0.40)
 
+  @keras_parameterized.run_all_keras_modes
   def test_directory_iterator_with_validation_split_50_percent(self):
     self.directory_iterator_with_validation_split_test_helper(0.50)
 

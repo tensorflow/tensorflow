@@ -4,8 +4,9 @@ func @main(tensor<4 x f32>, tensor<4 x f32>, tensor<4 x f32>, tensor<4 x f32>) -
 // CHECK:      {
 // CHECK-NEXT:     version: 3,
 // CHECK-NEXT:     operator_codes: [ {
-// CHECK-NEXT:       builtin_code: SVDF,
-// CHECK-NEXT:       version: 1
+// CHECK-NEXT:       deprecated_builtin_code: 27,
+// CHECK-NEXT:       version: 1,
+// CHECK-NEXT:       builtin_code: SVDF
 // CHECK-NEXT:     } ],
 // CHECK-NEXT:     subgraphs: [ {
 // CHECK-NEXT:       tensors: [ {
@@ -79,7 +80,14 @@ func @main(tensor<4 x f32>, tensor<4 x f32>, tensor<4 x f32>, tensor<4 x f32>) -
 // CHECK-NEXT:      data: [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ]
 // CHECK-NEXT:     }, {
 // CHECK-EMPTY:
+// CHECK-NEXT:     }, {
+// CHECK-NEXT:      data: [ 49, 46, 53, 46, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ]
+// CHECK-NEXT:     } ],
+// CHECK-NEXT:     metadata: [ {
+// CHECK-NEXT:     name: "min_runtime_version",
+// CHECK-NEXT:     buffer: 7
 // CHECK-NEXT:     } ]
+// CHECK-NEXT:     signature_defs: [ ]
 // CHECK-NEXT:   }
 // CHECK-EMPTY:
 

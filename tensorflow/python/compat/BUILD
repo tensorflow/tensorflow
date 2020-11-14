@@ -4,8 +4,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
-
 py_library(
     name = "v2_compat",
     srcs = ["v2_compat.py"],
@@ -15,6 +13,7 @@ py_library(
         "//tensorflow/python:control_flow_v2_toggles",
         "//tensorflow/python:tf2",
         "//tensorflow/python:util",
+        "//tensorflow/python/eager:monitoring",
     ],
 )
 

@@ -50,9 +50,9 @@ int64 PeakMemoryUseOfEntryComputation(
 
   HloComputation* computation = module->entry_computation();
   const HloInstructionSequence& sequence = schedule.sequence(computation);
-  return HeapSimulator::Run(absl::make_unique<NoFragmentationStatsHeap>(),
-                            *computation, sequence, *alias_analysis,
-                            size_function)
+  return HeapSimulator::Run(
+             absl::make_unique<NoFragmentationStatsHeap<HloValue>>(),
+             *computation, sequence, *alias_analysis, size_function)
       .ValueOrDie()
       .heap_size;
 }
@@ -216,7 +216,6 @@ ENTRY entry {
 
 TEST_F(HloSchedulingTest, TuplesAreAccountedCorrectly) {
   auto builder = HloComputation::Builder(TestName());
-  const auto TUPLE_SIZE = 1;
   const Shape r1f32 = ShapeUtil::MakeShape(xla::F32, {6});
 
   // Wrap lit in abs because constants are considered free by
@@ -246,7 +245,7 @@ TEST_F(HloSchedulingTest, TuplesAreAccountedCorrectly) {
       ScheduleModule(
           module.get(),
           [](const BufferValue& buffer) {
-            return ShapeUtil::ByteSizeOf(buffer.shape(), TUPLE_SIZE);
+            return ShapeUtil::ByteSizeOf(buffer.shape(), 1);
           },
           ComputationSchedulerToModuleScheduler(ListMemoryScheduler)));
 

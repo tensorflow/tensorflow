@@ -197,6 +197,11 @@ class IntType {
     }
   };
 
+  template <typename H>
+  friend H AbslHashValue(H h, const IntType& i) {
+    return H::combine(std::move(h), i.value());
+  }
+
  public:
   // Default c'tor initializing value_ to 0.
   constexpr IntType() : value_(0) {}

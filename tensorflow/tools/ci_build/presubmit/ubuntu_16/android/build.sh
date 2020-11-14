@@ -25,7 +25,7 @@ set +u
 set -x
 
 function run_build () {
-  export ANDROID_NDK_HOME="/opt/android-ndk-r17c"
+  export ANDROID_NDK_HOME="/opt/android-ndk-r18b"
   export NDK_HOME=$ANDROID_NDK_HOME
   export ANDROID_SDK_HOME="/opt/android-sdk/current"
   export ANDROID_API_LEVEL="23"
@@ -62,7 +62,7 @@ EOF
   chmod +x tensorflow/tools/ci_build/builds/${ANDROID_OUT_TARGET}.sh
 
   # Run bazel test command. Double test timeouts to avoid flakes.
-  # //tensorflow/core:platform_setround_test is not supported. See b/64264700
+  # //tensorflow/core/platform:setround_test is not supported. See b/64264700
   "${BAZEL_WRAPPER_PATH}" \
     --host_jvm_args=-Dbazel.DigestFunction=SHA256 \
     test \
@@ -75,7 +75,7 @@ EOF
 }
 
 source tensorflow/tools/ci_build/release/common.sh
-update_bazel_linux
+install_bazelisk
 which bazel
 
 run_build

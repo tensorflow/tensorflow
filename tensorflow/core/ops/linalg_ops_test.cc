@@ -122,34 +122,54 @@ TEST(LinalgOpsTest, SelfAdjointEigV2_ShapeFn) {
            "[d0_0,d0_1,d0_2,d0_3|d0_4];[d0_0,d0_1,d0_2,d0_3|d0_4,d0_3|d0_4]");
 }
 
-TEST(LinalgOpsTest, SquareMatrixSolve_ShapeFn) {
-  for (const char* op_name : {"MatrixSolve", "MatrixTriangularSolve"}) {
-    ShapeInferenceTestOp op(op_name);
-    INFER_OK(op, "?;?", "?");
-    INFER_ERROR("Shape must be at least rank 2 but is rank 1", op, "[1];?");
-    INFER_ERROR("Dimensions must be equal, but are 1 and 2", op, "[1,2];?");
-    INFER_ERROR("Shape must be at least rank 2 but is rank 1", op,
-                "[5,?,?];[6]");
-    INFER_ERROR("Shapes must be equal rank, but are 0 and 1", op,
-                "[5,?];[6,?,?]");
+TEST(LinalgOpsTest, MatrixSolve_ShapeFn) {
+  ShapeInferenceTestOp op("MatrixSolve");
+  INFER_OK(op, "?;?", "?");
+  INFER_ERROR("Shape must be at least rank 2 but is rank 1", op, "[1];?");
+  INFER_ERROR("Dimensions must be equal, but are 1 and 2", op, "[1,2];?");
+  INFER_ERROR("Shape must be at least rank 2 but is rank 1", op, "[5,?,?];[6]");
+  INFER_ERROR("Shapes must be equal rank, but are 0 and 1", op,
+              "[5,?];[6,?,?]");
 
-    INFER_OK(op, "[?,?];?", "[d0_0|d0_1,?]");
+  INFER_OK(op, "[?,?];?", "[d0_0|d0_1,?]");
 
-    // Inputs are [...,M,M] and [...,M,K].  Output is [...,M,K].
-    // First test where ... is empty.
-    INFER_OK(op, "[?,?];[?,?]", "[d0_0,d1_1]");
-    INFER_OK(op, "[?,?];[1,?]", "[d1_0,d1_1]");
-    INFER_OK(op, "[1,?];[1,?]", "[d0_0|d1_0,d1_1]");
-    INFER_OK(op, "[?,1];[1,?]", "[d0_1|d1_0,d1_1]");
-    INFER_OK(op, "[1,1];[?,?]", "[d0_0,d1_1]");
-    INFER_OK(op, "[1,1];[1,?]", "[d0_0|d0_1|d1_0,d1_1]");
-    // Test with ... being 2-d.
-    INFER_OK(op, "[10,?,?,?];[?,20,1,?]", "[d0_0,d1_1,d1_2,d1_3]");
-    INFER_OK(op, "[10,?,1,?];[?,20,1,?]", "[d0_0,d1_1,d0_2|d1_2,d1_3]");
-    INFER_OK(op, "[10,?,?,1];[?,20,1,?]", "[d0_0,d1_1,d0_3|d1_2,d1_3]");
-    INFER_OK(op, "[10,?,1,1];[?,20,?,?]", "[d0_0,d1_1,d0_2,d1_3]");
-    INFER_OK(op, "[10,?,1,1];[?,20,1,?]", "[d0_0,d1_1,d0_2|d0_3|d1_2,d1_3]");
-  }
+  // Inputs are [...,M,M] and [...,M,K].  Output is [...,M,K].
+  // First test where ... is empty.
+  INFER_OK(op, "[?,?];[?,?]", "[d0_0,d1_1]");
+  INFER_OK(op, "[?,?];[1,?]", "[d1_0,d1_1]");
+  INFER_OK(op, "[1,?];[1,?]", "[d0_0|d1_0,d1_1]");
+  INFER_OK(op, "[?,1];[1,?]", "[d0_1|d1_0,d1_1]");
+  INFER_OK(op, "[1,1];[?,?]", "[d0_0,d1_1]");
+  INFER_OK(op, "[1,1];[1,?]", "[d0_0|d0_1|d1_0,d1_1]");
+  // Test with ... being 2-d.
+  INFER_OK(op, "[10,?,?,?];[?,20,1,?]", "[d0_0,d1_1,d1_2,d1_3]");
+  INFER_OK(op, "[10,?,1,?];[?,20,1,?]", "[d0_0,d1_1,d0_2|d1_2,d1_3]");
+  INFER_OK(op, "[10,?,?,1];[?,20,1,?]", "[d0_0,d1_1,d0_3|d1_2,d1_3]");
+  INFER_OK(op, "[10,?,1,1];[?,20,?,?]", "[d0_0,d1_1,d0_2,d1_3]");
+  INFER_OK(op, "[10,?,1,1];[?,20,1,?]", "[d0_0,d1_1,d0_2|d0_3|d1_2,d1_3]");
+}
+
+TEST(LinalgOpsTest, MatrixTriangularSolve_ShapeFn) {
+  ShapeInferenceTestOp op("MatrixTriangularSolve");
+  INFER_OK(op, "?;?", "?");
+  INFER_ERROR("Shape must be at least rank 2 but is rank 1", op, "[1];?");
+  INFER_ERROR("Dimensions must be equal, but are 1 and 2", op, "[1,2];?");
+  INFER_ERROR("Shape must be at least rank 2 but is rank 1", op, "[5,?,?];[6]");
+
+  // Inputs are [...,M,M] and [...,M,K].  Output is [...,M,K].
+  // First test where ... is empty.
+  INFER_OK(op, "[?,?];[?,?]", "[d0_0,d1_1]");
+  INFER_OK(op, "[?,?];[1,?]", "[d1_0,d1_1]");
+  INFER_OK(op, "[1,?];[1,?]", "[d0_0|d1_0,d1_1]");
+  INFER_OK(op, "[?,1];[1,?]", "[d0_1|d1_0,d1_1]");
+  INFER_OK(op, "[1,1];[?,?]", "[d0_0,d1_1]");
+  INFER_OK(op, "[1,1];[1,?]", "[d0_0|d0_1|d1_0,d1_1]");
+  // Test with ... being 2-d.
+  INFER_OK(op, "[10,?,?,?];[?,20,1,?]", "[d0_0,d1_1,d1_2,d1_3]");
+  INFER_OK(op, "[10,?,1,?];[?,20,1,?]", "[d0_0,d1_1,d0_2|d1_2,d1_3]");
+  INFER_OK(op, "[10,?,?,1];[?,20,1,?]", "[d0_0,d1_1,d0_3|d1_2,d1_3]");
+  INFER_OK(op, "[10,?,1,1];[?,20,?,?]", "[d0_0,d1_1,d0_2,d1_3]");
+  INFER_OK(op, "[10,?,1,1];[?,20,1,?]", "[d0_0,d1_1,d0_2|d0_3|d1_2,d1_3]");
 }
 
 TEST(LinalgOpsTest, MatrixSolveLs_ShapeFn) {

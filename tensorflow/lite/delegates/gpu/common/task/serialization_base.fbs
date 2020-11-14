@@ -1,0 +1,183 @@
+// Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+namespace tflite.gpu.data;
+
+table Int4 {
+  x:int32;
+  y:int32;
+  z:int32;
+  w:int32;
+}
+
+table Int3 {
+  x:int32;
+  y:int32;
+  z:int32;
+}
+
+table Int2 {
+  x:int32;
+  y:int32;
+}
+
+enum AccessType : byte {
+  READ = 0,
+  WRITE = 1,
+  READ_WRITE = 2,
+}
+
+table StateVariable {
+  key:string;
+  value:string;
+}
+
+table GPUObjectDescriptor {
+  state_vars:[StateVariable];
+  access_type:AccessType;
+}
+
+table IntValue {
+  name:string;
+  value:int32;
+  active:bool;
+}
+
+table FloatValue {
+  name:string;
+  value:float;
+  active:bool;
+}
+
+table HalfValue {
+  name:string;
+  value:float;
+  active:bool;
+}
+
+enum DataType : byte {
+  UNKNOWN = 0,
+  FLOAT32 = 1,
+  FLOAT16 = 2,
+}
+
+enum MemoryType : byte {
+  GLOBAL = 0,
+  CONSTANT = 1,
+  LOCAL = 2,
+}
+
+table BufferDescriptor {
+  base_obj:GPUObjectDescriptor;
+  element_type:DataType;
+  element_size:int32;
+  memory_type:MemoryType;
+  attributes:[string];
+  size:int32;
+  data:[uint8];
+}
+
+table Texture2DDescriptor {
+  base_obj:GPUObjectDescriptor;
+  element_type:DataType;
+  normalized:bool;
+  normalized_type:DataType;
+  size:Int2;
+  data:[uint8];
+}
+
+enum LinearStorageType : byte {
+  BUFFER = 0,
+  TEXTURE_2D = 1,
+}
+
+table TensorLinearDescriptor {
+  base_obj:GPUObjectDescriptor;
+  storage_type:LinearStorageType;
+  element_type:DataType;
+  memory_type:MemoryType;
+  size:int32;
+  data:[uint8];
+}
+
+enum TensorStorageType : byte {
+  UNKNOWN = 0,
+  BUFFER = 1,
+  IMAGE_BUFFER = 2,
+  TEXTURE_2D = 3,
+  TEXTURE_3D = 4,
+  TEXTURE_ARRAY = 5,
+  SINGLE_TEXTURE_2D = 6,
+}
+
+enum Layout : byte {
+  UNKNOWN = 0,
+  HWC = 1,
+  BHWC = 2,
+  HWDC = 3,
+  BHWDC = 4,
+}
+
+table BHWDC {
+  b:int32;
+  h:int32;
+  w:int32;
+  d:int32;
+  c:int32;
+}
+
+table TensorDescriptor {
+  base_obj:GPUObjectDescriptor;
+  data_type:DataType;
+  storage_type:TensorStorageType;
+  layout:Layout;
+  shape:BHWDC;
+  data:[uint8];
+}
+
+table BufferDescriptorMapValue {
+  key:string;
+  value:BufferDescriptor;
+}
+
+table Texture2DDescriptorMapValue {
+  key:string;
+  value:Texture2DDescriptor;
+}
+
+table TensorLinearDescriptorMapValue {
+  key:string;
+  value:TensorLinearDescriptor;
+}
+
+table TensorDescriptorMapValue {
+  key:string;
+  value:TensorDescriptor;
+}
+
+table Arguments {
+  int_values:[IntValue];
+  float_values:[FloatValue];
+  half_values:[HalfValue];
+
+  buffer_refs:[BufferDescriptorMapValue];
+  texture2d_refs:[Texture2DDescriptorMapValue];
+  tensor_linear_refs:[TensorLinearDescriptorMapValue];
+  tensor_refs:[TensorDescriptorMapValue];
+
+  buffer_objects:[BufferDescriptorMapValue];
+  texture2d_objects:[Texture2DDescriptorMapValue];
+  tensor_linear_objects:[TensorLinearDescriptorMapValue];
+  tensor_objects:[TensorDescriptorMapValue];
+}

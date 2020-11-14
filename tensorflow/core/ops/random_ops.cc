@@ -45,8 +45,18 @@ REGISTER_OP("RandomUniformInt")
     .Attr("T: {int32, int64}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      Status s = c->WithRank(c->input(1), 0, &unused);
+      if (!s.ok()) {
+        return errors::InvalidArgument(
+            "minval must be a scalar; got a tensor of shape ",
+            c->DebugString(c->input(1)));
+      }
+      s = c->WithRank(c->input(2), 0, &unused);
+      if (!s.ok()) {
+        return errors::InvalidArgument(
+            "maxval must be a scalar; got a tensor of shape ",
+            c->DebugString(c->input(2)));
+      }
       return shape_inference::RandomShape(c);
     });
 

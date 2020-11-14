@@ -1,3 +1,4 @@
+diff -ru a/Eigen/src/Geometry/arch/Geometry_SSE.h b/Eigen/src/Geometry/arch/Geometry_SSE.h
 --- a/Eigen/src/Geometry/arch/Geometry_SSE.h
 +++ b/Eigen/src/Geometry/arch/Geometry_SSE.h
 @@ -33,13 +33,14 @@
@@ -22,161 +23,76 @@
      return res;
    }
  };
---- a/unsupported/Eigen/SpecialFunctions
-+++ b/unsupported/Eigen/SpecialFunctions
-@@ -48,6 +48,9 @@
+diff -ru a/Eigen/src/Core/GenericPacketMath.h b/Eigen/src/Core/GenericPacketMath.h
+--- a/Eigen/src/Core/GenericPacketMath.h
++++ b/Eigen/src/Core/GenericPacketMath.h
+@@ -255,49 +255,43 @@
+   return std::complex<RealScalar>(b, b);
  }
-
- #include "src/SpecialFunctions/SpecialFunctionsImpl.h"
-+#if defined(EIGEN_HIPCC)
-+#include "src/SpecialFunctions/HipVectorCompatibility.h"
-+#endif
- #include "src/SpecialFunctions/SpecialFunctionsPacketMath.h"
- #include "src/SpecialFunctions/SpecialFunctionsHalf.h"
- #include "src/SpecialFunctions/SpecialFunctionsFunctors.h"
---- /dev/null
-+++ b/unsupported/Eigen/src/SpecialFunctions/HipVectorCompatibility.h
-@@ -0,0 +1,143 @@
-+#ifndef HIP_VECTOR_COMPATIBILITY_H
-+#define HIP_VECTOR_COMPATIBILITY_H
-+
-+namespace hip_impl {
-+  template <typename, typename, unsigned int> struct Scalar_accessor;
-+}   // end namespace hip_impl
-+
-+namespace Eigen {
-+namespace internal {
-+
-+#if EIGEN_HAS_C99_MATH
-+template <typename T, typename U, unsigned int n>
-+struct lgamma_impl<hip_impl::Scalar_accessor<T, U, n>> : lgamma_impl<T> {};
-+#endif
-+
-+template <typename T, typename U, unsigned int n>
-+struct digamma_impl_maybe_poly<hip_impl::Scalar_accessor<T, U, n>>
-+  : digamma_impl_maybe_poly<T> {};
-+
-+template <typename T, typename U, unsigned int n>
-+struct digamma_impl<hip_impl::Scalar_accessor<T, U, n>> : digamma_impl<T> {};
-+
-+#if EIGEN_HAS_C99_MATH
-+template <typename T, typename U, unsigned int n>
-+struct erf_impl<hip_impl::Scalar_accessor<T, U, n>> : erf_impl<T> {};
-+#endif  // EIGEN_HAS_C99_MATH
-+
-+#if EIGEN_HAS_C99_MATH
-+template <typename T, typename U, unsigned int n>
-+struct erfc_impl<hip_impl::Scalar_accessor<T, U, n>> : erfc_impl<T> {};
-+#endif  // EIGEN_HAS_C99_MATH
-+
-+#if EIGEN_HAS_C99_MATH
-+template <typename T, typename U, unsigned int n>
-+struct ndtri_impl<hip_impl::Scalar_accessor<T, U, n>> : ndtri_impl<T> {};
-+#endif  // EIGEN_HAS_C99_MATH
-+
-+template <typename T, typename U, unsigned int n, IgammaComputationMode mode>
-+struct igammac_cf_impl<hip_impl::Scalar_accessor<T, U, n>, mode>
-+  : igammac_cf_impl<T, mode> {};
-+
-+template <typename T, typename U, unsigned int n, IgammaComputationMode mode>
-+struct igamma_series_impl<hip_impl::Scalar_accessor<T, U, n>, mode>
-+  : igamma_series_impl<T, mode> {};
-+
-+#if EIGEN_HAS_C99_MATH
-+template <typename T, typename U, unsigned int n>
-+struct igammac_impl<hip_impl::Scalar_accessor<T, U, n>> : igammac_impl<T> {};
-+#endif  // EIGEN_HAS_C99_MATH
-+
-+#if EIGEN_HAS_C99_MATH
-+template <typename T, typename U, unsigned int n, IgammaComputationMode mode>
-+struct igamma_generic_impl<hip_impl::Scalar_accessor<T, U, n>, mode>
-+  : igamma_generic_impl<T, mode> {};
-+#endif  // EIGEN_HAS_C99_MATH
-+
-+template <typename T, typename U, unsigned int n>
-+struct igamma_impl<hip_impl::Scalar_accessor<T, U, n>> : igamma_impl<T> {};
-+
-+template <typename T, typename U, unsigned int n>
-+struct igamma_der_a_retval<hip_impl::Scalar_accessor<T, U, n>>
-+  : igamma_der_a_retval<T> {};
-+
-+template <typename T, typename U, unsigned int n>
-+struct igamma_der_a_impl<hip_impl::Scalar_accessor<T, U, n>>
-+  : igamma_der_a_impl<T> {};
-+
-+template <typename T, typename U, unsigned int n>
-+struct gamma_sample_der_alpha_retval<hip_impl::Scalar_accessor<T, U, n>>
-+  : gamma_sample_der_alpha_retval<T> {};
-+
-+template <typename T, typename U, unsigned int n>
-+struct gamma_sample_der_alpha_impl<hip_impl::Scalar_accessor<T, U, n>>
-+  : gamma_sample_der_alpha_impl<T> {};
-+
-+template <typename T, typename U, unsigned int n>
-+struct zeta_impl_series<hip_impl::Scalar_accessor<T, U, n>>
-+  : zeta_impl_series<T> {};
-+
-+template <typename T, typename U, unsigned int n>
-+struct zeta_impl<hip_impl::Scalar_accessor<T, U, n>> : zeta_impl<T> {};
-+
-+#if EIGEN_HAS_C99_MATH
-+template <typename T, typename U, unsigned int n>
-+struct polygamma_impl<hip_impl::Scalar_accessor<T, U, n>>
-+  : polygamma_impl<T> {};
-+#endif  // EIGEN_HAS_C99_MATH
-+
-+#if EIGEN_HAS_C99_MATH
-+template <typename T, typename U, unsigned int n>
-+struct betainc_impl<hip_impl::Scalar_accessor<T, U, n>> : betainc_impl<T> {};
-+
-+template <typename T, typename U, unsigned int n>
-+struct incbeta_cfe<hip_impl::Scalar_accessor<T, U, n>> : incbeta_cfe<T> {};
-+
-+template <typename T, typename U, unsigned int n>
-+struct betainc_helper<hip_impl::Scalar_accessor<T, U, n>>
-+  : betainc_helper<T> {};
-+#else
-+template <typename T, typename U, unsigned int n>
-+struct betainc_impl<hip_impl::Scalar_accessor<T, U, n>> : betainc_impl<T> {};
-+#endif  // EIGEN_HAS_C99_MATH
-+
-+template <typename T, typename U, unsigned int n>
-+struct bessel_i0e_impl<hip_impl::Scalar_accessor<T, U, n>> : bessel_i0e_impl<T> {};
-+
-+template <typename T, typename U, unsigned int n>
-+struct bessel_i0_impl<hip_impl::Scalar_accessor<T, U, n>> : bessel_i0_impl<T> {};
-+
-+template <typename T, typename U, unsigned int n>
-+struct bessel_i1e_impl<hip_impl::Scalar_accessor<T, U, n>> : bessel_i1e_impl<T> {};
-+
-+template <typename T, typename U, unsigned int n>
-+struct bessel_i1_impl<hip_impl::Scalar_accessor<T, U, n>> : bessel_i1_impl<T> {};
-+
-+template <typename T, typename U, unsigned int n>
-+struct bessel_k0e_impl<hip_impl::Scalar_accessor<T, U, n>> : bessel_k0e_impl<T> {};
-+
-+template <typename T, typename U, unsigned int n>
-+struct bessel_k0_impl<hip_impl::Scalar_accessor<T, U, n>> : bessel_k0_impl<T> {};
-+
-+template <typename T, typename U, unsigned int n>
-+struct bessel_k1e_impl<hip_impl::Scalar_accessor<T, U, n>> : bessel_k1e_impl<T> {};
-+
-+template <typename T, typename U, unsigned int n>
-+struct bessel_k1_impl<hip_impl::Scalar_accessor<T, U, n>> : bessel_k1_impl<T> {};
-+
-+template <typename T, typename U, unsigned int n>
-+struct bessel_j0_impl<hip_impl::Scalar_accessor<T, U, n>> : bessel_j0_impl<T> {};
-+
-+template <typename T, typename U, unsigned int n>
-+struct bessel_y0_impl<hip_impl::Scalar_accessor<T, U, n>> : bessel_y0_impl<T> {};
-+
-+template <typename T, typename U, unsigned int n>
-+struct bessel_j1_impl<hip_impl::Scalar_accessor<T, U, n>> : bessel_j1_impl<T> {};
-+
-+template <typename T, typename U, unsigned int n>
-+struct bessel_y1_impl<hip_impl::Scalar_accessor<T, U, n>> : bessel_y1_impl<T> {};
-+
-+}  // end namespace internal
-+}  // end namespace Eigen
-+
-+#endif  // HIP_VECTOR_COMPATIBILITY_H
+ 
+-template <typename Packet, typename Op>
+-EIGEN_DEVICE_FUNC inline Packet bitwise_helper(const Packet& a, const Packet& b, Op op) {
++/** \internal \returns the bitwise and of \a a and \a b */
++template<typename Packet> EIGEN_DEVICE_FUNC inline Packet
++pand(const Packet& a, const Packet& b) {
+   const unsigned char* a_ptr = reinterpret_cast<const unsigned char*>(&a);
+   const unsigned char* b_ptr = reinterpret_cast<const unsigned char*>(&b);
+   Packet c;
+   unsigned char* c_ptr = reinterpret_cast<unsigned char*>(&c);
+   for (size_t i = 0; i < sizeof(Packet); ++i) {
+-    *c_ptr++ = op(*a_ptr++, *b_ptr++);
++    *c_ptr++ = *a_ptr++ & *b_ptr++;
+   }
+   return c;
+ }
+ 
+-/** \internal \returns the bitwise and of \a a and \a b */
+-template<typename Packet> EIGEN_DEVICE_FUNC inline Packet
+-pand(const Packet& a, const Packet& b) {
+-#if defined(EIGEN_HIP_DEVICE_COMPILE)
+-  return bitwise_helper(a ,b, std::bit_and<unsigned char>());
+-#else
+-  EIGEN_USING_STD(bit_and);
+-  return bitwise_helper(a ,b, bit_and<unsigned char>());
+-#endif
+-}
+-
+ /** \internal \returns the bitwise or of \a a and \a b */
+ template<typename Packet> EIGEN_DEVICE_FUNC inline Packet
+ por(const Packet& a, const Packet& b) {
+-#if defined(EIGEN_HIP_DEVICE_COMPILE)
+-  return bitwise_helper(a ,b, std::bit_or<unsigned char>());
+-#else
+-  EIGEN_USING_STD(bit_or);
+-  return bitwise_helper(a ,b, bit_or<unsigned char>());
+-#endif
++  const unsigned char* a_ptr = reinterpret_cast<const unsigned char*>(&a);
++  const unsigned char* b_ptr = reinterpret_cast<const unsigned char*>(&b);
++  Packet c;
++  unsigned char* c_ptr = reinterpret_cast<unsigned char*>(&c);
++  for (size_t i = 0; i < sizeof(Packet); ++i) {
++    *c_ptr++ = *a_ptr++ | *b_ptr++;
++  }
++  return c;
+ }
+ 
+ /** \internal \returns the bitwise xor of \a a and \a b */
+ template<typename Packet> EIGEN_DEVICE_FUNC inline Packet
+ pxor(const Packet& a, const Packet& b) {
+-#if defined(EIGEN_HIP_DEVICE_COMPILE)
+-  return bitwise_helper(a ,b, std::bit_xor<unsigned char>());
+-#else
+-  EIGEN_USING_STD(bit_xor);
+-  return bitwise_helper(a ,b, bit_xor<unsigned char>());
+-#endif
++  const unsigned char* a_ptr = reinterpret_cast<const unsigned char*>(&a);
++  const unsigned char* b_ptr = reinterpret_cast<const unsigned char*>(&b);
++  Packet c;
++  unsigned char* c_ptr = reinterpret_cast<unsigned char*>(&c);
++  for (size_t i = 0; i < sizeof(Packet); ++i) {
++    *c_ptr++ = *a_ptr++ ^ *b_ptr++;
++  }
++  return c;
+ }
+ 
+ /** \internal \returns the bitwise and of \a a and not \a b */

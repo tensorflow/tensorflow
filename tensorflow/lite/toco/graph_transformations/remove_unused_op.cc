@@ -58,7 +58,7 @@ namespace toco {
     if (found_output_as_rnn_state_array) {
       continue;
     }
-    for (const string& output_array : model->flags.output_arrays()) {
+    for (const std::string& output_array : model->flags.output_arrays()) {
       if (output == output_array) {
         return ::tensorflow::Status::OK();
       }

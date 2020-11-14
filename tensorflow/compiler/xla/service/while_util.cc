@@ -125,8 +125,9 @@ WhileUtil::MakeInstructionsLiveIn(
   // We want to get rid of the old while instruction even if it has side
   // effecting operations so we do a manual HloComputation::RemoveInstruction
   // instead of relying on HloComputation::ReplaceInstruction.
-  TF_RETURN_IF_ERROR(while_instr->ReplaceAllUsesWith(TupleUtil::ExtractPrefix(
-      new_while, while_instr->shape().tuple_shapes_size())));
+  HloInstruction* replacement_instr = TupleUtil::ExtractPrefix(
+      new_while, while_instr->shape().tuple_shapes_size());
+  TF_RETURN_IF_ERROR(while_instr->ReplaceAllUsesWith(replacement_instr));
   TF_RETURN_IF_ERROR(containing_computation->RemoveInstruction(while_instr));
 
   HloInstruction* while_body_param = new_while_body->parameter_instruction(0);
@@ -142,6 +143,7 @@ WhileUtil::MakeInstructionsLiveIn(
   WhileUtil::MakeInstructionsLiveInResult result;
 
   result.new_while_instr = new_while;
+  result.replacement_instr = replacement_instr;
   result.while_body_live_in_values = std::move(live_in_instructions);
   result.while_body_instruction_map = std::move(inlined_instructions_map);
 

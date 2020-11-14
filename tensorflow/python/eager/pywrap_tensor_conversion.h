@@ -73,27 +73,31 @@ struct TFE_TensorHandleCache {
   ~TFE_TensorHandleCache() { DecrefUnrefAll(); }
 
   TFE_TensorHandle* Lookup(PyObject* value, tensorflow::DataType dtype,
+                           TFE_Context* ctx,
                            absl::string_view device_name) const;
 
-  void Insert(PyObject* value, tensorflow::DataType dtype,
-              absl::string_view device_name, TFE_TensorHandle* handle);
+  void Insert(PyObject* value, tensorflow::DataType dtype, TFE_Context* ctx,
+              absl::string_view device_name, TFE_TensorHandle* h);
 
   void Clear();
 
  private:
-  // TODO(slebedev): should the key depend on TFE_Context?
-  using Key = std::tuple<PyObjectPtr, tensorflow::DataType, absl::string_view>;
+  // TODO(kkb): Instead of `TFE_Context*` key, ideally Python's context object
+  // should have TFE_TensorHandleCache instance. Migrate once we Python context
+  // object is backed by C++ data structure. b/169790439
+  using Key = std::tuple<PyObjectPtr, tensorflow::DataType, TFE_Context*,
+                         absl::string_view>;
 
   void DecrefUnrefAll() {
     for (const auto& p : cache) {
       Py_DECREF(static_cast<PyObject*>(std::get<0>(p.first)));
-      p.second->Unref();
+      TFE_DeleteTensorHandle(p.second);
     }
   }
 
   // Not guarded by a mutex because the code is only used while the
   // GIL is held.
-  absl::flat_hash_map<Key, tensorflow::TensorHandle*> cache;
+  absl::flat_hash_map<Key, TFE_TensorHandle*> cache;
 };
 
 }  // namespace tensorflow

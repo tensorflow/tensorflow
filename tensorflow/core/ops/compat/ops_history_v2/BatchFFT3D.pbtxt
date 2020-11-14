@@ -1,0 +1,14 @@
+op {
+  name: "BatchFFT3D"
+  input_arg {
+    name: "input"
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "output"
+    type: DT_COMPLEX64
+  }
+  deprecation {
+    version: 15
+  }
+}

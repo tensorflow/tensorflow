@@ -631,7 +631,7 @@ ENTRY main {
 }
 )";
 
-  AssertArrayWithConstantsForRootExpressionIs(hlo_text, 1 + R"(
+  AssertArrayWithConstantsForRootExpressionIs(hlo_text, R"(
 (scalar-indexed-const (constant f32[3,4] f32[3,4] {
   { 0.761594176, 0.964027584, 0.995054781, 0.999329329 },
   { 0.761594176, 0.995054781, 0.964027584, 0.999329329 },
@@ -658,7 +658,7 @@ ENTRY main {
 }
 )";
 
-  AssertArrayWithConstantsForRootExpressionIs(hlo_text, 1 + R"(
+  AssertArrayWithConstantsForRootExpressionIs(hlo_text, R"(
 (scalar-indexed-const (constant s32[3,4] s32[3,4] {
   { 6, 7, 8, 9 },
   { 6, 8, 7, 9 },
@@ -686,7 +686,7 @@ ENTRY main {
 }
 )";
 
-  AssertArrayWithConstantsForRootExpressionIs(hlo_text, 1 + R"(
+  AssertArrayWithConstantsForRootExpressionIs(hlo_text, R"(
 (scalar-indexed-const (constant s32[3,4] s32[3,4] {
   { -4, -3, -2, -1 },
   { -4, -2, -3, -1 },
@@ -714,7 +714,7 @@ ENTRY main {
 }
 )";
 
-  AssertArrayWithConstantsForRootExpressionIs(hlo_text, 1 + R"(
+  AssertArrayWithConstantsForRootExpressionIs(hlo_text, R"(
 (scalar-indexed-const (constant s32[3,4] s32[3,4] {
   { 4, 3, 2, 1 },
   { 4, 2, 3, 1 },
@@ -741,7 +741,7 @@ ENTRY main {
 }
 )";
 
-  AssertArrayWithConstantsForRootExpressionIs(hlo_text, 1 + R"(
+  AssertArrayWithConstantsForRootExpressionIs(hlo_text, R"(
 (scalar-indexed-const (constant s32[3,4] s32[3,4] {
   { 11, 13, 15, 17 },
   { 11, 14, 14, 17 },

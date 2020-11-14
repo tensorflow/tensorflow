@@ -94,6 +94,15 @@ inline std::vector<int8_t> Split(const string& s, const string& delimiter) {
 }
 
 template <>
+inline std::vector<int16_t> Split(const string& s, const string& delimiter) {
+  std::vector<int16_t> fields;
+  for (const auto& p : SplitToPos(s, delimiter)) {
+    fields.push_back(strtol(s.data() + p.first, nullptr, 10));
+  }
+  return fields;
+}
+
+template <>
 inline std::vector<bool> Split(const string& s, const string& delimiter) {
   std::vector<bool> fields;
   for (const auto& p : SplitToPos(s, delimiter)) {
@@ -118,6 +127,26 @@ inline std::vector<std::complex<float>> Split(const string& s,
       return fields;
     }
     std::complex<float> c(real, img);
+    fields.push_back(c);
+  }
+  return fields;
+}
+
+template <>
+inline std::vector<std::complex<double>> Split(const string& s,
+                                               const string& delimiter) {
+  std::vector<std::complex<double>> fields;
+  for (const auto& p : SplitToPos(s, delimiter)) {
+    std::string sc = s.substr(p.first, p.second - p.first);
+    std::string::size_type sz_real, sz_img;
+    double real = std::stod(sc, &sz_real);
+    double img = std::stod(sc.substr(sz_real), &sz_img);
+    if (sz_real + sz_img + 1 != sc.length()) {
+      std::cerr << "There were errors in parsing string, " << sc
+                << ", to complex value." << std::endl;
+      return fields;
+    }
+    std::complex<double> c(real, img);
     fields.push_back(c);
   }
   return fields;

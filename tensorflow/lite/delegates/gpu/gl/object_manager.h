@@ -41,7 +41,7 @@ namespace gl {
 class ObjectManager {
  public:
   // Moves ownership over the given buffer to the manager.
-  Status RegisterBuffer(uint32_t id, GlBuffer buffer);
+  absl::Status RegisterBuffer(uint32_t id, GlBuffer buffer);
 
   void RemoveBuffer(uint32_t id);
 
@@ -49,7 +49,7 @@ class ObjectManager {
   GlBuffer* FindBuffer(uint32_t id) const;
 
   // Moves ownership over the given texture to the manager.
-  Status RegisterTexture(uint32_t id, GlTexture texture);
+  absl::Status RegisterTexture(uint32_t id, GlTexture texture);
 
   void RemoveTexture(uint32_t id);
 
@@ -67,17 +67,17 @@ class ObjectManager {
 
 // Creates read-only buffer from the given tensor. Tensor data is converted to
 // PHWC4 layout.
-Status CreatePHWC4BufferFromTensor(const TensorFloat32& tensor,
-                                   GlBuffer* gl_buffer);
+absl::Status CreatePHWC4BufferFromTensor(const TensorFloat32& tensor,
+                                         GlBuffer* gl_buffer);
 
 // Creates read-write buffer for the given tensor shape, where data layout is
 // supposed to be PHWC4.
-Status CreatePHWC4BufferFromTensorRef(const TensorRef<BHWC>& tensor_ref,
-                                      GlBuffer* gl_buffer);
+absl::Status CreatePHWC4BufferFromTensorRef(const TensorRef<BHWC>& tensor_ref,
+                                            GlBuffer* gl_buffer);
 
 // Copies data from a buffer that holds data in PHWC4 layout to the given
 // tensor.
-Status CopyFromPHWC4Buffer(const GlBuffer& buffer, TensorFloat32* tensor);
+absl::Status CopyFromPHWC4Buffer(const GlBuffer& buffer, TensorFloat32* tensor);
 
 }  // namespace gl
 }  // namespace gpu

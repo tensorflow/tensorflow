@@ -48,6 +48,12 @@ opt<std::string> output_arrays(
     llvm::cl::init(""));
 
 // NOLINTNEXTLINE
+opt<std::string> control_output_arrays(
+    "tf-control-output-arrays",
+    llvm::cl::desc("Control output node names, separated by ','"),
+    llvm::cl::init(""));
+
+// NOLINTNEXTLINE
 opt<std::string> inference_type(
     "tf-inference-type",
     llvm::cl::desc(
@@ -103,3 +109,9 @@ opt<bool> graph_as_function("tf-graph-as-function",
 opt<bool> upgrade_legacy("tf-upgrade-legacy",
                          llvm::cl::desc("Upgrade legacy TF graph behavior"),
                          llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+opt<bool> enable_shape_inference(
+    "tf-enable-shape-inference-on-import",
+    llvm::cl::desc("Enable shape inference on import (temporary)"),
+    llvm::cl::init(false));

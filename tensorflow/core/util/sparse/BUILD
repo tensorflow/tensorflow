@@ -1,3 +1,5 @@
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
 package(
     licenses = ["notice"],  # Apache 2.0
 )
@@ -8,8 +10,9 @@ filegroup(
     visibility = ["//tensorflow/core:__pkg__"],
 )
 
+# Export source files needed for mobile builds, which do not use granular targets.
 filegroup(
-    name = "mobile_srcs_no_runtime_group",
+    name = "mobile_srcs_only_runtime",
     srcs = [
         "dim_comparator.h",
         "group_iterator.cc",

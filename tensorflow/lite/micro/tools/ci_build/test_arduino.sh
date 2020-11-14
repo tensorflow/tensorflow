@@ -21,18 +21,19 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR=${SCRIPT_DIR}/../../../../..
-cd ${ROOT_DIR}
+cd "${ROOT_DIR}"
 
 source tensorflow/lite/micro/tools/ci_build/helper_functions.sh
 
 readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
 
 TARGET=arduino
+TAGS=cmsis-nn
 
 # TODO(b/143715361): parallel builds do not work with generated files right now.
 readable_run make -f tensorflow/lite/micro/tools/make/Makefile \
   TARGET=${TARGET} \
-  TAGS="portable_optimized" \
+  TAGS=${TAGS} \
   generate_arduino_zip
 
 readable_run tensorflow/lite/micro/tools/ci_build/install_arduino_cli.sh

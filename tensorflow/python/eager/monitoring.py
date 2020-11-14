@@ -19,10 +19,13 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import functools
+import time
 
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python import pywrap_tfe
-from tensorflow.python.eager import eager_util as c_api_util
+from tensorflow.python.client import pywrap_tf_session
+from tensorflow.python.framework import c_api_util
 from tensorflow.python.util import compat
 
 _MetricMethod = collections.namedtuple('MetricMethod', 'create delete get_cell')
@@ -101,6 +104,8 @@ _sampler_methods = [
 class Metric(object):
   """The base class of metric."""
 
+  __slots__ = ["_metric", "_metric_name", "_metric_methods", "_label_length"]
+
   def __init__(self, metric_name, metric_methods, label_length, *args):
     """Creates a new metric.
 
@@ -142,6 +147,8 @@ class Metric(object):
 class CounterCell(object):
   """CounterCell stores each value of a Counter."""
 
+  __slots__ = ["_cell"]
+
   def __init__(self, cell):
     """Creates a new CounterCell.
 
@@ -171,6 +178,8 @@ class Counter(Metric):
   user to increment each value.
   """
 
+  __slots__ = []
+
   def __init__(self, name, description, *labels):
     """Creates a new Counter.
 
@@ -189,6 +198,8 @@ class Counter(Metric):
 
 class IntGaugeCell(object):
   """A single integer value stored in an `IntGauge`."""
+
+  __slots__ = ["_cell"]
 
   def __init__(self, cell):
     """Creates a new IntGaugeCell.
@@ -219,6 +230,8 @@ class IntGauge(Metric):
   allows the user to set each value.
   """
 
+  __slots__ = []
+
   def __init__(self, name, description, *labels):
     """Creates a new IntGauge.
 
@@ -237,6 +250,8 @@ class IntGauge(Metric):
 
 class StringGaugeCell(object):
   """A single string value stored in an `StringGauge`."""
+
+  __slots__ = ["_cell"]
 
   def __init__(self, cell):
     """Creates a new StringGaugeCell.
@@ -258,7 +273,7 @@ class StringGaugeCell(object):
     """Retrieves the current value."""
     with c_api_util.tf_buffer() as buffer_:
       pywrap_tfe.TFE_MonitoringStringGaugeCellValue(self._cell, buffer_)
-      value = pywrap_tfe.TF_GetBuffer(buffer_).decode('utf-8')
+      value = pywrap_tf_session.TF_GetBuffer(buffer_).decode('utf-8')
     return value
 
 
@@ -269,6 +284,8 @@ class StringGauge(Metric):
   label-less metric). Each value is identified by a tuple of labels. The class
   allows the user to set each value.
   """
+
+  __slots__ = []
 
   def __init__(self, name, description, *labels):
     """Creates a new StringGauge.
@@ -288,6 +305,8 @@ class StringGauge(Metric):
 
 class BoolGaugeCell(object):
   """A single boolean value stored in an `BoolGauge`."""
+
+  __slots__ = ["_cell"]
 
   def __init__(self, cell):
     """Creates a new BoolGaugeCell.
@@ -318,6 +337,8 @@ class BoolGauge(Metric):
   allows the user to set each value.
   """
 
+  __slots__ = []
+
   def __init__(self, name, description, *labels):
     """Creates a new BoolGauge.
 
@@ -336,6 +357,8 @@ class BoolGauge(Metric):
 
 class SamplerCell(object):
   """SamplerCell stores each value of a Sampler."""
+
+  __slots__ = ["_cell"]
 
   def __init__(self, cell):
     """Creates a new SamplerCell.
@@ -361,7 +384,7 @@ class SamplerCell(object):
     """
     with c_api_util.tf_buffer() as buffer_:
       pywrap_tfe.TFE_MonitoringSamplerCellValue(self._cell, buffer_)
-      proto_data = pywrap_tfe.TF_GetBuffer(buffer_)
+      proto_data = pywrap_tf_session.TF_GetBuffer(buffer_)
     histogram_proto = summary_pb2.HistogramProto()
     histogram_proto.ParseFromString(compat.as_bytes(proto_data))
     return histogram_proto
@@ -369,6 +392,8 @@ class SamplerCell(object):
 
 class Buckets(object):
   """Bucketing strategies for the samplers."""
+
+  __slots__ = ["buckets"]
 
   def __init__(self, buckets):
     """Creates a new Buckets.
@@ -389,6 +414,8 @@ class ExponentialBuckets(Buckets):
       [-DBL_MAX, ..., scale * growth^i,
        scale * growth_factor^(i + 1), ..., DBL_MAX].
   """
+
+  __slots__ = []
 
   def __init__(self, scale, growth_factor, bucket_count):
     """Creates a new exponential Buckets.
@@ -412,6 +439,8 @@ class Sampler(Metric):
   user to add a sample to each histogram value.
   """
 
+  __slots__ = []
+
   def __init__(self, name, buckets, description, *labels):
     """Creates a new Sampler.
 
@@ -427,3 +456,48 @@ class Sampler(Metric):
   def get_cell(self, *labels):
     """Retrieves the cell."""
     return SamplerCell(super(Sampler, self).get_cell(*labels))
+
+
+class MonitoredTimer(object):
+  """A context manager to measure the walltime and increment a Counter cell."""
+
+  __slots__ = ["cell", "t"]
+
+  def __init__(self, cell):
+    """Creates a new MonitoredTimer.
+
+    Args:
+      cell: the cell associated with the time metric that will be inremented.
+    """
+    self.cell = cell
+
+  def __enter__(self):
+    self.t = time.time()
+    return self
+
+  def __exit__(self, exception_type, exception_value, traceback):
+    del exception_type, exception_value, traceback
+    micro_seconds = (time.time() - self.t) * 1000000
+    self.cell.increase_by(int(micro_seconds))
+
+
+def monitored_timer(cell):
+  """A function decorator for adding MonitoredTimer support.
+
+  Arguments:
+    cell: the cell associated with the time metric that will be inremented.
+  Returns:
+    A decorator that measure the function runtime and increment the specified
+    counter cell.
+  """
+
+  def actual_decorator(func):
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+      with MonitoredTimer(cell):
+        return func(*args, **kwargs)
+
+    return wrapper
+
+  return actual_decorator

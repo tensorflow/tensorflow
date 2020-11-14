@@ -187,7 +187,7 @@ class AlphaDropout(Layer):
 
         kept_idx = math_ops.greater_equal(
             K.random_uniform(noise_shape, seed=seed), rate)
-        kept_idx = math_ops.cast(kept_idx, K.floatx())
+        kept_idx = math_ops.cast(kept_idx, inputs.dtype)
 
         # Get affine transformation params
         a = ((1 - rate) * (1 + rate * alpha_p**2))**-0.5

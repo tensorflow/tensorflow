@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <unordered_set>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -83,6 +84,24 @@ Status ReadMetaGraphDefFromSavedModel(const string& export_dir,
   TF_RETURN_IF_ERROR(ReadSavedModel(export_dir, &saved_model_proto));
   TF_RETURN_IF_ERROR(
       FindMetaGraphDef(tags, &saved_model_proto, meta_graph_def));
+  return Status::OK();
+}
+
+Status ReadSavedModelDebugInfoIfPresent(
+    const string& export_dir,
+    std::unique_ptr<GraphDebugInfo>* debug_info_proto) {
+  LOG(INFO) << "Reading SavedModel debug info (if present) from: "
+            << export_dir;
+
+  const string debug_info_pb_path =
+      io::JoinPath(export_dir, "debug", "saved_model_debug_info.pb");
+  if (Env::Default()->FileExists(debug_info_pb_path).ok()) {
+    GraphDebugInfo debug_info;
+    TF_RETURN_IF_ERROR(
+        ReadBinaryProto(Env::Default(), debug_info_pb_path, &debug_info));
+    *debug_info_proto =
+        absl::make_unique<GraphDebugInfo>(std::move(debug_info));
+  }
   return Status::OK();
 }
 

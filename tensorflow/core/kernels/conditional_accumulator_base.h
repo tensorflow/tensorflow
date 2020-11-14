@@ -81,7 +81,7 @@ class ConditionalAccumulatorBase : public ResourceBase {
   // Virtual methods to be implemented by sub-classes for different datatypes.
   // Implements arithmetic operations specific to datatype.
   virtual void DivideAccumGradByCounter(OpKernelContext* ctx)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_) = 0;
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) = 0;
   virtual bool SetOutput(OpKernelContext* ctx) = 0;
 
   enum RunResult { kNoProgress, kComplete };
@@ -127,10 +127,10 @@ class ConditionalAccumulatorBase : public ResourceBase {
   const string name_;
   const string reduction_type_;
   mutex mu_;
-  int counter_ GUARDED_BY(mu_);
-  int64 current_global_step_ GUARDED_BY(mu_);
+  int counter_ TF_GUARDED_BY(mu_);
+  int64 current_global_step_ TF_GUARDED_BY(mu_);
 
-  std::deque<Attempt> takegrad_attempts_ GUARDED_BY(mu_);
+  std::deque<Attempt> takegrad_attempts_ TF_GUARDED_BY(mu_);
 
   // Methods
 
@@ -149,12 +149,12 @@ class ConditionalAccumulatorBase : public ResourceBase {
   //       (if it is not stale) or drop it silently (if it is stale).
   void FlushUnlocked();
   bool TryAttemptLocked(std::vector<CleanUp>* clean_up)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Helper methods
   //  void DeepCopy(Tensor* dst);
   bool TakeGradLockedHelper(OpKernelContext* ctx, DoneCallback callback)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 };
 
 /*

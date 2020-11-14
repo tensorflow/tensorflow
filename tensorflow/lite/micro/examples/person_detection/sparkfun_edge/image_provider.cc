@@ -13,18 +13,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#if defined(ARDUINO)
+#include "tensorflow/lite/micro/examples/person_detection/arduino/HM01B0_platform.h"
+#endif  // defined(ARDUINO)
+
+#if defined(ARDUINO) && !defined(ARDUINO_SFE_EDGE)
+#define ARDUINO_EXCLUDE_CODE
+#endif  // defined(ARDUINO) && !defined(ARDUINO_SFE_EDGE)
+
+#ifndef ARDUINO_EXCLUDE_CODE
+
 #include "tensorflow/lite/micro/examples/person_detection/image_provider.h"
 
 #include "tensorflow/lite/micro/examples/person_detection/himax_driver/HM01B0.h"
 #include "tensorflow/lite/micro/examples/person_detection/himax_driver/HM01B0_RAW8_QVGA_8bits_lsb_5fps.h"
 #include "tensorflow/lite/micro/examples/person_detection/himax_driver/HM01B0_debug.h"
 #include "tensorflow/lite/micro/examples/person_detection/himax_driver/HM01B0_optimized.h"
-#include "tensorflow/lite/micro/examples/person_detection/himax_driver/platform_Sparkfun_Edge.h"
 
 // These are headers from Ambiq's Apollo3 SDK.
 #include "am_bsp.h"         // NOLINT
 #include "am_mcu_apollo.h"  // NOLINT
 #include "am_util.h"        // NOLINT
+#include "platform.h"       // TARGET specific implementation
 
 // #define DEMO_HM01B0_FRAMEBUFFER_DUMP_ENABLE
 
@@ -87,32 +97,38 @@ void burst_mode_enable(tflite::ErrorReporter* error_reporter, bool bEnable) {
   if (AM_HAL_STATUS_SUCCESS ==
       am_hal_burst_mode_initialize(&eBurstModeAvailable)) {
     if (AM_HAL_BURST_AVAIL == eBurstModeAvailable) {
-      error_reporter->Report("Apollo3 Burst Mode is Available\n");
+      TF_LITE_REPORT_ERROR(error_reporter, "Apollo3 Burst Mode is Available\n");
     } else {
-      error_reporter->Report("Apollo3 Burst Mode is Not Available\n");
+      TF_LITE_REPORT_ERROR(error_reporter,
+                           "Apollo3 Burst Mode is Not Available\n");
       return;
     }
   } else {
-    error_reporter->Report("Failed to Initialize for Burst Mode operation\n");
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "Failed to Initialize for Burst Mode operation\n");
   }
 
   // Make sure we are in "Normal" mode.
   if (AM_HAL_STATUS_SUCCESS == am_hal_burst_mode_disable(&eBurstMode)) {
     if (AM_HAL_NORMAL_MODE == eBurstMode) {
-      error_reporter->Report("Apollo3 operating in Normal Mode (48MHz)\n");
+      TF_LITE_REPORT_ERROR(error_reporter,
+                           "Apollo3 operating in Normal Mode (48MHz)\n");
     }
   } else {
-    error_reporter->Report("Failed to Disable Burst Mode operation\n");
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "Failed to Disable Burst Mode operation\n");
   }
 
   // Put the MCU into "Burst" mode.
   if (bEnable) {
     if (AM_HAL_STATUS_SUCCESS == am_hal_burst_mode_enable(&eBurstMode)) {
       if (AM_HAL_BURST_MODE == eBurstMode) {
-        error_reporter->Report("Apollo3 operating in Burst Mode (96MHz)\n");
+        TF_LITE_REPORT_ERROR(error_reporter,
+                             "Apollo3 operating in Burst Mode (96MHz)\n");
       }
     } else {
-      error_reporter->Report("Failed to Enable Burst Mode operation\n");
+      TF_LITE_REPORT_ERROR(error_reporter,
+                           "Failed to Enable Burst Mode operation\n");
     }
   }
 }
@@ -120,7 +136,7 @@ void burst_mode_enable(tflite::ErrorReporter* error_reporter, bool bEnable) {
 }  // namespace
 
 TfLiteStatus InitCamera(tflite::ErrorReporter* error_reporter) {
-  error_reporter->Report("Initializing HM01B0...\n");
+  TF_LITE_REPORT_ERROR(error_reporter, "Initializing HM01B0...\n");
 
   am_hal_clkgen_control(AM_HAL_CLKGEN_CONTROL_SYSCLK_MAX, 0);
 
@@ -140,12 +156,13 @@ TfLiteStatus InitCamera(tflite::ErrorReporter* error_reporter) {
   burst_mode_enable(error_reporter, true);
 
   // Turn on the 1.8V regulator for DVDD on the camera.
-  am_hal_gpio_pinconfig(HM01B0_PIN_DVDD_EN, g_AM_HAL_GPIO_OUTPUT_12);
-  am_hal_gpio_output_set(HM01B0_PIN_DVDD_EN);
+  am_hal_gpio_pinconfig(AM_BSP_GPIO_CAMERA_HM01B0_DVDDEN,
+                        g_AM_HAL_GPIO_OUTPUT_12);
+  am_hal_gpio_output_set(AM_BSP_GPIO_CAMERA_HM01B0_DVDDEN);
 
   // Configure Red LED for debugging.
-  am_hal_gpio_pinconfig(AM_BSP_GPIO_LED_RED, g_AM_HAL_GPIO_OUTPUT_12);
-  am_hal_gpio_output_clear(AM_BSP_GPIO_LED_RED);
+  am_devices_led_init((am_bsp_psLEDs + AM_BSP_LED_RED));
+  am_devices_led_off(am_bsp_psLEDs, AM_BSP_LED_RED);
 
   hm01b0_power_up(&s_HM01B0Cfg);
 
@@ -197,3 +214,5 @@ TfLiteStatus GetImage(tflite::ErrorReporter* error_reporter, int frame_width,
 
   return kTfLiteOk;
 }
+
+#endif  // ARDUINO_EXCLUDE_CODE

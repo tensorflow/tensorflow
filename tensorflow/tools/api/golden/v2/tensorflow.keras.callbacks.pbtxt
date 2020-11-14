@@ -13,6 +13,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "CallbackList"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "EarlyStopping"
     mtype: "<type \'type\'>"
   }
@@ -51,5 +55,9 @@ tf_module {
   member {
     name: "TerminateOnNaN"
     mtype: "<type \'type\'>"
+  }
+  member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
   }
 }

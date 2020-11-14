@@ -456,7 +456,7 @@ TEST(CreateProtoDebugStringLibTest, Enums) {
 
   EXPECT_PARSE_SUCCESS("", "optional_nested_enum: -0");
   // TODO(amauryfa): restore the line below when protobuf::TextFormat also
-  // supports unknonwn enum values.
+  // supports unknown enum values.
   // EXPECT_PARSE_SUCCESS("optional_nested_enum: 6", "optional_nested_enum: 6");
   EXPECT_PARSE_FAILURE("optional_nested_enum: 2147483648");  // > INT32_MAX
   EXPECT_PARSE_FAILURE("optional_nested_enum: BARNONE");

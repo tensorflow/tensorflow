@@ -1,3 +1,4 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_cc_test")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
@@ -72,7 +73,9 @@ tf_cuda_cc_test(
         "--xla_test_device=XLA_GPU",
         "--xla_platform=GPU",
     ],
-    tags = tf_cuda_tests_tags(),
+    tags = tf_cuda_tests_tags() + [
+        "no_cuda_asan",  # TODO(b/171319142): re-enable.
+    ],
     deps = [
         ":raw_api_test_lib",
         "//tensorflow/compiler/jit:xla_gpu_device",

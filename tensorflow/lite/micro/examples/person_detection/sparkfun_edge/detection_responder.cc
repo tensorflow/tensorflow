@@ -13,6 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#if defined(ARDUINO) && !defined(ARDUINO_SFE_EDGE)
+#define ARDUINO_EXCLUDE_CODE
+#endif  // defined(ARDUINO) && !defined(ARDUINO_SFE_EDGE)
+
+#ifndef ARDUINO_EXCLUDE_CODE
+
 #include "tensorflow/lite/micro/examples/person_detection/detection_responder.h"
 
 #include "am_bsp.h"  // NOLINT
@@ -25,30 +31,27 @@ void RespondToDetection(tflite::ErrorReporter* error_reporter,
   if (!is_initialized) {
     // Setup LED's as outputs.  Leave red LED alone since that's an error
     // indicator for sparkfun_edge in image_provider.
-    am_hal_gpio_pinconfig(AM_BSP_GPIO_LED_BLUE, g_AM_HAL_GPIO_OUTPUT_12);
-    am_hal_gpio_pinconfig(AM_BSP_GPIO_LED_GREEN, g_AM_HAL_GPIO_OUTPUT_12);
-    am_hal_gpio_pinconfig(AM_BSP_GPIO_LED_YELLOW, g_AM_HAL_GPIO_OUTPUT_12);
+    am_devices_led_init((am_bsp_psLEDs + AM_BSP_LED_BLUE));
+    am_devices_led_init((am_bsp_psLEDs + AM_BSP_LED_GREEN));
+    am_devices_led_init((am_bsp_psLEDs + AM_BSP_LED_YELLOW));
     is_initialized = true;
   }
 
   // Toggle the blue LED every time an inference is performed.
-  static int count = 0;
-  if (++count & 1) {
-    am_hal_gpio_output_set(AM_BSP_GPIO_LED_BLUE);
-  } else {
-    am_hal_gpio_output_clear(AM_BSP_GPIO_LED_BLUE);
-  }
+  am_devices_led_toggle(am_bsp_psLEDs, AM_BSP_LED_BLUE);
 
   // Turn on the green LED if a person was detected.  Turn on the yellow LED
   // otherwise.
-  am_hal_gpio_output_clear(AM_BSP_GPIO_LED_YELLOW);
-  am_hal_gpio_output_clear(AM_BSP_GPIO_LED_GREEN);
+  am_devices_led_off(am_bsp_psLEDs, AM_BSP_LED_YELLOW);
+  am_devices_led_off(am_bsp_psLEDs, AM_BSP_LED_GREEN);
   if (person_score > no_person_score) {
-    am_hal_gpio_output_set(AM_BSP_GPIO_LED_GREEN);
+    am_devices_led_on(am_bsp_psLEDs, AM_BSP_LED_GREEN);
   } else {
-    am_hal_gpio_output_set(AM_BSP_GPIO_LED_YELLOW);
+    am_devices_led_on(am_bsp_psLEDs, AM_BSP_LED_YELLOW);
   }
 
-  error_reporter->Report("Person score: %d No person score: %d", person_score,
-                         no_person_score);
+  TF_LITE_REPORT_ERROR(error_reporter, "Person score: %d No person score: %d",
+                       person_score, no_person_score);
 }
+
+#endif  // ARDUINO_EXCLUDE_CODE

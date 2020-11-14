@@ -24,7 +24,10 @@ limitations under the License.
 // We replace this implementation with a null implementation for mobile
 // platforms.
 #ifdef IS_MOBILE_PLATFORM
+#define TENSORFLOW_INCLUDED_FROM_SAMPLER_H  // prevent accidental use of
+                                            // mobile_sampler.h
 #include "tensorflow/core/lib/monitoring/mobile_sampler.h"
+#undef TENSORFLOW_INCLUDED_FROM_SAMPLER_H
 #else
 
 #include <float.h>
@@ -137,7 +140,7 @@ class Sampler {
   // Retrieves the cell for the specified labels, creating it on demand if
   // not already present.
   template <typename... Labels>
-  SamplerCell* GetCell(const Labels&... labels) LOCKS_EXCLUDED(mu_);
+  SamplerCell* GetCell(const Labels&... labels) TF_LOCKS_EXCLUDED(mu_);
 
   Status GetStatus() { return status_; }
 
@@ -185,7 +188,7 @@ class Sampler {
   // we need a container here that guarantees pointer stability of the value,
   // namely, the pointer of the value should remain valid even after more cells
   // are inserted.
-  std::map<LabelArray, SamplerCell> cells_ GUARDED_BY(mu_);
+  std::map<LabelArray, SamplerCell> cells_ TF_GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(Sampler);
 };
@@ -213,7 +216,7 @@ Sampler<NumLabels>* Sampler<NumLabels>::New(
 template <int NumLabels>
 template <typename... Labels>
 SamplerCell* Sampler<NumLabels>::GetCell(const Labels&... labels)
-    LOCKS_EXCLUDED(mu_) {
+    TF_LOCKS_EXCLUDED(mu_) {
   // Provides a more informative error message than the one during array
   // construction below.
   static_assert(sizeof...(Labels) == NumLabels,

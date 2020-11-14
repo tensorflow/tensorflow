@@ -112,7 +112,7 @@ class XLACompileContextTest(test.TestCase, parameterized.TestCase):
 
     context = self.create_test_xla_compile_context()
     context.Enter()
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         NotImplementedError, 'Non-resource Variables are not supported inside '
         r'XLA computations \(operator name: Assign\)'):
       state_ops.assign(a, a + 1)
@@ -126,8 +126,8 @@ class XLACompileContextTest(test.TestCase, parameterized.TestCase):
 
     context2 = self.create_test_xla_compile_context()
     context2.Enter()
-    with self.assertRaisesRegexp(ValueError,
-                                 'XLA compiled computations cannot be nested'):
+    with self.assertRaisesRegex(ValueError,
+                                'XLA compiled computations cannot be nested'):
       constant_op.constant(1)
     context2.Exit()
     context1.Exit()

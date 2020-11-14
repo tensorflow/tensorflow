@@ -57,7 +57,8 @@ class Stack : public ResourceBase {
   Status Push(const TensorAndAllocation& value) {
     mutex_lock l(mu_);
     TF_RETURN_IF_ERROR(CheckNotClosed());
-    if (max_size_ >= 0 && stack_.size() >= max_size_) {
+    int stack_size = stack_.size();
+    if (max_size_ >= 0 && stack_size >= max_size_) {
       return errors::InvalidArgument("Stack[", stack_name_, "] overflowed ",
                                      "its max_size (", max_size_, ")");
     }
@@ -112,10 +113,10 @@ class Stack : public ResourceBase {
   const string stack_name_;
   Tensor handle_;
   int max_size_;
-  bool closed_ GUARDED_BY(mu_);
-  std::vector<TensorAndAllocation> stack_ GUARDED_BY(mu_);
+  bool closed_ TF_GUARDED_BY(mu_);
+  std::vector<TensorAndAllocation> stack_ TF_GUARDED_BY(mu_);
 
-  Status CheckNotClosed() const EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  Status CheckNotClosed() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     if (closed_) {
       return errors::InvalidArgument("Stack[", stack_name_,
                                      "] has already been closed.");

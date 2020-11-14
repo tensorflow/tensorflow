@@ -1,4 +1,4 @@
-# RUN: tf-mlir-translate -graphdef-to-mlir -mlir-print-debuginfo %s -o - | FileCheck %s
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false -mlir-print-debuginfo %s -o - | FileCheck %s
 
 # Verify that importing a Graph with a backedge leads to two NextIteration nodes
 # to break the cycle.
@@ -7,7 +7,7 @@
 # CHECK:    %[[NEXTITERATION:[a-z0-9]+]], %[[NEXTITERATION_token:[a-z0-9]+]], {{.*}} = tf_executor.NextIteration.Source
 # CHECK:    tf_executor.Merge {{.*}} %[[NEXTITERATION]]
 
-# CHECK:    tf_executor.NextIteration.Sink [%[[NEXTITERATION_token]]]
+# CHECK:    tf_executor.NextIteration.Sink[%[[NEXTITERATION_token]]]
 
 node {
   name: "Const"

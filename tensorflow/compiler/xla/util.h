@@ -25,9 +25,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/status.h"
@@ -94,9 +96,9 @@ using DimensionVector = absl::InlinedVector<int64, kInlineRank>;
 
 struct TimerStats {
   tensorflow::mutex stats_mutex;
-  double cumulative_secs GUARDED_BY(stats_mutex) = 0;
-  double max_secs GUARDED_BY(stats_mutex) = 0;
-  uint64 times_called GUARDED_BY(stats_mutex) = 0;
+  double cumulative_secs ABSL_GUARDED_BY(stats_mutex) = 0;
+  double max_secs ABSL_GUARDED_BY(stats_mutex) = 0;
+  uint64 times_called ABSL_GUARDED_BY(stats_mutex) = 0;
 };
 
 // RAII timer for XLA_SCOPED_LOGGING_TIMER and XLA_SCOPED_LOGGING_TIMER_LEVEL
@@ -504,6 +506,18 @@ int64 Product(absl::Span<const int64> xs);
 // possible such subsequences; else, returns `{(0, 0), (a.size, b.size)}`.
 absl::InlinedVector<std::pair<int64, int64>, 8> CommonFactors(
     absl::Span<const int64> a, absl::Span<const int64> b);
+
+struct ConvertedDimensionNumbers {
+  DimensionVector transformed_from_dimensions;
+  DimensionVector untransformed_from_dimensions;
+  DimensionVector to_dimensions;
+};
+
+// Convert and unsorted list of dimensions from one shapes dimension sizes to
+// another shapes dimensions sizes.
+ConvertedDimensionNumbers ConvertDimensionNumbers(
+    absl::Span<const int64> from_dimensions, absl::Span<const int64> from_sizes,
+    absl::Span<const int64> to_sizes);
 
 // Removes illegal characters from filenames.
 string SanitizeFileName(string file_name);

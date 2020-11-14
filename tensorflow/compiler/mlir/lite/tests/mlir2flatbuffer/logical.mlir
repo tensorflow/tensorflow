@@ -5,11 +5,13 @@ func @main(tensor<4xi1>) -> tensor<4xi1> {
   // CHECK:      {
   // CHECK-NEXT:   version: 3,
   // CHECK-NEXT:   operator_codes: [ {
-  // CHECK-NEXT:     builtin_code: LOGICAL_OR,
-  // CHECK-NEXT:     version: 1
+  // CHECK-NEXT:     deprecated_builtin_code: 84,
+  // CHECK-NEXT:     version: 1,
+  // CHECK-NEXT:     builtin_code: LOGICAL_OR
   // CHECK-NEXT:   }, {
-  // CHECK-NEXT:     builtin_code: LOGICAL_AND,
-  // CHECK-NEXT:     version: 1
+  // CHECK-NEXT:     deprecated_builtin_code: 86,
+  // CHECK-NEXT:     version: 1,
+  // CHECK-NEXT:     builtin_code: LOGICAL_AND
   // CHECK-NEXT:   } ],
   // CHECK-NEXT:   subgraphs: [ {
   // CHECK-NEXT:     tensors: [ {
@@ -78,7 +80,14 @@ func @main(tensor<4xi1>) -> tensor<4xi1> {
   // CHECK-EMPTY:
   // CHECK-NEXT:   }, {
   // CHECK-EMPTY:
+  // CHECK-NEXT:   }, {
+  // CHECK-NEXT:     data: [ 49, 46, 49, 49, 46, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ]
+  // CHECK-NEXT:   } ],
+  // CHECK-NEXT:   metadata: [ {
+  // CHECK-NEXT:   name: "min_runtime_version",
+  // CHECK-NEXT:   buffer: 6
   // CHECK-NEXT:   } ]
+  // CHECK-NEXT:   signature_defs: [ ]
   // CHECK-NEXT: }
   // CHECK-EMPTY:
 

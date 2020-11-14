@@ -19,6 +19,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -329,6 +331,17 @@ TEST_F(XlaBuilderTest, BroadcastInDimWithDegeneratedDim) {
               op::Broadcast(op::Reshape(op::Broadcast())));
 }
 
+TEST_F(XlaBuilderTest, BroadcastInDimWithNegativeSize) {
+  XlaBuilder b(TestName());
+  auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {2, 1, 4}), "x");
+  BroadcastInDim(x, {-3, 3, 4},
+                 /*broadcast_dimensions=*/{0, 1, 2});
+  auto statusor = BuildHloModule(&b);
+  ASSERT_FALSE(statusor.ok());
+  EXPECT_THAT(statusor.status().error_message(),
+              HasSubstr("shape's dimensions must not be < 0"));
+}
+
 TEST_F(XlaBuilderTest, OperandFromWrongBuilder) {
   XlaBuilder b1("b1");
   auto p0 = Parameter(&b1, 0, ShapeUtil::MakeShape(F32, {}), "p0");
@@ -370,6 +383,29 @@ TEST_F(XlaBuilderTest, Transpose) {
   EXPECT_THAT(root, op::Transpose(op::Parameter()));
 }
 
+TEST_F(XlaBuilderTest, AllGatherR1) {
+  XlaBuilder b(TestName());
+  auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {4}), "x");
+  AllGather(x, /*all_gather_dimension=*/0, /*shard_count=*/4);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  auto root = module->entry_computation()->root_instruction();
+
+  EXPECT_EQ(root->opcode(), HloOpcode::kAllGather);
+  EXPECT_TRUE(ShapeUtil::Equal(root->shape(), ShapeUtil::MakeShape(F32, {16})));
+}
+
+TEST_F(XlaBuilderTest, AllGatherR2) {
+  XlaBuilder b(TestName());
+  auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {4, 16}), "x");
+  AllGather(x, /*all_gather_dimension=*/1, /*shard_count=*/4);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  auto root = module->entry_computation()->root_instruction();
+
+  EXPECT_EQ(root->opcode(), HloOpcode::kAllGather);
+  EXPECT_TRUE(
+      ShapeUtil::Equal(root->shape(), ShapeUtil::MakeShape(F32, {4, 64})));
+}
+
 TEST_F(XlaBuilderTest, AllToAll) {
   XlaBuilder b(TestName());
   auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {4, 16}), "x");
@@ -396,11 +432,23 @@ TEST_F(XlaBuilderTest, CollectivePermute) {
 
 TEST_F(XlaBuilderTest, GetDimensionSize) {
   XlaBuilder b(TestName());
-  auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {5, 7}), "x");
+  auto x =
+      Parameter(&b, 0, ShapeUtil::MakeShape(F32, {5, 7}, {false, true}), "x");
   GetDimensionSize(x, 1);
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   auto root = module->entry_computation()->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kGetDimensionSize);
+}
+
+TEST_F(XlaBuilderTest, GetDimensionSizeConstant) {
+  XlaBuilder b(TestName());
+  auto x =
+      Parameter(&b, 0, ShapeUtil::MakeShape(F32, {5, 7}, {false, true}), "x");
+  // Get dimension size from a contant dimension gives us a constant.
+  GetDimensionSize(x, 0);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kConstant);
 }
 
 TEST_F(XlaBuilderTest, ReportError) {
@@ -508,6 +556,32 @@ TEST_F(XlaBuilderTest, DynamicParameter) {
                                  ->shape()
                                  .tuple_shapes(1);
   EXPECT_TRUE(param_shape.is_dynamic_dimension(0));
+}
+
+TEST_F(XlaBuilderTest, SetDimensionSize) {
+  XlaBuilder b(TestName());
+  auto p0 = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {10}), "p0");
+  auto p1 = Parameter(&b, 1, ShapeUtil::MakeShape(S32, {}), "p1");
+  auto set_dim_size = SetDimensionSize(p0, p1, 0);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          BuildHloModule(&b, /*root=*/set_dim_size));
+  const Shape& root_shape =
+      module->entry_computation()->root_instruction()->shape();
+  EXPECT_TRUE(root_shape.is_dynamic_dimension(0));
+}
+
+TEST_F(XlaBuilderTest, RemoveDimensionSize) {
+  XlaBuilder b(TestName());
+  auto p0 = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {10}), "p0");
+  auto p1 = Parameter(&b, 1, ShapeUtil::MakeShape(S32, {}), "p1");
+  auto set_dim_size = SetDimensionSize(p0, p1, 0);
+  auto remove_dim_size = RemoveDynamicDimension(set_dim_size, 0);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          BuildHloModule(&b, /*root=*/remove_dim_size));
+  const Shape& root_shape =
+      module->entry_computation()->root_instruction()->shape();
+  // Dynamic dimension has been removed.
+  EXPECT_FALSE(root_shape.is_dynamic_dimension(0));
 }
 
 TEST_F(XlaBuilderTest, DynamicUnary) {
@@ -799,11 +873,53 @@ TEST_F(XlaBuilderTest, DynamicReduceWindow) {
   ReduceWindow(gte, init, sum, /*window_dimensions=*/{1, 2, 4},
                /*window_strides=*/{1, 1, 1}, Padding::kValid);
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  VLOG(2) << module->entry_computation()->root_instruction()->ToString()
+          << "\n";
   const Shape& result_shape =
       module->entry_computation()->root_instruction()->shape();
   EXPECT_TRUE(
       ContainersEqual(result_shape.dynamic_dimensions(), {true, false, false}))
       << result_shape;
+}
+
+TEST_F(XlaBuilderTest, VariadicDynamicReduceWindow) {
+  XlaBuilder b(TestName());
+  Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {2, 4, 8}, {true, false, false}),
+       ShapeUtil::MakeShape(U32, {})});
+  auto p0 = Parameter(&b, 0, tuple_param_shape, "p0");
+  auto p1 = Parameter(&b, 1, tuple_param_shape, "p1");
+  ASSERT_IS_OK(b.SetDynamicBinding(/*dynamic_size_param_num=*/0,
+                                   /*dynamic_size_param_index=*/{1},
+                                   /*target_param_num=*/0,
+                                   /*target_param_index=*/{0},
+                                   /*target_dim_num=*/0));
+  auto gte0 = GetTupleElement(p0, 0);
+  auto gte1 = GetTupleElement(p1, 0);
+  std::vector<XlaOp> input_operands = {gte0, gte1};
+  XlaBuilder bsum(TestName());
+  auto p2 = Parameter(&bsum, 0, ShapeUtil::MakeShape(F32, {}), "x0");
+  auto p3 = Parameter(&bsum, 1, ShapeUtil::MakeShape(F32, {}), "x1");
+  auto p4 = Parameter(&bsum, 2, ShapeUtil::MakeShape(F32, {}), "y0");
+  auto p5 = Parameter(&bsum, 3, ShapeUtil::MakeShape(F32, {}), "y1");
+  std::vector<XlaOp> output_operands = {Add(p2, p4), Add(p3, p5)};
+  Tuple(&bsum, absl::MakeSpan(output_operands));
+  TF_ASSERT_OK_AND_ASSIGN(auto sum, bsum.Build());
+  auto init = ConstantR0<float>(&b, 0.f);
+  ReduceWindow(input_operands, {init, init}, sum,
+               /*window_dimensions=*/{1, 2, 4},
+               /*window_strides=*/{1, 1, 1}, Padding::kValid);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  VLOG(2) << module->entry_computation()->root_instruction()->ToString()
+          << "\n";
+  const Shape& result_shape =
+      module->entry_computation()->root_instruction()->shape();
+  EXPECT_TRUE(ContainersEqual(result_shape.tuple_shapes(0).dynamic_dimensions(),
+                              {true, false, false}))
+      << result_shape.tuple_shapes(0);
+  EXPECT_TRUE(ContainersEqual(result_shape.tuple_shapes(1).dynamic_dimensions(),
+                              {true, false, false}))
+      << result_shape.tuple_shapes(1);
 }
 
 TEST_F(XlaBuilderTest, DynamicSelectAndScatter) {
@@ -1131,5 +1247,16 @@ TEST_F(XlaBuilderTest, AddFrontendAttribute) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   ExpectInstructionsAttributesMatch(*module, expected);
 }
+
+TEST_F(XlaBuilderTest, ComparisonType) {
+  XlaBuilder b(TestName());
+  (void)Le(ConstantR0<int32>(&b, 1), ConstantR0<int32>(&b, 2));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  auto root = module->entry_computation()->root_instruction();
+  ASSERT_THAT(root, op::Compare(op::Constant(), op::Constant()));
+  EXPECT_EQ(Comparison::Type::kSigned,
+            DynCast<HloCompareInstruction>(root)->type());
+}
+
 }  // namespace
 }  // namespace xla

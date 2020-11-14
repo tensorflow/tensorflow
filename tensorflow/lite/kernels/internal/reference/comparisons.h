@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_COMPARISONS_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_COMPARISONS_H_
 
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
@@ -75,34 +76,55 @@ inline void Comparison(const ComparisonParams& op_params,
                            input2_data, output_shape, output_data);
 }
 
-template <typename T, ComparisonFn<int32> F>
+template <typename T, ComparisonFn<int32_t> F>
 inline void ComparisonWithScaling(
     const ComparisonParams& op_params, const RuntimeShape& input1_shape,
     const T* input1_data, const RuntimeShape& input2_shape,
     const T* input2_data, const RuntimeShape& output_shape, bool* output_data) {
   int left_shift = op_params.left_shift;
-  int32 input1_offset = op_params.input1_offset;
-  int32 input1_multiplier = op_params.input1_multiplier;
+  int32_t input1_offset = op_params.input1_offset;
+  int32_t input1_multiplier = op_params.input1_multiplier;
   int input1_shift = op_params.input1_shift;
-  int32 input2_offset = op_params.input2_offset;
-  int32 input2_multiplier = op_params.input2_multiplier;
+  int32_t input2_offset = op_params.input2_offset;
+  int32_t input2_multiplier = op_params.input2_multiplier;
   int input2_shift = op_params.input2_shift;
 
   const int64_t flatsize =
       MatchingFlatSize(input1_shape, input2_shape, output_shape);
   for (int64_t i = 0; i < flatsize; ++i) {
-    const int32 input1_val = input1_offset + input1_data[i];
-    const int32 input2_val = input2_offset + input2_data[i];
-    const int32 shifted_input1_val = input1_val * (1 << left_shift);
-    const int32 shifted_input2_val = input2_val * (1 << left_shift);
-    const int32 scaled_input1_val =
+    const int32_t input1_val = input1_offset + input1_data[i];
+    const int32_t input2_val = input2_offset + input2_data[i];
+    const int32_t shifted_input1_val = input1_val * (1 << left_shift);
+    const int32_t shifted_input2_val = input2_val * (1 << left_shift);
+    const int32_t scaled_input1_val =
         MultiplyByQuantizedMultiplierSmallerThanOneExp(
             shifted_input1_val, input1_multiplier, input1_shift);
-    const int32 scaled_input2_val =
+    const int32_t scaled_input2_val =
         MultiplyByQuantizedMultiplierSmallerThanOneExp(
             shifted_input2_val, input2_multiplier, input2_shift);
     output_data[i] = F(scaled_input1_val, scaled_input2_val);
   }
+}
+
+struct BroadcastComparison4DSlowCommon {
+  const RuntimeShape output_shape;
+  NdArrayDesc<4> desc1;
+  NdArrayDesc<4> desc2;
+};
+
+inline BroadcastComparison4DSlowCommon BroadcastComparison4DSlowPreprocess(
+    const RuntimeShape& unextended_input1_shape,
+    const RuntimeShape& unextended_input2_shape,
+    const RuntimeShape& unextended_output_shape) {
+  TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
+  NdArrayDesc<4> desc1;
+  NdArrayDesc<4> desc2;
+  NdArrayDescsForElementwiseBroadcast(unextended_input1_shape,
+                                      unextended_input2_shape, &desc1, &desc2);
+  return {RuntimeShape::ExtendedShape(4, unextended_output_shape), desc1,
+          desc2};
 }
 
 template <typename T, ComparisonFn<T> F>
@@ -111,29 +133,24 @@ inline void BroadcastComparison4DSlowImpl(
     const RuntimeShape& unextended_input1_shape, const T* input1_data,
     const RuntimeShape& unextended_input2_shape, const T* input2_data,
     const RuntimeShape& unextended_output_shape, bool* output_data) {
-  TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  const RuntimeShape output_shape =
-      RuntimeShape::ExtendedShape(4, unextended_output_shape);
+  const BroadcastComparison4DSlowCommon dims =
+      BroadcastComparison4DSlowPreprocess(unextended_input1_shape,
+                                          unextended_input2_shape,
+                                          unextended_output_shape);
 
-  NdArrayDesc<4> desc1;
-  NdArrayDesc<4> desc2;
-  NdArrayDescsForElementwiseBroadcast(unextended_input1_shape,
-                                      unextended_input2_shape, &desc1, &desc2);
-
-  for (int b = 0; b < output_shape.Dims(0); ++b) {
-    for (int y = 0; y < output_shape.Dims(1); ++y) {
-      for (int x = 0; x < output_shape.Dims(2); ++x) {
-        for (int c = 0; c < output_shape.Dims(3); ++c) {
-          output_data[Offset(output_shape, b, y, x, c)] =
-              F(input1_data[SubscriptToIndex(desc1, b, y, x, c)],
-                input2_data[SubscriptToIndex(desc2, b, y, x, c)]);
+  for (int b = 0; b < dims.output_shape.Dims(0); ++b) {
+    for (int y = 0; y < dims.output_shape.Dims(1); ++y) {
+      for (int x = 0; x < dims.output_shape.Dims(2); ++x) {
+        for (int c = 0; c < dims.output_shape.Dims(3); ++c) {
+          output_data[Offset(dims.output_shape, b, y, x, c)] =
+              F(input1_data[SubscriptToIndex(dims.desc1, b, y, x, c)],
+                input2_data[SubscriptToIndex(dims.desc2, b, y, x, c)]);
         }
       }
     }
   }
 }
+
 template <ComparisonFn<float> F>
 inline void BroadcastComparison4DSlow(const ComparisonParams& op_params,
                                       const RuntimeShape& input1_shape,
@@ -147,48 +164,44 @@ inline void BroadcastComparison4DSlow(const ComparisonParams& op_params,
                                           output_shape, output_data);
 }
 
-template <typename T, ComparisonFn<int32> F>
+template <typename T, ComparisonFn<int32_t> F>
 inline void BroadcastComparison4DSlowWithScaling(
     const ComparisonParams& op_params,
     const RuntimeShape& unextended_input1_shape, const T* input1_data,
     const RuntimeShape& unextended_input2_shape, const T* input2_data,
     const RuntimeShape& unextended_output_shape, bool* output_data) {
-  TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  const RuntimeShape output_shape =
-      RuntimeShape::ExtendedShape(4, unextended_output_shape);
-
-  NdArrayDesc<4> desc1;
-  NdArrayDesc<4> desc2;
-  NdArrayDescsForElementwiseBroadcast(unextended_input1_shape,
-                                      unextended_input2_shape, &desc1, &desc2);
+  const BroadcastComparison4DSlowCommon dims =
+      BroadcastComparison4DSlowPreprocess(unextended_input1_shape,
+                                          unextended_input2_shape,
+                                          unextended_output_shape);
 
   int left_shift = op_params.left_shift;
-  int32 input1_offset = op_params.input1_offset;
-  int32 input1_multiplier = op_params.input1_multiplier;
+  int32_t input1_offset = op_params.input1_offset;
+  int32_t input1_multiplier = op_params.input1_multiplier;
   int input1_shift = op_params.input1_shift;
-  int32 input2_offset = op_params.input2_offset;
-  int32 input2_multiplier = op_params.input2_multiplier;
+  int32_t input2_offset = op_params.input2_offset;
+  int32_t input2_multiplier = op_params.input2_multiplier;
   int input2_shift = op_params.input2_shift;
 
-  for (int b = 0; b < output_shape.Dims(0); ++b) {
-    for (int y = 0; y < output_shape.Dims(1); ++y) {
-      for (int x = 0; x < output_shape.Dims(2); ++x) {
-        for (int c = 0; c < output_shape.Dims(3); ++c) {
-          const int32 input1_val =
-              input1_offset + input1_data[SubscriptToIndex(desc1, b, y, x, c)];
-          const int32 input2_val =
-              input2_offset + input2_data[SubscriptToIndex(desc2, b, y, x, c)];
-          const int32 shifted_input1_val = input1_val * (1 << left_shift);
-          const int32 shifted_input2_val = input2_val * (1 << left_shift);
-          const int32 scaled_input1_val =
+  for (int b = 0; b < dims.output_shape.Dims(0); ++b) {
+    for (int y = 0; y < dims.output_shape.Dims(1); ++y) {
+      for (int x = 0; x < dims.output_shape.Dims(2); ++x) {
+        for (int c = 0; c < dims.output_shape.Dims(3); ++c) {
+          const int32_t input1_val =
+              input1_offset +
+              input1_data[SubscriptToIndex(dims.desc1, b, y, x, c)];
+          const int32_t input2_val =
+              input2_offset +
+              input2_data[SubscriptToIndex(dims.desc2, b, y, x, c)];
+          const int32_t shifted_input1_val = input1_val * (1 << left_shift);
+          const int32_t shifted_input2_val = input2_val * (1 << left_shift);
+          const int32_t scaled_input1_val =
               MultiplyByQuantizedMultiplierSmallerThanOneExp(
                   shifted_input1_val, input1_multiplier, input1_shift);
-          const int32 scaled_input2_val =
+          const int32_t scaled_input2_val =
               MultiplyByQuantizedMultiplierSmallerThanOneExp(
                   shifted_input2_val, input2_multiplier, input2_shift);
-          output_data[Offset(output_shape, b, y, x, c)] =
+          output_data[Offset(dims.output_shape, b, y, x, c)] =
               F(scaled_input1_val, scaled_input2_val);
         }
       }

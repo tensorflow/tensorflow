@@ -1,4 +1,4 @@
-# RUN: tf-mlir-translate -graphdef-to-mlir %s -o - | FileCheck %s
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -o - | FileCheck %s
 
 # This test is tailored to reproduce b/141617294. In particular, the function
 # library contains "foo1", "foo2", ..., "foo20", from which "foo1" and "foo11"
@@ -121,8 +121,8 @@ versions {
 # Verify that functions from the library are properly imported.
 
 # CHECK-LABEL:  func @main() {
-# CHECK:    "tf.LegacyCall"() {_disable_call_shape_inference = false, f = @foo110}
-# CHECK:    "tf.LegacyCall"() {_disable_call_shape_inference = false, f = @foo111}
+# CHECK:    "tf.LegacyCall"() {_disable_call_shape_inference = false, device = "", f = @foo110}
+# CHECK:    "tf.LegacyCall"() {_disable_call_shape_inference = false, device = "", f = @foo111}
 
-# CHECK-LABEL:  func @foo110() {
-# CHECK-LABEL:  func @foo111() {
+# CHECK-LABEL:  func private @foo110()
+# CHECK-LABEL:  func private @foo111()

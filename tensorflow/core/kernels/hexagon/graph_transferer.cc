@@ -18,11 +18,11 @@ limitations under the License.
 #include <algorithm>
 #include <cinttypes>
 
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_transfer_info.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/types.h"
@@ -667,7 +667,7 @@ void GraphTransferer::RegisterNodeWithPaddingAndStrides(
       << "Op " << node.type_string() << " not found in map(id = " << op_type_id
       << ")";
   // Safety check of padding id
-  CHECK(padding == Padding::VALID ? 1 : 2);
+  CHECK(padding == Padding::SAME);
   AppendNodeParamsWithIoParams(
       shape_refiner, node, node.name(), id, node.type_string(), op_type_id,
       static_cast<int>(padding), node.num_inputs(), extra_inputs,

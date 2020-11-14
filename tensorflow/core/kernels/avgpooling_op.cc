@@ -20,7 +20,9 @@ limitations under the License.
 #include "tensorflow/core/kernels/avgpooling_op.h"
 
 #include <vector>
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -79,8 +81,13 @@ class AvgPoolingOp : public UnaryOp<T> {
 
   void Compute(OpKernelContext* context) override {
     const Tensor& tensor_in = context->input(0);
-    PoolParameters params{context,  ksize_,       stride_,
-                          padding_, data_format_, tensor_in.shape()};
+    PoolParameters params{context,
+                          ksize_,
+                          stride_,
+                          padding_,
+                          /*explicit_paddings=*/{},
+                          data_format_,
+                          tensor_in.shape()};
     if (!context->status().ok()) {
       return;
     }
@@ -144,8 +151,13 @@ class AvgPoolingOp<GPUDevice, T> : public UnaryOp<T> {
 
   void Compute(OpKernelContext* context) override {
     const Tensor& tensor_in = context->input(0);
-    PoolParameters params{context,  ksize_,       stride_,
-                          padding_, data_format_, tensor_in.shape()};
+    PoolParameters params{context,
+                          ksize_,
+                          stride_,
+                          padding_,
+                          /*explicit_paddings=*/{},
+                          data_format_,
+                          tensor_in.shape()};
     if (!context->status().ok()) {
       return;
     }
@@ -167,14 +179,14 @@ class AvgPoolingOp<GPUDevice, T> : public UnaryOp<T> {
 
 #if CUDNN_VERSION >= 7300
     DnnPoolingOp<T>::Compute(context, se::dnn::PoolingMode::kAverage, ksize_,
-                             stride_, padding_, data_format_, tensor_in,
-                             output_shape,
+                             stride_, padding_, /*explicit_paddings=*/{},
+                             data_format_, tensor_in, output_shape,
                              /*propagate_nans=*/false);
 #else
     if (data_format_ == FORMAT_NCHW) {
       DnnPoolingOp<T>::Compute(context, se::dnn::PoolingMode::kAverage, ksize_,
-                               stride_, padding_, data_format_, tensor_in,
-                               output_shape,
+                               stride_, padding_, /*explicit_paddings=*/{},
+                               data_format_, tensor_in, output_shape,
                                /*propagate_nans=*/false);
     } else {
       Tensor* output = nullptr;
@@ -444,10 +456,10 @@ class AvgPoolingGradOp<GPUDevice, T> : public OpKernel {
       return;
     }
 
-    DnnPoolingGradOp<T>::Compute(context, se::dnn::PoolingMode::kAverage,
-                                 ksize_, stride_, padding_, data_format_,
-                                 nullptr, nullptr, out_backprop, output_shape,
-                                 /*propagate_nans=*/false);
+    DnnPoolingGradOp<T>::Compute(
+        context, se::dnn::PoolingMode::kAverage, ksize_, stride_, padding_,
+        /*explicit_paddings=*/{}, data_format_, nullptr, nullptr, out_backprop,
+        output_shape, /*propagate_nans=*/false);
   }
 
  private:
@@ -531,7 +543,8 @@ class AvgPoolingGradOpCustomGPUKernel : public OpKernel {
 
 #if CUDNN_VERSION >= 7300
     DnnPoolingGradOp<T>::Compute(context, se::dnn::PoolingMode::kAverage,
-                                 ksize_, stride_, padding_, data_format_,
+                                 ksize_, stride_, padding_,
+                                 /*explicit_paddings=*/{}, data_format_,
                                  nullptr, nullptr, out_backprop, output_shape,
                                  /*propagate_nans=*/false);
 #else
@@ -587,7 +600,8 @@ class AvgPoolingGradOpCustomGPUKernel : public OpKernel {
                                 context->eigen_gpu_device());   // d
     } else {
       DnnPoolingGradOp<T>::Compute(context, se::dnn::PoolingMode::kAverage,
-                                   ksize_, stride_, padding_, data_format_,
+                                   ksize_, stride_, padding_,
+                                   /*explicit_paddings=*/{}, data_format_,
                                    nullptr, nullptr, out_backprop, output_shape,
                                    /*propagate_nans=*/false);
     }

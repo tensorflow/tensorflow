@@ -53,7 +53,8 @@ struct RunCounter {
 };
 
 std::string SessionToHandle(Session* session) {
-  return strings::Printf("%llu", reinterpret_cast<uint64>(session));
+  return strings::Printf("%llu", static_cast<unsigned long long>(
+                                     reinterpret_cast<uintptr_t>(session)));
 }
 
 // The Session interface has many methods of the form:
@@ -145,7 +146,7 @@ class SessionLogger {
     // Build an index from fetch tensor name to first index in
     // output_tensor_names.
     std::unordered_map<string, int> output_name_to_offset;
-    for (int i = 0; i < output_tensor_names.size(); ++i) {
+    for (int i = 0, end = output_tensor_names.size(); i < end; ++i) {
       const string& name = output_tensor_names[i];
       if (output_name_to_offset.insert(std::make_pair(name, i)).second) {
         req->add_fetch(name);

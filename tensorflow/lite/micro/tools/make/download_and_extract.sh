@@ -49,11 +49,21 @@ patch_am_sdk() {
   sed -i -e $'22s/\*(.text\*)/\*(.text\*)\\\n\\\n\\\t\/\* These are the C++ global constructors.  Stick them all here and\\\n\\\t \* then walk through the array in main() calling them all.\\\n\\\t \*\/\\\n\\\t_init_array_start = .;\\\n\\\tKEEP (\*(SORT(.init_array\*)))\\\n\\\t_init_array_end = .;\\\n\\\n\\\t\/\* XXX Currently not doing anything for global destructors. \*\/\\\n/g' "${dest_dir}/apollo3evb.ld"
   sed -i -e $'70s/} > SRAM/} > SRAM\\\n    \/\* Add this to satisfy reference to symbol "end" from libnosys.a(sbrk.o)\\\n     \* to denote the HEAP start.\\\n     \*\/\\\n   end = .;/g' "${dest_dir}/apollo3evb.ld"
 
-  # Workaround for bug in 2.0.0 SDK, remove once that's fixed.
-  sed -i -e $'s/#ifndef AM_HAL_GPIO_H/#ifdef __cplusplus\\\nextern "C" {\\\n#endif\\\n#ifndef AM_HAL_GPIO_H/g' ${am_dir}/mcu/apollo3/hal/am_hal_gpio.h
-
   # Add a delay after establishing serial connection
   sed -ir -E $'s/    with serial\.Serial\(args\.port, args\.baud, timeout=12\) as ser:/    with serial.Serial(args.port, args.baud, timeout=12) as ser:\\\n        # Patched.\\\n        import time\\\n        time.sleep(0.25)\\\n        # End patch./g' "${am_dir}/tools/apollo3_scripts/uart_wired_update.py"
+
+  # Add CPP include guards to "am_hal_iom.h"
+  sed -i -e '57a\
+  #ifdef __cplusplus // Patch\
+  extern "C" {\
+  #endif // End patch
+  ' "${am_dir}/mcu/apollo3/hal/am_hal_iom.h"
+
+  sed -i -e '836a\
+  #ifdef __cplusplus // Patch\
+  }\
+  #endif // End patch
+  ' "${am_dir}/mcu/apollo3/hal/am_hal_iom.h"
 
   echo "Finished preparing Apollo3 files"
 }
@@ -61,6 +71,11 @@ patch_am_sdk() {
 # Fixes issues with KissFFT.
 patch_kissfft() {
   sed -i -E $'s@#ifdef FIXED_POINT@// Patched automatically by download_dependencies.sh so default is 16 bit.\\\n#ifndef FIXED_POINT\\\n#define FIXED_POINT (16)\\\n#endif\\\n// End patch.\\\n\\\n#ifdef FIXED_POINT@g' tensorflow/lite/micro/tools/make/downloads/kissfft/kiss_fft.h
+
+  sed -i -E '/^#include <sys\/types.h>/d' tensorflow/lite/micro/tools/make/downloads/kissfft/kiss_fft.h
+  # Fix for https://github.com/mborgerding/kissfft/issues/20
+  sed -i -E $'s@#ifdef FIXED_POINT@#ifdef FIXED_POINT\\\n#include <stdint.h> /* Patched. */@g' tensorflow/lite/micro/tools/make/downloads/kissfft/kiss_fft.h
+
   sed -i -E "s@#define KISS_FFT_MALLOC malloc@#define KISS_FFT_MALLOC(X) (void*)(0) /* Patched. */@g" tensorflow/lite/micro/tools/make/downloads/kissfft/kiss_fft.h
   sed -i -E "s@#define KISS_FFT_FREE free@#define KISS_FFT_FREE(X) /* Patched. */@g" tensorflow/lite/micro/tools/make/downloads/kissfft/kiss_fft.h
   sed -ir -E "s@(fprintf.*\);)@/* \1 */@g" tensorflow/lite/micro/tools/make/downloads/kissfft/tools/kiss_fftr.c
@@ -68,33 +83,70 @@ patch_kissfft() {
   echo "Finished patching kissfft"
 }
 
+# Create a header file containing an array with the first 10 images from the
+# CIFAR10 test dataset.
+patch_cifar10_dataset() {
+  xxd -l 30730 -i ${1}/test_batch.bin ${1}/../../../../examples/image_recognition_experimental/first_10_cifar_images.h
+  sed -i -E "s/unsigned char/const unsigned char/g" ${1}/../../../../examples/image_recognition_experimental/first_10_cifar_images.h
+}
+
+build_embarc_mli() {
+  make -j 4 -C ${1}/lib/make TCF_FILE=${2}
+}
+
+setup_zephyr() {
+  command -v virtualenv >/dev/null 2>&1 || {
+    echo >&2 "The required 'virtualenv' tool isn't installed. Try 'pip install virtualenv'."; exit 1;
+  }
+  virtualenv -p python3 ${1}/venv-zephyr
+  . ${1}/venv-zephyr/bin/activate
+  python ${1}/venv-zephyr/bin/pip install -r ${1}/scripts/requirements.txt
+  west init -m https://github.com/zephyrproject-rtos/zephyr.git
+  deactivate
+}
+
 # Main function handling the download, verify, extract, and patch process.
 download_and_extract() {
-  local usage="Usage: download_and_extract URL MD5 DIR [ACTION]"
+  local usage="Usage: download_and_extract URL MD5 DIR [ACTION] [ACTION_PARAM]"
   local url="${1:?${usage}}"
   local expected_md5="${2:?${usage}}"
   local dir="${3:?${usage}}"
   local action=${4}
+  local action_param1=${5}  # optional action parameter
   local tempdir=$(mktemp -d)
   local tempdir2=$(mktemp -d)
   local tempfile=${tempdir}/temp_file
   local curl_retries=3
 
+  # Destionation already downloaded.
+  if [ -d ${dir} ]; then
+      exit 0
+  fi
+
   command -v curl >/dev/null 2>&1 || {
     echo >&2 "The required 'curl' tool isn't installed. Try 'apt-get install curl'."; exit 1;
   }
-  
+
   echo "downloading ${url}" >&2
   mkdir -p "${dir}"
   # We've been seeing occasional 56 errors from valid URLs, so set up a retry
   # loop to attempt to recover from them.
   for (( i=1; i<=$curl_retries; ++i ))
-  do  
-    CURL_RESULT=$(curl -Ls --retry 5 "${url}" > ${tempfile} || true)
+  do
+    # We have to use this approach because we normally halt the script when
+    # there's an error, and instead we want to catch errors so we can retry.
+    set +e
+    curl -Ls --fail --retry 5 "${url}" > ${tempfile}
+    CURL_RESULT=$?
+    set -e
+
+    # Was the command successful? If so, continue.
     if [[ $CURL_RESULT -eq 0 ]]
     then
       break
     fi
+
+    # Keep trying if we see the '56' error code.
     if [[ ( $CURL_RESULT -ne 56 ) || ( $i -eq $curl_retries ) ]]
     then
       echo "Error $CURL_RESULT downloading '${url}'"
@@ -109,7 +161,10 @@ download_and_extract() {
     echo "Checksum error for '${url}'. Expected ${expected_md5} but found ${DOWNLOADED_MD5}"
     exit 1
   fi
-  
+
+  # delete anything after the '?' in a url that may mask true file extension
+  url=$(echo "${url}" | sed "s/\?.*//")
+
   if [[ "${url}" == *gz ]]; then
     tar -C "${dir}" --strip-components=1 -xzf ${tempfile}
   elif [[ "${url}" == *tar.xz ]]; then
@@ -121,7 +176,7 @@ download_and_extract() {
     unzip ${tempfile} -d ${tempdir2} 2>&1 1>/dev/null
     # If the zip file contains nested directories, extract the files from the
     # inner directory.
-    if ls ${tempdir2}/*/* 1> /dev/null 2>&1; then
+    if [ $(find $tempdir2/* -maxdepth 0 | wc -l) = 1 ] && [ -d $tempdir2/* ]; then
       # unzip has no strip components, so unzip to a temp dir, and move the
       # files we want from the tempdir to destination.
       cp -R ${tempdir2}/*/* ${dir}/
@@ -130,6 +185,7 @@ download_and_extract() {
     fi
   else
     echo "Error unsupported archive type. Failed to extract tool after download."
+    exit 1
   fi
   rm -rf ${tempdir2} ${tempdir}
 
@@ -140,10 +196,21 @@ download_and_extract() {
     patch_am_sdk ${dir}
   elif [[ ${action} == "patch_kissfft" ]]; then
     patch_kissfft ${dir}
+  elif [[ ${action} == "patch_cifar10_dataset" ]]; then
+    patch_cifar10_dataset ${dir}
+  elif [[ ${action} == "build_embarc_mli" ]]; then
+    if [[ "${action_param1}" == *.tcf ]]; then
+      cp ${action_param1} ${dir}/hw/arc.tcf
+      build_embarc_mli ${dir} ../../hw/arc.tcf
+    else
+      build_embarc_mli ${dir} ${action_param1}
+    fi
+  elif [[ ${action} == "setup_zephyr" ]]; then
+    setup_zephyr ${dir}
   elif [[ ${action} ]]; then
     echo "Unknown action '${action}'"
     exit 1
   fi
 }
 
-download_and_extract "$1" "$2" "$3" "$4"
+download_and_extract "$1" "$2" "$3" "$4" "$5"

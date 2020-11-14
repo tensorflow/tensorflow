@@ -612,7 +612,7 @@ addons_symbol_mappings = {
     "tf.contrib.image.angles_to_projective_transforms":
         "tfa.image.angles_to_projective_transforms",
     "tf.contrib.image.matrices_to_flat_transforms":
-        "tfa.image.matricies_to_flat_transforms",
+        "tfa.image.matrices_to_flat_transforms",
     "tf.contrib.image.rotate":
         "tfa.image.rotate",
     "tf.contrib.image.transform":

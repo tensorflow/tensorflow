@@ -56,7 +56,7 @@ def is_square(operator_a, operator_b):
       return m == l
 
   if (operator_a.is_square != operator_b.is_square) and (
-      operator_a.is_square is not None and operator_a.is_square is not None):
+      operator_a.is_square is not None and operator_b.is_square is not None):
     return False
 
   return None

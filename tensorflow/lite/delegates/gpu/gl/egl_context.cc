@@ -26,19 +26,19 @@ namespace gpu {
 namespace gl {
 namespace {
 
-Status GetConfig(EGLDisplay display, const EGLint* attributes,
-                 EGLConfig* config) {
+absl::Status GetConfig(EGLDisplay display, const EGLint* attributes,
+                       EGLConfig* config) {
   EGLint config_count;
   bool chosen = eglChooseConfig(display, attributes, config, 1, &config_count);
   RETURN_IF_ERROR(GetOpenGlErrors());
   if (!chosen || config_count == 0) {
-    return InternalError("No EGL error, but eglChooseConfig failed.");
+    return absl::InternalError("No EGL error, but eglChooseConfig failed.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status CreateContext(EGLDisplay display, EGLContext shared_context,
-                     EGLConfig config, EglContext* egl_context) {
+absl::Status CreateContext(EGLDisplay display, EGLContext shared_context,
+                           EGLConfig config, EglContext* egl_context) {
   static const EGLint attributes[] = {EGL_CONTEXT_CLIENT_VERSION, 3,
 #ifdef _DEBUG  // Add debugging bit
                                       EGL_CONTEXT_FLAGS_KHR,
@@ -49,10 +49,10 @@ Status CreateContext(EGLDisplay display, EGLContext shared_context,
       eglCreateContext(display, config, shared_context, attributes);
   RETURN_IF_ERROR(GetOpenGlErrors());
   if (context == EGL_NO_CONTEXT) {
-    return InternalError("No EGL error, but eglCreateContext failed.");
+    return absl::InternalError("No EGL error, but eglCreateContext failed.");
   }
   *egl_context = EglContext(context, display, config, true);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool HasExtension(EGLDisplay display, const char* name) {
@@ -93,34 +93,36 @@ EglContext& EglContext::operator=(EglContext&& other) {
   return *this;
 }
 
-Status EglContext::MakeCurrent(EGLSurface read, EGLSurface write) {
+absl::Status EglContext::MakeCurrent(EGLSurface read, EGLSurface write) {
   bool is_made_current = eglMakeCurrent(display_, write, read, context_);
   RETURN_IF_ERROR(GetOpenGlErrors());
   if (!is_made_current) {
-    return InternalError("No EGL error, but eglMakeCurrent failed.");
+    return absl::InternalError("No EGL error, but eglMakeCurrent failed.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool EglContext::IsCurrent() const {
   return context_ == eglGetCurrentContext();
 }
 
-Status CreateConfiglessContext(EGLDisplay display, EGLContext shared_context,
-                               EglContext* egl_context) {
+absl::Status CreateConfiglessContext(EGLDisplay display,
+                                     EGLContext shared_context,
+                                     EglContext* egl_context) {
   if (!HasExtension(display, "EGL_KHR_no_config_context")) {
-    return UnavailableError("EGL_KHR_no_config_context not supported");
+    return absl::UnavailableError("EGL_KHR_no_config_context not supported");
   }
   return CreateContext(display, shared_context, EGL_NO_CONFIG_KHR, egl_context);
 }
 
-Status CreateSurfacelessContext(EGLDisplay display, EGLContext shared_context,
-                                EglContext* egl_context) {
+absl::Status CreateSurfacelessContext(EGLDisplay display,
+                                      EGLContext shared_context,
+                                      EglContext* egl_context) {
   if (!HasExtension(display, "EGL_KHR_create_context")) {
-    return UnavailableError("EGL_KHR_create_context not supported");
+    return absl::UnavailableError("EGL_KHR_create_context not supported");
   }
   if (!HasExtension(display, "EGL_KHR_surfaceless_context")) {
-    return UnavailableError("EGL_KHR_surfaceless_context not supported");
+    return absl::UnavailableError("EGL_KHR_surfaceless_context not supported");
   }
   const EGLint attributes[] = {EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT_KHR,
                                EGL_NONE};
@@ -129,8 +131,8 @@ Status CreateSurfacelessContext(EGLDisplay display, EGLContext shared_context,
   return CreateContext(display, shared_context, config, egl_context);
 }
 
-Status CreatePBufferContext(EGLDisplay display, EGLContext shared_context,
-                            EglContext* egl_context) {
+absl::Status CreatePBufferContext(EGLDisplay display, EGLContext shared_context,
+                                  EglContext* egl_context) {
   const EGLint attributes[] = {
       EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,     EGL_BIND_TO_TEXTURE_RGB,
       EGL_TRUE,         EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT_KHR,

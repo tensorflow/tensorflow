@@ -1,6 +1,7 @@
 # Description:
 # Cloud file system implementation.
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_windows",
@@ -19,8 +20,8 @@ package_group(
     name = "dependency_whitelist",
     packages = [
         "//learning/brain/tfrc/...",
-        "//learning/brain/tfrc/tpu_gcs_file_system/...",
         "//tensorflow/...",
+        "//third_party/gsmemcachedfs/...",
     ],
 )
 
@@ -93,16 +94,17 @@ cc_library(
         ":google_auth_provider",
         ":http_request",
         ":ram_file_block_cache",
-        ":retrying_file_system",
-        ":retrying_utils",
         ":time_util",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform:numbers",
         "//tensorflow/core/platform:path",
+        "//tensorflow/core/platform:retrying_file_system",
+        "//tensorflow/core/platform:retrying_utils",
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:stringprintf",
+        "//tensorflow/core/profiler/lib:traceme",
         "@jsoncpp_git//:jsoncpp",
     ],
     alwayslink = 1,
@@ -129,16 +131,17 @@ cc_library(
         ":google_auth_provider",
         ":http_request",
         ":ram_file_block_cache",
-        ":retrying_file_system",
-        ":retrying_utils",
         ":time_util",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform:numbers",
         "//tensorflow/core/platform:path",
+        "//tensorflow/core/platform:retrying_file_system",
+        "//tensorflow/core/platform:retrying_utils",
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:stringprintf",
+        "//tensorflow/core/profiler/lib:traceme",
         "@jsoncpp_git//:jsoncpp",
     ],
     alwayslink = 1,
@@ -167,6 +170,7 @@ cc_library(
         "//tensorflow/core/platform:scanner",
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:stringpiece",
+        "//tensorflow/core/util:env_var",
         "@curl",
     ],
 )
@@ -201,12 +205,12 @@ cc_library(
     deps = [
         ":compute_engine_metadata_client",
         ":oauth_client",
-        ":retrying_utils",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform:base64",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:path",
+        "//tensorflow/core/platform:retrying_utils",
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/strings",
         "@jsoncpp_git//:jsoncpp",
@@ -225,9 +229,9 @@ cc_library(
     deps = [
         ":curl_http_request",
         ":http_request",
-        ":retrying_utils",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/platform:retrying_utils",
     ],
 )
 
@@ -281,34 +285,6 @@ cc_library(
         "//tensorflow/core/platform:status",
         "@boringssl//:crypto",
         "@jsoncpp_git//:jsoncpp",
-    ],
-)
-
-cc_library(
-    name = "retrying_utils",
-    srcs = [
-        "retrying_utils.cc",
-    ],
-    hdrs = [
-        "retrying_utils.h",
-    ],
-    copts = tf_copts(),
-    deps = [
-        "//tensorflow/core:framework_headers_lib",
-        "//tensorflow/core:lib_internal",
-    ],
-)
-
-cc_library(
-    name = "retrying_file_system",
-    hdrs = [
-        "retrying_file_system.h",
-    ],
-    copts = tf_copts(),
-    deps = [
-        ":retrying_utils",
-        "//tensorflow/core:framework_headers_lib",
-        "//tensorflow/core:lib_internal",
     ],
 )
 
@@ -416,8 +392,8 @@ tf_cc_test(
     size = "small",
     srcs = ["oauth_client_test.cc"],
     data = [
-        "testdata/service_account_credentials.json",
-        "testdata/service_account_public_key.txt",
+        "//tensorflow/core/platform/cloud/testdata:service_account_credentials",
+        "//tensorflow/core/platform/cloud/testdata:service_account_public_key",
     ],
     deps = [
         ":http_request_fake",
@@ -428,6 +404,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:base64",
         "//tensorflow/core/platform:path",
+        "//tensorflow/core/platform:resource_loader",
         "//tensorflow/core/platform:scanner",
         "@boringssl//:crypto",
     ],
@@ -438,8 +415,8 @@ tf_cc_test(
     size = "small",
     srcs = ["google_auth_provider_test.cc"],
     data = [
-        "testdata/application_default_credentials.json",
-        "testdata/service_account_credentials.json",
+        "//tensorflow/core/platform/cloud/testdata:application_default_credentials",
+        "//tensorflow/core/platform/cloud/testdata:service_account_credentials",
     ],
     deps = [
         ":google_auth_provider",
@@ -450,6 +427,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:path",
+        "//tensorflow/core/platform:resource_loader",
     ],
 )
 
@@ -482,20 +460,6 @@ tf_cc_test(
 )
 
 tf_cc_test(
-    name = "retrying_file_system_test",
-    size = "small",
-    srcs = ["retrying_file_system_test.cc"],
-    deps = [
-        ":retrying_file_system",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:str_util",
-    ],
-)
-
-tf_cc_test(
     name = "time_util_test",
     size = "small",
     srcs = ["time_util_test.cc"],
@@ -503,19 +467,5 @@ tf_cc_test(
         ":time_util",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-    ],
-)
-
-tf_cc_test(
-    name = "retrying_utils_test",
-    size = "small",
-    srcs = ["retrying_utils_test.cc"],
-    deps = [
-        ":retrying_utils",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:str_util",
     ],
 )

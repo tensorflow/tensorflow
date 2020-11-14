@@ -22,3 +22,6 @@ RUN /install/install_pi_toolchain.sh
 
 # Set up the master bazelrc configuration file.
 COPY install/.bazelrc /etc/bazel.bazelrc
+
+# XLA is not needed for PI
+ENV TF_ENABLE_XLA=0

@@ -24,7 +24,7 @@ import gast
 
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import parser
-from tensorflow.python.util import tf_inspect
+from tensorflow.python.autograph.pyct import qual_names
 
 
 class CleanCopier(object):
@@ -82,23 +82,48 @@ class SymbolRenamer(gast.NodeTransformer):
   def __init__(self, name_map):
     self.name_map = name_map
 
-  def _process(self, node):
+  def _process_name_node(self, node):
     qn = anno.getanno(node, anno.Basic.QN)
     if qn in self.name_map:
-      new_node = gast.Name(str(self.name_map[qn]), node.ctx, None)
+      new_node = gast.Name(
+          str(self.name_map[qn]),
+          ctx=node.ctx,
+          annotation=None,
+          type_comment=None)
       # All annotations get carried over.
       for k in anno.keys(node):
         anno.copyanno(node, new_node, k)
       return new_node
     return self.generic_visit(node)
 
+  def _process_list_of_strings(self, names):
+    for i in range(len(names)):
+      qn = qual_names.QN(names[i])
+      if qn in self.name_map:
+        names[i] = str(self.name_map[qn])
+    return names
+
+  def visit_Nonlocal(self, node):
+    node.names = self._process_list_of_strings(node.names)
+    return node
+
+  def visit_Global(self, node):
+    node.names = self._process_list_of_strings(node.names)
+    return node
+
   def visit_Name(self, node):
-    return self._process(node)
+    return self._process_name_node(node)
 
   def visit_Attribute(self, node):
     if anno.hasanno(node, anno.Basic.QN):
-      return self._process(node)
-    # Attributes of dynamic objects will not have a QN.
+      return self._process_name_node(node)
+    # Renaming attributes is not supported.
+    return self.generic_visit(node)
+
+  def visit_FunctionDef(self, node):
+    qn = qual_names.QN(node.name)
+    if qn in self.name_map:
+      node.name = str(self.name_map[qn])
     return self.generic_visit(node)
 
 
@@ -117,7 +142,7 @@ def keywords_to_dict(keywords):
   keys = []
   values = []
   for kw in keywords:
-    keys.append(gast.Str(kw.arg))
+    keys.append(gast.Constant(kw.arg, kind=None))
     values.append(kw.value)
   return gast.Dict(keys=keys, values=values)
 
@@ -321,54 +346,3 @@ def parallel_walk(node, other):
         raise ValueError(
             'inconsistent values for field {}: {} and {}'.format(
                 f, n_child, o_child))
-
-
-class LambdaDefinitionMatcher(gast.NodeVisitor):
-  """Finds lambda nodes that match a given lambda's signature."""
-
-  def __init__(self, fn):
-    self.fn = fn
-    self.matching_nodes = []
-
-  def _arg_name(self, node):
-    if node is None:
-      return None
-    if isinstance(node, gast.Name):
-      return node.id
-    assert isinstance(node, str)
-    return node
-
-  def _argspec_matches(self, node):
-    arg_spec = tf_inspect.getfullargspec(self.fn)
-
-    node_args = tuple(self._arg_name(arg) for arg in node.args.args)
-    if node_args != tuple(arg_spec.args):
-      return False
-
-    if arg_spec.varargs != self._arg_name(node.args.vararg):
-      return False
-
-    if arg_spec.varkw != self._arg_name(node.args.kwarg):
-      return False
-
-    node_kwonlyargs = tuple(self._arg_name(arg) for arg in node.args.kwonlyargs)
-    if node_kwonlyargs != tuple(arg_spec.kwonlyargs):
-      return False
-
-    return True
-
-  def visit_Lambda(self, node):
-    self.generic_visit(node)
-
-    if self.fn.__name__ != '<lambda>':
-      return
-    if not self._argspec_matches(node):
-      return
-
-    self.matching_nodes.append(node)
-
-
-def find_matching_definitions(node, f):
-  matcher = LambdaDefinitionMatcher(f)
-  matcher.visit(node)
-  return tuple(matcher.matching_nodes)

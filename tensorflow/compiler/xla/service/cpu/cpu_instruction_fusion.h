@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CPU_INSTRUCTION_FUSION_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CPU_INSTRUCTION_FUSION_H_
 
+#include "absl/container/flat_hash_map.h"
+#include "tensorflow/compiler/xla/service/fusion_node_indexing_evaluation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/instruction_fusion.h"
 
@@ -28,10 +30,24 @@ class CpuInstructionFusion : public InstructionFusion {
       : InstructionFusion(CpuInstructionFusion::IsExpensive) {}
   ~CpuInstructionFusion() override = default;
 
+  StatusOr<bool> Run(HloModule* module) override {
+    fusion_node_evaluations_.clear();
+    return InstructionFusion::Run(module);
+  }
+
  protected:
   bool ShouldFuse(HloInstruction* consumer, int64 operand_index) override;
   HloInstruction::FusionKind ChooseKind(
       const HloInstruction* producer, const HloInstruction* consumer) override;
+
+ private:
+  HloInstruction* FuseInstruction(HloInstruction* fusion_instruction,
+                                  HloInstruction* producer) override;
+
+  // Keep track of the number of times each instruction inside a fusion node is
+  // indexed with different index vectors.
+  absl::flat_hash_map<const HloInstruction*, FusionNodeIndexingEvaluation>
+      fusion_node_evaluations_;
 };
 
 }  // namespace cpu

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "include/pybind11/detail/common.h"
-#include "include/pybind11/pybind11.h"
+#include "pybind11/detail/common.h"
+#include "pybind11/pybind11.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 
@@ -68,7 +68,7 @@ PYBIND11_MODULE(_dtypes, m) {
           return static_cast<tensorflow::DataType>(id);
         }
         throw py::type_error(
-            py::str("%d does not correspond to a valid tensorflow::DataType")
+            py::str("{} does not correspond to a valid tensorflow::DataType")
                 .format(id));
       }))
       // For compatibility with pure-Python DType.

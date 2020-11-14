@@ -24,7 +24,7 @@ from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import templates
 
-# TODO(mdan): Properly extrack boolean ops according to lazy eval rules.
+# TODO(mdan): Properly extract boolean ops according to lazy eval rules.
 # Note that this isn't completely safe either, because tensors may have control
 # dependencies.
 # Note that for loops that should be done after the loop was converted to
@@ -53,7 +53,7 @@ class LogicalExpressionTransformer(converter.Base):
     op_type = type(operator)
     if op_type in LOGICAL_OPERATORS:
       return LOGICAL_OPERATORS[op_type]
-    if self.ctx.program.options.uses(converter.Feature.EQUALITY_OPERATORS):
+    if self.ctx.user.options.uses(converter.Feature.EQUALITY_OPERATORS):
       if op_type in EQUALITY_OPERATORS:
         return EQUALITY_OPERATORS[op_type]
     return None
@@ -83,7 +83,7 @@ class LogicalExpressionTransformer(converter.Base):
   def visit_Compare(self, node):
     node = self.generic_visit(node)
 
-    if (not self.ctx.program.options.uses(
+    if (not self.ctx.user.options.uses(
         converter.Feature.EQUALITY_OPERATORS)):
       return node
 

@@ -52,13 +52,6 @@ def alias_tensors(*args):
   raise ValueError('at least one argument required')
 
 
-def capitalize_initial(s):
-  """Capitalizes the initial of a string only."""
-  if s:
-    return s[0].upper() + s[1:]
-  return s
-
-
 def get_range_len(start, limit, delta):
   dist = ops.convert_to_tensor(limit - start)
   unadjusted_len = dist // delta

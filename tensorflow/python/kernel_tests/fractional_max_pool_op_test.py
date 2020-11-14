@@ -146,7 +146,7 @@ class FractionalMaxPoolTest(test.TestCase):
     Since _GetExpectedFractionalMaxPoolResult is 'automated', it feel safer to
     have a test case that you can see what's happening.
     This test will generate a small, random, int 2D matrix, and feed it to
-    FractinalMaxPool and _GetExpectedFractionalMaxPoolResult.
+    FractionalMaxPool and _GetExpectedFractionalMaxPoolResult.
     """
     num_rows = 6
     num_cols = 6
@@ -341,7 +341,7 @@ class FractionalMaxPoolGradTest(test.TestCase):
   _SEED = 123456
 
   def _GenerateUniqueRandomInputTensor(self, shape):
-    """Generate 'unqiue' random input tensor.
+    """Generate 'unique' random input tensor.
 
     'Unique' means there's no collision values in the tensor, all elements are
     different. This is done by generating sequence of integers with step of 1

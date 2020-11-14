@@ -15,8 +15,8 @@ def _cc_clang_autoconf(repo_ctx):
         return
 
     download_clang(repo_ctx, out_folder = "extra_tools")
-    overriden_tools = {"gcc": "extra_tools/bin/clang"}
-    cc_autoconf_impl(repo_ctx, overriden_tools)
+    overridden_tools = {"gcc": "extra_tools/bin/clang"}
+    cc_autoconf_impl(repo_ctx, overridden_tools)
 
 cc_download_clang_toolchain = repository_rule(
     environ = [

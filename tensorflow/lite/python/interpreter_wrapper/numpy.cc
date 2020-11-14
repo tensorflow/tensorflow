@@ -38,6 +38,8 @@ int TfLiteTypeToPyArrayType(TfLiteType tf_lite_type) {
       return NPY_FLOAT32;
     case kTfLiteFloat16:
       return NPY_FLOAT16;
+    case kTfLiteFloat64:
+      return NPY_FLOAT64;
     case kTfLiteInt32:
       return NPY_INT32;
     case kTfLiteInt16:
@@ -54,6 +56,8 @@ int TfLiteTypeToPyArrayType(TfLiteType tf_lite_type) {
       return NPY_BOOL;
     case kTfLiteComplex64:
       return NPY_COMPLEX64;
+    case kTfLiteComplex128:
+      return NPY_COMPLEX128;
     case kTfLiteNoType:
       return NPY_NOTYPE;
       // Avoid default so compiler errors created when new types are made.
@@ -149,6 +153,11 @@ bool FillStringBufferWithPyArray(PyObject* value,
     case NPY_OBJECT:
     case NPY_STRING:
     case NPY_UNICODE: {
+      if (PyArray_NDIM(array) == 0) {
+        dynamic_buffer->AddString(static_cast<char*>(PyArray_DATA(array)),
+                                  PyArray_NBYTES(array));
+        return true;
+      }
       UniquePyObjectRef iter(PyArray_IterNew(value));
       while (PyArray_ITER_NOTDONE(iter.get())) {
         UniquePyObjectRef item(PyArray_GETITEM(

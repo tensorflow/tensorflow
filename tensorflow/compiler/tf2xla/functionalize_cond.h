@@ -17,6 +17,8 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_TF2XLA_FUNCTIONALIZE_COND_H_
 
 #include <deque>
+
+#include "tensorflow/compiler/tf2xla/functionalize_control_flow_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/graph/graph.h"
@@ -26,8 +28,17 @@ namespace tensorflow {
 // Functionalize all the switch-merge nodes of a loop-free graph into If
 // nodes. That is, attempt to transform every remaining switch and merge nodes
 // in the graph into If nodes.
-// Precondition: All while loops have been removed from graph.
-Status FunctionalizeCond(Graph* graph, FunctionLibraryDefinition* library);
+//
+// If `node_filter` is defined, then only conditions for whose nodes
+// `node_filter` returns true are functionalized.
+//
+// Preconditions:
+// a) Same as for `FunctionalizeControlFlow` (see comment there).
+// b) While loops must have been functionalized before according to
+//    `node_filter` (e.g., by calling `FunctionalizeWhileLoop` with the same
+//    filter before calling this function).
+Status FunctionalizeCond(Graph* graph, FunctionLibraryDefinition* library,
+                         const NodeFilter& node_filter = {});
 
 // Internal functions/classes exposed for testing purposes.
 namespace functionalize_cond {
@@ -172,11 +183,9 @@ class StateMap {
 // of the given graph together.
 class FunctionalizeCond {
  public:
-  // Functionalize all the switch-merge nodes of a loop-free graph into If
-  // nodes. That is, attempt to transform every remaining switch and merge nodes
-  // in the graph into If nodes.
-  // Precondition: All while loops have been removed from graph.
-  static Status Functionalize(Graph* graph, FunctionLibraryDefinition* library);
+  // See comment for function `FunctionalizeCond`.
+  static Status Functionalize(Graph* graph, FunctionLibraryDefinition* library,
+                              const NodeFilter& node_filter);
 
   // Build identity node with the same name as the merge that will be replaced
   // in case the output is fetched/colocated.
@@ -197,7 +206,8 @@ class FunctionalizeCond {
   void AddSwitchId(int switch_id);
 
  private:
-  FunctionalizeCond(Graph* graph, FunctionLibraryDefinition* library);
+  FunctionalizeCond(Graph* graph, FunctionLibraryDefinition* library,
+                    const NodeFilter& node_filter);
 
   // Performs the actual cond functionalization. Iterate over groups of merge
   // nodes (linked by common predicates & ancestor IDs), from innermost to
@@ -268,6 +278,9 @@ class FunctionalizeCond {
   friend class FunctionalizeCondTest;
 
   std::vector<int> switch_ids_;
+
+  // Controls which nodes are skipped for functionalization.
+  NodeFilter node_filter_ = {};
 };
 
 }  // namespace functionalize_cond

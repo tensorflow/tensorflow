@@ -48,7 +48,7 @@ void ModelAnalyzer::PrintNodeInfo(const NodeDef* node,
   if (properties.HasOutputProperties(node->name())) {
     const std::vector<OpInfo::TensorProperties>& props =
         properties.GetOutputProperties(node->name());
-    for (int i = 0; i < props.size(); ++i) {
+    for (int i = 0, props_size = props.size(); i < props_size; ++i) {
       const OpInfo::TensorProperties& prop = props[i];
       os << "\t"
          << "output " << i << " (" << DataTypeString(prop.dtype())
@@ -88,7 +88,7 @@ void ModelAnalyzer::PrintNodeInfo(const NodeDef* node,
     } else if (properties.HasInputProperties(node->name())) {
       const std::vector<OpInfo::TensorProperties>& props =
           properties.GetInputProperties(node->name());
-      for (int i = 0; i < props.size(); ++i) {
+      for (int i = 0, props_size = props.size(); i < props_size; ++i) {
         const OpInfo::TensorProperties& prop = props[i];
         if (prop.has_value()) {
           os << "\t"

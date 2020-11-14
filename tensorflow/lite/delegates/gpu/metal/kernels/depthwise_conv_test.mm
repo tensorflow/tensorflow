@@ -17,6 +17,7 @@ limitations under the License.
 
 #import <XCTest/XCTest.h>
 
+#include <string>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -83,9 +84,9 @@ using ::tflite::gpu::metal::SingleOpModel;
                       {output});
   XCTAssertTrue(model.PopulateTensor(0, {1, 3}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
   status = CompareVectors({2, 4, 12, 16}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
 - (void)testO2H1W1I1Strides2x2Dilation1x1 {
@@ -122,9 +123,9 @@ using ::tflite::gpu::metal::SingleOpModel;
                       {output});
   XCTAssertTrue(model.PopulateTensor(0, {1, 0, 1, 1, 0, 1, 1, 0, 1}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
   status = CompareVectors({1, 3, 1, 3, 1, 3, 1, 3}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
 - (void)testO2H2W2I1Strides1x1Dilation2x2 {
@@ -161,9 +162,48 @@ using ::tflite::gpu::metal::SingleOpModel;
                       {output});
   XCTAssertTrue(model.PopulateTensor(0, {1, 0, 1, 1, 0, 1, 1, 0, 1}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
   status = CompareVectors({10, 26}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testShape2x2Kernel2x2 {
+  TensorRef<BHWC> input;
+  input.type = DataType::FLOAT32;
+  input.ref = 0;
+  input.shape = BHWC(1, 2, 2, 1);
+
+  DepthwiseConvolution2DAttributes attr;
+  Tensor<Linear, DataType::FLOAT32> bias;
+  bias.shape.v = 1;
+  bias.id = 1;
+  bias.data = {0};
+  attr.bias = std::move(bias);
+
+  Tensor<OHWI, DataType::FLOAT32> weights;
+  weights.shape = OHWI(1, 2, 2, 1);
+  weights.id = 1;
+  weights.data = {1, 2, 3, 4};
+
+  attr.weights = std::move(weights);
+
+  attr.dilations = HW(1, 1);
+  attr.padding.prepended = HW(0, 0);
+  attr.padding.appended = HW(1, 1);
+  attr.strides = HW(1, 1);
+
+  TensorRef<BHWC> output;
+  output.type = DataType::FLOAT32;
+  output.ref = 3;
+  output.shape = BHWC(1, 2, 2, 1);
+
+  SingleOpModel model({ToString(OperationType::DEPTHWISE_CONVOLUTION), std::move(attr)}, {input},
+                      {output});
+  XCTAssertTrue(model.PopulateTensor(0, {1, 4, 9, 16}));
+  auto status = model.Invoke();
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+  status = CompareVectors({100, 52, 41, 16}, model.GetOutput(0), 1e-6f);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
 @end

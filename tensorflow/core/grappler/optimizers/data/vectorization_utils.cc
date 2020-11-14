@@ -251,7 +251,7 @@ Status Vectorization::AddConversionMapping(Node* op_node) {
 
   // The inputs for the node to be converted may already have been converted
   // themselves. For those that are not, we promote them to MapDefun outputs.
-  for (size_t i = 0; i < op_node->num_inputs(); ++i) {
+  for (int i = 0; i < op_node->num_inputs(); ++i) {
     auto edge = input_edges[i];
     if (auto found = gtl::FindOrNull(conversion_map_,
                                      {edge->src(), edge->src_output()})) {
@@ -279,15 +279,15 @@ Status Vectorization::AddConversionMapping(Node* op_node) {
             << "\" failed with error: " << s;
     return s;
   }
-
-  if (op_node->num_outputs() != outputs.size()) {
+  const int64 op_node_num_outputs = op_node->num_outputs();
+  if (op_node_num_outputs != outputs.size()) {
     return errors::Internal(
         "Number of vectorizer outputs does not match. Expected: ",
         op_node->num_outputs(), " Actual: ", outputs.size());
   }
 
   // Add output mappings.
-  for (size_t i = 0; i < op_node->num_outputs(); ++i) {
+  for (int i = 0; i < op_node->num_outputs(); ++i) {
     conversion_map_.insert({{op_node, i}, outputs[i]});
   }
 
@@ -521,7 +521,7 @@ Status Vectorization::AddArgTensorMappings() {
 
   // Captured inputs. These are applied (without slicing) to every iteration of
   // the map function, hence are mapped to unstacked nodes.
-  for (int i = num_args; i < map_defun_fn_->arg_nodes.size(); ++i) {
+  for (int i = num_args, end = map_defun_fn_->arg_nodes.size(); i < end; ++i) {
     TF_RETURN_IF_ERROR(add_conversion(map_defun_fn_->arg_nodes[i], false));
   }
 

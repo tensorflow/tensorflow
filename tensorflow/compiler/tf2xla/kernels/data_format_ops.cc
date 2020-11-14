@@ -35,15 +35,19 @@ class DataFormatDimMapOp : public XlaOpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("src_format", &src_format));
     string dst_format;
     OP_REQUIRES_OK(context, context->GetAttr("dst_format", &dst_format));
-    OP_REQUIRES(context, src_format.size() == 4,
-                errors::InvalidArgument(absl::StrCat(
-                    "Source format must of length 4, received src_format = ",
-                    src_format)));
+    OP_REQUIRES(context, src_format.size() == 4 or src_format.size() == 5,
+                errors::InvalidArgument(
+                    absl::StrCat("Source format must of length 4 or 5, "
+                                 "received src_format = ",
+                                 src_format)));
     OP_REQUIRES(
-        context, dst_format.size() == 4,
+        context, dst_format.size() == 4 or dst_format.size() == 5,
         errors::InvalidArgument(absl::StrCat(
-            "Destination format must of length 4, received dst_format = ",
+            "Destination format must of length 4 or 5, received dst_format = ",
             dst_format)));
+    for (int i = 0; i < src_format.size(); ++i) {
+      dst_idx_.push_back(-1);
+    }
     for (int i = 0; i < src_format.size(); ++i) {
       for (int j = 0; j < dst_format.size(); ++j) {
         if (dst_format[j] == src_format[i]) {
@@ -61,9 +65,10 @@ class DataFormatDimMapOp : public XlaOpKernel {
     auto builder = context->builder();
     xla::XlaOp dst_indices =
         xla::ConstantR1(builder, absl::Span<const int32>(dst_idx_));
-    xla::XlaOp four = xla::ConstantR0<int32>(builder, 4);
+    const int dims = dst_idx_.size();
+    xla::XlaOp rank = xla::ConstantR0<int32>(builder, dims);
     xla::XlaOp src_indices =
-        (xla::ConvertElementType(context->Input(0), xla::S32) + four) % four;
+        (xla::ConvertElementType(context->Input(0), xla::S32) + rank) % rank;
     xla::XlaOp output =
         xla::TorchIndexSelect(dst_indices, src_indices, /*dim=*/0);
     context->SetOutput(
@@ -71,7 +76,7 @@ class DataFormatDimMapOp : public XlaOpKernel {
   }
 
  private:
-  std::array<int32, 4> dst_idx_ = {{-1, -1, -1, -1}};
+  std::vector<int32> dst_idx_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(DataFormatDimMapOp);
 };
@@ -106,8 +111,9 @@ class DataFormatVecPermuteOp : public XlaOpKernel {
                 errors::InvalidArgument(
                     "Input must be a vector or matrix, but got shape ",
                     input_tensor_shape.DebugString()));
+    const int dim0 = input_tensor_shape.dim_size(0);
     OP_REQUIRES(
-        ctx, input_tensor_shape.dim_size(0) == 4,
+        ctx, dim0 == 2 || dim0 == 4,
         errors::InvalidArgument(
             "First dimension of input must be of size 4, but got shape ",
             input_tensor_shape.DebugString()));
@@ -118,10 +124,25 @@ class DataFormatVecPermuteOp : public XlaOpKernel {
               "Second dimension of 2D input must be of size 2, but got shape ",
               input_tensor_shape.DebugString()));
     }
-    int32 dst_indices[4];
-    for (int i = 0; i < 4; ++i) {
-      for (int j = 0; j < 4; ++j) {
-        if (src_format_[i] == dst_format_[j]) {
+
+    string src_format_str = src_format_;
+    string dst_format_str = dst_format_;
+    if (dim0 == 2) {
+      // If the input is a vector of size 2, treat the two elements as spatial
+      // dimensions.
+      auto keep_only_spatial_dimensions = [](string* format_str) -> void {
+        auto new_end = std::remove_if(
+            format_str->begin(), format_str->end(),
+            [](const char dim) { return dim != 'H' && dim != 'W'; });
+        format_str->erase(new_end, format_str->end());
+      };
+      keep_only_spatial_dimensions(&src_format_str);
+      keep_only_spatial_dimensions(&dst_format_str);
+    }
+    std::vector<int32> dst_indices(dim0);
+    for (int i = 0; i < dim0; ++i) {
+      for (int j = 0; j < dim0; ++j) {
+        if (src_format_str[i] == dst_format_str[j]) {
           dst_indices[j] = i;
           break;
         }

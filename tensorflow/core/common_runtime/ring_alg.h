@@ -39,7 +39,8 @@ class RingAlg : public CollectiveImplementationInterface {
 
   // Initializes members of CollectiveContext not yet initialized, i.e. device
   // and device_locality.  Also saves the CollectiveContext in this object.
-  Status InitializeCollectiveContext(CollectiveContext* col_ctx) override;
+  Status InitializeCollectiveContext(
+      std::shared_ptr<CollectiveContext> col_ctx) override;
 
   // No-op for ring alg.
   Status InitializeCollectiveGroupRuntimeDetails(
@@ -102,13 +103,13 @@ class RingAlg : public CollectiveImplementationInterface {
    private:
     mutex pcq_mu_;
     condition_variable cv_;
-    int waiter_count_ GUARDED_BY(pcq_mu_) = 0;
-    std::deque<RingField*> deque_ GUARDED_BY(pcq_mu_);
+    int waiter_count_ TF_GUARDED_BY(pcq_mu_) = 0;
+    std::deque<RingField*> deque_ TF_GUARDED_BY(pcq_mu_);
   };
 
   const CollectiveType type_;
   const string name_;
-  CollectiveContext* col_ctx_;          // Not owned
+  std::shared_ptr<CollectiveContext> col_ctx_;
   const CollectiveParams* col_params_;  // Not owned
   StatusCallback done_;
   int group_size_;
@@ -117,7 +118,7 @@ class RingAlg : public CollectiveImplementationInterface {
   Notification group_size_tensor_ready_;
   std::unique_ptr<CollectiveAdapter> ca_;
   mutex status_mu_;
-  Status status_ GUARDED_BY(status_mu_);
+  Status status_ TF_GUARDED_BY(status_mu_);
   std::vector<RingField> rfv_;
 };
 

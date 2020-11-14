@@ -74,6 +74,120 @@ func TestSessionRunNeg(t *testing.T) {
 	}
 }
 
+func TestMultipleInput(t *testing.T) {
+	// The inputs to the graph get sorted. This test checks that process works
+	// OK and that we still get the right output.
+	graph := NewGraph()
+
+	inputs := make([]Output, 20)
+	layer2 := make([]Output, len(inputs))
+	for i := range inputs {
+		in, err := Placeholder(graph, fmt.Sprintf("input%d", i), Int64)
+		if err != nil {
+			t.Fatal(err)
+		}
+		inputs[i] = in
+
+		factor, err := Const(graph, fmt.Sprintf("factor%d", i), int64(i+1))
+		if err != nil {
+			t.Fatal(err)
+		}
+		l2, err := graph.AddOperation(OpSpec{
+			Type: "Mul",
+			Name: fmt.Sprintf("Mul%d", i),
+			Input: []Input{
+				in,
+				factor,
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		layer2[i] = l2.Output(0)
+	}
+
+	fetch, err := graph.AddOperation(OpSpec{
+		Type: "AddN",
+		Input: []Input{
+			OutputList(layer2),
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	session, err := NewSession(graph, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := session.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	feeds := make(map[Output]*Tensor, len(inputs))
+	for i, in := range inputs {
+		tensor, err := NewTensor(int64(i + 1))
+		if err != nil {
+			t.Fatal(err)
+		}
+		feeds[in] = tensor
+	}
+
+	output, err := session.Run(
+		feeds,
+		[]Output{
+			fetch.Output(0),
+		},
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var exp int64
+	for i := range inputs {
+		exp += int64((i + 1) * (i + 1))
+	}
+	if v := output[0].Value().(int64); v != exp {
+		t.Fatalf("expected %d got %d", exp, v)
+	}
+}
+
+func TestInputOrderStable(t *testing.T) {
+	graph := NewGraph()
+
+	inputs := make([]Output, 20)
+	for i := range inputs {
+		in, err := Placeholder(graph, fmt.Sprintf("input%d", i), Int64)
+		if err != nil {
+			t.Fatal(err)
+		}
+		in.Index = i
+		inputs[i] = in
+	}
+
+	makeArgs := func() *cRunArgs {
+		feeds := make(map[Output]*Tensor, len(inputs))
+		for i, in := range inputs {
+			tensor, err := NewTensor(int64(i + 1))
+			if err != nil {
+				t.Fatal(err)
+			}
+			feeds[in] = tensor
+		}
+
+		return newCRunArgs(feeds, nil, nil)
+	}
+	args1 := makeArgs()
+	args2 := makeArgs()
+
+	if !reflect.DeepEqual(args1.feeds, args2.feeds) {
+		t.Fatalf("order is not stable")
+	}
+}
+
 func TestSessionRunConcat(t *testing.T) {
 	// Runs the Concat operation on two matrices: m1 and m2, along the
 	// first dimension (dim1).

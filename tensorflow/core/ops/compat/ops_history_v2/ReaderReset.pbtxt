@@ -1,0 +1,8 @@
+op {
+  name: "ReaderReset"
+  input_arg {
+    name: "reader_handle"
+    type: DT_STRING
+    is_ref: true
+  }
+}

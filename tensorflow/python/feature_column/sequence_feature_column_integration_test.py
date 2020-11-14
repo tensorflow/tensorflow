@@ -24,89 +24,11 @@ import tempfile
 from google.protobuf import text_format
 
 from tensorflow.core.example import example_pb2
-from tensorflow.core.example import feature_pb2
-from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.feature_column import dense_features
 from tensorflow.python.feature_column import feature_column_v2 as fc
 from tensorflow.python.feature_column import sequence_feature_column as sfc
-from tensorflow.python.keras.layers import recurrent
 from tensorflow.python.ops import parsing_ops
-from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
-
-
-class SequenceFeatureColumnIntegrationTest(test.TestCase):
-
-  def _make_sequence_example(self):
-    example = example_pb2.SequenceExample()
-    example.context.feature['int_ctx'].int64_list.value.extend([5])
-    example.context.feature['float_ctx'].float_list.value.extend([123.6])
-    for val in range(0, 10, 2):
-      feat = feature_pb2.Feature()
-      feat.int64_list.value.extend([val] * val)
-      example.feature_lists.feature_list['int_list'].feature.extend([feat])
-    for val in range(1, 11, 2):
-      feat = feature_pb2.Feature()
-      feat.bytes_list.value.extend([compat.as_bytes(str(val))] * val)
-      example.feature_lists.feature_list['str_list'].feature.extend([feat])
-
-    return example
-
-  def _build_feature_columns(self):
-    col = fc.categorical_column_with_identity('int_ctx', num_buckets=100)
-    ctx_cols = [
-        fc.embedding_column(col, dimension=10),
-        fc.numeric_column('float_ctx')
-    ]
-
-    identity_col = sfc.sequence_categorical_column_with_identity(
-        'int_list', num_buckets=10)
-    bucket_col = sfc.sequence_categorical_column_with_hash_bucket(
-        'bytes_list', hash_bucket_size=100)
-    seq_cols = [
-        fc.embedding_column(identity_col, dimension=10),
-        fc.embedding_column(bucket_col, dimension=20)
-    ]
-
-    return ctx_cols, seq_cols
-
-  def test_sequence_example_into_input_layer(self):
-    examples = [_make_sequence_example().SerializeToString()] * 100
-    ctx_cols, seq_cols = self._build_feature_columns()
-
-    def _parse_example(example):
-      ctx, seq = parsing_ops.parse_single_sequence_example(
-          example,
-          context_features=fc.make_parse_example_spec_v2(ctx_cols),
-          sequence_features=fc.make_parse_example_spec_v2(seq_cols))
-      ctx.update(seq)
-      return ctx
-
-    ds = dataset_ops.Dataset.from_tensor_slices(examples)
-    ds = ds.map(_parse_example)
-    ds = ds.batch(20)
-
-    # Test on a single batch
-    features = dataset_ops.make_one_shot_iterator(ds).get_next()
-
-    # Tile the context features across the sequence features
-    sequence_input_layer = sfc.SequenceFeatures(seq_cols)
-    seq_layer, _ = sequence_input_layer(features)
-    input_layer = dense_features.DenseFeatures(ctx_cols)
-    ctx_layer = input_layer(features)
-    input_layer = sfc.concatenate_context_input(ctx_layer, seq_layer)
-
-    rnn_layer = recurrent.RNN(recurrent.SimpleRNNCell(10))
-    output = rnn_layer(input_layer)
-
-    with self.cached_session() as sess:
-      sess.run(variables.global_variables_initializer())
-      features_r = sess.run(features)
-      self.assertAllEqual(features_r['int_list'].dense_shape, [20, 3, 6])
-
-      output_r = sess.run(output)
-      self.assertAllEqual(output_r.shape, [20, 10])
 
 
 class SequenceExampleParsingTest(test.TestCase):

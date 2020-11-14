@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_C_TF_STATUS_HELPER_H_
 
 #include "tensorflow/c/tf_status.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 
@@ -27,6 +27,14 @@ void Set_TF_Status_from_Status(TF_Status* tf_status,
 
 // Returns a "status" from "tf_status".
 tensorflow::Status StatusFromTF_Status(const TF_Status* tf_status);
+
+namespace internal {
+struct TF_StatusDeleter {
+  void operator()(TF_Status* tf_status) const { TF_DeleteStatus(tf_status); }
+};
+}  // namespace internal
+
+using TF_StatusPtr = std::unique_ptr<TF_Status, internal::TF_StatusDeleter>;
 
 }  // namespace tensorflow
 

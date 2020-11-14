@@ -23,11 +23,12 @@ from absl.testing import parameterized
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import cross_device_utils
 from tensorflow.python.distribute import device_util
-from tensorflow.python.distribute import values as value_lib
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 
 
@@ -79,32 +80,7 @@ class IndexedSlicesUtilsTest(test.TestCase, parameterized.TestCase):
   def testIsIndexedSlices(self):
     t = math_ops._as_indexed_slices(
         constant_op.constant([[1., 2.], [0, 0], [3., 4.]]))
-    self.assertTrue(cross_device_utils.contains_indexed_slices(t))
-
-  @test_util.run_in_graph_and_eager_modes
-  def testContainsIndexedSlices_List(self):
-    t0 = math_ops._as_indexed_slices(
-        constant_op.constant([[1., 2.], [0, 0], [3., 4.]]))
-    t1 = math_ops._as_indexed_slices(
-        constant_op.constant([[0., 0.], [5, 6], [7., 8.]]))
-    self.assertTrue(cross_device_utils.contains_indexed_slices([t0, t1]))
-
-  @test_util.run_in_graph_and_eager_modes
-  def testContainsIndexedSlices_Tuple(self):
-    t0 = math_ops._as_indexed_slices(
-        constant_op.constant([[1., 2.], [0, 0], [3., 4.]]))
-    t1 = math_ops._as_indexed_slices(
-        constant_op.constant([[0., 0.], [5, 6], [7., 8.]]))
-    self.assertTrue(cross_device_utils.contains_indexed_slices((t0, t1)))
-
-  @test_util.run_in_graph_and_eager_modes
-  def testContainsIndexedSlices_PerReplica(self):
-    t0 = math_ops._as_indexed_slices(
-        constant_op.constant([[1., 2.], [0, 0], [3., 4.]]))
-    t1 = math_ops._as_indexed_slices(
-        constant_op.constant([[0., 0.], [5, 6], [7., 8.]]))
-    per_replica = value_lib.PerReplica((t0, t1))
-    self.assertTrue(cross_device_utils.contains_indexed_slices(per_replica))
+    self.assertTrue(cross_device_utils.is_indexed_slices(t))
 
   @combinations.generate(combinations.combine(
       mode=["graph", "eager"],
@@ -133,8 +109,57 @@ class IndexedSlicesUtilsTest(test.TestCase, parameterized.TestCase):
 
     self.assertIsInstance(result, ops.IndexedSlices)
     self._assert_values_equal(t, result)
-    self.assertEqual(device_util.resolve(destination),
-                     device_util.resolve(result.device))
+    self.assertEqual(
+        device_util.resolve(destination), device_util.resolve(result.device))
+
+
+class GroupBySizeTest(test.TestCase):
+
+  def testPreferLargerPack(self):
+    # Each packs except the last one should be equal or larger than
+    # bytes_per_pack.
+    values = [
+        # size = 2 * 4 * 4 * 4 = 128
+        array_ops.ones([2, 4, 4], dtype=dtypes.float32),
+        # size = 8 * 4 = 32
+        array_ops.ones([8], dtype=dtypes.int32),
+        # size = 10 * 10 * 8 = 800
+        array_ops.ones([10, 10], dtype=dtypes.int64),
+        # size = 1 * 4 = 4
+        array_ops.ones([1], dtype=dtypes.int32),
+    ]
+    packs = cross_device_utils.group_by_size(values, bytes_per_pack=200)
+    self.assertLen(packs, 2)
+    self.assertLen(packs[0], 3)
+    self.assertEqual(packs[0][0].shape, [2, 4, 4])
+    self.assertEqual(packs[0][1].shape, [8])
+    self.assertEqual(packs[0][2].shape, [10, 10])
+    self.assertLen(packs[1], 1)
+    self.assertEqual(packs[1][0].shape, [1])
+
+  def testZeroBytesPerPack(self):
+    values = [
+        array_ops.ones([1], dtype=dtypes.float32),
+        array_ops.ones([2], dtype=dtypes.float32),
+    ]
+    packs = cross_device_utils.group_by_size(values, bytes_per_pack=0)
+    self.assertLen(packs, 1)
+    self.assertLen(packs[0], 2)
+    self.assertEqual(packs[0][0].shape, [1])
+    self.assertEqual(packs[0][1].shape, [2])
+
+  def testUnknownShape(self):
+    def create_placeholder(shape, dtype):
+      with ops.Graph().as_default():
+        return array_ops.placeholder(dtype=dtype, shape=shape)
+
+    values = [
+        array_ops.ones([10, 10], dtype=dtypes.float32),
+        create_placeholder([None, 10], dtype=dtypes.float32),
+    ]
+    packs = cross_device_utils.group_by_size(values, bytes_per_pack=1)
+    self.assertLen(packs, 1)
+    self.assertEqual(packs[0], values)
 
 
 if __name__ == "__main__":

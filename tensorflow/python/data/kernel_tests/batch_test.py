@@ -223,6 +223,12 @@ class BatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     ]
     self.assertDatasetProduces(dataset, expected_output=expected_output)
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testNoneComponent(self):
+    dataset = dataset_ops.Dataset.range(10).map(lambda x: (x, None)).batch(
+        10).map(lambda x, y: x)
+    self.assertDatasetProduces(dataset, expected_output=[list(range(10))])
+
 
 if __name__ == '__main__':
   test.main()

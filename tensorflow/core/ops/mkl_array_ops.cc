@@ -142,7 +142,10 @@ REGISTER_OP("_MklDequantize")
     .Output("output: float")
     .Output("mkl_output: uint8")
     .Attr("T: quantizedtype")
+    .Attr("narrow_range: bool = false")
+    .Attr("axis: int = -1")
     .Attr("mode: {'MIN_COMBINED', 'MIN_FIRST', 'SCALED'} = 'SCALED'")
+    .Attr("dtype: {bfloat16, float} = DT_FLOAT")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::UnchangedShape(c));
       ShapeHandle unused;

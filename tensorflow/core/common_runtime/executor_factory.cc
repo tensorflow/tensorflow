@@ -48,7 +48,7 @@ void ExecutorFactory::Register(const string& executor_type,
 
 namespace {
 const string RegisteredFactoriesErrorMessageLocked()
-    SHARED_LOCKS_REQUIRED(executor_factory_lock) {
+    TF_SHARED_LOCKS_REQUIRED(executor_factory_lock) {
   std::vector<string> factory_types;
   for (const auto& executor_factory : *executor_factories()) {
     factory_types.push_back(executor_factory.first);

@@ -247,7 +247,7 @@ void QueueBase::Close(OpKernelContext* ctx, bool cancel_pending_enqueues,
       mutex_lock lock(mu_);
       enqueue_attempts_.emplace_back(
           0, callback, ctx, nullptr, CancellationManager::kInvalidToken,
-          [this](Attempt* attempt) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+          [this](Attempt* attempt) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
             if (closed_) {
               attempt->context->SetStatus(
                   errors::Cancelled("Queue '", name_, "' is already closed."));

@@ -23,11 +23,19 @@ TfLiteDelegate* NnApiDelegate() {
   return delegate;
 }
 
+StatefulNnApiDelegate::StatefulNnApiDelegate(const NnApi* /* nnapi */)
+    : StatefulNnApiDelegate() {}
+
 StatefulNnApiDelegate::StatefulNnApiDelegate(Options /* options */)
     : StatefulNnApiDelegate() {}
 
+StatefulNnApiDelegate::StatefulNnApiDelegate(const NnApi* /* nnapi */,
+                                             Options /* options */)
+    : StatefulNnApiDelegate() {}
+
 StatefulNnApiDelegate::StatefulNnApiDelegate()
-    : TfLiteDelegate(TfLiteDelegateCreate()) {
+    : TfLiteDelegate(TfLiteDelegateCreate()),
+      delegate_data_(/*nnapi=*/nullptr) {
   Prepare = DoPrepare;
 }
 
@@ -43,5 +51,20 @@ TfLiteBufferHandle StatefulNnApiDelegate::RegisterNnapiMemory(
 }
 
 int StatefulNnApiDelegate::GetNnApiErrno() const { return 0; }
+
+using ::tflite::delegate::nnapi::NNAPIDelegateKernel;
+
+StatefulNnApiDelegate::Data::Data(const NnApi* nnapi) : nnapi(nnapi) {}
+
+StatefulNnApiDelegate::Data::~Data() {}
+
+void StatefulNnApiDelegate::Data::CacheDelegateKernel(
+    const TfLiteDelegateParams* delegate_params,
+    NNAPIDelegateKernel* delegate_state) {}
+
+NNAPIDelegateKernel* StatefulNnApiDelegate::Data::MaybeGetCachedDelegateKernel(
+    const TfLiteDelegateParams* delegate_params) {
+  return nullptr;
+}
 
 }  // namespace tflite

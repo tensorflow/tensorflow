@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -70,9 +71,9 @@ class SquareLinearOperatorBlockDiagTest(
     self._rtol[dtypes.float32] = 1e-4
     self._rtol[dtypes.complex64] = 1e-4
 
-  @property
-  def operator_shape_infos(self):
-    shape_info = linear_operator_test_util.OperatorShapeInfo
+  @staticmethod
+  def operator_shapes_infos():
+    shape_info = linear_operator_test_util.OperatorShapesInfo
     return [
         shape_info((0, 0)),
         shape_info((1, 1)),
@@ -81,6 +82,10 @@ class SquareLinearOperatorBlockDiagTest(
         shape_info((3, 7, 7), blocks=[(1, 2, 2), (3, 2, 2), (1, 3, 3)]),
         shape_info((2, 1, 5, 5), blocks=[(2, 1, 2, 2), (1, 3, 3)]),
     ]
+
+  @staticmethod
+  def use_blockwise_arg():
+    return True
 
   def operator_and_matrix(
       self, shape_info, dtype, use_placeholder,
@@ -138,6 +143,35 @@ class SquareLinearOperatorBlockDiagTest(
     self.assertTrue(operator.is_positive_definite)
     self.assertTrue(operator.is_non_singular)
     self.assertFalse(operator.is_self_adjoint)
+
+  def test_is_x_parameters(self):
+    matrix = [[1., 0.], [1., 1.]]
+    sub_operator = linalg.LinearOperatorFullMatrix(matrix)
+    operator = block_diag.LinearOperatorBlockDiag(
+        [sub_operator],
+        is_positive_definite=True,
+        is_non_singular=True,
+        is_self_adjoint=False)
+    self.assertEqual(
+        operator.parameters,
+        {
+            "name": None,
+            "is_square": True,
+            "is_positive_definite": True,
+            "is_self_adjoint": False,
+            "is_non_singular": True,
+            "operators": [sub_operator],
+        })
+    self.assertEqual(
+        sub_operator.parameters,
+        {
+            "is_non_singular": None,
+            "is_positive_definite": None,
+            "is_self_adjoint": None,
+            "is_square": None,
+            "matrix": matrix,
+            "name": "LinearOperatorFullMatrix",
+        })
 
   def test_block_diag_adjoint_type(self):
     matrix = [[1., 0.], [0., 1.]]
@@ -213,20 +247,16 @@ class SquareLinearOperatorBlockDiagTest(
     self.assertEqual(2, len(inverse.operators))
 
   def test_tape_safe(self):
-    matrix = variables_module.Variable([[1., 0.], [0., 1.]])
+    matrices = []
+    for _ in range(4):
+      matrices.append(variables_module.Variable(
+          linear_operator_test_util.random_positive_definite_matrix(
+              [2, 2], dtype=dtypes.float32, force_well_conditioned=True)))
+
     operator = block_diag.LinearOperatorBlockDiag(
-        [
-            linalg.LinearOperatorFullMatrix(
-                matrix,
-                is_self_adjoint=True,
-                is_positive_definite=True,
-            ),
-            linalg.LinearOperatorFullMatrix(
-                matrix,
-                is_self_adjoint=True,
-                is_positive_definite=True,
-            ),
-        ],
+        [linalg.LinearOperatorFullMatrix(
+            matrix, is_self_adjoint=True,
+            is_positive_definite=True) for matrix in matrices],
         is_self_adjoint=True,
         is_positive_definite=True,
     )
@@ -246,7 +276,7 @@ class SquareLinearOperatorBlockDiagTest(
     self.assertFalse(operator.is_positive_definite)
     self.assertTrue(operator.is_non_singular)
 
-    with self.assertRaisesRegexp(ValueError, "always non-singular"):
+    with self.assertRaisesRegex(ValueError, "always non-singular"):
       block_diag.LinearOperatorBlockDiag(
           [operator_1, operator_2], is_non_singular=False)
 
@@ -264,7 +294,7 @@ class SquareLinearOperatorBlockDiagTest(
         linalg.LinearOperatorFullMatrix(rng.rand(2, 3, 3)),
         linalg.LinearOperatorFullMatrix(rng.rand(2, 3, 3).astype(np.float32))
     ]
-    with self.assertRaisesRegexp(TypeError, "same dtype"):
+    with self.assertRaisesRegex(TypeError, "same dtype"):
       block_diag.LinearOperatorBlockDiag(operators)
 
   def test_non_square_operator_raises(self):
@@ -272,12 +302,26 @@ class SquareLinearOperatorBlockDiagTest(
         linalg.LinearOperatorFullMatrix(rng.rand(3, 4), is_square=False),
         linalg.LinearOperatorFullMatrix(rng.rand(3, 3))
     ]
-    with self.assertRaisesRegexp(ValueError, "square matrices"):
+    with self.assertRaisesRegex(ValueError, "square matrices"):
       block_diag.LinearOperatorBlockDiag(operators)
 
   def test_empty_operators_raises(self):
-    with self.assertRaisesRegexp(ValueError, "non-empty"):
+    with self.assertRaisesRegex(ValueError, "non-empty"):
       block_diag.LinearOperatorBlockDiag([])
+
+  def test_incompatible_input_blocks_raises(self):
+    matrix_1 = array_ops.placeholder_with_default(rng.rand(4, 4), shape=None)
+    matrix_2 = array_ops.placeholder_with_default(rng.rand(3, 3), shape=None)
+    operators = [
+        linalg.LinearOperatorFullMatrix(matrix_1, is_square=True),
+        linalg.LinearOperatorFullMatrix(matrix_2, is_square=True)
+    ]
+    operator = block_diag.LinearOperatorBlockDiag(operators)
+    x = np.random.rand(2, 4, 5).tolist()
+    msg = ("dimension does not match" if context.executing_eagerly()
+           else "input structure is ambiguous")
+    with self.assertRaisesRegex(ValueError, msg):
+      operator.matmul(x)
 
 
 if __name__ == "__main__":

@@ -77,8 +77,8 @@ class ResolveSvdfTest : public ::testing::Test {
   ~ResolveSvdfTest() override {}
 
  protected:
-  void AddNewNode(const string& name, const string& op,
-                  const std::vector<string>& inputs) {
+  void AddNewNode(const std::string& name, const std::string& op,
+                  const std::vector<std::string>& inputs) {
     NodeDef* node = graph_.add_node();
     node->set_name(name);
     node->set_op(op);
@@ -89,8 +89,8 @@ class ResolveSvdfTest : public ::testing::Test {
     }
   }
 
-  void AddNewNode(const string& name, const string& op,
-                  const std::vector<string>& inputs,
+  void AddNewNode(const std::string& name, const std::string& op,
+                  const std::vector<std::string>& inputs,
                   const std::vector<float>& values) {
     NodeDef* node = graph_.add_node();
     node->set_name(name);
@@ -109,12 +109,12 @@ class ResolveSvdfTest : public ::testing::Test {
     tensor_shape_dim0->set_size(values.size());
     allocated_tensor->set_allocated_tensor_shape(allocated_tensor_shape);
     allocated_tensor->set_tensor_content(
-        string(reinterpret_cast<const char*>(values.data()),
-               values.size() * sizeof(float)));
+        std::string(reinterpret_cast<const char*>(values.data()),
+                    values.size() * sizeof(float)));
     (*node->mutable_attr())["value"].set_allocated_tensor(allocated_tensor);
   }
 
-  void AddShapeNode(const string& name, const std::vector<int>& values) {
+  void AddShapeNode(const std::string& name, const std::vector<int>& values) {
     NodeDef* node = graph_.add_node();
     node->set_name(name);
     node->set_op("Const");
@@ -128,8 +128,8 @@ class ResolveSvdfTest : public ::testing::Test {
     tensor_shape_dim0->set_size(values.size());
     allocated_tensor->set_allocated_tensor_shape(allocated_tensor_shape);
     allocated_tensor->set_tensor_content(
-        string(reinterpret_cast<const char*>(values.data()),
-               values.size() * sizeof(int)));
+        std::string(reinterpret_cast<const char*>(values.data()),
+                    values.size() * sizeof(int)));
     (*node->mutable_attr())["value"].set_allocated_tensor(allocated_tensor);
   }
 
@@ -157,12 +157,12 @@ TEST_F(ResolveSvdfTest, TestTranspose2DTensor) {
 }
 
 TEST_F(ResolveSvdfTest, TestResolveSvdfFlow) {
-  std::unordered_map<string, bool> is_node_in_cluster;
+  std::unordered_map<std::string, bool> is_node_in_cluster;
   for (const NodeDef& node : graph_.node()) {
     is_node_in_cluster[node.name()] = false;
   }
 
-  std::vector<string> cluster_names;
+  std::vector<std::string> cluster_names;
   CHECK(FindCluster(svdf_cluster_factory_, graph_, &is_node_in_cluster,
                     &clusters_));
 
@@ -174,7 +174,7 @@ TEST_F(ResolveSvdfTest, TestResolveSvdfFlow) {
   EXPECT_THAT(cluster_names,
               testing::UnorderedElementsAreArray({"Svdf1", "Svdf2"}));
 
-  std::vector<string> new_node_names;
+  std::vector<std::string> new_node_names;
   std::vector<float> content_array(3);
   for (const std::unique_ptr<Cluster>& cluster : clusters_) {
     // After CreateNodes in each cluster we have three nodes: Svdf,

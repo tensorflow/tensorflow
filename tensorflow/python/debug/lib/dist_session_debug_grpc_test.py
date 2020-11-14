@@ -143,7 +143,7 @@ class DistributedSessionDebugTest(test_util.TensorFlowTestCase):
       debug_utils.watch_graph(
           run_options,
           sess.graph,
-          node_name_regex_whitelist=r"a",
+          node_name_regex_allowlist=r"a",
           debug_ops=["DebugIdentity"],
           debug_urls=[self.debug_server_url])
 
@@ -155,7 +155,7 @@ class DistributedSessionDebugTest(test_util.TensorFlowTestCase):
       debug_utils.watch_graph(
           run_options,
           sess.graph,
-          node_name_regex_whitelist=r"p",
+          node_name_regex_allowlist=r"p",
           debug_ops=["DebugIdentity(gated_grpc=True)"],
           debug_urls=[self.debug_server_url])
 
@@ -209,8 +209,8 @@ class DistributedSessionDebugTest(test_util.TensorFlowTestCase):
       def watch_fn(feeds, fetch_keys):
         del feeds, fetch_keys
         return framework.WatchOptions(
-            debug_ops=["DebugIdentity"],
-            node_name_regex_whitelist=r"p")
+            debug_ops=["DebugIdentity"], node_name_regex_allowlist=r"p")
+
       sess = grpc_wrapper.GrpcDebugWrapperSession(
           sess, "localhost:%d" % self.debug_server_port, watch_fn=watch_fn)
 

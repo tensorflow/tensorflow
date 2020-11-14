@@ -36,10 +36,8 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-// TODO(phawkins): implement double-sized windowed reductions in XLA and remove
-// the type constraint.
-constexpr std::array<DataType, 4> kScanOpTypes = {
-    {DT_HALF, DT_BFLOAT16, DT_FLOAT, DT_INT32}};
+constexpr std::array<DataType, 5> kScanOpTypes = {
+    {DT_HALF, DT_BFLOAT16, DT_FLOAT, DT_DOUBLE, DT_INT32}};
 
 class ScanOp : public XlaOpKernel {
  public:

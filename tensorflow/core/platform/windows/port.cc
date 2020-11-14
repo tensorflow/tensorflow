@@ -49,6 +49,14 @@ string Hostname() {
   return name;
 }
 
+string JobName() {
+  const char* job_name_cs = std::getenv("TF_JOB_NAME");
+  if (job_name_cs != nullptr) {
+    return string(job_name_cs);
+  }
+  return "";
+}
+
 int NumSchedulableCPUs() {
   SYSTEM_INFO system_info;
   GetSystemInfo(&system_info);
@@ -77,7 +85,7 @@ int NumTotalCPUs() {
   // the Size fields by iterating over the written-to buffer.  Since I can't
   // easily test this on Windows, I'm deferring this to someone who can!
   //
-  // If you fix this, also consider updatig GetCurrentCPU below.
+  // If you fix this, also consider updating GetCurrentCPU below.
   return NumSchedulableCPUs();
 }
 
@@ -112,7 +120,7 @@ void* Malloc(size_t size) { return malloc(size); }
 
 void* Realloc(void* ptr, size_t size) { return realloc(ptr, size); }
 
-void Free(void* ptr) { return free(ptr); }
+void Free(void* ptr) { free(ptr); }
 
 void* NUMAMalloc(int node, size_t size, int minimum_alignment) {
   return AlignedMalloc(size, minimum_alignment);
@@ -157,6 +165,17 @@ bool Snappy_Uncompress(const char* input, size_t length, char* output) {
 #endif
 }
 
+bool Snappy_UncompressToIOVec(const char* compressed, size_t compressed_length,
+                              const struct iovec* iov, size_t iov_cnt) {
+#ifdef TF_USE_SNAPPY
+  const snappy::iovec* snappy_iov = reinterpret_cast<const snappy::iovec*>(iov);
+  return snappy::RawUncompressToIOVec(compressed, compressed_length, snappy_iov,
+                                      iov_cnt);
+#else
+  return false;
+#endif
+}
+
 string Demangle(const char* mangled) { return mangled; }
 
 double NominalCPUFrequency() {
@@ -172,13 +191,15 @@ double NominalCPUFrequency() {
   return 1.0;
 }
 
-int64 AvailableRam() {
+MemoryInfo GetMemoryInfo() {
+  MemoryInfo mem_info = {INT64_MAX, INT64_MAX};
   MEMORYSTATUSEX statex;
   statex.dwLength = sizeof(statex);
   if (GlobalMemoryStatusEx(&statex)) {
-    return statex.ullAvailPhys;
+    mem_info.free = statex.ullAvailPhys;
+    mem_info.total = statex.ullTotalPhys;
   }
-  return INT64_MAX;
+  return mem_info;
 }
 
 int NumHyperthreadsPerCore() {

@@ -90,7 +90,7 @@ class DumpingDebugWrapperSession(framework.NonInteractiveDebugWrapperSession):
     self._run_counter_lock = threading.Lock()
 
   def prepare_run_debug_urls(self, fetches, feed_dict):
-    """Implementation of abstrat method in superclass.
+    """Implementation of abstract method in superclass.
 
     See doc of `NonInteractiveDebugWrapperSession.prepare_run_debug_urls()`
     for details. This implementation creates a run-specific subdirectory under

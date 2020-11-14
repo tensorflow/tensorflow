@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
+#include "tensorflow/lite/delegates/gpu/common/task/arguments.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
@@ -79,6 +80,7 @@ struct ComputeTaskDescriptor {
     UniformsFunction data_function;
   };
 
+  Arguments args;
   // Unique ID to match the graph compilation errors.
   int id;
   bool is_linkable;
@@ -99,6 +101,10 @@ struct ComputeTaskDescriptor {
   //   $2
   //   output_buffer[linear_index] = value;
   // }
+
+  // when operation associative, we can rearrange input tensors
+  // for example add is associative
+  bool is_associative_op = false;
   std::string shader_source;
   std::vector<InputBufferDescriptor> input_buffers;
   // A single per-operation output is supported now.
@@ -109,6 +115,7 @@ struct ComputeTaskDescriptor {
   // calculate new parameters for GPU compute task dispatching. A leading
   // unlinkable task must provide this.
   DispatchParamsFunction resize_function;
+  std::string description;
 };
 
 using ComputeTaskDescriptorPtr = std::shared_ptr<ComputeTaskDescriptor>;

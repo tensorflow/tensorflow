@@ -16,7 +16,7 @@ limitations under the License.
 #include <memory>
 #include <sstream>
 
-#include "include/pybind11/pybind11.h"
+#include "pybind11/pybind11.h"
 #include "tensorflow/core/grappler/grappler_item_builder.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/python/grappler/model_analyzer.h"
@@ -29,7 +29,7 @@ PYBIND11_MODULE(_pywrap_model_analyzer, m) {
         [](const py::bytes& serialized_metagraph, bool assume_valid_feeds,
            bool debug) -> py::bytes {
           tensorflow::MetaGraphDef metagraph;
-          if (!metagraph.ParseFromString(serialized_metagraph)) {
+          if (!metagraph.ParseFromString(std::string(serialized_metagraph))) {
             return "The MetaGraphDef could not be parsed as a valid protocol "
                    "buffer";
           }

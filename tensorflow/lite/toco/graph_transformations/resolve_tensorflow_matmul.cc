@@ -27,7 +27,7 @@ namespace toco {
 namespace {
 
 TransposeOperator* FindTransposeOpWithInput(const Model& model,
-                                            const string& array_name) {
+                                            const std::string& array_name) {
   for (auto it = model.operators.begin(); it != model.operators.end(); ++it) {
     Operator* op = it->get();
     if (op->type != OperatorType::kTranspose) {
@@ -74,8 +74,8 @@ TransposeOperator* FindTransposeOpWithInput(const Model& model,
     DCHECK_EQ(matmul_it->get(), matmul_op);
   };
 
-  string input_lhs = matmul_op->inputs[0];
-  string input_rhs = matmul_op->inputs[1];
+  std::string input_lhs = matmul_op->inputs[0];
+  std::string input_rhs = matmul_op->inputs[1];
 
   // Handle `transpose_a` with best effort: If the dimension of lhs is known,
   // insert a `Transpose` op.

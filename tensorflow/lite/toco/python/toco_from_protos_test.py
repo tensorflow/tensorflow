@@ -19,7 +19,7 @@ from __future__ import print_function
 import os
 import tempfile
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from tensorflow.lite.toco import model_flags_pb2
 from tensorflow.lite.toco import toco_flags_pb2
 from tensorflow.lite.toco import types_pb2
@@ -80,12 +80,12 @@ class TocoFromProtosTest(googletest.TestCase):
 
   def test_toco(self):
     """Run a couple of TensorFlow graphs against TOCO through the python bin."""
-    with tf.compat.v1.Session() as sess:
+    with tf.Session() as sess:
       img = tf.placeholder(name="img", dtype=tf.float32, shape=(1, 64, 64, 3))
       val = img + tf.constant([1., 2., 3.]) + tf.constant([1., 4., 4.])
       out = tf.identity(val, name="out")
       out2 = tf.sin(val, name="out2")
-      # This is a valid mdoel
+      # This is a valid model
       self._run(sess, img, out, True)
       # This uses an invalid function.
       # TODO(aselle): Check to make sure a warning is included.

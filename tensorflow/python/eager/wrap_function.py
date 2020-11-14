@@ -32,6 +32,7 @@ from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
@@ -226,8 +227,24 @@ class WrappedFunction(function.ConcreteFunction):
     # properly reflects the new captured inputs.
     for f in fn_graph.as_graph_def().library.function:
       context.context().add_function_def(f)
-    super(WrappedFunction, self).__init__(
-        fn_graph, attrs=attrs, signature=signature)
+    self._signature = signature
+    super(WrappedFunction, self).__init__(fn_graph, attrs=attrs)
+
+  def _call_impl(self, args, kwargs, cancellation_manager=None):
+    if self._arg_keywords is None:
+      if kwargs:
+        raise NotImplementedError(
+            "Keyword arguments not supported when calling a "
+            "wrap_function-decorated function.")
+      if self._signature is not None:
+        args = list(args)
+        for i, arg in enumerate(args):
+          if isinstance(self._signature[i], tensor_spec.DenseSpec):
+            args[i] = ops.convert_to_tensor(arg, self._signature[i].dtype)
+      return self._call_flat(args, self.captured_inputs)
+    else:
+      return super(WrappedFunction, self)._call_impl(
+          args, kwargs, cancellation_manager)
 
   def prune(self, feeds, fetches, name=None, input_signature=None):
     """Extract a subgraph of this function's underlying graph.
@@ -270,7 +287,7 @@ class WrappedFunction(function.ConcreteFunction):
     tensor_fetches = []
     tensor_infos = []
 
-    def _fetch_preprocesing_callback(fetch):
+    def _fetch_preprocessing_callback(fetch):
       """Extract out lists of ops, tensors, and tensor type info.
 
       Turns TensorInfos into Tensors in the original `fetches` structure.
@@ -300,9 +317,9 @@ class WrappedFunction(function.ConcreteFunction):
         return fetch
       else:
         graph_element = self.graph.as_graph_element(fetch)
-        return _fetch_preprocesing_callback(graph_element)
+        return _fetch_preprocessing_callback(graph_element)
 
-    fetches = nest.map_structure(_fetch_preprocesing_callback, fetches)
+    fetches = nest.map_structure(_fetch_preprocessing_callback, fetches)
 
     # Expand composite tensors into their component dense Tensors.
     tensor_fetches = nest.flatten(tensor_fetches, expand_composites=True)

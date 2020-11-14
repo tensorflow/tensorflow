@@ -157,12 +157,12 @@ std::vector<ComputeTaskDescriptorPtr> Slice(int id, ValueId input_id,
              dimension.w,
              dimension.h,
              dimension.c,
-             IntegralDivideRoundUp(dimension.c, 4),
+             DivideRoundUp(dimension.c, 4),
              // int4 dst_size
              output_dimension.w,
              output_dimension.h,
              output_dimension.c,
-             IntegralDivideRoundUp(output_dimension.c, 4),
+             DivideRoundUp(output_dimension.c, 4),
          };
          return GetByteBuffer(uniform_params);
        }},
@@ -173,10 +173,10 @@ std::vector<ComputeTaskDescriptorPtr> Slice(int id, ValueId input_id,
     const uint3 groups_size{16, 16, 1};
     const auto& src_shape = buffers.find(input_id)->second;
     BHWC dst_shape = CalculateOutputShape(src_shape, attr);
-    int groups_x = IntegralDivideRoundUp(dst_shape.w, groups_size.x);
-    int groups_y = IntegralDivideRoundUp(dst_shape.h, groups_size.y);
-    const int dst_layers = IntegralDivideRoundUp(dst_shape.c, 4);
-    int groups_z = IntegralDivideRoundUp(dst_layers, groups_size.z);
+    int groups_x = DivideRoundUp(dst_shape.w, groups_size.x);
+    int groups_y = DivideRoundUp(dst_shape.h, groups_size.y);
+    const int dst_layers = DivideRoundUp(dst_shape.c, 4);
+    int groups_z = DivideRoundUp(dst_layers, groups_size.z);
     return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
   };
 

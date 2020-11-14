@@ -22,10 +22,10 @@ limitations under the License.
 
 namespace toco {
 
-tensorflow::Status Convert(const string& graph_def_contents,
+tensorflow::Status Convert(const std::string& graph_def_contents,
                            const TocoFlags& toco_flags,
                            const ModelFlags& model_flags,
-                           string* output_file_contents,
+                           std::string* output_file_contents,
                            int64* arithmetic_ops_count = nullptr);
 
 tensorflow::Status Convert(const ParsedTocoFlags& parsed_toco_flags,

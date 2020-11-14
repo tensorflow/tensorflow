@@ -36,7 +36,10 @@ class UnboundedThreadPool : public thread::ThreadPoolInterface {
  public:
   UnboundedThreadPool(Env* env, const string& thread_name)
       : unbounded_work_queue_(env, thread_name) {}
-  ~UnboundedThreadPool() = default;
+  UnboundedThreadPool(Env* env, const string& thread_name,
+                      const ThreadOptions& thread_options)
+      : unbounded_work_queue_(env, thread_name, thread_options) {}
+  ~UnboundedThreadPool() override = default;
 
   // Returns an implementation of `ThreadFactory` that can be used to create
   // logical threads in this pool.

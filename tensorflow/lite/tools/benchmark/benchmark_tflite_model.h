@@ -46,6 +46,10 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
     bool has_value_range;
     int low;
     int high;
+
+    // The input value will be loaded from 'input_file_path' INSTEAD OF being
+    // randomly generated. Note the input file will be opened in binary mode.
+    std::string input_file_path;
   };
 
   explicit BenchmarkTfLiteModel(BenchmarkParams params = DefaultParams());
@@ -63,13 +67,15 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
   TfLiteStatus PrepareInputData() override;
   TfLiteStatus ResetInputsAndOutputs() override;
 
-  // Allow subclasses to create custom delegates to be applied during init.
-  using TfLiteDelegatePtr = tflite::Interpreter::TfLiteDelegatePtr;
-  using TfLiteDelegatePtrMap = std::map<std::string, TfLiteDelegatePtr>;
-  virtual TfLiteDelegatePtrMap GetDelegates() const;
+  int64_t MayGetModelFileSize() override;
+
+  virtual TfLiteStatus LoadModel();
 
   // Allow subclasses to create a customized Op resolver during init.
   virtual std::unique_ptr<tflite::OpResolver> GetOpResolver() const;
+
+  // Allow subclass to initialize a customized tflite interpereter.
+  virtual TfLiteStatus InitInterpreter();
 
   // Create a BenchmarkListener that's specifically for TFLite profiling if
   // necessary.
@@ -79,12 +85,16 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
 
   std::unique_ptr<tflite::FlatBufferModel> model_;
   std::unique_ptr<tflite::Interpreter> interpreter_;
+  std::unique_ptr<tflite::ExternalCpuBackendContext> external_context_;
 
  private:
+  // Implement type erasure with unique_ptr with custom deleter.
+  using VoidUniquePtr = std::unique_ptr<void, void (*)(void*)>;
+
   struct InputTensorData {
     InputTensorData() : data(nullptr, nullptr) {}
 
-    std::unique_ptr<void, void (*)(void*)> data;
+    VoidUniquePtr data;
     size_t bytes;
   };
 
@@ -97,21 +107,25 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
     std::generate_n(raw, num_elements, [&]() {
       return static_cast<T>(distribution(random_engine_));
     });
-    // Now initialize the type-erased unique_ptr (with custom deleter) from
-    // 'raw'.
-    tmp.data = std::unique_ptr<void, void (*)(void*)>(
-        static_cast<void*>(raw),
-        [](void* ptr) { delete[] static_cast<T*>(ptr); });
+    tmp.data = VoidUniquePtr(static_cast<void*>(raw),
+                             [](void* ptr) { delete[] static_cast<T*>(ptr); });
     return tmp;
   }
+
+  InputTensorData CreateRandomTensorData(const TfLiteTensor& t,
+                                         const InputLayerInfo* layer_info);
+
+  InputTensorData LoadInputTensorData(const TfLiteTensor& t,
+                                      const std::string& input_file_path);
 
   std::vector<InputLayerInfo> inputs_;
   std::vector<InputTensorData> inputs_data_;
   std::unique_ptr<BenchmarkListener> profiling_listener_ = nullptr;
-  std::unique_ptr<BenchmarkListener> gemmlowp_profiling_listener_ = nullptr;
-  TfLiteDelegatePtrMap delegates_;
-
+  std::unique_ptr<BenchmarkListener> ruy_profiling_listener_ = nullptr;
   std::mt19937 random_engine_;
+  std::vector<Interpreter::TfLiteDelegatePtr> owned_delegates_;
+  // Always TFLITE_LOG the benchmark result.
+  BenchmarkLoggingListener log_output_;
 };
 
 }  // namespace benchmark

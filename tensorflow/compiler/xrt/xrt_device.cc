@@ -17,17 +17,54 @@ limitations under the License.
 
 #include "tensorflow/compiler/xrt/xrt_device.h"
 
+#include <map>
+
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/mutex.h"
 
 namespace tensorflow {
+namespace {
+
+class ResourceMgrArena {
+ public:
+  static ResourceMgrArena* Get() {
+    static ResourceMgrArena* arena = new ResourceMgrArena();
+    return arena;
+  }
+
+  ResourceMgr* GetResourceMgr(const std::string& platform_name) {
+    mutex_lock lock(mutex_);
+    auto it = resource_managers_.find(platform_name);
+    if (it == resource_managers_.end()) {
+      it = resource_managers_.emplace(platform_name, new ResourceMgr()).first;
+    }
+    return it->second;
+  }
+
+ private:
+  mutex mutex_;
+  std::map<std::string, ResourceMgr*> resource_managers_;
+};
+
+}  // namespace
 
 /*static*/ Status XRTGenericDeviceAccessor::GetResourceManager(
     OpKernelContext* ctx, ResourceMgr** rm) {
-  *rm = ctx->resource_manager();
+  const XlaDevice::Metadata* metadata;
+  TF_RETURN_IF_ERROR(XlaDevice::GetMetadata(ctx, &metadata));
+  *rm = ResourceMgrArena::Get()->GetResourceMgr(metadata->platform()->Name());
   return Status::OK();
+}
+
+/* static */ xla::StatusOr<RefPtr<XRTCompilationCache>>
+XRTGenericDeviceAccessor::GetOrCreateCompilationCache(
+    OpKernelContext* ctx, int64 max_number_of_entries) {
+  ResourceMgr* rm;
+  TF_RETURN_IF_ERROR(GetResourceManager(ctx, &rm));
+  return tensorflow::GetOrCreateCompilationCache(rm, max_number_of_entries);
 }
 
 /*static*/ Status XRTGenericDeviceAccessor::InitScopedRef(

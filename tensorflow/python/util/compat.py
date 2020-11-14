@@ -111,15 +111,15 @@ def as_text(bytes_or_text, encoding='utf-8'):
     raise TypeError('Expected binary or unicode string, got %r' % bytes_or_text)
 
 
-# Convert an object to a `str` in both Python 2 and 3.
-if _six.PY2:
-  as_str = as_bytes
-  tf_export('compat.as_bytes', 'compat.as_str')(as_bytes)
-  tf_export('compat.as_text')(as_text)
-else:
-  as_str = as_text
-  tf_export('compat.as_bytes')(as_bytes)
-  tf_export('compat.as_text', 'compat.as_str')(as_text)
+def as_str(bytes_or_text, encoding='utf-8'):
+  if _six.PY2:
+    return as_bytes(bytes_or_text, encoding)
+  else:
+    return as_text(bytes_or_text, encoding)
+
+tf_export('compat.as_text')(as_text)
+tf_export('compat.as_bytes')(as_bytes)
+tf_export('compat.as_str')(as_str)
 
 
 @tf_export('compat.as_str_any')
@@ -178,6 +178,27 @@ def path_to_str(path):
   if hasattr(path, '__fspath__'):
     path = as_str_any(path.__fspath__())
   return path
+
+
+def path_to_bytes(path):
+  r"""Converts input which is a `PathLike` object to `bytes`.
+
+  Converts from any python constant representation of a `PathLike` object
+  or `str` to bytes.
+
+  Args:
+    path: An object that can be converted to path representation.
+
+  Returns:
+    A `bytes` object.
+
+  Usage:
+    In case a simplified `bytes` version of the path is needed from an
+    `os.PathLike` object
+  """
+  if hasattr(path, '__fspath__'):
+    path = path.__fspath__()
+  return as_bytes(path)
 
 
 # Numpy 1.8 scalars don't inherit from numbers.Integral in Python 3, so we

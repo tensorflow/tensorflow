@@ -1,0 +1,69 @@
+op {
+  name: "SparseMatMul"
+  input_arg {
+    name: "a"
+    type_attr: "Ta"
+  }
+  input_arg {
+    name: "b"
+    type_attr: "Tb"
+  }
+  output_arg {
+    name: "product"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "transpose_a"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "transpose_b"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "a_is_sparse"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "b_is_sparse"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "Ta"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_BFLOAT16
+      }
+    }
+  }
+  attr {
+    name: "Tb"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_BFLOAT16
+      }
+    }
+  }
+}

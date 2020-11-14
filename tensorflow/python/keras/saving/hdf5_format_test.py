@@ -21,23 +21,27 @@ from __future__ import print_function
 import os
 import shutil
 import tempfile
+import uuid
 
 from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python import tf2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import test_util
+from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
+from tensorflow.python.keras import optimizer_v1
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.saving import hdf5_format
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
@@ -51,10 +55,10 @@ except ImportError:
   h5py = None
 
 
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
 
-  @keras_parameterized.run_with_all_saved_model_formats
-  @test_util.run_in_graph_and_eager_modes
+  @keras_parameterized.run_with_all_weight_formats
   def test_weight_loading(self):
     temp_dir = self.get_temp_dir()
     self.addCleanup(shutil.rmtree, temp_dir)
@@ -83,7 +87,6 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
       y = model.predict(x)
       self.assertAllClose(ref_y, y)
 
-  @test_util.run_in_graph_and_eager_modes
   def test_weight_preprocessing(self):
     input_dim = 3
     output_dim = 3
@@ -210,7 +213,6 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
           for (x, y) in zip(weights1, weights2)
       ]
 
-  @test_util.run_in_graph_and_eager_modes
   def test_sequential_weight_loading(self):
     if h5py is None:
       return
@@ -243,7 +245,6 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
       self.assertAllClose(y, ref_y)
 
   @keras_parameterized.run_with_all_saved_model_formats
-  @test_util.run_in_graph_and_eager_modes
   def test_nested_model_weight_loading(self):
     save_format = testing_utils.get_save_format()
     temp_dir = self.get_temp_dir()
@@ -282,7 +283,6 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
 
       self.assertAllClose(y, ref_y)
 
-  @test_util.run_in_graph_and_eager_modes
   def test_sequential_weight_loading_group_name_with_incorrect_length(self):
     if h5py is None:
       return
@@ -314,18 +314,17 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
       model.compile(loss=keras.losses.MSE,
                     optimizer='rmsprop',
                     metrics=[keras.metrics.categorical_accuracy])
-    with self.assertRaisesRegexp(ValueError,
-                                 r'Layer #0 \(named \"d1\"\) expects 1 '
-                                 r'weight\(s\), but the saved weights have 2 '
-                                 r'element\(s\)\.'):
-      hdf5_format.load_weights_from_hdf5_group_by_name(f_model, model.layers)
+      with self.assertRaisesRegex(
+          ValueError, r'Layer #0 \(named \"d1\"\) expects 1 '
+          r'weight\(s\), but the saved weights have 2 '
+          r'element\(s\)\.'):
+        hdf5_format.load_weights_from_hdf5_group_by_name(f_model, model.layers)
 
-    hdf5_format.load_weights_from_hdf5_group_by_name(
-        f_model, model.layers, skip_mismatch=True)
-    self.assertAllClose(keras.backend.get_value(ref_model.layers[1].kernel),
-                        keras.backend.get_value(model.layers[1].kernel))
+      hdf5_format.load_weights_from_hdf5_group_by_name(
+          f_model, model.layers, skip_mismatch=True)
+      self.assertAllClose(keras.backend.get_value(ref_model.layers[1].kernel),
+                          keras.backend.get_value(model.layers[1].kernel))
 
-  @test_util.run_deprecated_v1
   def test_sequential_weight_loading_group_name_with_incorrect_shape(self):
     if h5py is None:
       return
@@ -337,13 +336,13 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
     num_hidden = 5
     input_dim = 3
     num_classes = 2
-    with self.cached_session():
+    with ops.Graph().as_default(), self.cached_session():
       ref_model = keras.models.Sequential()
       ref_model.add(keras.layers.Dense(num_hidden, input_dim=input_dim,
                                        name='d1'))
       ref_model.add(keras.layers.Dense(num_classes, name='d2'))
       ref_model.compile(loss=keras.losses.MSE,
-                        optimizer=keras.optimizers.RMSprop(lr=0.0001),
+                        optimizer=optimizer_v1.RMSprop(lr=0.0001),
                         metrics=[keras.metrics.categorical_accuracy])
 
       f_ref_model = h5py.File(h5_path, 'w')
@@ -356,14 +355,14 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
                                    name='d1'))
       model.add(keras.layers.Dense(num_classes, name='d2'))
       model.compile(loss=keras.losses.MSE,
-                    optimizer=keras.optimizers.RMSprop(lr=0.0001),
+                    optimizer=optimizer_v1.RMSprop(lr=0.0001),
                     metrics=[keras.metrics.categorical_accuracy])
-      with self.assertRaisesRegexp(ValueError,
-                                   r'Layer #0 \(named "d1"\), weight '
-                                   r'<tf\.Variable \'d1_1\/kernel:0\' '
-                                   r'shape=\(3, 10\) dtype=float32> has '
-                                   r'shape \(3, 10\), but the saved weight has '
-                                   r'shape \(3, 5\)\.'):
+      with self.assertRaisesRegex(
+          ValueError, r'Layer #0 \(named "d1"\), weight '
+          r'<tf\.Variable \'d1_1\/kernel:0\' '
+          r'shape=\(3, 10\) dtype=float32> has '
+          r'shape \(3, 10\), but the saved weight has '
+          r'shape \(3, 5\)\.'):
         hdf5_format.load_weights_from_hdf5_group_by_name(f_model, model.layers)
 
       hdf5_format.load_weights_from_hdf5_group_by_name(
@@ -373,25 +372,59 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
 
 
 @keras_parameterized.run_with_all_saved_model_formats
-class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
+class TestWholeModelSaving(keras_parameterized.TestCase):
 
   def _save_model_dir(self, dirname='saved_model'):
     temp_dir = self.get_temp_dir()
     self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
     return os.path.join(temp_dir, dirname)
 
-  def test_sequential_model_saving(self):
+  def _assert_same_weights_and_metrics(self, model, loaded_model):
+    """Checks that the loaded weights and metrics are the same as the original.
+
+    Args:
+      model: original model
+      loaded_model: loaded model
+    """
+    self.assertAllClose(model.weights, loaded_model.weights)
+
+    if loaded_model.optimizer:
+      if testing_utils.get_save_format() == 'tf':
+        # TODO(b/153110928): Keras TF format doesn't restore optimizer weights
+        # currently.
+        return
+      self.assertAllClose(model.optimizer.weights,
+                          loaded_model.optimizer.weights)
+
+    # In V1/Graph mode, the model isn't built, so the metrics are not loaded
+    # immediately (requires model to be called on some data before building
+    # metrics).
+    check_metrics = tf2.enabled() and context.executing_eagerly()
+
+    if check_metrics:
+      self.assertAllEqual([m.name for m in model.metrics],
+                          [m.name for m in loaded_model.metrics])
+
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
+  def test_save_and_load(self):
     saved_model_dir = self._save_model_dir()
     save_format = testing_utils.get_save_format()
-    # TODO(b/145951332): skip TF format for now.
-    if save_format in ['tf', 'tensorflow']:
+    save_kwargs = testing_utils.get_save_kwargs()
+
+    if ((save_format == 'h5' or not save_kwargs.get('save_traces', True)) and
+        testing_utils.get_model_type() == 'subclass'):
+      # HDF5 format currently does not allow saving subclassed models.
+      # When saving with `save_traces=False`, the subclassed model must have a
+      # get_config/from_config, which the autogenerated model does not have.
       return
 
     with self.cached_session():
-      model = keras.models.Sequential()
-      model.add(keras.layers.Dense(2, input_shape=(3,)))
-      model.add(keras.layers.RepeatVector(3))
-      model.add(keras.layers.TimeDistributed(keras.layers.Dense(3)))
+      model = testing_utils.get_model_from_layers(
+          [keras.layers.Dense(2),
+           keras.layers.RepeatVector(3),
+           keras.layers.TimeDistributed(keras.layers.Dense(3))],
+          input_shape=(3,))
       model.compile(
           loss=keras.losses.MSE,
           optimizer=keras.optimizer_v2.rmsprop.RMSprop(lr=0.0001),
@@ -412,33 +445,21 @@ class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
       model.train_on_batch(x, y)
 
       out = model.predict(x)
-      keras.models.save_model(model, saved_model_dir, save_format=save_format)
+      keras.models.save_model(
+          model, saved_model_dir, save_format=save_format,
+          **save_kwargs)
 
-      new_model = keras.models.load_model(saved_model_dir)
+      loaded_model = keras.models.load_model(saved_model_dir)
+      self._assert_same_weights_and_metrics(model, loaded_model)
 
-      out2 = new_model.predict(x)
+      out2 = loaded_model.predict(x)
       self.assertAllClose(out, out2, atol=1e-05)
 
-      # test that new updates are the same with both models
-      x = np.random.random((1, 3))
-      y = np.random.random((1, 3, 3))
-      model.train_on_batch(x, y)
-      new_model.train_on_batch(x, y)
-
-      x = np.random.random((1, 3))
-      y = np.random.random((1, 3, 3))
       eval_out = model.evaluate(x, y)
-      eval_out2 = new_model.evaluate(x, y)
+      eval_out2 = loaded_model.evaluate(x, y)
       self.assertArrayNear(eval_out, eval_out2, 0.001)
 
-      out = model.predict(x)
-      out2 = new_model.predict(x)
-
-      # TODO(b/120930751) This tolerance should be 1e-05,
-      # very concerning that its not.
-      self.assertAllClose(out, out2, atol=1e-03)
-
-  @test_util.run_deprecated_v1
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_sequential_model_saving_without_input_shape(self):
     saved_model_dir = self._save_model_dir()
     save_format = testing_utils.get_save_format()
@@ -449,14 +470,14 @@ class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
       model.add(keras.layers.TimeDistributed(keras.layers.Dense(3)))
       model.compile(
           loss=keras.losses.MSE,
-          optimizer=keras.optimizers.RMSprop(lr=0.0001),
+          optimizer='rmsprop',
           metrics=[
               keras.metrics.categorical_accuracy,
-              keras.metrics.CategoricalAccuracy()
+              keras.metrics.CategoricalAccuracy(name='cat_acc')
           ],
           weighted_metrics=[
               keras.metrics.categorical_accuracy,
-              keras.metrics.CategoricalAccuracy()
+              keras.metrics.CategoricalAccuracy(name='cat_acc2')
           ],
           sample_weight_mode='temporal')
       x = np.random.random((1, 3))
@@ -468,9 +489,12 @@ class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
 
       new_model = keras.models.load_model(saved_model_dir)
 
+      self._assert_same_weights_and_metrics(model, new_model)
+
       out2 = new_model.predict(x)
       self.assertAllClose(out, out2, atol=1e-05)
 
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_sequential_model_saving_without_compile(self):
     saved_model_dir = self._save_model_dir()
     save_format = testing_utils.get_save_format()
@@ -487,22 +511,19 @@ class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
       keras.models.save_model(model, saved_model_dir, save_format=save_format)
 
       new_model = keras.models.load_model(saved_model_dir)
+      self._assert_same_weights_and_metrics(model, new_model)
 
       out2 = new_model.predict(x)
       self.assertAllClose(out, out2, atol=1e-05)
 
-  @test_util.run_deprecated_v1
   def test_sequential_model_saving_2(self):
     saved_model_dir = self._save_model_dir()
     save_format = testing_utils.get_save_format()
-    # TODO(b/145133418): skip tf format for now.
-    if save_format in ['tf', 'tensorflow']:
-      return
 
-    with self.cached_session():
+    with ops.Graph().as_default(), self.cached_session():
       # test with custom optimizer, loss
 
-      class CustomOp(keras.optimizers.RMSprop):
+      class CustomOp(optimizer_v1.RMSprop):
         pass
 
       def custom_loss(y_true, y_pred):
@@ -520,44 +541,13 @@ class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
       out = model.predict(x)
       keras.models.save_model(model, saved_model_dir, save_format=save_format)
 
-      model = keras.models.load_model(
+      new_model = keras.models.load_model(
           saved_model_dir,
           custom_objects={'CustomOp': CustomOp,
                           'custom_loss': custom_loss})
+      self._assert_same_weights_and_metrics(model, new_model)
 
-      out2 = model.predict(x)
-      self.assertAllClose(out, out2, atol=1e-05)
-
-  @test_util.run_deprecated_v1
-  def test_functional_model_saving(self):
-    saved_model_dir = self._save_model_dir()
-    save_format = testing_utils.get_save_format()
-    with self.cached_session():
-      inputs = keras.layers.Input(shape=(3,))
-      x = keras.layers.Dense(2)(inputs)
-      output = keras.layers.Dense(3)(x)
-
-      model = keras.models.Model(inputs, output)
-      model.compile(
-          loss=keras.losses.MSE,
-          optimizer=keras.optimizers.RMSprop(lr=0.0001),
-          metrics=[
-              keras.metrics.categorical_accuracy,
-              keras.metrics.CategoricalAccuracy()
-          ],
-          weighted_metrics=[
-              keras.metrics.categorical_accuracy,
-              keras.metrics.CategoricalAccuracy()
-          ])
-      x = np.random.random((1, 3))
-      y = np.random.random((1, 3))
-      model.train_on_batch(x, y)
-
-      out = model.predict(x)
-      keras.models.save_model(model, saved_model_dir, save_format=save_format)
-      model = keras.models.load_model(saved_model_dir)
-
-      out2 = model.predict(x)
+      out2 = new_model.predict(x)
       self.assertAllClose(out, out2, atol=1e-05)
 
   def test_saving_without_compilation(self):
@@ -593,8 +583,8 @@ class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
       model.add(keras.layers.Dense(2, input_shape=(3,)))
       model.add(keras.layers.Dense(3))
       model.compile(loss='mse', optimizer='sgd', metrics=['acc'])
-      model._make_train_function()
-
+      if not ops.executing_eagerly_outside_functions():
+        model._make_train_function()
       keras.models.save_model(model, saved_model_dir, save_format=save_format)
       model = keras.models.load_model(saved_model_dir)
 
@@ -617,10 +607,6 @@ class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
 
     model = keras.models.load_model(saved_model_dir)
 
-    # TODO(b/145150660): skip the checking for tf format.
-    if save_format in ['tf', 'tensorflow']:
-      return
-
     self.assertAllClose(mean, model.layers[1].arguments['mu'])
     self.assertAllClose(std, model.layers[1].arguments['std'])
 
@@ -632,7 +618,7 @@ class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
       # out of proportion. Note that it fits into the internal HDF5
       # attribute memory limit on its own but because h5py converts
       # the list of layer names into numpy array, which uses the same
-      # amout of memory for every item, it increases the memory
+      # amount of memory for every item, it increases the memory
       # requirements substantially.
       x = keras.Input(shape=(2,), name='input_' + ('x' * (2**15)))
       f = x
@@ -665,9 +651,6 @@ class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
   def test_saving_model_with_long_weights_names(self):
     saved_model_dir = self._save_model_dir()
     save_format = testing_utils.get_save_format()
-    # TODO(b/145139873): skip tf format for now.
-    if save_format in ['tf', 'tensorflow']:
-      return
 
     with self.cached_session():
       x = keras.Input(shape=(2,), name='nested_model_input')
@@ -694,22 +677,22 @@ class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
       keras.models.save_model(model, saved_model_dir, save_format=save_format)
       model = keras.models.load_model(saved_model_dir)
 
-      # Check that the HDF5 files contains chunked array
-      # of weight names.
-      with h5py.File(saved_model_dir, 'r') as h5file:
-        num_weight_arrays = len(
-            [attr for attr in h5file['model_weights']['nested_model'].attrs
-             if attr.startswith('weight_names')])
-      # The chunking of layer names array should have happened.
-      self.assertGreater(num_weight_arrays, 0)
+      if save_format in ['h5', 'hdf5', 'keras']:
+        # Check that the HDF5 files contains chunked array
+        # of weight names.
+        with h5py.File(saved_model_dir, 'r') as h5file:
+          num_weight_arrays = len(
+              [attr for attr in h5file['model_weights']['nested_model'].attrs
+               if attr.startswith('weight_names')])
+        # The chunking of layer names array should have happened.
+        self.assertGreater(num_weight_arrays, 0)
       out2 = model.predict(x)
       self.assertAllClose(out, out2, atol=1e-05)
 
-  @test_util.run_deprecated_v1
   def test_model_saving_to_pre_created_h5py_file(self):
     saved_model_dir = self._save_model_dir()
     save_format = testing_utils.get_save_format()
-    with self.cached_session():
+    with ops.Graph().as_default(), self.cached_session():
       inputs = keras.Input(shape=(3,))
       x = keras.layers.Dense(2)(inputs)
       outputs = keras.layers.Dense(3)(x)
@@ -717,7 +700,7 @@ class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
       model = keras.Model(inputs, outputs)
       model.compile(
           loss=keras.losses.MSE,
-          optimizer=keras.optimizers.Adam(),
+          optimizer=optimizer_v1.Adam(),
           metrics=[
               keras.metrics.categorical_accuracy,
               keras.metrics.CategoricalAccuracy()
@@ -755,6 +738,45 @@ class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
       os.close(fd)
       os.remove(fname)
 
+  def test_model_saving_to_new_dir_path(self):
+    saved_model_dir = os.path.join(self._save_model_dir(), 'newdir',
+                                   'saved_model')
+    save_format = testing_utils.get_save_format()
+
+    with self.cached_session():
+      model = keras.models.Sequential()
+      model.add(keras.layers.Dense(2, input_shape=(3,)))
+      model.add(keras.layers.RepeatVector(3))
+      model.add(keras.layers.TimeDistributed(keras.layers.Dense(3)))
+
+      x = np.random.random((1, 3))
+      out = model.predict(x)
+
+      keras.models.save_model(model, saved_model_dir, save_format=save_format)
+
+      new_model = keras.models.load_model(saved_model_dir)
+      self._assert_same_weights_and_metrics(model, new_model)
+
+      out2 = new_model.predict(x)
+      self.assertAllClose(out, out2, atol=1e-05)
+
+  def test_model_raise_exception_with_failed_saving(self):
+    if h5py is None:
+      self.skipTest('h5py required to run this test')
+
+    saved_model_dir = self._save_model_dir()
+    saved_model_path = os.path.join(saved_model_dir, 'saved_model.h5')
+
+    with self.cached_session():
+      model = keras.models.Sequential()
+      model.add(keras.layers.Dense(2, input_shape=(3,)))
+      model.add(keras.layers.RepeatVector(3))
+      model.add(keras.layers.TimeDistributed(keras.layers.Dense(3)))
+
+      with self.assertRaisesRegex(OSError, 'Unable to create file'):
+        with h5py.File(saved_model_path, 'w'):
+          keras.models.save_model(model, saved_model_path)
+
   def test_saving_constant_initializer_with_numpy(self):
     saved_model_dir = self._save_model_dir()
     save_format = testing_utils.get_save_format()
@@ -770,6 +792,22 @@ class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
     keras.models.save_model(model, saved_model_dir, save_format=save_format)
     model = keras.models.load_model(saved_model_dir)
 
+  def test_saving_group_naming_h5py(self):
+    # Test saving model with layer which name is prefix to a previous layer
+    # name.
+
+    temp_dir = self.get_temp_dir()
+    self.addCleanup(shutil.rmtree, temp_dir)
+    h5_path = os.path.join(temp_dir, 'test.h5')
+
+    input_layer = keras.layers.Input((None, None, 3), name='test_input')
+    x = keras.layers.Conv2D(1, 1, name='conv1/conv')(input_layer)
+    x = keras.layers.Activation('relu', name='conv1')(x)
+    model = keras.models.Model(inputs=input_layer, outputs=x)
+
+    model.save_weights(h5_path)
+    model.load_weights(h5_path)
+
   def test_primitive_attrs_contain_no_extraneous_strings(self):
     if h5py is None:
       self.skipTest('h5py required to run this test')
@@ -783,10 +821,9 @@ class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
       return
 
     h5file = h5py.File(saved_model_dir, 'r')
-    self.assertRegexpMatches(
-        h5file.attrs['keras_version'], r'^[\d]+\.[\d]+\.[\S]+$')
+    self.assertRegex(h5file.attrs['keras_version'], r'^[\d]+\.[\d]+\.[\S]+$')
 
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_functional_model_with_custom_loss_and_metric(self):
     def _make_model():
       inputs = keras.Input(shape=(4,))
@@ -800,47 +837,77 @@ class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
 
     saved_model_dir = self._save_model_dir()
     save_format = testing_utils.get_save_format()
-    # TODO(b/143487125): skip tf format for now.
-    if save_format in ['tf', 'tensorflow']:
-      return
 
-    model = _make_model()
-    model.compile(
-        loss=keras.losses.SparseCategoricalCrossentropy(),
-        optimizer=optimizers.gradient_descent_v2.SGD(),
-        metrics=[keras.metrics.SparseCategoricalCrossentropy()])
-    x = np.random.normal(size=(32, 4))
-    y = np.random.randint(0, 3, size=32)
-    model.train_on_batch(x, y)
-    evaluation_results = model.evaluate(x, y)
-    # Save and reload model.
-    model.save(saved_model_dir, save_format=save_format)
-    del model  # Prevent misuse.
-    loaded_model = keras.models.load_model(saved_model_dir)
-    loaded_model_eval_results = loaded_model.evaluate(x, y)
-    # Assert all evaluation results are the same.
-    self.assertAllClose(evaluation_results, loaded_model_eval_results, 1e-9)
-    # Check correctness of the loss calculation.
-    self.assertAllGreater(evaluation_results, 0.)
-    evaluation_results = dict(
-        zip(loaded_model.metrics_names, evaluation_results))
-    self.assertNear(
-        evaluation_results['sparse_categorical_crossentropy'] +
-        evaluation_results['custom_loss'], evaluation_results['loss'], 1e-6)
+    with self.cached_session():
+      model = _make_model()
+      model.compile(
+          loss=keras.losses.SparseCategoricalCrossentropy(),
+          optimizer=optimizers.gradient_descent_v2.SGD(),
+          metrics=[keras.metrics.SparseCategoricalCrossentropy()])
+      x = np.random.normal(size=(32, 4))
+      y = np.random.randint(0, 3, size=32)
+      model.train_on_batch(x, y)
+      evaluation_results = model.evaluate(x, y)
+      # Save and reload model.
+      model.save(saved_model_dir, save_format=save_format)
+      del model  # Prevent misuse.
+      loaded_model = keras.models.load_model(saved_model_dir)
+      loaded_model_eval_results = loaded_model.evaluate(x, y)
+      # Assert all evaluation results are the same.
+      self.assertAllClose(evaluation_results, loaded_model_eval_results, 1e-9)
+      # Check correctness of the loss calculation.
+      self.assertAllGreater(evaluation_results, 0.)
+      evaluation_results = dict(
+          zip(loaded_model.metrics_names, evaluation_results))
+      self.assertNear(
+          evaluation_results['sparse_categorical_crossentropy'] +
+          evaluation_results['custom_loss'], evaluation_results['loss'], 1e-6)
 
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_save_uncompiled_model_with_optimizer(self):
-    saved_model_dir = self._save_model_dir()
-    save_format = testing_utils.get_save_format()
-    model = keras.models.Sequential([keras.layers.Dense(1, input_shape=(3,))])
-    # Set the model's optimizer but don't compile. This can happen if the model
-    # is trained with a custom training loop.
-    model.optimizer = keras.optimizer_v2.rmsprop.RMSprop(lr=0.0001)
-    model.save(saved_model_dir, save_format=save_format)
+    with self.cached_session() as session:
+      saved_model_dir = self._save_model_dir()
+      save_format = testing_utils.get_save_format()
+      model = keras.models.Sequential([keras.layers.Dense(1, input_shape=(3,))])
+      # Set the model's optimizer but don't compile. This can happen if the
+      # model is trained with a custom training loop.
+      model.optimizer = keras.optimizer_v2.rmsprop.RMSprop(lr=0.0001)
+      if not context.executing_eagerly():
+        session.run([v.initializer for v in model.variables])
+      model.save(saved_model_dir, save_format=save_format)
 
-    if save_format in ['tf', 'tensorflow']:
-      loaded = keras.models.load_model(saved_model_dir)
-      self.assertIsInstance(loaded.optimizer,
-                            keras.optimizer_v2.optimizer_v2.OptimizerV2)
+      if save_format in ['tf', 'tensorflow']:
+        loaded = keras.models.load_model(saved_model_dir)
+        self.assertIsInstance(loaded.optimizer,
+                              keras.optimizer_v2.optimizer_v2.OptimizerV2)
+
+  @combinations.generate(combinations.combine(mode=['eager']))
+  def test_functional_model_with_getitem_op_layer(self):
+    inp = keras.Input(shape=(8))
+
+    out = inp[:]
+    model = keras.Model(
+        inputs=[inp],
+        outputs=out)
+    batch_size = 7
+    x = array_ops.stack([
+        math_ops.range(8) for _ in range(batch_size)])
+    args = [x]
+    expected = x[:]
+
+    self.assertAllEqual(model(args), expected)
+    self.assertAllEqual(model.predict(args, batch_size=batch_size), expected)
+
+    # Make sure it can be successfully saved and loaded
+    save_format = testing_utils.get_save_format()
+    saved_model_dir = self._save_model_dir()
+    keras.models.save_model(model, saved_model_dir, save_format=save_format)
+
+    loaded_model = keras.models.load_model(saved_model_dir)
+
+    self.assertAllEqual(loaded_model(args), expected)
+    self.assertAllEqual(loaded_model.predict(args, batch_size=batch_size),
+                        expected)
 
 
 # Factory functions to create models that will be serialized inside a Network.
@@ -907,6 +974,7 @@ class _make_subclassed_built(_make_subclassed):  # pylint: disable=invalid-name
     self.build((None, input_size))
 
 
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class TestWholeModelSavingWithNesting(test.TestCase, parameterized.TestCase):
   """Tests saving a whole model that contains other models."""
 
@@ -919,7 +987,6 @@ class TestWholeModelSavingWithNesting(test.TestCase, parameterized.TestCase):
       ('subclassed', _make_subclassed),
       ('subclassed_built', _make_subclassed_built),
   ])
-  @test_util.run_in_graph_and_eager_modes
   def test_functional(self, model_fn):
     """Tests serializing a model that uses a nested model to share weights."""
     if h5py is None:
@@ -932,22 +999,23 @@ class TestWholeModelSavingWithNesting(test.TestCase, parameterized.TestCase):
       outputs = keras.layers.add([base_model(inputs[0]), base_model(inputs[1])])
       return keras.Model(inputs=inputs, outputs=outputs)
 
-    x = (np.random.normal(size=(16, 4)).astype(np.float32),
-         np.random.normal(size=(16, 4)).astype(np.float32))
-    model = _make_model()
-    predictions = model(x)
-    # Save and reload.
-    model_path = os.path.join(self.get_temp_dir(), 'model.h5')
-    model.save(model_path)
-    del model
-    loaded_model = keras.models.load_model(
-        model_path,
-        custom_objects={
-            '_make_subclassed': _make_subclassed,
-            '_make_subclassed_built': _make_subclassed_built,
-        },
-        compile=False)
-    self.assertAllClose(loaded_model(x), predictions, 1e-9)
+    with self.cached_session():
+      x = (np.random.normal(size=(16, 4)).astype(np.float32),
+           np.random.normal(size=(16, 4)).astype(np.float32))
+      model = _make_model()
+      predictions = model(x)
+      # Save and reload.
+      model_path = os.path.join(self.get_temp_dir(), 'model.h5')
+      model.save(model_path)
+      del model
+      loaded_model = keras.models.load_model(
+          model_path,
+          custom_objects={
+              '_make_subclassed': _make_subclassed,
+              '_make_subclassed_built': _make_subclassed_built,
+          },
+          compile=False)
+      self.assertAllClose(loaded_model(x), predictions, 1e-9)
 
 
 class SubclassedModel(training.Model):
@@ -961,7 +1029,7 @@ class SubclassedModel(training.Model):
     return self.b_layer(self.x_layer(a))
 
 
-class TestWeightSavingAndLoadingTFFormat(test.TestCase):
+class TestWeightSavingAndLoadingTFFormat(test.TestCase, parameterized.TestCase):
 
   def test_keras_optimizer_warning(self):
     graph = ops.Graph()
@@ -969,17 +1037,16 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
       model = keras.models.Sequential()
       model.add(keras.layers.Dense(2, input_shape=(3,)))
       model.add(keras.layers.Dense(3))
-      model.compile(loss='mse', optimizer=optimizers.Adam(), metrics=['acc'])
-      model._make_train_function()
+      model.compile(loss='mse', optimizer=optimizer_v1.Adam(), metrics=['acc'])
+      if not ops.executing_eagerly_outside_functions():
+        model._make_train_function()
       temp_dir = self.get_temp_dir()
       prefix = os.path.join(temp_dir, 'ckpt')
       with test.mock.patch.object(logging, 'warning') as mock_log:
         model.save_weights(prefix)
-        self.assertRegexpMatches(
-            str(mock_log.call_args),
-            'Keras optimizer')
+        self.assertRegex(str(mock_log.call_args), 'Keras optimizer')
 
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_tensorflow_format_overwrite(self):
     with self.cached_session() as session:
       model = SubclassedModel()
@@ -1017,7 +1084,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
       model.load_weights(fname)
 
   def test_no_graph_pollution(self):
-    with context.graph_mode():
+    with ops.get_default_graph().as_default():
       graph = ops.Graph()
       with graph.as_default(), self.session(graph) as session:
         model = SubclassedModel()
@@ -1030,12 +1097,12 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
         model.save_weights(prefix, save_format='tensorflow')
         op_count = len(graph.get_operations())
         model.save_weights(prefix, save_format='tensorflow')
-        self.assertEqual(len(graph.get_operations()), op_count)
+        self.assertLen(graph.get_operations(), op_count)
 
         model.load_weights(prefix)
         op_count = len(graph.get_operations())
         model.load_weights(prefix)
-        self.assertEqual(len(graph.get_operations()), op_count)
+        self.assertLen(graph.get_operations(), op_count)
 
   def _weight_loading_test_template(self, make_model_fn):
     with self.cached_session():
@@ -1084,7 +1151,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
       load_model.train_on_batch(train_x, train_y)
       self.assertAllClose(ref_y_after_train, self.evaluate(load_model(x)))
 
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_weight_loading_graph_model(self):
     def _make_graph_model():
       a = keras.layers.Input(shape=(2,))
@@ -1094,12 +1161,12 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
 
     self._weight_loading_test_template(_make_graph_model)
 
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_weight_loading_subclassed_model(self):
     self._weight_loading_test_template(SubclassedModel)
 
   def _new_layer_weight_loading_test_template(
-      self, first_model_fn, second_model_fn, restore_init_fn):
+      self, first_model_fn, second_model_fn):
     with self.cached_session() as session:
       model = first_model_fn()
       temp_dir = self.get_temp_dir()
@@ -1122,16 +1189,17 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
       self.addCleanup(shutil.rmtree, temp_dir)
 
       second_model = second_model_fn()
-      second_model.load_weights(prefix)
+      status = second_model.load_weights(prefix)
       second_model(x)
-      self.evaluate(restore_init_fn(second_model))
+      status.run_restore_ops()
       second_model.save_weights(prefix)
       # Check that the second model's checkpoint loads into the original model
-      model.load_weights(prefix)
+      status = model.load_weights(prefix)
+      status.run_restore_ops(session)
       y = self.evaluate(model(x))
       self.assertAllClose(ref_y, y)
 
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_weight_loading_graph_model_added_layer(self):
     def _save_graph_model():
       a = keras.layers.Input(shape=(2,))
@@ -1144,14 +1212,11 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
       y = keras.layers.Dense(1, name='second')(x)
       b = keras.layers.Dense(3, name='secondjr')(y)
       return keras.models.Model(a, b)
-    def _restore_init_fn(restore_model):
-      return [v.initializer for v in restore_model.layers[-1].variables]
 
     self._new_layer_weight_loading_test_template(
-        _save_graph_model, _restore_graph_model,
-        _restore_init_fn)
+        _save_graph_model, _restore_graph_model)
 
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_weight_loading_graph_model_added_no_weight_layer(self):
     def _save_graph_model():
       a = keras.layers.Input(shape=(2,))
@@ -1161,18 +1226,14 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
     def _restore_graph_model():
       a = keras.layers.Input(shape=(2,))
       x = keras.layers.Dense(3, name='first')(a)
-      y = keras.layers.Dropout(rate=0.1)(x)
-      b = keras.layers.Dense(1, name='second')(y)
-      return keras.models.Model(a, b)
-    def _restore_init_fn(restore_model):
-      del restore_model  # unused
-      return []
+      b = keras.layers.Dense(1, name='second')(x)
+      y = keras.layers.Dropout(rate=0.1)(b)
+      return keras.models.Model(a, y)
 
     self._new_layer_weight_loading_test_template(
-        _save_graph_model, _restore_graph_model,
-        _restore_init_fn)
+        _save_graph_model, _restore_graph_model)
 
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_weight_loading_subclassed_model_added_layer(self):
 
     class SubclassedModelRestore(training.Model):
@@ -1186,77 +1247,81 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
       def call(self, a):
         return self.b_layer(self.y_layer(self.x_layer(a)))
 
-    def _restore_init_fn(restore_model):
-      return [v.initializer for v in restore_model.y_layer.variables]
-
     self._new_layer_weight_loading_test_template(
-        SubclassedModel, SubclassedModelRestore,
-        _restore_init_fn)
+        SubclassedModel, SubclassedModelRestore)
 
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_incompatible_checkpoint(self):
     save_path = trackable.Checkpoint().save(
         os.path.join(self.get_temp_dir(), 'ckpt'))
-    m = keras.Model()
-    with self.assertRaisesRegexp(AssertionError, 'Nothing to load'):
+    m = DummySubclassModel()
+    with self.assertRaisesRegex(AssertionError, 'Nothing to load'):
       m.load_weights(save_path)
     m.dense = keras.layers.Dense(2)
     m.dense(constant_op.constant([[1.]]))
-    with self.assertRaisesRegexp(
-        AssertionError, 'Nothing except the root object matched'):
+    with self.assertRaisesRegex(AssertionError,
+                                'Nothing except the root object matched'):
       m.load_weights(save_path)
 
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_directory_passed(self):
-    m = keras.Model()
-    v = m.add_weight(name='v', shape=[])
-    self.evaluate(v.assign(42.))
-    prefix = os.path.join(self.get_temp_dir(), '{}'.format(ops.uid()), 'ckpt/')
-    m.save_weights(prefix)
-    self.evaluate(v.assign(2.))
-    m.load_weights(prefix)
-    self.assertEqual(42., self.evaluate(v))
+    with self.cached_session():
+      m = DummySubclassModel()
+      v = m.add_weight(name='v', shape=[])
+      self.evaluate(v.assign(42.))
+      prefix = os.path.join(self.get_temp_dir(), str(uuid.uuid4()), 'ckpt/')
+      m.save_weights(prefix)
+      self.evaluate(v.assign(2.))
+      m.load_weights(prefix)
+      self.assertEqual(42., self.evaluate(v))
 
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_relative_path(self):
-    m = keras.Model()
-    v = m.add_weight(name='v', shape=[])
-    os.chdir(self.get_temp_dir())
+    with self.cached_session():
+      m = DummySubclassModel()
+      v = m.add_weight(name='v', shape=[])
+      os.chdir(self.get_temp_dir())
 
-    prefix = 'ackpt'
-    self.evaluate(v.assign(42.))
-    m.save_weights(prefix)
-    self.assertTrue(file_io.file_exists('ackpt.index'))
-    self.evaluate(v.assign(1.))
-    m.load_weights(prefix)
-    self.assertEqual(42., self.evaluate(v))
+      prefix = 'ackpt'
+      self.evaluate(v.assign(42.))
+      m.save_weights(prefix)
+      self.assertTrue(file_io.file_exists_v2('ackpt.index'))
+      self.evaluate(v.assign(1.))
+      m.load_weights(prefix)
+      self.assertEqual(42., self.evaluate(v))
 
-    prefix = 'subdir/ackpt'
-    self.evaluate(v.assign(43.))
-    m.save_weights(prefix)
-    self.assertTrue(file_io.file_exists('subdir/ackpt.index'))
-    self.evaluate(v.assign(2.))
-    m.load_weights(prefix)
-    self.assertEqual(43., self.evaluate(v))
+      prefix = 'subdir/ackpt'
+      self.evaluate(v.assign(43.))
+      m.save_weights(prefix)
+      self.assertTrue(file_io.file_exists_v2('subdir/ackpt.index'))
+      self.evaluate(v.assign(2.))
+      m.load_weights(prefix)
+      self.assertEqual(43., self.evaluate(v))
 
-    prefix = 'ackpt/'
-    self.evaluate(v.assign(44.))
-    m.save_weights(prefix)
-    self.assertTrue(file_io.file_exists('ackpt/.index'))
-    self.evaluate(v.assign(3.))
-    m.load_weights(prefix)
-    self.assertEqual(44., self.evaluate(v))
+      prefix = 'ackpt/'
+      self.evaluate(v.assign(44.))
+      m.save_weights(prefix)
+      self.assertTrue(file_io.file_exists_v2('ackpt/.index'))
+      self.evaluate(v.assign(3.))
+      m.load_weights(prefix)
+      self.assertEqual(44., self.evaluate(v))
 
-  @test_util.run_in_graph_and_eager_modes
-  def test_nonexistant_prefix_directory(self):
-    m = keras.Model()
-    v = m.add_weight(name='v', shape=[])
-    self.evaluate(v.assign(42.))
-    prefix = os.path.join(self.get_temp_dir(), '{}'.format(ops.uid()), 'bckpt')
-    m.save_weights(prefix)
-    self.evaluate(v.assign(2.))
-    m.load_weights(prefix)
-    self.assertEqual(42., self.evaluate(v))
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_nonexistent_prefix_directory(self):
+    with self.cached_session():
+      m = DummySubclassModel()
+      v = m.add_weight(name='v', shape=[])
+      self.evaluate(v.assign(42.))
+      prefix = os.path.join(self.get_temp_dir(), str(uuid.uuid4()), 'bckpt')
+      m.save_weights(prefix)
+      self.evaluate(v.assign(2.))
+      m.load_weights(prefix)
+      self.assertEqual(42., self.evaluate(v))
+
+
+class DummySubclassModel(training.Model):
+  pass
+
 
 if __name__ == '__main__':
   test.main()

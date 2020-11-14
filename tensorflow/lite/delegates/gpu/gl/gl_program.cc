@@ -29,19 +29,19 @@ namespace gpu {
 namespace gl {
 namespace {
 
-Status CreateNewProgramId(GLuint* program_id) {
+absl::Status CreateNewProgramId(GLuint* program_id) {
   RETURN_IF_ERROR(TFLITE_GPU_CALL_GL(glCreateProgram, program_id));
   if (!*program_id) {
-    return UnknownError("Can't create opengl program: 0 program_id");
+    return absl::UnknownError("Can't create opengl program: 0 program_id");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status CheckProgramLinked(GLuint program_id) {
+absl::Status CheckProgramLinked(GLuint program_id) {
   GLint linked;
   glGetProgramiv(program_id, GL_LINK_STATUS, &linked);
   if (linked == GL_TRUE) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   GLint info_size;
   glGetProgramiv(program_id, GL_INFO_LOG_LENGTH, &info_size);
@@ -49,26 +49,26 @@ Status CheckProgramLinked(GLuint program_id) {
   errors.resize(info_size + 1 /* plus \0 */);
   glGetProgramInfoLog(program_id, info_size + 1, nullptr, &errors[0]);
   // TODO(akulik): use glValidateProgram to gather more info.
-  return UnavailableError("Program is not properly linked: " + errors);
+  return absl::UnavailableError("Program is not properly linked: " + errors);
 }
 
 struct ParameterSetter {
-  Status operator()(int value) {
+  absl::Status operator()(int value) {
     return TFLITE_GPU_CALL_GL(glProgramUniform1i, program_id, uniform_id,
                               value);
   }
 
-  Status operator()(const int2& value) {
+  absl::Status operator()(const int2& value) {
     return TFLITE_GPU_CALL_GL(glProgramUniform2i, program_id, uniform_id,
                               value.x, value.y);
   }
 
-  Status operator()(const int4& value) {
+  absl::Status operator()(const int4& value) {
     return TFLITE_GPU_CALL_GL(glProgramUniform4i, program_id, uniform_id,
                               value.x, value.y, value.z, value.w);
   }
 
-  Status operator()(const std::vector<int2>& value) {
+  absl::Status operator()(const std::vector<int2>& value) {
     std::vector<GLint> ints(value.size() * 2, 0);
     for (int i = 0; i < value.size(); ++i) {
       ints[i * 2] = value[i].x;
@@ -78,32 +78,32 @@ struct ParameterSetter {
                               ints.size(), ints.data());
   }
 
-  Status operator()(unsigned int value) {
+  absl::Status operator()(unsigned int value) {
     return TFLITE_GPU_CALL_GL(glProgramUniform1ui, program_id, uniform_id,
                               value);
   }
 
-  Status operator()(const uint4& value) {
+  absl::Status operator()(const uint4& value) {
     return TFLITE_GPU_CALL_GL(glProgramUniform4ui, program_id, uniform_id,
                               value.x, value.y, value.z, value.w);
   }
 
-  Status operator()(float value) {
+  absl::Status operator()(float value) {
     return TFLITE_GPU_CALL_GL(glProgramUniform1f, program_id, uniform_id,
                               value);
   }
 
-  Status operator()(const float2& value) {
+  absl::Status operator()(const float2& value) {
     return TFLITE_GPU_CALL_GL(glProgramUniform2f, program_id, uniform_id,
                               value.x, value.y);
   }
 
-  Status operator()(const float4& value) {
+  absl::Status operator()(const float4& value) {
     return TFLITE_GPU_CALL_GL(glProgramUniform4f, program_id, uniform_id,
                               value.x, value.y, value.z, value.w);
   }
 
-  Status operator()(const std::vector<float4>& value) {
+  absl::Status operator()(const std::vector<float4>& value) {
     std::vector<GLfloat> floats(value.size() * 4, 0);
     for (int i = 0; i < value.size(); ++i) {
       floats[i * 4] = value[i].x;
@@ -121,8 +121,8 @@ struct ParameterSetter {
 
 }  // namespace
 
-Status GlProgram::CreateWithShader(const GlShader& shader,
-                                   GlProgram* gl_program) {
+absl::Status GlProgram::CreateWithShader(const GlShader& shader,
+                                         GlProgram* gl_program) {
   GLuint program_id;
   RETURN_IF_ERROR(CreateNewProgramId(&program_id));
 
@@ -136,11 +136,11 @@ Status GlProgram::CreateWithShader(const GlShader& shader,
   RETURN_IF_ERROR(CheckProgramLinked(program.id()));
 
   *gl_program = std::move(program);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status GlProgram::CreateWithBinaryShader(const BinaryShader& shader,
-                                         GlProgram* gl_program) {
+absl::Status GlProgram::CreateWithBinaryShader(const BinaryShader& shader,
+                                               GlProgram* gl_program) {
   GLuint program_id;
   RETURN_IF_ERROR(CreateNewProgramId(&program_id));
 
@@ -154,15 +154,15 @@ Status GlProgram::CreateWithBinaryShader(const BinaryShader& shader,
   RETURN_IF_ERROR(CheckProgramLinked(program.id()));
 
   *gl_program = std::move(program);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status GlProgram::GetBinary(BinaryShader* binary_shader) {
+absl::Status GlProgram::GetBinary(BinaryShader* binary_shader) {
   GLint size = 0;
   RETURN_IF_ERROR(
       TFLITE_GPU_CALL_GL(glGetProgramiv, id_, GL_PROGRAM_BINARY_LENGTH, &size));
   if (!size) {
-    return InternalError("Getting binary size failed.");
+    return absl::InternalError("Getting binary size failed.");
   }
   // TODO(akulik): call
   // glProgramParameteri(id_, GL_PROGRAM_BINARY_RETRIEVABLE_HINT, GL_TRUE)
@@ -174,10 +174,10 @@ Status GlProgram::GetBinary(BinaryShader* binary_shader) {
                                      &returned_size, &format,
                                      reinterpret_cast<void*>(&binary[0])));
   if (size != returned_size) {
-    return InternalError("Getting binary is failed.");
+    return absl::InternalError("Getting binary is failed.");
   }
   *binary_shader = BinaryShader(format, std::move(binary));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 GlProgram::GlProgram(GlProgram&& program) : id_(program.id_) {
@@ -201,16 +201,16 @@ GlProgram& GlProgram::operator=(GlProgram&& program) {
 
 GlProgram::~GlProgram() { Invalidate(); }
 
-Status GlProgram::SetParameter(const Variable& param) {
+absl::Status GlProgram::SetParameter(const Variable& param) {
   GLint uniform_location;
   RETURN_IF_ERROR(TFLITE_GPU_CALL_GL(glGetUniformLocation, &uniform_location,
                                      id_, param.name.c_str()));
   return absl::visit(ParameterSetter{id_, uniform_location}, param.value);
 }
 
-Status GlProgram::Dispatch(const uint3& workgroups) const {
+absl::Status GlProgram::Dispatch(const uint3& workgroups) const {
   if (workgroups.x == 0 || workgroups.y == 0 || workgroups.z == 0) {
-    return InvalidArgumentError("Invalid workgroups");
+    return absl::InvalidArgumentError("Invalid workgroups");
   }
   RETURN_IF_ERROR(TFLITE_GPU_CALL_GL(glUseProgram, id_));
   return TFLITE_GPU_CALL_GL(glDispatchCompute, workgroups.x, workgroups.y,

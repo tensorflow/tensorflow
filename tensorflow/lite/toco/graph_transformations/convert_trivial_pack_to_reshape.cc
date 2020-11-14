@@ -59,7 +59,7 @@ namespace toco {
   reshape_op->outputs = pack_op->outputs;
 
   // Create shape param.
-  string shape_array_name =
+  std::string shape_array_name =
       AvailableArrayName(*model, pack_op->outputs[0] + "_shape");
   Array& shape_array = model->GetOrCreateArray(shape_array_name);
   const int shape_array_dims = 1 + input_array.shape().dimensions_count();

@@ -19,11 +19,10 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import time
 
 import numpy as np
-
 from PIL import Image
-
 import tensorflow as tf # TF2
 
 
@@ -57,9 +56,12 @@ if __name__ == '__main__':
       '--input_std',
       default=127.5, type=float,
       help='input standard deviation')
+  parser.add_argument(
+      '--num_threads', default=None, type=int, help='number of threads')
   args = parser.parse_args()
 
-  interpreter = tf.lite.Interpreter(model_path=args.model_file)
+  interpreter = tf.lite.Interpreter(
+      model_path=args.model_file, num_threads=args.num_threads)
   interpreter.allocate_tensors()
 
   input_details = interpreter.get_input_details()
@@ -81,7 +83,9 @@ if __name__ == '__main__':
 
   interpreter.set_tensor(input_details[0]['index'], input_data)
 
+  start_time = time.time()
   interpreter.invoke()
+  stop_time = time.time()
 
   output_data = interpreter.get_tensor(output_details[0]['index'])
   results = np.squeeze(output_data)
@@ -93,3 +97,5 @@ if __name__ == '__main__':
       print('{:08.6f}: {}'.format(float(results[i]), labels[i]))
     else:
       print('{:08.6f}: {}'.format(float(results[i] / 255.0), labels[i]))
+
+  print('time: {:.3f}ms'.format((stop_time - start_time) * 1000))

@@ -1,0 +1,35 @@
+path: "tensorflow.tpu.experimental.TPUSystemMetadata"
+tf_class {
+  is_instance: "<class \'tensorflow.python.tpu.tpu_system_metadata.TPUSystemMetadata\'>"
+  is_instance: "<class \'tensorflow.python.tpu.tpu_system_metadata.TPUSystemMetadata\'>"
+  is_instance: "<type \'tuple\'>"
+  member {
+    name: "devices"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "num_cores"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "num_hosts"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "num_of_cores_per_host"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "topology"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+  }
+  member_method {
+    name: "count"
+  }
+  member_method {
+    name: "index"
+  }
+}

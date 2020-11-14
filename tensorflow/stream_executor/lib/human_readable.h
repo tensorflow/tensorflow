@@ -28,7 +28,7 @@ namespace port {
 
 class HumanReadableNumBytes {
  public:
-  static string ToString(int64 num_bytes) {
+  static std::string ToString(int64 num_bytes) {
     if (num_bytes == std::numeric_limits<int64>::min()) {
       // Special case for number with not representable nagation.
       return "-8E";

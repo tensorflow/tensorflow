@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_WORKER_CACHE_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_WORKER_CACHE_H_
 
-#include <memory>
-
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_client_cq_tag.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
@@ -62,12 +60,17 @@ class GrpcWorkerEnv {
   std::vector<GrpcWorkerCacheThread> threads_;
 };
 
+// Create a GrpcWorkerEnv instance that can be used as argument to create
+// gRPC worker cache. Caller should take the ownership of the returned instance.
+GrpcWorkerEnv* CreateGrpcWorkerEnv();
+
 // The returned WorkerCacheInterface object takes the ownership of "cc".
-WorkerCacheInterface* NewGrpcWorkerCache(std::shared_ptr<GrpcChannelCache> cc);
+WorkerCacheInterface* NewGrpcWorkerCache(std::shared_ptr<GrpcChannelCache> cc,
+                                         GrpcWorkerEnv* worker_env);
 
 WorkerCacheInterface* NewGrpcWorkerCacheWithLocalWorker(
-    std::shared_ptr<GrpcChannelCache> cc, WorkerInterface* local_worker,
-    const string& local_target, GrpcWorkerEnv* worker_env);
+    std::shared_ptr<GrpcChannelCache> cc, GrpcWorkerEnv* worker_env,
+    WorkerInterface* local_worker, const string& local_target);
 
 }  // namespace tensorflow
 #endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_WORKER_CACHE_H_

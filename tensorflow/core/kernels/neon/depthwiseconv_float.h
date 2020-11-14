@@ -450,33 +450,31 @@ void FloatDepthwiseConvAccumRow(int stride, int input_depth, int input_width,
   for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
     // For the current (filter_x, filter_y) point in the filter,
     // compute the boundaries of the corresponding output row segment.
-    int out_x_loop_start_unclampled = 0;
-    int out_x_loop_end_unclampled = 0;
+    int out_x_loop_start_unclamped = 0;
+    int out_x_loop_end_unclamped = 0;
     if (kAllowStrided) {
       if (stride == 2) {
-        out_x_loop_start_unclampled = (pad_width - filter_x + 1) / 2;
-        out_x_loop_end_unclampled =
-            (pad_width + input_width - filter_x + 1) / 2;
+        out_x_loop_start_unclamped = (pad_width - filter_x + 1) / 2;
+        out_x_loop_end_unclamped = (pad_width + input_width - filter_x + 1) / 2;
       } else if (stride == 4) {
-        out_x_loop_start_unclampled = (pad_width - filter_x + 3) / 4;
-        out_x_loop_end_unclampled =
-            (pad_width + input_width - filter_x + 3) / 4;
+        out_x_loop_start_unclamped = (pad_width - filter_x + 3) / 4;
+        out_x_loop_end_unclamped = (pad_width + input_width - filter_x + 3) / 4;
       } else {
-        out_x_loop_start_unclampled =
+        out_x_loop_start_unclamped =
             (pad_width - filter_x + stride - 1) / stride;
-        out_x_loop_end_unclampled =
+        out_x_loop_end_unclamped =
             (pad_width + input_width - filter_x + stride - 1) / stride;
       }
     } else {
-      out_x_loop_start_unclampled = pad_width - filter_x;
-      out_x_loop_end_unclampled = pad_width + input_width - filter_x;
+      out_x_loop_start_unclamped = pad_width - filter_x;
+      out_x_loop_end_unclamped = pad_width + input_width - filter_x;
     }
     // The kernel will have to iterate on the segment of the
     // output row that starts at out_x_loop_start and out_x_loop_end.
     const int out_x_loop_start =
-        std::max(out_x_buffer_start, out_x_loop_start_unclampled);
+        std::max(out_x_buffer_start, out_x_loop_start_unclamped);
     const int out_x_loop_end =
-        std::min(out_x_buffer_end, out_x_loop_end_unclampled);
+        std::min(out_x_buffer_end, out_x_loop_end_unclamped);
 
     float* acc_buffer_ptr =
         acc_buffer + (out_x_loop_start - out_x_buffer_start) * output_depth;

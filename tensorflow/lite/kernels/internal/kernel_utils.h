@@ -70,7 +70,9 @@ void RnnBatchStep(
     int num_units, int batch_size, int output_batch_leading_dim,
     TfLiteFusedActivation activation, int8_t* quantized_input_ptr_batch,
     int8_t* quantized_hidden_state_ptr_batch, float* scaling_factors,
-    float* hidden_state_ptr_batch, float* output_ptr_batch);
+    float* hidden_state_ptr_batch, float* output_ptr_batch,
+    bool asymmetric_quantize_inputs, int32_t* zero_points,
+    int32_t* accum_scratch, int32_t* row_sums, bool* compute_row_sums);
 
 void RnnBatchStep(
     const float* input_ptr_batch, const int8_t* input_weights_ptr,
@@ -82,7 +84,9 @@ void RnnBatchStep(
     TfLiteFusedActivation activation, int8_t* quantized_input_ptr_batch,
     int8_t* aux_quantized_input_ptr_batch,
     int8_t* quantized_hidden_state_ptr_batch, float* scaling_factors,
-    float* hidden_state_ptr_batch, float* output_ptr_batch);
+    float* hidden_state_ptr_batch, float* output_ptr_batch,
+    bool asymmetric_quantize_inputs, int32_t* zero_points,
+    int32_t* accum_scratch, int32_t* row_sums, bool* compute_row_sums);
 
 }  // namespace kernel_utils
 }  // namespace tflite

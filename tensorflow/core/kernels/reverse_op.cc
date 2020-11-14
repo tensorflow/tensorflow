@@ -34,9 +34,6 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
-#ifdef TENSORFLOW_USE_SYCL
-typedef Eigen::SyclDevice SYCLDevice;
-#endif  // TENSORFLOW_USE_SYCL
 
 namespace {
 
@@ -113,9 +110,9 @@ DoHandleReverseCase(OpKernelContext* context, const Tensor& input,
     static_assert(sizeof(complex128) == 16, "complex128 must be 16 bytes");
     ReverseRows<complex128, NUM_CHANNELS>(context, input, result);
   } else {
-    context->CtxFailure(
-        errors::InvalidArgument("%s has unexpected size of %d bytes",
-                                DataTypeString(input.dtype()), sizeof(T)));
+    context->CtxFailure(errors::InvalidArgument(DataTypeString(input.dtype()),
+                                                " has unexpected size of ",
+                                                sizeof(T), " bytes"));
   }
 }
 
@@ -237,7 +234,7 @@ class ReverseV2Op : public OpKernel {
     const Tensor& input = context->input(0);
     const Tensor& sparse_dims = context->input(1);
 
-    if (TensorShapeUtils::IsScalar(input.shape())) {
+    if (TensorShapeUtils::IsScalar(input.shape()) || input.NumElements() == 0) {
       context->set_output(0, input);
     } else {
       const int input_dims = input.dims();
@@ -342,12 +339,7 @@ namespace functor {
 
 TF_CALL_uint8(DECLARE_GPU_SPEC);
 TF_CALL_int8(DECLARE_GPU_SPEC);
-TF_CALL_bool(DECLARE_GPU_SPEC);
-TF_CALL_half(DECLARE_GPU_SPEC);
-TF_CALL_float(DECLARE_GPU_SPEC);
-TF_CALL_double(DECLARE_GPU_SPEC);
-TF_CALL_complex64(DECLARE_GPU_SPEC);
-TF_CALL_complex128(DECLARE_GPU_SPEC);
+TF_CALL_GPU_ALL_TYPES(DECLARE_GPU_SPEC);
 #undef DECLARE_GPU_SPEC
 #undef DECLARE_GPU_SPEC_DIM
 }  // namespace functor
@@ -373,12 +365,7 @@ TF_CALL_complex128(DECLARE_GPU_SPEC);
                           ReverseV2Op<GPUDevice, T, int64>)
 TF_CALL_uint8(REGISTER_GPU_KERNELS);
 TF_CALL_int8(REGISTER_GPU_KERNELS);
-TF_CALL_bool(REGISTER_GPU_KERNELS);
-TF_CALL_half(REGISTER_GPU_KERNELS);
-TF_CALL_float(REGISTER_GPU_KERNELS);
-TF_CALL_double(REGISTER_GPU_KERNELS);
-TF_CALL_complex64(REGISTER_GPU_KERNELS);
-TF_CALL_complex128(REGISTER_GPU_KERNELS);
+TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNEL
 
 // A special GPU kernel for int32.
@@ -409,52 +396,4 @@ REGISTER_KERNEL_BUILDER(Name("ReverseV2")
                         ReverseV2Op<CPUDevice, int32, int64>);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNELS(T)                             \
-  REGISTER_KERNEL_BUILDER(Name("Reverse")                    \
-                              .Device(DEVICE_SYCL)           \
-                              .TypeConstraint<T>("T")        \
-                              .HostMemory("dims"),           \
-                          ReverseOp<SYCLDevice, T>)          \
-  REGISTER_KERNEL_BUILDER(Name("ReverseV2")                  \
-                              .Device(DEVICE_SYCL)           \
-                              .TypeConstraint<T>("T")        \
-                              .TypeConstraint<int32>("Tidx") \
-                              .HostMemory("axis"),           \
-                          ReverseV2Op<SYCLDevice, T, int32>) \
-  REGISTER_KERNEL_BUILDER(Name("ReverseV2")                  \
-                              .Device(DEVICE_SYCL)           \
-                              .TypeConstraint<T>("T")        \
-                              .TypeConstraint<int64>("Tidx") \
-                              .HostMemory("axis"),           \
-                          ReverseV2Op<SYCLDevice, T, int64>)
-TF_CALL_uint8(REGISTER_SYCL_KERNELS);
-TF_CALL_int8(REGISTER_SYCL_KERNELS);
-TF_CALL_float(REGISTER_SYCL_KERNELS);
-TF_CALL_double(REGISTER_SYCL_KERNELS);
-
-REGISTER_KERNEL_BUILDER(Name("Reverse")
-                            .Device(DEVICE_SYCL)
-                            .TypeConstraint<int32>("T")
-                            .HostMemory("tensor")
-                            .HostMemory("dims")
-                            .HostMemory("output"),
-                        ReverseOp<CPUDevice, int32>);
-REGISTER_KERNEL_BUILDER(Name("ReverseV2")
-                            .Device(DEVICE_SYCL)
-                            .TypeConstraint<int32>("T")
-                            .TypeConstraint<int32>("Tidx")
-                            .HostMemory("tensor")
-                            .HostMemory("axis")
-                            .HostMemory("output"),
-                        ReverseV2Op<CPUDevice, int32, int32>);
-REGISTER_KERNEL_BUILDER(Name("ReverseV2")
-                            .Device(DEVICE_SYCL)
-                            .TypeConstraint<int32>("T")
-                            .TypeConstraint<int64>("Tidx")
-                            .HostMemory("tensor")
-                            .HostMemory("axis")
-                            .HostMemory("output"),
-                        ReverseV2Op<CPUDevice, int32, int64>);
-#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

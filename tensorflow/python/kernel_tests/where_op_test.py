@@ -284,7 +284,7 @@ class WhereBenchmark(test.Benchmark):
           v = resource_variable_ops.ResourceVariable(x)
           op = array_ops.where(v)
         with session.Session(config=benchmark.benchmark_config()) as sess:
-          v.initializer.run()
+          self.evaluate(v.initializer)
           r = self.run_op_benchmark(sess, op, min_iters=100, name=name)
           gb_processed_input = m * n / 1.0e9
           # approximate size of output: m*n*p int64s for each axis.
@@ -310,9 +310,9 @@ class WhereBenchmark(test.Benchmark):
           c = resource_variable_ops.ResourceVariable(c_gen)
           op = array_ops.where(c, x, y)
         with session.Session(config=benchmark.benchmark_config()) as sess:
-          x.initializer.run()
-          y.initializer.run()
-          c.initializer.run()
+          self.evaluate(x.initializer)
+          self.evaluate(y.initializer)
+          self.evaluate(c.initializer)
           r = self.run_op_benchmark(sess, op, min_iters=100, name=name)
           # approximate size of output: m*n*2 floats for each axis.
           gb_processed = m * n * 8 / 1.0e9

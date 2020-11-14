@@ -172,7 +172,16 @@ class OriginResolver(gast.NodeVisitor):
     self._source_lines = source_lines
     self._comments_map = comments_map
 
-    self._lineno_offset = context_lineno - root_node.lineno
+    if (hasattr(root_node, 'decorator_list') and root_node.decorator_list and
+        hasattr(root_node.decorator_list[0], 'lineno')):
+      # Typical case: functions. The line number of the first decorator
+      # is more accurate than the line number of the function itself in
+      # 3.8+. In earier versions they coincide.
+      self._lineno_offset = context_lineno - root_node.decorator_list[0].lineno
+    else:
+      # Fall back to the line number of the root node.
+      self._lineno_offset = context_lineno - root_node.lineno
+
     self._col_offset = context_col_offset - root_node.col_offset
 
     self._filepath = filepath
@@ -238,11 +247,19 @@ def resolve(node, source, context_filepath, context_lineno, context_col_offset):
   # TODO(mdan): Pull this to a separate utility.
   code_reader = six.StringIO(source)
   comments_map = {}
-  for token in tokenize.generate_tokens(code_reader.readline):
-    tok_type, tok_string, loc, _, _ = token
-    srow, _ = loc
-    if tok_type == tokenize.COMMENT:
-      comments_map[srow] = tok_string.strip()[1:].strip()
+  try:
+    for token in tokenize.generate_tokens(code_reader.readline):
+      tok_type, tok_string, loc, _, _ = token
+      srow, _ = loc
+      if tok_type == tokenize.COMMENT:
+        comments_map[srow] = tok_string.strip()[1:].strip()
+  except tokenize.TokenError:
+    if isinstance(node, gast.Lambda):
+      # Source code resolution in older Python versions is brittle for
+      # lambda functions, and may contain garbage.
+      pass
+    else:
+      raise
 
   source_lines = source.split('\n')
   visitor = OriginResolver(node, source_lines, comments_map,
@@ -252,7 +269,7 @@ def resolve(node, source, context_filepath, context_lineno, context_col_offset):
 
 
 def resolve_entity(node, source, entity):
-  """Like resolve, but extracts the context informartion from an entity."""
+  """Like resolve, but extracts the context information from an entity."""
   lines, lineno = tf_inspect.getsourcelines(entity)
   filepath = tf_inspect.getsourcefile(entity)
 
@@ -262,3 +279,15 @@ def resolve_entity(node, source, entity):
   col_offset = len(definition_line) - len(definition_line.lstrip())
 
   resolve(node, source, filepath, lineno, col_offset)
+
+
+def copy_origin(from_node, to_node):
+  """Copies the origin info from a node to another, recursively."""
+  origin = anno.Basic.ORIGIN.of(from_node, default=None)
+  if origin is None:
+    return
+  if not isinstance(to_node, (list, tuple)):
+    to_node = (to_node,)
+  for node in to_node:
+    for n in gast.walk(node):
+      anno.setanno(n, anno.Basic.ORIGIN, origin)

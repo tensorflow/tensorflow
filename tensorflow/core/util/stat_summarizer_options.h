@@ -17,8 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_UTIL_STAT_SUMMARIZER_OPTIONS_H_
 namespace tensorflow {
 // Used to control the output of the statistics summarizer;
-class StatSummarizerOptions {
- public:
+struct StatSummarizerOptions {
   StatSummarizerOptions()
       : show_run_order(true),
         run_order_limit(0),
@@ -27,7 +26,8 @@ class StatSummarizerOptions {
         show_memory(true),
         memory_limit(10),
         show_type(true),
-        show_summary(true) {}
+        show_summary(true),
+        format_as_csv(false) {}
 
   bool show_run_order;
   int run_order_limit;
@@ -37,6 +37,7 @@ class StatSummarizerOptions {
   int memory_limit;
   bool show_type;
   bool show_summary;
+  bool format_as_csv;
 };
 }  // namespace tensorflow
 

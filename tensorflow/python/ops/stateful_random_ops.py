@@ -23,6 +23,7 @@ import enum  # pylint: disable=g-bad-import-order
 import numpy as np
 import six
 
+from tensorflow.python.compat import compat
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.eager import context
 from tensorflow.python.framework import composite_tensor
@@ -32,11 +33,13 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_stateful_random_ops
+from tensorflow.python.ops import gen_stateless_random_ops_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util.tf_export import tf_export
+
 
 # A seed for random ops (stateful and stateless) will always be 1024
 # bits, all of which will be sent to the C++ code. The actual C++
@@ -136,6 +139,15 @@ def _make_1d_state(state_size, seed):
   return seed
 
 
+def _get_counter_size(alg):
+  if alg == RNG_ALG_PHILOX:
+    return 2
+  elif alg == RNG_ALG_THREEFRY:
+    return 1
+  else:
+    raise ValueError("Unsupported algorithm id: %s" % alg)
+
+
 def _get_state_size(alg):
   if alg == RNG_ALG_PHILOX:
     return PHILOX_STATE_SIZE
@@ -226,57 +238,33 @@ def _convert_to_state_tensor(t):
 class GeneratorSpec(type_spec.TypeSpec):
   """TypeSpec for Generator."""
 
-  def __init__(self, shape=None, dtype=None):
+  def __init__(self, shape=None, dtype=None, alg=None):
     self.shape = shape
     self.dtype = dtype
+    self.alg = alg
 
   @property
   def _component_specs(self):
-    return (tensor_spec.TensorSpec(shape=(), dtype=dtypes.resource),
-            tensor_spec.TensorSpec(shape=(), dtype=ALGORITHM_TYPE))
+    return (tensor_spec.TensorSpec(shape=(), dtype=dtypes.resource),)
 
   def _to_components(self, value):
-    return (value.state.handle, ops.convert_to_tensor(value.algorithm,
-                                                      dtype=ALGORITHM_TYPE))
+    return (value.state.handle,)
 
   def _from_components(self, components):
     assert isinstance(components, (list, tuple))
-    assert len(components) == 2
+    assert len(components) == 1
     handle = components[0]
-    alg = components[1]
     state_var = resource_variable_ops.BaseResourceVariable(
         handle=handle, shape=self.shape, dtype=self.dtype,
         trainable=False, handle_deleter=object(), handle_name="RNGVar")
-    return Generator(state=state_var, alg=alg)
+    return Generator(state=state_var, alg=self.alg)
 
   @property
   def value_type(self):
     return Generator
 
   def _serialize(self):
-    return (self.shape, self.dtype)
-
-
-def _create_variable(*args, **kwargs):
-  """Creates a variable, and check that it's not MirroredVariable.
-
-  Args:
-    *args: positional arguments passed along to `variables.Variable.
-    **kwargs: keyword arguments passed along to `variables.Variable.
-
-  Returns:
-    The created variable.
-  """
-  if ds_context.has_strategy():
-    raise ValueError(
-        "Creating a generator within a strategy scope is disallowed, because "
-        "there is ambiguity on how to replicate a generator (e.g. should it be "
-        "copied so such each replica will get the same random numbers, or "
-        "should it be 'split' into different generators that generate "
-        "different random numbers).")
-    # TODO(wangpeng): Link to the RNG guide for solutions in such cases.
-  var = variables.Variable(*args, **kwargs)
-  return var
+    return (self.shape, self.dtype, self.alg)
 
 
 @tf_export("random.Generator", "random.experimental.Generator")
@@ -357,7 +345,7 @@ class Generator(tracking.AutoTrackable, composite_tensor.CompositeTensor):
         [https://www.thesalmons.org/john/random123/papers/random123sc11.pdf]).
         The string names `"philox"` and `"threefry"` can also be used.
         Note `PHILOX` guarantees the same numbers are produced (given
-        the same random state) across all architextures (CPU, GPU, XLA etc).
+        the same random state) across all architectures (CPU, GPU, XLA etc).
 
     Throws:
       ValueError: if the generator is created inside a synchronous
@@ -370,8 +358,8 @@ class Generator(tracking.AutoTrackable, composite_tensor.CompositeTensor):
     if copy_from is not None:
       # All other arguments should be None
       assert (alg or state) is None
-      self._state_var = _create_variable(copy_from.state, dtype=STATE_TYPE,
-                                         trainable=False)
+      self._state_var = self._create_variable(copy_from.state, dtype=STATE_TYPE,
+                                              trainable=False)
       self._alg = copy_from.algorithm
 
     else:
@@ -383,9 +371,29 @@ class Generator(tracking.AutoTrackable, composite_tensor.CompositeTensor):
       else:
         state = _convert_to_state_tensor(state)
         _check_state_shape(state.shape, alg)
-        self._state_var = _create_variable(state, dtype=STATE_TYPE,
-                                           trainable=False)
+        self._state_var = self._create_variable(state, dtype=STATE_TYPE,
+                                                trainable=False)
       self._alg = alg
+
+  def _create_variable(self, *args, **kwargs):
+    """Creates a variable, and check that it's not MirroredVariable.
+
+    Args:
+      *args: positional arguments passed along to `variables.Variable.
+      **kwargs: keyword arguments passed along to `variables.Variable.
+
+    Returns:
+      The created variable.
+    """
+    if ds_context.has_strategy():
+      raise ValueError(
+          "Creating a generator within a strategy scope is disallowed, because "
+          "there is ambiguity on how to replicate a generator (e.g. should it "
+          "be copied so that each replica gets the same random numbers, or "
+          "'split' so that each replica gets different random numbers).")
+      # TODO(wangpeng): Link to the RNG guide for solutions in such cases.
+    var = variables.Variable(*args, **kwargs)
+    return var
 
   @classmethod
   def from_state(cls, state, alg):
@@ -550,7 +558,8 @@ class Generator(tracking.AutoTrackable, composite_tensor.CompositeTensor):
 
   @property
   def _type_spec(self):
-    return GeneratorSpec(shape=self.state.shape, dtype=self.state.dtype)
+    return GeneratorSpec(shape=self.state.shape, dtype=self.state.dtype,
+                         alg=self.algorithm)
 
   @property
   def state(self):
@@ -563,6 +572,10 @@ class Generator(tracking.AutoTrackable, composite_tensor.CompositeTensor):
     return self._alg
 
   def _standard_normal(self, shape, dtype):
+    if compat.forward_compatible(2020, 10, 25):
+      key, counter = self._prepare_key_counter(shape)
+      return gen_stateless_random_ops_v2.stateless_random_normal_v2(
+          shape, key=key, counter=counter, dtype=dtype, alg=self.algorithm)
     return gen_stateful_random_ops.stateful_standard_normal_v2(
         self.state.handle, self.algorithm, shape, dtype=dtype)
 
@@ -589,6 +602,8 @@ class Generator(tracking.AutoTrackable, composite_tensor.CompositeTensor):
     else:
       raise ValueError("Unsupported algorithm id: %s" % alg)
 
+  # TODO(wangpeng): Add "Returns" section to docstring once new version kicks in
+  # pylint: disable=g-doc-return-or-yield
   def skip(self, delta):
     """Advance the counter of a counter-based RNG.
 
@@ -598,7 +613,24 @@ class Generator(tracking.AutoTrackable, composite_tensor.CompositeTensor):
         (or any other distribution). The actual increment added to the
         counter is an unspecified implementation detail.
     """
-    gen_stateful_random_ops.rng_skip(self.state.handle, self.algorithm, delta)
+    if compat.forward_compatible(2020, 10, 25):
+      return gen_stateful_random_ops.rng_read_and_skip(
+          self.state.handle,
+          alg=math_ops.cast(self.algorithm, dtypes.int32),
+          delta=math_ops.cast(delta, dtypes.uint64))
+    gen_stateful_random_ops.rng_skip(
+        self.state.handle, math_ops.cast(self.algorithm, dtypes.int64),
+        math_ops.cast(delta, dtypes.int64))
+  # pylint: enable=g-doc-return-or-yield
+
+  def _prepare_key_counter(self, shape):
+    delta = math_ops.reduce_prod(shape)
+    counter_key = self.skip(delta)
+    counter_size = _get_counter_size(self.algorithm)
+    counter = array_ops.bitcast(counter_key[:counter_size], dtypes.uint64)
+    key = array_ops.bitcast(counter_key[counter_size:counter_size + 1],
+                            dtypes.uint64)
+    return key, counter
 
   # The following functions return a tensor and as a side effect update
   # self._state_var.
@@ -627,6 +659,14 @@ class Generator(tracking.AutoTrackable, composite_tensor.CompositeTensor):
       return math_ops.add(rnd * stddev, mean, name=name)
 
   def _truncated_normal(self, shape, dtype):
+    if compat.forward_compatible(2020, 10, 25):
+      key, counter = self._prepare_key_counter(shape)
+      return gen_stateless_random_ops_v2.stateless_truncated_normal_v2(
+          shape=shape,
+          key=key,
+          counter=counter,
+          dtype=dtype,
+          alg=self.algorithm)
     return gen_stateful_random_ops.stateful_truncated_normal(
         self.state.handle, self.algorithm, shape, dtype=dtype)
 
@@ -665,8 +705,30 @@ class Generator(tracking.AutoTrackable, composite_tensor.CompositeTensor):
       return math_ops.add(mul, mean_tensor, name=name)
 
   def _uniform(self, shape, dtype):
+    if compat.forward_compatible(2020, 10, 25):
+      key, counter = self._prepare_key_counter(shape)
+      return gen_stateless_random_ops_v2.stateless_random_uniform_v2(
+          shape=shape,
+          key=key,
+          counter=counter,
+          dtype=dtype,
+          alg=self.algorithm)
     return gen_stateful_random_ops.stateful_uniform(
         self.state.handle, self.algorithm, shape=shape, dtype=dtype)
+
+  def _uniform_full_int(self, shape, dtype, name=None):
+    if compat.forward_compatible(2020, 10, 25):
+      key, counter = self._prepare_key_counter(shape)
+      return gen_stateless_random_ops_v2.stateless_random_uniform_full_int_v2(
+          shape=shape,
+          key=key,
+          counter=counter,
+          dtype=dtype,
+          alg=self.algorithm,
+          name=name)
+    return gen_stateful_random_ops.stateful_uniform_full_int(
+        self.state.handle, self.algorithm, shape=shape,
+        dtype=dtype, name=name)
 
   def uniform(self, shape, minval=0, maxval=None,
               dtype=dtypes.float32, name=None):
@@ -686,14 +748,22 @@ class Generator(tracking.AutoTrackable, composite_tensor.CompositeTensor):
     `maxval - minval` significantly smaller than the range of the output (either
     `2**32` or `2**64`).
 
+    For full-range random integers, pass `minval=None` and `maxval=None` with an
+    integer `dtype` (for integer dtypes, `minval` and `maxval` must be both
+    `None` or both not `None`).
+
     Args:
       shape: A 1-D integer Tensor or Python array. The shape of the output
         tensor.
-      minval: A 0-D Tensor or Python value of type `dtype`. The lower bound on
-        the range of random values to generate.  Defaults to 0.
-      maxval: A 0-D Tensor or Python value of type `dtype`. The upper bound on
-        the range of random values to generate.  Defaults to 1 if `dtype` is
-        floating point.
+      minval: A Tensor or Python value of type `dtype`, broadcastable with
+        `shape` (for integer types, broadcasting is not supported, so it needs
+        to be a scalar). The lower bound (included) on the range of random
+        values to generate. Pass `None` for full-range integers. Defaults to 0.
+      maxval: A Tensor or Python value of type `dtype`, broadcastable with
+        `shape` (for integer types, broadcasting is not supported, so it needs
+        to be a scalar). The upper bound (excluded) on the range of random
+        values to generate. Pass `None` for full-range integers. Defaults to 1
+        if `dtype` is floating point.
       dtype: The type of the output.
       name: A name for the operation (optional).
 
@@ -704,16 +774,31 @@ class Generator(tracking.AutoTrackable, composite_tensor.CompositeTensor):
       ValueError: If `dtype` is integral and `maxval` is not specified.
     """
     dtype = dtypes.as_dtype(dtype)
-    if maxval is None:
-      if dtype.is_integer:
-        raise ValueError("Must specify maxval for integer dtype %r" % dtype)
+    if dtype.is_integer:
+      if (minval is None) != (maxval is None):
+        raise ValueError("For integer dtype {}, minval and maxval must be both "
+                         "`None` or both non-`None`; got minval={} and "
+                         "maxval={}".format(dtype, minval, maxval))
+    elif maxval is None:
       maxval = 1
     with ops.name_scope(name, "stateful_uniform",
                         [shape, minval, maxval]) as name:
       shape = _shape_tensor(shape)
+      if dtype.is_integer and minval is None:
+        return self._uniform_full_int(shape=shape, dtype=dtype, name=name)
       minval = ops.convert_to_tensor(minval, dtype=dtype, name="min")
       maxval = ops.convert_to_tensor(maxval, dtype=dtype, name="max")
       if dtype.is_integer:
+        if compat.forward_compatible(2020, 10, 25):
+          key, counter = self._prepare_key_counter(shape)
+          return gen_stateless_random_ops_v2.stateless_random_uniform_int_v2(
+              shape=shape,
+              key=key,
+              counter=counter,
+              minval=minval,
+              maxval=maxval,
+              alg=self.algorithm,
+              name=name)
         return gen_stateful_random_ops.stateful_uniform_int(
             self.state.handle, self.algorithm, shape=shape,
             minval=minval, maxval=maxval, name=name)
@@ -724,8 +809,8 @@ class Generator(tracking.AutoTrackable, composite_tensor.CompositeTensor):
   def uniform_full_int(self, shape, dtype=dtypes.uint64, name=None):
     """Uniform distribution on an integer type's entire range.
 
-    The other method `uniform` only covers the range [minval, maxval), which
-    cannot be `dtype`'s full range because `maxval` is of type `dtype`.
+    This method is the same as setting `minval` and `maxval` to `None` in the
+    `uniform` method.
 
     Args:
       shape: the shape of the output.
@@ -739,9 +824,7 @@ class Generator(tracking.AutoTrackable, composite_tensor.CompositeTensor):
     with ops.name_scope(name, "stateful_uniform_full_int",
                         [shape]) as name:
       shape = _shape_tensor(shape)
-      return gen_stateful_random_ops.stateful_uniform_full_int(
-          self.state.handle, self.algorithm, shape=shape,
-          dtype=dtype, name=name)
+      return self._uniform_full_int(shape=shape, dtype=dtype, name=name)
 
   def binomial(self, shape, counts, probs, dtype=dtypes.int32, name=None):
     """Outputs random values from a binomial distribution.

@@ -58,7 +58,7 @@ namespace quantiles {
 // Compute: O(n * log(1/eps * log(eps * n))).
 // Memory: O(1/eps * log^2(eps * n)) <- for one worker streaming through the
 //                                      entire dataset.
-// An epsilon value of zero would make the algorithm extremely inefficent and
+// An epsilon value of zero would make the algorithm extremely inefficient and
 // therefore, is disallowed.
 template <typename ValueType, typename WeightType,
           typename CompareFn = std::less<ValueType>>
@@ -72,7 +72,7 @@ class WeightedQuantilesStream {
   explicit WeightedQuantilesStream(double eps, int64 max_elements)
       : eps_(eps), buffer_(1LL, 2LL), finalized_(false) {
     // See the class documentation. An epsilon value of zero could cause
-    // perfoamance issues.
+    // performance issues.
     QCHECK(eps > 0) << "An epsilon value of zero is not allowed.";
     std::tie(max_levels_, block_size_) = GetQuantileSpecs(eps, max_elements);
     buffer_ = Buffer(block_size_, max_elements);

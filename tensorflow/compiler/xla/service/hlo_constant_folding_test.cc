@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -109,8 +110,8 @@ TEST_F(HloConstantFoldingTest, ConvertF32ArrayToS64Array) {
 TEST_F(HloConstantFoldingTest, Concatenate) {
   const struct TestConfig {
     int concat_dimension;
-    absl::Span<const int64> dimensions;
-    absl::Span<const int64> concat_sizes;
+    std::vector<int64> dimensions;
+    std::vector<int64> concat_sizes;
   } test_configs[] = {
       {1, {11, 0, 7, 5, 9}, {2, 5, 7, 11}},
       {3, {1, 4, 17, 0, 8}, {1, 3, 9, 12}},

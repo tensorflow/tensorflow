@@ -25,12 +25,17 @@ namespace cl {
 struct ModelHints {
   using ModelHint = uint64_t;
 
-  // By default we want the fastest inference
-  static const ModelHint kFastestInference = 0x00000000;
-  // Can improve compilation time, but inference can be slower
-  static const ModelHint kReduceKernelsCount = 0x00000001;
-  // Can improve tuning time, but inference can be slower
-  static const ModelHint kFastTuning = 0x00000002;
+  // By default we want the fastest inference.
+  static constexpr ModelHint kFastestInference = 0x00000000;
+  // Can improve compilation time, but inference can be slower.
+  static constexpr ModelHint kReduceKernelsCount = 0x00000001;
+  // Can improve tuning time, but inference can be slower.
+  static constexpr ModelHint kFastTuning = 0x00000002;
+
+  // Experimental.
+  // Can improve performance and memory consumption, but slow down
+  // initialization a lot and create more kernels.
+  static constexpr ModelHint kAllowSpecialKernels = 0x00000004;
 
   void Add(ModelHint hint) {
     if (hint == kFastestInference) {

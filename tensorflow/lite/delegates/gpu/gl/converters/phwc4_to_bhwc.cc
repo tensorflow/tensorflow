@@ -31,7 +31,7 @@ namespace tflite {
 namespace gpu {
 namespace gl {
 
-Status ConverterPhwc4ToBhwc::Create(ConverterPhwc4ToBhwc* converter) {
+absl::Status ConverterPhwc4ToBhwc::Create(ConverterPhwc4ToBhwc* converter) {
   uint3 workgroup_size = uint3(4, 4, 4);
   std::string shader_source = GetShaderHeader(workgroup_size) + R"(
     layout(std430) buffer;
@@ -62,26 +62,28 @@ Status ConverterPhwc4ToBhwc::Create(ConverterPhwc4ToBhwc* converter) {
   GlProgram program;
   RETURN_IF_ERROR(GlProgram::CreateWithShader(shader, &program));
   *converter = ConverterPhwc4ToBhwc(std::move(program), workgroup_size);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status ConverterPhwc4ToBhwc::Convert(const BHWC& shape, const GlBuffer& source,
-                                     CommandQueue* command_queue,
-                                     GlBuffer* destination) {
+absl::Status ConverterPhwc4ToBhwc::Convert(const BHWC& shape,
+                                           const GlBuffer& source,
+                                           CommandQueue* command_queue,
+                                           GlBuffer* destination) {
   if (source.bytes_size() < BytesForPHWC4(shape)) {
-    return InvalidArgumentError(
+    return absl::InvalidArgumentError(
         "Phwc4ToBhwc: Input data size does not match expected size.");
   }
   if (destination->bytes_size() < BytesForBHWC(shape)) {
-    return InvalidArgumentError(
+    return absl::InvalidArgumentError(
         "Phwc4ToBhwc: output data size does not match expected size.");
   }
   if (shape.b != 1) {
-    return UnimplementedError("Phwc4ToBhwc: Batch size is not equal to 1.");
+    return absl::UnimplementedError(
+        "Phwc4ToBhwc: Batch size is not equal to 1.");
   }
 
   uint3 workload = uint3(shape.w, shape.h, shape.c);
-  uint3 num_workgroups = IntegralDivideRoundUp(workload, workgroup_size_);
+  uint3 num_workgroups = DivideRoundUp(workload, workgroup_size_);
 
   // TODO(akulik): simply pass workload as soon as UniformParameter
   // supports uint3

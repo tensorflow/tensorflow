@@ -4926,8 +4926,9 @@ cusparseStatus_t CUSPARSEAPI cusparseZcsr2csr_compress(
     cusparseHandle_t handle,
     int m,  // number of rows
     int n, const cusparseMatDescr_t descra,
-    const cuDoubleComplex *csrValA,  // csr values array-the elements which are
-                                     // below a certain tolerance will be remvoed
+    const cuDoubleComplex
+        *csrValA,  // csr values array-the elements which are
+                   // below a certain tolerance will be remvoed
     const int *csrColIndA,
     const int *csrRowPtrA,  // corresponding input noncompressed row pointer
     int nnzA, const int *nnzPerRow, cuDoubleComplex *csrValC, int *csrColIndC,

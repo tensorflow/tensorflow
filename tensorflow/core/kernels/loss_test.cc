@@ -213,7 +213,7 @@ TEST(HingeLoss, ConvertLabel) {
 TEST(HingeLoss, ComputeUpdatedDual) {
   HingeLossUpdater loss_updater;
   // For the two tests belows, y*wx=1 after the update which is a
-  // non-differetiable point of the hinge loss and TestComputeUpdatedDual
+  // non-differentiable point of the hinge loss and TestComputeUpdatedDual
   // cannot be used. Check value of the dual variable instead.
   EXPECT_NEAR(0.507,
               loss_updater.ComputeUpdatedDual(

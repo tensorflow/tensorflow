@@ -63,6 +63,22 @@ class XlaDataFormatDimMapTest(xla_test.XLATestCase):
     self._test([-4, -3, -2, -1, 0, 1, 2, 3], "qwer", "rewq",
                [3, 2, 1, 0, 3, 2, 1, 0])
 
+    self._test(0, "NDHWC", "NCDHW", 0)
+    self._test(1, "NDHWC", "NCDHW", 2)
+    self._test(2, "NDHWC", "NCDHW", 3)
+    self._test(3, "NDHWC", "NCDHW", 4)
+    self._test(4, "NDHWC", "NCDHW", 1)
+    self._test([1, 4], "NDHWC", "NCDHW", [2, 1])
+    self._test([1, 4, -2], "NDHWC", "NCDHW", [2, 1, 4])
+    self._test([1, -3, -2], "NDHWC", "NCDHW", [2, 3, 4])
+    self._test([[1, -4], [1, -1]], "NDHWC", "NCDHW", [[2, 2], [2, 1]])
+
+    self._test([1, -3, -2], "NDHWC", "NCDHW", [2, 3, 4])
+    self._test([-5, -4, -3, -2, -1, 0, 1, 2, 3, 4], "NDHWC", "DHWNC",
+               [3, 0, 1, 2, 4, 3, 0, 1, 2, 4])
+    self._test([-5, -4, -3, -2, -1, 0, 1, 2, 3, 4], "NDHWC", "WHDCN",
+               [4, 2, 1, 0, 3, 4, 2, 1, 0, 3])
+
 
 class XlaPermuteOpTest(xla_test.XLATestCase):
 
@@ -81,10 +97,20 @@ class XlaPermuteOpTest(xla_test.XLATestCase):
       x = np.array([7, 4, 9, 3], dtype=dtype)
       self._runPermuteAndCompare(x, "NHWC", "NCHW", [7, 3, 4, 9])
 
+  def testNHWCToNCHW_Size2(self):
+    for dtype in {np.int32, np.int64}:
+      x = np.array([4, 9], dtype=dtype)
+      self._runPermuteAndCompare(x, "NHWC", "NCHW", [4, 9])
+
   def testNCHWToNHWC(self):
     for dtype in {np.int32, np.int64}:
       x = np.array([7, 4, 9, 3], dtype=dtype)
       self._runPermuteAndCompare(x, "NCHW", "NHWC", [7, 9, 3, 4])
+
+  def testNCHWToNHWC_Size2(self):
+    for dtype in {np.int32, np.int64}:
+      x = np.array([9, 3], dtype=dtype)
+      self._runPermuteAndCompare(x, "NCHW", "NHWC", [9, 3])
 
   def testNHWCToHWNC(self):
     for dtype in {np.int32, np.int64}:

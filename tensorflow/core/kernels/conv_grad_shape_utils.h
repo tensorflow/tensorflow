@@ -83,6 +83,13 @@ Status ConvBackpropComputeDimensionsV2(
     const gtl::ArraySlice<int32>& dilations, const std::vector<int32>& strides,
     Padding padding, absl::Span<const int64> explicit_paddings,
     TensorFormat data_format, ConvBackpropDimensions* dims);
+
+// Computes the shape of the in_backprop.
+Status Conv2DBackpropComputeInputShape(const Tensor& input_sizes,
+                                       const TensorShape& filter_shape,
+                                       const TensorShape& out_backprop_shape,
+                                       const TensorFormat& data_format,
+                                       TensorShape* input_shape);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_CONV_GRAD_SHAPE_UTILS_H_

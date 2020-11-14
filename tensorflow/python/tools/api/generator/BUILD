@@ -2,10 +2,8 @@
 # Scripts used to generate TensorFlow Python API.
 
 load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow/python/tools/api/generator:api_init_files.bzl", "TENSORFLOW_API_INIT_FILES")
-load("//tensorflow/python/tools/api/generator:api_init_files_v1.bzl", "TENSORFLOW_API_INIT_FILES_V1")
-load("//tensorflow/python/tools/api/generator:api_init_files.bzl", "KERAS_API_INIT_FILES")
-load("//tensorflow/python/tools/api/generator:api_init_files_v1.bzl", "KERAS_API_INIT_FILES_V1")
+load("//tensorflow/python/tools/api/generator:api_init_files.bzl", "KERAS_API_INIT_FILES", "TENSORFLOW_API_INIT_FILES")
+load("//tensorflow/python/tools/api/generator:api_init_files_v1.bzl", "KERAS_API_INIT_FILES_V1", "TENSORFLOW_API_INIT_FILES_V1")
 
 package(
     licenses = ["notice"],  # Apache 2.0
@@ -85,7 +83,13 @@ py_test(
     ],
     deps = [
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:composite_tensor",
+        "//tensorflow/python:framework_combinations",
+        "//tensorflow/python:modules_with_exports",
         "//tensorflow/python:no_contrib",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:multi_process_runner",
+        "//tensorflow/python/distribute:multi_worker_test_base",
         "//tensorflow/python/tools/api/generator:create_python_api",
     ],
 )

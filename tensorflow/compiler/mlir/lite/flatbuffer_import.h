@@ -17,9 +17,9 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_FLATBUFFER_IMPORT_H_
 
 #include "absl/strings/string_view.h"
-#include "mlir/IR/Location.h"  // TF:local_config_mlir
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
 
 namespace tflite {
 // Converts a TFLite flatbuffer stored in `buffer` to a MLIR module
@@ -31,11 +31,14 @@ namespace tflite {
 // on failure, and more specific errors will be emitted via the context.
 // If `use_external_constant` is true, it will create `tfl.external_const`
 // instead of `tfl.const`.
+// If `experimental_prune_unreachable_nodes_unconditionally` is true, nodes that
+// are not ancestors of the output nodes will be pruned.
 mlir::OwningModuleRef FlatBufferToMlir(
     absl::string_view buffer, mlir::MLIRContext* context,
-    mlir::Location base_loc,
-    const std::vector<std::string>& ordered_output_arrays,
-    bool use_external_constant = false);
+    mlir::Location base_loc, bool use_external_constant = false,
+    const std::vector<std::string>& ordered_input_arrays = {},
+    const std::vector<std::string>& ordered_output_arrays = {},
+    bool experimental_prune_unreachable_nodes_unconditionally = false);
 }  // namespace tflite
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_FLATBUFFER_IMPORT_H_

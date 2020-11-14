@@ -166,9 +166,10 @@ class SimpleMultiEnginesTest2(trt_test.TfTrtIntegrationTestBase):
     """Whether to run the test."""
     # Disable the test in fp16 mode since multiple matmul and add ops together
     # can cause overflow.
-    return ((run_params.precision_mode != "FP16") and
-            not (trt_test.IsQuantizationMode(run_params.precision_mode) and
-                 not run_params.use_calibration))
+    return (
+        (run_params.precision_mode != "FP16") and
+        not (trt_test.IsQuantizationMode(run_params.precision_mode) and
+             not run_params.use_calibration)), "test FP32 and non-calibration"
 
 
 class ConstInputTest(trt_test.TfTrtIntegrationTestBase):

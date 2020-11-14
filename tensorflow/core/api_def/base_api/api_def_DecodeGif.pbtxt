@@ -21,6 +21,6 @@ uncompressed by running:
     convert $src.gif -coalesce $dst.gif
 
 This op also supports decoding JPEGs and PNGs, though it is cleaner to use
-`tf.image.decode_image`.
+`tf.io.decode_image`.
 END
 }

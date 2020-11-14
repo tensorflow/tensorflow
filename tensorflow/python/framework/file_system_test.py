@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
-
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import load_library
@@ -33,8 +31,8 @@ from tensorflow.python.util import compat
 class FileSystemTest(test.TestCase):
 
   def setUp(self):
-    file_system_library = os.path.join(resource_loader.get_data_files_path(),
-                                       "test_file_system.so")
+    file_system_library = resource_loader.get_path_to_datafile(
+        "test_file_system.so")
     load_library.load_file_system_library(file_system_library)
 
   @test_util.run_deprecated_v1

@@ -1,5 +1,9 @@
 path: "tensorflow.saved_model.experimental"
 tf_module {
+  member {
+    name: "VariablePolicy"
+    mtype: "<class \'enum.EnumMeta\'>"
+  }
   member_method {
     name: "save"
     argspec: "args=[\'obj\', \'export_dir\', \'signatures\', \'options\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "

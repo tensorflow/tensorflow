@@ -33,18 +33,18 @@ namespace tensorflow {
 namespace strings {
 
 // Return a C++ string
-extern string Printf(const char* format, ...)
+extern std::string Printf(const char* format, ...)
     // Tell the compiler to do printf format string checking.
     TF_PRINTF_ATTRIBUTE(1, 2);
 
 // Append result to a supplied string
-extern void Appendf(string* dst, const char* format, ...)
+extern void Appendf(std::string* dst, const char* format, ...)
     // Tell the compiler to do printf format string checking.
     TF_PRINTF_ATTRIBUTE(2, 3);
 
 // Lower-level routine that takes a va_list and appends to a specified
 // string.  All other routines are just convenience wrappers around it.
-extern void Appendv(string* dst, const char* format, va_list ap);
+extern void Appendv(std::string* dst, const char* format, va_list ap);
 
 }  // namespace strings
 }  // namespace tensorflow

@@ -32,8 +32,8 @@ struct DepthwiseArgs {
   int filter_cols;
   int depth_multiplier;
   int stride;
-  int pad_rows;
-  int pad_cols;
+  int pad_rows;  // Amount of padding to the top of the input
+  int pad_cols;  // Amount of padding to the left of the input
 
   // Output layer dimensions
   int out_rows;
@@ -167,7 +167,7 @@ struct DepthwiseFilterPadOp {
 
 // Copies data from local region in 'input' specified by 'out_r' and 'out_'c'
 // to 'input_buffer'. The copied data is replicated by factor
-// 'args.depth_mulitplier', and padded to vector register-width boundaries so
+// 'args.depth_multiplier', and padded to vector register-width boundaries so
 // that it is aligned for efficient traversal and vector multiply-add by the
 // depthwise kernel.
 //

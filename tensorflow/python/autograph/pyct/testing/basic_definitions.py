@@ -56,3 +56,15 @@ def function_with_multiline_call(x):
       x,
       x + 1,
   )
+
+
+def basic_decorator(f):
+  return f
+
+
+@basic_decorator
+@basic_decorator
+def decorated_function(x):
+  if x > 0:
+    return 1
+  return 2

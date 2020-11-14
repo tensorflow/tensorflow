@@ -58,8 +58,7 @@ def _recursive_apply(tensors, apply_fn):
       return tuple(tensors)
     return tensors_type(*tensors)  # collections.namedtuple
   elif tensors_type is dict:
-    return dict([(k, _recursive_apply(v, apply_fn)) for k, v in tensors.items()
-                ])
+    return dict((k, _recursive_apply(v, apply_fn)) for k, v in tensors.items())
   else:
     raise TypeError('_recursive_apply argument %r has invalid type %r' %
                     (tensors, tensors_type))
@@ -67,6 +66,8 @@ def _recursive_apply(tensors, apply_fn):
 
 class _ControlOutputCache(object):
   """Helper class to manage calculating and caching control_outputs in graph."""
+
+  __slots__ = ['cache']
 
   def __init__(self):
     self.cache = {}
@@ -187,7 +188,7 @@ def _is_subscribed_identity(tensor):
     tensor: A `tf.Tensor` to check.
 
   Returns:
-    True if the given tensor matches the criteria for subscription identies:
+    True if the given tensor matches the criteria for subscription identities:
     its op type is `Identity`, its name matches the name of its input and
     conforms to the convention for subscribed nodes.
     False otherwise.

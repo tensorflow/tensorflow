@@ -174,6 +174,11 @@ bool DeviceNameUtils::ParseFullName(StringPiece fullname, ParsedName* p) {
   return true;
 }
 
+bool DeviceNameUtils::ParseFullOrLocalName(StringPiece fullname,
+                                           ParsedName* p) {
+  return ParseFullName(fullname, p) || ParseLocalName(fullname, p);
+}
+
 namespace {
 
 void CompleteName(const DeviceNameUtils::ParsedName& parsed_basename,
@@ -274,6 +279,27 @@ bool DeviceNameUtils::IsSpecification(const ParsedName& less_specific,
   }
   if (less_specific.has_id &&
       (!more_specific.has_id || (less_specific.id != more_specific.id))) {
+    return false;
+  }
+  return true;
+}
+
+/* static */
+bool DeviceNameUtils::AreCompatibleDevNames(const ParsedName& a,
+                                            const ParsedName& b) {
+  if (a.has_job && b.has_job && (a.job != b.job)) {
+    return false;
+  }
+  if (a.has_replica && b.has_replica && (a.replica != b.replica)) {
+    return false;
+  }
+  if (a.has_task && b.has_task && (a.task != b.task)) {
+    return false;
+  }
+  if (a.has_type && b.has_type && (a.type != b.type)) {
+    return false;
+  }
+  if (a.has_id && b.has_id && (a.id != b.id)) {
     return false;
   }
   return true;

@@ -23,8 +23,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-namespace {
-
 bool ParseTensorProtoToTensor(const TensorProto& tensor_proto,
                               Tensor* out_tensor) {
   if (tensor_proto.dtype() > 0 && tensor_proto.dtype() <= DataType_MAX) {
@@ -36,8 +34,6 @@ bool ParseTensorProtoToTensor(const TensorProto& tensor_proto,
   }
   return false;
 }
-
-}  // namespace
 
 const string& InMemoryRunStepRequest::session_handle() const {
   return session_handle_;

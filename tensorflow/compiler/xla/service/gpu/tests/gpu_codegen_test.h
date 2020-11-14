@@ -27,6 +27,11 @@ namespace gpu {
 
 // Tests that verify IR or PTX emitted by the GPU backend is as expected.
 class GpuCodegenTest : public LlvmIrGenTestBase {
+ public:
+  GpuCodegenTest()
+      : is_built_with_rocm_(
+            se::MultiPlatformManager::PlatformWithName("ROCM").ok()) {}
+
  protected:
   // Like HloTestBase::CreateNewVerifiedModule(), with a flag for configuring
   // the ftz option.
@@ -34,8 +39,13 @@ class GpuCodegenTest : public LlvmIrGenTestBase {
 
   // Compiles the given HLO module to PTX and verifies the PTX matches the given
   // FileCheck pattern.  (See http://llvm.org/docs/CommandGuide/FileCheck.html).
-  void CompileAndVerifyPtx(std::unique_ptr<VerifiedHloModule> hlo_module,
-                           absl::string_view pattern);
+  // The "VerifyPtx" part only happens on the CUDA platform,
+  // and hence the "Optionally" in function name.
+  // For ROCm platform this routine will only do the "Compile" part.
+  void CompileAndOptionallyVerifyPtx(
+      std::unique_ptr<VerifiedHloModule> hlo_module, absl::string_view pattern);
+
+  bool is_built_with_rocm_;
 };
 
 }  // namespace gpu

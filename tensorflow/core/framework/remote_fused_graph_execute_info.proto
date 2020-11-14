@@ -1,20 +1,21 @@
 syntax = "proto3";
 
 package tensorflow;
+
+import "tensorflow/core/framework/graph.proto";
+import "tensorflow/core/framework/tensor_shape.proto";
+import "tensorflow/core/framework/types.proto";
+
 option cc_enable_arenas = true;
 option java_outer_classname = "RemoteFusedGraphExecuteInfoProto";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
-option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework";
-import "tensorflow/core/framework/graph.proto";
-import "tensorflow/core/framework/tensor_shape.proto";
-import "tensorflow/core/framework/types.proto";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/remote_fused_graph_execute_info_go_proto";
 
 // Protocol buffer representing a handle to a tensorflow resource. Handles are
 // not valid across executions, but can be serialized back and forth from within
 // a single run.
 message RemoteFusedGraphExecuteInfo {
-
   message TensorShapeTypeProto {
     DataType dtype = 1;
     TensorShapeProto shape = 2;
@@ -44,4 +45,4 @@ message RemoteFusedGraphExecuteInfo {
   // TODO(satok): Remote output tensor shape once shape information is stored
   // in NodeDef
   repeated TensorShapeTypeProto default_graph_output_tensor_shape = 7;
-};
+}

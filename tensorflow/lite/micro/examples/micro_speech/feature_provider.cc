@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/lite/micro/examples/micro_speech/micro_features/micro_features_generator.h"
 #include "tensorflow/lite/micro/examples/micro_speech/micro_features/micro_model_settings.h"
 
-FeatureProvider::FeatureProvider(int feature_size, uint8_t* feature_data)
+FeatureProvider::FeatureProvider(int feature_size, int8_t* feature_data)
     : feature_size_(feature_size),
       feature_data_(feature_data),
       is_first_run_(true) {
@@ -35,8 +35,9 @@ TfLiteStatus FeatureProvider::PopulateFeatureData(
     tflite::ErrorReporter* error_reporter, int32_t last_time_in_ms,
     int32_t time_in_ms, int* how_many_new_slices) {
   if (feature_size_ != kFeatureElementCount) {
-    error_reporter->Report("Requested feature_data_ size %d doesn't match %d",
-                           feature_size_, kFeatureElementCount);
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "Requested feature_data_ size %d doesn't match %d",
+                         feature_size_, kFeatureElementCount);
     return kTfLiteError;
   }
 
@@ -76,10 +77,10 @@ TfLiteStatus FeatureProvider::PopulateFeatureData(
   // +-----------+             +-----------+
   if (slices_to_keep > 0) {
     for (int dest_slice = 0; dest_slice < slices_to_keep; ++dest_slice) {
-      uint8_t* dest_slice_data =
+      int8_t* dest_slice_data =
           feature_data_ + (dest_slice * kFeatureSliceSize);
       const int src_slice = dest_slice + slices_to_drop;
-      const uint8_t* src_slice_data =
+      const int8_t* src_slice_data =
           feature_data_ + (src_slice * kFeatureSliceSize);
       for (int i = 0; i < kFeatureSliceSize; ++i) {
         dest_slice_data[i] = src_slice_data[i];
@@ -100,11 +101,12 @@ TfLiteStatus FeatureProvider::PopulateFeatureData(
                       kFeatureSliceDurationMs, &audio_samples_size,
                       &audio_samples);
       if (audio_samples_size < kMaxAudioSampleSize) {
-        error_reporter->Report("Audio data size %d too small, want %d",
-                               audio_samples_size, kMaxAudioSampleSize);
+        TF_LITE_REPORT_ERROR(error_reporter,
+                             "Audio data size %d too small, want %d",
+                             audio_samples_size, kMaxAudioSampleSize);
         return kTfLiteError;
       }
-      uint8_t* new_slice_data = feature_data_ + (new_slice * kFeatureSliceSize);
+      int8_t* new_slice_data = feature_data_ + (new_slice * kFeatureSliceSize);
       size_t num_samples_read;
       TfLiteStatus generate_status = GenerateMicroFeatures(
           error_reporter, audio_samples, audio_samples_size, kFeatureSliceSize,

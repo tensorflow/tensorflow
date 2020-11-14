@@ -21,48 +21,45 @@ limitations under the License.
 TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(SuccessfulPrediction) {
-  // Use the threshold from the 0th gesture
-  int threshold = kConsecutiveInferenceThresholds[0];
-  float probabilities[4] = {1.0, 0.0, 0.0, 0.0};
+  // Use the threshold from the 0th gesture.
+  float probabilities[kGestureCount] = {kDetectionThreshold, 0.0, 0.0, 0.0};
   int prediction;
-  // Loop just too few times to trigger a prediction
-  for (int i = 0; i <= threshold - 1; i++) {
+  // Loop just too few times to trigger a prediction.
+  for (int i = 0; i < kPredictionHistoryLength - 1; i++) {
     prediction = PredictGesture(probabilities);
-    TF_LITE_MICRO_EXPECT_EQ(prediction, 3);
+    TF_LITE_MICRO_EXPECT_EQ(prediction, kNoGesture);
   }
   // Call once more, triggering a prediction
-  // for category 0
+  // for category 0.
   prediction = PredictGesture(probabilities);
   TF_LITE_MICRO_EXPECT_EQ(prediction, 0);
 }
 
 TF_LITE_MICRO_TEST(FailPartWayThere) {
-  // Use the threshold from the 0th gesture
-  int threshold = kConsecutiveInferenceThresholds[0];
-  float probabilities[4] = {1.0, 0.0, 0.0, 0.0};
+  // Use the threshold from the 0th gesture.
+  float probabilities[kGestureCount] = {kDetectionThreshold, 0.0, 0.0, 0.0};
   int prediction;
-  // Loop just too few times to trigger a prediction
-  for (int i = 0; i <= threshold - 1; i++) {
+  // Loop just too few times to trigger a prediction.
+  for (int i = 0; i <= kPredictionHistoryLength - 1; i++) {
     prediction = PredictGesture(probabilities);
-    TF_LITE_MICRO_EXPECT_EQ(prediction, 3);
+    TF_LITE_MICRO_EXPECT_EQ(prediction, kNoGesture);
   }
-  // Call with a different prediction, triggering a failure
+  // Call with a different prediction, triggering a failure.
   probabilities[0] = 0.0;
   probabilities[2] = 1.0;
   prediction = PredictGesture(probabilities);
-  TF_LITE_MICRO_EXPECT_EQ(prediction, 3);
+  TF_LITE_MICRO_EXPECT_EQ(prediction, kNoGesture);
 }
 
 TF_LITE_MICRO_TEST(InsufficientProbability) {
-  // Use the threshold from the 0th gesture
-  int threshold = kConsecutiveInferenceThresholds[0];
-  // Below the probability threshold of 0.8
-  float probabilities[4] = {0.7, 0.0, 0.0, 0.0};
+  // Just below the detection threshold.
+  float probabilities[kGestureCount] = {kDetectionThreshold - 0.1f, 0.0, 0.0,
+                                        0.0};
   int prediction;
   // Loop the exact right number of times
-  for (int i = 0; i <= threshold; i++) {
+  for (int i = 0; i <= kPredictionHistoryLength; i++) {
     prediction = PredictGesture(probabilities);
-    TF_LITE_MICRO_EXPECT_EQ(prediction, 3);
+    TF_LITE_MICRO_EXPECT_EQ(prediction, kNoGesture);
   }
 }
 

@@ -56,7 +56,7 @@ namespace tensorflow {
 //
 // Assuming we configure the Session to create one BaseGPUDevice per GPU
 // hardware, then setting GPUOptions::visible_device_list to "2,0" will create
-// the following mappting between TF GPU id and platform GPU id:
+// the following mapping between TF GPU id and platform GPU id:
 //
 //                  TF GPU id  ->  platform GPU ID
 //      0 (i.e. /device:GPU:0) ->  2
@@ -67,7 +67,7 @@ namespace tensorflow {
 //
 // On the other hand, if we configure it to create 2 BaseGPUDevice per GPU
 // hardware, then setting GPUOptions::visible_device_list to "2,0" will create
-// the following mappting between TF GPU id and platform GPU id:
+// the following mapping between TF GPU id and platform GPU id:
 //
 //                  TF GPU id  ->  platform GPU ID
 //      0 (i.e. /device:GPU:0) ->  2

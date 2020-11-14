@@ -58,7 +58,9 @@ void CompressConstants(GraphDef* graph) {
     if ((IsConstant(*node) || IsHostConstant(*node)) &&
         HasNodeAttr(*node, "value")) {
       AttrValue& attr_val = (*node->mutable_attr())["value"];
-      tensor::CompressTensorProtoInPlace(attr_val.mutable_tensor());
+      if (attr_val.has_tensor()) {
+        tensor::CompressTensorProtoInPlace(attr_val.mutable_tensor());
+      }
     }
   }
 }

@@ -1,6 +1,8 @@
 path: "tensorflow.lite.TFLiteConverter"
 tf_class {
   is_instance: "<class \'tensorflow.lite.python.lite.TFLiteConverter\'>"
+  is_instance: "<class \'tensorflow.lite.python.lite.TFLiteFrozenGraphConverter\'>"
+  is_instance: "<class \'tensorflow.lite.python.lite.TFLiteConverterBaseV1\'>"
   is_instance: "<class \'tensorflow.lite.python.lite.TFLiteConverterBase\'>"
   is_instance: "<type \'object\'>"
   member_method {

@@ -1,14 +1,16 @@
 syntax = "proto3";
 
 package tensorflow;
+
+import "tensorflow/core/framework/function.proto";
+import "tensorflow/core/framework/node_def.proto";
+import "tensorflow/core/framework/versions.proto";
+
 option cc_enable_arenas = true;
 option java_outer_classname = "GraphProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
-option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework";
-import "tensorflow/core/framework/node_def.proto";
-import "tensorflow/core/framework/function.proto";
-import "tensorflow/core/framework/versions.proto";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/graph_go_proto";
 
 // Represents the graph of operations
 message GraphDef {
@@ -53,4 +55,4 @@ message GraphDef {
   //     consumer does not start until all return values of the callee
   //     function are ready.
   FunctionDefLibrary library = 2;
-};
+}

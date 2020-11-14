@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -85,7 +86,7 @@ class XfeedQueue {
   tensorflow::condition_variable cv_;
 
   // The queue of trees of buffers. Buffer* queue contents are not owned.
-  std::deque<BufferType> enqueued_buffers_ GUARDED_BY(mu_);
+  std::deque<BufferType> enqueued_buffers_ ABSL_GUARDED_BY(mu_);
 
   // List of callbacks which will be called when 'enqueued_buffers_' becomes
   // empty.

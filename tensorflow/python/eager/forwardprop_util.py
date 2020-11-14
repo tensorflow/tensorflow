@@ -65,7 +65,7 @@ def push_forwardprop_state():
   temporarily reset its state. This is useful when building forwardprop versions
   of functions, where an accumulator will trigger function building and then
   must process captured symbolic tensors while building it. Without pushing and
-  poping, accumulators ignore operations executed as a direct result of their
+  popping, accumulators ignore operations executed as a direct result of their
   own jvp computations.
 
   Yields:

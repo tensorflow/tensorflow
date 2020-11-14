@@ -42,6 +42,6 @@ END
   summary: "Update \'*var\' according to the adagrad scheme."
   description: <<END
 accum += grad * grad
-var -= lr * grad * (1 / sqrt(accum))
+var -= lr * grad * (1 / (sqrt(accum) + epsilon))
 END
 }

@@ -23,7 +23,6 @@ import time
 import numpy as np
 
 from tensorflow.python.client import session
-from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -276,7 +275,7 @@ class GatherNdTest(test.TestCase):
     expected_grads = np.array([[3, 4], [1, 2]], dtype=np.float64)
     with self.session(use_gpu=True):
       self.assertIndexedSlices(grads)
-      self.assertAllEqual(expected_grads, ops.convert_to_tensor(grads).eval())
+      self.assertAllEqual(expected_grads, ops.convert_to_tensor(grads))
 
   @test_util.run_deprecated_v1
   def testGradientsRank3Elements(self):
@@ -361,7 +360,7 @@ class GatherNdTest(test.TestCase):
         dtype=np.float64)
     with self.session(use_gpu=True):
       self.assertIndexedSlices(grads)
-      self.assertAllEqual(expected_grads, ops.convert_to_tensor(grads).eval())
+      self.assertAllEqual(expected_grads, ops.convert_to_tensor(grads))
 
   @test_util.run_v1_only("RefVariable is not supported in v2")
   def testGatherNdRefVariable(self):
@@ -375,15 +374,14 @@ class GatherNdTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testGatherNdResourceVariable(self):
-    with compat.forward_compatibility_horizon(2019, 4, 30):
-      with self.cached_session():
-        v = resource_variable_ops.ResourceVariable(
-            constant_op.constant([[1, 2], [3, 4], [5, 6]]))
-        self.evaluate(variables.global_variables_initializer())
-        gather = array_ops.gather_nd(v, [[0, 1], [2, 0]])
-        if not context.executing_eagerly():  # .op doesn't make sense in Eager
-          self.assertEqual("ResourceGatherNd", gather.op.inputs[0].op.type)
-        self.assertAllEqual([2, 5], gather)
+    with self.cached_session():
+      v = resource_variable_ops.ResourceVariable(
+          constant_op.constant([[1, 2], [3, 4], [5, 6]]))
+      self.evaluate(variables.global_variables_initializer())
+      gather = array_ops.gather_nd(v, [[0, 1], [2, 0]])
+      if not context.executing_eagerly():  # .op doesn't make sense in Eager
+        self.assertEqual("ResourceGatherNd", gather.op.inputs[0].op.type)
+      self.assertAllEqual([2, 5], gather)
 
 
 class GatherNdOpBenchmark(test.Benchmark):
@@ -398,7 +396,7 @@ class GatherNdOpBenchmark(test.Benchmark):
       t_params = variables.Variable(params)
       t_indices = variables.Variable(indices)
       gather_op = array_ops.gather_nd(t_params, t_indices)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       for _ in range(10):
         self.evaluate(gather_op)
       t1 = time.time()

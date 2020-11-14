@@ -58,7 +58,7 @@ class TextPreprocessor {
   }
 
   // input and output may point to the same object.
-  Status Rewrite(const std::string& input, std::string* output);
+  absl::Status Rewrite(const std::string& input, std::string* output);
 
  private:
   const char inline_delimiter_;

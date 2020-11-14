@@ -16,11 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_PLATFORM_REGEXP_H_
 #define TENSORFLOW_PLATFORM_REGEXP_H_
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/platform.h"
-#include "tensorflow/core/platform/types.h"
 
-#if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID)
+#if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID) || \
+    defined(PLATFORM_GOOGLE_IOS) || defined(PLATFORM_PORTABLE_GOOGLE)
 #include "third_party/re2/re2.h"
 #else
 #include "re2/re2.h"

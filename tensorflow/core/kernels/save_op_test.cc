@@ -29,12 +29,14 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/tensor_slice_reader.h"
 
 namespace tensorflow {
@@ -661,8 +663,8 @@ TEST_F(SaveOpSlices2Test, TwoSlices) {
 
 // Benchmark-related code below.
 
-static void BM_LargeTensorWrite(int iters, int num_elements) {
-  testing::StopTiming();
+void BM_LargeTensorWrite(::testing::benchmark::State& state) {
+  const int num_elements = state.range(0);
 
   // 4 * num_elements bytes total , since sizeof(float) == 4.
   Tensor tensor(DT_FLOAT, TensorShape({num_elements}));
@@ -687,8 +689,9 @@ static void BM_LargeTensorWrite(int iters, int num_elements) {
   VLOG(1) << "Save op's output path: " << temp_filename;
   VLOG(1) << "# nodes in Graph: " << g->num_nodes();
 
-  testing::StartTiming();
-  test::Benchmark("cpu", g, &session_options).Run(iters);
+  test::Benchmark("cpu", g, &session_options, nullptr, nullptr, "",
+                  /*old_benchmark_api*/ false)
+      .Run(state);
 }
 BENCHMARK(BM_LargeTensorWrite)->Arg((1 << 30) / 4 /* 1GB float tensor */);
 

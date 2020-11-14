@@ -28,13 +28,13 @@ namespace tflite {
 namespace gpu {
 namespace gl {
 
-Status RequestGpuInfo(GpuInfo* gpu_info) {
+absl::Status RequestGpuInfo(GpuInfo* gpu_info) {
   GpuInfo info;
 
   const GLubyte* renderer_name = glGetString(GL_RENDERER);
   if (renderer_name) {
     info.renderer_name = reinterpret_cast<const char*>(renderer_name);
-    GetGpuModelAndType(info.renderer_name, &info.gpu_model, &info.type);
+    GetGpuInfoFromDeviceDescription(info.renderer_name, &info);
   }
 
   const GLubyte* vendor_name = glGetString(GL_VENDOR);
@@ -73,7 +73,7 @@ Status RequestGpuInfo(GpuInfo* gpu_info) {
   glGetIntegerv(GL_MAX_ARRAY_TEXTURE_LAYERS, &info.max_array_texture_layers);
   RETURN_IF_ERROR(GetOpenGlErrors());
   *gpu_info = info;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace gl

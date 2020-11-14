@@ -12,11 +12,12 @@ cc_library(
         "src/lib_json/json_writer.cpp",
     ],
     hdrs = [
+        "include/json/allocator.h",
         "include/json/autolink.h",
         "include/json/config.h",
-        "include/json/features.h",
         "include/json/forwards.h",
         "include/json/json.h",
+        "include/json/json_features.h",
         "include/json/reader.h",
         "include/json/value.h",
         "include/json/version.h",

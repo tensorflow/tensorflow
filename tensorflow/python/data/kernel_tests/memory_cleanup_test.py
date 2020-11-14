@@ -32,9 +32,9 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_like
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.types import internal
 
 
 # memory_profiler might not be available in the OSS version of TensorFlow.
@@ -116,7 +116,7 @@ class MemoryCleanupTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     gc.collect()
     tensors = [
-        o for o in gc.get_objects() if isinstance(o, tensor_like._TensorLike)
+        o for o in gc.get_objects() if isinstance(o, internal.NativeObject)
     ]
     self.assertEmpty(tensors, "%d Tensors are still alive." % len(tensors))
 

@@ -171,6 +171,11 @@ class RandomPoissonTest(test.TestCase):
               constant_op.constant([1], dtype=lam_dt), [10],
               dtype=out_dt).eval()
 
+  @test_util.run_deprecated_v1
+  def testInfRate(self):
+    sample = random_ops.random_poisson(shape=[2], lam=np.inf)
+    self.assertAllEqual([np.inf, np.inf], self.evaluate(sample))
+
 
 if __name__ == "__main__":
   test.main()

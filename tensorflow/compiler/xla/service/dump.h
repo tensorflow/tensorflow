@@ -33,19 +33,25 @@ class BufferAssignment;
 class HloExecutionProfile;
 class HloSnapshot;
 
+// Get a timestamp which we can use as a filename prefix specific to this
+// module.
+string TimestampFor(const HloModule& module);
+
 // Create the filename we will use to dump in DumpToFileInDir.
-string FilenameFor(const HloModule& module, absl::string_view suffix);
+string FilenameFor(const HloModule& module, absl::string_view prefix,
+                   absl::string_view suffix);
 
 // Writes the given string to a file in the xla_dump_to directory specified by
 // module's DebugOptions.
 //
 // If module doesn't have an xla_dump_to directory, does nothing.
-void DumpToFileInDir(const HloModule& module, absl::string_view file_suffix,
-                     absl::string_view contents);
+void DumpToFileInDir(const HloModule& module, absl::string_view file_prefix,
+                     absl::string_view file_suffix, absl::string_view contents);
 
 // Like DumpToFileInDir, except if module doesn't have an xla_dump_to directory
 // specified, or if that directory is equal to "-", writes to stdout instead.
 void DumpToFileInDirOrStdout(const HloModule& module,
+                             absl::string_view file_prefix,
                              absl::string_view file_suffix,
                              absl::string_view contents);
 
@@ -69,11 +75,11 @@ void DumpHloModuleIfEnabled(const HloModule& module,
                             absl::string_view name);
 
 // Dumps the given HLO module after running one HLO pass and before running
-// another, if that's enabled.
-void DumpHloModuleBetweenPassesIfEnabled(absl::string_view pipeline_name,
-                                         absl::string_view before_pass_name,
-                                         absl::string_view after_pass_name,
-                                         const HloModule& module);
+// another, if that's enabled. Returns the full file paths of all dumps of the
+// module, or an empty vector if nothing was dumped.
+std::vector<std::string> DumpHloModuleBetweenPassesIfEnabled(
+    absl::string_view pipeline_name, absl::string_view before_pass_name,
+    absl::string_view after_pass_name, const HloModule& module);
 
 // Dumps the given HLO module during the given HLO pass, if that's enabled.
 //
@@ -93,6 +99,8 @@ void DumpHloSnapshotIfEnabled(const HloModule& module,
                               const HloSnapshot& snapshot);
 void DumpHloSnapshotIfEnabled(const HloSnapshot& snapshot,
                               const DebugOptions& opts);
+
+void DumpHloModuleMetadataIfEnabled(const std::vector<HloModule*>& modules);
 
 // Returns true if we should dump data for an HloModule.  This is useful if you
 // want to check if DumpToFileInDir{,OrStdout} will do anything before

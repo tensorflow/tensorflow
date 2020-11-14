@@ -38,13 +38,13 @@ inline const char* IdentityOrConvertStringToRaw(const std::string& foo) {
 
 // Delegate to TensorFlow Appendf function until absl has an equivalent.
 template <typename... Args>
-inline void AppendFHelper(string* destination, const char* fmt,
+inline void AppendFHelper(std::string* destination, const char* fmt,
                           Args&&... args) {
   tensorflow::strings::Appendf(destination, fmt, args...);
 }
 
 // Specialization for no argument format string (avoid security bug).
-inline void AppendFHelper(string* destination, const char* fmt) {
+inline void AppendFHelper(std::string* destination, const char* fmt) {
   tensorflow::strings::Appendf(destination, "%s", fmt);
 }
 
@@ -52,15 +52,15 @@ inline void AppendFHelper(string* destination, const char* fmt) {
 // pointed to by destination. fmt follows C printf semantics.
 // One departure is that %s can be driven by a std::string or string.
 template <typename... Args>
-inline void AppendF(string* destination, const char* fmt, Args&&... args) {
+inline void AppendF(std::string* destination, const char* fmt, Args&&... args) {
   AppendFHelper(destination, fmt, IdentityOrConvertStringToRaw(args)...);
 }
 
 // Return formatted string (with format fmt and args args). fmt follows C printf
 // semantics. One departure is that %s can be driven by a std::string or string.
 template <typename... Args>
-inline string StringF(const char* fmt, Args&&... args) {
-  string result;
+inline std::string StringF(const char* fmt, Args&&... args) {
+  std::string result;
   AppendFHelper(&result, fmt, IdentityOrConvertStringToRaw(args)...);
   return result;
 }

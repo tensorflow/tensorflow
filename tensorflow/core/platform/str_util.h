@@ -31,7 +31,7 @@ namespace str_util {
 
 // Returns a version of 'src' where unprintable characters have been
 // escaped using C-style escape sequences.
-string CEscape(StringPiece src);
+std::string CEscape(StringPiece src);
 
 // Copies "source" to "dest", rewriting C-style escape sequences --
 // '\n', '\r', '\\', '\ooo', etc -- to their ASCII equivalents.
@@ -40,10 +40,10 @@ string CEscape(StringPiece src);
 // 'error'. To disable error reporting, set 'error' to NULL.
 //
 // NOTE: Does not support \u or \U!
-bool CUnescape(StringPiece source, string* dest, string* error);
+bool CUnescape(StringPiece source, std::string* dest, std::string* error);
 
 // Removes any trailing whitespace from "*s".
-void StripTrailingWhitespace(string* s);
+void StripTrailingWhitespace(std::string* s);
 
 // Removes leading ascii_isspace() characters.
 // Returns number of characters removed.
@@ -87,23 +87,23 @@ TF_MUST_USE_RESULT StringPiece StripPrefix(StringPiece s, StringPiece expected);
 TF_MUST_USE_RESULT StringPiece StripSuffix(StringPiece s, StringPiece expected);
 
 // Return lower-cased version of s.
-string Lowercase(StringPiece s);
+std::string Lowercase(StringPiece s);
 
 // Return upper-cased version of s.
-string Uppercase(StringPiece s);
+std::string Uppercase(StringPiece s);
 
 // Capitalize first character of each word in "*s".  "delimiters" is a
 // set of characters that can be used as word boundaries.
-void TitlecaseString(string* s, StringPiece delimiters);
+void TitlecaseString(std::string* s, StringPiece delimiters);
 
 // Replaces the first occurrence (if replace_all is false) or all occurrences
 // (if replace_all is true) of oldsub in s with newsub.
-string StringReplace(StringPiece s, StringPiece oldsub, StringPiece newsub,
-                     bool replace_all);
+std::string StringReplace(StringPiece s, StringPiece oldsub, StringPiece newsub,
+                          bool replace_all);
 
 // Join functionality
 template <typename T>
-string Join(const T& s, const char* sep) {
+std::string Join(const T& s, const char* sep) {
   return absl::StrJoin(s, sep);
 }
 
@@ -111,7 +111,7 @@ string Join(const T& s, const char* sep) {
 // is invoked (f is often constructed with a lambda of the form:
 //   [](string* result, ElemType elem)
 template <typename T, typename Formatter>
-string Join(const T& s, const char* sep, Formatter f) {
+std::string Join(const T& s, const char* sep, Formatter f) {
   return absl::StrJoin(s, sep, f);
 }
 
@@ -179,7 +179,7 @@ size_t Strnlen(const char* str, const size_t string_max_len);
 // This method is useful for producing strings matching "[a-z][a-z0-9_]*"
 // as required by OpDef.ArgDef.name. The resulting string is either empty or
 // matches this regex.
-string ArgDefCase(StringPiece s);
+std::string ArgDefCase(StringPiece s);
 
 }  // namespace str_util
 }  // namespace tensorflow

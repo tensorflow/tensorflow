@@ -189,7 +189,7 @@ class _SavedModelBuilder(object):
     Validation of entries in the signature def map includes ensuring that the
     `name` and `dtype` fields of the TensorInfo protos of the `inputs` and
     `outputs` of each `SignatureDef` are populated. Also ensures that reserved
-    SigantureDef keys for the initialization and train ops are not used.
+    SignatureDef keys for the initialization and train ops are not used.
 
     Args:
       signature_def_map: The map of signature defs to be validated.
@@ -534,7 +534,7 @@ class SavedModelBuilder(_SavedModelBuilder):
 
     # legacy_init_op is deprecated, and going away in TF 2.0.
     # Re-mapping to main_op, as treatment is identical regardless.
-    main_op = main_op or legacy_init_op
+    main_op = main_op if main_op is not None else legacy_init_op
 
     # Add assets and ops
     self._add_collections(assets_collection, main_op, None)

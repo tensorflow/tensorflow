@@ -52,6 +52,12 @@ class TargetMachineFeatures {
   virtual int vector_register_num_elements(const llvm::Function& function,
                                            PrimitiveType type) const = 0;
 
+  // Return the number of vector registers.  We need to pass in
+  // "function" since llvm functions can contain annotations for specializing
+  // them to specific micro-architectures (though currently XLA does not use
+  // this functionality).
+  virtual int vector_register_count(const llvm::Function& function) const = 0;
+
   // Returns the minimum alignment for a buffer of size size_bytes.
   virtual int64 minimum_alignment_for_allocation(int64 size_bytes) const = 0;
 
@@ -82,6 +88,12 @@ class LLVMTargetMachineFeatures : public TargetMachineFeatures {
                                    PrimitiveType type) const override {
     return vector_register_byte_size(function) /
            (primitive_util::BitWidth(type) / 8);
+  }
+
+  int vector_register_count(const llvm::Function& function) const override {
+    llvm::TargetTransformInfo* tti = GetTargetTransformInfoFor(function);
+    return static_cast<int>(tti->getNumberOfRegisters(
+        tti->getRegisterClassForType(/*Vector=*/true)));
   }
 
   int64 minimum_alignment_for_allocation(int64 size_bytes) const override;

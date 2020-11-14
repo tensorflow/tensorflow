@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace mlir {
 
@@ -63,21 +63,21 @@ Status StatusScopedDiagnosticHandler::Combine(Status status) {
 }
 
 LogicalResult StatusScopedDiagnosticHandler::handler(Diagnostic* diag) {
-#ifndef NDEBUG
+  // Non-error diagnostic are ignored when VLOG isn't enabled.
+  if (diag->getSeverity() != DiagnosticSeverity::Error && VLOG_IS_ON(1))
+    return success();
+
   size_t current_diag_str_size_ = diag_str_.size();
-#endif
 
   // Emit the diagnostic and flush the stream.
   emitDiagnostic(*diag);
   diag_stream_.flush();
 
-#ifndef NDEBUG
   // Emit non-errors to VLOG instead of the internal status.
   if (diag->getSeverity() != DiagnosticSeverity::Error) {
     VLOG(1) << diag_str_.substr(current_diag_str_size_);
     diag_str_.resize(current_diag_str_size_);
   }
-#endif
 
   // Return failure to signal propagation if necessary.
   return failure(propagate_);

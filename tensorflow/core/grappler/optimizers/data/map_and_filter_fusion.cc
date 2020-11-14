@@ -177,14 +177,17 @@ Status MapAndFilterFusion::OptimizeAndCollectStats(Cluster* cluster,
   FunctionLibraryDefinition function_library(OpRegistry::Global(),
                                              item.graph.library());
   auto get_map_node = [](const NodeDef& node) -> const NodeDef* {
-    if (node.op() == "MapDataset" || node.op() == "ParallelMapDataset") {
+    // TODO(b/148614315): Support captured inputs.
+    if ((node.op() == "MapDataset" && node.input_size() == 1) ||
+        (node.op() == "ParallelMapDataset" && node.input_size() == 2)) {
       return &node;
     }
     return nullptr;
   };
 
   auto get_filter_node = [](const NodeDef& node) -> const NodeDef* {
-    if (node.op() == "FilterDataset") return &node;
+    // TODO(b/148614315): Support captured inputs.
+    if (node.op() == "FilterDataset" && node.input_size() == 1) return &node;
     return nullptr;
   };
 
@@ -235,8 +238,6 @@ Status MapAndFilterFusion::OptimizeAndCollectStats(Cluster* cluster,
         graph.UpdateFanouts(filter_node->name(), new_map_node->name()));
     TF_RETURN_IF_ERROR(function_library.AddFunctionDef(*fused_function));
 
-    // TODO(prazek): we could also remove functions from library if they are not
-    // used anymore.
     nodes_to_delete.insert(map_node->name());
     nodes_to_delete.insert(filter_node->name());
     stats->num_changes++;

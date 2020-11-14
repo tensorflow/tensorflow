@@ -19,12 +19,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
+import functools
+import weakref
 
-from tensorflow.python.keras import backend as K
-from tensorflow.python.keras.utils.conv_utils import convert_kernel
+import numpy as np
+import six
+
 from tensorflow.python.util import nest
-from tensorflow.python.util import object_identity
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -53,7 +54,7 @@ def get_source_inputs(tensor, layer=None, node_index=None):
     return [tensor]
   else:
     node = layer._inbound_nodes[node_index]
-    if not node.inbound_layers:
+    if node.is_input:
       # Reached an Input layer, stop recursion.
       return nest.flatten(node.input_tensors)
     else:
@@ -67,6 +68,29 @@ def get_source_inputs(tensor, layer=None, node_index=None):
       return source_tensors
 
 
+def validate_string_arg(input_data,
+                        allowable_strings,
+                        layer_name,
+                        arg_name,
+                        allow_none=False,
+                        allow_callables=False):
+  """Validates the correctness of a string-based arg."""
+  if allow_none and input_data is None:
+    return
+  elif allow_callables and callable(input_data):
+    return
+  elif isinstance(input_data,
+                  six.string_types) and input_data in allowable_strings:
+    return
+  else:
+    allowed_args = '`None`, ' if allow_none else ''
+    allowed_args += 'a `Callable`, ' if allow_callables else ''
+    allowed_args += 'or one of the following values: %s' % (allowable_strings,)
+    raise ValueError(("%s's %s arg received an invalid value %s. " +
+                      'Allowed values are %s.') %
+                     (layer_name, arg_name, input_data, allowed_args))
+
+
 def count_params(weights):
   """Count the total number of scalars composing the weights.
 
@@ -76,10 +100,12 @@ def count_params(weights):
   Returns:
       The total number of scalars composing the weights
   """
-  return int(
-      sum(
-          np.prod(p.shape.as_list())
-          for p in object_identity.ObjectIdentitySet(weights)))
+  unique_weights = {id(w): w for w in weights}.values()
+  weight_shapes = [w.shape.as_list() for w in unique_weights]
+  standardized_weight_shapes = [
+      [0 if w_i is None else w_i for w_i in w] for w in weight_shapes
+  ]
+  return int(sum(np.prod(p) for p in standardized_weight_shapes))
 
 
 def print_summary(model, line_length=None, positions=None, print_fn=None):
@@ -113,7 +139,7 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
     nodes = []
     for v in nodes_by_depth:
       if (len(v) > 1) or (len(v) == 1 and
-                          len(nest.flatten(v[0].inbound_layers)) > 1):
+                          len(nest.flatten(v[0].keras_inputs)) > 1):
         # if the model has multiple nodes
         # or if the nodes have multiple inbound_layers
         # the model is no longer sequential
@@ -231,7 +257,6 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
     else:
       print_fn('_' * line_length)
 
-  model._check_trainable_weights_consistency()
   if hasattr(model, '_collected_trainable_weights'):
     trainable_count = count_params(model._collected_trainable_weights)
   else:
@@ -300,32 +325,6 @@ def gather_non_trainable_weights(trainable, sub_layers, extra_variables):
   return weights + non_trainable_extra_variables
 
 
-@keras_export('keras.utils.convert_all_kernels_in_model')
-def convert_all_kernels_in_model(model):
-  """Converts all convolution kernels in a model from Theano to TensorFlow.
-
-  Also works from TensorFlow to Theano.
-
-  Arguments:
-      model: target model for the conversion.
-  """
-  # Note: SeparableConvolution not included
-  # since only supported by TF.
-  conv_classes = {
-      'Conv1D',
-      'Conv2D',
-      'Conv3D',
-      'Conv2DTranspose',
-  }
-  to_assign = []
-  for layer in model.layers:
-    if layer.__class__.__name__ in conv_classes:
-      original_kernel = K.get_value(layer.kernel)
-      converted_kernel = convert_kernel(original_kernel)
-      to_assign.append((layer.kernel, converted_kernel))
-  K.batch_set_value(to_assign)
-
-
 def convert_dense_weights_data_format(dense,
                                       previous_feature_map_shape,
                                       target_data_format='channels_first'):
@@ -373,3 +372,118 @@ def is_builtin_layer(layer):
   # of the base layer class.
   return (layer._keras_api_names != ('keras.layers.Layer',) and
           layer._keras_api_names_v1 != ('keras.layers.Layer',))
+
+
+def cached_per_instance(f):
+  """Lightweight decorator for caching lazily constructed properties.
+
+  When to use:
+  This decorator provides simple caching with minimal overhead. It is designed
+  for properties which are expensive to compute and static over the life of a
+  class instance, and provides no mechanism for cache invalidation. Thus it is
+  best suited for lazily exposing derived properties of other static data.
+
+  For classes with custom getattr / setattr behavior (such as trackable
+  objects), storing cache results as object attributes is not performant.
+  Instead, a specialized cache can significantly reduce property lookup
+  overhead. (While still allowing the decorated property to be lazily computed.)
+  Consider the following class:
+
+  ```
+  class MyClass(object):
+    def __setattr__(self, key, value):
+      # Some expensive class specific code
+      # ...
+      # ...
+
+      super(MyClass, self).__setattr__(key, value)
+
+    @property
+    def thing(self):
+      # `thing` is expensive to compute (and may not even be requested), so we
+      # want to lazily compute it and then cache it.
+      output = getattr(self, '_thing', None)
+      if output is None:
+        self._thing = output = compute_thing(self)
+      return output
+  ```
+
+  It's also worth noting that ANY overriding of __setattr__, even something as
+  simple as:
+  ```
+    def __setattr__(self, key, value):
+      super(MyClass, self).__setattr__(key, value)
+  ```
+
+  Slows down attribute assignment by nearly 10x.
+
+  By contrast, replacing the definition of `thing` with the following sidesteps
+  the expensive __setattr__ altogether:
+
+  '''
+  @property
+  @tracking.cached_per_instance
+  def thing(self):
+    # `thing` is expensive to compute (and may not even be requested), so we
+    # want to lazily compute it and then cache it.
+    return compute_thing(self)
+  '''
+
+  Performance:
+  The overhead for this decorator is ~0.4 us / call. A much lower overhead
+  implementation (~0.085 us / call) can be achieved by using a custom dict type:
+
+  ```
+  def dict_based_cache(f):
+    class Cache(dict):
+      __slots__ = ()
+      def __missing__(self, key):
+        self[key] = output = f(key)
+        return output
+
+    return property(Cache().__getitem__)
+  ```
+
+  However, that implementation holds class instances as keys, and as a result
+  blocks garbage collection. (And modifying it to use weakref's as keys raises
+  the lookup overhead to ~0.4 us) As a result, the WeakKeyDictionary
+  implementation below turns out to be more prudent.
+
+  Args:
+    f: The function to cache.
+
+  Returns:
+    f decorated with simple caching behavior.
+  """
+
+  cache = weakref.WeakKeyDictionary()
+
+  @functools.wraps(f)
+  def wrapped(item):
+    output = cache.get(item)
+    if output is None:
+      cache[item] = output = f(item)
+    return output
+
+  wrapped.cache = cache
+  return wrapped
+
+
+def filter_empty_layer_containers(layer_list):
+  """Filter out empty Layer-like containers and uniquify."""
+  # TODO(b/130381733): Make this an attribute in base_layer.Layer.
+  existing = set()
+  to_visit = layer_list[::-1]
+  while to_visit:
+    obj = to_visit.pop()
+    if id(obj) in existing:
+      continue
+    existing.add(id(obj))
+    if hasattr(obj, '_is_layer') and not isinstance(obj, type):
+      yield obj
+    else:
+      sub_layers = getattr(obj, 'layers', None) or []
+
+      # Trackable data structures will not show up in ".layers" lists, but
+      # the layers they contain will.
+      to_visit.extend(sub_layers[::-1])

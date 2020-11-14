@@ -13,17 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <string.h>
+#include <stdint.h>
 
-#include <cmath>
+#include <algorithm>
+#include <string>
 #include <vector>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
+#include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
+#include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
+#include "tensorflow/lite/string_type.h"
 
 namespace tflite {
 namespace ops {
@@ -74,7 +78,7 @@ template <typename T>
 void GetBeginAndSizeVectors(int dimensions, const TfLiteTensor* begin,
                             const TfLiteTensor* size, std::vector<int>* begins,
                             std::vector<int>* sizes) {
-  for (int idx = dimensions - 1; idx >= 0; --idx) {
+  for (int idx = 0; idx < dimensions; ++idx) {
     begins->push_back(GetTensorData<T>(begin)[idx]);
     sizes->push_back(GetTensorData<T>(size)[idx]);
   }
@@ -109,10 +113,15 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  const TfLiteTensor* begin = GetInput(context, node, kBeginTensor);
-  const TfLiteTensor* size = GetInput(context, node, kSizeTensor);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
+  const TfLiteTensor* begin;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kBeginTensor, &begin));
+  const TfLiteTensor* size;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kSizeTensor, &size));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
 
   // Ensure validity of input tensor and its dimension.
   TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
@@ -122,6 +131,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                  size->type == kTfLiteInt32 || size->type == kTfLiteInt64);
   TF_LITE_ENSURE_EQ(context, NumDimensions(begin), 1);
   TF_LITE_ENSURE_EQ(context, NumDimensions(size), 1);
+  TF_LITE_ENSURE_EQ(context, NumElements(begin), NumElements(size));
   TF_LITE_ENSURE_MSG(context, NumDimensions(input) <= kMaxDim,
                      "Slice op only supports 1D-4D input arrays.");
 
@@ -137,10 +147,15 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
 template <KernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  const TfLiteTensor* begin = GetInput(context, node, kBeginTensor);
-  const TfLiteTensor* size = GetInput(context, node, kSizeTensor);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
+  const TfLiteTensor* begin;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kBeginTensor, &begin));
+  const TfLiteTensor* size;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kSizeTensor, &size));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
 
   if (IsDynamicTensor(output)) {
     TF_LITE_ENSURE_OK(context,
@@ -152,6 +167,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   std::vector<int> sizes;
   sizes.reserve(kMaxDim);
 
+  for (int i = NumDimensions(input); i < kMaxDim; ++i) {
+    begins.push_back(0);
+    sizes.push_back(1);
+  }
+
   if (begin->type == kTfLiteInt32) {
     GetBeginAndSizeVectors<int32_t>(NumDimensions(input), begin, size, &begins,
                                     &sizes);
@@ -162,11 +182,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     context->ReportError(
         context, "Type %d is currently not supported by Slice.", begin->type);
     return kTfLiteError;
-  }
-
-  for (int i = NumDimensions(input); i < kMaxDim; ++i) {
-    begins.push_back(0);
-    sizes.push_back(1);
   }
 
   // The original Slice op implementation only accepted 4-D sizes. That
@@ -183,8 +198,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     op_params.begin_count = 4;                                                 \
     op_params.size_count = 4;                                                  \
     for (int i = 0; i < 4; ++i) {                                              \
-      op_params.begin[i] = begins[3 - i];                                      \
-      op_params.size[i] = sizes[3 - i];                                        \
+      op_params.begin[i] = begins[i];                                          \
+      op_params.size[i] = sizes[i];                                            \
     }                                                                          \
                                                                                \
     if (kernel_type == kGenericOptimized) {                                    \
@@ -208,6 +223,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       break;
     case kTfLiteInt8:
       TF_LITE_SLICE(int8_t, kernel_type);
+      break;
+    case kTfLiteInt16:
+      TF_LITE_SLICE(int16_t, kernel_type);
       break;
     case kTfLiteUInt8:
       TF_LITE_SLICE(uint8_t, kernel_type);

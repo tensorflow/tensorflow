@@ -118,7 +118,7 @@ class SubscribeTest(test_util.TensorFlowTestCase):
     self._ExpectSubscribedIdentities(subscribed)
 
     # Expect an exception to be raised for unsupported types.
-    with self.assertRaisesRegexp(TypeError, 'has invalid type'):
+    with self.assertRaisesRegex(TypeError, 'has invalid type'):
       subscribe.subscribe(c.name,
                           lambda t: script_ops.py_func(sub, [t], [t.dtype]))
 

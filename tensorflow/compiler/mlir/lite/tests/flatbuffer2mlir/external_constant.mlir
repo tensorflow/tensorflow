@@ -1,4 +1,4 @@
-// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_translate --tflite-flatbuffer-to-mlir --use-external-constant - -o - | FileCheck --dump-input-on-failure %s
+// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_translate --tflite-flatbuffer-to-mlir --use-external-constant - -o - | FileCheck %s
 // Ensure that `tfl.external_const` is imported when the flag `-use-external-constant` is enabled.
 
 func @main(tensor<40x37xf32>, tensor<40x37xf32>) -> tensor<40x40xf32> {

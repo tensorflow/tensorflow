@@ -53,12 +53,12 @@ limitations under the License.
 namespace stream_executor {
 namespace cuda {
 
-string DriverVersionToString(DriverVersion version) {
+std::string DriverVersionToString(DriverVersion version) {
   return absl::StrFormat("%d.%d.%d", std::get<0>(version), std::get<1>(version),
                          std::get<2>(version));
 }
 
-string DriverVersionStatusToString(port::StatusOr<DriverVersion> version) {
+std::string DriverVersionStatusToString(port::StatusOr<DriverVersion> version) {
   if (!version.ok()) {
     return version.status().ToString();
   }
@@ -66,8 +66,8 @@ string DriverVersionStatusToString(port::StatusOr<DriverVersion> version) {
   return DriverVersionToString(version.ValueOrDie());
 }
 
-port::StatusOr<DriverVersion> StringToDriverVersion(const string &value) {
-  std::vector<string> pieces = absl::StrSplit(value, '.');
+port::StatusOr<DriverVersion> StringToDriverVersion(const std::string &value) {
+  std::vector<std::string> pieces = absl::StrSplit(value, '.');
   if (pieces.size() < 2 || pieces.size() > 4) {
     return port::Status(
         port::error::INVALID_ARGUMENT,
@@ -122,7 +122,7 @@ static const char *kDriverVersionPath = "/proc/driver/nvidia/version";
 
 // -- class Diagnostician
 
-string Diagnostician::GetDevNodePath(int dev_node_ordinal) {
+std::string Diagnostician::GetDevNodePath(int dev_node_ordinal) {
   return absl::StrCat("/dev/nvidia", dev_node_ordinal);
 }
 
@@ -177,10 +177,10 @@ void Diagnostician::LogDiagnosticInformation() {
 #ifndef PLATFORM_WINDOWS
   if (VLOG_IS_ON(1)) {
     const char *value = getenv("LD_LIBRARY_PATH");
-    string library_path = value == nullptr ? "" : value;
+    std::string library_path = value == nullptr ? "" : value;
     VLOG(1) << "LD_LIBRARY_PATH is: \"" << library_path << "\"";
 
-    std::vector<string> pieces = absl::StrSplit(library_path, ':');
+    std::vector<std::string> pieces = absl::StrSplit(library_path, ':');
     for (const auto &piece : pieces) {
       if (piece.empty()) {
         continue;
@@ -264,11 +264,11 @@ port::StatusOr<DriverVersion> Diagnostician::FindDsoVersion() {
       if (dot == nullptr) {
         return 0;
       }
-      string dso_version = dot + strlen(so_suffix);
+      std::string dso_version = dot + strlen(so_suffix);
       // TODO(b/22689637): Eliminate the explicit namespace if possible.
       auto stripped_dso_version = absl::StripSuffix(dso_version, ".ld64");
       auto result = static_cast<port::StatusOr<DriverVersion> *>(data);
-      *result = cuda::StringToDriverVersion(string(stripped_dso_version));
+      *result = cuda::StringToDriverVersion(std::string(stripped_dso_version));
       return 1;
     }
     return 0;
@@ -282,10 +282,10 @@ port::StatusOr<DriverVersion> Diagnostician::FindDsoVersion() {
 }
 
 port::StatusOr<DriverVersion> Diagnostician::FindKernelModuleVersion(
-    const string &driver_version_file_contents) {
+    const std::string &driver_version_file_contents) {
   static const char *kDriverFilePrelude = "Kernel Module  ";
   size_t offset = driver_version_file_contents.find(kDriverFilePrelude);
-  if (offset == string::npos) {
+  if (offset == std::string::npos) {
     return port::Status(
         port::error::NOT_FOUND,
         absl::StrCat("could not find kernel module information in "
@@ -293,13 +293,13 @@ port::StatusOr<DriverVersion> Diagnostician::FindKernelModuleVersion(
                      driver_version_file_contents, "\""));
   }
 
-  string version_and_rest = driver_version_file_contents.substr(
-      offset + strlen(kDriverFilePrelude), string::npos);
+  std::string version_and_rest = driver_version_file_contents.substr(
+      offset + strlen(kDriverFilePrelude), std::string::npos);
   size_t space_index = version_and_rest.find(" ");
   auto kernel_version = version_and_rest.substr(0, space_index);
   // TODO(b/22689637): Eliminate the explicit namespace if possible.
   auto stripped_kernel_version = absl::StripSuffix(kernel_version, ".ld64");
-  return cuda::StringToDriverVersion(string(stripped_kernel_version));
+  return cuda::StringToDriverVersion(std::string(stripped_kernel_version));
 }
 
 void Diagnostician::WarnOnDsoKernelMismatch(

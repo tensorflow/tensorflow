@@ -5,8 +5,14 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
+genrule(
+    name = "lnnasmlink",
+    outs = ["nasmlink"],
+    cmd = "ln -s $$(which nasm) $@",
+)
+
 sh_binary(
     name = "nasm",
-    srcs = ["nasm"],
+    srcs = ["nasmlink"],
     visibility = ["@libjpeg_turbo//:__pkg__"],
 )

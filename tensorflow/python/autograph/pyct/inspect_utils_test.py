@@ -23,8 +23,6 @@ import collections
 import functools
 import imp
 import textwrap
-import types
-import weakref
 
 import six
 
@@ -32,7 +30,6 @@ from tensorflow.python import lib
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.pyct.testing import basic_definitions
 from tensorflow.python.autograph.pyct.testing import decorators
-from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.platform import test
 
@@ -255,6 +252,21 @@ class InspectUtilsTest(test.TestCase):
   def test_getnamespace_globals(self):
     ns = inspect_utils.getnamespace(factory)
     self.assertEqual(ns['free_function'], free_function)
+
+  def test_getnamespace_closure_with_undefined_var(self):
+    if False:  # pylint:disable=using-constant-test
+      a = 1
+
+    def test_fn():
+      return a
+
+    ns = inspect_utils.getnamespace(test_fn)
+    self.assertNotIn('a', ns)
+
+    a = 2
+    ns = inspect_utils.getnamespace(test_fn)
+
+    self.assertEqual(ns['a'], 2)
 
   def test_getnamespace_hermetic(self):
 
@@ -479,18 +491,6 @@ class InspectUtilsTest(test.TestCase):
     c = TestCallable()
     self.assertEqual(inspect_utils.getmethodclass(c), TestCallable)
 
-  def test_getmethodclass_weakref_mechanism(self):
-    test_obj = TestClass()
-
-    def test_fn(self):
-      return self
-
-    bound_method = types.MethodType(
-        test_fn,
-        function.TfMethodTarget(
-            weakref.ref(test_obj), test_obj.member_function))
-    self.assertEqual(inspect_utils.getmethodclass(bound_method), TestClass)
-
   def test_getmethodclass_no_bool_conversion(self):
 
     tensor = constant_op.constant([1])
@@ -586,20 +586,26 @@ class InspectUtilsTest(test.TestCase):
     self.assertTrue(inspect_utils.isconstructor(AbcSubclass))
 
   def test_getfutureimports_functions(self):
-    self.assertEqual(
-        inspect_utils.getfutureimports(basic_definitions.function_with_print),
-        ('absolute_import', 'division', 'print_function', 'with_statement'))
+    imps = inspect_utils.getfutureimports(basic_definitions.function_with_print)
+    self.assertIn('absolute_import', imps)
+    self.assertIn('division', imps)
+    self.assertIn('print_function', imps)
+    self.assertNotIn('generators', imps)
 
   def test_getfutureimports_lambdas(self):
-    self.assertEqual(
-        inspect_utils.getfutureimports(basic_definitions.simple_lambda),
-        ('absolute_import', 'division', 'print_function', 'with_statement'))
+    imps = inspect_utils.getfutureimports(basic_definitions.simple_lambda)
+    self.assertIn('absolute_import', imps)
+    self.assertIn('division', imps)
+    self.assertIn('print_function', imps)
+    self.assertNotIn('generators', imps)
 
   def test_getfutureimports_methods(self):
-    self.assertEqual(
-        inspect_utils.getfutureimports(
-            basic_definitions.SimpleClass.method_with_print),
-        ('absolute_import', 'division', 'print_function', 'with_statement'))
+    imps = inspect_utils.getfutureimports(
+        basic_definitions.SimpleClass.method_with_print)
+    self.assertIn('absolute_import', imps)
+    self.assertIn('division', imps)
+    self.assertIn('print_function', imps)
+    self.assertNotIn('generators', imps)
 
 
 if __name__ == '__main__':

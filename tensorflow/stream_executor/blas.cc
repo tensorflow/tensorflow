@@ -20,7 +20,7 @@ limitations under the License.
 namespace stream_executor {
 namespace blas {
 
-string TransposeString(Transpose t) {
+std::string TransposeString(Transpose t) {
   switch (t) {
     case Transpose::kNoTranspose:
       return "NoTranspose";
@@ -33,7 +33,7 @@ string TransposeString(Transpose t) {
   }
 }
 
-string UpperLowerString(UpperLower ul) {
+std::string UpperLowerString(UpperLower ul) {
   switch (ul) {
     case UpperLower::kUpper:
       return "Upper";
@@ -44,7 +44,7 @@ string UpperLowerString(UpperLower ul) {
   }
 }
 
-string DiagonalString(Diagonal d) {
+std::string DiagonalString(Diagonal d) {
   switch (d) {
     case Diagonal::kUnit:
       return "Unit";
@@ -55,7 +55,7 @@ string DiagonalString(Diagonal d) {
   }
 }
 
-string SideString(Side s) {
+std::string SideString(Side s) {
   switch (s) {
     case Side::kLeft:
       return "Left";
@@ -68,9 +68,11 @@ string SideString(Side s) {
 
 // -- AlgorithmConfig
 
-string AlgorithmConfig::ToString() const { return absl::StrCat(algorithm_); }
+std::string AlgorithmConfig::ToString() const {
+  return absl::StrCat(algorithm_);
+}
 
-string ComputationTypeString(ComputationType ty) {
+std::string ComputationTypeString(ComputationType ty) {
   switch (ty) {
     case ComputationType::kF16:
       return "f16";
@@ -91,6 +93,31 @@ string ComputationTypeString(ComputationType ty) {
 
 std::ostream& operator<<(std::ostream& os, ComputationType ty) {
   return os << ComputationTypeString(ty);
+}
+
+string DataTypeString(DataType ty) {
+  switch (ty) {
+    case DataType::kHalf:
+      return "f16";
+    case DataType::kFloat:
+      return "f32";
+    case DataType::kDouble:
+      return "f64";
+    case DataType::kInt8:
+      return "i8";
+    case DataType::kInt32:
+      return "i32";
+    case DataType::kComplexFloat:
+      return "complex f32";
+    case DataType::kComplexDouble:
+      return "complex f64";
+    default:
+      LOG(FATAL) << "Unknown DataType " << static_cast<int32>(ty);
+  }
+}
+
+std::ostream& operator<<(std::ostream& os, DataType ty) {
+  return os << DataTypeString(ty);
 }
 
 }  // namespace blas

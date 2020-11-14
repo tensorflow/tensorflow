@@ -77,8 +77,8 @@ class ExecuteOnStall {
  private:
   mutex mu_;
   condition_variable cond_var_;
-  bool disabled_ GUARDED_BY(mu_);
-  bool joined_ GUARDED_BY(mu_);
+  bool disabled_ TF_GUARDED_BY(mu_);
+  bool joined_ TF_GUARDED_BY(mu_);
   Env* env_;
   std::function<void()> f_;
   int64 deadline_;

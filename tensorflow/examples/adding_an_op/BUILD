@@ -4,7 +4,7 @@
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
-    "tf_exec_compatible_with",
+    "tf_exec_properties",
 )
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
@@ -13,8 +13,6 @@ package(
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],  # Apache 2.0
 )
-
-exports_files(["LICENSE"])
 
 tf_custom_op_library(
     name = "zero_out_op_kernel_1.so",
@@ -133,7 +131,7 @@ py_test(
     name = "cuda_op_test",
     size = "small",
     srcs = ["cuda_op_test.py"],
-    exec_compatible_with = tf_exec_compatible_with({"tags": tf_cuda_tests_tags()}),
+    exec_properties = tf_exec_properties({"tags": tf_cuda_tests_tags()}),
     python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = tf_cuda_tests_tags() + [

@@ -24,8 +24,8 @@ namespace evaluation {
 // Superclass for a single stage of an EvaluationPipeline.
 // Defines basic skeleton for sub-classes to implement.
 //
-// Ideally EvaluationStages should obtain access to initilizer/input objects via
-// Get/Set methods on pointers, and not take ownership unless necessary.
+// Ideally EvaluationStages should obtain access to initializer/input objects
+// via Get/Set methods on pointers, and not take ownership unless necessary.
 class EvaluationStage {
  public:
   // Initializes an EvaluationStage, including verifying the

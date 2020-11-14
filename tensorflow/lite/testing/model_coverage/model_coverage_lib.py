@@ -21,21 +21,20 @@ from __future__ import print_function
 import os
 
 import numpy as np
-from six import PY3
+from six import PY2
+from tensorflow import keras
 
 from google.protobuf import text_format as _text_format
 from google.protobuf.message import DecodeError
 from tensorflow.core.framework import graph_pb2 as _graph_pb2
 from tensorflow.lite.python import convert_saved_model as _convert_saved_model
 from tensorflow.lite.python import lite as _lite
-from tensorflow.lite.python import lite_constants as constants
 from tensorflow.lite.python import util as _util
-from tensorflow.python import keras as _keras
 from tensorflow.python.client import session as _session
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework.importer import import_graph_def as _import_graph_def
-from tensorflow.python.keras.preprocessing import image
 from tensorflow.python.lib.io import file_io as _file_io
 from tensorflow.python.platform import resource_loader as _resource_loader
 from tensorflow.python.saved_model import load as _load
@@ -71,8 +70,9 @@ def get_image(size):
   """
   img_filename = _resource_loader.get_path_to_datafile(
       "testdata/grace_hopper.jpg")
-  img = image.load_img(img_filename, target_size=(size, size))
-  img_array = image.img_to_array(img)
+  img = keras.preprocessing.image.load_img(
+      img_filename, target_size=(size, size))
+  img_array = keras.preprocessing.image.img_to_array(img)
   img_array = np.expand_dims(img_array, axis=0)
   return img_array
 
@@ -83,7 +83,8 @@ def _convert(converter, **kwargs):
   Args:
     converter: TFLiteConverter object.
     **kwargs: Additional arguments to be passed into the converter. Supported
-      flags are {"target_ops", "post_training_quantize", "quantize_to_float16"}.
+      flags are {"target_ops", "post_training_quantize",
+      "quantize_to_float16", "post_training_quantize_16x8", "model_input_size"}.
 
   Returns:
     The converted TFLite model in serialized format.
@@ -96,12 +97,81 @@ def _convert(converter, **kwargs):
   if "post_training_quantize" in kwargs:
     converter.optimizations = [_lite.Optimize.DEFAULT]
   if kwargs.get("quantize_to_float16", False):
-    converter.target_spec.supported_types = [constants.FLOAT16]
-  # Some cases are broken when we enable the new converter by default.
-  # Explicitly disabling it for now.
-  # TODO(b/145763444): Investigate if these are real issues.
-  converter.experimental_new_converter = False
+    converter.target_spec.supported_types = [dtypes.float16]
+  if kwargs.get("post_training_quantize_16x8", False):
+    input_size = kwargs.get("model_input_size")
+
+    def _get_calib_data_func():
+
+      def representative_data_gen():
+        num_calibration = 20
+        for _ in range(num_calibration):
+          yield [
+              np.random.rand(
+                  1,
+                  input_size[0],
+                  input_size[1],
+                  input_size[2],
+              ).astype(np.float32)
+          ]
+
+      return representative_data_gen
+
+    converter.optimizations = [_lite.Optimize.DEFAULT]
+    converter.target_spec.supported_ops = \
+      [_lite.OpsSet.\
+        EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8]
+    converter.representative_dataset = _get_calib_data_func()
   return converter.convert()
+
+
+def _check_model_quantized_to_16x8(tflite_model):
+  """Checks that the activations are quantized into int16.
+
+  Args:
+    tflite_model: Serialized TensorFlow Lite model.
+
+  Raises:
+    ValueError: Activations with int16 type are not found.
+  """
+  interpreter = _get_tflite_interpreter(tflite_model)
+  interpreter.allocate_tensors()
+  all_tensor_details = interpreter.get_tensor_details()
+
+  found_input = False
+  for tensor in all_tensor_details:
+    if "_int16" in tensor["name"]:
+      found_input = True
+      if tensor["dtype"] is not np.int16:
+        raise ValueError("Activations should be int16.")
+
+  # Check that we found activations in the correct type: int16
+  if not found_input:
+    raise ValueError("Could not find int16 activations.")
+
+
+def _get_tflite_interpreter(tflite_model, input_shapes_resize=None):
+  """Creates a TFLite interpreter with resized input tensors.
+
+  Args:
+    tflite_model: Serialized TensorFlow Lite model.
+    input_shapes_resize: A map where the key is the input tensor name and the
+      value is the shape of the input tensor. This resize happens after model
+      conversion, prior to calling allocate tensors. (default None)
+
+  Returns:
+    lite.Interpreter
+  """
+  interpreter = _lite.Interpreter(model_content=tflite_model)
+  if input_shapes_resize:
+    input_details = interpreter.get_input_details()
+    input_details_map = {
+        detail["name"]: detail["index"] for detail in input_details
+    }
+    for name, shape in input_shapes_resize.items():
+      idx = input_details_map[name]
+      interpreter.resize_tensor_input(idx, shape)
+  return interpreter
 
 
 def _get_input_data_map(tflite_model, input_data):
@@ -114,7 +184,7 @@ def _get_input_data_map(tflite_model, input_data):
   Returns:
     {str: [np.ndarray]}.
   """
-  interpreter = _lite.Interpreter(model_content=tflite_model)
+  interpreter = _get_tflite_interpreter(tflite_model)
   interpreter.allocate_tensors()
   input_details = interpreter.get_input_details()
   return {
@@ -123,7 +193,10 @@ def _get_input_data_map(tflite_model, input_data):
   }
 
 
-def _generate_random_input_data(tflite_model, seed=None, input_data_range=None):
+def _generate_random_input_data(tflite_model,
+                                seed=None,
+                                input_data_range=None,
+                                input_shapes_resize=None):
   """Generates input data based on the input tensors in the TFLite model.
 
   Args:
@@ -134,11 +207,14 @@ def _generate_random_input_data(tflite_model, seed=None, input_data_range=None):
       the corresponding input tensor. For example, '{'input1': (1, 5)}' means to
       generate a random value for tensor `input1` within range [1.0, 5.0)
       (half-inclusive). (default None)
+    input_shapes_resize: A map where the key is the input tensor name and the
+      value is the shape of the input tensor. This resize happens after model
+      conversion, prior to calling allocate tensors. (default None)
 
   Returns:
     ([np.ndarray], {str : [np.ndarray]}).
   """
-  interpreter = _lite.Interpreter(model_content=tflite_model)
+  interpreter = _get_tflite_interpreter(tflite_model, input_shapes_resize)
   interpreter.allocate_tensors()
   input_details = interpreter.get_input_details()
 
@@ -162,17 +238,20 @@ def _generate_random_input_data(tflite_model, seed=None, input_data_range=None):
   return input_data, input_data_map
 
 
-def _evaluate_tflite_model(tflite_model, input_data):
+def _evaluate_tflite_model(tflite_model, input_data, input_shapes_resize=None):
   """Returns evaluation of input data on TFLite model.
 
   Args:
     tflite_model: Serialized TensorFlow Lite model.
     input_data: List of np.ndarray.
+    input_shapes_resize: A map where the key is the input tensor name and the
+      value is the shape of the input tensor. This resize happens after model
+      conversion, prior to calling allocate tensors. (default None)
 
   Returns:
     List of np.ndarray.
   """
-  interpreter = _lite.Interpreter(model_content=tflite_model)
+  interpreter = _get_tflite_interpreter(tflite_model, input_shapes_resize)
   interpreter.allocate_tensors()
 
   input_details = interpreter.get_input_details()
@@ -209,10 +288,10 @@ def evaluate_frozen_graph(filename, input_arrays, output_arrays):
     graph_def.ParseFromString(file_content)
   except (_text_format.ParseError, DecodeError):
     if not isinstance(file_content, str):
-      if PY3:
-        file_content = file_content.decode("utf-8")
-      else:
+      if PY2:
         file_content = file_content.encode("utf-8")
+      else:
+        file_content = file_content.decode("utf-8")
     _text_format.Merge(file_content, graph_def)
 
   graph = ops.Graph()
@@ -263,12 +342,13 @@ def evaluate_keras_model(filename):
   Returns:
     Lambda function ([np.ndarray data] : [np.ndarray result]).
   """
-  keras_model = _keras.models.load_model(filename)
+  keras_model = keras.models.load_model(filename)
   return lambda input_data: [keras_model.predict(input_data)]
 
 
 def compare_models(tflite_model,
                    tf_eval_func,
+                   input_shapes_resize=None,
                    input_data=None,
                    input_data_range=None,
                    tolerance=5):
@@ -280,6 +360,9 @@ def compare_models(tflite_model,
     tflite_model: Serialized TensorFlow Lite model.
     tf_eval_func: Lambda function that takes in input data and outputs the
       results of the TensorFlow model ([np.ndarray data] : [np.ndarray result]).
+    input_shapes_resize: A map where the key is the input tensor name and the
+      value is the shape of the input tensor. This resize happens after model
+      conversion, prior to calling allocate tensors. (default None)
     input_data: np.ndarray to pass into models during inference. (default None)
     input_data_range: A map where the key is the input tensor name and
       the value is a tuple (min_val, max_val) which specifies the value range of
@@ -290,9 +373,12 @@ def compare_models(tflite_model,
   """
   if input_data is None:
     input_data, _ = _generate_random_input_data(
-        tflite_model=tflite_model, input_data_range=input_data_range)
+        tflite_model=tflite_model,
+        input_data_range=input_data_range,
+        input_shapes_resize=input_shapes_resize)
   tf_results = tf_eval_func(input_data)
-  tflite_results, _ = _evaluate_tflite_model(tflite_model, input_data)
+  tflite_results, _ = _evaluate_tflite_model(
+      tflite_model, input_data, input_shapes_resize=input_shapes_resize)
   for tf_result, tflite_result in zip(tf_results, tflite_results):
     np.testing.assert_almost_equal(tf_result, tflite_result, tolerance)
 
@@ -341,9 +427,11 @@ def compare_models_v2(tflite_model,
   # Convert the output TensorFlow results into an ordered list.
   if isinstance(tf_results, dict):
     if len(tf_results) == 1:
-      tf_results = [tf_results[tf_results.keys()[0]]]
+      tf_results = [tf_results[list(tf_results.keys())[0]]]
     else:
       tf_results = [tf_results[tflite_label] for tflite_label in tflite_labels]
+  else:
+    tf_results = [tf_results]
 
   for tf_result, tflite_result in zip(tf_results, tflite_results):
     np.testing.assert_almost_equal(tf_result, tflite_result, tolerance)
@@ -380,17 +468,18 @@ def test_frozen_graph_quant(filename,
       filename, input_arrays, output_arrays, input_shapes)
   tflite_model_float = _convert(converter, **kwargs)
 
-  interpreter_float = _lite.Interpreter(model_content=tflite_model_float)
+  interpreter_float = _get_tflite_interpreter(tflite_model_float)
   interpreter_float.allocate_tensors()
   float_tensors = interpreter_float.get_tensor_details()
 
   # Convert and load the quantized model.
   converter = _lite.TFLiteConverter.from_frozen_graph(filename, input_arrays,
-                                                      output_arrays)
+                                                      output_arrays,
+                                                      input_shapes)
   tflite_model_quant = _convert(
       converter, post_training_quantize=True, **kwargs)
 
-  interpreter_quant = _lite.Interpreter(model_content=tflite_model_quant)
+  interpreter_quant = _get_tflite_interpreter(tflite_model_quant)
   interpreter_quant.allocate_tensors()
   quant_tensors = interpreter_quant.get_tensor_details()
   quant_tensors_map = {
@@ -408,6 +497,7 @@ def test_frozen_graph_quant(filename,
   # unless we are quantizing to float16.
   if ("target_ops" in kwargs and
       not kwargs.get("quantize_to_float16", False) and
+      not kwargs.get("post_training_quantize_16x8", False) and
       set(kwargs["target_ops"]) == set([_lite.OpsSet.SELECT_TF_OPS])):
     if has_quant_tensor:
       raise ValueError("--post_training_quantize flag unexpectedly altered the "
@@ -421,6 +511,7 @@ def test_frozen_graph(filename,
                       input_arrays,
                       output_arrays,
                       input_shapes=None,
+                      input_shapes_resize=None,
                       input_data=None,
                       input_data_range=None,
                       **kwargs):
@@ -437,6 +528,9 @@ def test_frozen_graph(filename,
       integers representing input shapes (e.g., {"foo" : [1, 16, 16, 3]}).
       Automatically determined when input shapes is None (e.g., {"foo" : None}).
         (default None)
+    input_shapes_resize: A map where the key is the input tensor name and the
+      value is the shape of the input tensor. This resize happens after model
+      conversion, prior to calling allocate tensors. (default None)
     input_data: np.ndarray to pass into models during inference. (default None).
     input_data_range: A map where the key is the input tensor name and
       the value is a tuple (min_val, max_val) which specifies the value range of
@@ -453,6 +547,7 @@ def test_frozen_graph(filename,
   compare_models(
       tflite_model,
       tf_eval_func,
+      input_shapes_resize=input_shapes_resize,
       input_data=input_data,
       input_data_range=input_data_range)
 
@@ -493,12 +588,20 @@ def test_saved_model(directory,
       signature_key=signature_key)
   tflite_model = _convert(converter, **kwargs)
 
+  # 5 decimal places by default
+  tolerance = 5
+  if kwargs.get("post_training_quantize_16x8", False):
+    _check_model_quantized_to_16x8(tflite_model)
+    # only 2 decimal places for full quantization
+    tolerance = 2
+
   tf_eval_func = evaluate_saved_model(directory, tag_set, signature_key)
   compare_models(
       tflite_model,
       tf_eval_func,
       input_data=input_data,
-      input_data_range=input_data_range)
+      input_data_range=input_data_range,
+      tolerance=tolerance)
 
 
 def test_saved_model_v2(directory,
@@ -546,7 +649,7 @@ def test_saved_model_v2_quant_float16(directory, **kwargs):
   converter = _lite.TFLiteConverterV2.from_saved_model(directory)
   tflite_model_float = _convert(converter, version=2, **kwargs)
 
-  interpreter_float = _lite.Interpreter(model_content=tflite_model_float)
+  interpreter_float = _get_tflite_interpreter(tflite_model_float)
   interpreter_float.allocate_tensors()
   float_tensors = interpreter_float.get_tensor_details()
 
@@ -557,7 +660,7 @@ def test_saved_model_v2_quant_float16(directory, **kwargs):
       quantize_to_float16=True,
       **kwargs)
 
-  interpreter_quant = _lite.Interpreter(model_content=tflite_model_quant)
+  interpreter_quant = _get_tflite_interpreter(tflite_model_quant)
   interpreter_quant.allocate_tensors()
   quant_tensors = interpreter_quant.get_tensor_details()
   quant_tensors_map = {
@@ -637,7 +740,7 @@ def test_keras_model_v2(filename,
       (half-inclusive). (default None)
     **kwargs: Additional arguments to be passed into the converter.
   """
-  keras_model = _keras.models.load_model(filename)
+  keras_model = keras.models.load_model(filename)
   if input_shapes:
     for tensor, shape in zip(keras_model.inputs, input_shapes):
       tensor.set_shape(shape)

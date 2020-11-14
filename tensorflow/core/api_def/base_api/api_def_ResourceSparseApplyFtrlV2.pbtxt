@@ -45,7 +45,7 @@ END
   in_arg {
     name: "l2"
     description: <<END
-L2 shrinkage regulariation. Must be a scalar.
+L2 shrinkage regularization. Must be a scalar.
 END
   }
   in_arg {

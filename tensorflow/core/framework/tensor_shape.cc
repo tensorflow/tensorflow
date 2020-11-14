@@ -169,8 +169,6 @@ static inline bool Set16(bool partial, uint16* dst, int dim, int64 val) {
       dst[dim] = std::numeric_limits<uint16>::max();
       return true;
     }
-  } else {
-    CHECK_GE(val, 0);
   }
   dst[dim] = val;
   return false;
@@ -182,7 +180,7 @@ void TensorShapeBase<Shape>::InitDims(gtl::ArraySlice<int64> dim_sizes) {
 
   // Allow sizes that are under kint64max^0.25 so that 4-way multiplication
   // below cannot overflow.
-  static const uint64 kMaxSmall = 0xd744;
+  static const int64 kMaxSmall = 0xd744;
   static_assert(kMaxSmall * kMaxSmall * kMaxSmall * kMaxSmall <= kint64max,
                 "bad overflow check");
   bool large_size = false;
@@ -190,6 +188,14 @@ void TensorShapeBase<Shape>::InitDims(gtl::ArraySlice<int64> dim_sizes) {
     if (s > kMaxSmall) {
       large_size = true;
       break;
+    }
+  }
+
+  // TODO(mihaimaruseac): Remove this CHECK as the refactoring continues
+  // Temporaryly moving the CHECK from Set16 here
+  if (!kIsPartial && !large_size) {
+    for (auto s : dim_sizes) {
+      CHECK_GE(s, 0);
     }
   }
 
@@ -276,7 +282,6 @@ void TensorShapeRep::SlowCopyFrom(const TensorShapeRep& b) {
     //   set_ndims_byte(b.ndims_byte());
     //   set_data_type(b.data_type());
   } else {
-    DCHECK_EQ(b.tag(), REP_OUT_OF_LINE);
     set_ndims_byte(b.ndims_byte());
     set_data_type(b.data_type());
     if (tag() == REP_OUT_OF_LINE) {
@@ -323,10 +328,10 @@ void TensorShapeRep::ClearAllButDataType() {
 }
 
 template <class Shape>
-void TensorShapeBase<Shape>::RecomputeNumElements() {
+Status TensorShapeBase<Shape>::RecomputeNumElements() {
   if (unknown_rank()) {
     set_num_elements(-1);
-    return;
+    return Status::OK();
   }
   int64 n = 1;
   for (auto dim : *this) {
@@ -335,9 +340,14 @@ void TensorShapeBase<Shape>::RecomputeNumElements() {
       break;
     }
     n = MultiplyWithoutOverflow(n, dim.size);
-    CHECK_LE(0, n);
+    if (TF_PREDICT_FALSE(n < 0)) {
+      return errors::InvalidArgument(
+          "Shape ", this->DebugString(),
+          " results in overflow when computing number of elements");
+    }
   }
   set_num_elements(n);
+  return Status::OK();
 }
 
 template <class Shape>
@@ -452,7 +462,7 @@ void TensorShapeBase<Shape>::set_dim(int d, int64 size) {
       AddDim(dval);
     }
   }
-  RecomputeNumElements();
+  TF_CHECK_OK(RecomputeNumElements());
 }
 
 template <class Shape>
@@ -472,7 +482,7 @@ void TensorShapeBase<Shape>::RemoveDimRange(int begin, int end) {
   for (auto dval : vals) {
     AddDim(dval);
   }
-  RecomputeNumElements();
+  TF_CHECK_OK(RecomputeNumElements());
 }
 
 bool TensorShape::IsSameSize(const TensorShape& b) const {
@@ -495,28 +505,6 @@ void TensorShapeBase<Shape>::AsProto(TensorShapeProto* proto) const {
   }
 }
 
-void TensorShapeRep::DumpRep() const {
-#if 0
-  fprintf(stderr, "Rep: %d %d dims\n", tag(), dims());
-  if (tag() == REP16) {
-    fprintf(stderr, "REP16 NDIMS: %d\n", ndims_byte());
-    for (int i = 0; i < ndims_byte(); i++) {
-      fprintf(stderr, "dim %d: %d\n", i, as16()->dims_[i]);
-    }
-  } else if (tag_ == REP32) {
-    fprintf(stderr, "REP32 NDIMS: %d\n", ndims_);
-    for (int i = 0; i < ndims_byte(); i++) {
-      fprintf(stderr, "dim %d: %d\n", i, as32()->dims_[i]);
-    }
-  } else if (tag_ == REP_OUT_OF_LINE) {
-    fprintf(stderr, "REP_OUT_OF_LINE NDIMS: %d %p\n", ndims_, as16()->dims_);
-    for (int i = 0; i < ndims_byte(); i++) {
-      fprintf(stderr, "dim %d: %lld\n", i, (*as64()->dims_)[i]);
-    }
-  }
-#endif
-}
-
 template <class Shape>
 TensorShapeIter<Shape> TensorShapeBase<Shape>::begin() const {
   return TensorShapeIter<Shape>(static_cast<const Shape*>(this), 0);
@@ -524,8 +512,8 @@ TensorShapeIter<Shape> TensorShapeBase<Shape>::begin() const {
 
 template <class Shape>
 TensorShapeIter<Shape> TensorShapeBase<Shape>::end() const {
-  CHECK(!unknown_rank());
-  return TensorShapeIter<Shape>(static_cast<const Shape*>(this), dims());
+  const int max_dim = unknown_rank() ? -1 : dims();
+  return TensorShapeIter<Shape>(static_cast<const Shape*>(this), max_dim);
 }
 
 string TensorShapeRep::DebugString() const {
@@ -615,7 +603,7 @@ Status MakeShapeHelper(const T* dims, int64 n, Shape* out) {
       if (TF_PREDICT_FALSE(new_num_elements < 0)) {
         TensorShapeProto proto;
         for (int64 j = 0; j < n; ++j) {
-          proto.add_dim()->set_size(dim);
+          proto.add_dim()->set_size(internal::SubtleMustCopy(dims[j]));
         }
         return errors::InvalidArgument(
             "Shape ", TensorShape::DebugString(proto),

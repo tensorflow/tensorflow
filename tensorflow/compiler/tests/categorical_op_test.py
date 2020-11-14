@@ -187,7 +187,7 @@ class CategoricalTest(xla_test.XLATestCase):
             0,
             seed=seed_t,
             output_dtype=dtypes.int32)
-        y = sess.run(x, {seed_t: [0x12345678, 0xabcdef12]})
+        y = sess.run(x, {seed_t: [0x12345678, 0xabcdef1]})
         self.assertEqual(y.shape, (42, 0))
 
 

@@ -33,6 +33,8 @@ tf_cc_binary(
     linkshared = 1,
     deps = [
         "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core/platform:retrying_file_system",
+        "//tensorflow/core/platform:retrying_utils",
         "@aws",
         "@com_google_protobuf//:protobuf_headers",
         "@curl",
@@ -79,7 +81,12 @@ cc_library(
     hdrs = [
         "s3_file_system.h",
     ],
-    deps = [
+    deps = select({
+        "@org_tensorflow//tensorflow:windows": [
+            "//tensorflow/core/platform:retrying_file_system",
+        ],
+        "//conditions:default": [],
+    }) + [
         ":aws_crypto",
         ":aws_logging",
         "//tensorflow/core:lib",

@@ -1,12 +1,14 @@
 syntax = "proto3";
 
 package tensorflow;
+
+import "tensorflow/core/framework/tensor.proto";
+
 option cc_enable_arenas = true;
 option java_outer_classname = "SummaryProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
-option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework";
-import "tensorflow/core/framework/tensor.proto";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/summary_go_proto";
 
 // Metadata associated with a series of Summary data
 message SummaryDescription {
@@ -31,7 +33,7 @@ message HistogramProto {
   //   i != 0:  bucket_limit(i-1) .. bucket_limit(i)
   repeated double bucket_limit = 6 [packed = true];
   repeated double bucket = 7 [packed = true];
-};
+}
 
 // A SummaryMetadata encapsulates information on which plugins are able to make
 // use of a certain summary value.
@@ -53,7 +55,31 @@ message SummaryMetadata {
 
   // Longform readable description of the summary sequence. Markdown supported.
   string summary_description = 3;
-};
+
+  // Class of data stored in this time series. Required for compatibility with
+  // TensorBoard's generic data facilities (`DataProvider`, et al.). This value
+  // imposes constraints on the dtype and shape of the corresponding tensor
+  // values. See `DataClass` docs for details.
+  DataClass data_class = 4;
+}
+
+enum DataClass {
+  // Unknown data class, used (implicitly) for legacy data. Will not be
+  // processed by data ingestion pipelines.
+  DATA_CLASS_UNKNOWN = 0;
+  // Scalar time series. Each `Value` for the corresponding tag must have
+  // `tensor` set to a rank-0 tensor of floating-point dtype, which will be
+  // converted to float64.
+  DATA_CLASS_SCALAR = 1;
+  // Tensor time series. Each `Value` for the corresponding tag must have
+  // `tensor` set. The tensor value is arbitrary, but should be small to
+  // accommodate direct storage in database backends: an upper bound of a few
+  // kilobytes is a reasonable rule of thumb.
+  DATA_CLASS_TENSOR = 2;
+  // Blob sequence time series. Each `Value` for the corresponding tag must
+  // have `tensor` set to a rank-1 tensor of bytestring dtype.
+  DATA_CLASS_BLOB_SEQUENCE = 3;
+}
 
 // A Summary is a set of named values to be displayed by the
 // visualizer.

@@ -116,7 +116,7 @@ public final class OvicClassifierTest {
   public void ovicClassifier_latencyNotNull() throws Exception {
     classifier = new OvicClassifier(labelsInputStream, floatModel);
     testResult = classifier.classifyByteBuffer(testImage);
-    assertThat(testResult.latency).isNotNull();
+    assertThat(testResult.latencyNano).isNotNull();
   }
 
   @Test

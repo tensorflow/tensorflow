@@ -143,8 +143,8 @@ class LeakyReluOp : public UnaryElementWiseOp<T, LeakyReluOp<Device, T>> {
 
   void Operate(OpKernelContext* context, const Tensor& input, Tensor* output) {
     functor::LeakyRelu<Device, T> functor;
-    functor(context->eigen_device<Device>(), input.flat<T>(), alpha_,
-            output->flat<T>());
+    functor({context->eigen_device<Device>(), input.flat<T>(), alpha_,
+             output->flat<T>()});
   }
 
  private:

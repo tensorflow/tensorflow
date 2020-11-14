@@ -24,7 +24,8 @@ namespace calibration {
 
 typedef TfLiteStatus (*logging_kernel_func_ptr)(TfLiteContext* context,
                                                 TfLiteNode* node,
-                                                Logger* logger);
+                                                Logger* logger,
+                                                ErrorReporter* error_reporter);
 
 }  // namespace calibration
 }  // namespace optimize

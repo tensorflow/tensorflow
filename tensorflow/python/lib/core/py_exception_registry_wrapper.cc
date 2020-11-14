@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <array>
 
-#include "include/pybind11/pybind11.h"
-#include "include/pybind11/pytypes.h"
+#include "pybind11/pybind11.h"
+#include "pybind11/pytypes.h"
 #include "tensorflow/python/lib/core/py_exception_registry.h"
 
 namespace py = pybind11;

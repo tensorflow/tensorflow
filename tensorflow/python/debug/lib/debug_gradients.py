@@ -116,7 +116,7 @@ class GradientsDebugger(object):
 
     The side effect of this method is that when gradient tensor(s) are created
     with respect to the any paths that include the `input_tensor`, the gradient
-    tensor(s) with repsect to `input_tensor` will be registered with this
+    tensor(s) with respect to `input_tensor` will be registered with this
     this `GradientsDebugger` instance and can later be retrieved, with the
     methods `gradient_tensor` and `gradient_tensors`.
 
@@ -141,7 +141,7 @@ class GradientsDebugger(object):
 
     Args:
       input_tensor: the input `tf.Tensor` object whose related gradient tensors
-        are to be reigstered with this `GradientsDebugger` instance when they
+        are to be registered with this `GradientsDebugger` instance when they
         are created, e.g., during `tf.gradients` calls or the construction
         of optimization (training) op that uses `tf.gradients`.
 
@@ -173,7 +173,7 @@ class GradientsDebugger(object):
 
     The side effect of this method is that when gradient tensor(s) are created
     with respect to the any paths that include the `x_tensor`s, the gradient
-    tensor(s) with repsect to the tensor will be registered with this
+    tensor(s) with respect to the tensor will be registered with this
     this `GradientsDebugger` instance and can later be retrieved, with the
     methods `gradient_tensor` and `gradient_tensors`.
 

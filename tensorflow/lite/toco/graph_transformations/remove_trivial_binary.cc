@@ -123,6 +123,9 @@ bool AreAllBufferElementsEqualTo(const std::vector<Scalar>& buffer_data,
                  AreAllBufferElementsEqualTo(constant_input_float_data, 1.f);
   }
 
+  is_trivial = is_trivial && binary_op->fused_activation_function ==
+                                 FusedActivationFunctionType::kNone;
+
   if (!is_trivial) {
     return ::tensorflow::Status::OK();
   }

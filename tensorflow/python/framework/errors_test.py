@@ -23,7 +23,7 @@ import pickle
 import warnings
 
 from tensorflow.core.lib.core import error_codes_pb2
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import _pywrap_file_io
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
@@ -112,7 +112,7 @@ class ErrorsTest(test.TestCase):
 
   def testStatusDoesNotLeak(self):
     try:
-      pywrap_tensorflow.DeleteFile(compat.as_bytes("/DOES_NOT_EXIST/"))
+      _pywrap_file_io.DeleteFile(compat.as_bytes("/DOES_NOT_EXIST/"))
     except:
       pass
     gc.collect()

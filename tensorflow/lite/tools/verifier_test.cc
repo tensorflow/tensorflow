@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
 #include "tensorflow/lite/op_resolver.h"
+#include "tensorflow/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/testing/util.h"
 #include "tensorflow/lite/util.h"
@@ -428,6 +429,19 @@ TEST(VerifyModel, UseUnsupportedCustomOps) {
                   "Unsupported custom op: Not supported, version: 1"));
 }
 
+TEST(VerifyModel, UseUnnamedCustomOps) {
+  TfLiteFlatbufferModelBuilder builder({BuiltinOperator_ADD}, {"NewOp"});
+  builder.AddTensor({2, 2}, TensorType_UINT8, {1, 2, 3, 4}, "input1");
+  builder.AddTensor({2, 2}, TensorType_UINT8, {1, 2, 3, 4}, "input2");
+  builder.AddTensor({2, 2}, TensorType_UINT8, {}, "output");
+  builder.AddOperator({0, 1}, {2}, BuiltinOperator_CUSTOM, "");
+  builder.FinishModel({}, {});
+  ASSERT_FALSE(builder.Verify());
+  EXPECT_THAT(builder.GetErrorString(),
+              ::testing::ContainsRegex(
+                  "Invalid custom op name, cannot be null/empty."));
+}
+
 TEST(VerifyModel, UnpopulatedInputToOp) {
   TfLiteFlatbufferModelBuilder builder({}, {"test"});
   builder.AddOperator({1, 2}, {3}, BuiltinOperator_CUSTOM, "test");
@@ -613,7 +627,8 @@ TEST(VerifyModel, InvalidSparseTensorIndexOutOfBound) {
   scoped_model.reset(model->GetModel()->UnPack());
 
   auto* tensor = scoped_model->subgraphs[0]->tensors[0].get();
-  tensor->sparsity->dim_metadata[1]->array_indices[1] = 5;
+  tensor->sparsity->dim_metadata[1]->array_indices.AsUint8Vector()->values[1] =
+      5;
 
   flatbuffers::FlatBufferBuilder builder;
   auto model_ = Model::Pack(builder, scoped_model.get());
@@ -654,6 +669,31 @@ TEST(VerifyModel, InvalidSparseTensorInvalidBuffer) {
                   "requires 12 bytes, but is allocated with 8 bytes buffer"));
 }
 
+TEST(VerifyModel, InvalidSparseTensorInvalidTraversalOrder) {
+  const auto model = FlatBufferModel::BuildFromFile(kSparseTensorTestModel);
+  ASSERT_TRUE(model);
+
+  std::unique_ptr<ModelT> scoped_model;
+  scoped_model.reset(model->GetModel()->UnPack());
+
+  auto* tensor = scoped_model->subgraphs[0]->tensors[0].get();
+  // Valid dimensions are (0, 1, 2, 3) in this test model.
+  tensor->sparsity->traversal_order[0] = 10;
+
+  flatbuffers::FlatBufferBuilder builder;
+  auto model_ = Model::Pack(builder, scoped_model.get());
+
+  ::tflite::FinishModelBuffer(builder, model_);
+  MockErrorReporter mock_reporter;
+  MutableOpResolver resolver;
+  TfLiteRegistration fake_op;
+  resolver.AddCustom("FakeOp", &fake_op);
+  ASSERT_FALSE(Verify(builder.GetBufferPointer(), builder.GetSize(), resolver,
+                      &mock_reporter));
+  EXPECT_THAT(mock_reporter.GetAsString(),
+              ::testing::ContainsRegex("invalid sparsity parameters"));
+}
+
 TEST(VerifyModel, ValidSparseTensorBCSC) {
   const auto model = FlatBufferModel::BuildFromFile(kSparseTensorTestModel);
   ASSERT_TRUE(model);
@@ -668,8 +708,10 @@ TEST(VerifyModel, ValidSparseTensorBCSC) {
   tensor->sparsity->dim_metadata[0]->dense_size = 2;
 
   tensor->sparsity->dim_metadata[1]->format = DimensionType_SPARSE_CSR;
-  tensor->sparsity->dim_metadata[1]->array_segments = {0, 1, 3};
-  tensor->sparsity->dim_metadata[1]->array_indices = {0, 0, 1};
+  tensor->sparsity->dim_metadata[1]->array_segments.AsUint8Vector()->values = {
+      0, 1, 3};
+  tensor->sparsity->dim_metadata[1]->array_indices.AsUint8Vector()->values = {
+      0, 0, 1};
 
   tensor->sparsity->dim_metadata[2]->format = DimensionType_DENSE;
   tensor->sparsity->dim_metadata[2]->dense_size = 2;

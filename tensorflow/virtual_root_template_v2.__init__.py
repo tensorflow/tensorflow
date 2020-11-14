@@ -100,6 +100,8 @@ for _m in _top_level_modules:
 # We still need all the names that are toplevel on tensorflow_core
 from tensorflow_core import *
 
+_major_api_version = 2
+
 # These should not be visible in the main tf module.
 try:
   del core

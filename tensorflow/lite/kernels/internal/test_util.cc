@@ -105,6 +105,7 @@ float ExponentialRandomPositiveFloat(float percentile, float percentile_val,
 
 void FillRandom(std::vector<float>* vec, float min, float max) {
   std::uniform_real_distribution<float> dist(min, max);
+  // TODO(b/154540105): use std::ref to avoid copying the random engine.
   auto gen = std::bind(dist, RandomEngine());
   std::generate(std::begin(*vec), std::end(*vec), gen);
 }

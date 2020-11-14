@@ -16,10 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_API_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_CL_API_H_
 
+#ifdef CL_DELEGATE_NO_GL
+#define EGL_NO_PROTOTYPES
+#endif
+
+#include <EGL/egl.h>
+
 #include <cstdint>
 #include <memory>
 
-#include <EGL/egl.h>
 #include "absl/types/span.h"
 #include "tensorflow/lite/delegates/gpu/api.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
@@ -70,7 +75,25 @@ class InferenceEnvironment {
  public:
   virtual ~InferenceEnvironment() {}
 
-  virtual Status NewInferenceBuilder(
+  // Converts GraphFloat32 into intermediate, device-specific representation.
+  // This serialized_model specific for device and InferenceOptions.
+  // serialized_model cannot be used with another device or InferenceOptions.
+  // Loading serialized_model is much faster than loading GraphFloat32.
+  // serialized_model must be used with appropriate NewInferenceBuilder
+  // method (see below).
+  virtual absl::Status BuildSerializedModel(
+      const InferenceOptions& options, GraphFloat32 model,
+      std::vector<uint8_t>* serialized_model) = 0;
+
+  // std::unique_ptr<InferenceBuilder>* builder - required parameter
+  // std::vector<int64_t>* in_refs - optional, can be nullptr
+  // std::vector<int64_t>* out_refs - optional, can be nullptr
+  virtual absl::Status NewInferenceBuilder(
+      const absl::Span<const uint8_t> serialized_model,
+      std::unique_ptr<InferenceBuilder>* builder, std::vector<int64_t>* in_refs,
+      std::vector<int64_t>* out_refs) = 0;
+
+  virtual absl::Status NewInferenceBuilder(
       const InferenceOptions& options, GraphFloat32 model,
       std::unique_ptr<InferenceBuilder>* builder) = 0;
 
@@ -84,9 +107,18 @@ class InferenceEnvironment {
 };
 
 struct InferenceEnvironmentOptions {
+  // If any of these objects are set, created environment will use them instead
+  // of creating/choosing own instances.
+  cl_device_id device = nullptr;
+  cl_context context = nullptr;
+  cl_command_queue command_queue = nullptr;
+
   // Whenever input and/or output is GL object, EGL display and context must be
   // set to create GL aware OpenCL context. Do not set these variables whenever
   // GL interoperability is not needed.
+  // It is the error to set egl_display, egl_context AND context at the same
+  // time. If egl_display and egl_context are set, they will be used to create
+  // GL-aware CL context.
   EGLDisplay egl_display = EGL_NO_DISPLAY;
   EGLContext egl_context = EGL_NO_CONTEXT;
 
@@ -103,7 +135,7 @@ struct InferenceEnvironmentOptions {
 
 // Creates new OpenCL environment that needs to stay around until all inference
 // runners are destroyed.
-Status NewInferenceEnvironment(
+absl::Status NewInferenceEnvironment(
     const InferenceEnvironmentOptions& options,
     std::unique_ptr<InferenceEnvironment>* environment,
     InferenceEnvironmentProperties* properties /* optional */);

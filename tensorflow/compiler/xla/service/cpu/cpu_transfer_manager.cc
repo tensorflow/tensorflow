@@ -154,7 +154,8 @@ CpuTransferManager::TransferBufferToInfeedInternal(se::StreamExecutor* executor,
                                                    int64 size,
                                                    const void* source) {
   if (size > std::numeric_limits<int32>::max()) {
-    return InvalidArgument("Infeed shape is too large: needs %d bytes", size);
+    return InvalidArgument("CPU infeed of %d bytes exceeds maximum of %d bytes",
+                           size, std::numeric_limits<int32>::max());
   }
 
   if (size <= 0) {
@@ -249,9 +250,9 @@ StatusOr<Shape> CpuTransferManager::TransferBuffersFromOutfeedInternal(
                              size);
     }
 
-    if (size <= 0) {
-      return InvalidArgument("Outfeed shape must have positive size; got %d",
-                             size);
+    if (size < 0) {
+      return InvalidArgument(
+          "Outfeed shape must have non-negative size; got %d", size);
     }
 
     int32 size_32 = static_cast<int32>(size);

@@ -169,3 +169,13 @@ def deserialize(proto):
 
 def registered_identifiers():
   return _REVIVED_TYPE_REGISTRY.keys()
+
+
+def get_setter(proto):
+  _, type_registrations = _REVIVED_TYPE_REGISTRY.get(
+      proto.identifier, (None, None))
+  if type_registrations is not None:
+    for type_registration in type_registrations:
+      if type_registration.should_load(proto):
+        return type_registration.setter
+  return None

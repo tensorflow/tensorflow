@@ -272,6 +272,46 @@ REGISTER_OP("SparseCross")
       return Status::OK();
     });
 
+REGISTER_OP("SparseCrossV2")
+    .Input("indices: N * int64")
+    .Input("values: sparse_types")
+    .Input("shapes: N * int64")
+    .Input("dense_inputs: dense_types")
+    .Input("sep: string")
+    .Output("output_indices: int64")
+    .Output("output_values: string")
+    .Output("output_shape: int64")
+    .Attr("N: int >= 0")
+    .Attr("sparse_types: list({int64, string}) >= 0")
+    .Attr("dense_types: list({int64, string}) >= 0")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->Matrix(c->UnknownDim(), 2));
+      c->set_output(1, c->Vector(c->UnknownDim()));
+      c->set_output(2, c->Vector(2));
+      return Status::OK();
+    });
+
+REGISTER_OP("SparseCrossHashed")
+    .Input("indices: N * int64")
+    .Input("values: sparse_types")
+    .Input("shapes: N * int64")
+    .Input("dense_inputs: dense_types")
+    .Input("num_buckets: int64")
+    .Input("strong_hash: bool")
+    .Input("salt: int64")
+    .Output("output_indices: int64")
+    .Output("output_values: int64")
+    .Output("output_shape: int64")
+    .Attr("N: int >= 0")
+    .Attr("sparse_types: list({int64, string}) >= 0")
+    .Attr("dense_types: list({int64, string}) >= 0")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->Matrix(c->UnknownDim(), 2));
+      c->set_output(1, c->Vector(c->UnknownDim()));
+      c->set_output(2, c->Vector(2));
+      return Status::OK();
+    });
+
 REGISTER_OP("SparseSplit")
     .Input("split_dim: int64")
     .Input("indices: int64")

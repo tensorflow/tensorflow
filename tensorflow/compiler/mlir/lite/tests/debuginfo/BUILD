@@ -1,3 +1,4 @@
+load("//tensorflow:tensorflow.bzl", "filegroup")
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 
 licenses(["notice"])
@@ -7,12 +8,10 @@ glob_lit_tests(
         ":debug_info_files",
         ":test_utilities",
     ],
-    driver = "@local_config_mlir//:run_lit.sh",
+    driver = "@llvm-project//mlir:run_lit.sh",
     test_file_exts = [
         "pbtxt",
-        # TODO(fengliuai): reenable these tests after the fused loc is
-        # supported in the diagnostic handler.
-        # "py",
+        #        "py", TODO(b/150304798)
     ],
 )
 
@@ -33,8 +32,8 @@ filegroup(
         ":saved_model_error",
         "//tensorflow/compiler/mlir/lite:flatbuffer_to_string",
         "//tensorflow/compiler/mlir/lite:tf_tfl_translate",
-        "@llvm//:FileCheck",
-        "@llvm//:not",
+        "@llvm-project//llvm:FileCheck",
+        "@llvm-project//llvm:not",
     ],
 )
 

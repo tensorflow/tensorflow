@@ -1,4 +1,4 @@
-# RUN: not tf-mlir-translate -graphdef-to-mlir %s -o - 2>&1 | FileCheck %s
+# RUN: not tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -o - 2>&1 | FileCheck %s
 
 this is not a valid graph def
 

@@ -734,12 +734,8 @@ TEST(TensorBundleTest, StringTensors) {
 
     // Requires a 64-bit length.
     tstring* backing_string = long_string_tensor.flat<tstring>().data();
-#ifdef USE_TSTRING
     backing_string->resize_uninitialized(kLongLength);
     std::char_traits<char>::assign(backing_string->data(), kLongLength, 'd');
-#else   // USE_TSTRING
-    backing_string->assign(kLongLength, 'd');
-#endif  // USE_TSTRING
     TF_EXPECT_OK(writer.Add("long_scalar", long_string_tensor));
 
     // Mixes in some floats.
@@ -1113,9 +1109,8 @@ TEST_F(TensorBundleAlignmentTest, AlignmentTest) {
   }
 }
 
-static void BM_BundleAlignmentByteOff(int iters, int alignment,
-                                      int tensor_size) {
-  testing::StopTiming();
+static void BM_BundleAlignmentByteOff(::testing::benchmark::State& state,
+                                      int alignment, int tensor_size) {
   {
     BundleWriter::Options opts;
     opts.data_alignment = alignment;
@@ -1126,18 +1121,17 @@ static void BM_BundleAlignmentByteOff(int iters, int alignment,
   }
   BundleReader reader(Env::Default(), Prefix("foo"));
   TF_CHECK_OK(reader.status());
-  testing::StartTiming();
-  for (int i = 0; i < iters; ++i) {
+  for (auto s : state) {
     Tensor t;
     TF_CHECK_OK(reader.Lookup("big", &t));
   }
-  testing::StopTiming();
 }
 
-#define BM_BundleAlignment(ALIGN, SIZE)                        \
-  static void BM_BundleAlignment_##ALIGN##_##SIZE(int iters) { \
-    BM_BundleAlignmentByteOff(iters, ALIGN, SIZE);             \
-  }                                                            \
+#define BM_BundleAlignment(ALIGN, SIZE)            \
+  static void BM_BundleAlignment_##ALIGN##_##SIZE( \
+      ::testing::benchmark::State& state) {        \
+    BM_BundleAlignmentByteOff(state, ALIGN, SIZE); \
+  }                                                \
   BENCHMARK(BM_BundleAlignment_##ALIGN##_##SIZE)
 
 BM_BundleAlignment(1, 512);

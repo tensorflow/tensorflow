@@ -27,37 +27,11 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-class Pooling : public GPUOperation {
- public:
-  Pooling(const OperationDef& definition, const Pooling2DAttributes& attr);
-  Status AddToQueue(CLCommandQueue* queue) override;
-  Status Tune(const TuningParameters& params) override;
+GPUOperation CreatePooling(const OperationDef& definition,
+                           const Pooling2DAttributes& attr);
 
-  Status Compile(const CreationContext& creation_context) override;
-
-  // Move only
-  Pooling(Pooling&& kernel);
-  Pooling& operator=(Pooling&& kernel);
-  Pooling(const Pooling&) = delete;
-  Pooling& operator=(const Pooling&) = delete;
-
- private:
-  Status BindArguments();
-  int3 GetGridSize() const;
-
-  int2 stride_;
-  int2 padding_;
-  int2 kernel_size_;
-
-  PoolingType type_;
-  bool output_indices_;
-
-  CLKernel kernel_;
-  int3 work_group_size_ = int3(8, 4, 1);
-};
-
-Pooling CreatePooling(const OperationDef& definition,
-                      const Pooling2DAttributes& attr);
+GPUOperation CreatePooling(const OperationDef& definition,
+                           const Pooling3DAttributes& attr);
 
 }  // namespace cl
 }  // namespace gpu

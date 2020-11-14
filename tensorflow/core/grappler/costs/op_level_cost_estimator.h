@@ -64,6 +64,7 @@ class OpLevelCostEstimator {
   // Implementation of costs other than
   // execution_time is optional, depending on the
   // device.
+  Costs PredictNaryOp(const OpContext& op_context) const;
   Costs PredictConv2D(const OpContext& op_context) const;
   Costs PredictCwiseOp(const OpContext& op_context) const;
   Costs PredictConv2DBackpropInput(const OpContext& op_context) const;
@@ -85,6 +86,10 @@ class OpLevelCostEstimator {
   Costs PredictFusedBatchNorm(const OpContext& op_context) const;
   Costs PredictFusedBatchNormGrad(const OpContext& op_context) const;
   Costs PredictEinsum(const OpContext& op_context) const;
+  Costs PredictAssignVariableOps(const OpContext& op_context) const;
+  Costs PredictPureMemoryOp(const OpContext& op_context) const;
+  Costs PredictSoftmax(const OpContext& op_context) const;
+  Costs PredictResizeBilinear(const OpContext& op_context) const;
 
   // Generic cost prediction method for fused operations.
   Costs PredictFusedOp(const OpContext& op_context,
@@ -137,6 +142,9 @@ class OpLevelCostEstimator {
   static int64 CountMatMulOperations(const OpInfo& op_info,
                                      MatMulDimensions* mat_mul,
                                      bool* found_unknown_shapes);
+  bool GenerateBatchMatmulContextFromEinsum(const OpContext& einsum_context,
+                                            OpContext* batch_matmul_context,
+                                            bool* found_unknown_shapes) const;
   static int64 CountBatchMatMulOperations(const OpInfo& op_info,
                                           bool* found_unknown_shapes);
   static int64 CountBatchMatMulOperations(const OpInfo& op_info,
@@ -199,7 +207,7 @@ class OpLevelCostEstimator {
   typedef std::function<Costs(const OpContext& op_context)> CostImpl;
   std::map<string, CostImpl> device_cost_impl_;
   // If true, assume compute and memory overlap; hence, the op cost is max of
-  // compute_time and memory_time, insteaf of sum of those two.
+  // compute_time and memory_time, instead of sum of those two.
   bool compute_memory_overlap_;
   std::set<string> persistent_ops_;
 

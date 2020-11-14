@@ -185,7 +185,7 @@ struct CopyFilterDepth {
 template <typename T>
 struct ComputeFilterRangeTransform {
   typedef typename Eigen::internal::packet_traits<T>::type Packet;
-  static const int64 kPacketSize = (sizeof(Packet) / sizeof(T));
+  static constexpr int64 kPacketSize = (sizeof(Packet) / sizeof(T));
 
   typedef Eigen::Map<
       Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>

@@ -432,6 +432,9 @@ class CSRSparseMatrixOpsTest(test.TestCase):
     if not self._gpu_available:
       return
 
+    if test.is_built_with_rocm():
+      self.skipTest("sparse-matrix-add op not supported on ROCm")
+
     a_indices = np.array([[0, 0], [2, 3]])
     a_values = np.array([1.0, 5.0]).astype(np.float32)
     a_dense_shape = [5, 6]
@@ -468,6 +471,9 @@ class CSRSparseMatrixOpsTest(test.TestCase):
   def testLargeBatchSparseMatrixAdd(self):
     if not self._gpu_available:
       return
+
+    if test.is_built_with_rocm():
+      self.skipTest("sparse-matrix-add op not supported on ROCm")
 
     sparsify = lambda m: m * (m > 0)
     dense_shape = [53, 65, 127]
@@ -528,13 +534,14 @@ class CSRSparseMatrixOpsTest(test.TestCase):
       c_value = self.evaluate(c)
 
       expected_c_value = self.evaluate(
-          math_ops.conj(math_ops.matmul(a_dense, b)))
+          math_ops.conj(test_util.matmul_without_tf32(a_dense, b)))
       self.assertAllClose(expected_c_value, c_value)
 
   @test_util.run_in_graph_and_eager_modes
   def testLargeBatchSparseMatrixMatMul(self):
+    dtypes_to_test = [np.float32, np.complex64]
     sparsify = lambda m: m * (m > 0)
-    for dtype in np.float32, np.complex64:
+    for dtype in dtypes_to_test:
       for (transpose_a, transpose_b) in ((False, False), (False, True),
                                          (True, False), (True, True)):
         for (adjoint_a, adjoint_b) in ((False, False), (False, True),
@@ -569,7 +576,7 @@ class CSRSparseMatrixOpsTest(test.TestCase):
                 transpose_b=transpose_b,
                 adjoint_a=adjoint_a,
                 adjoint_b=adjoint_b)
-            c_dense_t = math_ops.matmul(
+            c_dense_t = test_util.matmul_without_tf32(
                 a_mats,
                 b_mats,
                 transpose_a=transpose_a,
@@ -580,12 +587,23 @@ class CSRSparseMatrixOpsTest(test.TestCase):
             c_t_value, c_dense_t_value = self.evaluate((c_t, c_dense_t))
 
             self.assertAllClose(
-                c_t_value, c_dense_t_value, rtol=1e-6, atol=1e-5)
+                c_t_value, c_dense_t_value, rtol=1e-6, atol=2e-5)
 
   @test_util.run_in_graph_and_eager_modes
   def testLargeBatchSparseMatrixMatMulTransposed(self):
+    dtypes_to_test = [np.float32]
+    if not test.is_built_with_rocm():
+      # complex types is not supported on the ROCm platform
+      dtypes_to_test += [np.complex64]
+
+    if test.is_built_with_rocm():
+      # TODO(rocm): fix this
+      # This test is currently failing on the ROCm platform
+      # Ren-enable it once the fix is available
+      self.skipTest("hipSPARSE all failure on the ROCm platform")
+
     sparsify = lambda m: m * (m > 0)
-    for dtype in np.float32, np.complex64:
+    for dtype in dtypes_to_test:
       for (transpose_a, transpose_b) in ((False, False), (False, True),
                                          (True, False), (True, True)):
         for (adjoint_a, adjoint_b) in ((False, False), (False, True),
@@ -622,7 +640,7 @@ class CSRSparseMatrixOpsTest(test.TestCase):
                 adjoint_b=adjoint_b)
 
             # Example: t(adj(a) . b) = t(b) . conj(a)
-            c_dense_t = math_ops.matmul(
+            c_dense_t = test_util.matmul_without_tf32(
                 math_ops.conj(b_mats) if adjoint_b else b_mats,
                 math_ops.conj(a_mats) if adjoint_a else a_mats,
                 transpose_a=not (transpose_b or adjoint_b),
@@ -632,10 +650,14 @@ class CSRSparseMatrixOpsTest(test.TestCase):
             self.assertAllEqual(c_t.shape, c_dense_t.shape)
             c_t_value, c_dense_t_value = self.evaluate((c_t, c_dense_t))
             self.assertAllClose(
-                c_t_value, c_dense_t_value, rtol=1e-6, atol=1e-5)
+                c_t_value, c_dense_t_value, rtol=1e-6, atol=2e-5)
 
   @test_util.run_in_graph_and_eager_modes
   def testLargeBatchSparseMatrixMatMulConjugate(self):
+    if test.is_built_with_rocm():
+      # complex types are not yet supported on the ROCm platform
+      self.skipTest("complex type not supported on ROCm")
+
     sparsify = lambda m: m * (m > 0)
     a_dense_shape = [53, 65, 127]
     b_dense_shape = [53, 127, 67]
@@ -648,7 +670,7 @@ class CSRSparseMatrixOpsTest(test.TestCase):
     c_t = sparse_csr_matrix_ops.sparse_matrix_mat_mul(
         a_sm, b_mats, conjugate_output=True)
 
-    c_dense_t = math_ops.conj(math_ops.matmul(a_mats, b_mats))
+    c_dense_t = math_ops.conj(test_util.matmul_without_tf32(a_mats, b_mats))
     self.assertAllEqual(c_t.shape, c_dense_t.shape)
     c_t_value, c_dense_t_value = self.evaluate((c_t, c_dense_t))
 
@@ -750,7 +772,7 @@ class CSRSparseMatrixOpsTest(test.TestCase):
             adjoint_b=adjoint_b)
         c_sm_dense = sparse_csr_matrix_ops.csr_sparse_matrix_to_dense(
             c_sm, dtypes.float32)
-        c_dense_t = math_ops.matmul(
+        c_dense_t = test_util.matmul_without_tf32(
             a_mats,
             b_mats,
             transpose_a=transpose_a,
@@ -766,6 +788,10 @@ class CSRSparseMatrixOpsTest(test.TestCase):
   def testLargeBatchRegisteredAddN(self):
     if not self._gpu_available:
       return
+
+    if test.is_built_with_rocm():
+      # sparse-matrix-add op is not yet supported on the ROCm platform
+      self.skipTest("sparse-matrix-add op not supported on ROCm")
 
     sparsify = lambda m: m * (m > 0)
     dense_shape = [53, 65, 127]
@@ -1117,7 +1143,7 @@ class CSRSparseMatrixOpsTest(test.TestCase):
         dense_cholesky = sparse_csr_matrix_ops.csr_sparse_matrix_to_dense(
             cholesky_sparse_matrices, dtype)
         # Compute L * Lh where L is the Sparse Cholesky factor.
-        verification = math_ops.matmul(
+        verification = test_util.matmul_without_tf32(
             dense_cholesky, array_ops.transpose(dense_cholesky, conjugate=True))
         verification = twist_matrix(verification, ordering_amd)
         # Assert that input matrix A satisfies A = L * Lh.
@@ -1154,9 +1180,10 @@ class CSRSparseMatrixOpsTest(test.TestCase):
         ]  #
     ]).astype(np.complex128)
 
-    data_types = [
-        dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128
-    ]
+    data_types = [dtypes.float32, dtypes.float64]
+    if not test.is_built_with_rocm():
+      # complex type is not supported on the ROCm platform
+      data_types += [dtypes.complex64, dtypes.complex128]
     for dtype in data_types:
       sparse_matrix = dense_to_csr_sparse_matrix(
           math_ops.cast(dense_mat, dtype))
@@ -1170,7 +1197,7 @@ class CSRSparseMatrixOpsTest(test.TestCase):
           cholesky_sparse_matrix, dtype)
 
       # Compute L * Lh.
-      verification = math_ops.matmul(
+      verification = test_util.matmul_without_tf32(
           dense_cholesky,
           array_ops.transpose(dense_cholesky, perm=[0, 2, 1], conjugate=True))
       verification = twist_matrix(verification, ordering_amd)
@@ -1211,7 +1238,7 @@ class CSRSparseMatrixOpsTest(test.TestCase):
         cholesky_sparse_matrix, dtypes.float32)
 
     # Compute L * Lh.
-    verification = math_ops.matmul(
+    verification = test_util.matmul_without_tf32(
         dense_cholesky, array_ops.transpose(dense_cholesky, perm=[0, 2, 1]))
     verification = twist_matrix(verification, ordering_amd)
     verification_values = self.evaluate(verification)

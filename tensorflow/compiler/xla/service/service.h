@@ -184,7 +184,7 @@ class Service : public ServiceInterface {
   Backend* mutable_backend() { return execute_backend_.get(); }
 
   // Create a Hlo module config for the given program shape and arguments.
-  // execution_options is optional; if not given a default is used.
+  // aot_options is optional; if not given a default is used.
   StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
       const ProgramShape& program_shape,
       absl::Span<const Shape* const> argument_shapes,
@@ -236,7 +236,8 @@ class Service : public ServiceInterface {
       const HloModuleProto& module_proto,
       std::unique_ptr<HloModuleConfig> module_config, Backend* backend,
       se::StreamExecutor* executor,
-      se::DeviceMemoryAllocator* device_allocator = nullptr);
+      se::DeviceMemoryAllocator* device_allocator = nullptr,
+      bool run_backend_only = false);
 
   // Same as BuildExecutable() above, but builds a list of Executables for the
   // given computations that may interact with each other.
@@ -244,7 +245,8 @@ class Service : public ServiceInterface {
       const std::vector<const HloModuleProto*>& module_protos,
       std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
       Backend* backend, std::vector<std::vector<se::StreamExecutor*>> executors,
-      se::DeviceMemoryAllocator* device_allocator);
+      se::DeviceMemoryAllocator* device_allocator,
+      bool run_backend_only = false);
 
   // Runs the given executable with the given arguments and register the result
   // in the allocation tracker. The handle of the result from the tracker is

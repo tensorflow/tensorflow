@@ -178,7 +178,7 @@ def run_user_main(wrapped_test_module):
         wrapped_test_module.__name__)
 
   # expr is defined because we would have raised an error otherwise.
-  new_ast = ast.Module(body=expr.body)  # pylint:disable=undefined-loop-variable
+  new_ast = ast.Module(body=expr.body, type_ignores=[])  # pylint:disable=undefined-loop-variable
   exec(  # pylint:disable=exec-used
       compile(new_ast, '<ast>', 'exec'),
       globals(),

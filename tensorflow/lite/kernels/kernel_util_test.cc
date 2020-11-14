@@ -14,8 +14,18 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/kernel_util.h"
 
+#include <math.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include <initializer_list>
+#include <vector>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/testing/util.h"
 
 namespace tflite {
@@ -426,8 +436,8 @@ TEST_F(KernelUtilTest, CheckAndPopulateShift) {
   int shift;
   int32_t output_activation_min;
   int32_t output_activation_max;
-  std::vector<int32_t> per_channel_multiplier(1);
-  std::vector<int> per_channel_shift(1);
+  std::vector<int32_t> per_channel_multiplier(3);
+  std::vector<int> per_channel_shift(3);
 
   // Call and verify results for per channel case.
   EXPECT_EQ(
@@ -435,11 +445,12 @@ TEST_F(KernelUtilTest, CheckAndPopulateShift) {
       PopulateConvolutionQuantizationParams(
           &context, &input, &filter, &bias, &output, kTfLiteActRelu,
           &multiplier, &shift, &output_activation_min, &output_activation_max,
-          per_channel_multiplier.data(), per_channel_shift.data()));
-  // Since the filter scale has a size of one i.e number of channels is one in
-  // our TC we expect 1073741824 as output
-  EXPECT_THAT(per_channel_multiplier, ::testing::ElementsAre(1073741824));
-  EXPECT_THAT(per_channel_shift, ::testing::ElementsAre(-1));
+          per_channel_multiplier.data(), per_channel_shift.data(), 3));
+  // Since the filter scale has a size of one but the number of channels is
+  // three, in our TC we expect three 1073741824 as output
+  EXPECT_THAT(per_channel_multiplier,
+              ::testing::ElementsAre(1073741824, 1073741824, 1073741824));
+  EXPECT_THAT(per_channel_shift, ::testing::ElementsAre(-1, -1, -1));
   EXPECT_EQ(shift, 1);
   EXPECT_EQ(multiplier, 1073741824);
 
@@ -545,7 +556,7 @@ TEST_F(KernelUtilTest, CheckAndPopulateZeroValue) {
       PopulateConvolutionQuantizationParams(
           &context, &input, &filter, &bias, &output, kTfLiteActRelu,
           &multiplier, &shift, &output_activation_min, &output_activation_max,
-          per_channel_multiplier.data(), per_channel_shift.data()));
+          per_channel_multiplier.data(), per_channel_shift.data(), 3));
   EXPECT_THAT(per_channel_multiplier,
               ::testing::ElementsAre(1073741824, 1073741824, 0));
   EXPECT_THAT(per_channel_shift, ::testing::ElementsAre(-30, -31, 0));
@@ -636,8 +647,8 @@ TEST_F(KernelUtilTest, CheckAndPopulateUint8) {
   int shift;
   int32_t output_activation_min;
   int32_t output_activation_max;
-  std::vector<int32_t> per_channel_multiplier(1);
-  std::vector<int> per_channel_shift(1);
+  std::vector<int32_t> per_channel_multiplier(3);
+  std::vector<int> per_channel_shift(3);
 
   // Call and verify results for per channel case.
   EXPECT_EQ(
@@ -645,9 +656,10 @@ TEST_F(KernelUtilTest, CheckAndPopulateUint8) {
       PopulateConvolutionQuantizationParams(
           &context, &input, &filter, &bias, &output, kTfLiteActRelu,
           &multiplier, &shift, &output_activation_min, &output_activation_max,
-          per_channel_multiplier.data(), per_channel_shift.data()));
-  EXPECT_THAT(per_channel_multiplier, ::testing::ElementsAre(1073741824));
-  EXPECT_THAT(per_channel_shift, ::testing::ElementsAre(-30));
+          per_channel_multiplier.data(), per_channel_shift.data(), 3));
+  EXPECT_THAT(per_channel_multiplier,
+              ::testing::ElementsAre(1073741824, 1073741824, 1073741824));
+  EXPECT_THAT(per_channel_shift, ::testing::ElementsAre(-30, -30, -30));
 
   // Release.
   TfLiteTensorFree(&input);
@@ -718,8 +730,8 @@ TEST_F(KernelUtilTest, CheckAndPopulateWithoutBias) {
   int shift;
   int32_t output_activation_min;
   int32_t output_activation_max;
-  std::vector<int32_t> per_channel_multiplier(1);
-  std::vector<int> per_channel_shift(1);
+  std::vector<int32_t> per_channel_multiplier(3);
+  std::vector<int> per_channel_shift(3);
 
   // Call and verify results for per channel case.
   EXPECT_EQ(
@@ -727,9 +739,10 @@ TEST_F(KernelUtilTest, CheckAndPopulateWithoutBias) {
       PopulateConvolutionQuantizationParams(
           &context, &input, &filter, nullptr, &output, kTfLiteActRelu,
           &multiplier, &shift, &output_activation_min, &output_activation_max,
-          per_channel_multiplier.data(), per_channel_shift.data()));
-  EXPECT_THAT(per_channel_multiplier, ::testing::ElementsAre(1073741824));
-  EXPECT_THAT(per_channel_shift, ::testing::ElementsAre(-30));
+          per_channel_multiplier.data(), per_channel_shift.data(), 3));
+  EXPECT_THAT(per_channel_multiplier,
+              ::testing::ElementsAre(1073741824, 1073741824, 1073741824));
+  EXPECT_THAT(per_channel_shift, ::testing::ElementsAre(-30, -30, -30));
 
   // Release.
   TfLiteTensorFree(&input);

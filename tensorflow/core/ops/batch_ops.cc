@@ -25,6 +25,19 @@ REGISTER_OP("BatchFunction")
     .Output("out_tensors: Tout")
     .Attr("f: func")
     .Attr("num_batch_threads: int")
+    // 'max_batch_size' denotes the maximum batch size acceptable, i.e., inputs
+    // with larger batch size are simply invalidated.
+    // By default, 'max_batch_size' must be equal to max value of
+    // 'allowed_batch_sizes'.
+    // By setting 'enable_large_batch_splitting' (attribute below) to true,
+    // 'max_batch_size' can be greater than or equal to max value of
+    // 'allowed_batch_sizes', in other words,
+    // 1) input with size > 'max_batch_size' is still invalidated.
+    // 2) input with
+    //    a) size <= 'max_batch_size'
+    //    b) size > max value of 'allowed_batch_sizes'
+    //    will automatically be split into multiple batches (with batch size in
+    //    'allowed_batch_sizes'), executed, and re-composed (as final output).
     .Attr("max_batch_size: int")
     .Attr("batch_timeout_micros: int")
     .Attr("max_enqueued_batches: int = 10")
@@ -35,6 +48,12 @@ REGISTER_OP("BatchFunction")
     .Attr("Tin: list(type)")
     .Attr("Tcaptured: list(type) >= 0")
     .Attr("Tout: list(type)")
+    // If 'enable_large_batch_splitting' is true, for input batches exceeding
+    // the largest value in "allowed_batch_sizes", allow the batch to be split
+    // into multiple batches with batch size within "allowed_batch_sizes".
+    // NOTE: Support for `enable_large_batch_splitting == true` is still
+    // developed in progress.
+    .Attr("enable_large_batch_splitting: bool = false")
     // TODO(apassos): Fix this shape inference function. It requires shape
     // inference of function calls.
     .SetShapeFn(shape_inference::UnknownShape);

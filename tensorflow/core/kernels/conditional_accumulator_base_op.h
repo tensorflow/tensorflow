@@ -75,7 +75,7 @@ class ConditionalAccumulatorBaseOp : public OpKernel {
 
  protected:
   virtual void SetHandleToOutput(OpKernelContext* ctx)
-      SHARED_LOCKS_REQUIRED(mu_) = 0;
+      TF_SHARED_LOCKS_REQUIRED(mu_) = 0;
 
   virtual Status CheckSignature(OpKernelContext* ctx) = 0;
 
@@ -91,12 +91,12 @@ class ConditionalAccumulatorBaseOp : public OpKernel {
   ContainerInfo cinfo_;
   string reduction_type_;
   mutex mu_;
-  PersistentTensor accumulator_handle_ GUARDED_BY(mu_);
-  bool accumulator_handle_set_ GUARDED_BY(mu_);
+  PersistentTensor accumulator_handle_ TF_GUARDED_BY(mu_);
+  bool accumulator_handle_set_ TF_GUARDED_BY(mu_);
 
  private:
   Status SetAccumulatorHandle(OpKernelContext* ctx)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     TF_RETURN_IF_ERROR(cinfo_.Init(ctx->resource_manager(), def()));
 
     // Check input signature
@@ -119,7 +119,6 @@ class ConditionalAccumulatorBaseOp : public OpKernel {
     accumulator_handle_set_ = true;
     return Status::OK();
   }
-
 };
 
 // ------------------Sync kernels ------------------------------------------

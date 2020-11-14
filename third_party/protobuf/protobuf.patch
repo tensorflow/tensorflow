@@ -1,17 +1,25 @@
 diff --git a/BUILD b/BUILD
-index 2fb26050..c2744d5b 100644
+index dbae719ff..87dc38470 100644
 --- a/BUILD
 +++ b/BUILD
-@@ -19,7 +19,7 @@ config_setting(
+@@ -23,7 +23,7 @@ config_setting(
  # ZLIB configuration
  ################################################################################
- 
+
 -ZLIB_DEPS = ["@zlib//:zlib"]
-+ZLIB_DEPS = ["@zlib_archive//:zlib"]
- 
++ZLIB_DEPS = ["@zlib"]
+
  ################################################################################
  # Protobuf Runtime Library
-@@ -209,6 +209,7 @@ cc_library(
+@@ -143,6 +143,7 @@ cc_library(
+     copts = COPTS,
+     includes = ["src/"],
+     linkopts = LINK_OPTS,
++    alwayslink = 1,
+     visibility = ["//visibility:public"],
+ )
+
+@@ -213,6 +214,7 @@ cc_library(
      copts = COPTS,
      includes = ["src/"],
      linkopts = LINK_OPTS,
@@ -19,26 +27,17 @@ index 2fb26050..c2744d5b 100644
      visibility = ["//visibility:public"],
      deps = [":protobuf_lite"] + PROTOBUF_DEPS,
  )
-@@ -219,7 +220,7 @@ cc_library(
- # TODO(keveman): Remove this target once the support gets added to Bazel.
- cc_library(
-     name = "protobuf_headers",
--    hdrs = glob(["src/**/*.h"]),
-+    hdrs = glob(["src/**/*.h", "src/**/*.inc"]),
-     includes = ["src/"],
-     visibility = ["//visibility:public"],
- )
- 
 diff --git a/protobuf.bzl b/protobuf.bzl
-index e0653321f..4ac23594b 100644
+index e0653321f..253d9cbb5 100644
 --- a/protobuf.bzl
 +++ b/protobuf.bzl
-@@ -85,6 +85,8 @@ def _proto_gen_impl(ctx):
+@@ -84,7 +84,9 @@ def _proto_gen_impl(ctx):
+
      for dep in ctx.attr.deps:
          import_flags += dep.proto.import_flags
          deps += dep.proto.deps
 +    import_flags = depset(import_flags).to_list()
 +    deps = depset(deps).to_list()
- 
+
      if not ctx.attr.gen_cc and not ctx.attr.gen_py and not ctx.executable.plugin:
          return struct(

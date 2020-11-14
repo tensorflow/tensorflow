@@ -13,13 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <stdint.h>
+
 #include <initializer_list>
+#include <memory>
+#include <vector>
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace {
@@ -76,6 +79,26 @@ TEST(OneHotOpTest, BasicFloat) {
 TEST(OneHotOpTest, BasicInt) {
   const int depth = 3;
   OneHotOpModel<int> model({3}, depth, TensorType_INT32);
+  model.SetIndices({0, 1, 2});
+  model.Invoke();
+
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({3, 3}));
+  EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 0, 0, 0, 1, 0, 0, 0, 1}));
+}
+
+TEST(OneHotOpTest, BasicInt8) {
+  const int depth = 3;
+  OneHotOpModel<int8_t> model({3}, depth, TensorType_INT8);
+  model.SetIndices({0, 1, 2});
+  model.Invoke();
+
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({3, 3}));
+  EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 0, 0, 0, 1, 0, 0, 0, 1}));
+}
+
+TEST(OneHotOpTest, BasicUint8) {
+  const int depth = 3;
+  OneHotOpModel<uint8_t> model({3}, depth, TensorType_UINT8);
   model.SetIndices({0, 1, 2});
   model.Invoke();
 

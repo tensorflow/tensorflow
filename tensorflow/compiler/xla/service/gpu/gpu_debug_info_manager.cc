@@ -88,7 +88,7 @@ void GpuDebugInfoManager::StopTracing(
     tensorflow::mutex_lock lock(mutex_);
     CHECK(tracing_active_);
     tracing_active_ = false;
-    for (const auto running_module_id : running_module_ids_) {
+    for (const auto& running_module_id : running_module_ids_) {
       const ModuleIdentifier& module_id = running_module_id.first;
       if (active_modules_.find(module_id) == active_modules_.end()) {
         LOG(ERROR) << "Cannot find debug info for module: " << module_id;

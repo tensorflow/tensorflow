@@ -20,8 +20,8 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/delegates/gpu/cl/cl_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/environment.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -51,21 +51,21 @@ class OpenCLOperationTest : public ::testing::Test {
   CreationContext creation_context_;
 };
 
-Status ExecuteGPUOperation(const TensorFloat32& src_cpu,
-                           const CreationContext& creation_context,
-                           GPUOperation* operation, const BHWC& dst_size,
-                           TensorFloat32* result);
+absl::Status ExecuteGPUOperation(const TensorFloat32& src_cpu,
+                                 const CreationContext& creation_context,
+                                 std::unique_ptr<GPUOperation>&& operation,
+                                 const BHWC& dst_size, TensorFloat32* result);
 
-Status ExecuteGPUOperation(const std::vector<TensorFloat32>& src_cpu,
-                           const CreationContext& creation_context,
-                           GPUOperation* operation, const BHWC& dst_size,
-                           TensorFloat32* result);
+absl::Status ExecuteGPUOperation(const std::vector<TensorFloat32>& src_cpu,
+                                 const CreationContext& creation_context,
+                                 std::unique_ptr<GPUOperation>&& operation,
+                                 const BHWC& dst_size, TensorFloat32* result);
 
-Status ExecuteGPUOperation(const std::vector<TensorFloat32>& src_cpu,
-                           const CreationContext& creation_context,
-                           GPUOperation* operation,
-                           const std::vector<BHWC>& dst_sizes,
-                           const std::vector<TensorFloat32*>& dst_cpu);
+absl::Status ExecuteGPUOperation(const std::vector<TensorFloat32>& src_cpu,
+                                 const CreationContext& creation_context,
+                                 std::unique_ptr<GPUOperation>&& operation,
+                                 const std::vector<BHWC>& dst_sizes,
+                                 const std::vector<TensorFloat32*>& dst_cpu);
 }  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

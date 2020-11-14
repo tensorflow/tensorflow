@@ -23,7 +23,7 @@
 # the Python binary path.
 #
 # The --gpu flag informs the script that this is a GPU build, so that the
-# appropriate test blacklists can be applied accordingly.
+# appropriate test denylists can be applied accordingly.
 #
 
 echo ""
@@ -196,7 +196,7 @@ else
 "/usr/local/cuda/lib and /usr/local/cuda/lib64"
   fi
 
-  echo "Found CUDA library diretory at: ${CUDA_LIB_DIR}"
+  echo "Found CUDA library directory at: ${CUDA_LIB_DIR}"
   echo ""
 
   # USER_OP_SO=$(basename $(echo "${OP_KERNEL_CC}" | sed -e 's/\.cc/\.so/'))

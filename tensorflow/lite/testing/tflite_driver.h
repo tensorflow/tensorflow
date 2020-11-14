@@ -40,10 +40,15 @@ class TfLiteDriver : public TestRunner {
     kFlex,
   };
 
+  // Initialize the global test delegate providers from commandline arguments
+  // and returns true if successful.
+  static bool InitTestDelegateProviders(int* argc, const char** argv);
+
   /**
    * Creates a new TfLiteDriver
    * @param  delegate         The (optional) delegate to use.
-   * @param  reference_kernel Whether to use the builtin reference kernel ops.
+   * @param  reference_kernel Whether to use the builtin reference kernel
+   * ops.
    */
   explicit TfLiteDriver(DelegateType delegate_type = DelegateType::kNone,
                         bool reference_kernel = false);

@@ -186,6 +186,30 @@ llvm::Value* IrFunction::GetDynamicLoopBound(const int64 offset) {
                                       b_->getInt64(offset), name));
 }
 
+llvm::Value* EncodeArrayFunctionArguments(
+    absl::Span<llvm::Value* const> arguments, absl::string_view name,
+    llvm::IRBuilder<>* b) {
+  llvm::Value* arguments_buffer;
+  llvm::Type* int8ptr_ty = b->getInt8PtrTy();
+  if (arguments.empty()) {
+    arguments_buffer = llvm::Constant::getNullValue(int8ptr_ty->getPointerTo());
+  } else {
+    arguments_buffer = llvm_ir::EmitAllocaAtFunctionEntryWithCount(
+        int8ptr_ty, b->getInt32(arguments.size()),
+        absl::StrCat(name, "_parameter_addresses"), b);
+
+    for (size_t i = 0; i < arguments.size(); i++) {
+      llvm::Value* parameter_as_i8ptr = b->CreateBitCast(
+          arguments[i], b->getInt8PtrTy(),
+          absl::StrCat(name, "_parameter_", i, "_address_as_i8ptr"));
+      llvm::Value* slot_in_param_addresses =
+          b->CreateInBoundsGEP(arguments_buffer, {b->getInt64(i)});
+      b->CreateStore(parameter_as_i8ptr, slot_in_param_addresses);
+    }
+  }
+  return arguments_buffer;
+}
+
 // Emits code to allocate an array of parameter address pointers, and store
 // each address from 'parameter_addresses'.
 // Returns an array of compute function call arguments (including parameter
@@ -195,25 +219,8 @@ std::vector<llvm::Value*> GetArrayFunctionCallArguments(
     absl::string_view name, llvm::Value* return_value_buffer,
     llvm::Value* exec_run_options_arg, llvm::Value* buffer_table_arg,
     llvm::Value* profile_counters_arg) {
-  llvm::Value* parameter_addresses_buffer;
-
-  if (parameter_addresses.empty()) {
-    parameter_addresses_buffer =
-        llvm::Constant::getNullValue(b->getInt8PtrTy()->getPointerTo());
-  } else {
-    parameter_addresses_buffer = llvm_ir::EmitAllocaAtFunctionEntryWithCount(
-        b->getInt8PtrTy(), b->getInt32(parameter_addresses.size()),
-        absl::StrCat(name, "_parameter_addresses"), b);
-
-    for (size_t i = 0; i < parameter_addresses.size(); ++i) {
-      llvm::Value* parameter_as_i8ptr = b->CreateBitCast(
-          parameter_addresses[i], b->getInt8PtrTy(),
-          absl::StrCat(name, "_parameter_", i, "_address_as_i8ptr"));
-      llvm::Value* slot_in_param_addresses =
-          b->CreateInBoundsGEP(parameter_addresses_buffer, {b->getInt64(i)});
-      b->CreateStore(parameter_as_i8ptr, slot_in_param_addresses);
-    }
-  }
+  llvm::Value* parameter_addresses_buffer =
+      EncodeArrayFunctionArguments(parameter_addresses, name, b);
 
   const auto to_int8_ptr = [=](llvm::Value* ptr) {
     return b->CreatePointerCast(ptr, b->getInt8PtrTy());
