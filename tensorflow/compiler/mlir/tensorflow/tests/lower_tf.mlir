@@ -667,6 +667,14 @@ func @DynamicStitch_duplicates(%arg0: tensor<2x2xf32>) -> tensor<1x2xf32> {
   return %0 : tensor<1x2xf32>
 }
 
+// CHECK-LABEL: func @ParallelDynamicStitch
+func @ParallelDynamicStitch(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  %indices = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi32>} : () -> tensor<2xi32>
+  // CHECK-NOT: tf.ParallelDynamicStitch
+  %0 = "tf.ParallelDynamicStitch"(%indices, %arg0) : (tensor<2xi32>, tensor<2x2xf32>) -> tensor<2x2xf32>
+  return %0 : tensor<2x2xf32>
+}
+
 // CHECK-LABEL: @Reciprocal_i32
 func @Reciprocal_i32(%arg0: tensor<*xi32>) -> tensor<*xi32> {
   // CHECK: %[[ONE:.*]] = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
