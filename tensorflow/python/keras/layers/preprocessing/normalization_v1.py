@@ -27,7 +27,7 @@ from tensorflow.python.util.tf_export import keras_export
 @keras_export(v1=['keras.layers.experimental.preprocessing.Normalization'])
 class Normalization(normalization.Normalization, CombinerPreprocessingLayer):
 
-  def __init__(self, axis=-1, dtype=None, **kwargs):
-    super(Normalization, self).__init__(axis, dtype, **kwargs)
+  def __init__(self, axis=-1, **kwargs):
+    super(Normalization, self).__init__(axis, **kwargs)
     base_preprocessing_layer.keras_kpl_gauge.get_cell(
         'Normalization v1').set(True)
