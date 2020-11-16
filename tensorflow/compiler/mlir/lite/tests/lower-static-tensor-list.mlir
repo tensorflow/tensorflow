@@ -1,4 +1,4 @@
-// RUN: tf-opt -split-input-file -verify-diagnostics -tfl-lower-static-tensor-list %s | FileCheck %s
+// RUN: tf-opt -tfl-lower-static-tensor-list %s | FileCheck %s
 
 // CHECK-LABEL: tensorlistConst
 func @tensorlistConst(%arg0 : tensor<1xi32>) -> tensor<2x3xi32> {
@@ -55,18 +55,6 @@ func @tensorlistStackWithConstantElementShape(%arg0: tensor<?x3xf32>) -> (tensor
 // CHECK-NEXT:  [[RESHAPE:%.*]] = "tf.Reshape"(%arg0, [[SHAPE]]) : (tensor<?x3xf32>, tensor<?xi32>) -> tensor<2x3xf32>
 // CHECK-NEXT:  return [[RESHAPE]] : tensor<2x3xf32>
 }
-
-// -----
-
-func @tensorlistStackWithUnknownConstantElementShape(%arg0: tensor<?x3xf32>) -> (tensor<2x3xf32>) {
-  %cst = constant dense<-1> : tensor<2xi32>
-  %0 = "tf.TensorListFromTensor"(%arg0, %cst) : (tensor<?x3xf32>, tensor<2xi32>) -> tensor<!tf.variant<tensor<3xf32>>>
-  // expected-error @+1 {{failed to legalize operation 'tf.TensorListStack' that was explicitly marked illegal}}
-  %1 = "tf.TensorListStack"(%0, %cst) {num_elements = 2 : i64} : (tensor<!tf.variant<tensor<3xf32>>>, tensor<2xi32>) -> tensor<2x3xf32>
-  return %1 : tensor<2x3xf32>
-}
-
-// -----
 
 func @tensorlistSetItem(%arg0: tensor<3x10xf32>, %arg1: tensor<1xi32>, %arg2: tensor<i32>, %arg3: tensor<10xf32>) -> tensor<3x10xf32> {
   %0 = "tf.TensorListFromTensor"(%arg0, %arg1) : (tensor<3x10xf32>, tensor<1xi32>) -> tensor<!tf.variant<tensor<10xf32>>>

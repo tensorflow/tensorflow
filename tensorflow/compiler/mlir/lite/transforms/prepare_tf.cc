@@ -64,7 +64,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/einsum.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/unroll_batch_matmul.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/verification_utils.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 
 #define DEBUG_TYPE "tf-tfl-legalization"
@@ -541,8 +540,6 @@ struct ConvertTFStridedSlice : public RewritePattern {
       new_axis_mask >>= 1;
     }
 
-    if (failed(TF::VerifyShapeOfReshapeOp(new_shape))) return failure();
-
     const int dim_size = new_shape.size();
     Location loc = strided_slice_op.getLoc();
     auto shape_type =
@@ -552,7 +549,6 @@ struct ConvertTFStridedSlice : public RewritePattern {
       result_shape_data[i] =
           rewriter.getI32IntegerAttr(static_cast<int32_t>(new_shape[i]));
     }
-
     auto shape_attr = DenseElementsAttr::get(shape_type, result_shape_data);
     auto shape = rewriter.create<ConstantOp>(loc, shape_type, shape_attr);
     auto new_output_type =
