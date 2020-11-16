@@ -77,9 +77,6 @@ EMBARC_MLI_PRE_COMPILED_MD5 := "173990c2dde4efef6a2c95b92d1f0244"
 ZEPHYR_URL := "http://mirror.tensorflow.org/github.com/antmicro/zephyr/archive/55e36b9.zip"
 ZEPHYR_MD5 := "755622eb4812fde918a6382b65d50c3b"
 
-XTENSA_HIFI4_URL :="http://mirror.tensorflow.org/github.com/foss-xtensa/nnlib-hifi4/raw/master/archive/xa_nnlib_06_27.zip"
-XTENSA_HIFI4_MD5 :="45fdc1209a8da62ab568aa6040f7eabf"
-
 ETHOSU_URL := "https://git.mlplatform.org/ml/ethos-u/ethos-u-core-driver.git/snapshot/ethos-u-core-driver-2b201c340788ac582cec160b7217c2b5405b04f9.tar.gz"
 ETHOSU_MD5 := "0c148b90a1ee01de398892eb3a63e717"
 
