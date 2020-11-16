@@ -126,7 +126,7 @@ class ProfilerServiceImpl : public grpc::ProfilerService::Service {
 
   mutex mutex_;
   absl::flat_hash_map<std::string, bool> stop_signals_per_session_
-      GUARDED_BY(mutex_);
+      ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace

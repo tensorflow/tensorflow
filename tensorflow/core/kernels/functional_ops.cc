@@ -150,7 +150,7 @@ class IfOp : public AsyncOpKernel {
 
   mutex mu_;
   std::unordered_map<FunctionLibraryRuntime*, std::pair<FHandle, FHandle>>
-      handles_ GUARDED_BY(mu_);
+      handles_ ABSL_GUARDED_BY(mu_);
 
   class State {
    public:
@@ -395,7 +395,7 @@ class WhileOp : public AsyncOpKernel {
 
   mutex mu_;
   std::unordered_map<FunctionLibraryRuntime*, std::pair<FHandle, FHandle>>
-      handles_ GUARDED_BY(mu_);
+      handles_ ABSL_GUARDED_BY(mu_);
 
   static Status CondResultToBool(OpKernelContext* ctx,
                                  const FunctionLibraryRuntime::Options& opts,

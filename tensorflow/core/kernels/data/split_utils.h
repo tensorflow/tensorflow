@@ -35,7 +35,7 @@ class IndexSplitProvider : public SplitProvider {
 
  private:
   mutex mu_;
-  int64 i_ GUARDED_BY(mu_);
+  int64 i_ ABSL_GUARDED_BY(mu_);
   const int64 n_;
 };
 
