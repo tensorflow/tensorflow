@@ -20,14 +20,14 @@ source tensorflow/tools/ci_build/release/common.sh
 
 # TODO(mihaimaruseac): Convert all builds to start from a virtualenv to isolate
 # from Kokoro setup
-python -m pip install --upgrade --user twine
+python3 -m pip install --upgrade --user twine
 
 # Copy and rename to tf_nightly
 for f in $(ls "${KOKORO_GFILE_DIR}"/tf_nightly_gpu*dev*cp3*-cp3*-win_amd64.whl); do
-  copy_to_new_project_name "${f}" tf_nightly python
+  copy_to_new_project_name "${f}" tf_nightly python3
 done
 
 # Upload the built packages to pypi.
 for f in $(ls "${KOKORO_GFILE_DIR}"/tf_nightly*dev*cp3*-cp3*-win_amd64.whl); do
-  twine upload -r pypi-warehouse "$f" || echo
+  python3 -m twine upload -r pypi-warehouse "$f" || echo
 done
