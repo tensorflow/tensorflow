@@ -45,7 +45,6 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_v2_toggles
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import functional_ops
-from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gen_list_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gradient_checker_v2
@@ -1156,21 +1155,6 @@ class TensorListTest(PForTestCase):
       l2 = list_ops.tensor_list_set_item(l2, 1, i)
       return list_ops.tensor_list_stack(
           math_ops.add_n([l1, l2]), dtypes.int32)
-
-    self._test_loop_fn(loop_fn, 2)
-
-
-class OptionalTest(PForTestCase):
-
-  def test_optional_from_value(self):
-
-    def loop_fn(i):
-      o = gen_dataset_ops.optional_from_value(
-          [i, i + 1, constant_op.constant(3)])
-      gen_dataset_ops.optional_none()
-      return gen_dataset_ops.optional_get_value(
-          o, [dtypes.int32, dtypes.int32, dtypes.int32],
-          [[], [], []])
 
     self._test_loop_fn(loop_fn, 2)
 
