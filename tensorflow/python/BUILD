@@ -2124,6 +2124,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":platform",
+        ":tf_stack",
         ":util",
     ],
 )
@@ -5708,7 +5709,6 @@ py_strict_library(
 py_strict_library(
     name = "tf_stack",
     srcs = ["util/tf_stack.py"],
-    compatible_with = get_compatible_with_portable(),
     srcs_version = "PY2AND3",
     # TODO(mdan): Remove public visibility.
     visibility = ["//visibility:public"],
@@ -5721,7 +5721,6 @@ py_strict_library(
 pybind_extension(
     name = "_tf_stack",
     srcs = ["util/tf_stack.cc"],
-    compatible_with = get_compatible_with_portable(),
     # TODO(b/138203821): change to "util._tf_stack" once the bug is fixed.
     module_name = "_tf_stack",
     deps = [
@@ -5839,7 +5838,6 @@ py_library(
         ":global_test_configuration",
         ":tf_decorator",
         ":tf_export",
-        ":tf_stack",
         "@org_python_pypi_backports_weakref",
         "@com_google_protobuf//:protobuf_python",
         "//third_party/py/numpy",
