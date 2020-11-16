@@ -950,6 +950,7 @@ def cast(x, dtype, name=None):
   if isinstance(x,
                 (ops.Tensor, _resource_variable_type)) and base_type == x.dtype:
     return x
+
   with ops.name_scope(name, "Cast", [x]) as name:
     if isinstance(x, sparse_tensor.SparseTensor):
       values_cast = cast(x.values, base_type, name=name)
@@ -957,11 +958,9 @@ def cast(x, dtype, name=None):
     elif isinstance(x, ops.IndexedSlices):
       values_cast = cast(x.values, base_type, name=name)
       x = ops.IndexedSlices(values_cast, x.indices, x.dense_shape)
+    elif not isinstance(x, ops.Tensor):
+      return ops.convert_to_tensor(x, dtype=dtype, name=name)
     else:
-      # TODO(josh11b): If x is not already a Tensor, we could return
-      # ops.convert_to_tensor(x, dtype=dtype, ...)  here, but that
-      # allows some conversions that cast() can't do, e.g. casting numbers to
-      # strings.
       x = ops.convert_to_tensor(x, name="x")
       if x.dtype.base_dtype != base_type:
         x = gen_math_ops.cast(x, base_type, name=name)
