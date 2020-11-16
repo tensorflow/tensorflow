@@ -1,4 +1,4 @@
-load("//tensorflow/lite:build_def.bzl", "DEPRECATED_tf_to_tflite")
+load("//tensorflow/lite:build_def.bzl", "tf_to_tflite")
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
 
 package(
@@ -8,7 +8,7 @@ package(
 
 exports_files(glob(["*.pb"]))
 
-DEPRECATED_tf_to_tflite(
+tf_to_tflite(
     name = "permute_float",
     src = "permute.pbtxt",
     out = "permute_float.tflite",
@@ -18,7 +18,7 @@ DEPRECATED_tf_to_tflite(
     ],
 )
 
-DEPRECATED_tf_to_tflite(
+tf_to_tflite(
     name = "permute_uint8",
     src = "permute.pbtxt",
     out = "permute_uint8.tflite",
@@ -26,14 +26,14 @@ DEPRECATED_tf_to_tflite(
         "--input_arrays=input",
         "--output_arrays=output",
         "--inference_type=QUANTIZED_UINT8",
-        "--std_values=1",
+        "--std_dev_values=1",
         "--mean_values=0",
         "--default_ranges_min=0",
         "--default_ranges_max=255",
     ],
 )
 
-DEPRECATED_tf_to_tflite(
+tf_to_tflite(
     name = "gather_string",
     src = "gather.pbtxt",
     out = "gather_string.tflite",
@@ -43,7 +43,7 @@ DEPRECATED_tf_to_tflite(
     ],
 )
 
-DEPRECATED_tf_to_tflite(
+tf_to_tflite(
     name = "gather_string_0d",
     src = "gather_0d.pbtxt",
     out = "gather_string_0d.tflite",
