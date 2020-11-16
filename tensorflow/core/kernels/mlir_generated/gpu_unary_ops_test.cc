@@ -75,6 +75,8 @@ class GpuUnaryOpTest : public OpsTestBase {
   }
 };
 
+/// Test `tf.Tanh`.
+
 TEST_F(GpuUnaryOpTest, TanhFloat) {
   Run<float>(/*input_shape=*/{2, 7},
              /*input=*/
@@ -111,6 +113,46 @@ TEST_F(GpuUnaryOpTest, TanhHalf) {
       /*expect_equal=*/false);
 }
 
+/// Test `tf.Ceil`.
+
+TEST_F(GpuUnaryOpTest, CeilFloat) {
+  Run<float>(/*input_shape=*/{2, 7},
+             /*input=*/
+             {-18.0f, -9.0f, -1e-6f, -0.0f, 0.0f, 1e-6, 0.1f, 0.2f, 0.3f, 0.5f,
+              0.7f, 0.9f, 9.0f, 18.0f},
+             /*op_name=*/"Ceil",
+             /*expected_callback=*/std::ceil,
+             /*expect_equal=*/true);
+}
+
+TEST_F(GpuUnaryOpTest, CeilDouble) {
+  Run<double>(/*input_shape=*/{2, 7},
+              /*input=*/
+              {-18.0, -9.0, -1e-6, -0.0, 0.0, 1e-6, 0.1, 0.2, 0.3, 0.5, 0.7,
+               0.9, 9.0, 18.0},
+              /*op_name=*/"Ceil",
+              /*expected_callback=*/std::ceil,
+              /*expect_equal=*/true);
+}
+
+TEST_F(GpuUnaryOpTest, CeilHalf) {
+  Run<Eigen::half, float>(
+      /*input_shape=*/{2, 7},
+      /*input=*/
+      {static_cast<Eigen::half>(-18.0), static_cast<Eigen::half>(-9.0),
+       static_cast<Eigen::half>(-1e-6), static_cast<Eigen::half>(-0.0),
+       static_cast<Eigen::half>(0.0), static_cast<Eigen::half>(1e-6),
+       static_cast<Eigen::half>(0.1), static_cast<Eigen::half>(0.2),
+       static_cast<Eigen::half>(0.3), static_cast<Eigen::half>(0.5),
+       static_cast<Eigen::half>(0.7), static_cast<Eigen::half>(0.9),
+       static_cast<Eigen::half>(9.0), static_cast<Eigen::half>(18.0)},
+      /*op_name=*/"Ceil",
+      /*expected_callback=*/std::ceil,
+      /*expect_equal=*/true);
+}
+
+/// Test `tf.Abs`.
+
 TEST_F(GpuUnaryOpTest, AbsFloat) {
   Run<float>(
       /*input_shape=*/{2, 3},
@@ -119,7 +161,7 @@ TEST_F(GpuUnaryOpTest, AbsFloat) {
        std::numeric_limits<float>::infinity()},
       /*op_name=*/"Abs",
       /*expected_callback=*/std::abs,
-      /*expect_equal=*/false);
+      /*expect_equal=*/true);
 }
 
 TEST_F(GpuUnaryOpTest, AbsDouble) {
@@ -130,7 +172,7 @@ TEST_F(GpuUnaryOpTest, AbsDouble) {
        std::numeric_limits<double>::infinity()},
       /*op_name=*/"Abs",
       /*expected_callback=*/std::abs,
-      /*expect_equal=*/false);
+      /*expect_equal=*/true);
 }
 
 TEST_F(GpuUnaryOpTest, AbsHalf) {
@@ -143,7 +185,7 @@ TEST_F(GpuUnaryOpTest, AbsHalf) {
        static_cast<Eigen::half>(std::numeric_limits<double>::infinity())},
       /*op_name=*/"Abs",
       /*expected_callback=*/std::abs,
-      /*expect_equal=*/false);
+      /*expect_equal=*/true);
 }
 
 TEST_F(GpuUnaryOpTest, AbsInt32) {
