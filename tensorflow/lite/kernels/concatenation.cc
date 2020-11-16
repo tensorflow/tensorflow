@@ -152,7 +152,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     if (params->fixed_point_scaling) {                                        \
       effective_scale_multiplier.resize(node->inputs->size);                  \
       effective_scale_shift.resize(node->inputs->size);                       \
-      const float inverse_output_scale = 1.f / output->params.scale;          \
+      const double inverse_output_scale = 1.0 / output->params.scale;         \
       for (int i = 0; i < node->inputs->size; i++) {                          \
         QuantizeMultiplier(all_inputs.scale()[i] * inverse_output_scale,      \
                            &effective_scale_multiplier[i],                    \

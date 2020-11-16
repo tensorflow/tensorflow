@@ -222,11 +222,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
             reinterpret_cast<int*>(context->AllocatePersistentBuffer(
                 context, node->inputs->size * sizeof(int)));
 
-        const float inverse_output_scale = 1.f / output->params.scale;
+        const double inverse_output_scale =
+            1.0 / static_cast<double>(output->params.scale);
         for (int i = 0; i < node->inputs->size; i++) {
-          QuantizeMultiplier(input_scales[i] * inverse_output_scale,
-                             &effective_scale_multiplier[i],
-                             &effective_scale_shift[i]);
+          QuantizeMultiplier(
+              static_cast<double>(input_scales[i]) * inverse_output_scale,
+              &effective_scale_multiplier[i], &effective_scale_shift[i]);
         }
       }
 
