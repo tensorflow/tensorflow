@@ -24,6 +24,7 @@ import six
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.keras import losses as losses_mod
 from tensorflow.python.keras import metrics as metrics_mod
+from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -261,7 +262,9 @@ class LossesContainer(Container):
 
     loss = losses_mod.get(loss)
     if not isinstance(loss, losses_mod.Loss):
-      loss_name = loss.__name__
+      loss_name = get_custom_object_name(loss)
+      if loss_name is None:
+        raise ValueError('Loss should be a callable, found: {}'.format(loss))
       loss = losses_mod.LossFunctionWrapper(loss, name=loss_name)
     loss._allow_sum_over_batch_size = True  # pylint: disable=protected-access
     return loss
@@ -289,10 +292,24 @@ class MetricsContainer(Container):
 
   @property
   def metrics(self):
-    """Metrics created by this container."""
+    """All metrics in this container."""
     if not self._built:
       return []
     return self._metrics_in_order
+
+  @property
+  def unweighted_metrics(self):
+    """Metrics in this container that should not be passed `sample_weight`."""
+    if not self._built:
+      return None
+    return nest.flatten(self._metrics)
+
+  @property
+  def weighted_metrics(self):
+    """Metrics in this container that should be passed `sample_weight`."""
+    if not self._built:
+      return None
+    return nest.flatten(self._weighted_metrics)
 
   def build(self, y_pred, y_true):
     """One-time setup of metric objects."""
@@ -466,11 +483,11 @@ class MetricsContainer(Container):
     if not isinstance(metric_obj, metrics_mod.Metric):
       if isinstance(metric, six.string_types):
         metric_name = metric
-      elif hasattr(metric, 'name'):
-        metric_name = metric.name  # TODO(omalleyt): Is this needed?
       else:
-        # function was passed.
-        metric_name = metric.__name__
+        metric_name = get_custom_object_name(metric)
+        if metric_name is None:
+          raise ValueError(
+              'Metric should be a callable, found: {}'.format(metric))
 
       metric_obj = metrics_mod.MeanMetricWrapper(metric_obj, name=metric_name)
 
@@ -638,3 +655,22 @@ def apply_mask(y_p, sw, mask):
     else:
       sw = mask
   return sw
+
+
+def get_custom_object_name(obj):
+  """Returns the name to use for a custom loss or metric callable.
+
+  Arguments:
+    obj: Custom loss of metric callable
+
+  Returns:
+    Name to use, or `None` if the object was not recognized.
+  """
+  if hasattr(obj, 'name'):  # Accept `Loss` instance as `Metric`.
+    return obj.name
+  elif hasattr(obj, '__name__'):  # Function.
+    return obj.__name__
+  elif hasattr(obj, '__class__'):  # Class instance.
+    return generic_utils.to_snake_case(obj.__class__.__name__)
+  else:  # Unrecognized object.
+    return None

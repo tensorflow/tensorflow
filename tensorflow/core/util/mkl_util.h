@@ -893,21 +893,36 @@ inline void SetDummyMklDnnShapeOutput(OpKernelContext* context,
   AllocateOutputSetMklShape(context, idx_data_out, mkl_shape_output);
 }
 
-inline void ForwardMklTensorInToOutWithMklShape(OpKernelContext* context,
+// If the input tensor has ref count as 1, it is forwarded to the desired
+// output port and the function returns true. In that case, it also allocates
+// the serialized MklDnnShape object. Otherwise, the function returns false.
+inline bool ForwardMklTensorInToOutWithMklShape(OpKernelContext* context,
                                                 int idx_in, int idx_out,
-                                                const MklDnnShape& mkl_shape) {
+                                                Tensor** output,
+                                                const MklDnnShape& mkl_shape,
+                                                bool always_forward = true) {
   int num_inputs = context->num_inputs();
   int num_outputs = context->num_outputs();
   int idx_data_in = GetTensorDataIndex(idx_in, num_inputs);
   int idx_data_out = GetTensorDataIndex(idx_out, num_outputs);
-
-  AllocateOutputSetMklShape(context, idx_out, mkl_shape);
-
-  if (IsRefType(context->input_dtype(idx_data_in))) {
-    context->forward_ref_input_to_ref_output(idx_data_in, idx_data_out);
+  bool is_forwarded = false;
+  const Tensor& input_tensor = context->input(idx_data_in);
+  const auto output_shape = input_tensor.shape();
+  if (always_forward) {
+    if (IsRefType(context->input_dtype(idx_data_in))) {
+      context->forward_ref_input_to_ref_output(idx_data_in, idx_data_out);
+    } else {
+      context->set_output(idx_data_out, input_tensor);
+    }
   } else {
-    context->set_output(idx_data_out, context->input(idx_data_in));
+    is_forwarded = context->forward_input_to_output_with_shape(
+        idx_data_in, idx_data_out, output_shape, output);
   }
+  if (is_forwarded || always_forward) {
+    AllocateOutputSetMklShape(context, idx_out, mkl_shape);
+    return true;
+  }
+  return false;
 }
 
 // Forward the MKL shape ONLY (used in elementwise and other ops where
@@ -1399,7 +1414,7 @@ class MklDnnData {
   /// for reorder. Otherwise, it will return memory primitive for user memory.
   ///
   /// E.g., Conv2D(I, F) is a primitive with I and F being inputs. Then to
-  /// execute Conv2D, we need memory primitive for I and F. Buf if reorder is
+  /// execute Conv2D, we need memory primitive for I and F. But if reorder is
   /// required for I and F (say I_r is reorder primitive for I; F_r is reorder
   /// primitive for F), then we need I_r and F_r to perform Conv2D.
   inline const memory& GetOpMem() const {
@@ -1995,7 +2010,7 @@ inline bool IsConv1x1StrideNot1(memory::dims filter_dims,
 }  // namespace tensorflow
 
 /////////////////////////////////////////////////////////////////////
-// Macros for handling registeration for various types
+// Macros for handling registration for various types
 /////////////////////////////////////////////////////////////////////
 
 #define REGISTER_TEST_FLOAT32(TEST) REGISTER_TEST(TEST, DT_FLOAT, Float32Input);

@@ -67,6 +67,10 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/env_var.h"
 
+#if !defined(PLATFORM_GOOGLE) && TENSORFLOW_USE_ROCM
+#include "rocm/rocm_config.h"
+#endif
+
 namespace xla {
 namespace gpu {
 namespace {
@@ -149,7 +153,7 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
   }
 
   llvm::TargetOptions target_options =
-      llvm::codegen::InitTargetOptionsFromCodeGenFlags();
+      llvm::codegen::InitTargetOptionsFromCodeGenFlags(llvm::Triple());
 
   // Set the verbose assembly options.
   target_options.MCOptions.AsmVerbose = false;
@@ -225,7 +229,7 @@ void EmitBitcodeToFile(const llvm::Module& module, absl::string_view filename) {
 // for the NVPTX target.
 string EmitModuleToPTX(llvm::Module* module,
                        llvm::TargetMachine* target_machine) {
-  std::string ptx;  // need a std::string instead of a ::string.
+  std::string ptx;
   {
     llvm::raw_string_ostream stream(ptx);
     llvm::buffer_ostream pstream(stream);
@@ -560,11 +564,18 @@ namespace {
 static std::vector<string> GetROCDLPaths(int amdgpu_version,
                                          const string& rocdl_dir_path) {
   // AMDGPU version-neutral bitcodes.
+#if TF_ROCM_VERSION >= 30900
+  static std::vector<string>* rocdl_filenames = new std::vector<string>(
+      {"hc.bc", "opencl.bc", "ocml.bc", "ockl.bc", "oclc_finite_only_off.bc",
+       "oclc_daz_opt_off.bc", "oclc_correctly_rounded_sqrt_on.bc",
+       "oclc_unsafe_math_off.bc", "oclc_wavefrontsize64_on.bc"});
+#else
   static std::vector<string>* rocdl_filenames = new std::vector<string>(
       {"hc.amdgcn.bc", "opencl.amdgcn.bc", "ocml.amdgcn.bc", "ockl.amdgcn.bc",
        "oclc_finite_only_off.amdgcn.bc", "oclc_daz_opt_off.amdgcn.bc",
        "oclc_correctly_rounded_sqrt_on.amdgcn.bc",
        "oclc_unsafe_math_off.amdgcn.bc", "oclc_wavefrontsize64_on.amdgcn.bc"});
+#endif
 
   // Construct full path to ROCDL bitcode libraries.
   std::vector<string> result;
@@ -575,7 +586,11 @@ static std::vector<string> GetROCDLPaths(int amdgpu_version,
   // Add AMDGPU version-specific bitcodes.
   result.push_back(tensorflow::io::JoinPath(
       rocdl_dir_path,
+#if TF_ROCM_VERSION >= 30900
+      absl::StrCat("oclc_isa_version_", amdgpu_version, ".bc")));
+#else
       absl::StrCat("oclc_isa_version_", amdgpu_version, ".amdgcn.bc")));
+#endif
   return result;
 }
 

@@ -10,9 +10,9 @@ func @tf_entry(%size_0 : index , %size_2 : index) -> index
   dealloc %buf : memref<?x10x?xf32>
   std.return %size_0 : index
 }
-// CHECK-NEXT: [[VAL_3:%.*]] = tf_framework.alloc_raw
+// CHECK-NEXT: [[VAL_3:%.*]] = tf_framework.alloc
 // CHECK-SAME:   ([[CTX]], [[SIZE_0]], [[SIZE_2]]) : memref<?x10x?xf32>
-// CHECK-NEXT: tf_framework.dealloc_raw([[CTX]], [[VAL_3]]) : memref<?x10x?xf32>
+// CHECK-NEXT: tf_framework.dealloc([[CTX]], [[VAL_3]]) : memref<?x10x?xf32>
 // CHECK-NEXT: return [[SIZE_0]] : index
 
 // -----

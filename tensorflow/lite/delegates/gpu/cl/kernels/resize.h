@@ -27,7 +27,7 @@ namespace cl {
 
 class Resize : public GPUOperation {
  public:
-  absl::Status BindArguments() override;
+  absl::Status BindArguments(ArgumentsBinder* args) override;
   int3 GetGridSize() const override;
 
   // Move only
@@ -53,7 +53,7 @@ Resize CreateResize(const OperationDef& definition,
 
 class Resize3D : public GPUOperation {
  public:
-  absl::Status BindArguments() override;
+  absl::Status BindArguments(ArgumentsBinder* args) override;
   int3 GetGridSize() const override;
 
   // Move only

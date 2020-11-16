@@ -171,6 +171,10 @@ void NeonReductionSumVector(const float* input_vector, float* output_vector,
 void NeonReductionSumVector(const int8_t* input_vector, int32_t* output_vector,
                             int output_size, int reduction_size);
 
+void NeonVectorBatchVectorCwiseProductAccumulate(
+    const int16_t* vector, int v_size, const int16_t* batch_vector, int n_batch,
+    int32_t multiplier, int shift, int16_t* result);
+
 #endif  // USE_NEON
 
 }  // namespace tensor_utils

@@ -1,7 +1,7 @@
 // RUN: tf-opt %s -tf-mark-ops-for-outside-compilation | FILECHECK_OPTS="" FileCheck %s
 
-// CHECK-LABEL: func @unsupported_op_no_soft_placement
-func @unsupported_op_no_soft_placement() -> tensor<i32> {
+// CHECK-LABEL: func @unsupported_op_missing_soft_placement_attribute
+func @unsupported_op_missing_soft_placement_attribute() -> tensor<i32> {
   %0 = "tf_device.cluster"() ( {
     // CHECK: "tf.UnsupportedOp"
     // CHECK-NOT: _xla_outside_compilation
@@ -25,6 +25,24 @@ func @unsupported_op_soft_placement_false() -> tensor<i32> {
     %2 = "tf.Identity"(%1) : (tensor<i32>) -> tensor<i32>
     tf_device.return %2 : tensor<i32>
   }) {allow_soft_placement = false, num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> tensor<i32>
+  return %0 : tensor<i32>
+}
+
+// CHECK-LABEL: func @assert_op_string_operand
+func @assert_op_string_operand(%arg0: tensor<!tf.string>) -> tensor<i32> {
+  %0 = "tf_device.cluster"() ( {
+    // CHECK: "tf.Assert"
+    // CHECK-NOT: _xla_outside_compilation
+    // CHECK: "tf.UnsupportedOp"
+    // CHECK-SAME: _xla_outside_compilation
+    // CHECK: "tf.Identity"
+    // CHECK-NOT: _xla_outside_compilation
+    %t = constant dense<true> : tensor<i1>
+    "tf.Assert"(%t, %arg0) {summarize = 3} : (tensor<i1>, tensor<!tf.string>) -> ()
+    %1 = "tf.UnsupportedOp"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+    %2 = "tf.Identity"(%1) : (tensor<i32>) -> tensor<i32>
+    tf_device.return %2 : tensor<i32>
+  }) {allow_soft_placement = true, num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> tensor<i32>
   return %0 : tensor<i32>
 }
 

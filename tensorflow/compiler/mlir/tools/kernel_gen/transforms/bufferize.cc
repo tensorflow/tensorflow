@@ -15,47 +15,68 @@ limitations under the License.
 
 // This file implements logic for translating mixed IR to buffer form.
 
-#include <cstddef>
-#include <memory>
+#include "mlir/Transforms/Bufferize.h"  // from @llvm-project
 
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/OperationSupport.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Transforms/BufferPlacement.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 
 namespace mlir {
 namespace kernel_gen {
 namespace transforms {
-
 namespace {
 
-class TensorFromElementsOpConverter
-    : public BufferAssignmentOpConversionPattern<TensorFromElementsOp> {
+class ConstantOpConverter : public OpConversionPattern<ConstantOp> {
  public:
-  using BufferAssignmentOpConversionPattern<
-      TensorFromElementsOp>::BufferAssignmentOpConversionPattern;
+  using OpConversionPattern<ConstantOp>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      ConstantOp op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const final {
+    // We only need to bufferize tensor constants.
+    Location loc = op.getLoc();
+    auto result_type = op.getType().dyn_cast<RankedTensorType>();
+    if (!result_type || !result_type.hasStaticShape() ||
+        result_type.getRank() != 1)
+      return failure();
+
+    auto memref_type = MemRefType::get({result_type.getNumElements()},
+                                       result_type.getElementType());
+    Value buffer = rewriter.create<AllocaOp>(loc, memref_type);
+
+    auto elements_attr = op.getValue().dyn_cast<DenseElementsAttr>();
+    bool all_same_elems = elements_attr.isSplat();
+    Value value;
+    if (all_same_elems)
+      value = rewriter.create<ConstantOp>(loc, elements_attr.getSplatValue());
+    for (auto en : llvm::enumerate(elements_attr.getAttributeValues())) {
+      if (!all_same_elems) value = rewriter.create<ConstantOp>(loc, en.value());
+      Value index = rewriter.create<ConstantIndexOp>(loc, en.index());
+      rewriter.create<StoreOp>(loc, value, buffer, index);
+    }
+    rewriter.replaceOp(op, {buffer});
+    return success();
+  }
+};
+
+class TensorFromElementsOpConverter
+    : public OpConversionPattern<TensorFromElementsOp> {
+ public:
+  using OpConversionPattern<TensorFromElementsOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
       TensorFromElementsOp op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const final {
     Location loc = op.getLoc();
-    ShapedType result_type = op.getType().cast<ShapedType>();
+    auto result_type = op.getType().cast<ShapedType>();
     int number_of_elements = op.elements().size();
     MemRefType memref_type =
         MemRefType::get({number_of_elements}, result_type.getElementType());
     Value result = rewriter.create<AllocaOp>(loc, memref_type);
-    for (auto operand : llvm::enumerate(operands)) {
-      Value index = rewriter.create<ConstantIndexOp>(loc, operand.index());
-      rewriter.create<StoreOp>(loc, operand.value(), result, index);
+    for (auto en : llvm::enumerate(operands)) {
+      Value index = rewriter.create<ConstantIndexOp>(loc, en.index());
+      rewriter.create<StoreOp>(loc, en.value(), result, index);
     }
     rewriter.replaceOp(op, {result});
     return success();
@@ -63,10 +84,9 @@ class TensorFromElementsOpConverter
 };
 
 class DynamicTensorFromElementsOpConverter
-    : public BufferAssignmentOpConversionPattern<DynamicTensorFromElementsOp> {
+    : public OpConversionPattern<DynamicTensorFromElementsOp> {
  public:
-  using BufferAssignmentOpConversionPattern<
-      DynamicTensorFromElementsOp>::BufferAssignmentOpConversionPattern;
+  using OpConversionPattern<DynamicTensorFromElementsOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
       DynamicTensorFromElementsOp op, ArrayRef<Value> operands,
@@ -74,7 +94,7 @@ class DynamicTensorFromElementsOpConverter
     // Allocate memory on stack.
     Location loc = op.getLoc();
     DynamicTensorFromElementsOp::Adaptor transformed(operands);
-    RankedTensorType tensor_ty = op.getType().cast<RankedTensorType>();
+    auto tensor_ty = op.getType().cast<RankedTensorType>();
     MemRefType memref_type =
         MemRefType::get(tensor_ty.getShape(), tensor_ty.getElementType());
     Value result = rewriter.create<AllocaOp>(loc, memref_type,
@@ -88,7 +108,7 @@ class DynamicTensorFromElementsOpConverter
     SmallVector<Value, 4> steps(rank, one);
     SmallVector<Value, 4> upper_bounds;
     int next_dynamic_index = 0;
-    for (int i = 0; i < rank; i++) {
+    for (int i = 0; i < rank; ++i) {
       Value ub = tensor_ty.isDynamicDim(i)
                      ? transformed.dynamicExtents()[next_dynamic_index++]
                      : rewriter.create<ConstantIndexOp>(
@@ -114,11 +134,9 @@ class DynamicTensorFromElementsOpConverter
   }
 };
 
-class TensorLoadOpConversion
-    : public BufferAssignmentOpConversionPattern<TensorLoadOp> {
+class TensorLoadOpConversion : public OpConversionPattern<TensorLoadOp> {
  public:
-  using BufferAssignmentOpConversionPattern<
-      TensorLoadOp>::BufferAssignmentOpConversionPattern;
+  using OpConversionPattern<TensorLoadOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
       TensorLoadOp op, ArrayRef<Value> operands,
@@ -130,39 +148,49 @@ class TensorLoadOpConversion
 };
 
 class ExtractElementOpConversion
-    : public BufferAssignmentOpConversionPattern<ExtractElementOp> {
+    : public OpConversionPattern<ExtractElementOp> {
  public:
-  using BufferAssignmentOpConversionPattern<
-      ExtractElementOp>::BufferAssignmentOpConversionPattern;
+  using OpConversionPattern<ExtractElementOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
       ExtractElementOp op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const final {
     ExtractElementOpAdaptor adaptor(operands);
 
-    if (!adaptor.aggregate().getType().isa<MemRefType>()) {
+    if (!adaptor.aggregate().getType().isa<BaseMemRefType>()) {
       return failure();
     }
-
     rewriter.replaceOpWithNewOp<LoadOp>(op, adaptor.aggregate(),
                                         adaptor.indices());
     return success();
   }
 };
 
-class TensorCastOpConverter
-    : public BufferAssignmentOpConversionPattern<TensorCastOp> {
+template <typename OpTy>
+class SimpleOpResultConversion : public OpConversionPattern<OpTy> {
  public:
-  using BufferAssignmentOpConversionPattern<
-      TensorCastOp>::BufferAssignmentOpConversionPattern;
+  using OpConversionPattern<OpTy>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      OpTy op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const final {
+    rewriter.replaceOpWithNewOp<OpTy>(
+        op, this->getTypeConverter()->convertType(op.getType()), operands);
+    return success();
+  }
+};
+
+class TensorCastOpConverter : public OpConversionPattern<TensorCastOp> {
+ public:
+  using OpConversionPattern<TensorCastOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
       TensorCastOp op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const final {
     Value arg = operands.front();
-    if (!arg.getType().isa<MemRefType>()) return failure();
+    if (!arg.getType().isa<BaseMemRefType>()) return failure();
 
-    auto result_ty = converter->convertType(op.getType());
+    auto result_ty = getTypeConverter()->convertType(op.getType());
     rewriter.replaceOpWithNewOp<MemRefCastOp>(op, arg, result_ty);
 
     return success();
@@ -172,11 +200,13 @@ class TensorCastOpConverter
 }  // namespace
 
 void populateStandardBufferizePattern(MLIRContext *context,
-                                      BufferAssignmentTypeConverter *converter,
+                                      BufferizeTypeConverter *converter,
                                       OwningRewritePatternList *patterns) {
-  patterns->insert<ExtractElementOpConversion, TensorFromElementsOpConverter,
-                   DynamicTensorFromElementsOpConverter, TensorLoadOpConversion,
-                   TensorCastOpConverter>(context, converter);
+  patterns->insert<ConstantOpConverter, ExtractElementOpConversion,
+                   TensorFromElementsOpConverter,
+                   DynamicTensorFromElementsOpConverter,
+                   SimpleOpResultConversion<SelectOp>, TensorLoadOpConversion,
+                   TensorCastOpConverter>(*converter, context);
 }
 
 }  // namespace transforms

@@ -104,6 +104,19 @@ TEST_F(DynamismInferenceTest, ScalarInt32Literal) {
   }
 }
 
+TEST_F(DynamismInferenceTest, Iota) {
+  // The output of iota are consistened static.
+  for (ClientType client_type : client_types) {
+    Client* client = ClientOrDie(platform_, client_type);
+    XlaBuilder b(TestName());
+    auto computation = Iota(&b, S32, 2);
+    // Iota is not dynamic.
+    EXPECT_FALSE(ComputeDynamismLiteral(client, computation, &b)
+                     .ValueOrDie()
+                     .Get<bool>({0}));
+  }
+}
+
 TEST_F(DynamismInferenceTest, TupleSimple) {
   for (ClientType client_type : client_types) {
     Client* client = ClientOrDie(platform_, client_type);

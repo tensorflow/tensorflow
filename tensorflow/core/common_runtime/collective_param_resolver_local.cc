@@ -779,7 +779,7 @@ void CollectiveParamResolverLocal::StartAbort(const Status& s) {
   {
     mutex_lock l(status_mu_);
     if (!status_.ok()) {
-      VLOG(1) << "CollectiveParamResolverLocal already aborted. Ignoring "
+      VLOG(2) << "CollectiveParamResolverLocal already aborted. Ignoring "
                  "subsequent abortion with status: "
               << s;
       return;

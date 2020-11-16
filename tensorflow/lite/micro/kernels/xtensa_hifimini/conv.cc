@@ -172,7 +172,7 @@ void ConvPerChannel(const ConvParams& params, const int32_t* output_multiplier,
           // Apply quantized multiplier and accumulate result at 48bit
           // alignment. Convert the (unsigned) 32-bit multiplier down to a
           // 24-bit multiplier.
-          acc_56 = micro::xtensa::hifimini::MultiplyByQuantizedMultiplier(
+          acc_56 = MultiplyByQuantizedMultiplier(
               acc_24x2, output_multiplier[out_channel] >> 8,
               output_shift[out_channel]);
 
@@ -249,8 +249,8 @@ inline void Conv1x32Input32x32Filter(
 
     // Apply quantized multiplier and accumulate result at 48bit alignment.
     // Convert the (unsigned) 32-bit multiplier down to a 24-bit multiplier.
-    acc_56 = ops::micro::xtensa::hifimini::MultiplyByQuantizedMultiplier(
-        acc_24x2, output_multiplier[ch] >> 8, output_shift[ch]);
+    acc_56 = MultiplyByQuantizedMultiplier(acc_24x2, output_multiplier[ch] >> 8,
+                                           output_shift[ch]);
 
     // Add output offset, cap activation, and assign to the output:
     acc_56 = AE_ADDQ56(acc_56, output_offset_56);
@@ -325,7 +325,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // Per channel quantization is only needed for int8_t inference. For other
   // quantized types, only a single scale and zero point is needed.
   const int num_channels = filter->dims->data[kConvQuantizedDimension];
-  // Dynimically allocate per-channel quantization parameters.
+  // Dynamically allocate per-channel quantization parameters.
   op_data->per_channel_output_multiplier =
       reinterpret_cast<int32_t*>(context->AllocatePersistentBuffer(
           context, num_channels * sizeof(int32_t)));

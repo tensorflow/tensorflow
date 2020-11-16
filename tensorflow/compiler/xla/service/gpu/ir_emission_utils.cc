@@ -486,13 +486,14 @@ string CudnnConvKindToString(CudnnConvKind kind) {
 }
 
 llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b) {
-  return b->CreateAnd(
-      b->CreateICmpEQ(
-          b->getInt32(0),
-          EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b)),
-      b->CreateICmpEQ(
-          b->getInt32(0),
-          EmitCallToTargetIntrinsic(TargetIntrinsicID::kBlockIdx, {}, {}, b)));
+  llvm::Value* is_thread0 = b->CreateICmpEQ(
+      b->getInt32(0),
+      EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b));
+
+  llvm::Value* is_block0 = b->CreateICmpEQ(
+      b->getInt32(0),
+      EmitCallToTargetIntrinsic(TargetIntrinsicID::kBlockIdx, {}, {}, b));
+  return b->CreateAnd(is_thread0, is_block0);
 }
 
 bool AreFusedReductionOutputsConsistent(

@@ -123,6 +123,7 @@ cc_library(
         ":batch_scheduler",
         ":periodic_function_dynamic",
         "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/lib:connected_traceme",
     ],
 )
 
@@ -249,6 +250,8 @@ cc_library(
         "//tensorflow/core/kernels/batching_util:threadsafe_status",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:thread_annotations",
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/lib:traceme_encode",
         "//tensorflow/core/util:incremental_barrier",
     ],
 )

@@ -108,7 +108,7 @@ class BaseCollectiveExecutor : public CollectiveExecutor {
 
   ~BaseCollectiveExecutor() override;
 
-  void StartAbort(const Status& s) override;
+  void StartAbort(const Status& s) override TF_LOCKS_EXCLUDED(status_mu_);
 
   void ExecuteAsync(OpKernelContext* ctx, const CollectiveParams& col_params,
                     const string& exec_key, StatusCallback done) override;
@@ -148,6 +148,8 @@ class BaseCollectiveExecutor : public CollectiveExecutor {
   // collective instance key -> number of local devices for which NCCL ops have
   // been launched.
   std::unordered_map<int32, int32> launched_ TF_GUARDED_BY(launch_mu_);
+  mutex status_mu_;
+  Status status_ TF_GUARDED_BY(status_mu_);
 
  private:
   Status CreateCollective(const CollectiveParams& col_params,
@@ -155,6 +157,9 @@ class BaseCollectiveExecutor : public CollectiveExecutor {
   // Check if all ops on which this collective depends on have launched.
   bool CheckDependencies(const CollectiveParams& col_params)
       TF_EXCLUSIVE_LOCKS_REQUIRED(launch_mu_);
+  // Tries to return the status that is the original error. It returns the
+  // aborted status if the collective executor is aborted.
+  Status GetStatus(const Status& s) TF_LOCKS_EXCLUDED(status_mu_);
 };
 
 }  // namespace tensorflow

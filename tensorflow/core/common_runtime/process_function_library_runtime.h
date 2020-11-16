@@ -75,8 +75,8 @@ class ProcessFunctionLibraryRuntime {
   ~ProcessFunctionLibraryRuntime() {
     // Deleting the FunctionLibraryRuntime map will delete the function handles
     // registered in it, which may call ReleaseHandle in this class again to
-    // release their sub-function. These circular calls may casue segfault
-    // since the flr_map_ may has already been deleted. Explicitly releasing
+    // release their sub-function. These circular calls may cause segfault
+    // since the flr_map_ may have already been deleted. Explicitly releasing
     // flr_map_ here and checking flr_map_ in ReleaseHandle to avoid this.
     flr_map_.reset();
   }
@@ -171,7 +171,7 @@ class ProcessFunctionLibraryRuntime {
                         bool* is_cross_process) const;
 
   // Delegates to the local FLR that owns state corresponding to `handle` and
-  // tells it to release it. If the `handle` isnt' needed at all, the local FLR
+  // tells it to release it. If the `handle` isn't needed at all, the local FLR
   // might call RemoveHandle on this to get rid of the state owned by the Proc
   // FLR.
   // For multi-device functions, calls ReleaseHandle on local FLRs for each

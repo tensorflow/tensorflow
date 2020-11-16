@@ -26,10 +26,6 @@ load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_version_info_genrule")
 load(
-    "//third_party/mkl:build_defs.bzl",
-    "mkl_deps",
-)
-load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
 )
@@ -453,6 +449,7 @@ cc_library(
     deps = [
         ":test_log_proto_impl_cc",
         "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:env_impl",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:mutex",
@@ -667,7 +664,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core/kernels:bounds_check",
+        "//tensorflow/core/framework:bounds_check",
         "//third_party/eigen3",
     ],
 )
@@ -702,11 +699,14 @@ tf_cuda_only_cc_test(
     srcs = [
         "gpu_kernel_helper_test.cu.cc",
     ],
+    tags = [
+        "no_cuda_asan",  # TODO(b/171342366): re-enable.
+    ],
     deps = [
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//third_party/eigen3",
-    ] + mkl_deps(),
+    ],
 )
 
 tf_cc_tests(
@@ -736,7 +736,6 @@ tf_cc_tests(
         "tensor_slice_writer_test.cc",
         "work_sharder_test.cc",
     ],
-    create_named_test_suite = True,
     linkopts = select({
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
@@ -757,7 +756,6 @@ tf_cc_tests(
         "//tensorflow/core",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:direct_session_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
@@ -767,6 +765,7 @@ tf_cc_tests(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/common_runtime:direct_session_internal",
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/platform:regexp",
         "//third_party/eigen3",

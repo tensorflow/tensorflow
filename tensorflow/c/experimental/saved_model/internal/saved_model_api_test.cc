@@ -524,6 +524,62 @@ TEST_P(CSavedModelAPITest, LoadSavedModelWithUninitializedVariable) {
   TFE_DeleteContext(ctx);
 }
 
+TEST_P(CSavedModelAPITest, LoadSavedModelWithWhileLoop) {
+  TF_Status* status = TF_NewStatus();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  bool use_tfrt = GetParam();
+  if (use_tfrt) {
+    TFE_DeleteContextOptions(opts);
+    TF_DeleteStatus(status);
+    GTEST_SKIP();  // TODO(chky) : Enable this once TFRT is open sourced.
+  }
+
+  TFE_ContextOptionsSetTfrt(opts, use_tfrt);
+
+  TFE_Context* ctx = TFE_NewContext(opts, status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteContextOptions(opts);
+
+  std::string model_dir = tensorflow::io::JoinPath(
+      tensorflow::testing::TensorFlowSrcRoot(),
+      "c/experimental/saved_model/internal/testdata/SimpleWhileLoop");
+
+  TF_SavedModel* saved_model =
+      TF_LoadSavedModel(model_dir.c_str(), ctx, status);
+  ASSERT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+
+  TF_ConcreteFunction* while_fn =
+      TF_GetSavedModelConcreteFunction(saved_model, "compute", status);
+  ASSERT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+
+  std::vector<TFE_TensorHandle*> while_fn_inputs;
+  while_fn_inputs.push_back(TestScalarTensorHandle(ctx, 10.0f));
+
+  TFE_Op* while_fn_op = TF_ConcreteFunctionMakeCallOp(
+      while_fn, while_fn_inputs.data(), while_fn_inputs.size(), status);
+  ASSERT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+
+  TFE_TensorHandle* while_fn_outputs[1] = {nullptr};
+  int num_retvals = 1;
+
+  TFE_Execute(while_fn_op, &while_fn_outputs[0], &num_retvals, status);
+  ASSERT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+
+  TF_Tensor* result = TFE_TensorHandleResolve(while_fn_outputs[0], status);
+  ASSERT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+  ASSERT_EQ(TF_NumDims(result), 0);
+  float output_value = *static_cast<float*>(TF_TensorData(result));
+  ASSERT_FLOAT_EQ(output_value, 55);  // 10+9+...+1
+
+  TF_DeleteTensor(result);
+  TFE_DeleteTensorHandle(while_fn_outputs[0]);
+  TFE_DeleteOp(while_fn_op);
+  TFE_DeleteTensorHandle(while_fn_inputs[0]);
+  TF_DeleteSavedModel(saved_model);
+  TF_DeleteStatus(status);
+  TFE_DeleteContext(ctx);
+}
+
 INSTANTIATE_TEST_SUITE_P(RuntimeAgnosticSavedModelTests, CSavedModelAPITest,
                          ::testing::Bool());
 

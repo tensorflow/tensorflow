@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/linear_storage.h"
-#include "tensorflow/lite/delegates/gpu/cl/precision.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor.h"
 #include "tensorflow/lite/delegates/gpu/cl/util.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
@@ -48,7 +47,7 @@ class ConvBuffer1x1 : public GPUOperation {
   ConvBuffer1x1& operator=(const ConvBuffer1x1&) = delete;
 
   void GetPossibleKernelWorkGroups(
-      TuningType tuning_type, const DeviceInfo& device_info,
+      TuningType tuning_type, const GpuInfo& gpu_info,
       const KernelInfo& kernel_info,
       std::vector<int3>* work_groups) const override;
   int3 GetGridSize() const override;
@@ -72,19 +71,19 @@ class ConvBuffer1x1 : public GPUOperation {
 
  private:
   ConvBuffer1x1(const OperationDef& definition, const ConvParams& conv_params);
-  friend ConvBuffer1x1 CreateConvBuffer1x1(const DeviceInfo& device_info,
+  friend ConvBuffer1x1 CreateConvBuffer1x1(const GpuInfo& gpu_info,
                                            const OperationDef& definition,
                                            const Convolution2DAttributes& attr,
                                            const BHWC* shape);
-  friend ConvBuffer1x1 CreateConvBuffer1x1(const DeviceInfo& device_info,
+  friend ConvBuffer1x1 CreateConvBuffer1x1(const GpuInfo& gpu_info,
                                            const OperationDef& definition,
                                            const FullyConnectedAttributes& attr,
                                            const BHWC* shape);
   friend ConvBuffer1x1 CreateConvBuffer1x1Wino4x4To6x6(
-      const DeviceInfo& device_info, const OperationDef& definition,
+      const GpuInfo& gpu_info, const OperationDef& definition,
       const Convolution2DAttributes& attr, const BHWC* shape);
   friend ConvBuffer1x1 CreateConvBuffer1x1DynamicWeights(
-      const DeviceInfo& device_info, const OperationDef& definition,
+      const GpuInfo& gpu_info, const OperationDef& definition,
       const Convolution2DAttributes& attr, const BHWC& weights_shape,
       const BHWC* dst_shape);
 
@@ -178,23 +177,23 @@ bool IsConvBuffer1x1Supported(const OperationDef& definition,
                               const BHWC& weights_shape,
                               const Convolution2DAttributes& attr);
 
-ConvBuffer1x1 CreateConvBuffer1x1(const DeviceInfo& device_info,
+ConvBuffer1x1 CreateConvBuffer1x1(const GpuInfo& gpu_info,
                                   const OperationDef& definition,
                                   const Convolution2DAttributes& attr,
                                   const BHWC* shape = nullptr);
 
-ConvBuffer1x1 CreateConvBuffer1x1(const DeviceInfo& device_info,
+ConvBuffer1x1 CreateConvBuffer1x1(const GpuInfo& gpu_info,
                                   const OperationDef& definition,
                                   const FullyConnectedAttributes& attr,
                                   const BHWC* shape = nullptr);
 
 ConvBuffer1x1 CreateConvBuffer1x1DynamicWeights(
-    const DeviceInfo& device_info, const OperationDef& definition,
+    const GpuInfo& gpu_info, const OperationDef& definition,
     const Convolution2DAttributes& attr, const BHWC& weights_shape,
     const BHWC* dst_shape = nullptr);
 
 ConvBuffer1x1 CreateConvBuffer1x1Wino4x4To6x6(
-    const DeviceInfo& device_info, const OperationDef& definition,
+    const GpuInfo& gpu_info, const OperationDef& definition,
     const Convolution2DAttributes& attr, const BHWC* shape = nullptr);
 
 }  // namespace cl

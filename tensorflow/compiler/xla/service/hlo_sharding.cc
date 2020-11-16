@@ -42,6 +42,10 @@ HloSharding HloSharding::Tile1D(const Shape& input_shape, int64 num_tiles) {
 HloSharding HloSharding::PartialTile(
     const Array<int64>& group_tile_assignment,
     absl::Span<const absl::Span<const int64>> replication_groups) {
+  CHECK_EQ(group_tile_assignment.num_elements(), replication_groups.size());
+  if (replication_groups.size() == 1) {
+    return Replicate();
+  }
   auto new_tile_dims = group_tile_assignment.dimensions();
   new_tile_dims.push_back(replication_groups[0].size());
   auto new_tile_assignment = Array<int64>(new_tile_dims);
@@ -56,6 +60,9 @@ HloSharding HloSharding::PartialTile(
 
 HloSharding HloSharding::PartialTile(
     const Array<int64>& tile_assignment_last_dim_replicate) {
+  if (tile_assignment_last_dim_replicate.num_dimensions() == 1) {
+    return Replicate();
+  }
   if (tile_assignment_last_dim_replicate.dimensions().back() == 1) {
     auto new_tile_dims = tile_assignment_last_dim_replicate.dimensions();
     new_tile_dims.pop_back();
@@ -358,6 +365,9 @@ Status HloSharding::ValidateTuple(const Shape& shape, int64 num_devices) const {
 }
 
 Status HloSharding::Validate(const Shape& shape, int64 num_devices) const {
+  if (shape.IsToken()) {
+    return Status::OK();
+  }
   Status status = IsTuple() ? ValidateTuple(shape, num_devices)
                             : ValidateNonTuple(shape, num_devices);
   if (!status.ok()) {

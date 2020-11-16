@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/connected_traceme.h"
-#include "tensorflow/core/profiler/utils/tf_op_utils.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
@@ -79,16 +78,7 @@ int64 GetEventType(bool is_host_plane, const EventNode& event) {
     } else if (absl::StartsWith(name, "ProcessBatch")) {
       return HostEventType::kProcessBatch;
     }
-    // TF op names.
-    Category category = ParseTfOpFullname(name).category;
-    switch (category) {
-      case Category::kTensorFlow:
-        return HostEventType::kTfOpRun;
-      case Category::kTfData:
-        return HostEventType::kIterator;
-      default:
-        return HostEventType::kUnknownHostEventType;
-    }
+    return HostEventType::kUnknownHostEventType;
   }
 }
 
@@ -304,6 +294,11 @@ bool HasJaxEvent(const EventNodeMap& event_node_map) {
   return event_node_map.contains(HostEventType::kExecuteOnLocalDevices);
 }
 
+bool IsIteratorEventType(absl::optional<int64> event_type) {
+  return event_type == HostEventType::kIterator ||
+         event_type == HostEventType::kDeviceInputPipelineSecondIterator;
+}
+
 }  // namespace
 
 EventNode::EventNode(const XPlaneVisitor* plane, XLine* raw_line,
@@ -408,10 +403,15 @@ std::string EventNode::GetGroupName() const {
   return name;
 }
 
+XStat* EventNode::FindOrAddStatByType(int64 stat_type) {
+  const XStatMetadata* stat_metadata = plane_->GetStatMetadataByType(stat_type);
+  DCHECK(stat_metadata != nullptr);
+  return FindOrAddMutableStat(*stat_metadata, raw_event_);
+}
+
 void EventNode::SetGroupId(int64 group_id) {
   group_id_ = group_id;
-  AddOrUpdateIntStat(*plane_->GetStatMetadataId(StatType::kGroupId), group_id,
-                     raw_event_);
+  FindOrAddStatByType(StatType::kGroupId)->set_int64_value(group_id);
 }
 
 void EventNode::PropagateGroupId(int64 group_id,
@@ -440,31 +440,28 @@ void EventNode::PropagateGroupId(int64 group_id,
 }
 
 void EventNode::AddStepName(absl::string_view step_name) {
-  AddOrUpdateStrStat(*plane_->GetStatMetadataId(StatType::kStepName), step_name,
-                     raw_event_);
+  FindOrAddStatByType(StatType::kStepName)
+      ->set_str_value(step_name.data(), step_name.size());
 }
 
 void EventNode::AddSelectedGroupIds(
     const GroupMetadataMap& group_metadata_map) {
+  const auto& group_metadata = group_metadata_map.at(*group_id_);
   std::vector<int64> group_ids;
-  group_ids.reserve(1 + group_metadata_map.at(*group_id_).parents.size() +
-                    group_metadata_map.at(*group_id_).children.size());
+  group_ids.reserve(1 + group_metadata.parents.size() +
+                    group_metadata.children.size());
   group_ids.push_back(*group_id_);
-  group_ids.insert(group_ids.end(),
-                   group_metadata_map.at(*group_id_).parents.begin(),
-                   group_metadata_map.at(*group_id_).parents.end());
-  group_ids.insert(group_ids.end(),
-                   group_metadata_map.at(*group_id_).children.begin(),
-                   group_metadata_map.at(*group_id_).children.end());
-  AddOrUpdateStrStat(
-      *plane_->GetStatMetadataId(StatType::kSelectedGroupIds),
-      absl::StrCat("?selected_group_ids=", absl::StrJoin(group_ids, ",")),
-      raw_event_);
+  group_ids.insert(group_ids.end(), group_metadata.parents.begin(),
+                   group_metadata.parents.end());
+  group_ids.insert(group_ids.end(), group_metadata.children.begin(),
+                   group_metadata.children.end());
+  FindOrAddStatByType(StatType::kSelectedGroupIds)
+      ->set_str_value(
+          absl::StrCat("?selected_group_ids=", absl::StrJoin(group_ids, ",")));
 }
 
 void EventNode::SetIsEager(bool is_eager) {
-  AddOrUpdateIntStat(*plane_->GetStatMetadataId(StatType::kIsEager),
-                     is_eager ? 1 : 0, raw_event_);
+  FindOrAddStatByType(StatType::kIsEager)->set_int64_value(is_eager ? 1 : 0);
 }
 
 bool EventNode::IsEager() {
@@ -798,8 +795,7 @@ void EventForest::ConnectTfDataEvents() {
           produce_event->GetEventVisitor().GetStat(StatType::kElementId);
       if (!element_id.has_value()) continue;
       for (EventNode* produce_iterator : produce_event->GetChildren()) {
-        if (IsDatasetOp(ParseTfOpFullname(
-                produce_iterator->GetEventVisitor().Name()))) {
+        if (IsIteratorEventType(produce_iterator->GetEventVisitor().Type())) {
           absl::optional<XStatVisitor> iterator_id =
               produce_iterator->GetEventVisitor().GetStat(StatType::kParentId);
           if (!iterator_id.has_value()) break;
@@ -832,8 +828,7 @@ void EventForest::ConnectTfDataEvents() {
       // parents.
       EventNode* consume_iterator = consume_event->GetParents().at(0);
       if (!consume_iterator ||
-          !IsDatasetOp(
-              ParseTfOpFullname(consume_iterator->GetEventVisitor().Name()))) {
+          !IsIteratorEventType(consume_iterator->GetEventVisitor().Type())) {
         continue;
       }
       absl::optional<XStatVisitor> iterator_id =

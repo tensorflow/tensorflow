@@ -76,6 +76,9 @@ message SavedUserObject {
   string identifier = 1;
   // Version information from the producer of this SavedUserObject.
   VersionDef version = 2;
+  // Deprecated! At the time of deprecation, Keras was the only user of this
+  // field, and its saving and loading code will be updated shortly.
+  // Please save your application-specific metadata to separate file
   // Initialization-related metadata.
   string metadata = 3;
 }
@@ -176,12 +179,12 @@ message FunctionSpec {
   // field, so we instead map to an enum.
   //
   // See `tf.function` for details.
-  enum ExperimentalCompile {
+  enum JitCompile {
     DEFAULT = 0;
     ON = 1;
     OFF = 2;
   }
-  ExperimentalCompile experimental_compile = 6;
+  JitCompile jit_compile = 6;
 
   reserved 3, 4;
 }

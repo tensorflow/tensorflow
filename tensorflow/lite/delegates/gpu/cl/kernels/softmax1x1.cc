@@ -109,14 +109,14 @@ std::string Softmax1x1::GetSoftmaxKernelCode(const OperationDef& op_def) {
   return c;
 }
 
-absl::Status Softmax1x1::BindArguments() {
+absl::Status Softmax1x1::BindArguments(ArgumentsBinder* args) {
   float4 mask = GetMaskForLastPlane(src_[0]->Channels());
-  RETURN_IF_ERROR(args_.SetFloat("mask_x", mask.x));
-  RETURN_IF_ERROR(args_.SetFloat("mask_y", mask.y));
-  RETURN_IF_ERROR(args_.SetFloat("mask_z", mask.z));
-  RETURN_IF_ERROR(args_.SetFloat("mask_w", mask.w));
+  RETURN_IF_ERROR(args->SetFloat("mask_x", mask.x));
+  RETURN_IF_ERROR(args->SetFloat("mask_y", mask.y));
+  RETURN_IF_ERROR(args->SetFloat("mask_z", mask.z));
+  RETURN_IF_ERROR(args->SetFloat("mask_w", mask.w));
   RETURN_IF_ERROR(
-      args_.SetInt("slices_x32", DivideRoundUp(src_[0]->Slices(), 32)));
+      args->SetInt("slices_x32", DivideRoundUp(src_[0]->Slices(), 32)));
   return absl::OkStatus();
 }
 

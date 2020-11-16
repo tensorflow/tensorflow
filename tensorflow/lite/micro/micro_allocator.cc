@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/lite/micro/micro_op_resolver.h"
 #include "tensorflow/lite/micro/simple_memory_allocator.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/schema/schema_utils.h"
 
 namespace tflite {
 
@@ -229,21 +230,6 @@ TfLiteStatus AllocationInfoBuilder::AddTensors(const SubGraph* subgraph,
     for (size_t n = 0; n < op->inputs()->size(); ++n) {
       const int tensor_index = op->inputs()->Get(n);
       AllocationInfo* current = &info_[tensor_index];
-
-      // TODO(b/166484865): Figure out a more general solution.
-      // This workaround is needed to handle situations where subgraph input !=
-      // operator input.
-      // In case operator input(s) are not in subgraph inputs initialize them.
-      if (current->first_created == 0) {
-        for (size_t op_input = 0; op_input < op->inputs()->size(); ++op_input) {
-          const int op_tensor_index = op->inputs()->Get(op_input);
-          AllocationInfo* op_current = &info_[op_tensor_index];
-          if (op_current->needs_allocating && op_current->first_created == -1) {
-            op_current->first_created = i;
-          }
-        }
-      }
-
       if (((current->last_used == -1) || (current->last_used < i))) {
         current->last_used = i;
       }
@@ -257,16 +243,15 @@ TfLiteStatus AllocationInfoBuilder::AddTensors(const SubGraph* subgraph,
     }
   }
 
-  // Work out which tensors need to be allocated.
+  // Sanity check for valid tensor lifetime.
   for (size_t i = 0; i < tensor_count_; ++i) {
     AllocationInfo* current = &info_[i];
-    const bool is_read_only =
+    // Even though tensor appears to be read only it may still need to be
+    // allocated.
+    const bool appears_read_only =
         (current->first_created == -1) && (current->last_used != -1);
-    if (is_read_only) {
-      current->needs_allocating = false;
-    }
     const bool has_partial_lifetime =
-        !is_read_only &&
+        !appears_read_only &&
         ((current->first_created == -1) || (current->last_used == -1));
     if (has_partial_lifetime && current->needs_allocating) {
       TF_LITE_REPORT_ERROR(
@@ -450,7 +435,7 @@ void* GetFlatbufferTensorBuffer(
   // and if there is update the runtime structure to point to its location in
   // memory.
   // First see if there's any buffer information in the serialized tensor.
-  // TODO(b/160894903): Add better unit tests that validate flatbuffer values.
+  // TODO(b/170379532): Add better unit tests to validate flatbuffer values.
   void* out_buffer = nullptr;
   if (auto* buffer = (*buffers)[flatbuffer_tensor.buffer()]) {
     // If we've found a buffer, does it have any data?
@@ -621,13 +606,6 @@ MicroAllocator::~MicroAllocator() {}
 MicroAllocator* MicroAllocator::Create(uint8_t* tensor_arena, size_t arena_size,
                                        ErrorReporter* error_reporter) {
   uint8_t* aligned_arena = AlignPointerUp(tensor_arena, kBufferAlignment);
-  if (aligned_arena != tensor_arena) {
-    TF_LITE_REPORT_ERROR(
-        error_reporter,
-        "%d bytes lost due to alignment. To avoid this loss, please make sure "
-        "the tensor_arena is 16 bytes aligned.",
-        aligned_arena - tensor_arena);
-  }
   size_t aligned_arena_size = tensor_arena + arena_size - aligned_arena;
   return Create(SimpleMemoryAllocator::Create(error_reporter, aligned_arena,
                                               aligned_arena_size),
@@ -760,7 +738,7 @@ TfLiteStatus MicroAllocator::FinishPrepareNodeAllocations(int node_id) {
 
   // Ensure that the head is re-adjusted to allow for another at-most
   // kMaxScratchBuffersPerOp scratch buffer requests in the next operator:
-  TF_LITE_ENSURE_STATUS(memory_allocator_->SetHeadSize(
+  TF_LITE_ENSURE_STATUS(memory_allocator_->SetHeadBufferSize(
       sizeof(internal::ScratchBufferRequest) *
           (scratch_buffer_request_count_ + kMaxScratchBuffersPerOp),
       alignof(internal::ScratchBufferRequest)));
@@ -820,7 +798,7 @@ TfLiteStatus MicroAllocator::PrepareNodeAndRegistrationDataFromFlatbuffer(
     if (status != kTfLiteOk) {
       TF_LITE_REPORT_ERROR(error_reporter_,
                            "Failed to get registration from op code %s\n ",
-                           EnumNameBuiltinOperator(opcode->builtin_code()));
+                           EnumNameBuiltinOperator(GetBuiltinCode(opcode)));
       return status;
     }
     const auto* registration = node_and_registrations[i].registration;
@@ -1019,9 +997,9 @@ TfLiteTensor* MicroAllocator::AllocatePersistentTfLiteTensorInternal(
 TfLiteStatus MicroAllocator::PopulateTfLiteTensorFromFlatbuffer(
     const Model* model, const SubGraph* subgraph, TfLiteTensor* tensor,
     int tensor_index, bool allocate_temp) {
-  // TODO(b/160894903): This method serves as a stub to ensure quantized
-  // allocations in the tail can be recorded. Once all kernels have been ported
-  // to the new API this can be dropped.
+  // TODO(b/162311891): This method serves as a stub to ensure quantized
+  // allocations in the tail can be recorded. Once the interpreter has APIs for
+  // accessing buffers on TfLiteEvalTensor this method can be dropped.
   return internal::InitializeTfLiteTensorFromFlatbuffer(
       memory_allocator_, allocate_temp, *subgraph->tensors()->Get(tensor_index),
       model->buffers(), error_reporter_, tensor);
@@ -1116,7 +1094,7 @@ TfLiteStatus MicroAllocator::CommitStaticMemoryPlan(
   }
   // Commit the plan.
   TF_LITE_ENSURE_STATUS(CommitPlan(error_reporter_, &planner,
-                                   memory_allocator_->GetBufferHead(),
+                                   memory_allocator_->GetHeadBuffer(),
                                    allocation_info, allocation_info_count));
   head_usage = planner.GetMaximumMemorySize();
 
@@ -1132,8 +1110,8 @@ TfLiteStatus MicroAllocator::CommitStaticMemoryPlan(
   // The head is used for storing scratch buffer allocations before finalizing a
   // memory plan in this function. Ensure that the head is set to the largest
   // memory plan sent through the allocator:
-  TF_LITE_ENSURE_STATUS(
-      memory_allocator_->SetHeadSize(max_head_buffer_usage_, kBufferAlignment));
+  TF_LITE_ENSURE_STATUS(memory_allocator_->SetHeadBufferSize(
+      max_head_buffer_usage_, kBufferAlignment));
   return kTfLiteOk;
 }
 
@@ -1164,7 +1142,7 @@ TfLiteStatus MicroAllocator::InitScratchBufferData() {
   // All requests will be stored in the head section. Each kernel is allowed at
   // most kMaxScratchBuffersPerOp requests. Adjust the head to reserve at most
   // that many requests to begin:
-  TF_LITE_ENSURE_STATUS(memory_allocator_->SetHeadSize(
+  TF_LITE_ENSURE_STATUS(memory_allocator_->SetHeadBufferSize(
       sizeof(internal::ScratchBufferRequest) * kMaxScratchBuffersPerOp,
       alignof(internal::ScratchBufferRequest)));
 
@@ -1173,7 +1151,7 @@ TfLiteStatus MicroAllocator::InitScratchBufferData() {
 
 internal::ScratchBufferRequest* MicroAllocator::GetScratchBufferRequests() {
   return reinterpret_cast<internal::ScratchBufferRequest*>(
-      AlignPointerUp(memory_allocator_->GetBufferHead(),
+      AlignPointerUp(memory_allocator_->GetHeadBuffer(),
                      alignof(internal::ScratchBufferRequest)));
 }
 

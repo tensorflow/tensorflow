@@ -30,8 +30,8 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/register.h"
+#include "tensorflow/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/testing/util.h"
 #include "tensorflow/lite/util.h"
 #include "tensorflow/lite/version.h"
@@ -196,7 +196,7 @@ class TestDelegate : public ::testing::Test {
             kTfLiteOk);
 
         if (simple->min_ops_per_subset() > 0) {
-          // Build a new vector of ops from subsets with atleast the minimum
+          // Build a new vector of ops from subsets with at least the minimum
           // size.
           std::vector<int> allowed_ops;
           for (int idx = 0; idx < num_partitions; ++idx) {
@@ -1304,7 +1304,7 @@ TEST_F(TestDelegateWithDynamicTensors, ShapePropagation_FlagNotSet) {
 // Input: 0, Output:12.
 // All constants are 2, so the function is: (x + 2 + 2) * 2 + 2 = 2x + 10
 //
-// Delegate only supports ADD, so can have upto two delegated partitions.
+// Delegate only supports ADD, so can have up to two delegated partitions.
 // TODO(b/156707497): Add more cases here once we have landed CPU kernels
 // supporting FP16.
 class TestFP16Delegation : public ::testing::TestWithParam<int> {

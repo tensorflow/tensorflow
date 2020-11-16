@@ -135,7 +135,7 @@ class AotCompilationMetadata {
  public:
   AotCompilationMetadata(const AotCompilationMetadata&) = delete;
   AotCompilationMetadata& operator=(AotCompilationMetadata const&) = delete;
-
+  virtual std::string ToString() const { return ""; }
   virtual ~AotCompilationMetadata() = default;
 
  protected:
@@ -188,7 +188,10 @@ class Compiler {
       std::tuple<std::unique_ptr<HloModule>, std::unique_ptr<BufferAssignment>>>
   RunHloPassesAndBufferAssignement(std::unique_ptr<HloModule> module,
                                    se::StreamExecutor* executor,
-                                   se::DeviceMemoryAllocator* device_allocator);
+                                   se::DeviceMemoryAllocator* device_allocator,
+                                   bool optimize) {
+    return Unimplemented("This compiler does not support this method");
+  }
 
   // Compiles the HLO module for execution on a device given by the executor,
   // and returns an executable object or an error status. No HLO passes are

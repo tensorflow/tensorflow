@@ -214,7 +214,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
   @combinations.generate(test_base.eager_only_combinations())
   def testSharedJobName(self):
     cluster = self.create_cluster(num_workers=1)
-    num_elements = 100
+    num_elements = 1000
 
     def make_ds():
       return dataset_ops.Dataset.range(num_elements).shuffle(num_elements)
@@ -429,6 +429,43 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
         ds, cluster, processing_mode="distributed_epoch")
     self.assertDatasetProduces(
         ds, num_repeats * list(range(num_elements)), assert_items_equal=True)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testDistributeDistributedEpochForeverRepeat(self):
+    cluster = self.create_cluster(num_workers=2)
+    num_elements = 20
+    elements_to_read = 1000
+    ds = dataset_ops.Dataset.range(num_elements).repeat()
+    ds = self.make_distributed_dataset(
+        ds, cluster, processing_mode="distributed_epoch")
+    it = iter(ds)
+    results = {}
+    for _ in range(elements_to_read):
+      val = next(it).numpy()
+      if val not in results: results[val] = 0
+      results[val] += 1
+    for i in range(num_elements):
+      self.assertGreater(results[i], elements_to_read / num_elements / 2)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testDistributeDistributedEpochForeverRepeatFewElements(self):
+    num_workers = 5
+    cluster = self.create_cluster(num_workers=num_workers)
+    # Less than the number of workers, so that some workers get zero elements on
+    # the first repetition.
+    num_elements = 1
+    ds = dataset_ops.Dataset.range(num_elements).repeat()
+    ds = self.make_distributed_dataset(
+        ds, cluster, processing_mode="distributed_epoch")
+    it = iter(ds)
+    for _ in range(100):
+      self.assertEqual(next(it).numpy(), 0)
+
+    # Stop all but one worker and check that we can still read.
+    for i in range(num_workers - 1):
+      cluster.workers[i]._stop()
+    for _ in range(100):
+      self.assertEqual(next(it).numpy(), 0)
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDistributeDistributedEpochShuffleAndRepeat(self):

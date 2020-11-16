@@ -21,8 +21,8 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "tensorflow/lite/delegates/gpu/cl/device_info.h"
-#include "tensorflow/lite/delegates/gpu/cl/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
@@ -210,9 +210,11 @@ float4 GetMaskForLastPlane(int channels);
 int3 GetFirstSuitableWorkGroup(const std::vector<int3>& wgs, int max_wg_size);
 
 // task_size as amount of FLT4 processed elements.
-int GetRecommendedBlockSizeForConv(const DeviceInfo& device,
+int GetRecommendedBlockSizeForConv(const GpuInfo& gpu_info,
                                    CalculationsPrecision precision,
                                    int task_size);
+
+int3 GetWorkGroupsCount(const int3& grid_size, const int3& work_group_size);
 }  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

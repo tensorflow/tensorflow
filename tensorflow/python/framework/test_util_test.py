@@ -962,12 +962,13 @@ class GarbageCollectionTest(test_util.TensorFlowTestCase):
 
   def test_no_new_objects_decorator(self):
 
-    class LeakedObjectTest(object):
+    class LeakedObjectTest(unittest.TestCase):
 
-      def __init__(inner_self):  # pylint: disable=no-self-argument
-        inner_self.assertEqual = self.assertEqual  # pylint: disable=invalid-name
-        inner_self.accumulation = []
+      def __init__(self, *args, **kwargs):
+        super(LeakedObjectTest, self).__init__(*args, **kwargs)
+        self.accumulation = []
 
+      @unittest.expectedFailure
       @test_util.assert_no_new_pyobjects_executing_eagerly
       def test_has_leak(self):
         self.accumulation.append([1.])
@@ -976,10 +977,8 @@ class GarbageCollectionTest(test_util.TensorFlowTestCase):
       def test_has_no_leak(self):
         self.not_accumulating = [1.]
 
-    with self.assertRaises(AssertionError):
-      LeakedObjectTest().test_has_leak()
-
-    LeakedObjectTest().test_has_no_leak()
+    self.assertTrue(LeakedObjectTest("test_has_leak").run().wasSuccessful())
+    self.assertTrue(LeakedObjectTest("test_has_no_leak").run().wasSuccessful())
 
 
 class RunFunctionsEagerlyInV2Test(test_util.TensorFlowTestCase,

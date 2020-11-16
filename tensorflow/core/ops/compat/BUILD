@@ -20,11 +20,11 @@ cc_library(
     hdrs = ["op_compatibility_lib.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:debug_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/ops:debug_ops_op_lib",
     ],
 )
 
@@ -35,7 +35,7 @@ tf_cc_test(
         "backwards_compatibility_test.cc",
     ],
     data = [
-        "//tensorflow/core:ops/ops.pbtxt",
+        "//tensorflow/core/ops:ops.pbtxt",
         "//tensorflow/core/ops/compat/ops_history_v1:ops_history_v1_srcs",
         "//tensorflow/core/ops/compat/ops_history_v2:ops_history_v2_srcs",
     ] + glob([

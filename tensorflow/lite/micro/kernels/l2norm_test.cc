@@ -32,7 +32,7 @@ constexpr float kOutputMax = 127.0 / 128.0;
 
 TfLiteTensor CreateL2NormTensor(const float* data, TfLiteIntArray* dims,
                                 bool is_input) {
-  return CreateFloatTensor(data, dims);
+  return CreateTensor(data, dims);
 }
 
 template <typename T>

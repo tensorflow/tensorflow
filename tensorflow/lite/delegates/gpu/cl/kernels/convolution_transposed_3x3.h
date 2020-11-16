@@ -38,12 +38,10 @@ class ConvolutionTransposed3x3 : public GPUOperation {
  public:
   ConvolutionTransposed3x3() = default;
   void GetPossibleKernelWorkGroups(
-      TuningType tuning_type, const DeviceInfo& device_info,
+      TuningType tuning_type, const GpuInfo& gpu_info,
       const KernelInfo& kernel_info,
-      std::vector<int3>* work_groups) const override {
-    work_groups->push_back(work_group_size_);
-  }
-  absl::Status BindArguments() override;
+      std::vector<int3>* work_groups) const override;
+  absl::Status BindArguments(ArgumentsBinder* args) override;
   int3 GetGridSize() const override;
 
   // Move only
@@ -61,9 +59,9 @@ class ConvolutionTransposed3x3 : public GPUOperation {
 
  private:
   ConvolutionTransposed3x3(const OperationDef& definition,
-                           const DeviceInfo& device_info, int2 padding);
+                           const GpuInfo& gpu_info, int2 padding);
   friend ConvolutionTransposed3x3 CreateConvolutionTransposed3x3(
-      const DeviceInfo& device_info, const OperationDef& definition,
+      const GpuInfo& gpu_info, const OperationDef& definition,
       const ConvolutionTransposedAttributes& attr);
   template <DataType T>
   void UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights);
@@ -78,7 +76,6 @@ class ConvolutionTransposed3x3 : public GPUOperation {
       int2 padding, int3 work_group_launch_order);
 
   int2 padding_;
-  int3 work_group_launch_order_;
   WeightsUploadType weights_upload_type_;
 };
 
@@ -177,7 +174,7 @@ bool IsConvolutionTransposed3x3Supported(
     const ConvolutionTransposedAttributes& attr);
 
 ConvolutionTransposed3x3 CreateConvolutionTransposed3x3(
-    const DeviceInfo& device_info, const OperationDef& definition,
+    const GpuInfo& gpu_info, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr);
 
 }  // namespace cl

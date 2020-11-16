@@ -78,12 +78,14 @@ Environment& Environment::operator=(Environment&& environment) {
 
 absl::Status Environment::Init() {
   if (device().IsAdreno() && device().SupportsTextureArray()) {
+    const auto& adreno_info = device().info_.adreno_info;
     // Some Adreno < 600 have bug with one layer texture array. b/131099086
     // If we have one layer texture array and will write smt from kernel to this
     // texture, we will get zeroes instead of actual values.
     // The same kernel will work, if we use texture array with more than one
     // layer.
-    if (device().info_.adreno_info.gpu_version < 600) {
+    if (adreno_info.IsAdreno3xx() || adreno_info.IsAdreno4xx() ||
+        adreno_info.IsAdreno5xx()) {
       GetDevicePtr()->DisableOneLayerTextureArray();
     }
   }
@@ -171,9 +173,9 @@ bool Environment::IsSupported(TensorStorageType storage_type) const {
   return false;
 }
 
-TensorStorageType GetFastestStorageType(const DeviceInfo& gpu_info) {
+TensorStorageType GetFastestStorageType(const GpuInfo& gpu_info) {
   if (gpu_info.IsAdreno()) {
-    if (gpu_info.IsAdreno6xxOrHigher()) {
+    if (gpu_info.adreno_info.IsAdreno6xxOrHigher()) {
       return TensorStorageType::TEXTURE_ARRAY;
     } else {
       return TensorStorageType::TEXTURE_2D;
@@ -201,9 +203,10 @@ TensorStorageType GetFastestStorageType(const DeviceInfo& gpu_info) {
 }
 
 TensorStorageType GetStorageTypeWithMinimalMemoryConsumption(
-    const DeviceInfo& gpu_info) {
+    const GpuInfo& gpu_info) {
   if (gpu_info.IsAdreno()) {
-    if (gpu_info.IsAdreno3xx() || gpu_info.IsAdreno4xx()) {
+    if (gpu_info.adreno_info.IsAdreno3xx() ||
+        gpu_info.adreno_info.IsAdreno4xx()) {
       return TensorStorageType::BUFFER;
     } else {
       return TensorStorageType::IMAGE_BUFFER;

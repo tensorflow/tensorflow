@@ -37,8 +37,6 @@ def _gen_kernel_gpu_bin_impl(ctx):
     name = ctx.attr.name
     tile_sizes = ctx.attr.tile_size.replace("x", ",")
     cmd_args = []
-    if ctx.attr.same_shape:
-        cmd_args.append("--same_shape=%s" % ctx.attr.same_shape)
     if ctx.attr.unroll_factors:
         cmd_args.append("--unroll_factors=%s" % ctx.attr.unroll_factors)
 
@@ -70,7 +68,6 @@ _gen_kernel_gpu_bin_rule = rule(
     attrs = {
         "mlir_op": attr.label(mandatory = True, allow_single_file = True),
         "tile_size": attr.string(mandatory = True),
-        "same_shape": attr.string(),
         "unroll_factors": attr.string(),
         "gpu_archs": attr.string_list(mandatory = True),
         "extra_args": attr.string_list(),
@@ -181,13 +178,12 @@ _gen_kernel_image_hdr_rule = rule(
     },
 )
 
-def _gen_kernel_image_hdr(name, mlir_op, gpu_archs, tile_size, same_shape = None, unroll_factors = None, extra_args = []):
+def _gen_kernel_image_hdr(name, mlir_op, gpu_archs, tile_size, unroll_factors = None, extra_args = []):
     """Generates a C header with fatbin data from a Tensorflow op."""
     _gen_kernel_gpu_bin_rule(
         name = name + "_cubin",
         mlir_op = mlir_op,
         tile_size = tile_size,
-        same_shape = same_shape,
         unroll_factors = unroll_factors,
         gpu_archs = gpu_archs,
         extra_args = extra_args,
@@ -240,7 +236,7 @@ def _gen_mlir_op(name, type, unranked):
         unranked = unranked,
     )
 
-def gen_ranked_kernel_library(name, types, tile_size, tags = [], same_shape = None, unroll_factors = None, extra_args = []):
+def gen_ranked_kernel_library(name, types, tile_size, tags = [], unroll_factors = None, extra_args = []):
     """ Generate a library with kernels for a specific tensorflow op.
 
     Args:
@@ -249,7 +245,6 @@ def gen_ranked_kernel_library(name, types, tile_size, tags = [], same_shape = No
       tile_size: The tiling specification, e.g. "16x16".
       unroll_factors: The unrolling specification, e.g. "4,4"
       tags: The tags which should be added to the library.
-      same_shape: The information about which shapes are the same, e.g. "0,1".
       extra_args: Extra arguments to pass to the generator tool.
     """
 
@@ -265,7 +260,6 @@ def gen_ranked_kernel_library(name, types, tile_size, tags = [], same_shape = No
                 mlir_op = "{name}_{type}.mlir".format(name = name, type = type),
                 gpu_archs = rocm_gpu_architectures() if rocm_is_configured() else cuda_gpu_architectures(),
                 tile_size = tile_size,
-                same_shape = same_shape,
                 unroll_factors = unroll_factors,
                 extra_args = extra_args,
             )
@@ -367,14 +361,13 @@ def gen_unranked_kernel_library(name, types, tile_size, tags = [], unroll_factor
         tags = tags,
     )
 
-def gen_kernel_library(name, types, tile_size, tags = [], same_shape = None, unroll_factors = None, extra_args = [], generate_ranked = True, generate_unranked = False):
+def gen_kernel_library(name, types, tile_size, tags = [], unroll_factors = None, extra_args = [], generate_ranked = True, generate_unranked = False):
     if (generate_ranked):
         gen_ranked_kernel_library(
             name = name,
             types = types,
             tile_size = tile_size,
             tags = tags,
-            same_shape = same_shape,
             unroll_factors = unroll_factors,
             extra_args = extra_args,
         )

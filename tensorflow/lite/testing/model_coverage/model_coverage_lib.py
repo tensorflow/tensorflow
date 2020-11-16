@@ -22,20 +22,19 @@ import os
 
 import numpy as np
 from six import PY2
+from tensorflow import keras
 
 from google.protobuf import text_format as _text_format
 from google.protobuf.message import DecodeError
 from tensorflow.core.framework import graph_pb2 as _graph_pb2
 from tensorflow.lite.python import convert_saved_model as _convert_saved_model
 from tensorflow.lite.python import lite as _lite
-from tensorflow.lite.python import lite_constants as constants
 from tensorflow.lite.python import util as _util
-from tensorflow.python import keras as _keras
 from tensorflow.python.client import session as _session
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework.importer import import_graph_def as _import_graph_def
-from tensorflow.python.keras.preprocessing import image
 from tensorflow.python.lib.io import file_io as _file_io
 from tensorflow.python.platform import resource_loader as _resource_loader
 from tensorflow.python.saved_model import load as _load
@@ -71,8 +70,9 @@ def get_image(size):
   """
   img_filename = _resource_loader.get_path_to_datafile(
       "testdata/grace_hopper.jpg")
-  img = image.load_img(img_filename, target_size=(size, size))
-  img_array = image.img_to_array(img)
+  img = keras.preprocessing.image.load_img(
+      img_filename, target_size=(size, size))
+  img_array = keras.preprocessing.image.img_to_array(img)
   img_array = np.expand_dims(img_array, axis=0)
   return img_array
 
@@ -97,7 +97,7 @@ def _convert(converter, **kwargs):
   if "post_training_quantize" in kwargs:
     converter.optimizations = [_lite.Optimize.DEFAULT]
   if kwargs.get("quantize_to_float16", False):
-    converter.target_spec.supported_types = [constants.FLOAT16]
+    converter.target_spec.supported_types = [dtypes.float16]
   if kwargs.get("post_training_quantize_16x8", False):
     input_size = kwargs.get("model_input_size")
 
@@ -128,11 +128,11 @@ def _convert(converter, **kwargs):
 def _check_model_quantized_to_16x8(tflite_model):
   """Checks that the activations are quantized into int16.
 
-    Args:
-      tflite_model: Serialized TensorFlow Lite model.
+  Args:
+    tflite_model: Serialized TensorFlow Lite model.
 
-    Raises:
-      ValueError: Activations with int16 type are not found.
+  Raises:
+    ValueError: Activations with int16 type are not found.
   """
   interpreter = _get_tflite_interpreter(tflite_model)
   interpreter.allocate_tensors()
@@ -342,7 +342,7 @@ def evaluate_keras_model(filename):
   Returns:
     Lambda function ([np.ndarray data] : [np.ndarray result]).
   """
-  keras_model = _keras.models.load_model(filename)
+  keras_model = keras.models.load_model(filename)
   return lambda input_data: [keras_model.predict(input_data)]
 
 
@@ -740,7 +740,7 @@ def test_keras_model_v2(filename,
       (half-inclusive). (default None)
     **kwargs: Additional arguments to be passed into the converter.
   """
-  keras_model = _keras.models.load_model(filename)
+  keras_model = keras.models.load_model(filename)
   if input_shapes:
     for tensor, shape in zip(keras_model.inputs, input_shapes):
       tensor.set_shape(shape)

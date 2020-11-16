@@ -33,11 +33,12 @@ namespace {
 
 const double kMaxError = 1e-6;
 constexpr int kStepNum = 2;
-constexpr int kCoreId = 1;
+constexpr int kCoreId = 1001;
 constexpr int kStepTimePs = 1000;
-constexpr int kHostComputePs = 100;
+constexpr int kHostComputePs = 50;
 constexpr int kHostCompilePs = 50;
 constexpr int kHostToHostPs = 50;
+constexpr int kHostToDevicePs = 50;
 constexpr int kHostPreparePs = 50;
 constexpr int kDeviceCollectivePs = 350;
 constexpr int kHostWaitInputPs = 50;
@@ -48,6 +49,7 @@ constexpr int kDeviceCompute16Ps = 50;
 constexpr int kDeviceWaitDevicePs = 50;
 constexpr int kDeviceWaitHostPs = 50;
 constexpr int kUnknownTimePs = 50;
+static constexpr char kHostname[] = "host:123";
 
 void CreateOpStats(OpStats* op_stats) {
   PerCoreStepInfo* info = op_stats->mutable_step_db()->add_step_sequence();
@@ -60,6 +62,7 @@ void CreateOpStats(OpStats* op_stats) {
   type_ps[HOST_COMPUTE] = kHostComputePs;
   type_ps[HOST_COMPILE] = kHostCompilePs;
   type_ps[HOST_TO_HOST] = kHostToHostPs;
+  type_ps[HOST_TO_DEVICE] = kHostToDevicePs;
   type_ps[HOST_PREPARE] = kHostPreparePs;
   type_ps[DEVICE_COLLECTIVES] = kDeviceCollectivePs;
   type_ps[HOST_WAIT_INPUT] = kHostWaitInputPs;
@@ -71,6 +74,8 @@ void CreateOpStats(OpStats* op_stats) {
   type_ps[DEVICE_WAIT_HOST] = kDeviceWaitHostPs;
   type_ps[UNKNOWN_TIME] = kUnknownTimePs;
   step_info.mutable_step_breakdown()->PackFrom(breakdown);
+  CoreDetails& details = (*op_stats->mutable_core_id_to_details())[kCoreId];
+  details.set_hostname(kHostname);
 }
 
 TEST(OpStatsToPodStats, GpuPodStats) {
@@ -80,37 +85,29 @@ TEST(OpStatsToPodStats, GpuPodStats) {
   EXPECT_EQ(1, pod_stats_db.pod_stats_record_size());
   const PodStatsRecord& record = pod_stats_db.pod_stats_record(0);
   EXPECT_EQ(kStepNum, record.step_num());
+  EXPECT_EQ(kHostname, record.host_name());
   EXPECT_NEAR(PicosToMicros(kStepTimePs), record.total_duration_us(),
               kMaxError);
   const auto& breakdown = record.step_breakdown_us();
-  EXPECT_NEAR(PicosToMicros(kHostComputePs), breakdown.at(HOST_COMPUTE),
-              kMaxError);
-  EXPECT_NEAR(PicosToMicros(kHostCompilePs), breakdown.at(HOST_COMPILE),
-              kMaxError);
-  EXPECT_NEAR(PicosToMicros(kHostToHostPs), breakdown.at(HOST_TO_HOST),
-              kMaxError);
-  EXPECT_NEAR(PicosToMicros(kHostPreparePs), breakdown.at(HOST_PREPARE),
-              kMaxError);
+  EXPECT_NEAR(PicosToMicros(kDeviceCompute32Ps + kDeviceCompute16Ps),
+              breakdown.at(kDeviceCompute), kMaxError);
+  EXPECT_NEAR(PicosToMicros(kDeviceToDevicePs + kDeviceWaitDevicePs),
+              breakdown.at(kDeviceToDevice), kMaxError);
   EXPECT_NEAR(PicosToMicros(kDeviceCollectivePs),
-              breakdown.at(DEVICE_COLLECTIVES), kMaxError);
-  EXPECT_NEAR(PicosToMicros(kHostWaitInputPs), breakdown.at(HOST_WAIT_INPUT),
+              breakdown.at(kDeviceCollectives), kMaxError);
+  EXPECT_NEAR(PicosToMicros(kHostComputePs), breakdown.at(kHostCompute),
               kMaxError);
-  EXPECT_NEAR(PicosToMicros(kDeviceToDevicePs), breakdown.at(DEVICE_TO_DEVICE),
+  EXPECT_NEAR(PicosToMicros(kHostPreparePs), breakdown.at(kHostPrepare),
               kMaxError);
-  EXPECT_NEAR(PicosToMicros(kDeviceToHostPs), breakdown.at(DEVICE_TO_HOST),
-              kMaxError);
-  EXPECT_NEAR(PicosToMicros(kDeviceCompute32Ps),
-              breakdown.at(DEVICE_COMPUTE_32), kMaxError);
-  EXPECT_NEAR(PicosToMicros(kDeviceCompute16Ps),
-              breakdown.at(DEVICE_COMPUTE_16), kMaxError);
-  EXPECT_NEAR(PicosToMicros(kDeviceWaitDevicePs),
-              breakdown.at(DEVICE_WAIT_DEVICE), kMaxError);
-  EXPECT_NEAR(PicosToMicros(kDeviceWaitHostPs), breakdown.at(DEVICE_WAIT_HOST),
-              kMaxError);
-  EXPECT_NEAR(PicosToMicros(kUnknownTimePs), breakdown.at(UNKNOWN_TIME),
+  EXPECT_NEAR(
+      PicosToMicros(kHostWaitInputPs + kHostToDevicePs + kDeviceWaitHostPs),
+      breakdown.at(kInput), kMaxError);
+  EXPECT_NEAR(PicosToMicros(kDeviceToHostPs), breakdown.at(kOutput), kMaxError);
+  EXPECT_NEAR(PicosToMicros(kHostCompilePs), breakdown.at(kCompile), kMaxError);
+  EXPECT_NEAR(PicosToMicros(kUnknownTimePs), breakdown.at(kAllOthers),
               kMaxError);
 
-  EXPECT_EQ(PrintEventTypeLabel(DEVICE_COLLECTIVES), record.bottleneck());
+  EXPECT_EQ(GetGenericEventTypeStr(kDeviceCollectives), record.bottleneck());
 }
 
 TEST(OpStatsToPodStats, Diagnostics) {

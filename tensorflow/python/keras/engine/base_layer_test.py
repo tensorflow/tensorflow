@@ -27,12 +27,14 @@ import numpy as np
 
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import type_spec
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
@@ -46,6 +48,7 @@ from tensorflow.python.keras.engine import training as training_lib
 from tensorflow.python.keras.legacy_tf_layers import core as legacy_core
 from tensorflow.python.keras.optimizer_v2 import rmsprop
 from tensorflow.python.keras.utils import control_flow_util
+from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
@@ -82,6 +85,13 @@ class InvalidLayer(base_layer.Layer):
 
 
 class BaseLayerTest(keras_parameterized.TestCase):
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_layer_instrumentation(self):
+    layer = layers.Add()
+    self.assertTrue(layer._instrumented_keras_api)
+    self.assertTrue(layer._instrumented_keras_layer_class)
+    self.assertFalse(layer._instrumented_keras_model_class)
 
   @combinations.generate(combinations.times(
       combinations.keras_model_type_combinations(),
@@ -432,6 +442,49 @@ class BaseLayerTest(keras_parameterized.TestCase):
     x, y = np.ones((10, 10)), np.ones((10, 10))
     # Checks that variables get initialized.
     model.fit(x, y, batch_size=2, epochs=2)
+
+  @combinations.generate(combinations.combine(mode=['eager']))
+  def test_composite_variable_assignment(self):
+
+    class Spec(type_spec.TypeSpec):
+
+      value_type = property(lambda self: CompositeVariable)
+
+      def _component_specs(self):
+        pass
+
+      def _serialize(self):
+        pass
+
+      def _to_components(self, value):
+        return value._variables
+
+      def _from_components(self, variable_list):
+        return CompositeVariable(variable_list)
+
+    class CompositeVariable(composite_tensor.CompositeTensor):
+
+      def __init__(self, variable_list):
+        self._variables = variable_list
+
+      @property
+      def _type_spec(self):
+        return Spec()
+
+    class CompositeVariableLayer(base_layer.Layer):
+
+      def __init__(self):
+        super().__init__()
+        self.composite_var = CompositeVariable(
+            [variables.Variable(1.),
+             variables.Variable(2.)])
+
+    layer = CompositeVariableLayer()
+    self.assertLen(layer.weights, 2)
+    self.assertIsInstance(layer.weights[0], variables.Variable)
+    self.assertIsInstance(layer.weights[1], variables.Variable)
+    self.assertEqual(self.evaluate(layer.weights[0]), 1.)
+    self.assertEqual(self.evaluate(layer.weights[1]), 2.)
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_layer_names(self):
@@ -788,6 +841,58 @@ class BaseLayerTest(keras_parameterized.TestCase):
     layer = MyLayer(activity_regularizer='l2')
     self.assertIsInstance(layer.activity_regularizer, regularizers.L2)
 
+  def test_tf_module_tracking(self):
+
+    class MyModule(module.Module):
+
+      def __init__(self):
+        super(MyModule, self).__init__()
+        self.v1 = variables.Variable(1., trainable=True, name='v1')
+        self.v2 = variables.Variable(2., trainable=False, name='v2')
+
+      def __call__(self, x):
+        return x * self.v1 * self.v2
+
+    class MyLayer(base_layer.Layer):
+
+      def __init__(self, **kwargs):
+        super(MyLayer, self).__init__(self, **kwargs)
+        self.my_modules = {}
+        self.my_modules['a'] = MyModule()
+
+      def call(self, x):
+        return self.my_modules['a'](x)
+
+    layer = MyLayer()
+    self.assertLen(layer.variables, 2)
+    self.assertLen(layer.trainable_variables, 1)
+    self.assertLen(layer.non_trainable_variables, 1)
+
+    layer.trainable = False
+    self.assertLen(layer.variables, 2)
+    self.assertLen(layer.trainable_variables, 0)
+    self.assertLen(layer.non_trainable_variables, 2)
+
+    class MyModel(training_lib.Model):
+
+      def __init__(self):
+        super(MyModel, self).__init__()
+        self.my_modules = []
+        self.my_modules.append(MyModule())
+
+      def call(self, x):
+        return self.my_modules[0](x)
+
+    model = MyModel()
+    self.assertLen(model.variables, 2)
+    self.assertLen(model.trainable_variables, 1)
+    self.assertLen(model.non_trainable_variables, 1)
+
+    model.trainable = False
+    self.assertLen(model.variables, 2)
+    self.assertLen(model.trainable_variables, 0)
+    self.assertLen(model.non_trainable_variables, 2)
+
 
 class SymbolicSupportTest(keras_parameterized.TestCase):
 
@@ -894,7 +999,7 @@ class SymbolicSupportTest(keras_parameterized.TestCase):
 
     tmp_dir = self.get_temp_dir()
     writer = summary_ops_v2.create_file_writer_v2(tmp_dir)
-    with writer.as_default(), summary_ops_v2.always_record_summaries():
+    with writer.as_default(), summary_ops_v2.record_if(True):
       my_layer = MyLayer()
       x = array_ops.ones((10, 10))
 
@@ -1026,12 +1131,13 @@ class NestedTrackingTest(test.TestCase):
     del l.c
     l.d = last_assignment
     del l.d
-    self.assertEqual([last_assignment], l._layers)
+    sublayers = list(l._flatten_layers(include_self=False, recursive=False))
+    self.assertEqual([last_assignment], sublayers)
     self.assertEqual([], l.trainable_weights)
     self.assertEqual([], l.non_trainable_weights)
     self.assertEqual([], l.weights)
     del l.a
-    self.assertEqual([], l._layers)
+    self.assertEqual([], l._self_tracked_trackables)
 
   def test_assign_op_not_tracked_as_variable(self):
 
@@ -1385,8 +1491,7 @@ class AutographControlFlowTest(keras_parameterized.TestCase):
     if testing_utils.should_run_eagerly():
       model.fit(x, y, epochs=2, batch_size=5)
     else:
-      with self.assertRaisesRegex(errors_impl.InaccessibleTensorError,
-                                  'ActivityRegularizer'):
+      with self.assertRaisesRegex(ValueError, 'ActivityRegularizer'):
         model.fit(x, y, epochs=2, batch_size=5)
 
   def test_conditional_activity_regularizer_with_wrappers_in_call(self):
@@ -1417,8 +1522,7 @@ class AutographControlFlowTest(keras_parameterized.TestCase):
     if testing_utils.should_run_eagerly():
       model.fit(x, y, epochs=2, batch_size=5)
     else:
-      with self.assertRaisesRegex(errors_impl.InaccessibleTensorError,
-                                  'ActivityRegularizer'):
+      with self.assertRaisesRegex(ValueError, 'ActivityRegularizer'):
         model.fit(x, y, epochs=2, batch_size=5)
 
 
@@ -1450,7 +1554,7 @@ class IdentityLayer(base_layer.Layer):
 class DTypeTest(keras_parameterized.TestCase):
 
   # This class only have tests relating to layer.dtype. Tests for dtype policies
-  # are in mixed_precision/experimental/keras_test.py
+  # are in mixed_precision/keras_test.py
 
   # TODO(reedwm): Maybe have a separate test file for input casting tests.
 

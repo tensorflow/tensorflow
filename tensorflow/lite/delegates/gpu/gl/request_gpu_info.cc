@@ -34,7 +34,7 @@ absl::Status RequestGpuInfo(GpuInfo* gpu_info) {
   const GLubyte* renderer_name = glGetString(GL_RENDERER);
   if (renderer_name) {
     info.renderer_name = reinterpret_cast<const char*>(renderer_name);
-    GetGpuModelAndType(info.renderer_name, &info.gpu_model, &info.type);
+    GetGpuInfoFromDeviceDescription(info.renderer_name, &info);
   }
 
   const GLubyte* vendor_name = glGetString(GL_VENDOR);

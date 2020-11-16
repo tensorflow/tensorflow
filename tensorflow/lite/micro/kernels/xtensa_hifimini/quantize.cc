@@ -113,8 +113,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // TODO(b/155682734): Fix dangerous input/output scale ratio assumptions.
   op_data->scale_multiplier =
-      ops::micro::xtensa::hifimini::CreateQConstantForInt24(
-          0, input->params.scale / output->params.scale);
+      CreateQConstantForInt24(0, input->params.scale / output->params.scale);
 
   op_data->zero_point = output->params.zero_point;
 

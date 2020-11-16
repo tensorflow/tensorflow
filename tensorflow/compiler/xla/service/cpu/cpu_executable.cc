@@ -63,14 +63,14 @@ CpuExecutable::CpuExecutable(
       assignment_(std::move(assignment)) {
   // Resolve symbols in the constructor rather than at execution time to avoid
   // races because FindSymbol is not thread safe.
-  llvm::JITSymbol sym = jit_->FindCompiledSymbol(entry_function_name);
+  llvm::Expected<llvm::JITEvaluatedSymbol> sym =
+      jit_->FindCompiledSymbol(entry_function_name);
   // We expect to find the symbol provided with entry_function_name; otherwise
   // this is an internal error.
-  CHECK(sym) << "Symbol " << entry_function_name << " not found.";
+  CHECK(*sym) << "Symbol " << entry_function_name << " not found.";
   // getAddress can do work under the hood in the jit, so it needs to be
   // guarded by the mutex.
-  compute_function_ =
-      reinterpret_cast<ComputeFunctionType>(cantFail(sym.getAddress()));
+  compute_function_ = reinterpret_cast<ComputeFunctionType>(sym->getAddress());
   VLOG(1) << "compute_function_ at address "
           << reinterpret_cast<void*>(compute_function_);
 }

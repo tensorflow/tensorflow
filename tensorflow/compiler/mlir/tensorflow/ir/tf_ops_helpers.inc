@@ -587,3 +587,31 @@ struct DropAttributes : public OpRewritePattern<Op> {
   }
 };
 
+//===----------------------------------------------------------------------===//
+// TF op helper functions for handling resource handles and ids.
+//===----------------------------------------------------------------------===//
+
+// Returns device of op if present. If op has no device set, an empty string ref
+// is returned instead.
+llvm::StringRef GetDeviceOrEmpty(Operation *op) {
+  if (auto device_attr = op->getAttrOfType<StringAttr>("device"))
+    return device_attr.getValue();
+  return llvm::StringRef();
+}
+
+// Returns resource handle value and id for resource op based on attributes. If
+// a resource handle is anonymous, a new id is always returned.
+ResourceHandleValueAndId GetResourceHandleValueAndIdBase(
+    llvm::StringRef container, llvm::StringRef shared_name,
+    llvm::StringRef device, Value resource,
+    llvm::SmallDenseMap<ResourceHandle, int64_t> &resource_handle_id_map,
+    int64_t &next_id) {
+  // Always create a new ID for anonymous handle.
+  if (IsResourceHandleAnonymous(shared_name)) return {resource, next_id++};
+
+  ResourceHandle handle(container, shared_name, device, /*op=*/nullptr);
+  auto emplace_res = resource_handle_id_map.try_emplace(handle, next_id);
+  // New ID created, increment next_id.
+  if (emplace_res.second) ++next_id;
+  return {resource, emplace_res.first->second};
+}

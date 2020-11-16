@@ -300,6 +300,7 @@ class EmbedCheckCategoricalEventShapeTest(test.TestCase):
             param)
         checked_param.eval(feed_dict={param: np.ones([int(2**11+1)])})
 
+  @test_util.disable_tfrt("b/169901260")
   @test_util.run_in_graph_and_eager_modes
   def testUnsupportedDtype(self):
     param = ops.convert_to_tensor(
