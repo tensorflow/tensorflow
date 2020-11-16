@@ -52,6 +52,19 @@ static Graph* SparseXent(int batch_size, int num_classes, DataType value_type) {
   }                                                                          \
   BENCHMARK(BM_SparseXent##_##BATCH##_##CLASS##_##DEVICE_##DTYPE);
 
+#define BM_SPARSE_XENT_DEV_CPU(DTYPE)       \
+  BM_SparseXentDev(8, 1000000, cpu, DTYPE); \
+  BM_SparseXentDev(16, 10000, cpu, DTYPE);  \
+  BM_SparseXentDev(16, 100000, cpu, DTYPE); \
+  BM_SparseXentDev(32, 10000, cpu, DTYPE);  \
+  BM_SparseXentDev(32, 100000, cpu, DTYPE); \
+  BM_SparseXentDev(64, 10000, cpu, DTYPE);  \
+  BM_SparseXentDev(64, 100000, cpu, DTYPE);
+
+// CPU
+BM_SPARSE_XENT_DEV_CPU(DT_FLOAT);
+BM_SPARSE_XENT_DEV_CPU(DT_BFLOAT16);
+
 /// The representative tests for ptb_word on GPU
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 BM_SparseXentDev(8, 1000000, gpu, DT_FLOAT);
@@ -68,28 +81,5 @@ BM_SparseXentDev(64, 10000, gpu, DT_FLOAT);
 BM_SparseXentDev(64, 30000, gpu, DT_FLOAT);
 BM_SparseXentDev(64, 100000, gpu, DT_FLOAT);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
-// CPU
-BM_SparseXentDev(8, 1000000, cpu, DT_FLOAT);
-
-BM_SparseXentDev(16, 10000, cpu, DT_FLOAT);
-BM_SparseXentDev(16, 100000, cpu, DT_FLOAT);
-
-BM_SparseXentDev(32, 10000, cpu, DT_FLOAT);
-BM_SparseXentDev(32, 100000, cpu, DT_FLOAT);
-
-BM_SparseXentDev(64, 10000, cpu, DT_FLOAT);
-BM_SparseXentDev(64, 100000, cpu, DT_FLOAT);
-
-BM_SparseXentDev(8, 1000000, cpu, DT_BFLOAT16);
-
-BM_SparseXentDev(16, 10000, cpu, DT_BFLOAT16);
-BM_SparseXentDev(16, 100000, cpu, DT_BFLOAT16);
-
-BM_SparseXentDev(32, 10000, cpu, DT_BFLOAT16);
-BM_SparseXentDev(32, 100000, cpu, DT_BFLOAT16);
-
-BM_SparseXentDev(64, 10000, cpu, DT_BFLOAT16);
-BM_SparseXentDev(64, 100000, cpu, DT_BFLOAT16);
 
 }  // end namespace tensorflow
