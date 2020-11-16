@@ -32,6 +32,7 @@
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
+#include "mlir/ExecutionEngine/OptUtils.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/init_mlir.h"
@@ -74,6 +75,16 @@ xla::StatusOr<std::string> EmitToBinary(mlir::ModuleOp module) {
   std::unique_ptr<llvm::Module> llvm_module =
       mlir::translateModuleToLLVMIR(module, llvm_context);
 
+  auto target_machine = GetTargetMachine(llvm_module.get());
+  llvm_module->setDataLayout(target_machine->createDataLayout());
+
+  // Run LLVM's mid-level optimizer to clean up the IR.
+  if (mlir::makeOptimizingTransformer(
+          /*optLevel=*/2, /*sizeLevel=*/0,
+          target_machine.get())(llvm_module.get())) {
+    return xla::InternalError("Failed to run LLVM optimizer passess");
+  }
+
   // Set up the output stream.
   llvm::SmallString<8> outstr;
   llvm::raw_svector_ostream ostream(outstr);
@@ -83,9 +94,6 @@ xla::StatusOr<std::string> EmitToBinary(mlir::ModuleOp module) {
   codegen_passes.add(new llvm::TargetLibraryInfoWrapperPass(
       llvm::Triple(llvm_module->getTargetTriple())));
 
-  // TODO(b/163818770): Apply optimizations before dumping .a file.
-  auto target_machine = GetTargetMachine(llvm_module.get());
-  llvm_module->setDataLayout(target_machine->createDataLayout());
   if (target_machine->addPassesToEmitFile(codegen_passes, ostream, nullptr,
                                           llvm::CGFT_ObjectFile, false)) {
     return xla::InternalError("Failed add passes to emit file");

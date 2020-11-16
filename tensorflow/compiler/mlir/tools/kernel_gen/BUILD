@@ -121,6 +121,7 @@ tf_cc_binary(
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
         "@llvm-project//llvm:X86Disassembler",  # fixdeps: keep
+        "@llvm-project//mlir:ExecutionEngineUtils",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:TargetLLVMIR",
     ],
