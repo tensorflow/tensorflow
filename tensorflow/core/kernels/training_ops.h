@@ -48,7 +48,7 @@ struct ApplyAdadelta {
 
 template <typename Device, typename T, typename Tindex>
 struct ResourceSparseApplyAdadelta {
-  Tindex operator()(const Device& d, typename TTypes<T>::Matrix var,
+  void operator()(const Device& d, typename TTypes<T>::Matrix var,
                     typename TTypes<T>::Matrix accum,
                     typename TTypes<T>::Matrix accum_update,
                     typename TTypes<T>::ConstScalar lr,
