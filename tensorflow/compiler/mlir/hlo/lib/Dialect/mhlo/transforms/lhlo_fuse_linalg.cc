@@ -85,13 +85,41 @@ class LhloFuseLinalgPass
       if (!definingOp) {
         continue;
       }
+
       if (auto viewLike = dyn_cast<ViewLikeOpInterface>(definingOp)) {
         auto alias = viewLike.getViewSource();
         if (result_buffers.insert(alias).second) {
           worklist.push_back(alias);
         }
       }
+
+      if (auto regionInterface =
+              dyn_cast<RegionBranchOpInterface>(definingOp)) {
+        for (Region& region : regionInterface.getOperation()->getRegions()) {
+          // Only consider regions that can return to the parent region.
+          SmallVector<RegionSuccessor, 2> successorRegions;
+          regionInterface.getSuccessorRegions(region.getRegionNumber(),
+                                              successorRegions);
+          if (llvm::none_of(successorRegions, [&](auto successorRegion) {
+                return successorRegion.isParent();
+              }))
+            continue;
+
+          // Iterate over all immediate terminators and record the values
+          // corresponding to result_buffers of interest.
+          for (Block& block : region) {
+            if (block.empty()) continue;
+            Operation& operation = block.back();
+            if (!operation.hasTrait<OpTrait::ReturnLike>()) continue;
+            auto idx = result.dyn_cast<OpResult>().getResultNumber();
+            if (result_buffers.insert(operation.getOperand(idx)).second) {
+              worklist.push_back(operation.getOperand(idx));
+            }
+          }
+        }
+      }
     }
+
     MLIRContext* ctx = func.getContext();
     OpBuilder b(func);
     func.walk([&](linalg::GenericOp generic_op) {

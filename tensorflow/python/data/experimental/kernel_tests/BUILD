@@ -682,7 +682,10 @@ tf_py_test(
     name = "replicate_test",
     srcs = ["replicate_test.py"],
     grpc_enabled = True,
-    tags = ["no_oss"],
+    tags = [
+        "no_oss",
+        "notsan",  # b/173146507
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_combinations",

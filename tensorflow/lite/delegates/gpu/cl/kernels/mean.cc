@@ -26,19 +26,19 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-Mean::Mean(const OperationDef& definition, const DeviceInfo& device_info)
+Mean::Mean(const OperationDef& definition, const GpuInfo& gpu_info)
     : GPUOperation(definition) {
   // for workgroup size:
   // must be: (x * y) % 4 = 0;
   // must be: z = 1;
   work_group_size_ = int3(16, 16, 1);
-  if (device_info.IsAdreno()) {
-    if (device_info.adreno_info.IsAdreno3xx()) {
+  if (gpu_info.IsAdreno()) {
+    if (gpu_info.adreno_info.IsAdreno3xx()) {
       work_group_size_ = int3(16, 8, 1);
     }
   }
-  if (device_info.IsMali()) {
-    const MaliInfo& mali_info = device_info.mali_info;
+  if (gpu_info.IsMali()) {
+    const MaliInfo& mali_info = gpu_info.mali_info;
     if (mali_info.IsMaliT6xx() || mali_info.IsMaliT7xx() ||
         mali_info.IsMaliT8xx()) {
       work_group_size_ = int3(8, 4, 1);
@@ -135,8 +135,8 @@ int3 Mean::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-Mean CreateMean(const OperationDef& definition, const DeviceInfo& device_info) {
-  return Mean(definition, device_info);
+Mean CreateMean(const OperationDef& definition, const GpuInfo& gpu_info) {
+  return Mean(definition, gpu_info);
 }
 
 }  // namespace cl

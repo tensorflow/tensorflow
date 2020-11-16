@@ -29,7 +29,7 @@ class Softmax1x1 : public GPUOperation {
   Softmax1x1() = default;
   explicit Softmax1x1(const OperationDef& definition);
   void GetPossibleKernelWorkGroups(
-      TuningType tuning_type, const DeviceInfo& device_info,
+      TuningType tuning_type, const GpuInfo& gpu_info,
       const KernelInfo& kernel_info,
       std::vector<int3>* work_groups) const override {
     work_groups->push_back(work_group_size_);

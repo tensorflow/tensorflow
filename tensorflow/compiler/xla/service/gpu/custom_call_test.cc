@@ -165,6 +165,7 @@ TEST_F(CustomCallTest, SubBuffers) {
   EXPECT_THAT(result.data<float>({1, 1}), ::testing::Each(2));
   EXPECT_THAT(result.data<float>({2}), ::testing::Each(3));
 }
+<<<<<<< HEAD
 
 void Callback_TupleSelect(se::gpu::GpuStreamHandle stream, void** buffers,
                           const char* /*opaque*/, size_t /*opaque_len*/) {
@@ -207,5 +208,7 @@ TEST_F(CustomCallTest, TupleSelect) {
   EXPECT_THAT(result.data<float>({1}), ::testing::Each(20));
 }
 
+=======
+>>>>>>> upstream/master
 }  // anonymous namespace
 }  // namespace xla

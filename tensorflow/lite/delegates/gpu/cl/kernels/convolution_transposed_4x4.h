@@ -38,7 +38,7 @@ class ConvolutionTransposed4x4 : public GPUOperation {
  public:
   ConvolutionTransposed4x4() = default;
   void GetPossibleKernelWorkGroups(
-      TuningType tuning_type, const DeviceInfo& device_info,
+      TuningType tuning_type, const GpuInfo& gpu_info,
       const KernelInfo& kernel_info,
       std::vector<int3>* work_groups) const override {
     work_groups->push_back(work_group_size_);
@@ -61,10 +61,10 @@ class ConvolutionTransposed4x4 : public GPUOperation {
 
  private:
   ConvolutionTransposed4x4(const OperationDef& definition,
-                           const DeviceInfo& device_info,
+                           const GpuInfo& gpu_info,
                            const ConvolutionTransposedAttributes& attr);
   friend ConvolutionTransposed4x4 CreateConvolutionTransposed4x4(
-      const DeviceInfo& device_info, const OperationDef& definition,
+      const GpuInfo& gpu_info, const OperationDef& definition,
       const ConvolutionTransposedAttributes& attr);
   template <DataType T>
   void UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
@@ -161,7 +161,7 @@ bool IsConvolutionTransposed4x4Supported(
     const ConvolutionTransposedAttributes& attr);
 
 ConvolutionTransposed4x4 CreateConvolutionTransposed4x4(
-    const DeviceInfo& device_info, const OperationDef& definition,
+    const GpuInfo& gpu_info, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr);
 
 }  // namespace cl

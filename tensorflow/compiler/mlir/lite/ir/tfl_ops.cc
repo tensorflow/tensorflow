@@ -1973,6 +1973,43 @@ OpFoldResult ConstOp::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
+// CastOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult CastOp::fold(ArrayRef<Attribute> operands) {
+  assert(operands.size() == 1);
+  // For now, only supports cast between integer types.
+  auto elements_attr = operands[0].dyn_cast_or_null<DenseIntElementsAttr>();
+  if (!elements_attr) {
+    return nullptr;
+  }
+
+  auto result_element_type =
+      getType().cast<ShapedType>().getElementType().dyn_cast<IntegerType>();
+  auto operand_element_type = input()
+                                  .getType()
+                                  .cast<ShapedType>()
+                                  .getElementType()
+                                  .dyn_cast<IntegerType>();
+  // Returns nullptr if either result/operand element type is not integer.
+  if (!result_element_type || !operand_element_type) {
+    return nullptr;
+  }
+
+  const bool is_input_unsigned = operand_element_type.isUnsigned();
+  const int output_bitwidth = result_element_type.getWidth();
+  // The integer cast op is the same as C integer cast. Depends on the operand
+  // type's signedness, we will determine whether or not sign extension is
+  // needed.
+  auto cast = [&](APInt value) {
+    return is_input_unsigned ? value.zextOrTrunc(output_bitwidth)
+                             : value.sextOrTrunc(output_bitwidth);
+  };
+
+  return elements_attr.mapValues(result_element_type, cast);
+}
+
+//===----------------------------------------------------------------------===//
 // SelectV2Op
 //===----------------------------------------------------------------------===//
 

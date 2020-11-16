@@ -386,17 +386,6 @@ cc_library(
 )
 
 cc_library(
-    name = "strong_hash",
-    tags = [
-        "manual",
-        "no_oss",
-        "nobuilder",
-    ],
-    textual_hdrs = ["strong_hash.h"],
-    deps = ["@highwayhash//:sip_hash"],
-)
-
-cc_library(
     name = "subprocess",
     srcs = ["subprocess.cc"],
     hdrs = ["//tensorflow/core/platform:subprocess.h"],
@@ -580,6 +569,7 @@ package_group(
     name = "core_and_platform_packages",
     packages = [
         "//tensorflow/core",
+        "//tensorflow/core/lib/gif",
         "//tensorflow/core/lib/jpeg",
         "//tensorflow/core/platform",
     ],

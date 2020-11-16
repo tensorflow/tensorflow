@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Keras string lookup preprocessing layer."""
+# pylint: disable=g-classes-have-attributes
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -39,7 +40,7 @@ class IntegerLookup(index_lookup.IndexLookup):
   vocabulary size, the most frequent terms will be used to create the
   vocabulary.
 
-  Attributes:
+  Arguments:
     max_values: The maximum size of the vocabulary for this layer. If None,
       there is no cap on the size of the vocabulary. Note that this vocabulary
       includes the OOV and mask values, so the effective number of values is

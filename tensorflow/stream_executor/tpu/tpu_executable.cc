@@ -77,10 +77,22 @@ Status TpuExecutable::LoadProgramAndEnqueueToStream(
       run_options.run_options().stream()->implementation());
   StatusHelper status;
 
+  TpuExecutable_LoadProgramAndEnqueueToStream_Params params;
+  params.struct_size = TpuExecutable_LoadProgramAndEnqueueToStream_Params_SIZE;
+  params.priv = nullptr;
+  params.program = core_program_;
+  params.arguments = arguments_bases;
+  params.arguments_len = arguments.size();
+  params.result = &result_base;
+  params.cross_program_prefetch_addr =
+      cross_program_prefetch_addr.has_value() ? &prefetch_base : nullptr;
+  params.rng_seed = rng_seed;
+  params.device_assignment = &c_dev_assign;
+  params.stream = stream;
+  params.status = status.c_status;
+
   tensorflow::tpu::OpsApiFn()->TpuExecutable_LoadProgramAndEnqueueToStreamFn(
-      core_program_, arguments_bases, arguments.size(), &result_base,
-      (cross_program_prefetch_addr.has_value() ? &prefetch_base : nullptr),
-      rng_seed, &c_dev_assign, stream, status.c_status);
+      &params);
 
   if (dev_assign != nullptr) {
     stream_executor::tpu::SerializedProto_Free(dev_assign_serialized);

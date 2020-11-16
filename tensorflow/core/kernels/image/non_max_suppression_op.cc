@@ -228,7 +228,7 @@ void DoNonMaxSuppressionOp(OpKernelContext* context, const Tensor& scores,
       next_candidate.score *= suppress_weight(similarity);
 
       // First decide whether to perform hard suppression
-      if (similarity >= static_cast<T>(similarity_threshold)) {
+      if (similarity > static_cast<T>(similarity_threshold)) {
         should_hard_suppress = true;
         break;
       }
@@ -941,6 +941,12 @@ class CombinedNonMaxSuppressionOp : public OpKernel {
     const int max_total_size_per_batch = max_total_size.scalar<int>()();
     OP_REQUIRES(context, max_total_size_per_batch > 0,
                 errors::InvalidArgument("max_total_size must be > 0"));
+    // Throw warning when `max_total_size` is too large as it may cause OOM.
+    if (max_total_size_per_batch > pow(10, 6)) {
+      LOG(WARNING) << "Detected a large value for `max_total_size`. This may "
+                   << "cause OOM error. (max_total_size: "
+                   << max_total_size.scalar<int>()() << ")";
+    }
     // iou_threshold: scalar
     const Tensor& iou_threshold = context->input(4);
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(iou_threshold.shape()),

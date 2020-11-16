@@ -27,7 +27,7 @@ namespace gpu {
 namespace cl {
 
 std::unique_ptr<GPUOperation> SelectConvolutionTransposed(
-    const ConvolutionTransposedAttributes& attr, const DeviceInfo& device_info,
+    const ConvolutionTransposedAttributes& attr, const GpuInfo& gpu_info,
     const OperationDef& op_def);
 
 }  // namespace cl

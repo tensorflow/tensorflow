@@ -47,6 +47,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":load_context",
         "//tensorflow/python:lib",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
@@ -67,6 +68,15 @@ py_library(
         "//tensorflow/python/saved_model/model_utils",
         "//tensorflow/python/training/tracking",
     ],
+)
+
+py_library(
+    name = "load_context",
+    srcs = [
+        "saved_model/load_context.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [],
 )
 
 tf_py_test(

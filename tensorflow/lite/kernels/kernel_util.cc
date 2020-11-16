@@ -283,8 +283,7 @@ TfLiteStatus GetQuantizedConvolutionMultipler(TfLiteContext* context,
                                               double* multiplier) {
   const double input_product_scale = static_cast<double>(input->params.scale) *
                                      static_cast<double>(filter->params.scale);
-  // TODO(ahentz): The following conditions must be guaranteed by the training
-  // pipeline.
+  // The following conditions must be guaranteed by the training pipeline.
   if (bias) {
     const double bias_scale = static_cast<double>(bias->params.scale);
     // Here we're making sure the input_product_scale & bias_scale are about the

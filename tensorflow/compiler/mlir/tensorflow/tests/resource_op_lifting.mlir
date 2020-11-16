@@ -644,7 +644,7 @@ func @callee(%arg0: tensor<f32>, %arg1: tensor<*x!tf.resource<tensor<f32>>>, %ar
   %2 = "tf.AddV2"(%1, %arg2) : (tensor<f32>, tensor<f32>) -> tensor<f32>
   return %2 : tensor<f32>
 }
-// CHECK: func @callee_resource_lifted(%[[A0:.*]]: tensor<f32>, %[[A1:.*]]: tensor<f32>, %[[A2:.*]]: tensor<f32>) -> tensor<f32>
+// CHECK: func private @callee_resource_lifted(%[[A0:.*]]: tensor<f32>, %[[A1:.*]]: tensor<f32>, %[[A2:.*]]: tensor<f32>) -> tensor<f32>
 // CHECK-NEXT:   %[[ADD0:.*]] = "tf.AddV2"(%[[A1]], %[[A0]])
 // CHECK-NEXT:   %[[ADD1:.*]] = "tf.AddV2"(%[[ADD0]], %[[A2]])
 // CHECK-NEXT:   return %[[ADD1]]
@@ -691,7 +691,7 @@ func @callee(%arg0: tensor<*x!tf.resource<tensor<f32>>>, %arg1: tensor<*x!tf.res
   "tf.AssignVariableOp"(%arg0, %1) {dtype = i32} : (tensor<*x!tf.resource<tensor<f32>>>, tensor<f32>) -> ()
   return %arg0 : tensor<*x!tf.resource<tensor<f32>>>
 }
-// CHECK: func @callee_resource_lifted(%[[A0:.*]]: tensor<f32>, %[[A1:.*]]: tensor<f32>, %[[A2:.*]]: tensor<f32>) -> tensor<f32>
+// CHECK: func private @callee_resource_lifted(%[[A0:.*]]: tensor<f32>, %[[A1:.*]]: tensor<f32>, %[[A2:.*]]: tensor<f32>) -> tensor<f32>
 // CHECK-NEXT:   %[[ADD:.*]] = "tf.AddV2"(%[[A1]], %[[A2]])
 // CHECK-NEXT:   return %[[ADD]]
 
@@ -743,7 +743,7 @@ func @callee(%arg0: tensor<*x!tf.resource<tensor<f32>>>) -> tensor<f32> {
   return %1 : tensor<f32>
 }
 
-// CHECK:      func @callee_resource_lifted(%[[A0:.*]]: tensor<f32>) -> tensor<f32>
+// CHECK:      func private @callee_resource_lifted(%[[A0:.*]]: tensor<f32>) -> tensor<f32>
 // CHECK-NEXT:   return %[[A0]]
 
 // -----
@@ -1248,4 +1248,41 @@ func @callee(%arg0: !tf_res) -> tensor<i1> {
   %0 = "tf.VarIsInitializedOp"(%arg0) : (!tf_res) -> tensor<i1>
   // CHECK-NEXT: return [[TRUE]] :
   return %0 : tensor<i1>
+}
+
+// -----
+
+// Tests passthrough tf.Cast ops are removed.
+
+!tf_res = type tensor<*x!tf.resource<tensor<f32>>>
+
+// CHECK-LABEL: func @tpu_computation
+func @tpu_computation(%arg0: !tf_res) {
+  "tf_device.cluster"() ( {
+    %0 = "tf.While"(%arg0) {body = @while_body, cond = @while_cond, is_stateless = false} : (!tf_res) -> !tf_res
+    %1 = "tf.WhileRegion"(%arg0) ( {
+    ^cond(%carg0: !tf_res):
+      %2 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+      "tf.Yield"(%2) : (tensor<i1>) -> ()
+    }, {
+    ^body(%barg0: !tf_res):
+      // CHECK-NOT: tf.Cast
+      %2 = "tf.Cast"(%barg0) : (!tf_res) -> !tf_res
+      "tf.Yield"(%2) : (!tf_res) -> ()
+    }) {is_stateless = false} : (!tf_res) -> !tf_res
+    tf_device.return
+  }) {} : () -> ()
+  return
+}
+
+func @while_cond(%arg0: !tf_res) -> tensor<i1> {
+  %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+  return %0 : tensor<i1>
+}
+
+// CHECK-LABEL: func @while_body
+func @while_body(%arg0: !tf_res) -> !tf_res {
+  // CHECK-NOT: tf.Cast
+  %0 = "tf.Cast"(%arg0) : (!tf_res) -> !tf_res
+  return %0 : !tf_res
 }

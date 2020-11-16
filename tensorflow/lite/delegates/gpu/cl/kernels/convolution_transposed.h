@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/cl/buffer.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/conv_common.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/linear_storage.h"
@@ -41,7 +42,7 @@ class ConvolutionTransposed : public GPUOperation {
  public:
   ConvolutionTransposed() = default;
   void GetPossibleKernelWorkGroups(
-      TuningType tuning_type, const DeviceInfo& device_info,
+      TuningType tuning_type, const GpuInfo& gpu_info,
       const KernelInfo& kernel_info,
       std::vector<int3>* work_groups) const override;
   absl::Status BindArguments(ArgumentsBinder* args) override;
@@ -53,19 +54,30 @@ class ConvolutionTransposed : public GPUOperation {
   ConvolutionTransposed(const ConvolutionTransposed&) = delete;
   ConvolutionTransposed& operator=(const ConvolutionTransposed&) = delete;
 
+  ConvWeightsDescription GetConvWeightsDescription() const {
+    ConvWeightsDescription desc;
+    desc.layout = ConvWeightsLayout::kOHWIOGroupI4O4;
+    desc.output_group_size = block_size_.w;
+    return desc;
+  }
+
  private:
   friend ConvolutionTransposed CreateConvolutionTransposed(
-      const DeviceInfo& device_info, const OperationDef& definition,
+      const GpuInfo& gpu_info, const OperationDef& definition,
       const ConvolutionTransposedAttributes& attr);
   friend ConvolutionTransposed CreateConvolutionTransposed3D(
-      const DeviceInfo& device_info, const OperationDef& definition,
+      const GpuInfo& gpu_info, const OperationDef& definition,
       const ConvolutionTransposed3DAttributes& attr);
+  friend ConvolutionTransposed CreateConvolutionTransposedDynamicWeights(
+      const GpuInfo& gpu_info, const OperationDef& definition,
+      const ConvolutionTransposedAttributes& attr);
+
   ConvolutionTransposed(const OperationDef& definition,
                         const ConvolutionTransposedAttributes& attr,
-                        const DeviceInfo& device_info);
+                        const GpuInfo& gpu_info, bool weights_are_buffer);
   ConvolutionTransposed(const OperationDef& definition,
                         const ConvolutionTransposed3DAttributes& attr,
-                        const DeviceInfo& device_info);
+                        const GpuInfo& gpu_info, bool weights_are_buffer);
 
   template <DataType T>
   void UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
@@ -76,7 +88,7 @@ class ConvolutionTransposed : public GPUOperation {
                      bool weights_are_buffer);
 
   std::string GenerateConvolutionTransposedCode(const OperationDef& op_def,
-                                                const DeviceInfo& device_info,
+                                                const GpuInfo& gpu_info,
                                                 bool weights_are_buffer,
                                                 const int4& block_size);
   int4 stride_;
@@ -206,12 +218,16 @@ void ConvolutionTransposed::UploadWeights(
 }
 
 ConvolutionTransposed CreateConvolutionTransposed(
-    const DeviceInfo& device_info, const OperationDef& definition,
+    const GpuInfo& gpu_info, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr);
 
 ConvolutionTransposed CreateConvolutionTransposed3D(
-    const DeviceInfo& device_info, const OperationDef& definition,
+    const GpuInfo& gpu_info, const OperationDef& definition,
     const ConvolutionTransposed3DAttributes& attr);
+
+ConvolutionTransposed CreateConvolutionTransposedDynamicWeights(
+    const GpuInfo& gpu_info, const OperationDef& definition,
+    const ConvolutionTransposedAttributes& attr);
 
 }  // namespace cl
 }  // namespace gpu

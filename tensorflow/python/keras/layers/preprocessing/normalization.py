@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Keras preprocessing layers."""
+"""Normalization preprocessing layer."""
+# pylint: disable=g-classes-have-attributes
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -59,7 +60,7 @@ class Normalization(base_preprocessing_layer.CombinerPreprocessingLayer):
     as the layer's weights. `adapt` should be called before `fit`, `evaluate`,
     or `predict`.
 
-  Attributes:
+  Arguments:
       axis: Integer or tuple of integers, the axis or axes that should be
         "kept". These axes are not be summed over when calculating the
         normalization statistics. By default the last axis, the `features` axis
@@ -102,11 +103,7 @@ class Normalization(base_preprocessing_layer.CombinerPreprocessingLayer):
          [ 0.        ]], dtype=float32)>
   """
 
-  def __init__(self, axis=-1, dtype=None, mean=None, variance=None, **kwargs):
-    # This ensures that if the value of K.floatx() changes after file-loading
-    # time, the dtype value will change to reflect it.
-    dtype = dtype or K.floatx()
-
+  def __init__(self, axis=-1, mean=None, variance=None, **kwargs):
     # Standardize `axis` to a tuple.
     if axis is None:
       axis = ()
@@ -116,7 +113,7 @@ class Normalization(base_preprocessing_layer.CombinerPreprocessingLayer):
       axis = tuple(axis)
 
     super(Normalization, self).__init__(
-        combiner=_NormalizingCombiner(axis), dtype=dtype, **kwargs)
+        combiner=_NormalizingCombiner(axis), **kwargs)
     base_preprocessing_layer.keras_kpl_gauge.get_cell('Normalization').set(True)
 
     if 0 in axis:

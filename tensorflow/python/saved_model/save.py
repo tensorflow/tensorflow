@@ -867,38 +867,69 @@ def _export_debug_info(exported_graph, export_dir):
     v1=["saved_model.save", "saved_model.experimental.save"])
 def save(obj, export_dir, signatures=None, options=None):
   # pylint: disable=line-too-long
-  """Exports the Trackable object `obj` to [SavedModel format](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md).
+  """Exports a [tf.Module](https://www.tensorflow.org/api_docs/python/tf/Module) (and subclasses) `obj` to [SavedModel format](https://www.tensorflow.org/guide/saved_model#the_savedmodel_format_on_disk).
+
+  The `obj` must inherit from the [`Trackable` class](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/training/tracking/base.py#L591).
 
   Example usage:
 
-  ```python
-  class Adder(tf.Module):
+  >>> class Adder(tf.Module):
+  ...   @tf.function(input_signature=[tf.TensorSpec(shape=[], dtype=tf.float32)])
+  ...   def add(self, x):
+  ...     return x + x
 
-    @tf.function(input_signature=[tf.TensorSpec(shape=None, dtype=tf.float32)])
-    def add(self, x):
-      return x + x + 1.
+  >>> model = Adder()
+  >>> tf.saved_model.save(model, '/tmp/adder')
 
-  to_export = Adder()
-  tf.saved_model.save(to_export, '/tmp/adder')
-  ```
+  The resulting SavedModel is then servable with an input named "x", a scalar
+  with dtype float32.
 
-  The resulting SavedModel is then servable with an input named "x", its value
-  having any shape and dtype float32.
+  _Signatures_
 
-  The optional `signatures` argument controls which methods in `obj` will be
+  Signatures define the input and output types for a computation. The optional
+  save `signatures` argument controls which methods in `obj` will be
   available to programs which consume `SavedModel`s, for example, serving
   APIs. Python functions may be decorated with
   `@tf.function(input_signature=...)` and passed as signatures directly, or
   lazily with a call to `get_concrete_function` on the method decorated with
   `@tf.function`.
 
+  Example:
+
+  >>> class Adder(tf.Module):
+  ...   @tf.function
+  ...   def add(self, x):
+  ...     return x + x
+
+  >>> model = Adder()
+  >>> tf.saved_model.save(
+  ...   model, '/tmp/adder',signatures=model.add.get_concrete_function(
+  ...     tf.TensorSpec([], tf.float32)))
+
+  If a `@tf.function` does not have an input signature and
+  `get_concrete_function` is not called on that method, the function will not
+  be directly callable in the restored SavedModel.
+
+  Example:
+
+  >>> class Adder(tf.Module):
+  ...   @tf.function
+  ...   def add(self, x):
+  ...     return x + x
+
+  >>> model = Adder()
+  >>> tf.saved_model.save(model, '/tmp/adder')
+  >>> restored = tf.saved_model.load('/tmp/adder')
+  >>> restored.add(1.)
+  Traceback (most recent call last):
+  ...
+  ValueError: Found zero restored functions for caller function.
+
   If the `signatures` argument is omitted, `obj` will be searched for
-  `@tf.function`-decorated methods. If exactly one `@tf.function` is found, that
-  method will be used as the default signature for the SavedModel. This behavior
-  is expected to change in the future, when a corresponding
-  `tf.saved_model.load` symbol is added. At that point signatures will be
-  completely optional, and any `@tf.function` attached to `obj` or its
-  dependencies will be exported for use with `load`.
+  `@tf.function`-decorated methods. If exactly one traced `@tf.function` is
+  found, that method will be used as the default signature for the SavedModel.
+  Else, any `@tf.function` attached to `obj` or its dependencies will be
+  exported for use with `tf.saved_model.load`.
 
   When invoking a signature in an exported SavedModel, `Tensor` arguments are
   identified by name. These names will come from the Python function's argument
@@ -915,49 +946,46 @@ def save(obj, export_dir, signatures=None, options=None):
   `.signatures` attribute. This is a reserved attribute: `tf.saved_model.save`
   on an object with a custom `.signatures` attribute will raise an exception.
 
-  Since `tf.keras.Model` objects are also Trackable, this function can be
-  used to export Keras models. For example, exporting with a signature
-  specified:
+  _Using `tf.saved_model.save` with Keras models_
 
-  ```python
-  class Model(tf.keras.Model):
+  While Keras has its own [saving and loading API](https://www.tensorflow.org/guide/keras/save_and_serialize),
+  this function can be used to export Keras models. For example, exporting with
+  a signature specified:
 
-    @tf.function(input_signature=[tf.TensorSpec(shape=[None], dtype=tf.string)])
-    def serve(self, serialized):
-      ...
+  >>> class Adder(tf.keras.Model):
+  ...   @tf.function(input_signature=[tf.TensorSpec(shape=[], dtype=tf.string)])
+  ...   def concat(self, x):
+  ...      return x + x
 
-  m = Model()
-  tf.saved_model.save(m, '/tmp/saved_model/')
-  ```
+  >>> model = Adder()
+  >>> tf.saved_model.save(model, '/tmp/adder')
 
   Exporting from a function without a fixed signature:
 
-  ```python
-  class Model(tf.keras.Model):
+  >>> class Adder(tf.keras.Model):
+  ...   @tf.function
+  ...   def concat(self, x):
+  ...      return x + x
 
-    @tf.function
-    def call(self, x):
-      ...
-
-  m = Model()
-  tf.saved_model.save(
-      m, '/tmp/saved_model/',
-      signatures=m.call.get_concrete_function(
-          tf.TensorSpec(shape=[None, 3], dtype=tf.float32, name="inp")))
-  ```
+  >>> model = Adder()
+  >>> tf.saved_model.save(
+  ...   model, '/tmp/adder',
+  ...   signatures=model.concat.get_concrete_function(
+  ...     tf.TensorSpec(shape=[], dtype=tf.string, name="string_input")))
 
   `tf.keras.Model` instances constructed from inputs and outputs already have a
   signature and so do not require a `@tf.function` decorator or a `signatures`
   argument. If neither are specified, the model's forward pass is exported.
 
-  ```python
-  x = input_layer.Input((4,), name="x")
-  y = core.Dense(5, name="out")(x)
-  model = training.Model(x, y)
-  tf.saved_model.save(model, '/tmp/saved_model/')
-  # The exported SavedModel takes "x" with shape [None, 4] and returns "out"
-  # with shape [None, 5]
-  ```
+  >>> x = tf.keras.layers.Input((4,), name="x")
+  >>> y = tf.keras.layers.Dense(5, name="out")(x)
+  >>> model = tf.keras.Model(x, y)
+  >>> tf.saved_model.save(model, '/tmp/saved_model/')
+
+  The exported SavedModel takes "x" with shape [None, 4] and returns "out"
+  with shape [None, 5]
+
+  _Variables and Checkpoints_
 
   Variables must be tracked by assigning them to an attribute of a tracked
   object or to an attribute of `obj` directly. TensorFlow objects (e.g. layers
@@ -965,21 +993,19 @@ def save(obj, export_dir, signatures=None, options=None):
   automatically. This is the same tracking scheme that `tf.train.Checkpoint`
   uses, and an exported `Checkpoint` object may be restored as a training
   checkpoint by pointing `tf.train.Checkpoint.restore` to the SavedModel's
-  "variables/" subdirectory. Currently, variables are the only stateful objects
-  supported by `tf.saved_model.save`, but others (e.g. tables) will be supported
-  in the future.
+  "variables/" subdirectory.
 
   `tf.function` does not hard-code device annotations from outside the function
   body, instead of using the calling context's device. This means for example
   that exporting a model that runs on a GPU and serving it on a CPU will
-  generally work, with some exceptions. `tf.device` annotations inside the body
-  of the function will be hard-coded in the exported model; this type of
-  annotation is discouraged. Device-specific operations, e.g. with "cuDNN" in
-  the name or with device-specific layouts, may cause issues. Currently a
-  `DistributionStrategy` is another exception: active distribution strategies
-  will cause device placements to be hard-coded in a function. Exporting a
-  single-device computation and importing under a `DistributionStrategy` is
-  not currently supported, but may be in the future.
+  generally work, with some exceptions:
+
+    * `tf.device` annotations inside the body of the function will be hard-coded
+      in the exported model; this type of annotation is discouraged.
+    * Device-specific operations, e.g. with "cuDNN" in the name or with
+      device-specific layouts, may cause issues.
+    * For `ConcreteFunctions`, active distribution strategies will cause device
+      placements to be hard-coded in the function.
 
   SavedModels exported with `tf.saved_model.save` [strip default-valued
   attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes)
@@ -989,34 +1015,8 @@ def save(obj, export_dir, signatures=None, options=None):
   handled automatically, such as when the exported model contains operations
   which the consumer does not have definitions for.
 
-  A single tf.function can generate many ConcreteFunctions. If a downstream tool
-  wants to refer to all concrete functions generated by a single tf.function you
-  can use the `function_aliases` argument to store a map from the alias name to
-  all concrete function names.
-  E.g.
-  ```python
-  class MyModel:
-  @tf.function
-  def func():
-    ...
-
-  @tf.function
-  def serve():
-    ...
-    func()
-
-  model = MyModel()
-  signatures = {
-      'serving_default': model.serve.get_concrete_function(),
-  }
-  options = tf.saved_model.SaveOptions(function_aliases={
-      'my_func': func,
-  })
-  tf.saved_model.save(model, export_dir, signatures, options)
-  ```
-
   Args:
-    obj: A trackable object to export.
+    obj: A trackable object (e.g. tf.Module or tf.train.Checkpoint) to export.
     export_dir: A directory in which to write the SavedModel.
     signatures: Optional, one of three types:
       * a `tf.function` with an input signature specified, which will use the
@@ -1042,6 +1042,7 @@ def save(obj, export_dir, signatures=None, options=None):
   May not be called from within a function body.
   @end_compatibility
   """
+  # pylint: enable=line-too-long
   save_and_return_nodes(obj, export_dir, signatures, options,
                         raise_metadata_warning=True)
 

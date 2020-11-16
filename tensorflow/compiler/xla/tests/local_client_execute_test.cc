@@ -732,7 +732,7 @@ XLA_TEST_F(LocalClientExecuteTest, RunOnUninitializedStream) {
               ContainsRegex("stream is uninitialized or in an error state"));
 }
 
-XLA_TEST_F(LocalClientExecuteTest, SelectBetweenTuples) {
+XLA_TEST_F(LocalClientExecuteTest, DISABLED_ON_GPU(SelectBetweenTuples)) {
   XlaBuilder builder(TestName());
 
   std::initializer_list<float> vec1 = {1.f, 2.f, 3.f};

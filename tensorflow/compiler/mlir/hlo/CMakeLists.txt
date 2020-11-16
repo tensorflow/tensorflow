@@ -44,18 +44,6 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
 option(MHLO_BUILD_EMBEDDED "Build MHLO as part of another project" OFF)
 
 #-------------------------------------------------------------------------------
-# MSVC defaults
-#-------------------------------------------------------------------------------
-
-if(MSVC)
-    add_compile_options(
-        $<$<CONFIG:>:/MD>
-        $<$<CONFIG:Debug>:/MD>
-        $<$<CONFIG:Release>:/MD>
-    )
-endif()
-
-#-------------------------------------------------------------------------------
 # MLIR/LLVM Configuration
 #-------------------------------------------------------------------------------
 

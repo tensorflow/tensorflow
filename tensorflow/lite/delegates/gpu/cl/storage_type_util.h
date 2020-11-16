@@ -25,13 +25,13 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-bool CanCreateTensorWithShape(const DeviceInfo& device_info, const BHWDC& shape,
+bool CanCreateTensorWithShape(const GpuInfo& gpu_info, const BHWDC& shape,
                               const TensorDescriptor& descriptor);
 
-bool CanCreateTensorWithShape(const DeviceInfo& device_info, const BHWC& shape,
+bool CanCreateTensorWithShape(const GpuInfo& gpu_info, const BHWC& shape,
                               const TensorDescriptor& descriptor);
 
-TensorStorageType SelectBestStorageType(const DeviceInfo& device_info,
+TensorStorageType SelectBestStorageType(const GpuInfo& gpu_info,
                                         const BHWC& shape,
                                         const TensorStorageType& desired,
                                         const DataType& data_type,

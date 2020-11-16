@@ -668,6 +668,7 @@ def _call_attribute(instance, *args, **kwargs):
   return instance.__call__(*args, **kwargs)
 
 
+@tf_export("__internal__.saved_model.load_partial", v1=[])
 def load_partial(export_dir, filters, tags=None, options=None):
   """Partially load a SavedModel (saved from V2).
 
