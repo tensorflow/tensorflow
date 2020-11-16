@@ -21,6 +21,7 @@ from __future__ import print_function
 import collections
 import functools
 import re
+import traceback
 
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import decorator_utils
@@ -28,7 +29,6 @@ from tensorflow.python.util import is_in_graph_mode
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
-from tensorflow.python.util import tf_stack
 from tensorflow.tools.docs import doc_controls
 
 
@@ -100,7 +100,7 @@ def _validate_deprecation_args(date, instructions):
 
 def _call_location(outer=False):
   """Returns call location given level up from current call."""
-  stack = tf_stack.extract_stack(limit=4)
+  stack = traceback.extract_stack(limit=4)
   length = len(stack)
   if length == 0:  # should never happen as we're in a function
     return 'UNKNOWN'

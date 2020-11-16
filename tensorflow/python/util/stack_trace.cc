@@ -55,7 +55,7 @@ std::vector<StackFrame> StackTrace::ToStackFrames() const {
 }
 
 StackTrace* StackTraceManager::Get(int id) {
-  DCheckPyGilState();
+  DCheckPyGilStateForStackTrace();
   if (next_id_ - id > kStackTraceCircularBufferSize) return nullptr;
 
   return &stack_traces_[id & (kStackTraceCircularBufferSize - 1)];

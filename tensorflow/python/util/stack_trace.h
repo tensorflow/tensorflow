@@ -29,9 +29,16 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/util/abstract_stack_trace.h"
-#include "tensorflow/python/lib/core/py_util.h"
 
 namespace tensorflow {
+
+// Assert that Python GIL is held.
+// TODO(cheshire): Fix duplication vs. py_util.h
+inline void DCheckPyGilStateForStackTrace() {
+#if PY_MAJOR_VERSION >= 3 && PY_MINOR_VERSION >= 4
+  DCHECK(PyGILState_Check());
+#endif
+}
 
 // A class for capturing Python stack trace.
 class StackTrace final {
@@ -47,7 +54,7 @@ class StackTrace final {
   ABSL_MUST_USE_RESULT
   ABSL_ATTRIBUTE_HOT
   static StackTrace Capture(int limit) {
-    DCheckPyGilState();
+    DCheckPyGilStateForStackTrace();
     if (limit == -1) limit = std::numeric_limits<int>::max();
 
     StackTrace result;
@@ -95,7 +102,7 @@ class StackTrace final {
   // Python GIL must be acquired beforehand.
   ABSL_ATTRIBUTE_HOT
   void Clear() {
-    DCheckPyGilState();
+    DCheckPyGilStateForStackTrace();
     for (PyCodeObject* obj : code_objs_) Py_DECREF(obj);
   }
 
@@ -114,7 +121,7 @@ class StackTraceManager {
   ABSL_MUST_USE_RESULT
   ABSL_ATTRIBUTE_HOT
   int Capture(int limit) {
-    DCheckPyGilState();
+    DCheckPyGilStateForStackTrace();
     const int id = next_id_++;
     const int index = id & (kStackTraceCircularBufferSize - 1);
     stack_traces_[index] = StackTrace::Capture(limit);
@@ -140,7 +147,7 @@ extern StackTraceManager* const stack_trace_manager;
 // conversion could fail if it's evicted before.
 // Python GIL must be acquired beforehand.
 inline AbstractStackTrace GetStackTrace(int limit) {
-  DCheckPyGilState();
+  DCheckPyGilStateForStackTrace();
   return AbstractStackTrace(stack_trace_manager->Capture(limit), [](int id) {
     PyGILState_STATE gstate = PyGILState_Ensure();
     std::vector<StackFrame> result =
