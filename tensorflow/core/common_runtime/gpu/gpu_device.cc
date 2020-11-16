@@ -914,8 +914,6 @@ int64 MinSystemMemory(int64 available_memory, int cc_major) {
   //  500MiB (for cuda_compute_capability <= 6.x) or
   // 1050MiB (for cuda_compute_capability <= 7.x) or
   // 1536MiB (for cuda_compute_capability >= 8.x)
-  //
-  // In the future we could be more sophisticated by using a table of devices.
   int64 min_system_memory;
   if (available_memory < (1LL << 31)) {
     min_system_memory = 225 * 1024 * 1024;
@@ -992,26 +990,31 @@ Status SingleVirtualDeviceMemoryLimit(const GPUOptions& gpu_options,
     allocated_memory = total_memory * per_process_gpu_memory_fraction;
   }
 
-  // override the excluded memory when TF_DEVICE_MIN_SYS_MEMORY_IN_MB is set
+  // Override the excluded memory when TF_DEVICE_MIN_SYS_MEMORY_IN_MB is set.
   const char* force_device_reserved_bytes =
       std::getenv("TF_DEVICE_MIN_SYS_MEMORY_IN_MB");
   if (force_device_reserved_bytes != nullptr &&
       strcmp(force_device_reserved_bytes, "") != 0) {
-    size_t allowable_reserved_memory;
-    sscanf(force_device_reserved_bytes, "%zu", &allowable_reserved_memory);
-    // Convert MBytes to Bytes
-    allowable_reserved_memory = allowable_reserved_memory * 1024 * 1024;
-    // TF_DEVICE_MIN_SYS_MEMORY_IN_MB overrides per_process_gpu_memory_fraction
-    if (allowable_reserved_memory <= available_memory) {
-      allocated_memory = available_memory - allowable_reserved_memory;
-      VLOG(1) << "Setting the GPU reserved bytes to "
-              << strings::HumanReadableNumBytes(allocated_memory) << " MBytes";
-    } else {
+    int32 reserved_mb;
+    if (!safe_strto32(force_device_reserved_bytes, &reserved_mb) || reserved_mb < 0) {
       LOG(WARNING) << "The requested reserved device memory "
-                   << strings::HumanReadableNumBytes(allowable_reserved_memory)
-                   << " is larger than the available memory of "
-                   << strings::HumanReadableNumBytes(available_memory)
-                   << ". The request is ignored.";
+                   << force_device_reserved_bytes 
+                   << " is invalid. The request will be ignored.";
+    } else {
+      // Convert MBytes to Bytes.
+      size_t allowable_reserved_memory = reserved_mb * 1024 * 1024;
+      // TF_DEVICE_MIN_SYS_MEMORY_IN_MB overrides per_process_gpu_memory_fraction.
+      if (allowable_reserved_memory <= available_memory) {
+        allocated_memory = available_memory - allowable_reserved_memory;
+        VLOG(1) << "Setting the GPU reserved bytes to "
+                << strings::HumanReadableNumBytes(allocated_memory) << " MBytes";
+      } else {
+        LOG(WARNING) << "The requested reserved device memory "
+                     << strings::HumanReadableNumBytes(allowable_reserved_memory)
+                     << " is larger than the available memory of "
+                     << strings::HumanReadableNumBytes(available_memory)
+                     << ". The request is ignored.";
+      }
     }
   }
   *memory_limit = allocated_memory;
