@@ -13,25 +13,29 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_ID_MANAGER_H_
-#define TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_ID_MANAGER_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_DEVICE_ID_MANAGER_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_DEVICE_ID_MANAGER_H_
 
 #include "tensorflow/core/common_runtime/device/device_id.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 
-// Class that maintains a map from TfGpuId to PlatformGpuId, and manages the
-// translation between them.
-class GpuIdManager {
+// Class that maintains a map from TfDeviceId to PlatformDeviceId, and manages
+// the translation between them.
+class DeviceIdManager {
  public:
-  // Adds a mapping from tf_gpu_id to platform_gpu_id.
-  static Status InsertTfPlatformGpuIdPair(TfDeviceId tf_gpu_id,
-                                          PlatformDeviceId platform_gpu_id);
+  // Adds a mapping from tf_device_id to platform_device_id.
+  static Status InsertTfPlatformDeviceIdPair(
+      const DeviceType& type, TfDeviceId tf_device_id,
+      PlatformDeviceId platform_device_id);
 
-  // Gets the platform_gpu_id associated with tf_gpu_id. Returns OK if found.
-  static Status TfToPlatformGpuId(TfDeviceId tf_gpu_id,
-                                  PlatformDeviceId* platform_gpu_id);
+  // Gets the platform_device_id associated with tf_device_id. Returns OK if
+  // found.
+  static Status TfToPlatformDeviceId(const DeviceType& type,
+                                     TfDeviceId tf_device_id,
+                                     PlatformDeviceId* platform_device_id);
 
   // Clears the map. Used in unit tests only.
   static void TestOnlyReset();
@@ -39,4 +43,4 @@ class GpuIdManager {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_ID_MANAGER_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_DEVICE_ID_MANAGER_H_
