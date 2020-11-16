@@ -139,7 +139,7 @@ def gen_api_init_files(
             " --use_relative_imports=True $(OUTS)"
         ),
         srcs = srcs,
-        exec_tools = [":" + api_gen_binary_target],
+        tools = [":" + api_gen_binary_target],
         visibility = [
             "//tensorflow:__pkg__",
             "//tensorflow/tools/api/tests:__pkg__",
