@@ -1803,12 +1803,12 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       else:
         expected_num_weights += 1
 
-    if not weights or expected_num_weights != len(weights):
+    if weights == None or expected_num_weights != len(weights):
       raise ValueError(
           'You called `set_weights(weights)` on layer "%s" '
           'with a weight list of length %s, but the layer was '
           'expecting %s weights. Provided weights: %s...' %
-          (self.name, len(weights) if weights else 0,
+          (self.name, len(weights) if isinstance(weights, list) else 0,
             expected_num_weights, str(weights)[:50]))
 
     weight_index = 0
