@@ -248,6 +248,7 @@ class BatchNormalizationBase(Layer):
     axis = [self.axis] if isinstance(self.axis, int) else self.axis
     # Axis -3 is equivalent to 1, and axis -1 is equivalent to 3, because the
     # input rank is required to be 4 (which is checked later).
+    # TODO(b/173253101): Once the input rank can be 5, update this check.
     if len(axis) > 1 or axis[0] not in (-3, -1, 1, 3):
       raise ValueError('Passing `fused=True` is only supported when axis is 1 '
                        'or 3. Got axis %s' % (axis,))
@@ -331,16 +332,19 @@ class BatchNormalizationBase(Layer):
       # TODO(yaozhang): if input is not 4D, reshape it to 4D and reshape the
       # output back to its original shape accordingly.
       if self._USE_V2_BEHAVIOR:
+        # TODO(b/173253101): Using fused in the 5D case is currently disabled
+        # due to a regression on UNet, so it is only currently only supported in
+        # the 4D case.
         if self.fused is None:
-          self.fused = ndims in (4, 5)
-        elif self.fused and ndims not in (4, 5):
+          self.fused = ndims == 4
+        elif self.fused and ndims != 4:
           raise ValueError('Batch normalization layers with `fused=True` only '
                            'support 4D or 5D input tensors. '
                            'Received tensor with shape: %s' %
                            (tuple(input_shape),))
       else:
         assert self.fused is not None
-        self.fused = (ndims in (4, 5) and self._fused_can_be_used())
+        self.fused = (ndims == 4 and self._fused_can_be_used())
       # TODO(chrisying): fused batch norm is currently not supported for
       # multi-axis batch norm and by extension virtual batches. In some cases,
       # it might be possible to use fused batch norm but would require reshaping
