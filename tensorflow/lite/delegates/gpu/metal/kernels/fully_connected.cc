@@ -183,7 +183,7 @@ std::vector<ComputeTaskDescriptorPtr> FullyConnected(
           : DataType::FLOAT16;
   bias_desc.element_size = 4;
   bias_desc.data = GetByteBufferConvertedResized(
-      attr.bias.data, options.storage_precision, attr.weights.shape.o);
+      attr.bias.data, options.storage_precision, dst_channels_aligned);
   bias_desc.size = bias_desc.data.size();
 
   desc->args.AddObject(

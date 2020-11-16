@@ -2845,6 +2845,84 @@ Computes the gradients of depthwise convolution with respect to the input.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
 }
 
+def TF_DequantizeOp : TF_Op<"Dequantize", [NoSideEffect]> {
+  let summary = [{
+Dequantize the 'input' tensor into a float or bfloat16 Tensor.
+  }];
+
+  let description = [{
+[min_range, max_range] are scalar floats that specify the range for
+the output. The 'mode' attribute controls exactly which calculations are
+used to convert the float values to their quantized equivalents.
+
+In 'MIN_COMBINED' mode, each value of the tensor will undergo the following:
+
+```
+if T == qint8: in[i] += (range(T) + 1)/ 2.0
+out[i] = min_range + (in[i]* (max_range - min_range) / range(T))
+```
+here `range(T) = numeric_limits<T>::max() - numeric_limits<T>::min()`
+
+*MIN_COMBINED Mode Example*
+
+If the input comes from a QuantizedRelu6, the output type is
+quint8 (range of 0-255) but the possible range of QuantizedRelu6 is
+0-6.  The min_range and max_range values are therefore 0.0 and 6.0.
+Dequantize on quint8 will take each value, cast to float, and multiply
+by 6 / 255.
+Note that if quantizedtype is qint8, the operation will additionally add
+each value by 128 prior to casting.
+
+If the mode is 'MIN_FIRST', then this approach is used:
+
+```c++
+num_discrete_values = 1 << (# of bits in T)
+range_adjust = num_discrete_values / (num_discrete_values - 1)
+range = (range_max - range_min) * range_adjust
+range_scale = range / num_discrete_values
+const double offset_input = static_cast<double>(input) - lowest_quantized;
+result = range_min + ((input - numeric_limits<T>::min()) * range_scale)
+```
+
+If the mode is `SCALED`, dequantization is performed by multiplying each
+input value by a scaling_factor. (Thus an input of 0 always maps to 0.0).
+
+The scaling_factor is determined from `min_range`, `max_range`, and
+`narrow_range` in a way that is compatible with `QuantizeAndDequantize{V2|V3}`
+and `QuantizeV2`, using the following algorithm:
+
+```c++
+
+  const int min_expected_T = std::numeric_limits<T>::min() +
+    (narrow_range ? 1 : 0);
+  const int max_expected_T = std::numeric_limits<T>::max();
+  const float max_expected_T = std::numeric_limits<float>::max();
+
+  const float scale_factor =
+    (std::numeric_limits<T>::min() == 0) ? (max_range / max_expected_T)
+                                         : std::max(min_range / min_expected_T,
+                                                    max_range / max_expected_T);
+```
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_Qint16, TF_Qint32, TF_Qint8, TF_Quint16, TF_Quint8]>:$input,
+    TF_Float32Tensor:$min_range,
+    TF_Float32Tensor:$max_range,
+
+    DefaultValuedAttr<TF_AnyStrAttrOf<["MIN_COMBINED", "MIN_FIRST", "SCALED"]>, "MIN_COMBINED">:$mode,
+    DefaultValuedAttr<BoolAttr, "false">:$narrow_range,
+    DefaultValuedAttr<I64Attr, "-1">:$axis
+  );
+
+  let results = (outs
+    TensorOf<[TF_Bfloat16, TF_Float32]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
 def TF_DeserializeIteratorOp : TF_Op<"DeserializeIterator", []> {
   let summary = [{
 Converts the given variant tensor to an iterator and stores it in the given resource.
@@ -6860,6 +6938,27 @@ def TF_MaxPool3DGradOp : TF_Op<"MaxPool3DGrad", [NoSideEffect]> {
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<2>;
 }
 
+def TF_MaxPool3DGradGradOp : TF_Op<"MaxPool3DGradGrad", [NoSideEffect]> {
+  let summary = "Computes second-order gradients of the maxpooling function.";
+
+  let arguments = (ins
+    TF_IntOrFpTensor:$orig_input,
+    TF_IntOrFpTensor:$orig_output,
+    TF_IntOrFpTensor:$grad,
+
+    Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$ksize,
+    Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$strides,
+    TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
+    DefaultValuedAttr<TF_AnyStrAttrOf<["NDHWC", "NCDHW"]>, "NDHWC">:$data_format
+  );
+
+  let results = (outs
+    TF_IntOrFpTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_MaxPoolGradOp : TF_Op<"MaxPoolGrad", [NoSideEffect]> {
   let summary = "Computes gradients of the maxpooling function.";
 
@@ -6884,6 +6983,88 @@ def TF_MaxPoolGradOp : TF_Op<"MaxPoolGrad", [NoSideEffect]> {
   let verifier = [{
     return Verify(*this);
   }];
+}
+
+def TF_MaxPoolGradGradOp : TF_Op<"MaxPoolGradGrad", [NoSideEffect]> {
+  let summary = "Computes second-order gradients of the maxpooling function.";
+
+  let arguments = (ins
+    TF_IntOrFpTensor:$orig_input,
+    TF_IntOrFpTensor:$orig_output,
+    TF_IntOrFpTensor:$grad,
+
+    Confined<I64ArrayAttr, [ArrayMinCount<4>]>:$ksize,
+    Confined<I64ArrayAttr, [ArrayMinCount<4>]>:$strides,
+    TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
+    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format
+  );
+
+  let results = (outs
+    TF_IntOrFpTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_MaxPoolGradGradV2Op : TF_Op<"MaxPoolGradGradV2", [NoSideEffect]> {
+  let summary = "Computes second-order gradients of the maxpooling function.";
+
+  let arguments = (ins
+    TF_IntOrFpTensor:$orig_input,
+    TF_IntOrFpTensor:$orig_output,
+    TF_IntOrFpTensor:$grad,
+    TF_Int32Tensor:$ksize,
+    TF_Int32Tensor:$strides,
+
+    TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
+    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format
+  );
+
+  let results = (outs
+    TF_IntOrFpTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_MaxPoolGradV2Op : TF_Op<"MaxPoolGradV2", [NoSideEffect]> {
+  let summary = "Computes gradients of the maxpooling function.";
+
+  let arguments = (ins
+    TF_IntOrFpTensor:$orig_input,
+    TF_IntOrFpTensor:$orig_output,
+    TF_IntOrFpTensor:$grad,
+    TF_Int32Tensor:$ksize,
+    TF_Int32Tensor:$strides,
+
+    TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
+    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format
+  );
+
+  let results = (outs
+    TF_IntOrFpTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_MaxPoolV2Op : TF_Op<"MaxPoolV2", [NoSideEffect]> {
+  let summary = "Performs max pooling on the input.";
+
+  let arguments = (ins
+    TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint8, TF_Uint16, TF_Uint8]>:$input,
+    TF_Int32Tensor:$ksize,
+    TF_Int32Tensor:$strides,
+
+    TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
+    DefaultValuedAttr<TF_AnyStrAttrOf<["NHWC", "NCHW", "NCHW_VECT_C"]>, "NHWC">:$data_format
+  );
+
+  let results = (outs
+    TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint8, TF_Uint16, TF_Uint8]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_MeanOp : TF_Op<"Mean", [NoSideEffect, TF_FoldOperandsTransposeInterface]> {
@@ -7985,6 +8166,88 @@ pad(t, paddings) ==> [[0, 0, 0, 0, 0, 0]
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tpaddings = TF_DerivedOperandTypeAttr<1>;
+}
+
+def TF_ParallelDynamicStitchOp : TF_Op<"ParallelDynamicStitch", [NoSideEffect, SameVariadicOperandSize]> {
+  let summary = [{
+Interleave the values from the `data` tensors into a single tensor.
+  }];
+
+  let description = [{
+Builds a merged tensor such that
+
+```python
+    merged[indices[m][i, ..., j], ...] = data[m][i, ..., j, ...]
+```
+
+For example, if each `indices[m]` is scalar or vector, we have
+
+```python
+    # Scalar indices:
+    merged[indices[m], ...] = data[m][...]
+
+    # Vector indices:
+    merged[indices[m][i], ...] = data[m][i, ...]
+```
+
+Each `data[i].shape` must start with the corresponding `indices[i].shape`,
+and the rest of `data[i].shape` must be constant w.r.t. `i`.  That is, we
+must have `data[i].shape = indices[i].shape + constant`.  In terms of this
+`constant`, the output shape is
+
+    merged.shape = [max(indices)] + constant
+
+Values may be merged in parallel, so if an index appears in both `indices[m][i]`
+and `indices[n][j]`, the result may be invalid. This differs from the normal
+DynamicStitch operator that defines the behavior in that case.
+
+For example:
+
+```python
+    indices[0] = 6
+    indices[1] = [4, 1]
+    indices[2] = [[5, 2], [0, 3]]
+    data[0] = [61, 62]
+    data[1] = [[41, 42], [11, 12]]
+    data[2] = [[[51, 52], [21, 22]], [[1, 2], [31, 32]]]
+    merged = [[1, 2], [11, 12], [21, 22], [31, 32], [41, 42],
+              [51, 52], [61, 62]]
+```
+
+This method can be used to merge partitions created by `dynamic_partition`
+as illustrated on the following example:
+
+```python
+    # Apply function (increments x_i) on elements for which a certain condition
+    # apply (x_i != -1 in this example).
+    x=tf.constant([0.1, -1., 5.2, 4.3, -1., 7.4])
+    condition_mask=tf.not_equal(x,tf.constant(-1.))
+    partitioned_data = tf.dynamic_partition(
+        x, tf.cast(condition_mask, tf.int32) , 2)
+    partitioned_data[1] = partitioned_data[1] + 1.0
+    condition_indices = tf.dynamic_partition(
+        tf.range(tf.shape(x)[0]), tf.cast(condition_mask, tf.int32) , 2)
+    x = tf.dynamic_stitch(condition_indices, partitioned_data)
+    # Here x=[1.1, -1., 6.2, 5.3, -1, 8.4], the -1. values remain
+    # unchanged.
+```
+
+<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<img style="width:100%" src="https://www.tensorflow.org/images/DynamicStitch.png" alt>
+</div>
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Int32Tensor>:$indices,
+    Variadic<TF_Tensor>:$data
+  );
+
+  let results = (outs
+    TF_Tensor:$merged
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
 }
 
 def TF_ParameterizedTruncatedNormalOp : TF_Op<"ParameterizedTruncatedNormal", [TF_CannotDuplicate]> {
@@ -12656,6 +12919,41 @@ retained with length 1.
   let hasFolder = 1;
 }
 
+def TF_SvdOp : TF_Op<"Svd", [NoSideEffect]> {
+  let summary = [{
+Computes the singular value decompositions of one or more matrices.
+  }];
+
+  let description = [{
+Computes the SVD of each inner matrix in `input` such that
+`input[..., :, :] = u[..., :, :] * diag(s[..., :, :]) * transpose(v[..., :, :])`
+
+```python
+# a is a tensor containing a batch of matrices.
+# s is a tensor of singular values for each matrix.
+# u is the tensor containing the left singular vectors for each matrix.
+# v is the tensor containing the right singular vectors for each matrix.
+s, u, v = svd(a)
+s, _, _ = svd(a, compute_uv=False)
+```
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>:$input,
+
+    DefaultValuedAttr<BoolAttr, "true">:$compute_uv,
+    DefaultValuedAttr<BoolAttr, "false">:$full_matrices
+  );
+
+  let results = (outs
+    TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>:$s,
+    TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>:$u,
+    TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>:$v
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_SymbolicGradientOp : TF_Op<"SymbolicGradient", [NoSideEffect]> {
   let summary = [{
 Computes the gradient function for function f via backpropagation.
@@ -14837,6 +15135,33 @@ https://www.tensorflow.org/performance/xla/operation_semantics#reduce .
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_XlaReduceWindowOp : TF_Op<"XlaReduceWindow", [NoSideEffect]> {
+  let summary = "Wraps the XLA ReduceWindow operator, documented at";
+
+  let description = [{
+https://www.tensorflow.org/performance/xla/operation_semantics#reducewindow .
+  }];
+
+  let arguments = (ins
+    Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{the input tensor}]>:$input,
+    Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{a scalar representing the initial value for the reduction}]>:$init_value,
+    Arg<TF_I32OrI64Tensor, [{the shape of the window}]>:$window_dimensions,
+    Arg<TF_I32OrI64Tensor, [{the inter-window strides}]>:$window_strides,
+    TF_I32OrI64Tensor:$base_dilations,
+    TF_I32OrI64Tensor:$window_dilations,
+    Arg<TF_I32OrI64Tensor, [{the padding to apply at the start and end of each input dimensions}]>:$padding,
+
+    SymbolRefAttr:$computation
+  );
+
+  let results = (outs
+    TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<2>;
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_XlaReplicaIdOp : TF_Op<"XlaReplicaId", [NoSideEffect]> {
   let summary = "Replica ID.";
 
@@ -14855,14 +15180,42 @@ https://www.tensorflow.org/xla/operation_semantics#scatter.
   }];
 
   let arguments = (ins
-    Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{Array to be scattered into.}]>:$operand,
+    Arg<TensorOf<[TF_Bfloat16, TF_Bool, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{Array to be scattered into.}]>:$operand,
     Arg<TF_I32OrI64Tensor, [{Array containing the starting indices of the slices that must
 be scattered to.}]>:$scatter_indices,
-    Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{Array containing the values that must be used for scattering.}]>:$updates,
+    Arg<TensorOf<[TF_Bfloat16, TF_Bool, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{Array containing the values that must be used for scattering.}]>:$updates,
 
     SymbolRefAttr:$update_computation,
     StrAttr:$dimension_numbers,
     BoolAttr:$indices_are_sorted
+  );
+
+  let results = (outs
+    TensorOf<[TF_Bfloat16, TF_Bool, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_XlaSelectAndScatterOp : TF_Op<"XlaSelectAndScatter", [NoSideEffect]> {
+  let summary = "Wraps the XLA SelectAndScatter operator, documented at";
+
+  let description = [{
+https://www.tensorflow.org/performance/xla/operation_semantics#selectandscatter
+.
+  }];
+
+  let arguments = (ins
+    Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{the input tensor}]>:$operand,
+    Arg<TF_I32OrI64Tensor, [{the shape of the window}]>:$window_dimensions,
+    Arg<TF_I32OrI64Tensor, [{the inter-window strides}]>:$window_strides,
+    Arg<TF_I32OrI64Tensor, [{the padding to apply at the start and end of each input dimensions}]>:$padding,
+    Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{a tensor of values to scatter}]>:$source,
+    Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{a scalar representing the initial value for the output tensor}]>:$init_value,
+
+    SymbolRefAttr:$select,
+    SymbolRefAttr:$scatter
   );
 
   let results = (outs
@@ -14922,6 +15275,27 @@ key: A unique identifier for this region used to match up host transfers.
   let results = (outs);
 
   TF_DerivedOperandTypeAttr Tinput = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_XlaSetDynamicDimensionSizeOp : TF_Op<"XlaSetDynamicDimensionSize", [NoSideEffect]> {
+  let summary = "Make a static dimension into a xla bounded dynamic dimension.";
+
+  let description = [{
+The current static dimension size will become the bound and the second
+        operand becomes the dynamic size of the dimension.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input,
+    TF_Int32Tensor:$dim_index,
+    TF_Int32Tensor:$size
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_XlaSortOp : TF_Op<"XlaSort", [NoSideEffect]> {
@@ -15018,6 +15392,22 @@ def TF_ZerosLikeOp : TF_Op<"ZerosLike", [NoSideEffect, SameOperandsAndResultType
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF__ArrayToListOp : TF_Op<"_ArrayToList", [NoSideEffect]> {
+  let summary = "Converts an array of tensors to a list of tensors.";
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$input
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeListAttr out_types = TF_DerivedResultTypeListAttr<0>;
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
 }
 
 def TF__FusedBatchNormExOp : TF_Op<"_FusedBatchNormEx", [NoSideEffect]> {
@@ -15148,6 +15538,22 @@ expected to create these operators.
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandSizeAttr num_args = TF_DerivedOperandSizeAttr<2>;
+}
+
+def TF__ListToArrayOp : TF_Op<"_ListToArray", [NoSideEffect]> {
+  let summary = "Converts a list of tensors to an array of tensors.";
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$input
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$output
+  );
+
+  TF_DerivedResultTypeAttr T = TF_DerivedResultTypeAttr<0>;
+  TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<0>;
+  TF_DerivedResultSizeAttr N = TF_DerivedResultSizeAttr<0>;
 }
 
 def TF__RecvTPUEmbeddingActivationsOp : TF_Op<"_RecvTPUEmbeddingActivations", []> {

@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/cl/buffer.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/conv_common.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/linear_storage.h"
@@ -53,6 +54,13 @@ class ConvolutionTransposed : public GPUOperation {
   ConvolutionTransposed(const ConvolutionTransposed&) = delete;
   ConvolutionTransposed& operator=(const ConvolutionTransposed&) = delete;
 
+  ConvWeightsDescription GetConvWeightsDescription() const {
+    ConvWeightsDescription desc;
+    desc.layout = ConvWeightsLayout::kOHWIOGroupI4O4;
+    desc.output_group_size = block_size_.w;
+    return desc;
+  }
+
  private:
   friend ConvolutionTransposed CreateConvolutionTransposed(
       const GpuInfo& gpu_info, const OperationDef& definition,
@@ -60,12 +68,16 @@ class ConvolutionTransposed : public GPUOperation {
   friend ConvolutionTransposed CreateConvolutionTransposed3D(
       const GpuInfo& gpu_info, const OperationDef& definition,
       const ConvolutionTransposed3DAttributes& attr);
+  friend ConvolutionTransposed CreateConvolutionTransposedDynamicWeights(
+      const GpuInfo& gpu_info, const OperationDef& definition,
+      const ConvolutionTransposedAttributes& attr);
+
   ConvolutionTransposed(const OperationDef& definition,
                         const ConvolutionTransposedAttributes& attr,
-                        const GpuInfo& gpu_info);
+                        const GpuInfo& gpu_info, bool weights_are_buffer);
   ConvolutionTransposed(const OperationDef& definition,
                         const ConvolutionTransposed3DAttributes& attr,
-                        const GpuInfo& gpu_info);
+                        const GpuInfo& gpu_info, bool weights_are_buffer);
 
   template <DataType T>
   void UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
@@ -212,6 +224,10 @@ ConvolutionTransposed CreateConvolutionTransposed(
 ConvolutionTransposed CreateConvolutionTransposed3D(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const ConvolutionTransposed3DAttributes& attr);
+
+ConvolutionTransposed CreateConvolutionTransposedDynamicWeights(
+    const GpuInfo& gpu_info, const OperationDef& definition,
+    const ConvolutionTransposedAttributes& attr);
 
 }  // namespace cl
 }  // namespace gpu

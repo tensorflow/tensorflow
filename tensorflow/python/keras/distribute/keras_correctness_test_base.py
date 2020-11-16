@@ -24,8 +24,10 @@ import numpy as np
 import six
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import central_storage_strategy
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import mirrored_strategy
+from tensorflow.python.distribute import one_device_strategy
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.eager import context
@@ -324,9 +326,15 @@ def compare_results(results_with_ds,
     """Returns tolerance to compare results."""
     # TODO(b/119257215): For MirroredStrategy, weights are not exactly the same,
     # so use larger tolerance for now. Predict should be related to weights.
+    # Also for CentralStorageStrategy and OneDeviceStrategy which is observed in
+    # b/172956754.
     if (isinstance(distribution,
                    (mirrored_strategy.MirroredStrategy,
                     mirrored_strategy.MirroredStrategyV1,
+                    central_storage_strategy.CentralStorageStrategy,
+                    central_storage_strategy.CentralStorageStrategyV1,
+                    one_device_strategy.OneDeviceStrategy,
+                    one_device_strategy.OneDeviceStrategyV1,
                     distribute_lib._DefaultDistributionStrategy)) and  # pylint: disable=protected-access
         key.startswith(('weights_1', 'weights_2', 'predict_result'))):
       return relaxed_tolerance

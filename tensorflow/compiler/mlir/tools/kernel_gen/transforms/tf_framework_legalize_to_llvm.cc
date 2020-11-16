@@ -256,15 +256,20 @@ class ReportErrorOpConverter
       ConversionPatternRewriter &rewriter) const override {
     ReportErrorOp::Adaptor transformed(operands, op->getAttrDictionary());
 
+    Location loc = op->getLoc();
     auto module = op->getParentOfType<ModuleOp>();
     Value message_constant = GenerateErrorMessageConstant(
-        op->getLoc(), module, transformed.msg().getValue(), rewriter);
+        loc, module, transformed.msg().getValue(), rewriter);
 
     // Insert function call.
     FlatSymbolRefAttr tf_func_ref = getOrInsertTFFunction(rewriter, op);
+    Value error_code = rewriter.create<LLVM::ConstantOp>(
+        loc, typeConverter.convertType(rewriter.getI32Type()),
+        transformed.error_code());
     rewriter.replaceOpWithNewOp<LLVM::CallOp>(
+
         op, llvm::None, tf_func_ref,
-        llvm::makeArrayRef({transformed.ctx(), message_constant}));
+        llvm::makeArrayRef({transformed.ctx(), error_code, message_constant}));
     return success();
   }
 
@@ -273,9 +278,10 @@ class ReportErrorOpConverter
   LLVMType GetFuncType() const override {
     MLIRContext *ctx = &this->typeConverter.getContext();
     auto i8_ptr_type = LLVM::LLVMType::getInt8Ty(ctx).getPointerTo();
-    return LLVM::LLVMType::getFunctionTy(getVoidType(),
-                                         {getVoidPtrType(), i8_ptr_type},
-                                         /*isVarArg=*/false);
+    auto i32_type = LLVM::LLVMType::getInt32Ty(ctx);
+    return LLVM::LLVMType::getFunctionTy(
+        getVoidType(), {getVoidPtrType(), i32_type, i8_ptr_type},
+        /*isVarArg=*/false);
   }
 
  private:

@@ -108,8 +108,8 @@ def enable_collective_ops():
   context.context().enable_collective_ops(server_def)
   # Recover default flag values.
   cross_device_ops_lib.CollectiveAllReduce._limited_nccl = True
-  cross_device_utils.CollectiveReplicaLauncher._use_scoped_allocator = False
-  cross_device_utils.CollectiveReplicaLauncher._use_collective_v2 = True
+  cross_device_utils.CollectiveReplicaLauncher._use_scoped_allocator = True
+  cross_device_utils.CollectiveReplicaLauncher._use_collective_v2 = False
   cross_device_utils.CollectiveReplicaLauncher._use_ordering_token = False
 
 

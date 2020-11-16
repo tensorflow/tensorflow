@@ -46,6 +46,7 @@ namespace data {
 /* static */ constexpr const char* const PrefetchDatasetOp::kOutputShapes;
 /* static */ constexpr const char* const PrefetchDatasetOp::kSlackPeriod;
 /* static */ constexpr const char* const PrefetchDatasetOp::kLegacyAutotune;
+/* static */ constexpr const char* const PrefetchDatasetOp::kBufferSizeMin;
 
 namespace {
 
@@ -62,12 +63,13 @@ constexpr char kErrorMessageSuffix[] = ".error_message";
 class PrefetchDatasetOp::Dataset : public DatasetBase {
  public:
   Dataset(OpKernelContext* ctx, const DatasetBase* input, int64 buffer_size,
-          int64 slack_period, bool legacy_autotune)
+          int64 slack_period, bool legacy_autotune, int64 buffer_size_min)
       : DatasetBase(DatasetContext(ctx)),
         input_(input),
         buffer_size_(buffer_size),
         slack_period_(slack_period),
-        legacy_autotune_(legacy_autotune) {
+        legacy_autotune_(legacy_autotune),
+        buffer_size_min_(buffer_size_min) {
     input_->Ref();
   }
 
@@ -114,10 +116,14 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     b->BuildAttrValue(slack_period_, &slack_period_attr);
     AttrValue legacy_autotune_attr;
     b->BuildAttrValue(legacy_autotune_, &legacy_autotune_attr);
+    AttrValue buffer_size_min_attr;
+    b->BuildAttrValue(buffer_size_min_, &buffer_size_min_attr);
+
     TF_RETURN_IF_ERROR(
         b->AddDataset(this, {input_graph_node, buffer_size},
                       {std::make_pair(kSlackPeriod, slack_period_attr),
-                       std::make_pair(kLegacyAutotune, legacy_autotune_attr)},
+                       std::make_pair(kLegacyAutotune, legacy_autotune_attr),
+                       std::make_pair(kBufferSizeMin, buffer_size_min_attr)},
                       output));
     return Status::OK();
   }
@@ -129,8 +135,12 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         : DatasetIterator<Dataset>(params),
           mu_(std::make_shared<mutex>()),
           cond_var_(std::make_shared<condition_variable>()),
-          auto_tuner_(params.dataset->buffer_size_),
+          buffer_size_min_(params.dataset->buffer_size_min_),
+          auto_tuner_(params.dataset->buffer_size_, buffer_size_min_),
           legacy_autotune_(params.dataset->legacy_autotune_),
+          // If `legacy_autotune_`, initialize the `buffer_size_` value to be 0
+          // to avoid the created node to be collected as tunable nodes in the
+          // autotuning optimization.
           buffer_size_(std::make_shared<model::SharedState>(
               legacy_autotune_ ? 0 : params.dataset->buffer_size_, mu_,
               cond_var_)) {
@@ -145,7 +155,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(*mu_);
       if (buffer_size_->value == model::kAutotune) {
-        buffer_size_->value = 0;
+        buffer_size_->value = buffer_size_min_;
       }
       TF_RETURN_IF_ERROR(RegisterCancellationCallback(
           ctx->cancellation_manager(), [this]() { CancelThreads(); },
@@ -218,7 +228,8 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       return model::MakeAsyncKnownRatioNode(
           std::move(args),
           /*ratio=*/1,
-          {model::MakeParameter(kBufferSize, buffer_size_, /*min=*/0,
+          {model::MakeParameter(kBufferSize, buffer_size_,
+                                /*min=*/buffer_size_min_,
                                 /*max=*/std::numeric_limits<int64>::max())});
     }
 
@@ -536,6 +547,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     mutex input_mu_ TF_ACQUIRED_BEFORE(*mu_);
     std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(input_mu_);
     const std::shared_ptr<condition_variable> cond_var_;
+    const int64 buffer_size_min_;
     PrefetchAutotuner auto_tuner_ TF_GUARDED_BY(*mu_);
     std::deque<BufferElement> buffer_ TF_GUARDED_BY(*mu_);
     std::unique_ptr<Thread> prefetch_thread_ TF_GUARDED_BY(*mu_);
@@ -561,6 +573,10 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
   // Determines whether legacy autotuning should be used.
   const bool legacy_autotune_ = true;
 
+  // If autotune is enabled, determines the minimal value of `buffer_size`
+  // parameter.
+  const int64 buffer_size_min_ = 0;
+
   TraceMeMetadata traceme_metadata_;
 };
 
@@ -571,6 +587,9 @@ PrefetchDatasetOp::PrefetchDatasetOp(OpKernelConstruction* ctx)
   }
   if (ctx->HasAttr(kLegacyAutotune)) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr(kLegacyAutotune, &legacy_autotune_));
+  }
+  if (ctx->HasAttr(kBufferSizeMin)) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr(kBufferSizeMin, &buffer_size_min_));
   }
 }
 
@@ -588,8 +607,8 @@ void PrefetchDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
     metrics::RecordTFDataAutotune(kDatasetType);
   }
 
-  *output =
-      new Dataset(ctx, input, buffer_size, slack_period_, legacy_autotune_);
+  *output = new Dataset(ctx, input, buffer_size, slack_period_,
+                        legacy_autotune_, buffer_size_min_);
 }
 
 namespace {

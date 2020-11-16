@@ -677,7 +677,7 @@ ParseResult ParseMergeOp(OpAsmParser &parser, OperationState &result) {
   } else {
     // In case of the short form, use the parsed type for both the operands and
     // the remaining operands are expected to be control inputs.
-    types.push_back(types.front());
+    types.push_back(Type(types.front()));
     Type control_type = ControlType::get(parser.getBuilder().getContext());
     types.append(op_infos.size() - 2, control_type);
 

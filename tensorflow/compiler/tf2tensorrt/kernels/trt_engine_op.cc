@@ -107,7 +107,9 @@ class TRTEngineOp : public AsyncOpKernel {
   // These are the exact same function.
 
   Status ConstructFunctionHandle(FunctionLibraryRuntime* lib,
-                                 const string& device_name);
+                                 const string& device_name,
+                                 bool allow_soft_placement = false,
+                                 size_t num_inputs = 0, size_t num_outputs = 0);
 
   // Executes replaced native segment as function Op.
   void ExecuteNativeSegment(OpKernelContext* ctx, AsyncHelper* helper);
@@ -259,7 +261,10 @@ static Status FunctionDefToGraphDef(FunctionLibraryRuntime::Handle handle,
 }
 
 Status TRTEngineOp::ConstructFunctionHandle(FunctionLibraryRuntime* lib,
-                                            const string& device_name) {
+                                            const string& device_name,
+                                            bool allow_soft_placement,
+                                            size_t num_inputs,
+                                            size_t num_outputs) {
   VLOG(1) << "Constructing function handle";
   if (lib == nullptr) {
     return errors::Internal("Context function library is null");
@@ -267,6 +272,32 @@ Status TRTEngineOp::ConstructFunctionHandle(FunctionLibraryRuntime* lib,
   FunctionLibraryRuntime::InstantiateOptions inst_ops;
   inst_ops.state_handle = "";
   inst_ops.target = device_name;
+  if (allow_soft_placement) {
+    const FunctionDef* fdef =
+        lib->GetFunctionLibraryDefinition()->Find(func_.name());
+    if (!fdef) {
+      return errors::Internal(
+          StrCat("Cann't find FunctionDef for", func_.name()));
+    }
+    bool ints_on_device =
+        fdef->attr().count(FunctionLibraryDefinition::kIntsOnDeviceAttr) != 0 &&
+        fdef->attr().at(FunctionLibraryDefinition::kIntsOnDeviceAttr).b();
+    // kIntsOnDeviceAttr is not compatible with is_multi_device_function which
+    // is needed to support allow_soft_placement.
+    if (ints_on_device) {
+      LOG_FIRST_FEW_WARNING_WITH_PREFIX
+          << "Function " << name()
+          << " has attribute kIntsOnDeviceAttr=true "
+             "and will be executed natively with allow_soft_placement=false. "
+             "If this is a problem, please re-generate your SavedModel with "
+             "the TF-TRT runtime you are using.";
+    } else {
+      inst_ops.is_multi_device_function = true;
+      inst_ops.input_devices.resize(num_inputs, device_name);
+      inst_ops.output_devices.resize(num_outputs, device_name);
+      inst_ops.config_proto.set_allow_soft_placement(true);
+    }
+  }
   return lib->Instantiate(func_.name(), AttrSlice(&func_.attr()), inst_ops,
                           &func_handle_);
 }
@@ -383,7 +414,9 @@ void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
   if (func_handle_ == kInvalidHandle) {
     OP_REQUIRES_OK_ASYNC(
         ctx,
-        ConstructFunctionHandle(ctx->function_library(), ctx->device()->name()),
+        ConstructFunctionHandle(ctx->function_library(), ctx->device()->name(),
+                                /*allow_soft_placement=*/true,
+                                ctx->num_inputs(), ctx->num_outputs()),
         *helper);
   }
   auto lib = ctx->function_library();

@@ -746,8 +746,11 @@ class StructuredTensor(composite_tensor.CompositeTensor):
 
     # If rank>0, then re-group each value from dict-of-list to list-of-dict.
     if len(self._shape) > 0:  # pylint: disable=g-explicit-length-test
+      if not result:  # special-case for StructuredTensors w/ no fields.
+        return _empty_dict_pylist_from_row_partitions(self._row_partitions,
+                                                      self._nrows)
       return _pyval_field_major_to_node_major(
-          list(result.keys()), list(result.values()), self._shape.as_list())
+          list(result.keys()), list(result.values()), self._shape.rank)
     else:
       return result
 
@@ -1223,38 +1226,52 @@ def _row_partitions_for_uniform_shape(shape, rank):
   ])
 
 
-def _pyval_field_major_to_node_major(keys, values, shape):
+def _pyval_field_major_to_node_major(keys, values, depth):
   """Regroup each field (k, v) from dict-of-list to list-of-dict.
 
   Given a "field-major" encoding of the StructuredTensor (which maps each key to
   a single nested list containing the values for all structs), return a
   corresponding "node-major" encoding, consisting of a nested list of dicts.
-  `shape` is used to determine how far to recurse; and if `keys` is empty
-  it is used to determine the sizes for empty lists.
 
   Args:
-    keys: The field names (list of string).
+    keys: The field names (list of string).  Must not be empty.
     values: The field values (list of python values).  Must have the same length
       as `keys`.
-    shape: A tuple specifying the shape of the `StructuredTensor`.
+    depth: The list depth at which dictionaries should be created.
 
   Returns:
-    A nested list of dict.
+    A nested list of dict, with depth `depth`.
   """
-  if not shape:
+  assert keys
+  if depth == 0:
     return dict(zip(keys, values))
-  elif not keys:
-    if shape[0] in (0, None):
-      return []
-    else:
-      return [_pyval_field_major_to_node_major((), (), shape[1:])] * shape[0]
+  nvals = len(values[0])
+  assert all(nvals == len(values[i]) for i in range(1, len(values)))
+  return [
+      _pyval_field_major_to_node_major(keys, value_slice, depth - 1)
+      for value_slice in zip(*values)
+  ]
+
+
+def _empty_dict_pylist_from_row_partitions(row_partitions, nrows):
+  """Returns a python list of empty dicts from the given row partitions.
+
+  Args:
+    row_partitions: The row-partitions describing the ragged shape of the
+      result.
+    nrows: The number of rows in the outermost row-partition.  (Or if
+      `len(row_partitions)==0`, then the number of empty dicts to return.)
+
+  Returns:
+    A nested python list whose leaves (if any) are empty python dicts.
+  """
+  if not row_partitions:
+    return [{} for _ in range(nrows)]
   else:
-    nvals = len(values[0])
-    assert all(nvals == len(values[i]) for i in range(1, len(values)))
-    return [
-        _pyval_field_major_to_node_major(keys, value_slice, shape[1:])
-        for value_slice in zip(*values)
-    ]
+    values = _empty_dict_pylist_from_row_partitions(
+        row_partitions[1:], row_partitions[0].row_splits()[-1])
+    splits = row_partitions[0].row_splits()
+    return [values[splits[i]:splits[i + 1]] for i in range(len(splits) - 1)]
 
 
 def _pyval_find_struct_keys_and_depth(pyval, keys):

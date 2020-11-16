@@ -65,7 +65,7 @@ std::vector<std::pair<ValueId, TensorDescriptor>> GetCLNodeTensors(
     const CLNode& node) {
   std::vector<std::pair<ValueId, TensorDescriptor>> result;
   result.reserve(node.inputs.size() + node.outputs.size());
-  const OperationDef op_def = node.operation->GetDefinition();
+  const OperationDef op_def = node.cl_operation.GetDefinition();
   for (int j = 0; j < node.inputs.size(); ++j) {
     result.push_back({node.inputs[j], op_def.src_tensors[j]});
   }
@@ -82,7 +82,7 @@ absl::Status MergeCLNodes(CLNode* src, CLNode* dst) {
   }
   dst->outputs[0] = src->outputs[0];
   dst->name += " linked : " + src->name;
-  return dst->operation->AddOperation(src->operation.get());
+  return dst->cl_operation.AddOperation(&src->cl_operation);
 }
 
 void AddUsage(ValueId id, int task_index,
@@ -137,14 +137,14 @@ bool IsGenericAdd(const Node& node, const std::vector<Value*>& inputs,
 }  // namespace
 
 CLNode::CLNode(CLNode&& node)
-    : operation(std::move(node.operation)),
+    : cl_operation(std::move(node.cl_operation)),
       inputs(std::move(node.inputs)),
       outputs(std::move(node.outputs)),
       name(std::move(node.name)) {}
 
 CLNode& CLNode::operator=(CLNode&& node) {
   if (this != &node) {
-    operation = std::move(node.operation);
+    cl_operation = std::move(node.cl_operation);
     inputs = std::move(node.inputs);
     outputs = std::move(node.outputs);
     name = std::move(node.name);
@@ -200,11 +200,9 @@ absl::Status InferenceContext::InitFromGraph(
   RETURN_IF_ERROR(Tune(tuning_parameters));
 
   if (serialized_model) {
-    // Temporary, will be resolved later, now we don't have complete
-    // intermediate representation
     for (auto& node : nodes_) {
-      node.operation->MoveObjectRefsFromCLToGeneric();
-      node.operation->SyncScalarValues();
+      node.cl_operation.MoveObjectRefsFromCLToGeneric();
+      node.cl_operation.SyncScalarValues();
     }
     flatbuffers::FlatBufferBuilder builder;
     auto encoded_fb = Encode(*this, &builder);
@@ -213,11 +211,11 @@ absl::Status InferenceContext::InitFromGraph(
     std::memcpy(serialized_model->data(), builder.GetBufferPointer(),
                 builder.GetSize());
     for (auto& node : nodes_) {
-      node.operation->MoveObjectRefsFromGenericToCL();
+      node.cl_operation.MoveObjectRefsFromGenericToCL();
     }
   }
   for (auto& node : nodes_) {
-    node.operation->args_.ReleaseCPURepresentation();
+    node.cl_operation.GetGpuOperation().args_.ReleaseCPURepresentation();
   }
   return absl::OkStatus();
 }
@@ -241,11 +239,11 @@ absl::Status InferenceContext::RestoreDeserialized(
   RETURN_IF_ERROR(AllocateMemory(creation_context.context));
   BindMemoryToOperations();
   for (auto& node : nodes_) {
-    RETURN_IF_ERROR(node.operation->CompileDeserialized(creation_context));
+    RETURN_IF_ERROR(node.cl_operation.CompileDeserialized(creation_context));
   }
   RETURN_IF_ERROR(UpdateParams());
   for (auto& node : nodes_) {
-    node.operation->args_.ReleaseCPURepresentation();
+    node.cl_operation.GetGpuOperation().args_.ReleaseCPURepresentation();
   }
   return absl::OkStatus();
 }
@@ -387,7 +385,7 @@ absl::Status InferenceContext::ConvertOperations(const GpuInfo& gpu_info,
     }
     for (auto& gpu_op : gpu_subgraph.operations) {
       CLNode cl_node;
-      cl_node.operation = std::move(gpu_op.operation);
+      cl_node.cl_operation.Init(std::move(gpu_op.operation));
       cl_node.inputs.resize(gpu_op.input_ids.size());
       for (int j = 0; j < gpu_op.input_ids.size(); ++j) {
         int id = gpu_op.input_ids[j];
@@ -442,15 +440,15 @@ absl::Status InferenceContext::Merge() {
       continue;
     }
     auto& linkable_node = nodes_[next_nodes[0]];
-    if (!linkable_node.operation->IsLinkable() ||
+    if (!linkable_node.cl_operation.GetGpuOperation().IsLinkable() ||
         linkable_node.outputs.size() != 1 ||
         !IsReady(ready_tensors, linkable_node)) {
       continue;
     }
     const auto& original_dst_def =
-        node.operation->GetDefinition().dst_tensors[0];
+        node.cl_operation.GetDefinition().dst_tensors[0];
     const auto& link_dst_def =
-        linkable_node.operation->GetDefinition().dst_tensors[0];
+        linkable_node.cl_operation.GetDefinition().dst_tensors[0];
     if (original_dst_def != link_dst_def) {
       continue;
     }
@@ -617,10 +615,10 @@ absl::Status InferenceContext::AllocateMemoryForStrongShapes(
 void InferenceContext::BindMemoryToOperations() {
   for (auto& node : nodes_) {
     for (int i = 0; i < node.inputs.size(); ++i) {
-      node.operation->SetSrc(GetTensor(node.inputs[i]), i);
+      node.cl_operation.GetGpuOperation().SetSrc(GetTensor(node.inputs[i]), i);
     }
     for (int i = 0; i < node.outputs.size(); ++i) {
-      node.operation->SetDst(GetTensor(node.outputs[i]), i);
+      node.cl_operation.GetGpuOperation().SetDst(GetTensor(node.outputs[i]), i);
     }
   }
 }
@@ -628,21 +626,21 @@ void InferenceContext::BindMemoryToOperations() {
 absl::Status InferenceContext::Compile(
     const CreationContext& creation_context) {
   for (auto& node : nodes_) {
-    RETURN_IF_ERROR(node.operation->Compile(creation_context));
+    RETURN_IF_ERROR(node.cl_operation.Compile(creation_context));
   }
   return absl::OkStatus();
 }
 
 absl::Status InferenceContext::Tune(const TuningParameters& tuning_parameters) {
   for (auto& node : nodes_) {
-    RETURN_IF_ERROR(node.operation->Tune(tuning_parameters));
+    RETURN_IF_ERROR(node.cl_operation.Tune(tuning_parameters));
   }
   return absl::OkStatus();
 }
 
 absl::Status InferenceContext::UpdateParams() {
   for (auto& node : nodes_) {
-    RETURN_IF_ERROR(node.operation->UpdateParams());
+    RETURN_IF_ERROR(node.cl_operation.UpdateParams());
   }
   return absl::OkStatus();
 }
@@ -656,7 +654,7 @@ absl::Status InferenceContext::AddToQueue(CLCommandQueue* queue) {
   }
   int counter = 0;
   for (auto& node : nodes_) {
-    RETURN_IF_ERROR(node.operation->AddToQueue(queue));
+    RETURN_IF_ERROR(node.cl_operation.AddToQueue(queue));
     counter++;
     if (flush_periodically_ && counter % flush_period_ == 0) {
       clFlush(queue->queue());
@@ -673,7 +671,7 @@ absl::Status InferenceContext::Profile(ProfilingCommandQueue* queue,
   queue->ResetMeasurements();
   for (auto& node : nodes_) {
     queue->SetEventsLabel(node.name);
-    RETURN_IF_ERROR(node.operation->AddToQueue(queue));
+    RETURN_IF_ERROR(node.cl_operation.AddToQueue(queue));
   }
   RETURN_IF_ERROR(queue->WaitForCompletion());
   *result = queue->GetProfilingInfo();

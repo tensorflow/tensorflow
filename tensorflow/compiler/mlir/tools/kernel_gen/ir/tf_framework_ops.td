@@ -20,6 +20,7 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_status.td"
 
 def TFFramework_Dialect : Dialect {
   let name = "tf_framework";
@@ -160,10 +161,11 @@ def TFFramework_ReportErrorOp : TFFramework_Op<"report_error", []> {
 
   let arguments = (ins
     TFFramework_OpKernelContextType:$ctx,
+    TFFramework_ErrorCodeAttr:$error_code,
     StrAttr:$msg
   );
 
-  let assemblyFormat = "$ctx `,` $msg attr-dict";
+  let assemblyFormat = "$ctx `,` $error_code `,` $msg attr-dict";
 }
 
 #endif // TF_FRAMEWORK_OPS

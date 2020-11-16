@@ -41,6 +41,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "saved_model"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "test"
     mtype: "<type \'module\'>"
   }
@@ -51,6 +55,10 @@ tf_module {
   member {
     name: "tracking"
     mtype: "<type \'module\'>"
+  }
+  member_method {
+    name: "create_c_op"
+    argspec: "args=[\'graph\', \'node_def\', \'inputs\', \'control_inputs\', \'op_def\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "execute_fn_for_device"

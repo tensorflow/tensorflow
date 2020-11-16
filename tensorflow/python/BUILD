@@ -5211,6 +5211,9 @@ cuda_py_test(
     srcs = ["ops/control_flow_ops_test.py"],
     python_version = "PY3",
     shard_count = 2,
+    tags = [
+        "no_cuda_asan",  # b/173241932
+    ],
     xla_tags = [
         "no_cuda_asan",  # times out
     ],
@@ -5688,7 +5691,7 @@ py_strict_library(
         "util/tf_inspect.py",
     ],
     compatible_with = get_compatible_with_portable(),
-    srcs_version = "PY3",
+    srcs_version = "PY2AND3",
     visibility = [
         "//tensorflow:__subpackages__",
         # TODO(mdan): Remove these dependencies.

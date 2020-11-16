@@ -13,6 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// Enable the use of M_* math constants.
+// NOTE: this must be first in the file to ensure that if cmath is transitively
+// included by any other header it has the define set on first processing.
+// https://docs.microsoft.com/en-us/cpp/c-runtime-library/math-constants
+#define _USE_MATH_DEFINES
+#include <cmath>
 #include <numeric>
 
 #include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"

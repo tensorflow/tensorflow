@@ -54,8 +54,10 @@ TEST_F(OpenCLOperationTest, PReLUAlpha) {
       TensorFloat32 dst_tensor;
       GPUOperation operation =
           CreatePReLU(creation_context_.GetGpuInfo(), op_def, attr);
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 2, 1, 2), &dst_tensor));
+      ASSERT_OK(ExecuteGPUOperation(
+          src_tensor, creation_context_,
+          absl::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 2, 1, 2), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
                   Pointwise(FloatNear(eps), {0.0f, 2.0f, -1.0f, 3.0f}));
     }
@@ -85,8 +87,10 @@ TEST_F(OpenCLOperationTest, PReLUAlphaClip) {
       TensorFloat32 dst_tensor;
       GPUOperation operation =
           CreatePReLU(creation_context_.GetGpuInfo(), op_def, attr);
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 2, 1, 2), &dst_tensor));
+      ASSERT_OK(ExecuteGPUOperation(
+          src_tensor, creation_context_,
+          absl::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 2, 1, 2), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
                   Pointwise(FloatNear(eps), {0.0f, 2.0f, -1.0f, 0.7f}));
     }
@@ -116,8 +120,10 @@ TEST_F(OpenCLOperationTest, PReLUHWCAlpha) {
       TensorFloat32 dst_tensor;
       GPUOperation operation =
           CreatePReLU(creation_context_.GetGpuInfo(), op_def, attr);
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 2, 1, 2), &dst_tensor));
+      ASSERT_OK(ExecuteGPUOperation(
+          src_tensor, creation_context_,
+          absl::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 2, 1, 2), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
                   Pointwise(FloatNear(eps), {0.0f, 2.0f, -1.4f, 3.0f}));
     }
