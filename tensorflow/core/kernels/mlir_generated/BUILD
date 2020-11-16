@@ -82,7 +82,11 @@ cc_library(
 tf_kernel_library(
     name = "cwise_unary_op",
     srcs = [":unary_kernel_srcs"],
-    tags = ["manual"],
+    # TODO(herhut): Remove no_rocm once kernels build again.
+    tags = [
+        "manual",
+        "no_rocm",
+    ],
     deps = if_mlir_unranked_kernels_enabled(
         if_false = [
             ":abs_kernels",
@@ -115,7 +119,11 @@ tf_kernel_library(
 tf_kernel_library(
     name = "cwise_binary_op",
     srcs = ["unranked_gpu_add.cc"],
-    tags = ["manual"],
+    # TODO(herhut): Remove no_rocm once kernels build again.
+    tags = [
+        "manual",
+        "no_rocm",
+    ],
     deps = [
         ":addv2_unranked_kernels",
         ":unranked_op_gpu_base",
@@ -126,7 +134,11 @@ tf_kernel_library(
 tf_kernel_library(
     name = "cwise_op",
     srcs = [],
-    tags = ["no_rocm"],
+    # TODO(herhut): Remove manual once kernels build again.
+    tags = [
+        "manual",
+        "no_rocm",
+    ],
     # Technically these libraries don't need --config=cuda or --config=rocm,
     # but we want to avoid building them if they are not needed.
     deps = if_cuda_or_rocm([
