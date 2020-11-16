@@ -18,7 +18,9 @@ set -x
 
 source tensorflow/tools/ci_build/release/common.sh
 
-python -m pip install --upgrade twine
+# TODO(mihaimaruseac): Convert all builds to start from a virtualenv to isolate
+# from Kokoro setup
+python -m pip install --upgrade --user twine
 
 # Copy and rename to tf_nightly
 for f in $(ls "${KOKORO_GFILE_DIR}"/tf_nightly_gpu*dev*cp3*-cp3*-win_amd64.whl); do
