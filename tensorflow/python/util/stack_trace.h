@@ -20,11 +20,13 @@ limitations under the License.
 #include <frameobject.h>
 
 #include <array>
+#include <limits>
 #include <sstream>
 #include <string>
 
 #include "absl/base/attributes.h"
 #include "absl/base/optimization.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/util/abstract_stack_trace.h"
 #include "tensorflow/python/lib/core/py_util.h"
@@ -34,29 +36,31 @@ namespace tensorflow {
 // A class for capturing Python stack trace.
 class StackTrace final {
  public:
-  static constexpr int kMaxDepth = 10;
+  static constexpr int kDefaultStackTraceInitialSize = 10;
 
-  StackTrace() : size_(0) {}
+  StackTrace() {}
 
   // Returns `StackTrace` object that captures the current Python stack trace.
+  // `limit` determines how many stack frames at most are returned: set to -1
+  // for "no limit".
   // Python GIL must be acquired beforehand.
   ABSL_MUST_USE_RESULT
   ABSL_ATTRIBUTE_HOT
-  static StackTrace Capture() {
+  static StackTrace Capture(int limit) {
     DCheckPyGilState();
+    if (limit == -1) limit = std::numeric_limits<int>::max();
 
     StackTrace result;
     const PyFrameObject* frame = PyThreadState_GET()->frame;
     int i = 0;
-    for (; i < kMaxDepth && frame != nullptr; frame = frame->f_back, ++i) {
+    for (; i < limit && frame != nullptr; frame = frame->f_back, ++i) {
       PyCodeObject* code_obj = frame->f_code;
       DCHECK(code_obj != nullptr);
 
       Py_INCREF(code_obj);
-      result.code_objs_[i] = code_obj;
-      result.last_instructions_[i] = frame->f_lasti;
+      result.code_objs_.push_back(code_obj);
+      result.last_instructions_.push_back(frame->f_lasti);
     }
-    result.size_ = i;
     return result;
   }
 
@@ -65,10 +69,9 @@ class StackTrace final {
   ~StackTrace() { Clear(); }
 
   StackTrace(StackTrace&& other) {
-    code_objs_ = other.code_objs_;
-    last_instructions_ = other.last_instructions_;
-    size_ = other.size_;
-    other.size_ = 0;
+    code_objs_ = std::move(other.code_objs_);
+    last_instructions_ = std::move(other.last_instructions_);
+    other.code_objs_ = {};
   }
 
   // Python GIL must be acquired beforehand.
@@ -78,8 +81,7 @@ class StackTrace final {
 
     code_objs_ = other.code_objs_;
     last_instructions_ = other.last_instructions_;
-    size_ = other.size_;
-    other.size_ = 0;
+    other.code_objs_ = {};
     return *this;
   }
 
@@ -87,15 +89,14 @@ class StackTrace final {
   std::vector<StackFrame> ToStackFrames() const;
 
  private:
-  std::array<PyCodeObject*, kMaxDepth> code_objs_;
-  std::array<int, kMaxDepth> last_instructions_;
-  int size_;
+  absl::InlinedVector<PyCodeObject*, kDefaultStackTraceInitialSize> code_objs_;
+  absl::InlinedVector<int, kDefaultStackTraceInitialSize> last_instructions_;
 
   // Python GIL must be acquired beforehand.
   ABSL_ATTRIBUTE_HOT
   void Clear() {
     DCheckPyGilState();
-    for (int i = 0; i < size_; ++i) Py_DECREF(code_objs_[i]);
+    for (PyCodeObject* obj : code_objs_) Py_DECREF(obj);
   }
 
   StackTrace(const StackTrace&) = delete;
@@ -112,11 +113,11 @@ class StackTraceManager {
   // Python GIL must be acquired beforehand.
   ABSL_MUST_USE_RESULT
   ABSL_ATTRIBUTE_HOT
-  int Capture() {
+  int Capture(int limit) {
     DCheckPyGilState();
     const int id = next_id_++;
     const int index = id & (kStackTraceCircularBufferSize - 1);
-    stack_traces_[index] = StackTrace::Capture();
+    stack_traces_[index] = StackTrace::Capture(limit);
     return id;
   }
 
@@ -138,9 +139,9 @@ extern StackTraceManager* const stack_trace_manager;
 // Note that the actual stack trace is kept in a circular buffer for string
 // conversion could fail if it's evicted before.
 // Python GIL must be acquired beforehand.
-inline AbstractStackTrace GetStackTrace() {
+inline AbstractStackTrace GetStackTrace(int limit) {
   DCheckPyGilState();
-  return AbstractStackTrace(stack_trace_manager->Capture(), [](int id) {
+  return AbstractStackTrace(stack_trace_manager->Capture(limit), [](int id) {
     PyGILState_STATE gstate = PyGILState_Ensure();
     std::vector<StackFrame> result =
         stack_trace_manager->Get(id)->ToStackFrames();

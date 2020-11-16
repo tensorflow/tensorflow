@@ -5752,6 +5752,7 @@ cc_library(
         "//tensorflow/core/util:abstract_stack_trace",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/types:optional",
     ],
 )
