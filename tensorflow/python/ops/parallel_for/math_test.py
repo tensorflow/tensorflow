@@ -81,14 +81,7 @@ class MathTest(PForTestCase, parameterized.TestCase):
     ]
     self._test_unary_cwise_ops(complex_ops, True)
 
-  @test.disable_with_predicate(
-      pred=test.is_built_with_rocm, skip_message="This fails on ROCm.")
   def test_unary_cwise_real_ops_1(self):
-    if test.is_built_with_rocm():
-      # TODO(rocm):
-      # This fails on ROCm...see JIRA ticket 236756
-      self.skipTest("Fails on ROCM")
-
     real_ops = [
         lambda x: math_ops.acosh(1 + math_ops.square(x)),
         math_ops.abs,
