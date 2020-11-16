@@ -105,7 +105,6 @@ void AddRewrittenCompositeOps(MLIRContext* context,
       GET_OPERATION_NAME(TF::TensorArrayGradV3Op),
       GET_OPERATION_NAME(TF::TensorArrayGatherV3Op),
       GET_OPERATION_NAME(TF::TensorArrayScatterV3Op),
-      GET_OPERATION_NAME(TF::TensorListFromTensorOp),
       // Tensor List Ops.
       GET_OPERATION_NAME(TF::EmptyTensorListOp),
       GET_OPERATION_NAME(TF::TensorListReserveOp),
