@@ -399,7 +399,7 @@ genrule(
     cmd = (
         "$(location :make_aot_compile_models) --out_dir $(@D)"
     ),
-    exec_tools = [":make_aot_compile_models"],
+    tools = [":make_aot_compile_models"],
     tags = ["no_rocm"],
 )
 
