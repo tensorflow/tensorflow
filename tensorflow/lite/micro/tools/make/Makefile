@@ -562,6 +562,14 @@ clean:
 clean_downloads:
 	rm -rf $(MAKEFILE_DIR)/downloads
 
+# Print internal variables (used by CMSIS-Pack build)
+printvar-%: 
+	@echo '$*=$($*)'
+
+# Print variable with enclosing tags (used by CMSIS-Pack build)
+printvar-tagged-%: 
+	@echo '$*=<LIST>$($*)</LIST>'
+
 $(DEPDIR)/%.d: ;
 .PRECIOUS: $(DEPDIR)/%.d
 .PRECIOUS: $(BINDIR)%_test
