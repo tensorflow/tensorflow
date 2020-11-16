@@ -45,6 +45,53 @@ static_assert(ATOMIC_INT_LOCK_FREE == 2, "Assumed atomic<int> was lock free");
 
 namespace {
 
+// Track events created by ActivityStart and merge their data into events
+// created by ActivityEnd. TraceMe records events in its destructor, so this
+// results in complete events sorted by their end_time in the thread they ended.
+// Within the same thread, the record created by ActivityStart must appear
+// before the record created by ActivityEnd. Cross-thread events must be
+// processed in a separate pass. A single map can be used because the
+// activity_id is globally unique.
+class SplitEventTracker {
+ public:
+  void AddStart(TraceMeRecorder::Event&& event) {
+    DCHECK(event.IsStart());
+    start_events_.emplace(event.ActivityId(), std::move(event));
+  }
+
+  void AddEnd(TraceMeRecorder::Event* event) {
+    DCHECK(event->IsEnd());
+    if (!FindStartAndMerge(event)) {
+      end_events_.push_back(event);
+    }
+  }
+
+  void HandleCrossThreadEvents() {
+    for (auto* event : end_events_) {
+      FindStartAndMerge(event);
+    }
+  }
+
+ private:
+  // Finds the start of the given event and merges data into it.
+  bool FindStartAndMerge(TraceMeRecorder::Event* event) {
+    auto iter = start_events_.find(event->ActivityId());
+    if (iter == start_events_.end()) return false;
+    auto& start_event = iter->second;
+    event->name = std::move(start_event.name);
+    event->start_time = start_event.start_time;
+    start_events_.erase(iter);
+    return true;
+  }
+
+  // Start events are collected from each ThreadLocalRecorder::Consume() call.
+  // Their data is merged into end_events.
+  absl::flat_hash_map<int64, TraceMeRecorder::Event> start_events_;
+
+  // End events are stored in the output of TraceMeRecorder::Consume().
+  std::vector<TraceMeRecorder::Event*> end_events_;
+};
+
 // A single-producer single-consumer queue of Events.
 //
 // Implemented as a linked-list of blocks containing numbered slots, with start
@@ -114,13 +161,25 @@ class EventQueue {
   // Consume is only called from ThreadLocalRecorder::Clear, which in turn is
   // only called while holding TraceMeRecorder::Mutex, so Consume has a single
   // caller at a time.
-  TF_MUST_USE_RESULT std::vector<TraceMeRecorder::Event> Consume() {
+  TF_MUST_USE_RESULT std::deque<TraceMeRecorder::Event> Consume(
+      SplitEventTracker* split_event_tracker) {
     // Read index before contents.
     size_t end = end_.load(std::memory_order_acquire);
-    std::vector<TraceMeRecorder::Event> result;
-    result.reserve(end - start_);
+    std::deque<TraceMeRecorder::Event> result;
     while (start_ != end) {
-      result.emplace_back(Pop());
+      TraceMeRecorder::Event event = Pop();
+      // Copy data from start events to end events. TraceMe records events in
+      // its destructor, so this results in complete events sorted by their
+      // end_time in the thread they ended. Within the same thread, the start
+      // event must appear before the corresponding end event.
+      if (event.IsStart()) {
+        split_event_tracker->AddStart(std::move(event));
+        continue;
+      }
+      result.emplace_back(std::move(event));
+      if (result.back().IsEnd()) {
+        split_event_tracker->AddEnd(&result.back());
+      }
     }
     return result;
   }
@@ -205,8 +264,9 @@ class TraceMeRecorder::ThreadLocalRecorder {
   void Clear() { queue_.Clear(); }
 
   // Consume is called from the control thread when tracing stops.
-  TF_MUST_USE_RESULT TraceMeRecorder::ThreadEvents Consume() {
-    return {info_, queue_.Consume()};
+  TF_MUST_USE_RESULT TraceMeRecorder::ThreadEvents Consume(
+      SplitEventTracker* split_event_tracker) {
+    return {info_, queue_.Consume(split_event_tracker)};
   }
 
  private:
@@ -283,9 +343,11 @@ void TraceMeRecorder::Clear() {
 TraceMeRecorder::Events TraceMeRecorder::Consume() {
   TraceMeRecorder::Events result;
   result.reserve(threads_.size());
+  SplitEventTracker split_event_tracker;
   for (auto iter = threads_.begin(); iter != threads_.end();) {
     auto& recorder = iter->second;
-    TraceMeRecorder::ThreadEvents events = recorder->Consume();
+    TraceMeRecorder::ThreadEvents events =
+        recorder->Consume(&split_event_tracker);
     if (!events.events.empty()) {
       result.push_back(std::move(events));
     }
@@ -297,6 +359,7 @@ TraceMeRecorder::Events TraceMeRecorder::Consume() {
       ++iter;
     }
   }
+  split_event_tracker.HandleCrossThreadEvents();
   return result;
 }
 

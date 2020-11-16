@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PROFILER_INTERNAL_CPU_TRACEME_RECORDER_H_
 
 #include <atomic>
+#include <deque>
 #include <memory>
 #include <string>
 #include <vector>
@@ -75,7 +76,7 @@ class TraceMeRecorder {
   };
   struct ThreadEvents {
     ThreadInfo thread;
-    std::vector<Event> events;
+    std::deque<Event> events;
   };
   using Events = std::vector<ThreadEvents>;
 

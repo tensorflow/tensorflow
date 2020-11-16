@@ -22,13 +22,9 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
-// Combine events created by TraceMe::ActivityStart and TraceMe::ActivityEnd,
-// which can be paired up by their activity_id.
-void MakeCompleteEvents(TraceMeRecorder::Events* events);
-
 // Convert complete events to XPlane format.
 void ConvertCompleteEventsToXPlane(uint64 start_timestamp_ns,
-                                   const TraceMeRecorder::Events& events,
+                                   TraceMeRecorder::Events&& events,
                                    XPlane* raw_plane);
 
 }  // namespace profiler

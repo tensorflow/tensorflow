@@ -107,7 +107,6 @@ Status HostTracer::CollectData(RunMetadata* run_metadata) {
   if (recording_) {
     return errors::Internal("TraceMeRecorder not stopped");
   }
-  MakeCompleteEvents(&events_);
 
   StepStats* step_stats = run_metadata->mutable_step_stats();
   DeviceStepStats* dev_stats = step_stats->add_dev_stats();
@@ -117,7 +116,9 @@ Status HostTracer::CollectData(RunMetadata* run_metadata) {
   constexpr char kUserMetadataMarker = '#';
   for (TraceMeRecorder::ThreadEvents& thread : events_) {
     thread_names->insert({thread.thread.tid, thread.thread.name});
-    for (TraceMeRecorder::Event& event : thread.events) {
+    while (!thread.events.empty()) {
+      auto event = std::move(thread.events.front());
+      thread.events.pop_front();
       if (event.start_time && event.end_time) {
         NodeExecStats* ns = dev_stats->add_node_stats();
         if (event.name.back() != kUserMetadataMarker) {
@@ -149,10 +150,9 @@ Status HostTracer::CollectData(XSpace* space) {
   if (recording_) {
     return errors::Internal("TraceMeRecorder not stopped");
   }
-  MakeCompleteEvents(&events_);
   XPlane* plane = FindOrAddMutablePlaneWithName(space, kHostThreadsPlaneName);
-  ConvertCompleteEventsToXPlane(start_timestamp_ns_, events_, plane);
-  events_.clear();
+  ConvertCompleteEventsToXPlane(start_timestamp_ns_, std::exchange(events_, {}),
+                                plane);
   return Status::OK();
 }
 
