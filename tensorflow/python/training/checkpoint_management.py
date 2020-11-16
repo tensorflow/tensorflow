@@ -570,7 +570,7 @@ class CheckpointManager(object):
     
     ```python
     # save checkpoints every 3000 steps and max_to_keep=3
-    # define your  model
+    # define your model
     model = Model()
     optimizer = tf.keras.optimizers.Adam()
     checkpoint = tf.train.Checkpoint(model=model)
