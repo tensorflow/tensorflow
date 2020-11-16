@@ -121,6 +121,7 @@ tf_cc_binary(
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
         "@llvm-project//llvm:X86Disassembler",  # fixdeps: keep
+        "@llvm-project//mlir:ExecutionEngineUtils",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:TargetLLVMIR",
     ],
@@ -152,6 +153,7 @@ cc_library(
     srcs = ["tf_framework_c_interface.cc"],
     hdrs = ["tf_framework_c_interface.h"],
     deps = [
+        "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
         "//tensorflow/core:framework",
         "@llvm-project//mlir:mlir_runner_utils",
     ],

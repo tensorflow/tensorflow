@@ -139,7 +139,8 @@ class TFAssertOpConverter : public OpConversionPattern<AssertOp> {
 
     Block *error_reporting_block =
         rewriter.createBlock(&func.getRegion(), {}, {});
-    rewriter.create<ReportErrorOp>(loc, ctx, transformed.msg());
+    rewriter.create<ReportErrorOp>(loc, ctx, ErrorCode::INVALID_ARGUMENT,
+                                   transformed.msg().getValue());
 
     SmallVector<Value, 2> null_memrefs;
     for (auto type : func.getType().getResults()) {

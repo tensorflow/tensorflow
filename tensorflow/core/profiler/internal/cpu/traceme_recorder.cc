@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <atomic>
+#include <memory>
 #include <new>
 #include <utility>
 #include <vector>
@@ -55,18 +56,19 @@ namespace {
 // start_ is the first occupied slot, end_ is the first unoccupied slot.
 //
 // Push writes at end_, and then advances it, allocating a block if needed.
-// PopAll takes ownership of events in the range [start_, end_).
-// The end_ pointer is atomic so Push and PopAll can be concurrent.
+// Consume takes ownership of events in the range [start_, end_).
+// Clear removes events in the range [start_, end_).
+// The end_ pointer is atomic so Push and Consume can be concurrent.
 //
-// Push and PopAll are lock free and each might be called from at most one
-// thread. Push is only called by the owner thread. PopAll is called by the
-// owner thread when it shuts down, or by the tracing control thread.
+// Push and Consume are lock free and each might be called from at most one
+// thread. Push is only called by the owner thread. Consume is only called by
+// the tracing control thread.
 //
-// Thus, PopAll might race with Push, so PopAll only removes events that were
-// in the queue when it was invoked. If Push is called while PopAll is active,
+// Thus, Consume might race with Push, so Consume only removes events that were
+// in the queue when it was invoked. If Push is called while Consume is active,
 // the new event remains in the queue. Thus, the tracing control thread should
-// call PopAll when tracing stops to remove events created during tracing, but
-// also when tracing starts again to clear any remaining events.
+// call Consume when tracing stops to remove events created during tracing, and
+// Clear when tracing starts again to remove any remaining events.
 class EventQueue {
  public:
   EventQueue()
@@ -75,13 +77,13 @@ class EventQueue {
         end_block_(start_block_),
         end_(start_) {}
 
-  // REQUIRES: PopAll() was called since the last Push().
   // Memory should be deallocated and trace events destroyed on destruction.
   // This doesn't require global lock as this discards all the stored trace
   // events and we assume of destruction of this instance only after the last
   // Push() has been called.
   ~EventQueue() {
-    DCHECK(Empty()) << "EventQueue destroyed without PopAll()";
+    Clear();
+    DCHECK(Empty());
     delete end_block_;
   }
 
@@ -98,13 +100,21 @@ class EventQueue {
     end_.store(end, std::memory_order_release);  // Write index after contents.
   }
 
+  // Removes all events from the queue.
+  void Clear() {
+    size_t end = end_.load(std::memory_order_acquire);
+    while (start_ != end) {
+      Pop();
+    }
+  }
+
   // Retrieve and remove all events in the queue at the time of invocation.
-  // If Push is called while PopAll is active, the new event will not be
+  // If Push is called while Consume is active, the new event will not be
   // removed from the queue.
-  // PopAll is only called from ThreadLocalRecorder::Clear, which in turn is
-  // only called while holding TraceMeRecorder::Mutex, so PopAll has a single
+  // Consume is only called from ThreadLocalRecorder::Clear, which in turn is
+  // only called while holding TraceMeRecorder::Mutex, so Consume has a single
   // caller at a time.
-  std::vector<TraceMeRecorder::Event> PopAll() {
+  TF_MUST_USE_RESULT std::vector<TraceMeRecorder::Event> Consume() {
     // Read index before contents.
     size_t end = end_.load(std::memory_order_acquire);
     std::vector<TraceMeRecorder::Event> result;
@@ -180,25 +190,56 @@ class TraceMeRecorder::ThreadLocalRecorder {
     auto* env = Env::Default();
     info_.tid = env->GetCurrentThreadId();
     env->GetCurrentThreadName(&info_.name);
-    TraceMeRecorder::Get()->RegisterThread(info_.tid, this);
   }
 
-  // The destructor is called when the thread shuts down early.
-  ~ThreadLocalRecorder() {
-    // Unregister the thread. Clear() will be called from TraceMeRecorder.
-    TraceMeRecorder::Get()->UnregisterThread(info_.tid);
-  }
+  uint32 ThreadId() const { return info_.tid; }
+
+  bool IsActive() const { return active_; }
+  void SetActive(bool active) { active_ = active; }
 
   // Record is only called from the owner thread.
   void Record(TraceMeRecorder::Event&& event) { queue_.Push(std::move(event)); }
 
-  // Clear is called from the control thread when tracing starts/stops, or from
-  // the owner thread when it shuts down (see destructor).
-  TraceMeRecorder::ThreadEvents Clear() { return {info_, queue_.PopAll()}; }
+  // Clear is called from the control thread when tracing starts to remove any
+  // elements added due to Record racing with Consume.
+  void Clear() { queue_.Clear(); }
+
+  // Consume is called from the control thread when tracing stops.
+  TF_MUST_USE_RESULT TraceMeRecorder::ThreadEvents Consume() {
+    return {info_, queue_.Consume()};
+  }
 
  private:
   TraceMeRecorder::ThreadInfo info_;
   EventQueue queue_;
+  bool active_ = true;
+};
+
+// An instance of this wrapper is allocated in thread_local storage.
+// It creates the ThreadLocalRecorder and notifies TraceMeRecorder when the
+// the first TraceMe on the thread is executed while tracing is active, or when
+// the thread is destroyed.
+class TraceMeRecorder::ThreadLocalRecorderWrapper {
+ public:
+  ThreadLocalRecorderWrapper()
+      : recorder_(std::make_shared<TraceMeRecorder::ThreadLocalRecorder>()) {
+    TraceMeRecorder::Get()->RegisterThread(recorder_->ThreadId(), recorder_);
+  }
+
+  void Record(TraceMeRecorder::Event&& event) {
+    recorder_->Record(std::move(event));
+  }
+
+  ~ThreadLocalRecorderWrapper() {
+    recorder_->SetActive(false);
+    TraceMeRecorder::Get()->UnregisterThread(recorder_->ThreadId());
+  }
+
+ private:
+  // Ownership of ThreadLocalRecorder is shared with TraceMeRecorder.
+  // If a thread is destroyed during tracing, its ThreadLocalRecorder is kept
+  // alive until the end of tracing.
+  std::shared_ptr<TraceMeRecorder::ThreadLocalRecorder> recorder_;
 };
 
 /*static*/ TraceMeRecorder* TraceMeRecorder::Get() {
@@ -206,35 +247,54 @@ class TraceMeRecorder::ThreadLocalRecorder {
   return singleton;
 }
 
-void TraceMeRecorder::RegisterThread(uint32 tid, ThreadLocalRecorder* thread) {
+void TraceMeRecorder::RegisterThread(
+    uint32 tid, std::shared_ptr<ThreadLocalRecorder> thread) {
   mutex_lock lock(mutex_);
-  threads_.emplace(tid, thread);
+  threads_.insert_or_assign(tid, std::move(thread));
 }
 
 void TraceMeRecorder::UnregisterThread(uint32 tid) {
+  // If tracing is active, keep the ThreadLocalRecorder alive.
+  if (Active()) return;
+  // If tracing is inactive, destroy the ThreadLocalRecorder.
   mutex_lock lock(mutex_);
-  auto it = threads_.find(tid);
-  if (it != threads_.end()) {
-    auto events = it->second->Clear();
-    if (!events.events.empty()) {
-      orphaned_events_.push_back(std::move(events));
-    }
-    threads_.erase(it);
+  threads_.erase(tid);
+}
+
+// This method is performance critical and should be kept fast. It is called
+// when tracing starts. The mutex is held, so no threads can be
+// registered/unregistered. This ensures only the control thread calls
+// ThreadLocalRecorder::Clear().
+void TraceMeRecorder::Clear() {
+  for (auto& id_and_recorder : threads_) {
+    auto& recorder = id_and_recorder.second;
+    recorder->Clear();
+    // We should not have an inactive ThreadLocalRecorder here. If a thread is
+    // destroyed while tracing is inactive, its ThreadLocalRecorder is removed
+    // in UnregisterThread.
+    DCHECK(recorder->IsActive());
   }
 }
 
 // This method is performance critical and should be kept fast. It is called
-// when tracing starts/stops. The mutex is held, so no threads can be
-// registered/unregistered. This prevents calling ThreadLocalRecorder::Clear
-// from two different threads.
-TraceMeRecorder::Events TraceMeRecorder::Clear() {
+// when tracing stops. The mutex is held, so no threads can be
+// registered/unregistered. This ensures only the control thread calls
+// ThreadLocalRecorder::Consume().
+TraceMeRecorder::Events TraceMeRecorder::Consume() {
   TraceMeRecorder::Events result;
-  std::swap(orphaned_events_, result);
-  for (const auto& entry : threads_) {
-    auto* recorder = entry.second;
-    TraceMeRecorder::ThreadEvents events = recorder->Clear();
+  result.reserve(threads_.size());
+  for (auto iter = threads_.begin(); iter != threads_.end();) {
+    auto& recorder = iter->second;
+    TraceMeRecorder::ThreadEvents events = recorder->Consume();
     if (!events.events.empty()) {
       result.push_back(std::move(events));
+    }
+    // We can have an active thread here. If a thread is destroyed while tracing
+    // is active, its ThreadLocalRecorder is kept alive in UnregisterThread.
+    if (!recorder->IsActive()) {
+      threads_.erase(iter++);
+    } else {
+      ++iter;
     }
   }
   return result;
@@ -255,7 +315,7 @@ bool TraceMeRecorder::StartRecording(int level) {
 }
 
 void TraceMeRecorder::Record(Event&& event) {
-  static thread_local ThreadLocalRecorder thread_local_recorder;
+  static thread_local ThreadLocalRecorderWrapper thread_local_recorder;
   thread_local_recorder.Record(std::move(event));
 }
 
@@ -265,7 +325,7 @@ TraceMeRecorder::Events TraceMeRecorder::StopRecording() {
   // Change trace_level_ while holding mutex_.
   if (internal::g_trace_level.exchange(
           kTracingDisabled, std::memory_order_acq_rel) != kTracingDisabled) {
-    events = Clear();
+    events = Consume();
   }
   return events;
 }

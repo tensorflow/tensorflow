@@ -82,7 +82,9 @@ cc_library(
 tf_kernel_library(
     name = "cwise_unary_op",
     srcs = [":unary_kernel_srcs"],
-    tags = ["manual"],
+    tags = [
+        "manual",
+    ],
     deps = if_mlir_unranked_kernels_enabled(
         if_false = [
             ":abs_kernels",
@@ -112,36 +114,42 @@ tf_kernel_library(
     ),
 )
 
-tf_kernel_library(
-    name = "cwise_binary_op",
-    srcs = ["unranked_gpu_add.cc"],
-    tags = ["manual"],
-    deps = [
-        ":addv2_unranked_kernels",
-        ":unranked_op_gpu_base",
-        "//third_party/eigen3",
-    ],
-)
+# TODO(herhut): Uncomment once unranked kernels build again.
+# tf_kernel_library(
+#     name = "cwise_binary_op",
+#     srcs = ["unranked_gpu_add.cc"],
+#     tags = [
+#         "manual",
+#     ],
+#     deps = [
+#         ":addv2_unranked_kernels",
+#         ":unranked_op_gpu_base",
+#         "//third_party/eigen3",
+#     ],
+# )
 
 tf_kernel_library(
     name = "cwise_op",
     srcs = [],
-    tags = ["no_rocm"],
+    tags = [
+        "no_rocm",
+    ],
     # Technically these libraries don't need --config=cuda or --config=rocm,
     # but we want to avoid building them if they are not needed.
     deps = if_cuda_or_rocm([
         ":cwise_unary_op",
     ]) + if_mlir_unranked_kernels_enabled(
         [
-            ":cwise_binary_op",
+            # TODO(herhut): Uncomment once it builds again.
+            # ":cwise_binary_op",
         ],
     ),
 )
 
 tf_cuda_cc_test(
-    name = "gpu_tanh_test",
+    name = "gpu_unary_ops_test",
     size = "small",
-    srcs = if_mlir_generated_gpu_kernels_enabled(["gpu_tanh_test.cc"]),
+    srcs = if_mlir_generated_gpu_kernels_enabled(["gpu_unary_ops_test.cc"]),
     tags = tf_cuda_tests_tags() + [
         "no_cuda_asan",  # TODO(b/171341759): re-enable.
     ],
@@ -159,47 +167,27 @@ tf_cuda_cc_test(
     ],
 )
 
-tf_cuda_cc_test(
-    name = "gpu_abs_test",
-    size = "small",
-    srcs = if_mlir_generated_gpu_kernels_enabled(["gpu_abs_test.cc"]),
-    tags = tf_cuda_tests_tags() + [
-        "no_cuda_asan",  # TODO(b/171341759): re-enable.
-    ],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:tensorflow",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-        "//tensorflow/core/common_runtime:device",
-        "//tensorflow/core/common_runtime:device_factory",
-        "//tensorflow/core/kernels:cwise_op",
-        "//tensorflow/core/kernels:ops_testutil",
-    ],
-)
-
-tf_cuda_cc_test(
-    name = "gpu_add_test",
-    size = "small",
-    srcs = if_mlir_generated_gpu_kernels_enabled(["gpu_add_test.cc"]),
-    tags = tf_cuda_tests_tags() + [
-        "no_cuda_asan",  # b/173033461
-    ],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:tensorflow",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-        "//tensorflow/core/common_runtime:device",
-        "//tensorflow/core/common_runtime:device_factory",
-        "//tensorflow/core/kernels:cwise_op",
-        "//tensorflow/core/kernels:ops_testutil",
-    ],
-)
+# TODO(herhut): Uncomment once unranked kernels build again.
+# tf_cuda_cc_test(
+#     name = "gpu_add_test",
+#     size = "small",
+#     srcs = if_mlir_generated_gpu_kernels_enabled(["gpu_add_test.cc"]),
+#     tags = tf_cuda_tests_tags() + [
+#         "no_cuda_asan",  # b/173033461
+#     ],
+#     deps = [
+#         "//tensorflow/core:framework",
+#         "//tensorflow/core:framework_internal",
+#         "//tensorflow/core:tensorflow",
+#         "//tensorflow/core:test",
+#         "//tensorflow/core:test_main",
+#         "//tensorflow/core:testlib",
+#         "//tensorflow/core/common_runtime:device",
+#         "//tensorflow/core/common_runtime:device_factory",
+#         "//tensorflow/core/kernels:cwise_op",
+#         "//tensorflow/core/kernels:ops_testutil",
+#     ],
+# )
 # TODO(b/160731748): Re-enable when it works again.
 # gen_kernel_library(
 #     name = "bias_add",
@@ -302,19 +290,20 @@ gen_kernel_library(
     unroll_factors = "4",
 )
 
-gen_kernel_library(
-    name = "addv2",
-    generate_ranked = False,
-    generate_unranked = True,
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-        "i64",
-    ],
-    unroll_factors = "4",
-)
+# TODO(herhut): Uncomment once it builds again.
+# gen_kernel_library(
+#     name = "addv2",
+#     generate_ranked = False,
+#     generate_unranked = True,
+#     tile_size = "256",
+#     types = [
+#         "f16",
+#         "f32",
+#         "f64",
+#         "i64",
+#     ],
+#     unroll_factors = "4",
+# )
 
 [
     gen_kernel_library(
