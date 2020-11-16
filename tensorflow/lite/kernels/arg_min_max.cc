@@ -37,7 +37,12 @@ constexpr int kOutputTensor = 0;
 
 TfLiteStatus ResizeOutput(TfLiteContext* context, const TfLiteTensor* input,
                           const TfLiteTensor* axis, TfLiteTensor* output) {
-  int axis_value = *GetTensorData<int>(axis);
+  int axis_value;
+  if (axis->type == kTfLiteInt64) {
+    axis_value = *GetTensorData<int64_t>(axis);
+  } else {
+    axis_value = *GetTensorData<int>(axis);
+  }
   if (axis_value < 0) {
     axis_value += NumDimensions(input);
   }
