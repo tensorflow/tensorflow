@@ -68,17 +68,16 @@ class DataServiceWorkerImpl {
   };
 
   // Sends task status to the dispatcher and checks for dispatcher commands.
-  Status SendTaskUpdates() ABSL_LOCKS_EXCLUDED(mu_);
+  Status SendTaskUpdates() LOCKS_EXCLUDED(mu_);
   // Creates an iterator to process a task.
-  Status ProcessTaskInternal(const TaskDef& task)
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  Status ProcessTaskInternal(const TaskDef& task) EXCLUSIVE_LOCKS_REQUIRED(mu_);
   Status EnsureTaskInitialized(Task& task);
   // A thread for notifying the dispatcher when tasks complete.
-  void TaskCompletionThread() ABSL_LOCKS_EXCLUDED(mu_);
+  void TaskCompletionThread() LOCKS_EXCLUDED(mu_);
   // A thread for doing periodic heartbeats to the dispatcher.
-  void HeartbeatThread() ABSL_LOCKS_EXCLUDED(mu_);
+  void HeartbeatThread() LOCKS_EXCLUDED(mu_);
   // Performs a heartbeat to the dispatcher.
-  Status Heartbeat() ABSL_LOCKS_EXCLUDED(mu_);
+  Status Heartbeat() LOCKS_EXCLUDED(mu_);
 
   const experimental::WorkerConfig config_;
   // The worker's own address.
