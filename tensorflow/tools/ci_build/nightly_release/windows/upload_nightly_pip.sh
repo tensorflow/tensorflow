@@ -18,7 +18,7 @@ set -x
 
 source tensorflow/tools/ci_build/release/common.sh
 
-sudo pip install --upgrade twine
+python -m pip install --upgrade twine
 
 # Copy and rename to tf_nightly
 for f in $(ls "${KOKORO_GFILE_DIR}"/tf_nightly_gpu*dev*cp3*-cp3*-win_amd64.whl); do
