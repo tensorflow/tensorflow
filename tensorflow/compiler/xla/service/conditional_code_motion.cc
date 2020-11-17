@@ -924,22 +924,72 @@ class GroupConnectedBoundaries {
       // The only boundary of moving-in is the get_tuple_element op.
       return -1;
     }
-    for (Boundary b : boundaries) {
+    // For cases like :
+    // branch0 {
+    //   ROOT copy
+    // }
+    // branch1 {
+    //   ...
+    // }
+    // cond = conditional(branch0, branch1)
+    // copy = copy(cond)
+    //
+    // We can fold the two copies thus reducing computation.
+    auto get_copy_folding_benefit = [&](HloInstruction* hlo) -> int64 {
+      if (hlo->opcode() != HloOpcode::kCopy) {
+        return 0;
+      }
+      const HloGetTupleElementInstruction* gte =
+          DynCast<HloGetTupleElementInstruction>(hlo->operand(0));
+      if (gte == nullptr) {
+        return 0;
+      }
+      const HloInstruction* conditional = gte->operand(0);
+      if (conditional != conditional_) {
+        return 0;
+      }
+      int64 benefit = 0;
+      for (auto* branch : conditional->called_computations()) {
+        HloInstruction* root = branch->root_instruction();
+        if (root->opcode() == HloOpcode::kTuple) {
+          const auto* tuple_operand = root->operand(gte->tuple_index());
+          if (tuple_operand->opcode() == HloOpcode::kCopy) {
+            if (Shape::Equal()(tuple_operand->operand(0)->shape(),
+                               hlo->shape())) {
+              benefit += 10;
+            }
+          }
+        }
+      }
+      return benefit;
+    };
+    for (const Boundary& b : boundaries) {
       auto op = b.operands()[0];
       if (op == conditional_->branch_computation(0)->root_instruction()) {
         continue;
       }
+      VLOG(2) << "Benefit for " << op->ToString();
       reuses_before += ReusesBeforeBoundary(op);
       VLOG(2) << "Reuses before boundary so far: " << reuses_before << "\n";
       reuses_after += ReusesAfterBoundary(op);
       VLOG(2) << "Reuese after boundary so far : " << reuses_after << "\n";
     }
-    if (reuses_after == 0 && reuses_before == 0) {
+
+    int64 copy_folding_benefit = 0;
+    if (boundaries[0].IsOutsideBranch()) {
+      for (const Boundary& b : boundaries) {
+        auto op = b.operands()[0];
+        copy_folding_benefit += get_copy_folding_benefit(op);
+      }
+    }
+    VLOG(2) << "Copy folding benefit: " << copy_folding_benefit;
+
+    if (reuses_after == 0 && reuses_before == 0 && copy_folding_benefit == 0) {
       return -1;
     } else if (boundaries[0].IsInsideBranch()) {
       return reuses_after - reuses_before;
     } else {
-      return reuses_before - reuses_after - 1;
+      return reuses_before - reuses_after - 1 + copy_folding_benefit;
     }
   }
 
