@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/init_mlir.h"
@@ -187,7 +188,7 @@ int main(int argc, char **argv) {
   // message. So we can just return here.
   if (!module.ok()) return kTrFailure;
 
-  mlir::PassManager pm(&context);
+  mlir::PassManager pm(&context, mlir::OpPassManager::Nesting::Implicit);
   mlir::applyPassManagerCLOptions(pm);
 
   // Set the quantization specifications from the command line flags.

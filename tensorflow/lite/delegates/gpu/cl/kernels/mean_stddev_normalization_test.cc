@@ -56,8 +56,10 @@ TEST_P(MeanStddevNormalizationTest, SeparateBatches) {
       TensorFloat32 dst_tensor;
       auto operation =
           CreateMeanStdDevNormalization(op_def, env_.GetDevicePtr()->info_, 1);
-      ASSERT_OK(ExecuteGPUOperation({src_tensor}, creation_context_, &operation,
-                                    BHWC(1, 1, 1, 4), &dst_tensor));
+      ASSERT_OK(ExecuteGPUOperation(
+          {src_tensor}, creation_context_,
+          absl::make_unique<MeanStdDevNormalization>(std::move(operation)),
+          BHWC(1, 1, 1, 4), &dst_tensor));
 
       std::vector<float> expected_output;
       if (diff == 0.0f) {
@@ -114,8 +116,10 @@ TEST_F(OpenCLOperationTest, MeanStddevNormalizationAllBatches) {
       TensorFloat32 dst_tensor;
       auto operation =
           CreateMeanStdDevNormalization(op_def, env_.GetDevicePtr()->info_, 1);
-      ASSERT_OK(ExecuteGPUOperation({src_tensor}, creation_context_, &operation,
-                                    BHWC(9, 1, 1, 4), &dst_tensor));
+      ASSERT_OK(ExecuteGPUOperation(
+          {src_tensor}, creation_context_,
+          absl::make_unique<MeanStdDevNormalization>(std::move(operation)),
+          BHWC(9, 1, 1, 4), &dst_tensor));
 
       const float ksqrt16 = std::sqrt(1.6f);
       const float ksqrt04 = std::sqrt(0.4f);
@@ -165,8 +169,10 @@ TEST_F(OpenCLOperationTest, MeanStddevNormalizationLargeVector) {
       TensorFloat32 dst_tensor;
       auto operation = CreateMeanStdDevNormalization(
           op_def, env_.GetDevicePtr()->info_, (kVectorSize + 3) / 4);
-      ASSERT_OK(ExecuteGPUOperation({src_tensor}, creation_context_, &operation,
-                                    BHWC(1, 1, 1, kVectorSize), &dst_tensor));
+      ASSERT_OK(ExecuteGPUOperation(
+          {src_tensor}, creation_context_,
+          absl::make_unique<MeanStdDevNormalization>(std::move(operation)),
+          BHWC(1, 1, 1, kVectorSize), &dst_tensor));
 
       float expected_output[kVectorSize];
       // First output should be 0.

@@ -20,7 +20,6 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/match.h"
-#include "tensorflow/lite/delegates/gpu/cl/arguments.h"
 #include "tensorflow/lite/delegates/gpu/cl/buffer.h"
 #include "tensorflow/lite/delegates/gpu/cl/device_info.h"
 #include "tensorflow/lite/delegates/gpu/cl/gpu_object.h"
@@ -45,8 +44,8 @@ __kernel void main_function($0) {
 })";
 
   CLArguments cl_args;
-  DeviceInfo device_info;
-  ASSERT_OK(cl_args.Init(device_info, {}, nullptr, &args, &sample_code));
+  GpuInfo gpu_info;
+  ASSERT_OK(cl_args.Init(gpu_info, {}, nullptr, &args, &sample_code));
   EXPECT_TRUE(absl::StrContains(sample_code, "value = weights_buffer[id];"));
   EXPECT_TRUE(
       absl::StrContains(sample_code, "__global float4* weights_buffer"));
@@ -67,9 +66,8 @@ TEST(CLArgumentsTest, TestNoSelector) {
   }
 )";
   CLArguments cl_args;
-  DeviceInfo device_info;
-  EXPECT_FALSE(
-      cl_args.Init(device_info, {}, nullptr, &args, &sample_code).ok());
+  GpuInfo gpu_info;
+  EXPECT_FALSE(cl_args.Init(gpu_info, {}, nullptr, &args, &sample_code).ok());
 }
 
 }  // namespace cl

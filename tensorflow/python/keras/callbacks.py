@@ -21,7 +21,6 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import collections.abc as collections_abc
 import copy
 import csv
 import io
@@ -1701,7 +1700,7 @@ class EarlyStopping(Callback):
 
   >>> callback = tf.keras.callbacks.EarlyStopping(monitor='loss', patience=3)
   >>> # This callback will stop the training when there is no improvement in
-  >>> # the validation loss for three consecutive epochs.
+  >>> # the loss for three consecutive epochs.
   >>> model = tf.keras.models.Sequential([tf.keras.layers.Dense(10)])
   >>> model.compile(tf.keras.optimizers.SGD(), loss='mse')
   >>> history = model.fit(np.arange(100).reshape(5, 20), np.zeros(5),
@@ -2587,8 +2586,8 @@ class ReduceLROnPlateau(Callback):
       elif not self.in_cooldown():
         self.wait += 1
         if self.wait >= self.patience:
-          old_lr = float(K.get_value(self.model.optimizer.lr))
-          if old_lr > self.min_lr:
+          old_lr = K.get_value(self.model.optimizer.lr)
+          if old_lr > np.float32(self.min_lr):
             new_lr = old_lr * self.factor
             new_lr = max(new_lr, self.min_lr)
             K.set_value(self.model.optimizer.lr, new_lr)
@@ -2657,7 +2656,7 @@ class CSVLogger(Callback):
       is_zero_dim_ndarray = isinstance(k, np.ndarray) and k.ndim == 0
       if isinstance(k, six.string_types):
         return k
-      elif isinstance(k, collections_abc.Iterable) and not is_zero_dim_ndarray:
+      elif isinstance(k, collections.abc.Iterable) and not is_zero_dim_ndarray:
         return '"[%s]"' % (', '.join(map(str, k)))
       else:
         return k

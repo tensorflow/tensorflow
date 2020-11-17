@@ -41,6 +41,8 @@ The following development boards are supported:
 *   [Adafruit Circuit Playground Bluefruit](https://learn.adafruit.com/tensorflow-lite-for-circuit-playground-bluefruit-quickstart?view=all)
 *   [Espressif ESP32-DevKitC](https://www.espressif.com/en/products/hardware/esp32-devkitc/overview)
 *   [Espressif ESP-EYE](https://www.espressif.com/en/products/hardware/esp-eye/overview)
+*   [Wio Terminal: ATSAMD51](https://www.seeedstudio.com/Wio-Terminal-p-4509.html)
+*   [Himax WE-I Plus EVB Endpoint AI Development Board](https://www.sparkfun.com/products/17256)
 
 ## Explore the examples
 

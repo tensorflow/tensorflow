@@ -31,7 +31,7 @@ namespace cl {
 
 GPUOperation CreateConcatZ(const OperationDef& definition,
                            const std::vector<int>& channels,
-                           const DeviceInfo& device_info);
+                           const GpuInfo& gpu_info);
 
 }  // namespace cl
 }  // namespace gpu

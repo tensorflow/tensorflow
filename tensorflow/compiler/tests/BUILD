@@ -772,7 +772,6 @@ tf_xla_py_test(
     size = "small",
     timeout = "long",
     srcs = ["image_ops_test.py"],
-    enable_mlir_bridge = True,
     python_version = "PY3",
     shard_count = 10,
     tags = [
@@ -792,7 +791,6 @@ tf_xla_py_test(
     name = "listdiff_op_test",
     size = "small",
     srcs = ["listdiff_op_test.py"],
-    enable_mlir_bridge = True,
     python_version = "PY3",
     tags = [
         "no_cuda_asan",  # times out
@@ -1481,7 +1479,7 @@ tf_xla_py_test(
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
     ],
-    use_xla_device = False,  # Uses tf.function(experimental_compile=True)
+    use_xla_device = False,  # Uses tf.function(jit_compile=True)
     deps = [
         ":xla_test",
         "//tensorflow/compiler/tf2xla/python:xla",
@@ -1943,5 +1941,27 @@ tf_xla_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
         "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
+    name = "where_op_test",
+    size = "small",
+    srcs = ["where_op_test.py"],
+    disabled_backends = [
+        "cpu",
+        "cpu_ondemand",
+        "gpu",
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/compiler/jit",
+        "//tensorflow/contrib/tpu",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework",
+        "//tensorflow/python/compiler/xla:compiler_py",
     ],
 )

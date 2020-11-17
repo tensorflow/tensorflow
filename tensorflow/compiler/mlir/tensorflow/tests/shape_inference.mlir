@@ -439,16 +439,16 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     return %arg0 : tensor<2xi32>
   }
 
-  // Test not updating call site if a std.call is used.
+  // Test iteratively updating call site if a std.call is used.
   // CHECK-LABEL: func @call_partitioned_call2(
-  // CHECK-SAME: -> tensor<*xi32>
+  // CHECK-SAME: -> tensor<1xi32>
   func @call_partitioned_call2() -> tensor<*xi32> {
-    // CHECK: () -> tensor<*xi32>
+    // CHECK: () -> tensor<1xi32>
     %0 = call @partitioned_called_func2() : () -> tensor<*xi32>
     return %0 : tensor<*xi32>
   }
   // CHECK-LABEL: func @partitioned_called_func2(
-  // CHECK-SAME: -> tensor<*xi32>
+  // CHECK-SAME: -> tensor<1xi32>
   func @partitioned_called_func2() -> (tensor<*xi32>) {
     %0 = "tf.Const"() {value = dense<-1> : tensor<1xi32>} : () -> tensor<1xi32>
     %1 = tensor_cast %0 : tensor<1xi32> to tensor<*xi32>
@@ -600,5 +600,26 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     // CHECK-SAME: (tensor<2xi32>) -> tensor<i32>
     %size = "tf.Size"(%add) {device = ""} : (tensor<*xi32>) -> tensor<*xi32>
     return %size : tensor<*xi32>
+  }
+
+  // Test no tf.Cast ops are inserted when refining tf_executor.graph results.
+  // CHECK-LABEL: func @call_in_graph({{%.+}}: tensor<i32>) -> tensor<i32>
+  func @call_in_graph(%arg0: tensor<i32>) -> tensor<*xi32> {
+    // CHECK-NOT: tf.Cast
+    %0 = tf_executor.graph {
+      %1:2 = tf_executor.island wraps "tf.PartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @call_in_graph_func} : (tensor<i32>) -> tensor<*xi32>
+      tf_executor.fetch %1#0 : tensor<*xi32>
+    }
+    return %0 : tensor<*xi32>
+  }
+
+  // CHECK-LABEL: func @call_in_graph_func({{%.+}}: tensor<i32>) -> tensor<i32>
+  func @call_in_graph_func(%arg0: tensor<*xi32>) -> tensor<*xi32> {
+    // CHECK-NOT: tf.Cast
+    %0 = tf_executor.graph {
+      %1:2 = tf_executor.island wraps "tf.Identity"(%arg0) : (tensor<*xi32>) -> tensor<*xi32>
+      tf_executor.fetch %1#0 : tensor<*xi32>
+    }
+    return %0 : tensor<*xi32>
   }
 }

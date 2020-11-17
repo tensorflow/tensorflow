@@ -78,6 +78,9 @@ _python_eager_context_create_counter = monitoring.Counter(
 # Re-exporting through context.
 is_tfrt_enabled = tfrt_utils.enabled
 
+# Expose it as internally public APIs for Keras use cases in b/171080602.
+tf_export("__internal__.is_tfrt_enabled", v1=[])(is_tfrt_enabled)
+
 
 class _EagerTensorCache(object):
   """Simple cache which evicts items based on length in a FIFO manner."""
@@ -2026,6 +2029,8 @@ def graph_mode():
   return context()._mode(GRAPH_MODE)  # pylint: disable=protected-access
 
 
+# Used by b/167638505 for keras backend API and Lambda layer.
+@tf_export("__internal__.eager_context.eager_mode", v1=[])
 def eager_mode():
   """Context-manager to enable eager execution for the current thread."""
   return context()._mode(EAGER_MODE)  # pylint: disable=protected-access
@@ -2058,6 +2063,47 @@ def device(name):
   """
   ensure_initialized()
   return context().device(name)
+
+
+# Expose some properties of Context as internally public APIs (b/160348781).
+@tf_export("__internal__.eager_context.get_config", v1=[])
+def get_config():
+  """Get the ConfigProto of Context.
+
+  Returns:
+    The ConfigProto of Context.
+  """
+  return context().config
+
+
+@tf_export("__internal__.eager_context.get_device_name", v1=[])
+def get_device_name():
+  """Get the device name for the current thread.
+
+  Returns:
+    The device name for the current thread.
+  """
+  return context().device_name
+
+
+@tf_export("__internal__.eager_context.set_soft_device_placement", v1=[])
+def set_soft_device_placement(enabled):
+  """Set if soft device placements should be allowed.
+
+  Args:
+    enabled: Whether to enable soft device placement.
+  """
+  context().soft_device_placement = enabled
+
+
+@tf_export("__internal__.eager_context.get_executor", v1=[])
+def get_executor():
+  """Get the Executor of the current thread.
+
+  Returns:
+    The Executor of the current thread.
+  """
+  return context().executor
 
 
 @tf_export("debugging.get_log_device_placement")

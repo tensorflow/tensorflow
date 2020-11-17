@@ -504,7 +504,7 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_WithLocationConstraintCaching) {
 
   string bucket = "gs://bucket/random_access.txt";
   string another_bucket = "gs://anotherbucket/random_access.txt";
-  // Multiple calls should only cause one request to the location api.
+  // Multiple calls should only cause one request to the location API.
   TF_EXPECT_OK(fs.NewRandomAccessFile(bucket, nullptr, &file));
   TF_EXPECT_OK(fs.NewRandomAccessFile(bucket, nullptr, &file));
 
@@ -780,7 +780,7 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_WithBlockCache_MaxStaleness) {
   // this loop 10 times.  This shows that the underlying FileBlockCache persists
   // across file close/open boundaries.
   for (int i = 0; i < 10; i++) {
-    // Create two files. Since these files have the same name name and the max
+    // Create two files. Since these files have the same name and the max
     // staleness of the filesystem is > 0, they will share the same blocks.
     std::unique_ptr<RandomAccessFile> file1;
     std::unique_ptr<RandomAccessFile> file2;

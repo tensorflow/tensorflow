@@ -78,13 +78,15 @@ std::string CompilerOptionToString(const CLDevice& device,
                                    CompilerOptions option) {
   switch (option) {
     case CompilerOptions::ADRENO_FULL_SIMD_LINE:
-      if (device.info_.adreno_info.gpu_version < 500) {
+      if (device.info_.adreno_info.IsAdreno3xx() ||
+          device.info_.adreno_info.IsAdreno4xx()) {
         return "-qcom-accelerate-16-bit";
       } else {
         return "-qcom-accelerate-16-bit=true";
       }
     case CompilerOptions::ADRENO_MORE_WAVES:
-      if (device.info_.adreno_info.gpu_version >= 500) {
+      if (!(device.info_.adreno_info.IsAdreno3xx() ||
+            device.info_.adreno_info.IsAdreno4xx())) {
         return "-qcom-accelerate-16-bit=false";
       } else {
         return "";

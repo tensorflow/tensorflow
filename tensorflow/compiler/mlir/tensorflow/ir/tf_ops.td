@@ -684,6 +684,7 @@ body: A function that takes a list of tensors and returns another
 
     FlatSymbolRefAttr:$cond,
     FlatSymbolRefAttr:$body,
+    DefaultValuedAttr<TF_ShapeAttrArray, "{}">:$output_shapes,
     DefaultValuedAttr<I64Attr, "10">:$parallel_iterations,
 
     // Used to map StatelessWhile and While op defined in TensorFlow to a common
@@ -696,12 +697,10 @@ body: A function that takes a list of tensors and returns another
   );
 
   TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
-  TF_DerivedResultShapeListAttr output_shapes = TF_DerivedResultShapeListAttr<0>;
 
   let verifier = [{
     return Verify(*this);
   }];
-  let hasCanonicalizer = 1;
 
   let extraClassDeclaration = [{
     // Get the condition function.
@@ -753,10 +752,12 @@ def TF_WhileRegionOp : TF_Op<"WhileRegion",
   let arguments = (ins
     Variadic<AnyTensor>:$input,
 
+    DefaultValuedAttr<TF_ShapeAttrArray, "{}">:$output_shapes,
+    DefaultValuedAttr<I64Attr, "10">:$parallel_iterations,
+
     // Used to map StatelessWhile and While op defined in TensorFlow to a common
     // op.
-    DefaultValuedAttr<BoolAttr, "false">:$is_stateless,
-    DefaultValuedAttr<I64Attr, "10">:$parallel_iterations
+    BoolAttr:$is_stateless
   );
   let results = (outs Variadic<AnyTensor>:$output);
 
@@ -1948,6 +1949,26 @@ def TF_CacheDatasetV2Op : TF_Op<"CacheDatasetV2", []> {
 
   let results = (outs
     TF_VariantTensor:$handle
+  );
+}
+
+def TF__TPUDeviceOrdinalPlaceholderOp : TF_Op<"_TPUDeviceOrdinalPlaceholder", []> {
+  let summary = [{
+Placeholder device ordinal that represents device ordinal of a replicated op.
+  }];
+
+  let description = [{
+This op can be used when certain rewrite passes materialize ops that require a
+device ordinal of a replicated op but replication logic has been abstracted away
+using tf_device.replicate op. Subsequent rewrite passes must replace this op with
+a constant output that represents the correct device ordinal of the replicated
+operations inside a TPU host.
+  }];
+
+  let arguments = (ins);
+
+  let results = (outs
+    TF_Int64Tensor:$device_ordinal
   );
 }
 

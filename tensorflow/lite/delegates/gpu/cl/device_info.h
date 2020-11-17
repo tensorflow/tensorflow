@@ -28,7 +28,8 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-enum class Vendor {
+enum class GpuVendor {
+  kApple,
   kQualcomm,
   kMali,
   kPowerVR,
@@ -37,7 +38,8 @@ enum class Vendor {
   kIntel,
   kUnknown
 };
-std::string VendorToString(Vendor v);
+
+std::string GpuVendorToString(GpuVendor v);
 
 enum class OpenCLVersion {
   CL_1_0,
@@ -50,10 +52,68 @@ enum class OpenCLVersion {
 };
 std::string OpenCLVersionToString(OpenCLVersion version);
 
+enum class AdrenoGpu {
+  // Adreno 6xx series
+  kAdreno685,
+  kAdreno680,
+  kAdreno675,
+  kAdreno650,
+  kAdreno640,
+  kAdreno630,
+  kAdreno620,
+  kAdreno618,
+  kAdreno616,
+  kAdreno615,
+  kAdreno612,
+  kAdreno610,
+  kAdreno605,
+  // Adreno 5xx series
+  kAdreno540,
+  kAdreno530,
+  kAdreno512,
+  kAdreno510,
+  kAdreno509,
+  kAdreno508,
+  kAdreno506,
+  kAdreno505,
+  kAdreno504,
+  // Adreno 4xx series
+  kAdreno430,
+  kAdreno420,
+  kAdreno418,
+  kAdreno405,
+  // Adreno 3xx series
+  kAdreno330,
+  kAdreno320,
+  kAdreno308,
+  kAdreno306,
+  kAdreno305,
+  kAdreno304,
+  // Adreno 2xx series
+  kAdreno225,
+  kAdreno220,
+  kAdreno205,
+  kAdreno203,
+  kAdreno200,
+  // Adreno 1xx series
+  kAdreno130,
+  kAdreno120,
+  kUnknown
+};
+
 struct AdrenoInfo {
   AdrenoInfo() = default;
   explicit AdrenoInfo(const std::string& device_version);
-  int gpu_version = -1;  // can be, for example, 405/430/540/530/630 etc.
+
+  AdrenoGpu adreno_gpu;
+
+  bool IsAdreno1xx() const;
+  bool IsAdreno2xx() const;
+  bool IsAdreno3xx() const;
+  bool IsAdreno4xx() const;
+  bool IsAdreno5xx() const;
+  bool IsAdreno6xx() const;
+  bool IsAdreno6xxOrHigher() const;
 
   // This function returns some not very documented physical parameter of
   // Adreno6xx GPU.
@@ -74,36 +134,36 @@ struct AdrenoInfo {
   bool support_one_layer_texture_array = true;
 };
 
-enum class MaliGPU {
-  T604,
-  T622,
-  T624,
-  T628,
-  T658,
-  T678,
-  T720,
-  T760,
-  T820,
-  T830,
-  T860,
-  T880,
-  G31,
-  G51,
-  G71,
-  G52,
-  G72,
-  G76,
-  G57,
-  G77,
-  G68,
-  G78,
-  UNKNOWN
+enum class MaliGpu {
+  kUnknown,
+  kT604,
+  kT622,
+  kT624,
+  kT628,
+  kT658,
+  kT678,
+  kT720,
+  kT760,
+  kT820,
+  kT830,
+  kT860,
+  kT880,
+  kG31,
+  kG51,
+  kG71,
+  kG52,
+  kG72,
+  kG76,
+  kG57,
+  kG77,
+  kG68,
+  kG78,
 };
 
 struct MaliInfo {
   MaliInfo() = default;
-  explicit MaliInfo(const std::string& device_name);
-  MaliGPU gpu_version;
+  explicit MaliInfo(const std::string& gpu_description);
+  MaliGpu gpu_version;
 
   bool IsMaliT6xx() const;
   bool IsMaliT7xx() const;
@@ -116,18 +176,14 @@ struct MaliInfo {
   bool IsValhall() const;
 };
 
-struct DeviceInfo {
-  DeviceInfo() = default;
+struct GpuInfo {
+  GpuInfo() = default;
 
   bool IsAdreno() const;
-  bool IsAdreno3xx() const;
-  bool IsAdreno4xx() const;
-  bool IsAdreno5xx() const;
-  bool IsAdreno6xx() const;
-  bool IsAdreno6xxOrHigher() const;
+  bool IsApple() const;
+  bool IsMali() const;
   bool IsPowerVR() const;
   bool IsNvidia() const;
-  bool IsMali() const;
   bool IsAMD() const;
   bool IsIntel() const;
 
@@ -137,9 +193,6 @@ struct DeviceInfo {
 
   bool SupportsFloatImage2D(DataType data_type, int channels) const;
 
-  // To track bug on some Adreno. b/131099086
-  bool SupportsOneLayerTextureArray() const;
-
   bool SupportsExtension(const std::string& extension) const;
   bool IsCL20OrHigher() const;
   bool SupportsSubGroupWithSize(int sub_group_size) const;
@@ -147,7 +200,7 @@ struct DeviceInfo {
   std::vector<std::string> extensions;
   bool supports_fp16;
   bool supports_image3d_writes;
-  Vendor vendor;
+  GpuVendor gpu_vendor;
   OpenCLVersion cl_version;
   int compute_units_count;
   uint64_t buffer_max_size;

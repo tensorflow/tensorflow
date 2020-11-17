@@ -30,11 +30,11 @@ namespace cl {
 class MeanStdDevNormalization : public GPUOperation {
  public:
   explicit MeanStdDevNormalization(const OperationDef& definition,
-                                   const DeviceInfo& device_info,
+                                   const GpuInfo& gpu_info,
                                    const int tensor_slices);
 
   void GetPossibleKernelWorkGroups(
-      TuningType tuning_type, const DeviceInfo& device_info,
+      TuningType tuning_type, const GpuInfo& gpu_info,
       const KernelInfo& kernel_info,
       std::vector<int3>* work_groups) const override {
     work_groups->push_back(work_group_size_);
@@ -53,7 +53,7 @@ class MeanStdDevNormalization : public GPUOperation {
 };
 
 MeanStdDevNormalization CreateMeanStdDevNormalization(
-    const OperationDef& definition, const DeviceInfo& device_info,
+    const OperationDef& definition, const GpuInfo& gpu_info,
     const int tensor_slices);
 
 }  // namespace cl

@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_ID_MANAGER_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_ID_MANAGER_H_
 
-#include "tensorflow/core/common_runtime/gpu/gpu_id.h"
+#include "tensorflow/core/common_runtime/device/device_id.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
@@ -26,12 +26,12 @@ namespace tensorflow {
 class GpuIdManager {
  public:
   // Adds a mapping from tf_gpu_id to platform_gpu_id.
-  static Status InsertTfPlatformGpuIdPair(TfGpuId tf_gpu_id,
-                                          PlatformGpuId platform_gpu_id);
+  static Status InsertTfPlatformGpuIdPair(TfDeviceId tf_gpu_id,
+                                          PlatformDeviceId platform_gpu_id);
 
   // Gets the platform_gpu_id associated with tf_gpu_id. Returns OK if found.
-  static Status TfToPlatformGpuId(TfGpuId tf_gpu_id,
-                                  PlatformGpuId* platform_gpu_id);
+  static Status TfToPlatformGpuId(TfDeviceId tf_gpu_id,
+                                  PlatformDeviceId* platform_gpu_id);
 
   // Clears the map. Used in unit tests only.
   static void TestOnlyReset();

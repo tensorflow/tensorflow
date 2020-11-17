@@ -170,6 +170,10 @@ class DynamicDimensionInferenceVisitor : public DfsHloVisitorWithDefault {
                                            int64 operand_index,
                                            int64 dimension);
 
+  Status HandleDynamicWindowSamePadding(HloInstruction* hlo,
+                                        HloInstruction* dynamic_size,
+                                        int64 operand_index, int64 dimension);
+
   Status ForEachOperandDynamicDimension(HloInstruction* inst,
                                         const OperandDynamicDimensionFn&);
   Status ForEachDynamicDimensionInOperand(HloInstruction* inst,
@@ -269,6 +273,27 @@ Status DynamicDimensionInferenceVisitor::HandleCustomCall(HloInstruction* hlo) {
           parent_->SetDynamicSize(hlo, {}, dimension, dynamic_size);
           return Status::OK();
         }
+        if (hlo->custom_call_target() == "DynamicReduceWindowSamePadding") {
+          if (hlo->operand_count() > 2) {
+            return Unimplemented(
+                "DynamicReduceWindowSamePadding doesn't support variadic "
+                "reduce window %s",
+                hlo->ToString());
+          }
+          return HandleDynamicWindowSamePadding(hlo, dynamic_size,
+                                                operand_index, dimension);
+        }
+
+        if (hlo->custom_call_target() == "DynamicSelectAndScatterSamePadding") {
+          if (operand_index == 1) {
+            // Operand 0 (input) determines dynamic output size. We ignore the
+            // dynamic size in the operand 1 (output gradient).
+            return Status::OK();
+          }
+          parent_->SetDynamicSize(hlo, {}, dimension, dynamic_size);
+          return Status::OK();
+        }
+
         if (hlo->custom_call_target() == "DynamicConvolutionInputGrad") {
           return HandleDynamicConvolutionInputGrad(hlo, operand_index,
                                                    dimension);
@@ -656,6 +681,25 @@ Status DynamicDimensionInferenceVisitor::HandleDynamicConvolutionForward(
       hlo->ToString());
 }
 
+Status DynamicDimensionInferenceVisitor::HandleDynamicWindowSamePadding(
+    HloInstruction* hlo, HloInstruction* dynamic_size, int64 operand_index,
+    int64 dimension) {
+  const Window& window = hlo->window();
+  const WindowDimension& window_dim = window.dimensions(dimension);
+  if (!window_util::IsTrivialWindowDimension(window_dim)) {
+    DynamicWindowDims dynamic_window_dims = GetWindowedOutputSize(
+        dynamic_size, window_dim.size(), window_dim.window_dilation(),
+        window_dim.stride(), PaddingType::PADDING_SAME);
+    parent_->SetDynamicSize(hlo, {}, dimension,
+                            dynamic_window_dims.output_size);
+    return Status::OK();
+  }
+
+  parent_->SetDynamicSize(hlo, {}, dimension, dynamic_size);
+
+  return Status::OK();
+}
+
 Status DynamicDimensionInferenceVisitor::HandleDynamicConvolutionInputGrad(
     HloInstruction* hlo, int64 operand_index, int64 dimension) {
   // The output size of convolution input grad is corresponding input size.
@@ -974,13 +1018,16 @@ Status DynamicDimensionInferenceVisitor::HandleReduceWindow(
       hlo, [&](HloInstruction* operand, ShapeIndex index, int64 dimension,
                int64 operand_index, HloInstruction* dynamic_size) {
         HloInstruction* reduce_window = hlo;
-        const WindowDimension& window_dimension =
+        const WindowDimension& window_dim =
             reduce_window->window().dimensions(dimension);
 
-        if (!window_util::IsTrivialWindowDimension(window_dimension)) {
-          return Unimplemented(
-              "Dynamic Spatial reduce window is not supported: %s",
-              reduce_window->ToString());
+        if (!window_util::IsTrivialWindowDimension(window_dim)) {
+          DynamicWindowDims dynamic_window_dims = GetWindowedOutputSize(
+              dynamic_size, window_dim.size(), window_dim.window_dilation(),
+              window_dim.stride(), PaddingType::PADDING_VALID);
+          parent_->SetDynamicSize(hlo, {}, dimension,
+                                  dynamic_window_dims.output_size);
+          return Status::OK();
         }
 
         parent_->SetDynamicSize(reduce_window, {}, dimension, dynamic_size);
@@ -994,18 +1041,12 @@ Status DynamicDimensionInferenceVisitor::HandleSelectAndScatter(
   return ForEachOperandDynamicDimension(
       hlo, [&](HloInstruction* operand, ShapeIndex index, int64 dimension,
                int64 operand_index, HloInstruction* dynamic_size) {
-        HloInstruction* select_and_scatter = hlo;
-        const WindowDimension& window_dimension =
-            select_and_scatter->window().dimensions(dimension);
-
-        if (!window_util::IsTrivialWindowDimension(window_dimension)) {
-          return Unimplemented(
-              "Dynamic Spatial select and scatter is not supported: %s",
-              select_and_scatter->ToString());
+        if (operand_index == 1) {
+          // Operand 0 (input) determines dynamic output size. We ignore the
+          // dynamic size in the operand 1 (output gradient).
+          return Status::OK();
         }
-
-        parent_->SetDynamicSize(select_and_scatter, {}, dimension,
-                                dynamic_size);
+        parent_->SetDynamicSize(hlo, {}, dimension, dynamic_size);
 
         return Status::OK();
       });
@@ -1332,12 +1373,12 @@ Status DynamicDimensionInferenceVisitor::HandleScatter(HloInstruction* hlo) {
 }
 
 Status DynamicDimensionInferenceVisitor::HandleWhile(HloInstruction* hlo) {
-  // If the output of the conditional contains dynamic dimension. We send
-  // dynamic dimension size out by adding additional root element. A mapping
-  // from the root instruction's dynamic dimension index (represented by a shape
-  // index as output index and a int64 dimension number) to output index
-  // (represented by an int64) is tracked for the conditional instruction (all
-  // branches should have the same mapping).
+  // If the output of the kWhile contains dynamic dimension, we send
+  // dynamic dimension size into the while body by adding additional root/body
+  // element. A mapping from the root instruction's dynamic dimension index
+  // (represented by a shape index as output index and an int64 dimension
+  // number) to output index (represented by an int64) is tracked for the
+  // conditional instruction.
   ShapeTree<absl::flat_hash_map<int64, int64>> dynamic_output_mapping(
       hlo->shape());
   std::vector<HloInstruction*> operands_to_add;

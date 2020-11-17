@@ -135,11 +135,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     # and update the sha256 with the result.
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "e803c4acfde4a836e7462bf68275e248f7a2c6ac405d05e15d9f93e3dcdf677d",
-        strip_prefix = "XNNPACK-30d4b250aef4ee74271c2254943f062a8356a23e",
+        sha256 = "22c065f68df9a7a6321c4e9ee1f2d3cbfb471785804fb4fffa0fb2858d847e7f",
+        strip_prefix = "XNNPACK-bbe85068bb7aa6249a4e915462014016373c945f",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/30d4b250aef4ee74271c2254943f062a8356a23e.zip",
-            "https://github.com/google/XNNPACK/archive/30d4b250aef4ee74271c2254943f062a8356a23e.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/bbe85068bb7aa6249a4e915462014016373c945f.zip",
+            "https://github.com/google/XNNPACK/archive/bbe85068bb7aa6249a4e915462014016373c945f.zip",
         ],
     )
 
@@ -203,11 +203,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         name = "eigen_archive",
         build_file = clean_dep("//third_party:eigen.BUILD"),
         patch_file = clean_dep("//third_party/eigen3:gpu_packet_math.patch"),
-        sha256 = "e807a6a6f3a0e8ab10adeb59bb5a9bbb113e8e1684f9b4b32f73f58fd758b4cf",  # SHARED_EIGEN_SHA
-        strip_prefix = "eigen-011e0db31d1bed8b7f73662be6d57d9f30fa457a",
+        sha256 = "de1d9c3630571341d237aae6e4e47868dd5ef5015e38673a544964ef94a39b4f",  # SHARED_EIGEN_SHA
+        strip_prefix = "eigen-bec72345d69917f475e577d23df0ca4ed967a4f0",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/gitlab.com/libeigen/eigen/-/archive/011e0db31d1bed8b7f73662be6d57d9f30fa457a/eigen-011e0db31d1bed8b7f73662be6d57d9f30fa457a.tar.gz",
-            "https://gitlab.com/libeigen/eigen/-/archive/011e0db31d1bed8b7f73662be6d57d9f30fa457a/eigen-011e0db31d1bed8b7f73662be6d57d9f30fa457a.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/gitlab.com/libeigen/eigen/-/archive/bec72345d69917f475e577d23df0ca4ed967a4f0/eigen-bec72345d69917f475e577d23df0ca4ed967a4f0.tar.gz",
+            "https://gitlab.com/libeigen/eigen/-/archive/bec72345d69917f475e577d23df0ca4ed967a4f0/eigen-bec72345d69917f475e577d23df0ca4ed967a4f0.tar.gz",
         ],
     )
 
@@ -686,8 +686,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     # Check out LLVM and MLIR from llvm-project.
-    LLVM_COMMIT = "756f5978410809530150f5e1cd425e85ad94d1cd"
-    LLVM_SHA256 = "16a7a4014acdf44fb737b0c9430b82a6a3d0bb10dccb15ce8dbb0b328347fc14"
+    LLVM_COMMIT = "a8db144169279332db59d30051f249efa0201ab3"
+    LLVM_SHA256 = "e865ee3a91fbed52ed0f727c4a98e6bafe9ee898c158bb187ed4a22bdc4c6376"
     LLVM_URLS = [
         "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
         "https://github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
@@ -702,7 +702,6 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
             "//third_party/mlir:BUILD": "mlir/BUILD",
             "//third_party/mlir:test.BUILD": "mlir/test/BUILD",
         },
-        patch_file = clean_dep("//third_party:mlir_fix_gcc7_ice.patch"),
     )
 
     # Intel openMP that is part of LLVM sources.
@@ -896,12 +895,12 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         name = "cython",
         build_file = clean_dep("//third_party:cython.BUILD"),
         delete = ["BUILD.bazel"],
-        sha256 = "bccc9aa050ea02595b2440188813b936eaf345e85fb9692790cecfe095cf91aa",
-        strip_prefix = "cython-0.28.4",
+        sha256 = "e2e38e1f0572ca54d6085df3dec8b607d20e81515fb80215aed19c81e8fe2079",
+        strip_prefix = "cython-0.29.21",
         system_build_file = clean_dep("//third_party/systemlibs:cython.BUILD"),
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/cython/cython/archive/0.28.4.tar.gz",
-            "https://github.com/cython/cython/archive/0.28.4.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/cython/cython/archive/0.29.21.tar.gz",
+            "https://github.com/cython/cython/archive/0.29.21.tar.gz",
         ],
     )
 

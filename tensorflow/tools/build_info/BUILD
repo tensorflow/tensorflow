@@ -15,6 +15,7 @@ py_binary(
     tags = ["no-remote-exec"],
     deps = [
         "@local_config_cuda//cuda:cuda_config_py",
+        "@local_config_tensorrt//:tensorrt_config_py",
         "@six_archive//:six",
     ],
 )

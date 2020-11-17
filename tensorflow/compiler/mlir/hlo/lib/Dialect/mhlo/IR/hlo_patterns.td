@@ -28,3 +28,6 @@ def DynamicBroadcastToOwnShape_2 : Pat<
   (HLO_DynamicBroadcastInDimOp:$op $x, (Shape_ShapeOfOp $x), $attr),
   (replaceWithValue $x)>;
 
+def ShapeOfDynamicReshape : Pat<
+  (Shape_ShapeOfOp (HLO_DynamicReshapeOp $x, $shape)),
+  (replaceWithValue $shape)>;

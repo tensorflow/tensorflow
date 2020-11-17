@@ -240,10 +240,21 @@ xla::Status UpdateDynamicInputs(
             ApiConverter::ToC(runtime_shape, &c_runtime_shape);
             ApiConverter::ToC(compile_time_shape, &c_compile_time_shape);
             StatusHelper status;
+
+            TpuExecute_RuntimeInputToPaddedData_Params params;
+            params.struct_size =
+                TpuExecute_RuntimeInputToPaddedData_Params_SIZE;
+            params.priv = nullptr;
+            params.runtime_input_ptr = raw_input_runtime->data();
+            params.runtime_input_size = raw_input_runtime->size();
+            params.padded_data_ptr = padded_data->data();
+            params.padded_data_size = padded_data->size();
+            params.runtime_shape = &c_runtime_shape;
+            params.compile_time_shape = &c_compile_time_shape;
+            params.status = status.c_status;
+
             tensorflow::tpu::OpsApiFn()->TpuExecute_RuntimeInputToPaddedDataFn(
-                raw_input_runtime->data(), raw_input_runtime->size(),
-                padded_data->data(), padded_data->size(), &c_runtime_shape,
-                &c_compile_time_shape, status.c_status);
+                &params);
             ApiConverter::Free(&c_runtime_shape);
             ApiConverter::Free(&c_compile_time_shape);
             return status.status();

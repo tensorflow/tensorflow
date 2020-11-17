@@ -1,3 +1,5 @@
+<!-- mdformat off(b/169948621#comment2) -->
+
 <!--
 Semi-automated TOC generation with instructions from
 https://github.com/ekalinin/github-markdown-toc#auto-insert-and-update-toc
@@ -52,6 +54,7 @@ For developers that are interested in more details of the internals of the
 project, we have additional documentation in the [docs](docs/) folder.
 
 *   [Benchmarks](benchmarks/README.md)
+*   [Profiling](docs/profiling.md)
 *   [Memory Management](docs/memory_management.md)
 *   [New Platform Support](docs/new_platform_support.md)
 *   [Software Emulation with Renode](docs/renode.md)

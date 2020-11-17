@@ -703,11 +703,14 @@ class XlaBuilder {
       absl::Span<const int64> base_dilations,
       absl::Span<const int64> window_dilations,
       absl::Span<const std::pair<int64, int64>> padding);
-  StatusOr<XlaOp> ReduceWindowInternal(const Shape& shape,
-                                       absl::Span<const XlaOp> operands,
-                                       absl::Span<const XlaOp> init_values,
-                                       const XlaComputation& computation,
-                                       Window window);
+  StatusOr<HloInstructionProto> ReduceWindowInternal(
+      absl::Span<const XlaOp> operands, absl::Span<const XlaOp> init_values,
+      const XlaComputation& computation,
+      absl::Span<const int64> window_dimensions,
+      absl::Span<const int64> window_strides,
+      absl::Span<const int64> base_dilations,
+      absl::Span<const int64> window_dilations,
+      absl::Span<const std::pair<int64, int64>> padding);
   virtual StatusOr<XlaOp> ReduceWindowInternal(
       const Shape& shape, XlaOp operand, XlaOp init_value,
       const XlaComputation& computation, Window window);
@@ -744,6 +747,13 @@ class XlaBuilder {
                          const XlaComputation& scatter);
 
   XlaOp SelectAndScatterWithGeneralPadding(
+      XlaOp operand, const XlaComputation& select,
+      absl::Span<const int64> window_dimensions,
+      absl::Span<const int64> window_strides,
+      absl::Span<const std::pair<int64, int64>> padding, XlaOp source,
+      XlaOp init_value, const XlaComputation& scatter);
+
+  StatusOr<HloInstructionProto> SelectAndScatterInternal(
       XlaOp operand, const XlaComputation& select,
       absl::Span<const int64> window_dimensions,
       absl::Span<const int64> window_strides,
@@ -809,6 +819,10 @@ class XlaBuilder {
 
   XlaOp ReducePrecision(XlaOp operand, const int exponent_bits,
                         const int mantissa_bits);
+  virtual StatusOr<XlaOp> ReducePrecisionInternal(const Shape& shape,
+                                                  XlaOp operand,
+                                                  const int exponent_bits,
+                                                  const int mantissa_bits);
 
   XlaOp Gather(XlaOp input, XlaOp start_indices,
                const GatherDimensionNumbers& dimension_numbers,
@@ -861,6 +875,10 @@ class XlaBuilder {
   XlaOp GetDimensionSize(XlaOp operand, int64 dimension);
 
   XlaOp SetDimensionSize(XlaOp operand, XlaOp val, int64 dimension);
+
+  virtual StatusOr<XlaOp> SetDimensionSizeInternal(const Shape& shape,
+                                                   XlaOp operand, XlaOp val,
+                                                   int64 dimension);
 
   XlaOp RemoveDynamicDimension(XlaOp operand, int64 dimension);
 

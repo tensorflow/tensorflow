@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Keras text CategoryEncoding preprocessing layer."""
+"""Keras CategoryEncoding preprocessing layer."""
+# pylint: disable=g-classes-have-attributes
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -86,8 +87,7 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
            [0. , 0.2, 0.3, 0. ],
            [0. , 0.2, 0. , 0.4]])>
 
-
-  Attributes:
+  Arguments:
     max_tokens: The maximum size of the vocabulary for this layer. If None,
       there is no cap on the size of the vocabulary.
     output_mode: Specification for the output of the layer.
@@ -132,7 +132,8 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
         max_tokens=max_tokens,
         compute_idf=output_mode == TFIDF)
     super(CategoryEncoding, self).__init__(combiner=combiner, **kwargs)
-    base_preprocessing_layer._kpl_gauge.get_cell("V2").set("CategoryEncoding")
+    base_preprocessing_layer.keras_kpl_gauge.get_cell(
+        "CategoryEncoding").set(True)
 
     self._max_tokens = max_tokens
     self._output_mode = output_mode

@@ -2767,14 +2767,23 @@ StatusOr<HloInstruction*> MemorySpaceAssignment::Allocation::ReplaceTupleWith(
   std::vector<HloInstruction*> tuple_args(tuple_shape.tuple_shapes_size());
   for (int64 i = 0; i < tuple_shape.tuple_shapes_size(); ++i) {
     const Shape& subshape = tuple_shape.tuple_shapes(i);
+    // If tuple is a tuple instruction, we can get the tuple instruction's
+    // operand to construct the new tuple to improve compilation time
+    // performance.
+    auto get_operand = [&]() {
+      if (tuple->opcode() == HloOpcode::kTuple) {
+        return tuple->mutable_operand(i);
+      } else {
+        return computation->AddInstruction(
+            HloInstruction::CreateGetTupleElement(subshape, tuple, i));
+      }
+    };
     if (i == shape_index[0]) {
       // If the subshape is still a tuple, recurse and pass a new shape index
       // for the one level deeper.
       if (subshape.IsTuple()) {
-        HloInstruction* get_tuple_element = computation->AddInstruction(
-            HloInstruction::CreateGetTupleElement(subshape, tuple, i));
         TF_ASSIGN_OR_RETURN(tuple_args[i],
-                            ReplaceTupleWith(new_instruction, get_tuple_element,
+                            ReplaceTupleWith(new_instruction, get_operand(),
                                              ShapeIndex(shape_index.begin() + 1,
                                                         shape_index.end())));
       } else {
@@ -2784,13 +2793,20 @@ StatusOr<HloInstruction*> MemorySpaceAssignment::Allocation::ReplaceTupleWith(
                   << "; inserting a bitcast.";
           new_instruction = computation->AddInstruction(
               HloInstruction::CreateBitcast(subshape, new_instruction));
+        } else if (tuple->opcode() == HloOpcode::kTuple &&
+                   tuple->operand(i) == new_instruction) {
+          // If the tuple element is the same as the new instruction, we
+          // actually don't have to create a new tuple, just return the original
+          // tuple.
+          VLOG(4) << "Tuple already contains the new instruction = "
+                  << new_instruction->ToShortString()
+                  << " tuple = " << tuple->ToShortString();
+          return tuple;
         }
         tuple_args[i] = new_instruction;
       }
     } else {
-      HloInstruction* get_tuple_element = computation->AddInstruction(
-          HloInstruction::CreateGetTupleElement(subshape, tuple, i));
-      tuple_args[i] = get_tuple_element;
+      tuple_args[i] = get_operand();
     }
   }
   return computation->AddInstruction(HloInstruction::CreateTuple(tuple_args));
@@ -2806,14 +2822,26 @@ HloInstruction* MemorySpaceAssignment::Allocation::AddGetTupleElements() {
                          << " position = " << defining_position().shape();
   HloComputation* computation = producing_instruction->parent();
 
-  // If the instruction we're processing is a tuple, we (recursively) create
-  // kGetTupleElement instructions and copy that value. Asynchronous copies only
-  // support array types.
+  // If the instruction we're processing is a tuple, we (recursively) search or
+  // create kGetTupleElement instructions and copy that value. Asynchronous
+  // copies only support array types.
   for (int64 index : defining_position().index) {
-    producing_instruction =
-        computation->AddInstruction(HloInstruction::CreateGetTupleElement(
-            producing_instruction->shape().tuple_shapes(index),
-            producing_instruction, index));
+    // We first search if there already is a get-tuple-element with the correct
+    // index. If there is no such get-tuple-element, we create one.
+    auto gte_it = absl::c_find_if(
+        producing_instruction->users(), [index](const HloInstruction* use) {
+          return use != use->parent()->root_instruction() &&
+                 use->opcode() == HloOpcode::kGetTupleElement &&
+                 use->tuple_index() == index;
+        });
+    if (gte_it != producing_instruction->users().end()) {
+      producing_instruction = *gte_it;
+    } else {
+      producing_instruction =
+          computation->AddInstruction(HloInstruction::CreateGetTupleElement(
+              producing_instruction->shape().tuple_shapes(index),
+              producing_instruction, index));
+    }
   }
   return producing_instruction;
 }

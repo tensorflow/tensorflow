@@ -21,10 +21,16 @@ files. The flag `--output_file` is always required. Additionally, either
     the output file. Allowed values:
     *   `TFLITE`: TensorFlow Lite model format.
     *   `GRAPHVIZ_DOT`: GraphViz `.dot` format containing a visualization of the
-        graph after graph transformations.
-        *   Note that passing `GRAPHVIZ_DOT` to `--output_format` leads to loss
-            of TFLite specific transformations. To get a final visualization
-            with all graph transformations use `--dump_graphviz_dir` instead.
+        graph after graph transformations. *Note: This only works when you set
+        flag `experimental_new_converter=False`. Also, as this format leads to
+        loss of TFLite specific transformations, we recommend that you use
+        `--dump_graphviz_dir` instead to get a final visualization with all
+        graph transformations.*
+*   `--experimental_new_converter`. Type: bool. Default: True (from TF 2.2). To
+    leverage MLIR-based conversion, Google's cutting edge compiler technology
+    for machine learning. This enables conversion of new classes of models,
+    including Mask R-CNN, Mobile BERT, etc and supports models with functional
+    control flow.
 
 The following flags specify optional parameters when using SavedModels.
 
@@ -73,13 +79,12 @@ based on index.
         quantized input, the quantized input would be immediately dequantized by
         the inference code according to the above formula, before proceeding
         with float inference.
-    *   When performing quantized inference (`inference_type`
-        is`INT8`or`UINT8`), no dequantization is performed by the inference
-        code. However, the quantization parameters of all arrays, including
-        those of the input arrays as specified by`mean_value`and`std_dev_value`,
-        determine the fixed-point multipliers used in the quantized inference
-        code.`mean_value` must be an integer when performing quantized
-        inference.
+    *   When performing quantized inference (`inference_type` is `INT8` or
+        `UINT8`), no dequantization is performed by the inference code. However,
+        the quantization parameters of all arrays, including those of the input
+        arrays as specified by `mean_value` and `std_dev_value`, determine the
+        fixed-point multipliers used in the quantized inference code.The
+        `mean_value` must be an integer when performing quantized inference.
 
 ## Transformation flags
 
@@ -123,9 +128,14 @@ have.
     accuracy. They are intended for easy experimentation with quantization via
     "dummy quantization".
 
-*   `--drop_control_dependency`. Type: boolean. Default: True. Indicates whether
-    to drop control dependencies silently. This is due to TensorFlow Lite not
-    supporting control dependencies.
+*   `--post_training_quantize`. Type: boolean. Default: False. Boolean
+    indicating whether to quantize the weights of the converted float model.
+    Model size will be reduced and there will be latency improvements (at the
+    cost of accuracy).
+
+*   `--quantize_to_float16`. Type: boolean. Default: False. Boolean indicating
+    whether to quantize weights to fp16 instead of the default int8 when
+    `--post_training_quantize=True`.
 
 *   `--reorder_across_fake_quant`. Type: boolean. Default: False. Indicates
     whether to reorder FakeQuant nodes in unexpected locations. Used when the
@@ -133,15 +143,29 @@ have.
     necessary to convert the graph. Results in a graph that differs from the
     quantized training graph, potentially causing differing arithmetic behavior.
 
-*   `--allow_custom_ops`. Type: string. Default: False. Indicates whether to
-    allow custom operations. When false, any unknown operation is an error. When
-    true, custom ops are created for any op that is unknown. The developer will
-    need to provide these to the TensorFlow Lite runtime with a custom resolver.
+*   `--change_concat_input_ranges`. Type: boolean. Default: False. Boolean to
+    change behavior of min/max ranges for inputs and outputs of the concat
+    operator for quantized models. Changes the ranges of concat operator overlap
+    when true.
 
-*   `--post_training_quantize`. Type: boolean. Default: False. Boolean
-    indicating whether to quantize the weights of the converted float model.
-    Model size will be reduced and there will be latency improvements (at the
-    cost of accuracy).
+*   `--drop_control_dependency`. Type: boolean. Default: True. Indicates whether
+    to drop control dependencies silently. This is due to TensorFlow Lite not
+    supporting control dependencies.
+
+*   `--target_ops`. Type: string. Default: TFLITE_BUILTINS. Experimental flag,
+    subject to change. Set of OpsSet options indicating which converter to use.
+    Options: TF LITE_BUILTINS,SELECT_TF_OPS,TFLITE_BUILTINS_INT8,EXPER
+    IMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8 . One or more option
+    may be specified.
+
+*   `--allow_custom_ops`. Type: bool. Default: False. Indicates whether to allow
+    custom operations. When False, any unknown operation is an error. When True,
+    custom ops are created for any op that is unknown. The developer will need
+    to provide these to the TensorFlow Lite runtime with a custom resolver.
+
+*   `--custom_opdefs`. Type: string. String representing a list of custom ops
+    OpDefs delineated with commas that are included in the GraphDef. Required
+    when using custom operations with `--experimental_new_converter`.
 
 ## Logging flags
 

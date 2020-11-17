@@ -464,7 +464,6 @@ cc_library(
         ":hlo",
         ":lhlo",
         ":lhlo_gpu",
-        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -500,7 +499,6 @@ cc_library(
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:Transforms",
     ],
 )
 
@@ -563,22 +561,6 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Transforms",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "lhlo_legalize_to_llvm",
-    srcs = ["lib/Dialect/mhlo/transforms/lhlo_legalize_to_llvm.cc"],
-    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"],
-    deps = [
-        ":lhlo",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LLVMDialect",
-        "@llvm-project//mlir:LLVMTransforms",
-        "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
     ],
     alwayslink = 1,
@@ -655,12 +637,10 @@ cc_library(
         ":lhlo",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Affine",
-        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:ViewLikeInterface",
     ],
@@ -718,12 +698,10 @@ cc_library(
     deps = [
         ":cycle_detector",
         ":hlo",
-        "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
     ],
     alwayslink = 1,
@@ -754,7 +732,6 @@ cc_library(
     deps = [
         ":hlo",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
@@ -775,7 +752,6 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
     ],
     alwayslink = 1,
@@ -793,8 +769,6 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
     ],
     alwayslink = 1,
@@ -813,7 +787,6 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
     ],
     alwayslink = 1,
@@ -854,11 +827,9 @@ cc_library(
         ":hlo",
         ":lower_complex_inc_gen",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
     ],
     alwayslink = 1,
@@ -952,7 +923,6 @@ cc_library(
     srcs = [
         "include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h",
         "lib/Dialect/mhlo/transforms/chlo_legalize_to_hlo_pass.cc",
-        "lib/Dialect/mhlo/transforms/lhlo_legalize_to_llvm_pass.cc",
         "lib/Dialect/mhlo/transforms/materialize_broadcasts_pass.cc",
         "lib/Dialect/mhlo/transforms/optimize_mhlo_pass.cc",
         "lib/Dialect/mhlo/transforms/test_infer_shaped_type_pass.cc",
@@ -962,7 +932,6 @@ cc_library(
         ":chlo_legalize_to_hlo",  # build-cleaner: keep
         ":hlo",
         ":lhlo",
-        ":lhlo_legalize_to_llvm",  # build-cleaner: keep
         ":materialize_broadcasts",  # build-cleaner: keep
         ":pass_details",
         ":unfuse_batch_norm",  # build-cleaner: keep

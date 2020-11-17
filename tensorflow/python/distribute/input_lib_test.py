@@ -41,6 +41,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -48,6 +49,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_tensor as ragged_tensor_lib
 from tensorflow.python.util import nest
 
@@ -982,6 +984,34 @@ class DistributedIteratorTest(DistributedIteratorTestBase,
                                dataset_or_input_fn, worker_device_pairs,
                                expected_values, distribution)
 
+  @combinations.generate(
+      combinations.combine(
+          strategy=[
+              strategy_combinations.multi_worker_mirrored_2x1_cpu,
+              strategy_combinations.multi_worker_mirrored_2x1_gpu,
+          ],
+          mode=["eager"]))
+  def testLoopOverDatasetInTFFunction(self, strategy):
+    dataset = dataset_ops.Dataset.range(10).map(lambda x: {  # pylint: disable=g-long-lambda
+        "y": math_ops.cast(x, dtypes.float32) ** 2,
+    }).batch(4)
+    dist_dataset = strategy.experimental_distribute_dataset(dataset)
+
+    with strategy.scope():
+      v = variables.Variable(0.0, aggregation=variables.VariableAggregation.SUM)
+
+    @def_function.function
+    def iterator_fn(dist_dataset):
+
+      def assign_add_fn(data):
+        v.assign_add(math_ops.reduce_sum(data["y"]))
+
+      for data in dist_dataset:
+        strategy.run(assign_add_fn, args=(data,))
+
+    iterator_fn(dist_dataset)
+    self.assertEqual(v.numpy(), 285.0)
+
 
 class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,
                                         parameterized.TestCase):
@@ -1088,21 +1118,21 @@ class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,
         except (StopIteration, errors.OutOfRangeError):
           return sums
 
-    expected_for_sum = 200.
-    if (not drop_remainder or input_type == "input_fn"):
-      expected_for_sum = 310.
     while_sums = sum_while_loop(
         iter(dataset),
         defun(lambda state, iterator: _reduce(state, next(iterator))))
-    self.assertAllEqual(nest.flatten(while_sums), [expected_for_sum] * 3)
-
+    self.assertAllEqual(
+        nest.flatten(while_sums),
+        # When there's no partial batch, the sum is smaller.
+        [200. if drop_remainder else 310.] * 3)
+    for_sums = defun(sum_for_loop)(dataset)
     # For loops always call get next as optional inside tf functions, so we
     # expect 310 here when using an input function (as there are 5 batches of
     # size 4 round robined over 2 replicas.
     expected_for_sum = 200.
-    if (not drop_remainder or input_type == "input_fn"):
+    if (not drop_remainder or (
+        defun_type == "tf_function" and input_type == "input_fn")):
       expected_for_sum = 310.
-    for_sums = defun(sum_for_loop)(dataset)
     self.assertAllEqual(nest.flatten(for_sums), [expected_for_sum] * 3)
 
   @combinations.generate(
@@ -1116,12 +1146,12 @@ class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,
           ],
           input_type=["dataset", "input_fn"],
           drop_remainder=[False, True],
-          repeat=[False, True],
           tensor_type=["sparse", "ragged"],
-          enable_get_next_as_optional=[True, False]))
-  def testRaggedSparseGetNextAsOptional(self, distribution, input_type,
-                                        drop_remainder, repeat, tensor_type,
-                                        enable_get_next_as_optional):
+          enable_get_next_as_optional=[True, False]
+      ))
+  def testRaggedSparseGetNextAsOptional(
+      self, distribution, input_type, drop_remainder, tensor_type,
+      enable_get_next_as_optional):
     """Test with `RaggedTensor`s and `SparseTensor`s."""
     if not tf2.enabled():
       self.skipTest("Only V2 is supported.")
@@ -1142,8 +1172,6 @@ class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,
                         ragged_tensor.to_sparse()),
       })
       dataset = dataset.shard(ctx.num_input_pipelines, ctx.input_pipeline_id)
-      if repeat:
-        dataset = dataset.repeat()
       return dataset.batch(batch_size, drop_remainder=drop_remainder)
 
     if input_type == "dataset":
@@ -1153,8 +1181,8 @@ class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,
       ds = distribution.distribute_datasets_from_function(dataset_fn)
     iterator = iter(ds)
 
-    self.assertEqual(iterator._enable_get_next_as_optional, (not repeat) and
-                     enable_get_next_as_optional)
+    self.assertEqual(iterator._enable_get_next_as_optional,
+                     (not drop_remainder) and enable_get_next_as_optional)
 
   @combinations.generate(
       combinations.combine(

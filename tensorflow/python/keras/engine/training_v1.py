@@ -18,7 +18,6 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import collections.abc as collections_abc
 import warnings
 
 import numpy as np
@@ -1210,7 +1209,7 @@ class Model(training_lib.Model):
     # at this point.
     if self.run_eagerly or self._distribution_strategy:
       inputs = training_utils_v1.cast_if_floating_dtype(inputs)
-      if isinstance(inputs, collections_abc.Sequence):
+      if isinstance(inputs, collections.abc.Sequence):
         # Unwrap lists with only one input, as we do when training on batch
         if len(inputs) == 1:
           inputs = inputs[0]
@@ -1751,7 +1750,7 @@ class Model(training_lib.Model):
         # Check Dataset/Iterator batch size is consistent with InputLayer.
         if isinstance(x, (dataset_ops.DatasetV2, iterator_ops.Iterator,
                           iterator_ops.IteratorBase)):
-          ds_batch_size = tensor_shape.as_dimension(
+          ds_batch_size = tensor_shape.Dimension(
               nest.flatten(dataset_ops.get_legacy_output_shapes(x))[0][0]).value
           if ds_batch_size is not None:
             if ds_batch_size % num_splits_for_ds != 0:

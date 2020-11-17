@@ -106,7 +106,6 @@ cc_library(
         "lib/EDSC/Builders.cpp",
     ],
     hdrs = [
-        "include/mlir-c/Core.h",
         "include/mlir/EDSC/Builders.h",
     ],
     includes = ["include"],
@@ -124,6 +123,7 @@ cc_library(
         "lib/CAPI/IR/AffineMap.cpp",
         "lib/CAPI/IR/Diagnostics.cpp",
         "lib/CAPI/IR/IR.cpp",
+        "lib/CAPI/IR/Pass.cpp",
         "lib/CAPI/IR/StandardAttributes.cpp",
         "lib/CAPI/IR/StandardTypes.cpp",
         "lib/CAPI/IR/Support.cpp",
@@ -134,6 +134,7 @@ cc_library(
         "include/mlir-c/AffineMap.h",
         "include/mlir-c/Diagnostics.h",
         "include/mlir-c/IR.h",
+        "include/mlir-c/Pass.h",
         "include/mlir-c/StandardAttributes.h",
         "include/mlir-c/StandardDialect.h",
         "include/mlir-c/StandardTypes.h",
@@ -142,6 +143,7 @@ cc_library(
         "include/mlir/CAPI/AffineMap.h",
         "include/mlir/CAPI/Diagnostics.h",
         "include/mlir/CAPI/IR.h",
+        "include/mlir/CAPI/Pass.h",
         "include/mlir/CAPI/Support.h",
         "include/mlir/CAPI/Utils.h",
         "include/mlir/CAPI/Wrap.h",
@@ -150,9 +152,27 @@ cc_library(
     deps = [
         ":IR",
         ":Parser",
+        ":Pass",
         ":StandardOps",
         ":Support",
         "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "CAPITransforms",
+    srcs = [
+        "lib/CAPI/Transforms/Passes.cpp",
+    ],
+    hdrs = [
+        "include/mlir-c/Transforms.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":CAPIIR",
+        ":Pass",
+        ":Transforms",
+        ":TransformsPassIncGen",
     ],
 )
 
@@ -266,6 +286,7 @@ filegroup(
     srcs = [
         "include/mlir/Dialect/Async/IR/AsyncBase.td",
         "include/mlir/Dialect/Async/IR/AsyncOps.td",
+        "include/mlir/Interfaces/ControlFlowInterfaces.td",
         "include/mlir/Interfaces/SideEffectInterfaces.td",
         ":OpBaseTdFiles",
     ],
@@ -292,6 +313,22 @@ gentbl(
     td_file = "include/mlir/Dialect/Async/IR/AsyncOps.td",
     td_srcs = [
         ":AsyncOpsTdFiles",
+    ],
+)
+
+gentbl(
+    name = "AsyncPassIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-pass-decls -name Async",
+            "include/mlir/Dialect/Async/Passes.h.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/Async/Passes.td",
+    td_srcs = [
+        ":PassBaseTdFiles",
     ],
 )
 
@@ -576,6 +613,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":AsyncOpsIncGen",
+        ":ControlFlowInterfaces",
         ":Dialect",
         ":IR",
         ":SideEffectInterfaces",
@@ -591,9 +629,11 @@ cc_library(
         "lib/Dialect/Async/Transforms/*.cpp",
         "lib/Dialect/Async/Transforms/*.h",
     ]),
+    hdrs = ["include/mlir/Dialect/Async/Passes.h"],
     includes = ["include"],
     deps = [
         ":Async",
+        ":AsyncPassIncGen",
         ":IR",
         ":Pass",
         ":SCFDialect",
@@ -856,6 +896,16 @@ cc_library(
     ],
 )
 
+filegroup(
+    name = "ShapeOpsTdFiles",
+    srcs = [
+        "include/mlir/Dialect/Shape/IR/ShapeBase.td",
+        "include/mlir/Dialect/Shape/IR/ShapeOps.td",
+        "include/mlir/Interfaces/InferTypeOpInterface.td",
+        ":StdOpsTdFiles",
+    ],
+)
+
 gentbl(
     name = "ShapeOpsIncGen",
     strip_include_prefix = "include",
@@ -922,6 +972,22 @@ cc_library(
     ],
 )
 
+gentbl(
+    name = "ShapeToStandardGen",
+    strip_include_prefix = "lib/Conversion/ShapeToStandard",
+    tbl_outs = [
+        (
+            "-gen-rewriters",
+            "lib/Conversion/ShapeToStandard/ShapeToStandard.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "lib/Conversion/ShapeToStandard/ShapeToStandard.td",
+    td_srcs = [
+        ":ShapeOpsTdFiles",
+    ],
+)
+
 cc_library(
     name = "ShapeToStandard",
     srcs = glob([
@@ -936,6 +1002,7 @@ cc_library(
         ":Pass",
         ":SCFDialect",
         ":Shape",
+        ":ShapeToStandardGen",
         ":StandardOps",
         ":Support",
         ":Transforms",
@@ -1238,7 +1305,6 @@ cc_library(
         ":ControlFlowInterfaces",
         ":IR",
         ":LLVMOpsIncGen",
-        ":OpenMPDialect",
         ":SideEffectInterfaces",
         ":Support",
         "@llvm-project//llvm:AsmParser",
@@ -2560,6 +2626,14 @@ gentbl(
             "-gen-pass-decls -name Transforms",
             "include/mlir/Transforms/Passes.h.inc",
         ),
+        (
+            "-gen-pass-capi-header --prefix Transforms",
+            "include/mlir/Transforms/Transforms.capi.h.inc",
+        ),
+        (
+            "-gen-pass-capi-impl --prefix Transforms",
+            "include/mlir/Transforms/Transforms.capi.cpp.inc",
+        ),
     ],
     tblgen = ":mlir-tblgen",
     td_file = "include/mlir/Transforms/Passes.td",
@@ -2990,6 +3064,7 @@ cc_library(
         ":LLVMConversionIncGen",
         ":LLVMDialect",
         ":LLVMIRModuleTranslation",
+        ":OpenMPDialect",
         ":Support",
         ":TargetLLVMAVX512Intr",
         ":Translation",
@@ -3189,6 +3264,7 @@ cc_library(
         ":AffineToStandard",
         ":AffineTransforms",
         ":Async",
+        ":AsyncPassIncGen",
         ":AsyncToLLVM",
         ":AsyncTransforms",
         ":ConversionPasses",
@@ -3240,6 +3316,7 @@ cc_library(
         ":StandardOpsTransformsPassIncGen",
         ":StandardToLLVM",
         ":StandardToSPIRVTransforms",
+        ":TosaDialect",
         ":Transforms",
         ":TransformsPassIncGen",
         ":VectorOps",
@@ -3282,6 +3359,7 @@ cc_binary(
         "@llvm-project//mlir/test:TestPass",
         "@llvm-project//mlir/test:TestReducer",
         "@llvm-project//mlir/test:TestSPIRV",
+        "@llvm-project//mlir/test:TestTosaDialect",
         "@llvm-project//mlir/test:TestTransforms",
         "@llvm-project//mlir/test:TestTypeDialect",
     ],
@@ -4176,6 +4254,112 @@ cc_library(
         ":VectorOps",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
+    ],
+)
+
+gentbl(
+    name = "TosaDialectIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-op-decls",
+            "include/mlir/Dialect/Tosa/IR/TosaOps.h.inc",
+        ),
+        (
+            "-gen-op-defs",
+            "include/mlir/Dialect/Tosa/IR/TosaOps.cpp.inc",
+        ),
+        (
+            "-gen-struct-attr-decls",
+            "include/mlir/Dialect/Tosa/IR/TosaStructs.h.inc",
+        ),
+        (
+            "-gen-struct-attr-defs",
+            "include/mlir/Dialect/Tosa/IR/TosaStructs.cpp.inc",
+        ),
+        (
+            "-gen-dialect-decls",
+            "include/mlir/Dialect/Tosa/IR/TosaOpsDialect.h.inc",
+        ),
+        (
+            "-gen-op-doc",
+            "g3doc/Dialects/Tosa/TosaOps.md",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/Tosa/IR/TosaOps.td",
+    td_srcs = [
+        ":OpBaseTdFiles",
+        "include/mlir/Dialect/Tosa/IR/TosaOpBase.td",
+        "include/mlir/Dialect/Tosa/IR/TosaInterfaces.td",
+        "include/mlir/Dialect/Tosa/IR/TosaTypesBase.td",
+        "include/mlir/Interfaces/SideEffectInterfaces.td",
+        "include/mlir/Interfaces/LoopLikeInterface.td",
+    ],
+)
+
+gentbl(
+    name = "TosaInterfacesIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-op-interface-decls",
+            "include/mlir/Dialect/Tosa/IR/TosaInterfaces.h.inc",
+        ),
+        (
+            "-gen-op-interface-defs",
+            "include/mlir/Dialect/Tosa/IR/TosaInterfaces.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/Tosa/IR/TosaInterfaces.td",
+    td_srcs = [
+        ":OpBaseTdFiles",
+    ],
+)
+
+gentbl(
+    name = "TosaPassIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-pass-decls -name TosaOpt",
+            "include/mlir/Dialect/Tosa/Transforms/Passes.h.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/Tosa/Transforms/Passes.td",
+    td_srcs = [
+        ":PassBaseTdFiles",
+    ],
+)
+
+cc_library(
+    name = "TosaDialect",
+    srcs = glob([
+        "lib/Dialect/Tosa/IR/*.cpp",
+        "lib/Dialect/Tosa/IR/*.h",
+        "lib/Dialect/Tosa/Utils/*.cpp",
+        "lib/Dialect/Tosa/Transforms/*.cpp",
+    ]),
+    hdrs = glob([
+        "include/mlir/Dialect/Tosa/IR/*.h",
+        "include/mlir/Dialect/Tosa/Utils/*.h",
+        "include/mlir/Dialect/Tosa/Transforms/*.h",
+    ]),
+    includes = ["include"],
+    deps = [
+        ":Dialect",
+        ":IR",
+        ":LoopLikeInterface",
+        ":Pass",
+        ":QuantOps",
+        ":SideEffectInterfaces",
+        ":StandardOps",
+        ":TosaDialectIncGen",
+        ":TosaInterfacesIncGen",
+        ":TosaPassIncGen",
+        ":TransformUtils",
     ],
 )
 

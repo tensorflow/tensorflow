@@ -31,6 +31,7 @@ from tensorflow.lite.python import lite
 from tensorflow.lite.python import lite_v2_test_util
 from tensorflow.lite.python.convert import mlir_quantize
 from tensorflow.lite.python.interpreter import Interpreter
+from tensorflow.lite.python.interpreter import InterpreterWithCustomOps
 from tensorflow.lite.toco import types_pb2 as _types_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -67,7 +68,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     converter.experimental_new_converter = enable_mlir_converter
     tflite_model = converter.convert()
 
-    # Check values from converted model.
+    # Check output value from converted model.
     expected_value = root.f(input_data)
     actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])
     self.assertEqual(expected_value.numpy(), actual_value)
@@ -313,6 +314,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
 
     converter = lite.TFLiteConverterV2.from_concrete_functions([func])
     # TODO(b/156309549): We should add INT16 to the builtin types.
+    converter.optimizations = [lite.Optimize.DEFAULT]
     converter.target_spec.supported_ops = [
         lite.OpsSet.TFLITE_BUILTINS_INT8
     ]
@@ -739,6 +741,88 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
 
+  def _createV1ModelWithHashTableInitializer(self):
+    # Create a v1 saved model with hash table initializers.
+    tf.compat.v1.disable_eager_execution()
+    saved_model_dir = os.path.join(self.get_temp_dir(),
+                                   'savedmodel_with_hashtable')
+
+    table_initializer = tf.lookup.KeyValueTensorInitializer(
+        keys=['a', 'b', 'c', 'd'],
+        values=[1, 2, 3, 4],
+        key_dtype=tf.string,
+        value_dtype=tf.int64)
+    table = tf.lookup.StaticHashTable(
+        table_initializer, default_value=tf.constant(-1, dtype=tf.int64))
+
+    x = tf.compat.v1.placeholder(tf.string, shape=(), name='input')
+    y = table.lookup(x)
+
+    tensor_info_x = tf.compat.v1.saved_model.utils.build_tensor_info(x)
+    tensor_info_y = tf.compat.v1.saved_model.utils.build_tensor_info(y)
+
+    signature_def_map, init_op, assets_collection = {
+        'serving_default':
+            (tf.compat.v1.saved_model.signature_def_utils.build_signature_def(
+                inputs={'x': tensor_info_x},
+                outputs={'y': tensor_info_y},
+                method_name='some_function'))
+    }, tf.compat.v1.tables_initializer(), None
+
+    sess = tf.compat.v1.Session()
+    sess.run(tf.compat.v1.initializers.global_variables())
+
+    builder = tf.compat.v1.saved_model.builder.SavedModelBuilder(
+        saved_model_dir)
+    builder.add_meta_graph_and_variables(
+        sess, [tf.compat.v1.saved_model.tag_constants.SERVING],
+        signature_def_map,
+        main_op=init_op,
+        assets_collection=assets_collection,
+        strip_default_attrs=True)
+    builder.save()
+
+    # Restore TF v2 behavior.
+    tf.compat.v1.reset_default_graph()
+    tf.compat.v1.enable_eager_execution()
+    return saved_model_dir
+
+  @test_util.run_v2_only
+  def testModelWithHashTableInitializer(self):
+    """Test a model with saved_model's session initializer for hash tables."""
+    saved_model_dir = self._createV1ModelWithHashTableInitializer()
+
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
+    converter.allow_custom_ops = True
+    tflite_model = converter.convert()
+
+    # Check values from converted model.
+    interpreter = InterpreterWithCustomOps(
+        model_content=tflite_model, custom_op_registerers=['AddHashtableOps'])
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+
+    input_data = np.array(['a', 'b', 'c', 'z'], dtype=np.string_)
+    interpreter.resize_tensor_input(
+        input_details[0]['index'], [4], strict=False)
+    interpreter.allocate_tensors()
+
+    interpreter.set_tensor(input_details[0]['index'], input_data)
+
+    # Invoke multiple times to ensure the initializer graph runs only once.
+    interpreter.invoke()
+    actual_value = interpreter.get_tensor(output_details[0]['index'])
+    self.assertEqual([1, 2, 3, -1], list(actual_value))
+
+    interpreter.invoke()
+    actual_value = interpreter.get_tensor(output_details[0]['index'])
+    self.assertEqual([1, 2, 3, -1], list(actual_value))
+
+    interpreter.invoke()
+    actual_value = interpreter.get_tensor(output_details[0]['index'])
+    self.assertEqual([1, 2, 3, -1], list(actual_value))
+
   @test_util.run_v2_only
   def testConstModel(self):
     """Test a basic model with functions to make sure functions are inlined."""
@@ -910,6 +994,44 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     ]
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
+
+  def _createUnknownInputShapeModel(self):
+    """Create a simple SavedModel with unknown input."""
+    saved_model_dir = os.path.join(self.get_temp_dir(), 'unknown_input_shape')
+    with tf.Graph().as_default():
+      with tf.compat.v1.Session() as sess:
+        unknown_shape = tf.TensorShape(None)
+        in_tensor = tf.compat.v1.placeholder(
+            shape=unknown_shape, dtype=tf.float32, name='input')
+        out_tensor = in_tensor + in_tensor
+        inputs = {'input': in_tensor}
+        outputs = {'output': out_tensor}
+        saved_model.simple_save(sess, saved_model_dir, inputs, outputs)
+    return saved_model_dir
+
+  @test_util.run_v2_only
+  def testUnknownInputShapeModel(self):
+    """Test a SavedModel with an unknown input shape."""
+    saved_model_dir = self._createUnknownInputShapeModel()
+
+    converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+
+    input_data = np.array([1., 2., 3.], dtype=np.float32)
+    interpreter.resize_tensor_input(
+        input_details[0]['index'], [3], strict=False)
+    interpreter.allocate_tensors()
+
+    interpreter.set_tensor(input_details[0]['index'], input_data)
+    interpreter.invoke()
+    actual_value = interpreter.get_tensor(output_details[0]['index'])
+    self.assertEqual([2., 4., 6.], list(actual_value))
 
 
 class FromKerasModelTest(lite_v2_test_util.ModelTest):
@@ -1416,6 +1538,55 @@ class UnknownShapes(lite_v2_test_util.ModelTest):
         'None is only supported in the 1st dimension. Tensor '
         '\'in_tensor\' has invalid shape \'[1, None, 16, 3]\'.',
         str(error.exception))
+
+
+class AffineOpThenMulFusionTest(lite_v2_test_util.ModelTest):
+
+  @parameterized.named_parameters(('should_fuse_1d', [2], True),
+                                  ('should_fuse_1x2', [1, 2], True),
+                                  ('should_not_fuse_2x1', [2, 1], False),
+                                  ('should_not_fuse_2x2', [2, 2], False))
+  @test_util.run_v2_only
+  def testFullyConnectedFusion(self, multiplier_shape, can_fuse):
+    """Test fusion of (x ∗ w) * m into fullyconnected."""
+
+    @tf.function
+    def func(x):
+      w = tf.constant([3., 4., 5., 6.], shape=[2, 2])
+      m_value = [7., 8.] if sum(multiplier_shape) < 4 else [7., 8., 9., 10.]
+      m = tf.constant(m_value, shape=multiplier_shape)
+      return tf.matmul(x, w) * m
+
+    input_data = tf.constant([1., 2.], shape=[1, 2])
+    self._checkAffineFusion(func, input_data, 1 if can_fuse else 2)
+
+  @parameterized.named_parameters(('should_fuse_1d', [2], True),
+                                  ('should_fuse_1x2', [1, 2], True),
+                                  ('should_not_fuse_2x1', [2, 1], False))
+  @test_util.run_v2_only
+  def testConvFusion(self, multiplier_shape, can_fuse):
+    """Test fusion of (x ∗ w) * m into conv2d."""
+
+    @tf.function
+    def func(x):
+      w = tf.constant([3., 4., 5., 6.], shape=[2, 1, 1, 2])
+      m = tf.constant([7., 8.], shape=multiplier_shape)
+      return tf.nn.conv2d(x, w, strides=[1, 1, 1, 1], padding='SAME') * m
+
+    input_data = tf.constant([1., 2.], shape=[1, 1, 2, 1])
+    self._checkAffineFusion(func, input_data, 1 if can_fuse else 2)
+
+  def _checkAffineFusion(self, func, input_data, expected_number_of_ops):
+    concrete_func = func.get_concrete_function(input_data)
+    converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
+    tflite_model = converter.convert()
+
+    interpreter = Interpreter(model_content=tflite_model)
+    assert len(interpreter._get_ops_details()) == expected_number_of_ops
+
+    expected_value = func(input_data)
+    actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])[0]
+    self.assertAllClose(expected_value.numpy(), actual_value)
 
 
 if __name__ == '__main__':

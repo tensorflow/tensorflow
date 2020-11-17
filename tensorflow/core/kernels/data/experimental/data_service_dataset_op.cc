@@ -53,6 +53,8 @@ namespace data {
 /* static */ constexpr const char* const
     DataServiceDatasetOp::kMaxOutstandingRequests;
 /* static */ constexpr const char* const
+    DataServiceDatasetOp::kTaskRefreshIntervalHintMs;
+/* static */ constexpr const char* const
     DataServiceDatasetOp::kIterationCounter;
 /* static */ constexpr const char* const DataServiceDatasetOp::kOutputTypes;
 /* static */ constexpr const char* const DataServiceDatasetOp::kOutputShapes;
@@ -304,6 +306,26 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       return errors::Unimplemented("RestoreInternal is not yet supported");
     }
 
+    data::TraceMeMetadata GetTraceMeMetadata() const override {
+      data::TraceMeMetadata result;
+      int64 num_tasks = -1;
+      if (mu_.try_lock()) {
+        num_tasks = tasks_.size() - finished_tasks_;
+        mu_.unlock();
+      }
+      std::string num_tasks_string =
+          (num_tasks == -1)
+              ? "unavailable"
+              : strings::Printf("%lld", static_cast<long long>(num_tasks));
+      result.push_back(std::make_pair("num_tasks", num_tasks_string));
+      result.push_back(std::make_pair("job_name", dataset()->job_name_));
+      result.push_back(std::make_pair(
+          "max_outstanding_requests",
+          strings::Printf("%lld", static_cast<long long>(
+                                      dataset()->max_outstanding_requests_))));
+      return result;
+    }
+
    private:
     struct Task {
       Task(int64 task_id, const std::string& address,
@@ -353,7 +375,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       }
     }
 
-    void UpdateTasks() LOCKS_EXCLUDED(mu_) {
+    void UpdateTasks() TF_LOCKS_EXCLUDED(mu_) {
       VLOG(3) << "Updating tasks";
       std::vector<TaskInfo> tasks;
       bool job_finished;
@@ -409,7 +431,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       }
     }
 
-    void UpdateWorkerThreads(IteratorContext* ctx) LOCKS_EXCLUDED(mu_) {
+    void UpdateWorkerThreads(IteratorContext* ctx) TF_LOCKS_EXCLUDED(mu_) {
       mutex_lock l(mu_);
       while (num_running_worker_threads_ < max_outstanding_requests_) {
         num_running_worker_threads_++;
@@ -571,7 +593,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
     const int64 iterator_index_;
 
-    mutex mu_;
+    mutable mutex mu_;
     condition_variable get_next_cv_ TF_GUARDED_BY(mu_);
     condition_variable worker_thread_cv_ TF_GUARDED_BY(mu_);
     condition_variable manager_thread_cv_ TF_GUARDED_BY(mu_);
@@ -609,7 +631,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
     bool job_finished_ = false;
     std::vector<std::unique_ptr<Thread>> worker_threads_ TF_GUARDED_BY(mu_);
-    std::unique_ptr<Thread> task_thread_manager_ GUARDED_BY(mu_);
+    std::unique_ptr<Thread> task_thread_manager_ TF_GUARDED_BY(mu_);
   };
 
   const int64 dataset_id_;

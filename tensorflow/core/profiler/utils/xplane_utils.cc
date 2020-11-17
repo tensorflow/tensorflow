@@ -22,11 +22,11 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/core/profiler/utils/time_utils.h"
 #include "tensorflow/core/profiler/utils/timespan.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
@@ -117,14 +117,14 @@ bool IsNested(const XEvent& event, const XEvent& parent) {
   return XEventTimespan(parent).Includes(XEventTimespan(event));
 }
 
-XStat* FindOrAddMutableStat(int64 metadata_id, XEvent* event) {
+XStat* FindOrAddMutableStat(const XStatMetadata& stat_metadata, XEvent* event) {
   for (auto& stat : *event->mutable_stats()) {
-    if (stat.metadata_id() == metadata_id) {
+    if (stat.metadata_id() == stat_metadata.id()) {
       return &stat;
     }
   }
   XStat* stat = event->add_stats();
-  stat->set_metadata_id(metadata_id);
+  stat->set_metadata_id(stat_metadata.id());
   return stat;
 }
 
@@ -185,10 +185,8 @@ void MergePlanes(const XPlane& src_plane, XPlane* dst_plane) {
   XPlaneBuilder dst(dst_plane);
   src.ForEachStat([&](const tensorflow::profiler::XStatVisitor& stat) {
     XStatMetadata* stat_metadata = dst.GetOrCreateStatMetadata(stat.Name());
-    XStat* new_stat = dst.FindOrAddMutableStat(stat_metadata->id());
-    // Add or override the existing stat value except the metadata id.
-    *new_stat = stat.RawStat();
-    new_stat->set_metadata_id(stat_metadata->id());
+    // Use SetOrAddStat to avoid duplicating stats in dst_plane.
+    dst.SetOrAddStat(*stat_metadata, stat.RawStat(), src_plane);
   });
   src.ForEachLine([&](const tensorflow::profiler::XLineVisitor& line) {
     XLineBuilder dst_line = dst.GetOrCreateLine(line.Id());
@@ -203,8 +201,8 @@ void MergePlanes(const XPlane& src_plane, XPlane* dst_plane) {
       if (line.TimestampNs() <= dst_line.TimestampNs()) {
         dst_line.SetTimestampNsAndAdjustEventOffsets(line.TimestampNs());
       } else {
-        time_offset_ps = (line.TimestampNs() - dst_line.TimestampNs()) *
-                         EnvTime::kNanosToPicos;
+        time_offset_ps =
+            NanosToPicos(line.TimestampNs() - dst_line.TimestampNs());
       }
       dst_line.SetNameIfEmpty(line.Name());
       // Don't override dst_line's display name because if both lines have name,
@@ -231,6 +229,8 @@ void MergePlanes(const XPlane& src_plane, XPlane* dst_plane) {
         dst_event.SetNumOccurrences(event.NumOccurrences());
       }
       event.ForEachStat([&](const tensorflow::profiler::XStatVisitor& stat) {
+        // Here we can call AddStat instead of SetOrAddStat because dst_event
+        // was just added.
         dst_event.AddStat(*dst.GetOrCreateStatMetadata(stat.Name()),
                           stat.RawStat(), src_plane);
       });

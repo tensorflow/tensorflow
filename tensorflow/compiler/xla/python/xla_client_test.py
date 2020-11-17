@@ -481,6 +481,14 @@ def TestFactory(xla_backend, cloud_tpu=False):
         self.assertEqual(buf.device(), device)
         np.testing.assert_equal(x, buf.to_py())
 
+    def testStandardTypes(self):
+      for dtype in standard_dtypes:
+        if dtype == bfloat16 or dtype == np.complex128:
+          continue
+        arr = self.backend.buffer_from_pyval(np.array([0, 1], dtype))
+        arr = arr.to_py()
+        self.assertEqual(dtype, type(arr[0]))
+
   tests.append(BufferTest)
 
   class SingleOpTest(ComputationTest):

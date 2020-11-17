@@ -147,7 +147,6 @@ upper_tabs:
         path: /lite/performance/nnapi
       - title: "Hexagon delegate"
         path: /lite/performance/hexagon_delegate
-        status: experimental
       - title: "Core ML delegate"
         path: /lite/performance/coreml_delegate
         status: experimental

@@ -86,6 +86,26 @@ namespace {
 // Utilities for the canonicalize patterns
 //===----------------------------------------------------------------------===//
 
+// Verifies that dimension attribute for the op correctly indexes in operand or
+// result shape.
+template <typename OpT>
+static LogicalResult VerifyDimAttr(OpT op) {
+  int64_t rank = -1;
+  if (auto ty = op.operand().getType().template dyn_cast<RankedTensorType>()) {
+    rank = ty.getRank();
+  } else if (auto ty = op.getType().template dyn_cast<RankedTensorType>()) {
+    rank = ty.getRank();
+  } else {
+    return success();
+  }
+
+  int64_t dim = op.dimension();
+  if (dim < 0 || dim >= rank)
+    return op.emitOpError() << "requires dimension attribute in range [0, "
+                            << rank << "); found (" << dim << ")";
+  return success();
+}
+
 // Returns 1D 64-bit dense elements attribute with the given values.
 DenseIntElementsAttr GetI64ElementsAttr(ArrayRef<int64_t> values,
                                         Builder* builder) {
@@ -245,10 +265,14 @@ void GatherOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
 //===----------------------------------------------------------------------===//
 // GetDimensionSizeOp
 //===----------------------------------------------------------------------===//
+//
+static LogicalResult Verify(GetDimensionSizeOp op) { return VerifyDimAttr(op); }
 
 /// Fold get_dimension_size when the said shape dimension is a constant.
 OpFoldResult GetDimensionSizeOp::fold(ArrayRef<Attribute> attrs) {
-  RankedTensorType type = operand().getType().cast<RankedTensorType>();
+  RankedTensorType type = operand().getType().dyn_cast<RankedTensorType>();
+  if (!type) return {};
+
   int32_t dim = dimension();
   if (type.isDynamic(dim)) return {};
   // The result type is always is a 0-d i32 tensor.
@@ -741,7 +765,7 @@ static LogicalResult Verify(BroadcastInDimOp op) {
     if (dimIndex >= resultRank) {
       return op.emitOpError(
           llvm::formatv("broadcast_dimensions contains invalid value {0} for "
-                        "result result with rank {1}",
+                        "result with rank {1}",
                         dimIndex, resultRank));
     }
 
@@ -828,7 +852,7 @@ static LogicalResult Verify(DynamicBroadcastInDimOp op) {
     if (dimIndex >= resultRank) {
       return op.emitOpError(
           llvm::formatv("broadcast_dimensions contains invalid value {0} for "
-                        "result result with rank {1}",
+                        "result with rank {1}",
                         dimIndex, resultRank));
     }
 
@@ -1244,7 +1268,8 @@ class DynamicReshapeOpNotActuallyDynamic
 
 void DynamicReshapeOp::getCanonicalizationPatterns(
     OwningRewritePatternList& results, MLIRContext* context) {
-  results.insert<DynamicReshapeOpNotActuallyDynamic>(context);
+  results.insert<DynamicReshapeOpNotActuallyDynamic, ShapeOfDynamicReshape>(
+      context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1725,6 +1750,35 @@ LogicalResult SelectOp::reifyReturnTypeShapes(
 }
 
 //===----------------------------------------------------------------------===//
+// SetDimensionSizeOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(SetDimensionSizeOp op) {
+  if (auto size = op.size().getType().dyn_cast<RankedTensorType>()) {
+    if (size.getRank() != 0)
+      return op.emitOpError() << "size operand should be of rank-0";
+  }
+
+  return VerifyDimAttr(op);
+}
+
+OpFoldResult SetDimensionSizeOp::fold(ArrayRef<Attribute> operands) {
+  DenseElementsAttr input = operands[0].dyn_cast_or_null<DenseElementsAttr>();
+  if (input) return input;
+
+  DenseElementsAttr size = operands[1].dyn_cast_or_null<DenseElementsAttr>();
+  if (!size || !size.isSplat()) return {};
+
+  auto ty = getType().dyn_cast<RankedTensorType>();
+  if (!ty) return {};
+
+  int64_t dim_size = ty.getDimSize(dimension());
+  if (dim_size == size.getSplatValue().cast<IntegerAttr>().getInt())
+    return operand();
+  return {};
+}
+
+//===----------------------------------------------------------------------===//
 // PadOp
 //===----------------------------------------------------------------------===//
 
@@ -2173,10 +2227,21 @@ LogicalResult SliceOp::inferReturnTypes(
     return success();
   }
 
-  int64_t rank = ranked_ty.getRank();
   ShapedType attr_ty = slice.start_indices().getType();
-  if (attr_ty.getRank() != 1 || attr_ty.getNumElements() != rank ||
-      !attr_ty.getElementType().isSignlessInteger(64) ||
+  if (attr_ty.getRank() != 1) {
+    return emitOptionalError(location, "start_indices has rank ",
+                             attr_ty.getRank(), " instead of required rank 1");
+  }
+
+  int64_t rank = ranked_ty.getRank();
+  if (attr_ty.getNumElements() != rank) {
+    return emitOptionalError(
+        location, "the number of elements in start_indices (",
+        attr_ty.getNumElements(), ") does not match the rank of the operand (",
+        rank, ")");
+  }
+
+  if (!attr_ty.getElementType().isSignlessInteger(64) ||
       slice.limit_indices().getType() != attr_ty ||
       slice.strides().getType() != attr_ty) {
     // Unfortunately we can't rely on the AllTypesMatch trait for the SliceOp

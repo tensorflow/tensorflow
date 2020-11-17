@@ -308,7 +308,7 @@ func @abs_unranked_i64(%arg : memref<*xi64>,
                        %flat_shape : memref<1xindex>,
                        %arg_size : index) -> memref<*xi64>
                        attributes {tf_entry} {
-  %flat_arg = lmhlo.reshape_memref_cast %arg(%flat_shape)
+  %flat_arg = memref_reshape %arg(%flat_shape)
       : (memref<*xi64>, memref<1xindex>) -> memref<?xi64>
   // CHECK: alloc
   // CHECK-SAME: reuse_input_candidates = [0 : index], reuse_output = 0 : index
@@ -324,7 +324,39 @@ func @abs_unranked_i64(%arg : memref<*xi64>,
     %a_abs = select %a_pos, %a, %a_neg : i64
     linalg.yield %a_abs : i64
   }
-  %result = lmhlo.reshape_memref_cast %flat_result(%arg_shape)
+  %result = memref_reshape %flat_result(%arg_shape)
       : (memref<?xi64>, memref<?xindex>) -> memref<*xi64>
   return %result : memref<*xi64>
+}
+
+// CHECK-LABEL: @old_buffer_alias_outside_block
+func @old_buffer_alias_outside_block(%arg: memref<3xf32>)
+    attributes {llvm.emit_c_interface, tf_entry} {
+  %c0 = constant 0 : index
+  %c1 = constant 1 : index
+  %true = constant true
+
+  // Alias outside of the block with the new buffer allocation.
+  %alias = memref_cast %arg : memref<3xf32> to memref<3xf32>
+
+  scf.if %true {
+
+    // Allocation and use of new buffer.
+    // CHECK: alloc
+    // CHECK-SAME: reuse_input_candidates = [0 : index]
+    %mem = alloc() : memref<3xf32>
+    %use = load %mem[%c0] : memref<3xf32>
+
+  } else {
+  }
+  return
+}
+
+// CHECK-LABEL: @index_element_type
+func @index_element_type(%arg : memref<2x3xindex>) -> memref<2x3xindex>
+    attributes {tf_entry} {
+  // CHECK: alloc
+  // CHECK-SAME: reuse_input_candidates = [0 : index]
+  %result = alloc() : memref<2x3xindex>
+  return %result : memref<2x3xindex>
 }

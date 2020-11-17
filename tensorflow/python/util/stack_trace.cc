@@ -41,9 +41,9 @@ namespace tensorflow {
 
 std::vector<StackFrame> StackTrace::ToStackFrames() const {
   std::vector<StackFrame> result;
-  result.reserve(size_);
+  result.reserve(code_objs_.size());
 
-  for (int i = size_ - 1; i >= 0; --i) {
+  for (int i = code_objs_.size() - 1; i >= 0; --i) {
     const char* file_name = GetPythonString(code_objs_[i]->co_filename);
     const int line_number =
         PyCode_Addr2Line(code_objs_[i], last_instructions_[i]);
@@ -55,7 +55,7 @@ std::vector<StackFrame> StackTrace::ToStackFrames() const {
 }
 
 StackTrace* StackTraceManager::Get(int id) {
-  DCheckPyGilState();
+  DCheckPyGilStateForStackTrace();
   if (next_id_ - id > kStackTraceCircularBufferSize) return nullptr;
 
   return &stack_traces_[id & (kStackTraceCircularBufferSize - 1)];

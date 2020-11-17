@@ -26,6 +26,7 @@ import os
 
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
+from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.eager import remote
@@ -38,6 +39,8 @@ from tensorflow.python.training import server_lib
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
+
+ALLOWED_TASK_TYPES = ("chief", "worker", "ps")
 
 
 @tf_export("distribute.experimental.ParameterServerStrategy", v1=[])
@@ -182,11 +185,18 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
 
   If `TF_CONFIG` environment variable is set, a
   `tf.distribute.cluster_resolver.TFConfigClusterResolver` should be used as
-  well. Note that for legacy reason, on some platform, "chief" is used as the
-  task type for the coordinator, as the following example demonstrates. Here we
-  set `TF_CONFIG` for the task designated as a parameter server (task type "ps")
-  and index 1 (the second task), in a cluster with 1 chief, 2 parameter servers,
-  and 3 workers. Note that the it needs to be set before the use of
+  well.
+
+  Since there are assumptions in
+  `tf.distribute.experimental.ParameterServerStrategy` around the naming of the
+  task types, "chief", "ps", and "worker" should be used in the
+  `tf.distribute.cluster_resolver.ClusterResolver` to refer to the coordinator,
+  parameter servers, and workers, respectively.
+
+  The following example demonstrates setting `TF_CONFIG` for the task designated
+  as a parameter server (task type "ps") and index 1 (the second task), in a
+  cluster with 1 chief, 2 parameter servers, and 3 workers. Note that it needs
+  to be set before the use of
   `tf.distribute.cluster_resolver.TFConfigClusterResolver`.
 
   Example code for cluster setup:
@@ -472,9 +482,24 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
 
   def _verify_args_and_config(self, cluster_resolver):
     if not cluster_resolver.cluster_spec():
-      raise ValueError("Cluster spec must be non-empty in `cluster_resolver`.")
+      raise ValueError("Cluster spec must be non-empty in "
+                       "`tf.distribute.cluster_resolver.ClusterResolver`.")
     if self.extended._num_gpus_per_worker > 1:  # pylint: disable=protected-access
       raise NotImplementedError("Multi-gpu is not supported yet.")
+
+    cluster_spec = cluster_resolver.cluster_spec()
+
+    # The following checks if the task types are allowed (chief, ps, worker).
+    multi_worker_util._validate_cluster_spec(  # pylint: disable=protected-access
+        cluster_spec,
+        cluster_resolver.task_type,
+        cluster_resolver.task_id)
+
+    if multi_worker_util.task_count(cluster_spec, "ps") < 1:
+      raise ValueError("There must be at least one ps.")
+
+    if multi_worker_util.task_count(cluster_spec, "worker") < 1:
+      raise ValueError("There must be at least one worker.")
 
 
 class ParameterServerStrategyV2Extended(
@@ -677,13 +702,12 @@ class ParameterServerStrategyV2Extended(
 # The warning that will be logged if the way we initialize sharded variables
 # is memory-inefficient.
 _INEFFICIENT_INIT_WARNING = (
-    "Large variable %s is partitioned but not initialized in a memory-efficient"
-    " way. The full value is first being created and then sliced into smaller "
-    "values. To reduce the memory footprint, explicitly specify `dtype` and "
-    "`shape` when creating variables, and pass a callable to Variable's "
-    "`initial_value`. The callable should take only one argument which is a "
-    "namedtuple (shape: `tf.TensorShape`, offsets: list/tuple) where shape is "
-    "the shape of the component variable, and offsets is the offsets of the "
-    "smaller variable on each axis.")
+    "Large variable %s is partitioned but not initialized in a "
+    "memory-efficient way. On each shard, the full value is first being "
+    "created and then sliced into smaller values. To reduce the memory "
+    "footprint, explicitly specify `dtype` and `shape` when creating "
+    "variables, and use `tf.initializers` to initialize the variable. "
+    "Note that some initializers (e.g., orthogonal) don't support "
+    "memory-efficient initialization and there is not much you can do here.")
 
 _LARGE_VARIABLE_NUM_ELEMENTS = 1e9

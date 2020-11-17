@@ -14,7 +14,11 @@ load(
     "tf_cuda_library",
     "tf_opts_nortti_if_lite_protos",
 )
-load("//tensorflow/core/kernels/mlir_generated:build_defs.bzl", "if_mlir_generated_gpu_kernels_enabled")
+load(
+    "//tensorflow/core/kernels/mlir_generated:build_defs.bzl",
+    "if_mlir_generated_gpu_kernels_enabled",
+    "if_mlir_unranked_kernels_enabled",
+)
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
@@ -3394,9 +3398,10 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "cwise_op",
-    copts = if_mlir_generated_gpu_kernels_enabled(if_true = ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED=1"]),
+    copts = if_mlir_generated_gpu_kernels_enabled(if_true = ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED=1"]) +
+            if_mlir_unranked_kernels_enabled(if_true = ["-DMLIR_GENERATED_UNRANKED_GPU_KERNELS_ENABLED=1"]),
     prefix = "cwise_op",
-    deps = MATH_DEPS + if_mlir_generated_gpu_kernels_enabled(if_true = ["//tensorflow/core/kernels/mlir_generated:cwise_unary_op"]),
+    deps = MATH_DEPS + if_mlir_generated_gpu_kernels_enabled(if_true = ["//tensorflow/core/kernels/mlir_generated:cwise_op"]),
 )
 
 tf_kernel_library(
@@ -5492,13 +5497,9 @@ tf_cc_test(
     ],
 )
 
-filegroup(
+alias(
     name = "spectrogram_test_data",
-    srcs = [
-        "spectrogram_test_data/short_test_segment.wav",
-        "spectrogram_test_data/short_test_segment_spectrogram.csv.bin",
-        "spectrogram_test_data/short_test_segment_spectrogram_400_200.csv.bin",
-    ],
+    actual = "//tensorflow/core/kernels/spectrogram_test_data:spectrogram_test_data",
     visibility = ["//visibility:public"],
 )
 
@@ -5961,6 +5962,7 @@ filegroup(
         "relu_op_functor.h",
         "reshape_util.h",
         "reverse_op.h",
+        "roll_op.h",
         "save_restore_tensor.h",
         "scan_ops.h",
         "scatter_nd_op.h",
@@ -5973,6 +5975,7 @@ filegroup(
         "spacetodepth_op.h",
         "spectrogram.h",
         "stateless_random_ops.h",
+        "stateless_random_ops_v2.h",
         "string_util.h",
         "string_to_hash_bucket_op.h",
         "tensor_array.h",
@@ -6196,6 +6199,7 @@ filegroup(
         "reshape_util.cc",
         "restore_op.cc",
         "reverse_op.cc",
+        "roll_op.cc",
         "save_op.cc",
         "save_restore_tensor.cc",
         "save_restore_v2_ops.cc",
@@ -6230,6 +6234,7 @@ filegroup(
         "stack.h",
         "stack_ops.cc",
         "stateless_random_ops.cc",
+        "stateless_random_ops_v2.cc",
         "string_join_op.cc",
         "string_lower_op.cc",
         "string_util.cc",

@@ -6,9 +6,9 @@ endif
 TENSORFLOW_ROOT :=
 MAKEFILE_DIR := tensorflow/lite/micro/tools/make
 
-#  Override this on make command line to to parse thirdy party downloads during project generation 
-#  make -f tensorflow/lite/micro/tools/make/Makefile PARSE_THIRD_PARTY=true TARGET=apollo3evb generate_hello_world_make_project 
-PARSE_THIRD_PARTY := 
+#  Override this on make command line to parse third party downloads during project generation
+#  make -f tensorflow/lite/micro/tools/make/Makefile PARSE_THIRD_PARTY=true TARGET=apollo3evb generate_hello_world_make_project
+PARSE_THIRD_PARTY :=
 
 
 # Pull in some convenience functions.
@@ -42,6 +42,16 @@ CXX_TOOL := g++
 CC_TOOL := gcc
 AR_TOOL := ar
 
+# Specify which specialized kernel implementation should be pulled in. This was
+# previously supported via TAGS, but that is soon going to be removed. The
+# reason for removing TAGS is that we no longer support more than a single
+# specialized implementation and we also want to be explicit about what
+# makefiles get included for a given command line invocation.
+#
+# Currently, we are keeping the support for optimized kernels via TAGS for
+# backwards compatibility, but will be removing that in the near future.
+OPTIMIZED_KERNEL_DIR :=
+
 # Specify TAGS on the command line to add a particular set of specialized
 # implementations, for example TAGS="CMSIS disco_f746ng" to target a Discovery
 # STM32F746NG board, using the CMSIS library's implementations where possible.
@@ -74,7 +84,6 @@ TEST_SCRIPT := tensorflow/lite/micro/testing/test_linux_binary.sh
 
 MICROLITE_LIBS := -lm
 
-
 # For each tag specified on the command line we add -D<tag> to the cflags to
 # allow for #idefs in the code.
 #
@@ -87,6 +96,17 @@ MICROLITE_LIBS := -lm
 # TODO(b/168824958): remove dash->underscore transformation once the cmsis-nn
 # and ethos-u directories have been renamed.
 TAG_DEFINES := $(foreach TAG,$(TAGS),-D$(shell echo $(TAG) | tr [a-z] [A-Z] | tr - _))
+
+OPTIMIZED_KERNEL_DEFINES :=
+ifneq ($(OPTIMIZED_KERNEL_DIR),)
+  # For backwards compatibility, we are using an empty OPTIMIZED_KERNEL_DIR to
+  # impy that we want to fall-back to TAGS. So, we are additionally using
+  # OPTIMIZED_KERNEL_DIR==none to signify that we do not want any optimized
+  # implementations.
+  ifneq ($(OPTIMIZED_KERNEL_DIR), none)
+    OPTIMIZED_KERNEL_DEFINES := -D$(shell echo $(OPTIMIZED_KERNEL_DIR) | tr [a-z] [A-Z] | tr - _)
+  endif
+endif
 
 OPTIMIZATION_LEVEL := -O3
 
@@ -114,7 +134,14 @@ COMMON_FLAGS := \
   -DTF_LITE_DISABLE_X86_NEON \
   $(OPTIMIZATION_LEVEL) \
   $(CC_WARNINGS) \
+  $(OPTIMIZED_KERNEL_DEFINES) \
   $(TAG_DEFINES)
+
+ifeq ($(TARGET), $(HOST_OS))
+  # If we are not doing a cross-compilation then -DTF_LITE_USE_CTIME is what we
+  # want to have by default.
+  COMMON_FLAGS += -DTF_LITE_USE_CTIME
+endif
 
 CXXFLAGS := \
   -std=c++11 \
@@ -215,13 +242,19 @@ $(wildcard tensorflow/lite/micro/memory_planner/*test.cc)
 MICROLITE_BENCHMARK_SRCS := \
 $(wildcard tensorflow/lite/micro/benchmarks/*benchmark.cc)
 
+MICROLITE_CC_KERNEL_SRCS := \
+$(wildcard tensorflow/lite/micro/kernels/*.cc)
+MICROLITE_CC_KERNEL_SRCS := $(filter-out $(MICROLITE_TEST_SRCS), $(MICROLITE_CC_KERNEL_SRCS))
+
 MICROLITE_TEST_HDRS := \
 $(wildcard tensorflow/lite/micro/testing/*.h)
+
+MICROLITE_TEST_HELPERS_SRC := \
+tensorflow/lite/micro/test_helpers.cc
 
 MICROLITE_CC_BASE_SRCS := \
 $(wildcard tensorflow/lite/micro/*.cc) \
 $(wildcard tensorflow/lite/micro/benchmarks/*model_data.cc) \
-$(wildcard tensorflow/lite/micro/kernels/*.cc) \
 $(wildcard tensorflow/lite/micro/memory_planner/*.cc) \
 $(wildcard tensorflow/lite/micro/testing/*model.cc) \
 tensorflow/lite/c/common.c \
@@ -235,6 +268,10 @@ tensorflow/lite/schema/schema_utils.cc
 
 MICROLITE_CC_SRCS := $(filter-out $(MICROLITE_TEST_SRCS), $(MICROLITE_CC_BASE_SRCS))
 MICROLITE_CC_SRCS := $(filter-out $(MICROLITE_BENCHMARK_SRCS), $(MICROLITE_CC_SRCS))
+MICROLITE_CC_SRCS := $(filter-out $(MICROLITE_TEST_HELPERS_SRC), $(MICROLITE_CC_SRCS))
+
+MICROLITE_TEST_HELPERS_HDRS := \
+tensorflow/lite/micro/test_helpers.h
 
 MICROLITE_CC_HDRS := \
 $(wildcard tensorflow/lite/micro/*.h) \
@@ -310,6 +347,8 @@ tensorflow/lite/schema/schema_generated.h \
 tensorflow/lite/schema/schema_utils.h \
 tensorflow/lite/version.h
 
+MICROLITE_CC_HDRS := $(filter-out $(MICROLITE_TEST_HELPERS_HDRS), $(MICROLITE_CC_HDRS))
+
 # TODO(b/165940489): Figure out how to avoid including fixed point
 # platform-specific headers.
 THIRD_PARTY_CC_HDRS := \
@@ -353,10 +392,20 @@ ALL_PROJECT_TARGETS :=
 ARDUINO_LIBRARY_TARGETS :=
 ARDUINO_LIBRARY_ZIPS :=
 
+# The download scripts require that the downloads directory already exist for
+# improved error checking. To accomodate that, we first create a downloads
+# directory.
+$(shell mkdir -p ${MAKEFILE_DIR}/downloads)
+
+# Directly download the flatbuffers library.
+DOWNLOAD_RESULT := $(shell $(MAKEFILE_DIR)/flatbuffers_download.sh ${MAKEFILE_DIR}/downloads)
+ifneq ($(DOWNLOAD_RESULT), SUCCESS)
+  $(error Something went wrong with the flatbuffers download: $(DOWNLOAD_RESULT))
+endif
+
 include $(MAKEFILE_DIR)/third_party_downloads.inc
 THIRD_PARTY_DOWNLOADS :=
 $(eval $(call add_third_party_download,$(GEMMLOWP_URL),$(GEMMLOWP_MD5),gemmlowp,))
-$(eval $(call add_third_party_download,$(FLATBUFFERS_URL),$(FLATBUFFERS_MD5),flatbuffers,))
 $(eval $(call add_third_party_download,$(RUY_URL),$(RUY_MD5),ruy,))
 $(eval $(call add_third_party_download,$(PERSON_MODEL_URL),$(PERSON_MODEL_MD5),person_model_grayscale,))
 $(eval $(call add_third_party_download,$(PERSON_MODEL_INT8_URL),$(PERSON_MODEL_INT8_MD5),person_model_int8,))
@@ -377,16 +426,36 @@ ifeq ($(findstring $(TARGET),$(TARGETS_WITHOUT_MAKEFILES)),)
   include $(MAKEFILE_DIR)/targets/$(TARGET)_makefile.inc
 endif
 
-# Load dependencies for optimized kernel implementations.
-include $(wildcard $(MAKEFILE_DIR)/ext_libs/*.inc)
+ifneq ($(OPTIMIZED_KERNEL_DIR),)
+  # The new way of using optimized kernels enforces that only that specific
+  # makefile is included. For backwards compatibility, we are using an empty
+  # OPTIMIZED_KERNEL_DIR to impy that we want to fall-back to TAGS. So, we are
+  # additionally using OPTIMIZED_KERNEL_DIR==none to signify that we do not want
+  # any optimized implementations.
+  ifneq ($(OPTIMIZED_KERNEL_DIR), none)
+    include $(MAKEFILE_DIR)/ext_libs/$(OPTIMIZED_KERNEL_DIR).inc
+    # Specialize for the optimized kernels
+    MICROLITE_CC_KERNEL_SRCS := $(call substitute_specialized_implementations,$(MICROLITE_CC_KERNEL_SRCS),$(OPTIMIZED_KERNEL_DIR))
+  endif
 
-# Call specialize here so that platform-specific tags can be taken into account.
-MICROLITE_CC_SRCS := $(call specialize,$(MICROLITE_CC_SRCS))
+  # Specialize for debug_log. micro_time etc.
+  MICROLITE_CC_SRCS := $(call substitute_specialized_implementations,$(MICROLITE_CC_SRCS),$(TARGET))
+  MICROLITE_CC_SRCS += $(MICROLITE_CC_KERNEL_SRCS)
+else
+  # This is the deprecated way of pulling in optimized kernel implementations.
+  # Load dependencies for optimized kernel implementations.
+  include $(wildcard $(MAKEFILE_DIR)/ext_libs/*.inc)
+
+  # Call specialize here so that platform-specific tags can be taken into account.
+  MICROLITE_CC_SRCS += $(MICROLITE_CC_KERNEL_SRCS)
+  MICROLITE_CC_SRCS := $(call specialize,$(MICROLITE_CC_SRCS))
+endif
 
 ALL_TAGS += $(TARGET_ARCH)
 
 ALL_SRCS := \
 	$(MICROLITE_CC_SRCS) \
+	$(MICROLITE_TEST_HELPERS_SRC) \
 	$(MICROLITE_TEST_SRCS)
 
 # Where compiled objects are stored.
@@ -442,7 +511,7 @@ microlite: $(MICROLITE_LIB_PATH)
 
 # Hack for generating schema file bypassing flatbuffer parsing
 tensorflow/lite/schema/schema_generated.h:
-	@cp -u tensorflow/lite/schema/schema_generated.h.OPENSOURCE tensorflow/lite/schema/schema_generated.h
+	@cp -u tensorflow/lite/schema/schema_generated.h.oss tensorflow/lite/schema/schema_generated.h
 
 # Gathers together all the objects we've compiled into a single '.a' archive.
 $(MICROLITE_LIB_PATH): tensorflow/lite/schema/schema_generated.h $(MICROLITE_LIB_OBJS)

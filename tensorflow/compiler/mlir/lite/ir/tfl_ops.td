@@ -3405,7 +3405,7 @@ def TFL_StridedSliceOp: TFL_Op<"strided_slice", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I32, I64, I8, UI8, QI8, QUI8, I1, I16, QI16, TFL_Quint8]>:$input,
+    TFL_TensorOf<[F32, I32, I64, I8, UI8, QI8, QUI8, I1, I16, QI16, TFL_Quint8, TFL_Str]>:$input,
     TFL_I32Tensor:$begin,
     TFL_I32Tensor:$end,
     TFL_I32Tensor:$strides,
@@ -3418,7 +3418,7 @@ def TFL_StridedSliceOp: TFL_Op<"strided_slice", [
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I32, I64, I8, UI8, QI8, QUI8, I1, I16, QI16, TFL_Quint8]>:$output
+    TFL_TensorOf<[F32, I32, I64, I8, UI8, QI8, QUI8, I1, I16, QI16, TFL_Quint8, TFL_Str]>:$output
   );
 
   let hasOptions = 1;
@@ -3443,6 +3443,8 @@ def TFL_CastOp : TFL_Op<"cast", [
   // TFLite's cast op does not utilize CastOptions, instead derives types
   // from the TfLiteTensors.
   let hasOptions = 0;
+
+  let hasFolder = 1;
 }
 
 def TFL_MirrorPadOp: TFL_Op<"mirror_pad", [
@@ -3877,7 +3879,7 @@ def TFL_UnidirectionalSequenceLSTMOp :
            TFL_OperandHasRank<14, 1>,          // cell_gate_bias
            TFL_OperandHasRank<15, 1>,          // output_gate_bias
            TFL_OperandIsNoneOrHasRank<16, 2>,  // projection_weights
-           TFL_OperandIsNoneOrHasRank<17, 2>,  // projection_bias
+           TFL_OperandIsNoneOrHasRank<17, 1>,  // projection_bias
            TFL_StatefulOp]> {
   let summary = "Unidirectional sequence lstm operator";
 
@@ -4358,6 +4360,21 @@ def TFL_WhileOp : Op<TFL_Dialect, "while", [
   let hasCanonicalizer = 1;
 }
 
+def TFL_CallOnceOp : TFL_Op<"call_once", []> {
+  let summary = "Invokes an initialization function";
+
+  let description = [{
+This operation invokes the given initialization function for the session
+initializer in tf saved model dialect.
+  }];
+
+  let arguments = (ins
+    StrAttr:$session_init_function
+  );
+
+  let results = (outs);
+}
+
 def TFL_CustomOp : Op<TFL_Dialect, "custom", [
   NoSideEffect, NoQuantizableResult]> {
   let summary = "Custom op";
@@ -4405,6 +4422,57 @@ def TFL_CustomTfOp : Op<TFL_Dialect, "custom_tf", [
   let results = (outs Variadic<AnyTensor>:$output);
 
   let regions = (region SizedRegion<1>:$body);
+}
+
+def TFL_BroadcastToOp : TFL_Op<"broadcast_to", [
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    TFL_OperandHasRankAtMost<0, 8>,
+    TFL_OperandHasRank<1, 1>,
+    PredOpTrait<"output dimension count must be at most 8",
+      Or<[TFL_OperandIsUnrankedPred<1>,
+          TFL_OperandDimIsAtMost<1, 0, 8>]>>,
+    NoSideEffect]> {
+  let summary = "Broadcast an array for a compatible shape.";
+
+  let description = [{
+Broadcasting is the process of making arrays to have compatible shapes
+for arithmetic operations. Two shapes are compatible if for each
+dimension pair they are either equal or one of them is one. When trying
+to broadcast a Tensor to a shape, it starts with the trailing dimensions,
+and works its way forward.
+
+For example,
+
+>>> x = tf.constant([1, 2, 3])
+>>> y = tf.broadcast_to(x, [3, 3])
+>>> print(y)
+tf.Tensor(
+    [[1 2 3]
+     [1 2 3]
+     [1 2 3]], shape=(3, 3), dtype=int32)
+
+In the above example, the input Tensor with the shape of `[1, 3]`
+is broadcasted to output Tensor with shape of `[3, 3]`.
+
+When doing broadcasted operations such as multiplying a tensor
+by a scalar, broadcasting (usually) confers some time or space
+benefit, as the broadcasted tensor is never materialized.
+
+However, `broadcast_to` does not carry with it any such benefits.
+The newly-created tensor takes the full memory of the broadcasted
+shape. (In a graph context, `broadcast_to` might be fused to
+subsequent operation and then be optimized away, however.)
+  }];
+
+  let arguments = (ins
+    TFL_TensorOf<[F32, I32, I1, I8, QI8, UI8, QUI8, I16, QI16, I64, Complex<F<32>>]>:$input,
+    TFL_I32OrI64Tensor:$shape
+  );
+
+  let results = (outs
+    TFL_TensorOf<[F32, I32, I1, I8, QI8, UI8, QUI8, I16, QI16, I64, Complex<F<32>>]>:$output
+  );
 }
 
 #endif // TFL_OPS

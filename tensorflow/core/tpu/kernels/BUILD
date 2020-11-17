@@ -302,6 +302,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:computation_placer",
         "//tensorflow/compiler/xla/service:hlo_module_group",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
+        "//tensorflow/compiler/xrt:xrt_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
         "//tensorflow/core/tpu:tpu_api",

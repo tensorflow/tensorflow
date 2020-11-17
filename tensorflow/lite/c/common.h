@@ -80,7 +80,7 @@ struct TfLiteRegistration;
 
 // An external context is a collection of information unrelated to the TF Lite
 // framework, but useful to a subset of the ops. TF Lite knows very little
-// about about the actual contexts, but it keeps a list of them, and is able to
+// about the actual contexts, but it keeps a list of them, and is able to
 // refresh them if configurations like the number of recommended threads
 // change.
 typedef struct TfLiteExternalContext {

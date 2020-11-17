@@ -125,6 +125,7 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   void Release() override;
 
   tensorflow::DataType DataType() const override;
+  Status Shape(tensorflow::PartialTensorShape* shape) const override;
   Status NumDims(int* num_dims) const override;
   Status NumElements(int64* num_elements) const override;
   Status Dim(int dim_index, int64* dim) const override;

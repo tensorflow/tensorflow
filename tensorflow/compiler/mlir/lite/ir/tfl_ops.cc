@@ -148,18 +148,10 @@ bool IsI64Type(Type element_type) {
 bool VerifyAddOpShapeConstraints(AddOp op) {
   auto element_type = getElementTypeOrSelf(op.output().getType());
 
-  // Allows F32, QI8, and QUI8 outputs when the operands have valid shapes,
+  // Allows F32, QI8, QUI8 and I32 outputs when the operands have valid shapes,
   // which are broadcastable shapes up to five dimension or have same shapes.
   if (element_type.isF32() || IsQI8Type(element_type) ||
-      IsQUI8Type(element_type)) {
-    return VerifyOperandsHaveSameShapesOrBroadcastableShape(
-        /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
-        /*max_bcast_rank=*/5);
-  }
-
-  // Allows I32 output when the operands have valid shapes, which are
-  // broadcastable shapes up to four dimension or have same shapes.
-  if (IsI32Type(element_type)) {
+      IsQUI8Type(element_type) || IsI32Type(element_type)) {
     return VerifyOperandsHaveSameShapesOrBroadcastableShape(
         /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
         /*max_bcast_rank=*/4);
@@ -202,7 +194,7 @@ bool VerifyMulOpShapeConstraints(MulOp op) {
   auto element_type = getElementTypeOrSelf(op.output().getType());
 
   // Allows QI8 and QUI8 inputs up to five dimension broadcasting unless the
-  // output type is not QI16. If the output type is Q16, allows onlt the same
+  // output type is not QI16. If the output type is Q16, allows only the same
   // shape operands.
   if (IsQI8Type(element_type) || IsQUI8Type(element_type)) {
     if (IsQI16Type(getElementTypeOrSelf(op.lhs().getType()))) {
@@ -211,20 +203,13 @@ bool VerifyMulOpShapeConstraints(MulOp op) {
     }
     return VerifyOperandsHaveSameShapesOrBroadcastableShape(
         /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
-        /*max_bcast_rank=*/5);
+        /*max_bcast_rank=*/4);
   }
 
-  // Allows F32 output when the operands have valid shapes, which are
-  // broadcastable shapes up to five dimension or have same shapes.
-  if (element_type.isF32()) {
-    return VerifyOperandsHaveSameShapesOrBroadcastableShape(
-        /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
-        /*max_bcast_rank=*/5);
-  }
-
-  // Allows I32 and QI16 outputs when the operands have valid shapes, which are
-  // broadcastable shapes up to four dimension or have same shapes.
-  if (IsI32Type(element_type) || IsQI16Type(element_type)) {
+  // Allows I32, QI16 and F32 outputs when the operands have valid shapes, which
+  // are broadcastable shapes up to four dimension or have same shapes.
+  if (IsI32Type(element_type) || IsQI16Type(element_type) ||
+      element_type.isF32()) {
     return VerifyOperandsHaveSameShapesOrBroadcastableShape(
         /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
         /*max_bcast_rank=*/4);
@@ -872,9 +857,9 @@ static void BuildGatherOp(OpBuilder *builder, OperationState &result,
     axis_i += params_rank;
   }
 
-  // params must be atleast rank axis + 1
+  // params must be at least rank axis + 1
   if (params_rank < axis_i + 1) {
-    emitError(result.location, "params must be atleast rank axis + 1");
+    emitError(result.location, "params must be at least rank axis + 1");
   }
 
   if (indices_rank == 0) {
@@ -1337,7 +1322,7 @@ TFL::ConstOp NarrowDownInt64InputValuesForOp(Operation *input_op,
   return builder->create<TFL::ConstOp>(loc, new_value_i32_attr);
 }
 
-// This will cast donw int64 values for TFL slice op.
+// This will cast down int64 values for TFL slice op.
 // This will require the begin & size are constants.
 struct CastDonwInt64BeginEndToInt32 : public OpRewritePattern<TFL::SliceOp> {
   using OpRewritePattern<TFL::SliceOp>::OpRewritePattern;
@@ -1497,7 +1482,7 @@ LogicalResult UnpackOp::inferReturnTypes(
 
   if (input_type.hasStaticShape() && input_type.getNumElements() <= 0) {
     return emitOptionalError(
-        loc, "number of elements in input shoule be larger than 0");
+        loc, "number of elements in input should be larger than 0");
   }
 
   const int64_t rank = input_type.getRank();
@@ -1985,6 +1970,43 @@ OpFoldResult ConstOp::fold(ArrayRef<Attribute> operands) {
 
   // Return the held attribute value.
   return value();
+}
+
+//===----------------------------------------------------------------------===//
+// CastOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult CastOp::fold(ArrayRef<Attribute> operands) {
+  assert(operands.size() == 1);
+  // For now, only supports cast between integer types.
+  auto elements_attr = operands[0].dyn_cast_or_null<DenseIntElementsAttr>();
+  if (!elements_attr) {
+    return nullptr;
+  }
+
+  auto result_element_type =
+      getType().cast<ShapedType>().getElementType().dyn_cast<IntegerType>();
+  auto operand_element_type = input()
+                                  .getType()
+                                  .cast<ShapedType>()
+                                  .getElementType()
+                                  .dyn_cast<IntegerType>();
+  // Returns nullptr if either result/operand element type is not integer.
+  if (!result_element_type || !operand_element_type) {
+    return nullptr;
+  }
+
+  const bool is_input_unsigned = operand_element_type.isUnsigned();
+  const int output_bitwidth = result_element_type.getWidth();
+  // The integer cast op is the same as C integer cast. Depends on the operand
+  // type's signedness, we will determine whether or not sign extension is
+  // needed.
+  auto cast = [&](APInt value) {
+    return is_input_unsigned ? value.zextOrTrunc(output_bitwidth)
+                             : value.sextOrTrunc(output_bitwidth);
+  };
+
+  return elements_attr.mapValues(result_element_type, cast);
 }
 
 //===----------------------------------------------------------------------===//

@@ -139,6 +139,30 @@ struct RemoveVolatileOps : public OpRewritePattern<DequantizeOp> {
   }
 };
 
+// Removes LSTMs that have dangling output.
+// LSTMs are not removed automatically becuase they are stateful ops.
+template <typename LstmOpTy>
+struct PruneUnusedLstm : public OpRewritePattern<LstmOpTy> {
+ public:
+  explicit PruneUnusedLstm(MLIRContext* context)
+      : OpRewritePattern<LstmOpTy>(context) {}
+
+  LogicalResult matchAndRewrite(LstmOpTy lstm_op,
+                                PatternRewriter& rewriter) const override {
+    Operation* op = lstm_op.getOperation();
+    if (op->isKnownTerminator()) {
+      return failure();
+    }
+    for (auto result : op->getOpResults()) {
+      if (!result.use_empty()) {
+        return failure();
+      }
+    }
+    rewriter.eraseOp(op);
+    return success();
+  }
+};
+
 #include "tensorflow/compiler/mlir/lite/transforms/generated_post_quantize.inc"
 
 void PostQuantizePass::runOnFunction() {
@@ -147,6 +171,7 @@ void PostQuantizePass::runOnFunction() {
   auto* ctx = func.getContext();
   TFL::populateWithGenerated(ctx, patterns);
   patterns.insert<quant::FoldTrivalRequantizeOp<QuantizeOp>>(ctx);
+  patterns.insert<PruneUnusedLstm<TFL::UnidirectionalSequenceLSTMOp>>(ctx);
   applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   if (!emit_quant_adaptor_ops_) {

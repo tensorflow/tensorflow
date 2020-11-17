@@ -71,7 +71,7 @@ std::string GenerateDepthwiseConvolutionCode(
     const OperationDef& op_def, bool stride_correction, int channel_multiplier,
     bool weights_are_buffer, bool dynamic_weights, GPUOperation* op) {
   auto src_desc = op_def.src_tensors[0];
-  src_desc.SetTextureAddressMode(TextureAddressMode::ZERO);
+  src_desc.SetAddressMode(AddressMode::kZero);
   if (op_def.IsBatchSupported()) {
     src_desc.SetStateVar("BatchedWidth", "true");
   }
@@ -235,9 +235,9 @@ std::string GenerateDepthwiseConvolutionCode(
 }  // namespace
 
 GPUOperation CreateDepthwiseConvolution2D(
-    const DeviceInfo& device_info, const OperationDef& definition,
+    const GpuInfo& gpu_info, const OperationDef& definition,
     const DepthwiseConvolution2DAttributes& attr) {
-  bool weights_are_buffer = device_info.IsMali();
+  bool weights_are_buffer = gpu_info.IsMali();
   GPUOperation op(definition);
   op.args_.AddInt("kernel_size_x", attr.weights.shape.w);
   op.args_.AddInt("stride_x", attr.strides.w);
@@ -270,7 +270,7 @@ GPUOperation CreateDepthwiseConvolution2D(
 }
 
 GPUOperation CreateDepthwiseConvolution2DDynamicWeights(
-    const DeviceInfo& device_info, const OperationDef& definition,
+    const GpuInfo& gpu_info, const OperationDef& definition,
     const DepthwiseConvolution2DAttributes& attr) {
   GPUOperation op(definition);
   op.args_.AddInt("stride_x", attr.strides.w);
@@ -286,8 +286,8 @@ GPUOperation CreateDepthwiseConvolution2DDynamicWeights(
   op.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_SToZ;
 
   TensorLinearDescriptor desc;
-  desc.storage_type = device_info.IsMali() ? LinearStorageType::BUFFER
-                                           : LinearStorageType::TEXTURE_2D;
+  desc.storage_type = gpu_info.IsMali() ? LinearStorageType::BUFFER
+                                        : LinearStorageType::TEXTURE_2D;
   desc.element_type = definition.GetDataType();
   desc.UploadLinearData(attr.bias);
   op.args_.AddObject(
@@ -296,9 +296,9 @@ GPUOperation CreateDepthwiseConvolution2DDynamicWeights(
 }
 
 GPUOperation CreateDepthwiseConvolution3D(
-    const DeviceInfo& device_info, const OperationDef& definition,
+    const GpuInfo& gpu_info, const OperationDef& definition,
     const DepthwiseConvolution3DAttributes& attr) {
-  bool weights_are_buffer = device_info.IsMali();
+  bool weights_are_buffer = gpu_info.IsMali();
   GPUOperation op(definition);
   op.args_.AddInt("kernel_size_x", attr.weights.shape.w);
   op.args_.AddInt("stride_x", attr.strides.w);

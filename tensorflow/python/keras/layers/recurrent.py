@@ -19,7 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections.abc as collections_abc
+import collections
 import warnings
 
 import numpy as np
@@ -47,7 +47,6 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.util import nest
-from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 
@@ -839,7 +838,7 @@ class RNN(Layer):
     # input shape: `(samples, time (padded with zeros), input_dim)`
     # note that the .build() method of subclasses MUST define
     # self.input_spec and self.state_spec with complete input shapes.
-    if (isinstance(inputs, collections_abc.Sequence)
+    if (isinstance(inputs, collections.abc.Sequence)
         and not isinstance(inputs, tuple)):
       # get initial_state from full input spec
       # as they could be copied to multiple GPU.

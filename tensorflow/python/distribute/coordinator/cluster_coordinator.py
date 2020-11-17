@@ -1001,7 +1001,7 @@ class ClusterCoordinator(object):
     This method is non-blocking in that it queues the `fn` which will be
     executed later and returns a
     `tf.distribute.experimental.coordinator.RemoteValue` object immediately.
-    `fetch` can be called on the it to wait for the function execution to finish
+    `fetch` can be called on it to wait for the function execution to finish
     and retrieve its output from a remote worker. On the other hand, call
     `tf.distribute.experimental.coordinator.ClusterCoordinator.join` to wait for
     all scheduled functions to finish.
@@ -1039,7 +1039,8 @@ class ClusterCoordinator(object):
 
     Args:
       fn: A `tf.function`; the function to be dispatched to a worker for
-        execution asynchronously.
+        execution asynchronously. Regular python funtion is not supported to be
+        scheduled.
       args: Positional arguments for `fn`.
       kwargs: Keyword arguments for `fn`.
 
@@ -1052,6 +1053,11 @@ class ClusterCoordinator(object):
         previously scheduled function, since the last time an error was thrown
         or since the beginning of the program.
     """
+    if not isinstance(fn,
+                      (def_function.Function, tf_function.ConcreteFunction)):
+      raise TypeError(
+          "`tf.distribute.experimental.coordinator.ClusterCoordinator.schedule`"
+          " only accepts a `tf.function` or a concrete function.")
     # Slot variables are usually created during function tracing time; thus
     # `schedule` needs to be called within the `strategy.scope()`.
     with self.strategy.scope():

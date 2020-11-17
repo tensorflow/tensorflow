@@ -137,40 +137,45 @@ std::vector<IdealByType>* kIdealByTypeAdreno418Ptr = kIdealByTypeAdreno508Ptr;
 std::vector<IdealByType>* kIdealByTypeAdreno405Ptr = kIdealByTypeAdreno508Ptr;
 
 // Put all ideal workgroups from the list together.
-const std::map<GpuModel, IdealWorkgroups>* kIdealWorkgroupsInfoPtr =
-    new std::map<GpuModel, IdealWorkgroups>{
-        {GpuModel::ADRENO630,
+const std::map<AdrenoGpu, IdealWorkgroups>* kIdealAdrenoWorkgroupsInfoPtr =
+    new std::map<AdrenoGpu, IdealWorkgroups>{
+        {AdrenoGpu::kAdreno630,
          {*kIdealByTypeAdreno630Ptr, *kIdealByCaseAdreno630Ptr}},
-        {GpuModel::ADRENO540, {*kIdealByTypeAdreno540Ptr, {}}},
-        {GpuModel::ADRENO510,
+        {AdrenoGpu::kAdreno540, {*kIdealByTypeAdreno540Ptr, {}}},
+        {AdrenoGpu::kAdreno510,
          {*kIdealByTypeAdreno510Ptr, *kIdealByCaseAdreno510Ptr}},
-        {GpuModel::ADRENO509, {*kIdealByTypeAdreno509Ptr, {}}},
-        {GpuModel::ADRENO508, {*kIdealByTypeAdreno508Ptr, {}}},
-        {GpuModel::ADRENO506, {*kIdealByTypeAdreno506Ptr, {}}},
-        {GpuModel::ADRENO505, {*kIdealByTypeAdreno505Ptr, {}}},
-        {GpuModel::ADRENO418, {*kIdealByTypeAdreno418Ptr, {}}},
-        {GpuModel::ADRENO405, {*kIdealByTypeAdreno405Ptr, {}}},
+        {AdrenoGpu::kAdreno509, {*kIdealByTypeAdreno509Ptr, {}}},
+        {AdrenoGpu::kAdreno508, {*kIdealByTypeAdreno508Ptr, {}}},
+        {AdrenoGpu::kAdreno506, {*kIdealByTypeAdreno506Ptr, {}}},
+        {AdrenoGpu::kAdreno505, {*kIdealByTypeAdreno505Ptr, {}}},
+        {AdrenoGpu::kAdreno418, {*kIdealByTypeAdreno418Ptr, {}}},
+        {AdrenoGpu::kAdreno405, {*kIdealByTypeAdreno405Ptr, {}}},
     };
 
 }  // namespace
 
-uint3 GetIdealWorkgroupIfPossible(GpuModel gpu_model, OperationType op_type,
-                                  HW kernel, HW strides, uint3 default_wg,
-                                  OHWI workload) {
+uint3 GetIdealWorkgroupIfPossible(const GpuInfo& gpu_info,
+                                  OperationType op_type, HW kernel, HW strides,
+                                  uint3 default_wg, OHWI workload) {
   // Research showed that ideal workgroup approach doesn't work well with
   // convolutions, which have small amount of output channels or output
   // height/width dimensions
   if (workload.o < 32 || workload.h <= 5 || workload.w <= 5) return default_wg;
 
+  if (!gpu_info.IsAdreno()) {
+    return default_wg;
+  }
+  auto adreno_gpu_version = gpu_info.adreno_info.adreno_gpu;
+
   // If GPU was investigated
-  if (!kIdealWorkgroupsInfoPtr->count(gpu_model)) {
+  if (!kIdealAdrenoWorkgroupsInfoPtr->count(adreno_gpu_version)) {
     return default_wg;
   }
 
   // Try to find the ideal workgroup by the specific operation case, cause they
   // are expected to be better tuned than default "by type" cases
   for (const auto& specific_case :
-       kIdealWorkgroupsInfoPtr->at(gpu_model).by_case) {
+       kIdealAdrenoWorkgroupsInfoPtr->at(adreno_gpu_version).by_case) {
     if (specific_case.ParamsAccepted(op_type, kernel, strides)) {
       return specific_case.ideal_workgroup;
     }
@@ -178,7 +183,7 @@ uint3 GetIdealWorkgroupIfPossible(GpuModel gpu_model, OperationType op_type,
 
   // Try to find the ideal workgroup by the operation type
   for (const auto& default_case :
-       kIdealWorkgroupsInfoPtr->at(gpu_model).by_type) {
+       kIdealAdrenoWorkgroupsInfoPtr->at(adreno_gpu_version).by_type) {
     if (default_case.ParamsAccepted(op_type)) {
       return default_case.ideal_workgroup;
     }
@@ -189,9 +194,10 @@ uint3 GetIdealWorkgroupIfPossible(GpuModel gpu_model, OperationType op_type,
   return default_wg;
 }
 
-uint3 GetIdealWorkgroupIfPossible(GpuModel gpu_model, OperationType op_type,
-                                  HW kernel, HW strides, OHWI workload) {
-  return GetIdealWorkgroupIfPossible(gpu_model, op_type, kernel, strides,
+uint3 GetIdealWorkgroupIfPossible(const GpuInfo& gpu_info,
+                                  OperationType op_type, HW kernel, HW strides,
+                                  OHWI workload) {
+  return GetIdealWorkgroupIfPossible(gpu_info, op_type, kernel, strides,
                                      kEmptyWorkgroupSize, workload);
 }
 

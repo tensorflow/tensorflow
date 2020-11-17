@@ -111,14 +111,14 @@ module attributes {tf_saved_model.semantics} {
     return %val : tensor<f32>
   }
 
-  // CHECK: func @f_callee(%arg0: tensor<*x!tf.resource>) -> tensor<f32>
-  func @f_callee(%arg0: tensor<*x!tf.resource>) -> tensor<f32> attributes {sym_visibility = "private"} {
+  // CHECK: func private @f_callee(%arg0: tensor<*x!tf.resource>) -> tensor<f32>
+  func private @f_callee(%arg0: tensor<*x!tf.resource>) -> tensor<f32> {
     %val = "tf.PartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @f_callee_callee} : (tensor<*x!tf.resource>) -> (tensor<f32>)
     return %val : tensor<f32>
   }
 
-  // CHECK: func @f_callee_callee(%arg0: tensor<*x!tf.resource>) -> tensor<f32>
-  func @f_callee_callee(%arg0: tensor<*x!tf.resource>) -> tensor<f32> attributes {sym_visibility = "private"} {
+  // CHECK: func private @f_callee_callee(%arg0: tensor<*x!tf.resource>) -> tensor<f32>
+  func private @f_callee_callee(%arg0: tensor<*x!tf.resource>) -> tensor<f32> {
     %c0 = "tf.Const"() { value = dense<1.0> : tensor<f32> } : () -> tensor<f32>
     "tf.AssignVariableOp"(%arg0, %c0) : (tensor<*x!tf.resource>, tensor<f32>) -> ()
     return %c0 : tensor<f32>
@@ -145,14 +145,14 @@ module attributes {tf_saved_model.semantics} {
     return %val : tensor<f32>
   }
 
-  // CHECK: func @f_callee(%arg0: tensor<*x!tf.resource>) -> tensor<f32>
-  func @f_callee(%arg0: tensor<*x!tf.resource>) -> tensor<f32> attributes {sym_visibility = "private"} {
+  // CHECK: func private @f_callee(%arg0: tensor<*x!tf.resource>) -> tensor<f32>
+  func private @f_callee(%arg0: tensor<*x!tf.resource>) -> tensor<f32> {
     %val = "tf.PartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @f_callee_callee} : (tensor<*x!tf.resource>) -> (tensor<f32>)
     return %val : tensor<f32>
   }
 
-  // CHECK: func @f_callee_callee(%arg0: tensor<*x!tf.resource>) -> tensor<f32>
-  func @f_callee_callee(%arg0: tensor<*x!tf.resource>) -> tensor<f32> attributes {sym_visibility = "private"} {
+  // CHECK: func private @f_callee_callee(%arg0: tensor<*x!tf.resource>) -> tensor<f32>
+  func private @f_callee_callee(%arg0: tensor<*x!tf.resource>) -> tensor<f32> {
     %c0 = "tf.Const"() { value = dense<1.0> : tensor<f32> } : () -> tensor<f32>
     "tf.AssignVariableOp"(%arg0, %c0) : (tensor<*x!tf.resource>, tensor<f32>) -> ()
     return %c0 : tensor<f32>
@@ -178,14 +178,14 @@ module attributes {tf_saved_model.semantics} {
   }
 
 
-  // CHECK: func @f(%arg0: tensor<*x!tf.resource>) -> tensor<f32>
-  func @f(%arg0: tensor<*x!tf.resource>) -> tensor<f32> attributes {sym_visibility = "private"} {
+  // CHECK: func private @f(%arg0: tensor<*x!tf.resource>) -> tensor<f32>
+  func private @f(%arg0: tensor<*x!tf.resource>) -> tensor<f32> {
     %val = "tf.PartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @g} : (tensor<*x!tf.resource>) -> (tensor<f32>)
     return %val : tensor<f32>
   }
 
-  // CHECK: func @g(%arg0: tensor<*x!tf.resource>) -> tensor<f32>
-  func @g(%arg0: tensor<*x!tf.resource>) -> tensor<f32> attributes {sym_visibility = "private"} {
+  // CHECK: func private @g(%arg0: tensor<*x!tf.resource>) -> tensor<f32>
+  func private @g(%arg0: tensor<*x!tf.resource>) -> tensor<f32> {
     %val = "tf.PartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @f} : (tensor<*x!tf.resource>) -> (tensor<f32>)
     return %val : tensor<f32>
   }
@@ -211,8 +211,8 @@ module attributes {tf_saved_model.semantics} {
   }
 
 
-  // CHECK: func @f(%arg0: tensor<*x!tf.resource>) -> tensor<f32>
-  func @f(%arg0: tensor<*x!tf.resource>) -> tensor<f32> attributes {sym_visibility = "private"} {
+  // CHECK: func private @f(%arg0: tensor<*x!tf.resource>) -> tensor<f32>
+  func private @f(%arg0: tensor<*x!tf.resource>) -> tensor<f32> {
     %c0 = "tf.Const"() { value = dense<1.0> : tensor<f32> } : () -> tensor<f32>
     "tf.AssignAddVariableOp"(%arg0, %c0) : (tensor<*x!tf.resource>, tensor<f32>) -> ()
     return %c0 : tensor<f32>

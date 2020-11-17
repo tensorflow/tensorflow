@@ -399,6 +399,27 @@ void BatchToSpaceOp::getCanonicalizationPatterns(
 }
 
 //===----------------------------------------------------------------------===//
+// BatchToSpaceNDOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(BatchToSpaceNDOp op) {
+  auto block_shape_ty = op.block_shape().getType().cast<ShapedType>();
+  auto crops_ty = op.crops().getType().cast<ShapedType>();
+
+  if (block_shape_ty.hasStaticShape() && crops_ty.hasStaticShape()) {
+    const int block_rank = block_shape_ty.getShape().front();
+    if (crops_ty.getRank() != 2 || crops_ty.getShape().front() != block_rank ||
+        crops_ty.getShape()[1] != 2) {
+      op.emitOpError() << "crops should have shape [" << block_rank
+                       << ", 2] instead of " << crops_ty.getShape();
+      return failure();
+    }
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // BiasAddOp
 //===----------------------------------------------------------------------===//
 

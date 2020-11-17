@@ -2032,7 +2032,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                 evaluate_impl(output_index);
             for (int i = 0; i < computed_result_vec.size(); ++i) {
               TF_RETURN_IF_ERROR(results[i].CopyElementFrom(
-                  computed_result_vec[i], {0}, output_index));
+                  computed_result_vec[i], {}, output_index));
             }
             return true;
           }));

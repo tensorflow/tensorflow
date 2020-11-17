@@ -275,7 +275,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   ```
 
   For more information about creating layers, see the guide
-  [Writing custom layers and models with Keras](
+  [Making new Layers and Models via subclassing](
     https://www.tensorflow.org/guide/keras/custom_layers_and_models)
   """
 
@@ -2080,7 +2080,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         node_index: Integer, index of the node
             from which to retrieve the attribute.
             E.g. `node_index=0` will correspond to the
-            first time the layer was called.
+            first input node of the layer.
 
     Returns:
         A tensor (or list of tensors if the layer has multiple inputs).
@@ -2099,7 +2099,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         node_index: Integer, index of the node
             from which to retrieve the attribute.
             E.g. `node_index=0` will correspond to the
-            first time the layer was called.
+            first output node of the layer.
 
     Returns:
         A tensor (or list of tensors if the layer has multiple outputs).

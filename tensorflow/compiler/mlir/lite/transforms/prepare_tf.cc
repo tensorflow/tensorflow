@@ -64,6 +64,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/einsum.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/unroll_batch_matmul.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/verification_utils.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 
 #define DEBUG_TYPE "tf-tfl-legalization"
@@ -82,8 +83,10 @@ class PrepareTFPass : public PassWrapper<PrepareTFPass, FunctionPass> {
  public:
   PrepareTFPass() = default;
   PrepareTFPass(const PrepareTFPass &) {}
-  explicit PrepareTFPass(bool unfold_batch_matmul) {
+  explicit PrepareTFPass(bool unfold_batch_matmul,
+                         bool allow_bf16_type_legalization) {
     unfold_batch_matmul_ = unfold_batch_matmul;
+    allow_bf16_type_legalization_ = allow_bf16_type_legalization;
   }
   void runOnFunction() override;
 
@@ -97,6 +100,10 @@ class PrepareTFPass : public PassWrapper<PrepareTFPass, FunctionPass> {
       *this, "tfl-unfold-batch-matmul",
       llvm::cl::desc("Unfold BatchMatMul into individual MatMul ops."),
       llvm::cl::init(true)};
+
+  Option<bool> allow_bf16_type_legalization_{
+      *this, "tfl-allow-bf16-type-legalization",
+      llvm::cl::desc("Allow bf16 type legalization."), llvm::cl::init(false)};
 };
 
 template <class TFFakeQuantOp>
@@ -258,6 +265,15 @@ using PreparePerTensorFakeQuantWithMinMaxArgs =
         TF::FakeQuantWithMinMaxArgsOp, /*PerAxis=*/false,
         FetchMinMaxAttrs<TF::FakeQuantWithMinMaxArgsOp>>;
 
+// Transient state for preserving data from match to rewrite
+struct ConvertTFConvOpMatchState {
+  IntegerAttr dilation_height_factor;
+  IntegerAttr dilation_width_factor;
+  StringAttr padding;
+  IntegerAttr stride_height;
+  IntegerAttr stride_width;
+};
+
 // Templated class for declaring a converter from some TensorFlow convolution
 // op into its counterpart in TensorFlow Lite.
 //
@@ -273,19 +289,12 @@ using PreparePerTensorFakeQuantWithMinMaxArgs =
 //
 //  int64_t getBiasDim(ArrayRef<int64_t> filterShape) const;
 template <typename ConcreteType, typename TFConvOpType>
-struct ConvertTFConvOp : public RewritePattern {
-  // Transient state for preserving data from match to rewrite
-  struct ConvertTFConvOpMatchState {
-    IntegerAttr dilation_height_factor;
-    IntegerAttr dilation_width_factor;
-    StringAttr padding;
-    IntegerAttr stride_height;
-    IntegerAttr stride_width;
-  };
-
-  ConvertTFConvOp(MLIRContext *context)
+class ConvertTFConvOp : public RewritePattern {
+ public:
+  ConvertTFConvOp(MLIRContext *context, bool allow_bf16_type_legalization)
       : RewritePattern(TFConvOpType::getOperationName(), 1, context),
-        intAttrOne(Builder(context).getI32IntegerAttr(1)) {}
+        intAttrOne(Builder(context).getI32IntegerAttr(1)),
+        allow_bf16_type_legalization_(allow_bf16_type_legalization) {}
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
@@ -301,8 +310,12 @@ struct ConvertTFConvOp : public RewritePattern {
 
     TFConvOpType tf_op = cast<TFConvOpType>(op);
 
-    if (!TFTypeIsFloatTensor(tf_op.input()) || !TFDataFormatIsNHWC(op))
+    if (!TFTypeIsFloat32Tensor(tf_op.input()) &&
+        !(allow_bf16_type_legalization_ &&
+          TFTypeIsBFloat16Tensor(tf_op.input())))
       return failure();
+
+    if (!TFDataFormatIsNHWC(op)) return failure();
 
     IntegerAttr height, width;
     if (!TFIntListIs1XY1(op, "strides", &height, &width)) return failure();
@@ -359,13 +372,17 @@ struct ConvertTFConvOp : public RewritePattern {
   }
 
   const IntegerAttr intAttrOne;
+
+ private:
+  bool allow_bf16_type_legalization_;
 };
 
 class ConvertTFConv2D : public ConvertTFConvOp<ConvertTFConv2D, TF::Conv2DOp> {
  public:
   using BaseType = ConvertTFConvOp<ConvertTFConv2D, TF::Conv2DOp>;
 
-  ConvertTFConv2D(MLIRContext *context) : BaseType(context) {}
+  ConvertTFConv2D(MLIRContext *context, bool allow_bf16_type_legalization)
+      : BaseType(context, allow_bf16_type_legalization) {}
 
   int64_t getBiasDim(ArrayRef<int64_t> filterShape) const {
     return filterShape.back();
@@ -421,7 +438,9 @@ class ConvertTFDepthwiseConv2dNative
   using BaseType = ConvertTFConvOp<ConvertTFDepthwiseConv2dNative,
                                    TF::DepthwiseConv2dNativeOp>;
 
-  ConvertTFDepthwiseConv2dNative(MLIRContext *context) : BaseType(context) {}
+  ConvertTFDepthwiseConv2dNative(MLIRContext *context,
+                                 bool allow_bf16_type_legalization)
+      : BaseType(context, allow_bf16_type_legalization) {}
 
   int64_t getBiasDim(ArrayRef<int64_t> filterShape) const {
     return filterShape[2] * filterShape[3];
@@ -522,6 +541,8 @@ struct ConvertTFStridedSlice : public RewritePattern {
       new_axis_mask >>= 1;
     }
 
+    if (failed(TF::VerifyShapeOfReshapeOp(new_shape))) return failure();
+
     const int dim_size = new_shape.size();
     Location loc = strided_slice_op.getLoc();
     auto shape_type =
@@ -531,6 +552,7 @@ struct ConvertTFStridedSlice : public RewritePattern {
       result_shape_data[i] =
           rewriter.getI32IntegerAttr(static_cast<int32_t>(new_shape[i]));
     }
+
     auto shape_attr = DenseElementsAttr::get(shape_type, result_shape_data);
     auto shape = rewriter.create<ConstantOp>(loc, shape_type, shape_attr);
     auto new_output_type =
@@ -563,6 +585,11 @@ struct ConvertTFStridedSlice : public RewritePattern {
   LogicalResult RewriteEllipsisMask(Operation *op, uint64_t ellipsis_mask,
                                     PatternRewriter &rewriter) const {
     TF::StridedSliceOp strided_slice_op = llvm::cast<TF::StridedSliceOp>(op);
+
+    uint64_t shrink_axis_mask = strided_slice_op.shrink_axis_mask();
+
+    // Enforce operator precedence.
+    shrink_axis_mask &= ~ellipsis_mask;
 
     DenseIntElementsAttr begin_dense_elem_attr;
     Value begin = strided_slice_op.begin();
@@ -607,6 +634,7 @@ struct ConvertTFStridedSlice : public RewritePattern {
     int64_t end_mask = strided_slice_op.end_mask();
     int64_t new_begin_mask = 0;
     int64_t new_end_mask = 0;
+    int64_t revised_shrink_axis_mask = 0;
 
     SmallVector<int32_t, 4> padded_begin;
     SmallVector<int32_t, 4> padded_end;
@@ -621,6 +649,8 @@ struct ConvertTFStridedSlice : public RewritePattern {
       padded_stride.push_back(stride_dense_elem_attr.getValue<int32_t>(index));
       if ((begin_mask >> index) & 1) new_begin_mask |= (1 << new_index);
       if ((end_mask >> index) & 1) new_end_mask |= (1 << new_index);
+      if ((shrink_axis_mask >> index) & 1)
+        revised_shrink_axis_mask |= (1 << new_index);
       ++index;
       ++new_index;
     }
@@ -647,6 +677,8 @@ struct ConvertTFStridedSlice : public RewritePattern {
 
       if ((begin_mask >> index) & 1) new_begin_mask |= (1 << new_index);
       if ((end_mask >> index) & 1) new_end_mask |= (1 << new_index);
+      if ((shrink_axis_mask >> index) & 1)
+        revised_shrink_axis_mask |= (1 << new_index);
 
       ++index;
       ++new_index;
@@ -674,8 +706,7 @@ struct ConvertTFStridedSlice : public RewritePattern {
         /*ellipsis_maks=*/rewriter.getI64IntegerAttr(0),
         rewriter.getIntegerAttr(attribute_type,
                                 strided_slice_op.new_axis_mask()),
-        rewriter.getIntegerAttr(attribute_type,
-                                strided_slice_op.shrink_axis_mask()));
+        rewriter.getIntegerAttr(attribute_type, revised_shrink_axis_mask));
     return success();
   }
 
@@ -683,13 +714,13 @@ struct ConvertTFStridedSlice : public RewritePattern {
                                 PatternRewriter &rewriter) const override {
     TF::StridedSliceOp strided_slice_op = llvm::cast<TF::StridedSliceOp>(op);
 
-    // TODO(renjieliu): Consider expand the transformation for shrink mask as
-    // well.
-    if (strided_slice_op.shrink_axis_mask()) return failure();
-
     // Handle new axis mask.
     uint64_t new_axis_mask = strided_slice_op.new_axis_mask();
     if (new_axis_mask != 0) {
+      // We currently don't handle simultaneous shrink_ and new_axis masks.
+      if (strided_slice_op.shrink_axis_mask()) {
+        return failure();
+      }
       return RewriteNewAxisMask(strided_slice_op, new_axis_mask, rewriter);
     }
 
@@ -716,9 +747,9 @@ struct ConvertTFBroadcastTo : public RewritePattern {
 
     // Allow lowering when low dimension inputs are given and its type is F32 or
     // I32.
-    if (!((output_type.hasRank() && output_type.getRank() <= 5) ||
+    if (!((output_type.hasRank() && output_type.getRank() <= 4) ||
           (shape_type.hasStaticShape() && shape_type.getRank() == 1 &&
-           shape_type.getDimSize(0) <= 5)))
+           shape_type.getDimSize(0) <= 4)))
       return failure();
 
     if (!(element_type.isa<BFloat16Type, Float32Type>() ||
@@ -815,6 +846,9 @@ struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
     offset = fused_batch_norm_op.getODSOperands(2);
     mean = fused_batch_norm_op.getODSOperands(3);
     variance = fused_batch_norm_op.getODSOperands(4);
+
+    if (!TFTypeIsFloat32Tensor(fused_batch_norm_op.x())) return failure();
+
     {
       epsilon = fused_batch_norm_op.getAttrOfType<::mlir::FloatAttr>("epsilon");
       if (!epsilon)
@@ -1196,8 +1230,10 @@ void PrepareTFPass::runOnFunction() {
         ctx);
   }
   phase_2_patterns.insert<TF::ConvertTFEinsumOp, ConvertTFBroadcastTo,
-                          ConvertTFConv2D, ConvertTFDepthwiseConv2dNative,
                           ConvertTFStridedSlice, ConvertRfftToRfft2d>(ctx);
+  phase_2_patterns.insert<ConvertTFConv2D, ConvertTFDepthwiseConv2dNative>(
+      ctx, allow_bf16_type_legalization_);
+
   applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
 }
 
@@ -1205,8 +1241,9 @@ void PrepareTFPass::runOnFunction() {
 
 // Creates an instance of the TensorFlow Lite dialect PrepareTF pass.
 std::unique_ptr<OperationPass<FuncOp>> CreatePrepareTFPass(
-    bool unfold_batch_matmul) {
-  return std::make_unique<PrepareTFPass>(unfold_batch_matmul);
+    bool unfold_batch_matmul, bool allow_bf16_type_legalization) {
+  return std::make_unique<PrepareTFPass>(unfold_batch_matmul,
+                                         allow_bf16_type_legalization);
 }
 
 static PassRegistration<PrepareTFPass> pass(

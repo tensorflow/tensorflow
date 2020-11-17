@@ -833,6 +833,7 @@ cc_library(
         "transforms/bridge_pass.cc",
         "transforms/cluster_formation.cc",
         "transforms/cluster_outlining.cc",
+        "transforms/cluster_tf_ops_pass.cc",
         "transforms/collection_ops_util.cc",
         "transforms/contraction_fusion.cc",
         "transforms/decompose_resource_ops_pass.cc",
@@ -882,9 +883,11 @@ cc_library(
         "transforms/test_visitor_util.cc",
         "transforms/tf_data_optimization_pass.cc",
         "transforms/tf_device_assignment.cc",
+        "transforms/tf_device_replication_pass.cc",
         "transforms/tpu_cluster_cleanup_attributes.cc",
         "transforms/tpu_cluster_formation.cc",
         "transforms/tpu_colocate_composite_resource_ops.cc",
+        "transforms/tpu_compile_op_replication_pass.cc",
         "transforms/tpu_device_propagation.cc",
         "transforms/tpu_dynamic_layout_pass.cc",
         "transforms/tpu_dynamic_padding_mapper.cc",
@@ -940,6 +943,7 @@ cc_library(
         ":tpu_rewrite_device_util",
         ":translate_utils",
         ":unroll_batch_matmul_pass",
+        ":verification_utils",
         ":visitor_util",
         ":xla_sharding_util",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
@@ -1507,6 +1511,7 @@ cc_library(
         ":mangling_util",
         ":mlir_roundtrip_flags",
         "//tensorflow/cc/saved_model:bundle_v2",
+        "//tensorflow/cc/saved_model:reader",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_proto_parsing",
@@ -1521,7 +1526,6 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
-        "@llvm-project//mlir:Pass",
     ],
 )
 
@@ -2004,6 +2008,16 @@ cc_library(
         "@llvm-project//mlir:DerivedAttributeOpInterface",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "verification_utils",
+    srcs = ["utils/verification_utils.cc"],
+    hdrs = ["utils/verification_utils.h"],
+    deps = [
+        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
 )
