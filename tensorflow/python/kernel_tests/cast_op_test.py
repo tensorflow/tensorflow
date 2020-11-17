@@ -184,6 +184,22 @@ class CastOpTest(test.TestCase):
               *gradient_checker_v2.compute_gradient(cast, [x]))
           self.assertLess(err, 1e-3)
 
+  def testCastPrecision(self):
+    """
+    This tests that the precission returned by math_ops.cast
+    increases as you go from float16 to float32 to float64.
+    """
+    x = 1./3.
+    x_true = 0.3333333333333333
+    
+    x_tf16 = math_ops.cast(x, dtypes.float16)
+    x_tf32 = math_ops.cast(x, dtypes.float32)
+    x_tf64 = math_ops.cast(x, dtypes.float64)
+    
+    self.assertLess(math_ops.abs(x_true - x_tf16), 1e-4)
+    self.assertLess(math_ops.abs(x_true - x_tf32), 1e-8)
+    self.assertLess(math_ops.abs(x_true - x_tf64), 1e-16)
+
 
 class SparseTensorCastTest(test.TestCase):
 
