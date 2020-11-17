@@ -167,10 +167,10 @@ class LhloFuseLinalgPass
 
     // Fuse producers of tiled linalg ops.
     llvm::SmallDenseSet<Operation*> erase_set;
-    SmallVector<Operation*, 8> linalg_ops;
+    SmallVector<LinalgOp, 8> linalg_ops;
     func.walk([&](LinalgOp op) { linalg_ops.push_back(op); });
-    for (auto* op : llvm::reverse(linalg_ops)) {
-      for (unsigned id = 0, e = LinalgOp(op).getNumInputs(); id < e; ++id) {
+    for (LinalgOp op : llvm::reverse(linalg_ops)) {
+      for (unsigned id = 0, e = op.getNumInputs(); id < e; ++id) {
         linalg::Aliases aliases;
         linalg::LinalgDependenceGraph graph(aliases, linalg_ops);
         if (auto info = fuseProducerOfBuffer(b, op, id, graph)) {

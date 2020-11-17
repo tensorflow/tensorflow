@@ -3712,7 +3712,10 @@ gentbl(
     td_srcs = [
         ":OpBaseTdFiles",
         ":OmpCommonTdGen",
+        "include/mlir/Dialect/LLVMIR/LLVMOpBase.td",
         "include/mlir/Dialect/OpenMP/OmpCommon.td",
+        "include/mlir/Interfaces/ControlFlowInterfaces.td",
+        "include/mlir/Interfaces/SideEffectInterfaces.td",
     ],
 )
 
@@ -3729,8 +3732,11 @@ cc_library(
     ]),
     includes = ["include"],
     deps = [
+        ":ControlFlowInterfaces",
         ":IR",
+        ":LLVMDialect",
         ":OpenMPOpsIncGen",
+        ":SideEffectInterfaces",
         ":StandardOps",
         "@llvm-project//llvm:Support",
     ],
