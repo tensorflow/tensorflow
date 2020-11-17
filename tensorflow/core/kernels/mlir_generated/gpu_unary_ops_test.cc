@@ -362,6 +362,51 @@ TEST_F(GpuUnaryOpTest, LogHalf) {
       /*expect_equal=*/false);
 }
 
+/// Test `tf.Neg`.
+
+/// Reference implementation.
+template <typename T>
+T expected_neg(T x) {
+  if (x == 0) return 0;
+  return -x;
+}
+
+TEST_F(GpuUnaryOpTest, NegFloat) {
+  Run<float>(/*input_shape=*/{2, 7},
+             /*input=*/
+             {-18.0f, -9.0f, -1e-6f, -0.0f, 0.0f, 1e-6, 0.1f, 0.2f, 0.3f, 0.5f,
+              0.7f, 0.9f, 9.0f, 18.0f},
+             /*op_name=*/"Neg",
+             /*expected_callback=*/expected_neg,
+             /*expect_equal=*/true);
+}
+
+TEST_F(GpuUnaryOpTest, NegDouble) {
+  Run<double>(/*input_shape=*/{2, 7},
+              /*input=*/
+              {-18.0, -9.0, -1e-6, -0.0, 0.0, 1e-6, 0.1, 0.2, 0.3, 0.5, 0.7,
+               0.9, 9.0, 18.0},
+              /*op_name=*/"Neg",
+              /*expected_callback=*/expected_neg,
+              /*expect_equal=*/true);
+}
+
+TEST_F(GpuUnaryOpTest, NegHalf) {
+  Run<Eigen::half, float>(
+      /*input_shape=*/{2, 7},
+      /*input=*/
+      {static_cast<Eigen::half>(-18.0), static_cast<Eigen::half>(-9.0),
+       static_cast<Eigen::half>(-1e-6), static_cast<Eigen::half>(-0.0),
+       static_cast<Eigen::half>(0.0), static_cast<Eigen::half>(1e-6),
+       static_cast<Eigen::half>(0.1), static_cast<Eigen::half>(0.2),
+       static_cast<Eigen::half>(0.3), static_cast<Eigen::half>(0.5),
+       static_cast<Eigen::half>(0.7), static_cast<Eigen::half>(0.9),
+       static_cast<Eigen::half>(9.0), static_cast<Eigen::half>(18.0)},
+      /*op_name=*/"Neg",
+      /*expected_callback=*/expected_neg,
+      /*expect_equal=*/true);
+}
+
 /// Test `tf.Rsqrt`.
 
 /// Reference implementation.
