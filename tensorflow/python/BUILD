@@ -7281,6 +7281,7 @@ cuda_py_test(
     tags = [
         "grappler",
         "no_pip",  # tf_optimizer is not available in pip.
+        "no_windows",  # b/173520599
         "notap",  # TODO(b/135924227): Re-enable after fixing flakiness.
     ],
     # This test will not run on XLA because it primarily tests the TF Classic flow.
