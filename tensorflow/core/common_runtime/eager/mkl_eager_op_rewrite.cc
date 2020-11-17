@@ -93,17 +93,17 @@ MklEagerOpRewrite::MklEagerOpRewrite(string name, string file, string line)
   InsertMKLEagerOps({"AvgPool3DGrad", AlwaysRewrite, CreateGenericMklOp});
   InsertMKLEagerOps({"BatchMatMul", AlwaysRewrite, CreateGenericMklOp});
   InsertMKLEagerOps({"BatchMatMulV2", AlwaysRewrite, CreateGenericMklOp});
-  InsertMKLEagerOps({"Conv2D", RewriteConv2D, CreateGenericMklOp});
+  InsertMKLEagerOps({"Conv2D", AlwaysRewrite, CreateGenericMklOp});
   InsertMKLEagerOps(
       {"Conv2DBackpropFilter", RewriteConv2D, CreateGenericMklOp});
   InsertMKLEagerOps({"Conv2DBackpropInput", RewriteConv2D, CreateGenericMklOp});
-  InsertMKLEagerOps({"Conv3D", RewriteConv2D, CreateGenericMklOp});
+  InsertMKLEagerOps({"Conv3D", AlwaysRewrite, CreateGenericMklOp});
   InsertMKLEagerOps(
       {"Conv3DBackpropFilterV2", RewriteConv2D, CreateGenericMklOp});
   InsertMKLEagerOps(
       {"Conv3DBackpropInputV2", RewriteConv2D, CreateGenericMklOp});
   InsertMKLEagerOps(
-      {"DepthwiseConv2dNative", RewriteConv2D, CreateGenericMklOp});
+      {"DepthwiseConv2dNative", AlwaysRewrite, CreateGenericMklOp});
   InsertMKLEagerOps({"DepthwiseConv2dNativeBackpropFilter", RewriteConv2D,
                      CreateGenericMklOp});
   InsertMKLEagerOps({"DepthwiseConv2dNativeBackpropInput", RewriteConv2D,
