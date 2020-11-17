@@ -49,7 +49,6 @@ cc_library(
         "stream_executor.h",
         "stream_executor_internal.h",
     ],
-    visibility = ["//tensorflow/c:__subpackages__"],
     deps = [
         "//tensorflow/c:c_api_macros",
         "//tensorflow/c:tf_status",

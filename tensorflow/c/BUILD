@@ -548,7 +548,6 @@ tf_cuda_library(
             ":tf_tensor",
             "//tensorflow/core:framework",
             "//tensorflow/core:framework_lite",
-            "//tensorflow/c/experimental/stream_executor:stream_executor",
         ],
     }),
 )

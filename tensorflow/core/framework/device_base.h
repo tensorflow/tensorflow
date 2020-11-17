@@ -114,9 +114,6 @@ class DeviceContext : public core::RefCounted {
                              std::function<void()> func) {
     return errors::Internal("ThenExecute not supported by device");
   }
-
-  // check if device is a pluggable device
-  virtual bool IsPluggableDevice() { return false; }
 };
 
 class DeviceBase {

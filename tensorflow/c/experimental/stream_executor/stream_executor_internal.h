@@ -19,7 +19,6 @@ limitations under the License.
 #define TENSORFLOW_C_EXPERIMENTAL_STREAM_EXECUTOR_STREAM_EXECUTOR_INTERNAL_H_
 
 #include "tensorflow/c/experimental/stream_executor/stream_executor.h"
-#include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/stream_executor/executor_cache.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/platform.h"
@@ -37,13 +36,6 @@ port::Status InitStreamExecutorPlugin(void* dso_handle);
 // Allow registering a StreamExecutor plugin using a function (used for
 // testing).
 port::Status InitStreamExecutorPlugin(SEInitPluginFn init_fn);
-
-namespace {
-struct TFStatusDeleter {
-  void operator()(TF_Status* s) const { TF_DeleteStatus(s); }
-};
-using OwnedTFStatus = std::unique_ptr<TF_Status, TFStatusDeleter>;
-}  // namespace
 
 class CPlatform : public Platform {
  public:
@@ -89,112 +81,6 @@ class CPlatform : public Platform {
   const std::string name_;
   int plugin_id_value_;
   stream_executor::ExecutorCache executor_cache_;
-};
-
-class CStream : public internal::StreamInterface {
- public:
-  CStream(SP_Device* device, SP_StreamExecutor* stream_executor)
-      : device_(device),
-        stream_executor_(stream_executor),
-        stream_handle_(nullptr) {}
-  ~CStream() override { Destroy(); }
-
-  port::Status Create() {
-    OwnedTFStatus c_status(TF_NewStatus());
-    stream_executor_->create_stream(device_, &stream_handle_, c_status.get());
-    port::Status s = tensorflow::StatusFromTF_Status(c_status.get());
-    return s;
-  }
-
-  void Destroy() {
-    if (stream_handle_ != nullptr) {
-      stream_executor_->destroy_stream(device_, stream_handle_);
-      stream_handle_ = nullptr;
-    }
-  }
-
-  SP_Stream Handle() { return stream_handle_; }
-
- private:
-  SP_Device* device_;
-  SP_StreamExecutor* stream_executor_;
-  SP_Stream stream_handle_;
-};
-
-class CEvent : public internal::EventInterface {
- public:
-  CEvent(SP_Device* device, SP_StreamExecutor* stream_executor)
-      : device_(device),
-        stream_executor_(stream_executor),
-        event_handle_(nullptr) {}
-  ~CEvent() override { Destroy(); }
-
-  port::Status Create() {
-    OwnedTFStatus c_status(TF_NewStatus());
-    stream_executor_->create_event(device_, &event_handle_, c_status.get());
-    return tensorflow::StatusFromTF_Status(c_status.get());
-  }
-
-  port::Status Record(SP_Stream stream_handle) {
-    OwnedTFStatus c_status(TF_NewStatus());
-    stream_executor_->record_event(device_, stream_handle, event_handle_,
-                                   c_status.get());
-    return tensorflow::StatusFromTF_Status(c_status.get());
-  }
-
-  void Destroy() {
-    if (event_handle_ != nullptr) {
-      stream_executor_->destroy_event(device_, event_handle_);
-      event_handle_ = nullptr;
-    }
-  }
-
-  SP_Event Handle() { return event_handle_; }
-
- private:
-  SP_Device* device_;
-  SP_StreamExecutor* stream_executor_;
-  SP_Event event_handle_;
-};
-
-class CTimer : public internal::TimerInterface {
- public:
-  CTimer(SP_Device* device, SP_StreamExecutor* stream_executor,
-         SP_TimerFns* timer_fns)
-      : device_(device),
-        stream_executor_(stream_executor),
-        timer_handle_(nullptr),
-        timer_fns_(timer_fns) {}
-  ~CTimer() override { Destroy(); }
-
-  port::Status Create() {
-    OwnedTFStatus c_status(TF_NewStatus());
-    stream_executor_->create_timer(device_, &timer_handle_, c_status.get());
-    return tensorflow::StatusFromTF_Status(c_status.get());
-  }
-
-  void Destroy() {
-    if (timer_handle_ != nullptr) {
-      stream_executor_->destroy_timer(device_, timer_handle_);
-      timer_handle_ = nullptr;
-    }
-  }
-
-  SP_Timer Handle() { return timer_handle_; }
-
-  uint64 Microseconds() const override {
-    return timer_fns_->nanoseconds(timer_handle_) / 1000;
-  }
-
-  uint64 Nanoseconds() const override {
-    return timer_fns_->nanoseconds(timer_handle_);
-  }
-
- private:
-  SP_Device* device_;
-  SP_StreamExecutor* stream_executor_;
-  SP_Timer timer_handle_;
-  SP_TimerFns* timer_fns_;
 };
 
 }  // namespace stream_executor

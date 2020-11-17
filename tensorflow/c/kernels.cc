@@ -18,7 +18,6 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/c/c_api_internal.h"
-#include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
@@ -26,7 +25,6 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/stream_executor/stream.h"
 
 // This file forms the basis of a stable ABI for third-party kernel
 // implementations. It is crucial that changes to this file are made cautiously
@@ -168,22 +166,6 @@ void TF_RegisterKernelBuilder(const char* name, TF_KernelBuilder* builder,
       absl::make_unique<tensorflow::KernelBuilderFactory>(builder));
 
   TF_SetStatus(status, TF_OK, "");
-}
-
-// This function is only for pluggable device.
-// It will return nullptr in all other cases.
-// This function is experimental and subject to change.
-SP_Stream TF_GetStream(TF_OpKernelContext* ctx) {
-  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
-  if (cc_ctx->op_device_context() == nullptr) {  // CPU Device
-    return nullptr;
-  } else if (!cc_ctx->op_device_context()->IsPluggableDevice()) {
-    return nullptr;
-  } else {  // Is a PluggableDevice
-    auto c_stream = static_cast<stream_executor::CStream*>(
-        cc_ctx->op_device_context()->stream()->implementation());
-    return c_stream->Handle();
-  }
 }
 
 int TF_NumInputs(TF_OpKernelContext* ctx) {

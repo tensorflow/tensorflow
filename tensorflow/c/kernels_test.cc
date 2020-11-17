@@ -27,6 +27,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/inlined_vector.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
@@ -51,7 +52,6 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 struct MyCustomKernel {
   bool created;
@@ -377,20 +377,6 @@ void validate_tensor(TF_Tensor* tensor, int64_t* dims, int64_t num_dims,
 template <typename T>
 void set_tensor_data(TF_Tensor* tensor, T* values, size_t tensor_size_bytes,
                      TF_OpKernelContext* ctx);
-
-REGISTER_OP("StreamOp").Output("output1: float");
-
-TEST_F(DeviceKernelOpTest, TestStream) {
-  auto my_compute_func = [](void* kernel, TF_OpKernelContext* ctx) {
-    SP_Stream stream = TF_GetStream(ctx);
-    // Stream is always null if device is not a pluggable device. More test
-    // cases will be added when pluggable device mechanism is supported.
-    EXPECT_EQ(stream, nullptr);
-  };
-
-  SetupOp("StreamOp", "StreamOp", my_compute_func);
-  TF_ASSERT_OK(RunOpKernel());
-}
 
 REGISTER_OP("AllocateOutputOp1").Output("output1: float");
 
