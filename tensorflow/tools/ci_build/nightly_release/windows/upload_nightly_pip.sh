@@ -21,6 +21,9 @@ source tensorflow/tools/ci_build/release/common.sh
 # Use a virtual environment to get access to the latest pips
 python3 -m venv venv && source venv/bin/activate
 
+# Install a more recent version of pip and setuptools as the VM's image is too old
+python -m pip install --upgrade pip setuptools
+
 # Install a more recent version of twine
 python -m pip install --upgrade 'twine >= 3.2.0'
 
