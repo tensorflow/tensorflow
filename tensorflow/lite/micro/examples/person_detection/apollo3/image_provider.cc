@@ -17,9 +17,13 @@ limitations under the License.
 #include "tensorflow/lite/micro/examples/person_detection/arduino/HM01B0_platform.h"
 #endif  // defined(ARDUINO)
 
-#if defined(ARDUINO) && !defined(ARDUINO_SFE_EDGE)
+#if defined(ARDUINO)
+#if defined(ARDUINO_SFE_EDGE)
+
+#else
 #define ARDUINO_EXCLUDE_CODE
-#endif  // defined(ARDUINO) && !defined(ARDUINO_SFE_EDGE)
+#endif  // defined(ARDUINO_SFE_EDGE)
+#endif  // defined(ARDUINO)
 
 #ifndef ARDUINO_EXCLUDE_CODE
 
@@ -34,7 +38,14 @@ limitations under the License.
 #include "am_bsp.h"         // NOLINT
 #include "am_mcu_apollo.h"  // NOLINT
 #include "am_util.h"        // NOLINT
+
+// include hm01b0 platform mapping
+#if defined(TFLU_APOLLO3_BOARD_apollo3evb)
+#error "no hm01b0 camera mapping provided for apollo3evb - please implement this file"
+#endif
+#if defined(TFLU_APOLLO3_BOARD_sparkfun_edge)
 #include "platform.h"       // TARGET specific implementation
+#endif
 
 // #define DEMO_HM01B0_FRAMEBUFFER_DUMP_ENABLE
 
@@ -155,6 +166,7 @@ TfLiteStatus InitCamera(tflite::ErrorReporter* error_reporter) {
 
   burst_mode_enable(error_reporter, true);
 
+#if defined(TFLU_APOLLO3_BOARD_sparkfun_edge)
   // Turn on the 1.8V regulator for DVDD on the camera.
   am_hal_gpio_pinconfig(AM_BSP_GPIO_CAMERA_HM01B0_DVDDEN,
                         g_AM_HAL_GPIO_OUTPUT_12);
@@ -163,6 +175,7 @@ TfLiteStatus InitCamera(tflite::ErrorReporter* error_reporter) {
   // Configure Red LED for debugging.
   am_devices_led_init((am_bsp_psLEDs + AM_BSP_LED_RED));
   am_devices_led_off(am_bsp_psLEDs, AM_BSP_LED_RED);
+#endif // defined(TFLU_APOLLO3_BOARD_sparkfun_edge)
 
   hm01b0_power_up(&s_HM01B0Cfg);
 
@@ -184,6 +197,13 @@ TfLiteStatus InitCamera(tflite::ErrorReporter* error_reporter) {
     return kTfLiteError;
   }
 
+  // Put camera into streaming mode - this makes it so that the camera
+  // constantly captures images.  It is still OK to read and image since the
+  // camera uses a double-buffered input.  This means there is always one valid
+  // image to read while the other buffer fills.  Streaming mode allows the
+  // camera to perform auto exposure constantly.
+  hm01b0_set_mode(&s_HM01B0Cfg, HM01B0_REG_MODE_SELECT_STREAMING, 0);
+
   return kTfLiteOk;
 }
 
@@ -194,7 +214,9 @@ TfLiteStatus GetImage(tflite::ErrorReporter* error_reporter, int frame_width,
   if (!g_is_camera_initialized) {
     TfLiteStatus init_status = InitCamera(error_reporter);
     if (init_status != kTfLiteOk) {
+#if defined(TFLU_APOLLO3_BOARD_sparkfun_edge)
       am_hal_gpio_output_set(AM_BSP_GPIO_LED_RED);
+#endif // defined(TFLU_APOLLO3_BOARD_sparkfun_edge)
       return init_status;
     }
     // Drop a few frames until auto exposure is calibrated.
@@ -209,6 +231,8 @@ TfLiteStatus GetImage(tflite::ErrorReporter* error_reporter, int frame_width,
                                        frame_height, channels);
 
 #ifdef DEMO_HM01B0_FRAMEBUFFER_DUMP_ENABLE
+  // Allow some time to see result of previous inference before dumping image.
+  am_util_delay_ms(2000);
   hm01b0_framebuffer_dump(frame, frame_width * frame_height * channels);
 #endif
 

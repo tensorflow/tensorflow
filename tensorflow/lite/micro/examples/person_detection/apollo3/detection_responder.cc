@@ -13,9 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if defined(ARDUINO) && !defined(ARDUINO_SFE_EDGE)
+#if defined(ARDUINO)
+#if defined(ARDUINO_SFE_EDGE)
+
+#else
 #define ARDUINO_EXCLUDE_CODE
-#endif  // defined(ARDUINO) && !defined(ARDUINO_SFE_EDGE)
+#endif  // defined(ARDUINO_SFE_EDGE)
+#endif  // defined(ARDUINO)
 
 #ifndef ARDUINO_EXCLUDE_CODE
 
@@ -23,32 +27,30 @@ limitations under the License.
 
 #include "am_bsp.h"  // NOLINT
 
-// This implementation will light up LEDs on the board in response to the
-// inference results.
 void RespondToDetection(tflite::ErrorReporter* error_reporter,
                         uint8_t person_score, uint8_t no_person_score) {
   static bool is_initialized = false;
   if (!is_initialized) {
+#if defined (TFLU_APOLLO3_BOARD_sparkfun_edge)
     // Setup LED's as outputs.  Leave red LED alone since that's an error
     // indicator for sparkfun_edge in image_provider.
     am_devices_led_init((am_bsp_psLEDs + AM_BSP_LED_BLUE));
     am_devices_led_init((am_bsp_psLEDs + AM_BSP_LED_GREEN));
     am_devices_led_init((am_bsp_psLEDs + AM_BSP_LED_YELLOW));
+#endif // defined (TFLU_APOLLO3_BOARD_sparkfun_edge)
     is_initialized = true;
   }
 
-  // Toggle the blue LED every time an inference is performed.
-  am_devices_led_toggle(am_bsp_psLEDs, AM_BSP_LED_BLUE);
-
-  // Turn on the green LED if a person was detected.  Turn on the yellow LED
-  // otherwise.
+#if defined (TFLU_APOLLO3_BOARD_sparkfun_edge)
+  am_devices_led_toggle(am_bsp_psLEDs, AM_BSP_LED_BLUE);  // Toggle the blue LED every time an inference is performed.
   am_devices_led_off(am_bsp_psLEDs, AM_BSP_LED_YELLOW);
   am_devices_led_off(am_bsp_psLEDs, AM_BSP_LED_GREEN);
   if (person_score > no_person_score) {
-    am_devices_led_on(am_bsp_psLEDs, AM_BSP_LED_GREEN);
+    am_devices_led_on(am_bsp_psLEDs, AM_BSP_LED_GREEN); // Turn on the green LED if a person was detected.
   } else {
-    am_devices_led_on(am_bsp_psLEDs, AM_BSP_LED_YELLOW);
+    am_devices_led_on(am_bsp_psLEDs, AM_BSP_LED_YELLOW); // Turn on the yellow LED otherwise.
   }
+#endif // defined (TFLU_APOLLO3_BOARD_sparkfun_edge)
 
   TF_LITE_REPORT_ERROR(error_reporter, "Person score: %d No person score: %d",
                        person_score, no_person_score);

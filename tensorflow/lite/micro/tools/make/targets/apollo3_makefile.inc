@@ -82,8 +82,6 @@ ifeq ($(BOARD), apollo3evb)
 endif
 ifeq ($(findstring sparkfun,$(BOARD)), sparkfun)
   BOARD_BSP_PATH := $(APOLLO3_SDK)/$(SF_BSPS_DEST)/$(subst sparkfun_,,$(BOARD))/bsp
-  INCLUDES+= \
-    -I$(APOLLO3_SDK)/$(SF_BSPS_DEST)/common/third_party/hm01b0
 endif
 MICROLITE_LIBS := \
   $(BOARD_BSP_PATH)/gcc/bin/libam_bsp.a \
