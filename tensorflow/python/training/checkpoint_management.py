@@ -580,9 +580,6 @@ class CheckpointManager(object):
     `CheckpointManager` instantiated in `directory` (subject to its
     `max_to_keep` and `keep_checkpoint_every_n_hours` settings).
     
-    `CheckpointManager` can be used to save checkpoints every N steps.
-    An example usage is:
-    
     `CheckpointManager` can be also used for initializing the model if
     there is no checkpoints for restoring in `directory`. An example usage is:
 
