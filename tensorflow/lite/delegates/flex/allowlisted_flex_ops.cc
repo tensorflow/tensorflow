@@ -435,6 +435,7 @@ const std::set<std::string>& GetFlexAllowlist() {
           "ReverseSequence",
           "ReverseV2",
           "RightShift",
+          "Roll",
           "Round",
           "Rsqrt",
           "RsqrtGrad",
