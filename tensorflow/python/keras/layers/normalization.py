@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Normalization layers."""
+# pylint: disable=g-classes-have-attributes
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -115,6 +116,8 @@ class BatchNormalizationBase(Layer):
       if the fused implementation cannot be used. If `None`, use the faster
       implementation if possible. If False, do not used the fused
       implementation.
+      Note that in TensorFlow 1.x, the meaning of `fused=True` is different:
+      if `False`, the layer uses the system-recommended implementation.
     trainable: Boolean, if `True` the variables will be marked as trainable.
     virtual_batch_size: An `int`. By default, `virtual_batch_size` is `None`,
       which means batch normalization is performed across the whole batch. When
@@ -125,7 +128,7 @@ class BatchNormalizationBase(Layer):
     adjustment: A function taking the `Tensor` containing the (dynamic) shape of
       the input tensor and returning a pair (scale, bias) to apply to the
       normalized values (before gamma and beta), only during training. For
-      example, if axis==-1,
+      example, if `axis=-1`,
         `adjustment = lambda shape: (
           tf.random.uniform(shape[-1:], 0.93, 1.07),
           tf.random.uniform(shape[-1:], -0.1, 0.1))` will scale the normalized
@@ -148,7 +151,7 @@ class BatchNormalizationBase(Layer):
     integers, does not include the samples axis) when using this layer as the
     first layer in a model.
 
-  Output shape: Same shape as input.  {{TRAINABLE_ATTRIBUTE_NOTE}}
+  Output shape: Same shape as input.
 
   Reference:
     - [Ioffe and Szegedy, 2015](https://arxiv.org/abs/1502.03167).
@@ -961,27 +964,9 @@ class BatchNormalizationBase(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-def replace_in_base_docstring(replacements):
-  string = BatchNormalizationBase.__doc__
-  for old, new in replacements:
-    assert old in string
-    string = string.replace(old, new)
-  return string
-
-
 # pylint: disable=missing-docstring
 @keras_export(v1=['keras.layers.BatchNormalization'])
 class BatchNormalization(BatchNormalizationBase):
-
-  __doc__ = replace_in_base_docstring([("""
-    fused: if `True`, use a faster, fused implementation, or raise a ValueError
-      if the fused implementation cannot be used. If `None`, use the faster
-      implementation if possible. If False, do not used the fused
-      implementation.""", """
-    fused: if `None` or `True`, use a faster, fused implementation if possible.
-      If `False`, use the system recommended implementation."""),
-                                       ('{{TRAINABLE_ATTRIBUTE_NOTE}}', '')])
-
   _USE_V2_BEHAVIOR = False
 
 
@@ -1030,29 +1015,30 @@ class LayerNormalization(Layer):
 
   So, with scaling and centering enabled the normalization equations
   are as follows:
-    Let the intermediate activations for a mini-batch to be the `inputs`.
 
-    For each sample `x_i` in `inputs` with `k` features, we compute the mean and
-    variance of the sample:
+  Let the intermediate activations for a mini-batch to be the `inputs`.
 
-    ```python
-    mean_i = sum(x_i[j] for j in range(k)) / k
-    var_i = sum((x_i[j] - mean_i) ** 2 for j in range(k)) / k
-    ```
+  For each sample `x_i` in `inputs` with `k` features, we compute the mean and
+  variance of the sample:
 
-    and then compute a normalized `x_i_normalized`, including a small factor
-    `epsilon` for numerical stability.
+  ```python
+  mean_i = sum(x_i[j] for j in range(k)) / k
+  var_i = sum((x_i[j] - mean_i) ** 2 for j in range(k)) / k
+  ```
 
-    ```python
-    x_i_normalized = (x_i - mean_i) / sqrt(var_i + epsilon)
-    ```
+  and then compute a normalized `x_i_normalized`, including a small factor
+  `epsilon` for numerical stability.
 
-    And finally `x_i_normalized ` is linearly transformed by `gamma` and `beta`,
-    which are learned parameters:
+  ```python
+  x_i_normalized = (x_i - mean_i) / sqrt(var_i + epsilon)
+  ```
 
-    ```python
-    output_i = x_i_normalized * gamma + beta
-    ```
+  And finally `x_i_normalized ` is linearly transformed by `gamma` and `beta`,
+  which are learned parameters:
+
+  ```python
+  output_i = x_i_normalized * gamma + beta
+  ```
 
   `gamma` and `beta` will span the axes of `inputs` specified in `axis`, and
   this part of the inputs' shape must be fully defined.
@@ -1075,7 +1061,6 @@ class LayerNormalization(Layer):
   So, this Layer Normalization implementation will not match a Group
   Normalization layer with group size set to 1.
 
-
   Arguments:
     axis: Integer or List/Tuple. The axis or axes to normalize across. Typically
       this is the features axis/axes. The left-out axes are typically the batch
@@ -1095,12 +1080,13 @@ class LayerNormalization(Layer):
       default.
     beta_constraint: Optional constraint for the beta weight. None by default.
     gamma_constraint: Optional constraint for the gamma weight. None by default.
-    trainable: Boolean, if `True` the variables will be marked as trainable.
-      Defaults to True.
+
   Input shape: Arbitrary. Use the keyword argument `input_shape` (tuple of
     integers, does not include the samples axis) when using this layer as the
     first layer in a model.
+
   Output shape: Same shape as input.
+
   Reference:
     - [Lei Ba et al., 2016](https://arxiv.org/abs/1607.06450).
   """
@@ -1116,11 +1102,8 @@ class LayerNormalization(Layer):
                gamma_regularizer=None,
                beta_constraint=None,
                gamma_constraint=None,
-               trainable=True,
-               name=None,
                **kwargs):
-    super(LayerNormalization, self).__init__(
-        name=name, trainable=trainable, **kwargs)
+    super(LayerNormalization, self).__init__(**kwargs)
     if isinstance(axis, (list, tuple)):
       self.axis = axis[:]
     elif isinstance(axis, int):
