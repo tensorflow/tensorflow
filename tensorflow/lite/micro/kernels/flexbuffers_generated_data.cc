@@ -13,7 +13,8 @@ limitations under the License.
 ==============================================================================*/
 
 // This file is generated. See:
-// tensorflow/lite/micro/kernels/detection_postprocess_test/readme
+// tensorflow/lite/micro/kernels/detection_postprocess_test/README.md
+
 #include "tensorflow/lite/micro/kernels/flexbuffers_generated_data.h"
 
 const int g_gen_data_size_none_regular_nms = 242;

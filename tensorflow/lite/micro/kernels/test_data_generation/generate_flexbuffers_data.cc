@@ -62,7 +62,8 @@ void generate(const char* name, bool use_regular_nms) {
 int main() {
   printf("%s\n", license);
   printf("// This file is generated. See:\n");
-  printf("// tensorflow/lite/micro/kernels/detection_postprocess_test/readme");
+  printf("// tensorflow/lite/micro/kernels/detection_postprocess_test/");
+  printf("README.md\n");
   printf("\n");
   printf(
       "#include "
