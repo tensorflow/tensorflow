@@ -30,33 +30,75 @@ namespace tensorflow {
 // TensorFlow fails because Eigen CPU backend does not support these ops in
 // BFloat16 type.
 
-#define REGISTER_CPU(T)                                                       \
-  REGISTER_KERNEL_BUILDER(                                                    \
-      Name("Conv2D").Device(DEVICE_CPU).TypeConstraint<T>("T"), NoOp);        \
-  REGISTER_KERNEL_BUILDER(                                                    \
-      Name("Conv2DBackpropFilter").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
-      NoOp);                                                                  \
-  REGISTER_KERNEL_BUILDER(                                                    \
-      Name("Conv2DBackpropInput").Device(DEVICE_CPU).TypeConstraint<T>("T"),  \
-      NoOp);                                                                  \
-  REGISTER_KERNEL_BUILDER(                                                    \
-      Name("_FusedConv2D").Device(DEVICE_CPU).TypeConstraint<T>("T"), NoOp);  \
-  REGISTER_KERNEL_BUILDER(                                                    \
-      Name("AvgPool").Device(DEVICE_CPU).TypeConstraint<T>("T"), NoOp);       \
-  REGISTER_KERNEL_BUILDER(                                                    \
-      Name("AvgPoolGrad").Device(DEVICE_CPU).TypeConstraint<T>("T"), NoOp);   \
-  REGISTER_KERNEL_BUILDER(Name("FusedBatchNormV3")                            \
-                              .Device(DEVICE_CPU)                             \
-                              .TypeConstraint<bfloat16>("T")                  \
-                              .TypeConstraint<float>("U"),                    \
-                          NoOp);                                              \
-  REGISTER_KERNEL_BUILDER(Name("FusedBatchNormGradV3")                        \
-                              .Device(DEVICE_CPU)                             \
-                              .TypeConstraint<bfloat16>("T")                  \
-                              .TypeConstraint<float>("U"),                    \
-                          NoOp);                                              \
-  REGISTER_KERNEL_BUILDER(                                                    \
-      Name("_FusedMatMul").Device(DEVICE_CPU).TypeConstraint<T>("T"), NoOp);
+#define REGISTER_CPU(T)                                                        \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("Conv2D").Device(DEVICE_CPU).TypeConstraint<T>("T"), NoOp);         \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("Conv2DBackpropFilter").Device(DEVICE_CPU).TypeConstraint<T>("T"),  \
+      NoOp);                                                                   \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("Conv2DBackpropInput").Device(DEVICE_CPU).TypeConstraint<T>("T"),   \
+      NoOp);                                                                   \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("Conv3D").Device(DEVICE_CPU).TypeConstraint<T>("T"), NoOp);         \
+  REGISTER_KERNEL_BUILDER(Name("Conv3DBackpropFilterV2")                       \
+                              .Device(DEVICE_CPU)                              \
+                              .TypeConstraint<T>("T"),                         \
+                          NoOp);                                               \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("Conv3DBackpropInputV2").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      NoOp);                                                                   \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("DepthwiseConv2dNative").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      NoOp);                                                                   \
+  REGISTER_KERNEL_BUILDER(Name("DepthwiseConv2dNativeBackpropFilter")          \
+                              .Device(DEVICE_CPU)                              \
+                              .TypeConstraint<T>("T"),                         \
+                          NoOp);                                               \
+  REGISTER_KERNEL_BUILDER(Name("DepthwiseConv2dNativeBackpropInput")           \
+                              .Device(DEVICE_CPU)                              \
+                              .TypeConstraint<T>("T"),                         \
+                          NoOp);                                               \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("_FusedConv2D").Device(DEVICE_CPU).TypeConstraint<T>("T"), NoOp);   \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("AvgPool").Device(DEVICE_CPU).TypeConstraint<T>("T"), NoOp);        \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("AvgPoolGrad").Device(DEVICE_CPU).TypeConstraint<T>("T"), NoOp);    \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("AvgPool3D").Device(DEVICE_CPU).TypeConstraint<T>("T"), NoOp);      \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("AvgPool3DGrad").Device(DEVICE_CPU).TypeConstraint<T>("T"), NoOp);  \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("MaxPool3D").Device(DEVICE_CPU).TypeConstraint<T>("T"), NoOp);      \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("MaxPool3DGrad").Device(DEVICE_CPU).TypeConstraint<T>("T"), NoOp);  \
+  REGISTER_KERNEL_BUILDER(Name("FusedBatchNormV2")                             \
+                              .Device(DEVICE_CPU)                              \
+                              .TypeConstraint<bfloat16>("T")                   \
+                              .TypeConstraint<float>("U"),                     \
+                          NoOp);                                               \
+  REGISTER_KERNEL_BUILDER(Name("FusedBatchNormGradV2")                         \
+                              .Device(DEVICE_CPU)                              \
+                              .TypeConstraint<bfloat16>("T")                   \
+                              .TypeConstraint<float>("U"),                     \
+                          NoOp);                                               \
+  REGISTER_KERNEL_BUILDER(Name("FusedBatchNormV3")                             \
+                              .Device(DEVICE_CPU)                              \
+                              .TypeConstraint<bfloat16>("T")                   \
+                              .TypeConstraint<float>("U"),                     \
+                          NoOp);                                               \
+  REGISTER_KERNEL_BUILDER(Name("FusedBatchNormGradV3")                         \
+                              .Device(DEVICE_CPU)                              \
+                              .TypeConstraint<bfloat16>("T")                   \
+                              .TypeConstraint<float>("U"),                     \
+                          NoOp);                                               \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("_FusedMatMul").Device(DEVICE_CPU).TypeConstraint<T>("T"), NoOp);   \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("BatchMatMul").Device(DEVICE_CPU).TypeConstraint<T>("T"), NoOp);    \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("BatchMatMulV2").Device(DEVICE_CPU).TypeConstraint<T>("T"), NoOp);
 
 TF_CALL_bfloat16(REGISTER_CPU);
 #undef REGISTER_CPU
