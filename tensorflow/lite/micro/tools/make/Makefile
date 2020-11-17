@@ -459,7 +459,11 @@ ALL_SRCS := \
 	$(MICROLITE_TEST_SRCS)
 
 # Where compiled objects are stored.
-GENDIR := $(MAKEFILE_DIR)/gen/$(TARGET)_$(TARGET_ARCH)/
+ifeq ($(BOARD),)
+  GENDIR := $(MAKEFILE_DIR)/gen/$(TARGET)_$(TARGET_ARCH)/
+else
+  GENDIR := $(MAKEFILE_DIR)/gen/$(BOARD)_$(TARGET)_$(TARGET_ARCH)/
+endif
 OBJDIR := $(GENDIR)obj/
 BINDIR := $(GENDIR)bin/
 LIBDIR := $(GENDIR)lib/
