@@ -925,7 +925,7 @@ def HLO_CustomCallOp: HLO_Op<"custom_call", []>, BASE_HLO_CustomCallOp {
     DefaultValuedAttr<BoolAttr, "false">:$has_side_effect,
     DefaultValuedAttr<StrAttr, "">:$backend_config
   );
-  let results = (outs HLO_Tensor);
+  let results = (outs Variadic<HLO_Tensor>);
   let hasCustomHLOConverter = 1;
 }
 

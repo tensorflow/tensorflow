@@ -79,19 +79,19 @@ std::string GetComputationPart(const int3& block_size, int element_size,
   return c;
 }
 
-ConvBuffer1x1::ConvParams GetBestParams(const DeviceInfo& device_info,
+ConvBuffer1x1::ConvParams GetBestParams(const GpuInfo& gpu_info,
                                         const OperationDef& definition,
                                         const BHWC& shape, int src_depth,
                                         int dst_depth) {
   ConvBuffer1x1::ConvParams conv_params;
   conv_params.element_size = 4;
   conv_params.block_size = int3(1, 1, 1);
-  if (!device_info.IsMali()) {
+  if (!gpu_info.IsMali()) {
     return conv_params;
   }
   bool can_use_flt8 = (shape.w * shape.b) % 2 == 0 &&
                       definition.precision != CalculationsPrecision::F32;
-  bool is_midgard = device_info.IsMali() && device_info.mali_info.IsMidgard();
+  bool is_midgard = gpu_info.IsMali() && gpu_info.mali_info.IsMidgard();
   if (is_midgard) {
     if (can_use_flt8) {
       conv_params.element_size = 8;
@@ -103,8 +103,8 @@ ConvBuffer1x1::ConvParams GetBestParams(const DeviceInfo& device_info,
   }
 
   int task_size = shape.w * shape.b * shape.h * dst_depth;
-  int block_size = GetRecommendedBlockSizeForConv(
-      device_info, definition.precision, task_size);
+  int block_size =
+      GetRecommendedBlockSizeForConv(gpu_info, definition.precision, task_size);
 
   if (!can_use_flt8 && block_size > 4) {
     block_size = 4;
@@ -132,15 +132,14 @@ ConvBuffer1x1::ConvParams GetBestParams(const DeviceInfo& device_info,
   return conv_params;
 }
 
-ConvBuffer1x1::ConvParams GetBestParams(const DeviceInfo& device_info,
+ConvBuffer1x1::ConvParams GetBestParams(const GpuInfo& gpu_info,
                                         const OperationDef& definition,
                                         int src_depth, int dst_depth) {
   ConvBuffer1x1::ConvParams conv_params;
   conv_params.element_size = 4;
   conv_params.block_size = int3(1, 1, 1);
-  if (device_info.IsMali() &&
-      definition.precision == CalculationsPrecision::F16 &&
-      device_info.compute_units_count <= 4) {
+  if (gpu_info.IsMali() && definition.precision == CalculationsPrecision::F16 &&
+      gpu_info.compute_units_count <= 4) {
     conv_params.block_size.x *= 2;
   }
   return conv_params;
@@ -315,9 +314,9 @@ int3 ConvBuffer1x1::GetGridSize() const {
 }
 
 void ConvBuffer1x1::GetPossibleKernelWorkGroups(
-    TuningType tuning_type, const DeviceInfo& device_info,
+    TuningType tuning_type, const GpuInfo& gpu_info,
     const KernelInfo& kernel_info, std::vector<int3>* work_groups) const {
-  GetPossibleWorkGroupsConv(tuning_type, device_info, kernel_info, grid_size_,
+  GetPossibleWorkGroupsConv(tuning_type, gpu_info, kernel_info, grid_size_,
                             work_groups);
 }
 
@@ -344,7 +343,7 @@ bool IsConvBuffer1x1Supported(const OperationDef& definition,
          attr.padding.appended.w == 0 && attr.padding.appended.h == 0;
 }
 
-ConvBuffer1x1 CreateConvBuffer1x1(const DeviceInfo& device_info,
+ConvBuffer1x1 CreateConvBuffer1x1(const GpuInfo& gpu_info,
                                   const OperationDef& definition,
                                   const Convolution2DAttributes& attr,
                                   const BHWC* shape) {
@@ -353,16 +352,16 @@ ConvBuffer1x1 CreateConvBuffer1x1(const DeviceInfo& device_info,
   ConvBuffer1x1::ConvParams conv_params;
   if (shape) {
     conv_params =
-        GetBestParams(device_info, definition, *shape, src_depth, dst_depth);
+        GetBestParams(gpu_info, definition, *shape, src_depth, dst_depth);
   } else {
-    conv_params = GetBestParams(device_info, definition, src_depth, dst_depth);
+    conv_params = GetBestParams(gpu_info, definition, src_depth, dst_depth);
   }
   ConvBuffer1x1 result(definition, conv_params);
   result.UploadData(attr.weights, attr.bias);
   return result;
 }
 
-ConvBuffer1x1 CreateConvBuffer1x1(const DeviceInfo& device_info,
+ConvBuffer1x1 CreateConvBuffer1x1(const GpuInfo& gpu_info,
                                   const OperationDef& definition,
                                   const FullyConnectedAttributes& attr,
                                   const BHWC* shape) {
@@ -371,9 +370,9 @@ ConvBuffer1x1 CreateConvBuffer1x1(const DeviceInfo& device_info,
   ConvBuffer1x1::ConvParams conv_params;
   if (shape) {
     conv_params =
-        GetBestParams(device_info, definition, *shape, src_depth, dst_depth);
+        GetBestParams(gpu_info, definition, *shape, src_depth, dst_depth);
   } else {
-    conv_params = GetBestParams(device_info, definition, src_depth, dst_depth);
+    conv_params = GetBestParams(gpu_info, definition, src_depth, dst_depth);
   }
   conv_params.block_size.x *= conv_params.block_size.y;
   conv_params.block_size.y = 1;
@@ -383,16 +382,16 @@ ConvBuffer1x1 CreateConvBuffer1x1(const DeviceInfo& device_info,
 }
 
 ConvBuffer1x1 CreateConvBuffer1x1Wino4x4To6x6(
-    const DeviceInfo& device_info, const OperationDef& definition,
+    const GpuInfo& gpu_info, const OperationDef& definition,
     const Convolution2DAttributes& attr, const BHWC* shape) {
   const int dst_depth = DivideRoundUp(attr.weights.shape.o, 4);
   const int src_depth = DivideRoundUp(attr.weights.shape.i, 4);
   ConvBuffer1x1::ConvParams conv_params;
   if (shape) {
     conv_params =
-        GetBestParams(device_info, definition, *shape, src_depth, dst_depth);
+        GetBestParams(gpu_info, definition, *shape, src_depth, dst_depth);
   } else {
-    conv_params = GetBestParams(device_info, definition, src_depth, dst_depth);
+    conv_params = GetBestParams(gpu_info, definition, src_depth, dst_depth);
   }
   conv_params.block_size.x *= conv_params.block_size.y;
   conv_params.block_size.y = 1;
@@ -403,17 +402,17 @@ ConvBuffer1x1 CreateConvBuffer1x1Wino4x4To6x6(
 }
 
 ConvBuffer1x1 CreateConvBuffer1x1DynamicWeights(
-    const DeviceInfo& device_info, const OperationDef& definition,
+    const GpuInfo& gpu_info, const OperationDef& definition,
     const Convolution2DAttributes& attr, const BHWC& weights_shape,
     const BHWC* dst_shape) {
   const int dst_depth = DivideRoundUp(weights_shape.b, 4);
   const int src_depth = DivideRoundUp(weights_shape.c, 4);
   ConvBuffer1x1::ConvParams conv_params;
   if (dst_shape) {
-    conv_params = GetBestParams(device_info, definition, *dst_shape, src_depth,
-                                dst_depth);
+    conv_params =
+        GetBestParams(gpu_info, definition, *dst_shape, src_depth, dst_depth);
   } else {
-    conv_params = GetBestParams(device_info, definition, src_depth, dst_depth);
+    conv_params = GetBestParams(gpu_info, definition, src_depth, dst_depth);
   }
   ConvBuffer1x1 result(definition, conv_params);
   result.UploadBiases(attr.bias);

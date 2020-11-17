@@ -121,7 +121,7 @@ class FullyConnected : public GPUOperation {
  public:
   FullyConnected() = default;
   void GetPossibleKernelWorkGroups(
-      TuningType tuning_type, const DeviceInfo& device_info,
+      TuningType tuning_type, const GpuInfo& gpu_info,
       const KernelInfo& kernel_info,
       std::vector<int3>* work_groups) const override {
     work_groups->push_back(work_group_size_);
@@ -135,9 +135,9 @@ class FullyConnected : public GPUOperation {
   FullyConnected& operator=(const FullyConnected&) = delete;
 
  private:
-  FullyConnected(const OperationDef& definition, const DeviceInfo& device_info);
+  FullyConnected(const OperationDef& definition, const GpuInfo& gpu_info);
   friend FullyConnected CreateFullyConnected(
-      const DeviceInfo& device_info, const OperationDef& definition,
+      const GpuInfo& gpu_info, const OperationDef& definition,
       const FullyConnectedAttributes& attr);
 
   template <DataType T>
@@ -145,7 +145,7 @@ class FullyConnected : public GPUOperation {
                      bool weights_are_buffer);
 
   std::string GetFullyConnectedKernelCode(const OperationDef& op_def,
-                                          const DeviceInfo& device_info);
+                                          const GpuInfo& gpu_info);
 };
 
 template <DataType T>
@@ -195,7 +195,7 @@ void FullyConnected::UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
   }
 }
 
-FullyConnected CreateFullyConnected(const DeviceInfo& device_info,
+FullyConnected CreateFullyConnected(const GpuInfo& gpu_info,
                                     const OperationDef& definition,
                                     const FullyConnectedAttributes& attr);
 

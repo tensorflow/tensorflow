@@ -62,7 +62,7 @@ class TestModule(tf.Module):
   # CHECK-SAME: attributes{{.*}}tf_saved_model.exported_names = ["caller"]
   # CHECK:        "tf.StatefulPartitionedCall"{{.*}}f = @[[CALLEE_INTERNAL]]
   #
-  # CHECK:      func @[[CALLEE_INTERNAL]]
+  # CHECK:      func private @[[CALLEE_INTERNAL]]
   # CHECK-NOT:    tf_saved_model.exported_names
 
   @tf.function(input_signature=[tf.TensorSpec([], tf.float32)])

@@ -26,6 +26,7 @@ import os
 
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
+from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.eager import remote
@@ -486,22 +487,19 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
     if self.extended._num_gpus_per_worker > 1:  # pylint: disable=protected-access
       raise NotImplementedError("Multi-gpu is not supported yet.")
 
+    cluster_spec = cluster_resolver.cluster_spec()
+
     # The following checks if the task types are allowed (chief, ps, worker).
-    disallowed_task_type_error_str = (
-        "Disallowed task type found in "
-        "`tf.distribute.cluster_resolver.ClusterResolver` provided to "
-        "`tf.distribute.experimental.ParameterServerStrategy`. Allowed types "
-        "are {},".format(ALLOWED_TASK_TYPES))
-    if any([
-        job not in ALLOWED_TASK_TYPES
-        for job in cluster_resolver.cluster_spec().jobs
-    ]):
-      raise ValueError("{} and the cluster spec is {}.".format(
-          disallowed_task_type_error_str, cluster_resolver.cluster_spec()))
-    if (cluster_resolver.task_type and
-        cluster_resolver.task_type not in ALLOWED_TASK_TYPES):
-      raise ValueError("{} and current task type is {}.".format(
-          disallowed_task_type_error_str, cluster_resolver.task_type))
+    multi_worker_util._validate_cluster_spec(  # pylint: disable=protected-access
+        cluster_spec,
+        cluster_resolver.task_type,
+        cluster_resolver.task_id)
+
+    if multi_worker_util.task_count(cluster_spec, "ps") < 1:
+      raise ValueError("There must be at least one ps.")
+
+    if multi_worker_util.task_count(cluster_spec, "worker") < 1:
+      raise ValueError("There must be at least one worker.")
 
 
 class ParameterServerStrategyV2Extended(

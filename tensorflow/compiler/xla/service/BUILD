@@ -412,6 +412,7 @@ cc_library(
         "hlo_instruction.cc",
         "hlo_instructions.cc",
         "hlo_module.cc",
+        "hlo_module_metadata.cc",
         "hlo_opcode.cc",
         "hlo_schedule.cc",
         "hlo_sharding.cc",
@@ -428,6 +429,7 @@ cc_library(
         "hlo_instruction.h",
         "hlo_instructions.h",
         "hlo_module.h",
+        "hlo_module_metadata.h",
         "hlo_opcode.h",
         "hlo_schedule.h",
         "hlo_sharding.h",
@@ -3047,6 +3049,18 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "hlo_module_metadata_test",
+    srcs = ["hlo_module_metadata_test.cc"],
+    deps = [
+        ":hlo",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/stream_executor/lib",
+    ],
+)
+
 cc_library(
     name = "buffer_value",
     srcs = ["buffer_value.cc"],
@@ -4460,6 +4474,30 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "hlo_runner_interface",
+    srcs = ["hlo_runner_interface.cc"],
+    hdrs = ["hlo_runner_interface.h"],
+    deps = [
+        ":compiler",
+        ":computation_placer",
+        ":hlo",
+        ":hlo_module_group",
+        ":hlo_parser",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "hlo_runner",
     srcs = ["hlo_runner.cc"],
     hdrs = ["hlo_runner.h"],
@@ -4471,6 +4509,7 @@ cc_library(
         ":hlo",
         ":hlo_module_group",
         ":hlo_parser",
+        ":hlo_runner_interface",
         ":transfer_manager",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",

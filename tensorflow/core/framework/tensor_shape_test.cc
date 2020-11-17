@@ -706,5 +706,16 @@ void BM_TensorShape_Assign(::testing::benchmark::State& state) {
 }
 BENCHMARK(BM_TensorShape_Assign)->Arg(0)->Arg(1)->Arg(2)->Arg(3)->Arg(4);
 
+void BM_TensorShape_SetDim(::testing::benchmark::State& state) {
+  const int arg = state.range(0);
+
+  TensorShape shape(MakeSizes(arg));
+  tensorflow::testing::DoNotOptimize(shape);
+  for (auto s : state) {
+    shape.set_dim(0, 8);
+  }
+}
+BENCHMARK(BM_TensorShape_SetDim)->Arg(0)->Arg(1)->Arg(2)->Arg(3)->Arg(4);
+
 }  // namespace
 }  // namespace tensorflow

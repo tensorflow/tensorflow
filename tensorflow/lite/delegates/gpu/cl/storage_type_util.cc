@@ -24,7 +24,7 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-bool CanCreateTensorWithShape(const DeviceInfo& device_info, const BHWDC& shape,
+bool CanCreateTensorWithShape(const GpuInfo& gpu_info, const BHWDC& shape,
                               const TensorDescriptor& descriptor) {
   const int slices = DivideRoundUp(shape.c, 4);
   switch (descriptor.storage_type) {
@@ -33,61 +33,61 @@ bool CanCreateTensorWithShape(const DeviceInfo& device_info, const BHWDC& shape,
           4 * (descriptor.data_type == DataType::FLOAT32 ? 4 : 2);
       const int buffer_size =
           shape.b * shape.w * shape.h * shape.d * slices * flt4_size;
-      return buffer_size <= device_info.buffer_max_size;
+      return buffer_size <= gpu_info.buffer_max_size;
     }
     case TensorStorageType::IMAGE_BUFFER:
       return shape.b * shape.w * shape.h * shape.d * slices <=
-             device_info.image_buffer_max_size;
+             gpu_info.image_buffer_max_size;
     case TensorStorageType::TEXTURE_3D:
-      if (device_info.cl_version < OpenCLVersion::CL_1_2 && slices == 1) {
+      if (gpu_info.cl_version < OpenCLVersion::CL_1_2 && slices == 1) {
         // clCreateImage3D (that used in CL 1.0/1.1) can not create image with
         // depth = 1 by specification;
         return false;
       }
-      return shape.w * shape.b <= device_info.image3d_max_width &&
-             shape.h <= device_info.image3d_max_height &&
-             slices * shape.d <= device_info.image3d_max_depth;
+      return shape.w * shape.b <= gpu_info.image3d_max_width &&
+             shape.h <= gpu_info.image3d_max_height &&
+             slices * shape.d <= gpu_info.image3d_max_depth;
     case TensorStorageType::TEXTURE_ARRAY:
       // Bug on some Adreno. b/131099086
-      if (slices == 1 && device_info.IsAdreno() &&
-          !device_info.adreno_info.support_one_layer_texture_array) {
+      if (slices == 1 && gpu_info.IsAdreno() &&
+          !gpu_info.adreno_info.support_one_layer_texture_array) {
         return false;
       }
-      return shape.w * shape.b <= device_info.image2d_max_width &&
-             shape.h <= device_info.image2d_max_height &&
-             slices * shape.d <= device_info.image_array_max_layers;
+      return shape.w * shape.b <= gpu_info.image2d_max_width &&
+             shape.h <= gpu_info.image2d_max_height &&
+             slices * shape.d <= gpu_info.image_array_max_layers;
     case TensorStorageType::TEXTURE_2D:
-      return shape.w * shape.b * shape.d <= device_info.image2d_max_width &&
-             shape.h * slices <= device_info.image2d_max_height;
+      return shape.w * shape.b * shape.d <= gpu_info.image2d_max_width &&
+             shape.h * slices <= gpu_info.image2d_max_height;
     case TensorStorageType::SINGLE_TEXTURE_2D:
       return shape.c <= 4 &&
-             device_info.SupportsFloatImage2D(descriptor.data_type, shape.c) &&
-             shape.w * shape.b * shape.d <= device_info.image2d_max_width &&
-             shape.h <= device_info.image2d_max_height;
+             gpu_info.SupportsFloatImage2D(descriptor.data_type, shape.c) &&
+             shape.w * shape.b * shape.d <= gpu_info.image2d_max_width &&
+             shape.h <= gpu_info.image2d_max_height;
     default:
       return false;
   }
 }
 
-bool CanCreateTensorWithShape(const DeviceInfo& device_info, const BHWC& shape,
+bool CanCreateTensorWithShape(const GpuInfo& gpu_info, const BHWC& shape,
                               const TensorDescriptor& descriptor) {
   const BHWDC shape5D(shape.b, shape.h, shape.w, 1, shape.c);
-  return CanCreateTensorWithShape(device_info, shape5D, descriptor);
+  return CanCreateTensorWithShape(gpu_info, shape5D, descriptor);
 }
 
-TensorStorageType SelectBestStorageType(const DeviceInfo& device_info,
+TensorStorageType SelectBestStorageType(const GpuInfo& gpu_info,
                                         const BHWC& shape,
                                         const TensorStorageType& desired,
                                         const DataType& data_type,
                                         const Layout& layout) {
-  if (CanCreateTensorWithShape(device_info, shape,
+  if (CanCreateTensorWithShape(gpu_info, shape,
                                TensorDescriptor{data_type, desired, layout})) {
     return desired;
   }
   auto GetBestTypeAfterTextureArray = [&]() {
-    if (device_info.SupportsImageBuffer() &&
+    if (gpu_info.SupportsImageBuffer() &&
         CanCreateTensorWithShape(
-            device_info, shape,
+            gpu_info, shape,
             TensorDescriptor{data_type, TensorStorageType::IMAGE_BUFFER,
                              layout})) {
       return TensorStorageType::IMAGE_BUFFER;
@@ -96,9 +96,9 @@ TensorStorageType SelectBestStorageType(const DeviceInfo& device_info,
     }
   };
   auto GetBestTypeAfterTexture2D = [&]() {
-    if (device_info.SupportsTextureArray() &&
+    if (gpu_info.SupportsTextureArray() &&
         CanCreateTensorWithShape(
-            device_info, shape,
+            gpu_info, shape,
             TensorDescriptor{data_type, TensorStorageType::TEXTURE_ARRAY,
                              layout})) {
       return TensorStorageType::TEXTURE_ARRAY;
@@ -108,7 +108,7 @@ TensorStorageType SelectBestStorageType(const DeviceInfo& device_info,
   };
   auto GetBestTypeAfterTexture3D = [&]() {
     if (CanCreateTensorWithShape(
-            device_info, shape,
+            gpu_info, shape,
             TensorDescriptor{data_type, TensorStorageType::TEXTURE_2D,
                              layout})) {
       return TensorStorageType::TEXTURE_2D;

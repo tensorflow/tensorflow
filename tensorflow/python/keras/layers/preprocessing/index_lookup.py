@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Keras text vectorization preprocessing layer."""
+"""Keras index lookup preprocessing layer."""
+# pylint: disable=g-classes-have-attributes
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -57,7 +58,7 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
   vocabulary size, the most frequent terms will be used to create the
   vocabulary.
 
-  Attributes:
+  Arguments:
     max_tokens: The maximum size of the vocabulary for this layer. If None,
       there is no cap on the size of the vocabulary. Note that this vocabulary
       includes the OOV and mask tokens, so the effective number of tokens is

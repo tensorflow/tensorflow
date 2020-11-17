@@ -1001,7 +1001,7 @@ class ClusterCoordinator(object):
     This method is non-blocking in that it queues the `fn` which will be
     executed later and returns a
     `tf.distribute.experimental.coordinator.RemoteValue` object immediately.
-    `fetch` can be called on the it to wait for the function execution to finish
+    `fetch` can be called on it to wait for the function execution to finish
     and retrieve its output from a remote worker. On the other hand, call
     `tf.distribute.experimental.coordinator.ClusterCoordinator.join` to wait for
     all scheduled functions to finish.

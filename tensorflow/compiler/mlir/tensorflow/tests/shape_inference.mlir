@@ -439,16 +439,16 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     return %arg0 : tensor<2xi32>
   }
 
-  // Test not updating call site if a std.call is used.
+  // Test iteratively updating call site if a std.call is used.
   // CHECK-LABEL: func @call_partitioned_call2(
-  // CHECK-SAME: -> tensor<*xi32>
+  // CHECK-SAME: -> tensor<1xi32>
   func @call_partitioned_call2() -> tensor<*xi32> {
-    // CHECK: () -> tensor<*xi32>
+    // CHECK: () -> tensor<1xi32>
     %0 = call @partitioned_called_func2() : () -> tensor<*xi32>
     return %0 : tensor<*xi32>
   }
   // CHECK-LABEL: func @partitioned_called_func2(
-  // CHECK-SAME: -> tensor<*xi32>
+  // CHECK-SAME: -> tensor<1xi32>
   func @partitioned_called_func2() -> (tensor<*xi32>) {
     %0 = "tf.Const"() {value = dense<-1> : tensor<1xi32>} : () -> tensor<1xi32>
     %1 = tensor_cast %0 : tensor<1xi32> to tensor<*xi32>

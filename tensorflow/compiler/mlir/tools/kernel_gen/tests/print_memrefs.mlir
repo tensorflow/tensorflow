@@ -24,7 +24,7 @@ func @print_memrefs(
   return %output : memref<*xf16>
 }
 
-// CHECK:   func @print_memref_index(memref<*xindex>)
+// CHECK:   func private @print_memref_index(memref<*xindex>)
 
 // CHECK-LABEL: func @print_memrefs
 

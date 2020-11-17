@@ -80,6 +80,6 @@ versions {
 # CHECK-SAME: f = @[[FUNCTION:[a-zA-Z0-9_]*]]
 
 # Verify that callee has the unit attribute tf._input_shapes.
-# CHECK: func @[[FUNCTION]]
+# CHECK: func private @[[FUNCTION]]
 # CHECK: attributes
 # CHECK-SAME: tf._input_shapes{{[,}]}}

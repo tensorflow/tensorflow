@@ -87,7 +87,8 @@ class FftThunk : public Thunk {
     absl::Mutex mu;
     std::unique_ptr<se::fft::Plan> plan;
   };
-  absl::flat_hash_map<int, std::unique_ptr<FftPlan>> fft_plans_ GUARDED_BY(mu_);
+  absl::flat_hash_map<int, std::unique_ptr<FftPlan>> fft_plans_
+      ABSL_GUARDED_BY(mu_);
 
   const BufferAllocation::Slice input_buffer_;
   const BufferAllocation::Slice output_buffer_;

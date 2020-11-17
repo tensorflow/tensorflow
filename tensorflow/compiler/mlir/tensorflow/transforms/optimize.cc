@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/verification_utils.h"
 
 namespace mlir {
 namespace TF {
@@ -106,6 +107,8 @@ class SimplifyBroadcastReshape : public OpRewritePattern<BroadcastToOp> {
     }
 
     if (non_unit_dims != old_reshape_non_unit_dims) return failure();
+
+    if (failed(VerifyShapeOfReshapeOp(new_reshape_dims))) return failure();
 
     Type el_ty = getElementTypeOrSelf(op.getType());
     TF::ConstOp new_reshape_shape = GetI64ConstantTensor(

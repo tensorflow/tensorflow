@@ -236,6 +236,10 @@ std::string PrintStepEvents(const StepEvents& step_events);
 // Combines the src StepEvents into dst.
 void CombineStepEvents(const StepEvents& src, StepEvents* dst);
 
+// Converts from overlapped events to non-overlapped events.
+std::vector<EventTypeSpan> ToNonOverlappedEvents(
+    const std::vector<EventTypeSpan>& overlapped_events);
+
 // Converts from overlapped step-events to non-overlapped step events.
 StepEvents ToNonOverlappedStepEvents(const StepEvents& overlapped_step_events);
 

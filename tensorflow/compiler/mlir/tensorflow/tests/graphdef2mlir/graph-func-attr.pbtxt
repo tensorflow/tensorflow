@@ -5,8 +5,8 @@
 # Verify that the NameAttrList is properly turned into reference to functions on import
 # CHECK:    tf.Case
 # CHECK-SAME: branches = [@[[FOO:[a-z0-9]+]], @[[BAR:[a-z0-9]+]]]
-# CHECK-DAG:  func @[[FOO]]()
-# CHECK-DAG:  func @[[BAR]]()
+# CHECK-DAG:  func private @[[FOO]]()
+# CHECK-DAG:  func private @[[BAR]]()
 
 node {
   name: "predicate"

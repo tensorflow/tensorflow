@@ -160,7 +160,7 @@ DepthToSpaceOpModel/int8
 FloatDivOpTest/.+
 
 # elementwise_test
-ElementWise/Abs
+ElementWise/Abs,29
 ElementWise/Sin,29
 ElementWise/Log,29
 ElementWise/Sqrt,29

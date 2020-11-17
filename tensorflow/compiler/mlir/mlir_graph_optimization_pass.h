@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_MLIR_GRAPH_OPTIMIZATION_PASS_H_
 #define TENSORFLOW_COMPILER_MLIR_MLIR_GRAPH_OPTIMIZATION_PASS_H_
 
+#include <functional>
+
+#include "tensorflow/compiler/mlir/mlir_bridge_rollout_policy.h"
 #include "mlir/IR/Module.h"  // from @llvm-project
 #include "tensorflow/core/common_runtime/function_optimization_registry.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
@@ -60,9 +63,13 @@ class MlirOptimizationPassRegistry {
   // Returns the global registry of MLIR optimization passes.
   static MlirOptimizationPassRegistry& Global();
 
+  // Register optimization `pass` with the given `priority`.
   void Add(int priority, std::unique_ptr<MlirOptimizationPass> pass) {
     passes_.insert({priority, std::move(pass)});
   }
+
+  // Free the memory allocated for all passes.
+  void ClearPasses() { passes_.clear(); }
 
   const Passes& passes() const { return passes_; }
 
@@ -76,8 +83,11 @@ class MlirFunctionOptimizationPass : public FunctionOptimizationPass {
  public:
   explicit MlirFunctionOptimizationPass(
       const MlirOptimizationPassRegistry* registry =
-          &MlirOptimizationPassRegistry::Global())
-      : registry_(registry) {}
+          &MlirOptimizationPassRegistry::Global(),
+      std::function<MlirBridgeRolloutPolicy(const Graph& graph,
+                                            absl::optional<ConfigProto>)>
+          mlir_rollout_policy = GetMlirBridgeRolloutPolicy)
+      : registry_(registry), mlir_rollout_policy_(mlir_rollout_policy) {}
 
   Status Run(const DeviceSet& device_set, const ConfigProto& config_proto,
              std::unique_ptr<Graph>* graph, FunctionLibraryDefinition* flib_def,
@@ -86,6 +96,9 @@ class MlirFunctionOptimizationPass : public FunctionOptimizationPass {
 
  private:
   const MlirOptimizationPassRegistry* registry_;
+  std::function<MlirBridgeRolloutPolicy(
+      const tensorflow::Graph& graph, absl::optional<tensorflow::ConfigProto>)>
+      mlir_rollout_policy_;
 };
 
 // -------------------------------------------------------------------------- //

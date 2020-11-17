@@ -22,11 +22,11 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/core/profiler/utils/time_utils.h"
 #include "tensorflow/core/profiler/utils/timespan.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
@@ -201,8 +201,8 @@ void MergePlanes(const XPlane& src_plane, XPlane* dst_plane) {
       if (line.TimestampNs() <= dst_line.TimestampNs()) {
         dst_line.SetTimestampNsAndAdjustEventOffsets(line.TimestampNs());
       } else {
-        time_offset_ps = (line.TimestampNs() - dst_line.TimestampNs()) *
-                         EnvTime::kNanosToPicos;
+        time_offset_ps =
+            NanosToPicos(line.TimestampNs() - dst_line.TimestampNs());
       }
       dst_line.SetNameIfEmpty(line.Name());
       // Don't override dst_line's display name because if both lines have name,

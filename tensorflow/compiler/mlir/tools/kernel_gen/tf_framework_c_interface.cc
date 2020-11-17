@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tools/kernel_gen/tf_framework_c_interface.h"
 
+#include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
@@ -69,6 +70,19 @@ extern "C" void* _mlir_ciface_tf_alloc(void* op_kernel_ctx, size_t num_elements,
 
 extern "C" void _mlir_ciface_tf_dealloc(void* op_kernel_ctx, void* ptr) {
   GetAllocator(op_kernel_ctx)->DeallocateRaw(ptr);
+}
+
+extern "C" void _mlir_ciface_tf_report_error(void* op_kernel_ctx,
+                                             int32_t error_code, char* msg) {
+  Optional<ErrorCode> symbol = symbolizeErrorCode(error_code);
+  if (symbol.hasValue()) {
+    LOG(ERROR) << "No valid conversion from integer value = " << error_code
+               << "to ErrorCode attribute";
+    return;
+  }
+  auto* ctx = static_cast<tensorflow::OpKernelContext*>(op_kernel_ctx);
+  ctx->CtxFailureWithWarning(
+      tensorflow::Status{ConvertAttrToEnumValue(symbol.getValue()), msg});
 }
 
 }  // namespace tf_framework

@@ -3,13 +3,13 @@
 // Tests for types, ops with custom constraints, verifiers, printer or parser
 // methods.
 
-// CHECK-LABEL: func @token_type() -> !mhlo.token
-func @token_type() -> !mhlo.token
+// CHECK-LABEL: func private @token_type() -> !mhlo.token
+func private @token_type() -> !mhlo.token
 
 // -----
 
 // expected-error@+1 {{unknown mhlo type: foobar}}
-func @invalid_type() -> !mhlo.foobar
+func private @invalid_type() -> !mhlo.foobar
 
 // -----
 
@@ -1280,4 +1280,13 @@ func @set_dimension_size(%I: tensor<1x128x512xf32>) -> tensor<1x128x512xf32> {
   // expected-error@+1 {{requires dimension attribute in range [0, 3); found (3)}}
   %result = "mhlo.set_dimension_size"(%I, %dim) {dimension = 3 : i64} : (tensor<1x128x512xf32>, tensor<i32>) -> tensor<1x128x512xf32>
   return %result : tensor<1x128x512xf32>
+}
+
+// -----
+
+// CHECK: func @custom_call_multiple_outputs
+func @custom_call_multiple_outputs(%x: tensor<2xf32>) -> tensor<2xf32> {
+  %0:2 = "mhlo.custom_call"(%x) {backend_config="", call_target_name = "foo", has_side_effect = false} : (tensor<2xf32>) -> (tensor<2xf32>, tensor<2xf32>)
+  %1 = "mhlo.add"(%0#0, %0#1) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  return %1 : tensor<2xf32>
 }

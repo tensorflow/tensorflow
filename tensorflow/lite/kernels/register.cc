@@ -35,7 +35,7 @@ namespace builtin {
 
 BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_ABS, Register_ABS(), /* min_version = */ 1,
-             /* max_version = */ 2);
+             /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_HARD_SWISH, Register_HARD_SWISH());
   AddBuiltin(BuiltinOperator_RELU, Register_RELU(), /* min_version = */ 1,
              /* max_version = */ 3);
@@ -157,7 +157,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* max_version = */ 2);
   AddBuiltin(BuiltinOperator_STRIDED_SLICE, Register_STRIDED_SLICE(),
              /* min_version = */ 1,
-             /* max_version = */ 4);
+             /* max_version = */ 5);
   AddBuiltin(BuiltinOperator_EXP, Register_EXP());
   AddBuiltin(BuiltinOperator_TOPK_V2, Register_TOPK_V2(),
              /* min_version = */ 1,

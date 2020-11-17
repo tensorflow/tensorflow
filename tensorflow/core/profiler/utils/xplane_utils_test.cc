@@ -20,10 +20,10 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
-#include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/core/profiler/utils/time_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
@@ -195,8 +195,8 @@ void CheckXEvent(const XEvent& event, const XPlane& plane,
       plane.event_metadata().at(event.metadata_id());
   EXPECT_EQ(event_metadata.name(), name);
   EXPECT_EQ(event_metadata.display_name(), display);
-  EXPECT_EQ(event.offset_ps(), offset_ns * EnvTime::kNanosToPicos);
-  EXPECT_EQ(event.duration_ps(), duration_ns * EnvTime::kNanosToPicos);
+  EXPECT_EQ(event.offset_ps(), NanosToPicos(offset_ns));
+  EXPECT_EQ(event.duration_ps(), NanosToPicos(duration_ns));
   EXPECT_EQ(event.stats_size(), stats_size);
 }
 }  // namespace
