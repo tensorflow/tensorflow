@@ -122,7 +122,7 @@ tf_kernel_library(
 #         "manual",
 #     ],
 #     deps = [
-#         ":addv2_unranked_kernels",
+#         ":add_v2_unranked_kernels",
 #         ":unranked_op_gpu_base",
 #         "//third_party/eigen3",
 #     ],
@@ -258,7 +258,7 @@ gen_kernel_library(
 )
 
 gen_kernel_library(
-    name = "logicalnot",
+    name = "logical_not",
     generate_unranked = True,
     tile_size = "256",
     types = ["i1"],
@@ -292,7 +292,7 @@ gen_kernel_library(
 
 # TODO(herhut): Uncomment once it builds again.
 # gen_kernel_library(
-#     name = "addv2",
+#     name = "add_v2",
 #     generate_ranked = False,
 #     generate_unranked = True,
 #     tile_size = "256",
@@ -322,7 +322,7 @@ gen_kernel_library(
         "cos",
         "exp",
         "floor",
-        "isfinite",
+        "is_finite",
         "log",
         "neg",
         "rsqrt",
