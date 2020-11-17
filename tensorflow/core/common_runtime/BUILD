@@ -268,7 +268,10 @@ filegroup(
         "process_state.h",
         "pool_allocator.h",
         "permuter.h",
-    ] + if_mkl(["//tensorflow/core/graph:mkl_graph_util_header"]),
+    ] + if_mkl([
+        "//tensorflow/core/common_runtime:mkl_graph_testing_util.h",
+        "//tensorflow/core/graph:mkl_graph_util_header",
+    ]),
 )
 
 cc_library(
@@ -2617,6 +2620,7 @@ tf_cc_test_mkl(
     name = "mkl_related_tests",
     size = "small",
     srcs = [
+        "mkl_layout_pass_fusion_test.cc",
         "mkl_layout_pass_test.cc",
         "mkl_tfconversion_pass_test.cc",
     ],
