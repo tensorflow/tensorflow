@@ -848,10 +848,6 @@ class GradientTape(object):
     self._watch_accessed_variables = watch_accessed_variables
     self._watched_variables = ()
     self._recording = False
-    self._created_eagerly = context.executing_eagerly()
-    if self._created_eagerly:
-      context.ensure_initialized()
-      context.context().start_step()
 
   def __enter__(self):
     """Enters a context inside which operations are recorded on this tape."""
@@ -881,15 +877,6 @@ class GradientTape(object):
       raise ValueError("Tape is not recording.")
     tape.pop_tape(self._tape)
     self._recording = False
-
-  def __del__(self):
-    if self._created_eagerly:
-      try:
-        context.context().end_step()
-      except AttributeError:
-        pass
-      except TypeError:
-        pass
 
   def watch(self, tensor):
     """Ensures that `tensor` is being traced by this tape.
