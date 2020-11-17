@@ -218,6 +218,7 @@ cc_library(
         ":cl_program",
         ":opencl_wrapper",
         ":util",
+        "//tensorflow/lite/delegates/gpu/common:kernel_info",
         "//tensorflow/lite/delegates/gpu/common:status",
         "@com_google_absl//absl/strings",
     ],
