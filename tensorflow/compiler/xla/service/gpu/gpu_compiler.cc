@@ -308,10 +308,7 @@ Status GpuCompiler::OptimizeHloModule(
 
     HloPassPipeline horizontal_fusion("horizontal_fusion");
     horizontal_fusion.AddPass<GpuHorizontalLoopFusion>();
-    // The code generated for fusions created by GpuHorizontalInputFusion has
-    // been observed to fail with CUDA_ERROR_ILLEGAL_ADDRESS errors.
-    // TODO(b/171227713): Re-enable once the emitters are fixed.
-    // horizontal_fusion.AddPass<GpuHorizontalInputFusion>();
+    horizontal_fusion.AddPass<GpuHorizontalInputFusion>();
     horizontal_fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
                                       /*only_fusion_computations=*/true);
     horizontal_fusion.AddPass<HloDCE>();

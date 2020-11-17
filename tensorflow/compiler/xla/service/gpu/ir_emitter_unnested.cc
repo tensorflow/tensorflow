@@ -4381,7 +4381,7 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
           unnested_hlo->IsMultiOutputFusion()
               ? unnested_hlo->fused_expression_root()->operand_count()
               : 1;
-      int64 max_block_size = std::max(16LL, 512LL / NearestPowerOfTwo(fan_out));
+      int64 max_block_size = std::max(64LL, 512LL / NearestPowerOfTwo(fan_out));
       return std::min(
           max_block_size,
           RoundUpToNearest(CeilOfRatio(reduction_dimensions.dimensions[2],
