@@ -729,7 +729,8 @@ def TFL_ConcatenationOp : TFL_Op<"concatenation",
     ins TFL_VariadicTensorOf<
       [F32, I64, I32, I16, I8, QI8, QUI8, UI8, I1]>:$values,
     I32Attr:$axis,
-    TFL_AFAttr:$fused_activation_function
+    TFL_AFAttr:$fused_activation_function,
+    DefaultValuedAttr<BoolAttr, "true">:$fixed_point_scaling
   );
 
   let results = (outs

@@ -1067,7 +1067,7 @@ func @concat_v2_with_3_tensors(%arg0: tensor<2x1xi32>, %arg1: tensor<2x1xi32>, %
   return %1 : tensor<2x3xi32>
 
 // CHECK-LABEL: concat_v2_with_3_tensors
-// CHECK: "tfl.concatenation"(%arg0, %arg1, %arg2) {axis = -1 : i32, fused_activation_function = "NONE"} : (tensor<2x1xi32>, tensor<2x1xi32>, tensor<2x1xi32>) -> tensor<2x3xi32>
+// CHECK: "tfl.concatenation"(%arg0, %arg1, %arg2) {axis = -1 : i32, fixed_point_scaling = true, fused_activation_function = "NONE"} : (tensor<2x1xi32>, tensor<2x1xi32>, tensor<2x1xi32>) -> tensor<2x3xi32>
 }
 
 func @concat_v2_i64_axis(%arg0: tensor<2x1xi32>, %arg1: tensor<2x1xi32>, %arg2: tensor<2x1xi32>) -> tensor<2x3xi32> {
@@ -1076,7 +1076,7 @@ func @concat_v2_i64_axis(%arg0: tensor<2x1xi32>, %arg1: tensor<2x1xi32>, %arg2: 
   return %1 : tensor<2x3xi32>
 
 // CHECK-LABEL: concat_v2_i64_axis
-// CHECK: "tfl.concatenation"(%arg0, %arg1, %arg2) {axis = -1 : i32, fused_activation_function = "NONE"} : (tensor<2x1xi32>, tensor<2x1xi32>, tensor<2x1xi32>) -> tensor<2x3xi32>
+// CHECK: "tfl.concatenation"(%arg0, %arg1, %arg2) {axis = -1 : i32, fixed_point_scaling = true, fused_activation_function = "NONE"} : (tensor<2x1xi32>, tensor<2x1xi32>, tensor<2x1xi32>) -> tensor<2x3xi32>
 }
 
 func @concat_v2_with_bool_type(%arg0: tensor<?x1xi1>, %arg1: tensor<?x1xi1>) -> tensor<?x2xi1> {
@@ -1085,7 +1085,7 @@ func @concat_v2_with_bool_type(%arg0: tensor<?x1xi1>, %arg1: tensor<?x1xi1>) -> 
   return %1 : tensor<?x2xi1>
 
 // CHECK-LABEL: concat_v2_with_bool_type
-// CHECK: "tfl.concatenation"(%arg0, %arg1) {axis = -1 : i32, fused_activation_function = "NONE"} : (tensor<?x1xi1>, tensor<?x1xi1>) -> tensor<?x2xi1>
+// CHECK: "tfl.concatenation"(%arg0, %arg1) {axis = -1 : i32, fixed_point_scaling = true, fused_activation_function = "NONE"} : (tensor<?x1xi1>, tensor<?x1xi1>) -> tensor<?x2xi1>
 }
 
 func @resize_with_bilinear(%arg0: tensor<1x100x100x3xf32>, %arg1: tensor<4xi32>) -> tensor<?xf32> {

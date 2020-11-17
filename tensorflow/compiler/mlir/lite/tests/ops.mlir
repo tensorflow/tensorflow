@@ -1323,16 +1323,16 @@ func @testBatchMatmulQuant(%arg0 : tensor<1x4x384x32x!quant.uniform<i8:f32, 0.06
 // -----
 
 func @testConcat(%arg0: tensor<1x2xi32>, %arg1: tensor<1x2xi32>) -> tensor<2x2xi32> {
-  // CHECK: "tfl.concatenation"(%arg0, %arg1) {axis = 0 : i32, fused_activation_function = "NONE"}
-  %0 = "tfl.concatenation"(%arg0, %arg1) {axis = 0 : i32, fused_activation_function = "NONE"} : (tensor<1x2xi32>, tensor<1x2xi32>) -> tensor<2x2xi32>
+  // CHECK: "tfl.concatenation"(%arg0, %arg1) {axis = 0 : i32, fixed_point_scaling = true, fused_activation_function = "NONE"}
+  %0 = "tfl.concatenation"(%arg0, %arg1) {axis = 0 : i32, fixed_point_scaling = true, fused_activation_function = "NONE"} : (tensor<1x2xi32>, tensor<1x2xi32>) -> tensor<2x2xi32>
   return %0 : tensor<2x2xi32>
 }
 
 // -----
 
 func @testConcatQuantized(%arg0: tensor<1x2x!quant.uniform<i8:f32, 0.1:128>>, %arg1: tensor<1x2x!quant.uniform<i8:f32, 0.1:128>>) -> tensor<2x2x!quant.uniform<i8:f32, 0.1:128>> {
-  // CHECK: "tfl.concatenation"(%arg0, %arg1) {axis = 0 : i32, fused_activation_function = "NONE"}
-  %0 = "tfl.concatenation"(%arg0, %arg1) {axis = 0 : i32, fused_activation_function = "NONE"} : (tensor<1x2x!quant.uniform<i8:f32, 0.1:128>>, tensor<1x2x!quant.uniform<i8:f32, 0.1:128>>) -> tensor<2x2x!quant.uniform<i8:f32, 0.1:128>>
+  // CHECK: "tfl.concatenation"(%arg0, %arg1) {axis = 0 : i32, fixed_point_scaling = true, fused_activation_function = "NONE"}
+  %0 = "tfl.concatenation"(%arg0, %arg1) {axis = 0 : i32, fixed_point_scaling = true, fused_activation_function = "NONE"} : (tensor<1x2x!quant.uniform<i8:f32, 0.1:128>>, tensor<1x2x!quant.uniform<i8:f32, 0.1:128>>) -> tensor<2x2x!quant.uniform<i8:f32, 0.1:128>>
   return %0 : tensor<2x2x!quant.uniform<i8:f32, 0.1:128>>
 }
 

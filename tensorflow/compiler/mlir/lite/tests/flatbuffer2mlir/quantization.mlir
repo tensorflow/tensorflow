@@ -29,7 +29,7 @@ func @quantized_constant(%arg0: tensor<1x2xf32>) -> tensor<2x2xf32> {
 
 // CHECK-NEXT: %[[Q:.*]] = "tfl.quantize"(%arg0) {qtype = tensor<1x2x!quant.uniform<u8:f32, 1.000000e+00>>} : (tensor<1x2xf32>) -> tensor<1x2x!quant.uniform<u8:f32, 1.000000e+00>>
 // CHECK-NEXT: %[[CST:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<1x2x!quant.uniform<u8:f32, 1.000000e+00>>, value = dense<-76> : tensor<1x2xi8>} : () -> tensor<1x2x!quant.uniform<u8:f32, 1.000000e+00>>
-// CHECK-NEXT: %[[CONCAT:.*]] = "tfl.concatenation"(%[[Q]], %[[CST]]) {axis = 0 : i32, fused_activation_function = "NONE"} : (tensor<1x2x!quant.uniform<u8:f32, 1.000000e+00>>, tensor<1x2x!quant.uniform<u8:f32, 1.000000e+00>>) -> tensor<2x2x!quant.uniform<u8:f32, 1.000000e+00>>
+// CHECK-NEXT: %[[CONCAT:.*]] = "tfl.concatenation"(%[[Q]], %[[CST]]) {axis = 0 : i32, fixed_point_scaling = true, fused_activation_function = "NONE"} : (tensor<1x2x!quant.uniform<u8:f32, 1.000000e+00>>, tensor<1x2x!quant.uniform<u8:f32, 1.000000e+00>>) -> tensor<2x2x!quant.uniform<u8:f32, 1.000000e+00>>
 // CHECK-NEXT: %[[DQ:.*]] = "tfl.dequantize"(%[[CONCAT]]) : (tensor<2x2x!quant.uniform<u8:f32, 1.000000e+00>>) -> tensor<2x2xf32>
 // CHECK-NEXT: return %[[DQ]] : tensor<2x2xf32>
 }

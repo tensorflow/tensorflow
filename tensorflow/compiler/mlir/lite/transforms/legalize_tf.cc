@@ -234,8 +234,10 @@ LogicalResult ConvertTFConcatV2Op::matchAndRewrite(
 
   StringAttr fused_activation_function =
       StringAttr::get("NONE", rewriter.getContext());
+  BoolAttr fixed_point_scaling = rewriter.getBoolAttr(true);
   rewriter.replaceOpWithNewOp<ConcatenationOp>(
-      op, output_type, values, axis_i32, fused_activation_function);
+      op, output_type, values, axis_i32, fused_activation_function,
+      fixed_point_scaling);
   return success();
 }
 

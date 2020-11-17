@@ -509,7 +509,7 @@ func @concat_3_tensors_1_empty() -> tensor<?xi32> {
   %3 = "tfl.concatenation"(%0, %1, %2) {axis = 0 : i32, fused_activation_function = "NONE"} : (tensor<2xi32>, tensor<2xi32>, tensor<0xi32>) -> tensor<?xi32>
   return %3 : tensor<?xi32>
 
-  // CHECK: %0 = "tfl.concatenation"(%[[CST]], %[[CST]]) {axis = 0 : i32, fused_activation_function = "NONE"}
+  // CHECK: %0 = "tfl.concatenation"(%[[CST]], %[[CST]]) {axis = 0 : i32, fixed_point_scaling = true, fused_activation_function = "NONE"}
   // CHECK: return %0 : tensor<?xi32>
 }
 
