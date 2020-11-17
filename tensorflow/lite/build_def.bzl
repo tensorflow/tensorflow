@@ -178,6 +178,7 @@ def tf_to_tflite(name, src, options, out):
 
     toco_cmdline = " ".join([
         "$(location //tensorflow/lite/python:tflite_convert)",
+        "--enable_v1_converter",
         "--experimental_new_converter",
         ("--graph_def_file=$(location %s)" % src),
         ("--output_file=$(location %s)" % out),
