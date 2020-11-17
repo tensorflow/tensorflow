@@ -272,11 +272,12 @@ def identity(input, name=None):  # pylint: disable=redefined-builtin
   5
 
   Args:
-    input: A `Tensor`.
+    input: A `Tensor`, a `Variable`, a `CompositeTensor` or anything that can be
+    converted to a tensor using `tf.convert_to_tensor`.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor`. Has the same type as `input`.
+    A `Tensor` or CompositeTensor. Has the same type and contents as `input`.
   """
   if isinstance(input, composite_tensor.CompositeTensor):
     return nest.map_structure(identity, input, expand_composites=True)
