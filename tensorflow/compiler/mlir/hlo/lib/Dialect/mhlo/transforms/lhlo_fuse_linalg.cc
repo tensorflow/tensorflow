@@ -91,6 +91,31 @@ class LhloFuseLinalgPass
         if (result_buffers.insert(alias).second) {
           worklist.push_back(alias);
         }
+        continue;
+      }
+
+      if (auto tensor_load = dyn_cast<TensorLoadOp>(definingOp)) {
+        auto alias = tensor_load.memref();
+        if (result_buffers.insert(alias).second) {
+          worklist.push_back(alias);
+        }
+        continue;
+      }
+
+      if (auto tensor_to_memref = dyn_cast<TensorToMemrefOp>(definingOp)) {
+        auto alias = tensor_to_memref.tensor();
+        if (result_buffers.insert(alias).second) {
+          worklist.push_back(alias);
+        }
+        continue;
+      }
+
+      if (auto tensor_cast = dyn_cast<TensorCastOp>(definingOp)) {
+        auto alias = tensor_cast.source();
+        if (result_buffers.insert(alias).second) {
+          worklist.push_back(alias);
+        }
+        continue;
       }
 
       if (auto regionInterface =
