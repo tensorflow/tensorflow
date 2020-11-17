@@ -17,14 +17,14 @@ message KernelDef {
   // Type of device this kernel runs on.
   string device_type = 2;
 
-  // Sub-type of device this kernel runs on.
-  // For first party devices, subdevice_type is empty (e.g. CPU:).
-  // For PluggableDevices(third party devices), subdevice_type is registered
+  // Alias of device_type this kernel runs on.
+  // For first party devices, device_type_alias is empty (e.g. CPU:).
+  // For PluggableDevices(third party devices), device_type_alias is registered
   // by plugin (e.g. GPU:X_GPU), for instance, a new TensorFlow backend has a
-  // subdevice type that is backed by
+  // alias of device type that is backed by
   // stream_executor::SE_PlatformRegistrationParams
   // (tensorflow/c/experimental/stream_executor/stream_executor.h)
-  string subdevice_type = 7;
+  string device_type_alias = 7;
 
   message AttrConstraint {
     // Name of an attr from the Op.

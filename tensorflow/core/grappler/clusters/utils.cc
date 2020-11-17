@@ -152,13 +152,13 @@ DeviceProperties GetLocalGPUInfo(PlatformGpuId platform_gpu_id) {
 DeviceProperties GetDeviceInfo(const DeviceNameUtils::ParsedName& device) {
   DeviceProperties unknown;
   unknown.set_type("UNKNOWN");
-  // For first party devices, subdevice type is empty.
-  // For third party devices, subdevice type is registered from plugin.
-  const string& subdevice_type = DeviceFactory::SubDeviceType(device.type);
+  // For first party devices, alias is empty.
+  // For third party devices, alias is registered from plugin.
+  const string& alias = DeviceFactory::DeviceAlias(device.type);
 
   if (device.type == "CPU") {
     return GetLocalCPUInfo();
-  } else if (device.type == "GPU" && subdevice_type.empty()) {
+  } else if (device.type == "GPU" && alias.empty()) {
     if (device.has_id) {
       TfGpuId tf_gpu_id(device.id);
       PlatformGpuId platform_gpu_id;

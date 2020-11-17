@@ -33,8 +33,8 @@ KernelDefBuilder& KernelDefBuilder::Device(const char* device_type) {
   return *this;
 }
 
-KernelDefBuilder& KernelDefBuilder::SubDevice(const char* subdevice_type) {
-  kernel_def_->set_subdevice_type(subdevice_type);
+KernelDefBuilder& KernelDefBuilder::DeviceAlias(const char* device_type_alias) {
+  kernel_def_->set_device_type_alias(device_type_alias);
   return *this;
 }
 

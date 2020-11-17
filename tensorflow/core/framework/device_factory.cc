@@ -40,7 +40,7 @@ static mutex* get_device_factory_lock() {
 struct FactoryItem {
   std::unique_ptr<DeviceFactory> factory;
   int priority;
-  string subdevice_type;
+  string alias;
 };
 
 std::unordered_map<string, FactoryItem>& device_factories() {
@@ -64,32 +64,29 @@ int32 DeviceFactory::DevicePriority(const string& device_type) {
 }
 
 // static
-// If subdevice type is not found in the device factories, that means
-// device is not registered. In this case, subdevice type will be an
-// empty string.
-string DeviceFactory::SubDeviceType(const string& device_type) {
+// If alias is not found in the device factories, it will be an empty string.
+string DeviceFactory::DeviceAlias(const string& device_type) {
   tf_shared_lock l(*get_device_factory_lock());
   const std::unordered_map<string, FactoryItem>& factories = device_factories();
   auto iter = factories.find(device_type);
   if (iter != factories.end()) {
-    return iter->second.subdevice_type;
+    return iter->second.alias;
   }
   return "";
 }
 
 // static
-void DeviceFactory::Register(const string& device_type,
-                             const string& subdevice_type,
+void DeviceFactory::Register(const string& device_type, const string& alias,
                              DeviceFactory* factory, int priority) {
   mutex_lock l(*get_device_factory_lock());
   std::unique_ptr<DeviceFactory> factory_ptr(factory);
   std::unordered_map<string, FactoryItem>& factories = device_factories();
   auto iter = factories.find(device_type);
   if (iter == factories.end()) {
-    factories[device_type] = {std::move(factory_ptr), priority, subdevice_type};
+    factories[device_type] = {std::move(factory_ptr), priority, alias};
   } else {
     if (iter->second.priority < priority) {
-      iter->second = {std::move(factory_ptr), priority, subdevice_type};
+      iter->second = {std::move(factory_ptr), priority, alias};
     } else if (iter->second.priority == priority) {
       LOG(FATAL) << "Duplicate registration of device factory for type "
                  << device_type << " with the same priority " << priority;

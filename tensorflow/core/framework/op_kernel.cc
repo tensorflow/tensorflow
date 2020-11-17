@@ -1247,9 +1247,9 @@ static KernelRegistry* GlobalKernelRegistryTyped() {
 }
 
 static string Key(StringPiece op_type, const DeviceType& device_type,
-                  StringPiece subdevice_type, StringPiece label) {
+                  StringPiece device_type_alias, StringPiece label) {
   return strings::StrCat(op_type, ":", DeviceTypeString(device_type), ":",
-                         subdevice_type, ":", label);
+                         device_type_alias, ":", label);
 }
 
 namespace kernel_factory {
@@ -1259,7 +1259,7 @@ void OpKernelRegistrar::InitInternal(const KernelDef* kernel_def,
                                      std::unique_ptr<OpKernelFactory> factory) {
   const string key =
       Key(kernel_def->op(), DeviceType(kernel_def->device_type()),
-          kernel_def->subdevice_type(), kernel_def->label());
+          kernel_def->device_type_alias(), kernel_def->label());
 
   // To avoid calling LoadDynamicKernels DO NOT CALL GlobalKernelRegistryTyped
   // here.
@@ -1313,9 +1313,9 @@ Status FindKernelRegistration(
   *was_attr_mismatch = false;
 
   const string& label = GetKernelLabelAttr(node_attrs);
-  string subdevice_type =
-      DeviceFactory::SubDeviceType(DeviceTypeString(device_type));
-  const string key = Key(node_op, device_type, subdevice_type, label);
+  string device_type_alias =
+      DeviceFactory::DeviceAlias(DeviceTypeString(device_type));
+  const string key = Key(node_op, device_type, device_type_alias, label);
   auto typed_registry = GlobalKernelRegistryTyped();
   tf_shared_lock lock(typed_registry->mu);
   auto regs = typed_registry->registry.equal_range(key);
@@ -1349,7 +1349,7 @@ Status FindKernelRegistration(
   if (*reg == nullptr &&
       !IsSymbolicExecutionDevice(device_type.type_string())) {
     const string default_key = Key(node_op, /*device_type=*/DEVICE_DEFAULT,
-                                   /*subdevice_type=*/"", label);
+                                   /*device_type_alias=*/"", label);
     auto regs = typed_registry->registry.equal_range(default_key);
     for (auto iter = regs.first; iter != regs.second; ++iter) {
       // If there is a kernel registered for the op and device_type,

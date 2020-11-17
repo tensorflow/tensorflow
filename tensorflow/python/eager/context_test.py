@@ -139,18 +139,18 @@ class ContextTest(test.TestCase):
   def testParsePhysicalDevices(self):
     expected_cpu = context.PhysicalDevice(
                      name='/physical_device:CPU:0',
-                     device_type='CPU', subdevice_type='CPU')
+                     device_type='CPU', alias='')
     cpu_devices = context.context().list_physical_devices("CPU")
     self.assertTrue(expected_cpu in cpu_devices)
 
   @test.mock.patch.object(pywrap_tfe, 'TF_ListPhysicalDevices')
-  def testParsePhysicalDeviceWithSubdevice(self, mock_list_devices):
+  def testParsePhysicalDeviceWithAlias(self, mock_list_devices):
       mock_list_devices.return_value = [b'/physical_device:GPU:XPU:0']
       new_context = context.Context()
       expected_gpu = context.PhysicalDevice(
           name='/physical_device:GPU:XPU:0',
           device_type='GPU',
-          subdevice_type='XPU')
+          alias='XPU')
       gpu_devices = new_context.list_physical_devices('GPU')
       self.assertListEqual(gpu_devices, [expected_gpu])
       xpu_devices = new_context.list_physical_devices('XPU')

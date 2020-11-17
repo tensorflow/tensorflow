@@ -30,8 +30,7 @@ struct SessionOptions;
 class DeviceFactory {
  public:
   virtual ~DeviceFactory() {}
-  static void Register(const std::string& device_type,
-                       const std::string& subdevice_type,
+  static void Register(const std::string& device_type, const std::string& alias,
                        DeviceFactory* factory, int priority);
   static DeviceFactory* GetFactory(const std::string& device_type);
 
@@ -91,8 +90,8 @@ class DeviceFactory {
   // for built-in devices.
   static int32 DevicePriority(const std::string& device_type);
 
-  // Return the subdevice_type string for a device_type string.
-  static string SubDeviceType(const std::string& device_type);
+  // Return the alias for a device_type string.
+  static string DeviceAlias(const std::string& device_type);
 };
 namespace dfactory {
 
@@ -129,10 +128,10 @@ class Registrar {
   // GPUCompatibleCPU: 70
   // ThreadPoolDevice: 60
   // Default: 50
-  // Subdevice type is empty for those devices registered
+  // Alias of device type is empty for those devices registered
   // by Registrar (first party devices);
   explicit Registrar(const std::string& device_type, int priority = 50) {
-    DeviceFactory::Register(/*device_type=*/device_type, /*subdevice_type=*/"",
+    DeviceFactory::Register(/*device_type=*/device_type, /*alias=*/"",
                             new Factory(), priority);
   }
 };
