@@ -183,21 +183,20 @@ absl::Status InferenceContext::InitFromGraph(
   RETURN_IF_ERROR(Compile(creation_context));
   RETURN_IF_ERROR(UpdateParams());
 
-  TuningParameters tuning_parameters;
-  tuning_parameters.queue = env->profiling_queue();
-  tuning_parameters.info = &env->device().info_;
+  TuningType tuning_type = TuningType::kExhaustive;
   if (create_info.hints.Check(ModelHints::kFastTuning)) {
-    tuning_parameters.tuning_type = TuningType::FAST;
+    tuning_type = TuningType::kFast;
   }
-  if (tuning_parameters.info->IsMali()) {
-    const MaliInfo& info = tuning_parameters.info->mali_info;
+  if (env->device().GetInfo().IsMali()) {
+    const MaliInfo& info = env->device().GetInfo().mali_info;
     if (info.IsMaliT6xx()) {
       // Mali T628 hangs forever in clFinish when used profiling queue
       // TuningType::FAST does not use profiling queue.
-      tuning_parameters.tuning_type = TuningType::FAST;
+      tuning_type = TuningType::kFast;
     }
   }
-  RETURN_IF_ERROR(Tune(tuning_parameters));
+  RETURN_IF_ERROR(
+      Tune(tuning_type, env->device().GetInfo(), env->profiling_queue()));
 
   if (serialized_model) {
     for (auto& node : nodes_) {
@@ -631,9 +630,12 @@ absl::Status InferenceContext::Compile(
   return absl::OkStatus();
 }
 
-absl::Status InferenceContext::Tune(const TuningParameters& tuning_parameters) {
+absl::Status InferenceContext::Tune(TuningType tuning_type,
+                                    const GpuInfo& gpu_info,
+                                    ProfilingCommandQueue* profiling_queue) {
   for (auto& node : nodes_) {
-    RETURN_IF_ERROR(node.cl_operation.Tune(tuning_parameters));
+    RETURN_IF_ERROR(
+        node.cl_operation.Tune(tuning_type, gpu_info, profiling_queue));
   }
   return absl::OkStatus();
 }

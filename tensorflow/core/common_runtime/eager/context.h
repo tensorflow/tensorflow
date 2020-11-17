@@ -153,8 +153,10 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
       Status* status) override;
   ImmediateExecutionOperation* CreateOperation() override;
 
-  // Convert a TFRT TensorHandle to tensorflow::TensorHandle. In this case,
-  // just forward the input TensorHandle.
+  // This is a virtual helper function to convert TFRT TensorHandle to
+  // tensorflow::TensorHandle. In current runtime EagerContext, just forward
+  // the input since the input tensor handle is already a
+  // tensorflow::TensorHandle.
   ImmediateExecutionTensorHandle* TFTensorHandleFromInterface(
       ImmediateExecutionTensorHandle* handle) override;
 

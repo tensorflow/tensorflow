@@ -20,7 +20,6 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -37,10 +36,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/post_process_single_host_xplane.h"
 #include "tensorflow/core/profiler/lib/profiler_factory.h"
 #include "tensorflow/core/profiler/lib/profiler_lock.h"
-#include "tensorflow/core/profiler/utils/derived_timeline.h"
-#include "tensorflow/core/profiler/utils/group_events.h"
-#include "tensorflow/core/profiler/utils/xplane_schema.h"
-#include "tensorflow/core/profiler/utils/xplane_utils.h"
+#include "tensorflow/core/profiler/utils/time_utils.h"
 #endif
 
 namespace tensorflow {
@@ -151,10 +147,9 @@ ProfilerSession::ProfilerSession(ProfileOptions options)
     }
   }
 
-  start_time_ns_ = EnvTime::NowNanos();
   LOG(INFO) << "Profiler session started.";
-
 #if !defined(IS_MOBILE_PLATFORM)
+  start_time_ns_ = profiler::GetCurrentTimeNanos();
   CreateProfilers(options_, &profilers_);
 #endif
   status_ = Status::OK();

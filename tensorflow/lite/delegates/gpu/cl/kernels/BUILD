@@ -255,6 +255,7 @@ cc_library(
     hdrs = ["converter.h"],
     deps = [
         ":util",
+        ":work_group_picking",
         "//tensorflow/lite/delegates/gpu:spi",
         "//tensorflow/lite/delegates/gpu/cl:cl_arguments",
         "//tensorflow/lite/delegates/gpu/cl:cl_command_queue",
@@ -274,6 +275,7 @@ cc_library(
     srcs = ["convolution_transposed.cc"],
     hdrs = ["convolution_transposed.h"],
     deps = [
+        ":conv_common",
         ":gpu_operation",
         ":util",
         ":work_group_picking",
@@ -578,7 +580,6 @@ cc_library(
     hdrs = ["fully_connected.h"],
     deps = [
         ":gpu_operation",
-        ":tuning_parameters",
         ":util",
         "//tensorflow/lite/delegates/gpu/cl:buffer",
         "//tensorflow/lite/delegates/gpu/cl:cl_kernel",
@@ -622,9 +623,9 @@ cc_library(
     srcs = ["gpu_operation.cc"],
     hdrs = ["gpu_operation.h"],
     deps = [
-        ":tuning_parameters",
         ":util",
         ":work_group_picking",
+        "//tensorflow/lite/delegates/gpu/cl:cl_kernel",
         "//tensorflow/lite/delegates/gpu/cl:device_info",
         "//tensorflow/lite/delegates/gpu/cl:serialization_cc_fbs",
         "//tensorflow/lite/delegates/gpu/common:access_type",
@@ -636,6 +637,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/task:buffer_desc",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_tensor",
         "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
+        "//tensorflow/lite/delegates/gpu/common/task:tuning_type",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -1203,15 +1205,6 @@ cc_test(
 )
 
 cc_library(
-    name = "tuning_parameters",
-    hdrs = ["tuning_parameters.h"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu/cl:cl_command_queue",
-        "//tensorflow/lite/delegates/gpu/cl:device_info",
-    ],
-)
-
-cc_library(
     name = "resize",
     srcs = ["resize.cc"],
     hdrs = ["resize.h"],
@@ -1304,12 +1297,13 @@ cc_library(
     srcs = ["work_group_picking.cc"],
     hdrs = ["work_group_picking.h"],
     deps = [
-        ":tuning_parameters",
         "//tensorflow/lite/delegates/gpu/cl:cl_kernel",
         "//tensorflow/lite/delegates/gpu/cl:device_info",
+        "//tensorflow/lite/delegates/gpu/common:kernel_info",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/common:workgroup_selection",
+        "//tensorflow/lite/delegates/gpu/common/task:tuning_type",
     ],
 )
 

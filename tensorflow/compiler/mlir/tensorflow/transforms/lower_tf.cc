@@ -245,23 +245,25 @@ class LowerAddNOp : public RewritePattern {
 //     : (tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>,
 //        tensor<2xf32>, tensor<i64>) -> tensor<5x2xf32>
 //
+template <typename OpT>
 class LowerDynamicStitchOp : public RewritePattern {
  public:
   explicit LowerDynamicStitchOp(MLIRContext *context)
       : RewritePattern(
-            DynamicStitchOp::getOperationName(),
+            OpT::getOperationName(),
             {ConstOp::getOperationName(), ReshapeOp::getOperationName(),
              UnpackOp::getOperationName(), PackOp::getOperationName()},
             1, context) {}
 
   LogicalResult matchAndRewrite(Operation *src_op,
                                 PatternRewriter &rewriter) const override {
-    auto op = cast<DynamicStitchOp>(src_op);
+    auto op = cast<OpT>(src_op);
 
     // Static output type is used to compute intermediate values. Note that the
     // output type doesn't have to be static but if input types and indices are
     // constant, then the output type can be statically determined.
-    RankedTensorType out_ty = op.getType().dyn_cast<RankedTensorType>();
+    RankedTensorType out_ty =
+        op.getType().template dyn_cast<RankedTensorType>();
     if (!out_ty || !out_ty.hasStaticShape()) return failure();
 
     // Extract out all the constant indices' attributes and verify that data
@@ -276,7 +278,8 @@ class LowerDynamicStitchOp : public RewritePattern {
       if (!matchPattern(index, m_Constant(&index_attr))) return failure();
       indices.push_back(index_attr);
 
-      RankedTensorType data_ty = data.getType().dyn_cast<RankedTensorType>();
+      RankedTensorType data_ty =
+          data.getType().template dyn_cast<RankedTensorType>();
       if (!data_ty || !data_ty.hasStaticShape()) return failure();
     }
 
@@ -301,8 +304,9 @@ class LowerDynamicStitchOp : public RewritePattern {
 
       auto reshaped_data =
           rewriter.create<ReshapeOp>(loc, data, packed_shape_val);
-      auto num_items =
-          reshaped_data.getType().cast<RankedTensorType>().getShape()[0];
+      auto num_items = reshaped_data.getType()
+                           .template cast<RankedTensorType>()
+                           .getShape()[0];
       auto items = rewriter.create<UnpackOp>(
           loc, SmallVector<Type, 4>(num_items, item_ty), reshaped_data,
           /*axis=*/0);
@@ -1509,10 +1513,12 @@ class LowerResizeNearestNeighbor : public RewritePattern {
 void PopulateLoweringTFPatterns(MLIRContext *context,
                                 OwningRewritePatternList *patterns) {
   patterns->insert<LowerAddNOp, ConvertFakeQuantWithMinMaxVarsOp,
-                   LowerDynamicStitchOp, LowerInvertPermutationOp,
-                   LowerLgammaOp, LowerPackOp, LowerBatchToSpaceND,
-                   LowerSpaceToBatchNDOp, LowerResizeNearestNeighbor,
-                   LowerSparseMatMulOp, Lower_UnaryOpsComposition>(context);
+                   LowerDynamicStitchOp<DynamicStitchOp>,
+                   LowerDynamicStitchOp<ParallelDynamicStitchOp>,
+                   LowerInvertPermutationOp, LowerLgammaOp, LowerPackOp,
+                   LowerBatchToSpaceND, LowerSpaceToBatchNDOp,
+                   LowerResizeNearestNeighbor, LowerSparseMatMulOp,
+                   Lower_UnaryOpsComposition>(context);
   populateWithGenerated(context, *patterns);
 }
 

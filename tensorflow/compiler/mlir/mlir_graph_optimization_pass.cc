@@ -39,12 +39,13 @@ limitations under the License.
 
 namespace tensorflow {
 
-auto* shadow_run_success = monitoring::Counter<0>::New(
-    "/tensorflow/mlir/shadow_run_success", "Success count of MLIR shadow runs");
+auto* shadow_run_success =
+    monitoring::Counter<0>::New("/tensorflow/core/mlir_shadow_run_success",
+                                "Success count of MLIR shadow runs");
 
 auto* shadow_run_failure = monitoring::Counter<2>::New(
-    "/tensorflow/mlir/shadow_run_failure", "Failure count of MLIR shadow runs",
-    "kind", "name");
+    "/tensorflow/core/mlir_shadow_run_failure",
+    "Failure count of MLIR shadow runs", "kind", "name");
 
 static inline absl::string_view StringRefToView(llvm::StringRef ref) {
   return {ref.data(), ref.size()};

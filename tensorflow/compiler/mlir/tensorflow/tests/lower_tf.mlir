@@ -112,6 +112,15 @@ func @fill(%arg0: tensor<*xi64>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
   return %0 : tensor<*xf32>
 }
 
+func @empty(%arg0: tensor<?xi32>) -> tensor<*xf32> {
+  // CHECK-DAG: [[CST:%.+]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<f32>}
+  // CHECK-DAG: [[RES:%.+]] = "tf.BroadcastTo"([[CST]], %arg0)
+  %0 = "tf.Empty"(%arg0) {init = true} : (tensor<?xi32>) -> (tensor<*xf32>)
+
+  // CHECK: return [[RES]]
+  return %0 : tensor<*xf32>
+}
+
 // CHECK-LABEL: func @l2_loss
 // CHECK-SAME: (%[[INPUT:.*]]: tensor<?x?xf32>)
 func @l2_loss(%arg0: tensor<?x?xf32>) -> tensor<f32> {
@@ -656,6 +665,14 @@ func @DynamicStitch_duplicates(%arg0: tensor<2x2xf32>) -> tensor<1x2xf32> {
   %indices = "tf.Const"() {value = dense<[0, 0]> : tensor<2xi32>} : () -> tensor<2xi32>
   %0 = "tf.DynamicStitch"(%indices, %arg0) : (tensor<2xi32>, tensor<2x2xf32>) -> tensor<1x2xf32>
   return %0 : tensor<1x2xf32>
+}
+
+// CHECK-LABEL: func @ParallelDynamicStitch
+func @ParallelDynamicStitch(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  %indices = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi32>} : () -> tensor<2xi32>
+  // CHECK-NOT: tf.ParallelDynamicStitch
+  %0 = "tf.ParallelDynamicStitch"(%indices, %arg0) : (tensor<2xi32>, tensor<2x2xf32>) -> tensor<2x2xf32>
+  return %0 : tensor<2x2xf32>
 }
 
 // CHECK-LABEL: @Reciprocal_i32

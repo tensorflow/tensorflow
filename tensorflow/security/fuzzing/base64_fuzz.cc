@@ -25,20 +25,15 @@ limitations under the License.
 namespace {
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
-  uint8_t *byte_data = const_cast<uint8_t *>(data);
-  char *char_data = reinterpret_cast<char *>(byte_data);
-
-  tensorflow::StringPiece original_sp =
-      tensorflow::StringPiece(char_data, size);
-
-  string encoded_string;
-  string decoded_string;
+  std::string input(reinterpret_cast<const char *>(data), size);
+  std::string encoded_string;
+  std::string decoded_string;
   tensorflow::Status s;
-  s = tensorflow::Base64Encode(original_sp, &encoded_string);
+  s = tensorflow::Base64Encode(input, &encoded_string);
   assert(s.ok());
   s = tensorflow::Base64Decode(encoded_string, &decoded_string);
   assert(s.ok());
-  assert(original_sp == decoded_string);
+  assert(input == decoded_string);
 
   return 0;
 }

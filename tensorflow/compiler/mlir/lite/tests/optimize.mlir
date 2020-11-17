@@ -578,6 +578,32 @@ func @NotReorderReshapeAddIfNotTailingDimAfter(%arg0: tensor<1x30x1x96xf32>) -> 
   // CHECK: return %[[rs2]]
 }
 
+// CHECK-LABEL: @NotReorderReshapeAddIf5DInputs
+func @NotReorderReshapeAddIf5DInputs(%arg0: tensor<1x1x1x1x1xf32>) -> tensor<1x1x1x1x2xf32> {
+  %cst = constant dense<2.0> : tensor<1x1x1x1x2xf32>
+  %shape = constant dense<[1, 1, 1, 1, 2]> : tensor<5xi32>
+  %1 = "tfl.reshape"(%arg0, %shape) : (tensor<1x1x1x1x1xf32>, tensor<5xi32>) -> tensor<1x1x1x1x2xf32>
+  %2 = "tfl.add"(%1, %cst) {fused_activation_function = "NONE"} : (tensor<1x1x1x1x2xf32>, tensor<1x1x1x1x2xf32>) -> tensor<1x1x1x1x2xf32>
+  return %2 : tensor<1x1x1x1x2xf32>
+
+  // CHECK: %[[rs1:.*]] = "tfl.reshape"(%arg0
+  // CHECK: %[[rs2:.*]] = tfl.add %[[rs1]]
+  // CHECK: return %[[rs2]]
+}
+
+// CHECK-LABEL: @NotReorderReshapeFloorDivIf5DInputs
+func @NotReorderReshapeFloorDivIf5DInputs(%arg0: tensor<1x1x1x1x1xf32>) -> tensor<1x1x1x1x2xf32> {
+  %cst = constant dense<2.0> : tensor<1x1x1x1x2xf32>
+  %shape = constant dense<[1, 1, 1, 1, 2]> : tensor<5xi32>
+  %1 = "tfl.reshape"(%arg0, %shape) : (tensor<1x1x1x1x1xf32>, tensor<5xi32>) -> tensor<1x1x1x1x2xf32>
+  %2 = "tfl.floor_div"(%1, %cst) {fused_activation_function = "NONE"} : (tensor<1x1x1x1x2xf32>, tensor<1x1x1x1x2xf32>) -> tensor<1x1x1x1x2xf32>
+  return %2 : tensor<1x1x1x1x2xf32>
+
+  // CHECK: %[[rs1:.*]] = "tfl.reshape"(%arg0
+  // CHECK: %[[rs2:.*]] = tfl.floor_div %[[rs1]]
+  // CHECK: return %[[rs2]]
+}
+
 // CHECK-LABEL: @NotReorderReshapeAddIfNotTailingDim
 func @NotReorderReshapeAddIfNotTailingDim(%arg0: tensor<40x40x1xf32>) -> tensor<40x40xf32> {
   %cst = constant dense<2.0> : tensor<1x40xf32>
@@ -896,6 +922,36 @@ func @fuseTileWithBinaryOp1(%arg0: tensor<1x1xf32>, %arg1: tensor<1x128xf32>) ->
   // CHECK: return %[[RES]]
 }
 
+// CHECK-LABEL: notFuseTileWithBinaryOpOn5DInputs
+func @notFuseTileWithBinaryOpOn5DInputs(%arg0: tensor<1x1xf32>) -> tensor<1x1x1x1x2xf32> {
+  %cst = constant dense<[1, 1, 1, 1, 2]> : tensor<5xi32>
+  %cst1 = constant dense<3.0> : tensor<1x1x1x1x2xf32>
+  %0 = "tfl.sqrt"(%arg0) : (tensor<1x1xf32>) -> tensor<1x1xf32>
+  %1 = "tfl.tile"(%0, %cst) : (tensor<1x1xf32>, tensor<5xi32>) -> tensor<1x1x1x1x2xf32>
+  %2 = "tfl.add"(%cst1, %1) {fused_activation_function = "NONE"} : (tensor<1x1x1x1x2xf32>, tensor<1x1x1x1x2xf32>) -> tensor<1x1x1x1x2xf32>
+  return %2 : tensor<1x1x1x1x2xf32>
+
+  // CHECK: "tfl.sqrt"
+  // CHECK: "tfl.tile"
+  // CHECK: tfl.add
+}
+
+// CHECK-LABEL: notFuseTileWithBinaryOp1On5DInputs
+func @notFuseTileWithBinaryOp1On5DInputs(%arg0: tensor<1x1xf32>, %arg1: tensor<1x1x1x1x128xf32>) -> tensor<1x1x1x1x128xf32> {
+  %cst_0 = constant dense<1.0> : tensor<f32>
+  %cst_1 = constant dense<[1, 1, 1, 1, 128]> : tensor<5xi32>
+  %0 = "tfl.add"(%arg0, %cst_0) {fused_activation_function = "NONE"} : (tensor<1x1xf32>, tensor<f32>) -> tensor<1x1xf32>
+  %1 = "tfl.sqrt"(%0) : (tensor<1x1xf32>) -> tensor<1x1xf32>
+  %2 = "tfl.tile"(%1, %cst_1) : (tensor<1x1xf32>, tensor<5xi32>) -> tensor<1x1x1x1x128xf32>
+  %3 = "tfl.div"(%2, %arg1) {fused_activation_function = "NONE"} : (tensor<1x1x1x1x128xf32>, tensor<1x1x1x1x128xf32>) -> tensor<1x1x1x1x128xf32>
+  return %3 : tensor<1x1x1x1x128xf32>
+
+  // CHECK: "tfl.add"
+  // CHECK: "tfl.sqrt"
+  // CHECK: "tfl.tile"
+  // CHECK: tfl.div
+}
+
 // CHECK-LABEL: InvalidFuseTileWithBinaryOp
 func @InvalidFuseTileWithBinaryOp(%arg0: tensor<2x3xf32>) -> tensor<2x6xf32> {
   %cst = constant dense<[[1,2]]> : tensor<1x2xi32>
@@ -1153,6 +1209,18 @@ func @ReorderAddWithConstant(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK-LABEL: ReorderAddWithConstant
   // CHECK: %[[CONST:.*]] = constant dense<3.000000e+00> : tensor<2x2xf32>
   // CHECK: %[[RESULT:.*]] = tfl.add %arg0, %[[CONST]] {fused_activation_function = "NONE"} : tensor<2x2xf32>
+}
+
+func @NotReorderAddWithConstantOn5D(%arg0: tensor<2x2x2x2x2xf32>) -> tensor<2x2x2x2x2xf32> {
+  %cst = constant dense<1.0> : tensor<2x2x2x2x2xf32>
+  %cst_1 = constant dense<2.0> : tensor<2x2x2x2x2xf32>
+  %0 = "tfl.add"(%arg0, %cst) {fused_activation_function = "NONE"} : (tensor<2x2x2x2x2xf32>, tensor<2x2x2x2x2xf32>) -> tensor<2x2x2x2x2xf32>
+  %1 = "tfl.add"(%0, %cst_1) {fused_activation_function = "NONE"} : (tensor<2x2x2x2x2xf32>, tensor<2x2x2x2x2xf32>) -> tensor<2x2x2x2x2xf32>
+  return %1 : tensor<2x2x2x2x2xf32>
+
+  // CHECK-LABEL: NotReorderAddWithConstantOn5D
+  // CHECK: tfl.add
+  // CHECK: tfl.add
 }
 
 func @RemoveCast(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
@@ -1426,4 +1494,21 @@ func @fuseMulIntoConv2d_Splat2D(%arg0: tensor<1x112x112x2xf32>) -> tensor<1x112x
   // CHECK: %[[CST2:.*]] = constant dense<2.000000e+00> : tensor<2xf32>
   // CHECK: %[[RES:[0-9].*]] = "tfl.conv_2d"(%arg0, %[[CST1]], %[[CST2]]) {dilation_h_factor = 2 : i32, dilation_w_factor = 3 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 4 : i32, stride_w = 5 : i32} : (tensor<1x112x112x2xf32>, tensor<2x1x1x2xf32>, tensor<2xf32>) -> tensor<1x112x112x2xf32>
   // CHECK: return %[[RES]]
+}
+
+// CHECK-LABEL: @AvoidFuseFullyConnectedAddWithSplat2D
+func @AvoidFuseFullyConnectedAddWithSplat2D(%arg0: tensor<1x1x1x1x1xf32>, %arg1: tensor<1x1xf32>) -> tensor<1x1x1x1x1xf32> {
+  %cst = constant unit
+  %cst2 = constant dense<2.0> : tensor<1x1x1x1x1xf32>
+
+  %0 = "tfl.fully_connected" (%arg0, %arg1, %cst) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<1x1x1x1x1xf32>, tensor<1x1xf32>, none) -> tensor<1x1x1x1x1xf32>
+  %1 = "tfl.add"(%0, %cst2) {fused_activation_function = "NONE"} : (tensor<1x1x1x1x1xf32>, tensor<1x1x1x1x1xf32>) -> tensor<1x1x1x1x1xf32>
+
+  return %1 : tensor<1x1x1x1x1xf32>
+
+  // CHECK: %[[CST1:.*]] = constant unit
+  // CHECK: %[[CST2:.*]] = constant dense<2.000000e+00> : tensor<1x1x1x1x1xf32>
+  // CHECK: %[[FC_RESULT:.*]] = "tfl.fully_connected"(%arg0, %arg1, %[[CST1]]) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<1x1x1x1x1xf32>, tensor<1x1xf32>, none) -> tensor<1x1x1x1x1xf32>
+  // CHECK: %[[ADD:.*]] = tfl.add %[[FC_RESULT]], %[[CST2]] {fused_activation_function = "NONE"} : tensor<1x1x1x1x1xf32>
+  // CHECK: return %[[ADD]] : tensor<1x1x1x1x1xf32>
 }

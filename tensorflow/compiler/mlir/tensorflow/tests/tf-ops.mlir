@@ -2056,7 +2056,7 @@ func @testInvalidWhileRegion_I_BI_CountMismatch(%arg0 : tensor<i32>) -> (tensor<
        ^bb0(%barg0: tensor<i32>, %barg1 : tensor<f32>):
         "tf.Yield"(%barg0) : (tensor<i32>) -> ()
      }
-  ) : (tensor<i32>) -> (tensor<i32>)
+  ) {is_stateless = false} : (tensor<i32>) -> (tensor<i32>)
 
   return %0 : tensor<i32>
 }
@@ -2076,7 +2076,7 @@ func @testInvalidWhileRegion_I_BI_TypeMismatch(%arg0 : tensor<i32>) -> (tensor<i
         %c = "tf.Cast"(%barg) : (tensor<f32>) -> tensor<i32>
         "tf.Yield"(%c) : (tensor<i32>) -> ()
      }
-  ) : (tensor<i32>) -> (tensor<i32>)
+  ) {is_stateless = false} : (tensor<i32>) -> (tensor<i32>)
 
   return %0 : tensor<i32>
 }
@@ -2166,7 +2166,7 @@ func @testInvalidWhileRegionConditionOutputCount2(%arg : tensor<i32>) -> (tensor
        ^bb0(%barg: tensor<i32>):
         "tf.Yield"(%barg) : (tensor<i32>) -> ()
      }
-  ) : (tensor<i32>) -> (tensor<i32>)
+  ) {is_stateless = false} : (tensor<i32>) -> (tensor<i32>)
 
   return %0 : tensor<i32>
 }
@@ -2184,7 +2184,7 @@ func @testInvalidWhileRegionConditionOutputCount0(%arg : tensor<i32>) -> (tensor
        ^bb0(%barg: tensor<i32>):
         "tf.Yield"(%barg) : (tensor<i32>) -> ()
      }
-  ) : (tensor<i32>) -> (tensor<i32>)
+  ) {is_stateless = false} : (tensor<i32>) -> (tensor<i32>)
 
   return %0 : tensor<i32>
 }
@@ -2202,7 +2202,7 @@ func @testInvalidWhileRegionConditionOutputType(%arg : tensor<i32>) -> (tensor<i
        ^bb0(%barg: tensor<i32>):
         "tf.Yield"(%barg) : (tensor<i32>) -> ()
      }
-  ) : (tensor<i32>) -> (tensor<i32>)
+  ) {is_stateless = false} : (tensor<i32>) -> (tensor<i32>)
 
   return %0 : tensor<i32>
 }

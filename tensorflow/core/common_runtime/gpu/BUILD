@@ -85,6 +85,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core:lib",
+        "//tensorflow/core/common_runtime/device:device_id",
     ] + if_static([
         ":gpu_id_impl",
     ]),
@@ -98,7 +99,9 @@ cc_library(
         "gpu_id_manager.h",
     ],
     deps = [
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/common_runtime/device:device_id_impl",
     ],
 )
 
@@ -120,6 +123,7 @@ filegroup(
         "gpu_process_state.h",
         "gpu_util.h",
         "//tensorflow/core/common_runtime:gpu_runtime_headers",
+        "//tensorflow/core/common_runtime/device:device_runtime_headers",
     ],
     visibility = ["//visibility:private"],
 )
@@ -213,6 +217,7 @@ tf_cuda_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/common_runtime/device:device_id",
         "//tensorflow/core/framework:allocator",
         "//tensorflow/core/platform:stream_executor",
     ],
@@ -301,32 +306,6 @@ tf_cuda_cc_test(
     size = "small",
     srcs = [
         "gpu_device_test.cc",
-    ],
-    linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags(),
-    deps = [
-        ":gpu_id",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-        "//tensorflow/core/common_runtime:core_cpu",
-        "//tensorflow/core/common_runtime:core_cpu_internal",
-        "//tensorflow/core/common_runtime:direct_session_internal",
-        "//tensorflow/core/kernels:ops_util",
-    ],
-)
-
-tf_cuda_cc_test(
-    name = "gpu_id_manager_test",
-    size = "small",
-    srcs = [
-        "gpu_id_manager_test.cc",
     ],
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags(),

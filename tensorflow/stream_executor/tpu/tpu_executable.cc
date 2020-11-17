@@ -79,6 +79,7 @@ Status TpuExecutable::LoadProgramAndEnqueueToStream(
 
   TpuExecutable_LoadProgramAndEnqueueToStream_Params params;
   params.struct_size = TpuExecutable_LoadProgramAndEnqueueToStream_Params_SIZE;
+  params.priv = nullptr;
   params.program = core_program_;
   params.arguments = arguments_bases;
   params.arguments_len = arguments.size();

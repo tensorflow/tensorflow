@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/lite/delegates/gpu/cl/kernels/conv_common.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -29,6 +30,10 @@ namespace cl {
 std::unique_ptr<GPUOperation> SelectConvolutionTransposed(
     const ConvolutionTransposedAttributes& attr, const GpuInfo& gpu_info,
     const OperationDef& op_def);
+
+std::unique_ptr<GPUOperation> SelectConvolutionTransposedWithDynamicWeights(
+    const ConvolutionTransposedAttributes& attr, const GpuInfo& gpu_info,
+    const OperationDef& op_def, ConvWeightsDescription* weights_desc);
 
 }  // namespace cl
 }  // namespace gpu

@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_unified_experimental.h"
 #include "tensorflow/c/eager/c_api_unified_experimental_internal.h"
 #include "tensorflow/c/eager/gradients_internal.h"
+#include "tensorflow/c/eager/unified_api_testutil.h"
 #include "tensorflow/c/experimental/gradients/array_grad.h"
 #include "tensorflow/c/experimental/gradients/math_grad.h"
 #include "tensorflow/c/experimental/gradients/tape/tape_context.h"
@@ -75,8 +76,10 @@ Status RegisterGradients(GradientRegistry* registry) {
 // return grad(y, {inputs[0], inputs[1]})
 Status AddGradModel(AbstractContext* ctx,
                     absl::Span<AbstractTensorHandle* const> inputs,
-                    absl::Span<AbstractTensorHandle*> outputs,
-                    const GradientRegistry& registry) {
+                    absl::Span<AbstractTensorHandle*> outputs) {
+  GradientRegistry registry;
+  TF_RETURN_IF_ERROR(RegisterGradients(&registry));
+
   TapeVSpace vspace(ctx);
   auto tape = std::make_unique<Tape>(/*persistent=*/false);
   tape->Watch(ToId(inputs[0]));  // Watch x.
@@ -109,8 +112,10 @@ Status AddGradModel(AbstractContext* ctx,
 // return grad(y, {inputs[0]})
 Status ExpGradModel(AbstractContext* ctx,
                     absl::Span<AbstractTensorHandle* const> inputs,
-                    absl::Span<AbstractTensorHandle*> outputs,
-                    const GradientRegistry& registry) {
+                    absl::Span<AbstractTensorHandle*> outputs) {
+  GradientRegistry registry;
+  TF_RETURN_IF_ERROR(RegisterGradients(&registry));
+
   TapeVSpace vspace(ctx);
   auto tape = std::make_unique<Tape>(/*persistent=*/false);
   tape->Watch(ToId(inputs[0]));  // Watch x.
@@ -139,8 +144,10 @@ Status ExpGradModel(AbstractContext* ctx,
 // return grad(y, {inputs[0]})
 Status SqrtGradModel(AbstractContext* ctx,
                      absl::Span<AbstractTensorHandle* const> inputs,
-                     absl::Span<AbstractTensorHandle*> outputs,
-                     const GradientRegistry& registry) {
+                     absl::Span<AbstractTensorHandle*> outputs) {
+  GradientRegistry registry;
+  TF_RETURN_IF_ERROR(RegisterGradients(&registry));
+
   TapeVSpace vspace(ctx);
   auto tape = std::make_unique<Tape>(/*persistent=*/false);
   tape->Watch(ToId(inputs[0]));  // Watch x.
@@ -170,8 +177,10 @@ Status SqrtGradModel(AbstractContext* ctx,
 // This should return [nullptr, 1].
 Status IdentityNGradModel(AbstractContext* ctx,
                           absl::Span<AbstractTensorHandle* const> inputs,
-                          absl::Span<AbstractTensorHandle*> outputs,
-                          const GradientRegistry& registry) {
+                          absl::Span<AbstractTensorHandle*> outputs) {
+  GradientRegistry registry;
+  TF_RETURN_IF_ERROR(RegisterGradients(&registry));
+
   TapeVSpace vspace(ctx);
   auto tape = std::make_unique<Tape>(/*persistent=*/false);
   tape->Watch(ToId(inputs[0]));
@@ -204,8 +213,10 @@ Status IdentityNGradModel(AbstractContext* ctx,
 // return grad(y, {inputs[0]})
 Status NegGradModel(AbstractContext* ctx,
                     absl::Span<AbstractTensorHandle* const> inputs,
-                    absl::Span<AbstractTensorHandle*> outputs,
-                    const GradientRegistry& registry) {
+                    absl::Span<AbstractTensorHandle*> outputs) {
+  GradientRegistry registry;
+  TF_RETURN_IF_ERROR(RegisterGradients(&registry));
+
   TapeVSpace vspace(ctx);
   auto tape = std::make_unique<Tape>(/*persistent=*/false);
   tape->Watch(ToId(inputs[0]));
@@ -235,8 +246,10 @@ Status NegGradModel(AbstractContext* ctx,
 // return grad(y, {inputs[0], inputs[1]})
 Status SubGradModel(AbstractContext* ctx,
                     absl::Span<AbstractTensorHandle* const> inputs,
-                    absl::Span<AbstractTensorHandle*> outputs,
-                    const GradientRegistry& registry) {
+                    absl::Span<AbstractTensorHandle*> outputs) {
+  GradientRegistry registry;
+  TF_RETURN_IF_ERROR(RegisterGradients(&registry));
+
   TapeVSpace vspace(ctx);
   auto tape = std::make_unique<Tape>(/*persistent=*/false);
   tape->Watch(ToId(inputs[0]));  // Watch x.
@@ -269,8 +282,10 @@ Status SubGradModel(AbstractContext* ctx,
 // return grad(y, {inputs[0], inputs[1]})
 Status MulGradModel(AbstractContext* ctx,
                     absl::Span<AbstractTensorHandle* const> inputs,
-                    absl::Span<AbstractTensorHandle*> outputs,
-                    const GradientRegistry& registry) {
+                    absl::Span<AbstractTensorHandle*> outputs) {
+  GradientRegistry registry;
+  TF_RETURN_IF_ERROR(RegisterGradients(&registry));
+
   TapeVSpace vspace(ctx);
   auto tape = new Tape(/*persistent=*/false);
   tape->Watch(ToId(inputs[0]));  // Watch x.
@@ -304,8 +319,9 @@ Status MulGradModel(AbstractContext* ctx,
 // return grad(y, {inputs[0]})
 Status Log1pGradModel(AbstractContext* ctx,
                       absl::Span<AbstractTensorHandle* const> inputs,
-                      absl::Span<AbstractTensorHandle*> outputs,
-                      const GradientRegistry& registry) {
+                      absl::Span<AbstractTensorHandle*> outputs) {
+  GradientRegistry registry;
+  TF_RETURN_IF_ERROR(RegisterGradients(&registry));
   TapeVSpace vspace(ctx);
   auto tape = new Tape(/*persistent=*/false);
   tape->Watch(ToId(inputs[0]));  // Watch x.
@@ -336,8 +352,9 @@ Status Log1pGradModel(AbstractContext* ctx,
 // return grad(y, {inputs[0], inputs[1]})
 Status DivNoNanGradModel(AbstractContext* ctx,
                          absl::Span<AbstractTensorHandle* const> inputs,
-                         absl::Span<AbstractTensorHandle*> outputs,
-                         const GradientRegistry& registry) {
+                         absl::Span<AbstractTensorHandle*> outputs) {
+  GradientRegistry registry;
+  TF_RETURN_IF_ERROR(RegisterGradients(&registry));
   TapeVSpace vspace(ctx);
   auto tape = new Tape(/*persistent=*/false);
   tape->Watch(ToId(inputs[0]));  // Watch x.
@@ -363,125 +380,6 @@ Status DivNoNanGradModel(AbstractContext* ctx,
   outputs[0] = out_grads[0];
   outputs[1] = out_grads[1];
   delete tape;
-  return Status::OK();
-}
-
-AbstractContext* BuildFunction(const char* fn_name) {
-  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
-      TF_NewStatus(), TF_DeleteStatus);
-  TF_ExecutionContext* graph_ctx = TF_CreateFunction(fn_name, status.get());
-  return unwrap(graph_ctx);
-}
-
-Status CreateParamsForInputs(AbstractContext* ctx,
-                             absl::Span<AbstractTensorHandle* const> inputs,
-                             std::vector<AbstractTensorHandle*>* params) {
-  tracing::TracingTensorHandle* handle = nullptr;
-  for (auto input : inputs) {
-    TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingContext>(ctx)->AddParameter(
-        input->DataType(), &handle));
-    params->emplace_back(handle);
-  }
-  return Status::OK();
-}
-
-using Model = std::function<Status(
-    AbstractContext*, absl::Span<AbstractTensorHandle* const>,
-    absl::Span<AbstractTensorHandle*>, const GradientRegistry&)>;
-
-// Runs `model` maybe wrapped in a function.
-Status RunModel(Model model, AbstractContext* ctx,
-                absl::Span<AbstractTensorHandle* const> inputs,
-                absl::Span<AbstractTensorHandle*> outputs, bool use_function,
-                const GradientRegistry& registry) {
-  if (use_function) {
-    const char* fn_name = "test_fn";
-    std::unique_ptr<AbstractFunction> scoped_func;
-    // Returning null tensors from a tf.function is not supported, so we keep
-    // track of indices in the model's outputs are nullptr in this set.
-    // The FunctionDef only outputs the non-null tensors. We later pad the
-    // function op outputs to have nullptrs at the `null_indices`.
-    absl::flat_hash_set<int> null_indices;
-    {
-      AbstractContextPtr func_ctx(BuildFunction(fn_name));
-      std::vector<AbstractTensorHandle*> func_inputs;
-      func_inputs.reserve(inputs.size());
-      TF_RETURN_IF_ERROR(
-          CreateParamsForInputs(func_ctx.get(), inputs, &func_inputs));
-      vector<AbstractTensorHandle*> model_outputs;
-      model_outputs.resize(outputs.size());
-      TF_RETURN_IF_ERROR(model(func_ctx.get(), absl::MakeSpan(func_inputs),
-                               absl::MakeSpan(model_outputs), registry));
-      for (auto func_input : func_inputs) {
-        func_input->Unref();
-      }
-      AbstractFunction* func = nullptr;
-      OutputList output_list;
-      output_list.expected_num_outputs = 0;
-      output_list.outputs.reserve(outputs.size());
-      for (int i = 0; i < model_outputs.size(); i++) {
-        if (model_outputs[i]) {
-          output_list.outputs.emplace_back(model_outputs[i]);
-          output_list.expected_num_outputs += 1;
-        } else {
-          null_indices.insert(i);
-        }
-      }
-      TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingContext>(func_ctx.get())
-                             ->Finalize(&output_list, &func));
-      scoped_func.reset(func);
-      for (auto output : output_list.outputs) {
-        output->Unref();
-      }
-      TF_RETURN_IF_ERROR(ctx->RegisterFunction(func));
-    }
-
-    AbstractOperationPtr fn_op(ctx->CreateOperation());
-    TF_RETURN_IF_ERROR(fn_op->Reset(fn_name, /*raw_device_name=*/nullptr));
-    for (auto input : inputs) {
-      TF_RETURN_IF_ERROR(fn_op->AddInput(input));
-    }
-    int retvals = outputs.size() - null_indices.size();
-    vector<AbstractTensorHandle*> fn_outputs(retvals);
-    TF_RETURN_IF_ERROR(fn_op->Execute(
-        absl::Span<AbstractTensorHandle*>(fn_outputs.data(), fn_outputs.size()),
-        &retvals));
-    int skipped_indices = 0;
-    for (int i = 0; i < outputs.size(); i++) {
-      if (!null_indices.contains(i)) {
-        outputs[i] = fn_outputs[i - skipped_indices];
-      } else {
-        skipped_indices += 1;
-      }
-    }
-    TF_RETURN_IF_ERROR(ctx->RemoveFunction(fn_name));
-    return Status::OK();
-  } else {
-    return model(ctx, inputs, outputs, registry);
-  }
-}
-
-Status BuildImmediateExecutionContext(bool use_tfrt, AbstractContext** ctx) {
-  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
-      TF_NewStatus(), TF_DeleteStatus);
-  TFE_ContextOptions* opts = TFE_NewContextOptions();
-  TFE_ContextOptionsSetTfrt(opts, use_tfrt);
-  *ctx = unwrap(TF_NewEagerExecutionContext(opts, status.get()));
-  TF_RETURN_IF_ERROR(StatusFromTF_Status(status.get()));
-  TFE_DeleteContextOptions(opts);
-  return Status::OK();
-}
-
-Status TestScalarTensorHandle(AbstractContext* ctx, float value,
-                              AbstractTensorHandle** tensor) {
-  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
-      TF_NewStatus(), TF_DeleteStatus);
-  TFE_Context* eager_ctx =
-      TF_ExecutionContextGetTFEContext(wrap(ctx), status.get());
-  TF_RETURN_IF_ERROR(StatusFromTF_Status(status.get()));
-  TFE_TensorHandle* input_eager = TestScalarTensorHandle(eager_ctx, value);
-  *tensor =
-      unwrap(TF_CreateAbstractTensorFromEagerTensor(input_eager, status.get()));
   return Status::OK();
 }
 
@@ -536,7 +434,7 @@ TEST_P(CppGradients, TestAddGrad) {
   std::vector<AbstractTensorHandle*> outputs(2);
   s = RunModel(AddGradModel, ctx.get(), {x.get(), y.get()},
                absl::MakeSpan(outputs),
-               /*use_function=*/!std::get<2>(GetParam()), registry);
+               /*use_function=*/!std::get<2>(GetParam()));
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   TF_Tensor* result_tensor;
@@ -576,18 +474,15 @@ TEST_P(CppGradients, TestExpGrad) {
     x.reset(x_raw);
   }
 
-  GradientRegistry registry;
-  Status s = RegisterGradients(&registry);
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-
   // Pseudo-code:
   //
   // tape.watch(x)
   // y = exp(x)
   // outputs = tape.gradient(y, x)
   std::vector<AbstractTensorHandle*> outputs(1);
-  s = RunModel(ExpGradModel, ctx.get(), {x.get()}, absl::MakeSpan(outputs),
-               /*use_function=*/!std::get<2>(GetParam()), registry);
+  Status s =
+      RunModel(ExpGradModel, ctx.get(), {x.get()}, absl::MakeSpan(outputs),
+               /*use_function=*/!std::get<2>(GetParam()));
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   TF_Tensor* result_tensor;
@@ -620,18 +515,15 @@ TEST_P(CppGradients, TestSqrtGrad) {
     x.reset(x_raw);
   }
 
-  GradientRegistry registry;
-  Status s = RegisterGradients(&registry);
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-
   // Pseudo-code:
   //
   // tape.watch(x)
   // y = sqrt(x)
   // outputs = tape.gradient(y, x)
   std::vector<AbstractTensorHandle*> outputs(1);
-  s = RunModel(SqrtGradModel, ctx.get(), {x.get()}, absl::MakeSpan(outputs),
-               /*use_function=*/!std::get<2>(GetParam()), registry);
+  Status s =
+      RunModel(SqrtGradModel, ctx.get(), {x.get()}, absl::MakeSpan(outputs),
+               /*use_function=*/!std::get<2>(GetParam()));
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   TF_Tensor* result_tensor;
@@ -689,7 +581,7 @@ TEST_P(CppGradients, TestIdentityNGrad) {
   std::vector<AbstractTensorHandle*> outputs(2);
   s = RunModel(IdentityNGradModel, ctx.get(), {x1.get(), x2.get()},
                absl::MakeSpan(outputs),
-               /*use_function=*/!std::get<2>(GetParam()), registry);
+               /*use_function=*/!std::get<2>(GetParam()));
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   EXPECT_EQ(outputs[0], nullptr);
@@ -734,7 +626,7 @@ TEST_P(CppGradients, TestNegGrad) {
   // outputs = tape.gradient(y, x)
   std::vector<AbstractTensorHandle*> outputs(1);
   s = RunModel(NegGradModel, ctx.get(), {x.get()}, absl::MakeSpan(outputs),
-               /*use_function=*/!std::get<2>(GetParam()), registry);
+               /*use_function=*/!std::get<2>(GetParam()));
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   TF_Tensor* result_tensor;
@@ -775,10 +667,6 @@ TEST_P(CppGradients, TestSubGrad) {
     y.reset(y_raw);
   }
 
-  GradientRegistry registry;
-  Status s = RegisterGradients(&registry);
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-
   // Pseudo-code:
   //
   // tape.watch(x)
@@ -786,9 +674,9 @@ TEST_P(CppGradients, TestSubGrad) {
   // y = x - y
   // outputs = tape.gradient(y, [x, y])
   std::vector<AbstractTensorHandle*> outputs(2);
-  s = RunModel(SubGradModel, ctx.get(), {x.get(), y.get()},
-               absl::MakeSpan(outputs),
-               /*use_function=*/!std::get<2>(GetParam()), registry);
+  Status s = RunModel(SubGradModel, ctx.get(), {x.get(), y.get()},
+                      absl::MakeSpan(outputs),
+                      /*use_function=*/!std::get<2>(GetParam()));
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   TF_Tensor* result_tensor;
@@ -836,10 +724,6 @@ TEST_P(CppGradients, TestMulGrad) {
     y.reset(y_raw);
   }
 
-  GradientRegistry registry;
-  Status s = RegisterGradients(&registry);
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-
   // Pseudo-code:
   //
   // tape.watch(x)
@@ -847,9 +731,9 @@ TEST_P(CppGradients, TestMulGrad) {
   // y = x * y
   // outputs = tape.gradient(y, [x, y])
   std::vector<AbstractTensorHandle*> outputs(2);
-  s = RunModel(MulGradModel, ctx.get(), {x.get(), y.get()},
-               absl::MakeSpan(outputs),
-               /*use_function=*/!std::get<2>(GetParam()), registry);
+  Status s = RunModel(MulGradModel, ctx.get(), {x.get(), y.get()},
+                      absl::MakeSpan(outputs),
+                      /*use_function=*/!std::get<2>(GetParam()));
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   TF_Tensor* result_tensor;
@@ -889,18 +773,15 @@ TEST_P(CppGradients, TestLog1pGrad) {
     x.reset(x_raw);
   }
 
-  GradientRegistry registry;
-  Status s = RegisterGradients(&registry);
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-
   // Pseudo-code:
   //
   // tape.watch(x)
   // y = log(1 + x)
   // outputs = tape.gradient(y, x)
   std::vector<AbstractTensorHandle*> outputs(1);
-  s = RunModel(Log1pGradModel, ctx.get(), {x.get()}, absl::MakeSpan(outputs),
-               /*use_function=*/!std::get<2>(GetParam()), registry);
+  Status s =
+      RunModel(Log1pGradModel, ctx.get(), {x.get()}, absl::MakeSpan(outputs),
+               /*use_function=*/!std::get<2>(GetParam()));
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   TF_Tensor* result_tensor;
@@ -941,10 +822,6 @@ TEST_P(CppGradients, TestDivNoNanGrad) {
     y.reset(y_raw);
   }
 
-  GradientRegistry registry;
-  Status s = RegisterGradients(&registry);
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-
   // Pseudo-code:
   //
   // tape.watch(x)
@@ -952,9 +829,9 @@ TEST_P(CppGradients, TestDivNoNanGrad) {
   // y = x / y
   // outputs = tape.gradient(y, [x, y])
   std::vector<AbstractTensorHandle*> outputs(2);
-  s = RunModel(DivNoNanGradModel, ctx.get(), {x.get(), y.get()},
-               absl::MakeSpan(outputs),
-               /*use_function=*/!std::get<2>(GetParam()), registry);
+  Status s = RunModel(DivNoNanGradModel, ctx.get(), {x.get(), y.get()},
+                      absl::MakeSpan(outputs),
+                      /*use_function=*/!std::get<2>(GetParam()));
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   TF_Tensor* result_tensor;

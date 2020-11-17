@@ -1513,6 +1513,7 @@ Status CuptiTracer::HandleCallback(CUpti_CallbackDomain domain,
                                    CUpti_CallbackId cbid,
                                    const CUpti_CallbackData *cbdata) {
   if (!api_tracing_enabled_) return Status::OK();  // already unsubscribed.
+  if (!cupti_driver_api_hook_) return Status::OK();  // already unsubscribed.
   if (domain != CUPTI_CB_DOMAIN_DRIVER_API) return Status::OK();
   if (internalCuCall) return Status::OK();
 

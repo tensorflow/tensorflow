@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/Shape/Transforms/Passes.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/StandardOps/Transforms/FuncConversions.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BlockAndValueMapping.h"
@@ -555,11 +556,8 @@ struct HloLegalizeToLhlo
     ConversionTarget target(context);
     target.addLegalDialect<lmhlo::LmhloDialect>();
     target.addLegalDialect<StandardOpsDialect>();
-    target.addLegalOp<ModuleOp>();
     target.addIllegalOp<mlir::TensorLoadOp>();
     target.addIllegalOp<mlir::TensorStoreOp>();
-    target.addLegalOp<ModuleTerminatorOp>();
-    target.addLegalOp<TensorFromElementsOp>();
     target.addIllegalDialect<mhlo::MhloDialect>();
 
     BufferizeTypeConverter converter;
@@ -581,9 +579,8 @@ struct HloLegalizeToLhlo
     });
 
     populateHLOToLHLOConversionPattern(&context, &converter, &patterns);
-    populateWithBufferizeOpConversionPatterns<mlir::ReturnOp, mlir::ReturnOp,
-                                              lmhlo::CopyOp>(
-        &context, converter, patterns);
+    populateFuncOpTypeConversionPattern(patterns, &context, converter);
+    populateCallOpTypeConversionPattern(patterns, &context, converter);
     populateShapeStructuralTypeConversionsAndLegality(&context, converter,
                                                       patterns, target);
     if (failed(applyPartialConversion(getOperation(), target,
@@ -645,7 +642,7 @@ void populateHLOToLHLOConversionPattern(MLIRContext* context,
       HloToLhloReturnOpConverter,
       HloToLhloTensorLoadOpConverter,
       HloToLhloTensorStoreOpConverter
-  >(context);
+  >(*converter, context);
   // clang-format on
 }
 

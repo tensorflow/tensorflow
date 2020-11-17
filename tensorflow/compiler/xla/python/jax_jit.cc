@@ -375,10 +375,13 @@ namespace {
 //
 // Expects *only* instances of `DeviceArray`.
 bool HasTrivialLazyExpr(py::handle device_array) {
+  auto lexpr = py::getattr(device_array, "_lazy_expr");
+  if (lexpr.is_none()) {
+    return true;
+  }
+
   static const auto* lazy_module =
       new py::module(py::module::import("jax.lazy"));
-
-  auto lexpr = py::getattr(device_array, "_lazy_expr");
   auto input = py::getattr(lexpr, "input");
   if (!input.get_type().is(lazy_module->attr("ArrayVar"))) {
     return false;

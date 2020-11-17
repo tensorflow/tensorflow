@@ -1217,7 +1217,7 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
       summary_ops.set_step(None)
 
   @test_util.run_v2_only
-  def testGraphV2_graph(self):
+  def testGraph_graph(self):
 
     @def_function.function
     def f():
@@ -1226,13 +1226,13 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
       return x**y
 
     def summary_op_fn():
-      summary_ops.graph_v2(f.get_concrete_function().graph)
+      summary_ops.graph(f.get_concrete_function().graph)
 
     event = self.exec_summary_op(summary_op_fn)
     self.assertIsNotNone(event.graph_def)
 
   @test_util.run_v2_only
-  def testGraphV2_graphDef(self):
+  def testGraph_graphDef(self):
 
     @def_function.function
     def f():
@@ -1241,15 +1241,15 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
       return x**y
 
     def summary_op_fn():
-      summary_ops.graph_v2(f.get_concrete_function().graph.as_graph_def())
+      summary_ops.graph(f.get_concrete_function().graph.as_graph_def())
 
     event = self.exec_summary_op(summary_op_fn)
     self.assertIsNotNone(event.graph_def)
 
   @test_util.run_v2_only
-  def testGraphV2_invalidData(self):
+  def testGraph_invalidData(self):
     def summary_op_fn():
-      summary_ops.graph_v2('hello')
+      summary_ops.graph('hello')
 
     with self.assertRaisesRegex(
         ValueError,
@@ -1258,7 +1258,7 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
       self.exec_summary_op(summary_op_fn)
 
   @test_util.run_v2_only
-  def testGraphV2_fromGraphMode(self):
+  def testGraph_fromGraphMode(self):
 
     @def_function.function
     def f():
@@ -1268,7 +1268,7 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
 
     @def_function.function
     def g(graph):
-      summary_ops.graph_v2(graph)
+      summary_ops.graph(graph)
 
     def summary_op_fn():
       graph_def = f.get_concrete_function().graph.as_graph_def(add_shapes=True)

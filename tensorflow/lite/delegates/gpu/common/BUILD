@@ -45,6 +45,11 @@ cc_library(
 )
 
 cc_library(
+    name = "kernel_info",
+    hdrs = ["kernel_info.h"],
+)
+
+cc_library(
     name = "data_type",
     srcs = ["data_type.cc"],
     hdrs = ["data_type.h"],

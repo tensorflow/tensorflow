@@ -60,6 +60,11 @@
       (`tf.Graph` or `tf.compat.v1.GraphDef`) as a summary. This is not a
       replacement for the trace-based API.
 
+*   Set `/d2ReducedOptimizeHugeFunctions` by default for Windows builds. This
+    provides a big compile-time speedup, and effectively raises the minimum
+    supported MSVC version to 16.4 (current: 16.8).
+    *   See: https://groups.google.com/a/tensorflow.org/d/topic/build/SsW98Eo7l3o/discussion
+
 ## Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:

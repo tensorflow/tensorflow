@@ -128,7 +128,7 @@ Status ConvertSavedModelToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   // Parse input arrays.
   std::vector<string> node_names;
   std::vector<string> node_dtypes;
-  std::vector<std::vector<int>> node_shapes;
+  std::vector<llvm::Optional<std::vector<int>>> node_shapes;
   std::vector<llvm::Optional<double>> node_mins;
   std::vector<llvm::Optional<double>> node_maxs;
 

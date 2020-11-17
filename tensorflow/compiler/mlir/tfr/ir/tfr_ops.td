@@ -366,7 +366,7 @@ def TFR_TFRFuncOp : TFR_Op<"func", [HasParent<"ModuleOp">,
     Syntax:
 
     ```
-    op ::= `tfr.func` symbol-ref-id `(` argument-list `)` (`->`
+    op ::= `tfr.func` visibility? symbol-ref-id `(` argument-list `)` (`->`
     function-result-list)? function-attributes? region
     ```
 

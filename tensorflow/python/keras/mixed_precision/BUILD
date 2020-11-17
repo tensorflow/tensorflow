@@ -266,7 +266,6 @@ cuda_py_test(
     python_version = "PY3",
     shard_count = 10,
     tags = [
-        "no_cuda_asan",  # b/173035482: times out
         "no_pip",
         "no_windows",  # b/139083295: bfloat16 tests fail on Windows
     ],

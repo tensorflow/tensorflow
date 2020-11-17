@@ -101,6 +101,11 @@ cc_library(
 )
 
 cc_library(
+    name = "tuning_type",
+    hdrs = ["tuning_type.h"],
+)
+
+cc_library(
     name = "util",
     srcs = ["util.cc"],
     hdrs = ["util.h"],

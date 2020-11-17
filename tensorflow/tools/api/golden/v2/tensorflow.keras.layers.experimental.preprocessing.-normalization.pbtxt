@@ -131,7 +131,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'axis\', \'dtype\', \'mean\', \'variance\'], varargs=None, keywords=kwargs, defaults=[\'-1\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'self\', \'axis\', \'mean\', \'variance\'], varargs=None, keywords=kwargs, defaults=[\'-1\', \'None\', \'None\'], "
   }
   member_method {
     name: "adapt"

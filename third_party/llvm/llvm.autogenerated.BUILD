@@ -331,6 +331,20 @@ gentbl(
 )
 
 gentbl(
+    name = "ve_enums_gen",
+    tbl_outs = [(
+        "-gen-intrinsic-enums -intrinsic-prefix=ve",
+        "include/llvm/IR/IntrinsicsVE.h",
+    )],
+    tblgen = ":llvm-tblgen",
+    td_file = "include/llvm/IR/Intrinsics.td",
+    td_srcs = glob([
+        "include/llvm/CodeGen/*.td",
+        "include/llvm/IR/Intrinsics*.td",
+    ]),
+)
+
+gentbl(
     name = "wasm_enums_gen",
     tbl_outs = [(
         "-gen-intrinsic-enums -intrinsic-prefix=wasm",
@@ -1890,6 +1904,7 @@ cc_library(
         ":r600_enums_gen",
         ":riscv_enums_gen",
         ":s390_enums_gen",
+        ":ve_enums_gen",
         ":wasm_enums_gen",
         ":x86_enums_gen",
         ":xcore_enums_gen",
@@ -2561,6 +2576,7 @@ cc_library(
     deps = [
         ":BinaryFormat",
         ":Object",
+        ":OrcTargetProcess",
         ":Support",
         ":config",
     ],
@@ -3340,26 +3356,6 @@ cc_library(
 )
 
 cc_library(
-    name = "OrcError",
-    srcs = glob([
-        "lib/ExecutionEngine/OrcError/*.c",
-        "lib/ExecutionEngine/OrcError/*.cpp",
-        "lib/ExecutionEngine/OrcError/*.inc",
-        "lib/ExecutionEngine/OrcError/*.h",
-    ]),
-    hdrs = glob([
-        "include/llvm/ExecutionEngine/OrcError/*.h",
-        "include/llvm/ExecutionEngine/OrcError/*.def",
-        "include/llvm/ExecutionEngine/OrcError/*.inc",
-    ]),
-    copts = llvm_copts,
-    deps = [
-        ":Support",
-        ":config",
-    ],
-)
-
-cc_library(
     name = "OrcJIT",
     srcs = glob([
         "lib/ExecutionEngine/Orc/*.c",
@@ -3379,12 +3375,54 @@ cc_library(
         ":JITLink",
         ":MC",
         ":Object",
-        ":OrcError",
+        ":OrcShared",
+        ":OrcTargetProcess",
         ":Passes",
         ":RuntimeDyld",
         ":Support",
         ":Target",
         ":TransformUtils",
+        ":config",
+    ],
+)
+
+cc_library(
+    name = "OrcShared",
+    srcs = glob([
+        "lib/ExecutionEngine/Orc/Shared/*.c",
+        "lib/ExecutionEngine/Orc/Shared/*.cpp",
+        "lib/ExecutionEngine/Orc/Shared/*.inc",
+        "lib/ExecutionEngine/Orc/Shared/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/ExecutionEngine/Orc/Shared/*.h",
+        "include/llvm/ExecutionEngine/Orc/Shared/*.def",
+        "include/llvm/ExecutionEngine/Orc/Shared/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":Support",
+        ":config",
+    ],
+)
+
+cc_library(
+    name = "OrcTargetProcess",
+    srcs = glob([
+        "lib/ExecutionEngine/Orc/TargetProcess/*.c",
+        "lib/ExecutionEngine/Orc/TargetProcess/*.cpp",
+        "lib/ExecutionEngine/Orc/TargetProcess/*.inc",
+        "lib/ExecutionEngine/Orc/TargetProcess/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/ExecutionEngine/Orc/TargetProcess/*.h",
+        "include/llvm/ExecutionEngine/Orc/TargetProcess/*.def",
+        "include/llvm/ExecutionEngine/Orc/TargetProcess/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":OrcShared",
+        ":Support",
         ":config",
     ],
 )

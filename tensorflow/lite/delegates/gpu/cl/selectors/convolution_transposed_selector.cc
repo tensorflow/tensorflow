@@ -96,6 +96,15 @@ std::unique_ptr<GPUOperation> SelectConvolutionTransposed(
   }
 }
 
+std::unique_ptr<GPUOperation> SelectConvolutionTransposedWithDynamicWeights(
+    const ConvolutionTransposedAttributes& attr, const GpuInfo& gpu_info,
+    const OperationDef& op_def, ConvWeightsDescription* weights_desc) {
+  ConvolutionTransposed conv =
+      CreateConvolutionTransposedDynamicWeights(gpu_info, op_def, attr);
+  *weights_desc = conv.GetConvWeightsDescription();
+  return absl::make_unique<ConvolutionTransposed>(std::move(conv));
+}
+
 }  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

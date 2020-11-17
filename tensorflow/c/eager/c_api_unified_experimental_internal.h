@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_unified_experimental.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -107,7 +108,8 @@ class TracingContext : public AbstractContext {
 
  public:
   // Add a function parameter and return the corresponding tensor.
-  virtual Status AddParameter(DataType dtype, TracingTensorHandle**) = 0;
+  virtual Status AddParameter(DataType dtype, const PartialTensorShape& shape,
+                              TracingTensorHandle**) = 0;
 
   // Finalize this context and make a function out of it. The context is in a
   // invalid state after this call and must be destroyed.

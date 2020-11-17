@@ -2201,7 +2201,7 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
         train_fn = self.model.train_function
         # If the train_function is a `tf.function`, we can write out a graph
         if hasattr(train_fn, 'function_spec'):
-          summary_ops_v2.graph(train_fn._concrete_stateful_fn.graph, step=0)  # pylint: disable=protected-access
+          summary_ops_v2.graph(train_fn._concrete_stateful_fn.graph)  # pylint: disable=protected-access
 
   def _write_keras_model_summary(self):
     """Writes Keras graph network summary to TensorBoard."""
@@ -2586,8 +2586,8 @@ class ReduceLROnPlateau(Callback):
       elif not self.in_cooldown():
         self.wait += 1
         if self.wait >= self.patience:
-          old_lr = float(K.get_value(self.model.optimizer.lr))
-          if old_lr > self.min_lr:
+          old_lr = K.get_value(self.model.optimizer.lr)
+          if old_lr > np.float32(self.min_lr):
             new_lr = old_lr * self.factor
             new_lr = max(new_lr, self.min_lr)
             K.set_value(self.model.optimizer.lr, new_lr)
