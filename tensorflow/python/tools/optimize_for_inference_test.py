@@ -384,6 +384,80 @@ class OptimizeForInferenceTest(test.TestCase):
       self.assertNotEqual("Conv2D", node.op)
       self.assertNotEqual("ResizeBilinear", node.op)
 
+  @test_util.run_deprecated_v1
+  def testFuseDecomposedBatchNorm(self):
+    with self.cached_session() as sess:
+      inputs = [1, 4, 2, 5, 3, 6, -1, -4, -2, -5, -3, -6]
+      input_op = constant_op.constant(
+          np.array(inputs), shape=[1, 1, 6, 2], dtype=dtypes.float32)
+      weights = [1, 2, 3, 4, 0.1, 0.2, 0.3, 0.4]
+      weights_op = constant_op.constant(
+          np.array(weights), shape=[1, 2, 2, 2], dtype=dtypes.float32)
+      conv_op = nn_ops.conv2d(
+          input_op, weights_op, [1, 1, 1, 1], padding="SAME", name="conv_op")
+
+      variance_op = constant_op.constant(
+          np.array([0.25, 0.5]), shape=[2], dtype=dtypes.float32)
+      epsilon_op = constant_op.constant(0.00001, dtype=dtypes.float32)
+      mean_op = constant_op.constant(
+          np.array([10, 20]), shape=[2], dtype=dtypes.float32)
+      beta_op = constant_op.constant(
+          np.array([0.1, 0.6]), shape=[2], dtype=dtypes.float32)
+      gamma_op = constant_op.constant(
+          np.array([1.0, 2.0]), shape=[2], dtype=dtypes.float32)
+      add_variance_epsilon_op = nn_ops.math_ops.add(variance_op, epsilon_op)
+      rsqrt_op = nn_ops.math_ops.rsqrt(add_variance_epsilon_op)
+      mul_scale_op = nn_ops.math_ops.multiply(rsqrt_op, gamma_op)
+      mul_input_op = nn_ops.math_ops.multiply(conv_op, mul_scale_op)
+      mul_scale_mean_op = nn_ops.math_ops.multiply(mean_op, mul_scale_op)
+      sub_beta_scaledvar_op = nn_ops.math_ops.subtract(beta_op,
+                                                       mul_scale_mean_op)
+      nn_ops.math_ops.add(mul_input_op,
+                          sub_beta_scaledvar_op, name="output")
+
+      test_util.set_producer_version(ops.get_default_graph(), 8)
+
+      original_graph_def = sess.graph_def
+      original_result = sess.run(["output:0"])
+
+    # Test correctness of fusing individual ops to FusedBatchNorm
+    optimized_graph_def = optimize_for_inference_lib.fuse_decomposed_batch_norm(
+        original_graph_def)
+
+    batchnorm_count = 0
+    decompose_count = 0
+    for node in optimized_graph_def.node:
+      if node.op == "FusedBatchNorm":
+        batchnorm_count += 1
+      if node.op in ["Add", "Rsqrt", "Mul", "Sub"]:
+        decompose_count += 1
+
+    self.assertEqual(batchnorm_count, 1)
+    self.assertEqual(decompose_count, 0)
+
+    with self.cached_session() as sess:
+      _ = importer.import_graph_def(
+          optimized_graph_def, input_map={}, name="optimized")
+      optimized_result = sess.run(["optimized/output:0"])
+
+    self.assertAllClose(original_result, optimized_result)
+
+    # Test correctness of fusing individual ops to FusedBatchNorm followed by
+    # folding FusedBatchNorm
+    optimized_graph_def = optimize_for_inference_lib.fuse_decomposed_batch_norm(
+        original_graph_def)
+    optimized_graph_def = optimize_for_inference_lib.fold_batch_norms(
+        optimized_graph_def)
+    for node in optimized_graph_def.node:
+      self.assertNotEqual("FusedBatchNorm", node.op)
+
+    with self.cached_session() as sess:
+      _ = importer.import_graph_def(
+          optimized_graph_def, input_map={}, name="optimized2")
+      optimized_result = sess.run(["optimized2/output:0"])
+
+    self.assertAllClose(original_result, optimized_result,
+                        rtol=1e-04, atol=1e-06)
 
 if __name__ == "__main__":
   test.main()
