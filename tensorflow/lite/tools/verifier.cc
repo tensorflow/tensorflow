@@ -52,7 +52,7 @@ void ReportError(ErrorReporter* error_reporter, const char* format, ...) {
 // Returns the int32_t value pointed by ptr.
 const uint32_t GetIntPtr(const char* ptr) {
 #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-  return return flatbuffers::EndianScalar(*reinterpret_cast<const uint32_t*>(ptr));
+  return flatbuffers::EndianScalar(*reinterpret_cast<const uint32_t*>(ptr));
 #else
   return *reinterpret_cast<const uint32_t*>(ptr);
 #endif
