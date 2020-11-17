@@ -47,3 +47,4 @@ gradleBuild
 Podfile.lock
 Pods
 xcuserdata
+tensorflow/lite/micro/examples/image_recognition_experimental/*.h-E
