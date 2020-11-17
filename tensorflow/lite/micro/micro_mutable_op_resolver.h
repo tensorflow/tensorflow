@@ -30,6 +30,8 @@ limitations under the License.
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
+TfLiteRegistration* Register_ETHOSU();
+const char* GetString_ETHOSU();
 
 template <unsigned int tOpCount>
 class MicroMutableOpResolver : public MicroOpResolver {
@@ -173,6 +175,14 @@ class MicroMutableOpResolver : public MicroOpResolver {
   TfLiteStatus AddEqual() {
     return AddBuiltin(BuiltinOperator_EQUAL,
                       tflite::ops::micro::Register_EQUAL(), ParseEqual);
+  }
+
+  TfLiteStatus AddEthosU() {
+    TfLiteRegistration* registration = tflite::Register_ETHOSU();
+    if (registration) {
+      return AddCustom(tflite::GetString_ETHOSU(), registration);
+    }
+    return kTfLiteOk;
   }
 
   TfLiteStatus AddFloor() {
