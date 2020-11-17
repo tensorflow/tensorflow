@@ -210,5 +210,277 @@ TEST_F(GpuUnaryOpTest, AbsInt64) {
       /*expect_equal=*/true);
 }
 
+/// Test `tf.Cos`.
+
+TEST_F(GpuUnaryOpTest, CosFloat) {
+  Run<float>(/*input_shape=*/{2, 7},
+             /*input=*/
+             {-18.0f, -9.0f, -1e-6f, -0.0f, 0.0f, 1e-6, 0.1f, 0.2f, 0.3f, 0.5f,
+              0.7f, 0.9f, 9.0f, 18.0f},
+             /*op_name=*/"Cos",
+             /*expected_callback=*/std::cos,
+             /*expect_equal=*/false);
+}
+
+TEST_F(GpuUnaryOpTest, CosDouble) {
+  Run<double>(/*input_shape=*/{2, 7},
+              /*input=*/
+              {-18.0, -9.0, -1e-6, -0.0, 0.0, 1e-6, 0.1, 0.2, 0.3, 0.5, 0.7,
+               0.9, 9.0, 18.0},
+              /*op_name=*/"Cos",
+              /*expected_callback=*/std::cos,
+              /*expect_equal=*/false);
+}
+
+TEST_F(GpuUnaryOpTest, CosHalf) {
+  Run<Eigen::half, float>(
+      /*input_shape=*/{2, 7},
+      /*input=*/
+      {static_cast<Eigen::half>(-18.0), static_cast<Eigen::half>(-9.0),
+       static_cast<Eigen::half>(-1e-6), static_cast<Eigen::half>(-0.0),
+       static_cast<Eigen::half>(0.0), static_cast<Eigen::half>(1e-6),
+       static_cast<Eigen::half>(0.1), static_cast<Eigen::half>(0.2),
+       static_cast<Eigen::half>(0.3), static_cast<Eigen::half>(0.5),
+       static_cast<Eigen::half>(0.7), static_cast<Eigen::half>(0.9),
+       static_cast<Eigen::half>(9.0), static_cast<Eigen::half>(18.0)},
+      /*op_name=*/"Cos",
+      /*expected_callback=*/std::cos,
+      /*expect_equal=*/false);
+}
+
+/// Test `tf.Exp`.
+
+TEST_F(GpuUnaryOpTest, ExpFloat) {
+  Run<float>(/*input_shape=*/{2, 7},
+             /*input=*/
+             {-18.0f, -9.0f, -1e-6f, -0.0f, 0.0f, 1e-6, 0.1f, 0.2f, 0.3f, 0.5f,
+              0.7f, 0.9f, 9.0f, 18.0f},
+             /*op_name=*/"Exp",
+             /*expected_callback=*/std::exp,
+             /*expect_equal=*/false);
+}
+
+TEST_F(GpuUnaryOpTest, ExpDouble) {
+  Run<double>(/*input_shape=*/{2, 7},
+              /*input=*/
+              {-18.0, -9.0, -1e-6, -0.0, 0.0, 1e-6, 0.1, 0.2, 0.3, 0.5, 0.7,
+               0.9, 9.0, 18.0},
+              /*op_name=*/"Exp",
+              /*expected_callback=*/std::exp,
+              /*expect_equal=*/false);
+}
+
+TEST_F(GpuUnaryOpTest, ExpHalf) {
+  Run<Eigen::half, float>(
+      /*input_shape=*/{2, 7},
+      /*input=*/
+      {static_cast<Eigen::half>(-18.0), static_cast<Eigen::half>(-9.0),
+       static_cast<Eigen::half>(-1e-6), static_cast<Eigen::half>(-0.0),
+       static_cast<Eigen::half>(0.0), static_cast<Eigen::half>(1e-6),
+       static_cast<Eigen::half>(0.1), static_cast<Eigen::half>(0.2),
+       static_cast<Eigen::half>(0.3), static_cast<Eigen::half>(0.5),
+       static_cast<Eigen::half>(0.7), static_cast<Eigen::half>(0.9),
+       static_cast<Eigen::half>(9.0), static_cast<Eigen::half>(18.0)},
+      /*op_name=*/"Exp",
+      /*expected_callback=*/std::exp,
+      /*expect_equal=*/false);
+}
+
+/// Test `tf.Floor`.
+
+TEST_F(GpuUnaryOpTest, FloorFloat) {
+  Run<float>(/*input_shape=*/{2, 7},
+             /*input=*/
+             {-18.0f, -9.0f, -1e-6f, -0.0f, 0.0f, 1e-6, 0.1f, 0.2f, 0.3f, 0.5f,
+              0.7f, 0.9f, 9.0f, 18.0f},
+             /*op_name=*/"Floor",
+             /*expected_callback=*/std::floor,
+             /*expect_equal=*/true);
+}
+
+TEST_F(GpuUnaryOpTest, FloorDouble) {
+  Run<double>(/*input_shape=*/{2, 7},
+              /*input=*/
+              {-18.0, -9.0, -1e-6, -0.0, 0.0, 1e-6, 0.1, 0.2, 0.3, 0.5, 0.7,
+               0.9, 9.0, 18.0},
+              /*op_name=*/"Floor",
+              /*expected_callback=*/std::floor,
+              /*expect_equal=*/true);
+}
+
+TEST_F(GpuUnaryOpTest, FloorHalf) {
+  Run<Eigen::half, float>(
+      /*input_shape=*/{2, 7},
+      /*input=*/
+      {static_cast<Eigen::half>(-18.0), static_cast<Eigen::half>(-9.0),
+       static_cast<Eigen::half>(-1e-6), static_cast<Eigen::half>(-0.0),
+       static_cast<Eigen::half>(0.0), static_cast<Eigen::half>(1e-6),
+       static_cast<Eigen::half>(0.1), static_cast<Eigen::half>(0.2),
+       static_cast<Eigen::half>(0.3), static_cast<Eigen::half>(0.5),
+       static_cast<Eigen::half>(0.7), static_cast<Eigen::half>(0.9),
+       static_cast<Eigen::half>(9.0), static_cast<Eigen::half>(18.0)},
+      /*op_name=*/"Floor",
+      /*expected_callback=*/std::floor,
+      /*expect_equal=*/true);
+}
+
+/// Test `tf.Log`.
+
+TEST_F(GpuUnaryOpTest, LogFloat) {
+  Run<float>(/*input_shape=*/{2, 7},
+             /*input=*/
+             {18.0f, 9.0f, 1e-6f, 1.0f, 1.0f, 1e-6, 0.1f, 0.2f, 0.3f, 0.5f,
+              0.7f, 0.9f, 9.0f, 18.0f},
+             /*op_name=*/"Log",
+             /*expected_callback=*/std::log,
+             /*expect_equal=*/false);
+}
+
+TEST_F(GpuUnaryOpTest, LogDouble) {
+  Run<double>(/*input_shape=*/{2, 7},
+              /*input=*/
+              {18.0, 9.0, 1e-6, 1.0, 1.0, 1e-6, 0.1, 0.2, 0.3, 0.5, 0.7, 0.9,
+               9.0, 18.0},
+              /*op_name=*/"Log",
+              /*expected_callback=*/std::log,
+              /*expect_equal=*/false);
+}
+
+TEST_F(GpuUnaryOpTest, LogHalf) {
+  Run<Eigen::half, float>(
+      /*input_shape=*/{2, 7},
+      /*input=*/
+      {static_cast<Eigen::half>(18.0), static_cast<Eigen::half>(9.0),
+       static_cast<Eigen::half>(1e-6), static_cast<Eigen::half>(1.0),
+       static_cast<Eigen::half>(1.0), static_cast<Eigen::half>(1e-6),
+       static_cast<Eigen::half>(0.1), static_cast<Eigen::half>(0.2),
+       static_cast<Eigen::half>(0.3), static_cast<Eigen::half>(0.5),
+       static_cast<Eigen::half>(0.7), static_cast<Eigen::half>(0.9),
+       static_cast<Eigen::half>(9.0), static_cast<Eigen::half>(18.0)},
+      /*op_name=*/"Log",
+      /*expected_callback=*/std::log,
+      /*expect_equal=*/false);
+}
+
+/// Test `tf.Rsqrt`.
+
+/// Reference implementation.
+template <typename T>
+T expected_rsqrt(T x) {
+  return 1.0 / std::sqrt(x);
+}
+
+TEST_F(GpuUnaryOpTest, RsqrtFloat) {
+  Run<float>(/*input_shape=*/{2, 7},
+             /*input=*/
+             {18.0f, 9.0f, 1e-6f, 1.0f, 1.0f, 1e-6, 0.1f, 0.2f, 0.3f, 0.5f,
+              0.7f, 0.9f, 9.0f, 18.0f},
+             /*op_name=*/"Rsqrt",
+             /*expected_callback=*/expected_rsqrt,
+             /*expect_equal=*/false);
+}
+
+TEST_F(GpuUnaryOpTest, RsqrtDouble) {
+  Run<double>(/*input_shape=*/{2, 7},
+              /*input=*/
+              {18.0, 9.0, 1e-6, 1.0, 1.0, 1e-6, 0.1, 0.2, 0.3, 0.5, 0.7, 0.9,
+               9.0, 18.0},
+              /*op_name=*/"Rsqrt",
+              /*expected_callback=*/expected_rsqrt,
+              /*expect_equal=*/false);
+}
+
+TEST_F(GpuUnaryOpTest, RsqrtHalf) {
+  Run<Eigen::half, float>(
+      /*input_shape=*/{2, 7},
+      /*input=*/
+      {static_cast<Eigen::half>(18.0), static_cast<Eigen::half>(9.0),
+       static_cast<Eigen::half>(1e-6), static_cast<Eigen::half>(1.0),
+       static_cast<Eigen::half>(1.0), static_cast<Eigen::half>(1e-6),
+       static_cast<Eigen::half>(0.1), static_cast<Eigen::half>(0.2),
+       static_cast<Eigen::half>(0.3), static_cast<Eigen::half>(0.5),
+       static_cast<Eigen::half>(0.7), static_cast<Eigen::half>(0.9),
+       static_cast<Eigen::half>(9.0), static_cast<Eigen::half>(18.0)},
+      /*op_name=*/"Rsqrt",
+      /*expected_callback=*/expected_rsqrt,
+      /*expect_equal=*/false);
+}
+
+/// Test `tf.Sin`.
+
+TEST_F(GpuUnaryOpTest, SinFloat) {
+  Run<float>(/*input_shape=*/{2, 7},
+             /*input=*/
+             {-18.0f, -9.0f, -1e-6f, -0.0f, 0.0f, 1e-6, 0.1f, 0.2f, 0.3f, 0.5f,
+              0.7f, 0.9f, 9.0f, 18.0f},
+             /*op_name=*/"Sin",
+             /*expected_callback=*/std::sin,
+             /*expect_equal=*/false);
+}
+
+TEST_F(GpuUnaryOpTest, SinDouble) {
+  Run<double>(/*input_shape=*/{2, 7},
+              /*input=*/
+              {-18.0, -9.0, -1e-6, -0.0, 0.0, 1e-6, 0.1, 0.2, 0.3, 0.5, 0.7,
+               0.9, 9.0, 18.0},
+              /*op_name=*/"Sin",
+              /*expected_callback=*/std::sin,
+              /*expect_equal=*/false);
+}
+
+TEST_F(GpuUnaryOpTest, SinHalf) {
+  Run<Eigen::half, float>(
+      /*input_shape=*/{2, 7},
+      /*input=*/
+      {static_cast<Eigen::half>(-18.0), static_cast<Eigen::half>(-9.0),
+       static_cast<Eigen::half>(-1e-6), static_cast<Eigen::half>(-0.0),
+       static_cast<Eigen::half>(0.0), static_cast<Eigen::half>(1e-6),
+       static_cast<Eigen::half>(0.1), static_cast<Eigen::half>(0.2),
+       static_cast<Eigen::half>(0.3), static_cast<Eigen::half>(0.5),
+       static_cast<Eigen::half>(0.7), static_cast<Eigen::half>(0.9),
+       static_cast<Eigen::half>(9.0), static_cast<Eigen::half>(18.0)},
+      /*op_name=*/"Sin",
+      /*expected_callback=*/std::sin,
+      /*expect_equal=*/false);
+}
+
+/// Test `tf.Sqrt`.
+
+TEST_F(GpuUnaryOpTest, SqrtFloat) {
+  Run<float>(/*input_shape=*/{2, 7},
+             /*input=*/
+             {18.0f, 9.0f, 1e-6f, 0.0f, 0.0f, 1e-6, 0.1f, 0.2f, 0.3f, 0.5f,
+              0.7f, 0.9f, 9.0f, 18.0f},
+             /*op_name=*/"Sqrt",
+             /*expected_callback=*/std::sqrt,
+             /*expect_equal=*/false);
+}
+
+TEST_F(GpuUnaryOpTest, SqrtDouble) {
+  Run<double>(/*input_shape=*/{2, 7},
+              /*input=*/
+              {18.0, 9.0, 1e-6, 0.0, 0.0, 1e-6, 0.1, 0.2, 0.3, 0.5, 0.7, 0.9,
+               9.0, 18.0},
+              /*op_name=*/"Sqrt",
+              /*expected_callback=*/std::sqrt,
+              /*expect_equal=*/false);
+}
+
+TEST_F(GpuUnaryOpTest, SqrtHalf) {
+  Run<Eigen::half, float>(
+      /*input_shape=*/{2, 7},
+      /*input=*/
+      {static_cast<Eigen::half>(18.0), static_cast<Eigen::half>(9.0),
+       static_cast<Eigen::half>(1e-6), static_cast<Eigen::half>(0.0),
+       static_cast<Eigen::half>(0.0), static_cast<Eigen::half>(1e-6),
+       static_cast<Eigen::half>(0.1), static_cast<Eigen::half>(0.2),
+       static_cast<Eigen::half>(0.3), static_cast<Eigen::half>(0.5),
+       static_cast<Eigen::half>(0.7), static_cast<Eigen::half>(0.9),
+       static_cast<Eigen::half>(9.0), static_cast<Eigen::half>(18.0)},
+      /*op_name=*/"Sqrt",
+      /*expected_callback=*/std::sqrt,
+      /*expect_equal=*/false);
+}
+
 }  // namespace
 }  // end namespace tensorflow
