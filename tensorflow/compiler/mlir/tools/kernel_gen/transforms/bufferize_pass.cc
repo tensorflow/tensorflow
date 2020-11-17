@@ -23,6 +23,8 @@ limitations under the License.
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/StandardOps/Transforms/DecomposeCallGraphTypes.h"  // from @llvm-project
+#include "mlir/Dialect/StandardOps/Transforms/FuncConversions.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -107,9 +109,11 @@ struct BufferizePass : public BufferizePassBase<BufferizePass> {
 
     OwningRewritePatternList patterns;
     mhlo::populateHLOToLHLOConversionPattern(&context, &converter, &patterns);
-    populateWithBufferizeOpConversionPatterns<ReturnOp, ReturnOp,
-                                              lmhlo::CopyOp>(
-        &context, converter, patterns);
+    populateFuncOpTypeConversionPattern(patterns, &context, converter);
+    populateCallOpTypeConversionPattern(patterns, &context, converter);
+    ValueDecomposer decomposer;
+    populateDecomposeCallGraphTypesPatterns(&context, converter, decomposer,
+                                            patterns);
     populateStdBufferizePatterns(&context, converter, patterns);
     populateExtraStdBufferizePattern(&context, &converter, &patterns);
     populateShapeStructuralTypeConversionsAndLegality(&context, converter,
