@@ -39,11 +39,9 @@ class TfToPlatformDeviceIdMap {
     std::pair<IdMapType::iterator, bool> result;
     {
       mutex_lock lock(mu_);
-      if (id_map_.find(type.type_string()) == id_map_.end()) {
-        id_map_.insert({type.type_string(), IdMapType()});
-      }
-      auto& device_id_map = id_map_[type.type_string()];
-      result = device_id_map.insert(
+      TypeIdMapType::iterator device_id_map_iter =
+          id_map_.insert({type.type_string(), IdMapType()}).first;
+      result = device_id_map_iter->second.insert(
           {tf_device_id.value(), platform_device_id.value()});
     }
     if (!result.second && platform_device_id.value() != result.first->second) {

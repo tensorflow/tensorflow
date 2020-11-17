@@ -24,7 +24,6 @@ package(
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
     ],
-    # features = ["-parse_headers"],
     licenses = ["notice"],  # Apache 2.0
 )
 
