@@ -20,8 +20,8 @@ from __future__ import print_function
 
 import collections
 import functools
+import inspect
 import re
-import traceback
 
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import decorator_utils
@@ -100,15 +100,12 @@ def _validate_deprecation_args(date, instructions):
 
 def _call_location(outer=False):
   """Returns call location given level up from current call."""
-  stack = traceback.extract_stack(limit=4)
-  length = len(stack)
-  if length == 0:  # should never happen as we're in a function
-    return 'UNKNOWN'
-  index = length-4 if outer else length-3
-  if index < 0:
-    index = 0
-  frame = stack[index]
-  return '{}:{}'.format(frame.filename, frame.lineno)
+  # Two up: <_call_location>, <_call_location's caller>
+  f = inspect.currentframe().f_back.f_back
+  parent = f.f_back
+  if outer and parent is not None:
+    f = parent
+  return '{}:{}'.format(f.f_code.co_filename, f.f_lineno)
 
 
 def _wrap_decorator(wrapped_function):
