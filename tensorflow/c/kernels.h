@@ -67,8 +67,8 @@ typedef struct TF_OpKernelConstruction TF_OpKernelConstruction;
 typedef struct TF_OpKernelContext TF_OpKernelContext;
 
 // TF_InitKernel to do op/kernel registration.
-// Plugin should either implement TF_InitKernel to register kernels or use
-// static registration. This function should register all kernels in a plugin.
+// Plugin should implement TF_InitKernel to register kernels. This function
+// should register all kernels in a plugin.
 void TF_InitKernel();
 
 // Allocates a new kernel builder and returns a pointer to it.
