@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import functools
 import itertools
+import re
 import threading
 import unittest
 
@@ -451,12 +452,29 @@ def TestFactory(xla_backend, cloud_tpu=False):
       self.assertEqual(xla_shape.dimensions(), (1, 2))
       self.assertEqual(np.dtype(xla_shape.element_type()), np.dtype(np.float32))
 
+    def testXlaShape(self):
+      pyval = np.array([[1., 2.]], np.float32)
+      buffer = self.backend.buffer_from_pyval(pyval)
+      xla_shape = buffer.xla_shape()
+      self.assertEqual(xla_shape.dimensions(), (1, 2))
+      self.assertEqual(np.dtype(xla_shape.element_type()), np.dtype(np.float32))
+
     def testBlockHostUntilReadyWorks(self):
       arg = np.array([[1., 2.]], np.float32)
       arg_buffer = self.backend.buffer_from_pyval(arg)
       arg_buffer.block_host_until_ready()
       # This test merely checks that nothing goes awry when we call
       # block_host_until_ready(); it's difficult to test anything else.
+
+    def testBlockHostUntilReadyRaisesOnDeletedBuffer(self):
+      arg = np.array([[1., 2.]], np.float32)
+      buffer = self.backend.buffer_from_pyval(arg)
+      buffer.delete()
+      with self.assertRaisesRegex(
+          RuntimeError,
+          re.escape(
+              "BlockHostUntilReady() called on deleted or donated buffer")):
+        buffer.block_host_until_ready()
 
     def testCopyToHost(self):
       arg0 = np.array([[1., 2.]], np.float32)
