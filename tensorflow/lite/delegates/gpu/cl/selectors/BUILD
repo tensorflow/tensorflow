@@ -30,6 +30,7 @@ cc_library(
     srcs = ["convolution_transposed_selector.cc"],
     hdrs = ["convolution_transposed_selector.h"],
     deps = [
+        "//tensorflow/lite/delegates/gpu/cl/kernels:conv_common",
         "//tensorflow/lite/delegates/gpu/cl/kernels:convolution_transposed",
         "//tensorflow/lite/delegates/gpu/cl/kernels:convolution_transposed_3x3",
         "//tensorflow/lite/delegates/gpu/cl/kernels:convolution_transposed_3x3_thin",
