@@ -1043,6 +1043,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
+        "@llvm-project//llvm:Support",
     ],
 )
 
