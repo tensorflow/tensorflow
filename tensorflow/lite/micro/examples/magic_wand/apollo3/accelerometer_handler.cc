@@ -13,9 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if defined(ARDUINO) && !defined(ARDUINO_SFE_EDGE)
+#if defined(ARDUINO)
+#if defined(ARDUINO_SFE_EDGE)
+#define USE_LIS2DH12_SFE_BSP
+#else
 #define ARDUINO_EXCLUDE_CODE
-#endif  // defined(ARDUINO) && !defined(ARDUINO_SFE_EDGE)
+#endif // defined(ARDUINO_SFE_EDGE)
+#endif  // defined(ARDUINO)
 
 #ifndef ARDUINO_EXCLUDE_CODE
 
@@ -27,6 +31,12 @@ limitations under the License.
 #include "am_bsp.h"         // NOLINT
 #include "am_mcu_apollo.h"  // NOLINT
 #include "am_util.h"        // NOLINT
+
+#if defined(TFLU_APOLLO3_BOARD_sparkfun_edge)
+#define USE_LIS2DH12_SFE_BSP
+#endif // defined(TFLU_APOLLO3_BOARD_sparkfun_edge)
+
+#if defined (USE_LIS2DH12_SFE_BSP)
 #include "lis2dh12_platform_apollo3.h"
 
 lis2dh12_platform_apollo3_if_t dev_if;  // accelerometer device interface
@@ -216,5 +226,7 @@ bool ReadAccelerometer(tflite::ErrorReporter* error_reporter, float* input,
   }
   return true;
 }
+
+#endif // defined (USE_LIS2DH12_SFE_BSP)
 
 #endif  // ARDUINO_EXCLUDE_CODE
