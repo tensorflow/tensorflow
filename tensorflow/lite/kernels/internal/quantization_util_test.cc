@@ -423,7 +423,7 @@ TEST(QuantizationUtilTest, GetInvSqrtQuantizedMultiplierExp) {
 }
 
 TEST(QuantizationUtilTest, MultiplyByQuantizedMultiplierInt32) {
-  auto quant_and_multiply = [](int32 x, double multiplier) {
+  auto quant_and_multiply = [](int32_t x, double multiplier) {
     int32_t quantized_multiplier;
     int shift;
     QuantizeMultiplier(multiplier, &quantized_multiplier, &shift);
@@ -458,7 +458,7 @@ TEST(QuantizationUtilTest, MultiplyByQuantizedMultiplierInt32) {
 }
 
 TEST(QuantizationUtilTest, MultiplyByQuantizedMultiplierInt64) {
-  auto quant_and_multiply = [](int64 x, double multiplier) {
+  auto quant_and_multiply = [](int64_t x, double multiplier) {
     int32_t quantized_multiplier;
     int shift;
     QuantizeMultiplier(multiplier, &quantized_multiplier, &shift);
