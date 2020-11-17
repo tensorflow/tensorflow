@@ -54,7 +54,7 @@ class OpenClConverterImpl : public TensorObjectConverter {
     const int3 grid = int3(tensor->Width() * tensor->Batch(), tensor->Height(),
                            tensor->Slices());
     std::vector<int3> work_groups;
-    GetPossibleWorkGroupsConv(TuningType::FAST, gpu_info_, kernel_.info_, grid,
+    GetPossibleWorkGroupsConv(TuningType::kFast, gpu_info_, kernel_.info_, grid,
                               &work_groups);
     const int3 work_group_size = work_groups[0];
     const int3 work_groups_count = GetWorkGroupsCount(grid, work_group_size);

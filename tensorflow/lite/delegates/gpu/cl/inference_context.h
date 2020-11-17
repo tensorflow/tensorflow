@@ -133,7 +133,8 @@ class InferenceContext {
 
   void BindMemoryToOperations();
   absl::Status Compile(const CreationContext& creation_context);
-  absl::Status Tune(const TuningParameters& tuning_parameters);
+  absl::Status Tune(TuningType tuning_type, const GpuInfo& gpu_info,
+                    ProfilingCommandQueue* profiling_queue);
   absl::Status UpdateParams();
 
   // performance hacks

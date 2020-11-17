@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,26 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_TUNING_PARAMETERS_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_TUNING_PARAMETERS_H_
-
-#include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"
-#include "tensorflow/lite/delegates/gpu/cl/device_info.h"
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_TUNING_TYPE_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_TUNING_TYPE_H_
 
 namespace tflite {
 namespace gpu {
-namespace cl {
 
-enum class TuningType { EXHAUSTIVE, FAST };
+enum class TuningType { kExhaustive, kFast };
 
-struct TuningParameters {
-  ProfilingCommandQueue* queue;
-  const GpuInfo* info;
-  TuningType tuning_type = TuningType::EXHAUSTIVE;
-};
-
-}  // namespace cl
 }  // namespace gpu
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_TUNING_PARAMETERS_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_TUNING_TYPE_H_
