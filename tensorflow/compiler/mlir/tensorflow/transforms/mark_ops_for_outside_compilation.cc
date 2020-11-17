@@ -117,6 +117,7 @@ void AddRewrittenCompositeOps(MLIRContext* context,
       GET_OPERATION_NAME(TF::TensorListElementShapeOp),
       GET_OPERATION_NAME(TF::TensorListGatherOp),
       GET_OPERATION_NAME(TF::TensorListScatterIntoExistingListOp),
+      GET_OPERATION_NAME(TF::TensorListStackOp),
   };
 #undef GET_OPERATION_NAME
 
