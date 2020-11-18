@@ -23,7 +23,6 @@ import platform
 import sys
 import unittest
 from absl import app
-from absl import logging
 
 from tensorflow.python.eager import test
 
@@ -98,29 +97,31 @@ def _set_spawn_exe_path():
   """
   # TODO(b/150264776): This does not work with Windows. Find a solution.
   if sys.argv[0].endswith('.py'):
-    path = None
     # If all we have is a python module path, we'll need to make a guess for
-    # the actual executable path.
-    if 'bazel-out' in sys.argv[0]:
-      # Guess the binary path under bazel. For target
-      # //tensorflow/python/distribute:input_lib_test_multiworker_gpu, the
-      # argv[0] is in the form of
-      # /.../org_tensorflow/tensorflow/python/distribute/input_lib_test.py
-      # and the binary is
-      # /.../org_tensorflow/tensorflow/python/distribute/input_lib_test_multiworker_gpu
-      org_tensorflow_path = sys.argv[0][:sys.argv[0].rfind('/tensorflow')]
-      if org_tensorflow_path.endswith('/org_tensorflow'):
-        binary = os.environ['TEST_TARGET'][2:].replace(':', '/', 1)
-      possible_path = os.path.join(org_tensorflow_path, binary)
-      logging.info('Guessed test binary path: %s', possible_path)
+    # the actual executable path. Since the binary path may correspond to the
+    # parent's path of the python module, we are making guesses by reducing
+    # directories one at a time. E.g.,
+    # tensorflow/python/some/path/my_test.py
+    # -> tensorflow/python/some/path/my_test
+    # -> tensorflow/python/some/my_test
+    # -> tensorflow/python/my_test
+    path_to_use = None
+    guess_path = sys.argv[0][:-3]
+    guess_path = guess_path.split(os.sep)
+    for path_reduction in range(-1, -len(guess_path), -1):
+      possible_path = os.sep.join(guess_path[:path_reduction] +
+                                  [guess_path[-1]])
       if os.access(possible_path, os.X_OK):
-        path = possible_path
-    if path is None:
-      logging.error(
-          'Cannot determine binary path. sys.argv[0]=%s os.environ=%s',
-          sys.argv[0], os.environ)
+        path_to_use = possible_path
+        break
+      # The binary can possibly have _gpu suffix.
+      possible_path += '_gpu'
+      if os.access(possible_path, os.X_OK):
+        path_to_use = possible_path
+        break
+    if path_to_use is None:
       raise RuntimeError('Cannot determine binary path')
-    sys.argv[0] = path
+    sys.argv[0] = path_to_use
   # Note that this sets the executable for *all* contexts.
   multiprocessing.get_context().set_executable(sys.argv[0])
 
