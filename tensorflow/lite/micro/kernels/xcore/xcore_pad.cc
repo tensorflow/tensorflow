@@ -3,6 +3,7 @@
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/xcore/xcore_custom_options.h"
+#include "tensorflow/lite/util.h"
 
 extern "C" {
 #include "lib_nn/api/nn_operator.h"
@@ -20,7 +21,6 @@ This is a struct that describes the memory required to configure the operator.
 struct PadOpData {
   nn_pad_plan_t plan;
   padding_values_t pv;
-  size_t bytes_per_pixel;
   uint32_t pad_value;
 };
 
@@ -32,8 +32,6 @@ void *Init(TfLiteContext *context, const char *buffer, size_t length) {
   TFLITE_DCHECK(buffer);
   TFLITE_DCHECK(length > 0);
 
-  op_data->bytes_per_pixel = (size_t)get_named_uint32_custom_option(
-      context, buffer, length, "bytes_per_pixel");
   op_data->pad_value =
       get_named_uint32_custom_option(context, buffer, length, "pad_values");
 
@@ -64,15 +62,20 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
 
   const TfLiteTensor *input = GetInput(context, node, 0);
 
-  auto *op_data = reinterpret_cast<PadOpData *>(node->user_data);
-
   // setup runtime parameters
   nn_image_params_t x;
   x.height = (uint32_t)input->dims->data[1];
   x.width = (uint32_t)input->dims->data[2];
   x.channels = (uint32_t)input->dims->data[3];
 
-  pad_prepare(&op_data->plan, &op_data->pv, &x, op_data->bytes_per_pixel);
+  size_t type_size;
+  GetSizeOfType(context, input->type, &type_size);
+  auto bytes_per_pixel = type_size * x.channels;
+  TF_LITE_ENSURE(context, bytes_per_pixel % 4 == 0);
+
+  auto *op_data = reinterpret_cast<PadOpData *>(node->user_data);
+
+  pad_prepare(&op_data->plan, &op_data->pv, &x, bytes_per_pixel);
 
   return kTfLiteOk;
 }
