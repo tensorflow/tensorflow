@@ -52,6 +52,33 @@ exports_files([
     ]
 ]
 
+gentbl(
+    name = "BuiltinOpsIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-op-decls",
+            "include/mlir/IR/BuiltinOps.h.inc",
+        ),
+        (
+            "-gen-op-defs",
+            "include/mlir/IR/BuiltinOps.cpp.inc",
+        ),
+        (
+            "-gen-dialect-decls",
+            "include/mlir/IR/BuiltinDialect.h.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/IR/BuiltinOps.td",
+    td_srcs = [
+        "include/mlir/IR/BuiltinOps.td",
+        "include/mlir/Interfaces/CallInterfaces.td",
+        "include/mlir/IR/SymbolInterfaces.td",
+        ":OpBaseTdFiles",
+    ],
+)
+
 cc_library(
     name = "IR",
     srcs = glob([
@@ -67,6 +94,7 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
+        ":BuiltinOpsIncGen",
         ":CallOpInterfacesIncGen",
         ":InferTypeOpInterfaceIncGen",
         ":OpAsmInterfaceIncGen",
@@ -4396,6 +4424,7 @@ exports_files(
         "include/mlir/Transforms/InliningUtils.h",
         "include/mlir/Interfaces/InferTypeOpInterface.td",
         "include/mlir/Interfaces/LoopLikeInterface.td",
+        "lib/Bindings/Python/Attributes.td",
     ],
     visibility = [":friends"],
 )
