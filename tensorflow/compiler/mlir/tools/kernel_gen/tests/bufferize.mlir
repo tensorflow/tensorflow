@@ -34,7 +34,7 @@ func @tensor_from_elements(%a : f32) -> tensor<3xf32> {
 // CHECK-SAME: (%[[ARG:.*]]: memref<*xf32>) -> memref<?xindex>
 func @dynamic_tensor_from_elements(%arg : tensor<*xf32>) -> tensor<?xindex> {
   // CHECK: %[[C3:.*]] = constant 3 : index
-  // CHECK: %[[MEM:.*]] = alloc(%c3) : memref<?xindex>
+  // CHECK: %[[MEM:.*]] = alloca(%c3) : memref<?xindex>
   // CHECK: %[[C0:.*]] = constant 0 : index
   // CHECK: %[[C1:.*]] = constant 1 : index
   // CHECK: scf.parallel (%[[I:.*]]) = (%[[C0]]) to (%[[C3]]) step (%[[C1]]) {
