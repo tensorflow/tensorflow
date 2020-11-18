@@ -911,7 +911,7 @@ Status DynamicDimensionInferenceVisitor::HandleReshape(HloInstruction* hlo) {
           output_dynamic_dimension = reshape->inferred_dimension();
           if (output_dynamic_dimension == -1) {
             // Try find dynamic dimension from the result shape.
-            for (int64 i = 0; i < reshape->shape().rank(); ++i) {
+            for (int64 i = output_dim_start; i < output_dim_end; ++i) {
               if (reshape->shape().is_dynamic_dimension(i)) {
                 output_dynamic_dimension = i;
               }
