@@ -20,7 +20,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <queue>
-#include <set>
+#include <unordered_set>
 #include <utility>
 
 #include "absl/algorithm/algorithm.h"
@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -52,6 +53,8 @@ limitations under the License.
 namespace xla {
 
 namespace {
+
+namespace m = match;
 
 // ConvolutionVisitor traverses the HLO computation and rewrites Convolution
 // operations with small batch counts into convolutions with larger batch
@@ -141,7 +144,7 @@ class ConvolutionVisitor {
 
   absl::flat_hash_set<HloInstruction*> convs_to_visit_;
   std::vector<HloInstruction*> conv_visitor_list_;
-  std::set<HloInstruction*> non_propagatable_instrs_;
+  HloInstructionSet non_propagatable_instrs_;
   // Map from a given spaced-to-batch instruction to its batched-to-space
   // version.
   absl::flat_hash_map<HloInstruction*, HloInstruction*> batch_to_space_map_;
@@ -491,6 +494,63 @@ bool ConvolutionVisitor::CanPropagate(HloInstruction* consumer,
       }
     }
   }
+
+  if (consumer->opcode() == HloOpcode::kSelectAndScatter) {
+    // We currently only support adds in the scatter.
+    auto scatter_comp = consumer->scatter();
+    if (!Match(scatter_comp->root_instruction(),
+               m::AddAnyOrder(m::Parameter(0), m::Parameter(1)))) {
+      return false;
+    }
+
+    for (int64 i = 0; i < consumer->operand_count(); ++i) {
+      auto old_producer = consumer->mutable_operand(i);
+      if (i < 2 && !old_to_new_instrs_.contains(old_producer)) {
+        return false;
+      }
+    }
+
+    auto first_operand = old_to_new_instrs_[consumer->mutable_operand(0)];
+    auto dim_map_val_op_0 = instr_to_dim_map_[consumer->mutable_operand(0)];
+    auto second_operand = old_to_new_instrs_[consumer->mutable_operand(1)];
+
+    auto permute_dims_first_operand = instr_to_dim_permute_map_[first_operand];
+    auto permute_dims_second_operand =
+        instr_to_dim_permute_map_[second_operand];
+
+    // The permuting must match.
+    if (permute_dims_first_operand != permute_dims_second_operand) {
+      return false;
+    }
+
+    const int64 old_batch_dim = dim_map_val_op_0.first;
+    const int64 old_space_dim = dim_map_val_op_0.second;
+
+    const int64 new_batch_dim =
+        DimLookUp(permute_dims_first_operand, old_batch_dim);
+    const int64 new_space_dim =
+        DimLookUp(permute_dims_first_operand, old_space_dim);
+
+    if (first_operand->shape().dimensions(new_batch_dim) !=
+        second_operand->shape().dimensions(new_batch_dim)) {
+      return false;
+    }
+
+    const int64 stride = consumer->window().dimensions(old_space_dim).stride();
+    const int64 pad_high =
+        consumer->window().dimensions(old_space_dim).padding_high();
+    const int64 pad_low =
+        consumer->window().dimensions(old_space_dim).padding_low();
+
+    if ((first_operand->shape().dimensions(new_space_dim) + pad_high +
+         pad_low) /
+            stride !=
+        second_operand->shape().dimensions(new_space_dim)) {
+      return false;
+    }
+    VLOG(1) << "Can propagate through select and scatter";
+    return true;
+  }
   return true;
 }
 
@@ -541,30 +601,31 @@ bool ConvolutionVisitor::SupportedOpForPropagation(HloInstruction* consumer,
            absl::c_linear_search(reduce_dims, space_dim);
   }
 
-  if (consumer->opcode() == HloOpcode::kReduceWindow) {
+  if (consumer->opcode() == HloOpcode::kReduceWindow ||
+      consumer->opcode() == HloOpcode::kSelectAndScatter) {
     auto first_operand = consumer->mutable_operand(0);
-    auto reduce_window = consumer->window();
+    auto window = consumer->window();
     if (instr_to_dim_map_.count(first_operand) <= 0) {
-      VLOG(1) << "Dim map not found on reducewindow operand. Window dim count "
-              << reduce_window.dimensions().size();
+      VLOG(1) << "Dim map not found on windowed operand. Window dim count "
+              << window.dimensions().size();
       return false;
     }
     // Disallow windowing on on the batch dim
     auto result = instr_to_dim_map_[first_operand];
     const int64 old_batch_dim = result.first;
     const int64 old_space_dim = result.second;
-    if (reduce_window.dimensions(old_batch_dim).size() != 1) {
+    if (window.dimensions(old_batch_dim).size() != 1) {
       return false;
     }
 
     // Only allow no-low-padding cases.
-    if (reduce_window.dimensions(old_space_dim).padding_low() != 0) {
+    if (window.dimensions(old_space_dim).padding_low() != 0) {
       return false;
     }
 
     // Only allow small high pads.
-    if (reduce_window.dimensions(old_space_dim).padding_high() >
-        reduce_window.dimensions(old_space_dim).size()) {
+    if (window.dimensions(old_space_dim).padding_high() >
+        window.dimensions(old_space_dim).size()) {
       return false;
     }
 
@@ -578,9 +639,9 @@ bool ConvolutionVisitor::SupportedOpForPropagation(HloInstruction* consumer,
     const int64 new_space_dim = DimLookUp(permute_dims, old_space_dim);
 
     // Make sure that the stride lines up.
-    if (reduce_window.dimensions(old_space_dim).size() != 1) {
+    if (window.dimensions(old_space_dim).size() != 1) {
       if (new_operand->shape().dimensions(new_space_dim) %
-              reduce_window.dimensions(old_space_dim).stride() !=
+              window.dimensions(old_space_dim).stride() !=
           0) {
         return false;
       }
@@ -679,9 +740,14 @@ StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
     return false;
   }
 
-  if (consumer->opcode() == HloOpcode::kReduceWindow) {
+  if (consumer->opcode() == HloOpcode::kReduceWindow ||
+      consumer->opcode() == HloOpcode::kSelectAndScatter) {
+    bool is_select_and_scatter =
+        consumer->opcode() == HloOpcode::kSelectAndScatter;
     auto first_operand = old_to_new_instrs_[consumer->mutable_operand(0)];
 
+    auto init_val = is_select_and_scatter ? consumer->mutable_operand(2)
+                                          : consumer->mutable_operand(1);
     auto dim_map_val = instr_to_dim_map_[consumer->mutable_operand(0)];
     const int64 old_batch_dim = dim_map_val.first;
     const int64 old_space_dim = dim_map_val.second;
@@ -692,8 +758,8 @@ StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
     TF_ASSIGN_OR_RETURN(
         first_operand,
         SelectValidPortion(first_operand, consumer->mutable_operand(0),
-                           consumer->mutable_operand(1), new_batch_dim,
-                           new_space_dim, old_batch_dim, old_space_dim));
+                           init_val, new_batch_dim, new_space_dim,
+                           old_batch_dim, old_space_dim));
 
     // Calculate the required halo size
     auto new_shape = first_operand->shape();
@@ -707,15 +773,15 @@ StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
     const int64 last_overlap_point = ((new_space_size - 1) / stride) * stride;
     VLOG(1) << "last_overlap_point " << last_overlap_point << " window_size "
             << window_size << " new_space_size " << new_space_size;
-    if (last_overlap_point + window_size > new_space_size) {
-      const int64 halo_size = last_overlap_point + window_size - new_space_size;
-      TF_ASSIGN_OR_RETURN(
-          first_operand,
-          HaloDuplicateWithSlice(first_operand, new_space_dim, new_batch_dim,
-                                 new_batch_size,
-                                 /*low_padding=*/0,
-                                 /*high_padding=*/0, halo_size, new_space_size,
-                                 consumer->mutable_operand(1)));
+
+    const int64 halo_size = last_overlap_point + window_size - new_space_size;
+    if (halo_size > 0) {
+      TF_ASSIGN_OR_RETURN(first_operand,
+                          HaloDuplicateWithSlice(first_operand, new_space_dim,
+                                                 new_batch_dim, new_batch_size,
+                                                 /*low_padding=*/0,
+                                                 /*high_padding=*/0, halo_size,
+                                                 new_space_size, init_val));
     }
 
     Window new_win;
@@ -742,25 +808,176 @@ StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
       new_win.mutable_dimensions(i)->set_window_reversal(
           consumer->window().dimensions(dim).window_reversal());
     }
-    auto init_val = consumer->mutable_operand(1);
-    auto reduce_comp = consumer->to_apply();
 
     new_shape = first_operand->shape();
 
-    TF_ASSIGN_OR_RETURN(auto new_reduce_window_shape,
-                        ShapeInference::InferReduceWindowShape(
-                            new_shape, init_val->shape(), new_win));
-    HloInstruction* new_consumer =
-        computation_->AddInstruction(HloInstruction::CreateReduceWindow(
-            new_reduce_window_shape, first_operand, init_val, new_win,
-            reduce_comp));
+    HloInstruction* new_consumer = nullptr;
+    if (is_select_and_scatter) {
+      auto second_operand = old_to_new_instrs_[consumer->mutable_operand(1)];
 
-    // Replace operand 0.
-    TF_CHECK_OK(
-        new_consumer->ReplaceOperandWithDifferentShape(0, first_operand));
-    VLOG(1) << "New reduce window " << new_consumer->ToString();
-    // We do not set instr_to_dim_permute_map_ here because no further
-    // propagation is needed here.
+      auto select_comp = consumer->select();
+
+      auto scatter_comp = consumer->scatter();
+      TF_ASSIGN_OR_RETURN(
+          auto new_select_and_scatter_shape,
+          ShapeInference::InferSelectAndScatterShape(
+              new_shape, select_comp->ComputeProgramShape(), new_win,
+              second_operand->shape(), init_val->shape(),
+              scatter_comp->ComputeProgramShape()));
+      new_consumer =
+          computation_->AddInstruction(HloInstruction::CreateSelectAndScatter(
+              new_select_and_scatter_shape, first_operand, select_comp, new_win,
+              second_operand, init_val, scatter_comp));
+      // Replace operand 0.
+      TF_CHECK_OK(
+          new_consumer->ReplaceOperandWithDifferentShape(0, first_operand));
+      // Replace operand 1.
+      TF_CHECK_OK(
+          new_consumer->ReplaceOperandWithDifferentShape(1, second_operand));
+      VLOG(2) << "New select and scatter " << new_consumer->ToString();
+
+      // If the window size was larger than the stride, there could be overlaps.
+      // Such cases require updates from both overlaps to be applied.
+      if (halo_size > 0) {
+        const int64 rank = new_consumer->shape().rank();
+
+        const int64 batch_size =
+            new_consumer->shape().dimensions(new_batch_dim);
+
+        std::vector<int64> start_indices(rank, 0),
+            end_indices(new_consumer->shape().dimensions().begin(),
+                        new_consumer->shape().dimensions().end()),
+            strides(rank, 1);
+        start_indices[new_space_dim] = new_space_size;
+        end_indices[new_space_dim] = new_space_size + halo_size;
+        end_indices[new_batch_dim] = batch_size - 1;
+
+        // This is the slice from halo padding.
+        TF_ASSIGN_OR_RETURN(
+            HloInstruction * bottom,
+            MakeSliceHlo(new_consumer, start_indices, end_indices, strides));
+
+        std::vector<int64> start_indices_top(rank, 0),
+            end_indices_top(new_consumer->shape().dimensions().begin(),
+                            new_consumer->shape().dimensions().end());
+        end_indices_top[new_space_dim] = halo_size;
+        // The first batch has correct data.
+        start_indices_top[new_batch_dim] = 1;
+
+        // This is the original area from where halo pad was extracted.
+        TF_ASSIGN_OR_RETURN(HloInstruction * top,
+                            MakeSliceHlo(new_consumer, start_indices_top,
+                                         end_indices_top, strides));
+
+        HloInstruction* default_fill =
+            MakeBroadcastHlo(init_val, {}, top->shape().dimensions());
+
+        // Compare to see if the bottom area was changed.
+        TF_ASSIGN_OR_RETURN(
+            HloInstruction * bottom_compare,
+            MakeCompareHlo(ComparisonDirection::kNe, bottom, default_fill));
+
+        // Take out only the changed values.
+        TF_ASSIGN_OR_RETURN(
+            HloInstruction * bottom_taken,
+            MakeSelectHlo(bottom_compare, bottom, default_fill));
+
+        // Compare to see if the top area was changed.
+        TF_ASSIGN_OR_RETURN(
+            HloInstruction * top_compare,
+            MakeCompareHlo(ComparisonDirection::kNe, top, default_fill));
+
+        // Take out only the changed values.
+        TF_ASSIGN_OR_RETURN(HloInstruction * top_taken,
+                            MakeSelectHlo(top_compare, top, bottom_taken));
+
+        // This makes checks if the area was updated by both overlaps.
+        TF_ASSIGN_OR_RETURN(
+            HloInstruction * both_compare,
+            MakeBinaryHlo(HloOpcode::kAnd, top_compare, bottom_compare));
+
+        // If it was, add them up.
+        TF_ASSIGN_OR_RETURN(HloInstruction * both_added,
+                            MakeBinaryHlo(HloOpcode::kAdd, top, bottom));
+
+        // Pad the final result to the original shape.
+        TF_ASSIGN_OR_RETURN(HloInstruction * final_selection,
+                            MakeSelectHlo(both_compare, both_added, top_taken));
+
+        PaddingConfig padding_config =
+            MakeNoPaddingConfig(final_selection->shape().dimensions_size());
+        padding_config.mutable_dimensions(new_batch_dim)
+            ->set_edge_padding_low(1);
+        padding_config.mutable_dimensions(new_space_dim)
+            ->set_edge_padding_high(new_space_size);
+        HloInstruction* padding =
+            computation_->AddInstruction(HloInstruction::CreateConstant(
+                LiteralUtil::Zero(final_selection->shape().element_type())));
+
+        TF_ASSIGN_OR_RETURN(
+            final_selection,
+            MakePadHlo(final_selection, padding, padding_config));
+
+        tensorflow::core::Bitmap b(batch_size * (new_space_size + halo_size));
+        for (int k = 0; k < batch_size * (new_space_size + halo_size); ++k) {
+          const int64 space_index = k % (new_space_size + halo_size);
+          const int64 batch_index = (k / (new_space_size + halo_size));
+          if (batch_index < 1 || space_index >= halo_size) {
+            b.set(k);
+          } else {
+            b.clear(k);
+          }
+        }
+
+        auto arg_literal = LiteralUtil::CreateR1(b);
+        VLOG(4) << "Slice mask created: arg literal " << arg_literal.ToString();
+        HloInstruction* slice_mask = computation_->AddInstruction(
+            HloInstruction::CreateConstant(std::move(arg_literal)));
+
+        std::vector<int64> slice_mask_reshape_dims(2);
+        slice_mask_reshape_dims[0] = batch_size;
+        slice_mask_reshape_dims[1] = (new_space_size + halo_size);
+
+        TF_ASSIGN_OR_RETURN(
+            HloInstruction * slice_mask_reshaped,
+            MakeReshapeHlo(slice_mask_reshape_dims, slice_mask));
+
+        // Broadcast the mask in all dimensions.
+        HloInstruction* shape_mask = MakeBroadcastHlo(
+            slice_mask_reshaped, {new_batch_dim, new_space_dim},
+            final_selection->shape().dimensions());
+
+        TF_ASSIGN_OR_RETURN(
+            new_consumer,
+            MakeSelectHlo(shape_mask, new_consumer, final_selection));
+      }
+
+      auto previous_shape =
+          old_to_new_instrs_[consumer->mutable_operand(0)]->shape();
+      std::vector<int64> start_indices(previous_shape.rank(), 0),
+          end_indices(previous_shape.dimensions().begin(),
+                      previous_shape.dimensions().end()),
+          strides(previous_shape.rank(), 1);
+
+      TF_ASSIGN_OR_RETURN(
+          new_consumer,
+          MakeSliceHlo(new_consumer, start_indices, end_indices, strides));
+
+    } else {
+      auto reduce_comp = consumer->to_apply();
+      TF_ASSIGN_OR_RETURN(auto new_reduce_window_shape,
+                          ShapeInference::InferReduceWindowShape(
+                              new_shape, init_val->shape(), new_win));
+      new_consumer =
+          computation_->AddInstruction(HloInstruction::CreateReduceWindow(
+              new_reduce_window_shape, first_operand, init_val, new_win,
+              reduce_comp));
+      // Replace operand 0.
+      TF_CHECK_OK(
+          new_consumer->ReplaceOperandWithDifferentShape(0, first_operand));
+      VLOG(1) << "New reduce window " << new_consumer->ToString();
+    }
+
     old_to_new_instrs_[consumer] = new_consumer;
     instr_to_dim_map_[consumer] = dim_map_val;
 
@@ -805,6 +1022,7 @@ StatusOr<HloInstruction*> ConvolutionVisitor::SelectValidPortion(
   }
 
   auto arg_literal = LiteralUtil::CreateR1(b);
+  VLOG(4) << "Slice mask created: arg literal " << arg_literal.ToString();
   HloInstruction* slice_mask = computation_->AddInstruction(
       HloInstruction::CreateConstant(std::move(arg_literal)));
 
