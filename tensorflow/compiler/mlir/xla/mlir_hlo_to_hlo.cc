@@ -1919,6 +1919,10 @@ StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {
     return xla::HloOpcode::kReduceWindow;
   } else if (mlir::isa<mlir::mhlo::ReducePrecisionOp>(op)) {
     return xla::HloOpcode::kReducePrecision;
+  } else if (mlir::isa<mlir::mhlo::DotGeneralOp>(op)) {
+    return xla::HloOpcode::kDot;
+  } else if (mlir::isa<mlir::mhlo::BroadcastInDimOp>(op)) {
+    return xla::HloOpcode::kBroadcast;
   } else {
     std::string s;
     {
