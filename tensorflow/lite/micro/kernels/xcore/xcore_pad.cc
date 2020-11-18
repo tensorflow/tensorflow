@@ -25,16 +25,16 @@ struct PadOpData {
 };
 
 void *Init(TfLiteContext *context, const char *buffer, size_t length) {
-  PadOpData *op = reinterpret_cast<PadOpData *>(
+  auto *op_data = reinterpret_cast<PadOpData *>(
       context->AllocatePersistentBuffer(context, sizeof(PadOpData)));
 
   // parse custom options
-  TFLITE_DCHECK(buffer != nullptr);
+  TFLITE_DCHECK(buffer);
   TFLITE_DCHECK(length > 0);
 
-  op->bytes_per_pixel = (size_t)get_named_uint32_custom_option(
+  op_data->bytes_per_pixel = (size_t)get_named_uint32_custom_option(
       context, buffer, length, "bytes_per_pixel");
-  op->pad_value =
+  op_data->pad_value =
       get_named_uint32_custom_option(context, buffer, length, "pad_values");
 
   const uint8_t *buffer_t = reinterpret_cast<const uint8_t *>(buffer);
@@ -47,15 +47,15 @@ void *Init(TfLiteContext *context, const char *buffer, size_t length) {
     if (key.compare("padding_values") == 0) {
       // values represent [height, height_offset, width, width_offset]
       const auto &vec = values[i].AsVector();
-      op->pv.height = vec[0].AsInt32();
-      op->pv.height_offset = vec[1].AsInt32();
-      op->pv.width = vec[2].AsInt32();
-      op->pv.width_offset = vec[3].AsInt32();
+      op_data->pv.height = vec[0].AsInt32();
+      op_data->pv.height_offset = vec[1].AsInt32();
+      op_data->pv.width = vec[2].AsInt32();
+      op_data->pv.width_offset = vec[3].AsInt32();
       break;
     }
   }
 
-  return op;
+  return op_data;
 }
 
 TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
@@ -63,9 +63,8 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
   const TfLiteTensor *input = GetInput(context, node, 0);
-  const TfLiteTensor *output = GetOutput(context, node, 0);
 
-  PadOpData *op = reinterpret_cast<PadOpData *>(node->user_data);
+  auto *op_data = reinterpret_cast<PadOpData *>(node->user_data);
 
   // setup runtime parameters
   nn_image_params_t x;
@@ -73,7 +72,7 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
   x.width = (uint32_t)input->dims->data[2];
   x.channels = (uint32_t)input->dims->data[3];
 
-  pad_prepare(&op->plan, &op->pv, &x, op->bytes_per_pixel);
+  pad_prepare(&op_data->plan, &op_data->pv, &x, op_data->bytes_per_pixel);
 
   return kTfLiteOk;
 }
@@ -82,10 +81,10 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
   const TfLiteTensor *input = GetInput(context, node, 0);
   const TfLiteTensor *output = GetOutput(context, node, 0);
 
-  PadOpData *op = reinterpret_cast<PadOpData *>(node->user_data);
+  auto *op_data = reinterpret_cast<PadOpData *>(node->user_data);
 
-  pad_run((void *)output->data.i32, (void *)input->data.i32, &op->plan,
-          op->pad_value);
+  pad_run(output->data.data, input->data.data, &op_data->plan,
+          op_data->pad_value);
 
   return kTfLiteOk;
 }
