@@ -580,12 +580,6 @@ Status IrEmitterUnnested::DefaultActionForMlir(MlirEmitterInput input) {
   return ret;
 }
 
-Status IrEmitterUnnested::HandleDot(HloInstruction* dot) {
-  AddThunkToThunkSequence(
-      BuildKernelThunk(dot, /*implements_whole_instruction=*/true));
-  return IrEmitter::HandleDot(dot);
-}
-
 Status IrEmitterUnnested::HandleConditional(HloInstruction* conditional) {
   TF_ASSIGN_OR_RETURN(auto thunk, BuildConditionalThunk(conditional));
   AddThunkToThunkSequence(std::move(thunk));
