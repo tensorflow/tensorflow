@@ -6500,6 +6500,8 @@ tensor of rank `k+1` with dimensions `[I, J, K, ..., M, N]` where:
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_MatrixSetDiagV2Op : TF_Op<"MatrixSetDiagV2", [NoSideEffect]> {
@@ -6592,6 +6594,8 @@ tf.matrix_set_diag(diagonals, k = (-1, 0))
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_MatrixSetDiagV3Op : TF_Op<"MatrixSetDiagV3", [NoSideEffect]> {

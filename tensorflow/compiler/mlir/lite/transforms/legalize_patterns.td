@@ -440,8 +440,23 @@ def LegalizeConv2DBackpropInput : Pat<
      /*stride_h=*/ ExtractI32At<1>:$strides,
      /*stride_w=*/ ExtractI32At<2>:$strides)>;
 
+def IsRankZeroAttr
+  : CPred<"$_self.cast<DenseElementsAttr>().getType().getRank() == 0">;
+
+def HasValueZero
+  : CPred<"$_self.cast<DenseElementsAttr>().getSplatValue()."
+          "cast<::mlir::IntegerAttr>().getInt() == 0">;
+
+// TFLite only supports MatrixSetDiag ops with scalar zero k attribute.
+def IsSupportedByTFLiteMatrixSetDiag
+  : ElementsAttrBase<And<[ElementsAttr.predicate,
+                          IsRankZeroAttr, HasValueZero]>,
+                     "MatrixSetDiag attribute verification">;
+
+// Attribute align doesn't matter when k is zero.
 def LegalizeMatrixSetDiag : Pat<
-  (TF_MatrixSetDiagOp $input, $diagonal),
+  (TF_MatrixSetDiagV3Op $input, $diagonal,
+    (ConstantLikeMatcher IsSupportedByTFLiteMatrixSetDiag:$k), $align),
   (TFL_MatrixSetDiagOp $input, $diagonal)>;
 
 def LegalizeScatterNd : Pat<
