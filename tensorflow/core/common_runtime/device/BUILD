@@ -24,6 +24,7 @@ package(
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
     ],
+    # features = ["-parse_headers"],
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -59,6 +60,7 @@ filegroup(
     srcs = [
         "device_id.h",
         "device_id_manager.h",
+        "device_id_utils.h",
     ],
 )
 

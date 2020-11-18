@@ -116,7 +116,6 @@ filegroup(
         "gpu_host_allocator.h",
         "gpu_id.h",
         "gpu_id_manager.h",
-        "gpu_id_utils.h",
         "gpu_init.h",
         "gpu_managed_allocator.h",
         "gpu_mem_allocator.h",
@@ -446,5 +445,6 @@ tf_cuda_cc_test(
         "//tensorflow/core/common_runtime:core_cpu_internal",
         "//tensorflow/core/common_runtime:direct_session_internal",
         "//tensorflow/core/kernels:ops_util",
+        "//tensorflow/stream_executor:platform",
     ],
 )
