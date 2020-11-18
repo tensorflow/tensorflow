@@ -113,26 +113,10 @@ http_archive(
 # Required for dependency @com_github_grpc_grpc
 
 load("@com_github_grpc_grpc//bazel:grpc_deps.bzl", "grpc_deps")
-
 grpc_deps()
 
-load(
-    "@build_bazel_rules_apple//apple:repositories.bzl",
-    "apple_rules_dependencies",
-)
-
-apple_rules_dependencies()
-
-load(
-    "@build_bazel_apple_support//lib:repositories.bzl",
-    "apple_support_dependencies",
-)
-
-apple_support_dependencies()
-
-load("@upb//bazel:repository_defs.bzl", "bazel_version_repository")
-
-bazel_version_repository(name = "bazel_version")
+load("@com_github_grpc_grpc//bazel:grpc_extra_deps.bzl", "grpc_extra_deps")
+grpc_extra_deps()
 
 load("//third_party/googleapis:repository_rules.bzl", "config_googleapis")
 

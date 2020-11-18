@@ -74,6 +74,9 @@ _UNCOPIABLE_DTYPES = frozenset((dtypes.resource, dtypes.variant))
 _CapturedConstant = collections.namedtuple("_CapturedConstant",
                                            ["eager_tensor", "graph_tensor"])
 
+# Number of untraced functions to display to user in warning message.
+_NUM_DISPLAY_UNTRACED_FUNCTIONS = 5
+
 
 class _AugmentedGraphView(graph_view.ObjectGraphView):
   """An extendable graph which also tracks functions attached to objects.
@@ -187,6 +190,7 @@ class _SaveableView(object):
     self.captured_tensor_node_ids = object_identity.ObjectIdentityDictionary()
     self.slot_variables = slot_variables
     self.concrete_functions = []
+    self.untraced_functions = []
 
     self.saveable_objects_for_node, all_saveable_functions = (
         self._add_saveable_objects())
@@ -223,15 +227,19 @@ class _SaveableView(object):
         else:
           concrete_functions = [function]
         if not concrete_functions:
-          logging.warning(
-              "No concrete functions found for untraced function `%s` while "
-              "saving. This function will not be callable after loading.",
-              function._name)
+          self.untraced_functions.append(function._name)
 
         for concrete_function in concrete_functions:
           if concrete_function.name not in seen_function_names:
             seen_function_names.add(concrete_function.name)
             self.concrete_functions.append(concrete_function)
+    if self.untraced_functions:
+      logging.warning(
+          "Found untraced functions such as %s while saving (showing %d of %d)."
+          " These functions will not be directly callable after loading.",
+          ", ".join(self.untraced_functions[:_NUM_DISPLAY_UNTRACED_FUNCTIONS]),
+          min(_NUM_DISPLAY_UNTRACED_FUNCTIONS, len(self.untraced_functions)),
+          len(self.untraced_functions))
 
   def _add_saveable_objects(self):
     """Retrieves SaveablesObjects and traces their save/restore functions."""

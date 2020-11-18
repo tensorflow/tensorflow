@@ -20,8 +20,8 @@ source tensorflow/tools/ci_build/release/common.sh
 install_bazelisk
 
 # Pick a more recent version of xcode
-export DEVELOPER_DIR=/Applications/Xcode_11.3.app/Contents/Developer
-export MACOSX_DEPLOYMENT_TARGET=10.15
+export DEVELOPER_DIR=/Applications/Xcode_10.3.app/Contents/Developer
+export MACOSX_DEPLOYMENT_TARGET=10.10
 sudo xcode-select -s "${DEVELOPER_DIR}"
 python -m virtualenv tf_build_env --system-site-packages
 source tf_build_env/bin/activate
@@ -43,6 +43,7 @@ source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
 
 # Run tests
 bazel test --test_output=errors --config=opt \
+  --copt=-DGRPC_BAZEL_BUILD \
   --action_env=TF2_BEHAVIOR="${TF2_BEHAVIOR}" \
   --build_tag_filters="${tag_filters}" \
   --test_tag_filters="${tag_filters}" -- \

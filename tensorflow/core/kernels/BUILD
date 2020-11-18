@@ -3396,7 +3396,7 @@ tf_kernel_library(
     name = "fft_ops",
     prefix = "fft_ops",
     deps = MATH_DEPS + [
-    ] + if_cuda_or_rocm([":gpu_utils"]) + if_cuda([
+    ] + if_cuda([
         "//tensorflow/core/platform/default/build_config:cufft_plugin",
     ]),
 )
@@ -6475,6 +6475,7 @@ cc_library(
         "//tensorflow/core/platform:strong_hash",
         "//third_party/eigen3",
         "//third_party/fft2d:fft2d_headers",
+        "//third_party/icu/data:conversion_data",
         "@com_google_absl//absl/base",
         "@com_google_protobuf//:protobuf",
         "@fft2d",

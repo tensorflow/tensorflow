@@ -23,8 +23,7 @@ if [[ "$IS_NIGHTLY" -eq 1 ]]; then
   install_bazelisk
 
   # Pick a version of xcode
-  export DEVELOPER_DIR=/Applications/Xcode_11.3.app/Contents/Developer
-  export MACOSX_DEPLOYMENT_TARGET=10.15
+  export DEVELOPER_DIR=/Applications/Xcode_10.3.app/Contents/Developer
   sudo xcode-select -s "${DEVELOPER_DIR}"
 
   # Update the version string to nightly

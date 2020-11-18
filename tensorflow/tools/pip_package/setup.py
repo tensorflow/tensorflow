@@ -50,7 +50,7 @@ from setuptools.dist import Distribution
 # result for pip.
 # Also update tensorflow/tensorflow.bzl and
 # tensorflow/core/public/version.h
-_VERSION = '2.4.0'
+_VERSION = '2.4.0-rc2'
 
 
 # We use the same setup.py for all tensorflow_* packages and for the nightly
@@ -96,8 +96,8 @@ REQUIRED_PACKAGES = [
     # These need to be in sync with the existing TF version
     # They are updated during the release process
     # When updating these, please also update the nightly versions below
-    'tensorboard ~= 2.3',
-    'tensorflow_estimator ~= 2.3.0',
+    'tensorboard ~= 2.4',
+    'tensorflow_estimator >= 2.4.0rc0 , < 2.5.0',
 ]
 
 
