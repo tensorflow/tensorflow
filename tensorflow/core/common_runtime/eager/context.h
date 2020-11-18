@@ -24,15 +24,8 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
-// clang-format off
-// Required for IS_MOBILE_PLATFORM
-#include "tensorflow/core/common_runtime/process_function_library_runtime.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/platform.h"
-// clang-format on
-
-#include "absl/types/optional.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/types/optional.h"
 #include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -40,12 +33,34 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/example/example.pb.h"
+#include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/log_memory.h"
+#include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/fingerprint.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/platform.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/device_name_utils.h"
+
+// "tensorflow/core/platform/platform.h" must be included first before using
+// IS_MOBILE_PLATFORM.
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
@@ -53,23 +68,6 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #endif  // !IS_MOBILE_PLATFORM
-#include "tensorflow/core/framework/collective.h"
-#include "tensorflow/core/framework/log_memory.h"
-#include "tensorflow/core/framework/rendezvous.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
-#include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/lib/gtl/map_util.h"
-
-#include "tensorflow/core/platform/casts.h"
-#include "tensorflow/core/platform/fingerprint.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/public/session_options.h"
-#include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
 
@@ -442,6 +440,15 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
     return ptr->getKind() == kEager;
   }
 
+  // Function to support distributed C API.
+  void SetDistributedManager(
+      std::unique_ptr<ImmediateExecutionDistributedManager> distributed)
+      override {
+    distributed_manager_ = std::move(distributed);
+  }
+  ImmediateExecutionDistributedManager* GetDistributedManager() override {
+    return distributed_manager_.get();
+  }
 #endif  // IS_MOBILE_PLATFORM
 
   // Closes remote eager contexts, waits for all RPCs to finish, and
@@ -670,6 +677,10 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   // Maps from a remote worker to a list of parsed device filters.
   std::unordered_map<string, std::vector<DeviceNameUtils::ParsedName>>
       cluster_device_filters_ TF_GUARDED_BY(remote_state_mu_);
+
+  // A distributed manager that helps setup, update, and check liveness of
+  // member tasks in the cluster.
+  std::unique_ptr<ImmediateExecutionDistributedManager> distributed_manager_;
 
 #endif  // IS_MOBILE_PLATFORM
 
