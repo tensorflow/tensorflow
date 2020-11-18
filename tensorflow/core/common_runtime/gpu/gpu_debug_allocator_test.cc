@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/device/device_id_utils.h"
+#include "tensorflow/core/common_runtime/device/device_mem_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_bfc_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
@@ -46,7 +47,7 @@ se::StreamExecutor* ExecutorForPlatformGpuId(
 TEST(GPUDebugAllocatorTest, OverwriteDetection_None) {
   const PlatformGpuId platform_gpu_id(0);
   auto stream_exec = ExecutorForPlatformGpuId(platform_gpu_id);
-  GPUMemAllocator* sub_allocator = new GPUMemAllocator(
+  DeviceMemAllocator* sub_allocator = new DeviceMemAllocator(
       stream_exec, platform_gpu_id, false /*use_unified_memory*/, {}, {});
   GPUDebugAllocator a(new GPUBFCAllocator(sub_allocator, 1 << 30, ""),
                       platform_gpu_id);
@@ -73,9 +74,9 @@ TEST(GPUDebugAllocatorTest, OverwriteDetection_Header) {
         {
           const PlatformGpuId platform_gpu_id(0);
           auto stream_exec = ExecutorForPlatformGpuId(platform_gpu_id);
-          GPUMemAllocator* sub_allocator =
-              new GPUMemAllocator(stream_exec, platform_gpu_id,
-                                  false /*use_unified_memory*/, {}, {});
+          DeviceMemAllocator* sub_allocator =
+              new DeviceMemAllocator(stream_exec, platform_gpu_id,
+                                     false /*use_unified_memory*/, {}, {});
           GPUDebugAllocator a(new GPUBFCAllocator(sub_allocator, 1 << 30, ""),
                               platform_gpu_id);
 
@@ -109,9 +110,9 @@ TEST(GPUDebugAllocatorTest, OverwriteDetection_Footer) {
         {
           const PlatformGpuId platform_gpu_id(0);
           auto stream_exec = ExecutorForPlatformGpuId(platform_gpu_id);
-          GPUMemAllocator* sub_allocator =
-              new GPUMemAllocator(stream_exec, platform_gpu_id,
-                                  false /*use_unified_memory*/, {}, {});
+          DeviceMemAllocator* sub_allocator =
+              new DeviceMemAllocator(stream_exec, platform_gpu_id,
+                                     false /*use_unified_memory*/, {}, {});
           GPUDebugAllocator a(new GPUBFCAllocator(sub_allocator, 1 << 30, ""),
                               platform_gpu_id);
 
@@ -142,7 +143,7 @@ TEST(GPUDebugAllocatorTest, OverwriteDetection_Footer) {
 TEST(GPUDebugAllocatorTest, ResetToNan) {
   const PlatformGpuId platform_gpu_id(0);
   auto stream_exec = ExecutorForPlatformGpuId(platform_gpu_id);
-  GPUMemAllocator* sub_allocator = new GPUMemAllocator(
+  DeviceMemAllocator* sub_allocator = new DeviceMemAllocator(
       stream_exec, platform_gpu_id, false /*use_unified_memory*/, {}, {});
   GPUNanResetAllocator a(new GPUBFCAllocator(sub_allocator, 1 << 30, ""),
                          platform_gpu_id);
@@ -185,7 +186,7 @@ TEST(GPUDebugAllocatorTest, ResetToNanWithHeaderFooter) {
   const PlatformGpuId platform_gpu_id(0);
   auto stream_exec = ExecutorForPlatformGpuId(platform_gpu_id);
   // NaN reset must be the outer-most allocator.
-  GPUMemAllocator* sub_allocator = new GPUMemAllocator(
+  DeviceMemAllocator* sub_allocator = new DeviceMemAllocator(
       stream_exec, platform_gpu_id, false /*use_unified_memory*/, {}, {});
   GPUNanResetAllocator a(
       new GPUDebugAllocator(new GPUBFCAllocator(sub_allocator, 1 << 30, ""),
@@ -228,7 +229,7 @@ TEST(GPUDebugAllocatorTest, ResetToNanWithHeaderFooter) {
 
 TEST(GPUDebugAllocatorTest, TracksSizes) {
   const PlatformGpuId platform_gpu_id(0);
-  GPUMemAllocator* sub_allocator = new GPUMemAllocator(
+  DeviceMemAllocator* sub_allocator = new DeviceMemAllocator(
       ExecutorForPlatformGpuId(platform_gpu_id), platform_gpu_id,
       false /*use_unified_memory*/, {}, {});
   GPUDebugAllocator a(new GPUBFCAllocator(sub_allocator, 1 << 30, ""),
@@ -238,7 +239,7 @@ TEST(GPUDebugAllocatorTest, TracksSizes) {
 
 TEST(GPUDebugAllocatorTest, AllocatedVsRequested) {
   const PlatformGpuId platform_gpu_id(0);
-  GPUMemAllocator* sub_allocator = new GPUMemAllocator(
+  DeviceMemAllocator* sub_allocator = new DeviceMemAllocator(
       ExecutorForPlatformGpuId(platform_gpu_id), platform_gpu_id,
       false /*use_unified_memory*/, {}, {});
   GPUNanResetAllocator a(

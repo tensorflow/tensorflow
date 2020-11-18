@@ -18,11 +18,11 @@ limitations under the License.
 #include <cstring>
 #include <vector>
 
+#include "tensorflow/core/common_runtime/device/device_host_allocator.h"
 #include "tensorflow/core/common_runtime/device/device_id_utils.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_bfc_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_cudamalloc_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_debug_allocator.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_host_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
@@ -107,14 +107,14 @@ Allocator* GPUProcessState::GetGPUAllocator(const GPUOptions& options,
     while (bus_id >= gpu_visitors_.size()) {
       gpu_visitors_.push_back({});
     }
-    GPUMemAllocator* sub_allocator =
-        new GPUMemAllocator(DeviceIdUtil::ExecutorForPlatformDeviceId(
-                                GPUMachineManager(), platform_gpu_id)
-                                .ValueOrDie(),
-                            platform_gpu_id,
-                            (options.per_process_gpu_memory_fraction() > 1.0 ||
-                             options.experimental().use_unified_memory()),
-                            gpu_visitors_[bus_id], {});
+    DeviceMemAllocator* sub_allocator = new DeviceMemAllocator(
+        DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(),
+                                                  platform_gpu_id)
+            .ValueOrDie(),
+        platform_gpu_id,
+        (options.per_process_gpu_memory_fraction() > 1.0 ||
+         options.experimental().use_unified_memory()),
+        gpu_visitors_[bus_id], {});
     GPUBFCAllocator* gpu_bfc_allocator =
         new GPUBFCAllocator(sub_allocator, total_bytes, options,
                             strings::StrCat("GPU_", tf_gpu_id.value(), "_bfc"));
@@ -245,9 +245,9 @@ Allocator* GPUProcessState::GetGpuHostAllocator(int numa_node) {
     while (gpu_host_free_visitors_.size() <= numa_node) {
       gpu_host_free_visitors_.push_back({});
     }
-    SubAllocator* sub_allocator =
-        new GpuHostAllocator(se, numa_node, gpu_host_alloc_visitors_[numa_node],
-                             gpu_host_free_visitors_[numa_node]);
+    SubAllocator* sub_allocator = new DeviceHostAllocator(
+        se, numa_node, gpu_host_alloc_visitors_[numa_node],
+        gpu_host_free_visitors_[numa_node]);
     // TODO(zheng-xq): evaluate whether 64GB by default is the best choice.
     int64 gpu_host_mem_limit_in_mb = -1;
     Status status = ReadInt64FromEnvVar("TF_GPU_HOST_MEM_LIMIT_IN_MB",

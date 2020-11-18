@@ -108,12 +108,10 @@ filegroup(
         "gpu_cudamalloc_allocator.h",
         "gpu_debug_allocator.h",
         "gpu_device.h",
-        "gpu_host_allocator.h",
         "gpu_id.h",
         "gpu_id_manager.h",
         "gpu_init.h",
         "gpu_managed_allocator.h",
-        "gpu_mem_allocator.h",
         "gpu_process_state.h",
         "gpu_util.h",
         "//tensorflow/core/common_runtime:gpu_runtime_headers",
@@ -189,31 +187,11 @@ tf_cuda_library(
     features = ["parse_headers"],
     visibility = ["//visibility:public"],
     deps = [
-        ":gpu_mem_allocator",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime:bfc_allocator",
-    ],
-)
-
-tf_cuda_library(
-    name = "gpu_mem_allocator",
-    srcs = [
-        "gpu_id.h",
-    ],
-    hdrs = [
-        "gpu_host_allocator.h",
-        "gpu_mem_allocator.h",
-    ],
-    features = ["parse_headers"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core/common_runtime/device:device_id",
-        "//tensorflow/core/framework:allocator",
-        "//tensorflow/core/platform:stream_executor",
+        "//tensorflow/core/common_runtime/device:device_mem_allocator",
     ],
 )
 

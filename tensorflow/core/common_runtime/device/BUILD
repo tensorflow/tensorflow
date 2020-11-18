@@ -1,6 +1,7 @@
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_copts",
+    "tf_cuda_library",
 )
 
 # buildifier: disable=same-origin-load
@@ -60,13 +61,34 @@ cc_library(
     ],
 )
 
+tf_cuda_library(
+    name = "device_mem_allocator",
+    srcs = [
+        "device_id.h",
+    ],
+    hdrs = [
+        "device_host_allocator.h",
+        "device_mem_allocator.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":device_id",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/framework:allocator",
+        "//tensorflow/core/platform:stream_executor",
+    ],
+)
+
 filegroup(
     name = "device_runtime_headers",
     srcs = [
         "device_event_mgr.h",
+        "device_host_allocator.h",
         "device_id.h",
         "device_id_manager.h",
         "device_id_utils.h",
+        "device_mem_allocator.h",
     ],
 )
 
