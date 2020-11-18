@@ -123,7 +123,8 @@ Value CreateCastToInt32(Value val, Location loc, PatternRewriter& rewriter) {
   auto shape = val.getType().dyn_cast<RankedTensorType>().getShape();
   IntegerType new_ele_type = rewriter.getIntegerType(32);
   ShapedType new_type = RankedTensorType::get(shape, new_ele_type);
-  return rewriter.create<TFL::CastOp>(loc, new_type, val);
+  return rewriter.createOrFold<TF::CastOp>(loc, new_type, val,
+                                           rewriter.getBoolAttr(false));
 }
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_legalize_tf.inc"
@@ -145,7 +146,6 @@ DECL_CONVERT_OP(MatMul);
 DECL_CONVERT_OP(MatrixDiagV2);
 DECL_CONVERT_OP(MatrixDiagV3);
 DECL_CONVERT_OP(Pack);
-DECL_CONVERT_OP(Reshape);
 DECL_CONVERT_OP(Split);
 DECL_CONVERT_OP(SplitV);
 DECL_CONVERT_OP(StridedSlice);
@@ -296,30 +296,6 @@ LogicalResult ConvertTFPackOp::matchAndRewrite(
 
   rewriter.replaceOpWithNewOp<PackOp>(op, output_type, values, values_count,
                                       axis);
-  return success();
-}
-
-LogicalResult ConvertTFReshapeOp::matchAndRewrite(
-    Operation* op, PatternRewriter& rewriter) const {
-  auto tf_reshape_op = cast<TF::ReshapeOp>(op);
-
-  auto input = tf_reshape_op.tensor();
-  auto shape = tf_reshape_op.shape();
-
-  ShapedType shape_type = shape.getType().cast<ShapedType>();
-  // The tfl reshape's #2 operand needs to i32 tensor type, so we have to cast.
-  if (!shape_type.getElementType().isSignlessInteger(32)) {
-    auto new_shape = shape_type.getShape();
-    IntegerType new_ele_type = rewriter.getIntegerType(32);
-    ShapedType new_type = RankedTensorType::get(new_shape, new_ele_type);
-    // Uses TF::CastOp to be folded if the shape input is a constant.
-    shape = rewriter
-                .create<TF::CastOp>(op->getLoc(), new_type, shape,
-                                    rewriter.getBoolAttr(false))
-                .y();
-  }
-  rewriter.replaceOpWithNewOp<ReshapeOp>(op, tf_reshape_op.output().getType(),
-                                         input, shape);
   return success();
 }
 
@@ -792,10 +768,9 @@ void addPatterns(MLIRContext* context, OwningRewritePatternList& patterns) {
   populateWithGenerated(context, patterns);
   patterns
       .insert<ConvertTFConcatV2Op, ConvertTFMatMulOp, ConvertTFMatrixDiagV2Op,
-              ConvertTFMatrixDiagV3Op, ConvertTFPackOp, ConvertTFReshapeOp,
-              ConvertTFSplitOp, ConvertTFSplitVOp, ConvertTFStridedSliceOp,
-              ConvertTFUnpackOp, ConvertTFAssertOp, ConvertTFRandomUniformOp>(
-          context);
+              ConvertTFMatrixDiagV3Op, ConvertTFPackOp, ConvertTFSplitOp,
+              ConvertTFSplitVOp, ConvertTFStridedSliceOp, ConvertTFUnpackOp,
+              ConvertTFAssertOp, ConvertTFRandomUniformOp>(context);
 
   // Ophint python converter converted tf node pattern.
   patterns.insert<LegalizeUnidirectionalSequenceLstm,
