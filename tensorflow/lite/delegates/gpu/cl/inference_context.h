@@ -102,7 +102,7 @@ class InferenceContext {
       const absl::Span<const uint8_t> serialized_model, Environment* env);
 
  private:
-  enum TensorMemoryType { STRONG_SHAPE = 0, BUFFER = 1, VARIABLE = 2 };
+  enum class TensorMemoryType { kStrongShape, kBuffer, kVariable, kConst };
 
   friend flatbuffers::Offset<data::InferenceContext> Encode(
       const InferenceContext& inference,
@@ -118,6 +118,8 @@ class InferenceContext {
                            const GpuInfo& gpu_info, const GraphFloat32& graph);
   absl::Status Merge();
   absl::Status AllocateMemory(CLContext* context);
+
+  absl::Status AllocateMemoryForConstTensors(CLContext* context);
 
   absl::Status AllocateMemoryForVariableTensors(CLContext* context);
 
@@ -136,6 +138,8 @@ class InferenceContext {
   absl::Status Tune(TuningType tuning_type, const GpuInfo& gpu_info,
                     ProfilingCommandQueue* profiling_queue);
   absl::Status UpdateParams();
+
+  void ReleaseCPURepresentation();
 
   // performance hacks
   bool need_flush_ = false;
@@ -212,6 +216,9 @@ class InferenceContext {
     ValueId next_;
   };
   TensorReserver tensor_reserver_;
+
+  absl::flat_hash_map<ValueId, TensorDescriptor> const_tensors_descs_;
+  std::map<ValueId, Tensor> const_tensors_;
 
   std::map<ValueId, Tensor> variable_tensors_;
   std::vector<Buffer> shared_buffers_;
