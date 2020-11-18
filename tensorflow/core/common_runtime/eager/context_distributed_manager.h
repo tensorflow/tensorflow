@@ -20,10 +20,11 @@ limitations under the License.
 #include "tensorflow/c/eager/immediate_execution_distributed_manager.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 
 namespace tensorflow {
+#if !defined(IS_MOBILE_PLATFORM)
 class EagerContext;
+class ServerDef;
 
 class EagerContextDistributedManager
     : public ImmediateExecutionDistributedManager {
@@ -40,6 +41,7 @@ class EagerContextDistributedManager
  private:
   EagerContext* context_;
 };
+#endif  // !IS_MOBILE_PLATFORM
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_CONTEXT_DISTRIBUTED_MANAGER_H_

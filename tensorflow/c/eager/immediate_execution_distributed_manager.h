@@ -17,10 +17,10 @@ limitations under the License.
 #define TENSORFLOW_C_EAGER_immediate_execution_distributed_manager_H_
 
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 
 namespace tensorflow {
 class ImmediateExecutionContext;
+class ServerDef;
 
 class ImmediateExecutionDistributedManager {
  public:
