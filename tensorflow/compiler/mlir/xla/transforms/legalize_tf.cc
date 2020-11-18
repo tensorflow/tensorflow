@@ -5125,7 +5125,7 @@ class ConvertRandomShuffleOp : public OpRewritePattern<TF::RandomShuffleOp> {
     SmallVector<int64_t, 4> slice_sizes(input_shape.begin(), input_shape.end());
     slice_sizes[0] = 1;
     auto dims_attr = GatherDimensionNumbers::get(
-        /*offset_dims=*/GetI64ElementsAttrForSeq(1, first_dim_size, &rewriter),
+        /*offset_dims=*/GetI64ElementsAttrForSeq(1, input_rank, &rewriter),
         /*collapsed_slice_dims=*/GetI64ElementsAttr({0}, &rewriter),
         /*start_index_map=*/GetI64ElementsAttr({0}, &rewriter),
         /*index_vector_dim=*/rewriter.getI64IntegerAttr(1),
