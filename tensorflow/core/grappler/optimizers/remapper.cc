@@ -76,16 +76,18 @@ constexpr char kIsTraining[] = "is_training";
 constexpr int kMissingIndex = -1;
 
 struct RemapperContext {
-  explicit RemapperContext(GrapplerItem* item, Status* status)
+  explicit RemapperContext(GrapplerItem* item, Status* status, bool xla_on)
       : nodes_to_preserve(item->NodesToPreserve()),
         graph_view(&item->graph, status),
         graph_properties(*item),
-        inferred_graph_properties(false) {}
+        inferred_graph_properties(false),
+        xla_on_(xla_on) {}
 
   std::unordered_set<string> nodes_to_preserve;
   utils::MutableGraphView graph_view;
   GraphProperties graph_properties;
   bool inferred_graph_properties;
+  bool xla_on_;
 };
 
 // FusedBatchNorm that can be replaced with a cheaper set of primitives.
@@ -328,6 +330,9 @@ bool IsGpuCompatible(const RemapperContext& ctx,
   // ROCm does not support _FusedConv2D
   return false;
 #endif
+  // xla does not cluster _FusedConv2D, and knows how to do this optimization
+  if (ctx.xla_on_) return false;
+
   const GraphDef* graph = ctx.graph_view.graph();
   const NodeDef& contraction_node = graph->node(matched.contraction);
   if (!IsConv2D(contraction_node)) return false;
@@ -1774,7 +1779,7 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
                           GraphDef* optimized_graph) {
   GrapplerItem mutable_item = item;
   Status status;
-  RemapperContext ctx(&mutable_item, &status);
+  RemapperContext ctx(&mutable_item, &status, xla_on_);
   TF_RETURN_IF_ERROR(status);
   // Processing graph in reverse-topological sorted order allows to remap
   // longer chains of dependent ops in one pass.
