@@ -1899,7 +1899,10 @@ class AUC(Metric):
       case, when multilabel data is passed to AUC, each label-prediction pair
       is treated as an individual data point. Should be set to False for
       multi-class data.
-    label_weights: (optional) list, array, or tensor of non-negative weights
+    num_labels: (Optional) The number of labels, used when `multi_label' is
+      True. If `num_labels` is not specified, then state variables get created
+      on the first call to `update_state`.
+    label_weights: (Optional) list, array, or tensor of non-negative weights
       used to compute AUCs for multilabel data. When `multi_label` is True,
       the weights are applied to the individual label AUCs when they are
       averaged to produce the multi-label AUC. When it's False, they are used
@@ -1942,6 +1945,7 @@ class AUC(Metric):
                dtype=None,
                thresholds=None,
                multi_label=False,
+               num_labels=None,
                label_weights=None):
     # Validate configurations.
     if isinstance(curve, metrics_utils.AUCCurve) and curve not in list(
@@ -2004,8 +2008,13 @@ class AUC(Metric):
 
     self._built = False
     if self.multi_label:
-      self._num_labels = None
+      if num_labels:
+        shape = tensor_shape.TensorShape([None, num_labels])
+        self._build(shape)
     else:
+      if num_labels:
+        raise ValueError(
+            '`num_labels` is needed only when `multi_label` is True.')
       self._build(None)
 
   @property
