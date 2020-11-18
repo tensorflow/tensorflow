@@ -11,7 +11,7 @@ ARG ROCM_PATH=/opt/rocm-3.9.0
 ENV DEBIAN_FRONTEND noninteractive
 ENV TF_NEED_ROCM 1
 ENV HOME /root/
-RUN apt update && apt install -y wget software-properties-common
+RUN apt-get --allow-unauthenticated update && apt install -y wget software-properties-common
 
 # Add rocm repository
 RUN apt-get clean all
