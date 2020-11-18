@@ -82,6 +82,7 @@ cc_library(
     hdrs = ["passes.h"],
     copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]) + if_rocm_is_configured(["-DTENSORFLOW_USE_ROCM=1"]),
     deps = [
+        "@llvm-project//mlir:Affine",
         "//tensorflow/compiler/mlir/hlo:materialize_broadcasts",  # buildcleaner: keep
         "//tensorflow/compiler/mlir/hlo:unfuse_batch_norm",  # buildcleaner: keep
         "//tensorflow/compiler/xla/service:hlo_module_config",

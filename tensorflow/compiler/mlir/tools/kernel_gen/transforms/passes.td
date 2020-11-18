@@ -38,9 +38,16 @@ def ShapeToDescriptorsPass : Pass<"shape-to-descriptors", "ModuleOp"> {
   let constructor = "transforms::CreateShapeToDescriptorsPass()";
 }
 
-def BufferizePass : Pass<"bufferize", "ModuleOp"> {
-  let summary = "Pass to transform operations on values to buffer based ones";
-  let constructor = "transforms::CreateBufferizePass()";
+def HloBufferizePass : Pass<"hlo-bufferize", "ModuleOp"> {
+  let summary = "Pass to transform hlo operations on values to buffer based "
+                "ones.";
+  let constructor = "transforms::CreateHloBufferizePass()";
+}
+
+def FinalBufferizePass : Pass<"final-bufferize", "ModuleOp"> {
+  let summary = "Pass to transform operations from all non-hlo dialects on "
+                "values to buffer-based ones.";
+  let constructor = "transforms::CreateFinalBufferizePass()";
 }
 
 def MaterializeBroadcastsPass : FunctionPass<"materialize-broadcast"> {

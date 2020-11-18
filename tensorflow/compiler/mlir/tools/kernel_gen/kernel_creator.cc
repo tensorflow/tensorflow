@@ -82,31 +82,19 @@ Status LowerTFtoGPU(mlir::ModuleOp module, bool gpu_binary_only,
         mlir::kernel_gen::transforms::CreateMaterializeBroadcastsPass());
     pm.addNestedPass<mlir::FuncOp>(
         mlir::kernel_gen::transforms::CreateUnfuseBatchNormPass());
-    pm.addPass(mlir::mhlo::createLegalizeToLhloPass());
-    // Moving `AllocOp`s and inserting missing `DeallocOp`s
-    pm.addNestedPass<mlir::FuncOp>(::mlir::createBufferHoistingPass());
-    pm.addNestedPass<mlir::FuncOp>(::mlir::createBufferDeallocationPass());
-    pm.addNestedPass<mlir::FuncOp>(mlir::createCopyRemovalPass());
-    pm.addPass(mlir::createCanonicalizerPass());
-    pm.addPass(mlir::kernel_gen::transforms::CreateShapeToDescriptorsPass());
   } else {
     pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeTFPass(
         /*allow_partial_conversion=*/false, /*legalize_chlo=*/false));
     pm.addNestedPass<mlir::FuncOp>(mlir::createTransformUnrankedHloPass());
     pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createChloLegalizeToHloPass());
     pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
-    pm.addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
-    pm.addPass(mlir::kernel_gen::transforms::CreateShapeToDescriptorsPass());
-    // Clean up the IR created above. In particular, operations on descriptors
-    // are simplified here.
-    pm.addPass(mlir::createCSEPass());
-    pm.addPass(mlir::kernel_gen::transforms::CreateBufferizePass());
-    pm.addNestedPass<mlir::FuncOp>(
-        mlir::kernel_gen::transforms::CreateParallelLoopsToSequential());
   }
 
+  // Legalize only hlo operations to lhlo, keep the rest as tensors.
+  pm.addPass(mlir::kernel_gen::transforms::CreateHloBufferizePass());
   // Clean up the IR for further processing.
   pm.addPass(mlir::createCanonicalizerPass());
+  pm.addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
   // We have to anticipate later unrolling in tiling to make sure that we get
   // the requested tiling after unrolling. Compute the new tiling here if
   // needed.
@@ -160,7 +148,23 @@ Status LowerTFtoGPU(mlir::ModuleOp module, bool gpu_binary_only,
   }
   // Greedily map the remaining loop to GPU hardware dimensions.
   pm.addNestedPass<::mlir::FuncOp>(xla::mlir_gpu::createMapParallelLoopsPass());
-  // Apply the mapping.
+
+  // Now lower the shape computations, bufferize all remaining ops and insert
+  // deallocs.
+  pm.addNestedPass<mlir::FuncOp>(::mlir::createBufferHoistingPass());
+  pm.addNestedPass<mlir::FuncOp>(mlir::createCopyRemovalPass());
+  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::kernel_gen::transforms::CreateShapeToDescriptorsPass());
+  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
+  pm.addPass(mlir::kernel_gen::transforms::CreateFinalBufferizePass());
+  pm.addNestedPass<mlir::FuncOp>(mlir::createPromoteBuffersToStackPass(64));
+  // TODO(herhut): Enabled this to avoid leaks once fixed.
+  // pm.addNestedPass<mlir::FuncOp>(::mlir::createBufferDeallocationPass());
+
+  // Apply the mapping and go to GPU. We cannot do this earlier due to missing
+  // interfaces on the GPU dialect.
+  // TODO(herhut) Implement interfaces.
   pm.addNestedPass<::mlir::FuncOp>(mlir::createParallelLoopToGpuPass());
 
   // Some basic cleanup.
@@ -190,7 +194,9 @@ Status LowerTFtoGPU(mlir::ModuleOp module, bool gpu_binary_only,
         mlir::kernel_gen::transforms::CreateEmbedMemRefPrintsPass());
   }
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
-
+  // TODO(herhut): Remove this pass once the LowerToCFG pass can handle it.
+  pm.addNestedPass<mlir::FuncOp>(
+      mlir::kernel_gen::transforms::CreateParallelLoopsToSequential());
   pm.addPass(::mlir::createLowerToCFGPass());
   // Map allocs, asserts, etc. to the tensorflow framework.
   pm.addPass(mlir::kernel_gen::tf_framework::CreateEmbedTFFrameworkPass());
