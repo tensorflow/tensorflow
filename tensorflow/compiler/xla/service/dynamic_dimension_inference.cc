@@ -261,6 +261,31 @@ Status DynamicDimensionInferenceVisitor::HandleCustomCall(HloInstruction* hlo) {
   if (custom_call_handler_) {
     return custom_call_handler_(hlo, parent_);
   }
+
+  if (hlo->custom_call_target() == "DynamicConvolutionForward") {
+    // If input feature is dynamic and kernel feature is static, we can infer
+    // that input feature is also static.
+    // E.g.,:
+    // lhs = [B, X, Y, ?]
+    // rhs = [X, Y, I, O]
+    // dim_labels = b01f_01io
+    // We can infer that the dynamic dimension in rhs is static I.
+    const ConvolutionDimensionNumbers& dnums =
+        hlo->convolution_dimension_numbers();
+    HloInstruction* input_feature = parent_->GetDynamicSize(
+        hlo->mutable_operand(0), {}, dnums.input_feature_dimension());
+    HloInstruction* kernel_feature = parent_->GetDynamicSize(
+        hlo->mutable_operand(1), {}, dnums.kernel_input_feature_dimension());
+
+    if (input_feature != nullptr && kernel_feature == nullptr) {
+      if (hlo->mutable_operand(0)->shape().dimensions(
+              dnums.input_feature_dimension()) ==
+          hlo->mutable_operand(1)->shape().dimensions(
+              dnums.kernel_input_feature_dimension()))
+        parent_->SetDynamicSize(hlo->mutable_operand(0), {},
+                                dnums.input_feature_dimension(), nullptr);
+    }
+  }
   return ForEachOperandDynamicDimension(
       hlo, [&](HloInstruction* operand, ShapeIndex index, int64 dimension,
                int64 operand_index, HloInstruction* dynamic_size) {
@@ -520,7 +545,6 @@ Status DynamicDimensionInferenceVisitor::HandleConvolution(
         HloInstruction* conv = hlo;
         const ConvolutionDimensionNumbers& dimension_numbers =
             conv->convolution_dimension_numbers();
-
         if (operand_index == 0) {
           if (dimension == dimension_numbers.input_batch_dimension()) {
             parent_->SetDynamicSize(conv, {},
@@ -676,9 +700,8 @@ Status DynamicDimensionInferenceVisitor::HandleDynamicConvolutionForward(
       return Status::OK();
     }
   }
-  return Unimplemented(
-      "XLA doesn't support dynamic input feature dimension on convolution: %s",
-      hlo->ToString());
+  // Input Feature dim disappears after convolution.
+  return Status::OK();
 }
 
 Status DynamicDimensionInferenceVisitor::HandleDynamicWindowSamePadding(
