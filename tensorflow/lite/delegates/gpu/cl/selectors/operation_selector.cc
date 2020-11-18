@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/elementwise.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/mean_stddev_normalization.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/reduce.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/transpose.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/convolution_selector.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/convolution_transposed_selector.h"
@@ -503,21 +502,12 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
       return absl::UnimplementedError(absl::StrCat(
           "No support of ", node.operation.type, " with this parameters"));
     }
+    case OperationType::REDUCE_MAXIMUM:
+    case OperationType::REDUCE_MINIMUM:
+    case OperationType::REDUCE_PRODUCT:
     case OperationType::REDUCE_SUM: {
       auto attr = absl::any_cast<ReduceAttributes>(node.operation.attributes);
       *gpu_op = SelectReduce(attr.dims, op_type, op_def, gpu_info);
-      return absl::OkStatus();
-    }
-    case OperationType::REDUCE_MAXIMUM:
-    case OperationType::REDUCE_MINIMUM:
-    case OperationType::REDUCE_PRODUCT: {
-      auto attr = absl::any_cast<ReduceAttributes>(node.operation.attributes);
-      if (attr.dims != std::set<Axis>({Axis::CHANNELS})) {
-        return absl::UnimplementedError(
-            "Currently we can reduce only in channels dimension.");
-      }
-      GPUOperation operation = CreateReduce(op_def, attr, op_type);
-      *gpu_op = absl::make_unique<GPUOperation>(std::move(operation));
       return absl::OkStatus();
     }
     default:
