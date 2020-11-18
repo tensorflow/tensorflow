@@ -210,6 +210,10 @@ const StatTypeMap& GetStatTypeMap() {
       {"batch_size_after_padding", kBatchSizeAfterPadding},
       {"padding_amount", kPaddingAmount},
       {"batching_input_task_size", kBatchingInputTaskSize},
+      // GPU related metrics.
+      {"theoretical_occupancy_pct", kTheoreticalOccupancyPct},
+      {"occupancy_min_grid_size", kOccupancyMinGridSize},
+      {"occupancy_suggested_block_size", kOccupancySuggestedBlockSize},
   });
   DCHECK_EQ(stat_type_map->size(), kNumStatTypes);
   return *stat_type_map;

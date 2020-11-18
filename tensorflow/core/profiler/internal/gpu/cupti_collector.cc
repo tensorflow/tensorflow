@@ -15,10 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/internal/gpu/cupti_collector.h"
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/hash/hash.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuda_occupancy.h"
 #include "tensorflow/core/platform/abi.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -59,6 +62,34 @@ bool IsHostEvent(const CuptiTracerEvent& event, int64* line_id) {
   }
 }
 
+struct DeviceOccupancyParams {
+  cudaOccFuncAttributes attributes = {};
+  int block_size = 0;
+  size_t dynamic_smem_size = 0;
+
+  friend bool operator==(const DeviceOccupancyParams& lhs,
+                         const DeviceOccupancyParams& rhs) {
+    return 0 == memcmp(&lhs, &rhs, sizeof(lhs));
+  }
+
+  template <typename H>
+  friend H AbslHashValue(H hash_state, const DeviceOccupancyParams& params) {
+    return H::combine(
+        std::move(hash_state), params.attributes.maxThreadsPerBlock,
+        params.attributes.numRegs, params.attributes.sharedSizeBytes,
+        static_cast<uint32_t>(params.attributes.partitionedGCConfig),
+        static_cast<uint32_t>(params.attributes.shmemLimitConfig),
+        params.attributes.maxDynamicSharedSizeBytes, params.block_size,
+        params.dynamic_smem_size);
+  }
+};
+
+struct OccupancyStats {
+  double occupancy_pct = 0.0;
+  int min_grid_size = 0;
+  int suggested_block_size = 0;
+};
+
 struct CorrelationInfo {
   CorrelationInfo(uint32 t, uint32 e) : thread_id(t), enqueue_time_ns(e) {}
   uint32 thread_id;
@@ -66,6 +97,35 @@ struct CorrelationInfo {
 };
 
 struct PerDeviceCollector {
+  OccupancyStats GetOccupancy(const DeviceOccupancyParams& params) const {
+    OccupancyStats stats;
+    if (device_properties.computeMajor == 0) {
+      return {};
+    }
+
+    const cudaOccDeviceState state = {};
+    cudaOccResult occ_result;
+    cudaOccError status = cudaOccMaxActiveBlocksPerMultiprocessor(
+        &occ_result, &device_properties, &params.attributes, &state,
+        params.block_size, params.dynamic_smem_size);
+    if (status != CUDA_OCC_SUCCESS) {
+      return {};
+    }
+
+    stats.occupancy_pct =
+        occ_result.activeBlocksPerMultiprocessor * params.block_size;
+    stats.occupancy_pct /= device_properties.maxThreadsPerMultiprocessor;
+
+    status = cudaOccMaxPotentialOccupancyBlockSize(
+        &stats.min_grid_size, &stats.suggested_block_size, &device_properties,
+        &params.attributes, &state, NULL, params.dynamic_smem_size);
+    if (status != CUDA_OCC_SUCCESS) {
+      return {};
+    }
+
+    return stats;
+  }
+
   void CreateXEvent(const CuptiTracerEvent& event, XPlaneBuilder* plane,
                     uint64 start_gpu_ns, uint64 end_gpu_ns,
                     XLineBuilder* line) {
@@ -105,16 +165,41 @@ struct PerDeviceCollector {
           *plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kContextId)),
           absl::StrCat("$$", static_cast<uint64>(event.context_id)));
     }
-    if (event.type == CuptiTracerEventType::Kernel) {
-      std::string kernel_details = absl::StrCat(
-          "regs:", event.kernel_info.registers_per_thread,
-          " shm:", event.kernel_info.static_shared_memory_usage,
-          " grid:", event.kernel_info.grid_x, ",", event.kernel_info.grid_y,
-          ",", event.kernel_info.grid_z, " block:", event.kernel_info.block_x,
-          ",", event.kernel_info.block_y, ",", event.kernel_info.block_z);
+
+    if (event.type == CuptiTracerEventType::Kernel &&
+        event.source == CuptiTracerEventSource::Activity) {
+      DeviceOccupancyParams params{};
+      params.attributes.maxThreadsPerBlock = INT_MAX;
+      params.attributes.numRegs =
+          static_cast<int>(event.kernel_info.registers_per_thread);
+      params.attributes.sharedSizeBytes =
+          event.kernel_info.static_shared_memory_usage;
+      params.attributes.partitionedGCConfig = PARTITIONED_GC_OFF;
+      params.attributes.shmemLimitConfig = FUNC_SHMEM_LIMIT_DEFAULT;
+      params.attributes.maxDynamicSharedSizeBytes = 0;
+      params.block_size = static_cast<int>(event.kernel_info.block_x *
+                                           event.kernel_info.block_y *
+                                           event.kernel_info.block_z);
+
+      params.dynamic_smem_size = event.kernel_info.dynamic_shared_memory_usage;
+
+      OccupancyStats& occ_stats = occupancy_cache[params];
+      if (occ_stats.occupancy_pct == 0) {
+        occ_stats = GetOccupancy(params);
+      }
+      xevent.AddStatValue(*plane->GetOrCreateStatMetadata(GetStatTypeStr(
+                              StatType::kTheoreticalOccupancyPct)),
+                          occ_stats.occupancy_pct);
+      xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
+                              GetStatTypeStr(StatType::kOccupancyMinGridSize)),
+                          static_cast<int32>(occ_stats.min_grid_size));
+      xevent.AddStatValue(*plane->GetOrCreateStatMetadata(GetStatTypeStr(
+                              StatType::kOccupancySuggestedBlockSize)),
+                          static_cast<int32>(occ_stats.suggested_block_size));
       xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
                               GetStatTypeStr(StatType::kKernelDetails)),
-                          *plane->GetOrCreateStatMetadata(kernel_details));
+                          *plane->GetOrCreateStatMetadata(ToXStat(
+                              event.kernel_info, occ_stats.occupancy_pct)));
     } else if (event.type == CuptiTracerEventType::MemcpyH2D ||
                event.type == CuptiTracerEventType::MemcpyD2H ||
                event.type == CuptiTracerEventType::MemcpyD2D ||
@@ -416,12 +501,49 @@ struct PerDeviceCollector {
               GetStatTypeStr(StatType::kDevCapComputeCapMinor)),
           *compute_capability_minor);
     }
+
+    auto max_threads_per_block =
+        GetDeviceAttribute(device, CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_BLOCK);
+    auto max_threads_per_sm = GetDeviceAttribute(
+        device, CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_MULTIPROCESSOR);
+    auto regs_per_block =
+        GetDeviceAttribute(device, CU_DEVICE_ATTRIBUTE_REGISTERS_PER_BLOCK);
+    auto regs_per_sm = GetDeviceAttribute(
+        device, CU_DEVICE_ATTRIBUTE_MAX_REGISTERS_PER_MULTIPROCESSOR);
+    auto warp_size = GetDeviceAttribute(device, CU_DEVICE_ATTRIBUTE_WARP_SIZE);
+    auto shared_mem_per_block = GetDeviceAttribute(
+        device, CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK);
+    auto shared_mem_per_sm = GetDeviceAttribute(
+        device, CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_MULTIPROCESSOR);
+    auto shared_mem_per_block_optin = GetDeviceAttribute(
+        device, CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK_OPTIN);
+
+    // Precondition for calculating GPU occupancy is to have all of these
+    // inputs. Otherwise, GPU occupancy will be left unset as 0%.
+    if (core_count && compute_capability_major && compute_capability_minor &&
+        max_threads_per_block && max_threads_per_sm && regs_per_block &&
+        regs_per_sm && warp_size && shared_mem_per_block && shared_mem_per_sm &&
+        shared_mem_per_block_optin) {
+      device_properties.computeMajor = *compute_capability_major;
+      device_properties.computeMinor = *compute_capability_minor;
+      device_properties.numSms = *core_count;
+      device_properties.maxThreadsPerBlock = *max_threads_per_block;
+      device_properties.maxThreadsPerMultiprocessor = *max_threads_per_sm;
+      device_properties.regsPerBlock = *regs_per_block;
+      device_properties.regsPerMultiprocessor = *regs_per_sm;
+      device_properties.warpSize = *warp_size;
+      device_properties.sharedMemPerBlock = *shared_mem_per_block;
+      device_properties.sharedMemPerMultiprocessor = *shared_mem_per_sm;
+      device_properties.sharedMemPerBlockOptin = *shared_mem_per_block_optin;
+    }
   }
 
   mutex m;
   std::vector<CuptiTracerEvent> events TF_GUARDED_BY(m);
   absl::flat_hash_map<uint32, CorrelationInfo> correlation_info
       TF_GUARDED_BY(m);
+  cudaOccDeviceProp device_properties;
+  absl::flat_hash_map<DeviceOccupancyParams, OccupancyStats> occupancy_cache;
 };
 
 }  // namespace
@@ -509,10 +631,13 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
       std::string name = GpuPlaneName(device_ordinal);
       XPlaneBuilder device_plane(FindOrAddMutablePlaneWithName(space, name));
       device_plane.SetId(device_ordinal);
-      num_events += per_device_collector_[device_ordinal].Flush(
-          start_gpu_ns_, end_gpu_ns, &device_plane, &host_plane);
+
+      // Calculate device capabilities before flushing, so that device
+      // properties are available to the occupancy calculator in Flush().
       per_device_collector_[device_ordinal].GetDeviceCapabilities(
           device_ordinal, &device_plane);
+      num_events += per_device_collector_[device_ordinal].Flush(
+          start_gpu_ns_, end_gpu_ns, &device_plane, &host_plane);
       NormalizeTimeStamps(&device_plane, start_walltime_ns_);
     }
     NormalizeTimeStamps(&host_plane, start_walltime_ns_);
