@@ -20,7 +20,7 @@ This is a struct that describes the memory required to configure the operator.
 */
 struct PadOpData {
   nn_pad_plan_t plan;
-  padding_values_t pv;
+  padding_sizes_t pv;
   uint32_t pad_value;
 };
 
@@ -43,12 +43,11 @@ void *Init(TfLiteContext *context, const char *buffer, size_t length) {
   for (int i = 0; i < map.size(); ++i) {
     const std::string &key = keys[i].AsString().str();
     if (key.compare("padding_values") == 0) {
-      // values represent [height, height_offset, width, width_offset]
       const auto &vec = values[i].AsVector();
-      op_data->pv.height = vec[0].AsInt32();
-      op_data->pv.height_offset = vec[1].AsInt32();
-      op_data->pv.width = vec[2].AsInt32();
-      op_data->pv.width_offset = vec[3].AsInt32();
+      op_data->pv.top = vec[0].AsInt32();
+      op_data->pv.bottom = vec[1].AsInt32();
+      op_data->pv.left = vec[2].AsInt32();
+      op_data->pv.right = vec[3].AsInt32();
       break;
     }
   }
