@@ -28,6 +28,16 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "risc_concat_op",
+    srcs = ["risc_concat_op.cc"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_kernel_library(
     name = "risc_conv_op",
     srcs = ["risc_conv_op.cc"],
     deps = [
