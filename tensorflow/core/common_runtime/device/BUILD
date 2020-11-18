@@ -1,3 +1,8 @@
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_copts",
+)
+
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 
@@ -58,9 +63,37 @@ cc_library(
 filegroup(
     name = "device_runtime_headers",
     srcs = [
+        "device_event_mgr.h",
         "device_id.h",
         "device_id_manager.h",
         "device_id_utils.h",
+    ],
+)
+
+cc_library(
+    name = "device_event_mgr",
+    srcs = [
+        "device_event_mgr.cc",
+    ],
+    hdrs = [
+        "device_event_mgr.h",
+    ],
+    copts = tf_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:stream_executor",
+    ],
+)
+
+cc_library(
+    name = "device_event_mgr_hdrs",
+    textual_hdrs = [
+        "device_event_mgr.h",
     ],
 )
 
@@ -90,5 +123,24 @@ tf_cuda_cc_test(
         "//tensorflow/core/common_runtime:core_cpu_internal",
         "//tensorflow/core/common_runtime:direct_session_internal",
         "//tensorflow/core/kernels:ops_util",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "device_event_mgr_test",
+    srcs = ["device_event_mgr_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":device_event_mgr",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:cwise_op",
     ],
 )

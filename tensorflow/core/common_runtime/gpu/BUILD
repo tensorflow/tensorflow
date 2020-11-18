@@ -36,30 +36,26 @@ package(
 
 # -----------------------------------------------------------------------------
 # Libraries with GPU facilities that are useful for writing kernels.
+
 cc_library(
     name = "gpu_lib",
-    srcs = [
-        "gpu_event_mgr.cc",
-    ],
     hdrs = [
         "gpu_event_mgr.h",
     ],
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/platform:stream_executor",
+        "//tensorflow/core/common_runtime/device:device_event_mgr",
     ],
 )
 
 cc_library(
     name = "gpu_headers_lib",
-    hdrs = [
+    textual_hdrs = [
         "gpu_event_mgr.h",
+    ],
+    deps = [
+        "//tensorflow/core/common_runtime/device:device_event_mgr_hdrs",
     ],
 )
 
@@ -112,7 +108,6 @@ filegroup(
         "gpu_cudamalloc_allocator.h",
         "gpu_debug_allocator.h",
         "gpu_device.h",
-        "gpu_event_mgr.h",
         "gpu_host_allocator.h",
         "gpu_id.h",
         "gpu_id_manager.h",
@@ -349,24 +344,6 @@ tf_cuda_cc_test(
         "//tensorflow/core/common_runtime:core_cpu_internal",
         "//tensorflow/core/common_runtime:direct_session_internal",
         "//tensorflow/core/kernels:ops_util",
-    ],
-)
-
-tf_cuda_cc_test(
-    name = "gpu_event_mgr_test",
-    srcs = ["gpu_event_mgr_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags(),
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-        "//tensorflow/core/kernels:cwise_op",
     ],
 )
 
