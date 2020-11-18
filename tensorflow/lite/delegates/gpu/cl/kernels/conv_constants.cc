@@ -286,12 +286,12 @@ GPUOperation CreateConvConstants(const GpuInfo& gpu_info,
       definition, attr.weights.shape, stride_correction, use_dot_conv, &op);
   if (definition.precision == CalculationsPrecision::F16 &&
       gpu_info.IsAdreno() && gpu_info.adreno_info.IsAdreno3xx()) {
-    op.compiler_options_.push_back(CompilerOptions::ADRENO_FULL_SIMD_LINE);
+    op.compiler_options_.push_back(CompilerOptions::kAdrenoFullSimd);
   }
   if (definition.precision != CalculationsPrecision::F32 &&
       gpu_info.IsPowerVR()) {
     // BUG, some PowerVRs (GE8320) produce incorrect result without it
-    op.compiler_options_.push_back(CompilerOptions::CL_OPT_DISABLE);
+    op.compiler_options_.push_back(CompilerOptions::kClDisableOptimizations);
   }
 
   TensorLinearDescriptor desc;

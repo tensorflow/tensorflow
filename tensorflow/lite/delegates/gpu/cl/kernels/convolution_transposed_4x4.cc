@@ -45,7 +45,7 @@ ConvolutionTransposed4x4::ConvolutionTransposed4x4(
   UploadWeights(attr.weights, weights_upload_type);
   if (definition_.precision == CalculationsPrecision::F16 &&
       gpu_info.IsPowerVR()) {
-    compiler_options_.push_back(CompilerOptions::POWERVR_FP16);
+    compiler_options_.push_back(CompilerOptions::kClPowervrFp16);
   }
 }
 

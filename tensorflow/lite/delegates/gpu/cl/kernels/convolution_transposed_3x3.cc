@@ -43,7 +43,7 @@ ConvolutionTransposed3x3::ConvolutionTransposed3x3(
                                             padding_, work_group_launch_order_);
   if (definition_.precision == CalculationsPrecision::F16 &&
       gpu_info.IsPowerVR()) {
-    compiler_options_.push_back(CompilerOptions::POWERVR_FP16);
+    compiler_options_.push_back(CompilerOptions::kClPowervrFp16);
   }
 }
 

@@ -228,10 +228,10 @@ void ConvPowerVR::GenerateCode(const GpuInfo& gpu_info) {
   code_ = GenerateConv(gpu_info, definition_, stride_correction, conv_params_);
   if (definition_.precision == CalculationsPrecision::F16 &&
       gpu_info.IsPowerVR()) {
-    compiler_options_.push_back(CompilerOptions::POWERVR_FP16);
+    compiler_options_.push_back(CompilerOptions::kClPowervrFp16);
   }
   if (conv_params_.IsPrivateMemBroadcast() && gpu_info.IsCL20OrHigher()) {
-    compiler_options_.push_back(CompilerOptions::CL_2_0);
+    compiler_options_.push_back(CompilerOptions::kCl20);
   }
   bool kernel_is_trivial =
       conv_params_.x_kernel_is_1 && conv_params_.y_kernel_is_1;
@@ -241,7 +241,7 @@ void ConvPowerVR::GenerateCode(const GpuInfo& gpu_info) {
   if (gpu_info.IsAdreno() && gpu_info.adreno_info.IsAdreno3xx() &&
       definition_.precision == CalculationsPrecision::F16 &&
       kernel_is_trivial) {
-    compiler_options_.push_back(CompilerOptions::ADRENO_FULL_SIMD_LINE);
+    compiler_options_.push_back(CompilerOptions::kAdrenoFullSimd);
   }
 }
 

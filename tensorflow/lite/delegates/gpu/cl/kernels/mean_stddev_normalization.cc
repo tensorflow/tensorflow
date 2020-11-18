@@ -137,9 +137,9 @@ MeanStdDevNormalization::MeanStdDevNormalization(const OperationDef& definition,
   work_group_size_.z = 1;  // Required
   code_ = GetNormalizationCode();
   if (gpu_info.cl_version >= OpenCLVersion::CL_3_0) {
-    compiler_options_.push_back(CompilerOptions::CL_3_0);
+    compiler_options_.push_back(CompilerOptions::kCl30);
   } else if (gpu_info.cl_version >= OpenCLVersion::CL_2_0) {
-    compiler_options_.push_back(CompilerOptions::CL_2_0);
+    compiler_options_.push_back(CompilerOptions::kCl20);
   }
 }
 
