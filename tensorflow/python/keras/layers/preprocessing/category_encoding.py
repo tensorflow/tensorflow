@@ -304,7 +304,7 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
       max_value = math_ops.reduce_max(inputs)
       min_value = math_ops.reduce_min(inputs)
     condition = math_ops.logical_and(
-        math_ops.greater_equal(
+        math_ops.greater(
             math_ops.cast(out_depth, max_value.dtype), max_value),
         math_ops.greater_equal(
             min_value, math_ops.cast(0, min_value.dtype)))
