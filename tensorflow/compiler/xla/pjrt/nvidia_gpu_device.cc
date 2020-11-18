@@ -255,7 +255,7 @@ Status BuildDistributedDevices(
 
   GlobalTopologyProto global_topology;
   TF_RETURN_IF_ERROR(
-      distributed_client->Connect(local_topology, &global_topology));
+      distributed_client->EnumerateDevices(local_topology, &global_topology));
 
   std::vector<GlobalDeviceId> gpu_device_ids(local_device_states.size());
   for (const LocalTopologyProto& node : global_topology.nodes()) {

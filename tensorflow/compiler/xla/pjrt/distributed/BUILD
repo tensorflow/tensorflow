@@ -45,7 +45,10 @@ cc_library(
         ":util",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
     ],
 )
@@ -79,6 +82,8 @@ cc_library(
         ":protocol_proto_cc",
         ":util",
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
@@ -109,21 +114,19 @@ cc_library(
 
 tf_cc_test(
     name = "client_server_test",
+    size = "small",
     srcs = ["client_server_test.cc"],
-    tags = [
-        "nomsan",  # b/163629207
-    ],
     deps = [
         ":client",
+        ":distributed",
         ":protocol_proto_cc",
         ":service",
         "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla/service:cpu_plugin",
-        "//tensorflow/compiler/xla/service:gpu_plugin",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         tf_grpc_cc_dependency(),
     ],
