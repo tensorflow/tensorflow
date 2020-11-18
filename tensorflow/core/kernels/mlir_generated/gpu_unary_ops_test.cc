@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <cmath>
 #include <functional>
+#include <initializer_list>
 #include <memory>
 #include <numeric>
 #include <vector>
@@ -42,9 +43,9 @@ class GpuUnaryOpTest : public OpsTestBase {
   }
 
   template <typename T, typename RT = T>
-  void Run(std::initializer_list<int64> input_shape,
-           std::initializer_list<T> input, const std::string op_name,
-           RT (*expected_callback)(RT), bool expect_equal = true) {
+  void Run(std::vector<int64> input_shape, std::vector<T> input,
+           const std::string op_name, RT (*expected_callback)(RT),
+           bool expect_equal = true) {
     assert(std::accumulate(input_shape.begin(), input_shape.end(), 1,
                            std::multiplies<int64>()) == input.size() &&
            "Expected input length to equal to shape's number of elements.");
@@ -73,82 +74,85 @@ class GpuUnaryOpTest : public OpsTestBase {
       test::ExpectClose(expected_tensor, *GetOutput(0));
     }
   }
+
+  // Some helper functions to get default input values.
+
+  std::vector<int64> DefaultInputShape() { return std::vector<int64>{2, 7}; }
+
+  template <typename T>
+  std::vector<T> DefaultInput() {
+    return InputAsVector<T>({-18.0, -9.0, -1e-6, -0.0, 0.0, 1e-6, 0.1, 0.2, 0.3,
+                             0.5, 0.7, 0.9, 9.0, 18.0});
+  }
+
+  template <typename T>
+  std::vector<T> DefaultInputGreaterThanZero() {
+    return InputAsVector<T>({18.0, 9.0, 1e-6, 1.0, 0.1, 1e-6, 0.1, 0.2, 0.3,
+                             0.5, 0.7, 0.9, 9.0, 18.0});
+  }
+
+  template <typename T>
+  std::vector<T> DefaultInputGreaterOrEqualToZero() {
+    return InputAsVector<T>({18.0, 9.0, 1e-6, 0.0, 0.1, 1e-6, 0.1, 0.2, 0.3,
+                             0.5, 0.7, 0.9, 9.0, 18.0});
+  }
+
+ private:
+  template <typename T>
+  std::vector<T> InputAsVector(std::initializer_list<double> input) {
+    std::vector<T> result;
+    result.reserve(input.size());
+    for (const auto& value : input) {
+      result.push_back(static_cast<T>(value));
+    }
+    return result;
+  }
 };
 
 /// Test `tf.Tanh`.
 
 TEST_F(GpuUnaryOpTest, TanhFloat) {
-  Run<float>(/*input_shape=*/{2, 7},
-             /*input=*/
-             {-18.0f, -9.0f, -1e-6f, -0.0f, 0.0f, 1e-6, 0.1f, 0.2f, 0.3f, 0.5f,
-              0.7f, 0.9f, 9.0f, 18.0f},
+  Run<float>(DefaultInputShape(), DefaultInput<float>(),
              /*op_name=*/"Tanh",
              /*expected_callback=*/std::tanh,
              /*expect_equal=*/false);
 }
 
 TEST_F(GpuUnaryOpTest, TanhDouble) {
-  Run<double>(/*input_shape=*/{2, 7},
-              /*input=*/
-              {-18.0, -9.0, -1e-6, -0.0, 0.0, 1e-6, 0.1, 0.2, 0.3, 0.5, 0.7,
-               0.9, 9.0, 18.0},
+  Run<double>(DefaultInputShape(), DefaultInput<double>(),
               /*op_name=*/"Tanh",
               /*expected_callback=*/std::tanh,
               /*expect_equal=*/false);
 }
 
 TEST_F(GpuUnaryOpTest, TanhHalf) {
-  Run<Eigen::half, float>(
-      /*input_shape=*/{2, 7},
-      /*input=*/
-      {static_cast<Eigen::half>(-18.0), static_cast<Eigen::half>(-9.0),
-       static_cast<Eigen::half>(-1e-6), static_cast<Eigen::half>(-0.0),
-       static_cast<Eigen::half>(0.0), static_cast<Eigen::half>(1e-6),
-       static_cast<Eigen::half>(0.1), static_cast<Eigen::half>(0.2),
-       static_cast<Eigen::half>(0.3), static_cast<Eigen::half>(0.5),
-       static_cast<Eigen::half>(0.7), static_cast<Eigen::half>(0.9),
-       static_cast<Eigen::half>(9.0), static_cast<Eigen::half>(18.0)},
-      /*op_name=*/"Tanh",
-      /*expected_callback=*/std::tanh,
-      /*expect_equal=*/false);
+  Run<Eigen::half, float>(DefaultInputShape(), DefaultInput<Eigen::half>(),
+                          /*op_name=*/"Tanh",
+                          /*expected_callback=*/std::tanh,
+                          /*expect_equal=*/false);
 }
 
 /// Test `tf.Ceil`.
 
 TEST_F(GpuUnaryOpTest, CeilFloat) {
-  Run<float>(/*input_shape=*/{2, 7},
-             /*input=*/
-             {-18.0f, -9.0f, -1e-6f, -0.0f, 0.0f, 1e-6, 0.1f, 0.2f, 0.3f, 0.5f,
-              0.7f, 0.9f, 9.0f, 18.0f},
+  Run<float>(DefaultInputShape(), DefaultInput<float>(),
              /*op_name=*/"Ceil",
              /*expected_callback=*/std::ceil,
              /*expect_equal=*/true);
 }
 
 TEST_F(GpuUnaryOpTest, CeilDouble) {
-  Run<double>(/*input_shape=*/{2, 7},
-              /*input=*/
-              {-18.0, -9.0, -1e-6, -0.0, 0.0, 1e-6, 0.1, 0.2, 0.3, 0.5, 0.7,
-               0.9, 9.0, 18.0},
+  Run<double>(DefaultInputShape(), DefaultInput<double>(),
               /*op_name=*/"Ceil",
               /*expected_callback=*/std::ceil,
               /*expect_equal=*/true);
 }
 
 TEST_F(GpuUnaryOpTest, CeilHalf) {
-  Run<Eigen::half, float>(
-      /*input_shape=*/{2, 7},
-      /*input=*/
-      {static_cast<Eigen::half>(-18.0), static_cast<Eigen::half>(-9.0),
-       static_cast<Eigen::half>(-1e-6), static_cast<Eigen::half>(-0.0),
-       static_cast<Eigen::half>(0.0), static_cast<Eigen::half>(1e-6),
-       static_cast<Eigen::half>(0.1), static_cast<Eigen::half>(0.2),
-       static_cast<Eigen::half>(0.3), static_cast<Eigen::half>(0.5),
-       static_cast<Eigen::half>(0.7), static_cast<Eigen::half>(0.9),
-       static_cast<Eigen::half>(9.0), static_cast<Eigen::half>(18.0)},
-      /*op_name=*/"Ceil",
-      /*expected_callback=*/std::ceil,
-      /*expect_equal=*/true);
+  Run<Eigen::half, float>(DefaultInputShape(), DefaultInput<Eigen::half>(),
+                          /*op_name=*/"Ceil",
+                          /*expected_callback=*/std::ceil,
+                          /*expect_equal=*/true);
 }
 
 /// Test `tf.Abs`.
@@ -208,6 +212,208 @@ TEST_F(GpuUnaryOpTest, AbsInt64) {
       /*op_name=*/"Abs",
       /*expected_callback=*/std::abs,
       /*expect_equal=*/true);
+}
+
+/// Test `tf.Cos`.
+
+TEST_F(GpuUnaryOpTest, CosFloat) {
+  Run<float>(DefaultInputShape(), DefaultInput<float>(),
+             /*op_name=*/"Cos",
+             /*expected_callback=*/std::cos,
+             /*expect_equal=*/false);
+}
+
+TEST_F(GpuUnaryOpTest, CosDouble) {
+  Run<double>(DefaultInputShape(), DefaultInput<double>(),
+              /*op_name=*/"Cos",
+              /*expected_callback=*/std::cos,
+              /*expect_equal=*/false);
+}
+
+TEST_F(GpuUnaryOpTest, CosHalf) {
+  Run<Eigen::half, float>(DefaultInputShape(), DefaultInput<Eigen::half>(),
+                          /*op_name=*/"Cos",
+                          /*expected_callback=*/std::cos,
+                          /*expect_equal=*/false);
+}
+
+/// Test `tf.Exp`.
+
+TEST_F(GpuUnaryOpTest, ExpFloat) {
+  Run<float>(DefaultInputShape(), DefaultInput<float>(),
+             /*op_name=*/"Exp",
+             /*expected_callback=*/std::exp,
+             /*expect_equal=*/false);
+}
+
+TEST_F(GpuUnaryOpTest, ExpDouble) {
+  Run<double>(DefaultInputShape(), DefaultInput<double>(),
+              /*op_name=*/"Exp",
+              /*expected_callback=*/std::exp,
+              /*expect_equal=*/false);
+}
+
+TEST_F(GpuUnaryOpTest, ExpHalf) {
+  Run<Eigen::half, float>(DefaultInputShape(), DefaultInput<Eigen::half>(),
+                          /*op_name=*/"Exp",
+                          /*expected_callback=*/std::exp,
+                          /*expect_equal=*/false);
+}
+
+/// Test `tf.Floor`.
+
+TEST_F(GpuUnaryOpTest, FloorFloat) {
+  Run<float>(DefaultInputShape(), DefaultInput<float>(),
+             /*op_name=*/"Floor",
+             /*expected_callback=*/std::floor,
+             /*expect_equal=*/true);
+}
+
+TEST_F(GpuUnaryOpTest, FloorDouble) {
+  Run<double>(DefaultInputShape(), DefaultInput<double>(),
+              /*op_name=*/"Floor",
+              /*expected_callback=*/std::floor,
+              /*expect_equal=*/true);
+}
+
+TEST_F(GpuUnaryOpTest, FloorHalf) {
+  Run<Eigen::half, float>(DefaultInputShape(), DefaultInput<Eigen::half>(),
+                          /*op_name=*/"Floor",
+                          /*expected_callback=*/std::floor,
+                          /*expect_equal=*/true);
+}
+
+/// Test `tf.Log`.
+
+TEST_F(GpuUnaryOpTest, LogFloat) {
+  Run<float>(DefaultInputShape(), DefaultInputGreaterThanZero<float>(),
+             /*op_name=*/"Log",
+             /*expected_callback=*/std::log,
+             /*expect_equal=*/false);
+}
+
+TEST_F(GpuUnaryOpTest, LogDouble) {
+  Run<double>(DefaultInputShape(), DefaultInputGreaterThanZero<double>(),
+              /*op_name=*/"Log",
+              /*expected_callback=*/std::log,
+              /*expect_equal=*/false);
+}
+
+TEST_F(GpuUnaryOpTest, LogHalf) {
+  Run<Eigen::half, float>(DefaultInputShape(),
+                          /*input=*/
+                          DefaultInputGreaterThanZero<Eigen::half>(),
+                          /*op_name=*/"Log",
+                          /*expected_callback=*/std::log,
+                          /*expect_equal=*/false);
+}
+
+/// Test `tf.Neg`.
+
+/// Reference implementation.
+template <typename T>
+T expected_neg(T x) {
+  if (x == 0) return 0;
+  return -x;
+}
+
+TEST_F(GpuUnaryOpTest, NegFloat) {
+  Run<float>(DefaultInputShape(), DefaultInput<float>(),
+             /*op_name=*/"Neg",
+             /*expected_callback=*/expected_neg,
+             /*expect_equal=*/true);
+}
+
+TEST_F(GpuUnaryOpTest, NegDouble) {
+  Run<double>(DefaultInputShape(), DefaultInput<double>(),
+              /*op_name=*/"Neg",
+              /*expected_callback=*/expected_neg,
+              /*expect_equal=*/true);
+}
+
+TEST_F(GpuUnaryOpTest, NegHalf) {
+  Run<Eigen::half, float>(DefaultInputShape(), DefaultInput<Eigen::half>(),
+                          /*op_name=*/"Neg",
+                          /*expected_callback=*/expected_neg,
+                          /*expect_equal=*/true);
+}
+
+/// Test `tf.Rsqrt`.
+
+/// Reference implementation.
+template <typename T>
+T expected_rsqrt(T x) {
+  return 1.0 / std::sqrt(x);
+}
+
+TEST_F(GpuUnaryOpTest, RsqrtFloat) {
+  Run<float>(DefaultInputShape(), DefaultInputGreaterThanZero<float>(),
+             /*op_name=*/"Rsqrt",
+             /*expected_callback=*/expected_rsqrt,
+             /*expect_equal=*/false);
+}
+
+TEST_F(GpuUnaryOpTest, RsqrtDouble) {
+  Run<double>(DefaultInputShape(), DefaultInputGreaterThanZero<double>(),
+              /*op_name=*/"Rsqrt",
+              /*expected_callback=*/expected_rsqrt,
+              /*expect_equal=*/false);
+}
+
+TEST_F(GpuUnaryOpTest, RsqrtHalf) {
+  Run<Eigen::half, float>(DefaultInputShape(),
+                          /*input=*/
+                          DefaultInputGreaterThanZero<Eigen::half>(),
+                          /*op_name=*/"Rsqrt",
+                          /*expected_callback=*/expected_rsqrt,
+                          /*expect_equal=*/false);
+}
+
+/// Test `tf.Sin`.
+
+TEST_F(GpuUnaryOpTest, SinFloat) {
+  Run<float>(DefaultInputShape(), DefaultInput<float>(),
+             /*op_name=*/"Sin",
+             /*expected_callback=*/std::sin,
+             /*expect_equal=*/false);
+}
+
+TEST_F(GpuUnaryOpTest, SinDouble) {
+  Run<double>(DefaultInputShape(), DefaultInput<double>(),
+              /*op_name=*/"Sin",
+              /*expected_callback=*/std::sin,
+              /*expect_equal=*/false);
+}
+
+TEST_F(GpuUnaryOpTest, SinHalf) {
+  Run<Eigen::half, float>(DefaultInputShape(), DefaultInput<Eigen::half>(),
+                          /*op_name=*/"Sin",
+                          /*expected_callback=*/std::sin,
+                          /*expect_equal=*/false);
+}
+
+/// Test `tf.Sqrt`.
+
+TEST_F(GpuUnaryOpTest, SqrtFloat) {
+  Run<float>(DefaultInputShape(), DefaultInputGreaterOrEqualToZero<float>(),
+             /*op_name=*/"Sqrt",
+             /*expected_callback=*/std::sqrt,
+             /*expect_equal=*/false);
+}
+
+TEST_F(GpuUnaryOpTest, SqrtDouble) {
+  Run<double>(DefaultInputShape(), DefaultInputGreaterOrEqualToZero<double>(),
+              /*op_name=*/"Sqrt",
+              /*expected_callback=*/std::sqrt,
+              /*expect_equal=*/false);
+}
+
+TEST_F(GpuUnaryOpTest, SqrtHalf) {
+  Run<Eigen::half, float>(DefaultInputShape(),
+                          DefaultInputGreaterOrEqualToZero<Eigen::half>(),
+                          /*op_name=*/"Sqrt",
+                          /*expected_callback=*/std::sqrt,
+                          /*expect_equal=*/false);
 }
 
 }  // namespace

@@ -2124,6 +2124,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":platform",
+        ":tf_stack",
         ":util",
     ],
 )
@@ -2179,22 +2180,6 @@ py_library(
     ],
 )
 
-py_library(
-    name = "composite_tensor_utils",
-    srcs = ["framework/composite_tensor_utils.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":array_ops",
-        ":composite_tensor",
-        ":sparse_ops",
-        ":sparse_tensor",
-        "//tensorflow/python/ops/ragged:ragged_concat_ops",
-        "//tensorflow/python/ops/ragged:ragged_tensor",
-        "//tensorflow/python/ops/ragged:ragged_tensor_value",
-        "//third_party/py/numpy",
-    ],
-)
-
 py_test(
     name = "framework_composite_tensor_test",
     srcs = ["framework/composite_tensor_test.py"],
@@ -2208,24 +2193,6 @@ py_test(
         ":framework_test_lib",
         ":platform_test",
         "//tensorflow/core:protos_all_py",
-    ],
-)
-
-tf_py_test(
-    name = "framework_composite_tensor_utils_test",
-    srcs = ["framework/composite_tensor_utils_test.py"],
-    main = "framework/composite_tensor_utils_test.py",
-    python_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":composite_tensor",
-        ":composite_tensor_utils",
-        ":framework_test_lib",
-        ":sparse_ops",
-        ":sparse_tensor",
-        "//tensorflow/python/ops/ragged:ragged_tensor",
-        "//tensorflow/python/ops/ragged:ragged_tensor_value",
-        "//third_party/py/numpy",
     ],
 )
 
@@ -5708,7 +5675,6 @@ py_strict_library(
 py_strict_library(
     name = "tf_stack",
     srcs = ["util/tf_stack.py"],
-    compatible_with = get_compatible_with_portable(),
     srcs_version = "PY2AND3",
     # TODO(mdan): Remove public visibility.
     visibility = ["//visibility:public"],
@@ -5721,7 +5687,6 @@ py_strict_library(
 pybind_extension(
     name = "_tf_stack",
     srcs = ["util/tf_stack.cc"],
-    compatible_with = get_compatible_with_portable(),
     # TODO(b/138203821): change to "util._tf_stack" once the bug is fixed.
     module_name = "_tf_stack",
     deps = [
@@ -5746,12 +5711,12 @@ cc_library(
     srcs = ["util/stack_trace.cc"],
     hdrs = ["util/stack_trace.h"],
     deps = [
-        ":py_util",
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/util:abstract_stack_trace",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/types:optional",
     ],
 )
@@ -5839,7 +5804,6 @@ py_library(
         ":global_test_configuration",
         ":tf_decorator",
         ":tf_export",
-        ":tf_stack",
         "@org_python_pypi_backports_weakref",
         "@com_google_protobuf//:protobuf_python",
         "//third_party/py/numpy",
@@ -7283,6 +7247,7 @@ cuda_py_test(
     tags = [
         "grappler",
         "no_pip",  # tf_optimizer is not available in pip.
+        "no_windows",  # b/173520599
         "notap",  # TODO(b/135924227): Re-enable after fixing flakiness.
     ],
     # This test will not run on XLA because it primarily tests the TF Classic flow.

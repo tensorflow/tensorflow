@@ -309,8 +309,50 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
     case OperationType::CONVOLUTION_TRANSPOSED: {
       auto attr = absl::any_cast<ConvolutionTransposedAttributes>(
           node.operation.attributes);
-      *gpu_op = SelectConvolutionTransposed(attr, gpu_info, op_def);
-      return absl::OkStatus();
+      if (inputs.size() == 1) {
+        *gpu_op = SelectConvolutionTransposed(attr, gpu_info, op_def);
+        return absl::OkStatus();
+      } else {
+        // CONVOLUTION_TRANSPOSED with runtime weights
+        auto weights_shape = inputs[1]->tensor.shape;
+        if (attr.bias.data.empty()) {
+          attr.bias.shape = Linear(weights_shape.b);
+          attr.bias.data.resize(weights_shape.b, 0.0f);
+        }
+        TensorDescriptor weights_desc = {op_def.src_tensors[1].data_type,
+                                         TensorStorageType::BUFFER,
+                                         Layout::BHWC};
+        gpu_subgraph->operations.clear();
+        gpu_subgraph->operations.resize(2);
+        auto& converter_op = gpu_subgraph->operations[0];
+        auto& conv_op = gpu_subgraph->operations[1];
+        conv_op.input_ids = {static_cast<int>(inputs[0]->id), -1};
+        conv_op.output_ids = {static_cast<int>(outputs[0]->id)};
+        OperationDef conv_def = op_def;
+        conv_def.src_tensors[1] = weights_desc;
+        ConvWeightsDescription conv_weights_desc;
+        conv_op.operation = SelectConvolutionTransposedWithDynamicWeights(
+            attr, gpu_info, conv_def, &conv_weights_desc);
+
+        int aligned_output =
+            AlignByN(weights_shape.b, conv_weights_desc.output_group_size * 4);
+        int aligned_input = AlignByN(weights_shape.c, 4);
+        gpu_subgraph->new_tensors = {
+            {BHWC(1, 1, 1,
+                  aligned_output * aligned_input * weights_shape.h *
+                      weights_shape.w),
+             weights_desc}};
+        OperationDef converter_def;
+        converter_def.precision = op_def.precision;
+        converter_def.src_tensors.push_back(op_def.src_tensors[1]);
+        converter_def.dst_tensors.push_back(weights_desc);
+
+        converter_op.input_ids = {static_cast<int>(inputs[1]->id)};
+        converter_op.output_ids = {-1};
+        converter_op.operation = SelectConverterToConvWeights(
+            conv_weights_desc, converter_def, hints);
+        return absl::OkStatus();
+      }
     }
     case OperationType::DEPTHWISE_CONVOLUTION: {
       auto attr = absl::any_cast<DepthwiseConvolution2DAttributes>(

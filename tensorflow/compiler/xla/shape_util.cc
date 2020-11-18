@@ -1633,4 +1633,13 @@ Shape ShapeUtil::DeviceShapeToHostShape(Shape s) {
   return s;
 }
 
+/*static*/ bool ShapeUtil::CanUpcastIntegral(const Shape& from,
+                                             const Shape& to) {
+  return ElementIsIntegral(from) && ElementIsIntegral(to) &&
+         ElementIsSigned(from) == ElementIsSigned(to) &&
+         primitive_util::BitWidth(from.element_type()) <=
+             primitive_util::BitWidth(to.element_type()) &&
+         CompatibleIgnoringElementType(from, to);
+}
+
 }  // namespace xla

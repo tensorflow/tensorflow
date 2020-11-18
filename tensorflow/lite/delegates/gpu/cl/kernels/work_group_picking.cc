@@ -252,11 +252,11 @@ void GetPossibleWorkGroups(TuningType tuning_type, const GpuInfo& gpu_info,
                            const KernelInfo& kernel_info, const int3& grid,
                            std::vector<int3>* work_groups) {
   switch (tuning_type) {
-    case TuningType::FAST:
+    case TuningType::kFast:
       work_groups->push_back(
           GetWorkGroup(grid, kernel_info.max_work_group_size));
       return;
-    case TuningType::EXHAUSTIVE: {
+    case TuningType::kExhaustive: {
       GetWorkGroupsAlignedToGrid(gpu_info, kernel_info, grid, work_groups);
       return;
     }
@@ -270,7 +270,7 @@ void GetPossibleWorkGroupsConv(TuningType tuning_type, const GpuInfo& gpu_info,
                                const KernelInfo& kernel_info, const int3& grid,
                                std::vector<int3>* work_groups) {
   switch (tuning_type) {
-    case TuningType::FAST: {
+    case TuningType::kFast: {
       int max_z_size = 16;
       if (gpu_info.IsAdreno()) {
         max_z_size = gpu_info.adreno_info.IsAdreno3xx() ? 16 : 64;
@@ -280,7 +280,7 @@ void GetPossibleWorkGroupsConv(TuningType tuning_type, const GpuInfo& gpu_info,
           GetWorkGroupConv(grid, kernel_info.max_work_group_size, max_z_size));
       return;
     }
-    case TuningType::EXHAUSTIVE: {
+    case TuningType::kExhaustive: {
       GetWorkGroupsAlignedToGrid(gpu_info, kernel_info, grid, work_groups);
       return;
     }

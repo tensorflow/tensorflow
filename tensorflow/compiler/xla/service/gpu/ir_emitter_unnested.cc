@@ -580,12 +580,6 @@ Status IrEmitterUnnested::DefaultActionForMlir(MlirEmitterInput input) {
   return ret;
 }
 
-Status IrEmitterUnnested::HandleDot(HloInstruction* dot) {
-  AddThunkToThunkSequence(
-      BuildKernelThunk(dot, /*implements_whole_instruction=*/true));
-  return IrEmitter::HandleDot(dot);
-}
-
 Status IrEmitterUnnested::HandleConditional(HloInstruction* conditional) {
   TF_ASSIGN_OR_RETURN(auto thunk, BuildConditionalThunk(conditional));
   AddThunkToThunkSequence(std::move(thunk));
@@ -4381,7 +4375,7 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
           unnested_hlo->IsMultiOutputFusion()
               ? unnested_hlo->fused_expression_root()->operand_count()
               : 1;
-      int64 max_block_size = std::max(16LL, 512LL / NearestPowerOfTwo(fan_out));
+      int64 max_block_size = std::max(64LL, 512LL / NearestPowerOfTwo(fan_out));
       return std::min(
           max_block_size,
           RoundUpToNearest(CeilOfRatio(reduction_dimensions.dimensions[2],

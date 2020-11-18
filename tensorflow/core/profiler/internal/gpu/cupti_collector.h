@@ -55,24 +55,36 @@ struct MemAllocDetails {
 
 struct KernelDetails {
   // The number of registers used in this kernel.
-  uint64 registers_per_thread;
+  uint32 registers_per_thread;
   // The amount of shared memory space used by a thread block.
-  uint64 static_shared_memory_usage;
+  uint32 static_shared_memory_usage;
   // The amount of dynamic memory space used by a thread block.
-  uint64 dynamic_shared_memory_usage;
+  uint32 dynamic_shared_memory_usage;
   // X-dimension of a thread block.
-  uint64 block_x;
+  uint32 block_x;
   // Y-dimension of a thread block.
-  uint64 block_y;
+  uint32 block_y;
   // Z-dimension of a thread block.
-  uint64 block_z;
+  uint32 block_z;
   // X-dimension of a grid.
-  uint64 grid_x;
+  uint32 grid_x;
   // Y-dimension of a grid.
-  uint64 grid_y;
+  uint32 grid_y;
   // Z-dimension of a grid.
-  uint64 grid_z;
+  uint32 grid_z;
 };
+
+inline std::string ToXStat(const KernelDetails& kernel_info,
+                           double occupancy_pct) {
+  return absl::StrCat(
+      "regs:", kernel_info.registers_per_thread,
+      " static_shared:", kernel_info.static_shared_memory_usage,
+      " dynamic_shared:", kernel_info.dynamic_shared_memory_usage,
+      " grid:", kernel_info.grid_x, ",", kernel_info.grid_y, ",",
+      kernel_info.grid_z, " block:", kernel_info.block_x, ",",
+      kernel_info.block_y, ",", kernel_info.block_z,
+      " occ_pct:", occupancy_pct);
+}
 
 enum class CuptiTracerEventType {
   Unsupported = 0,
@@ -91,8 +103,9 @@ enum class CuptiTracerEventType {
 const char* GetTraceEventTypeName(const CuptiTracerEventType& type);
 
 enum class CuptiTracerEventSource {
-  DriverCallback = 0,
-  Activity = 1,
+  Invalid = 0,
+  DriverCallback = 1,
+  Activity = 2,
   // Maybe consider adding runtime callback and metric api in the future.
 };
 
@@ -105,8 +118,8 @@ struct CuptiTracerEvent {
       std::numeric_limits<uint64_t>::max();
   static constexpr uint64 kInvalidStreamId =
       std::numeric_limits<uint64_t>::max();
-  CuptiTracerEventType type;
-  CuptiTracerEventSource source;
+  CuptiTracerEventType type = CuptiTracerEventType::Unsupported;
+  CuptiTracerEventSource source = CuptiTracerEventSource::Invalid;
   // Although CUpti_CallbackData::functionName is persistent, however
   // CUpti_ActivityKernel4::name is not persistent, therefore we need a copy of
   // it.
@@ -114,9 +127,9 @@ struct CuptiTracerEvent {
   // This points to strings in AnnotationMap, which should outlive the point
   // where serialization happens.
   absl::string_view annotation;
-  uint64 start_time_ns;
-  uint64 end_time_ns;
-  uint32 device_id;
+  uint64 start_time_ns = 0;
+  uint64 end_time_ns = 0;
+  uint32 device_id = 0;
   uint32 correlation_id = kInvalidCorrelationId;
   uint32 thread_id = kInvalidThreadId;
   int64 context_id = kInvalidContextId;

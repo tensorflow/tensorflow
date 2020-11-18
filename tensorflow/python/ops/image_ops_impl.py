@@ -4889,8 +4889,9 @@ def combined_non_max_suppression(boxes,
       representing a single score corresponding to each box (each row of boxes).
     max_output_size_per_class: A scalar integer `Tensor` representing the
       maximum number of boxes to be selected by non-max suppression per class
-    max_total_size: A scalar representing the maximum number of boxes retained
-    over all classes.
+    max_total_size: A scalar representing maximum number of boxes retained over
+      all classes. Note that setting this value to a large number may result in
+      OOM error depending on the system workload.
     iou_threshold: A float representing the threshold for deciding whether boxes
       overlap too much with respect to IOU.
     score_threshold: A float representing the threshold for deciding when to

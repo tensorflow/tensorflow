@@ -748,11 +748,12 @@ struct InferenceContext FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_STORAGE_TYPE = 14,
     VT_NODES = 16,
     VT_TENSORS = 18,
-    VT_INPUT_IDS = 20,
-    VT_VARIABLE_IDS_AND_REFS = 22,
-    VT_OUTPUT_IDS = 24,
-    VT_INPUT_REFS = 26,
-    VT_OUTPUT_REFS = 28
+    VT_CONST_TENSORS = 20,
+    VT_INPUT_IDS = 22,
+    VT_VARIABLE_IDS_AND_REFS = 24,
+    VT_OUTPUT_IDS = 26,
+    VT_INPUT_REFS = 28,
+    VT_OUTPUT_REFS = 30
   };
   bool need_flush() const {
     return GetField<uint8_t>(VT_NEED_FLUSH, 0) != 0;
@@ -778,6 +779,13 @@ struct InferenceContext FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::cl::data::TensorDescWithId>> *tensors() const {
     return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::cl::data::TensorDescWithId>> *>(VT_TENSORS);
   }
+  const flatbuffers::Vector<
+      flatbuffers::Offset<tflite::gpu::cl::data::TensorDescWithId>>
+      *const_tensors() const {
+    return GetPointer<const flatbuffers::Vector<
+        flatbuffers::Offset<tflite::gpu::cl::data::TensorDescWithId>> *>(
+        VT_CONST_TENSORS);
+  }
   const flatbuffers::Vector<int32_t> *input_ids() const {
     return GetPointer<const flatbuffers::Vector<int32_t> *>(VT_INPUT_IDS);
   }
@@ -801,12 +809,14 @@ struct InferenceContext FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            VerifyField<uint8_t>(verifier, VT_NEED_MANUAL_RELEASE) &&
            VerifyField<int8_t>(verifier, VT_PRECISION) &&
            VerifyField<int8_t>(verifier, VT_STORAGE_TYPE) &&
-           VerifyOffset(verifier, VT_NODES) &&
-           verifier.VerifyVector(nodes()) &&
+           VerifyOffset(verifier, VT_NODES) && verifier.VerifyVector(nodes()) &&
            verifier.VerifyVectorOfTables(nodes()) &&
            VerifyOffset(verifier, VT_TENSORS) &&
            verifier.VerifyVector(tensors()) &&
            verifier.VerifyVectorOfTables(tensors()) &&
+           VerifyOffset(verifier, VT_CONST_TENSORS) &&
+           verifier.VerifyVector(const_tensors()) &&
+           verifier.VerifyVectorOfTables(const_tensors()) &&
            VerifyOffset(verifier, VT_INPUT_IDS) &&
            verifier.VerifyVector(input_ids()) &&
            VerifyOffset(verifier, VT_VARIABLE_IDS_AND_REFS) &&
@@ -817,8 +827,7 @@ struct InferenceContext FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            VerifyOffset(verifier, VT_INPUT_REFS) &&
            verifier.VerifyVector(input_refs()) &&
            VerifyOffset(verifier, VT_OUTPUT_REFS) &&
-           verifier.VerifyVector(output_refs()) &&
-           verifier.EndTable();
+           verifier.VerifyVector(output_refs()) && verifier.EndTable();
   }
 };
 
@@ -850,6 +859,12 @@ struct InferenceContextBuilder {
   void add_tensors(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::cl::data::TensorDescWithId>>> tensors) {
     fbb_.AddOffset(InferenceContext::VT_TENSORS, tensors);
   }
+  void add_const_tensors(
+      flatbuffers::Offset<flatbuffers::Vector<
+          flatbuffers::Offset<tflite::gpu::cl::data::TensorDescWithId>>>
+          const_tensors) {
+    fbb_.AddOffset(InferenceContext::VT_CONST_TENSORS, const_tensors);
+  }
   void add_input_ids(flatbuffers::Offset<flatbuffers::Vector<int32_t>> input_ids) {
     fbb_.AddOffset(InferenceContext::VT_INPUT_IDS, input_ids);
   }
@@ -877,17 +892,26 @@ struct InferenceContextBuilder {
 };
 
 inline flatbuffers::Offset<InferenceContext> CreateInferenceContext(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    bool need_flush = false,
-    bool flush_periodically = false,
-    int32_t flush_period = 0,
+    flatbuffers::FlatBufferBuilder &_fbb, bool need_flush = false,
+    bool flush_periodically = false, int32_t flush_period = 0,
     bool need_manual_release = false,
-    tflite::gpu::cl::data::CalculationsPrecision precision = tflite::gpu::cl::data::CalculationsPrecision::F32,
-    tflite::gpu::data::TensorStorageType storage_type = tflite::gpu::data::TensorStorageType::UNKNOWN,
-    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::cl::data::CLNode>>> nodes = 0,
-    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::cl::data::TensorDescWithId>>> tensors = 0,
+    tflite::gpu::cl::data::CalculationsPrecision precision =
+        tflite::gpu::cl::data::CalculationsPrecision::F32,
+    tflite::gpu::data::TensorStorageType storage_type =
+        tflite::gpu::data::TensorStorageType::UNKNOWN,
+    flatbuffers::Offset<
+        flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::cl::data::CLNode>>>
+        nodes = 0,
+    flatbuffers::Offset<flatbuffers::Vector<
+        flatbuffers::Offset<tflite::gpu::cl::data::TensorDescWithId>>>
+        tensors = 0,
+    flatbuffers::Offset<flatbuffers::Vector<
+        flatbuffers::Offset<tflite::gpu::cl::data::TensorDescWithId>>>
+        const_tensors = 0,
     flatbuffers::Offset<flatbuffers::Vector<int32_t>> input_ids = 0,
-    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::cl::data::PairOfValueIds>>> variable_ids_and_refs = 0,
+    flatbuffers::Offset<flatbuffers::Vector<
+        flatbuffers::Offset<tflite::gpu::cl::data::PairOfValueIds>>>
+        variable_ids_and_refs = 0,
     flatbuffers::Offset<flatbuffers::Vector<int32_t>> output_ids = 0,
     flatbuffers::Offset<flatbuffers::Vector<int64_t>> input_refs = 0,
     flatbuffers::Offset<flatbuffers::Vector<int64_t>> output_refs = 0) {
@@ -897,6 +921,7 @@ inline flatbuffers::Offset<InferenceContext> CreateInferenceContext(
   builder_.add_output_ids(output_ids);
   builder_.add_variable_ids_and_refs(variable_ids_and_refs);
   builder_.add_input_ids(input_ids);
+  builder_.add_const_tensors(const_tensors);
   builder_.add_tensors(tensors);
   builder_.add_nodes(nodes);
   builder_.add_flush_period(flush_period);
@@ -909,42 +934,44 @@ inline flatbuffers::Offset<InferenceContext> CreateInferenceContext(
 }
 
 inline flatbuffers::Offset<InferenceContext> CreateInferenceContextDirect(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    bool need_flush = false,
-    bool flush_periodically = false,
-    int32_t flush_period = 0,
+    flatbuffers::FlatBufferBuilder &_fbb, bool need_flush = false,
+    bool flush_periodically = false, int32_t flush_period = 0,
     bool need_manual_release = false,
-    tflite::gpu::cl::data::CalculationsPrecision precision = tflite::gpu::cl::data::CalculationsPrecision::F32,
-    tflite::gpu::data::TensorStorageType storage_type = tflite::gpu::data::TensorStorageType::UNKNOWN,
-    const std::vector<flatbuffers::Offset<tflite::gpu::cl::data::CLNode>> *nodes = nullptr,
-    const std::vector<flatbuffers::Offset<tflite::gpu::cl::data::TensorDescWithId>> *tensors = nullptr,
+    tflite::gpu::cl::data::CalculationsPrecision precision =
+        tflite::gpu::cl::data::CalculationsPrecision::F32,
+    tflite::gpu::data::TensorStorageType storage_type =
+        tflite::gpu::data::TensorStorageType::UNKNOWN,
+    const std::vector<flatbuffers::Offset<tflite::gpu::cl::data::CLNode>>
+        *nodes = nullptr,
+    const std::vector<
+        flatbuffers::Offset<tflite::gpu::cl::data::TensorDescWithId>> *tensors =
+        nullptr,
+    const std::vector<flatbuffers::Offset<
+        tflite::gpu::cl::data::TensorDescWithId>> *const_tensors = nullptr,
     const std::vector<int32_t> *input_ids = nullptr,
-    const std::vector<flatbuffers::Offset<tflite::gpu::cl::data::PairOfValueIds>> *variable_ids_and_refs = nullptr,
+    const std::vector<
+        flatbuffers::Offset<tflite::gpu::cl::data::PairOfValueIds>>
+        *variable_ids_and_refs = nullptr,
     const std::vector<int32_t> *output_ids = nullptr,
     const std::vector<int64_t> *input_refs = nullptr,
     const std::vector<int64_t> *output_refs = nullptr) {
   auto nodes__ = nodes ? _fbb.CreateVector<flatbuffers::Offset<tflite::gpu::cl::data::CLNode>>(*nodes) : 0;
   auto tensors__ = tensors ? _fbb.CreateVector<flatbuffers::Offset<tflite::gpu::cl::data::TensorDescWithId>>(*tensors) : 0;
+  auto const_tensors__ =
+      const_tensors
+          ? _fbb.CreateVector<
+                flatbuffers::Offset<tflite::gpu::cl::data::TensorDescWithId>>(
+                *const_tensors)
+          : 0;
   auto input_ids__ = input_ids ? _fbb.CreateVector<int32_t>(*input_ids) : 0;
   auto variable_ids_and_refs__ = variable_ids_and_refs ? _fbb.CreateVector<flatbuffers::Offset<tflite::gpu::cl::data::PairOfValueIds>>(*variable_ids_and_refs) : 0;
   auto output_ids__ = output_ids ? _fbb.CreateVector<int32_t>(*output_ids) : 0;
   auto input_refs__ = input_refs ? _fbb.CreateVector<int64_t>(*input_refs) : 0;
   auto output_refs__ = output_refs ? _fbb.CreateVector<int64_t>(*output_refs) : 0;
   return tflite::gpu::cl::data::CreateInferenceContext(
-      _fbb,
-      need_flush,
-      flush_periodically,
-      flush_period,
-      need_manual_release,
-      precision,
-      storage_type,
-      nodes__,
-      tensors__,
-      input_ids__,
-      variable_ids_and_refs__,
-      output_ids__,
-      input_refs__,
-      output_refs__);
+      _fbb, need_flush, flush_periodically, flush_period, need_manual_release,
+      precision, storage_type, nodes__, tensors__, const_tensors__, input_ids__,
+      variable_ids_and_refs__, output_ids__, input_refs__, output_refs__);
 }
 
 inline const tflite::gpu::cl::data::InferenceContext *GetInferenceContext(const void *buf) {

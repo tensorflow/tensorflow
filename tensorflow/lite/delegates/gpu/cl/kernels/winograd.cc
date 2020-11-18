@@ -285,11 +285,11 @@ void Winograd4x4To36::GetPossibleKernelWorkGroups(
     TuningType tuning_type, const GpuInfo& gpu_info,
     const KernelInfo& kernel_info, std::vector<int3>* work_groups) const {
   switch (tuning_type) {
-    case TuningType::EXHAUSTIVE:
+    case TuningType::kExhaustive:
       GetPossibleWorkGroups(tuning_type, gpu_info, kernel_info, grid_size_,
                             work_groups);
       return;
-    case TuningType::FAST:
+    case TuningType::kFast:
     default:
       work_groups->push_back(SelectBestWorkGroup(kernel_info));
       return;
@@ -481,11 +481,11 @@ void Winograd36To4x4::GetPossibleKernelWorkGroups(
     TuningType tuning_type, const GpuInfo& gpu_info,
     const KernelInfo& kernel_info, std::vector<int3>* work_groups) const {
   switch (tuning_type) {
-    case TuningType::EXHAUSTIVE:
+    case TuningType::kExhaustive:
       GetPossibleWorkGroups(tuning_type, gpu_info, kernel_info, grid_size_,
                             work_groups);
       return;
-    case TuningType::FAST:
+    case TuningType::kFast:
     default:
       work_groups->push_back(SelectBestWorkGroup(kernel_info));
       return;

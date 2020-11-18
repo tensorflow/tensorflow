@@ -46,7 +46,7 @@ static StatusOr<mlir::OwningModuleRef> GraphdefToMlirImport(
     llvm::StringRef input, absl::string_view debug_info_file,
     const std::vector<std::string>& input_arrays,
     const std::vector<std::string>& input_dtypes,
-    const std::vector<std::vector<int>>& input_shapes,
+    const std::vector<llvm::Optional<std::vector<int>>>& input_shapes,
     const std::vector<std::string>& output_arrays,
     const std::vector<std::string>& control_output_arrays,
     bool prune_unused_nodes, bool convert_legacy_fed_inputs,
@@ -104,7 +104,7 @@ StatusOr<mlir::OwningModuleRef> GraphdefToMlirTranslateFunction(
     llvm::StringRef input, absl::string_view debug_info_file,
     const std::vector<std::string>& input_arrays,
     const std::vector<std::string>& input_dtypes,
-    const std::vector<std::vector<int>>& input_shapes,
+    const std::vector<llvm::Optional<std::vector<int>>>& input_shapes,
     const std::vector<std::string>& output_arrays,
     const std::vector<std::string>& control_output_arrays,
     bool prune_unused_nodes, bool convert_legacy_fed_inputs,
@@ -130,7 +130,7 @@ StatusOr<mlir::OwningModuleRef> GraphdefToMlirTranslateFunction(
     bool enable_shape_inference, mlir::MLIRContext* context) {
   std::vector<std::string> input_array_vector;
   std::vector<std::string> input_dtype_vector;
-  std::vector<std::vector<int>> input_shapes_vector;
+  std::vector<llvm::Optional<std::vector<int>>> input_shapes_vector;
   std::vector<std::string> output_array_vector;
   std::vector<std::string> control_output_array_vector;
   TF_RETURN_IF_ERROR(ParseNodeNames(input_arrays, input_array_vector));
@@ -219,7 +219,7 @@ StatusOr<mlir::OwningModuleRef> GraphdefToSplattedMlirTranslateFunction(
     llvm::StringRef input, absl::string_view debug_info_file,
     const std::vector<std::string>& input_arrays,
     const std::vector<std::string>& input_dtypes,
-    const std::vector<std::vector<int>>& input_shapes,
+    const std::vector<llvm::Optional<std::vector<int>>>& input_shapes,
     const std::vector<std::string>& output_arrays,
     const std::vector<std::string>& control_output_arrays,
     bool prune_unused_nodes, bool convert_legacy_fed_inputs,
@@ -275,7 +275,7 @@ StatusOr<mlir::OwningModuleRef> GraphdefToSplattedMlirTranslateFunction(
     bool enable_shape_inference, mlir::MLIRContext* context) {
   std::vector<std::string> input_array_vector;
   std::vector<std::string> input_dtype_vector;
-  std::vector<std::vector<int>> input_shapes_vector;
+  std::vector<llvm::Optional<std::vector<int>>> input_shapes_vector;
   std::vector<std::string> output_array_vector;
   std::vector<std::string> control_output_array_vector;
   TF_RETURN_IF_ERROR(ParseNodeNames(input_arrays, input_array_vector));

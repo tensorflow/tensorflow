@@ -370,7 +370,7 @@ class AdditiveAttention(BaseDenseAttention):
   3. Use scores to calculate a distribution with shape
      `[batch_size, Tq, Tv]`: `distribution = tf.nn.softmax(scores)`.
   4. Use `distribution` to create a linear combination of `value` with
-     shape `batch_size, Tq, dim]`:
+     shape `[batch_size, Tq, dim]`:
      `return tf.matmul(distribution, value)`.
 
   Args:

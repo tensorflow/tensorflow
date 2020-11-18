@@ -95,7 +95,7 @@ def poisson(lam=1.0, size=None):
   elif np_utils.isscalar(size):
     size = (size,)
   return np_utils.tensor_to_ndarray(
-      random_ops.random_poisson(shape=size, lam=lam, dtype=np_dtypes.int64))
+      random_ops.random_poisson(shape=size, lam=lam, dtype=np_dtypes.int_))
 
 
 @np_utils.np_doc('random.random')

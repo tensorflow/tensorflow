@@ -92,16 +92,18 @@ Status ParseInputArrayInfo(absl::string_view array_names,
                            absl::string_view shapes,
                            GraphImportConfig::InputArrays* inputs);
 
-Status ParseInputArrayInfo(const std::vector<string>& node_names,
-                           const std::vector<string>& node_dtypes,
-                           const std::vector<std::vector<int>>& node_shapes,
-                           GraphImportConfig::InputArrays* inputs);
+Status ParseInputArrayInfo(
+    const std::vector<string>& node_names,
+    const std::vector<string>& node_dtypes,
+    const std::vector<llvm::Optional<std::vector<int>>>& node_shapes,
+    GraphImportConfig::InputArrays* inputs);
 
 // Parses shapes from the given string into shapes_vector which is a structured
 // format.
 // NOTE: If shapes_str is empty, shapes_vector will also be empty.
-Status ParseNodeShapes(absl::string_view shapes_str,
-                       std::vector<std::vector<int>>& shapes_vector);
+Status ParseNodeShapes(
+    absl::string_view shapes_str,
+    std::vector<llvm::Optional<std::vector<int>>>& shapes_vector);
 
 // Parses names from the given string into the names_vector.
 // NOTE: If names_str is empty, names_vector will also be empty.

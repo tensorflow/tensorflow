@@ -1800,6 +1800,8 @@ StatusOr<bool> AlgebraicSimplifierVisitor::RemoveDegenerateDimensionFromDot(
           : dot->mutable_operand(1);
   TF_ASSIGN_OR_RETURN(auto new_dot, MakeDotHlo(new_lhs, new_rhs, new_dnums,
                                                dot->precision_config()));
+  // TODO(b/165824019): Add an optional preferred element type to MakeDotHlo.
+  new_dot->mutable_shape()->set_element_type(dot->shape().element_type());
   if (ShapeUtil::Compatible(dot->shape(), new_dot->shape())) {
     TF_RETURN_IF_ERROR(ReplaceInstruction(dot, new_dot));
   } else {
@@ -4678,6 +4680,8 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
     TF_ASSIGN_OR_RETURN(
         auto new_dot, MakeDotHlo(lhs, rhs, new_dnums, dot->precision_config()));
     dot->SetupDerivedInstruction(new_dot);
+    // TODO(b/165824019): Add an optional preferred element type to MakeDotHlo.
+    new_dot->mutable_shape()->set_element_type(dot->shape().element_type());
     if (reduce_dims.empty()) {
       return ReplaceInstruction(hlo, new_dot);
     }

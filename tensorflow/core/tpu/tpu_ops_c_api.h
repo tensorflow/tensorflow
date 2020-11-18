@@ -93,6 +93,16 @@ TFTPU_CAPI_EXPORT void TpuCompile_CompileAndBuild(
     TpuSerializedProto compilation_request, const XLA_TpuMeshState* mesh_state,
     XLA_TpuProgram** tpu_programs[], size_t* count, TF_Status* status);
 
+// Compiles a HLO IR and returns `count` number of TPU programs ready for
+// execution. The API allocates the `XLA_TpuProgram*[]` array `tpu_programs` and
+// creates `XLA_TpuProgram` object(s) using the `TpuProgram_New` API. The caller
+// is responsible to deallocate both the `XLA_TpuProgram*[]` array and the
+// `XLA_TpuProgram` object(s) using `TpuProgram_FreeArray` and `TpuProgram_Free`
+// API respectively.
+TFTPU_CAPI_EXPORT void TpuCompile_XrtCompileAndBuild(
+    TpuSerializedProto xrt_computation, const XLA_TpuMeshState* mesh_state,
+    XLA_TpuProgram** tpu_programs[], size_t* count, TF_Status* status);
+
 // Creates a new TPU mesh state object.
 TFTPU_CAPI_EXPORT XLA_TpuMeshState* TpuMeshState_Create();
 
@@ -352,6 +362,7 @@ void TpuNodeContext_Initialize(int device_ordinal, TF_Status* status);
 
 struct TfTpu_OpsApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_CompileAndBuild);
+  TFTPU_ADD_FN_IN_STRUCT(TpuCompile_XrtCompileAndBuild);
 
   TFTPU_ADD_FN_IN_STRUCT(TpuMeshState_Create);
   TFTPU_ADD_FN_IN_STRUCT(TpuMeshState_Free);

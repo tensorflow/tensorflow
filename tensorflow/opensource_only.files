@@ -270,6 +270,7 @@ tensorflow/third_party/typing_extensions.BUILD
 tensorflow/third_party/wrapt.BUILD
 tensorflow/third_party/zlib.BUILD
 tensorflow/tools/build_info/BUILD
+tensorflow/tools/ci_build/a100/nightly.sh
 tensorflow/tools/ci_build/horovod/gpu/nightly.sh
 tensorflow/tools/ci_build/release/common.sh
 tensorflow/tools/ci_build/release/common_win.bat

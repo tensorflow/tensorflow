@@ -115,4 +115,29 @@ REGISTER_OP("StatelessRandomGetKeyCounterAlg")
       return Status::OK();
     });
 
+REGISTER_OP("StatelessRandomGetKeyCounter")
+    .Input("seed: Tseed")
+    .Output("key: uint64")
+    .Output("counter: uint64")
+    .Attr("Tseed: {int32, int64} = DT_INT64")
+    .SetShapeFn([](InferenceContext* c) {
+      // Check seed shape
+      ShapeHandle seed;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &seed));
+      DimensionHandle unused;
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(seed, 0), 2, &unused));
+
+      // Set output shapes
+      c->set_output(0, c->MakeShape({RNG_KEY_SIZE}));
+      c->set_output(1, c->MakeShape({RNG_MAX_COUNTER_SIZE}));
+      return Status::OK();
+    });
+
+REGISTER_OP("StatelessRandomGetAlg")
+    .Output("alg: int32")
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->MakeShape({}));
+      return Status::OK();
+    });
+
 }  // namespace tensorflow

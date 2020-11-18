@@ -1742,12 +1742,6 @@ class Context(object):
     """Returns a stack of context switches."""
     return self._context_switches
 
-  def start_step(self):
-    pywrap_tfe.TFE_ContextStartStep(self._handle)
-
-  def end_step(self):
-    pywrap_tfe.TFE_ContextEndStep(self._handle)
-
 
 class _EagerDeviceContext(object):
   """Context-manager forcing placement of ops and Tensors on a device."""

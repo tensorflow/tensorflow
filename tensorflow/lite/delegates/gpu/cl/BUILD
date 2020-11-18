@@ -218,6 +218,7 @@ cc_library(
         ":cl_program",
         ":opencl_wrapper",
         ":util",
+        "//tensorflow/lite/delegates/gpu/common:kernel_info",
         "//tensorflow/lite/delegates/gpu/common:status",
         "@com_google_absl//absl/strings",
     ],
@@ -400,7 +401,6 @@ cc_library(
         ":cl_operation",
         ":environment",
         ":gpu_object",
-        ":model_hints",
         ":opencl_wrapper",
         ":serialization_cc_fbs",
         ":storage_type_util",
@@ -411,6 +411,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:memory_management",
         "//tensorflow/lite/delegates/gpu/common:model",
+        "//tensorflow/lite/delegates/gpu/common:model_hints",
         "//tensorflow/lite/delegates/gpu/common:model_transformer",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:precision",
@@ -451,11 +452,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
-)
-
-cc_library(
-    name = "model_hints",
-    hdrs = ["model_hints.h"],
 )
 
 cc_library(

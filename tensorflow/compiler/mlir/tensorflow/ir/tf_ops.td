@@ -1972,4 +1972,31 @@ operations inside a TPU host.
   );
 }
 
+def TF_AssignOp : TF_Op<"Assign", []> {
+  let summary = "Update 'ref' by assigning 'value' to it.";
+
+  let description = [{
+This operation outputs "ref" after the assignment is done.
+This makes it easier to chain operations that need to use the reset value.
+
+This is a side-effecting operation because it will change the value of its
+argument "ref" in addition to returning the results.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$ref,
+    TF_Tensor:$value,
+
+    DefaultValuedAttr<BoolAttr, "true">:$validate_shape,
+    DefaultValuedAttr<BoolAttr, "true">:$use_locking
+  );
+
+  let results = (outs
+    TF_Tensor:$output_ref
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+
 #endif // TF_OPS

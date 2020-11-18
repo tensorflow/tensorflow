@@ -382,6 +382,11 @@ class _OptimizationParameters(object):
     self.clip_gradient_min = clip_gradient_min
     self.clip_gradient_max = clip_gradient_max
 
+    if not use_gradient_accumulation and (clip_gradient_min is not None or
+                                          clip_gradient_max is not None):
+      ValueError('When using gradient clipping limits, gradient accumulation '
+                 'must be enabled.')
+
 
 @tf_export(v1=['tpu.experimental.AdagradParameters'])
 class AdagradParameters(_OptimizationParameters):
@@ -430,7 +435,9 @@ class AdagradParameters(_OptimizationParameters):
       multiply_weight_decay_factor_by_learning_rate: if true,
         `weight_decay_factor` is multiplied by the current learning rate.
       clip_gradient_min: the minimum value to clip by; None means -infinity.
+        Gradient accumulation must be set to true if this is set.
       clip_gradient_max: the maximum value to clip by; None means +infinity.
+        Gradient accumulation must be set to true if this is set.
     """
     super(AdagradParameters, self).__init__(
         learning_rate=learning_rate,
@@ -490,7 +497,9 @@ class ProximalAdagradParameters(_OptimizationParameters):
       multiply_weight_decay_factor_by_learning_rate: if true,
         `weight_decay_factor` is multiplied by the current learning rate.
       clip_gradient_min: the minimum value to clip by; None means -infinity.
+        Gradient accumulation must be set to true if this is set.
       clip_gradient_max: the maximum value to clip by; None means +infinity.
+        Gradient accumulation must be set to true if this is set.
     """
     super(ProximalAdagradParameters, self).__init__(
         learning_rate=learning_rate,
@@ -577,7 +586,9 @@ class AdamParameters(_OptimizationParameters):
       multiply_weight_decay_factor_by_learning_rate: if true,
         `weight_decay_factor` is multiplied by the current learning rate.
       clip_gradient_min: the minimum value to clip by; None means -infinity.
+        Gradient accumulation must be set to true if this is set.
       clip_gradient_max: the maximum value to clip by; None means +infinity.
+        Gradient accumulation must be set to true if this is set.
     """
     super(AdamParameters, self).__init__(
         learning_rate=learning_rate,
@@ -680,7 +691,9 @@ class FtrlParameters(_OptimizationParameters):
         allow for the case of initial_accumulator_value being zero. This will
         cause a slight performance drop.
       clip_gradient_min: the minimum value to clip by; None means -infinity.
+        Gradient accumulation must be set to true if this is set.
       clip_gradient_max: the maximum value to clip by; None means +infinity.
+        Gradient accumulation must be set to true if this is set.
     """
     super(FtrlParameters, self).__init__(
         learning_rate=learning_rate,
@@ -777,7 +790,9 @@ class ProximalYogiParameters(_OptimizationParameters):
       multiply_weight_decay_factor_by_learning_rate: if true,
         `weight_decay_factor` is multiplied by the current learning rate.
       clip_gradient_min: the minimum value to clip by; None means -infinity.
+        Gradient accumulation must be set to true if this is set.
       clip_gradient_max: the maximum value to clip by; None means +infinity.
+        Gradient accumulation must be set to true if this is set.
     """
     super(ProximalYogiParameters, self).__init__(
         learning_rate=learning_rate,
@@ -867,7 +882,9 @@ class MomentumParameters(_OptimizationParameters):
       multiply_weight_decay_factor_by_learning_rate: if true,
         `weight_decay_factor` is multiplied by the current learning rate.
       clip_gradient_min: the minimum value to clip by; None means -infinity.
+        Gradient accumulation must be set to true if this is set.
       clip_gradient_max: the maximum value to clip by; None means +infinity.
+        Gradient accumulation must be set to true if this is set.
     """
     super(MomentumParameters, self).__init__(
         learning_rate=learning_rate,
@@ -934,7 +951,9 @@ class RMSPropParameters(_OptimizationParameters):
       multiply_weight_decay_factor_by_learning_rate: if true,
         `weight_decay_factor` is multiplied by the current learning rate.
       clip_gradient_min: the minimum value to clip by; None means -infinity.
+        Gradient accumulation must be set to true if this is set.
       clip_gradient_max: the maximum value to clip by; None means +infinity.
+        Gradient accumulation must be set to true if this is set.
     """
     super(RMSPropParameters, self).__init__(
         learning_rate=learning_rate,
@@ -995,9 +1014,16 @@ class StochasticGradientDescentParameters(_OptimizationParameters):
       clip_gradient_min: the minimum value to clip by; None means -infinity.
       clip_gradient_max: the maximum value to clip by; None means +infinity.
     """
+    # Gradient accumulation is generally a no-op for SGD, but if gradient
+    # clipping is enabled, then we must also enable gradient accumulation.
+    # In the other optimizers this up to the user, but we don't give the user
+    # the option to turn gradient accumulation on or off for SGD.
+    use_gradient_accumulation = False
+    if (clip_gradient_min is not None or clip_gradient_max is not None):
+      use_gradient_accumulation = True
     super(StochasticGradientDescentParameters, self).__init__(
         learning_rate=learning_rate,
-        use_gradient_accumulation=False,
+        use_gradient_accumulation=use_gradient_accumulation,
         clip_weight_min=clip_weight_min,
         clip_weight_max=clip_weight_max,
         weight_decay_factor=weight_decay_factor,

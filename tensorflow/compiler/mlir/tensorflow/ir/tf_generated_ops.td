@@ -604,29 +604,6 @@ If `condition` evaluates to false, print the list of tensors in `data`.
   let hasCanonicalizer = 1;
 }
 
-def TF_AssignOp : TF_Op<"Assign", [NoSideEffect]> {
-  let summary = "Update 'ref' by assigning 'value' to it.";
-
-  let description = [{
-This operation outputs "ref" after the assignment is done.
-This makes it easier to chain operations that need to use the reset value.
-  }];
-
-  let arguments = (ins
-    TF_Tensor:$ref,
-    TF_Tensor:$value,
-
-    DefaultValuedAttr<BoolAttr, "true">:$validate_shape,
-    DefaultValuedAttr<BoolAttr, "true">:$use_locking
-  );
-
-  let results = (outs
-    TF_Tensor:$output_ref
-  );
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-}
-
 def TF_AssignAddVariableOp : TF_Op<"AssignAddVariableOp", []> {
   let summary = "Adds a value to the current value of a variable.";
 
@@ -12300,6 +12277,41 @@ The outputs are a deterministic function of `shape`, `seed`, and `alpha`.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tseed = TF_DerivedOperandTypeAttr<1>;
   TF_DerivedOperandTypeAttr dtype = TF_DerivedOperandTypeAttr<2>;
+}
+
+def TF_StatelessRandomGetAlgOp : TF_Op<"StatelessRandomGetAlg", []> {
+  let summary = [{
+Picks the best counter-based RNG algorithm based on device.
+  }];
+
+  let description = [{
+This op picks the best counter-based RNG algorithm based on device.
+  }];
+
+  let results = (outs
+    TF_Int32Tensor:$alg
+  );
+}
+
+def TF_StatelessRandomGetKeyCounterOp : TF_Op<"StatelessRandomGetKeyCounter", []> {
+  let summary = [{
+Scrambles seed into key and counter, using the best algorithm based on device.
+  }];
+
+  let description = [{
+This op scrambles a shape-[2] seed into a key and a counter, both needed by counter-based RNG algorithms. The scrambing uses the best algorithm based on device. The scrambling is opaque but approximately satisfies the property that different seed results in different key/counter pair (which will in turn result in different random numbers).
+  }];
+
+  let arguments = (ins
+    TF_I32OrI64Tensor:$seed
+  );
+
+  let results = (outs
+    TF_Uint64Tensor:$key,
+    TF_Uint64Tensor:$counter
+  );
+
+  TF_DerivedOperandTypeAttr Tseed = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_StatelessRandomGetKeyCounterAlgOp : TF_Op<"StatelessRandomGetKeyCounterAlg", []> {

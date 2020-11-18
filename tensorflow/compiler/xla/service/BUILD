@@ -2456,6 +2456,7 @@ cc_library(
         ":hlo",
         ":hlo_creation_utils",
         ":hlo_pass",
+        ":pattern_matcher",
         ":shape_inference",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
@@ -5221,5 +5222,29 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
+    name = "integral_upcaster",
+    srcs = ["integral_upcaster.cc"],
+    hdrs = ["integral_upcaster.h"],
+    deps = [
+        ":hlo",
+        ":op_expander_pass",
+        ":shape_inference",
+    ],
+)
+
+tf_cc_test(
+    name = "integral_upcaster_test",
+    srcs = ["integral_upcaster_test.cc"],
+    deps = [
+        ":hlo_matchers",
+        ":integral_upcaster",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/strings",
     ],
 )

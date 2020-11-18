@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/Shape/Transforms/Passes.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/StandardOps/Transforms/FuncConversions.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BlockAndValueMapping.h"
@@ -578,9 +579,8 @@ struct HloLegalizeToLhlo
     });
 
     populateHLOToLHLOConversionPattern(&context, &converter, &patterns);
-    populateWithBufferizeOpConversionPatterns<mlir::ReturnOp, mlir::ReturnOp,
-                                              lmhlo::CopyOp>(
-        &context, converter, patterns);
+    populateFuncOpTypeConversionPattern(patterns, &context, converter);
+    populateCallOpTypeConversionPattern(patterns, &context, converter);
     populateShapeStructuralTypeConversionsAndLegality(&context, converter,
                                                       patterns, target);
     if (failed(applyPartialConversion(getOperation(), target,

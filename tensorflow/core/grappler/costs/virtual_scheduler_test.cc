@@ -775,14 +775,15 @@ class VirtualSchedulerTest : public ::testing::Test {
     auto z = ops::RandomUniform(s.WithOpName("z"), {10, 10, 10, 10}, DT_FLOAT);
     auto w = ops::RandomUniform(s.WithOpName("w"), {10, 10, 10, 10}, DT_FLOAT);
     OutputList input_tensors = {x, y, z, w};
-    auto out = ops::AddN(s.WithOpName("out"), input_tensors);
+    auto add = ops::AddN(s.WithOpName("add"), input_tensors);
+    auto out = ops::Identity(s.WithOpName("out"), add);
 
     grappler_item_ = absl::make_unique<GrapplerItem>();
     TF_CHECK_OK(s.ToGraphDef(&grappler_item_->graph));
     grappler_item_->id = "test_addn_graph";
     grappler_item_->fetch = {"out"};
 
-    dependency_["out"] = {"x", "y", "z", "w"};
+    dependency_["out"] = {"x", "y", "z", "w", "add"};
   }
 
   // Graph with some placeholder feed nodes that are not in the fetch fan-in.
@@ -926,11 +927,29 @@ node {
     }
   }
   attr {
+    key: "_output_shapes"
+    value {
+      list { shape {
+        dim { size: 128 }
+        dim { size: 32 }
+      }}}
+  }
+  attr {
+    key: "shape"
+    value {
+      list { shape {
+        dim { size: 128 }
+        dim { size: 32 }
+      }}}
+  }
+  attr {
     key: "value"
     value {
       tensor {
         dtype: DT_FLOAT
         tensor_shape {
+          dim { size: 128 }
+          dim { size: 32 }
         }
         float_val: 3.1415
       }
@@ -947,6 +966,22 @@ node {
     value {
       type: DT_FLOAT
     }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list { shape {
+        dim { size: 128 }
+        dim { size: 32 }
+      }}}
+  }
+  attr {
+    key: "shape"
+    value {
+      list { shape {
+        dim { size: 128 }
+        dim { size: 32 }
+      }}}
   }
   attr {
     key: "client_terminated"
@@ -988,6 +1023,22 @@ node {
     value {
       b: false
     }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list { shape {
+        dim { size: 128 }
+        dim { size: 32 }
+      }}}
+  }
+  attr {
+    key: "shape"
+    value {
+      list { shape {
+        dim { size: 128 }
+        dim { size: 32 }
+      }}}
   }
   attr {
     key: "recv_device"
@@ -2472,7 +2523,7 @@ TEST_F(VirtualSchedulerTest, MemoryUsage) {
   // out node adds 4 tensors, each with 10x10x10x10, so the peak memory usage
   // is 4 x the input tensor size while executing the out node.
   int64 one_input_node_size = 4 * 10 * 10 * 10 * 10;
-  const std::vector<string> expected_names = {"x", "y", "z", "w"};
+  const std::vector<string> expected_names = {"x", "y", "z", "w", "add"};
   EXPECT_EQ(expected_names.size() * one_input_node_size,
             cpu_state.max_memory_usage);
   ValidateMemoryUsageSnapshot(expected_names, 0 /* port_num_expected */,
@@ -2481,8 +2532,44 @@ TEST_F(VirtualSchedulerTest, MemoryUsage) {
       {std::make_pair("/job:localhost/replica:0/task:0/cpu:0", 64)},
       scheduler_->GetPersistentMemoryUsage());
   ExpectUnorderedMapEq(
-      {std::make_pair("/job:localhost/replica:0/task:0/cpu:0", 160000)},
+      {std::make_pair("/job:localhost/replica:0/task:0/cpu:0", 200000)},
       scheduler_->GetPeakMemoryUsage());
+}
+
+TEST_F(VirtualSchedulerTest, MemoryUsageForStreamingOps) {
+  // Init.
+  CreateGrapplerItemWithAddN();
+  auto& graph = grappler_item_->graph;
+  // Nodes add and out are placed on CPU1.
+  // Nodes x, y are allocate in memory, while Nodes z and w are streaming nodes.
+  for (auto& node : *graph.mutable_node()) {
+    if (node.name() == "out" || node.name() == "add") {
+      node.set_device(kCPU1);
+    }
+    if (node.name() == "z" || node.name() == "w")
+      (*node.mutable_attr())["_streaming"].mutable_list()->add_b(true);
+  }
+
+  InitScheduler();
+
+  // Run the scheduler.
+  auto ops_executed = RunScheduler("");
+
+  const auto* device_states = scheduler_->GetDeviceStates();
+  const auto& cpu_state_0 = device_states->at(kCPU0);
+  const auto& cpu_state_1 = device_states->at(kCPU1);
+  // All tensors are of the same size, 10 x 10 x 10 x 10.
+  int64 one_input_node_size = 4 * 10 * 10 * 10 * 10;
+  const std::vector<string> cpu_0_expected_tensors = {"x", "y"};
+  const std::vector<string> cpu_1_expected_tensors = {"x", "y", "add"};
+  EXPECT_EQ(cpu_0_expected_tensors.size() * one_input_node_size,
+            cpu_state_0.max_memory_usage);
+  EXPECT_EQ(cpu_1_expected_tensors.size() * one_input_node_size,
+            cpu_state_1.max_memory_usage);
+  // After the graph is executed, at the end, memory usage for the device
+  // should be zero.
+  EXPECT_EQ(cpu_state_0.memory_usage, 0);
+  EXPECT_EQ(cpu_state_1.memory_usage, 0);
 }
 
 TEST_F(VirtualSchedulerTest, UnnecessaryFeedNodes) {

@@ -59,7 +59,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/verification_utils.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/tensor_list.h"
@@ -718,9 +717,6 @@ struct ConvertTensorListStack
     SmallVector<int64_t, 8> output_shape(/*Size=*/1, op.num_elements());
     for (const auto &dim : dense_elem_attr.getIntValues())
       output_shape.push_back(dim.getSExtValue());
-
-    if (failed(TF::VerifyShapeOfReshapeOp(output_shape))) return failure();
-
     RankedTensorType result_type =
         RankedTensorType::get(output_shape, getElementTypeOrSelf(input));
     rewriter.replaceOpWithNewOp<TF::ReshapeOp>(op, result_type, input,

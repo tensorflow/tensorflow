@@ -51,6 +51,7 @@ tf_cuda_library(
             ":immediate_execution_context",
             ":immediate_execution_operation",
             ":immediate_execution_tensor_handle",
+            ":immediate_execution_distributed_manager",
             ":abstract_tensor_handle",
             ":tfe_context_internal",
             ":tfe_cancellation_manager_internal",
@@ -70,6 +71,7 @@ tf_cuda_library(
             "//tensorflow/core:core_cpu",
             "//tensorflow/core/common_runtime/eager:attr_builder",
             "//tensorflow/core/common_runtime/eager:context",
+            "//tensorflow/core/common_runtime/eager:context_distributed_manager",
             "//tensorflow/core/common_runtime/eager:core",
             "//tensorflow/core/common_runtime/eager:eager_executor",
             "//tensorflow/core/common_runtime/eager:execute",
@@ -119,6 +121,7 @@ filegroup(
         "gradients.h",
         "gradients_internal.h",
         "immediate_execution_context.h",
+        "immediate_execution_distributed_manager.h",
         "immediate_execution_operation.h",
         "immediate_execution_tensor_handle.h",
         "tape.h",
@@ -585,6 +588,19 @@ cc_library(
 )
 
 cc_library(
+    name = "immediate_execution_distributed_manager",
+    hdrs = ["immediate_execution_distributed_manager.h"],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+cc_library(
     name = "immediate_execution_context",
     hdrs = ["immediate_execution_context.h"],
     visibility = [
@@ -592,12 +608,14 @@ cc_library(
     ],
     deps = [
         ":abstract_context",
+        ":immediate_execution_distributed_manager",
         ":immediate_execution_operation",
         ":immediate_execution_tensor_handle",
         "//tensorflow/c:tensor_interface",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],

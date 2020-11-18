@@ -66,6 +66,7 @@ distribute_py_test(
     disable_mlir_bridge = False,
     python_version = "PY3",
     tags = [
+        "no_cuda_asan",  # b/173431253
         "no_oss",
         "notsan",  # b/173246447
     ],
