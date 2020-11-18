@@ -150,10 +150,6 @@ void SelectStridedSlice(const SliceAttributes& attr, const OperationDef& op_def,
 absl::Status SelectMean(const MeanAttributes& attr, const OperationDef& op_def,
                         const GpuInfo& gpu_info,
                         std::unique_ptr<GPUOperation>* ptr) {
-  if (attr.dims.find(Axis::CHANNELS) != attr.dims.end()) {
-    return absl::UnimplementedError(
-        "Mean operation doesn't support reduction in Channels dimension.");
-  }
   Mean operation = CreateMean(attr, op_def, gpu_info);
   *ptr = absl::make_unique<Mean>(std::move(operation));
   return absl::OkStatus();

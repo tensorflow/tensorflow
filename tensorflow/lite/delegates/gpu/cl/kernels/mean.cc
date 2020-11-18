@@ -85,6 +85,15 @@ int GetWGTotalSize(const GpuInfo& gpu_info) {
   return total_wg_size;
 }
 
+bool HasAxis(const std::vector<Axis>& axis, Axis a) {
+  for (const auto& a2 : axis) {
+    if (a2 == a) {
+      return true;
+    }
+  }
+  return false;
+}
+
 }  // namespace
 
 Mean::Mean(const MeanAttributes& attr, const OperationDef& definition,
@@ -120,25 +129,23 @@ std::string Mean::GetMeanKernelCode(const OperationDef& op_def,
   AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
   args_.AddFloat("inv_multiplier_1");
   args_.AddFloat("inv_multiplier_2");
+  args_.AddFloat("mask_x");
+  args_.AddFloat("mask_y");
+  args_.AddFloat("mask_z");
+  args_.AddFloat("mask_w");
 
   std::set<Axis> axis_to_leave;
   const std::vector<Axis> all_axis = {Axis::WIDTH, Axis::HEIGHT, Axis::DEPTH,
                                       Axis::CHANNELS, Axis::BATCH};
   for (const auto& a : all_axis) {
     if (op_def.dst_tensors[0].HasAxis(a)) {
-      bool leave = true;
-      for (const auto& a_to_reduce : axis_to_reduce) {
-        if (a_to_reduce == a) {
-          leave = false;
-          break;
-        }
-      }
-      if (leave) {
+      if (!HasAxis(axis_to_reduce, a)) {
         axis_to_leave.insert(a);
       }
     }
   }
   int wg_dims = std::min(3, static_cast<int>(axis_to_reduce.size()));
+  const bool channels_reductin = HasAxis(axis_to_reduce, Axis::CHANNELS);
 
   std::string c = GetCommonDefines(op_def.precision);
   const std::string wg_x = std::to_string(work_group_size.x);
@@ -200,13 +207,15 @@ std::string Mean::GetMeanKernelCode(const OperationDef& op_def,
   std::string dst_check;
   for (auto& axis : axis_to_leave) {
     if (!dst_check.empty()) {
-      dst_check += " && ";
+      dst_check += " || ";
     }
     dst_check += "DST_" + axis_to_coord[axis] + " >= args.dst_tensor." +
                  axis_to_selector[axis];
   }
-  c += "  if (" + dst_check + ") return;\n";
-  c += "  accum[local_id] = (float4)(0.0f);\n";
+  if (!dst_check.empty()) {
+    c += "  if (" + dst_check + ") return;\n";
+  }
+  c += "  float4 reducer = (float4)(0.0f);\n";
   const std::vector<std::string> local_ids = {"local_x", "local_y", "local_z"};
   const std::vector<std::string> local_sizes = {wg_x, wg_y, wg_z};
   std::map<Axis, std::string> src_coords;
@@ -227,6 +236,12 @@ std::string Mean::GetMeanKernelCode(const OperationDef& op_def,
     c += "  for (int " + src_coord + " = " + first + "; " + src_coord +
          " < args.src_tensor." + axis_to_selector[axis] + "; " + src_coord +
          " += " + step + ") {\n";
+    if (axis == Axis::CHANNELS) {
+      c += "    bool last = SRC_S == args.src_tensor.Slices() - 1;\n";
+      c += "    float4 mask_a = last ? (float4)(args.mask_x, args.mask_y, "
+           "args.mask_z, args.mask_w) : (float4)(1.0f);\n";
+      c += "    float4 mask_b = last ? (float4)(0.0f) : (float4)(0.0f);\n";
+    }
   }
   std::string src_coordinates;
   for (const auto& a : all_axis) {
@@ -237,12 +252,17 @@ std::string Mean::GetMeanKernelCode(const OperationDef& op_def,
       src_coordinates += src_coords[a];
     }
   }
-  c += "    accum[local_id] += args.src_tensor.Read<float>(" + src_coordinates +
+  c += "    float4 src_val = args.src_tensor.Read<float>(" + src_coordinates +
        ");\n";
+  if (channels_reductin) {
+    c += "    reducer += src_val * mask_a + mask_b;\n";
+  } else {
+    c += "    reducer += src_val;\n";
+  }
   for (int i = 0; i < axis_to_reduce.size(); ++i) {
     c += "  }\n";
   }
-  c += "  accum[local_id] *= args.inv_multiplier_1;\n";
+  c += "  accum[local_id] = reducer * args.inv_multiplier_1;\n";
   c += "  barrier(CLK_LOCAL_MEM_FENCE);\n";
   const int total_size =
       work_group_size.x * work_group_size.y * work_group_size.z;
@@ -262,6 +282,9 @@ std::string Mean::GetMeanKernelCode(const OperationDef& op_def,
   reminder *= 4;
   for (int i = 1; i < reminder; ++i) {
     c += "  sum += accum[" + std::to_string(offset * i) + "];\n";
+  }
+  if (channels_reductin) {
+    c += "  sum.x += sum.y + sum.z + sum.w;\n";
   }
   c += "  FLT4 result = TO_FLT4(sum * args.inv_multiplier_2);\n";
   std::string dst_coordinates;
@@ -295,6 +318,11 @@ absl::Status Mean::BindArguments(ArgumentsBinder* args) {
   const double size_1 = reduction_size / size_0;
   RETURN_IF_ERROR(args->SetFloat("inv_multiplier_1", 1.0 / size_1));
   RETURN_IF_ERROR(args->SetFloat("inv_multiplier_2", 1.0 / size_0));
+  float4 mask = GetMaskForLastPlane(src_[0]->Channels());
+  RETURN_IF_ERROR(args->SetFloat("mask_x", mask.x));
+  RETURN_IF_ERROR(args->SetFloat("mask_y", mask.y));
+  RETURN_IF_ERROR(args->SetFloat("mask_z", mask.z));
+  RETURN_IF_ERROR(args->SetFloat("mask_w", mask.w));
   return absl::OkStatus();
 }
 
