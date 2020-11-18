@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/threadpool.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace xla {
 namespace {
@@ -199,6 +200,8 @@ TEST(ClientServerTest, ClientsTerminateShutdownIfAnyClientGoesAway) {
     client_options.heartbeat_interval = service_options.heartbeat_interval;
     client_options.max_missing_heartbeats = 2;
     client_options.shutdown_on_destruction = false;
+    client_options.missed_heartbeat_callback =
+        [&](xla::Status status, bool coordinator_initiated) {};
     DistributedRuntimeClient client(
         server->InProcessChannel(::grpc::ChannelArguments()), client_options);
     GlobalTopologyProto topology;
@@ -337,6 +340,85 @@ TEST(ClientServerTest, DISABLED_ClientsTerminateIfServiceGoesAway) {
   for (int i = 0; i < num_nodes; ++i) {
     EXPECT_EQ(statuses[i].code(), tensorflow::error::DEADLINE_EXCEEDED)
         << statuses[i];
+  }
+}
+
+// We should eventually connect, even if some clients are late to show up.
+TEST(ClientServerTest, LateClientsAreOk) {
+  int num_nodes = 3;
+  DistributedRuntimeServiceImpl::Options service_options;
+  service_options.num_nodes = num_nodes;
+  DistributedRuntimeServiceImpl service(service_options);
+  ::grpc::ServerBuilder builder;
+  builder.RegisterService(&service);
+  auto server = builder.BuildAndStart();
+
+  absl::Barrier barrier(num_nodes);
+
+  auto thread_fn = [&](int node_id) -> xla::Status {
+    DistributedRuntimeClient::Options client_options;
+    client_options.node_id = node_id;
+    client_options.init_timeout = absl::Milliseconds(20000);
+    client_options.rpc_timeout = absl::Milliseconds(200);
+    DistributedRuntimeClient client(
+        server->InProcessChannel(::grpc::ChannelArguments()), client_options);
+    GlobalTopologyProto topology;
+
+    barrier.Block();
+    absl::SleepFor(absl::Milliseconds(200) * node_id);
+    TF_RETURN_IF_ERROR(client.Connect());
+    TF_RETURN_IF_ERROR(client.Shutdown());
+    return xla::Status::OK();
+  };
+
+  std::vector<xla::Status> statuses(num_nodes);
+  {
+    tensorflow::thread::ThreadPool thread_pool(tensorflow::Env::Default(),
+                                               "test_threads", num_nodes);
+    for (int i = 0; i < num_nodes; ++i) {
+      thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
+    }
+  }
+  for (int i = 0; i < num_nodes; ++i) {
+    TF_EXPECT_OK(statuses[i]);
+  }
+}
+
+// We should eventually time out if a client does not show up.
+TEST(ClientServerTest, ConnectEventuallyTimesOutIfAClientDoesNotShowUp) {
+  int num_nodes = 3;
+  DistributedRuntimeServiceImpl::Options service_options;
+  service_options.num_nodes = num_nodes;
+  DistributedRuntimeServiceImpl service(service_options);
+  ::grpc::ServerBuilder builder;
+  builder.RegisterService(&service);
+  auto server = builder.BuildAndStart();
+
+  auto thread_fn = [&](int node_id) -> xla::Status {
+    DistributedRuntimeClient::Options client_options;
+    client_options.node_id = node_id;
+    client_options.init_timeout = absl::Milliseconds(500);
+    client_options.rpc_timeout = absl::Milliseconds(200);
+    DistributedRuntimeClient client(
+        server->InProcessChannel(::grpc::ChannelArguments()), client_options);
+    GlobalTopologyProto topology;
+
+    TF_RETURN_IF_ERROR(client.Connect());
+    TF_RETURN_IF_ERROR(client.Shutdown());
+    return xla::Status::OK();
+  };
+
+  // Note: one fewer thread than 'num_nodes'.
+  std::vector<xla::Status> statuses(num_nodes - 1);
+  {
+    tensorflow::thread::ThreadPool thread_pool(tensorflow::Env::Default(),
+                                               "test_threads", num_nodes);
+    for (int i = 0; i < num_nodes - 1; ++i) {
+      thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
+    }
+  }
+  for (int i = 0; i < num_nodes - 1; ++i) {
+    EXPECT_EQ(statuses[i].code(), tensorflow::error::DEADLINE_EXCEEDED);
   }
 }
 

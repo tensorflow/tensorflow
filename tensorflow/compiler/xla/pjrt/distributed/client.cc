@@ -16,11 +16,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/distributed/client.h"
 
 #include <chrono>  // NOLINT
+#include <random>
 
 #include "absl/time/time.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/protocol.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/util.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/random.h"
 
 namespace xla {
@@ -58,34 +60,51 @@ DistributedRuntimeClient::~DistributedRuntimeClient() {
 }
 
 xla::Status DistributedRuntimeClient::Connect() {
-  ::grpc::ClientContext ctx;
   if (state_ != State::kNotConnected) {
     return xla::FailedPrecondition("Connect() called when client in state %s",
                                    StateToString(state_));
   }
-  ctx.set_fail_fast(false);
-  ctx.set_deadline(absl::ToChronoTime(absl::Now() + options_.rpc_timeout));
   ConnectRequest request;
   request.set_protocol_version(kDistributedRuntimeProtocolVersion);
   request.set_timeout_milliseconds(
-      absl::ToInt64Milliseconds(options_.rpc_timeout));
+      absl::ToInt64Milliseconds(options_.rpc_timeout) / 2);
   request.set_node_id(options_.node_id);
   VLOG(10) << "Connect: " << request.DebugString();
   ConnectResponse response;
   ::grpc::Status status;
   absl::Time deadline = absl::Now() + options_.init_timeout;
+  int attempt = 0;
+  std::default_random_engine generator;
+  std::uniform_real_distribution<double> distribution(0.0, 1.0);
   do {
+    ::grpc::ClientContext ctx;
+    ctx.set_fail_fast(false);
+    ctx.set_deadline(absl::ToChronoTime(absl::Now() + options_.rpc_timeout));
     request.set_client_id(tensorflow::random::New64());
     response.Clear();
     status = stub_->Connect(&ctx, request, &response);
     if (!status.ok()) {
       VLOG(1) << "Connect failed() with status: " << FromGrpcStatus(status);
-      absl::SleepFor(absl::Seconds(1));
+      if (attempt % 10 == 0) {
+        LOG(INFO) << "Connect failed() with status: " << FromGrpcStatus(status);
+      }
+      // Exponential backoff with jitter. Note we will retry for `init_timeout`
+      // time in total; the `14` here corresponds to an ~16s maximum interval
+      // between connection attempts.
+      int backoff = 1 << std::min(14, attempt);
+      absl::SleepFor(absl::Milliseconds(backoff * distribution(generator)));
     }
+    ++attempt;
   } while (!status.ok() && absl::Now() < deadline);
   if (!status.ok()) {
-    LOG(ERROR) << "Connect() failed with status: " << FromGrpcStatus(status);
-    return FromGrpcStatus(status);
+    LOG(ERROR) << "Connect() failed after " << attempt << " retries in "
+               << options_.init_timeout
+               << "; most recent failure status: " << FromGrpcStatus(status);
+    return tensorflow::errors::DeadlineExceeded(
+        absl::StrFormat("Connect() timed out after %s with %d attempts. Most "
+                        "recent failure was: %s",
+                        absl::FormatDuration(options_.init_timeout), attempt,
+                        FromGrpcStatus(status).ToString()));
   }
   VLOG(10) << "Connect() response: " << response.DebugString();
   state_ = State::kConnected;
@@ -94,6 +113,7 @@ xla::Status DistributedRuntimeClient::Connect() {
   heartbeat_thread_.reset(options_.env->StartThread(
       tensorflow::ThreadOptions(), "pjrt_distributed_heartbeat",
       [this]() { HeartbeatLoop(); }));
+  LOG(INFO) << "Connected to distributed JAX controller";
   return xla::Status::OK();
 }
 
@@ -124,6 +144,7 @@ xla::Status DistributedRuntimeClient::EnumerateDevices(
 }
 
 xla::Status DistributedRuntimeClient::Shutdown() {
+  LOG(INFO) << "Waiting for all distributed JAX tasks to shut down.";
   ::grpc::ClientContext ctx;
   if (state_ != State::kConnected) {
     return xla::FailedPrecondition(
@@ -136,6 +157,7 @@ xla::Status DistributedRuntimeClient::Shutdown() {
   VLOG(10) << "Shutdown: " << request.DebugString();
   ShutdownResponse response;
   ::grpc::Status status = stub_->Shutdown(&ctx, request, &response);
+  LOG(INFO) << "Distributed task shutdown result: " << FromGrpcStatus(status);
   if (!status.ok()) {
     return FromGrpcStatus(status);
   }
