@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/buffer.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
-#include "tensorflow/lite/delegates/gpu/cl/model_hints.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/operation_selector.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/special_selector.h"
 #include "tensorflow/lite/delegates/gpu/cl/storage_type_util.h"
