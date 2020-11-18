@@ -43,6 +43,7 @@ using tensorflow::StatusFromTF_Status;
 
 namespace stream_executor {
 using tensorflow::StringPiece;
+using OwnedTFStatus = std::unique_ptr<TF_Status, TFStatusDeleter>;
 
 namespace {
 

@@ -38,12 +38,9 @@ port::Status InitStreamExecutorPlugin(void* dso_handle);
 // testing).
 port::Status InitStreamExecutorPlugin(SEInitPluginFn init_fn);
 
-namespace {
 struct TFStatusDeleter {
   void operator()(TF_Status* s) const { TF_DeleteStatus(s); }
 };
-using OwnedTFStatus = std::unique_ptr<TF_Status, TFStatusDeleter>;
-}  // namespace
 
 // This file implements core stream executor base classes in terms of
 // the C API defined in stream_executor.h. A class "CSomething" represents a
@@ -103,7 +100,7 @@ class CStream : public internal::StreamInterface {
   ~CStream() override { Destroy(); }
 
   port::Status Create() {
-    OwnedTFStatus c_status(TF_NewStatus());
+    std::unique_ptr<TF_Status, TFStatusDeleter> c_status(TF_NewStatus());
     stream_executor_->create_stream(device_, &stream_handle_, c_status.get());
     port::Status s = tensorflow::StatusFromTF_Status(c_status.get());
     return s;
@@ -133,13 +130,13 @@ class CEvent : public internal::EventInterface {
   ~CEvent() override { Destroy(); }
 
   port::Status Create() {
-    OwnedTFStatus c_status(TF_NewStatus());
+    std::unique_ptr<TF_Status, TFStatusDeleter> c_status(TF_NewStatus());
     stream_executor_->create_event(device_, &event_handle_, c_status.get());
     return tensorflow::StatusFromTF_Status(c_status.get());
   }
 
   port::Status Record(SP_Stream stream_handle) {
-    OwnedTFStatus c_status(TF_NewStatus());
+    std::unique_ptr<TF_Status, TFStatusDeleter> c_status(TF_NewStatus());
     stream_executor_->record_event(device_, stream_handle, event_handle_,
                                    c_status.get());
     return tensorflow::StatusFromTF_Status(c_status.get());
@@ -171,7 +168,7 @@ class CTimer : public internal::TimerInterface {
   ~CTimer() override { Destroy(); }
 
   port::Status Create() {
-    OwnedTFStatus c_status(TF_NewStatus());
+    std::unique_ptr<TF_Status, TFStatusDeleter> c_status(TF_NewStatus());
     stream_executor_->create_timer(device_, &timer_handle_, c_status.get());
     return tensorflow::StatusFromTF_Status(c_status.get());
   }
