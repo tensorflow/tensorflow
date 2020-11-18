@@ -132,6 +132,7 @@
   *   `tf.nn.max_pool2d` now supports explicit padding.
 * `tf.image`:
   * Adds deterministic `tf.image.stateless_random_*` functions for each `tf.image.random_*` function. Added a new op `stateless_sample_distorted_bounding_box`       which is a deterministic version of `sample_distorted_bounding_box` op. Given the same seed, these stateless functions/ops produce the same results               independent of how many times the function is called, and independent of global seed settings.
+  * Adds deterministic `tf.image.resize` backprop CUDA kernels for `method=ResizeMethod.BILINEAR` (the default method). Enable by setting the environment             variable `TF_DETERMINISTIC_OPS` to `"true"` or `"1"`.
 * `tf.print`:
   * Bug fix in `tf.print()` with `OrderedDict` where if an `OrderedDict` didn't have the keys sorted, the keys and values were not being printed
     in accordance with their correct mapping.
