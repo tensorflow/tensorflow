@@ -6204,6 +6204,7 @@ filegroup(
         "reduction_ops_prod.cc",
         "reduction_ops_sum.cc",
         "regex_replace_op.cc",
+        "regex_full_match_op.cc",
         "relu_op.cc",
         "reshape_util.cc",
         "restore_op.cc",
