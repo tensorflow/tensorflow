@@ -240,11 +240,11 @@ tflite_micro_cc_test(
 cc_library(
     name = "flexbuffers_generated_data",
     srcs = [
-       "flexbuffers_generated_data.cc",
+        "flexbuffers_generated_data.cc",
     ],
     hdrs = [
         "flexbuffers_generated_data.h",
-    ]
+    ],
 )
 
 tflite_micro_cc_test(
@@ -253,11 +253,11 @@ tflite_micro_cc_test(
         "detection_postprocess_test.cc",
     ],
     deps = [
+        ":flexbuffers_generated_data",
         ":kernel_runner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/micro:test_helpers",
-        ":flexbuffers_generated_data",
         "//tensorflow/lite/micro/testing:micro_test",
         "@flatbuffers//:runtime_cc",
     ],
