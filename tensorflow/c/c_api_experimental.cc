@@ -777,9 +777,7 @@ TF_Library* TF_LoadPluggableDeviceLibrary(const char* library_filename,
     } else {
       status->status =
           env->LoadDynamicLibrary(library_filename, &lib_handle->lib_handle);
-      if (status->status.ok()) {
-        // Init PluggableDevice Plugin
-      } else {
+      if (!status->status.ok()) {
         delete lib_handle;
         return nullptr;
       }

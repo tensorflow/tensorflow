@@ -170,7 +170,6 @@ class DeviceBase {
     return device_thread_pool_;
   }
 
-
   // Does not take ownership.
   void set_eigen_cpu_device(Eigen::ThreadPoolDevice* d);
 
@@ -203,7 +202,6 @@ class DeviceBase {
   }
 
   virtual const Eigen::ThreadPoolDevice* eigen_cpu_device();
-
 
   // Caller owns the return value. The OpKernelContext calls this even
   // for devices that do not implement an eigen_gpu_device. Overridden
