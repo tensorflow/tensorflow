@@ -35,44 +35,34 @@ void *Init(TfLiteContext *context, const char *buffer, size_t length) {
   op_data->pad_value =
       get_named_uint32_custom_option(context, buffer, length, "pad_value");
 
-  const uint8_t *buffer_t = reinterpret_cast<const uint8_t *>(buffer);
-  auto map = flexbuffers::GetRoot(buffer_t, length).AsMap();
-  auto keys = map.Keys();
-  auto values = map.Values();
-
-  for (int i = 0; i < map.size(); ++i) {
-    const std::string &key = keys[i].AsString().str();
-    if (key.compare("pad_sizes") == 0) {
-      const auto &vec = values[i].AsVector();
-      op_data->pv.top = vec[0].AsInt32();
-      op_data->pv.bottom = vec[1].AsInt32();
-      op_data->pv.left = vec[2].AsInt32();
-      op_data->pv.right = vec[3].AsInt32();
-      break;
-    }
-  }
-
   return op_data;
 }
 
 TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
-  TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
+  TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  const TfLiteTensor *input = GetInput(context, node, 0);
+  auto *input = GetInput(context, node, 0);
 
-  // setup runtime parameters
   nn_image_params_t x;
   x.height = (uint32_t)input->dims->data[1];
   x.width = (uint32_t)input->dims->data[2];
   x.channels = (uint32_t)input->dims->data[3];
 
+  auto *paddings = GetInput(context, node, 1);
+  auto *op_data = reinterpret_cast<PadOpData *>(node->user_data);
+
+  // TODO: change paddings tensor type to int16
+  auto *pad_sizes = paddings->data.i32;
+  op_data->pv.top = pad_sizes[2];
+  op_data->pv.bottom = pad_sizes[3];
+  op_data->pv.left = pad_sizes[4];
+  op_data->pv.right = pad_sizes[5];
+
   size_t type_size;
   TF_LITE_ENSURE_OK(context, GetSizeOfType(context, input->type, &type_size));
   auto bytes_per_pixel = type_size * x.channels;
   TF_LITE_ENSURE(context, bytes_per_pixel % 4 == 0);
-
-  auto *op_data = reinterpret_cast<PadOpData *>(node->user_data);
 
   pad_prepare(&op_data->plan, &op_data->pv, &x, bytes_per_pixel);
 
