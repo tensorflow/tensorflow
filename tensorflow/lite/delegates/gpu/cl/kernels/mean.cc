@@ -96,35 +96,36 @@ bool HasAxis(const std::vector<Axis>& axis, Axis a) {
 
 }  // namespace
 
-Mean::Mean(const MeanAttributes& attr, const OperationDef& definition,
-           const GpuInfo& gpu_info)
+Reduce::Reduce(const std::set<Axis>& axis_to_reduce, OperationType op_type,
+               const OperationDef& definition, const GpuInfo& gpu_info)
     : GPUOperation(definition) {
   std::vector<Axis> ordered_axis_to_reduce;
   for (const auto& a :
        {Axis::CHANNELS, Axis::DEPTH, Axis::HEIGHT, Axis::WIDTH, Axis::BATCH}) {
-    if (attr.dims.count(a)) {
+    if (axis_to_reduce.count(a)) {
       ordered_axis_to_reduce.push_back(a);
     }
   }
   int wg_dims = std::min(3, static_cast<int>(ordered_axis_to_reduce.size()));
   const int total_wg_size = GetWGTotalSize(gpu_info);
   work_group_size_ = GetWGSizeFromTotalSize(total_wg_size, wg_dims);
-  code_ =
-      GetMeanKernelCode(definition_, work_group_size_, ordered_axis_to_reduce);
+  code_ = GetReduceKernelCode(definition_, work_group_size_,
+                              ordered_axis_to_reduce, op_type);
 }
 
-Mean::Mean(Mean&& operation) : GPUOperation(std::move(operation)) {}
+Reduce::Reduce(Reduce&& operation) : GPUOperation(std::move(operation)) {}
 
-Mean& Mean::operator=(Mean&& operation) {
+Reduce& Reduce::operator=(Reduce&& operation) {
   if (this != &operation) {
     GPUOperation::operator=(std::move(operation));
   }
   return *this;
 }
 
-std::string Mean::GetMeanKernelCode(const OperationDef& op_def,
-                                    const int3& work_group_size,
-                                    const std::vector<Axis>& axis_to_reduce) {
+std::string Reduce::GetReduceKernelCode(const OperationDef& op_def,
+                                        const int3& work_group_size,
+                                        const std::vector<Axis>& axis_to_reduce,
+                                        OperationType op_type) {
   AddSrcTensor("src_tensor", op_def.src_tensors[0]);
   AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
   args_.AddFloat("inv_multiplier_1");
@@ -262,7 +263,10 @@ std::string Mean::GetMeanKernelCode(const OperationDef& op_def,
   for (int i = 0; i < axis_to_reduce.size(); ++i) {
     c += "  }\n";
   }
-  c += "  accum[local_id] = reducer * args.inv_multiplier_1;\n";
+  if (op_type == OperationType::MEAN) {
+    c += "  reducer *= args.inv_multiplier_1;\n";
+  }
+  c += "  accum[local_id] = reducer;\n";
   c += "  barrier(CLK_LOCAL_MEM_FENCE);\n";
   const int total_size =
       work_group_size.x * work_group_size.y * work_group_size.z;
@@ -286,7 +290,10 @@ std::string Mean::GetMeanKernelCode(const OperationDef& op_def,
   if (channels_reductin) {
     c += "  sum.x += sum.y + sum.z + sum.w;\n";
   }
-  c += "  FLT4 result = TO_FLT4(sum * args.inv_multiplier_2);\n";
+  if (op_type == OperationType::MEAN) {
+    c += "  sum *= args.inv_multiplier_2;\n";
+  }
+  c += "  FLT4 result = TO_FLT4(sum);\n";
   std::string dst_coordinates;
   for (const auto& a : all_axis) {
     if (op_def.dst_tensors[0].HasAxis(a)) {
@@ -305,7 +312,7 @@ std::string Mean::GetMeanKernelCode(const OperationDef& op_def,
   return c;
 }
 
-absl::Status Mean::BindArguments(ArgumentsBinder* args) {
+absl::Status Reduce::BindArguments(ArgumentsBinder* args) {
   const double total_src_elements = 1.0 * src_[0]->Batch() * src_[0]->Width() *
                                     src_[0]->Height() * src_[0]->Depth() *
                                     src_[0]->Channels();
@@ -326,16 +333,16 @@ absl::Status Mean::BindArguments(ArgumentsBinder* args) {
   return absl::OkStatus();
 }
 
-int3 Mean::GetGridSize() const {
+int3 Reduce::GetGridSize() const {
   const int grid_x = work_group_size_.x * dst_[0]->Width() * dst_[0]->Batch();
   const int grid_y = work_group_size_.y * dst_[0]->Height() * dst_[0]->Depth();
   const int grid_z = work_group_size_.z * dst_[0]->Slices();
   return int3(grid_x, grid_y, grid_z);
 }
 
-Mean CreateMean(const MeanAttributes& attr, const OperationDef& definition,
-                const GpuInfo& gpu_info) {
-  return Mean(attr, definition, gpu_info);
+Reduce CreateReduce(const std::set<Axis>& axis_to_reduce, OperationType op_type,
+                    const OperationDef& definition, const GpuInfo& gpu_info) {
+  return Reduce(axis_to_reduce, op_type, definition, gpu_info);
 }
 
 }  // namespace cl

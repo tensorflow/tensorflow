@@ -147,12 +147,12 @@ void SelectStridedSlice(const SliceAttributes& attr, const OperationDef& op_def,
   *ptr = absl::make_unique<StridedSlice>(std::move(operation));
 }
 
-absl::Status SelectMean(const MeanAttributes& attr, const OperationDef& op_def,
-                        const GpuInfo& gpu_info,
-                        std::unique_ptr<GPUOperation>* ptr) {
-  Mean operation = CreateMean(attr, op_def, gpu_info);
-  *ptr = absl::make_unique<Mean>(std::move(operation));
-  return absl::OkStatus();
+std::unique_ptr<GPUOperation> SelectReduce(const std::set<Axis>& axis_to_reduce,
+                                           OperationType op_type,
+                                           const OperationDef& op_def,
+                                           const GpuInfo& gpu_info) {
+  return absl::make_unique<Reduce>(
+      CreateReduce(axis_to_reduce, op_type, op_def, gpu_info));
 }
 
 void SelectSoftmax(const BHWC& shape, const OperationDef& op_def,

@@ -388,7 +388,8 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
     }
     case OperationType::MEAN: {
       auto attr = absl::any_cast<MeanAttributes>(node.operation.attributes);
-      return SelectMean(attr, op_def, gpu_info, gpu_op);
+      *gpu_op = SelectReduce(attr.dims, op_type, op_def, gpu_info);
+      return absl::OkStatus();
     }
     case OperationType::MEAN_STDDEV_NORMALIZATION: {
       MeanStdDevNormalization operation = CreateMeanStdDevNormalization(
@@ -502,10 +503,14 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
       return absl::UnimplementedError(absl::StrCat(
           "No support of ", node.operation.type, " with this parameters"));
     }
+    case OperationType::REDUCE_SUM: {
+      auto attr = absl::any_cast<ReduceAttributes>(node.operation.attributes);
+      *gpu_op = SelectReduce(attr.dims, op_type, op_def, gpu_info);
+      return absl::OkStatus();
+    }
     case OperationType::REDUCE_MAXIMUM:
     case OperationType::REDUCE_MINIMUM:
-    case OperationType::REDUCE_PRODUCT:
-    case OperationType::REDUCE_SUM: {
+    case OperationType::REDUCE_PRODUCT: {
       auto attr = absl::any_cast<ReduceAttributes>(node.operation.attributes);
       if (attr.dims != std::set<Axis>({Axis::CHANNELS})) {
         return absl::UnimplementedError(

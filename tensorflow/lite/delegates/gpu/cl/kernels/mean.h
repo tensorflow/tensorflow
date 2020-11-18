@@ -26,11 +26,11 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-class Mean : public GPUOperation {
+class Reduce : public GPUOperation {
  public:
-  Mean() = default;
-  Mean(const MeanAttributes& attr, const OperationDef& definition,
-       const GpuInfo& gpu_info);
+  Reduce() = default;
+  Reduce(const std::set<Axis>& axis_to_reduce, OperationType op_type,
+         const OperationDef& definition, const GpuInfo& gpu_info);
 
   void GetPossibleKernelWorkGroups(
       TuningType tuning_type, const GpuInfo& gpu_info,
@@ -42,19 +42,20 @@ class Mean : public GPUOperation {
   int3 GetGridSize() const override;
 
   // Move only
-  Mean(Mean&& operation);
-  Mean& operator=(Mean&& operation);
-  Mean(const Mean&) = delete;
-  Mean& operator=(const Mean&) = delete;
+  Reduce(Reduce&& operation);
+  Reduce& operator=(Reduce&& operation);
+  Reduce(const Reduce&) = delete;
+  Reduce& operator=(const Reduce&) = delete;
 
  private:
-  std::string GetMeanKernelCode(const OperationDef& op_def,
-                                const int3& work_group_size,
-                                const std::vector<Axis>& axis_to_reduce);
+  std::string GetReduceKernelCode(const OperationDef& op_def,
+                                  const int3& work_group_size,
+                                  const std::vector<Axis>& axis_to_reduce,
+                                  OperationType op_type);
 };
 
-Mean CreateMean(const MeanAttributes& attr, const OperationDef& definition,
-                const GpuInfo& gpu_info);
+Reduce CreateReduce(const std::set<Axis>& axis_to_reduce, OperationType op_type,
+                    const OperationDef& definition, const GpuInfo& gpu_info);
 
 }  // namespace cl
 }  // namespace gpu
