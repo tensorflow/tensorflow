@@ -33,7 +33,7 @@ void *Init(TfLiteContext *context, const char *buffer, size_t length) {
   TFLITE_DCHECK(length > 0);
 
   op_data->pad_value =
-      get_named_uint32_custom_option(context, buffer, length, "pad_values");
+      get_named_uint32_custom_option(context, buffer, length, "pad_value");
 
   const uint8_t *buffer_t = reinterpret_cast<const uint8_t *>(buffer);
   auto map = flexbuffers::GetRoot(buffer_t, length).AsMap();
@@ -42,7 +42,7 @@ void *Init(TfLiteContext *context, const char *buffer, size_t length) {
 
   for (int i = 0; i < map.size(); ++i) {
     const std::string &key = keys[i].AsString().str();
-    if (key.compare("padding_values") == 0) {
+    if (key.compare("pad_sizes") == 0) {
       const auto &vec = values[i].AsVector();
       op_data->pv.top = vec[0].AsInt32();
       op_data->pv.bottom = vec[1].AsInt32();
@@ -68,7 +68,7 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
   x.channels = (uint32_t)input->dims->data[3];
 
   size_t type_size;
-  GetSizeOfType(context, input->type, &type_size);
+  TF_LITE_ENSURE_OK(context, GetSizeOfType(context, input->type, &type_size));
   auto bytes_per_pixel = type_size * x.channels;
   TF_LITE_ENSURE(context, bytes_per_pixel % 4 == 0);
 
