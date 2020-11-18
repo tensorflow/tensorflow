@@ -25,28 +25,83 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace cl {
-
-Mean::Mean(const OperationDef& definition, const GpuInfo& gpu_info)
-    : GPUOperation(definition) {
-  // for workgroup size:
-  // must be: (x * y) % 4 = 0;
-  // must be: z = 1;
-  work_group_size_ = int3(16, 16, 1);
-  if (gpu_info.IsAdreno()) {
-    if (gpu_info.adreno_info.IsAdreno3xx()) {
-      work_group_size_ = int3(16, 8, 1);
+namespace {
+// total_wg_size is pot, dimensions is {1, 2, 3}
+int3 GetWGSizeFromTotalSize(int total_wg_size, int dimensions) {
+  if (dimensions == 1) {
+    return {total_wg_size, 1, 1};
+  } else if (dimensions == 2) {
+    int3 wg_size = int3(1, 1, 1);
+    while (total_wg_size != 1) {
+      if (total_wg_size >= 4) {
+        wg_size.x *= 2;
+        wg_size.y *= 2;
+        total_wg_size /= 4;
+      } else {
+        // total_wg_size == 2
+        wg_size.x *= 2;
+        total_wg_size /= 2;
+      }
     }
+    return wg_size;
+  } else {
+    // dimensions == 3
+    int3 wg_size = int3(1, 1, 1);
+    while (total_wg_size != 1) {
+      if (total_wg_size >= 8) {
+        wg_size.x *= 2;
+        wg_size.y *= 2;
+        wg_size.z *= 2;
+        total_wg_size /= 8;
+      } else if (total_wg_size == 4) {
+        wg_size.x *= 2;
+        wg_size.y *= 2;
+        total_wg_size /= 4;
+      } else {
+        // total_wg_size == 2
+        wg_size.x *= 2;
+        total_wg_size /= 2;
+      }
+    }
+    return wg_size;
+  }
+}
+
+int GetWGTotalSize(const GpuInfo& gpu_info) {
+  // total_wg_size must be power of 2 and >= 4;
+  int total_wg_size = 256;
+  if (gpu_info.IsAdreno() && gpu_info.adreno_info.IsAdreno3xx()) {
+    total_wg_size = 128;
   }
   if (gpu_info.IsMali()) {
     const MaliInfo& mali_info = gpu_info.mali_info;
     if (mali_info.IsMaliT6xx() || mali_info.IsMaliT7xx() ||
         mali_info.IsMaliT8xx()) {
-      work_group_size_ = int3(8, 4, 1);
+      total_wg_size = 32;
     } else {
-      work_group_size_ = int3(8, 8, 1);
+      total_wg_size = 64;
     }
   }
-  code_ = GetMeanKernelCode(definition_, work_group_size_);
+  return total_wg_size;
+}
+
+}  // namespace
+
+Mean::Mean(const MeanAttributes& attr, const OperationDef& definition,
+           const GpuInfo& gpu_info)
+    : GPUOperation(definition) {
+  std::vector<Axis> ordered_axis_to_reduce;
+  for (const auto& a :
+       {Axis::CHANNELS, Axis::DEPTH, Axis::HEIGHT, Axis::WIDTH, Axis::BATCH}) {
+    if (attr.dims.count(a)) {
+      ordered_axis_to_reduce.push_back(a);
+    }
+  }
+  int wg_dims = std::min(3, static_cast<int>(ordered_axis_to_reduce.size()));
+  const int total_wg_size = GetWGTotalSize(gpu_info);
+  work_group_size_ = GetWGSizeFromTotalSize(total_wg_size, wg_dims);
+  code_ =
+      GetMeanKernelCode(definition_, work_group_size_, ordered_axis_to_reduce);
 }
 
 Mean::Mean(Mean&& operation) : GPUOperation(std::move(operation)) {}
@@ -59,43 +114,138 @@ Mean& Mean::operator=(Mean&& operation) {
 }
 
 std::string Mean::GetMeanKernelCode(const OperationDef& op_def,
-                                    const int3& work_group_size) {
+                                    const int3& work_group_size,
+                                    const std::vector<Axis>& axis_to_reduce) {
   AddSrcTensor("src_tensor", op_def.src_tensors[0]);
   AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
   args_.AddFloat("inv_multiplier_1");
   args_.AddFloat("inv_multiplier_2");
 
+  std::set<Axis> axis_to_leave;
+  const std::vector<Axis> all_axis = {Axis::WIDTH, Axis::HEIGHT, Axis::DEPTH,
+                                      Axis::CHANNELS, Axis::BATCH};
+  for (const auto& a : all_axis) {
+    if (op_def.dst_tensors[0].HasAxis(a)) {
+      bool leave = true;
+      for (const auto& a_to_reduce : axis_to_reduce) {
+        if (a_to_reduce == a) {
+          leave = false;
+          break;
+        }
+      }
+      if (leave) {
+        axis_to_leave.insert(a);
+      }
+    }
+  }
+  int wg_dims = std::min(3, static_cast<int>(axis_to_reduce.size()));
+
   std::string c = GetCommonDefines(op_def.precision);
   const std::string wg_x = std::to_string(work_group_size.x);
   const std::string wg_y = std::to_string(work_group_size.y);
+  const std::string wg_z = std::to_string(work_group_size.z);
+  const int wg_total_size =
+      work_group_size.x * work_group_size.y * work_group_size.z;
   c += "__kernel void main_function(\n";
   c += "$0) {\n";
-  c += "  __local float4 accum[" +
-       std::to_string(work_group_size.x * work_group_size.y) + "];\n";
-  c += "  int local_x = get_local_id(0);\n";
-  c += "  int local_y = get_local_id(1);\n";
-  c += "  int local_id = local_y * " + wg_x + " + local_x;\n";
-  if (op_def.dst_tensors[0].HasAxis(Axis::BATCH)) {
-    c += "  int linear_id_2 = get_global_id(2);\n";
-    c += "  int S = linear_id_2 / args.dst_tensor.Batch();\n";
-    c += "  int B = linear_id_2 % args.dst_tensor.Batch();\n";
-    c += "  args.dst_tensor.SetBatchRef(B);\n";
-    c += "  args.src_tensor.SetBatchRef(B);\n";
-  } else {
-    c += "  int S = get_global_id(2);\n";
+  c += "  __local float4 accum[" + std::to_string(wg_total_size) + "];\n";
+  if (wg_dims == 1) {
+    c += "  int local_x = get_local_id(0);\n";
+    c += "  int local_id = local_x;\n";
+  } else if (wg_dims == 2) {
+    c += "  int local_x = get_local_id(0);\n";
+    c += "  int local_y = get_local_id(1);\n";
+    c += "  int local_id = local_y * " + wg_x + " + local_x;\n";
+  } else if (wg_dims == 3) {
+    c += "  int local_x = get_local_id(0);\n";
+    c += "  int local_y = get_local_id(1);\n";
+    c += "  int local_z = get_local_id(2);\n";
+    c += "  int local_id = (local_z * " + wg_y + " + local_y) * " + wg_x +
+         " + local_x;\n";
   }
-  c += "  if (S >= args.dst_tensor.Slices()) return;\n";
+  if (axis_to_leave.count(Axis::WIDTH)) {
+    if (axis_to_leave.count(Axis::BATCH)) {
+      c += "  int linear_id = get_group_id(0);\n";
+      c += "  int DST_X = linear_id / args.dst_tensor.Batch();\n";
+      c += "  int DST_B = linear_id % args.dst_tensor.Batch();\n";
+    } else {
+      c += "  int DST_X = get_group_id(0);\n";
+    }
+  } else if (axis_to_leave.count(Axis::BATCH)) {
+    c += "  int DST_B = get_group_id(0);\n";
+  }
+  if (axis_to_leave.count(Axis::HEIGHT)) {
+    if (axis_to_leave.count(Axis::DEPTH)) {
+      c += "  int linear_id = get_group_id(1);\n";
+      c += "  int DST_Y = linear_id % args.dst_tensor.Height();\n";
+      c += "  int DST_Z = linear_id / args.dst_tensor.Height();\n";
+    } else {
+      c += "  int DST_Y = get_group_id(1);\n";
+    }
+  } else if (axis_to_leave.count(Axis::DEPTH)) {
+    c += "  int DST_Z = get_group_id(1);\n";
+  }
+  if (axis_to_leave.count(Axis::CHANNELS)) {
+    c += "  int DST_S = get_group_id(2);\n";
+  }
+  std::map<Axis, std::string> axis_to_selector = {
+      {Axis::BATCH, "Batch()"},     {Axis::WIDTH, "Width()"},
+      {Axis::HEIGHT, "Height()"},   {Axis::DEPTH, "Depth()"},
+      {Axis::CHANNELS, "Slices()"},
+  };
+  std::map<Axis, std::string> axis_to_coord = {
+      {Axis::BATCH, "B"}, {Axis::WIDTH, "X"},    {Axis::HEIGHT, "Y"},
+      {Axis::DEPTH, "Z"}, {Axis::CHANNELS, "S"},
+  };
+  std::string dst_check;
+  for (auto& axis : axis_to_leave) {
+    if (!dst_check.empty()) {
+      dst_check += " && ";
+    }
+    dst_check += "DST_" + axis_to_coord[axis] + " >= args.dst_tensor." +
+                 axis_to_selector[axis];
+  }
+  c += "  if (" + dst_check + ") return;\n";
   c += "  accum[local_id] = (float4)(0.0f);\n";
-  c += "  for (int s_y = local_y; s_y < args.src_tensor.Height(); s_y += " +
-       wg_y + ") {\n";
-  c += "    for (int s_x = local_x; s_x < args.src_tensor.Width(); s_x += " +
-       wg_x + ") {\n";
-  c += "      accum[local_id] += args.src_tensor.Read<float>(s_x, s_y, S);\n";
-  c += "    }\n";
-  c += "  }\n";
+  const std::vector<std::string> local_ids = {"local_x", "local_y", "local_z"};
+  const std::vector<std::string> local_sizes = {wg_x, wg_y, wg_z};
+  std::map<Axis, std::string> src_coords;
+  for (const auto& a : all_axis) {
+    if (op_def.dst_tensors[0].HasAxis(a)) {
+      src_coords[a] = "DST_" + axis_to_coord[a];
+    } else {
+      src_coords[a] = "0";
+    }
+  }
+  for (int i = 0; i < axis_to_reduce.size(); ++i) {
+    const auto& axis = axis_to_reduce[i];
+    const int index = axis_to_reduce.size() - 1 - i;
+    const std::string first = index < wg_dims ? local_ids[index] : "0";
+    const std::string step = index < wg_dims ? local_sizes[index] : "1";
+    const std::string src_coord = "SRC_" + axis_to_coord[axis];
+    src_coords[axis] = src_coord;
+    c += "  for (int " + src_coord + " = " + first + "; " + src_coord +
+         " < args.src_tensor." + axis_to_selector[axis] + "; " + src_coord +
+         " += " + step + ") {\n";
+  }
+  std::string src_coordinates;
+  for (const auto& a : all_axis) {
+    if (op_def.src_tensors[0].HasAxis(a)) {
+      if (!src_coordinates.empty()) {
+        src_coordinates += ", ";
+      }
+      src_coordinates += src_coords[a];
+    }
+  }
+  c += "    accum[local_id] += args.src_tensor.Read<float>(" + src_coordinates +
+       ");\n";
+  for (int i = 0; i < axis_to_reduce.size(); ++i) {
+    c += "  }\n";
+  }
   c += "  accum[local_id] *= args.inv_multiplier_1;\n";
   c += "  barrier(CLK_LOCAL_MEM_FENCE);\n";
-  const int total_size = work_group_size.x * work_group_size.y;
+  const int total_size =
+      work_group_size.x * work_group_size.y * work_group_size.z;
   int offset = 1;
   int reminder = total_size / 4;
   for (; reminder >= 8; reminder /= 4, offset *= 4) {
@@ -114,29 +264,50 @@ std::string Mean::GetMeanKernelCode(const OperationDef& op_def,
     c += "  sum += accum[" + std::to_string(offset * i) + "];\n";
   }
   c += "  FLT4 result = TO_FLT4(sum * args.inv_multiplier_2);\n";
-  c += "  args.dst_tensor.Write(result, 0, 0, S);\n";
+  std::string dst_coordinates;
+  for (const auto& a : all_axis) {
+    if (op_def.dst_tensors[0].HasAxis(a)) {
+      if (!dst_coordinates.empty()) {
+        dst_coordinates += ", ";
+      }
+      if (axis_to_leave.count(a)) {
+        dst_coordinates += "DST_" + axis_to_coord[a];
+      } else {
+        dst_coordinates += "0";
+      }
+    }
+  }
+  c += "  args.dst_tensor.Write(result, " + dst_coordinates + ");\n";
   c += "}\n";
   return c;
 }
 
 absl::Status Mean::BindArguments(ArgumentsBinder* args) {
-  const double total_size = src_[0]->Width() * src_[0]->Height();
-  const double size_0 = work_group_size_.x * work_group_size_.y;
-  const double size_1 = total_size / size_0;
+  const double total_src_elements = 1.0 * src_[0]->Batch() * src_[0]->Width() *
+                                    src_[0]->Height() * src_[0]->Depth() *
+                                    src_[0]->Channels();
+  const double total_dst_elements = 1.0 * dst_[0]->Batch() * dst_[0]->Width() *
+                                    dst_[0]->Height() * dst_[0]->Depth() *
+                                    dst_[0]->Channels();
+  const double reduction_size = total_src_elements / total_dst_elements;
+  const double size_0 =
+      work_group_size_.x * work_group_size_.y * work_group_size_.z;
+  const double size_1 = reduction_size / size_0;
   RETURN_IF_ERROR(args->SetFloat("inv_multiplier_1", 1.0 / size_1));
   RETURN_IF_ERROR(args->SetFloat("inv_multiplier_2", 1.0 / size_0));
   return absl::OkStatus();
 }
 
 int3 Mean::GetGridSize() const {
-  const int grid_x = work_group_size_.x;
-  const int grid_y = work_group_size_.y;
-  const int grid_z = dst_[0]->Slices() * dst_[0]->Batch();
+  const int grid_x = work_group_size_.x * dst_[0]->Width() * dst_[0]->Batch();
+  const int grid_y = work_group_size_.y * dst_[0]->Height() * dst_[0]->Depth();
+  const int grid_z = work_group_size_.z * dst_[0]->Slices();
   return int3(grid_x, grid_y, grid_z);
 }
 
-Mean CreateMean(const OperationDef& definition, const GpuInfo& gpu_info) {
-  return Mean(definition, gpu_info);
+Mean CreateMean(const MeanAttributes& attr, const OperationDef& definition,
+                const GpuInfo& gpu_info) {
+  return Mean(attr, definition, gpu_info);
 }
 
 }  // namespace cl

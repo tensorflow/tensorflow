@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/cl_kernel.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor.h"
+#include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 
 namespace tflite {
@@ -28,7 +29,8 @@ namespace cl {
 class Mean : public GPUOperation {
  public:
   Mean() = default;
-  Mean(const OperationDef& definition, const GpuInfo& gpu_info);
+  Mean(const MeanAttributes& attr, const OperationDef& definition,
+       const GpuInfo& gpu_info);
 
   void GetPossibleKernelWorkGroups(
       TuningType tuning_type, const GpuInfo& gpu_info,
@@ -47,10 +49,12 @@ class Mean : public GPUOperation {
 
  private:
   std::string GetMeanKernelCode(const OperationDef& op_def,
-                                const int3& work_group_size);
+                                const int3& work_group_size,
+                                const std::vector<Axis>& axis_to_reduce);
 };
 
-Mean CreateMean(const OperationDef& definition, const GpuInfo& gpu_info);
+Mean CreateMean(const MeanAttributes& attr, const OperationDef& definition,
+                const GpuInfo& gpu_info);
 
 }  // namespace cl
 }  // namespace gpu
