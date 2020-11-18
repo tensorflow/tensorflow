@@ -13,32 +13,33 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_MEM_ALLOCATOR_H_
-#define TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_MEM_ALLOCATOR_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_DEVICE_MEM_ALLOCATOR_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_DEVICE_MEM_ALLOCATOR_H_
 
-#include "tensorflow/core/common_runtime/gpu/gpu_id.h"
+#include "tensorflow/core/common_runtime/device/device_id.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/platform/stream_executor.h"
 
 namespace tensorflow {
 
-// Suballocator for GPU memory.
-class GPUMemAllocator : public SubAllocator {
+// Suballocator for StreamExecutor-based device memory.
+class DeviceMemAllocator : public SubAllocator {
  public:
-  // 'platform_gpu_id' refers to the ID of the GPU device within
+  // 'platform_device_id' refers to the ID of the device within
   // the process and must reference a valid ID in the process.
   // Note: stream_exec cannot be null.
-  explicit GPUMemAllocator(se::StreamExecutor* stream_exec,
-                           PlatformGpuId gpu_id, bool use_unified_memory,
-                           const std::vector<Visitor>& alloc_visitors,
-                           const std::vector<Visitor>& free_visitors)
+  explicit DeviceMemAllocator(se::StreamExecutor* stream_exec,
+                              PlatformDeviceId device_id,
+                              bool use_unified_memory,
+                              const std::vector<Visitor>& alloc_visitors,
+                              const std::vector<Visitor>& free_visitors)
       : SubAllocator(alloc_visitors, free_visitors),
         stream_exec_(stream_exec),
-        gpu_id_(gpu_id),
+        device_id_(device_id),
         use_unified_memory_(use_unified_memory) {
     CHECK(stream_exec_ != nullptr);
   }
-  ~GPUMemAllocator() override {}
+  ~DeviceMemAllocator() override {}
 
   void* Alloc(size_t alignment, size_t num_bytes) override {
     void* ptr = nullptr;
@@ -48,31 +49,31 @@ class GPUMemAllocator : public SubAllocator {
       } else {
         ptr = stream_exec_->AllocateArray<char>(num_bytes).opaque();
       }
-      VisitAlloc(ptr, gpu_id_.value(), num_bytes);
+      VisitAlloc(ptr, device_id_.value(), num_bytes);
     }
     return ptr;
   }
 
   void Free(void* ptr, size_t num_bytes) override {
     if (ptr != nullptr) {
-      VisitFree(ptr, gpu_id_.value(), num_bytes);
+      VisitFree(ptr, device_id_.value(), num_bytes);
       if (use_unified_memory_) {
         stream_exec_->UnifiedMemoryDeallocate(ptr);
       } else {
-        se::DeviceMemoryBase gpu_ptr(ptr);
-        stream_exec_->Deallocate(&gpu_ptr);
+        se::DeviceMemoryBase device_ptr(ptr);
+        stream_exec_->Deallocate(&device_ptr);
       }
     }
   }
 
  private:
   se::StreamExecutor* stream_exec_;  // not owned, non-null
-  const PlatformGpuId gpu_id_;
+  const PlatformDeviceId device_id_;
   const bool use_unified_memory_ = false;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GPUMemAllocator);
+  TF_DISALLOW_COPY_AND_ASSIGN(DeviceMemAllocator);
 };
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_MEM_ALLOCATOR_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_DEVICE_MEM_ALLOCATOR_H_

@@ -288,7 +288,7 @@ TEST_F(DeviceTracerTest, TraceToXSpace) {
       ++total_events;
     });
   });
-  EXPECT_EQ(total_events, 5);
+  EXPECT_GE(total_events, 5);
 }
 
 }  // namespace

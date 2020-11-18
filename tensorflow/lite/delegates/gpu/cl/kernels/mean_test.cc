@@ -33,10 +33,13 @@ namespace gpu {
 namespace cl {
 namespace {
 
-TEST_F(OpenCLOperationTest, Mean) {
+TEST_F(OpenCLOperationTest, MeanHW) {
   TensorFloat32 src_tensor;
   src_tensor.shape = BHWC(1, 2, 2, 1);
   src_tensor.data = {1.0f, 2.0f, 3.0f, 4.0f};
+  MeanAttributes attr;
+  attr.dims.insert(Axis::HEIGHT);
+  attr.dims.insert(Axis::WIDTH);
 
   for (auto storage : env_.GetSupportedStorages()) {
     for (auto precision : env_.GetSupportedPrecisions()) {
@@ -47,7 +50,7 @@ TEST_F(OpenCLOperationTest, Mean) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      Mean operation = CreateMean(op_def, env_.GetDevicePtr()->info_);
+      Mean operation = CreateMean(attr, op_def, env_.GetDevicePtr()->GetInfo());
       ASSERT_OK(
           ExecuteGPUOperation(src_tensor, creation_context_,
                               absl::make_unique<Mean>(std::move(operation)),

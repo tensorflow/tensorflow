@@ -77,7 +77,7 @@ struct ParallelMatMulKernel {
   static void Run(const OpKernelContext* context, const Tensor& in_x,
                   const Tensor in_y, bool adj_x, bool adj_y, bool trans_x,
                   bool trans_y, const MatMulBCast& bcast, Tensor* out,
-                  int start, int limit) {
+                  int batch_size) {
     static_assert(IsComplex, "Complex type expected.");
     auto Tx = in_x.tensor<Scalar, 3>();
     auto Ty = in_y.tensor<Scalar, 3>();
@@ -94,7 +94,8 @@ struct ParallelMatMulKernel {
     const bool should_bcast = bcast.IsBroadcastingRequired();
     const auto& x_batch_indices = bcast.x_batch_indices();
     const auto& y_batch_indices = bcast.y_batch_indices();
-    for (int64 i = start; i < limit; ++i) {
+    // TODO(rmlarsen): Consider launching these contractions asynchronously.
+    for (int64 i = 0; i < batch_size; ++i) {
       const int64 x_batch_index = should_bcast ? x_batch_indices[i] : i;
       const int64 y_batch_index = should_bcast ? y_batch_indices[i] : i;
 
@@ -121,25 +122,32 @@ struct ParallelMatMulKernel<Scalar, false> {
   static void Run(const OpKernelContext* context, const Tensor& in_x,
                   const Tensor& in_y, bool adj_x, bool adj_y, bool trans_x,
                   bool trans_y, const MatMulBCast& bcast, Tensor* out,
-                  int start, int limit) {
-    auto Tx = in_x.tensor<Scalar, 3>();
-    auto Ty = in_y.tensor<Scalar, 3>();
-    auto Tz = out->tensor<Scalar, 3>();
+                  int batch_size) {
+    const bool should_bcast = bcast.IsBroadcastingRequired();
+    const Eigen::ThreadPoolDevice d = context->eigen_cpu_device();
     Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> contract_pairs;
     contract_pairs[0] = ContractionDims(adj_x || trans_x, adj_y || trans_y);
-    const Eigen::ThreadPoolDevice d = context->eigen_cpu_device();
+    if (batch_size == 1 && !should_bcast) {
+      auto Tx = in_x.flat_inner_dims<Scalar, 2>();
+      auto Ty = in_y.flat_inner_dims<Scalar, 2>();
+      auto Tz = out->flat_inner_dims<Scalar, 2>();
+      Tz.device(d) = Tx.contract(Ty, contract_pairs);
+    } else {
+      auto Tx = in_x.tensor<Scalar, 3>();
+      auto Ty = in_y.tensor<Scalar, 3>();
+      auto Tz = out->tensor<Scalar, 3>();
+      const auto& x_batch_indices = bcast.x_batch_indices();
+      const auto& y_batch_indices = bcast.y_batch_indices();
+      // TODO(rmlarsen): Consider launching these contractions asynchronously.
+      for (int64 i = 0; i < batch_size; ++i) {
+        const int64 x_batch_index = should_bcast ? x_batch_indices[i] : i;
+        const int64 y_batch_index = should_bcast ? y_batch_indices[i] : i;
+        auto x = Tx.template chip<0>(x_batch_index);
+        auto y = Ty.template chip<0>(y_batch_index);
+        auto z = Tz.template chip<0>(i);
 
-    const bool should_bcast = bcast.IsBroadcastingRequired();
-    const auto& x_batch_indices = bcast.x_batch_indices();
-    const auto& y_batch_indices = bcast.y_batch_indices();
-    for (int64 i = start; i < limit; ++i) {
-      const int64 x_batch_index = should_bcast ? x_batch_indices[i] : i;
-      const int64 y_batch_index = should_bcast ? y_batch_indices[i] : i;
-      auto x = Tx.template chip<0>(x_batch_index);
-      auto y = Ty.template chip<0>(y_batch_index);
-      auto z = Tz.template chip<0>(i);
-
-      z.device(d) = x.contract(y, contract_pairs);
+        z.device(d) = x.contract(y, contract_pairs);
+      }
     }
   }
 };
@@ -234,13 +242,15 @@ struct LaunchBatchMatMul<CPUDevice, Scalar> {
     // Jan 21, 2020.
     const int64 kMaxCostOuterParallelism = 128 * 128;  // heuristic.
     auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
+    // TODO(rmlarsen): Reconsider the heuristics now that we have asynchronous
+    // evaluation in Eigen Tensor.
     if (small_dim > 1 &&
         (batch_size == 1 || cost_per_unit > kMaxCostOuterParallelism)) {
       // Parallelize over inner dims.
       // For large matrix products it is counter-productive to parallelize
       // over the batch dimension.
       ParallelMatMulKernel::Run(context, in_x, in_y, adj_x, adj_y, trans_x,
-                                trans_y, bcast, out, 0, batch_size);
+                                trans_y, bcast, out, batch_size);
       conjugate_result = adj_x;
     } else {
       // Parallelize over outer dims. For small matrices and large batches, it
@@ -656,7 +666,11 @@ class BaseBatchMatMulOp : public OpKernel {
     const Tensor& in0 = ctx->input(0);
     const Tensor& in1 = ctx->input(1);
 
-    ValidateInputTensors(ctx, in0, in1);
+    const Status s = ValidateInputTensors(ctx, in0, in1);
+    if (!s.ok()) {
+      ctx->SetStatus(s);
+      return;
+    }
 
     MatMulBCast bcast(in0.shape().dim_sizes(), in1.shape().dim_sizes());
     OP_REQUIRES(
@@ -740,8 +754,8 @@ class BaseBatchMatMulOp : public OpKernel {
   }
 
  protected:
-  virtual void ValidateInputTensors(OpKernelContext* ctx, const Tensor& in0,
-                                    const Tensor& in1) = 0;
+  virtual Status ValidateInputTensors(OpKernelContext* ctx, const Tensor& in0,
+                                      const Tensor& in1) = 0;
 
  private:
   // TODO(171979567) Make the ops take both adj and transpose attributes.
@@ -761,31 +775,36 @@ class BatchMatMulOp : public BaseBatchMatMulOp<Device, Scalar> {
   ~BatchMatMulOp() override {}
 
  private:
-  void ValidateInputTensors(OpKernelContext* ctx, const Tensor& in0,
-                            const Tensor& in1) override {
+  Status ValidateInputTensors(OpKernelContext* ctx, const Tensor& in0,
+                              const Tensor& in1) override {
     // Disallow broadcasting support. Ensure that all batch dimensions of the
     // input tensors match.
-    OP_REQUIRES(ctx, in0.dims() == in1.dims(),
-                errors::InvalidArgument("In[0] and In[1] has different ndims: ",
-                                        in0.shape().DebugString(), " vs. ",
-                                        in1.shape().DebugString()));
+    if (in0.dims() != in1.dims()) {
+      return errors::InvalidArgument(
+          "In[0] and In[1] has different ndims: ", in0.shape().DebugString(),
+          " vs. ", in1.shape().DebugString());
+    }
     const int ndims = in0.dims();
     if (is_legacy_matmul) {
-      OP_REQUIRES(ctx, ndims == 2,
-                  errors::InvalidArgument(
-                      "In[0] and In[1] ndims must be == 2: ", ndims));
+      if (ndims != 2) {
+        return errors::InvalidArgument("In[0] and In[1] ndims must be == 2: ",
+                                       ndims);
+      }
     } else {
-      OP_REQUIRES(ctx, ndims >= 2,
-                  errors::InvalidArgument(
-                      "In[0] and In[1] ndims must be >= 2: ", ndims));
+      if (ndims < 2) {
+        return errors::InvalidArgument("In[0] and In[1] ndims must be >= 2: ",
+                                       ndims);
+      }
       for (int i = 0; i < ndims - 2; ++i) {
-        OP_REQUIRES(ctx, in0.dim_size(i) == in1.dim_size(i),
-                    errors::InvalidArgument(
-                        "In[0].dim(", i, ") and In[1].dim(", i,
-                        ") must be the same: ", in0.shape().DebugString(),
-                        " vs ", in1.shape().DebugString()));
+        if (in0.dim_size(i) != in1.dim_size(i)) {
+          return errors::InvalidArgument(
+              "In[0].dim(", i, ") and In[1].dim(", i,
+              ") must be the same: ", in0.shape().DebugString(), " vs ",
+              in1.shape().DebugString());
+        }
       }
     }
+    return Status::OK();
   }
 };
 
@@ -800,16 +819,17 @@ class BatchMatMulV2Op : public BaseBatchMatMulOp<Device, Scalar> {
   ~BatchMatMulV2Op() override {}
 
  private:
-  void ValidateInputTensors(OpKernelContext* ctx, const Tensor& in0,
-                            const Tensor& in1) override {
+  Status ValidateInputTensors(OpKernelContext* ctx, const Tensor& in0,
+                              const Tensor& in1) override {
     // Enable broadcasting support. Validity of broadcasting is checked in
     // BaseBatchMatMulOp.
-    OP_REQUIRES(
-        ctx, in0.dims() >= 2,
-        errors::InvalidArgument("In[0] ndims must be >= 2: ", in0.dims()));
-    OP_REQUIRES(
-        ctx, in1.dims() >= 2,
-        errors::InvalidArgument("In[1] ndims must be >= 2: ", in1.dims()));
+    if (in0.dims() < 2) {
+      return errors::InvalidArgument("In[0] ndims must be >= 2: ", in0.dims());
+    }
+    if (in1.dims() < 2) {
+      return errors::InvalidArgument("In[1] ndims must be >= 2: ", in1.dims());
+    }
+    return Status::OK();
   }
 };
 

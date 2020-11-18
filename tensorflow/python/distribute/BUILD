@@ -1668,6 +1668,7 @@ py_library(
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/eager:test",
+        "@absl_py//absl/logging",
     ],
 )
 

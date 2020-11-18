@@ -5042,7 +5042,14 @@ STRING_DEPS = [
 
 tf_kernel_library(
     name = "string_to_hash_bucket_op",
-    prefix = "string_to_hash_bucket_op",
+    srcs = [
+        "string_to_hash_bucket_fast_op.cc",
+        "string_to_hash_bucket_op.cc",
+    ],
+    hdrs = [
+        "string_to_hash_bucket_fast_op.h",
+        "string_to_hash_bucket_op.h",
+    ],
     deps = STRING_DEPS,
 )
 
@@ -5978,6 +5985,7 @@ filegroup(
         "stateless_random_ops_v2.h",
         "string_util.h",
         "string_to_hash_bucket_op.h",
+        "string_to_hash_bucket_fast_op.h",
         "tensor_array.h",
         "tensor_list.h",
         "tile_functor.h",
@@ -6107,6 +6115,7 @@ filegroup(
         "fake_quant_ops.cc",
         "fifo_queue.cc",
         "fifo_queue_op.cc",
+        "fingerprint_op.cc",
         "fused_batch_norm_op.cc",
         "fused_eigen_output_kernels.cc",
         "fused_eigen_output_kernels.h",
@@ -6195,6 +6204,7 @@ filegroup(
         "reduction_ops_prod.cc",
         "reduction_ops_sum.cc",
         "regex_replace_op.cc",
+        "regex_full_match_op.cc",
         "relu_op.cc",
         "reshape_util.cc",
         "restore_op.cc",
@@ -6241,6 +6251,7 @@ filegroup(
         "string_split_op.cc",
         "string_strip_op.cc",
         "string_to_hash_bucket_op.cc",
+        "string_to_hash_bucket_fast_op.cc",
         "substr_op.cc",
         "tensor_array.cc",
         "tensor_array_ops.cc",

@@ -54,7 +54,7 @@ def ExtractSingleElementAsInt32 : NativeCodeCall<
     "$_builder.getI32IntegerAttr(ExtractSingleElementAsInteger($_self.cast<ElementsAttr>()).getInt())">;
 
 // Converts tensor with int64 to int32.
-def CreateTFLCastToInt32Op : NativeCodeCall<
+def CreateTFCastToInt32Op : NativeCodeCall<
   "CreateCastToInt32($0, $_loc, $_builder)">;
 
 // Checks whether the given operation has static shapes and same shapes of all inputs.
@@ -193,8 +193,8 @@ def LegalizeRound : Pat<(TF_RoundOp $arg), (TFL_RoundOp $arg)>;
 def LegalizeRsqrt : Pat<(TF_RsqrtOp $arg), (TFL_RsqrtOp $arg)>;
 def LegalizeSqrt : Pat<(TF_SqrtOp $arg), (TFL_SqrtOp $arg)>;
 def LegalizeSquare : Pat<(TF_SquareOp $arg), (TFL_SquareOp $arg)>;
-def LegalizeSegmentSum : Pat<(TF_SegmentSumOp $data, I32Tensor:$segment_ids),
-                             (TFL_SegmentSumOp $data, $segment_ids)>;
+def LegalizeSegmentSum : Pat<(TF_SegmentSumOp $data, $segment_ids),
+                             (TFL_SegmentSumOp $data, (CreateTFCastToInt32Op $segment_ids))>;
 def LegalizeSelect : Pat<(TF_SelectOp $cond, $x, $y),
                          (TFL_SelectOp $cond, $x, $y)>;
 def LegalizeSelectV2SameStaticShape : Pat<(TF_SelectV2Op:$src_op $cond, $x, $y),
@@ -221,7 +221,7 @@ def LegalizeTanh : Pat<(TF_TanhOp $arg), (TFL_TanhOp $arg)>;
 
 def LegalizeTranspose : Pat<(TF_TransposeOp $arg, $perm),
                             (TFL_TransposeOp $arg,
-                            (CreateTFLCastToInt32Op $perm))>;
+                            (CreateTFCastToInt32Op $perm))>;
 
 def LegalizeWhere : Pat<(TF_WhereOp $arg), (TFL_WhereOp $arg)>;
 def LegalizeZerosLike : Pat<(TF_ZerosLikeOp $arg), (TFL_ZerosLikeOp $arg)>;
@@ -309,8 +309,9 @@ def LegalizeRank : Pat<(TF_RankOp $input), (TFL_RankOp $input)>;
 def LegalizeSquaredDifference : Pat<(TF_SquaredDifferenceOp $l, $r),
                                     (TFL_SquaredDifferenceOp $l, $r)>;
 
-def LegalizeReverseV2 : Pat<(TF_ReverseV2Op $arg0, $arg1),
-                            (TFL_ReverseV2Op $arg0, $arg1)>;
+def LegalizeReverseV2 : Pat<
+  (TF_ReverseV2Op $arg0, $axis),
+  (TFL_ReverseV2Op $arg0, (CreateTFCastToInt32Op $axis))>;
 
 def LegalizeEqual : Pat<(TF_EqualOp $arg0, $arg1,
                           /*incompatible_shape_error=*/ConstBoolAttrTrue),
@@ -349,11 +350,13 @@ def LegalizeCast : Pat<(TF_CastOp $arg0, BoolAttr:$arg1), (TFL_CastOp $arg0)>;
 
 def LegalizeBatchToSpaceND : Pat<
   (TF_BatchToSpaceNDOp $input, $block_shape, $crops),
-  (TFL_BatchToSpaceNdOp $input, $block_shape, $crops)>;
+  (TFL_BatchToSpaceNdOp $input, (CreateTFCastToInt32Op $block_shape),
+     (CreateTFCastToInt32Op $crops))>;
 
 def LegalizeSpaceToBatchND : Pat<
   (TF_SpaceToBatchNDOp $input, $block_shape, $paddings),
-  (TFL_SpaceToBatchNdOp $input, $block_shape, $paddings)>;
+  (TFL_SpaceToBatchNdOp $input, (CreateTFCastToInt32Op $block_shape),
+     (CreateTFCastToInt32Op $paddings))>;
 
 def LegalizeSpaceToDepth : Pat<
   (TF_SpaceToDepthOp $input, $block_size, IsDataFormatNHWC:$data_format),
@@ -442,9 +445,14 @@ def LegalizeMatrixSetDiag : Pat<
   (TFL_MatrixSetDiagOp $input, $diagonal)>;
 
 def LegalizeScatterNd : Pat<
-  (TF_ScatterNdOp I32Tensor:$indices, $updates, $shape),
-  (TFL_ScatterNdOp I32Tensor:$indices, $updates, $shape)>;
+  (TF_ScatterNdOp $indices, $updates, $shape),
+  (TFL_ScatterNdOp (CreateTFCastToInt32Op $indices), $updates,
+    (CreateTFCastToInt32Op $shape))>;
 
 def LegalizeCumsum : Pat<
   (TF_CumsumOp $input, $axis, $exclusive, $reverse),
-  (TFL_CumsumOp $input, $axis, $exclusive, $reverse)>;
+  (TFL_CumsumOp $input, (CreateTFCastToInt32Op $axis), $exclusive, $reverse)>;
+
+def LegalizeReshape : Pat<
+  (TF_ReshapeOp $input, $shape),
+  (TFL_ReshapeOp $input, (CreateTFCastToInt32Op $shape))>;

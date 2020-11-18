@@ -13,14 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_MODEL_HINTS_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_CL_MODEL_HINTS_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_MODEL_HINTS_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_MODEL_HINTS_H_
 
 #include <cstdint>
 
 namespace tflite {
 namespace gpu {
-namespace cl {
 
 struct ModelHints {
   using ModelHint = uint64_t;
@@ -34,7 +33,7 @@ struct ModelHints {
 
   // Experimental.
   // Can improve performance and memory consumption, but slow down
-  // initialization a lot and create more kernels.
+  // initialization a lot and create more unique kernels.
   static constexpr ModelHint kAllowSpecialKernels = 0x00000004;
 
   void Add(ModelHint hint) {
@@ -50,8 +49,7 @@ struct ModelHints {
   uint64_t hints = kFastestInference;
 };
 
-}  // namespace cl
 }  // namespace gpu
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_CL_MODEL_HINTS_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_MODEL_HINTS_H_

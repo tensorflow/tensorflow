@@ -41,44 +41,35 @@ TEST(ConvertXplaneToKernelStats, MultiKernels) {
   CreateXEvent(&device_trace_builder, &line_builder, "kernel_name_shortest",
                /*offset_ps=*/10000, /*duration_ps=*/1000,
                {{StatType::kTfOp, "mul_786"},
-                {StatType::kKernelDetails, R"MULTI(registers_per_thread:16
-static_shared_memory_usage:0
-dynamic_shared_memory_usage:0
-grid_x:1
-grid_y:1
-grid_z:1
-block_x:1
-block_y:1
-block_z:1)MULTI"},
+                {StatType::kKernelDetails, R"MULTI(regs:16
+static_shared:0
+dynamic_shared:0
+grid:1,1,1
+block:1,1,1
+occ_pct:0.5)MULTI"},
                 {StatType::kEquation, ""}});
 
   CreateXEvent(&device_trace_builder, &line_builder, "kernel_name_middle",
                /*offset_ps=*/20000, /*duration_ps=*/2000,
                {{StatType::kTfOp, "Conv2D"},
-                {StatType::kKernelDetails, R"MULTI(registers_per_thread:32
-static_shared_memory_usage:0
-dynamic_shared_memory_usage:16384
-grid_x:2
-grid_y:1
-grid_z:1
-block_x:32
-block_y:1
-block_z:1)MULTI"},
+                {StatType::kKernelDetails, R"MULTI(regs:32
+static_shared:0
+dynamic_shared:16384
+grid:2,1,1
+block:32,1,1
+occ_pct=0.13)MULTI"},
                 {StatType::kEquation, ""}});
 
   CreateXEvent(&device_trace_builder, &line_builder,
                "volta_fp16_s884gemm_fp16_128x128_ldg8_f2f_tn",
                /*offset_ps=*/30000, /*duration_ps=*/3000,
                {{StatType::kTfOp, "Einsum_80"},
-                {StatType::kKernelDetails, R"MULTI(registers_per_thread:32
-static_shared_memory_usage:0
-dynamic_shared_memory_usage:16384
-grid_x:3
-grid_y:1
-grid_z:1
-block_x:64
-block_y:1
-block_z:1)MULTI"},
+                {StatType::kKernelDetails, R"MULTI(regs:32
+static_shared:0
+dynamic_shared:16384
+grid:3,1,1
+block:64,1,1
+occ_pct:0.25)MULTI"},
                 {StatType::kEquation, ""}});
 
   KernelReportMap reports;

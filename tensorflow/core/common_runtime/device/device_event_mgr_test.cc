@@ -15,9 +15,9 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
-
 #include <atomic>
+
+#include "tensorflow/core/common_runtime/device/device_event_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_device.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
@@ -126,11 +126,11 @@ TEST(EventMgr, WarnIfInCallback) {
   stream->Init();
   bool hit = false;
   th.StartPollingLoop();
-  gpu_event_mgr::WarnIfInCallback([&hit] { hit = true; });
+  device_event_mgr::WarnIfInCallback([&hit] { hit = true; });
   EXPECT_FALSE(hit);
   Notification note;
   em.ThenExecute(stream.get(), [&hit, &note]() {
-    gpu_event_mgr::WarnIfInCallback([&hit, &note] {
+    device_event_mgr::WarnIfInCallback([&hit, &note] {
       hit = true;
       note.Notify();
     });

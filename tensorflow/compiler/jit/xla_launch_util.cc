@@ -449,15 +449,14 @@ Status XlaComputationLaunchContext::PopulateOutputs(
         auto transfer_manager,
         xla::TransferManager::GetForPlatform(stream->parent()->platform()));
 
-    xla::Shape output_host_shape = output.on_host_shape();
     xla::Shape output_device_shape = output.on_device_shape();
     TF_RETURN_IF_ERROR(transfer_manager->ReadDynamicShapes(
-        stream, &output, &output_host_shape, &output_device_shape));
+        stream, &output, &output_device_shape));
 
-    output.set_shapes(output_host_shape, output_device_shape);
+    output.set_shapes(output_device_shape, output_device_shape);
     for (int i = 0; i < ctx->num_outputs(); ++i) {
       const xla::Shape& subshape =
-          xla::ShapeUtil::GetSubshape(output_host_shape, {i});
+          xla::ShapeUtil::GetSubshape(output_device_shape, {i});
       TensorShape shape;
       TF_RETURN_IF_ERROR(XLAShapeToTensorShape(subshape, &shape));
       output_tensor_shapes.push_back(shape);

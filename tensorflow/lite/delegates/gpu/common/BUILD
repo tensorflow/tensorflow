@@ -207,6 +207,11 @@ cc_library(
 )
 
 cc_library(
+    name = "model_hints",
+    hdrs = ["model_hints.h"],
+)
+
+cc_library(
     name = "model_transformer",
     srcs = ["model_transformer.cc"],
     hdrs = ["model_transformer.h"],

@@ -445,6 +445,72 @@ class StructuredTensor(composite_tensor.CompositeTensor):
         msg = '{} for field {}'.format(msg, error_prefix)
       raise ValueError('{}: {}'.format(msg, e))
 
+  def _promote_helper(self, source_path, new_parent_path):
+    """Creates a promoted field without adding it to the structure.
+
+    Args:
+      source_path: the source path in the structured tensor.
+      new_parent_path: the new parent path. Must be a prefix of source_path.
+
+    Returns:
+      a composite tensor of source_path promoted.
+    Raises:
+      ValueError: if the shape of the field is unknown and the right strategy
+      cannot be determined.
+    """
+    current_field = self.field_value(source_path)
+    new_parent_rank = self.field_value(new_parent_path).rank
+    parent_rank = self.field_value(source_path[:-1]).rank
+    if new_parent_rank == parent_rank:
+      return current_field
+    current_field_rank = current_field.shape.rank
+    if current_field_rank is None:
+      raise ValueError('Cannot determine if dimensions should be merged.')
+    inner_dim = min(parent_rank, current_field_rank - 1)
+    if inner_dim <= new_parent_rank:
+      return current_field
+    return _merge_dims_generic(current_field, new_parent_rank, inner_dim)
+
+  def promote(self, source_path, new_name):
+    """Promotes a field, merging dimensions between grandparent and parent.
+
+    >>> d = [
+    ...  {'docs': [{'tokens':[1, 2]}, {'tokens':[3]}]},
+    ...  {'docs': [{'tokens':[7]}]}]
+    >>> st = StructuredTensor.from_pyval(d)
+    >>> st2 =st.promote(('docs','tokens'), 'docs_tokens')
+    >>> st2[0]['docs_tokens']
+    <tf.Tensor: shape=(3,), dtype=int32, numpy=array([1, 2, 3], dtype=int32)>
+    >>> st2[1]['docs_tokens']
+    <tf.Tensor: shape=(1,), dtype=int32, numpy=array([7], dtype=int32)>
+
+    Args:
+      source_path: the path of the field or substructure to promote; must have
+        length at least 2.
+      new_name: the name of the new field (must be a string).
+
+    Returns:
+      a modified structured tensor with the new field as a child of the
+      grandparent of the source_path.
+
+    Raises:
+      ValueError: if source_path is not a list or a tuple or has a length
+        less than two, or new_name is not a string, or the rank
+        of source_path is unknown and it is needed.
+    """
+    if not isinstance(new_name, str):
+      raise ValueError('new_name is not a string')
+    if not isinstance(source_path, (list, tuple)):
+      raise ValueError('source_path must be a list or tuple')
+
+    if len(source_path) < 2:
+      raise ValueError('source_path must have length at least two')
+
+    grandparent_path = source_path[:-2]
+    new_field = self._promote_helper(source_path, grandparent_path)
+    new_path = grandparent_path + (new_name,)
+    return self.with_updates({new_path: new_field})
+
   #=============================================================================
   # Properties
   #=============================================================================
@@ -1498,3 +1564,26 @@ def _normalize_field_name_to_tuple(name: 'FieldName') -> Sequence[str]:
     return tuple(name)
   assert isinstance(name, tuple)
   return name
+
+
+def _merge_dims_generic(source, outer, inner):
+  """Merges outer_axis...inner_axis into a single dimension.
+
+  If outer == inner, this is a NOOP. If inner < outer, then this fials.
+  If inner >= source.shape.rank, then the behavior is undefined.
+
+  Args:
+    source: a tensor, ragged tensor, or structured tensor.
+    outer: a python int, indicating the first dimension to compress
+      (must be nonnegative).
+    inner: a python int, indicating the first dimension to keep (of the tail)
+      (must be nonnegative).
+
+  Returns:
+    source with outer_axis...inner_axis merged into a single dimension.
+
+  """
+  if isinstance(source, StructuredTensor):
+    return source.merge_dims(outer, inner)
+  else:
+    return ragged_tensor.merge_dims(source, outer, inner)

@@ -95,6 +95,7 @@ table InferenceContext {
   storage_type:tflite.gpu.data.TensorStorageType;
   nodes:[CLNode];
   tensors:[TensorDescWithId];
+  const_tensors:[TensorDescWithId];
   input_ids:[int32];
   variable_ids_and_refs:[PairOfValueIds];
   output_ids:[int32];
