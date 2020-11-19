@@ -110,7 +110,7 @@ upper_tabs:
       - heading: "Run Inference with metadata"
       - title: "Overview"
         path: /lite/inference_with_metadata/overview
-      - title: "Generate model interfaces with codegen"
+      - title: "Generate model interfaces using metadata"
         path: /lite/inference_with_metadata/codegen
       - title: "Integrate models with Task Library"
         path: /lite/inference_with_metadata/task_library/overview
