@@ -563,24 +563,13 @@ Status IrEmitterUnnested::DefaultActionForMlir(MlirEmitterInput input) {
   // because we don't have a fully functioning LMHLO graph yet.
 
   mlir::Location loc = input.op->getLoc();
-  mlir::lmhlo::FusionOp fusion =
-      mlir::OpBuilder(input.op).create<mlir::lmhlo::FusionOp>(
-          loc, llvm::ArrayRef<mlir::NamedAttribute>());
+  mlir::lmhlo::FusionOp fusion = nullptr;
   Shape output_shape;
-  mlir::OpBuilder b(&fusion.region());
-
-  const auto load_memrefs = [loc, &b](mlir::ValueRange range) {
-    std::vector<mlir::Value> operands;
-    for (mlir::Value memref : range) {
-      auto load = b.create<mlir::TensorLoadOp>(loc, memref);
-      HloFunctionImporter::SetLayoutForMlir(load,
-                                            TypeToShape(memref.getType()));
-      operands.push_back(load);
-    }
-    return operands;
-  };
-
   if (auto copy = mlir::dyn_cast<mlir::lmhlo::CopyOp>(input.op)) {
+    fusion = mlir::OpBuilder(copy).create<mlir::lmhlo::FusionOp>(
+        loc, llvm::ArrayRef<mlir::NamedAttribute>());
+    copy.getOperation()->moveBefore(&fusion.region().front().back());
+    mlir::OpBuilder b(copy);
     auto operand = b.create<mlir::TensorLoadOp>(loc, copy.operand());
     HloFunctionImporter::SetLayoutForMlir(
         operand, TypeToShape(copy.operand().getType()));
@@ -588,22 +577,11 @@ Status IrEmitterUnnested::DefaultActionForMlir(MlirEmitterInput input) {
     output_shape = TypeToShape(copy.output().getType());
     HloFunctionImporter::SetLayoutForMlir(fused_copy, output_shape);
     b.create<mlir::TensorStoreOp>(loc, fused_copy, copy.output());
-  } else if (auto reduce = mlir::dyn_cast<mlir::lmhlo::ReduceOp>(input.op)) {
-    std::vector<mlir::Value> operands = load_memrefs(reduce.operands());
-    std::vector<mlir::Value> init_values = load_memrefs(reduce.init_values());
-    auto fused_reduce = b.create<mlir::mhlo::ReduceOp>(
-        loc, operands, init_values, reduce.dimensions());
-    fused_reduce.body().takeBody(reduce.body());
-    CHECK_EQ(fused_reduce.getNumResults(), reduce.out().size());
-    for (int i = 0; i < reduce.out().size(); i++) {
-      b.create<mlir::TensorStoreOp>(loc, fused_reduce.getResult(i),
-                                    reduce.out()[i]);
-    }
+    copy.getOperation()->erase();
   } else {
     input.op->dump();
     LOG(FATAL) << "Unimplemented default action for mlir op";
   }
-  input.op->erase();
   input.op = fusion;
   auto ret = EmitLoopFusionFromMlir(
       input, output_shape,
@@ -924,8 +902,7 @@ Status IrEmitterUnnested::HandleTriangularSolve(HloInstruction* hlo) {
 // This function won't be needed once ElementalIrEmitter migrates to take MHLO
 // instead.
 static Status ProcessFusionForConversion(mlir::Region* region,
-                                         std::vector<Shape>* operand_shapes,
-                                         std::vector<Shape>* output_shapes) {
+                                         std::vector<Shape>* operand_shapes) {
   std::vector<mlir::TensorLoadOp> loads;
   std::vector<mlir::TensorStoreOp> stores;
 
@@ -945,7 +922,8 @@ static Status ProcessFusionForConversion(mlir::Region* region,
     auto arg = region->addArgument(load.getType());
     load.replaceAllUsesWith(arg);
     Shape shape = TypeToShape(load.getType());
-    if (auto attr = mlir::GetLayoutFromMlirHlo(load)) {
+    auto attr = mlir::GetLayoutFromMlirHlo(load);
+    if (attr) {
       std::vector<int64> minor_to_major;
       absl::c_transform(
           attr, std::back_inserter(minor_to_major),
@@ -961,16 +939,6 @@ static Status ProcessFusionForConversion(mlir::Region* region,
 
   std::vector<mlir::Value> returned_values;
   for (auto store : stores) {
-    Shape shape = TypeToShape(store.memref().getType());
-    if (auto attr = mlir::GetLayoutFromMlirHlo(store)) {
-      std::vector<int64> minor_to_major;
-      absl::c_transform(
-          attr, std::back_inserter(minor_to_major),
-          std::function<int64(const llvm::APInt&)>(&llvm::APInt::getZExtValue));
-      *shape.mutable_layout() = LayoutUtil::MakeLayout(minor_to_major);
-    }
-    output_shapes->push_back(shape);
-
     returned_values.push_back(store.tensor());
     store.erase();
   }
@@ -1295,14 +1263,12 @@ Status IrEmitterUnnested::EmitExtraOutputsForReduce(
 }
 
 Status IrEmitterUnnested::HandleReduce(HloInstruction* reduce) {
-  TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(reduce));
-
   if (IsReductionFromOrToContiguousDimensions(*reduce) &&
       reduce->shape().IsArray()) {
     return EmitReductionFromOrToContiguousDimensions(reduce, {reduce});
   }
 
-  return DefaultActionForMlir(input);
+  return IrEmitter::HandleReduce(reduce);
 }
 
 Status IrEmitterUnnested::HandleTuple(HloInstruction* tuple) {
@@ -1905,10 +1871,9 @@ IrEmitterUnnested::GetOrCreateSubComputationFromRegion(mlir::Region* region,
                                                        bool is_fusion) {
   std::unique_ptr<HloModule>& module = scratch_nested_computations_[region];
   if (module == nullptr) {
-    std::vector<Shape> operand_shapes, output_shapes;
+    std::vector<Shape> operand_shapes;
     if (is_fusion) {
-      TF_RETURN_IF_ERROR(
-          ProcessFusionForConversion(region, &operand_shapes, &output_shapes));
+      TF_RETURN_IF_ERROR(ProcessFusionForConversion(region, &operand_shapes));
     }
 
     xla::XlaComputation xla_computation;
@@ -1922,62 +1887,6 @@ IrEmitterUnnested::GetOrCreateSubComputationFromRegion(mlir::Region* region,
         module, HloModule::CreateFromProto(xla_computation.proto(),
                                            HloModuleConfig(program_shape)));
 
-    if (is_fusion) {
-      HloComputation* fused_computation = module->entry_computation();
-      CHECK_EQ(operand_shapes.size(), fused_computation->num_parameters());
-      for (int i = 0; i < fused_computation->num_parameters(); i++) {
-        *fused_computation->parameter_instruction(i)
-             ->mutable_shape()
-             ->mutable_layout() = operand_shapes[i].layout();
-      }
-      HloInstruction* root = fused_computation->root_instruction();
-      // Manually fold Tuple(GTE(a, 0), GTE(a, 1), GTE(a, 2), ...) to a.
-      // FusedIrEmitter doesn't take GTE ops because we aim to elimiate tuples
-      // as much as possible.
-      if (root->opcode() == HloOpcode::kTuple) {
-        [&] {
-          HloInstruction* real_root = nullptr;
-          int expected_tuple_index = 0;
-          for (HloInstruction* operand : root->operands()) {
-            if (operand->opcode() != HloOpcode::kGetTupleElement) {
-              return;
-            }
-            if (real_root == nullptr) {
-              real_root = operand->mutable_operand(0);
-            } else if (real_root != operand->operand(0)) {
-              return;
-            }
-            if (expected_tuple_index != operand->tuple_index()) {
-              return;
-            }
-            expected_tuple_index++;
-          }
-          fused_computation->set_root_instruction(real_root);
-          std::vector<HloInstruction*> to_be_removed;
-          to_be_removed.push_back(root);
-          for (HloInstruction* operand : root->operands()) {
-            to_be_removed.push_back(operand);
-          }
-          for (auto instr : to_be_removed) {
-            TF_CHECK_OK(fused_computation->RemoveInstruction(instr));
-          }
-
-          root = real_root;
-        }();
-      }
-
-      if (output_shapes.size() > 1) {
-        CHECK(root->shape().IsTuple());
-        CHECK_EQ(root->shape().tuple_shapes_size(), output_shapes.size());
-
-        for (int i = 0; i < output_shapes.size(); i++) {
-          *root->mutable_shape()->mutable_tuple_shapes(i) = output_shapes.at(i);
-        }
-      } else {
-        CHECK_EQ(1, output_shapes.size());
-        *root->mutable_shape() = output_shapes[0];
-      }
-    }
     // Post-process the generated computation:
     // * Sanitize constant names, so that they can be used as LLVM global
     // symbols.
@@ -1987,11 +1896,20 @@ IrEmitterUnnested::GetOrCreateSubComputationFromRegion(mlir::Region* region,
         if (instr->opcode() == HloOpcode::kConstant) {
           instr->SetAndSanitizeName(llvm_ir::SanitizeConstantName(*instr));
         }
-        if (instr->shape().IsTuple() &&
-            computation == module->entry_computation() &&
-            instr != computation->root_instruction()) {
-          return InternalError("Non-root tuple types are not handled.");
+        if (instr->shape().IsTuple()) {
+          TF_ASSIGN_OR_RETURN(*instr->mutable_shape(),
+                              ShapeInference::InferVariadicOpShape(
+                                  instr->opcode(), instr->operands()));
         }
+      }
+    }
+    if (is_fusion) {
+      HloComputation* fused_computation = module->entry_computation();
+      CHECK_EQ(operand_shapes.size(), fused_computation->num_parameters());
+      for (int i = 0; i < fused_computation->num_parameters(); i++) {
+        *fused_computation->parameter_instruction(i)
+             ->mutable_shape()
+             ->mutable_layout() = operand_shapes[i].layout();
       }
     }
   }
