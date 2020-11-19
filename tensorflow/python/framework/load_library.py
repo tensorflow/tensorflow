@@ -169,9 +169,6 @@ def load_pluggable_device_library(library_location):
     library_location: Path to the plugin or folder of plugins.
       Relative or absolute filesystem path to a dynamic library file or folder.
 
-  Returns:
-    None
-
   Raises:
     OSError: When the file to be loaded is not found.
     RuntimeError: when unable to load the library.
