@@ -557,11 +557,11 @@ def py_func_common(func, inp, Tout, stateful=True, name=None):
     import numpy as np
 
     def make_synthetic_data(i):
-        return np.cast[np.uint8](i) * np.ones([20,256,256,3], 
+        return np.cast[np.uint8](i) * np.ones([20,256,256,3],
                 dtype=np.float32) / 10.
 
-    def make_clean_data(i): 
-        ones = tf.py_function(make_data,[i],tf.float32) 
+    def make_clean_data(i):
+        ones = tf.py_function(make_synthetic_data,[i],tf.float32)
         ones.set_shape(tf.TensorShape([None, None, None, None]))
         ones = tf.image.resize(ones, [224,224])
         return ones
