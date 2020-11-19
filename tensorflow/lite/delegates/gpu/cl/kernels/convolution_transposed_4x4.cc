@@ -323,6 +323,10 @@ int3 ConvolutionTransposed4x4::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
+std::vector<int> ConvolutionTransposed4x4::GetSpatialWeightsRemap() const {
+  return std::vector<int>{10, 11, 14, 15, 8, 9, 12, 13, 2, 3, 6, 7, 0, 1, 4, 5};
+}
+
 bool IsConvolutionTransposed4x4Supported(
     const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr) {

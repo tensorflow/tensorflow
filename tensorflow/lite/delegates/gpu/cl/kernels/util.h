@@ -198,6 +198,42 @@ void RearrangeWeightsToI4DHWIOOGroupO4(
   }
 }
 
+template <DataType S, typename T>
+void RearrangeWeightsToOICustomSpatialI4O4(
+    const tflite::gpu::Tensor<OHWI, S>& weights,
+    const std::vector<int>& spatial_remap, absl::Span<T> dst) {
+  const int dst_slices = DivideRoundUp(weights.shape.o, 4);
+  const int src_slices = DivideRoundUp(weights.shape.i, 4);
+
+  int counter = 0;
+  for (int d = 0; d < dst_slices; ++d) {
+    for (int s = 0; s < src_slices; ++s) {
+      for (int y = 0; y < weights.shape.h; ++y) {
+        for (int x = 0; x < weights.shape.w; ++x) {
+          const int kernel_index = spatial_remap[y * weights.shape.w + x];
+          const int kernel_index_x = kernel_index % weights.shape.w;
+          const int kernel_index_y = kernel_index / weights.shape.w;
+          for (int i = 0; i < 4; ++i) {
+            T filter;
+            for (int j = 0; j < 4; ++j) {
+              const int s_ch = s * 4 + i;
+              const int d_ch = d * 4 + j;
+              if (s_ch < weights.shape.i && d_ch < weights.shape.o) {
+                const int f_index = weights.shape.LinearIndex(
+                    {d_ch, kernel_index_y, kernel_index_x, s_ch});
+                filter[j] = weights.data[f_index];
+              } else {
+                filter[j] = 0.0f;
+              }
+            }
+            dst[counter++] = filter;
+          }
+        }
+      }
+    }
+  }
+}
+
 // Returns float4 mask for last plane(batch of 4 channels)
 // assumes that plane size is 4;
 // for example we have 7 channels, in our data structures we align it to 8

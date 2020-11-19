@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/buffer.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/linear_storage.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor.h"
 #include "tensorflow/lite/delegates/gpu/cl/util.h"
@@ -58,9 +59,7 @@ class ConvolutionTransposed3x3Thin : public GPUOperation {
   void UploadData(const tflite::gpu::Tensor<OHWI, T>& weights,
                   const tflite::gpu::Tensor<Linear, T>& biases);
 
-  template <DataType S, typename T>
-  void RearrangeWeightsData(const tflite::gpu::Tensor<OHWI, S>& weights,
-                            absl::Span<T> dst);
+  std::vector<int> GetSpatialWeightsRemap() const;
 
   std::string GenerateConvolutionTransposedCode(const OperationDef& op_def,
                                                 int src_depth, int dst_depth);
@@ -88,7 +87,8 @@ void ConvolutionTransposed3x3Thin::UploadData(
 
   if (f32_weights) {
     float4* gpu_data = reinterpret_cast<float4*>(desc.data.data());
-    RearrangeWeightsData(weights, absl::MakeSpan(gpu_data, flt4_count));
+    RearrangeWeightsToOICustomSpatialI4O4(weights, GetSpatialWeightsRemap(),
+                                          absl::MakeSpan(gpu_data, flt4_count));
     for (int i = 0; i < dst_depth; ++i) {
       float4 bias_value(0.0f);
       for (int c = 0; c < 4; ++c) {
@@ -99,7 +99,8 @@ void ConvolutionTransposed3x3Thin::UploadData(
     }
   } else {
     half4* gpu_data = reinterpret_cast<half4*>(desc.data.data());
-    RearrangeWeightsData(weights, absl::MakeSpan(gpu_data, flt4_count));
+    RearrangeWeightsToOICustomSpatialI4O4(weights, GetSpatialWeightsRemap(),
+                                          absl::MakeSpan(gpu_data, flt4_count));
     for (int i = 0; i < dst_depth; ++i) {
       half4 bias_value(0.0f);
       for (int c = 0; c < 4; ++c) {
@@ -112,48 +113,6 @@ void ConvolutionTransposed3x3Thin::UploadData(
 
   args_.AddObject("weights",
                   absl::make_unique<BufferDescriptor>(std::move(desc)));
-}
-
-template <DataType S, typename T>
-void ConvolutionTransposed3x3Thin::RearrangeWeightsData(
-    const tflite::gpu::Tensor<OHWI, S>& weights, absl::Span<T> dst) {
-  const int src_depth = DivideRoundUp(weights.shape.i, 4);
-  const int dst_depth = DivideRoundUp(weights.shape.o, 4);
-  const int kernel_x = 3;
-  const int kernel_y = 3;
-
-  const int remap[9] = {4, 5, 3, 7, 1, 8, 6, 2, 0};
-
-  int counter = 0;
-  for (int s = 0; s < src_depth; ++s) {
-    for (int d = 0; d < dst_depth; ++d) {
-      for (int y = 0; y < kernel_y; ++y) {
-        for (int x = 0; x < kernel_x; ++x) {
-          const int kernel_index = remap[y * kernel_x + x];
-          const int kernel_index_x = kernel_index % kernel_x;
-          const int kernel_index_y = kernel_index / kernel_x;
-          T filters[4];
-          for (int j = 0; j < 4; ++j) {
-            for (int i = 0; i < 4; ++i) {
-              const int s_ch = s * 4 + i;
-              const int d_ch = d * 4 + j;
-              if (s_ch < weights.shape.i && d_ch < weights.shape.o) {
-                const int f_index = weights.shape.LinearIndex(
-                    {d_ch, kernel_index_y, kernel_index_x, s_ch});
-                filters[i][j] = weights.data[f_index];
-              } else {
-                filters[i][j] = 0.0f;
-              }
-            }
-          }
-          dst[counter++] = filters[0];
-          dst[counter++] = filters[1];
-          dst[counter++] = filters[2];
-          dst[counter++] = filters[3];
-        }
-      }
-    }
-  }
 }
 
 bool IsConvolutionTransposed3x3ThinSupported(

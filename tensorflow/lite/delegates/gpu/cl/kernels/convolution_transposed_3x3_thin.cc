@@ -188,6 +188,10 @@ int3 ConvolutionTransposed3x3Thin::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
+std::vector<int> ConvolutionTransposed3x3Thin::GetSpatialWeightsRemap() const {
+  return std::vector<int>{4, 5, 3, 7, 1, 8, 6, 2, 0};
+}
+
 bool IsConvolutionTransposed3x3ThinSupported(
     const ConvolutionTransposedAttributes& attr) {
   return attr.weights.shape.o <= 8 && attr.weights.shape.w == 3 &&
