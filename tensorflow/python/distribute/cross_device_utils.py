@@ -258,7 +258,7 @@ class CollectiveReplicaLauncher(object):
   """Launch collectives on one replica."""
 
   _prefer_scoped_allocator = True
-  _prefer_collective_v2 = False
+  _prefer_collective_v2 = True
   _prefer_ordering_token = False
 
   def __init__(self,
