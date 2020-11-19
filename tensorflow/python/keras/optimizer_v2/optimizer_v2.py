@@ -855,8 +855,22 @@ class OptimizerV2(trackable.Trackable):
     """A list of names for this optimizer's slots."""
     return self._slot_names
 
-  def add_slot(self, var, slot_name, initializer="zeros"):
-    """Add a new slot variable for `var`."""
+  def add_slot(self, var, slot_name, initializer="zeros", shape=None):
+    """Add a new slot variable for `var`.
+
+    A slot variable is an additional variable associated with `var` to train.
+    It is allocated and managed by optimizers, e.g. `Adam`.
+
+    Args:
+      var: a `Variable` object.
+      slot_name: name of the slot variable.
+      initializer: initializer of the slot variable
+      shape: (Optional) shape of the slot variable. If not set, it will default
+      to the shape of `var`.
+
+    Returns:
+      A slot variable.
+    """
     if slot_name not in self._slot_names:
       self._slot_names.append(slot_name)
     var_key = _var_key(var)
@@ -865,8 +879,9 @@ class OptimizerV2(trackable.Trackable):
     if weight is None:
       if isinstance(initializer, six.string_types) or callable(initializer):
         initializer = initializers.get(initializer)
+        slot_shape = var.shape if shape is None else shape
         initial_value = functools.partial(
-            initializer, shape=var.shape, dtype=var.dtype)
+            initializer, shape=slot_shape, dtype=var.dtype)
       else:
         initial_value = initializer
       strategy = distribute_ctx.get_strategy()
