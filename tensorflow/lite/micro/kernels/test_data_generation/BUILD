@@ -1,6 +1,6 @@
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
-licenses(["notice"])  # Apache 2.0
+licenses(["notice"])
 
 cc_binary(
     name = "generate_flexbuffers_data",
