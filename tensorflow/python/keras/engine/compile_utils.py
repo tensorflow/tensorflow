@@ -26,6 +26,7 @@ from tensorflow.python.keras import losses as losses_mod
 from tensorflow.python.keras import metrics as metrics_mod
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import losses_utils
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util import nest
@@ -209,7 +210,11 @@ class LossesContainer(Container):
         loss_metric_value *= ds_context.get_strategy().num_replicas_in_sync
 
       if batch_dim is None:
-        batch_dim = array_ops.shape(y_t)[0]
+        if tf_utils.is_ragged(y_t):
+          batch_dim = y_t.nrows()
+        else:
+          batch_dim = array_ops.shape(y_t)[0]
+
       if metric_obj is not None:
         metric_obj.update_state(loss_metric_value, sample_weight=batch_dim)
 
