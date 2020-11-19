@@ -68,6 +68,7 @@ distribute_py_test(
     tags = [
         "no_cuda_asan",  # b/173431253
         "no_oss",
+        "notap",  # b/173661843
         "notsan",  # b/173246447
     ],
     xla_enable_strict_auto_jit = False,  # b/173254861
