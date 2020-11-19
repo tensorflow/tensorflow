@@ -3420,6 +3420,8 @@ SavedModelSignatureDefImporterLite::ConvertGraph(
     const std::vector<std::pair<std::string, TensorInfo>>& inputs,
     const std::vector<std::pair<std::string, TensorInfo>>& outputs,
     const std::vector<std::string> control_outputs) {
+  VLOG(1) << "Importing Signature: " << name;
+
   GraphImportConfig specs;
   specs.prune_unused_nodes = true;
   specs.inputs = ParseInputArrays(inputs);
@@ -3490,6 +3492,9 @@ SavedModelSignatureDefImporterLite::ParseInputArrays(
 
     // Only dense tensor is supported.
     DCHECK_EQ(tensor_info.encoding_case(), tensorflow::TensorInfo::kName);
+
+    VLOG(1) << "Importing Signature Input: input_name = " << iter.first
+            << ", tensor_info = " << tensor_info.DebugString();
 
     ArrayInfo array_info;
     array_info.imported_dtype = tensor_info.dtype();
