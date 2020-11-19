@@ -29,9 +29,12 @@ readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
 # TODO(b/143715361): downloading first to allow for parallel builds.
 readable_run make -f tensorflow/lite/micro/tools/make/Makefile third_party_downloads
 
-# Next, build w/o TF_LITE_STATIC_MEMORY to catch additional build errors.
+# Next, build w/o TF_LITE_STATIC_MEMORY to catch additional errors.
+# TODO(b/160955687): We run the tests w/o TF_LITE_STATIC_MEMORY to make the
+# internal and open source CI consistent. See b/160955687#comment7 for more
+# details.
 readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
-readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile BUILD_TYPE=no_tf_lite_static_memory build
+readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile BUILD_TYPE=no_tf_lite_static_memory test
 
 # Next, make sure that the release build succeeds.
 readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
