@@ -39,7 +39,7 @@ void *Init(TfLiteContext *context, const char *buffer, size_t length) {
 }
 
 TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
-  TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
+  TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
   auto *input = GetInput(context, node, 0);
