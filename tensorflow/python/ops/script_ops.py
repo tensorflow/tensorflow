@@ -546,20 +546,20 @@ def py_func_common(func, inp, Tout, stateful=True, name=None):
     in that
     server (e.g. using `with tf.device():`).
     
-  * It produces tensors of unknown shape and rank as shape inference does not
-    work on arbitrary Python code.
-    If you need the shape you need to set it based on statically available information.
+  Note: It produces tensors of unknown shape and rank as shape inference 
+    does not work on arbitrary Python code.
+    If you need the shape, you need to set it based on statically 
+    available information.
     
     E.g.
     ```python
-    import tensorflow.compat.v2 as tf
+    import tensorflow as tf
     import numpy as np
 
-    #make magical data that requires python
-    def make_data(i): 
-        return np.cast[np.uint8](i) * np.ones([20,256,256,3], dtype=np.float32) / 10.
+    def make_synthetic_data(i):
+        return np.cast[np.uint8](i) * np.ones([20,256,256,3], 
+                dtype=np.float32) / 10.
 
-    #clean up magical data
     def make_clean_data(i): 
         ones = tf.py_function(make_data,[i],tf.float32) 
         ones.set_shape(tf.TensorShape([None, None, None, None]))
