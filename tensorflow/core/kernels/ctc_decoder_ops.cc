@@ -213,6 +213,11 @@ class CTCGreedyDecoderOp : public OpKernel {
 
     log_prob_t.setZero();
 
+    int blank_index =
+        (blank_index_ < 0) ? num_classes + blank_index_ : blank_index_;
+    OP_REQUIRES(ctx, FastBoundsCheck(blank_index, num_classes),
+                errors::InvalidArgument("blank_index is out of bounds"));
+
     // Perform best path decoding
     std::vector<std::vector<std::vector<int> > > sequences(batch_size);
     auto decode = [&](const int64 begin, const int64 end) {
@@ -224,7 +229,7 @@ class CTCGreedyDecoderOp : public OpKernel {
           int max_class_indices;
           log_prob_t(b, 0) +=
               -RowMax<T>(input_list_t[t], b, &max_class_indices);
-          if (max_class_indices != blank_index_ &&
+          if (max_class_indices != blank_index &&
               !(merge_repeated_ && max_class_indices == prev_indices)) {
             sequence.push_back(max_class_indices);
           }

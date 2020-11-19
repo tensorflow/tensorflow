@@ -358,18 +358,6 @@ def ctc_greedy_decoder(inputs,
         sequence found, the negative of the sum of the greatest logit at each
         timeframe.
   """
-  l_bound = -_get_dim(inputs, 2)
-  u_bound = _get_dim(inputs, 2) - 1
-
-  if blank_index is not None:
-    if blank_index < l_bound or blank_index > u_bound:
-      raise ValueError("blank_index is out of bounds.")
-
-    if blank_index < 0:
-      blank_index += _get_dim(inputs, 2)
-
-  if blank_index is None:
-    blank_index = _get_dim(inputs, 2) - 1
 
   outputs = gen_ctc_ops.ctc_greedy_decoder(inputs, sequence_length,
       merge_repeated=merge_repeated, blank_index=blank_index)
