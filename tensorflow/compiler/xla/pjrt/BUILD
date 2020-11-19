@@ -243,6 +243,7 @@ cc_library(
     hdrs = ["nvidia_gpu_device.h"],
     deps = [
         ":pjrt_client",
+        "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:client_library",

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/nvidia_gpu_device.h"
 
+#include "absl/container/flat_hash_map.h"
+
 #ifdef NCCL_ENABLED
 #include "third_party/nccl/nccl.h"
 #endif  // NCCL_ENABLED
@@ -166,18 +168,22 @@ std::unique_ptr<tensorflow::BFCAllocator> GetGpuHostAllocator(
 
 // A table mapping NcclCliqueKeys to ncclUniqueId values encoded as strings.
 // In a distributed setup the table of NCCL IDs is kept on the master node
-// (node 0). Currently node 0 is the only node that generates ncclUniqueIds;
-// see the TODO below.
+// (node 0). The node of the first participating device will create the unique
+// id.
 class NcclIdStore {
  public:
-  NcclIdStore(int node_id, std::shared_ptr<DistributedRuntimeClient> client)
-      : node_id_(node_id), client_(std::move(client)) {}
+  NcclIdStore(int node_id, std::shared_ptr<DistributedRuntimeClient> client,
+              absl::flat_hash_map<GlobalDeviceId, int> device_to_node)
+      : node_id_(node_id),
+        client_(std::move(client)),
+        device_to_node_(std::move(device_to_node)) {}
 
   StatusOr<std::string> GetNcclUniqueId(const NcclCliqueKey& key);
 
  private:
   const int node_id_;
   const std::shared_ptr<DistributedRuntimeClient> client_;
+  const absl::flat_hash_map<GlobalDeviceId, int> device_to_node_;
 
   absl::Mutex mu_;
   absl::flat_hash_map<std::string, std::string> cache_ ABSL_GUARDED_BY(mu_);
@@ -192,11 +198,9 @@ StatusOr<std::string> NcclIdStore::GetNcclUniqueId(const NcclCliqueKey& key) {
       return it->second;
     }
   }
+  int primary_node_id = device_to_node_.at(key.devices()[0]);
   auto result = [&]() -> StatusOr<std::string> {
-    // TODO(phawkins): this will deadlock if node 0 is not involved in the
-    // computation. Add support for computations that only use a subset of
-    // replicas.
-    if (node_id_ == 0) {
+    if (node_id_ == primary_node_id) {
 #ifdef NCCL_ENABLED
       ncclUniqueId id;
       ncclResult_t r = ncclGetUniqueId(&id);
@@ -258,8 +262,11 @@ Status BuildDistributedDevices(
       distributed_client->EnumerateDevices(local_topology, &global_topology));
 
   std::vector<GlobalDeviceId> gpu_device_ids(local_device_states.size());
+  absl::flat_hash_map<GlobalDeviceId, int> device_to_node;
   for (const LocalTopologyProto& node : global_topology.nodes()) {
     for (const DeviceProto& device_proto : node.devices()) {
+      GlobalDeviceId global_device_id(device_proto.global_device_id());
+      device_to_node[global_device_id] = node.node_id();
       std::unique_ptr<LocalDeviceState> local_device;
       if (node.node_id() == node_id) {
         TF_RET_CHECK(device_proto.local_device_ordinal() >= 0 &&
@@ -269,8 +276,7 @@ Status BuildDistributedDevices(
                      nullptr);
         local_device =
             std::move(local_device_states[device_proto.local_device_ordinal()]);
-        gpu_device_ids[device_proto.local_device_ordinal()] =
-            GlobalDeviceId(device_proto.global_device_id());
+        gpu_device_ids[device_proto.local_device_ordinal()] = global_device_id;
       }
       auto device = absl::make_unique<GpuDevice>(
           device_proto.global_device_id(), std::move(local_device),
@@ -283,8 +289,8 @@ Status BuildDistributedDevices(
   }
   gpu_executable_run_options->set_gpu_global_device_ids(
       std::move(gpu_device_ids));
-  auto nccl_id_store =
-      std::make_shared<NcclIdStore>(node_id, distributed_client);
+  auto nccl_id_store = std::make_shared<NcclIdStore>(
+      node_id, distributed_client, device_to_node);
   gpu_executable_run_options->set_nccl_unique_id_callback(
       [nccl_id_store](const NcclCliqueKey& key) {
         return nccl_id_store->GetNcclUniqueId(key);
