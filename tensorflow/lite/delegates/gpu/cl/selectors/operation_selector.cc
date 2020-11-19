@@ -387,7 +387,8 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
     }
     case OperationType::MEAN: {
       auto attr = absl::any_cast<MeanAttributes>(node.operation.attributes);
-      *gpu_op = SelectReduce(attr.dims, op_type, op_def, gpu_info);
+      *gpu_op = SelectReduce(attr.dims, inputs[0]->tensor.shape, op_type,
+                             op_def, gpu_info);
       return absl::OkStatus();
     }
     case OperationType::MEAN_STDDEV_NORMALIZATION: {
@@ -507,7 +508,8 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
     case OperationType::REDUCE_PRODUCT:
     case OperationType::REDUCE_SUM: {
       auto attr = absl::any_cast<ReduceAttributes>(node.operation.attributes);
-      *gpu_op = SelectReduce(attr.dims, op_type, op_def, gpu_info);
+      *gpu_op = SelectReduce(attr.dims, inputs[0]->tensor.shape, op_type,
+                             op_def, gpu_info);
       return absl::OkStatus();
     }
     default:

@@ -48,8 +48,9 @@ TEST_F(OpenCLOperationTest, MeanHW) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      Reduce operation = CreateReduce(axis, OperationType::MEAN, op_def,
-                                      env_.GetDevicePtr()->GetInfo());
+      Reduce operation =
+          CreateReduce(axis, src_tensor.shape, OperationType::MEAN, op_def,
+                       env_.GetDevicePtr()->GetInfo());
       ASSERT_OK(
           ExecuteGPUOperation(src_tensor, creation_context_,
                               absl::make_unique<Reduce>(std::move(operation)),
@@ -74,8 +75,9 @@ TEST_F(OpenCLOperationTest, ReduceSumChannels) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      Reduce operation = CreateReduce(axis, OperationType::REDUCE_SUM, op_def,
-                                      env_.GetDevicePtr()->GetInfo());
+      Reduce operation =
+          CreateReduce(axis, src_tensor.shape, OperationType::REDUCE_SUM,
+                       op_def, env_.GetDevicePtr()->GetInfo());
       ASSERT_OK(
           ExecuteGPUOperation(src_tensor, creation_context_,
                               absl::make_unique<Reduce>(std::move(operation)),
@@ -100,8 +102,9 @@ TEST_F(OpenCLOperationTest, ReduceProductChannels) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      Reduce operation = CreateReduce(axis, OperationType::REDUCE_PRODUCT,
-                                      op_def, env_.GetDevicePtr()->GetInfo());
+      Reduce operation =
+          CreateReduce(axis, src_tensor.shape, OperationType::REDUCE_PRODUCT,
+                       op_def, env_.GetDevicePtr()->GetInfo());
       ASSERT_OK(
           ExecuteGPUOperation(src_tensor, creation_context_,
                               absl::make_unique<Reduce>(std::move(operation)),
@@ -127,8 +130,9 @@ TEST_F(OpenCLOperationTest, ReduceMaxChannels) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      Reduce operation = CreateReduce(axis, OperationType::REDUCE_MAXIMUM,
-                                      op_def, env_.GetDevicePtr()->GetInfo());
+      Reduce operation =
+          CreateReduce(axis, src_tensor.shape, OperationType::REDUCE_MAXIMUM,
+                       op_def, env_.GetDevicePtr()->GetInfo());
       ASSERT_OK(
           ExecuteGPUOperation(src_tensor, creation_context_,
                               absl::make_unique<Reduce>(std::move(operation)),
@@ -154,8 +158,9 @@ TEST_F(OpenCLOperationTest, ReduceMinChannels) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      Reduce operation = CreateReduce(axis, OperationType::REDUCE_MINIMUM,
-                                      op_def, env_.GetDevicePtr()->GetInfo());
+      Reduce operation =
+          CreateReduce(axis, src_tensor.shape, OperationType::REDUCE_MINIMUM,
+                       op_def, env_.GetDevicePtr()->GetInfo());
       ASSERT_OK(
           ExecuteGPUOperation(src_tensor, creation_context_,
                               absl::make_unique<Reduce>(std::move(operation)),

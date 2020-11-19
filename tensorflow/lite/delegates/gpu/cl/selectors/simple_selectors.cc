@@ -148,11 +148,12 @@ void SelectStridedSlice(const SliceAttributes& attr, const OperationDef& op_def,
 }
 
 std::unique_ptr<GPUOperation> SelectReduce(const std::set<Axis>& axis_to_reduce,
+                                           const BHWC& src_shape,
                                            OperationType op_type,
                                            const OperationDef& op_def,
                                            const GpuInfo& gpu_info) {
   return absl::make_unique<Reduce>(
-      CreateReduce(axis_to_reduce, op_type, op_def, gpu_info));
+      CreateReduce(axis_to_reduce, src_shape, op_type, op_def, gpu_info));
 }
 
 void SelectSoftmax(const BHWC& shape, const OperationDef& op_def,

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/kernels/reduce.h"
 
+#include <set>
 #include <string>
 
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
@@ -26,48 +27,7 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 namespace {
-// total_wg_size is pot, dimensions is {1, 2, 3}
-int3 GetWGSizeFromTotalSize(int total_wg_size, int dimensions) {
-  if (dimensions == 1) {
-    return {total_wg_size, 1, 1};
-  } else if (dimensions == 2) {
-    int3 wg_size = int3(1, 1, 1);
-    while (total_wg_size != 1) {
-      if (total_wg_size >= 4) {
-        wg_size.x *= 2;
-        wg_size.y *= 2;
-        total_wg_size /= 4;
-      } else {
-        // total_wg_size == 2
-        wg_size.x *= 2;
-        total_wg_size /= 2;
-      }
-    }
-    return wg_size;
-  } else {
-    // dimensions == 3
-    int3 wg_size = int3(1, 1, 1);
-    while (total_wg_size != 1) {
-      if (total_wg_size >= 8) {
-        wg_size.x *= 2;
-        wg_size.y *= 2;
-        wg_size.z *= 2;
-        total_wg_size /= 8;
-      } else if (total_wg_size == 4) {
-        wg_size.x *= 2;
-        wg_size.y *= 2;
-        total_wg_size /= 4;
-      } else {
-        // total_wg_size == 2
-        wg_size.x *= 2;
-        total_wg_size /= 2;
-      }
-    }
-    return wg_size;
-  }
-}
-
-int GetWGTotalSize(const GpuInfo& gpu_info) {
+int GetMaximumWGTotalSize(const GpuInfo& gpu_info) {
   // total_wg_size must be power of 2 and >= 4;
   int total_wg_size = 256;
   if (gpu_info.IsAdreno() && gpu_info.adreno_info.IsAdreno3xx()) {
@@ -108,29 +68,86 @@ std::string MakeOp(OperationType op_type, const std::string& a,
   return "UnsupportedOperation";
 }
 
+// max_total_wg_size is pot
+int3 GetMaximumPossibleWGSize(const std::vector<int>& ordered_sizes,
+                              int max_total_wg_size) {
+  int3 wg_size = int3(1, 1, 1);
+  int wg_size_total = 1;
+  for (int i = ordered_sizes.size() - 1; i >= 0; i--) {
+    const int wg_index = ordered_sizes.size() - 1 - i;
+    if (wg_index >= 3) {
+      return wg_size;
+    }
+    while (ordered_sizes[i] >= wg_size[wg_index] * 2) {
+      wg_size_total *= 2;
+      if (wg_size_total > max_total_wg_size) {
+        return wg_size;
+      }
+      wg_size[wg_index] *= 2;
+    }
+  }
+  return wg_size;
+}
+
+std::map<Axis, int> GetSizesFromShape(const std::set<Axis>& axis,
+                                      const BHWC& shape) {
+  std::map<Axis, int> result;
+  for (auto a : axis) {
+    result[a] = shape.get(a);
+  }
+  return result;
+}
+
+std::map<Axis, int> GetSizesFromShape(const std::set<Axis>& axis,
+                                      const BHWDC& shape) {
+  std::map<Axis, int> result;
+  for (auto a : axis) {
+    result[a] = shape.get(a);
+  }
+  return result;
+}
+
 }  // namespace
 
-Reduce::Reduce(const std::set<Axis>& axis_to_reduce, OperationType op_type,
+Reduce::Reduce(const std::map<Axis, int>& axis_to_reduce, OperationType op_type,
                const OperationDef& definition, const GpuInfo& gpu_info)
     : GPUOperation(definition) {
   std::vector<Axis> ordered_axis_to_reduce;
+  std::vector<int> ordered_sizes;
   for (const auto& a :
        {Axis::CHANNELS, Axis::DEPTH, Axis::HEIGHT, Axis::WIDTH, Axis::BATCH}) {
-    if (axis_to_reduce.count(a)) {
-      ordered_axis_to_reduce.push_back(a);
+    auto it = axis_to_reduce.find(a);
+    if (it != axis_to_reduce.end()) {
+      ordered_axis_to_reduce.push_back(it->first);
+      int reduction_size = it->second;
+      if (a == Axis::CHANNELS) {
+        reduction_size = DivideRoundUp(reduction_size, 4);
+      }
+      ordered_sizes.push_back(reduction_size);
     }
   }
-  int wg_dims = std::min(3, static_cast<int>(ordered_axis_to_reduce.size()));
-  const int total_wg_size = GetWGTotalSize(gpu_info);
-  work_group_size_ = GetWGSizeFromTotalSize(total_wg_size, wg_dims);
+  const int max_total_wg_size = GetMaximumWGTotalSize(gpu_info);
+  int3 current_wg_size =
+      GetMaximumPossibleWGSize(ordered_sizes, max_total_wg_size);
+  int current_wg_size_total =
+      current_wg_size.x * current_wg_size.y * current_wg_size.z;
+  if (current_wg_size_total < max_total_wg_size / 4) {
+    use_wg_reduction_ = false;
+  } else {
+    use_wg_reduction_ = true;
+    work_group_size_ = current_wg_size;
+  }
   code_ = GetReduceKernelCode(definition_, work_group_size_,
                               ordered_axis_to_reduce, op_type);
 }
 
-Reduce::Reduce(Reduce&& operation) : GPUOperation(std::move(operation)) {}
+Reduce::Reduce(Reduce&& operation)
+    : GPUOperation(std::move(operation)),
+      use_wg_reduction_(operation.use_wg_reduction_) {}
 
 Reduce& Reduce::operator=(Reduce&& operation) {
   if (this != &operation) {
+    use_wg_reduction_ = operation.use_wg_reduction_;
     GPUOperation::operator=(std::move(operation));
   }
   return *this;
@@ -159,8 +176,25 @@ std::string Reduce::GetReduceKernelCode(const OperationDef& op_def,
       }
     }
   }
-  int wg_dims = std::min(3, static_cast<int>(axis_to_reduce.size()));
   const bool channels_reductin = HasAxis(axis_to_reduce, Axis::CHANNELS);
+  int wg_dims = 0;
+  if (use_wg_reduction_) {
+    if (work_group_size.y == 1 && work_group_size.z == 1) {
+      wg_dims = 1;
+    } else if (work_group_size.z == 1) {
+      wg_dims = 2;
+    } else {
+      wg_dims = 3;
+    }
+  }
+
+  auto get_global_id = [&](int i) {
+    if (use_wg_reduction_) {
+      return "get_group_id(" + std::to_string(i) + ")";
+    } else {
+      return "get_global_id(" + std::to_string(i) + ")";
+    }
+  };
 
   std::string c = GetCommonDefines(op_def.precision);
   const std::string wg_x = std::to_string(work_group_size.x);
@@ -170,45 +204,47 @@ std::string Reduce::GetReduceKernelCode(const OperationDef& op_def,
       work_group_size.x * work_group_size.y * work_group_size.z;
   c += "__kernel void main_function(\n";
   c += "$0) {\n";
-  c += "  __local float4 accum[" + std::to_string(wg_total_size) + "];\n";
-  if (wg_dims == 1) {
-    c += "  int local_x = get_local_id(0);\n";
-    c += "  int local_id = local_x;\n";
-  } else if (wg_dims == 2) {
-    c += "  int local_x = get_local_id(0);\n";
-    c += "  int local_y = get_local_id(1);\n";
-    c += "  int local_id = local_y * " + wg_x + " + local_x;\n";
-  } else if (wg_dims == 3) {
-    c += "  int local_x = get_local_id(0);\n";
-    c += "  int local_y = get_local_id(1);\n";
-    c += "  int local_z = get_local_id(2);\n";
-    c += "  int local_id = (local_z * " + wg_y + " + local_y) * " + wg_x +
-         " + local_x;\n";
+  if (use_wg_reduction_) {
+    c += "  __local float4 accum[" + std::to_string(wg_total_size) + "];\n";
+    if (wg_dims == 1) {
+      c += "  int local_x = get_local_id(0);\n";
+      c += "  int local_id = local_x;\n";
+    } else if (wg_dims == 2) {
+      c += "  int local_x = get_local_id(0);\n";
+      c += "  int local_y = get_local_id(1);\n";
+      c += "  int local_id = local_y * " + wg_x + " + local_x;\n";
+    } else if (wg_dims == 3) {
+      c += "  int local_x = get_local_id(0);\n";
+      c += "  int local_y = get_local_id(1);\n";
+      c += "  int local_z = get_local_id(2);\n";
+      c += "  int local_id = (local_z * " + wg_y + " + local_y) * " + wg_x +
+           " + local_x;\n";
+    }
   }
   if (axis_to_leave.count(Axis::WIDTH)) {
     if (axis_to_leave.count(Axis::BATCH)) {
-      c += "  int linear_id = get_group_id(0);\n";
+      c += "  int linear_id = " + get_global_id(0) + ";\n";
       c += "  int DST_X = linear_id / args.dst_tensor.Batch();\n";
       c += "  int DST_B = linear_id % args.dst_tensor.Batch();\n";
     } else {
-      c += "  int DST_X = get_group_id(0);\n";
+      c += "  int DST_X = " + get_global_id(0) + ";\n";
     }
   } else if (axis_to_leave.count(Axis::BATCH)) {
-    c += "  int DST_B = get_group_id(0);\n";
+    c += "  int DST_B = " + get_global_id(0) + ";\n";
   }
   if (axis_to_leave.count(Axis::HEIGHT)) {
     if (axis_to_leave.count(Axis::DEPTH)) {
-      c += "  int linear_id = get_group_id(1);\n";
+      c += "  int linear_id = " + get_global_id(1) + ";\n";
       c += "  int DST_Y = linear_id % args.dst_tensor.Height();\n";
       c += "  int DST_Z = linear_id / args.dst_tensor.Height();\n";
     } else {
-      c += "  int DST_Y = get_group_id(1);\n";
+      c += "  int DST_Y = " + get_global_id(1) + ";\n";
     }
   } else if (axis_to_leave.count(Axis::DEPTH)) {
-    c += "  int DST_Z = get_group_id(1);\n";
+    c += "  int DST_Z = " + get_global_id(1) + ";\n";
   }
   if (axis_to_leave.count(Axis::CHANNELS)) {
-    c += "  int DST_S = get_group_id(2);\n";
+    c += "  int DST_S = " + get_global_id(2) + ";\n";
   }
   std::map<Axis, std::string> axis_to_selector = {
       {Axis::BATCH, "Batch()"},     {Axis::WIDTH, "Width()"},
@@ -313,55 +349,58 @@ std::string Reduce::GetReduceKernelCode(const OperationDef& op_def,
   if (op_type == OperationType::MEAN) {
     c += "  reducer *= args.inv_multiplier_1;\n";
   }
-  c += "  accum[local_id] = reducer;\n";
-  c += "  barrier(CLK_LOCAL_MEM_FENCE);\n";
-  const int total_size =
-      work_group_size.x * work_group_size.y * work_group_size.z;
-  int offset = 1;
-  int reminder = total_size / 4;
-  for (; reminder >= 8; reminder /= 4, offset *= 4) {
-    c += "  if (local_id < " + std::to_string(reminder) + ") {\n";
-    c += "    int t = local_id * " + std::to_string(offset * 4) + ";\n";
-    c += "    float4 sum = accum[t + " + std::to_string(offset) + "];\n";
-    c += "    sum = " +
-         MakeOp(op_type, "sum",
-                "accum[t + " + std::to_string(offset * 2) + "]") +
-         ";\n";
-    c += "    sum = " +
-         MakeOp(op_type, "sum",
-                "accum[t + " + std::to_string(offset * 3) + "]") +
-         ";\n";
-    c += "    accum[t] = " + MakeOp(op_type, "accum[t]", "sum") + ";\n";
-    c += "  }\n";
+  if (use_wg_reduction_) {
+    c += "  accum[local_id] = reducer;\n";
     c += "  barrier(CLK_LOCAL_MEM_FENCE);\n";
-  }
-  c += "  float4 sum = accum[0];\n";
-  reminder *= 4;
-  for (int i = 1; i < reminder; ++i) {
-    c += "  sum = " +
-         MakeOp(op_type, "sum", "accum[" + std::to_string(offset * i) + "]") +
-         ";\n";
+    const int total_size =
+        work_group_size.x * work_group_size.y * work_group_size.z;
+    int offset = 1;
+    int reminder = total_size / 4;
+    for (; reminder >= 8; reminder /= 4, offset *= 4) {
+      c += "  if (local_id < " + std::to_string(reminder) + ") {\n";
+      c += "    int t = local_id * " + std::to_string(offset * 4) + ";\n";
+      c += "    float4 sum = accum[t + " + std::to_string(offset) + "];\n";
+      c += "    sum = " +
+           MakeOp(op_type, "sum",
+                  "accum[t + " + std::to_string(offset * 2) + "]") +
+           ";\n";
+      c += "    sum = " +
+           MakeOp(op_type, "sum",
+                  "accum[t + " + std::to_string(offset * 3) + "]") +
+           ";\n";
+      c += "    accum[t] = " + MakeOp(op_type, "accum[t]", "sum") + ";\n";
+      c += "  }\n";
+      c += "  barrier(CLK_LOCAL_MEM_FENCE);\n";
+    }
+    c += "  reducer = accum[0];\n";
+    reminder *= 4;
+    for (int i = 1; i < reminder; ++i) {
+      c += "  reducer = " +
+           MakeOp(op_type, "reducer",
+                  "accum[" + std::to_string(offset * i) + "]") +
+           ";\n";
+    }
+    if (op_type == OperationType::MEAN) {
+      c += "  reducer *= args.inv_multiplier_2;\n";
+    }
   }
   if (channels_reductin) {
     if (op_type == OperationType::REDUCE_SUM ||
         op_type == OperationType::MEAN) {
-      c += "  sum.x += sum.y + sum.z + sum.w;\n";
+      c += "  reducer.x += reducer.y + reducer.z + reducer.w;\n";
     } else if (op_type == OperationType::REDUCE_PRODUCT) {
-      c += "  sum.x *= sum.y * sum.z * sum.w;\n";
+      c += "  reducer.x *= reducer.y * reducer.z * reducer.w;\n";
     } else if (op_type == OperationType::REDUCE_MAXIMUM) {
-      c += "  sum.x = max(sum.x, sum.y);\n";
-      c += "  sum.x = max(sum.x, sum.z);\n";
-      c += "  sum.x = max(sum.x, sum.w);\n";
+      c += "  reducer.x = max(reducer.x, reducer.y);\n";
+      c += "  reducer.x = max(reducer.x, reducer.z);\n";
+      c += "  reducer.x = max(reducer.x, reducer.w);\n";
     } else if (op_type == OperationType::REDUCE_MINIMUM) {
-      c += "  sum.x = min(sum.x, sum.y);\n";
-      c += "  sum.x = min(sum.x, sum.z);\n";
-      c += "  sum.x = min(sum.x, sum.w);\n";
+      c += "  reducer.x = min(reducer.x, reducer.y);\n";
+      c += "  reducer.x = min(reducer.x, reducer.z);\n";
+      c += "  reducer.x = min(reducer.x, reducer.w);\n";
     }
   }
-  if (op_type == OperationType::MEAN) {
-    c += "  sum *= args.inv_multiplier_2;\n";
-  }
-  c += "  FLT4 result = TO_FLT4(sum);\n";
+  c += "  FLT4 result = TO_FLT4(reducer);\n";
   std::string dst_coordinates;
   for (const auto& a : all_axis) {
     if (op_def.dst_tensors[0].HasAxis(a)) {
@@ -388,11 +427,16 @@ absl::Status Reduce::BindArguments(ArgumentsBinder* args) {
                                     dst_[0]->Height() * dst_[0]->Depth() *
                                     dst_[0]->Channels();
   const double reduction_size = total_src_elements / total_dst_elements;
-  const double size_0 =
-      work_group_size_.x * work_group_size_.y * work_group_size_.z;
-  const double size_1 = reduction_size / size_0;
-  RETURN_IF_ERROR(args->SetFloat("inv_multiplier_1", 1.0 / size_1));
-  RETURN_IF_ERROR(args->SetFloat("inv_multiplier_2", 1.0 / size_0));
+  if (use_wg_reduction_) {
+    const double size_0 =
+        work_group_size_.x * work_group_size_.y * work_group_size_.z;
+    const double size_1 = reduction_size / size_0;
+    RETURN_IF_ERROR(args->SetFloat("inv_multiplier_1", 1.0 / size_1));
+    RETURN_IF_ERROR(args->SetFloat("inv_multiplier_2", 1.0 / size_0));
+  } else {
+    RETURN_IF_ERROR(args->SetFloat("inv_multiplier_1", 1.0 / reduction_size));
+    RETURN_IF_ERROR(args->SetFloat("inv_multiplier_2", 1.0));
+  }
   float4 mask = GetMaskForLastPlane(src_[0]->Channels());
   RETURN_IF_ERROR(args->SetFloat("mask_x", mask.x));
   RETURN_IF_ERROR(args->SetFloat("mask_y", mask.y));
@@ -402,15 +446,41 @@ absl::Status Reduce::BindArguments(ArgumentsBinder* args) {
 }
 
 int3 Reduce::GetGridSize() const {
-  const int grid_x = work_group_size_.x * dst_[0]->Width() * dst_[0]->Batch();
-  const int grid_y = work_group_size_.y * dst_[0]->Height() * dst_[0]->Depth();
-  const int grid_z = work_group_size_.z * dst_[0]->Slices();
+  int grid_x = dst_[0]->Width() * dst_[0]->Batch();
+  int grid_y = dst_[0]->Height() * dst_[0]->Depth();
+  int grid_z = dst_[0]->Slices();
+  if (use_wg_reduction_) {
+    grid_x *= work_group_size_.x;
+    grid_y *= work_group_size_.y;
+    grid_z *= work_group_size_.z;
+  }
   return int3(grid_x, grid_y, grid_z);
 }
 
-Reduce CreateReduce(const std::set<Axis>& axis_to_reduce, OperationType op_type,
+void Reduce::GetPossibleKernelWorkGroups(TuningType tuning_type,
+                                         const GpuInfo& gpu_info,
+                                         const KernelInfo& kernel_info,
+                                         std::vector<int3>* work_groups) const {
+  if (use_wg_reduction_) {
+    work_groups->push_back(work_group_size_);
+  } else {
+    GetPossibleWorkGroups(tuning_type, gpu_info, kernel_info, grid_size_,
+                          work_groups);
+  }
+}
+
+Reduce CreateReduce(const std::set<Axis>& axis_to_reduce, const BHWC& src_shape,
+                    OperationType op_type, const OperationDef& definition,
+                    const GpuInfo& gpu_info) {
+  return Reduce(GetSizesFromShape(axis_to_reduce, src_shape), op_type,
+                definition, gpu_info);
+}
+
+Reduce CreateReduce(const std::set<Axis>& axis_to_reduce,
+                    const BHWDC& src_shape, OperationType op_type,
                     const OperationDef& definition, const GpuInfo& gpu_info) {
-  return Reduce(axis_to_reduce, op_type, definition, gpu_info);
+  return Reduce(GetSizesFromShape(axis_to_reduce, src_shape), op_type,
+                definition, gpu_info);
 }
 
 }  // namespace cl

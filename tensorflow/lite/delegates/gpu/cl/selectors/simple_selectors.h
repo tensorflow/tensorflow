@@ -71,6 +71,7 @@ void SelectStridedSlice(const SliceAttributes& attr, const OperationDef& op_def,
                         std::unique_ptr<GPUOperation>* ptr);
 
 std::unique_ptr<GPUOperation> SelectReduce(const std::set<Axis>& axis_to_reduce,
+                                           const BHWC& src_shape,
                                            OperationType op_type,
                                            const OperationDef& op_def,
                                            const GpuInfo& gpu_info);
