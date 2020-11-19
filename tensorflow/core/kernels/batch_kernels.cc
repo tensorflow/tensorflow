@@ -52,6 +52,14 @@ void RecordBatchSplitUsage(
   }
 }
 
+void RecordBatchParamNumBatchThreads(int64 num_batch_threads,
+                                     const string& model_name) {
+  static auto* cell = monitoring::Gauge<int64, 1>::New(
+      "/tensorflow/serving/batching/num_batch_threads",
+      "Tracks the number of batch threads of a model.", "model_name");
+  cell->GetCell(model_name)->Set(num_batch_threads);
+}
+
 const string& GetModelName(OpKernelContext* ctx) {
   static string* kModelNameUnset = new string("model_name_unset");
   if (!ctx->session_metadata()) return *kModelNameUnset;
@@ -175,6 +183,8 @@ class BatchFunctionKernel : public AsyncOpKernel {
             ? absl::make_optional(enable_large_batch_splitting_)
             : absl::nullopt,
         GetModelName(c));
+    // TODO(b/173255290): Add num_batch_threads_ parameter to TFRT batch kernel.
+    RecordBatchParamNumBatchThreads(num_batch_threads_, GetModelName(c));
     BatchResource* br;
     std::function<Status(BatchResource**)> creator = [this](BatchResource** r) {
       std::unique_ptr<BatchResource> new_resource;

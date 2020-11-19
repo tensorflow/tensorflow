@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <map>
 
+#include "absl/strings/str_join.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -116,7 +117,9 @@ class BatchResourceBase : public ResourceBase {
       : has_process_batch_function_(has_process_batch_function),
         batcher_(std::move(batcher)),
         batcher_queue_options_(batcher_queue_options),
-        allowed_batch_sizes_(std::move(allowed_batch_sizes)) {}
+        allowed_batch_sizes_(std::move(allowed_batch_sizes)) {
+    allowed_batch_sizes_str_ = absl::StrJoin(allowed_batch_sizes_, ",");
+  }
 
   static BatcherT::QueueOptions GetBatcherQueueOptions(
       int32 num_batch_threads, int32 max_batch_size, int32 batch_timeout_micros,
@@ -204,6 +207,9 @@ class BatchResourceBase : public ResourceBase {
       TF_GUARDED_BY(batcher_queues_mu_);
 
   std::vector<int32> allowed_batch_sizes_;
+  // A concatenated string of <allowed_batch_sizes_>, separated by ",". This is
+  // used to record batching parameter.
+  string allowed_batch_sizes_str_;
 };
 
 }  // namespace serving
