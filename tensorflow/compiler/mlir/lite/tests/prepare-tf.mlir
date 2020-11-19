@@ -551,37 +551,6 @@ func @StridedSliceRewriteMasks(%arg0: tensor<8x4x16x2xf32>) -> tensor<8x4x16x1xf
   return %0 : tensor<8x4x16x1xf32>
 }
 
-// CHECK-LABEL: @MatrixSetDiagV2Conversion
-func @MatrixSetDiagV2Conversion(%arg0: tensor<3x3xi32>, %arg1: tensor<3xi32>) -> tensor<3x3xi32> {
-  %cst = constant dense<0> : tensor<i32>
-  %0 = "tf.MatrixSetDiagV2"(%arg0, %arg1, %cst) : (tensor<3x3xi32>, tensor<3xi32>, tensor<i32>) -> tensor<3x3xi32>
-  return %0 : tensor<3x3xi32>
-
-  // CHECK: %[[RES:.*]] = "tf.MatrixSetDiag"(%arg0, %arg1) : (tensor<3x3xi32>, tensor<3xi32>) -> tensor<3x3xi32>
-  // CHECK: return %[[RES]]
-}
-
-// CHECK-LABEL: @MatrixSetDiagV2NonZeroK
-func @MatrixSetDiagV2NonZeroK(%arg0: tensor<3x3xi32>, %arg1: tensor<3xi32>) -> tensor<3x3xi32> {
-  %cst = constant dense<1> : tensor<i32>
-  %0 = "tf.MatrixSetDiagV2"(%arg0, %arg1, %cst) : (tensor<3x3xi32>, tensor<3xi32>, tensor<i32>) -> tensor<3x3xi32>
-  return %0 : tensor<3x3xi32>
-
-  // CHECK: %[[CST:.*]] = constant dense<1> : tensor<i32>
-  // CHECK: %[[RES:.*]] = "tf.MatrixSetDiagV2"(%arg0, %arg1, %[[CST]]) : (tensor<3x3xi32>, tensor<3xi32>, tensor<i32>) -> tensor<3x3xi32>
-  // CHECK: return %[[RES]]
-}
-
-// CHECK-LABEL: @MatrixSetDiagV3Conversion
-func @MatrixSetDiagV3Conversion(%arg0: tensor<3x3xi32>, %arg1: tensor<3xi32>) -> tensor<3x3xi32> {
-  %cst = constant dense<0> : tensor<i32>
-  %0 = "tf.MatrixSetDiagV3"(%arg0, %arg1, %cst) : (tensor<3x3xi32>, tensor<3xi32>, tensor<i32>) -> tensor<3x3xi32>
-  return %0 : tensor<3x3xi32>
-
-  // CHECK: %[[RES:.*]] = "tf.MatrixSetDiag"(%arg0, %arg1) : (tensor<3x3xi32>, tensor<3xi32>) -> tensor<3x3xi32>
-  // CHECK: return %[[RES]]
-}
-
 func @broadcast_to_f32_low_dim(%arg0: tensor<3xf32>, %arg1: tensor<2xi32>) -> tensor<3x3xf32> {
   %0 = "tf.BroadcastTo"(%arg0, %arg1) : (tensor<3xf32>, tensor<2xi32>) -> tensor<3x3xf32>
   return %0: tensor<3x3xf32>

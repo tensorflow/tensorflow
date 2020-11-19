@@ -201,7 +201,7 @@ class CompilerImpl : public Compiler {
           return;
         }
         bool is_ref = IsRef(*object);
-        if (num_textures < gpu_info_.max_image_units &&
+        if (num_textures < gpu_info_.GetMaxImageArguments() &&
             !ExceedsMaxSize(*object, gpu_info_) &&
             (object->object_type == ObjectType::TEXTURE ||
              (is_ref && options_.ref_obj_type == ObjectType::TEXTURE) ||
@@ -251,8 +251,7 @@ class CompilerImpl : public Compiler {
         attr.outputs.push_back(object);
       }
 
-      // Allocate bindings. Textures must be bound first. max_image_units also
-      // defines max binding number for a texture.
+      // Allocate bindings. Textures must be bound first.
       uint32_t binding = 0;
       auto set_binding = [&](ObjectType type, Object& object) {
         if (object.object_type == type) {

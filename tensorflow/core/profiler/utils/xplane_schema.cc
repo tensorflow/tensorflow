@@ -116,6 +116,7 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       {"MergeInputTensors", kMergeInputTensors},
       {"ScheduleWithoutSplit", kScheduleWithoutSplit},
       {"ScheduleWithSplit", kScheduleWithSplit},
+      {"ASBSQueue::Schedule", kASBSQueueSchedule},
       // JAX related.
       {"LocalExecutable::ExecuteOnLocalDevices", kExecuteOnLocalDevices},
       // GPU related.

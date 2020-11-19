@@ -53,6 +53,8 @@ class NcclCliqueKey {
 
   const std::vector<GlobalDeviceId>& devices() const { return devices_; }
 
+  std::string ToString() const;
+
  private:
   std::vector<GlobalDeviceId> devices_;
 };

@@ -328,23 +328,28 @@ def LegalizeMean : Pat<(TF_MeanOp $arg0, $arg1, BoolAttr:$arg2),
                        (TFL_MeanOp $arg0, $arg1, $arg2)>;
 
 def LegalizeSum : Pat<(TF_SumOp $arg, $axes, BoolAttr:$arg2),
-                      (TFL_SumOp $arg, $axes, $arg2)>;
+                      (TFL_SumOp $arg, (CreateTFCastToInt32Op $axes), $arg2)>;
 
 // TopK in TFL is always sorted so we ignore that attribute here.
 def LegalizeTopKV2 : Pat<(TF_TopKV2Op $input, $k, $ignored_sorted),
                          (TFL_TopKV2Op $input, $k)>;
 
-def LegalizeMin : Pat<(TF_MinOp $arg0, $arg1, BoolAttr:$arg2),
-                      (TFL_ReduceMinOp $arg0, $arg1, $arg2)>;
+def LegalizeMin : Pat<
+  (TF_MinOp $arg0, $axes, BoolAttr:$arg2),
+  (TFL_ReduceMinOp $arg0, (CreateTFCastToInt32Op $axes), $arg2)>;
 
-def LegalizeMax : Pat<(TF_MaxOp $arg0, $arg1, BoolAttr:$arg2),
-                      (TFL_ReduceMaxOp $arg0, $arg1, $arg2)>;
+def LegalizeMax : Pat<
+  (TF_MaxOp $arg0, $axes, BoolAttr:$arg2),
+  (TFL_ReduceMaxOp $arg0, (CreateTFCastToInt32Op $axes), $arg2)>;
 
-def LegalizeProd : Pat<(TF_ProdOp $arg0, $arg1, BoolAttr:$arg2),
-                       (TFL_ReduceProdOp $arg0, $arg1, $arg2)>;
+def LegalizeProd : Pat<
+  (TF_ProdOp $arg0, $axes, BoolAttr:$arg2),
+  (TFL_ReduceProdOp $arg0, (CreateTFCastToInt32Op $axes), $arg2)>;
 
-def LegalizeAny : Pat<(TF_AnyOp $input, $reduction_indices, $keep_dims),
-                      (TFL_ReduceAnyOp $input, $reduction_indices, $keep_dims)>;
+def LegalizeAny : Pat<
+  (TF_AnyOp $input, $reduction_indices, $keep_dims),
+  (TFL_ReduceAnyOp $input, (CreateTFCastToInt32Op $reduction_indices),
+                   $keep_dims)>;
 
 def LegalizeCast : Pat<(TF_CastOp $arg0, BoolAttr:$arg1), (TFL_CastOp $arg0)>;
 
@@ -440,8 +445,23 @@ def LegalizeConv2DBackpropInput : Pat<
      /*stride_h=*/ ExtractI32At<1>:$strides,
      /*stride_w=*/ ExtractI32At<2>:$strides)>;
 
+def IsRankZeroAttr
+  : CPred<"$_self.cast<DenseElementsAttr>().getType().getRank() == 0">;
+
+def HasValueZero
+  : CPred<"$_self.cast<DenseElementsAttr>().getSplatValue()."
+          "cast<::mlir::IntegerAttr>().getInt() == 0">;
+
+// TFLite only supports MatrixSetDiag ops with scalar zero k attribute.
+def IsSupportedByTFLiteMatrixSetDiag
+  : ElementsAttrBase<And<[ElementsAttr.predicate,
+                          IsRankZeroAttr, HasValueZero]>,
+                     "MatrixSetDiag attribute verification">;
+
+// Attribute align doesn't matter when k is zero.
 def LegalizeMatrixSetDiag : Pat<
-  (TF_MatrixSetDiagOp $input, $diagonal),
+  (TF_MatrixSetDiagV3Op $input, $diagonal,
+    (ConstantLikeMatcher IsSupportedByTFLiteMatrixSetDiag:$k), $align),
   (TFL_MatrixSetDiagOp $input, $diagonal)>;
 
 def LegalizeScatterNd : Pat<

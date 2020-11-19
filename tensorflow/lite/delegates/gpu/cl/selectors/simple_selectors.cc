@@ -25,11 +25,11 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/kernels/depthwise_conv.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/lstm.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/max_unpooling.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/mean.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/padding.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/pooling.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/prelu.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/quantize_and_dequantize.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/reduce.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/relu.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/reshape.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/reshapex4.h"
@@ -147,16 +147,13 @@ void SelectStridedSlice(const SliceAttributes& attr, const OperationDef& op_def,
   *ptr = absl::make_unique<StridedSlice>(std::move(operation));
 }
 
-absl::Status SelectMean(const MeanAttributes& attr, const OperationDef& op_def,
-                        const GpuInfo& gpu_info,
-                        std::unique_ptr<GPUOperation>* ptr) {
-  if (attr.dims.find(Axis::CHANNELS) != attr.dims.end()) {
-    return absl::UnimplementedError(
-        "Mean operation doesn't support reduction in Channels dimension.");
-  }
-  Mean operation = CreateMean(attr, op_def, gpu_info);
-  *ptr = absl::make_unique<Mean>(std::move(operation));
-  return absl::OkStatus();
+std::unique_ptr<GPUOperation> SelectReduce(const std::set<Axis>& axis_to_reduce,
+                                           const BHWC& src_shape,
+                                           OperationType op_type,
+                                           const OperationDef& op_def,
+                                           const GpuInfo& gpu_info) {
+  return absl::make_unique<Reduce>(
+      CreateReduce(axis_to_reduce, src_shape, op_type, op_def, gpu_info));
 }
 
 void SelectSoftmax(const BHWC& shape, const OperationDef& op_def,

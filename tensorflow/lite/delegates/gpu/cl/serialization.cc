@@ -220,17 +220,17 @@ data::TensorToGrid ToFB(TensorToGrid type) {
 
 data::CompilerOptions ToFB(CompilerOptions type) {
   switch (type) {
-    case CompilerOptions::ADRENO_FULL_SIMD_LINE:
+    case CompilerOptions::kAdrenoFullSimd:
       return data::CompilerOptions::ADRENO_FULL_SIMD_LINE;
-    case CompilerOptions::ADRENO_MORE_WAVES:
+    case CompilerOptions::kAdrenoMoreWaves:
       return data::CompilerOptions::ADRENO_MORE_WAVES;
-    case CompilerOptions::POWERVR_FP16:
+    case CompilerOptions::kClPowervrFp16:
       return data::CompilerOptions::POWERVR_FP16;
-    case CompilerOptions::CL_OPT_DISABLE:
+    case CompilerOptions::kClDisableOptimizations:
       return data::CompilerOptions::CL_OPT_DISABLE;
-    case CompilerOptions::CL_2_0:
+    case CompilerOptions::kCl20:
       return data::CompilerOptions::CL_2_0;
-    case CompilerOptions::CL_3_0:
+    case CompilerOptions::kCl30:
       return data::CompilerOptions::CL_3_0;
   }
 }
@@ -264,17 +264,17 @@ TensorToGrid ToEnum(data::TensorToGrid type) {
 CompilerOptions ToEnum(data::CompilerOptions type) {
   switch (type) {
     case data::CompilerOptions::ADRENO_FULL_SIMD_LINE:
-      return CompilerOptions::ADRENO_FULL_SIMD_LINE;
+      return CompilerOptions::kAdrenoFullSimd;
     case data::CompilerOptions::ADRENO_MORE_WAVES:
-      return CompilerOptions::ADRENO_MORE_WAVES;
+      return CompilerOptions::kAdrenoMoreWaves;
     case data::CompilerOptions::POWERVR_FP16:
-      return CompilerOptions::POWERVR_FP16;
+      return CompilerOptions::kClPowervrFp16;
     case data::CompilerOptions::CL_OPT_DISABLE:
-      return CompilerOptions::CL_OPT_DISABLE;
+      return CompilerOptions::kClDisableOptimizations;
     case data::CompilerOptions::CL_2_0:
-      return CompilerOptions::CL_2_0;
+      return CompilerOptions::kCl20;
     case data::CompilerOptions::CL_3_0:
-      return CompilerOptions::CL_3_0;
+      return CompilerOptions::kCl30;
   }
 }
 

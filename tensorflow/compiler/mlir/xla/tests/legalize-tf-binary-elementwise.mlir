@@ -13,10 +13,8 @@
 // CHECK-LABEL: func @add
 func @add(%arg0: tensor<2xi32>) -> tensor<2xi32> {
   // CHECK-NEXT:  %[[SUM0:.*]] = mhlo.add %arg0, %arg0 : tensor<2xi32>
-  // CHECK-NEXT:  %[[SUM1:.*]] = mhlo.add %[[SUM0]], %arg0 : tensor<2xi32>
-  // CHECK-NEXT:  return %[[SUM1]] : tensor<2xi32>
-  %0 = "tf.Add"(%arg0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
-  %1 = "tf.AddV2"(%0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
+  // CHECK-NEXT:  return %[[SUM0]] : tensor<2xi32>
+  %1 = "tf.AddV2"(%arg0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
   return %1: tensor<2xi32>
 }
 
@@ -27,7 +25,7 @@ func @add(%arg0: tensor<2xi32>) -> tensor<2xi32> {
 func @broadcast_add(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi32> {
   // CHECK-NEXT: %[[LHS_BCAST:.+]] = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<1> : tensor<1xi64>}
   // CHECK-NEXT: mhlo.add %[[LHS_BCAST]], %arg1
-  %0 = "tf.Add"(%arg0, %arg1) : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi32>
+  %0 = "tf.AddV2"(%arg0, %arg1) : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi32>
   return %0: tensor<1x2xi32>
 }
 
@@ -37,7 +35,7 @@ func @broadcast_add(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2x
 func @broadcast_multi_dim_add(%arg0: tensor<4x1x1xi32>, %arg1: tensor<4x4x4x4xi32>) -> tensor<4x4x4x4xi32> {
   // CHECK-NEXT: %[[LHS_BCAST:.+]] = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[1, 2, 3]> : tensor<3xi64>}
   // CHECK-NEXT: mhlo.add %[[LHS_BCAST]], %arg1
-  %0 = "tf.Add"(%arg0, %arg1) : (tensor<4x1x1xi32>, tensor<4x4x4x4xi32>) -> tensor<4x4x4x4xi32>
+  %0 = "tf.AddV2"(%arg0, %arg1) : (tensor<4x1x1xi32>, tensor<4x4x4x4xi32>) -> tensor<4x4x4x4xi32>
   return %0: tensor<4x4x4x4xi32>
 }
 
@@ -55,7 +53,7 @@ func @add_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<?x?xi32>) -> tensor<?x?xi3
   // CHECK-NEXT:   %[[RHS_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg1, %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>}
   // CHECK-NEXT:   %[[RESULT:.+]] = mhlo.add %[[LHS_BCAST]], %[[RHS_BCAST]] : tensor<?x?xi32>
   // CHECK-NEXT:   shape.assuming_yield %[[RESULT]]
-  %0 = "tf.Add"(%arg0, %arg1) : (tensor<?xi32>, tensor<?x?xi32>) -> tensor<?x?xi32>
+  %0 = "tf.AddV2"(%arg0, %arg1) : (tensor<?xi32>, tensor<?x?xi32>) -> tensor<?x?xi32>
   return %0: tensor<?x?xi32>
 }
 
@@ -64,7 +62,7 @@ func @add_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<?x?xi32>) -> tensor<?x?xi3
 func @broadcast_add_unranked(%arg0: tensor<1xi32>, %arg1: tensor<*xi32>) -> tensor<*xi32> {
   // CHECK: tf.Add
   // CHLO: chlo.broadcast_add %arg0, %arg1
-  %0 = "tf.Add"(%arg0, %arg1) : (tensor<1xi32>, tensor<*xi32>) -> tensor<*xi32>
+  %0 = "tf.AddV2"(%arg0, %arg1) : (tensor<1xi32>, tensor<*xi32>) -> tensor<*xi32>
   return %0: tensor<*xi32>
 }
 

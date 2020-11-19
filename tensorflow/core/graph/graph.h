@@ -70,6 +70,13 @@ class WhileContext;
 class NeighborIter;     // Declared below
 class NodeIter;         // Declared below
 
+// Indicates where the graph instance is originated from.
+enum class ConstructionContext {
+  kNotTracked,     // Not tracked.
+  kDirectSession,  // From `tensorflow::DirectSession`, TF1 session API.
+  kFunctionDef,    // From `FunctionDef`, @tf.function.
+};
+
 class Node {
  public:
   std::string DebugString() const;
@@ -682,6 +689,19 @@ class Graph {
     return const_arg_indices_cache_;
   }
 
+  // TODO(kkb): Add to the constructor when it becomes managable.
+  // Sets the graph construction context.
+  void SetConstructionContext(ConstructionContext construction_context) {
+    construction_context_ = construction_context;
+  }
+
+  // TODO(kkb): Rename to `GetConstructionContext` once we're comfortable
+  // making this stable and make it available widely.
+  // Returns the graph construction context. It's `kUnknown` if not set.
+  ConstructionContext GetConstructionContextInternal() const {
+    return construction_context_;
+  }
+
   // TODO(josh11b): uint64 hash() const;
 
  private:
@@ -758,6 +778,9 @@ class Graph {
   // Cache of the indices of the arguments which need to be constant for the XLA
   // compilation.
   mutable absl::optional<std::vector<bool>> const_arg_indices_cache_;
+
+  // Indicates the context that this Graph instance is constructed.
+  ConstructionContext construction_context_ = ConstructionContext::kNotTracked;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Graph);
 };

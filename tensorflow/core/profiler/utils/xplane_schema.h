@@ -107,6 +107,7 @@ enum HostEventType {
   kMergeInputTensors,
   kScheduleWithoutSplit,
   kScheduleWithSplit,
+  kASBSQueueSchedule,
   // JAX related.
   kExecuteOnLocalDevices,
   // GPU related.

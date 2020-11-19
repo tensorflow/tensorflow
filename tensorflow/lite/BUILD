@@ -448,9 +448,6 @@ cc_test(
     size = "small",
     srcs = ["string_util_test.cc"],
     features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
-    tags = [
-        "tflite_not_portable_ios",  # TODO(b/117786830)
-    ],
     deps = [
         ":framework",
         ":string_util",
@@ -469,7 +466,7 @@ cc_test(
     ],
     features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
     tags = [
-        "tflite_not_portable_ios",  # TODO(b/117786830)
+        "tflite_not_portable_ios",  # TODO(b/173711739)
         "tflite_smoke_test",
     ],
     deps = [
@@ -497,9 +494,6 @@ cc_test(
     size = "small",
     srcs = ["graph_info_test.cc"],
     features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
-    tags = [
-        "tflite_not_portable_ios",  # TODO(b/117786830)
-    ],
     deps = [
         ":framework",
         "//tensorflow/lite/testing:util",
@@ -513,9 +507,6 @@ cc_test(
     size = "small",
     srcs = ["simple_memory_arena_test.cc"],
     features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
-    tags = [
-        "tflite_not_portable_ios",  # TODO(b/117786830)
-    ],
     deps = [
         ":simple_memory_arena",
         "//tensorflow/core:tflite_portable_logging",
@@ -610,9 +601,6 @@ cc_test(
     size = "small",
     srcs = ["mutable_op_resolver_test.cc"],
     features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
-    tags = [
-        "tflite_not_portable_ios",  # TODO(b/117786830)
-    ],
     deps = [
         ":framework",
         "//tensorflow/lite/testing:util",
@@ -647,9 +635,6 @@ cc_test(
     size = "small",
     srcs = ["util_test.cc"],
     features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
-    tags = [
-        "tflite_not_portable_ios",  # TODO(b/117786830)
-    ],
     deps = [
         ":util",
         "//tensorflow/lite/c:common",
@@ -717,7 +702,7 @@ cc_test(
     size = "small",
     srcs = ["minimal_logging_test.cc"],
     tags = [
-        "tflite_not_portable_ios",  # TODO(b/117786830)
+        "tflite_not_portable_ios",  # TODO(b/173711739)
     ],
     deps = [
         ":minimal_logging",

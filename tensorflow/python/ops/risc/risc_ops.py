@@ -38,6 +38,10 @@ def risc_broadcast(x, shape, name='RISC_BROADCAST'):
   return gen_risc_ops.risc_broadcast(x, shape, name=name)
 
 
+def risc_concat(x, axis, name='RISC_CONCAT'):
+  return gen_risc_ops.risc_concat(x, axis, name=name)
+
+
 def risc_conv(x,
               kernel,
               strides,

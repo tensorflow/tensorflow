@@ -42,10 +42,10 @@ filegroup(
         "ir/tf_ops.td",
         "ir/tfrt_ops.td",
         "@llvm-project//mlir:OpBaseTdFiles",
+        "@llvm-project//mlir:SideEffectTdFiles",
         "@llvm-project//mlir:include/mlir/Interfaces/CallInterfaces.td",
         "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
         "@llvm-project//mlir:include/mlir/Interfaces/LoopLikeInterface.td",
-        "@llvm-project//mlir:include/mlir/Interfaces/SideEffectInterfaces.td",
     ],
 )
 

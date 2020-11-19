@@ -3311,7 +3311,7 @@ class ConvertStridedSliceOp : public OpRewritePattern<TF::StridedSliceOp> {
       auto input_val = GetScalarConstOfType(begin_element_ty, loc,
                                             input_shape[d], &rewriter);
       auto wrapped_index =
-          rewriter.create<TF::AddOp>(loc, input_val, reshaped_index);
+          rewriter.create<TF::AddV2Op>(loc, input_val, reshaped_index);
       auto final_index = rewriter.create<SelectOp>(
           loc, type, index_negative, wrapped_index, reshaped_index);
       slice_begin_indices.push_back(final_index);
@@ -4808,7 +4808,7 @@ class ConvertUnpackOp : public OpRewritePattern<TF::UnpackOp> {
 
   LogicalResult matchAndRewrite(TF::UnpackOp op,
                                 PatternRewriter &rewriter) const override {
-    auto value_type = op.value().getType().cast<RankedTensorType>();
+    auto value_type = op.value().getType().dyn_cast<RankedTensorType>();
     if (!value_type) return failure();
 
     int64_t value_rank = value_type.getRank();
@@ -4820,7 +4820,7 @@ class ConvertUnpackOp : public OpRewritePattern<TF::UnpackOp> {
     auto end_indices = llvm::to_vector<4>(value_type.getShape());
     SmallVector<int64_t, 4> strides(value_rank, 1);
 
-    // All HLO slice+reshape results used to replace the original tf.Unpack op.
+    // All HLO slice+squeeze results used to replace the original tf.Unpack op.
     SmallVector<Value, 4> results;
     results.reserve(op.getNumResults());
 
@@ -4833,9 +4833,10 @@ class ConvertUnpackOp : public OpRewritePattern<TF::UnpackOp> {
           GetI64ElementsAttr(end_indices, &rewriter),
           GetI64ElementsAttr(strides, &rewriter));
       // Reshape to drop the axis dimension.
-      auto reshape_op = rewriter.create<mhlo::ReshapeOp>(
-          op.getLoc(), op.getType(i), slice_op);
-      results.push_back(reshape_op);
+      auto result =
+          rewriter.create<TF::SqueezeOp>(op.getLoc(), op.getType(i), slice_op,
+                                         rewriter.getI64ArrayAttr(op.axis()));
+      results.push_back(result);
     }
 
     rewriter.replaceOp(op, results);
@@ -5125,7 +5126,7 @@ class ConvertRandomShuffleOp : public OpRewritePattern<TF::RandomShuffleOp> {
     SmallVector<int64_t, 4> slice_sizes(input_shape.begin(), input_shape.end());
     slice_sizes[0] = 1;
     auto dims_attr = GatherDimensionNumbers::get(
-        /*offset_dims=*/GetI64ElementsAttrForSeq(1, first_dim_size, &rewriter),
+        /*offset_dims=*/GetI64ElementsAttrForSeq(1, input_rank, &rewriter),
         /*collapsed_slice_dims=*/GetI64ElementsAttr({0}, &rewriter),
         /*start_index_map=*/GetI64ElementsAttr({0}, &rewriter),
         /*index_vector_dim=*/rewriter.getI64IntegerAttr(1),

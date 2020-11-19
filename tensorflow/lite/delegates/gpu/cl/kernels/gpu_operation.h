@@ -19,14 +19,15 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/lite/delegates/gpu/cl/cl_kernel.h"
 #include "tensorflow/lite/delegates/gpu/cl/device_info.h"
 #include "tensorflow/lite/delegates/gpu/cl/serialization_generated.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/kernel_info.h"
 #include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/arguments.h"
 #include "tensorflow/lite/delegates/gpu/common/task/buffer_desc.h"
+#include "tensorflow/lite/delegates/gpu/common/task/compiler_options.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tuning_type.h"

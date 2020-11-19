@@ -148,6 +148,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_casting_utils",
         "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service/llvm_ir:buffer_assignment_util",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -389,7 +390,7 @@ gentbl(
     td_srcs = [
         "@llvm-project//mlir:include/mlir/IR/OpBase.td",
         "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
-        "@llvm-project//mlir:include/mlir/Interfaces/SideEffectInterfaces.td",
+        "@llvm-project//mlir:SideEffectTdFiles",
         "//tensorflow/compiler/mlir/hlo:hlo_ops_td_files",
         # Any file in this directory is OK: this will force the current path to exist so
         # that the relative path can be resolved.

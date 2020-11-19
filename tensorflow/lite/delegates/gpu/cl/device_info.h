@@ -41,17 +41,6 @@ enum class GpuVendor {
 
 std::string GpuVendorToString(GpuVendor v);
 
-enum class OpenCLVersion {
-  CL_1_0,
-  CL_1_1,
-  CL_1_2,
-  CL_2_0,
-  CL_2_1,
-  CL_2_2,
-  CL_3_0
-};
-std::string OpenCLVersionToString(OpenCLVersion version);
-
 enum class AdrenoGpu {
   // Adreno 6xx series
   kAdreno685,
@@ -176,6 +165,22 @@ struct MaliInfo {
   bool IsValhall() const;
 };
 
+enum class OpenClVersion {
+  kCl1_0,
+  kCl1_1,
+  kCl1_2,
+  kCl2_0,
+  kCl2_1,
+  kCl2_2,
+  kCl3_0,
+  kUnknown,
+};
+std::string OpenClVersionToString(OpenClVersion version);
+
+struct OpenСlInfo {
+  OpenClVersion cl_version;
+};
+
 struct GpuInfo {
   GpuInfo() = default;
 
@@ -195,13 +200,13 @@ struct GpuInfo {
 
   bool SupportsExtension(const std::string& extension) const;
   bool IsCL20OrHigher() const;
+  bool IsCL30OrHigher() const;
   bool SupportsSubGroupWithSize(int sub_group_size) const;
 
   std::vector<std::string> extensions;
   bool supports_fp16;
   bool supports_image3d_writes;
   GpuVendor gpu_vendor;
-  OpenCLVersion cl_version;
   int compute_units_count;
   uint64_t buffer_max_size;
   uint64_t image2d_max_width;
@@ -236,6 +241,8 @@ struct GpuInfo {
 
   AdrenoInfo adreno_info;
   MaliInfo mali_info;
+
+  OpenСlInfo opencl_info;
 };
 
 }  // namespace cl
