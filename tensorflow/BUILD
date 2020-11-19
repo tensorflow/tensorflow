@@ -72,6 +72,14 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# Config setting that disables the default logger, only logging
+# to registered TFLogSinks
+config_setting(
+    name = "no_default_logger",
+    define_values = {"no_default_logger": "true"},
+    visibility = ["//visibility:public"],
+)
+
 # Config setting for determining if we are building for Android.
 config_setting(
     name = "android",
