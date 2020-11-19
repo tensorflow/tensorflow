@@ -455,7 +455,7 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
     # at init time it's now stored in variable state - we don't need to
     # pull it off disk again.
     config = {
-        "max_tokens": self._index_lookup_layer.max_tokens,
+        "max_tokens": self._max_tokens,
         "standardize": self._standardize,
         "split": self._split,
         "ngrams": self._ngrams_arg,

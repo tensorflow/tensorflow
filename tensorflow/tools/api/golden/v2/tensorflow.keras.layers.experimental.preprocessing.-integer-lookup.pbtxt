@@ -132,7 +132,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'max_values\', \'num_oov_indices\', \'mask_value\', \'oov_value\', \'vocabulary\', \'invert\', \'output_mode\', \'sparse\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'1\', \'0\', \'-1\', \'None\', \'False\', \'int\', \'False\'], "
+    argspec: "args=[\'self\', \'max_values\', \'num_oov_indices\', \'mask_value\', \'oov_value\', \'vocabulary\', \'invert\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'1\', \'0\', \'-1\', \'None\', \'False\'], "
   }
   member_method {
     name: "adapt"

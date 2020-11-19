@@ -86,9 +86,9 @@ def validate_string_arg(input_data,
     allowed_args = '`None`, ' if allow_none else ''
     allowed_args += 'a `Callable`, ' if allow_callables else ''
     allowed_args += 'or one of the following values: %s' % (allowable_strings,)
-    raise ValueError(('The %s argument of layer %s received an invalid '
-                      'value %s. Allowed values are: %s.') %
-                     (arg_name, layer_name, input_data, allowed_args))
+    raise ValueError(("%s's %s arg received an invalid value %s. " +
+                      'Allowed values are %s.') %
+                     (layer_name, arg_name, input_data, allowed_args))
 
 
 def count_params(weights):

@@ -621,7 +621,7 @@ class IndexLookupOutputTest(keras_parameterized.TestCase,
   def test_output_shape(self):
     input_data = keras.Input(shape=(4,), dtype=dtypes.string)
     layer = get_layer_class()(
-        max_tokens=2,
+        max_tokens=None,
         num_oov_indices=1,
         mask_token="",
         oov_token="[OOV]",
