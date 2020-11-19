@@ -33,18 +33,18 @@ class IntegerLookup(index_lookup.IndexLookup):
   table-based lookup, with optional out-of-vocabulary handling.
 
   If desired, the user can call this layer's `adapt()` method on a data set,
-  which will analyze the data set, determine the frequency of individual string
+  which will analyze the data set, determine the frequency of individual integer
   values, and create a vocabulary from them. This vocabulary can have
   unlimited size or be capped, depending on the configuration options for this
   layer; if there are more unique values in the input than the maximum
-  vocabulary size, the most frequent terms will be used to create the
-  vocabulary.
+  vocabulary size, the most frequent values will be used to create the
+  vocabulary (and the values that don't make the cut will be treated as OOV).
 
   Arguments:
     max_values: The maximum size of the vocabulary for this layer. If None,
       there is no cap on the size of the vocabulary. Note that this vocabulary
       includes the OOV and mask values, so the effective number of values is
-      (max_values - num_oov_values - (1 if mask_token else 0))
+      `(max_values - num_oov_values - (1 if mask_token else 0))`.
     num_oov_indices: The number of out-of-vocabulary values to use; defaults to
       1. If this value is more than 1, OOV inputs are modulated to determine
       their OOV value; if this value is 0, passing an OOV input will result in
@@ -53,8 +53,8 @@ class IntegerLookup(index_lookup.IndexLookup):
       OOV values from categorical encodings.)
     mask_value: A value that represents masked inputs, and which is mapped to
       index 0. Defaults to 0. If set to None, no mask term will be added and the
-      OOV values, if any, will be indexed from (0...num_oov_values) instead of
-      (1...num_oov_values+1).
+      OOV values, if any, will be indexed from `(0...num_oov_values)` instead of
+      `(1...num_oov_values + 1)`.
     oov_value: The value representing an out-of-vocabulary value. Defaults to
       -1.
     vocabulary: An optional list of values, or a path to a text file containing
@@ -63,23 +63,50 @@ class IntegerLookup(index_lookup.IndexLookup):
       error will be thrown.
     invert: If true, this layer will map indices to vocabulary items instead
       of mapping vocabulary items to indices.
+    output_mode: Specification for the output of the layer. Only applicable
+      when `invert` is False.
+      Defaults to "int". Values can
+      be "int", "binary", or "count", configuring the layer as follows:
+        "int": Return the raw integer indices of the input values.
+        "binary": Outputs a single int array per batch, of either vocab_size or
+          max_tokens size, containing 1s in all elements where the token mapped
+          to that index exists at least once in the batch item.
+        "count": Like "binary", but the int array contains a count of the number
+          of times the token at that index appeared in the batch item.
+    sparse: Boolean. Only applicable to "binary" and "count" output modes.
+      If true, returns a `SparseTensor` instead of a dense `Tensor`.
+      Defaults to `False`.
 
   Examples:
 
-  Creating a lookup layer with a known vocabulary
+  **Creating a lookup layer with a known vocabulary**
 
   This example creates a lookup layer with a pre-existing vocabulary.
 
   >>> vocab = [12, 36, 1138, 42]
-  >>> data = tf.constant([[12, 1138, 42], [42, 1000, 36]])
+  >>> data = tf.constant([[12, 1138, 42], [42, 1000, 36]])  # Note OOV values
   >>> layer = IntegerLookup(vocabulary=vocab)
   >>> layer(data)
   <tf.Tensor: shape=(2, 3), dtype=int64, numpy=
   array([[2, 4, 5],
          [5, 1, 3]])>
 
+  **Configuring the layer to apply multi-hot encoding after lookup**
 
-  Creating a lookup layer with an adapted vocabulary
+  Just set `output_mode='binary'`. Note that the first two dimensions
+  in the binary encoding represent the mask value and the OOV value,
+  respectively.
+
+  >>> vocab = [12, 36, 1138, 42]
+  >>> data = tf.constant([[12, 1138, 42], [42, 1000, 36]])  # Note OOV values
+  >>> layer = IntegerLookup(vocabulary=vocab, output_mode='binary')
+  >>> layer(data)
+  <tf.Tensor: shape=(2, 6), dtype=float32, numpy=
+    array([[0., 0., 1., 0., 1., 1.],
+           [0., 1., 0., 1., 0., 1.]], dtype=float32)>
+
+
+  **Creating a lookup layer with an adapted vocabulary**
 
   This example creates a lookup layer and generates the vocabulary by analyzing
   the dataset.
@@ -103,10 +130,10 @@ class IntegerLookup(index_lookup.IndexLookup):
          [2, 4, 5]])>
 
 
-  Lookups with multiple OOV tokens.
+  **Lookups with multiple OOV indices**
 
-  This example demonstrates how to use a lookup layer with multiple OOV tokens.
-  When a layer is created with more than one OOV token, any OOV values are
+  This example demonstrates how to use a lookup layer with multiple OOV indices.
+  When a layer is created with more than one OOV index, any OOV values are
   hashed into the number of OOV buckets, distributing OOV values in a
   deterministic fashion across the set.
 
@@ -124,7 +151,7 @@ class IntegerLookup(index_lookup.IndexLookup):
   value.
 
 
-  Inverse lookup
+  **Inverse lookup**
 
   This example demonstrates how to map indices to values using this layer. (You
   can also use adapt() with inverse=True, but for simplicity we'll pass the
@@ -142,7 +169,7 @@ class IntegerLookup(index_lookup.IndexLookup):
   token.
 
 
-  Forward and inverse lookup pairs
+  **Forward and inverse lookup pairs**
 
   This example demonstrates how to use the vocabulary of a standard lookup
   layer to create an inverse lookup layer.
@@ -161,7 +188,7 @@ class IntegerLookup(index_lookup.IndexLookup):
   1000 was not in the vocabulary - it got represented as an OOV, and all OOV
   values are returned as -1 in the inverse layer. Also, note that for the
   inverse to work, you must have already set the forward layer vocabulary
-  either directly or via fit() before calling get_vocabulary().
+  either directly or via `fit()` before calling `get_vocabulary()`.
   """
 
   def __init__(self,
@@ -171,12 +198,14 @@ class IntegerLookup(index_lookup.IndexLookup):
                oov_value=-1,
                vocabulary=None,
                invert=False,
+               output_mode=index_lookup.INT,
+               sparse=False,
                **kwargs):
     allowed_dtypes = [dtypes.int64]
 
     if "dtype" in kwargs and kwargs["dtype"] not in allowed_dtypes:
-      raise ValueError("IntegerLookup may only have a dtype in %s." %
-                       allowed_dtypes)
+      raise ValueError("The value of the dtype argument for IntegerLookup may "
+                       "only be one of %s." % (allowed_dtypes,))
 
     if "dtype" not in kwargs:
       kwargs["dtype"] = dtypes.int64
@@ -184,11 +213,12 @@ class IntegerLookup(index_lookup.IndexLookup):
     # If max_values is set, the value must be greater than 1 - otherwise we
     # are creating a 0-element vocab, which doesn't make sense.
     if max_values is not None and max_values <= 1:
-      raise ValueError("If set, max_values must be greater than 1.")
+      raise ValueError("If set, max_values must be greater than 1. "
+                       "You passed %s" % (max_values,))
 
     if num_oov_indices < 0:
       raise ValueError("num_oov_indices must be greater than 0. You passed %s" %
-                       num_oov_indices)
+                       (num_oov_indices,))
 
     if vocabulary is not None:
       if isinstance(vocabulary, str):
@@ -202,6 +232,8 @@ class IntegerLookup(index_lookup.IndexLookup):
         oov_token=oov_value,
         vocabulary=vocabulary,
         invert=invert,
+        output_mode=output_mode,
+        sparse=sparse,
         **kwargs)
     base_preprocessing_layer.keras_kpl_gauge.get_cell("IntegerLookup").set(True)
 
