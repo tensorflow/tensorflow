@@ -1978,6 +1978,10 @@ OpFoldResult ConstOp::fold(ArrayRef<Attribute> operands) {
 
 OpFoldResult CastOp::fold(ArrayRef<Attribute> operands) {
   assert(operands.size() == 1);
+  if (getElementTypeOrSelf(input()) == getElementTypeOrSelf(getType())) {
+    return input();
+  }
+
   // For now, only supports cast between integer types.
   auto elements_attr = operands[0].dyn_cast_or_null<DenseIntElementsAttr>();
   if (!elements_attr) {

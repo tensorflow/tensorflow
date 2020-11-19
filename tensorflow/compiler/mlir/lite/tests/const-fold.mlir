@@ -638,4 +638,10 @@ func @cast_ui8_to_i32() -> tensor<4xi32> {
 // CHECK:  return %[[CST]]
 }
 
+// CHECK-LABEL: @cast_identity
+func @cast_identity(%arg0 : tensor<7xf32>) -> tensor<7xf32> {
+  %0 = "tfl.cast"(%arg0) : (tensor<7xf32>) -> tensor<7xf32>
+  return %0 : tensor<7xf32>
+  // CHECK: return %arg0 : tensor<7xf32>
+}
 
