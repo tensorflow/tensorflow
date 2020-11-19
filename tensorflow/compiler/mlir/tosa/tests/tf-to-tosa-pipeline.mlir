@@ -1,6 +1,6 @@
 // RUN: tf-opt --tf-to-tosa-pipeline  --verify-each %s | FileCheck %s
 
-// Operations for testing tf-to-tosa-pipeline 
+// Operations for testing tf-to-tosa-pipeline
 
 // -----
 
@@ -675,34 +675,10 @@ func @test_add_1d_const(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x21x3xf32>) 
 // CHECK: tosa.slice
 // CHECK: tosa.slice
 // CHECK: tosa.identityn
-// CHECK: tosa.reduce_sum
-// CHECK: tosa.reduce_sum
-// CHECK: tosa.reduce_sum
-// CHECK: tosa.reshape
-// CHECK: tosa.reduce_sum
-// CHECK: tosa.reduce_sum
-// CHECK: tosa.reduce_sum
-// CHECK: tosa.reshape
-// CHECK: tosa.reduce_sum
-// CHECK: tosa.reduce_sum
-// CHECK: tosa.reduce_sum
-// CHECK: tosa.reshape
-// CHECK: tosa.reshape
-// CHECK: tosa.reshape
-// CHECK: tosa.reshape
-// CHECK: tosa.concat
-// CHECK: tosa.concat
-func @test_split(%arg0: tensor<13x21x3xf32>) -> tensor<3xf32> {
-  %1 = "tf.Const"()  {value = dense<[0, 1, 2]> : tensor<3xi32>}  : () -> tensor<3xi32>
-  %2 = "tf.Const"()  {value = dense<[0, 1, 2]> : tensor<3xi32>}  : () -> tensor<3xi32>
-  %3 = "tf.Const"()  {value = dense<[0, 1, 2]> : tensor<3xi32>}  : () -> tensor<3xi32>
+func @test_split(%arg0: tensor<13x21x3xf32>) -> (tensor<13x7x3xf32>, tensor<13x7x3xf32>, tensor<13x7x3xf32>) {
   %6 = "tf.Const"()  {value = dense<1> : tensor<i32>}  : () -> tensor<i32>
   %7:3 = "tf.Split"(%6, %arg0)   : (tensor<i32>, tensor<13x21x3xf32>) -> (tensor<13x7x3xf32>, tensor<13x7x3xf32>, tensor<13x7x3xf32>)
-  %8 = "tf.Sum"(%7#0, %1)  {keep_dims = false}  : (tensor<13x7x3xf32>, tensor<3xi32>) -> tensor<f32>
-  %9 = "tf.Sum"(%7#1, %2)  {keep_dims = false}  : (tensor<13x7x3xf32>, tensor<3xi32>) -> tensor<f32>
-  %10 = "tf.Sum"(%7#2, %3)  {keep_dims = false}  : (tensor<13x7x3xf32>, tensor<3xi32>) -> tensor<f32>
-  %11 = "tf.Pack"(%8, %9, %10)  {axis = 0 : i64}  : (tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<3xf32>
-  return %11 : tensor<3xf32>
+  return %7#0, %7#1, %7#2 : tensor<13x7x3xf32>, tensor<13x7x3xf32>, tensor<13x7x3xf32>
 }
 
 // -----

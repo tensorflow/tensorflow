@@ -155,6 +155,29 @@ DECL_CONVERT_OP(FakeQuantWithMinMaxArgs);
 DECL_CONVERT_OP(FakeQuantWithMinMaxVars);
 #undef DECL_CONVERT_OP
 
+// TODO: remove macro when replacing common function return types with
+// llvm::Optional<> Helper macros for checking the return value of a common
+// legalization function that returns a single tensor.
+// Packs the result in a list.
+#define TOSA_REPLACE_LOWERED_OP(REWRITER, OP, LOWERED_OP)   \
+  if (LOWERED_OP) {                                         \
+    REWRITER.replaceOp((OP), {(LOWERED_OP)->getResults()}); \
+    return success();                                       \
+  } else {                                                  \
+    return failure();                                       \
+  }
+
+// TODO: remove macro when replacing common function return types with
+// llvm::Optional<> Helper macros for checking the return value of a common
+// legalization function that returns a tensor list.
+#define TOSA_REPLACE_LOWERED_OP_LIST(REWRITER, OP, LOWERED_OP) \
+  if (LOWERED_OP) {                                            \
+    REWRITER.replaceOp((OP), (LOWERED_OP)->getResults());      \
+    return success();                                          \
+  } else {                                                     \
+    return failure();                                          \
+  }
+
 LogicalResult ConvertTFReluOp::matchAndRewrite(
     Operation *op, PatternRewriter &rewriter) const {
   auto tf_relu_op = cast<TF::ReluOp>(op);
@@ -365,8 +388,7 @@ LogicalResult ConvertTFRoundOp::matchAndRewrite(
 
   auto input_type = tf_round_op.x().getType().dyn_cast<RankedTensorType>();
   if (!input_type) {
-    op->emitOpError("Round: input not ranked tensor type");
-    return failure();
+    return op->emitOpError("Round: input not ranked tensor type");
   }
 
   if (input_type.getElementType().isa<FloatType>()) {
@@ -443,7 +465,7 @@ LogicalResult ConvertTFRealDivOp::matchAndRewrite(
   auto output_type =
       tf_div_op.getResult().getType().dyn_cast<RankedTensorType>();
   // Not a ranked tensor output
-  if (!output_type) return failure();
+  if (!output_type || !y_type) return failure();
 
   auto reciprocal_op =
       rewriter.create<tosa::ReciprocalOp>(op->getLoc(), y_type, tf_div_op.y());
@@ -475,8 +497,7 @@ LogicalResult ConvertTFArgMaxOp::matchAndRewrite(
   }
 
   if (axis < 0 || axis >= input_type.getRank()) {
-    op->emitOpError("TFArgMax: invalid axis value");
-    return failure();
+    return op->emitOpError("TFArgMax: invalid axis value");
   }
 
   IntegerAttr axis_attr = rewriter.getI64IntegerAttr(axis);
@@ -497,7 +518,7 @@ LogicalResult ConvertTFAvgPoolOp::matchAndRewrite(
   // Not a ranked tensor output
   if (!input_type || !output_type) return failure();
 
-  auto tmpAttr = tf_avgpool_op.getAttrOfType<StringAttr>("data_format");
+  auto tmpAttr = tf_avgpool_op.data_formatAttr();
   if (tmpAttr && tmpAttr.getValue().str() != "NHWC") return failure();
 
   ArrayAttr pad;
@@ -567,7 +588,7 @@ LogicalResult ConvertTFMaxPoolOp::matchAndRewrite(
   // Not a ranked tensor output
   if (!input_type || !output_type) return failure();
 
-  auto tmpAttr = tf_maxpool_op.getAttrOfType<StringAttr>("data_format");
+  auto tmpAttr = tf_maxpool_op.data_formatAttr();
   if (tmpAttr && tmpAttr.getValue().str() != "NHWC") return failure();
 
   ArrayAttr pad;
@@ -731,8 +752,7 @@ LogicalResult ConvertTFSqueezeOp::matchAndRewrite(
   auto tf_squeeze_op = cast<TF::SqueezeOp>(op);
 
   // Copy squeeze_dims into int32_t array
-  auto squeeze_dims_attr =
-      tf_squeeze_op.getAttrOfType<ArrayAttr>("squeeze_dims");
+  auto squeeze_dims_attr = tf_squeeze_op.squeeze_dimsAttr();
   SmallVector<int32_t, 8> squeeze_dims;
   for (auto &squeeze_dim : squeeze_dims_attr) {
     squeeze_dims.emplace_back(squeeze_dim.dyn_cast<IntegerAttr>().getInt());
@@ -773,13 +793,13 @@ LogicalResult ConvertTFFillOp::matchAndRewrite(
 
   // Convert to a compatible zero type
   if (value_elem.getType().getElementType().isa<FloatType>()) {
-    std::vector<float> fill_arr(
+    llvm::SmallVector<float, 4> fill_arr(
         total_size,
         value_elem.getValue<FloatAttr>(0).getValue().convertToFloat());
     fill_attr =
         DenseElementsAttr::get(fill_type, llvm::makeArrayRef<float>(fill_arr));
   } else {
-    std::vector<int32_t> fill_arr(
+    llvm::SmallVector<int32_t, 4> fill_arr(
         total_size,
         value_elem.getValue<IntegerAttr>(0).getValue().getLimitedValue());
     fill_attr = DenseElementsAttr::get(fill_type,
@@ -834,11 +854,10 @@ LogicalResult ConvertTFDepthwiseConv2dNativeOp::matchAndRewrite(
 
   // Set up a zero attr for subsequent pattern replacement if required
   if (!filter_type) {
-    op->emitOpError("DepthwiseConv2d: filter type unranked tensor");
-    return failure();
+    return op->emitOpError("DepthwiseConv2d: filter type unranked tensor");
   }
 
-  auto tmpAttr = tf_dwconv2d_op.getAttrOfType<StringAttr>("data_format");
+  auto tmpAttr = tf_dwconv2d_op.data_formatAttr();
   if (tmpAttr && tmpAttr.getValue().str() != "NHWC") return failure();
 
   ArrayAttr stride;
@@ -878,8 +897,7 @@ LogicalResult ConvertTFDepthwiseConv2dNativeOp::matchAndRewrite(
 
     if (tf_pad == tensorflow::Padding::EXPLICIT) {
       pad = getPaddingValuesFromExplicitPadAttr(
-          tf_dwconv2d_op.getAttrOfType<ArrayAttr>("explicit_padding"),
-          data_format_tf, rewriter);
+          tf_dwconv2d_op.explicit_paddings(), data_format_tf, rewriter);
     } else {
       if (!getPaddingValuesFromPadType(tf_pad, data_format_tf,
                                        0,  // tensorflow::FORMAT_HWIO
@@ -919,7 +937,7 @@ LogicalResult ConvertTFConv2DBackpropInputOp::matchAndRewrite(
 
   // Transpose [H, W, I, O] to [O, H, W, I]
   auto filter_shape = filter_type.getShape();
-  std::vector<int64_t> a1_transpose_dims;
+  llvm::SmallVector<int64_t, 4> a1_transpose_dims;
   a1_transpose_dims.push_back(filter_shape[2]);
   a1_transpose_dims.push_back(filter_shape[0]);
   a1_transpose_dims.push_back(filter_shape[1]);
@@ -970,8 +988,7 @@ LogicalResult ConvertTFConv2DBackpropInputOp::matchAndRewrite(
 
     if (tf_pad == tensorflow::Padding::EXPLICIT) {
       outpad = getPaddingValuesFromExplicitPadAttr(
-          tf_conv_op.getAttrOfType<ArrayAttr>("explicit_padding"),
-          data_format_tf, rewriter);
+          tf_conv_op.explicit_paddings(), data_format_tf, rewriter);
     } else {
       if (!getTransposeConv2dPaddingValues(tf_pad, data_format_tf,
                                            0,  // tensorflow::FORMAT_HWIO,
@@ -990,9 +1007,8 @@ LogicalResult ConvertTFConv2DBackpropInputOp::matchAndRewrite(
         shape_vec.push_back(
             output_shape_elems.getValue<IntegerAttr>(i).getInt());
       output_shape = rewriter.getI64ArrayAttr(shape_vec);
-    }
-    // Use output tensor's shape otherwise.
-    else {
+    } else {
+      // Use output tensor's shape otherwise.
       output_shape = rewriter.getI64ArrayAttr(output_type.getShape());
     }
   }
@@ -1022,7 +1038,7 @@ LogicalResult ConvertTFAllOp::matchAndRewrite(Operation *op,
     return failure();
 
   bool keep_dims = false;
-  auto keep_dims_attr = tf_all_op.getAttrOfType<BoolAttr>("keep_dims");
+  auto keep_dims_attr = tf_all_op.keep_dimsAttr();
   if (keep_dims_attr) keep_dims = keep_dims_attr.getValue();
 
   auto lowered_op = convertReduceAllOp(
@@ -1044,7 +1060,7 @@ LogicalResult ConvertTFAnyOp::matchAndRewrite(Operation *op,
     return failure();
 
   bool keep_dims = false;
-  auto keep_dims_attr = tf_any_op.getAttrOfType<BoolAttr>("keep_dims");
+  auto keep_dims_attr = tf_any_op.keep_dimsAttr();
   if (keep_dims_attr) keep_dims = keep_dims_attr.getValue();
 
   auto lowered_op = convertReduceAnyOp(
@@ -1066,7 +1082,7 @@ LogicalResult ConvertTFMaxOp::matchAndRewrite(Operation *op,
     return failure();
 
   bool keep_dims = false;
-  auto keep_dims_attr = tf_max_op.getAttrOfType<BoolAttr>("keep_dims");
+  auto keep_dims_attr = tf_max_op.keep_dimsAttr();
   if (keep_dims_attr) keep_dims = keep_dims_attr.getValue();
 
   auto lowered_op = convertReduceMaxOp(
@@ -1088,7 +1104,7 @@ LogicalResult ConvertTFMinOp::matchAndRewrite(Operation *op,
     return failure();
 
   bool keep_dims = false;
-  auto keep_dims_attr = tf_min_op.getAttrOfType<BoolAttr>("keep_dims");
+  auto keep_dims_attr = tf_min_op.keep_dimsAttr();
   if (keep_dims_attr) keep_dims = keep_dims_attr.getValue();
 
   auto lowered_op = convertReduceMinOp(
@@ -1110,7 +1126,7 @@ LogicalResult ConvertTFMeanOp::matchAndRewrite(
     return failure();
 
   bool keep_dims = false;
-  auto keep_dims_attr = tf_mean_op.getAttrOfType<BoolAttr>("keep_dims");
+  auto keep_dims_attr = tf_mean_op.keep_dimsAttr();
   if (keep_dims_attr) keep_dims = keep_dims_attr.getValue();
 
   auto lowered_op = convertReduceMeanOp(
@@ -1132,7 +1148,7 @@ LogicalResult ConvertTFProdOp::matchAndRewrite(
     return failure();
 
   bool keep_dims = false;
-  auto keep_dims_attr = tf_prod_op.getAttrOfType<BoolAttr>("keep_dims");
+  auto keep_dims_attr = tf_prod_op.keep_dimsAttr();
   if (keep_dims_attr) keep_dims = keep_dims_attr.getValue();
 
   auto lowered_op = convertReduceProdOp(
@@ -1154,7 +1170,7 @@ LogicalResult ConvertTFSumOp::matchAndRewrite(Operation *op,
     return failure();
 
   bool keep_dims = false;
-  auto keep_dims_attr = tf_sum_op.getAttrOfType<BoolAttr>("keep_dims");
+  auto keep_dims_attr = tf_sum_op.keep_dimsAttr();
   if (keep_dims_attr) keep_dims = keep_dims_attr.getValue();
 
   auto lowered_op = convertReduceSumOp(
@@ -1364,8 +1380,7 @@ LogicalResult ConvertTFSliceOp::matchAndRewrite(
 
   // Assuming begin is always compile-time constant
   if (!matchPattern(tf_slice_op.begin(), m_Constant(&begin_elems))) {
-    op->emitOpError("TF::Slice error: begin is not constant");
-    return failure();
+    return op->emitOpError("TF::Slice error: begin is not constant");
   }
 
   for (int i = 0; i < begin_elems.getNumElements(); i++)
@@ -1440,7 +1455,7 @@ LogicalResult ConvertTFPackOp::matchAndRewrite(
 
   IntegerAttr axis_attr;
   {
-    auto tmpAttr = tf_pack_op.getAttrOfType<IntegerAttr>("axis");
+    auto tmpAttr = tf_pack_op.axisAttr();
     if (!tmpAttr) tmpAttr = rewriter.getI64IntegerAttr(0);
     axis_attr = tmpAttr;
   }
@@ -1458,7 +1473,7 @@ LogicalResult ConvertTFUnpackOp::matchAndRewrite(
 
   IntegerAttr axis_attr;
   {
-    auto tmpAttr = tf_unpack_op.getAttrOfType<IntegerAttr>("axis");
+    auto tmpAttr = tf_unpack_op.axisAttr();
     if (!tmpAttr) tmpAttr = rewriter.getI64IntegerAttr(0);
     axis_attr = tmpAttr;
   }
@@ -1477,15 +1492,9 @@ LogicalResult ConvertTFSplitOp::matchAndRewrite(
 
   // Get the number of splits
   int32_t num_split = -1;
-  auto numSplitAttr = tf_split_op.getAttrOfType<IntegerAttr>("num_split");
-  if (numSplitAttr) {
-    num_split = numSplitAttr.getInt();
-  } else {
-    // Newer versions of TF MLIR translator do not emit derived attributes
-    // in the MLIR file.
-    auto range = tf_split_op.getODSResults(0);
-    num_split = std::distance(range.begin(), range.end());
-  }
+
+  auto range = tf_split_op.getODSResults(0);
+  num_split = std::distance(range.begin(), range.end());
 
   // Get the axis
   int32_t axis = 0;
@@ -1520,8 +1529,7 @@ LogicalResult ConvertTFSplitVOp::matchAndRewrite(
   // Get the axis
   ElementsAttr axisAttrElems;
   if (!matchPattern(tf_splitv_op.split_dim(), m_Constant(&axisAttrElems))) {
-    op->emitOpError("Cannot read split_dim elems");
-    return failure();
+    return op->emitOpError("Cannot read split_dim elems");
   }
 
   int32_t axis = axisAttrElems.getValue<IntegerAttr>(0).getInt();
@@ -1597,8 +1605,8 @@ LogicalResult ConvertTFResizeBilinearOp::matchAndRewrite(
   // Not a ranked tensor output
   if (!output_type) return failure();
 
-  auto lowered_op = convertResizeOp(rewriter, op, output_type,
-                                    tf_resize_op.images(), "BILINEAR");
+  auto lowered_op = convertResizeOp(
+      rewriter, op, output_type, tf_resize_op.images(), StringRef("BILINEAR"));
 
   TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
 }
@@ -1612,8 +1620,8 @@ LogicalResult ConvertTFResizeNearestNeighborOp::matchAndRewrite(
   // Not a ranked tensor output
   if (!output_type) return failure();
 
-  auto lowered_op = convertResizeOp(rewriter, op, output_type,
-                                    tf_resize_op.images(), "NEAREST");
+  auto lowered_op = convertResizeOp(
+      rewriter, op, output_type, tf_resize_op.images(), StringRef("NEAREST"));
 
   TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
 }
@@ -1628,8 +1636,7 @@ LogicalResult ConvertTFMatMulOp::matchAndRewrite(
       tf_matmul_op.getResult().getType().dyn_cast<RankedTensorType>();
 
   if (!(a_type && b_type && output_type)) {
-    op->emitOpError("MatMul: a/b/output not ranked tensors");
-    return failure();
+    return op->emitOpError("MatMul: a/b/output not ranked tensors");
   }
 
   // Can only handle rank=2 inputs
@@ -1677,7 +1684,7 @@ LogicalResult ConvertTFGatherV2Op::matchAndRewrite(
 
   IntegerAttr batchdim_attr;
   {
-    auto tmpAttr = tf_gather_op.getAttrOfType<IntegerAttr>("batch_dims");
+    auto tmpAttr = tf_gather_op.batch_dimsAttr();
     if (!tmpAttr) tmpAttr = rewriter.getI64IntegerAttr(0);
     batchdim_attr = tmpAttr;
   }
@@ -1708,8 +1715,7 @@ LogicalResult ConvertTFSpaceToDepthOp::matchAndRewrite(
 
   auto lowered_op = convertSpaceToDepthOp(
       rewriter, op, tf_s2d_op.getResult(), tf_s2d_op.input(),
-      tf_s2d_op.getAttrOfType<IntegerAttr>("block_size"),
-      tf_s2d_op.getAttrOfType<StringAttr>("data_format"));
+      tf_s2d_op.block_sizeAttr(), tf_s2d_op.data_formatAttr());
 
   TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
 }
@@ -1720,8 +1726,7 @@ LogicalResult ConvertTFDepthToSpaceOp::matchAndRewrite(
 
   auto lowered_op = convertDepthToSpaceOp(
       rewriter, op, tf_d2s_op.getResult(), tf_d2s_op.input(),
-      tf_d2s_op.getAttrOfType<IntegerAttr>("block_size"),
-      tf_d2s_op.getAttrOfType<StringAttr>("data_format"));
+      tf_d2s_op.block_sizeAttr(), tf_d2s_op.data_formatAttr());
 
   TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
 }
@@ -1877,12 +1882,12 @@ LogicalResult ConvertTFFakeQuantWithMinMaxArgsOp::matchAndRewrite(
   // Not a ranked tensor output
   if (!output_type) return failure();
 
-  auto lowered_op = convertFakeQuantOp(
-      rewriter, op, output_type, tf_fakequant_op.inputs(),
-      tf_fakequant_op.getAttrOfType<FloatAttr>("min").getValueAsDouble(),
-      tf_fakequant_op.getAttrOfType<FloatAttr>("max").getValueAsDouble(),
-      tf_fakequant_op.getAttrOfType<IntegerAttr>("num_bits").getInt(),
-      tf_fakequant_op.getAttrOfType<BoolAttr>("narrow_range").getValue());
+  auto lowered_op =
+      convertFakeQuantOp(rewriter, op, output_type, tf_fakequant_op.inputs(),
+                         tf_fakequant_op.minAttr().getValueAsDouble(),
+                         tf_fakequant_op.maxAttr().getValueAsDouble(),
+                         tf_fakequant_op.num_bitsAttr().getInt(),
+                         tf_fakequant_op.narrow_rangeAttr().getValue());
 
   TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
 }
@@ -1912,8 +1917,8 @@ LogicalResult ConvertTFFakeQuantWithMinMaxVarsOp::matchAndRewrite(
 
   auto lowered_op = convertFakeQuantOp(
       rewriter, op, output_type, tf_fakequant_op.inputs(), min_val, max_val,
-      tf_fakequant_op.getAttrOfType<IntegerAttr>("num_bits").getInt(),
-      tf_fakequant_op.getAttrOfType<BoolAttr>("narrow_range").getValue());
+      tf_fakequant_op.num_bitsAttr().getInt(),
+      tf_fakequant_op.narrow_rangeAttr().getValue());
 
   TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
 }

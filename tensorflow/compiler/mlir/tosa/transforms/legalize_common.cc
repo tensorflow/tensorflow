@@ -31,6 +31,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_utils.h"
 
+// TODO for further work:
+// * It is better to return an llvm::Optional instead of an Operation*. It
+//   enables generic handling of some of the cases a bit better where
+//   we are doing different things with the ops.
+
 namespace mlir {
 namespace tosa {
 
@@ -197,7 +202,7 @@ Operation* convertPackOp(PatternRewriter& rewriter, Operation* op,
   // If input shape is [A, B, C] and concat_axis = 0, 1st concat output will
   // be [2 * A, B, C].
   int orig_input_dim_on_axis;
-  std::vector<int64_t> concat_output_shape;
+  SmallVector<int64_t, 4> concat_output_shape;
   if (input_tensor_rank == 0) {
     concat_output_shape.push_back(1);
     orig_input_dim_on_axis = 1;
@@ -351,10 +356,8 @@ Operation* convertUnpackOp(PatternRewriter& rewriter, Operation* op,
 
   // Combine the sequence of tosa.slice() ops into a list
   // using the IdentityN operator.
-  auto identityn_op = rewriter.create<tosa::IdentityNOp>(
+  return rewriter.create<tosa::IdentityNOp>(
       op->getLoc(), ArrayRef<Type>(outs_type_vec), results_vec);
-
-  return identityn_op;
 }
 
 // Lowers the Select operator to TOSA.
@@ -426,10 +429,7 @@ Operation* convertZerosLikeOp(PatternRewriter& rewriter, Operation* op,
       RankedTensorType::get(input_shape, input_type.getElementType());
   Attribute zero_attr = rewriter.getZeroAttr(zero_type);
 
-  auto const_op =
-      rewriter.create<tosa::ConstOp>(op->getLoc(), zero_type, zero_attr);
-
-  return const_op;
+  return rewriter.create<tosa::ConstOp>(op->getLoc(), zero_type, zero_attr);
 }
 
 // Lowers the Mul operator to TOSA.  For quantized types, this requires
@@ -454,7 +454,7 @@ Operation* convertMultiplyOp(PatternRewriter& rewriter, Operation* op,
       input_rhs_is_qtype != output_is_qtype) {
     op->emitOpError(
         "ConvertMultiplyOp: input/output tensor should "
-        "be all quantized or all native");
+        "be all quantized or all floating-point");
     return nullptr;
   }
 
@@ -463,11 +463,11 @@ Operation* convertMultiplyOp(PatternRewriter& rewriter, Operation* op,
     auto rescale_type =
         RankedTensorType::get(output_type.getShape(), rewriter.getI32Type());
     auto input_lhs_qtype = input_lhs_type.getElementType()
-                               .dyn_cast<mlir::quant::UniformQuantizedType>();
+                               .cast<mlir::quant::UniformQuantizedType>();
     auto input_rhs_qtype = input_rhs_type.getElementType()
-                               .dyn_cast<mlir::quant::UniformQuantizedType>();
-    auto output_qtype = output_type.getElementType()
-                            .dyn_cast<mlir::quant::UniformQuantizedType>();
+                               .cast<mlir::quant::UniformQuantizedType>();
+    auto output_qtype =
+        output_type.getElementType().cast<mlir::quant::UniformQuantizedType>();
 
     double in_lhs_scale = input_lhs_qtype.getScale();
     double in_rhs_scale = input_rhs_qtype.getScale();
@@ -514,9 +514,8 @@ Operation* convertSquaredDifferenceOp(PatternRewriter& rewriter, Operation* op,
   }
 
   auto sub_op = rewriter.create<tosa::SubOp>(op->getLoc(), result_type, x, y);
-  auto square_op = rewriter.create<tosa::MulOp>(
+  return rewriter.create<tosa::MulOp>(
       op->getLoc(), result_type, sub_op.getResult(), sub_op.getResult(), 0);
-  return square_op;
 }
 
 // Lowers the Round operator to TOSA.
@@ -538,10 +537,8 @@ Operation* convertRoundOp(PatternRewriter& rewriter, Operation* op,
   auto add_op = rewriter.create<tosa::AddOp>(
       op->getLoc(), result_type, input,
       getTosaConstTensorSingleF32(rewriter, op, 0.5));
-  auto floor_op = rewriter.create<tosa::FloorOp>(op->getLoc(), result_type,
-                                                 add_op.getResult());
-
-  return floor_op;
+  return rewriter.create<tosa::FloorOp>(op->getLoc(), result_type,
+                                        add_op.getResult());
 }
 
 // Lowers ConcatV2 to TOSA.
@@ -580,8 +577,8 @@ Operation* convertConcatV2Op(PatternRewriter& rewriter, Operation* op,
 
   Value lhs_val = values[0];
   Value rhs_val = values[1];
-  auto lhs_type = lhs_val.getType().dyn_cast<RankedTensorType>();
-  auto rhs_type = rhs_val.getType().dyn_cast<RankedTensorType>();
+  auto lhs_type = lhs_val.getType().cast<RankedTensorType>();
+  auto rhs_type = rhs_val.getType().cast<RankedTensorType>();
   ArrayRef<int64_t> lhs_tensor_shape = lhs_type.getShape();
   ArrayRef<int64_t> rhs_tensor_shape = rhs_type.getShape();
   int input_tensor_rank = lhs_tensor_shape.size();
@@ -593,7 +590,7 @@ Operation* convertConcatV2Op(PatternRewriter& rewriter, Operation* op,
   //
   // If input is [A0, B, C] and [A1, B, C] and axis = 0
   // this concat output will be [A0 + A1, B, C].
-  std::vector<int64_t> concat_result_shape;
+  SmallVector<int64_t, 4> concat_result_shape;
   if (input_tensor_rank == 0) {
     if (axis != 0) {
       op->emitOpError("ConcatV2Op: axis invalid.");
@@ -648,11 +645,11 @@ Operation* convertConcatV2Op(PatternRewriter& rewriter, Operation* op,
   // For backward compatibility, we still need to support this artifact by
   // scaling inputs to let them have the same scales.
   if (result_quant_type && lhs_quant_type && rhs_quant_type) {
-    lhs_scale = (double)lhs_quant_type.getScale();
+    lhs_scale = static_cast<double>(lhs_quant_type.getScale());
     lhs_zeropoint = lhs_quant_type.getZeroPoint();
-    rhs_scale = (double)rhs_quant_type.getScale();
+    rhs_scale = static_cast<double>(rhs_quant_type.getScale());
     rhs_zeropoint = rhs_quant_type.getZeroPoint();
-    result_scale = (double)result_quant_type.getScale();
+    result_scale = static_cast<double>(result_quant_type.getScale());
     result_zeropoint = result_quant_type.getZeroPoint();
 
     const_type = RankedTensorType::get({}, result_quant_type);
@@ -704,7 +701,7 @@ Operation* convertConcatV2Op(PatternRewriter& rewriter, Operation* op,
                                         result_type.getElementType());
 
     if (rhs_quant_type && result_quant_type) {
-      rhs_scale = (float)rhs_quant_type.getScale();
+      rhs_scale = static_cast<float>(rhs_quant_type.getScale());
       rhs_zeropoint = rhs_quant_type.getZeroPoint();
 
       if (rhs_scale != result_scale) {
@@ -930,10 +927,8 @@ Operation* convertSpaceToBatchNDOp(PatternRewriter& rewriter, Operation* op,
   // ...
   //  [padded_shape[M] / block_shape[M-1]] +
   //  remaining_shape
-  int32_t a2_reshape_a1_rank = a2_reshape_a1_op.getResult()
-                                   .getType()
-                                   .dyn_cast<RankedTensorType>()
-                                   .getRank();
+  int32_t a2_reshape_a1_rank =
+      a2_reshape_a1_op.getResult().getType().cast<RankedTensorType>().getRank();
   SmallVector<int32_t, 8> a3_perm(a2_reshape_a1_rank);
   SmallVector<int64_t, 2> a3_transpose_shape(a2_reshape_a1_rank);
 
@@ -986,11 +981,9 @@ Operation* convertSpaceToBatchNDOp(PatternRewriter& rewriter, Operation* op,
     a4_reshape_shape[1 + block_rank + i] = input_shape[1 + block_rank + i];
   }
 
-  auto a4_reshape_a3_op = rewriter.create<tosa::ReshapeOp>(
+  return rewriter.create<tosa::ReshapeOp>(
       op->getLoc(), result_type, a3_transpose_a2_op.getResult(),
       rewriter.getI64ArrayAttr(a4_reshape_shape));
-
-  return a4_reshape_a3_op;
 }
 
 // Lowers BatchToSpaceND to TOSA.
@@ -1086,8 +1079,8 @@ Operation* convertBatchToSpaceNDOp(PatternRewriter& rewriter, Operation* op,
     return nullptr;
   }
 
-  std::vector<int64_t> block_shape(block_rank);
-  std::vector<std::pair<int64_t, int64_t>> crops(crops_dims);
+  SmallVector<int64_t, 4> block_shape(block_rank);
+  SmallVector<std::pair<int64_t, int64_t>, 4> crops(crops_dims);
 
   // Extract values for block_shape and crops now.
   int block_num_elems = 1;
@@ -1209,23 +1202,20 @@ Operation* convertBatchToSpaceNDOp(PatternRewriter& rewriter, Operation* op,
     if (i == 0 || i > crops_dims) {
       a4_begin_vals[i] = 0;
       a4_size_vals[i] = result_type.getShape()[i];
-    }
-    // Spatial dimension.
-    else {
+    } else {
+      // Spatial dimension.
       assert(i - 1 >= 0 && i - 1 < crops_dims);
       a4_begin_vals[i] = crops[i - 1].first;
       a4_size_vals[i] = a4_shape[i] - crops[i - 1].first - crops[i - 1].second;
     }
   }
 
-  auto a4_slice_a3_op = rewriter.create<tosa::SliceOp>(
+  return rewriter.create<tosa::SliceOp>(
       op->getLoc(),
       RankedTensorType::get(ArrayRef<int64_t>(a4_size_vals),
                             result_type.getElementType()),
       a3_reshape_a2.getResult(), rewriter.getI64ArrayAttr(a4_begin_vals),
       rewriter.getI64ArrayAttr(a4_size_vals));
-
-  return a4_slice_a3_op;
 }
 
 // Lowers ExpandDims to TOSA.
@@ -1272,10 +1262,8 @@ Operation* convertExpandDimsOp(PatternRewriter& rewriter, Operation* op,
 
   ArrayAttr shape_attr = rewriter.getI64ArrayAttr(reshape_dims);
 
-  auto reshape_op = rewriter.create<tosa::ReshapeOp>(op->getLoc(), output_type,
-                                                     input_value, shape_attr);
-
-  return reshape_op;
+  return rewriter.create<tosa::ReshapeOp>(op->getLoc(), output_type,
+                                          input_value, shape_attr);
 }
 
 // Lowers Squeeze to TOSA.
@@ -1330,9 +1318,8 @@ Operation* convertSqueezeOp(PatternRewriter& rewriter, Operation* op,
 
   ArrayAttr shape_attr = rewriter.getI64ArrayAttr(reshape_dims);
 
-  auto reshape_op = rewriter.create<tosa::ReshapeOp>(op->getLoc(), output_type,
-                                                     input_value, shape_attr);
-  return reshape_op;
+  return rewriter.create<tosa::ReshapeOp>(op->getLoc(), output_type,
+                                          input_value, shape_attr);
 }
 
 // Lowers ELU to a sequence of TOSA ops.
@@ -1356,7 +1343,7 @@ Operation* convertEluOp(PatternRewriter& rewriter, Operation* op,
   }
 
   int32_t input_rank = output_type.getShape().size();
-  std::vector<int64_t> bcast_shape;
+  SmallVector<int64_t, 4> bcast_shape;
   for (int i = 0; i < input_rank; i++) {
     bcast_shape.push_back(1);
   }
@@ -1390,11 +1377,9 @@ Operation* convertEluOp(PatternRewriter& rewriter, Operation* op,
       RankedTensorType::get(output_type.getShape(), rewriter.getIntegerType(1)),
       features_value, zero_const_op);
 
-  auto a4_select_a3_op = rewriter.create<tosa::SelectOp>(
+  return rewriter.create<tosa::SelectOp>(
       op->getLoc(), output_type, a3_ge_in_zero_op.getResult(), features_value,
       a2_sub_a1_one_op.getResult());
-
-  return a4_select_a3_op;
 }
 
 // Lowers Softmax to a sequence of TOSA ops.
@@ -1427,16 +1412,15 @@ Operation* convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
 
   if (input_type.getElementType().isa<mlir::quant::QuantizedType>() &&
       output_type.getElementType().isa<mlir::quant::QuantizedType>()) {
-    std::vector<int64_t> rsum_shape_v(input_type.getShape().begin(),
-                                      input_type.getShape().end() - 1);
+    SmallVector<int64_t, 4> rsum_shape_v(input_type.getShape().begin(),
+                                         input_type.getShape().end() - 1);
     rsum_shape_v.push_back(1);
     ArrayRef<int64_t> rsum_shape(rsum_shape_v);
+    // The if condition already checks if these are UQTs
     mlir::quant::UniformQuantizedType in_quant_type =
-        input_type.getElementType()
-            .dyn_cast_or_null<mlir::quant::UniformQuantizedType>();
+        input_type.getElementType().cast<mlir::quant::UniformQuantizedType>();
     mlir::quant::UniformQuantizedType out_quant_type =
-        output_type.getElementType()
-            .dyn_cast_or_null<mlir::quant::UniformQuantizedType>();
+        output_type.getElementType().cast<mlir::quant::UniformQuantizedType>();
 
     auto int16_element_qtype = mlir::quant::UniformQuantizedType::get(
         true, rewriter.getIntegerType(16), rewriter.getF32Type(), 1.0f, 0,
@@ -1467,9 +1451,9 @@ Operation* convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
     // exp(-16.0), which is 0 in 0.16
     const double exp_sample_grain = 1.0 / 16.0;
     auto exp_func = [exp_sample_grain](int32_t x) -> int32_t {
-      double v = (double)x * exp_sample_grain;
+      double v = static_cast<double>(x) * exp_sample_grain;
       v = v < 0.0 ? std::exp(v) : 1.0;
-      return (int32_t)std::round(32768.0 * v);
+      return std::lround(32768.0 * v);
     };
 
     auto exp_table_const = getTosa1DConstTensorTable(rewriter, op, exp_func);
@@ -1533,9 +1517,9 @@ Operation* convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
     const double one_over_one_plus_x_sample_grain = 1.0 / 256.0;
     auto one_over_one_plus_x_func =
         [one_over_one_plus_x_sample_grain](int32_t x) -> int32_t {
-      double v = (double)x * one_over_one_plus_x_sample_grain;
+      double v = static_cast<double>(x) * one_over_one_plus_x_sample_grain;
       v = v < 0 ? 1.0 : 1.0 / (1.0 + v);
-      return (int32_t)std::round(32768.0 * v);
+      return std::lround(32768.0 * v);
     };
 
     auto one_over_one_plus_x_table_const =
@@ -1575,8 +1559,8 @@ Operation* convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
     return op19_rescale_op18.getDefiningOp();
 
   } else {
-    std::vector<int64_t> rsum_shape_v(input_type.getShape().begin(),
-                                      input_type.getShape().end());
+    SmallVector<int64_t, 4> rsum_shape_v(input_type.getShape().begin(),
+                                         input_type.getShape().end());
     rsum_shape_v[input_rank - 1] = 1;
     ArrayRef<int64_t> rsum_shape(rsum_shape_v);
 
@@ -1598,11 +1582,9 @@ Operation* convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
     auto op3_reciprocal_op2 = rewriter.create<tosa::ReciprocalOp>(
         op->getLoc(), rsum_type, op2_reducesum_op1.getResult());
 
-    auto op4_mul_op1_op3 = rewriter.create<tosa::MulOp>(
-        op->getLoc(), output_type, op1_exp_in.getResult(),
-        op3_reciprocal_op2.getResult(), 0);
-
-    return op4_mul_op1_op3;
+    return rewriter.create<tosa::MulOp>(op->getLoc(), output_type,
+                                        op1_exp_in.getResult(),
+                                        op3_reciprocal_op2.getResult(), 0);
   }
 }
 
@@ -1645,8 +1627,8 @@ Operation* convertLogSoftmaxOp(PatternRewriter& rewriter, Operation* op,
 
   // reduce_sum on last dimension
   int32_t input_rank = input_type.getShape().size();
-  std::vector<int64_t> rsum_shape(output_type.getShape().begin(),
-                                  output_type.getShape().end());
+  SmallVector<int64_t, 4> rsum_shape(output_type.getShape().begin(),
+                                     output_type.getShape().end());
   rsum_shape[input_rank - 1] = 1;
   ArrayAttr axis_attr = rewriter.getI64ArrayAttr({input_rank - 1});
   auto rsum_type = RankedTensorType::get(ArrayRef<int64_t>(rsum_shape),
@@ -1663,10 +1645,8 @@ Operation* convertLogSoftmaxOp(PatternRewriter& rewriter, Operation* op,
       op->getLoc(), output_type, op1_exp_in.getResult(),
       op3_reciprocal_op2.getResult(), 0);
 
-  auto op5_log_op4 = rewriter.create<tosa::LogOp>(op->getLoc(), output_type,
-                                                  op4_mul_op1_op3.getResult());
-
-  return op5_log_op4;
+  return rewriter.create<tosa::LogOp>(op->getLoc(), output_type,
+                                      op4_mul_op1_op3.getResult());
 }
 
 // Lowers SpaceToDepth to a sequence of TOSA ops.  Supports NHWC.
@@ -1719,7 +1699,7 @@ Operation* convertSpaceToDepthOp(PatternRewriter& rewriter, Operation* op,
 
   assert(block_size[0] * block_size[1] != 0);
 
-  std::vector<int64_t> a_reshape_dims;
+  SmallVector<int64_t, 4> a_reshape_dims;
   a_reshape_dims.push_back(input_shape[0]);
   a_reshape_dims.push_back(input_shape[1] / block_size[0]);
   a_reshape_dims.push_back(block_size[0]);
@@ -1740,7 +1720,7 @@ Operation* convertSpaceToDepthOp(PatternRewriter& rewriter, Operation* op,
       op->getLoc(), a_reshape_output_type, a2_reshape_a_op.getResult(),
       a3_transpose_perm);
 
-  std::vector<int64_t> a3_reshape_dims;
+  SmallVector<int64_t, 4> a3_reshape_dims;
   a3_reshape_dims.push_back(input_shape[0]);
   a3_reshape_dims.push_back(input_shape[1] / block_size[0]);
   a3_reshape_dims.push_back(input_shape[2] / block_size[1]);
@@ -1748,11 +1728,9 @@ Operation* convertSpaceToDepthOp(PatternRewriter& rewriter, Operation* op,
 
   auto a3_reshape_output_type = RankedTensorType::get(
       ArrayRef<int64_t>(a3_reshape_dims), output_type.getElementType());
-  auto a4_reshape_a3_op = rewriter.create<tosa::ReshapeOp>(
+  return rewriter.create<tosa::ReshapeOp>(
       op->getLoc(), a3_reshape_output_type, a3_transpose_a2_op.getResult(),
       rewriter.getI64ArrayAttr(a3_reshape_dims));
-
-  return a4_reshape_a3_op;
 }
 
 // Lowers DepthToSpace to a sequence of TOSA ops.  Supports NHWC.
@@ -1801,7 +1779,7 @@ Operation* convertDepthToSpaceOp(PatternRewriter& rewriter, Operation* op,
 
   assert(block_size[0] * block_size[1] != 0);
 
-  std::vector<int64_t> a_reshape_dims;
+  SmallVector<int64_t, 4> a_reshape_dims;
   a_reshape_dims.push_back(input_shape[0]);
   a_reshape_dims.push_back(input_shape[1]);
   a_reshape_dims.push_back(input_shape[2]);
@@ -1822,7 +1800,7 @@ Operation* convertDepthToSpaceOp(PatternRewriter& rewriter, Operation* op,
       op->getLoc(), a_reshape_output_type, a2_reshape_a_op.getResult(),
       a3_transpose_perm);
 
-  std::vector<int64_t> a3_reshape_dims;
+  SmallVector<int64_t, 4> a3_reshape_dims;
   a3_reshape_dims.push_back(input_shape[0]);
   a3_reshape_dims.push_back(input_shape[1] * block_size[0]);
   a3_reshape_dims.push_back(input_shape[2] * block_size[1]);
@@ -1830,11 +1808,9 @@ Operation* convertDepthToSpaceOp(PatternRewriter& rewriter, Operation* op,
 
   auto a3_reshape_output_type = RankedTensorType::get(
       ArrayRef<int64_t>(a3_reshape_dims), output_type.getElementType());
-  auto a4_reshape_a3_op = rewriter.create<tosa::ReshapeOp>(
+  return rewriter.create<tosa::ReshapeOp>(
       op->getLoc(), a3_reshape_output_type, a3_transpose_a2_op.getResult(),
       rewriter.getI64ArrayAttr(a3_reshape_dims));
-
-  return a4_reshape_a3_op;
 }
 
 // Lowers Split to a sequence of TOSA ops.
@@ -1902,10 +1878,8 @@ Operation* convertSplitOp(PatternRewriter& rewriter, Operation* op,
 
   // Combine the sequence of tosa.slice() ops into a list
   // using the IdentityN operator
-  auto identityn_op = rewriter.create<tosa::IdentityNOp>(
+  return rewriter.create<tosa::IdentityNOp>(
       op->getLoc(), ArrayRef<Type>(outs_type_vec), results_vec);
-
-  return identityn_op;
 }
 
 // Lowers SplitV to a sequence of TOSA ops.
@@ -1981,10 +1955,8 @@ Operation* convertSplitVOp(PatternRewriter& rewriter, Operation* op,
 
   // Combine the sequence of tosa.slice() ops into a list
   // using the IdentityN operator
-  auto identityn_op = rewriter.create<tosa::IdentityNOp>(
+  return rewriter.create<tosa::IdentityNOp>(
       op->getLoc(), ArrayRef<Type>(outs_type_vec), results_vec);
-
-  return identityn_op;
 }
 
 // Lowers StridedSlice to a sequence of TOSA ops.
@@ -2041,7 +2013,7 @@ Operation* convertStridedSliceOp(PatternRewriter& rewriter, Operation* op,
   auto input_shape = input_type.getShape();
 
   // Extract the begin/end/stride tensors
-  std::vector<int32_t> begin, end, strides;
+  SmallVector<int32_t, 4> begin, end, strides;
 
   if (getVectorFromValue32(begin_value, begin) != input_rank) {
     op->emitOpError("StridedSlice: begin doesn't match input_rank.");
@@ -2124,13 +2096,11 @@ Operation* convertStridedSliceOp(PatternRewriter& rewriter, Operation* op,
       rewriter.getI64ArrayAttr(a3_size));
 
   // Step 4: reshape the now-strided tensor
-  auto a4_reshape_op = rewriter.create<tosa::ReshapeOp>(
+  return rewriter.create<tosa::ReshapeOp>(
       op->getLoc(),
       RankedTensorType::get(ArrayRef<int64_t>(a4_shape),
                             input_type.getElementType()),
       a3_slice_op.getResult(), rewriter.getI64ArrayAttr(a4_shape));
-
-  return a4_reshape_op;
 }
 
 // Lowers FloorDiv to a sequence of TOSA operators.
@@ -2153,10 +2123,8 @@ Operation* convertFloorDivOp(PatternRewriter& rewriter, Operation* op,
   auto a2_mul_lhs_a1_op =
       rewriter.create<tosa::MulOp>(op->getLoc(), output_type, lhs_value,
                                    a1_reciprocal_rhs_op.getResult(), 0);
-  auto a3_floor_a2_op = rewriter.create<tosa::FloorOp>(
-      op->getLoc(), output_type, a2_mul_lhs_a1_op.getResult());
-
-  return a3_floor_a2_op;
+  return rewriter.create<tosa::FloorOp>(op->getLoc(), output_type,
+                                        a2_mul_lhs_a1_op.getResult());
 }
 
 // Lowers FloorMod to a sequence of TOSA operators.
@@ -2182,11 +2150,9 @@ Operation* convertFloorModOp(PatternRewriter& rewriter, Operation* op,
                                    a1_reciprocal_rhs_op.getResult(), 0);
   auto a3_floor_a2_op = rewriter.create<tosa::FloorOp>(
       op->getLoc(), output_type, a2_mul_lhs_a1_op.getResult());
-  auto a4_sub_a2_a3_op = rewriter.create<tosa::SubOp>(
-      op->getLoc(), output_type, a2_mul_lhs_a1_op.getResult(),
-      a3_floor_a2_op.getResult());
-
-  return a4_sub_a2_a3_op;
+  return rewriter.create<tosa::SubOp>(op->getLoc(), output_type,
+                                      a2_mul_lhs_a1_op.getResult(),
+                                      a3_floor_a2_op.getResult());
 }
 
 // Lowers FusedActivation to a sequence of TOSA ops.
@@ -2200,11 +2166,12 @@ Operation* convertFusedActivation(PatternRewriter& rewriter, Operation* op,
       input_type.getElementType().isa<mlir::quant::UniformQuantizedType>();
 
   if (input_is_qtype) {
-    auto input_qtype = input_type.getElementType()
-                           .dyn_cast<mlir::quant::UniformQuantizedType>();
+    auto input_qtype =
+        input_type.getElementType().cast<mlir::quant::UniformQuantizedType>();
 
     if (fused_activation_fn.getValue() == "TANH") {
       // TODO: implement with TABLE
+      op->emitWarning("Quantized TANH lowering TBD!");
       return nullptr;
     } else {
       auto rescale_type = RankedTensorType::get(input_type.getShape(),
@@ -2223,9 +2190,8 @@ Operation* convertFusedActivation(PatternRewriter& rewriter, Operation* op,
         op2_relu_op1 = relu_op.getResult();
 
       } else if (fused_activation_fn.getValue() == "RELU6") {
-        int64_t rescaled_6 =
-            (int64_t)std::round(6.0f / input_qtype.getScale()) +
-            input_qtype.getZeroPoint();
+        int64_t rescaled_6 = std::llround(6.0f / input_qtype.getScale()) +
+                             input_qtype.getZeroPoint();
 
         auto relu_op = rewriter.create<tosa::ReluNOp>(
             op->getLoc(), rescale_type, op1_rescale_in,
@@ -2235,12 +2201,10 @@ Operation* convertFusedActivation(PatternRewriter& rewriter, Operation* op,
         op2_relu_op1 = relu_op.getResult();
 
       } else if (fused_activation_fn.getValue() == "RELU_N1_TO_1") {
-        int64_t rescaled_n1 =
-            (int64_t)std::round(-1.0f / input_qtype.getScale()) +
-            input_qtype.getZeroPoint();
-        int64_t rescaled_1 =
-            (int64_t)std::round(1.0f / input_qtype.getScale()) +
-            input_qtype.getZeroPoint();
+        int64_t rescaled_n1 = std::llround(-1.0f / input_qtype.getScale()) +
+                              input_qtype.getZeroPoint();
+        int64_t rescaled_1 = std::llround(1.0f / input_qtype.getScale()) +
+                             input_qtype.getZeroPoint();
 
         auto relu_op = rewriter.create<tosa::ClampOp>(
             op->getLoc(), rescale_type, op1_rescale_in,
@@ -2261,30 +2225,22 @@ Operation* convertFusedActivation(PatternRewriter& rewriter, Operation* op,
     }
   } else {
     if (fused_activation_fn.getValue() == "RELU") {
-      auto relu_op = rewriter.create<tosa::ReluNOp>(
+      return rewriter.create<tosa::ReluNOp>(
           op->getLoc(), input_type, input_value,
           rewriter.getI64IntegerAttr(std::numeric_limits<int32_t>::max()),
           rewriter.getF32FloatAttr(std::numeric_limits<float>::max()));
-      return relu_op;
-
     } else if (fused_activation_fn.getValue() == "RELU6") {
-      auto relu_op = rewriter.create<tosa::ReluNOp>(
+      return rewriter.create<tosa::ReluNOp>(
           op->getLoc(), input_type, input_value, rewriter.getI64IntegerAttr(6),
           rewriter.getF32FloatAttr(6.0));
-      return relu_op;
-
     } else if (fused_activation_fn.getValue() == "RELU_N1_TO_1") {
-      auto relu_op = rewriter.create<tosa::ClampOp>(
+      return rewriter.create<tosa::ClampOp>(
           op->getLoc(), input_type, input_value, rewriter.getI64IntegerAttr(-1),
           rewriter.getI64IntegerAttr(1), rewriter.getF32FloatAttr(-1.0),
           rewriter.getF32FloatAttr(1.0));
-      return relu_op;
-
     } else if (fused_activation_fn.getValue() == "TANH") {
-      auto tanh_op =
-          rewriter.create<tosa::TanhOp>(op->getLoc(), input_type, input_value);
-      return tanh_op;
-
+      return rewriter.create<tosa::TanhOp>(op->getLoc(), input_type,
+                                           input_value);
     } else {
       // Unsupported activation type. Bail out.
       return nullptr;
@@ -2303,6 +2259,8 @@ Value convertReduceOpCommon(PatternRewriter& rewriter, Operation* op,
                             double input_scale, int64_t input_zp,
                             double output_scale, int64_t output_zp) {
   auto input_type = input_value.getType().dyn_cast<RankedTensorType>();
+  if (!input_type) return nullptr;
+
   ArrayRef<int64_t> input_shape = input_type.getShape();
   ArrayRef<int64_t> output_shape = output_type.getShape();
   auto input_rank = input_shape.size();
@@ -2315,7 +2273,7 @@ Value convertReduceOpCommon(PatternRewriter& rewriter, Operation* op,
     val = identity_op.getResult();
   } else {
     // Reduce along each axis
-    std::vector<int64_t> shape_vec(input_shape.begin(), input_shape.end());
+    SmallVector<int64_t, 4> shape_vec(input_shape.begin(), input_shape.end());
 
     if (is_quantized) {
       val = buildRescaleToInt32(rewriter, op, val, input_scale, input_zp);
@@ -2426,7 +2384,7 @@ Operation* convertReduceProdOp(PatternRewriter& rewriter, Operation* op,
   if (input_is_qtype || output_is_qtype) {
     op->emitOpError(
         "ConvertReduceProdOp: input/output tensor should "
-        "be all native");
+        "be all floating-point.");
     return nullptr;
   }
 
@@ -2452,7 +2410,7 @@ Operation* convertReduceSumOp(PatternRewriter& rewriter, Operation* op,
   if (input_is_qtype != output_is_qtype) {
     op->emitOpError(
         "ConvertReduceSumOp: input/output tensor should "
-        "be all quantized or all native");
+        "be all quantized or all floating-point.");
     return nullptr;
   }
 
@@ -2463,15 +2421,17 @@ Operation* convertReduceSumOp(PatternRewriter& rewriter, Operation* op,
   Type reduce_element_type = input_type.getElementType();
 
   if (input_is_qtype) {
-    auto input_qtype = input_type.getElementType()
-                           .dyn_cast<mlir::quant::UniformQuantizedType>();
-    auto output_qtype = output_type.getElementType()
-                            .dyn_cast<mlir::quant::UniformQuantizedType>();
+    auto input_qtype =
+        input_type.getElementType().cast<mlir::quant::UniformQuantizedType>();
+    auto output_qtype =
+        output_type.getElementType().cast<mlir::quant::UniformQuantizedType>();
 
     int32_t input_shift = 20;
 
-    input_scale = double(1 << input_shift) * input_qtype.getScale();
-    output_scale = 1.0 / (output_qtype.getScale() * double(1 << input_shift));
+    input_scale =
+        static_cast<double>(1 << input_shift) * input_qtype.getScale();
+    output_scale =
+        1.0 / (output_qtype.getScale() * static_cast<double>(1 << input_shift));
 
     input_zp = input_qtype.getZeroPoint();
     output_zp = output_qtype.getZeroPoint();
@@ -2505,13 +2465,17 @@ Operation* convertReduceMeanOp(PatternRewriter& rewriter, Operation* op,
   if (input_is_qtype != output_is_qtype) {
     op->emitOpError(
         "ConvertReduceSumOp: input/output tensor should "
-        "be all quantized or all native");
+        "be all quantized or all floating-point.");
     return nullptr;
   }
 
   // Only supports float type mean() if it's non-quantized
-  if (!input_is_qtype && !output_type.getElementType().isa<mlir::FloatType>())
+  if (!input_is_qtype && !output_type.getElementType().isa<mlir::FloatType>()) {
+    op->emitWarning(
+        "Failed convertReduceMean: input unquantized type but output element "
+        "not FloatType!");
     return nullptr;
+  }
 
   int64_t input_rank = input_type.getRank();
   int64_t num_elems_on_reduced_axis = 1;
@@ -2520,7 +2484,7 @@ Operation* convertReduceMeanOp(PatternRewriter& rewriter, Operation* op,
     if (axis_val < 0) axis_val += input_rank;
     num_elems_on_reduced_axis *= input_type.getShape()[axis_val];
   }
-  double div_scale = 1.0 / (double)num_elems_on_reduced_axis;
+  double div_scale = 1.0 / static_cast<double>(num_elems_on_reduced_axis);
 
   double input_scale = 1.0f;
   double output_scale = 1.0f;
@@ -2529,16 +2493,17 @@ Operation* convertReduceMeanOp(PatternRewriter& rewriter, Operation* op,
   Type reduce_element_type = input_type.getElementType();
 
   if (input_is_qtype) {
-    auto input_qtype = input_type.getElementType()
-                           .dyn_cast<mlir::quant::UniformQuantizedType>();
-    auto output_qtype = output_type.getElementType()
-                            .dyn_cast<mlir::quant::UniformQuantizedType>();
+    auto input_qtype =
+        input_type.getElementType().cast<mlir::quant::UniformQuantizedType>();
+    auto output_qtype =
+        output_type.getElementType().cast<mlir::quant::UniformQuantizedType>();
 
     int32_t input_shift = 20;
 
-    input_scale = double(1 << input_shift) * input_qtype.getScale();
-    output_scale =
-        div_scale / (output_qtype.getScale() * double(1 << input_shift));
+    input_scale =
+        static_cast<double>(1 << input_shift) * input_qtype.getScale();
+    output_scale = div_scale / (output_qtype.getScale() *
+                                static_cast<double>(1 << input_shift));
 
     input_zp = input_qtype.getZeroPoint();
     output_zp = output_qtype.getZeroPoint();
@@ -2563,7 +2528,7 @@ Operation* convertReduceMeanOp(PatternRewriter& rewriter, Operation* op,
 // Lowers ResizeBilinear and ResizeNearestNeighbor to TOSA resize.
 Operation* convertResizeOp(PatternRewriter& rewriter, Operation* op,
                            RankedTensorType output_type, Value input_value,
-                           const char* mode) {
+                           StringRef mode) {
   auto input_type = input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) return nullptr;
 
@@ -2583,28 +2548,30 @@ Operation* convertResizeOp(PatternRewriter& rewriter, Operation* op,
   if (input_is_qtype != output_is_qtype) {
     op->emitOpError(
         "ConvertResizeOp: input/output tensor should "
-        "be all quantized or all native");
+        "be all quantized or all floating-point.");
     return nullptr;
   }
 
   if (!input_is_qtype) {
     // TODO: support float type
-    op->emitOpError("ConvertResizeOp: not support native type yet ");
+    op->emitOpError("ConvertResizeOp: floating-point type not supported yet ");
     return nullptr;
   }
 
   int32_t shift = 11;  // Set default shift to maximum allowed
 
-  double frac_y = (double)output_height / (double)input_height;
-  double frac_x = (double)output_width / (double)input_width;
-  int32_t stride_y = (int32_t)std::round(frac_y * double(1 << shift));
-  int32_t stride_x = (int32_t)std::round(frac_x * double(1 << shift));
+  double frac_y =
+      static_cast<double>(output_height) / static_cast<double>(input_height);
+  double frac_x =
+      static_cast<double>(output_width) / static_cast<double>(input_width);
+  int32_t stride_y = std::lround(frac_y * static_cast<double>(1 << shift));
+  int32_t stride_x = std::lround(frac_x * static_cast<double>(1 << shift));
 
   // Stride is int16
   while (stride_y >= 32768 || stride_x >= 32768) {
     shift--;
-    stride_y = (int32_t)std::round(frac_y * double(1 << shift));
-    stride_x = (int32_t)std::round(frac_x * double(1 << shift));
+    stride_y = std::lround(frac_y * static_cast<double>(1 << shift));
+    stride_x = std::lround(frac_x * static_cast<double>(1 << shift));
   }
 
   ArrayAttr output_size =
@@ -2612,13 +2579,11 @@ Operation* convertResizeOp(PatternRewriter& rewriter, Operation* op,
   ArrayAttr stride = rewriter.getI64ArrayAttr({stride_y, stride_x});
   ArrayAttr offset = rewriter.getI64ArrayAttr({0, 0});
   IntegerAttr shift_attr = rewriter.getI32IntegerAttr(shift);
-  StringAttr resize_mode = rewriter.getStringAttr(mode);
+  StringAttr resize_mode = rewriter.getStringAttr(mode.str());
 
-  auto resize_op = rewriter.create<tosa::ResizeOp>(
-      op->getLoc(), output_type, input_value, output_size, stride, offset,
-      shift_attr, resize_mode);
-
-  return resize_op;
+  return rewriter.create<tosa::ResizeOp>(op->getLoc(), output_type, input_value,
+                                         output_size, stride, offset,
+                                         shift_attr, resize_mode);
 }
 
 // Lowers Quantize to a sequence of TOSA quantization ops.
@@ -2632,16 +2597,21 @@ Operation* convertQuantizeOp(PatternRewriter& rewriter, Operation* op,
   auto output_element_type = output_type.getElementType();
 
   // output element type could only be quantized integer
-  if (!output_element_type.isa<mlir::quant::QuantizedType>()) return nullptr;
+  if (!output_element_type.isa<mlir::quant::QuantizedType>()) {
+    op->emitWarning(
+        "Lowering quantizeOp but output element type not quantized!");
+    return nullptr;
+  }
 
   auto output_fp_type =
       RankedTensorType::get(output_shape, rewriter.getF32Type());
 
-  Value zp_val = getTosaConstTensorSingleF32(rewriter, op, (float)(zeropoint));
+  Value zp_val =
+      getTosaConstTensorSingleF32(rewriter, op, static_cast<float>(zeropoint));
 
   auto op1_mul_in = rewriter.create<tosa::MulOp>(
       op->getLoc(), output_fp_type, input_value,
-      getTosaConstTensorSingleF32(rewriter, op, (float)scale), 0);
+      getTosaConstTensorSingleF32(rewriter, op, static_cast<float>(scale)), 0);
 
   auto op2_add_op1 = rewriter.create<tosa::AddOp>(
       op->getLoc(), output_fp_type, op1_mul_in.getResult(), zp_val);
@@ -2676,7 +2646,8 @@ Operation* convertDequantizeOp(PatternRewriter& rewriter, Operation* op,
   RankedTensorType output_int32_type =
       RankedTensorType::get(output_shape, rewriter.getI32Type());
 
-  Value zp_val = getTosaConstTensorSingleF32(rewriter, op, (float)(zeropoint));
+  Value zp_val =
+      getTosaConstTensorSingleF32(rewriter, op, static_cast<float>(zeropoint));
 
   // TOSA doesn't support CAST AINT8 -> FLOAT, need to RESCALE to INT32
   // followed by a CAST
@@ -2689,11 +2660,9 @@ Operation* convertDequantizeOp(PatternRewriter& rewriter, Operation* op,
   auto op3_sub_op2 = rewriter.create<tosa::SubOp>(
       op->getLoc(), output_type, op2_cast_op1.getResult(), zp_val);
 
-  auto op4_mul_op3 = rewriter.create<tosa::MulOp>(
+  return rewriter.create<tosa::MulOp>(
       op->getLoc(), output_type, op3_sub_op2.getResult(),
-      getTosaConstTensorSingleF32(rewriter, op, (float)scale), 0);
-
-  return op4_mul_op3;
+      getTosaConstTensorSingleF32(rewriter, op, static_cast<float>(scale)), 0);
 }
 
 // Lowers FakeQuant to a sequence of TOSA quantization ops.
@@ -2709,7 +2678,10 @@ Operation* convertFakeQuantOp(PatternRewriter& rewriter, Operation* op,
   if (!input_type) return nullptr;
 
   // quantized as INT<num_bits>, where num_bits can only be 8, 16
-  if (num_bits != 8 && num_bits != 16) return nullptr;
+  if (num_bits != 8 && num_bits != 16) {
+    op->emitWarning("FakeQuantOp lowering handles only 8 and 16 for num_bits!");
+    return nullptr;
+  }
 
   auto output_shape = output_type.getShape();
 
@@ -2724,18 +2696,16 @@ Operation* convertFakeQuantOp(PatternRewriter& rewriter, Operation* op,
       qmin, qmax);
   auto output_int_type = RankedTensorType::get(output_shape, int_element_qtype);
 
-  double scale = (max - min) / double(qmax - qmin);
-  int64_t zeropoint = (int64_t)std::round((-min) / scale + double(qmin));
+  double scale = (max - min) / static_cast<double>(qmax - qmin);
+  int64_t zeropoint = std::llround((-min) / scale + static_cast<double>(qmin));
 
   // Quantize: round(x / scale + zeropoint)
   auto quantized_op = convertQuantizeOp(rewriter, op, output_int_type,
                                         input_value, 1.0 / scale, zeropoint);
 
   // Dequantize: ((float)x - zeropoint) * scale
-  auto dequantized_op = convertDequantizeOp(
-      rewriter, op, output_type, quantized_op->getResult(0), scale, zeropoint);
-
-  return dequantized_op;
+  return convertDequantizeOp(rewriter, op, output_type,
+                             quantized_op->getResult(0), scale, zeropoint);
 }
 
 Operation* convertTFConv2DCommon(
@@ -2751,7 +2721,7 @@ Operation* convertTFConv2DCommon(
 
   // Transpose [H, W, I, O] to [O, H, W, I]
   auto filter_shape = filter_type.getShape();
-  std::vector<int64_t> a1_transpose_dims;
+  SmallVector<int64_t, 4> a1_transpose_dims;
   a1_transpose_dims.push_back(filter_shape[3]);
   a1_transpose_dims.push_back(filter_shape[0]);
   a1_transpose_dims.push_back(filter_shape[1]);
@@ -2765,7 +2735,10 @@ Operation* convertTFConv2DCommon(
       filter, a1_filter_transpose_perm);
 
   // Only support NHWC now.
-  if (data_format_ref.str() != "NHWC") return nullptr;
+  if (data_format_ref.str() != "NHWC") {
+    op->emitWarning("convertTDConv2DCommon only supports NHWC!");
+    return nullptr;
+  }
 
   ArrayAttr stride;
   ArrayAttr dilation;
@@ -2775,8 +2748,8 @@ Operation* convertTFConv2DCommon(
       stride = rewriter.getI64ArrayAttr({1, 1});
     } else {
       // Note: hardcoded to NHWC for now
-      int64_t stride_h = strides_attr[1].dyn_cast<IntegerAttr>().getInt();
-      int64_t stride_w = strides_attr[2].dyn_cast<IntegerAttr>().getInt();
+      int64_t stride_h = strides_attr[1].cast<IntegerAttr>().getInt();
+      int64_t stride_w = strides_attr[2].cast<IntegerAttr>().getInt();
       stride = rewriter.getI64ArrayAttr({stride_h, stride_w});
     }
   }
@@ -2785,14 +2758,17 @@ Operation* convertTFConv2DCommon(
       dilation = rewriter.getI64ArrayAttr({1, 1});
     } else {
       // Note: hardcoded to NHWC for now
-      int64_t dilation_h = dilations_attr[1].dyn_cast<IntegerAttr>().getInt();
-      int64_t dilation_w = dilations_attr[2].dyn_cast<IntegerAttr>().getInt();
+      int64_t dilation_h = dilations_attr[1].cast<IntegerAttr>().getInt();
+      int64_t dilation_w = dilations_attr[2].cast<IntegerAttr>().getInt();
       dilation = rewriter.getI64ArrayAttr({dilation_h, dilation_w});
     }
   }
   {
     tensorflow::Padding tf_pad;
-    if (!GetPaddingFromString(padding_ref.str(), &tf_pad).ok()) return nullptr;
+    if (!GetPaddingFromString(padding_ref.str(), &tf_pad).ok()) {
+      op->emitWarning("Could not get padding data from padding string term!");
+      return nullptr;
+    }
 
     tensorflow::TensorFormat data_format_tf;
     if (!FormatFromString(data_format_ref.str(), &data_format_tf))
@@ -2810,11 +2786,9 @@ Operation* convertTFConv2DCommon(
     }
   }
 
-  auto tosa_conv2d_op = rewriter.create<tosa::Conv2DOp>(
-      op->getLoc(), output_type, input, a1_filter_transpose_op.getResult(),
-      bias, pad, stride, dilation);
-
-  return tosa_conv2d_op;
+  return rewriter.create<tosa::Conv2DOp>(op->getLoc(), output_type, input,
+                                         a1_filter_transpose_op.getResult(),
+                                         bias, pad, stride, dilation);
 }
 
 };  // namespace tosa

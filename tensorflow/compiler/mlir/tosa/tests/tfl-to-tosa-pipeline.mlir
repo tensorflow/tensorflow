@@ -2,6 +2,10 @@
 
 // Operations for testing tfl-to-tosa-pipeline
 
+// TODO: For all fakequant tests: compute and add checks on rescale attribute
+// values
+
+
 // -----
 
 // CHECK-LABEL: test_conv2d
@@ -49,6 +53,8 @@ func @test_fakequant_conv2d(%arg0: tensor<1x32x32x8x!quant.uniform<i8:f32, 0.015
 }
 
 // -----
+
+// TODO: Compute and add checks on rescale attribute values
 
 // CHECK-LABEL: test_fakequant_depthwise_conv2d_bias
 // CHECK: tosa.const
@@ -651,32 +657,10 @@ func @test_add_1d_const(%arg0: tensor<13x21x3xf32>, %cst: tensor<13x21x3xf32>) -
 // CHECK: tosa.slice
 // CHECK: tosa.slice
 // CHECK: tosa.identityn
-// CHECK: tosa.reduce_sum
-// CHECK: tosa.reduce_sum
-// CHECK: tosa.reduce_sum
-// CHECK: tosa.reshape
-// CHECK: tosa.reduce_sum
-// CHECK: tosa.reduce_sum
-// CHECK: tosa.reduce_sum
-// CHECK: tosa.reshape
-// CHECK: tosa.reduce_sum
-// CHECK: tosa.reduce_sum
-// CHECK: tosa.reduce_sum
-// CHECK: tosa.reshape
-// CHECK: tosa.reshape
-// CHECK: tosa.reshape
-// CHECK: tosa.reshape
-// CHECK: tosa.concat
-// CHECK: tosa.concat
-func @test_split(%arg0: tensor<13x21x3xf32>) -> tensor<3xf32> {
-  %cst = constant dense<[0, 1, 2]> : tensor<3xi32>
+func @test_split(%arg0: tensor<13x21x3xf32>) -> (tensor<13x7x3xf32>, tensor<13x7x3xf32>, tensor<13x7x3xf32>) {
   %cst_0 = constant dense<1> : tensor<i32>
   %0:3 = "tfl.split"(%cst_0, %arg0)  {num_splits = 3 : i32}  : (tensor<i32>, tensor<13x21x3xf32>) -> (tensor<13x7x3xf32>, tensor<13x7x3xf32>, tensor<13x7x3xf32>)
-  %1 = "tfl.sum"(%0#0, %cst)  {keep_dims = false}  : (tensor<13x7x3xf32>, tensor<3xi32>) -> tensor<f32>
-  %2 = "tfl.sum"(%0#1, %cst)  {keep_dims = false}  : (tensor<13x7x3xf32>, tensor<3xi32>) -> tensor<f32>
-  %3 = "tfl.sum"(%0#2, %cst)  {keep_dims = false}  : (tensor<13x7x3xf32>, tensor<3xi32>) -> tensor<f32>
-  %4 = "tfl.pack"(%1, %2, %3)  {axis = 0 : i32, values_count = 3 : i32}  : (tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<3xf32>
-  return %4 : tensor<3xf32>
+  return %0#0, %0#1, %0#2 : tensor<13x7x3xf32>, tensor<13x7x3xf32>, tensor<13x7x3xf32>
 }
 
 // -----
@@ -829,6 +813,9 @@ func @test_fakequant_max_pool2d(%arg0: tensor<1x32x32x8x!quant.uniform<i8:f32, 0
 }
 
 // -----
+
+// TODO: add additional checks on the quantized softmax lowering,
+// as it is one of the most complicated lowerings overall.
 
 // CHECK-LABEL: test_fakequant_softmax
 // CHECK: tosa.rescale

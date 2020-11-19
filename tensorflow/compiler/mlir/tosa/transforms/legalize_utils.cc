@@ -36,8 +36,8 @@ Value buildRescale(PatternRewriter& rewriter, Operation* op,
 
   auto rescale_op = rewriter.create<tosa::RescaleOp>(
       op->getLoc(), output_type, input_val,
-      rewriter.getI32IntegerAttr((int32_t)input_zp),
-      rewriter.getI32IntegerAttr((int32_t)output_zp),
+      rewriter.getI32IntegerAttr(static_cast<int32_t>(input_zp)),
+      rewriter.getI32IntegerAttr(static_cast<int32_t>(output_zp)),
       rewriter.getI32ArrayAttr({multiplier}), rewriter.getI32ArrayAttr({shift}),
       rewriter.getBoolAttr(true), rewriter.getBoolAttr(double_round),
       rewriter.getBoolAttr(false));
@@ -120,8 +120,8 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
     auto output_last_axis = output_type.getShape().size() - 1;
     uint32_t output_channels = output_type.getShape()[output_last_axis];
 
-    std::vector<int32_t> multiplier_arr;
-    std::vector<int32_t> shift_arr;
+    llvm::SmallVector<int32_t, 4> multiplier_arr;
+    llvm::SmallVector<int32_t, 4> shift_arr;
 
     llvm::SmallVector<double, 4> weight_scale_arr(
         weight_per_channel_qtype.getScales().begin(),
@@ -167,12 +167,13 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
 // on the values from an int32_t func(int32_t) lambda function.
 Value getTosa1DConstTensorTable(PatternRewriter& rewriter, Operation* op,
                                 std::function<int32_t(int32_t)> func) {
-  std::vector<int16_t> table_vec;
+  llvm::SmallVector<int16_t, 4> table_vec;
 
   for (int32_t i = -256; i <= 256; i++) {
     int32_t value = func(i);
     // Table entry is int16_t; clamp to expressible range.
-    table_vec.push_back((int16_t)std::min(std::max(value, -32768), 32767));
+    table_vec.push_back(
+        static_cast<int16_t>(std::min(std::max(value, -32768), 32767)));
   }
 
   auto element_qtype =
@@ -211,7 +212,7 @@ Value getTosaConstTensorSingleI32(PatternRewriter& rewriter, Operation* op,
 
 // Create a vector from a 32-bit value tensor.  Returns the size of
 // the new vector or -1 on error.
-int getVectorFromValue32(Value val, std::vector<int32_t>& vec) {
+int getVectorFromValue32(Value val, llvm::SmallVector<int32_t, 4>& vec) {
   int i = 0;
 
   ElementsAttr elems;

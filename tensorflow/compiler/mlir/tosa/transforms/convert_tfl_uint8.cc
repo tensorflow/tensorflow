@@ -79,7 +79,8 @@ struct ConvertUint8QConstOp : public RewritePattern {
     // Skip if it's not ranked tensor type.
     auto output_type =
         tfl_qconst_op.getResult().getType().dyn_cast<mlir::RankedTensorType>();
-    if (!output_type) return failure();
+    if (!output_type)
+      return builder.notifyMatchFailure(op, "not ranked tensor");
 
     // Skip if output is not per-tensor quantized type.
     auto output_element_type =
@@ -93,15 +94,17 @@ struct ConvertUint8QConstOp : public RewritePattern {
       return failure();
     }
 
-    auto src_dense_attr =
-        op->getAttr("value").dyn_cast<mlir::DenseElementsAttr>();
+    mlir::DenseElementsAttr src_dense_attr =
+        tfl_qconst_op.value().cast<DenseElementsAttr>();
 
-    double type_range_min = double(output_element_type.getStorageTypeMin() -
-                                   output_element_type.getZeroPoint()) *
-                            output_element_type.getScale();
-    double type_range_max = double(output_element_type.getStorageTypeMax() -
-                                   output_element_type.getZeroPoint()) *
-                            output_element_type.getScale();
+    double type_range_min =
+        static_cast<double>(output_element_type.getStorageTypeMin() -
+                            output_element_type.getZeroPoint()) *
+        output_element_type.getScale();
+    double type_range_max =
+        static_cast<double>(output_element_type.getStorageTypeMax() -
+                            output_element_type.getZeroPoint()) *
+        output_element_type.getScale();
     bool narrow_range =
         output_element_type.getStorageTypeMin() == 1 ? true : false;
 
@@ -126,16 +129,15 @@ struct ConvertUint8QConstOp : public RewritePattern {
     auto dst_dense_attr =
         src_dense_attr.mapValues(dst_dense_element_type, mapping);
 
-    auto dst_qconst_op = builder.create<TFL::QConstOp>(
-        op->getLoc(), dst_qconst_type, dst_dense_attr);
+    builder.replaceOpWithNewOp<TFL::QConstOp>(op, dst_qconst_type,
+                                              dst_dense_attr);
 
-    builder.replaceOp(op, {dst_qconst_op.getResult()});
     return success();
   }
 };
 
-int convert_graph_uint8_tensor(mlir::MLIRContext &context,
-                               mlir::FuncOp &function) {
+LogicalResult convert_graph_uint8_tensor(mlir::MLIRContext &context,
+                                         mlir::FuncOp &function) {
   size_t num_blocks_in_main = 0;
   mlir::Region *region = function.getCallableRegion();
   OpBuilder builder(&context);
@@ -147,13 +149,11 @@ int convert_graph_uint8_tensor(mlir::MLIRContext &context,
     // Always have one block for each region right now.
     num_blocks_in_main++;
     if (num_blocks_in_main > 1) {
-      llvm::errs() << "Invalid MLIR: multiple blocks in a region\n";
-      return 1;
+      return function.emitError("Invalid MLIR: multiple blocks in a region");
     }
 
     if (!bb.isEntryBlock()) {
-      llvm::errs() << "Invalid MLIR: block must be entry block\n";
-      return 1;
+      return function.emitError("Invalid MLIR: block must be entry block");
     }
 
     // Insert rescale uint8->int8 after placeholders.
@@ -170,12 +170,14 @@ int convert_graph_uint8_tensor(mlir::MLIRContext &context,
           uint8_element_type.getStorageTypeIntegralWidth() != 8)
         continue;
 
-      double type_range_min = double(uint8_element_type.getStorageTypeMin() -
-                                     uint8_element_type.getZeroPoint()) *
-                              uint8_element_type.getScale();
-      double type_range_max = double(uint8_element_type.getStorageTypeMax() -
-                                     uint8_element_type.getZeroPoint()) *
-                              uint8_element_type.getScale();
+      double type_range_min =
+          static_cast<double>(uint8_element_type.getStorageTypeMin() -
+                              uint8_element_type.getZeroPoint()) *
+          uint8_element_type.getScale();
+      double type_range_max =
+          static_cast<double>(uint8_element_type.getStorageTypeMax() -
+                              uint8_element_type.getZeroPoint()) *
+          uint8_element_type.getScale();
       bool narrow_range =
           uint8_element_type.getStorageTypeMin() == 1 ? true : false;
 
@@ -194,17 +196,17 @@ int convert_graph_uint8_tensor(mlir::MLIRContext &context,
 
       // Keep original input_val use with tmp_val.
       Value tmp_val = builder.create<TFL::ConstOp>(
-          builder.getUnknownLoc(), tmp_const_type, tmp_const_attr);
+          function.getLoc(), tmp_const_type, tmp_const_attr);
       arg.replaceAllUsesWith(tmp_val);
       auto rescale_op = builder.create<tosa::RescaleOp>(
-          builder.getUnknownLoc(), int8_type, arg,
+          function.getLoc(), int8_type, arg,
           builder.getI32IntegerAttr(uint8_zp),
           builder.getI32IntegerAttr(int8_zp),
           builder.getI32ArrayAttr({1 << 30}), builder.getI32ArrayAttr({30}),
           builder.getBoolAttr(true), builder.getBoolAttr(false),
           builder.getBoolAttr(false));
 
-      Operation *op_rescale_op = (Operation *)rescale_op;
+      Operation *op_rescale_op = static_cast<Operation *>(rescale_op);
       bb.push_front(op_rescale_op);
       tmp_val.replaceAllUsesWith(rescale_op.getResult());
     }
@@ -212,7 +214,7 @@ int convert_graph_uint8_tensor(mlir::MLIRContext &context,
     // Record types of original graph output before we convert intermediate
     // tensor.
     auto terminator = bb.getTerminator();
-    std::vector<Type> output_types;
+    SmallVector<Type, 4> output_types;
     for (Value val : terminator->getOperands()) {
       output_types.push_back(val.getType());
     }
@@ -236,12 +238,14 @@ int convert_graph_uint8_tensor(mlir::MLIRContext &context,
             output_element_type.getStorageTypeIntegralWidth() != 8)
           continue;
 
-        double type_range_min = double(output_element_type.getStorageTypeMin() -
-                                       output_element_type.getZeroPoint()) *
-                                output_element_type.getScale();
-        double type_range_max = double(output_element_type.getStorageTypeMax() -
-                                       output_element_type.getZeroPoint()) *
-                                output_element_type.getScale();
+        double type_range_min =
+            static_cast<double>(output_element_type.getStorageTypeMin() -
+                                output_element_type.getZeroPoint()) *
+            output_element_type.getScale();
+        double type_range_max =
+            static_cast<double>(output_element_type.getStorageTypeMax() -
+                                output_element_type.getZeroPoint()) *
+            output_element_type.getScale();
         bool narrow_range =
             output_element_type.getStorageTypeMin() == 1 ? true : false;
 
@@ -260,14 +264,17 @@ int convert_graph_uint8_tensor(mlir::MLIRContext &context,
     }
 
     if (terminator->getNumOperands() != output_types.size()) {
-      llvm::errs() << "Terminator size should be " << output_types.size()
-                   << " instead of " << terminator->getNumOperands() << "\n";
-      return 1;
+      return function.emitError(
+          "Terminator's operand mismatch with number of outputs in graph");
     }
 
     // Insert int8->uint8 rescale before all terminator's operand.
     for (int32_t i = 0; i < terminator->getNumOperands(); i++) {
-      Value input_val = terminator->getOperand(i).getDefiningOp()->getResult(0);
+      auto defining_op = terminator->getOperand(i).getDefiningOp();
+      // skip if operand of terminator is block arg (nullptr in this case) or
+      // not
+      if (!defining_op) continue;
+      Value input_val = defining_op->getResult(0);
 
       // Check if graph output is uint8 type.
       auto uint8_output_type =
@@ -305,30 +312,30 @@ int convert_graph_uint8_tensor(mlir::MLIRContext &context,
       if (((uint8_zp - int8_zp) != 128) ||
           (int8_output_element_type.getScale() !=
            uint8_output_element_type.getScale())) {
-        llvm::errs() << "convert_uint8_to_int8: scale mismatch\n";
-        return 1;
+        return terminator->emitError(
+            "convert_uint8_to_int8: scale mismatch at the output tensors");
       }
 
       // Keep original input_val use with tmp_val.
       Value tmp_val = builder.create<TFL::ConstOp>(
-          builder.getUnknownLoc(), tmp_const_type, tmp_const_attr);
+          function.getLoc(), tmp_const_type, tmp_const_attr);
       input_val.replaceAllUsesWith(tmp_val);
       auto rescale_op = builder.create<tosa::RescaleOp>(
-          builder.getUnknownLoc(), uint8_output_type, input_val,
+          function.getLoc(), uint8_output_type, input_val,
           builder.getI32IntegerAttr(int8_zp),
           builder.getI32IntegerAttr(uint8_zp),
           builder.getI32ArrayAttr({1 << 30}), builder.getI32ArrayAttr({30}),
           builder.getBoolAttr(true), builder.getBoolAttr(false),
           builder.getBoolAttr(false));
 
-      Operation *op_rescale_op = (Operation *)rescale_op;
+      Operation *op_rescale_op = static_cast<Operation *>(rescale_op);
       bb.push_back(op_rescale_op);
       op_rescale_op->moveBefore(terminator);
       tmp_val.replaceAllUsesWith(rescale_op.getResult());
     }
   }
 
-  return 0;
+  return success();
 }
 
 void ConvertUint8ToInt8::runOnFunction() {

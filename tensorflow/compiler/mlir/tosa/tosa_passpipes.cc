@@ -26,7 +26,9 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Transforms/Passes.h"
 
-namespace {
+namespace mlir {
+
+namespace tosa {
 
 void addPreOptMlirPasses(mlir::OpPassManager& pm) {
   // Inline all functions into main and then delete the functions themselves.
@@ -48,12 +50,6 @@ void addPostOptMlirPasses(mlir::OpPassManager& pm) {
   pm.addPass(mlir::createSymbolDCEPass());
 }
 
-}  // namespace
-
-namespace mlir {
-
-namespace tosa {
-
 void createTFtoTOSALegalizationPipeline(
     OpPassManager& pm, const TOSALegalizationPipelineOptions& opts) {
   addPreOptMlirPasses(pm);
@@ -73,16 +69,6 @@ void createTFLtoTOSALegalizationPipeline(
 
   addPostOptMlirPasses(pm);
 }
-
-static mlir::PassPipelineRegistration<TOSALegalizationPipelineOptions>
-    tf_tosa_pipeline("tf-to-tosa-pipeline",
-                     "TensorFlow to TOSA legalization pipeline",
-                     createTFtoTOSALegalizationPipeline);
-
-static mlir::PassPipelineRegistration<TOSALegalizationPipelineOptions>
-    tfl_tosa_pipeline("tfl-to-tosa-pipeline",
-                      "TensorFlow Lite to TOSA legalization pipeline",
-                      createTFLtoTOSALegalizationPipeline);
 
 }  // namespace tosa
 

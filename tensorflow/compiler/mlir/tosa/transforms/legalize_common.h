@@ -47,27 +47,6 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/DialectConversion.h"
 
-// Helper macros for checking the return value of a common
-// legalization function that returns a single tensor.
-// Packs the result in a list.
-#define TOSA_REPLACE_LOWERED_OP(REWRITER, OP, LOWERED_OP)   \
-  if (LOWERED_OP) {                                         \
-    REWRITER.replaceOp((OP), {(LOWERED_OP)->getResults()}); \
-    return success();                                       \
-  } else {                                                  \
-    return failure();                                       \
-  }
-
-// Helper macros for checking the return value of a common
-// legalization function that returns a tensor list.
-#define TOSA_REPLACE_LOWERED_OP_LIST(REWRITER, OP, LOWERED_OP) \
-  if (LOWERED_OP) {                                            \
-    REWRITER.replaceOp((OP), (LOWERED_OP)->getResults());      \
-    return success();                                          \
-  } else {                                                     \
-    return failure();                                          \
-  }
-
 namespace mlir {
 namespace tosa {
 
@@ -231,7 +210,7 @@ Operation* convertReduceMeanOp(PatternRewriter& rewriter, Operation* op,
 // Lowers ResizeBilinear and ResizeNearestNeighbor to TOSA resize.
 Operation* convertResizeOp(PatternRewriter& rewriter, Operation* op,
                            RankedTensorType output_type, Value input_value,
-                           const char* mode);
+                           StringRef mode);
 
 // Lowers Quantize to a sequence of TOSA quantization ops.
 Operation* convertQuantizeOp(PatternRewriter& rewriter, Operation* op,

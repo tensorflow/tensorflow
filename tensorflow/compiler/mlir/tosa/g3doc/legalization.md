@@ -9,8 +9,8 @@ Overview
 
 This document provides pseudo-code lowerings from TensorFlow and
 TensorFlow Lite MLIR Dialects
-(https://www.tensorflow.org/mlir/dialects) to an implementation of the
-TOSA Specification (https://developer.mlplatform.org/w/tosa/).
+(https://www.tensorflow.org/mlir/dialects) to the
+TOSA Dialect (https://mlir.llvm.org/docs/Dialects/TOSA/).
 
 The documentation is a work-in-progress: sections with missing
 legalizations are in the process of being written.
@@ -104,7 +104,7 @@ Common Legalization Functions
 The following pseudo-code helper functions are used to cannonicalize
 arguments from different frameworks to the TOSA dialect.
 
-apply_broadcast()
+apply_rank_broadcast()
 ------------------
 
     // Applies a TOSA-lowering broadcast to tensor 'a' with respect
@@ -112,8 +112,7 @@ apply_broadcast()
     //
     // The resulting tensors will have matching ranks.  TOSA broadcast
     // operators accept degenerate broadcasting (1 vs non-1)
-    Value apply_broadcast(Value %a, Value %b) {
-
+    Value apply_rank_broadcast(Value %a, Value %b) {
 
         if (%a.rank < %b.rank) {
 
@@ -494,6 +493,7 @@ lower_quantized_op()
 
     Value lower_quantized_op(type output_type, Value %inputs, double scale, int64_t zeropoint)
     {
+        // TODO: fill in this function
     }
 
 lower_dequantized_op()
@@ -502,6 +502,7 @@ lower_dequantized_op()
 
     Value lower_dequantized_op(type output_type, Value %inputs, double scale, int64_t zeropoint)
     {
+        // TODO: fill in this function
     }
 
 lower_log_softmax_op()
@@ -1054,7 +1055,7 @@ lower_fused_activation()
 
     Value lower_fused_activation(Value %input, string activation)
     {
-
+        // TODO: fill in this function
     }
 
 get_table_const_tensor()
@@ -1063,7 +1064,7 @@ get_table_const_tensor()
 
     Value get_table_const_tensor(function func)
     {
-
+        // TODO: fill in this function
     }
 
 MLIR Passes Management
@@ -1335,8 +1336,8 @@ Add bias to value.
 **TOSA Lowering**
 
     assert(data_format == 'NHWC')
-    %bcast_value = apply_broadcast(%value, %bias)
-    %bcast_bias  = apply_broadcast(%bias, %value)
+    %bcast_value = apply_rank_broadcast(%value, %bias)
+    %bcast_bias  = apply_rank_broadcast(%bias, %value)
     %output = tosa.ADD(%bcast_value, %bcast_bias) : (tensor<%bcast_value.type>, tensor<%bcast_bias.type>) -> tensor<%output.type>
 
 tf.BitCast
@@ -1502,6 +1503,8 @@ Computes a 2-D convolution given 4-D input and filter tensors.
 
 tf.Conv3D
 ---------
+
+TOSA lowering to tosa.CONV3D to be defined.
 
 
 tf.Cos
@@ -1955,8 +1958,8 @@ Returns the truth value of (x ⇐ y) element-wise with broadcasting.
 
 **TOSA Lowering**
 
-    %bcast_x = apply_broadcast(%x, %y)
-    %bcast_y = apply_broadcast(%y, %x)
+    %bcast_x = apply_rank_broadcast(%x, %y)
+    %bcast_y = apply_rank_broadcast(%y, %x)
 
     %output_greater = tosa.GREATER(%bcast_x, %bcast_y) : (tensor<%bcast_x.type>, tensor<%bcast_y.type>) -> tensor<%output_greater.type>
     %output = tosa.LOGICAL_NOT(%output_greater) : (tensor<%output_greater.type>) -> tensor<%output_greater.type>
@@ -1972,8 +1975,8 @@ Returns the truth value of (x &lt; y) element-wise with broadcasting.
 
 **TOSA Lowering**
 
-    %bcast_x = apply_broadcast(%x, %y)
-    %bcast_y = apply_broadcast(%y, %x)
+    %bcast_x = apply_rank_broadcast(%x, %y)
+    %bcast_y = apply_rank_broadcast(%y, %x)
 
     %output_greater_equal = tosa.GREATER_EQUAL(%bcast_x, %bcast_y) : (tensor<%bcast_x.type>, tensor<%bcast_y.type>) -> tensor<%output_greater.type>
     %output = tosa.LOGICAL_NOT(%output_greater_equal) : (tensor<%output_greater_equal.type>) -> tensor<%output_greater.type>
@@ -2191,7 +2194,7 @@ Returns the product of x and y, element-wise.
     %output = tf.Mul(%x, %y)
 
 **TOSA Lowering** This operator is trivially lowered to
-tosa.LOGICAL_MUL.
+tosa.MUL.
 
 tf.Neg
 ------
@@ -2224,8 +2227,8 @@ Returns the truth value of (x != y) element-wise with broadcasting.
 
 **TOSA Lowering**
 
-    %bcast_x = apply_broadcast(%x, %y)
-    %bcast_y = apply_broadcast(%y, %x)
+    %bcast_x = apply_rank_broadcast(%x, %y)
+    %bcast_y = apply_rank_broadcast(%y, %x)
 
     %equal = tosa.EQUAL(%bcast_x, %bcast_y) : (tensor<%bcast_x.type>, tensor<%bcast_y.type>) -> tensor<%equal.type>
     %output = tosa.NOT(%equal) : (tensor<%equal.type>) -> tensor<%output.type>
@@ -2512,8 +2515,8 @@ Computes the bitwise left-shift of x by y bits, element-wise.
 
 **TOSA Lowering**
 
-    %bcast_x = apply_broadcast(%x, %y)
-    %bcast_y = apply_broadcast(%y, %x)
+    %bcast_x = apply_rank_broadcast(%x, %y)
+    %bcast_y = apply_rank_broadcast(%y, %x)
     if (is_unsigned(%x.dtype)) {
       %output = tosa.LOGICAL_RIGHT_SHIFT(%bcast_x, %bcast_y) : (tensor<%bcast_x.type>, tensor<%bcast_y.type>) -> tensor<%output.type>
     } else {
@@ -2672,7 +2675,7 @@ Computes softmax activations
     %op1 = tosa.EXP(%logits) : (tensor<%logits.type>) -> tensor<%op1.type>
     %op2 = tosa.REDUCE_SUM(op1) {reduce_axis=(%logits.rank - 1)} : (tensor<%op1.type>) -> tensor<%op2.type>
     %op3 = tosa.RECIPROCAL(%op2) : (tensor<%op2.type>) -> tensor<%op3.type>
-    %output = tosa.mul(%op1, %op3) : (tensor<%op1.type>, tensor<%op3.type>) -> tensor<%output.type>
+    %output = tosa.MUL(%op1, %op3) : (tensor<%op1.type>, tensor<%op3.type>) -> tensor<%output.type>
 
 tf.Softplus
 -----------
@@ -3100,8 +3103,8 @@ If input/output tensors are all native typed,
 
 Legalization:
 
-    %bcast_lhs = apply_broadcast(%lhs, %rhs)
-    %bcast_rhs = apply_broadcast(%rhs, %lhs)
+    %bcast_lhs = apply_rank_broadcast(%lhs, %rhs)
+    %bcast_rhs = apply_rank_broadcast(%rhs, %lhs)
     %result = tosa.ADD(%bcast_lhs, %bcast_rhs) : (tensor<%bcast_lhs.type>, tensor<%bcast_rhs.type>) -> tensor<%output.type>
 
 If input/output tensors are all quantized typed,
@@ -3126,10 +3129,10 @@ Prepare:
 
 Legalization:
 
-    %rescaled_lhs = tosa.rescale(%bcast_lhs) {multiplier=lhs_multiplier, shift=lhs_shift} : (tensor<%lhs.type>) -> lhs_int32_type
-    %rescaled_rhs = tosa.rescale(%bcast_rhs) {multiplier=rhs_multiplier, shift=rhs_shift} : (tensor<%rhs.type>) -> rhs_int32_type
-    %bcast_lhs = apply_broadcast(%rescaled_lhs, %rescaled_rhs)
-    %bcast_rhs = apply_broadcast(%rescaled_rhs, %rescaled_lhs)
+    %rescaled_lhs = tosa.RESCALE(%bcast_lhs) {multiplier=lhs_multiplier, shift=lhs_shift} : (tensor<%lhs.type>) -> lhs_int32_type
+    %rescaled_rhs = tosa.RESCALE(%bcast_rhs) {multiplier=rhs_multiplier, shift=rhs_shift} : (tensor<%rhs.type>) -> rhs_int32_type
+    %bcast_lhs = apply_rank_broadcast(%rescaled_lhs, %rescaled_rhs)
+    %bcast_rhs = apply_rank_broadcast(%rescaled_rhs, %rescaled_lhs)
     %add = tosa.ADD(%bcast_lhs, %bcast_rhs) : (tensor<%bcast_lhs.type>, tensor<%bcast_rhs.type>) -> output_int32_type
     %result = tosa.RESCALE(%add) {multiplier=output_multiplier, shift=output_shift} : (output_int32_type) -> tensor<%output.type>
 
@@ -3642,6 +3645,8 @@ No TOSA lowering defined.
 tfl.gather
 ----------
 
+TODO: TOSA lowering
+
 tfl.greater_equal
 ------------------
 
@@ -3703,11 +3708,18 @@ No TOSA lowering defined.
 tfl.leaky_relu
 ---------------
 
+TODO: TOSA lowering
+
 tfl.less_equal
 ---------------
 
+TODO: TOSA lowering
+
 tfl.less
 --------
+
+TODO: TOSA lowering
+
 
 tfl.local_response_normalization
 ----------------------------------
@@ -3717,8 +3729,12 @@ No TOSA lowering defined.
 tfl.log
 -------
 
+TODO: TOSA lowering
+
 tfl.log_softmax
 ----------------
+
+TODO: TOSA lowering
 
 tfl.logical_and
 ----------------
@@ -3738,6 +3754,8 @@ This operator is trivially lowered to tosa.LOGICAL_OR
 tfl.logistic
 ------------
 
+TODO: TOSA lowering
+
 tfl.matrix_diag
 ----------------
 
@@ -3750,6 +3768,8 @@ No TOSA lowering defined.
 
 tfl.max_pool_2d
 -----------------
+
+TODO: TOSA lowering
 
 tfl.max_pooling_with_argmax_2d
 ----------------------------------
@@ -3769,6 +3789,8 @@ This operator is trivially lowered to tosa.MAXIMUM
 tfl.mean
 --------
 
+TODO: TOSA lowering
+
 tfl.minimum
 -----------
 
@@ -3781,6 +3803,8 @@ No TOSA lowering defined.
 
 tfl.mul
 -------
+
+TODO: TOSA lowering
 
 tfl.neg
 -------
@@ -3800,6 +3824,8 @@ No TOSA lowering defined.
 tfl.not_equal
 --------------
 
+TODO: TOSA lowering
+
 tfl.NumericVerify
 -----------------
 
@@ -3813,8 +3839,12 @@ No TOSA lowering defined.
 tfl.prelu
 ---------
 
+TODO: TOSA lowering
+
 tfl.pack
 --------
+
+TODO: TOSA lowering
 
 tfl.pad
 -------
@@ -3829,6 +3859,8 @@ No TOSA lowering defined.
 tfl.pow
 -------
 
+TODO: TOSA lowering
+
 tfl.pseudo_qconst
 ------------------
 
@@ -3836,6 +3868,8 @@ This operator is trivially lowered to tosa.CONST
 
 tfl.quantize
 ------------
+
+TODO: TOSA lowering
 
 tfl.range
 ---------
@@ -3845,17 +3879,27 @@ No TOSA lowering defined.
 tfl.rank
 --------
 
+TODO: TOSA lowering
+
 tfl.reduce_any
 ---------------
+
+TODO: TOSA lowering
 
 tfl.reduce_max
 ---------------
 
+TODO: TOSA lowering
+
 tfl.reduce_min
 ---------------
 
+TODO: TOSA lowering
+
 tfl.reduce_prod
 ----------------
+
+TODO: TOSA lowering
 
 tfl.relu_n1_to_1
 -------------------
@@ -3865,8 +3909,12 @@ No TOSA lowering defined.
 tfl.relu6
 ---------
 
+TODO: TOSA lowering
+
 tfl.relu
 --------
+
+TODO: TOSA lowering
 
 tfl.reshape
 -----------
@@ -3876,8 +3924,12 @@ This operator is trivially lowered to tosa.RESHAPE
 tfl.resize_bilinear
 --------------------
 
+TODO: TOSA lowering
+
 tfl.resize_nearest_neighbor
 -----------------------------
+
+TODO: TOSA lowering
 
 tfl.reverse_sequence
 ---------------------
@@ -3887,11 +3939,17 @@ No TOSA lowering defined.
 tfl.reverse_v2
 ---------------
 
+TODO: TOSA lowering
+
 tfl.round
 ---------
 
+TODO: TOSA lowering
+
 tfl.rsqrt
 ---------
+
+TODO: TOSA lowering
 
 tfl.svdf
 --------
@@ -3906,11 +3964,17 @@ No TOSA lowering defined.
 tfl.select
 ----------
 
+TODO: TOSA lowering
+
 tfl.select_v2
 --------------
 
+TODO: TOSA lowering
+
 tfl.shape
 ---------
+
+TODO: TOSA lowering
 
 tfl.sin
 -------
@@ -3920,14 +3984,22 @@ No TOSA lowering defined.
 tfl.slice
 ---------
 
+TODO: TOSA lowering
+
 tfl.softmax
 -----------
+
+TODO: TOSA lowering
 
 tfl.space_to_batch_nd
 ------------------------
 
+TODO: TOSA lowering
+
 tfl.space_to_depth
 --------------------
+
+TODO: TOSA lowering
 
 tfl.pseudo_sparse_const
 -------------------------
@@ -3947,20 +4019,32 @@ No TOSA lowering defined.
 tfl.split
 ---------
 
+TODO: TOSA lowering
+
 tfl.split_v
 ------------
+
+TODO: TOSA lowering
 
 tfl.sqrt
 --------
 
+TODO: TOSA lowering
+
 tfl.square
 ----------
+
+TODO: TOSA lowering
 
 tfl.squared_difference
 -----------------------
 
+TODO: TOSA lowering
+
 tfl.squeeze
 -----------
+
+TODO: TOSA lowering
 
 tfl.strided_slice
 ------------------
@@ -3973,11 +4057,17 @@ This operator is trivially lowered to tosa.SUB
 tfl.sum
 -------
 
+TODO: TOSA lowering
+
 tfl.tanh
 --------
 
+TODO: TOSA lowering
+
 tfl.tile
 --------
+
+TODO: TOSA lowering
 
 tfl.topk_v2
 ------------
@@ -3986,6 +4076,8 @@ No TOSA lowering defined.
 
 tfl.transpose_conv
 -------------------
+
+TODO: TOSA lowering
 
 tfl.transpose
 -------------
@@ -4010,6 +4102,8 @@ No TOSA lowering defined.
 tfl.unpack
 ----------
 
+TODO: TOSA lowering
+
 tfl.where
 ---------
 
@@ -4017,6 +4111,8 @@ No TOSA lowering defined.
 
 tfl.while
 ---------
+
+TODO: TOSA lowering
 
 tfl.yield
 ---------
@@ -4026,83 +4122,30 @@ This operator is trivially lowered to tosa.YIELD
 tfl.zeros_like
 ---------------
 
+TODO: TOSA lowering
+
 Common Passes
 =============
 
 make_broadcastable
 -------------------
 
-### tosa.ADD
+## Applied to OP
+
+For each of the following of OPs:
+
+    tosa.ADD, tosa.SUB, tosa.MUL, tosa.EQUAL, tosa.GREATER, tosa.GREATER_EQUAL
 
 From:
 
-    %output = tosa.ADD(%input1, %input2) : (tensor<%input1.type>, tensor<%input2.type>) -> tensor<%output.type>
+    %output = tosa.OP(%input1, %input2) : (tensor<%input1.type>, tensor<%input2.type>) -> tensor<%output.type>
 
 To:
 
-    %bcast_input1 = apply_broadcast(%input1, %input2)
-    %bcast_input2 = apply_broadcast(%input2, %input1)
-    %result = tosa.ADD(%bcast_input1, %bcast_input2) : (tensor<%bcast_input1.type>, tensor<%bcast_input2.type>) -> tensor<%output.type>
+    %bcast_input1 = apply_rank_broadcast(%input1, %input2)
+    %bcast_input2 = apply_rank_broadcast(%input2, %input1)
+    %result = tosa.OP(%bcast_input1, %bcast_input2) : (tensor<%bcast_input1.type>, tensor<%bcast_input2.type>) -> tensor<%output.type>
 
-### tosa.SUB
-
-From:
-
-    %output = tosa.SUB(%input1, %input2) : (tensor<%input1.type>, tensor<%input2.type>) -> tensor<%output.type>
-
-To:
-
-    %bcast_input1 = apply_broadcast(%input1, %input2)
-    %bcast_input2 = apply_broadcast(%input2, %input1)
-    %result = tosa.SUB(%bcast_input1, %bcast_input2) : (tensor<%bcast_input1.type>, tensor<%bcast_input2.type>) -> tensor<%output.type>
-
-### tosa.MUL
-
-From:
-
-    %output = tosa.MUL(%input1, %input2) : (tensor<%input1.type>, tensor<%input2.type>) -> tensor<%output.type>
-
-To:
-
-    %bcast_input1 = apply_broadcast(%input1, %input2)
-    %bcast_input2 = apply_broadcast(%input2, %input1)
-    %result = tosa.MUL(%bcast_input1, %bcast_input2) : (tensor<%bcast_input1.type>, tensor<%bcast_input2.type>) -> tensor<%output.type>
-
-### tosa.EQUAL
-
-From:
-
-    %output = tosa.EQUAL(%input1, %input2) : (tensor<%input1.type>, tensor<%input2.type>) -> tensor<%output.type>
-
-To:
-
-    %bcast_input1 = apply_broadcast(%input1, %input2)
-    %bcast_input2 = apply_broadcast(%input2, %input1)
-    %result = tosa.EQUAL(%bcast_input1, %bcast_input2) : (tensor<%bcast_input1.type>, tensor<%bcast_input2.type>) -> tensor<%output.type>
-
-### tosa.GREATER
-
-From:
-
-    %output = tosa.GREATER(%input1, %input2) : (tensor<%input1.type>, tensor<%input2.type>) -> tensor<%output.type>
-
-To:
-
-    %bcast_input1 = apply_broadcast(%input1, %input2)
-    %bcast_input2 = apply_broadcast(%input2, %input1)
-    %result = tosa.GREATER(%bcast_input1, %bcast_input2) : (tensor<%bcast_input1.type>, tensor<%bcast_input2.type>) -> tensor<%output.type>
-
-### tosa.GREATER_EQUAL
-
-From:
-
-    %output = tosa.GREATER_EQUAL(%input1, %input2) : (tensor<%input1.type>, tensor<%input2.type>) -> tensor<%output.type>
-
-To:
-
-    %bcast_input1 = apply_broadcast(%input1, %input2)
-    %bcast_input2 = apply_broadcast(%input2, %input1)
-    %result = tosa.GREATER_EQUAL(%bcast_input1, %bcast_input2) : (tensor<%bcast_input1.type>, tensor<%bcast_input2.type>) -> tensor<%output.type>
 
 constant_folding
 -----------------

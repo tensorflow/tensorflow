@@ -278,7 +278,7 @@ cond_cc_library(
     )
 
 cond_cc_library(
-    name = "tosa_passes",
+    name = "tosa_pipelines",
 
     srcs = [
         "tosa_passpipes.cc",
@@ -290,10 +290,67 @@ cond_cc_library(
         ],
     deps = [
           ":tosa_pass_inc_gen",
+          "@com_google_absl//absl/memory",
+          "@com_google_absl//absl/container:flat_hash_map",
+          "@llvm-project//mlir:Analysis",
+          "@llvm-project//mlir:Dialect",
+          "@llvm-project//mlir:IR",
+          "@llvm-project//mlir:Parser",
+          "@llvm-project//mlir:Pass",
+          "@llvm-project//mlir:StandardOps",
+          "@llvm-project//mlir:TosaDialect",
+          "@llvm-project//mlir:Support",
+          "@llvm-project//mlir:QuantOps",
+          "@llvm-project//mlir:TransformUtils",
+          "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
+         ],
+         alwayslink = 1,
+    )
+
+cond_cc_library(
+    name = "tf_tosa_passes",
+
+    srcs = [
+        "tf_tosa_pipeline.cc",
+        ],
+    hdrs = [
+        ],
+    deps = [
+          ":tosa_pass_inc_gen",
+          ":tosa_pipelines",
           ":tosa_legalize_tf",
-          ":tosa_legalize_tfl",
           ":tosa_legalize_common",
           ":tosa_fuse_bias_tf",
+          "@com_google_absl//absl/memory",
+          "@com_google_absl//absl/container:flat_hash_map",
+          "@llvm-project//mlir:Analysis",
+          "@llvm-project//mlir:Dialect",
+          "@llvm-project//mlir:IR",
+          "@llvm-project//mlir:Parser",
+          "@llvm-project//mlir:Pass",
+          "@llvm-project//mlir:StandardOps",
+          "@llvm-project//mlir:TosaDialect",
+          "@llvm-project//mlir:Support",
+          "@llvm-project//mlir:QuantOps",
+          "@llvm-project//mlir:TransformUtils",
+          "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
+         ],
+         alwayslink = 1,
+    )
+
+cond_cc_library(
+    name = "tfl_tosa_passes",
+
+    srcs = [
+        "tfl_tosa_pipeline.cc",
+        ],
+    hdrs = [
+        ],
+    deps = [
+          ":tosa_pass_inc_gen",
+          ":tosa_pipelines",
+          ":tosa_legalize_tfl",
+          ":tosa_legalize_common",
           ":tosa_convert_tfl_uint8",
           "@com_google_absl//absl/memory",
           "@com_google_absl//absl/container:flat_hash_map",

@@ -113,7 +113,8 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tf_legalize_hlo",
         "//tensorflow/compiler/mlir/tfjs:tensorflow_js_passes",
     ] + select({"//tensorflow/compiler/mlir/tosa:enable-build": [
-        "//tensorflow/compiler/mlir/tosa:tosa_passes",],
+        "//tensorflow/compiler/mlir/tosa:tf_tosa_passes",
+        "//tensorflow/compiler/mlir/tosa:tfl_tosa_passes",],
                 "//conditions:default": [],
     }),
 )

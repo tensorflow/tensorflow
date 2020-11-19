@@ -44,6 +44,18 @@ limitations under the License.
 #define PASS_NAME "tosa-fuse-bias-tf"
 #define DEBUG_TYPE PASS_NAME
 
+// TODO: remove macro when replacing common function return types with
+// llvm::Optional<> Helper macros for checking the return value of a common
+// legalization function that returns a single tensor.
+// Packs the result in a list.
+#define TOSA_REPLACE_LOWERED_OP(REWRITER, OP, LOWERED_OP)   \
+  if (LOWERED_OP) {                                         \
+    REWRITER.replaceOp((OP), {(LOWERED_OP)->getResults()}); \
+    return success();                                       \
+  } else {                                                  \
+    return failure();                                       \
+  }
+
 namespace mlir {
 
 namespace tosa {
