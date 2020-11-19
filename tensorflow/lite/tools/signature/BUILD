@@ -81,7 +81,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":_pywrap_signature_def_util_wrapper",
-        "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/protobuf:meta_graph_pyclif_pb2",
     ],
 )
 
@@ -98,7 +98,7 @@ py_test(
     deps = [
         ":signature_def_utils",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/protobuf:meta_graph_pyclif_pb2",
     ],
 )
 

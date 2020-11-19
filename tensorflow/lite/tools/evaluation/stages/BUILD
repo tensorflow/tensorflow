@@ -180,7 +180,6 @@ cc_test(
     deps = [
         ":inference_profiler_stage",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
         "@com_google_googletest//:gtest_main",
