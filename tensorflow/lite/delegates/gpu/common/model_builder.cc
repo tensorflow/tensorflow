@@ -858,7 +858,7 @@ class FullyConnectedOperationParser : public TFLiteOperationParser {
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 4));
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 9));
     const TfLiteFullyConnectedParams* tf_options;
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
     if (tf_options->weights_format !=
@@ -869,6 +869,10 @@ class FullyConnectedOperationParser : public TFLiteOperationParser {
     if (GetNumberOfRuntimeInputsForNode(context, tflite_node) > 2) {
       return absl::UnimplementedError(
           "FullyConnected doesn't support more than 2 runtime inputs.");
+    }
+    if (tf_options->keep_num_dims == true) {
+      return absl::UnimplementedError(
+          "FullyConnected doesn't support keep_num_dims.");
     }
     // TODO(eignasheva): check input shape
     return absl::OkStatus();
