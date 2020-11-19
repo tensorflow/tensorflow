@@ -431,7 +431,7 @@ TEST(QuantizationUtilTest, MultiplyByQuantizedMultiplierInt32) {
   };
 
   EXPECT_EQ(quant_and_multiply(0, 0.1), 0);
-  EXPECT_EQ(quant_and_multiply(0.1, 0), 0);
+  EXPECT_EQ(quant_and_multiply(1, 0), 0);
   EXPECT_EQ(quant_and_multiply(10000, 0.00097656), 10);
   EXPECT_EQ(quant_and_multiply(10000, -0.00097656), -10);
   EXPECT_EQ(quant_and_multiply(-10000, 0.00097656), -10);
@@ -466,7 +466,7 @@ TEST(QuantizationUtilTest, MultiplyByQuantizedMultiplierInt64) {
   };
 
   EXPECT_EQ(quant_and_multiply(0, 0.1), 0);
-  EXPECT_EQ(quant_and_multiply(0.1, 0), 0);
+  EXPECT_EQ(quant_and_multiply(1, 0), 0);
   EXPECT_EQ(quant_and_multiply(10000, 0.00097656), 10);
   EXPECT_EQ(quant_and_multiply(10000, -0.00097656), -10);
   EXPECT_EQ(quant_and_multiply(-10000, 0.00097656), -10);
