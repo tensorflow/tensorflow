@@ -108,9 +108,10 @@ def _set_spawn_exe_path():
       # /.../tensorflow/python/distribute/input_lib_test.py
       # and the binary is
       # /.../tensorflow/python/distribute/input_lib_test_multiworker_gpu
-      org_tensorflow_path = sys.argv[0][:sys.argv[0].rfind('/tensorflow')]
+      org_tensorflow_base = sys.argv[0][:sys.argv[0].rfind('/org_tensorflow')]
       binary = os.environ['TEST_TARGET'][2:].replace(':', '/', 1)
-      possible_path = os.path.join(org_tensorflow_path, binary)
+      possible_path = os.path.join(org_tensorflow_base, 'org_tensorflow',
+                                   binary)
       logging.info('Guessed test binary path: %s', possible_path)
       if os.access(possible_path, os.X_OK):
         path = possible_path
