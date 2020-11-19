@@ -449,3 +449,23 @@ tf_py_test(
         "@absl_py//absl/testing:parameterized",
     ],
 )
+
+tf_py_test(
+    name = "losses_utils_test",
+    size = "small",
+    srcs = ["losses_utils_test.py"],
+    python_version = "PY3",
+    deps = [
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/keras",
+        "//tensorflow/python/keras:combinations",
+        "//tensorflow/python/ops/ragged:ragged_array_ops",
+        "//tensorflow/python/ops/ragged:ragged_concat_ops",
+        "//tensorflow/python/ops/ragged:ragged_factory_ops",
+    ],
+)
