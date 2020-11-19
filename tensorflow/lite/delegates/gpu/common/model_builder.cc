@@ -995,7 +995,7 @@ class LSTMOperationParser : public TFLiteOperationParser {
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 3));
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 4));
     const TfLiteLSTMParams* tf_options;
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
     switch (tf_options->kernel_type) {
