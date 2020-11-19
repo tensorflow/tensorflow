@@ -3311,7 +3311,7 @@ class ConvertStridedSliceOp : public OpRewritePattern<TF::StridedSliceOp> {
       auto input_val = GetScalarConstOfType(begin_element_ty, loc,
                                             input_shape[d], &rewriter);
       auto wrapped_index =
-          rewriter.create<TF::AddOp>(loc, input_val, reshaped_index);
+          rewriter.create<TF::AddV2Op>(loc, input_val, reshaped_index);
       auto final_index = rewriter.create<SelectOp>(
           loc, type, index_negative, wrapped_index, reshaped_index);
       slice_begin_indices.push_back(final_index);
