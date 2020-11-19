@@ -197,10 +197,12 @@ void DoNonMaxSuppressionOp(OpKernelContext* context, const Tensor& scores,
     scale = static_cast<T>(-1.0) / soft_nms_sigma;
   }
 
-  auto suppress_weight = [similarity_threshold, scale, is_soft_nms](const T sim) {
+  auto suppress_weight = [similarity_threshold, scale,
+                          is_soft_nms](const T sim) {
     const T weight =
         static_cast<T>(std::exp(static_cast<float>(scale * sim * sim)));
-    return is_soft_nms || sim <= similarity_threshold ? weight : static_cast<T>(0.0);
+    return is_soft_nms || sim <= similarity_threshold ? weight
+                                                      : static_cast<T>(0.0);
   };
 
   std::vector<int> selected;
