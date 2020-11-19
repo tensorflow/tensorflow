@@ -116,19 +116,18 @@ tf_kernel_library(
     ),
 )
 
-# TODO(herhut): Uncomment once unranked kernels build again.
-# tf_kernel_library(
-#     name = "cwise_binary_op",
-#     srcs = ["unranked_gpu_add.cc"],
-#     tags = [
-#         "manual",
-#     ],
-#     deps = [
-#         ":add_v2_unranked_kernels",
-#         ":unranked_op_gpu_base",
-#         "//third_party/eigen3",
-#     ],
-# )
+tf_kernel_library(
+    name = "cwise_binary_op",
+    srcs = ["unranked_gpu_add.cc"],
+    tags = [
+        "manual",
+    ],
+    deps = [
+        ":add_v2_unranked_kernels",
+        ":unranked_op_gpu_base",
+        "//third_party/eigen3",
+    ],
+)
 
 tf_kernel_library(
     name = "cwise_op",
@@ -142,8 +141,7 @@ tf_kernel_library(
         ":cwise_unary_op",
     ]) + if_mlir_unranked_kernels_enabled(
         [
-            # TODO(herhut): Uncomment once it builds again.
-            # ":cwise_binary_op",
+            ":cwise_binary_op",
         ],
     ),
 )
@@ -169,27 +167,27 @@ tf_cuda_cc_test(
     ],
 )
 
-# TODO(herhut): Uncomment once unranked kernels build again.
-# tf_cuda_cc_test(
-#     name = "gpu_add_test",
-#     size = "small",
-#     srcs = if_mlir_generated_gpu_kernels_enabled(["gpu_add_test.cc"]),
-#     tags = tf_cuda_tests_tags() + [
-#         "no_cuda_asan",  # b/173033461
-#     ],
-#     deps = [
-#         "//tensorflow/core:framework",
-#         "//tensorflow/core:framework_internal",
-#         "//tensorflow/core:tensorflow",
-#         "//tensorflow/core:test",
-#         "//tensorflow/core:test_main",
-#         "//tensorflow/core:testlib",
-#         "//tensorflow/core/common_runtime:device",
-#         "//tensorflow/core/common_runtime:device_factory",
-#         "//tensorflow/core/kernels:cwise_op",
-#         "//tensorflow/core/kernels:ops_testutil",
-#     ],
-# )
+tf_cuda_cc_test(
+    name = "gpu_add_test",
+    size = "small",
+    srcs = if_mlir_generated_gpu_kernels_enabled(["gpu_add_test.cc"]),
+    tags = tf_cuda_tests_tags() + [
+        "no_cuda_asan",  # b/173033461
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/common_runtime:device",
+        "//tensorflow/core/common_runtime:device_factory",
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:ops_testutil",
+    ],
+)
+
 # TODO(b/160731748): Re-enable when it works again.
 # gen_kernel_library(
 #     name = "bias_add",
@@ -292,20 +290,19 @@ gen_kernel_library(
     unroll_factors = "4",
 )
 
-# TODO(herhut): Uncomment once it builds again.
-# gen_kernel_library(
-#     name = "add_v2",
-#     generate_ranked = False,
-#     generate_unranked = True,
-#     tile_size = "256",
-#     types = [
-#         "f16",
-#         "f32",
-#         "f64",
-#         "i64",
-#     ],
-#     unroll_factors = "4",
-# )
+gen_kernel_library(
+    name = "add_v2",
+    generate_ranked = False,
+    generate_unranked = True,
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+        "i64",
+    ],
+    unroll_factors = "4",
+)
 
 [
     gen_kernel_library(
