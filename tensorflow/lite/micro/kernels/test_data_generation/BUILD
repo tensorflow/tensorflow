@@ -8,7 +8,7 @@ cc_binary(
         "generate_flexbuffers_data.cc",
     ],
     deps = [
-        "@flatbuffers//:runtime_cc",
+        "@flatbuffers",
     ],
 )
 
