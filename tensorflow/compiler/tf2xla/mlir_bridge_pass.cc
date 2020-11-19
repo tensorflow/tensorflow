@@ -48,6 +48,23 @@ auto* mlir_bridge_gauge_v2 = monitoring::Gauge<bool, 0>::New(
     "/tensorflow/config/experimental/enable_mlir_bridge_gauge_v2",
     "Tracks usage of the MLIR-based TF2XLA bridge among TF2 models");
 
+// Analyzes the user requested policy as well as the contents of the graph and
+// determines whether the MLIR Bridge should be run.
+//
+// If the user explicitly requests the bridge be enabled or disabled, this
+// function will respect the request. If the user does not explicitly request
+// enabled or disabled, it will decide whether or not to run the bridge.
+//
+// The config_proto param is a required input for all TF1 graphs but it is
+// redundant for TF2 graphs.
+bool IsMlirBridgePassEnabled(const Graph& graph,
+                             const absl::optional<ConfigProto>& config_proto) {
+  MlirBridgeRolloutPolicy policy =
+      GetMlirBridgeRolloutPolicy(graph, config_proto);
+  return (policy == MlirBridgeRolloutPolicy::kEnabledByUser ||
+          policy == MlirBridgeRolloutPolicy::kEnabledAfterGraphAnalysis);
+}
+
 // This runs the first phase of the "bridge", transforming the graph in a form
 // that can be executed with delegation of some computations to an accelerator.
 // This builds on the model of XLA where a subset of the graph is encapsulated
@@ -55,8 +72,8 @@ auto* mlir_bridge_gauge_v2 = monitoring::Gauge<bool, 0>::New(
 // operation. The kernel for these operations is responsible to lower the
 // encapsulated graph to a particular device.
 Status MlirBridgePass::Run(const ConfigProto& config_proto,
-                           mlir::ModuleOp module) {
-  if (!IsEnabled(config_proto)) {
+                           mlir::ModuleOp module, const Graph& graph) {
+  if (!IsEnabled(config_proto, graph)) {
     VLOG(0) << "Skipping MLIR TPU Bridge, session flag not enabled";
     mlir_bridge_gauge_v2->GetCell()->Set(false);
     return Status::OK();
@@ -80,7 +97,7 @@ Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
   // Skip function graphs as MlirBridgePass will be used instead.
   if (options.is_function_graph) return Status::OK();
 
-  if (!IsEnabled(options.session_options->config)) {
+  if (!IsEnabled(options.session_options->config, **options.graph)) {
     VLOG(0) << "Skipping MLIR TPU Bridge V1 Compat, session flag not enabled";
     mlir_bridge_gauge_v1->GetCell()->Set(false);
     return Status::OK();

@@ -55,9 +55,23 @@ class LhloDialectEmitter : public ::xla::DfsHloVisitorWithDefault {
   ::xla::StatusOr<lmhlo::ScatterOp> EmitScatterOp(::xla::HloInstruction* instr);
   ::xla::StatusOr<lmhlo::SelectAndScatterOp> EmitSelectAndScatterOp(
       ::xla::HloInstruction* instr);
+  ::xla::StatusOr<lmhlo::CustomCallOp> EmitCustomCallOp(
+      ::xla::HloInstruction* instr);
+
+  ::xla::Status CreateOperands(::xla::HloInstruction* instr,
+                               SmallVectorImpl<Value>& operands,
+                               size_t& num_arguments, size_t& num_results);
 
   template <typename OpType>
-  ::xla::StatusOr<OpType> CreateOpWithoutAttrs(::xla::HloInstruction* instr);
+  ::xla::StatusOr<OpType> CreateOpWithoutAttrs(::xla::HloInstruction* instr) {
+    size_t unused;
+    return CreateOpWithoutAttrs<OpType>(instr, unused, unused);
+  }
+
+  template <typename OpType>
+  ::xla::StatusOr<OpType> CreateOpWithoutAttrs(::xla::HloInstruction* instr,
+                                               size_t& num_arguments,
+                                               size_t& num_results);
 
   template <typename T>
   DenseIntElementsAttr GetI64DenseElementsAttr(const T& container) {
@@ -115,25 +129,25 @@ class LhloDialectEmitter : public ::xla::DfsHloVisitorWithDefault {
 
   // This map provides access to MLIR buffers for each HLO buffer allocation.
   // The MLIR buffers are all `memref<{size}xi8>` and correspond to function
-  // parameters. It is populated at the beginning of the processing with all the
-  // buffer allocations and is unchanged afterward. Every HLOInstruction is
-  // using a "slice" of the buffer allocation and providing shape, layout, and
-  // Dtype. An MLIR view is used separately to model slices into the allocations
-  // (see below).
+  // parameters. It is populated at the beginning of the processing with all
+  // the buffer allocations and is unchanged afterward. Every HLOInstruction
+  // is using a "slice" of the buffer allocation and providing shape, layout,
+  // and Dtype. An MLIR view is used separately to model slices into the
+  // allocations (see below).
   llvm::DenseMap<const ::xla::BufferAllocation*, Value> allocations_;
 
   // This map provides access to MLIR buffers for each HLO instruction, keyed
   // instruction identity. A slice is contained in a BufferAllocation, and has
   // an offset and a size.
   //
-  // As for why we don't use HloInstruction*, see GetOrCreateView(), but mostly
-  // we want to leverage better of the aliased buffers.
+  // As for why we don't use HloInstruction*, see GetOrCreateView(), but
+  // mostly we want to leverage better of the aliased buffers.
   //
   // If the HloInstruction is a tuple, all leaf nodes are stored flattened.
   // Otherwise, there will be a single buffer.
   //
-  // An MLIR buffer is either an input parameter, or a ViewOp in the case where
-  // the slice is only part of its allocation.
+  // An MLIR buffer is either an input parameter, or a ViewOp in the case
+  // where the slice is only part of its allocation.
   //
   // `slices_` is populated lazily in the `GetOrCreateView()` helper as we
   // process every instruction.
@@ -151,7 +165,8 @@ class LhloDialectEmitter : public ::xla::DfsHloVisitorWithDefault {
   // computation.
   ModuleOp module_;
 
-  // The builder keeps track of the current insertion point in the MLIR module.
+  // The builder keeps track of the current insertion point in the MLIR
+  // module.
   OpBuilder builder_;
   // Convenient "cached" access to this widely used MLIR type (i8).
   Type i8_type_;

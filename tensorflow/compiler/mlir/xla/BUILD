@@ -389,7 +389,7 @@ gentbl(
     td_srcs = [
         "@llvm-project//mlir:include/mlir/IR/OpBase.td",
         "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
-        "@llvm-project//mlir:include/mlir/Interfaces/SideEffectInterfaces.td",
+        "@llvm-project//mlir:SideEffectTdFiles",
         "//tensorflow/compiler/mlir/hlo:hlo_ops_td_files",
         # Any file in this directory is OK: this will force the current path to exist so
         # that the relative path can be resolved.

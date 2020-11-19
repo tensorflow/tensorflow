@@ -27,7 +27,7 @@ namespace gpu {
 namespace cl {
 
 std::unique_ptr<GPUOperation> SelectFullyConnected(
-    const FullyConnectedAttributes& attr, const DeviceInfo& device_info,
+    const FullyConnectedAttributes& attr, const GpuInfo& gpu_info,
     const OperationDef& op_def, int batch_size);
 
 }  // namespace cl

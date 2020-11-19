@@ -236,10 +236,10 @@ class LowerToROCDLPass
 
     ::mlir::ConversionTarget target(getContext());
     target.addIllegalDialect<::mlir::gpu::GPUDialect>();
-    target
-        .addIllegalOp<mlir::LLVM::CosOp, mlir::LLVM::ExpOp, mlir::LLVM::FAbsOp,
-                      mlir::LLVM::FCeilOp, mlir::LLVM::LogOp,
-                      mlir::LLVM::Log10Op, mlir::LLVM::Log2Op>();
+    target.addIllegalOp<mlir::LLVM::CosOp, mlir::LLVM::ExpOp,
+                        mlir::LLVM::FAbsOp, mlir::LLVM::FCeilOp,
+                        mlir::LLVM::LogOp, mlir::LLVM::Log10Op,
+                        mlir::LLVM::Log2Op, mlir::LLVM::SinOp>();
     target.addIllegalOp<mlir::FuncOp>();
     target.addLegalDialect<::mlir::LLVM::LLVMDialect>();
     target.addLegalDialect<::mlir::ROCDL::ROCDLDialect>();

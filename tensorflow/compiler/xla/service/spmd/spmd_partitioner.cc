@@ -2954,23 +2954,26 @@ Status SpmdPartitioningVisitor::HandleReduce(HloInstruction* hlo) {
 
   std::vector<PartitionedHlo> inputs;
   std::vector<HloInstruction*> inits;
+  std::vector<int64> preserved_dims;
+  for (int64 i = 0; i < hlo->operand(0)->shape().rank(); ++i) {
+    if (!absl::c_linear_search(hlo->dimensions(), i)) {
+      preserved_dims.push_back(i);
+    }
+  }
+
   for (int64 operand_id = 0; operand_id < input_count; ++operand_id) {
     inits.push_back(GetPartitionedHlo(hlo->operand(operand_id + input_count))
                         .Reshard(HloSharding::Replicate())
                         .hlo());
     inputs.push_back(GetPartitionedHlo(hlo->operand(operand_id)));
-    if (hlo->shape().IsTuple() && operand_id == 0) {
-      // We cannot do tuple-reduce where partitioned dimensions are reduced.
-      // Partially replicate on those dims.
-      inputs[0] = inputs[0].Reshard(
-          hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
-              inputs[0].sharding(), hlo->dimensions()));
-    } else {
+    if (operand_id > 0) {
       // Make sure all operands are sharded in the same way.
       inputs.back() = inputs.back().Reshard(inputs[0].sharding());
     }
     if (!inputs[0].sharding().IsTileMaximal()) {
-      inputs.back() = inputs.back().PadWithValue(inits[operand_id]);
+      inputs.back() =
+          inputs.back().PadWithValue(inits[operand_id], /*left_padded_dims=*/{},
+                                     /*skipped_dims=*/preserved_dims);
     }
   }
 
@@ -3001,28 +3004,53 @@ Status SpmdPartitioningVisitor::HandleReduce(HloInstruction* hlo) {
           return inputs[0].sharding().tile_assignment().dim(i) > 1;
         });
     if (reduce_sharded_dimension) {
-      CHECK(local_reduce->shape().IsArray());
-      std::vector<int64> preserved_dims;
-      for (int64 i = 0; i < inputs[0].base_shape().rank(); ++i) {
-        if (!absl::c_linear_search(hlo->dimensions(), i)) {
-          preserved_dims.push_back(i);
-        }
-      }
       if (inputs[0].sharding().ReplicateOnLastTileDim()) {
         preserved_dims.push_back(inputs[0].base_shape().rank());
       }
       auto grouped = GroupShardingOnDims(inputs[0].sharding(), preserved_dims);
       auto grouped_state = CreatePerGroupPartitioningState(
           inputs[0].state(), grouped.device_groups, &b_);
-      reduce = grouped_state.collective_ops_creator
-                   .create_cross_partition_all_reduce(
-                       &b_, local_reduce, hlo->to_apply(), {}, NewChannel());
+      if (local_reduce->shape().IsArray()) {
+        reduce = grouped_state.collective_ops_creator
+                     .create_cross_partition_all_reduce(
+                         &b_, local_reduce, hlo->to_apply(), {}, NewChannel());
+      } else {
+        std::vector<HloInstruction*> all_gathered_partial_results(input_count);
+        for (int64 i = 0; i < input_count; ++i) {
+          auto gte = b_.AddInstruction(HloInstruction::CreateGetTupleElement(
+              ShapeUtil::GetTupleElementShape(reduce_shape, i), local_reduce,
+              i));
+          auto expanded_shape = input_hlos[i]->shape();
+          auto all_gather_shape = input_hlos[i]->shape();
+          for (int64 dim : hlo->dimensions()) {
+            expanded_shape.set_dimensions(dim, 1);
+            all_gather_shape.set_dimensions(
+                dim, inputs[0].sharding().tile_assignment().dim(dim));
+          }
+          auto reshape = b_.AddInstruction(
+              HloInstruction::CreateReshape(expanded_shape, gte));
+          // Replicate per group.
+          reshape->set_sharding(grouped.sharding);
+          all_gathered_partial_results[i] =
+              PartitionedHlo(reshape, all_gather_shape, grouped_state)
+                  .Replicate()
+                  .hlo();
+        }
+        reduce = b_.AddInstruction(HloInstruction::CreateReduce(
+            reduce_shape, all_gathered_partial_results, inits,
+            hlo->dimensions(), hlo->to_apply()));
+      }
     }
     auto sharding = hlo_sharding_util::RemoveShapeDimensions(
         hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
             inputs[0].sharding(), hlo->dimensions()),
         hlo->dimensions());
-    reduce->set_sharding(sharding);
+    if (local_reduce->shape().IsArray()) {
+      reduce->set_sharding(sharding);
+    } else {
+      reduce->set_sharding(HloSharding::Tuple(
+          reduce->shape(), std::vector<HloSharding>(input_count, sharding)));
+    }
     return PartitionedHlo(reduce, hlo->shape(), MakePartitioningState())
         .Reshard(hlo->sharding())
         .hlo();

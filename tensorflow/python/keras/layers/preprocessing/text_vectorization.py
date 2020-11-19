@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Keras text vectorization preprocessing layer."""
+# pylint: disable=g-classes-have-attributes
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -117,7 +118,7 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
        ["another", "string", "to", "split"]]`. This makes the callable site
        natively compatible with `tf.strings.split()`.
 
-  Attributes:
+  Arguments:
     max_tokens: The maximum size of the vocabulary for this layer. If None,
       there is no cap on the size of the vocabulary. Note that this vocabulary
       contains 1 OOV token, so the effective number of tokens is `(max_tokens -
@@ -162,6 +163,7 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
       times, an error will be thrown.
 
   Example:
+
   This example instantiates a TextVectorization layer that lowercases text,
   splits on whitespace, strips punctuation, and outputs integer vocab indices.
 
@@ -202,6 +204,7 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
          [1, 3, 0, 0]])
 
   Example:
+
   This example instantiates a TextVectorization layer by passing a list
   of vocabulary terms to the layer's __init__ method.
 
@@ -452,7 +455,7 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
     # at init time it's now stored in variable state - we don't need to
     # pull it off disk again.
     config = {
-        "max_tokens": self._max_tokens,
+        "max_tokens": self._index_lookup_layer.max_tokens,
         "standardize": self._standardize,
         "split": self._split,
         "ngrams": self._ngrams_arg,

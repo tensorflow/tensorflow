@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/substitute.h"
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
@@ -25,7 +26,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compiled_model.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
-#include "tensorflow/lite/delegates/gpu/metal/device_info.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/add.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/concat.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/conv.h"
@@ -69,13 +69,13 @@ std::vector<ComputeTaskDescriptorPtr> SelectDepthWiseConv(
 
 std::vector<ComputeTaskDescriptorPtr> SelectConvolutionTransposed(
     int id, ValueId input_id, ValueId output_id,
-    const ConvolutionTransposedAttributes& attr, const DeviceInfo& device_info,
+    const ConvolutionTransposedAttributes& attr, const GpuInfo& gpu_info,
     const metal::RuntimeOptions& options) {
   if (CheckConvolutionTransposed4x4Support(attr)) {
-    return ConvolutionTransposed4x4(id, input_id, output_id, attr, device_info,
+    return ConvolutionTransposed4x4(id, input_id, output_id, attr, gpu_info,
                                     options);
   } else {
-    return ConvolutionTransposed(id, input_id, output_id, attr, device_info,
+    return ConvolutionTransposed(id, input_id, output_id, attr, gpu_info,
                                  options);
   }
 }
@@ -116,12 +116,13 @@ std::vector<ComputeTaskDescriptorPtr> SelectReshape(
   }
 }
 
-std::vector<ComputeTaskDescriptorPtr> SelectSoftmax(
-    const GraphFloat32& graph, int id, ValueId input_id, ValueId output_id,
-    const DeviceInfo& device_info) {
+std::vector<ComputeTaskDescriptorPtr> SelectSoftmax(const GraphFloat32& graph,
+                                                    int id, ValueId input_id,
+                                                    ValueId output_id,
+                                                    const GpuInfo& gpu_info) {
   const auto src_shape = graph.FindInputs(id)[0]->tensor.shape;
   if (src_shape.w == 1 && src_shape.h == 1) {
-    return Softmax1x1(id, input_id, output_id, device_info, src_shape.c);
+    return Softmax1x1(id, input_id, output_id, gpu_info, src_shape.c);
   } else {
     return Softmax(id, input_id, output_id, src_shape.c);
   }
@@ -135,9 +136,9 @@ std::vector<ComputeTaskDescriptorPtr> SelectSpaceToDepth(
 
 std::vector<ComputeTaskDescriptorPtr> SelectWinograd4x4To36(
     int id, ValueId input_id, ValueId output_id,
-    const Winograd4x4To36Attributes& attr, const DeviceInfo& device_info,
+    const Winograd4x4To36Attributes& attr, const GpuInfo& gpu_info,
     const metal::RuntimeOptions& options) {
-  if (device_info.IsAppleGPU()) {
+  if (gpu_info.IsApple()) {
     return Winograd4x4To36(id, input_id, output_id, attr);
   } else {
     return Winograd4x4To36TileX6(id, input_id, output_id, attr, options);
@@ -146,9 +147,9 @@ std::vector<ComputeTaskDescriptorPtr> SelectWinograd4x4To36(
 
 std::vector<ComputeTaskDescriptorPtr> SelectWinograd36To4x4(
     int id, ValueId input_id, ValueId output_id,
-    const Winograd36To4x4Attributes& attr, const DeviceInfo& device_info,
+    const Winograd36To4x4Attributes& attr, const GpuInfo& gpu_info,
     const metal::RuntimeOptions& options) {
-  if (device_info.IsAppleGPU()) {
+  if (gpu_info.IsApple()) {
     return Winograd36To4x4(id, input_id, output_id, options, attr);
   } else {
     return Winograd36To4x4Tile4x1(id, input_id, output_id, options, attr);
@@ -176,7 +177,7 @@ bool IsSuitableForWinograd4x4To6x6(const Convolution2DAttributes& attr,
 absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
                                 const std::vector<ValueId>& inputs,
                                 const std::vector<ValueId>& outputs,
-                                const DeviceInfo& device_info,
+                                const GpuInfo& gpu_info,
                                 const RuntimeOptions& options,
                                 int* last_node_id, int* last_value_id,
                                 std::vector<ComputeTaskDescriptorPtr>* tasks) {
@@ -236,13 +237,12 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
         (*last_node_id) += 1;
         int value_id = *last_value_id + 1;
         *tasks = SelectWinograd4x4To36(*last_node_id, inputs[0], value_id,
-                                       wino_up_attr, device_info, options);
+                                       wino_up_attr, gpu_info, options);
 
         BHWC conv_shape{dst_shape.b, 36, tiles_x * tiles_y, dst_shape.c};
         (*last_node_id) += 1;
-        auto t1 =
-            ConvolutionWino4x4To6x6(*last_node_id, value_id, value_id + 1,
-                                    conv_shape, attr, device_info, options);
+        auto t1 = ConvolutionWino4x4To6x6(*last_node_id, value_id, value_id + 1,
+                                          conv_shape, attr, gpu_info, options);
         tasks->insert(tasks->end(), t1.begin(), t1.end());
 
         Winograd36To4x4Attributes wino_down_attr;
@@ -250,21 +250,26 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
         wino_down_attr.biases = attr.bias;
         (*last_node_id) += 1;
         auto t2 = SelectWinograd36To4x4(*last_node_id, value_id + 1, outputs[0],
-                                        wino_down_attr, device_info, options);
+                                        wino_down_attr, gpu_info, options);
         tasks->insert(tasks->end(), t2.begin(), t2.end());
         (*last_value_id) += 2;
       } else {
         *tasks = ConvolutionGeneric(node_id, inputs[0], outputs[0], dst_shape,
-                                    attr, device_info, options);
+                                    attr, gpu_info, options);
       }
       break;
     }
     case OperationType::CONVOLUTION_TRANSPOSED:
+      if (graph.FindInputs(node->id).size() != 1) {
+        return absl::UnimplementedError(
+            "Convolution Transposed does not support more than 1 runtime "
+            "tensor");
+      }
       *tasks = SelectConvolutionTransposed(
           node_id, inputs[0], outputs[0],
           absl::any_cast<ConvolutionTransposedAttributes>(
               node->operation.attributes),
-          device_info, options);
+          gpu_info, options);
       break;
     case OperationType::DEPTHWISE_CONVOLUTION:
       if (graph.FindInputs(node->id).size() != 1) {
@@ -282,7 +287,7 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
       *tasks = FullyConnected(
           node_id, inputs[0], outputs[0],
           absl::any_cast<FullyConnectedAttributes>(node->operation.attributes),
-          device_info, options);
+          gpu_info, options);
       break;
     case OperationType::MAX_UNPOOLING_2D:
       *tasks = MaxUnpooling(
@@ -360,8 +365,7 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
         return absl::UnimplementedError(
             "Softmax supports only CHANNELS dimension");
       }
-      *tasks =
-          SelectSoftmax(graph, node_id, inputs[0], outputs[0], device_info);
+      *tasks = SelectSoftmax(graph, node_id, inputs[0], outputs[0], gpu_info);
       break;
     }
     case OperationType::SPACE_TO_DEPTH:
@@ -437,7 +441,7 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
 
 }  // namespace
 
-absl::Status Compile(const GraphFloat32& graph, const DeviceInfo& device_info,
+absl::Status Compile(const GraphFloat32& graph, const GpuInfo& gpu_info,
                      const RuntimeOptions& options,
                      CompiledModel* compiled_model) {
   int last_node_id = 0;
@@ -462,7 +466,7 @@ absl::Status Compile(const GraphFloat32& graph, const DeviceInfo& device_info,
         RegisterCustomOps(graph, node, inputs, outputs, options, &tasks);
     if (!custom_status.ok()) {
       auto primary_status =
-          RegisterPrimaryOps(graph, node, inputs, outputs, device_info, options,
+          RegisterPrimaryOps(graph, node, inputs, outputs, gpu_info, options,
                              &last_node_id, &last_value_id, &tasks);
       if (!primary_status.ok()) {
         return absl::UnimplementedError(

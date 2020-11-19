@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+import itertools
 
 from absl import app
 
@@ -106,3 +107,86 @@ def main(enable_v2_behavior=True, config_logical_devices=True):
     v2_compat.disable_v2_behavior()
   # TODO(b/131360402): configure default logical devices.
   multi_process_runner.test_main()
+
+
+def _op_dependencies(op):
+  """Returns the data and control dependencies of a tf.Operation combined."""
+  deps = []
+  for node in itertools.chain(op.inputs, op.control_inputs):
+    if isinstance(node, ops.Tensor):
+      node = node.op
+    assert isinstance(node, ops.Operation)
+    deps.append(node)
+  return deps
+
+
+def topological_sort_operations(operations):
+  """Topological sorts a list of operations.
+
+  This does a topological sort of the operations in a graph. The edges include
+  both data dependencies and control dependencies. Note that the edge goes from
+  an operation to its dependencies.
+
+  Args:
+    operations: a list of tf.Operation in the same graph.
+
+  Returns:
+    A map from a tf.Operation to its topological order.
+  """
+  in_degrees = {}
+  for op in operations:
+    if op not in in_degrees:
+      in_degrees[op] = 0
+    for next_op in _op_dependencies(op):
+      in_degrees[next_op] = in_degrees.get(next_op, 0) + 1
+  nexts = []
+  for op, in_degree in in_degrees.items():
+    if in_degree == 0:
+      nexts.append(op)
+  order = {}
+  next_order = 0
+  while nexts:
+    op, nexts = nexts[0], nexts[1:]
+    order[op] = next_order
+    next_order += 1
+    for next_op in _op_dependencies(op):
+      in_degrees[next_op] -= 1
+      if in_degrees[next_op] == 0:
+        nexts.append(next_op)
+  assert len(order) == len(operations)
+  return order
+
+
+def _exists_dependency(start, end):
+  """Returns whether there exists a dependency chain from start to end."""
+  nexts = [start]
+  while nexts:
+    op, nexts = nexts[0], nexts[1:]
+    for next_op in _op_dependencies(op):
+      if next_op == end:
+        return True
+      nexts.append(next_op)
+  return False
+
+
+def assert_sequential_execution(order, operations):
+  """Asserts there's a deterministic execution order between the operations.
+
+  Args:
+    order: a map from a tf.Operation to its topological order.
+    operations: a list of operations that should be executed sequentially. It
+      can be given in any order.
+  """
+  # Topological ordering guarantees that, if there's a dependency from N_a to
+  # N_b, then order[N_a] < order[N_b]. If there do exist a path of dependencies
+  # among the operations, it always goes from a operation with a smaller
+  # topological order to one with a larger topological order. Therefore, we only
+  # need to sort the operations by their topological orders, and verify that
+  # there's a path of dependency between adjacent pairs.
+  operations = sorted(operations, key=lambda op: order[op])
+  for i in range(len(operations) - 1):
+    if not _exists_dependency(operations[i], operations[i + 1]):
+      print(operations[i].graph.as_graph_def())
+      raise AssertionError(
+          "No dependency between {} and {}. Graph is dumped to stdout.".format(
+              operations[i].name, operations[i + 1].name))

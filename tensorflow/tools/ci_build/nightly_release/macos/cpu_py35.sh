@@ -46,7 +46,7 @@ mkdir pip_pkg
 
 # Copy and rename to tf_nightly
 for f in $(ls pip_pkg/tf_nightly_cpu-*dev*macosx*.whl); do
-  copy_to_new_project_name "${f}" tf_nightly
+  copy_to_new_project_name "${f}" tf_nightly python
 done
 
 # Upload the built packages to pypi.

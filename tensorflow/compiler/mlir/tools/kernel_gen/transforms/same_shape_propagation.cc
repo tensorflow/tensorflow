@@ -84,8 +84,8 @@ bool operator==(ValueOrConst lhs, ValueOrConst rhs) {
   }
 }
 
-/// Represents a shape, as either a single ssa value that represents the entire
-/// shape vector or as a vector of ssa values representing scalars.
+/// Represents a shape, as either a single SSA value that represents the entire
+/// shape vector or as a vector of SSA values representing scalars.
 struct ShapeValue {
   explicit ShapeValue(Value vector)
       : shape({ValueOrConst{vector}}), is_vector(true) {}
@@ -163,7 +163,7 @@ class ShapeEqualityKnowledge {
   void build(FuncOp function) {
     function.walk([&](Operation *op) {
       if (auto reshape = dyn_cast<MemRefReshapeOp>(op)) {
-        registerAssociation(ShapeValue{reshape.source()}, reshape.result());
+        registerAssociation(ShapeValue{reshape.shape()}, reshape.result());
         return;
       }
       if (auto alloc = dyn_cast<AllocOp>(op)) {
@@ -227,37 +227,29 @@ class ShapeEqualityKnowledge {
   /// Follows the definition chains of the ShapeValue `shape` to identify cases
   /// where `shape` is derived from some other value's shape. In such case, the
   /// equivalence classes of that other value and `value` are unioned.
+  /// This is based on pattern matching and not complete.
   void tryEvaluateShapeToRoot(ShapeValue shape, Value value) {
     // Just some pattern matching for common cases here.
     if (!shape.isVector()) {
       // Patterns that revolve around scalars.
       // Check whether the scalars are all dim operations for some other memref.
-      // TODO(herhut): Use pattern match infra here.
       Value candidate;
-      for (auto extent : llvm::enumerate(shape.scalars())) {
-        if (extent.value().isConstant()) {
-          candidate = {};
-          break;
-        }
-        if (auto dimOp = extent.value().value().getDefiningOp<mlir::DimOp>()) {
-          auto dimIndex = dimOp.getConstantIndex();
-          if (!dimIndex.hasValue() || (dimIndex.getValue() != extent.index())) {
-            candidate = {};
-            break;
-          }
-          if (candidate && candidate != dimOp.memrefOrTensor()) {
-            candidate = {};
-            break;
-          }
-          candidate = dimOp.memrefOrTensor();
-        }
-      }
-      if (candidate) {
+      bool all_are_dimops =
+          llvm::all_of(llvm::enumerate(shape.scalars()), [&candidate](auto p) {
+            ValueOrConst val = p.value();
+            if (val.isConstant()) return false;
+            auto dimOp = val.value().getDefiningOp<DimOp>();
+            if (!dimOp) return false;
+            if (!candidate) candidate = dimOp.memrefOrTensor();
+            auto index = dimOp.getConstantIndex();
+            if (!index.hasValue()) return false;
+            return candidate == dimOp.memrefOrTensor() &&
+                   p.index() == index.getValue();
+          });
+      if (all_are_dimops && candidate) {
         equal_shapes_.unionSets(candidate.getAsOpaquePointer(),
                                 value.getAsOpaquePointer());
       }
-    } else {
-      // Patterns that revovlve around vector representation.
     }
   }
 
@@ -285,6 +277,7 @@ struct PropagateShapeKnowledgeToKernels
       if (!kernel || kernel.isExternal()) return;
 
       llvm::SmallVector<std::pair<Value, int>, 4> seen_memrefs;
+      // Position of the kernel argument we are currently at.
       int kernel_p = 0;
       for (auto operand : launch.operands()) {
         auto memref = operand.getType().dyn_cast<MemRefType>();

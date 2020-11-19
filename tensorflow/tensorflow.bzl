@@ -2457,6 +2457,7 @@ def tf_py_build_info_genrule(name, out):
             " --key_value" +
             " is_rocm_build=" + if_rocm("True", "False") +
             " is_cuda_build=" + if_cuda("True", "False") +
+            " is_tensorrt_build=" + if_tensorrt("True", "False") +
             if_windows(_dict_to_kv({
                 "msvcp_dll_names": "msvcp140.dll,msvcp140_1.dll",
             }), "") + if_windows_cuda(_dict_to_kv({

@@ -337,7 +337,7 @@ LogicalResult HandlePartitionedCallOp(
   if (!callee.isPrivate()) {
     // Clone non-private callee in case of signature change.
     lowered_callee = callee.clone();
-    lowered_callee.setVisibility(SymbolTable::Visibility::Private);
+    lowered_callee.setPrivate();
   }
   auto find_arg_stack_type = [&](int64_t index) -> llvm::Optional<Type> {
     auto it = data_var_to_size_var.find(call.getOperand(index));

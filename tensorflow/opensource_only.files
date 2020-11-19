@@ -5,7 +5,11 @@ tensorflow/compat_template.__init__.py
 tensorflow/compat_template_v1.__init__.py
 tensorflow/compiler/mlir/glob_lit_test.bzl
 tensorflow/go/op/wrappers.go
+tensorflow/lite/delegates/gpu/cl/compiled_program_cache_generated.h
+tensorflow/lite/delegates/gpu/cl/serialization_generated.h
+tensorflow/lite/delegates/gpu/common/task/serialization_base_generated.h
 tensorflow/lite/micro/build_def.bzl
+tensorflow/lite/schema/schema_generated.h
 tensorflow/python/autograph/core/config.py
 tensorflow/python/eager/benchmarks_test_base.py
 tensorflow/python/framework/tfrt_utils.py
@@ -197,6 +201,7 @@ tensorflow/third_party/tensorrt/BUILD.tpl
 tensorflow/third_party/tensorrt/LICENSE
 tensorflow/third_party/tensorrt/build_defs.bzl.tpl
 tensorflow/third_party/tensorrt/tensorrt/include/tensorrt_config.h.tpl
+tensorflow/third_party/tensorrt/tensorrt/tensorrt_config.py.tpl
 tensorflow/third_party/tensorrt/tensorrt_configure.bzl
 tensorflow/third_party/termcolor.BUILD
 tensorflow/third_party/tf_toolchains.BUILD
@@ -265,6 +270,7 @@ tensorflow/third_party/typing_extensions.BUILD
 tensorflow/third_party/wrapt.BUILD
 tensorflow/third_party/zlib.BUILD
 tensorflow/tools/build_info/BUILD
+tensorflow/tools/ci_build/a100/nightly.sh
 tensorflow/tools/ci_build/horovod/gpu/nightly.sh
 tensorflow/tools/ci_build/release/common.sh
 tensorflow/tools/ci_build/release/common_win.bat

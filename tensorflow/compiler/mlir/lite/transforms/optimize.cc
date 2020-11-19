@@ -27,11 +27,14 @@ limitations under the License.
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/None.h"
+#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
@@ -284,6 +287,18 @@ static bool ShapeMatchesReduceWithKeepAxes(Value input,
     }
   }
   return true;
+}
+
+static bool FloatValueEquals(const Attribute &attr, double value) {
+  auto fp_attr = attr.dyn_cast_or_null<DenseFPElementsAttr>();
+  if (!fp_attr) return false;
+
+  if (fp_attr.isSplat()) {
+    return fp_attr.getSplatValue<APFloat>().isExactlyValue(value);
+  }
+  return llvm::all_of(fp_attr.getFloatValues(), [value](const APFloat &f) {
+    return f.isExactlyValue(value);
+  });
 }
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_optimize.inc"
@@ -729,6 +744,144 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
   }
 };
 
+// If the operand to a broadcastable op is a splat constant, try to replace it
+// with a 0-d constant, e.g. before this optimization,
+//   %cst = constant dense<1.0> : tensor<16x16x4xf32>
+//   %0 = "tfl.conv_2d"...
+//   %1 = "tfl.add"(%0, %cst) : (tensor<16x16x4xf32>, tensor<16x16x4xf32>)
+// After this optimization:
+//   %cst = constant dense<1.0> : tensor<f32>
+//   %0 = "tfl.conv_2d"...
+//   %1 = "tfl.add"(%0, %cst) : (tensor<16x16x4xf32>, tensor<f32>)
+// This pattern can enable more fusing opportunities when the binary op is
+// following conv ops.
+template <typename BinaryOpType>
+struct ScalarizeSplatConstantForBroadcastableOps
+    : public OpRewritePattern<BinaryOpType> {
+  using OpRewritePattern<BinaryOpType>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(BinaryOpType binary_op,
+                                PatternRewriter &rewriter) const override {
+    DenseElementsAttr splat_elements_attr;
+    if (!IsScalarizableSplatConstant(binary_op.rhs(), &splat_elements_attr)) {
+      return failure();
+    }
+
+    constexpr int kSplatOperandIndex = 1;
+    auto result_type =
+        binary_op.getResult().getType().template cast<ShapedType>();
+    mlir::Value non_splat_operand =
+        binary_op.getOperand(1 - kSplatOperandIndex);
+    auto non_splat_operand_type =
+        non_splat_operand.getType().cast<ShapedType>();
+    // If the other operand's shape does not equal to the result shape, then we
+    // cannot scalarize the splat constant because the result shape relies on
+    // the splat constant op's shape for broadcasting.
+    if (!non_splat_operand_type.hasStaticShape() ||
+        non_splat_operand_type.getShape() != result_type.getShape() ||
+        non_splat_operand_type.getRank() > 4) {
+      return failure();
+    }
+
+    // If non-splat operand is not fusable affine ops, then no need to apply
+    // this transformation.
+    if (!CanFuseAffineOp(non_splat_operand.getDefiningOp(), binary_op)) {
+      return failure();
+    }
+
+    // Creates a new scalar constant op using the splat value.
+    mlir::Value splat_operand = binary_op.getOperand(kSplatOperandIndex);
+    auto scalar_elements_attr = DenseElementsAttr::get(
+        RankedTensorType::get({},
+                              splat_elements_attr.getType().getElementType()),
+        splat_elements_attr.getSplatValue());
+
+    auto scalar_constant_op = rewriter.create<ConstantOp>(
+        splat_operand.getLoc(), scalar_elements_attr.getType(),
+        scalar_elements_attr);
+
+    binary_op.setOperand(kSplatOperandIndex, scalar_constant_op);
+    return success();
+  }
+
+ private:
+  // Returns true if this value is a splat constant op which can be scalarized.
+  // Also returns the elements attr if this value is indeed a splat constant.
+  bool IsScalarizableSplatConstant(mlir::Value value,
+                                   DenseElementsAttr *elements_attr) const {
+    if (!matchPattern(value, m_Constant(elements_attr))) {
+      return false;
+    }
+    auto element_type = value.getType().cast<ShapedType>().getElementType();
+    // Ignore per-axis quantized constants because after converting to scalar,
+    // we will lose per-axis qantization parameter.
+    if (element_type.isa<quant::UniformQuantizedPerAxisType>()) {
+      return false;
+    }
+    if (IsScalar(value)) {
+      return false;
+    }
+    return elements_attr->isSplat();
+  }
+
+  // If this type is a scalar shaped type.
+  bool IsScalar(mlir::Value value) const {
+    auto type = value.getType().dyn_cast<ShapedType>();
+    if (!type) {
+      return false;
+    }
+    if (!type.hasStaticShape()) {
+      return false;
+    }
+    return type.getNumElements() == 1;
+  }
+
+  // Returns true if we can fuse an affine op with consuming binary op.
+  bool CanFuseAffineOp(Operation *affine_op, Operation *binary_op) const {
+    if (!isa_and_nonnull<TFL::Conv2DOp, TFL::DepthwiseConv2DOp,
+                         TFL::FullyConnectedOp>(affine_op)) {
+      return false;
+    }
+    DenseElementsAttr value;
+    // Check that bias are constants if not none.
+    Value bias = affine_op->getOperand(2);
+    if (!bias.getType().isa<NoneType>() &&
+        !matchPattern(bias, m_Constant(&value))) {
+      return false;
+    }
+    // If the binary op is mul/div, also check that filter is constant.
+    if (isa<TFL::MulOp, TFL::DivOp>(binary_op) &&
+        !matchPattern(affine_op->getOperand(1), m_Constant(&value))) {
+      return false;
+    }
+
+    // We can only fuse F32/BF16.
+    auto is_fusable_type = [](Type t) {
+      Type element_type = t;
+      if (auto shaped_type = t.dyn_cast<ShapedType>()) {
+        element_type = shaped_type.getElementType();
+      }
+      return element_type.isBF16() || element_type.isF32();
+    };
+    for (Type t : binary_op->getOperandTypes()) {
+      if (!is_fusable_type(t)) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+};
+
+using ScalarizeSplatConstantForSub =
+    ScalarizeSplatConstantForBroadcastableOps<TFL::SubOp>;
+using ScalarizeSplatConstantForAdd =
+    ScalarizeSplatConstantForBroadcastableOps<TFL::AddOp>;
+using ScalarizeSplatConstantForMul =
+    ScalarizeSplatConstantForBroadcastableOps<TFL::MulOp>;
+using ScalarizeSplatConstantForDiv =
+    ScalarizeSplatConstantForBroadcastableOps<TFL::DivOp>;
+
 struct ConvertTrivialTransposeOpToReshapeOp
     : public OpRewritePattern<TFL::TransposeOp> {
   using OpRewritePattern<TFL::TransposeOp>::OpRewritePattern;
@@ -818,6 +971,8 @@ void Optimize::runOnFunction() {
   OwningRewritePatternList phase_2_patterns;
   TFL::populateWithGenerated(ctx, phase_2_patterns);
   phase_2_patterns.insert<
+      ScalarizeSplatConstantForAdd, ScalarizeSplatConstantForSub,
+      ScalarizeSplatConstantForMul, ScalarizeSplatConstantForDiv,
       FuseFullyConnectedAndAdd, FuseFullyConnectedAndReluX<TFL::ReluOp, kRelu>,
       FuseFullyConnectedAndReluX<TFL::Relu6Op, kRelu6>,
       FuseFullyConnectedAndReluX<TFL::Relu1Op, kRelu1>,

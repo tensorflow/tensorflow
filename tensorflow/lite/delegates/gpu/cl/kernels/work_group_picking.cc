@@ -35,7 +35,7 @@ std::vector<int2> Get2DWorkgroupsEqualTo128() {
 
 std::vector<int3> GenerateWorkGroupSizesXYMultipleOf(
     int multiplier, int3 grid, const KernelInfo& kernel_info,
-    const DeviceInfo& device_info, WorkGroupSizeAlignment z_alignment) {
+    const GpuInfo& gpu_info, WorkGroupSizeAlignment z_alignment) {
   std::vector<int3> work_groups;
   work_groups.reserve(32);
 
@@ -52,9 +52,9 @@ std::vector<int3> GenerateWorkGroupSizesXYMultipleOf(
         if (work_group_size_xy * z > kernel_info.max_work_group_size) {
           continue;
         }
-        if (x <= device_info.max_work_group_size_x &&
-            y <= device_info.max_work_group_size_y &&
-            z <= device_info.max_work_group_size_z) {
+        if (x <= gpu_info.max_work_group_size_x &&
+            y <= gpu_info.max_work_group_size_y &&
+            z <= gpu_info.max_work_group_size_z) {
           work_groups.push_back({x, y, z});
         }
       }
@@ -65,7 +65,7 @@ std::vector<int3> GenerateWorkGroupSizesXYMultipleOf(
 
 std::vector<int3> GenerateWorkGroupSizesXMultipleOf(
     int multiplier, int3 grid, const KernelInfo& kernel_info,
-    const DeviceInfo& device_info, WorkGroupSizeAlignment z_alignment) {
+    const GpuInfo& gpu_info, WorkGroupSizeAlignment z_alignment) {
   std::vector<int3> work_groups;
   work_groups.reserve(32);
 
@@ -78,9 +78,9 @@ std::vector<int3> GenerateWorkGroupSizesXMultipleOf(
        x += multiplier) {
     for (auto y : possible_y_sizes) {
       for (auto z : possible_z_sizes) {
-        if (x <= device_info.max_work_group_size_x &&
-            y <= device_info.max_work_group_size_y &&
-            z <= device_info.max_work_group_size_z &&
+        if (x <= gpu_info.max_work_group_size_x &&
+            y <= gpu_info.max_work_group_size_y &&
+            z <= gpu_info.max_work_group_size_z &&
             x * y * z <= kernel_info.max_work_group_size) {
           work_groups.push_back({x, y, z});
         }
@@ -90,13 +90,13 @@ std::vector<int3> GenerateWorkGroupSizesXMultipleOf(
   return work_groups;
 }
 
-void GetWorkGroupsAlignedToGrid(const DeviceInfo& device_info,
+void GetWorkGroupsAlignedToGrid(const GpuInfo& gpu_info,
                                 const KernelInfo& kernel_info, const int3& grid,
                                 std::vector<int3>* work_groups) {
   int3 max_wg_size;
-  max_wg_size.x = device_info.max_work_group_size_x;
-  max_wg_size.y = device_info.max_work_group_size_y;
-  max_wg_size.z = device_info.max_work_group_size_z;
+  max_wg_size.x = gpu_info.max_work_group_size_x;
+  max_wg_size.y = gpu_info.max_work_group_size_y;
+  max_wg_size.z = gpu_info.max_work_group_size_z;
   GenerateWorkGroupSizesAlignedToGrid(
       grid, max_wg_size, kernel_info.max_work_group_size, work_groups);
 }
@@ -214,24 +214,22 @@ int3 GetWorkGroupConv(const int3& grid, int max_size, int max_z_size) {
   return int3(wg_x, wg_y, wg_z);
 }
 
-void GetPossibleWorkGroupsXYMultipleOf(int multiplier,
-                                       const DeviceInfo& device_info,
+void GetPossibleWorkGroupsXYMultipleOf(int multiplier, const GpuInfo& gpu_info,
                                        const KernelInfo& kernel_info,
                                        const int3& grid,
                                        WorkGroupSizeAlignment z_alignment,
                                        std::vector<int3>* work_groups) {
   *work_groups = GenerateWorkGroupSizesXYMultipleOf(
-      multiplier, grid, kernel_info, device_info, z_alignment);
+      multiplier, grid, kernel_info, gpu_info, z_alignment);
 }
 
-void GetPossibleWorkGroupsXMultipleOf(int multiplier,
-                                      const DeviceInfo& device_info,
+void GetPossibleWorkGroupsXMultipleOf(int multiplier, const GpuInfo& gpu_info,
                                       const KernelInfo& kernel_info,
                                       const int3& grid,
                                       WorkGroupSizeAlignment z_alignment,
                                       std::vector<int3>* work_groups) {
   *work_groups = GenerateWorkGroupSizesXMultipleOf(
-      multiplier, grid, kernel_info, device_info, z_alignment);
+      multiplier, grid, kernel_info, gpu_info, z_alignment);
 }
 
 bool XY128RequiresMoreWorkGroupsThenXY128Linear(int width, int height) {
@@ -250,17 +248,16 @@ bool XY128RequiresMoreWorkGroupsThenXY128Linear(int width, int height) {
   return !have_equal_work_groups;
 }
 
-void GetPossibleWorkGroups(TuningType tuning_type,
-                           const DeviceInfo& device_info,
+void GetPossibleWorkGroups(TuningType tuning_type, const GpuInfo& gpu_info,
                            const KernelInfo& kernel_info, const int3& grid,
                            std::vector<int3>* work_groups) {
   switch (tuning_type) {
-    case TuningType::FAST:
+    case TuningType::kFast:
       work_groups->push_back(
           GetWorkGroup(grid, kernel_info.max_work_group_size));
       return;
-    case TuningType::EXHAUSTIVE: {
-      GetWorkGroupsAlignedToGrid(device_info, kernel_info, grid, work_groups);
+    case TuningType::kExhaustive: {
+      GetWorkGroupsAlignedToGrid(gpu_info, kernel_info, grid, work_groups);
       return;
     }
     default:
@@ -269,23 +266,22 @@ void GetPossibleWorkGroups(TuningType tuning_type,
   }
 }
 
-void GetPossibleWorkGroupsConv(TuningType tuning_type,
-                               const DeviceInfo& device_info,
+void GetPossibleWorkGroupsConv(TuningType tuning_type, const GpuInfo& gpu_info,
                                const KernelInfo& kernel_info, const int3& grid,
                                std::vector<int3>* work_groups) {
   switch (tuning_type) {
-    case TuningType::FAST: {
+    case TuningType::kFast: {
       int max_z_size = 16;
-      if (device_info.IsAdreno()) {
-        max_z_size = device_info.adreno_info.IsAdreno3xx() ? 16 : 64;
+      if (gpu_info.IsAdreno()) {
+        max_z_size = gpu_info.adreno_info.IsAdreno3xx() ? 16 : 64;
       }
-      max_z_size = std::min(max_z_size, device_info.max_work_group_size_z);
+      max_z_size = std::min(max_z_size, gpu_info.max_work_group_size_z);
       work_groups->push_back(
           GetWorkGroupConv(grid, kernel_info.max_work_group_size, max_z_size));
       return;
     }
-    case TuningType::EXHAUSTIVE: {
-      GetWorkGroupsAlignedToGrid(device_info, kernel_info, grid, work_groups);
+    case TuningType::kExhaustive: {
+      GetWorkGroupsAlignedToGrid(gpu_info, kernel_info, grid, work_groups);
       return;
     }
     default:

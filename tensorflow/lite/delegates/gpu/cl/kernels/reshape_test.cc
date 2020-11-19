@@ -46,8 +46,10 @@ TEST_F(OpenCLOperationTest, Reshape) {
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreateReshape(op_def);
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 3, 1, 2), &dst_tensor));
+      ASSERT_OK(ExecuteGPUOperation(
+          src_tensor, creation_context_,
+          absl::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 3, 1, 2), &dst_tensor));
       EXPECT_THAT(
           dst_tensor.data,
           Pointwise(FloatNear(0.0f), {half(0.5f), half(-1.1f), half(-2.2f),

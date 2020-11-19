@@ -1546,6 +1546,8 @@ Status ImportGraphDef(const ImportGraphDefOptions& opts, const GraphDef& gdef,
 }
 
 void CopyGraph(const Graph& src, Graph* dest) {
+  dest->SetConstructionContext(src.GetConstructionContextInternal());
+
   for (Node* n : dest->nodes()) {
     CHECK(n->IsSource() || n->IsSink()) << "*dest must be empty";
   }

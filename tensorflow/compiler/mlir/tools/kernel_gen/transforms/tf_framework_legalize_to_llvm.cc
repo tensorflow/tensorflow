@@ -13,11 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "llvm/Support/FormatVariadic.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
@@ -33,6 +35,8 @@ using LLVM::LLVMType;
 
 static constexpr StringRef kCInterfaceAlloc = "_mlir_ciface_tf_alloc";
 static constexpr StringRef kCInterfaceDealloc = "_mlir_ciface_tf_dealloc";
+static constexpr StringRef kCInterfaceReportError =
+    "_mlir_ciface_tf_report_error";
 
 /// Base class for patterns converting TF Framework ops to function calls.
 template <typename OpTy>
@@ -76,9 +80,11 @@ class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
 
     // Get memref descriptor sizes.
     SmallVector<Value, 4> sizes;
+    SmallVector<Value, 4> strides;
+    Value sizeBytes;
     getMemRefDescriptorSizes(loc, memref_type,
                              llvm::to_vector<4>(transformed.dyn_sizes()),
-                             rewriter, sizes);
+                             rewriter, sizes, strides, sizeBytes);
     // Get number of elements.
     Value num_elements = getNumElements(loc, sizes, rewriter);
     // Get element size.
@@ -242,6 +248,79 @@ class TFDeallocOpConverter : public ConvertToLLVMCallOpPattern<TFDeallocOp> {
   }
 };
 
+class ReportErrorOpConverter
+    : public ConvertToLLVMCallOpPattern<ReportErrorOp> {
+ public:
+  using ConvertToLLVMCallOpPattern<ReportErrorOp>::ConvertToLLVMCallOpPattern;
+
+  LogicalResult matchAndRewrite(
+      Operation *op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const override {
+    ReportErrorOp::Adaptor transformed(operands, op->getAttrDictionary());
+
+    Location loc = op->getLoc();
+    auto module = op->getParentOfType<ModuleOp>();
+    Value message_constant = GenerateErrorMessageConstant(
+        loc, module, transformed.msg().getValue(), rewriter);
+
+    // Insert function call.
+    FlatSymbolRefAttr tf_func_ref = getOrInsertTFFunction(rewriter, op);
+    Value error_code = rewriter.create<LLVM::ConstantOp>(
+        loc, typeConverter.convertType(rewriter.getI32Type()),
+        transformed.error_code());
+    rewriter.replaceOpWithNewOp<LLVM::CallOp>(
+
+        op, llvm::None, tf_func_ref,
+        llvm::makeArrayRef({transformed.ctx(), error_code, message_constant}));
+    return success();
+  }
+
+ protected:
+  StringRef GetFuncName() const override { return kCInterfaceReportError; }
+  LLVMType GetFuncType() const override {
+    MLIRContext *ctx = &this->typeConverter.getContext();
+    auto i8_ptr_type = LLVM::LLVMType::getInt8Ty(ctx).getPointerTo();
+    auto i32_type = LLVM::LLVMType::getInt32Ty(ctx);
+    return LLVM::LLVMType::getFunctionTy(
+        getVoidType(), {getVoidPtrType(), i32_type, i8_ptr_type},
+        /*isVarArg=*/false);
+  }
+
+ private:
+  // Generates an LLVM IR dialect global that contains the name of the given
+  // kernel function as a C string, and returns a pointer to its beginning.
+  Value GenerateErrorMessageConstant(Location loc, Operation *module,
+                                     StringRef message,
+                                     OpBuilder &builder) const {
+    std::string loc_str;
+    llvm::raw_string_ostream loc_stream(loc_str);
+    loc_stream << message << " at ";
+    loc.print(loc_stream);
+
+    StringRef generated_error(loc_stream.str().c_str());
+
+    std::string global_name =
+        llvm::formatv("error_message_{0}", llvm::hash_value(generated_error));
+
+    Operation *global_constant =
+        SymbolTable::lookupNearestSymbolFrom(module, global_name);
+
+    if (global_constant) {
+      Value globalPtr = builder.create<LLVM::AddressOfOp>(
+          loc, cast<LLVM::GlobalOp>(global_constant));
+
+      MLIRContext *ctx = &this->typeConverter.getContext();
+      Value c0 = builder.create<LLVM::ConstantOp>(
+          loc, LLVM::LLVMType::getInt64Ty(ctx),
+          builder.getIntegerAttr(builder.getIndexType(), 0));
+      return builder.create<LLVM::GEPOp>(loc, LLVM::LLVMType::getInt8PtrTy(ctx),
+                                         globalPtr, ValueRange{c0, c0});
+    }
+    return LLVM::createGlobalString(loc, builder, global_name, generated_error,
+                                    LLVM::Linkage::Internal);
+  }
+};
+
 class NullContextOpConverter : public ConvertOpToLLVMPattern<NullContextOp> {
  public:
   using ConvertOpToLLVMPattern<NullContextOp>::ConvertOpToLLVMPattern;
@@ -254,12 +333,72 @@ class NullContextOpConverter : public ConvertOpToLLVMPattern<NullContextOp> {
   }
 };
 
+class NullMemRefOpConverter : public ConvertOpToLLVMPattern<NullMemRefOp> {
+ public:
+  using ConvertOpToLLVMPattern<NullMemRefOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult matchAndRewrite(
+      Operation *op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const override {
+    auto null_memref_op = cast<NullMemRefOp>(op);
+
+    Location loc = op->getLoc();
+    auto result_type = null_memref_op.getType().cast<UnrankedMemRefType>();
+    LLVMType llvm_result_type =
+        typeConverter.convertType(result_type).cast<LLVMType>();
+
+    auto desc =
+        UnrankedMemRefDescriptor::undef(rewriter, loc, llvm_result_type);
+    Value zero = createIndexConstant(rewriter, loc, 0);
+    desc.setRank(rewriter, loc, zero);
+
+    // Due to the current way of handling unranked memref results escaping, we
+    // have to actually construct a ranked underlying descriptor instead of just
+    // setting its pointer to NULL.
+    SmallVector<Value, 4> sizes;
+    UnrankedMemRefDescriptor::computeSizes(rewriter, loc, typeConverter, desc,
+                                           sizes);
+    Value underlying_desc_ptr = rewriter.create<LLVM::AllocaOp>(
+        loc, getVoidPtrType(), sizes.front(), llvm::None);
+
+    // Populate underlying ranked descriptor.
+    unsigned address_space = result_type.getMemorySpace();
+    Type elem_type = result_type.getElementType();
+    LLVM::LLVMType llvm_elem_type =
+        typeConverter.convertType(elem_type).cast<LLVMType>();
+    LLVM::LLVMType elem_ptr_ptr_type =
+        llvm_elem_type.getPointerTo(address_space).getPointerTo();
+
+    auto nullPtr = rewriter.create<LLVM::NullOp>(
+        loc, llvm_elem_type.getPointerTo(address_space));
+    UnrankedMemRefDescriptor::setAllocatedPtr(
+        rewriter, loc, underlying_desc_ptr, elem_ptr_ptr_type, nullPtr);
+    UnrankedMemRefDescriptor::setAlignedPtr(rewriter, loc, typeConverter,
+                                            underlying_desc_ptr,
+                                            elem_ptr_ptr_type, nullPtr);
+    UnrankedMemRefDescriptor::setOffset(rewriter, loc, typeConverter,
+                                        underlying_desc_ptr, elem_ptr_ptr_type,
+                                        zero);
+
+    desc.setMemRefDescPtr(rewriter, loc, underlying_desc_ptr);
+    rewriter.replaceOp(op, {desc});
+    return success();
+  }
+};
+
 }  // namespace
 
 void PopulateTFFrameworkToLLVMConversionPatterns(
     LLVMTypeConverter *converter, OwningRewritePatternList *patterns) {
-  patterns->insert<NullContextOpConverter>(*converter);
-  patterns->insert<TFAllocOpConverter, TFDeallocOpConverter>(*converter);
+  // clang-format off
+  patterns->insert<
+      NullContextOpConverter,
+      NullMemRefOpConverter,
+      ReportErrorOpConverter,
+      TFAllocOpConverter,
+      TFDeallocOpConverter
+    >(*converter);
+  // clang-format on
 }
 
 }  // namespace tf_framework

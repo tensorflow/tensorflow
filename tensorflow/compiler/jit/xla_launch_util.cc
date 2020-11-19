@@ -449,15 +449,14 @@ Status XlaComputationLaunchContext::PopulateOutputs(
         auto transfer_manager,
         xla::TransferManager::GetForPlatform(stream->parent()->platform()));
 
-    xla::Shape output_host_shape = output.on_host_shape();
     xla::Shape output_device_shape = output.on_device_shape();
     TF_RETURN_IF_ERROR(transfer_manager->ReadDynamicShapes(
-        stream, &output, &output_host_shape, &output_device_shape));
+        stream, &output, &output_device_shape));
 
-    output.set_shapes(output_host_shape, output_device_shape);
+    output.set_shapes(output_device_shape, output_device_shape);
     for (int i = 0; i < ctx->num_outputs(); ++i) {
       const xla::Shape& subshape =
-          xla::ShapeUtil::GetSubshape(output_host_shape, {i});
+          xla::ShapeUtil::GetSubshape(output_device_shape, {i});
       TensorShape shape;
       TF_RETURN_IF_ERROR(XLAShapeToTensorShape(subshape, &shape));
       output_tensor_shapes.push_back(shape);
@@ -564,10 +563,25 @@ xla::StatusOr<std::vector<XlaCompiler::Argument>>
 XlaComputationLaunchContext::BuildXlaCompilerArguments(
     absl::Span<int const> must_be_constant_idxs,
     absl::Span<const Tensor* const> inputs,
-    absl::Span<VariableInfo const> variable_args) {
+    absl::Span<VariableInfo const> variable_args, Device* device) {
   CHECK(absl::c_is_sorted(must_be_constant_idxs));
   std::vector<XlaCompiler::Argument> out;
   out.resize(inputs.size());
+
+  // TODO(cheshire): Avoid duplication with framework/op_kernel.h
+  DeviceContext* device_context = nullptr;
+  TF_RETURN_IF_ERROR(device->TryGetDeviceContext(&device_context));
+  bool using_default_context = false;
+  auto cleanup = xla::MakeCleanup([&] {
+    if (device_context != nullptr && !using_default_context) {
+      device_context->Unref();
+    }
+  });
+  if (device_context == nullptr) {
+    using_default_context = true;
+    auto* dev_info = device->tensorflow_gpu_device_info();
+    if (dev_info) device_context = dev_info->default_context;
+  }
 
   absl::flat_hash_map<int, const VariableInfo*> variable_info_lookup;
   for (const VariableInfo& info : variable_args) {
@@ -581,18 +595,7 @@ XlaComputationLaunchContext::BuildXlaCompilerArguments(
     const Tensor* input = inputs[input_num];
 
     XlaCompiler::Argument& arg = out[input_num];
-    if (absl::c_binary_search(must_be_constant_idxs, input_num)) {
-      // Handles compile-time constants.
-
-      // TODO(b/157241314): Support constants located in resource variables.
-      TF_RET_CHECK(input->dtype() != DT_RESOURCE)
-          << "tf2xla bridge does not support must-be-constants located in "
-             "resource variables; try moving them to a tensor";
-      arg.kind = XlaCompiler::Argument::kConstant;
-      arg.type = input->dtype();
-      arg.shape = input->shape();
-      arg.constant_value = *input;
-    } else if (variable_info_lookup.count(input_num)) {
+    if (variable_info_lookup.count(input_num)) {
       // Handles resource variables.
       TF_RET_CHECK(input->dtype() == DT_RESOURCE);
       const VariableInfo& variable = *variable_info_lookup[input_num];
@@ -613,6 +616,25 @@ XlaComputationLaunchContext::BuildXlaCompilerArguments(
         arg.type = DT_INVALID;
         arg.shape = TensorShape();
       }
+
+      if (absl::c_binary_search(must_be_constant_idxs, input_num)) {
+        TF_RET_CHECK(variable.var() && variable.var()->is_initialized);
+        const Tensor* value = variable.var()->tensor();
+        Tensor value_on_host(value->dtype(), value->shape());
+        if (!device_context) {
+          value_on_host = *value;
+        } else {
+          TF_RETURN_IF_ERROR(device_context->CopyDeviceTensorToCPUSync(
+              value, "", device, &value_on_host));
+        }
+        arg.kind = XlaCompiler::Argument::kConstantResource;
+        arg.constant_value = value_on_host;
+      }
+    } else if (absl::c_binary_search(must_be_constant_idxs, input_num)) {
+      arg.kind = XlaCompiler::Argument::kConstant;
+      arg.type = input->dtype();
+      arg.shape = input->shape();
+      arg.constant_value = *input;
     } else {
       // Normal inputs.
       TF_RET_CHECK(input->dtype() != DT_RESOURCE);

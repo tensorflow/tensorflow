@@ -995,7 +995,7 @@ class LSTMOperationParser : public TFLiteOperationParser {
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 3));
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 4));
     const TfLiteLSTMParams* tf_options;
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
     switch (tf_options->kernel_type) {
@@ -1530,7 +1530,9 @@ class ReduceOperationParser : public TFLiteOperationParser {
     RETURN_IF_ERROR(reader->ReadTensor(1, &axes));
     const TfLiteTensor* input = reader->GetInputTensor(0);
     ReduceAttributes attr;
-    RETURN_IF_ERROR(ExtractAxisFromIndex(*input, axes.data[0], &attr.axis));
+    Axis axis;
+    RETURN_IF_ERROR(ExtractAxisFromIndex(*input, axes.data[0], &axis));
+    attr.dims = {axis};
     node->operation.attributes = attr;
     return absl::OkStatus();
   }
@@ -2157,7 +2159,22 @@ class TransposeConvBuiltinOperationParser : public TFLiteOperationParser {
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 3));
-    RETURN_IF_ERROR(CheckTensorIsAvailable(context, tflite_node, 1));
+    const int runtime_inputs =
+        GetNumberOfRuntimeInputsForNode(context, tflite_node);
+    if (runtime_inputs > 2) {
+      return absl::InternalError(
+          absl::StrCat("Expected 1 or 2 input tensor(s), but node has ",
+                       runtime_inputs, " runtime inputs."));
+    }
+    const int runtime_outputs = NumOutputs(tflite_node);
+    if (runtime_outputs != 1) {
+      return absl::InternalError(
+          absl::StrCat("Expected 1 output tensor(s), but node has ",
+                       runtime_outputs, " runtime outputs."));
+    }
+    if (runtime_inputs == 1) {
+      RETURN_IF_ERROR(CheckTensorIsAvailable(context, tflite_node, 1));
+    }
     const TfLiteTransposeConvParams* tf_options;
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
     RETURN_IF_ERROR(
@@ -2185,7 +2202,15 @@ class TransposeConvBuiltinOperationParser : public TFLiteOperationParser {
     attr.stride = tf_options
                       ? HW(tf_options->stride_height, tf_options->stride_width)
                       : HW(1, 1);
-    RETURN_IF_ERROR(reader->ReadTensor(1, &attr.weights));
+    const int runtime_inputs = reader->GetNumberOfRuntimeInputs();
+    if (runtime_inputs == 2) {
+      RETURN_IF_ERROR(reader->AddInput(node, 1));
+      auto weights_shape = graph->FindInputs(node->id)[1]->tensor.shape;
+      attr.weights.shape = OHWI(weights_shape.b, weights_shape.h,
+                                weights_shape.w, weights_shape.c);
+    } else {  // runtime_inputs == 1;
+      RETURN_IF_ERROR(reader->ReadTensor(1, &attr.weights));
+    }
     reader->ReadTensor(3, &attr.bias).IgnoreError();  // bias is optional
 
     UpdatePadding(tf_options->padding,

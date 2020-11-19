@@ -404,3 +404,6 @@ tensorflow::PythonAPIDispatcher
 
 [python_tensor_converter] # python_tensor_converter
 tensorflow::PythonTensorConverter
+
+[python_api_info] # python_api_info
+tensorflow::PythonAPIInfo

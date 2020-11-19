@@ -167,7 +167,8 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
       case 32:
         return tflite::TensorType_INT32;
       case 64:
-        return tflite::TensorType_INT64;
+        return itype.isUnsigned() ? tflite::TensorType_UINT64
+                                  : tflite::TensorType_INT64;
     }
   } else if (auto q_uniform_type =
                  type.dyn_cast<mlir::quant::UniformQuantizedType>()) {
@@ -451,6 +452,11 @@ class Translator {
   // Build while operator where cond & body are regions.
   Optional<BufferOffset<tflite::Operator>> BuildWhileOperator(
       mlir::TFL::WhileOp op, const std::vector<int32_t>& operands,
+      const std::vector<int32_t>& results);
+
+  // Build call once operator.
+  BufferOffset<tflite::Operator> BuildCallOnceOperator(
+      mlir::TFL::CallOnceOp op, const std::vector<int32_t>& operands,
       const std::vector<int32_t>& results);
 
   // Builds custom operators.
@@ -787,6 +793,22 @@ BufferOffset<tflite::Operator> Translator::BuildIfOperator(
                                 builtin_options);
 }
 
+BufferOffset<tflite::Operator> Translator::BuildCallOnceOperator(
+    mlir::TFL::CallOnceOp op, const std::vector<int32_t>& operands,
+    const std::vector<int32_t>& results) {
+  auto opcode_index =
+      GetOpcodeIndex("call_once", tflite::BuiltinOperator_CALL_ONCE);
+  int init_subgraph_index =
+      subgraph_index_map_.at(op.session_init_function().str());
+  auto builtin_options =
+      tflite::CreateCallOnceOptions(builder_, init_subgraph_index).Union();
+  auto inputs = builder_.CreateVector(operands);
+  auto outputs = builder_.CreateVector(results);
+  return tflite::CreateOperator(builder_, opcode_index, inputs, outputs,
+                                tflite::BuiltinOptions_CallOnceOptions,
+                                builtin_options);
+}
+
 BufferOffset<tflite::Operator> Translator::BuildWhileOperator(
     mlir::TF::WhileOp op, const std::vector<int32_t>& operands,
     const std::vector<int32_t>& results) {
@@ -1024,6 +1046,12 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
 
       inst->emitOpError("is not a supported TFLite op");
       return llvm::None;
+    }
+
+    if (*builtin_code == tflite::BuiltinOperator_CALL_ONCE) {
+      if (auto initOp = dyn_cast<mlir::TFL::CallOnceOp>(inst)) {
+        return BuildCallOnceOperator(initOp, operands, results);
+      }
     }
 
     std::string op_name = inst->getName().getStringRef().str();

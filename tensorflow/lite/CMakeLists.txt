@@ -52,7 +52,7 @@ set(CMAKE_PREFIX_PATH
   ${CMAKE_PREFIX_PATH}
 )
 # b/168750039: To workaround absl module not found error on Android build.
-set(absl_DIR ${CMAKE_MODULE_PATH})
+set(absl_DIR "${TFLITE_SOURCE_DIR}/tools/cmake/modules")
 
 option(TFLITE_ENABLE_RUY "Enable experimental RUY integration" OFF)
 option(TFLITE_ENABLE_RESOURCE "Enable experimental support for resources" ON)
@@ -165,6 +165,11 @@ if(CMAKE_SYSTEM_NAME MATCHES "Android")
 endif()
 # Build a list of source files to compile into the TF Lite library.
 populate_tflite_source_vars("." TFLITE_SRCS)
+
+# This particular file is excluded because the more explicit approach to enable
+# XNNPACK delegate is preferred to the weak-symbol one.
+list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*tflite_with_xnnpack\\.cc$")
+
 if(_TFLITE_ENABLE_MMAP)
   list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*mmap_allocation_disabled\\.cc$")
 else()
@@ -223,6 +228,11 @@ if(TFLITE_ENABLE_GPU)
     FILTER "(_test)\\.(cc|h)$"
   )
   populate_tflite_source_vars(
+    "delegates/gpu/common/task"
+    TFLITE_DELEGATES_GPU_COMMON_TASK_SRCS
+    FILTER "(_test)\\.(cc|h)$"
+  )
+  populate_tflite_source_vars(
     "delegates/gpu/common/transformations"
     TFLITE_DELEGATES_GPU_COMMON_TRANSFORMATIONS_SRCS
     FILTER "(_test)\\.(cc|h)$"
@@ -238,6 +248,7 @@ if(TFLITE_ENABLE_GPU)
     ${TFLITE_DELEGATES_GPU_COMMON_SRCS}
     ${TFLITE_DELEGATES_GPU_COMMON_DEFAULT_SRCS}
     ${TFLITE_DELEGATES_GPU_COMMON_MEMORY_MANAGEMENT_SRCS}
+    ${TFLITE_DELEGATES_GPU_COMMON_TASK_SRCS}
     ${TFLITE_DELEGATES_GPU_COMMON_TRANSFORMATIONS_SRCS}
   )
   list(APPEND TFLITE_TARGET_PUBLIC_OPTIONS "-DCL_DELEGATE_NO_GL" "-DEGL_NO_X11")
@@ -271,6 +282,7 @@ if(TFLITE_ENABLE_XNNPACK)
   list(APPEND TFLITE_TARGET_DEPENDENCIES
     XNNPACK
   )
+  list(APPEND TFLITE_TARGET_PUBLIC_OPTIONS "-DTFLITE_BUILD_WITH_XNNPACK_DELEGATE")
 endif()
 if (TFLITE_ENABLE_RESOURCE)
   populate_tflite_source_vars("experimental/resource"

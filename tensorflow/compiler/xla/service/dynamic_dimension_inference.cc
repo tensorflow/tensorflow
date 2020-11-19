@@ -261,6 +261,31 @@ Status DynamicDimensionInferenceVisitor::HandleCustomCall(HloInstruction* hlo) {
   if (custom_call_handler_) {
     return custom_call_handler_(hlo, parent_);
   }
+
+  if (hlo->custom_call_target() == "DynamicConvolutionForward") {
+    // If input feature is dynamic and kernel feature is static, we can infer
+    // that input feature is also static.
+    // E.g.,:
+    // lhs = [B, X, Y, ?]
+    // rhs = [X, Y, I, O]
+    // dim_labels = b01f_01io
+    // We can infer that the dynamic dimension in rhs is static I.
+    const ConvolutionDimensionNumbers& dnums =
+        hlo->convolution_dimension_numbers();
+    HloInstruction* input_feature = parent_->GetDynamicSize(
+        hlo->mutable_operand(0), {}, dnums.input_feature_dimension());
+    HloInstruction* kernel_feature = parent_->GetDynamicSize(
+        hlo->mutable_operand(1), {}, dnums.kernel_input_feature_dimension());
+
+    if (input_feature != nullptr && kernel_feature == nullptr) {
+      if (hlo->mutable_operand(0)->shape().dimensions(
+              dnums.input_feature_dimension()) ==
+          hlo->mutable_operand(1)->shape().dimensions(
+              dnums.kernel_input_feature_dimension()))
+        parent_->SetDynamicSize(hlo->mutable_operand(0), {},
+                                dnums.input_feature_dimension(), nullptr);
+    }
+  }
   return ForEachOperandDynamicDimension(
       hlo, [&](HloInstruction* operand, ShapeIndex index, int64 dimension,
                int64 operand_index, HloInstruction* dynamic_size) {
@@ -520,7 +545,6 @@ Status DynamicDimensionInferenceVisitor::HandleConvolution(
         HloInstruction* conv = hlo;
         const ConvolutionDimensionNumbers& dimension_numbers =
             conv->convolution_dimension_numbers();
-
         if (operand_index == 0) {
           if (dimension == dimension_numbers.input_batch_dimension()) {
             parent_->SetDynamicSize(conv, {},
@@ -676,9 +700,8 @@ Status DynamicDimensionInferenceVisitor::HandleDynamicConvolutionForward(
       return Status::OK();
     }
   }
-  return Unimplemented(
-      "XLA doesn't support dynamic input feature dimension on convolution: %s",
-      hlo->ToString());
+  // Input Feature dim disappears after convolution.
+  return Status::OK();
 }
 
 Status DynamicDimensionInferenceVisitor::HandleDynamicWindowSamePadding(
@@ -911,7 +934,7 @@ Status DynamicDimensionInferenceVisitor::HandleReshape(HloInstruction* hlo) {
           output_dynamic_dimension = reshape->inferred_dimension();
           if (output_dynamic_dimension == -1) {
             // Try find dynamic dimension from the result shape.
-            for (int64 i = 0; i < reshape->shape().rank(); ++i) {
+            for (int64 i = output_dim_start; i < output_dim_end; ++i) {
               if (reshape->shape().is_dynamic_dimension(i)) {
                 output_dynamic_dimension = i;
               }
@@ -1373,12 +1396,12 @@ Status DynamicDimensionInferenceVisitor::HandleScatter(HloInstruction* hlo) {
 }
 
 Status DynamicDimensionInferenceVisitor::HandleWhile(HloInstruction* hlo) {
-  // If the output of the conditional contains dynamic dimension. We send
-  // dynamic dimension size out by adding additional root element. A mapping
-  // from the root instruction's dynamic dimension index (represented by a shape
-  // index as output index and a int64 dimension number) to output index
-  // (represented by an int64) is tracked for the conditional instruction (all
-  // branches should have the same mapping).
+  // If the output of the kWhile contains dynamic dimension, we send
+  // dynamic dimension size into the while body by adding additional root/body
+  // element. A mapping from the root instruction's dynamic dimension index
+  // (represented by a shape index as output index and an int64 dimension
+  // number) to output index (represented by an int64) is tracked for the
+  // conditional instruction.
   ShapeTree<absl::flat_hash_map<int64, int64>> dynamic_output_mapping(
       hlo->shape());
   std::vector<HloInstruction*> operands_to_add;

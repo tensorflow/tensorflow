@@ -28,7 +28,7 @@ namespace mlir {
 namespace TF {
 
 // Refines all the shapes in a module.
-LogicalResult InferModuleShape(ModuleOp module);
+LogicalResult InferModuleShape(ModuleOp module, int64_t max_iterations = 10);
 
 // Given a list of refined shapes matching the function arguments of func, runs
 // shape inference over the function to propagate this updated information.
@@ -39,7 +39,8 @@ LogicalResult InferModuleShape(ModuleOp module);
 // SCCP pass instead.
 LogicalResult InferShapeForFunction(FuncOp func,
                                     ArrayRef<ArrayRef<int64_t>> arg_shapes,
-                                    int64_t graph_version);
+                                    int64_t graph_version,
+                                    int64_t max_iterations = 10);
 
 }  // namespace TF
 

@@ -35,6 +35,8 @@ def GetScalarNanOfType : NativeCodeCall<
 class GetI64ScalarElementsAttr<int value> :
   NativeCodeCall<"GetI64ElementsAttr({" # value # "}, &$_builder)">;
 
+def TrueBoolAttr : AttrConstraint<CPred<"$_self.getValue()">>;
+
 //===----------------------------------------------------------------------===//
 // BiasAddGrad op patterns.
 //===----------------------------------------------------------------------===//
@@ -157,6 +159,15 @@ foreach fromToBinPair = [[TF_DivNoNanOp, TF_DivOp],
 
 def LowerFillOp : Pat<(TF_FillOp $dims, $value),
                       (TF_BroadcastToOp $value, $dims)>;
+
+//===----------------------------------------------------------------------===//
+// Empty op patterns.
+//===----------------------------------------------------------------------===//
+
+def LowerEmptyOp : Pat<(TF_EmptyOp:$result $dims, TrueBoolAttr:$init),
+                      (TF_BroadcastToOp
+                       (TF_ConstOp (GetScalarOfType<0> $result)), $dims),
+                      [(TF_SintOrFpTensor $result)]>;
 
 //===----------------------------------------------------------------------===//
 // Inf op patterns.

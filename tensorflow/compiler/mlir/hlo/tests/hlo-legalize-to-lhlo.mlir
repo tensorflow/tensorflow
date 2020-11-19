@@ -1,4 +1,6 @@
-// RUN: mlir-hlo-opt -hlo-legalize-to-lhlo -buffer-hoisting -buffer-deallocation -split-input-file %s -o - | FILECHECK_OPTS="" FileCheck %s
+// RUN: mlir-hlo-opt -hlo-legalize-to-lhlo -buffer-hoisting \
+// RUN: -buffer-deallocation -split-input-file -cse %s -o - \
+// RUN: | FILECHECK_OPTS="" FileCheck %s
 
 // CHECK-LABEL: func @attrs
 func @attrs_copy(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
@@ -153,64 +155,41 @@ func @broadcast(%operand: memref<5xf32>, %result: memref<10x5xf32>) {
 
 // -----
 
-func @external_func() -> tensor<3xi64>
-
-// CHECK: #[[MAP:.*]] = affine_map<(d0, d1)[s0, s1] -> (d0 * s0 + d1 * s1)>
+// CHECK: #[[MAP:.*]] = affine_map<(d0, d1, d2)[s0, s1, s2] -> (d0 * s0 + d1 * s1 + d2 * s2)>
 
 // CHECK-LABEL: func @dyn_broadcast
-func @dyn_broadcast(%operand: memref<?x?xf32>) {
-  // CHECK-SAME: (%[[OPERAND:.*]]: memref<?x?xf32>)
+func @dyn_broadcast(%operand: memref<?x?xf32>) -> index {
+  // CHECK-SAME: %[[OPERAND:.*]]: memref<?x?xf32>
   %tensor_operand = tensor_load %operand : memref<?x?xf32>
   %c1 = constant 1 : i64
   %shape = tensor_from_elements %c1, %c1, %c1 : tensor<3xi64>
   %tensor_result = "mhlo.dynamic_broadcast_in_dim"(%tensor_operand, %shape) {
     broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>
   } : (tensor<?x?xf32>, tensor<3xi64>) -> tensor<?x?x?xf32>
-  // CHECK: %[[SHAPE:.*]] = tensor_from_elements
-  // CHECK: %[[C0:.*]] = constant 0 : index
-  // CHECK: %[[EL0:.*]] = extract_element %[[SHAPE]][%[[C0]]] : tensor<3xi64>
-  // CHECK: %[[IC0:.*]]  = index_cast %[[EL0]] : i64 to index
-  // CHECK: %[[C1:.*]] = constant 1 : index
-  // CHECK: %[[EL1:.*]] = extract_element %[[SHAPE]][%[[C1]]] : tensor<3xi64>
-  // CHECK: %[[IC1:.*]]  = index_cast %[[EL1]] : i64 to index
-  // CHECK: %[[C2:.*]] = constant 2 : index
-  // CHECK: %[[EL2:.*]] = extract_element %[[SHAPE]][%[[C2]]] : tensor<3xi64>
-  // CHECK: %[[IC2:.*]]  = index_cast %[[EL2]] : i64 to index
-  // CHECK: %[[RESULT:.*]] = alloc(%[[IC0]], %[[IC1]], %[[IC2]])
-
-  // CHECK: %[[C0_:.*]] = constant 0 : index
-  // CHECK: %[[C1_:.*]] = constant 1 : index
-
-  // CHECK: %[[C1__:.*]] = constant 1 : index
-  // CHECK: %[[EL1_:.*]] = extract_element %[[SHAPE]]{{\[}}%[[C1__]]] : tensor<3xi64>
-  // CHECK: %[[C0___:.*]] = constant 0 : index
-  // CHECK: %[[OPERAND_DIM_0:.*]] = dim %[[OPERAND]], %[[C0___]] : memref<?x?xf32>
-  // CHECK: %[[RESULT_DIM_1:.*]] = index_cast %[[EL1_]] : i64 to index
-  // CHECK: %[[EXPAND_0:.*]] = cmpi "slt", %[[OPERAND_DIM_0]], %[[RESULT_DIM_1]]
-  // CHECK: %[[STRIDE_0:.*]] = select %[[EXPAND_0]], %[[C0_]], %[[C1_]] : index
-
-  // CHECK: %[[C2_:.*]] = constant 2 : index
-  // CHECK: %[[EL2_:.*]] = extract_element %[[SHAPE]]{{\[}}%[[C2_]]] : tensor<3xi64>
-  // CHECK: %[[C1___:.*]] = constant 1 : index
-  // CHECK: %[[OPERAND_DIM_1:.*]] = dim %[[OPERAND]], %[[C1___]] : memref<?x?xf32>
-  // CHECK: %[[RESULT_DIM_2:.*]] = index_cast %[[EL2_]] : i64 to index
-  // CHECK: %[[EXPAND_1:.*]] = cmpi "slt", %[[OPERAND_DIM_1]], %[[RESULT_DIM_2]]
-  // CHECK: %[[STRIDE_1:.*]] = select %[[EXPAND_1]], %[[C0_]], %[[C1_]] : index
-
-  // CHECK: %[[TRANSFORMED_MEMREF:.*]] = memref_reinterpret_cast %[[OPERAND]] to
-  // CHECK-SAME: offset: [0],
-  // CHECK-SAME: sizes: {{\[}}%[[RESULT_DIM_1]], %[[RESULT_DIM_2]]]
-  // CHECK-SAME: strides: {{\[}}%[[STRIDE_0]], %[[STRIDE_1]]]
-  // CHECK-SAME: : memref<?x?xf32> to memref<?x?xf32, #map>
-
-  // CHECK: "lmhlo.broadcast_in_dim"(%[[TRANSFORMED_MEMREF]], %[[RESULT]]) {
-  // CHECK-SAME:   broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>
-  // CHECK-SAME: } : (memref<?x?xf32, #[[MAP]]>, memref<?x?x?xf32>) -> ()
-
-  // Do not store the value back to avoid the tensor-store being rewritten to
-  // a copy into the pre-allocated argument.
-  return
+  %rank = rank %tensor_result : tensor<?x?x?xf32>
+  return %rank : index
 }
+// CHECK: %[[SHAPE:.*]] = tensor_from_elements
+// CHECK: %[[C0:.*]] = constant 0 : index
+// CHECK: %[[EL0:.*]] = extract_element %[[SHAPE]]{{\[}}%[[C0]]] : tensor<3xi64>
+// CHECK: %[[SIZE_0:.*]] = index_cast %[[EL0]] : i64 to index
+// CHECK: %[[C1:.*]] = constant 1 : index
+// CHECK: %[[EL1:.*]] = extract_element %[[SHAPE]]{{\[}}%[[C1]]] : tensor<3xi64>
+// CHECK: %[[SIZE_1:.*]] = index_cast %[[EL1]] : i64 to index
+// CHECK: %[[C2:.*]] = constant 2 : index
+// CHECK: %[[EL2:.*]] = extract_element %[[SHAPE]]{{\[}}%[[C2]]] : tensor<3xi64>
+// CHECK: %[[SIZE_2:.*]] = index_cast %[[EL2]] : i64 to index
+// CHECK: %[[RESULT:.*]] = alloc(%[[SIZE_0]], %[[SIZE_1]], %[[SIZE_2]]) : memref<?x?x?xf32>
+// CHECK: %[[OPER_DIM_1:.*]] = dim %[[OPERAND]], %[[C1]] : memref<?x?xf32>
+// CHECK: %[[OP_STRIDE_0:.*]] = muli %[[C1]], %[[OPER_DIM_1]] : index
+// CHECK: %[[OPER_DIM_0:.*]] = dim %[[OPERAND]], %[[C0]] : memref<?x?xf32>
+// CHECK: %[[EXPAND_1:.*]] = cmpi "slt", %[[OPER_DIM_0]], %[[SIZE_1]] : index
+// CHECK: %[[STRIDE_1:.*]] = select %[[EXPAND_1]], %[[C0]], %[[OP_STRIDE_0]] : index
+// CHECK: %[[EXPAND_2:.*]] = cmpi "slt", %[[OPER_DIM_1]], %[[SIZE_2]] : index
+// CHECK: %[[STRIDE_2:.*]] = select %[[EXPAND_2]], %[[C0]], %[[C1]] : index
+// CHECK: %[[TRANSFORMED_MEMREF:.*]] = memref_reinterpret_cast %[[OPERAND]] to offset: [0], sizes: {{\[}}%[[SIZE_0]], %[[SIZE_1]], %[[SIZE_2]]], strides: {{\[}}%[[C0]], %[[STRIDE_1]], %[[STRIDE_2]]]: memref<?x?xf32> to memref<?x?x?xf32, #map>
+// CHECK: "lmhlo.copy"(%[[TRANSFORMED_MEMREF]], %[[RESULT]]) : (memref<?x?x?xf32, #map>, memref<?x?x?xf32>) -> ()
+// CHECK: dealloc %[[RESULT]] : memref<?x?x?xf32>
 
 // -----
 
@@ -483,11 +462,9 @@ func @add_dyn(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>) {
   // CHECK: %[[DIM1:.*]] = dim %arg0, %[[C1]] : memref<?x?xf32>
   // CHECK: %[[IC1:.*]] = index_cast %[[DIM1]] : index to i64
   // CHECK: %[[SHAPE:.*]] = tensor_from_elements %[[IC0]], %[[IC1]] : tensor<2xi64>
-  // CHECK: %[[C0_:.*]] = constant 0 : index
-  // CHECK: %[[EE0:.*]] = extract_element %[[SHAPE]][%[[C0_]]] : tensor<2xi64>
+  // CHECK: %[[EE0:.*]] = extract_element %[[SHAPE]][%[[C0]]] : tensor<2xi64>
   // CHECK: %[[ICS0:.*]] = index_cast %[[EE0]] : i64 to index
-  // CHECK: %[[C1_:.*]] = constant 1 : index
-  // CHECK: %[[EE1:.*]] = extract_element %[[SHAPE]][%[[C1_]]] : tensor<2xi64>
+  // CHECK: %[[EE1:.*]] = extract_element %[[SHAPE]][%[[C1]]] : tensor<2xi64>
   // CHECK: %[[ICS1:.*]] = index_cast %[[EE1]] : i64 to index
   // CHECK: %[[RESULT:.*]] = alloc(%[[ICS0]], %[[ICS1]])
   // CHECK: "lmhlo.add"(%arg0, %arg1, %[[RESULT]]) : (memref<?x?xf32>, memref<?x?xf32>, memref<?x?xf32>) -> ()
@@ -508,11 +485,9 @@ func @tanh_dyn(%arg0: tensor<?x?xf32>) {
   // CHECK: %[[DIM1:.*]] = dim %arg0, %[[C1]] : memref<?x?xf32>
   // CHECK: %[[IC1:.*]] = index_cast %[[DIM1]] : index to i64
   // CHECK: %[[SHAPE:.*]] = tensor_from_elements %[[IC0]], %[[IC1]] : tensor<2xi64>
-  // CHECK: %[[C0_:.*]] = constant 0 : index
-  // CHECK: %[[EE0:.*]] = extract_element %[[SHAPE]][%[[C0_]]] : tensor<2xi64>
+  // CHECK: %[[EE0:.*]] = extract_element %[[SHAPE]][%[[C0]]] : tensor<2xi64>
   // CHECK: %[[ICS0:.*]] = index_cast %[[EE0]] : i64 to index
-  // CHECK: %[[C1_:.*]] = constant 1 : index
-  // CHECK: %[[EE1:.*]] = extract_element %[[SHAPE]][%[[C1_]]] : tensor<2xi64>
+  // CHECK: %[[EE1:.*]] = extract_element %[[SHAPE]][%[[C1]]] : tensor<2xi64>
   // CHECK: %[[ICS1:.*]] = index_cast %[[EE1]] : i64 to index
   // CHECK: %[[RESULT:.*]] = alloc(%[[ICS0]], %[[ICS1]])
   // CHECK: "lmhlo.tanh"(%arg0, %[[RESULT]]) : (memref<?x?xf32>, memref<?x?xf32>) -> ()
@@ -613,10 +588,26 @@ func @transpose(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
 func @custom_call(%arg0: memref<2x2xf32>, %arg1: memref<2x3xf32>, %result: memref<4x4xf16>) {
   %arg0_tensor = tensor_load %arg0 : memref<2x2xf32>
   %arg1_tensor = tensor_load %arg1 : memref<2x3xf32>
-  // CHECK: "lmhlo.custom_call"([[ARG0]], [[ARG1]], %{{.*}}) {backend_config = "", call_target_name = "foo", has_side_effect = false}
+  // CHECK: "lmhlo.custom_call"([[ARG0]], [[ARG1]], %{{.*}}) {backend_config = "", call_target_name = "foo", has_side_effect = false, operand_segment_sizes = dense<[2, 1]> : vector<2xi32>}
   %result_tensor = "mhlo.custom_call"(%arg0_tensor, %arg1_tensor)
                    {backend_config = "", call_target_name = "foo", has_side_effect = false}
                    : (tensor<2x2xf32>, tensor<2x3xf32>) -> tensor<4x4xf16>
+  tensor_store %result_tensor, %result: memref<4x4xf16>
+  return
+}
+
+// ----
+
+// CHECK-LABEL: func @custom_call_multiout
+// CHECK-SAME:([[ARG0:%.*]]: memref<2x2xf32>, [[ARG1:%.*]]: memref<2x3xf32>, [[RESULT:%.*]]: memref<4x4xf16>)
+func @custom_call_multiout(%arg0: memref<2x2xf32>, %arg1: memref<2x3xf32>, %result: memref<4x4xf16>) {
+  %arg0_tensor = tensor_load %arg0 : memref<2x2xf32>
+  %arg1_tensor = tensor_load %arg1 : memref<2x3xf32>
+  // CHECK: "lmhlo.custom_call"([[ARG0]], [[ARG1]], %{{.*}}, %{{.*}}) {backend_config = "", call_target_name = "foo", has_side_effect = false, operand_segment_sizes = dense<2> : vector<2xi32>}
+  %temp:2 = "mhlo.custom_call"(%arg0_tensor, %arg1_tensor)
+                   {backend_config = "", call_target_name = "foo", has_side_effect = false}
+                   : (tensor<2x2xf32>, tensor<2x3xf32>) -> (tensor<4x4xf16>, tensor<4x4xf16>)
+  %result_tensor = "mhlo.add"(%temp#0, %temp#1) : (tensor<4x4xf16>, tensor<4x4xf16>) -> tensor<4x4xf16>
   tensor_store %result_tensor, %result: memref<4x4xf16>
   return
 }
@@ -645,7 +636,7 @@ func @shape_assuming_memref(%arg0: tensor<?xf16>) -> tensor<?xf16> {
     %4 = tensor_cast %3 : tensor<?xindex> to tensor<1xindex>
     %5 = "mhlo.dynamic_broadcast_in_dim"(%0, %4) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<f16>, tensor<1xindex>) -> tensor<?xf16>
     %6 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %4) {broadcast_dimensions = dense<0> : tensor<1xi64>} : (tensor<?xf16>, tensor<1xindex>) -> tensor<?xf16>
-    // CHECK: "lmhlo.maximum"(%6, %9, %20) : (memref<?xf16>, memref<?xf16>, memref<?xf16>) -> ()
+    // CHECK: "lmhlo.maximum"(%{{.*}}, %{{.*}}, %{{.*}}) : (memref<?xf16>, memref<?xf16>, memref<?xf16>) -> ()
     %7 = mhlo.maximum %5, %6 : tensor<?xf16>
     // CHECK: shape.assuming_yield %{{.*}} : memref<?xf16>
     shape.assuming_yield %7 : tensor<?xf16>

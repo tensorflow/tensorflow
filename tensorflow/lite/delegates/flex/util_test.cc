@@ -115,6 +115,7 @@ TEST(UtilTest, TypeConversionsFromTFLite) {
   EXPECT_EQ(TF_INT32, GetTensorFlowDataType(kTfLiteInt32));
   EXPECT_EQ(TF_UINT8, GetTensorFlowDataType(kTfLiteUInt8));
   EXPECT_EQ(TF_INT64, GetTensorFlowDataType(kTfLiteInt64));
+  EXPECT_EQ(TF_UINT64, GetTensorFlowDataType(kTfLiteUInt64));
   EXPECT_EQ(TF_COMPLEX64, GetTensorFlowDataType(kTfLiteComplex64));
   EXPECT_EQ(TF_COMPLEX128, GetTensorFlowDataType(kTfLiteComplex128));
   EXPECT_EQ(TF_STRING, GetTensorFlowDataType(kTfLiteString));
@@ -129,6 +130,7 @@ TEST(UtilTest, TypeConversionsFromTensorFlow) {
   EXPECT_EQ(kTfLiteInt32, GetTensorFlowLiteType(TF_INT32));
   EXPECT_EQ(kTfLiteUInt8, GetTensorFlowLiteType(TF_UINT8));
   EXPECT_EQ(kTfLiteInt64, GetTensorFlowLiteType(TF_INT64));
+  EXPECT_EQ(kTfLiteUInt64, GetTensorFlowLiteType(TF_UINT64));
   EXPECT_EQ(kTfLiteComplex64, GetTensorFlowLiteType(TF_COMPLEX64));
   EXPECT_EQ(kTfLiteComplex128, GetTensorFlowLiteType(TF_COMPLEX128));
   EXPECT_EQ(kTfLiteString, GetTensorFlowLiteType(TF_STRING));

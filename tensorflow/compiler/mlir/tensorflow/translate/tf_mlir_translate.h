@@ -40,7 +40,7 @@ StatusOr<mlir::OwningModuleRef> GraphdefToMlirTranslateFunction(
     llvm::StringRef input, absl::string_view debug_info_file,
     const std::vector<std::string>& input_arrays,
     const std::vector<std::string>& input_dtypes,
-    const std::vector<std::vector<int>>& input_shapes,
+    const std::vector<llvm::Optional<std::vector<int>>>& input_shapes,
     const std::vector<std::string>& output_arrays,
     const std::vector<std::string>& control_output_arrays,
     bool prune_unused_nodes, bool convert_legacy_fed_inputs,

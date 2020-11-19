@@ -32,6 +32,7 @@ from tensorflow.python.ops import collective_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nccl_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
 
 INSTANCE_KEY_START_NUMBER = 100
@@ -256,8 +257,9 @@ class CollectiveKeys(object):
 class CollectiveReplicaLauncher(object):
   """Launch collectives on one replica."""
 
-  _use_scoped_allocator = True
-  _use_collective_v2 = False
+  _prefer_scoped_allocator = True
+  _prefer_collective_v2 = False
+  _prefer_ordering_token = False
 
   def __init__(self,
                group_key,
@@ -272,6 +274,11 @@ class CollectiveReplicaLauncher(object):
     self._collective_keys = collective_keys
     self._device = device
     self._executor = executor
+    if self._use_ordering_token():
+      with ops.init_scope(), ops.device(device):
+        self._ordering_token = resource_variable_ops.ResourceVariable(0.)
+    else:
+      self._ordering_token = None
 
   def _executor_scope(self):
     if context.executing_eagerly() and not self._executor:
@@ -281,20 +288,30 @@ class CollectiveReplicaLauncher(object):
     return ops.NullContextmanager()
 
   def _control_input(self, control_input):
-    if control_input is not None:
+    if control_input is not None and not self._use_ordering_token():
       return ops.control_dependencies([control_input])
     return ops.NullContextmanager()
 
-  def _should_use_collective_v2(self):
-    if not CollectiveReplicaLauncher._use_collective_v2:
-      return False
+  def _use_collective_v2(self):
     if not ops.executing_eagerly_outside_functions():
       return False
-    return True
+    return CollectiveReplicaLauncher._prefer_collective_v2
+
+  def _use_scoped_allocator(self):
+    if self._use_collective_v2():
+      # ScopedAllocator doesn't support collective V2.
+      return False
+    return CollectiveReplicaLauncher._prefer_scoped_allocator
+
+  def _use_ordering_token(self):
+    if not self._use_collective_v2():
+      # Only collective V2 supports ordering token.
+      return False
+    return CollectiveReplicaLauncher._prefer_ordering_token
 
   def _next_instance_key(self):
     """Returns the next instance key."""
-    if self._should_use_collective_v2():
+    if self._use_collective_v2():
       # Assigning instance keys at function building time have issues since
       # different workers may retrace the function at different times. With
       # collective V2 we can use capture_call_time_value to use a placeholder as
@@ -323,6 +340,11 @@ class CollectiveReplicaLauncher(object):
       return self._collective_keys.get_instance_key(self._group_key,
                                                     self._device)
 
+  def _get_ordering_token(self, communication_hint):
+    if self._use_ordering_token() and communication_hint == 'NCCL':
+      return self._ordering_token.handle
+    return None
+
   def all_reduce(self,
                  input_tensor,
                  control_input=None,
@@ -345,17 +367,19 @@ class CollectiveReplicaLauncher(object):
       The reduced tensor.
     """
     instance_key = self._next_instance_key()
+    ordering_token = self._get_ordering_token(communication_hint)
     with self._executor_scope(), \
          ops.device(self._device), \
          self._control_input(control_input):
-      if self._should_use_collective_v2():
+      if self._use_collective_v2():
         return collective_ops.all_reduce_v2(
             input_tensor,
             self._group_size,
             self._group_key,
             instance_key,
             communication_hint=communication_hint,
-            timeout=timeout)
+            timeout=timeout,
+            ordering_token=ordering_token)
       else:
         return collective_ops.all_reduce(
             input_tensor,
@@ -381,15 +405,17 @@ class CollectiveReplicaLauncher(object):
       The reduced tensor.
     """
     instance_key = self._next_instance_key()
+    ordering_token = self._get_ordering_token(communication_hint)
     with self._executor_scope(), ops.device(self._device):
-      if self._should_use_collective_v2():
+      if self._use_collective_v2():
         return collective_ops.all_gather_v2(
             input_tensor,
             self._group_size,
             self._group_key,
             instance_key,
             communication_hint=communication_hint,
-            timeout=timeout)
+            timeout=timeout,
+            ordering_token=ordering_token)
       else:
         return collective_ops.all_gather(
             input_tensor,
@@ -425,7 +451,7 @@ class CollectiveReplicaLauncher(object):
     # we need to avoid any numpy() calls on values produced by the async
     # executor. This effectively disables batching in eager, but it's unlikely
     # to all-reduce a large number of tensors in eager.
-    batch_with_concat = (not self._use_scoped_allocator and
+    batch_with_concat = (not self._use_scoped_allocator() and
                          not context.executing_eagerly())
     outputs = []
     for pack in input_tensor_packs:

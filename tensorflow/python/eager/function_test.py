@@ -3157,6 +3157,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
       modify_same_flat(nested_input)
 
+  @test_util.disable_tfrt('b/173429686')
   def testExecutorType(self):
     @function.defun
     def add_five(x):

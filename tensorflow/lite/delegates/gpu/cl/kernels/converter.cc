@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_errors.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type_util.h"
 #include "tensorflow/lite/delegates/gpu/common/precision.h"
@@ -41,6 +42,8 @@ class OpenClConverterImpl : public TensorObjectConverter {
                             const TensorObjectDef& output_def,
                             Environment* environment) = 0;
 
+  void SetGpuInfo(const GpuInfo& info) { gpu_info_ = info; }
+
  protected:
   absl::Status DispatchKernel(cl_mem buffer_mem, Tensor* tensor) {
     kernel_.ResetBindingCounter();
@@ -50,7 +53,10 @@ class OpenClConverterImpl : public TensorObjectConverter {
         cl_args_.Bind(kernel_.kernel(), kernel_.GetBindingCounter()));
     const int3 grid = int3(tensor->Width() * tensor->Batch(), tensor->Height(),
                            tensor->Slices());
-    const int3 work_group_size = {16, 8, 1};
+    std::vector<int3> work_groups;
+    GetPossibleWorkGroupsConv(TuningType::kFast, gpu_info_, kernel_.info_, grid,
+                              &work_groups);
+    const int3 work_group_size = work_groups[0];
     const int3 work_groups_count = GetWorkGroupsCount(grid, work_group_size);
     return queue_->Dispatch(kernel_, work_groups_count, work_group_size);
   }
@@ -59,6 +65,7 @@ class OpenClConverterImpl : public TensorObjectConverter {
   BHWC shape_;
   CLKernel kernel_;
   TensorDescriptor tensor_descriptor_;
+  GpuInfo gpu_info_;
   CLCommandQueue* queue_ = nullptr;
   const CLContext* context_ = nullptr;
 };
@@ -554,6 +561,7 @@ class OpenClTensorConverterBuilder : public TensorObjectConverterBuilder {
       return absl::UnimplementedError("Unsupported conversion");
     }
     RETURN_IF_ERROR(impl->Init(input, output, environment_));
+    impl->SetGpuInfo(environment_->GetDevicePtr()->GetInfo());
     *converter = std::move(impl);
     return absl::OkStatus();
   }

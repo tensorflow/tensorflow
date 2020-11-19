@@ -199,6 +199,7 @@ tf_cuda_library(
             "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
+            ":logging",
             ":tf_status",
             ":tf_tensor",
             "@com_google_absl//absl/strings",

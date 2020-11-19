@@ -1554,6 +1554,11 @@ def is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
   also return False. Use `tf.test.is_built_with_cuda` to validate if TensorFlow
   was build with CUDA support.
 
+  For example,
+  >>> gpu_available = tf.test.is_gpu_available()
+  >>> is_cuda_gpu_available = tf.test.is_gpu_available(cuda_only=True)
+  >>> is_cuda_gpu_min_3 = tf.test.is_gpu_available(True, (3,0))
+
   Args:
     cuda_only: limit the search to CUDA GPUs.
     min_cuda_compute_capability: a (major,minor) pair that indicates the minimum
@@ -2176,10 +2181,9 @@ class TensorFlowTestCase(googletest.TestCase):
       message: the message to validate.
       msg: Optional message to report on failure.
     """
-    msg = msg if msg else ""
     if isinstance(expected_message_maybe_ascii, type(message)):
       expected_message = expected_message_maybe_ascii
-      self._AssertProtoEquals(expected_message, message)
+      self._AssertProtoEquals(expected_message, message, msg=msg)
     elif isinstance(expected_message_maybe_ascii, (str, bytes)):
       expected_message = type(message)()
       text_format.Merge(
@@ -2188,8 +2192,8 @@ class TensorFlowTestCase(googletest.TestCase):
           descriptor_pool=descriptor_pool.Default())
       self._AssertProtoEquals(expected_message, message, msg=msg)
     else:
-      assert False, ("Can't compare protos of type %s and %s. %s" %
-                     (type(expected_message_maybe_ascii), type(message), msg))
+      assert False, ("Can't compare protos of type %s and %s." %
+                     (type(expected_message_maybe_ascii), type(message)))
 
   def assertProtoEqualsVersion(
       self,

@@ -588,9 +588,11 @@ config_setting(
 # DO NOT ADD ANY NEW EXCEPTIONS TO THIS LIST!
 # Instead, please use public APIs or public build rules TF provides.
 # If you need functionality that is not exposed, we will work with you to expand our public APIs.
+# TODO(b/173549186): Move Google-internal TF code out of learning/brain
 package_group(
     name = "internal",
     packages = [
+        "//learning/brain/mlir/...",
         "//learning/lib/ami/simple_ml/...",
         "//tensorflow/...",
     ],

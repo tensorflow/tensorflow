@@ -39,6 +39,8 @@ Status RegisterGradients(GradientRegistry* registry) {
   TF_RETURN_IF_ERROR(registry->Register("Neg", NegRegisterer));
   TF_RETURN_IF_ERROR(registry->Register("Sub", SubRegisterer));
   TF_RETURN_IF_ERROR(registry->Register("Mul", MulRegisterer));
+  TF_RETURN_IF_ERROR(registry->Register("Log1p", Log1pRegisterer));
+  TF_RETURN_IF_ERROR(registry->Register("DivNoNan", DivNoNanRegisterer));
   return Status::OK();
 }
 

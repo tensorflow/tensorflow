@@ -297,8 +297,9 @@ using ::tflite::gpu::metal::SingleOpModel;
   outputs_v0[1].data.resize(dst_shape.DimensionsProduct());
 
   std::string device_name = std::string([[device name] UTF8String]);
-  tflite::gpu::metal::DeviceInfo device_info(device_name);
-  auto tasks_v0 = ConvolutionGeneric(0, 0, 1, dst_shape, attr, device_info, options);
+  tflite::gpu::GpuInfo gpu_info;
+  tflite::gpu::GetGpuInfoFromDeviceDescription(device_name, tflite::gpu::GpuApi::kMetal, &gpu_info);
+  auto tasks_v0 = ConvolutionGeneric(0, 0, 1, dst_shape, attr, gpu_info, options);
 
   auto status = RunGraph(tasks_v0, device, inputs_v0, &outputs_v0);
   XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
@@ -313,7 +314,7 @@ using ::tflite::gpu::metal::SingleOpModel;
   wino_up_attr.padding = attr.padding;
   auto tasks_v1 = tflite::gpu::metal::Winograd4x4To36(0, 0, 2, wino_up_attr);
 
-  auto tasks_v2 = ConvolutionWino4x4To6x6(1, 2, 3, conv_shape, attr, device_info, options);
+  auto tasks_v2 = ConvolutionWino4x4To6x6(1, 2, 3, conv_shape, attr, gpu_info, options);
 
   tflite::gpu::metal::Winograd36To4x4Attributes wino_down_attr;
   wino_down_attr.output_shape = dst_shape;

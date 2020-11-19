@@ -52,6 +52,33 @@ exports_files([
     ]
 ]
 
+gentbl(
+    name = "BuiltinOpsIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-op-decls",
+            "include/mlir/IR/BuiltinOps.h.inc",
+        ),
+        (
+            "-gen-op-defs",
+            "include/mlir/IR/BuiltinOps.cpp.inc",
+        ),
+        (
+            "-gen-dialect-decls",
+            "include/mlir/IR/BuiltinDialect.h.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/IR/BuiltinOps.td",
+    td_srcs = [
+        "include/mlir/IR/BuiltinOps.td",
+        "include/mlir/Interfaces/CallInterfaces.td",
+        "include/mlir/IR/SymbolInterfaces.td",
+        ":OpBaseTdFiles",
+    ],
+)
+
 cc_library(
     name = "IR",
     srcs = glob([
@@ -67,6 +94,7 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
+        ":BuiltinOpsIncGen",
         ":CallOpInterfacesIncGen",
         ":InferTypeOpInterfaceIncGen",
         ":OpAsmInterfaceIncGen",
@@ -210,6 +238,21 @@ filegroup(
     ],
 )
 
+filegroup(
+    name = "SideEffectBaseTdFiles",
+    srcs = [
+        "include/mlir/Interfaces/SideEffectInterfaceBase.td",
+    ],
+)
+
+filegroup(
+    name = "SideEffectTdFiles",
+    srcs = [
+        "include/mlir/Interfaces/SideEffectInterfaces.td",
+        ":SideEffectBaseTdFiles",
+    ],
+)
+
 ##---------------------------------------------------------------------------##
 # Affine dialect.
 ##---------------------------------------------------------------------------##
@@ -228,8 +271,8 @@ filegroup(
         "include/mlir/Dialect/Affine/IR/AffineOps.td",
         "include/mlir/Interfaces/ControlFlowInterfaces.td",
         "include/mlir/Interfaces/LoopLikeInterface.td",
-        "include/mlir/Interfaces/SideEffectInterfaces.td",
         ":OpBaseTdFiles",
+        ":SideEffectTdFiles",
     ],
 )
 
@@ -286,8 +329,9 @@ filegroup(
     srcs = [
         "include/mlir/Dialect/Async/IR/AsyncBase.td",
         "include/mlir/Dialect/Async/IR/AsyncOps.td",
-        "include/mlir/Interfaces/SideEffectInterfaces.td",
+        "include/mlir/Interfaces/ControlFlowInterfaces.td",
         ":OpBaseTdFiles",
+        ":SideEffectTdFiles",
     ],
 )
 
@@ -315,6 +359,22 @@ gentbl(
     ],
 )
 
+gentbl(
+    name = "AsyncPassIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-pass-decls -name Async",
+            "include/mlir/Dialect/Async/Passes.h.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/Async/Passes.td",
+    td_srcs = [
+        ":PassBaseTdFiles",
+    ],
+)
+
 ##---------------------------------------------------------------------------##
 # AVX512 dialect.
 ##---------------------------------------------------------------------------##
@@ -325,7 +385,7 @@ filegroup(
         "include/mlir/Dialect/AVX512/AVX512.td",
         "include/mlir/Dialect/LLVMIR/LLVMOpBase.td",
         "include/mlir/IR/OpBase.td",
-        "include/mlir/Interfaces/SideEffectInterfaces.td",
+        ":SideEffectTdFiles",
     ],
 )
 
@@ -411,8 +471,8 @@ filegroup(
         "include/mlir/Dialect/SCF/SCFOps.td",
         "include/mlir/Interfaces/ControlFlowInterfaces.td",
         "include/mlir/Interfaces/LoopLikeInterface.td",
-        "include/mlir/Interfaces/SideEffectInterfaces.td",
         ":OpBaseTdFiles",
+        ":SideEffectTdFiles",
     ],
 )
 
@@ -484,10 +544,10 @@ filegroup(
         "include/mlir/IR/SymbolInterfaces.td",
         "include/mlir/Interfaces/CallInterfaces.td",
         "include/mlir/Interfaces/ControlFlowInterfaces.td",
-        "include/mlir/Interfaces/SideEffectInterfaces.td",
         "include/mlir/Interfaces/VectorInterfaces.td",
         "include/mlir/Interfaces/ViewLikeInterface.td",
         ":OpBaseTdFiles",
+        ":SideEffectTdFiles",
     ],
 )
 
@@ -596,6 +656,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":AsyncOpsIncGen",
+        ":ControlFlowInterfaces",
         ":Dialect",
         ":IR",
         ":SideEffectInterfaces",
@@ -611,9 +672,11 @@ cc_library(
         "lib/Dialect/Async/Transforms/*.cpp",
         "lib/Dialect/Async/Transforms/*.h",
     ]),
+    hdrs = ["include/mlir/Dialect/Async/Passes.h"],
     includes = ["include"],
     deps = [
         ":Async",
+        ":AsyncPassIncGen",
         ":IR",
         ":Pass",
         ":SCFDialect",
@@ -1334,8 +1397,8 @@ filegroup(
         "include/mlir/Dialect/GPU/GPUOps.td",
         "include/mlir/Dialect/LLVMIR/LLVMOpBase.td",
         "include/mlir/IR/SymbolInterfaces.td",
-        "include/mlir/Interfaces/SideEffectInterfaces.td",
         ":OpBaseTdFiles",
+        ":SideEffectTdFiles",
     ],
 )
 
@@ -1489,8 +1552,8 @@ filegroup(
         "include/mlir/Dialect/LLVMIR/LLVMOps.td",
         "include/mlir/IR/SymbolInterfaces.td",
         "include/mlir/Interfaces/ControlFlowInterfaces.td",
-        "include/mlir/Interfaces/SideEffectInterfaces.td",
         ":OpBaseTdFiles",
+        ":SideEffectTdFiles",
     ],
 )
 
@@ -1875,8 +1938,8 @@ filegroup(
     srcs = [
         "include/mlir/Dialect/LLVMIR/LLVMOpBase.td",
         "include/mlir/Dialect/LLVMIR/NVVMOps.td",
-        "include/mlir/Interfaces/SideEffectInterfaces.td",
         ":OpBaseTdFiles",
+        ":SideEffectTdFiles",
     ],
 )
 
@@ -1947,8 +2010,8 @@ filegroup(
     srcs = [
         "include/mlir/Dialect/LLVMIR/LLVMOpBase.td",
         "include/mlir/Dialect/LLVMIR/ROCDLOps.td",
-        "include/mlir/Interfaces/SideEffectInterfaces.td",
         ":OpBaseTdFiles",
+        ":SideEffectTdFiles",
     ],
 )
 
@@ -2018,8 +2081,8 @@ filegroup(
         "include/mlir/Dialect/PDL/IR/PDLBase.td",
         "include/mlir/Dialect/PDL/IR/PDLOps.td",
         "include/mlir/IR/SymbolInterfaces.td",
-        "include/mlir/Interfaces/SideEffectInterfaces.td",
         ":OpBaseTdFiles",
+        ":SideEffectTdFiles",
     ],
 )
 
@@ -2073,8 +2136,8 @@ filegroup(
     srcs = [
         "include/mlir/Dialect/PDL/IR/PDLBase.td",
         "include/mlir/Dialect/PDLInterp/IR/PDLInterpOps.td",
-        "include/mlir/Interfaces/SideEffectInterfaces.td",
         ":OpBaseTdFiles",
+        ":SideEffectTdFiles",
     ],
 )
 
@@ -2109,7 +2172,7 @@ filegroup(
         "include/mlir/IR/SymbolInterfaces.td",
         "include/mlir/Interfaces/CallInterfaces.td",
         "include/mlir/Interfaces/ControlFlowInterfaces.td",
-        "include/mlir/Interfaces/SideEffectInterfaces.td",
+        ":SideEffectTdFiles",
         ":OpBaseTdFiles",
     ] + glob(["include/mlir/Dialect/SPIRV/*.td"]),
 )
@@ -2920,6 +2983,7 @@ gentbl(
     td_file = "include/mlir/Interfaces/SideEffectInterfaces.td",
     td_srcs = [
         ":OpBaseTdFiles",
+        ":SideEffectBaseTdFiles",
     ],
 )
 
@@ -3244,6 +3308,7 @@ cc_library(
         ":AffineToStandard",
         ":AffineTransforms",
         ":Async",
+        ":AsyncPassIncGen",
         ":AsyncToLLVM",
         ":AsyncTransforms",
         ":ConversionPasses",
@@ -3295,6 +3360,7 @@ cc_library(
         ":StandardOpsTransformsPassIncGen",
         ":StandardToLLVM",
         ":StandardToSPIRVTransforms",
+        ":TosaDialect",
         ":Transforms",
         ":TransformsPassIncGen",
         ":VectorOps",
@@ -3337,6 +3403,7 @@ cc_binary(
         "@llvm-project//mlir/test:TestPass",
         "@llvm-project//mlir/test:TestReducer",
         "@llvm-project//mlir/test:TestSPIRV",
+        "@llvm-project//mlir/test:TestTosaDialect",
         "@llvm-project//mlir/test:TestTransforms",
         "@llvm-project//mlir/test:TestTypeDialect",
     ],
@@ -3676,7 +3743,7 @@ gentbl(
             "include/mlir/Dialect/OpenMP/OpenMPOpsEnums.cpp.inc",
         ),
         (
-            "-gen-dialect-decls",
+            "-gen-dialect-decls -dialect=omp",
             "include/mlir/Dialect/OpenMP/OpenMPOpsDialect.h.inc",
         ),
         (
@@ -3689,7 +3756,10 @@ gentbl(
     td_srcs = [
         ":OpBaseTdFiles",
         ":OmpCommonTdGen",
+        ":SideEffectTdFiles",
+        "include/mlir/Dialect/LLVMIR/LLVMOpBase.td",
         "include/mlir/Dialect/OpenMP/OmpCommon.td",
+        "include/mlir/Interfaces/ControlFlowInterfaces.td",
     ],
 )
 
@@ -3706,8 +3776,11 @@ cc_library(
     ]),
     includes = ["include"],
     deps = [
+        ":ControlFlowInterfaces",
         ":IR",
+        ":LLVMDialect",
         ":OpenMPOpsIncGen",
+        ":SideEffectInterfaces",
         ":StandardOps",
         "@llvm-project//llvm:Support",
     ],
@@ -3743,8 +3816,8 @@ filegroup(
     srcs = [
         "include/mlir/Dialect/Quant/QuantOps.td",
         "include/mlir/Dialect/Quant/QuantOpsBase.td",
-        "include/mlir/Interfaces/SideEffectInterfaces.td",
         ":OpBaseTdFiles",
+        ":SideEffectTdFiles",
     ],
 )
 
@@ -4234,6 +4307,112 @@ cc_library(
     ],
 )
 
+gentbl(
+    name = "TosaDialectIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-op-decls",
+            "include/mlir/Dialect/Tosa/IR/TosaOps.h.inc",
+        ),
+        (
+            "-gen-op-defs",
+            "include/mlir/Dialect/Tosa/IR/TosaOps.cpp.inc",
+        ),
+        (
+            "-gen-struct-attr-decls",
+            "include/mlir/Dialect/Tosa/IR/TosaStructs.h.inc",
+        ),
+        (
+            "-gen-struct-attr-defs",
+            "include/mlir/Dialect/Tosa/IR/TosaStructs.cpp.inc",
+        ),
+        (
+            "-gen-dialect-decls",
+            "include/mlir/Dialect/Tosa/IR/TosaOpsDialect.h.inc",
+        ),
+        (
+            "-gen-op-doc",
+            "g3doc/Dialects/Tosa/TosaOps.md",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/Tosa/IR/TosaOps.td",
+    td_srcs = [
+        ":OpBaseTdFiles",
+        "include/mlir/Dialect/Tosa/IR/TosaOpBase.td",
+        "include/mlir/Dialect/Tosa/IR/TosaInterfaces.td",
+        "include/mlir/Dialect/Tosa/IR/TosaTypesBase.td",
+        ":SideEffectTdFiles",
+        "include/mlir/Interfaces/LoopLikeInterface.td",
+    ],
+)
+
+gentbl(
+    name = "TosaInterfacesIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-op-interface-decls",
+            "include/mlir/Dialect/Tosa/IR/TosaInterfaces.h.inc",
+        ),
+        (
+            "-gen-op-interface-defs",
+            "include/mlir/Dialect/Tosa/IR/TosaInterfaces.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/Tosa/IR/TosaInterfaces.td",
+    td_srcs = [
+        ":OpBaseTdFiles",
+    ],
+)
+
+gentbl(
+    name = "TosaPassIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-pass-decls -name TosaOpt",
+            "include/mlir/Dialect/Tosa/Transforms/Passes.h.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/Tosa/Transforms/Passes.td",
+    td_srcs = [
+        ":PassBaseTdFiles",
+    ],
+)
+
+cc_library(
+    name = "TosaDialect",
+    srcs = glob([
+        "lib/Dialect/Tosa/IR/*.cpp",
+        "lib/Dialect/Tosa/IR/*.h",
+        "lib/Dialect/Tosa/Utils/*.cpp",
+        "lib/Dialect/Tosa/Transforms/*.cpp",
+    ]),
+    hdrs = glob([
+        "include/mlir/Dialect/Tosa/IR/*.h",
+        "include/mlir/Dialect/Tosa/Utils/*.h",
+        "include/mlir/Dialect/Tosa/Transforms/*.h",
+    ]),
+    includes = ["include"],
+    deps = [
+        ":Dialect",
+        ":IR",
+        ":LoopLikeInterface",
+        ":Pass",
+        ":QuantOps",
+        ":SideEffectInterfaces",
+        ":StandardOps",
+        ":TosaDialectIncGen",
+        ":TosaInterfacesIncGen",
+        ":TosaPassIncGen",
+        ":TransformUtils",
+    ],
+)
+
 # To reference all tablegen files here when checking for updates to them.
 filegroup(
     name = "TdFiles",
@@ -4247,6 +4426,7 @@ exports_files(
         "include/mlir/Interfaces/ControlFlowInterfaces.h",
         "include/mlir/Interfaces/ControlFlowInterfaces.td",
         "include/mlir/Interfaces/CopyOpInterface.td",
+        "include/mlir/Interfaces/SideEffectInterfaceBase.td",
         "include/mlir/Interfaces/SideEffectInterfaces.td",
         "include/mlir/Interfaces/VectorInterfaces.td",
         "include/mlir/Interfaces/ViewLikeInterface.td",
@@ -4261,6 +4441,7 @@ exports_files(
         "include/mlir/Transforms/InliningUtils.h",
         "include/mlir/Interfaces/InferTypeOpInterface.td",
         "include/mlir/Interfaces/LoopLikeInterface.td",
+        "lib/Bindings/Python/Attributes.td",
     ],
     visibility = [":friends"],
 )

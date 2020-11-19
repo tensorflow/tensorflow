@@ -36,7 +36,7 @@ int GetAdrenoOptimalMaxConstantSize(const AdrenoInfo& adreno_info) {
   }
 }
 
-int GetOptimalMaxConstantSize(const DeviceInfo& info) {
+int GetOptimalMaxConstantSize(const GpuInfo& info) {
   if (!info.IsAdreno()) {
     // In general we do not expect that this kernel will be used with non Adreno
     // so as it tuned for __constant memory that have big profit on Adreno
@@ -237,13 +237,12 @@ bool IsDotConvBetter(int src_channels, int dst_channels) {
 
 }  // namespace
 
-bool IsConvConstantsSupported(const DeviceInfo& device_info,
+bool IsConvConstantsSupported(const GpuInfo& gpu_info,
                               const OperationDef& definition,
                               const Convolution2DAttributes& attr) {
-  if (device_info.IsAMD() &&
-      definition.precision != CalculationsPrecision::F32 &&
+  if (gpu_info.IsAMD() && definition.precision != CalculationsPrecision::F32 &&
       definition.src_tensors[0].storage_type != TensorStorageType::BUFFER) {
-    // BUG, some AMD gpus crashe without it
+    // BUG, some AMD GPUs crash without it
     return false;
   }
 
@@ -259,12 +258,12 @@ bool IsConvConstantsSupported(const DeviceInfo& device_info,
                              ? sizeof(float)
                              : sizeof(half);
   const int filters_buffer_size = filters_count * float_size;
-  const int kConstantMaxSize = GetOptimalMaxConstantSize(device_info);
+  const int kConstantMaxSize = GetOptimalMaxConstantSize(gpu_info);
   const int flt4_registers = DivideRoundUp(w_shape.o, 4);
   return filters_buffer_size <= kConstantMaxSize && flt4_registers <= 8;
 }
 
-GPUOperation CreateConvConstants(const DeviceInfo& device_info,
+GPUOperation CreateConvConstants(const GpuInfo& gpu_info,
                                  const OperationDef& definition,
                                  const Convolution2DAttributes& attr) {
   const bool use_dot_conv =
@@ -286,13 +285,13 @@ GPUOperation CreateConvConstants(const DeviceInfo& device_info,
   op.code_ = GenerateConvolutionConstantCode(
       definition, attr.weights.shape, stride_correction, use_dot_conv, &op);
   if (definition.precision == CalculationsPrecision::F16 &&
-      device_info.IsAdreno() && device_info.adreno_info.IsAdreno3xx()) {
-    op.compiler_options_.push_back(CompilerOptions::ADRENO_FULL_SIMD_LINE);
+      gpu_info.IsAdreno() && gpu_info.adreno_info.IsAdreno3xx()) {
+    op.compiler_options_.push_back(CompilerOptions::kAdrenoFullSimd);
   }
   if (definition.precision != CalculationsPrecision::F32 &&
-      device_info.IsPowerVR()) {
+      gpu_info.IsPowerVR()) {
     // BUG, some PowerVRs (GE8320) produce incorrect result without it
-    op.compiler_options_.push_back(CompilerOptions::CL_OPT_DISABLE);
+    op.compiler_options_.push_back(CompilerOptions::kClDisableOptimizations);
   }
 
   TensorLinearDescriptor desc;

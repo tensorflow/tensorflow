@@ -2429,6 +2429,24 @@ static LogicalResult Verify(MatrixBandPartOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// MatrixSetDiagOp
+//===----------------------------------------------------------------------===//
+//
+void MatrixSetDiagOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<MatrixSetDiagToV3>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// MatrixSetDiagV2Op
+//===----------------------------------------------------------------------===//
+
+void MatrixSetDiagV2Op::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<MatrixSetDiagV2ToV3>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // MaxOp
 //===----------------------------------------------------------------------===//
 

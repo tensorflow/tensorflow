@@ -133,8 +133,6 @@ cc_library(
     ],
     hdrs = ["acceleration_test_util.h"],
     deps = [
-        ":acceleration_test_util_internal",
-        "//tensorflow/lite:minimal_logging",
         "@com_google_absl//absl/types:optional",
         "@com_google_googletest//:gtest",
     ],
@@ -152,7 +150,6 @@ cc_library(
         "//conditions:default": ["-lm"],
     }),
     deps = [
-        "//tensorflow/lite:minimal_logging",
         "@com_google_absl//absl/types:optional",
         "@com_googlesource_code_re2//:re2",
     ],
@@ -193,9 +190,7 @@ cc_library(
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
-        "//tensorflow/lite/tools:command_line_flags",
         "//tensorflow/lite/tools:logging",
-        "//tensorflow/lite/tools:tool_params",
         "//tensorflow/lite/tools/optimize:quantization_utils",
         "//tensorflow/lite/tools/optimize/sparsity:format_converter",
         "//tensorflow/lite/tools/versioning",
@@ -271,7 +266,6 @@ cc_library(
         "//tensorflow/lite:arena_planner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:optimized_eigen",
-        "//third_party/eigen3",
     ],
 )
 
@@ -287,7 +281,6 @@ cc_test(
         ":eigen_support",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:optimized_eigen",
-        "//third_party/eigen3",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -373,7 +366,6 @@ cc_library(
         ":cpu_backend_context",
         ":tflite_with_ruy",
         "//tensorflow/lite/kernels/internal:compatibility",
-        "//tensorflow/lite/kernels/internal:types",
         # For now this unconditionally depends on both ruy and gemmlowp.
         # We only need to depend on gemmlowp when tflite_with_ruy
         # is false, but putting these dependencies in a select() seems to
@@ -472,7 +464,6 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:cppmath",
         "//tensorflow/lite/kernels/internal:quantization_util",
-        "@flatbuffers//:runtime_cc",
     ],
 )
 
@@ -693,7 +684,6 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         ":kernel_util",
-        ":op_macros",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/resource",
@@ -729,12 +719,10 @@ cc_library(
     deps = [
         ":kernel_util",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels/internal:optimized_base",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal:types",
         "//third_party/fft2d:fft2d_headers",
         "@fft2d",
-        "@flatbuffers",
         "@ruy//ruy/profiler:instrumentation",
     ],
 )
@@ -749,10 +737,8 @@ cc_library(
         ":cpu_backend_context",
         ":op_macros",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels/internal:common",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:kernel_utils",
-        "//tensorflow/lite/kernels/internal:quantization_util",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal:tensor_utils",
         "@ruy//ruy/profiler:instrumentation",
@@ -2254,13 +2240,10 @@ cc_library(
     deps = [
         ":builtin_ops",
         ":kernel_util",
-        ":test_util",
         ":variable_op_kernels",
-        "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:common",
         "@com_google_googletest//:gtest",
-        "@flatbuffers",
     ],
 )
 
@@ -2366,7 +2349,6 @@ cc_test(
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
-        "@flatbuffers",
     ],
 )
 

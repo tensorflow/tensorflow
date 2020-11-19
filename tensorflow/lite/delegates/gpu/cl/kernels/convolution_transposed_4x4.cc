@@ -26,16 +26,16 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 ConvolutionTransposed4x4::ConvolutionTransposed4x4(
-    const OperationDef& definition, const DeviceInfo& device_info,
+    const OperationDef& definition, const GpuInfo& gpu_info,
     const ConvolutionTransposedAttributes& attr)
     : GPUOperation(definition) {
   work_group_size_ = int3(8, 4, 1);
   WeightsUploadType weights_upload_type = WeightsUploadType::GLOBAL_MEM;
-  if (device_info.IsPowerVR()) {
+  if (gpu_info.IsPowerVR()) {
     weights_upload_type = WeightsUploadType::LOCAL_MEM_ASYNC;
-  } else if (device_info.IsNvidia() || device_info.IsIntel()) {
+  } else if (gpu_info.IsNvidia() || gpu_info.IsIntel()) {
     weights_upload_type = WeightsUploadType::LOCAL_MEM_BY_THREADS;
-  } else if (device_info.IsAMD()) {
+  } else if (gpu_info.IsAMD()) {
     weights_upload_type = WeightsUploadType::CONSTANT_MEM;
   } else {
     weights_upload_type = WeightsUploadType::GLOBAL_MEM;
@@ -44,8 +44,8 @@ ConvolutionTransposed4x4::ConvolutionTransposed4x4(
   code_ = GenerateConvolutionTransposedCode(definition_, weights_upload_type);
   UploadWeights(attr.weights, weights_upload_type);
   if (definition_.precision == CalculationsPrecision::F16 &&
-      device_info.IsPowerVR()) {
-    compiler_options_.push_back(CompilerOptions::POWERVR_FP16);
+      gpu_info.IsPowerVR()) {
+    compiler_options_.push_back(CompilerOptions::kClPowervrFp16);
   }
 }
 
@@ -332,9 +332,9 @@ bool IsConvolutionTransposed4x4Supported(
 }
 
 ConvolutionTransposed4x4 CreateConvolutionTransposed4x4(
-    const DeviceInfo& device_info, const OperationDef& definition,
+    const GpuInfo& gpu_info, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr) {
-  ConvolutionTransposed4x4 result(definition, device_info, attr);
+  ConvolutionTransposed4x4 result(definition, gpu_info, attr);
 
   TensorLinearDescriptor desc;
   desc.storage_type = LinearStorageType::TEXTURE_2D;

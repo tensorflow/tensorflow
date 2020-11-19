@@ -21,12 +21,15 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_context.h"
+#include "tensorflow/c/eager/immediate_execution_distributed_manager.h"
 #include "tensorflow/c/eager/immediate_execution_operation.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/c/tensor_interface.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/numeric_types.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/protobuf/config.pb.h"
@@ -138,8 +141,8 @@ class ImmediateExecutionContext : public AbstractContext {
   }
 
   //===--------------------------------------------------------------------===//
-  // Following are legacy features in TF Eager Runtime.
-  // TODO(tf-runtime): Figure out a way to deprecate following features after
+  // Following are features in current TF Eager Runtime.
+  // TODO(tfrt-devs): Figure out a way to deprecate following features after
   // migrated to TFRT.
   //===--------------------------------------------------------------------===//
   // Clear pending nodes in thread executors and kernel caches.
@@ -156,6 +159,34 @@ class ImmediateExecutionContext : public AbstractContext {
   virtual EagerExecutor& Executor() = 0;
   // Update the Eager Executor for current thread.
   virtual void SetExecutorForThread(EagerExecutor* executor) = 0;
+
+  //===--------------------------------------------------------------------===//
+  // Following are helper functions to assist integrating TFRT with current
+  // TF eager runtime.
+  // TODO(b/172877902): These helper functions are currently used to support
+  // PyFuncOp on TFRT, and might be useful for ops that directly use low
+  // level TF APIs. Remove/replace the following functions when TFRT native
+  // ops are implemented.
+  //===--------------------------------------------------------------------===//
+  // Create an abstract tensor handle from tensorflow::Tensor.
+  virtual ImmediateExecutionTensorHandle* CreateLocalHandleFromTFTensor(
+      tensorflow::Tensor& t, const char* d_name) = 0;
+
+  // Convert a TFRT TensorHandle to tensorflow::TensorHandle.
+  virtual ImmediateExecutionTensorHandle* TFTensorHandleFromInterface(
+      ImmediateExecutionTensorHandle* handle) = 0;
+
+  //===--------------------------------------------------------------------===//
+  // Distributed runtime related functions.
+  //===--------------------------------------------------------------------===//
+#if !defined(IS_MOBILE_PLATFORM)
+  // Set a distributed manager that helps set up, update, and check liveness
+  // of member tasks in the cluster.
+  virtual void SetDistributedManager(
+      std::unique_ptr<ImmediateExecutionDistributedManager> distributed) = 0;
+
+  virtual ImmediateExecutionDistributedManager* GetDistributedManager() = 0;
+#endif  // !IS_MOBILE_PLATFORM
 
  protected:
   explicit ImmediateExecutionContext(AbstractContextKind kind)

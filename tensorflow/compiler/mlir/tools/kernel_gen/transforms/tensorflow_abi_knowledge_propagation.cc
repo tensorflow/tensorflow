@@ -37,10 +37,6 @@ namespace {
 #define GEN_PASS_CLASSES
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
-// TODO(herhut): Move upstream to MLIR.
-static constexpr StringRef kLLVMAlignAttrName = "llvm.align";
-static constexpr StringRef kLLVMNoAliasAttrName = "llvm.noalias";
-
 struct PropagateTfAbiKnowledgeToKernelsPass
     : public PropagateTfAbiKnowledgeToKernelsBase<
           PropagateTfAbiKnowledgeToKernelsPass> {
@@ -85,6 +81,8 @@ struct PropagateTfAbiKnowledgeToKernelsPass
       int kernel_p = 0;
       OpBuilder b = OpBuilder::atBlockBegin(&kernel.body().front());
       Value zero;
+      Value one;
+      auto loc = kernel.getLoc();
       for (auto operand : launch.operands()) {
         auto memref = operand.getType().dyn_cast<MemRefType>();
         if (!memref) {
@@ -94,19 +92,27 @@ struct PropagateTfAbiKnowledgeToKernelsPass
         }
         if (allocated_by_runtime.contains(operand)) {
           // This was allocated by the tf runtime, so it is aligned, has no
-          // offset and the two pointers in the descriptor coincide. Rewrite
-          // the kernel accordingly.
+          // offset, an inner stride of 1 and the two pointers in the descriptor
+          // coincide. Rewrite the kernel accordingly.
           Value alloc_ptr = kernel.getArgument(kernel_p);
           Value align_ptr = kernel.getArgument(kernel_p + 1);
           alloc_ptr.replaceAllUsesWith(align_ptr);
           Value offset = kernel.getArgument(kernel_p + 2);
           if (!zero) {
-            zero = b.create<LLVM::ConstantOp>(kernel.getLoc(), offset.getType(),
+            zero = b.create<LLVM::ConstantOp>(loc, offset.getType(),
                                               b.getIndexAttr(0));
           }
           offset.replaceAllUsesWith(zero);
+          // The stride is the last argument belonging to this memref.
+          Value inner_stride =
+              kernel.getArgument(kernel_p + 2 + memref.getRank() * 2);
+          if (!one) {
+            one = b.create<LLVM::ConstantOp>(loc, offset.getType(),
+                                             b.getIndexAttr(1));
+          }
+          inner_stride.replaceAllUsesWith(one);
           kernel.setArgAttr(
-              kernel_p + 1, kLLVMAlignAttrName,
+              kernel_p + 1, LLVM::LLVMDialect::getAlignAttrName(),
               b.getIndexAttr(
                   tf_framework::TFFrameworkDialect::kAllocationAlignment));
         }
@@ -116,7 +122,8 @@ struct PropagateTfAbiKnowledgeToKernelsPass
           //     but we could use the alias analysis from buffer placement here
           //     to make sure.
           // Add the no_alias attribute to the correspondign pointer.
-          kernel.setArgAttr(kernel_p + 1, kLLVMNoAliasAttrName,
+          kernel.setArgAttr(kernel_p + 1,
+                            LLVM::LLVMDialect::getNoAliasAttrName(),
                             b.getBoolAttr(true));
         }
         // Advance base, aligned, offset, strides and sizes many arguments.
@@ -134,7 +141,7 @@ struct PropagateTfAbiKnowledgeToKernelsPass
       Value candidate = worklist.pop_back_val();
       for (auto user : candidate.getUsers()) {
         if (auto reshape = dyn_cast<MemRefReshapeOp>(user)) {
-          // Reshape propagates alignment and offset.
+          // Reshape propagates alignment, offset and innermost stride.
           // TODO(herhut): This should be a trait.
           if (allocated_by_runtime.insert(reshape.result()).second) {
             worklist.push_back(reshape.result());

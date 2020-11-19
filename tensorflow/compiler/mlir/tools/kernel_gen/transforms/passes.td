@@ -38,9 +38,16 @@ def ShapeToDescriptorsPass : Pass<"shape-to-descriptors", "ModuleOp"> {
   let constructor = "transforms::CreateShapeToDescriptorsPass()";
 }
 
-def BufferizePass : Pass<"bufferize", "ModuleOp"> {
-  let summary = "Pass to transform operations on values to buffer based ones";
-  let constructor = "transforms::CreateBufferizePass()";
+def HloBufferizePass : Pass<"hlo-bufferize", "ModuleOp"> {
+  let summary = "Pass to transform hlo operations on values to buffer based "
+                "ones.";
+  let constructor = "transforms::CreateHloBufferizePass()";
+}
+
+def FinalBufferizePass : Pass<"final-bufferize", "ModuleOp"> {
+  let summary = "Pass to transform operations from all non-hlo dialects on "
+                "values to buffer-based ones.";
+  let constructor = "transforms::CreateFinalBufferizePass()";
 }
 
 def MaterializeBroadcastsPass : FunctionPass<"materialize-broadcast"> {
@@ -69,16 +76,6 @@ def GpuKernelToBlobPass : Pass<"gpu-kernel-to-blob", "gpu::GPUModuleOp"> {
 def ParallelLoopsToSequential : FunctionPass<"parallel-loops-to-sequential"> {
   let summary = "Pass to convert scf::ParallelOp to scf::ForOp";
   let constructor = "transforms::CreateParallelLoopsToSequential()";
-}
-
-def PropagateTensorFlowABIKnowledgePass
-    : Pass<"propagate-tf-abi-knowledge", "LLVM::LLVMFuncOp"> {
-  let summary = "Pass to propagate TF ABI knowledge, e.g. offsets, alignment";
-  let options = [
-    ListOption<"same_shape_", "same-shape", "uint32_t",
-               "List of same shape args">,
-  ];
-  let constructor = "transforms::CreatePropagateTensorFlowABIKnowledgePass()";
 }
 
 def PropagateTfAbiKnowledgeToKernels

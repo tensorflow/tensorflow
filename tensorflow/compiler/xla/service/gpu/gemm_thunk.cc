@@ -206,10 +206,6 @@ Status RunGemm(const GpuGemmConfig &gemm_config,
     CHECK_LT(shape->layout().minor_to_major(col_dim), 2);
   }
 
-  // BLAS gemm reduces rows of LHS and columns of RHS. The Dot operator between
-  // matrices reduces dimension 1 of LHS and dimension 0 of RHS regardless of
-  // their layout. Therefore, we should treat dimension 0 as row and dimension 1
-  // as column when mapping a matrix Dot to BLAS gemm.
   int64 output_num_rows = output_shape.dimensions(row_dim);
   int64 output_num_cols = output_shape.dimensions(col_dim);
 

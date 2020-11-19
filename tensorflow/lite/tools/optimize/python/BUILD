@@ -26,7 +26,6 @@ py_library(
     deps = [
         ":_pywrap_modify_model_interface",
         ":modify_model_interface_constants",
-        "//tensorflow:tensorflow_py",
         "//tensorflow/lite/python:schema_py",
     ],
 )

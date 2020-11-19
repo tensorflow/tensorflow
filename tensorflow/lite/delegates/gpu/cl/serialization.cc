@@ -220,17 +220,17 @@ data::TensorToGrid ToFB(TensorToGrid type) {
 
 data::CompilerOptions ToFB(CompilerOptions type) {
   switch (type) {
-    case CompilerOptions::ADRENO_FULL_SIMD_LINE:
+    case CompilerOptions::kAdrenoFullSimd:
       return data::CompilerOptions::ADRENO_FULL_SIMD_LINE;
-    case CompilerOptions::ADRENO_MORE_WAVES:
+    case CompilerOptions::kAdrenoMoreWaves:
       return data::CompilerOptions::ADRENO_MORE_WAVES;
-    case CompilerOptions::POWERVR_FP16:
+    case CompilerOptions::kClPowervrFp16:
       return data::CompilerOptions::POWERVR_FP16;
-    case CompilerOptions::CL_OPT_DISABLE:
+    case CompilerOptions::kClDisableOptimizations:
       return data::CompilerOptions::CL_OPT_DISABLE;
-    case CompilerOptions::CL_2_0:
+    case CompilerOptions::kCl20:
       return data::CompilerOptions::CL_2_0;
-    case CompilerOptions::CL_3_0:
+    case CompilerOptions::kCl30:
       return data::CompilerOptions::CL_3_0;
   }
 }
@@ -264,17 +264,17 @@ TensorToGrid ToEnum(data::TensorToGrid type) {
 CompilerOptions ToEnum(data::CompilerOptions type) {
   switch (type) {
     case data::CompilerOptions::ADRENO_FULL_SIMD_LINE:
-      return CompilerOptions::ADRENO_FULL_SIMD_LINE;
+      return CompilerOptions::kAdrenoFullSimd;
     case data::CompilerOptions::ADRENO_MORE_WAVES:
-      return CompilerOptions::ADRENO_MORE_WAVES;
+      return CompilerOptions::kAdrenoMoreWaves;
     case data::CompilerOptions::POWERVR_FP16:
-      return CompilerOptions::POWERVR_FP16;
+      return CompilerOptions::kClPowervrFp16;
     case data::CompilerOptions::CL_OPT_DISABLE:
-      return CompilerOptions::CL_OPT_DISABLE;
+      return CompilerOptions::kClDisableOptimizations;
     case data::CompilerOptions::CL_2_0:
-      return CompilerOptions::CL_2_0;
+      return CompilerOptions::kCl20;
     case data::CompilerOptions::CL_3_0:
-      return CompilerOptions::CL_3_0;
+      return CompilerOptions::kCl30;
   }
 }
 
@@ -883,7 +883,7 @@ flatbuffers::Offset<data::GPUOperation> Encode(
 
 flatbuffers::Offset<data::CLNode> Encode(
     const CLNode& node, flatbuffers::FlatBufferBuilder* builder) {
-  auto op_fb = Encode(*node.operation, builder);
+  auto op_fb = Encode(node.cl_operation.GetGpuOperation(), builder);
   std::vector<int32_t> in_ids(node.inputs.size());
   for (int i = 0; i < in_ids.size(); ++i) {
     in_ids[i] = node.inputs[i];
@@ -906,7 +906,7 @@ flatbuffers::Offset<data::CLNode> Encode(
 absl::Status Decode(const data::CLNode* fb_node, CLNode* node) {
   GPUOperation op;
   RETURN_IF_ERROR(Decode(fb_node->gpu_op(), &op));
-  node->operation = absl::make_unique<GPUOperation>(std::move(op));
+  node->cl_operation.Init(absl::make_unique<GPUOperation>(std::move(op)));
   for (auto in_fb : *fb_node->input_ids()) {
     node->inputs.push_back(in_fb);
   }
@@ -944,11 +944,18 @@ flatbuffers::Offset<data::InferenceContext> Encode(
 
   std::vector<flatbuffers::Offset<data::TensorDescWithId>> tensors_fb;
   auto tensors = inference.tensor_reserver_.GetTensorDescs();
-  for (auto& tensor : tensors) {
+  for (const auto& tensor : tensors) {
     auto tensor_fb = Encode(tensor.second, tensor.first, builder);
     tensors_fb.push_back(tensor_fb);
   }
   auto tensors_fb_vec = builder->CreateVector(tensors_fb);
+
+  std::vector<flatbuffers::Offset<data::TensorDescWithId>> const_tensors_fb;
+  for (const auto& tensor : inference.const_tensors_descs_) {
+    auto tensor_fb = Encode(tensor.second, tensor.first, builder);
+    const_tensors_fb.push_back(tensor_fb);
+  }
+  auto const_tensors_fb_vec = builder->CreateVector(const_tensors_fb);
 
   std::vector<flatbuffers::Offset<data::PairOfValueIds>>
       variable_ids_and_refs_fb;
@@ -970,6 +977,7 @@ flatbuffers::Offset<data::InferenceContext> Encode(
   inf_builder.add_storage_type(tflite::gpu::ToFB(inference.storage_type_));
   inf_builder.add_nodes(nodes_fb_vec);
   inf_builder.add_tensors(tensors_fb_vec);
+  inf_builder.add_const_tensors(const_tensors_fb_vec);
   inf_builder.add_input_ids(in_ids_fb);
   inf_builder.add_output_ids(out_ids_fb);
   inf_builder.add_variable_ids_and_refs(variable_ids_and_refs_fb_vec);
@@ -995,12 +1003,17 @@ absl::Status Decode(const data::InferenceContext* fb_inference,
   }
 
   std::vector<std::pair<ValueId, TensorDescriptor>> tensors;
-  for (auto tensor_fb : *fb_inference->tensors()) {
+  for (const auto& tensor_fb : *fb_inference->tensors()) {
     TensorDescriptor desc;
     Decode(tensor_fb->desc(), &desc);
     tensors.push_back({tensor_fb->id(), std::move(desc)});
   }
   inference->tensor_reserver_.Add(tensors);
+  for (const auto& tensor_fb : *fb_inference->const_tensors()) {
+    TensorDescriptor desc;
+    Decode(tensor_fb->desc(), &desc);
+    inference->const_tensors_descs_[tensor_fb->id()] = std::move(desc);
+  }
   for (auto in_fb : *fb_inference->input_ids()) {
     inference->input_ids_.push_back(in_fb);
   }

@@ -173,6 +173,7 @@ PYBIND11_MODULE(tpu_client_extension, m) {
              return LiteralToPython(std::move(literal));
            })
       .def("shape", &PyTpuBuffer::on_host_shape)
+      .def("xla_shape", &PyTpuBuffer::on_host_shape)
       .def("device", &PyTpuBuffer::device)
       .def("platform", &PyTpuBuffer::platform_name)
       .def("is_deleted",

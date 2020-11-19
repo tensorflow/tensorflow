@@ -106,6 +106,7 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nccl_ops",
         "//tensorflow/python:platform",
+        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
     ],
@@ -1070,6 +1071,7 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
+        "notsan",  # b/173031470
     ],
     deps = [
         ":collective_util",
@@ -1079,6 +1081,7 @@ cuda_py_test(
         ":multi_process_runner",
         ":multi_worker_test_base",
         ":reduce_util",
+        ":test_util",
         ":values",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:collective_ops",
@@ -1665,6 +1668,7 @@ py_library(
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/eager:test",
+        "@absl_py//absl/logging",
     ],
 )
 

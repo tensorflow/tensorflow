@@ -19,23 +19,18 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/lite/delegates/gpu/cl/buffer.h"
-#include "tensorflow/lite/delegates/gpu/cl/cl_arguments.h"
-#include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"
-#include "tensorflow/lite/delegates/gpu/cl/cl_context.h"
-#include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
-#include "tensorflow/lite/delegates/gpu/cl/cl_kernel.h"
-#include "tensorflow/lite/delegates/gpu/cl/cl_program.h"
 #include "tensorflow/lite/delegates/gpu/cl/device_info.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/tuning_parameters.h"
-#include "tensorflow/lite/delegates/gpu/cl/program_cache.h"
 #include "tensorflow/lite/delegates/gpu/cl/serialization_generated.h"
-#include "tensorflow/lite/delegates/gpu/cl/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/kernel_info.h"
 #include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/arguments.h"
+#include "tensorflow/lite/delegates/gpu/common/task/buffer_desc.h"
+#include "tensorflow/lite/delegates/gpu/common/task/compiler_options.h"
+#include "tensorflow/lite/delegates/gpu/common/task/gpu_tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
+#include "tensorflow/lite/delegates/gpu/common/task/tuning_type.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 
 namespace tflite {
@@ -66,15 +61,6 @@ enum class TensorToGrid {
   kWBToX_HDToY_ZIs1,
   kWBToX_HToY_DToZ,
   kBToX_YIs1_ZIs1
-};
-
-struct CreationContext {
-  const CLDevice* device;
-  CLContext* context;
-  CLCommandQueue* queue;
-  ProgramCache* cache;
-
-  const DeviceInfo& GetDeviceInfo() const { return device->info_; }
 };
 
 struct OperationDef {
@@ -114,30 +100,16 @@ class GPUOperation {
 
   absl::Status AddOperation(GPUOperation* operation);
 
-  void SetSrc(Tensor* ptr, int index = 0);
-  void SetDst(Tensor* ptr, int index = 0);
-
-  // should be called after changes of inputs/outputs.
-  absl::Status UpdateParams();
-
-  absl::Status AddToQueue(CLCommandQueue* queue) {
-    RETURN_IF_ERROR(cl_args_.Bind(kernel_.kernel()));
-    return queue->Dispatch(kernel_, work_groups_count_, work_group_size_);
-  }
+  void SetSrc(GpuSpatialTensor* ptr, int index = 0);
+  void SetDst(GpuSpatialTensor* ptr, int index = 0);
 
   virtual void GetPossibleKernelWorkGroups(
-      TuningType tuning_type, const DeviceInfo& device_info,
+      TuningType tuning_type, const GpuInfo& gpu_info,
       const KernelInfo& kernel_info, std::vector<int3>* work_groups) const;
 
-  absl::Status Tune(const TuningParameters& params);
+  void AssembleCode(const GpuInfo& gpu_info);
 
-  absl::Status AssembleCode(const DeviceInfo& device_info, CLContext* context);
-
-  absl::Status Compile(const CreationContext& creation_context);
-
-  absl::Status CompileDeserialized(const CreationContext& creation_context);
-
-  virtual absl::Status PostCompileCheck(const DeviceInfo& device_info,
+  virtual absl::Status PostCompileCheck(const GpuInfo& gpu_info,
                                         const KernelInfo& kernel_info) {
     return absl::OkStatus();
   }
@@ -169,12 +141,8 @@ class GPUOperation {
   // applicable only with elementwise_ = true;
   bool check_src_channels_size_ = false;
 
-  // Temporary, will be resolved later
-  void MoveObjectRefsFromCLToGeneric() { cl_args_.MoveObjectRefsOut(&args_); }
-  void MoveObjectRefsFromGenericToCL() { cl_args_.MoveObjectRefsIn(&args_); }
-  void SyncScalarValues() { cl_args_.CopyScalarValues(&args_); }
-
  protected:
+  friend class ClOperation;
   friend flatbuffers::Offset<data::GPUOperation> Encode(
       const GPUOperation& op, flatbuffers::FlatBufferBuilder* builder);
   friend absl::Status Decode(const data::GPUOperation* fb_op, GPUOperation* op);
@@ -186,8 +154,8 @@ class GPUOperation {
 
   // Defines operation calculation precision and format of src/dst tensors.
   OperationDef definition_;
-  std::vector<Tensor*> src_;
-  std::vector<Tensor*> dst_;
+  std::vector<GpuSpatialTensor*> src_;
+  std::vector<GpuSpatialTensor*> dst_;
   int grid_dimension_ = 3;  // can be 1, 2 or 3
   int3 work_group_launch_order_ = int3(0, 1, 2);
   int3 grid_size_ = int3(0, 0, 0);
@@ -195,8 +163,6 @@ class GPUOperation {
   std::vector<std::string> dst_tensors_names_;
 
  private:
-  CLKernel kernel_;
-  CLArguments cl_args_;
   int3 work_groups_count_ = int3(0, 0, 0);
   int linkable_count_ = 0;
   std::string elementwise_code_;  // temporary, used during op construction

@@ -78,6 +78,9 @@ _python_eager_context_create_counter = monitoring.Counter(
 # Re-exporting through context.
 is_tfrt_enabled = tfrt_utils.enabled
 
+# Expose it as internally public APIs for Keras use cases in b/171080602.
+tf_export("__internal__.is_tfrt_enabled", v1=[])(is_tfrt_enabled)
+
 
 class _EagerTensorCache(object):
   """Simple cache which evicts items based on length in a FIFO manner."""
@@ -1739,12 +1742,6 @@ class Context(object):
     """Returns a stack of context switches."""
     return self._context_switches
 
-  def start_step(self):
-    pywrap_tfe.TFE_ContextStartStep(self._handle)
-
-  def end_step(self):
-    pywrap_tfe.TFE_ContextEndStep(self._handle)
-
 
 class _EagerDeviceContext(object):
   """Context-manager forcing placement of ops and Tensors on a device."""
@@ -2026,6 +2023,8 @@ def graph_mode():
   return context()._mode(GRAPH_MODE)  # pylint: disable=protected-access
 
 
+# Used by b/167638505 for keras backend API and Lambda layer.
+@tf_export("__internal__.eager_context.eager_mode", v1=[])
 def eager_mode():
   """Context-manager to enable eager execution for the current thread."""
   return context()._mode(EAGER_MODE)  # pylint: disable=protected-access

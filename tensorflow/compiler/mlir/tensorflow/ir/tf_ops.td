@@ -684,6 +684,7 @@ body: A function that takes a list of tensors and returns another
 
     FlatSymbolRefAttr:$cond,
     FlatSymbolRefAttr:$body,
+    DefaultValuedAttr<TF_ShapeAttrArray, "{}">:$output_shapes,
     DefaultValuedAttr<I64Attr, "10">:$parallel_iterations,
 
     // Used to map StatelessWhile and While op defined in TensorFlow to a common
@@ -696,12 +697,10 @@ body: A function that takes a list of tensors and returns another
   );
 
   TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
-  TF_DerivedResultShapeListAttr output_shapes = TF_DerivedResultShapeListAttr<0>;
 
   let verifier = [{
     return Verify(*this);
   }];
-  let hasCanonicalizer = 1;
 
   let extraClassDeclaration = [{
     // Get the condition function.
@@ -753,10 +752,12 @@ def TF_WhileRegionOp : TF_Op<"WhileRegion",
   let arguments = (ins
     Variadic<AnyTensor>:$input,
 
+    DefaultValuedAttr<TF_ShapeAttrArray, "{}">:$output_shapes,
+    DefaultValuedAttr<I64Attr, "10">:$parallel_iterations,
+
     // Used to map StatelessWhile and While op defined in TensorFlow to a common
     // op.
-    DefaultValuedAttr<BoolAttr, "false">:$is_stateless,
-    DefaultValuedAttr<I64Attr, "10">:$parallel_iterations
+    BoolAttr:$is_stateless
   );
   let results = (outs Variadic<AnyTensor>:$output);
 
@@ -1970,5 +1971,32 @@ operations inside a TPU host.
     TF_Int64Tensor:$device_ordinal
   );
 }
+
+def TF_AssignOp : TF_Op<"Assign", []> {
+  let summary = "Update 'ref' by assigning 'value' to it.";
+
+  let description = [{
+This operation outputs "ref" after the assignment is done.
+This makes it easier to chain operations that need to use the reset value.
+
+This is a side-effecting operation because it will change the value of its
+argument "ref" in addition to returning the results.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$ref,
+    TF_Tensor:$value,
+
+    DefaultValuedAttr<BoolAttr, "true">:$validate_shape,
+    DefaultValuedAttr<BoolAttr, "true">:$use_locking
+  );
+
+  let results = (outs
+    TF_Tensor:$output_ref
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 
 #endif // TF_OPS

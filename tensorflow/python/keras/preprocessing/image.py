@@ -661,8 +661,8 @@ class ImageDataGenerator(image.ImageDataGenerator):
 
   ```python
   (x_train, y_train), (x_test, y_test) = cifar10.load_data()
-  y_train = np_utils.to_categorical(y_train, num_classes)
-  y_test = np_utils.to_categorical(y_test, num_classes)
+  y_train = utils.to_categorical(y_train, num_classes)
+  y_test = utils.to_categorical(y_test, num_classes)
   datagen = ImageDataGenerator(
       featurewise_center=True,
       featurewise_std_normalization=True,

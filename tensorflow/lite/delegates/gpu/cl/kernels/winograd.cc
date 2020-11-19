@@ -33,16 +33,16 @@ namespace cl {
 
 Winograd4x4To36::Winograd4x4To36(const OperationDef& definition,
                                  const Padding2D& padding,
-                                 const DeviceInfo& device_info)
+                                 const GpuInfo& gpu_info)
     : GPUOperation(definition), padding_(padding) {
   work_group_size_ = int3(32, 1, 1);
   code_ = GetWinograd4x4To36Code(definition_);
-  if (device_info.IsAdreno()) {
-    compiler_options_.push_back(CompilerOptions::ADRENO_MORE_WAVES);
+  if (gpu_info.IsAdreno()) {
+    compiler_options_.push_back(CompilerOptions::kAdrenoMoreWaves);
   }
   if (definition_.precision == CalculationsPrecision::F16 &&
-      device_info.IsPowerVR()) {
-    compiler_options_.push_back(CompilerOptions::POWERVR_FP16);
+      gpu_info.IsPowerVR()) {
+    compiler_options_.push_back(CompilerOptions::kClPowervrFp16);
   }
 }
 
@@ -282,35 +282,35 @@ int3 Winograd4x4To36::GetGridSize() const {
 }
 
 void Winograd4x4To36::GetPossibleKernelWorkGroups(
-    TuningType tuning_type, const DeviceInfo& device_info,
+    TuningType tuning_type, const GpuInfo& gpu_info,
     const KernelInfo& kernel_info, std::vector<int3>* work_groups) const {
   switch (tuning_type) {
-    case TuningType::EXHAUSTIVE:
-      GetPossibleWorkGroups(tuning_type, device_info, kernel_info, grid_size_,
+    case TuningType::kExhaustive:
+      GetPossibleWorkGroups(tuning_type, gpu_info, kernel_info, grid_size_,
                             work_groups);
       return;
-    case TuningType::FAST:
+    case TuningType::kFast:
     default:
       work_groups->push_back(SelectBestWorkGroup(kernel_info));
       return;
   }
 }
 
-Winograd4x4To36 CreateWinograd4x4To36(const DeviceInfo& device_info,
+Winograd4x4To36 CreateWinograd4x4To36(const GpuInfo& gpu_info,
                                       const OperationDef& definition,
                                       const Padding2D& padding) {
-  Winograd4x4To36 result(definition, padding, device_info);
+  Winograd4x4To36 result(definition, padding, gpu_info);
   result.UploadBt();
   return result;
 }
 
 Winograd36To4x4::Winograd36To4x4(const OperationDef& definition,
-                                 const DeviceInfo& device_info)
+                                 const GpuInfo& gpu_info)
     : GPUOperation(definition) {
   work_group_size_ = int3(32, 1, 1);
   if (definition_.precision == CalculationsPrecision::F16 &&
-      device_info.IsPowerVR()) {
-    compiler_options_.push_back(CompilerOptions::POWERVR_FP16);
+      gpu_info.IsPowerVR()) {
+    compiler_options_.push_back(CompilerOptions::kClPowervrFp16);
   }
   code_ = GetWinograd36To4x4Code(definition_);
 }
@@ -478,14 +478,14 @@ int3 Winograd36To4x4::GetGridSize() const {
 }
 
 void Winograd36To4x4::GetPossibleKernelWorkGroups(
-    TuningType tuning_type, const DeviceInfo& device_info,
+    TuningType tuning_type, const GpuInfo& gpu_info,
     const KernelInfo& kernel_info, std::vector<int3>* work_groups) const {
   switch (tuning_type) {
-    case TuningType::EXHAUSTIVE:
-      GetPossibleWorkGroups(tuning_type, device_info, kernel_info, grid_size_,
+    case TuningType::kExhaustive:
+      GetPossibleWorkGroups(tuning_type, gpu_info, kernel_info, grid_size_,
                             work_groups);
       return;
-    case TuningType::FAST:
+    case TuningType::kFast:
     default:
       work_groups->push_back(SelectBestWorkGroup(kernel_info));
       return;
@@ -493,9 +493,9 @@ void Winograd36To4x4::GetPossibleKernelWorkGroups(
 }
 
 Winograd36To4x4 CreateWinograd36To4x4(
-    const DeviceInfo& device_info, const OperationDef& definition,
+    const GpuInfo& gpu_info, const OperationDef& definition,
     const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& biases) {
-  Winograd36To4x4 result(definition, device_info);
+  Winograd36To4x4 result(definition, gpu_info);
   TensorLinearDescriptor desc;
   desc.storage_type = LinearStorageType::TEXTURE_2D;
   desc.element_type = definition.GetDataType();

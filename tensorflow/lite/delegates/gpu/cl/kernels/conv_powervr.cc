@@ -150,35 +150,35 @@ std::string GenerateBlockCoords(const int4& block_size,
 
 ConvPowerVR::ConvPowerVR(const OperationDef& definition,
                          const Convolution2DAttributes& attr,
-                         const DeviceInfo& device_info, const BHWC* dst_shape)
+                         const GpuInfo& gpu_info, const BHWC* dst_shape)
     : GPUOperation(definition),
       stride_(attr.strides.w, attr.strides.h, 1, 1),
       padding_(-attr.padding.prepended.w, -attr.padding.prepended.h, 0, 0),
       kernel_size_(attr.weights.shape.w, attr.weights.shape.h, 1, 1),
       dilation_(attr.dilations.w, attr.dilations.h, 1, 1),
-      conv_params_(GuessBestParams(device_info, definition, attr, dst_shape)) {}
+      conv_params_(GuessBestParams(gpu_info, definition, attr, dst_shape)) {}
 
 ConvPowerVR::ConvPowerVR(const OperationDef& definition,
                          const Convolution2DAttributes& attr,
-                         const BHWC& weights_shape,
-                         const DeviceInfo& device_info, const BHWC* dst_shape)
+                         const BHWC& weights_shape, const GpuInfo& gpu_info,
+                         const BHWC* dst_shape)
     : GPUOperation(definition),
       stride_(attr.strides.w, attr.strides.h, 1, 1),
       padding_(-attr.padding.prepended.w, -attr.padding.prepended.h, 0, 0),
       kernel_size_(weights_shape.w, weights_shape.h, 1, 1),
       dilation_(attr.dilations.w, attr.dilations.h, 1, 1),
-      conv_params_(GuessBestParams(device_info, definition, attr, weights_shape,
+      conv_params_(GuessBestParams(gpu_info, definition, attr, weights_shape,
                                    dst_shape)) {}
 
 ConvPowerVR::ConvPowerVR(const OperationDef& definition,
                          const FullyConnectedAttributes& attr,
-                         const DeviceInfo& device_info, const BHWC* dst_shape)
+                         const GpuInfo& gpu_info, const BHWC* dst_shape)
     : GPUOperation(definition),
       stride_(1, 1, 1, 1),
       padding_(0, 0, 0, 0),
       kernel_size_(1, 1, 1, 1),
       dilation_(1, 1, 1, 1),
-      conv_params_(GuessBestParams(device_info, definition, attr, dst_shape)) {}
+      conv_params_(GuessBestParams(gpu_info, definition, attr, dst_shape)) {}
 
 ConvPowerVR::ConvPowerVR(const OperationDef& definition)
     : GPUOperation(definition),
@@ -197,7 +197,7 @@ ConvPowerVR::ConvPowerVR(ConvPowerVR&& operation)
 
 ConvPowerVR::ConvPowerVR(const OperationDef& definition,
                          const Convolution3DAttributes& attr,
-                         const DeviceInfo& device_info, const BHWDC* dst_shape)
+                         const GpuInfo& gpu_info, const BHWDC* dst_shape)
     : GPUOperation(definition),
       stride_(attr.strides.w, attr.strides.h, attr.strides.d, 1),
       padding_(-attr.padding.prepended.w, -attr.padding.prepended.h,
@@ -205,7 +205,7 @@ ConvPowerVR::ConvPowerVR(const OperationDef& definition,
       kernel_size_(attr.weights.shape.w, attr.weights.shape.h,
                    attr.weights.shape.d, 1),
       dilation_(attr.dilations.w, attr.dilations.h, attr.dilations.d, 1),
-      conv_params_(GuessBestParams(device_info, definition, attr, dst_shape)) {}
+      conv_params_(GuessBestParams(gpu_info, definition, attr, dst_shape)) {}
 
 ConvPowerVR& ConvPowerVR::operator=(ConvPowerVR&& operation) {
   if (this != &operation) {
@@ -219,30 +219,29 @@ ConvPowerVR& ConvPowerVR::operator=(ConvPowerVR&& operation) {
   return *this;
 }
 
-void ConvPowerVR::GenerateCode(const DeviceInfo& device_info) {
+void ConvPowerVR::GenerateCode(const GpuInfo& gpu_info) {
   if (conv_params_.linear_spatial) {
     grid_dimension_ = 2;
   }
   const bool stride_correction =
       definition_.IsBatchSupported() && stride_.x != 1;
-  code_ =
-      GenerateConv(device_info, definition_, stride_correction, conv_params_);
+  code_ = GenerateConv(gpu_info, definition_, stride_correction, conv_params_);
   if (definition_.precision == CalculationsPrecision::F16 &&
-      device_info.IsPowerVR()) {
-    compiler_options_.push_back(CompilerOptions::POWERVR_FP16);
+      gpu_info.IsPowerVR()) {
+    compiler_options_.push_back(CompilerOptions::kClPowervrFp16);
   }
-  if (conv_params_.IsPrivateMemBroadcast() && device_info.IsCL20OrHigher()) {
-    compiler_options_.push_back(CompilerOptions::CL_2_0);
+  if (conv_params_.IsPrivateMemBroadcast() && gpu_info.IsCL20OrHigher()) {
+    compiler_options_.push_back(CompilerOptions::kCl20);
   }
   bool kernel_is_trivial =
       conv_params_.x_kernel_is_1 && conv_params_.y_kernel_is_1;
   if (definition_.src_tensors[0].HasAxis(Axis::DEPTH)) {
     kernel_is_trivial = kernel_is_trivial & conv_params_.z_kernel_is_1;
   }
-  if (device_info.IsAdreno() && device_info.adreno_info.IsAdreno3xx() &&
+  if (gpu_info.IsAdreno() && gpu_info.adreno_info.IsAdreno3xx() &&
       definition_.precision == CalculationsPrecision::F16 &&
       kernel_is_trivial) {
-    compiler_options_.push_back(CompilerOptions::ADRENO_FULL_SIMD_LINE);
+    compiler_options_.push_back(CompilerOptions::kAdrenoFullSimd);
   }
 }
 
@@ -306,7 +305,7 @@ int3 ConvPowerVR::GetGridSize() const {
 }
 
 void ConvPowerVR::GetPossibleKernelWorkGroups(
-    TuningType tuning_type, const DeviceInfo& device_info,
+    TuningType tuning_type, const GpuInfo& gpu_info,
     const KernelInfo& kernel_info, std::vector<int3>* work_groups) const {
   if (conv_params_.weights_upload_type ==
           WeightsUploadType::LOCAL_MEM_ASYNC_SUBGROUP ||
@@ -316,11 +315,11 @@ void ConvPowerVR::GetPossibleKernelWorkGroups(
     work_groups->push_back(work_group_size_);
     return;
   }
-  GetPossibleWorkGroupsConv(tuning_type, device_info, kernel_info, grid_size_,
+  GetPossibleWorkGroupsConv(tuning_type, gpu_info, kernel_info, grid_size_,
                             work_groups);
 }
 
-std::string ConvPowerVR::GenerateConv(const DeviceInfo& device_info,
+std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
                                       const OperationDef& op_def,
                                       bool stride_correction,
                                       const ConvParams& conv_params) {
@@ -446,9 +445,9 @@ std::string ConvPowerVR::GenerateConv(const DeviceInfo& device_info,
 
   std::string c = GetCommonDefines(op_def.precision);
   if (use_simd_broadcast) {
-    if (device_info.cl_version == OpenCLVersion::CL_2_0) {
+    if (gpu_info.cl_version == OpenCLVersion::CL_2_0) {
       c += "#pragma OPENCL EXTENSION cl_khr_subgroups : enable\n";
-    } else if (device_info.SupportsExtension("cl_intel_subgroups")) {
+    } else if (gpu_info.SupportsExtension("cl_intel_subgroups")) {
       c += "#pragma OPENCL EXTENSION cl_intel_subgroups : enable\n";
     }
   }
@@ -459,7 +458,7 @@ std::string ConvPowerVR::GenerateConv(const DeviceInfo& device_info,
          std::to_string(work_group_size_.y) + ", " +
          std::to_string(work_group_size_.z) + ")))\n";
   }
-  if (use_simd_broadcast && device_info.IsIntel()) {
+  if (use_simd_broadcast && gpu_info.IsIntel()) {
     c += "__attribute__((intel_reqd_sub_group_size(" +
          std::to_string(simd_size) + ")))\n";
   }
@@ -714,7 +713,7 @@ std::string ConvPowerVR::GenerateConv(const DeviceInfo& device_info,
       }
     }
   };
-  const bool conditional_read = device_info.IsMali();
+  const bool conditional_read = gpu_info.IsMali();
   auto read_src = [&]() {
     const std::string cl_type = ToCLDataType(conv_params.weights_data_type);
     for (int z = 0; z < block_size.z; ++z) {
@@ -1012,8 +1011,8 @@ std::string ConvPowerVR::GenerateConv(const DeviceInfo& device_info,
 }
 
 ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
-    const DeviceInfo& device_info, const OperationDef& definition,
-    int src_depth, int dst_depth, bool x_kernel_is_1, bool y_kernel_is_1,
+    const GpuInfo& gpu_info, const OperationDef& definition, int src_depth,
+    int dst_depth, bool x_kernel_is_1, bool y_kernel_is_1,
     bool different_weights_for_height, const BHWC* dst_shape) {
   ConvParams conv_params;
   conv_params.linear_spatial = false;
@@ -1022,7 +1021,7 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
   conv_params.x_kernel_is_1 = x_kernel_is_1;
   conv_params.y_kernel_is_1 = y_kernel_is_1;
   conv_params.different_weights_for_height = different_weights_for_height;
-  if (device_info.IsNvidia()) {
+  if (gpu_info.IsNvidia()) {
     if (different_weights_for_height) {
       work_group_size_ = int3(32, 1, 1);
       work_group_launch_order_ = int3(2, 0, 1);
@@ -1046,7 +1045,7 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
     if (dst_shape) {
       int task_size = dst_shape->w * dst_shape->b * dst_shape->h * dst_depth;
       float task_size_per_cu =
-          static_cast<float>(task_size) / device_info.compute_units_count;
+          static_cast<float>(task_size) / gpu_info.compute_units_count;
       int block_size = conv_params.block_size.x * conv_params.block_size.y *
                        conv_params.block_size.w;
       float threads_per_cu = task_size_per_cu / block_size;
@@ -1067,7 +1066,7 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
     if (src_depth % 4 == 0 && conv_params.block_size.w <= 2) {
       conv_params.src_depth_loop_size = 4;
     }
-  } else if (device_info.IsPowerVR()) {
+  } else if (gpu_info.IsPowerVR()) {
     if (different_weights_for_height) {
       work_group_size_ = int3(32, 1, 1);
       work_group_launch_order_ = int3(2, 0, 1);
@@ -1115,7 +1114,7 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
       }
       conv_params.block_size.x = 2;
     }
-  } else if (device_info.IsAMD()) {
+  } else if (gpu_info.IsAMD()) {
     if (different_weights_for_height) {
       work_group_size_ = int3(32, 1, 1);
       work_group_launch_order_ = int3(2, 0, 1);
@@ -1144,12 +1143,12 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
     if (src_depth % 2 == 0 && src_depth >= 16) {
       conv_params.src_depth_loop_size = 2;
     }
-  } else if (device_info.IsMali()) {
+  } else if (gpu_info.IsMali()) {
     int block_size = 2;
     if (dst_shape) {
       int task_size = dst_shape->w * dst_shape->b * dst_shape->h * dst_depth;
       block_size = GetRecommendedBlockSizeForConv(
-          device_info, definition.precision, task_size);
+          gpu_info, definition.precision, task_size);
     }
     if (!x_kernel_is_1 || !y_kernel_is_1) {
       block_size = std::min(block_size, 4);
@@ -1172,7 +1171,7 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
       conv_params.block_size = int4(1, 1, 1, 1);
     }
     conv_params.src_depth_loop_size = 1;
-    MaliInfo mali_info = device_info.mali_info;
+    MaliInfo mali_info = gpu_info.mali_info;
     if (src_depth % 2 == 0 && block_size <= 2 && !mali_info.IsMidgard()) {
       conv_params.src_depth_loop_size = 2;
     }
@@ -1184,9 +1183,9 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
     work_group_launch_order_ = int3(0, 1, 2);
     conv_params.fixed_work_group_size = false;
     conv_params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;
-  } else if (device_info.IsAdreno()) {
+  } else if (gpu_info.IsAdreno()) {
     conv_params.block_size = int4(2, 2, 1, 2);
-    if (device_info.adreno_info.IsAdreno3xx()) {
+    if (gpu_info.adreno_info.IsAdreno3xx()) {
       if (definition.precision == CalculationsPrecision::F16) {
         conv_params.block_size = int4(2, 2, 1, 2);
       } else if (definition.precision == CalculationsPrecision::F32_F16) {
@@ -1205,7 +1204,7 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
     } else {
       conv_params.weights_upload_type = WeightsUploadType::TEXTURES_MEM_X4;
     }
-  } else if (device_info.IsIntel()) {
+  } else if (gpu_info.IsIntel()) {
     if (different_weights_for_height) {
       work_group_size_ = int3(16, 1, 1);
       work_group_launch_order_ = int3(0, 1, 2);
@@ -1220,12 +1219,12 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
     conv_params.src_depth_loop_size = 1;
     int sub_group_size = 16;
     const bool supports_subgroups =
-        device_info.SupportsExtension("cl_khr_subgroups") ||
-        device_info.SupportsExtension("cl_intel_subgroups");
+        gpu_info.SupportsExtension("cl_khr_subgroups") ||
+        gpu_info.SupportsExtension("cl_intel_subgroups");
     if (definition.precision != CalculationsPrecision::F32_F16 &&
         supports_subgroups &&
-        device_info.SupportsExtension("cl_intel_required_subgroup_size") &&
-        device_info.SupportsSubGroupWithSize(sub_group_size)) {
+        gpu_info.SupportsExtension("cl_intel_required_subgroup_size") &&
+        gpu_info.SupportsSubGroupWithSize(sub_group_size)) {
       conv_params.weights_upload_type =
           WeightsUploadType::PRIVATE_MEM_SIMD_BROADCAST;
       conv_params.simd_size = sub_group_size;
@@ -1271,7 +1270,7 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
 }
 
 ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
-    const DeviceInfo& device_info, const OperationDef& definition,
+    const GpuInfo& gpu_info, const OperationDef& definition,
     const Convolution2DAttributes& attr, const BHWC* dst_shape) {
   const int dst_depth = DivideRoundUp(attr.weights.shape.o, 4);
   const int src_depth = DivideRoundUp(attr.weights.shape.i, 4);
@@ -1283,12 +1282,12 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
                              attr.dilations.h == 1 &&
                              attr.padding.prepended.h == 0 &&
                              attr.padding.appended.h == 0;
-  return GuessBestParams(device_info, definition, src_depth, dst_depth,
+  return GuessBestParams(gpu_info, definition, src_depth, dst_depth,
                          x_kernel_is_1, y_kernel_is_1, false, dst_shape);
 }
 
 ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
-    const DeviceInfo& device_info, const OperationDef& definition,
+    const GpuInfo& gpu_info, const OperationDef& definition,
     const Convolution3DAttributes& attr, const BHWDC* dst_shape) {
   const int dst_depth = DivideRoundUp(attr.weights.shape.o, 4);
   const int src_depth = DivideRoundUp(attr.weights.shape.i, 4);
@@ -1312,10 +1311,10 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
     shape.h = dst_shape->h * dst_shape->d;
     shape.w = dst_shape->w;
     shape.c = dst_shape->c;
-    result = GuessBestParams(device_info, definition, src_depth, dst_depth,
+    result = GuessBestParams(gpu_info, definition, src_depth, dst_depth,
                              x_kernel_is_1, y_kernel_is_1, false, &shape);
   } else {
-    result = GuessBestParams(device_info, definition, src_depth, dst_depth,
+    result = GuessBestParams(gpu_info, definition, src_depth, dst_depth,
                              x_kernel_is_1, y_kernel_is_1, false, nullptr);
   }
   result.z_kernel_is_1 = z_kernel_is_1;
@@ -1323,7 +1322,7 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
 }
 
 ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
-    const DeviceInfo& device_info, const OperationDef& definition,
+    const GpuInfo& gpu_info, const OperationDef& definition,
     const Convolution2DAttributes& attr, const BHWC& weights_shape,
     const BHWC* dst_shape) {
   const int dst_depth = DivideRoundUp(weights_shape.b, 4);
@@ -1334,18 +1333,17 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
   const bool y_kernel_is_1 =
       weights_shape.h == 1 && attr.strides.h == 1 && attr.dilations.h == 1 &&
       attr.padding.prepended.h == 0 && attr.padding.appended.h == 0;
-  return GuessBestParams(device_info, definition, src_depth, dst_depth,
+  return GuessBestParams(gpu_info, definition, src_depth, dst_depth,
                          x_kernel_is_1, y_kernel_is_1, false, dst_shape);
 }
 
 ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
-    const DeviceInfo& device_info, const OperationDef& definition,
+    const GpuInfo& gpu_info, const OperationDef& definition,
     const FullyConnectedAttributes& attr, const BHWC* dst_shape) {
   const int dst_depth = DivideRoundUp(attr.weights.shape.o, 4);
   const int src_depth = DivideRoundUp(attr.weights.shape.i, 4);
-  ConvPowerVR::ConvParams params =
-      GuessBestParams(device_info, definition, src_depth, dst_depth, true, true,
-                      false, dst_shape);
+  ConvPowerVR::ConvParams params = GuessBestParams(
+      gpu_info, definition, src_depth, dst_depth, true, true, false, dst_shape);
   work_group_size_.x *= work_group_size_.y;
   work_group_size_.y = 1;
   params.block_size.x *= params.block_size.y;
@@ -1354,67 +1352,66 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
 }
 
 ConvPowerVR::ConvParams ConvPowerVR::GuessBestParamsWinograd(
-    const DeviceInfo& device_info, const OperationDef& definition,
+    const GpuInfo& gpu_info, const OperationDef& definition,
     const Convolution2DAttributes& attr, const BHWC* dst_shape) {
   const int dst_depth = DivideRoundUp(attr.weights.shape.o, 4);
   const int src_depth = DivideRoundUp(attr.weights.shape.i, 4);
-  ConvPowerVR::ConvParams params =
-      GuessBestParams(device_info, definition, src_depth, dst_depth, true, true,
-                      true, dst_shape);
+  ConvPowerVR::ConvParams params = GuessBestParams(
+      gpu_info, definition, src_depth, dst_depth, true, true, true, dst_shape);
   params.block_size.x *= params.block_size.y;
   params.block_size.y = 1;
   return params;
 }
 
-ConvPowerVR CreateConvPowerVR(const DeviceInfo& device_info,
+ConvPowerVR CreateConvPowerVR(const GpuInfo& gpu_info,
                               const OperationDef& definition,
                               const Convolution2DAttributes& attr,
                               const BHWC* dst_shape) {
-  ConvPowerVR result(definition, attr, device_info, dst_shape);
-  result.GenerateCode(device_info);
+  ConvPowerVR result(definition, attr, gpu_info, dst_shape);
+  result.GenerateCode(gpu_info);
   result.UploadData(attr.weights, attr.bias);
   return result;
 }
 
-ConvPowerVR CreateConvPowerVR(const DeviceInfo& device_info,
+ConvPowerVR CreateConvPowerVR(const GpuInfo& gpu_info,
                               const OperationDef& definition,
                               const FullyConnectedAttributes& attr,
                               const BHWC* dst_shape) {
-  ConvPowerVR result(definition, attr, device_info, dst_shape);
-  result.GenerateCode(device_info);
+  ConvPowerVR result(definition, attr, gpu_info, dst_shape);
+  result.GenerateCode(gpu_info);
   result.UploadData(attr.weights, attr.bias);
   return result;
 }
 
-ConvPowerVR CreateConvPowerVRDynamicWeights(const DeviceInfo& device_info,
+ConvPowerVR CreateConvPowerVRDynamicWeights(const GpuInfo& gpu_info,
                                             const OperationDef& definition,
                                             const Convolution2DAttributes& attr,
                                             const BHWC& weights_shape,
                                             const BHWC* dst_shape) {
-  ConvPowerVR result(definition, attr, weights_shape, device_info, dst_shape);
-  result.GenerateCode(device_info);
+  ConvPowerVR result(definition, attr, weights_shape, gpu_info, dst_shape);
+  result.GenerateCode(gpu_info);
   result.UploadBias(attr.bias);
   return result;
 }
 
-ConvPowerVR CreateConvPowerVRWino4x4To6x6(const DeviceInfo& device_info,
+ConvPowerVR CreateConvPowerVRWino4x4To6x6(const GpuInfo& gpu_info,
                                           const OperationDef& definition,
                                           const Convolution2DAttributes& attr,
                                           const BHWC* dst_shape) {
   ConvPowerVR result(definition);
   result.conv_params_ =
-      result.GuessBestParamsWinograd(device_info, definition, attr, dst_shape);
-  result.GenerateCode(device_info);
+      result.GuessBestParamsWinograd(gpu_info, definition, attr, dst_shape);
+  result.GenerateCode(gpu_info);
   result.UploadDataForWinograd4x4To6x6(attr.weights);
   return result;
 }
 
-ConvPowerVR CreateConvPowerVR3D(const DeviceInfo& device_info,
+ConvPowerVR CreateConvPowerVR3D(const GpuInfo& gpu_info,
                                 const OperationDef& definition,
                                 const Convolution3DAttributes& attr,
                                 const BHWDC* dst_shape) {
-  ConvPowerVR result(definition, attr, device_info, dst_shape);
-  result.GenerateCode(device_info);
+  ConvPowerVR result(definition, attr, gpu_info, dst_shape);
+  result.GenerateCode(gpu_info);
   result.UploadWeights(attr.weights);
   result.UploadBias(attr.bias);
   return result;

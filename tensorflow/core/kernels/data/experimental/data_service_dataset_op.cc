@@ -375,7 +375,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       }
     }
 
-    void UpdateTasks() LOCKS_EXCLUDED(mu_) {
+    void UpdateTasks() TF_LOCKS_EXCLUDED(mu_) {
       VLOG(3) << "Updating tasks";
       std::vector<TaskInfo> tasks;
       bool job_finished;
@@ -431,7 +431,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       }
     }
 
-    void UpdateWorkerThreads(IteratorContext* ctx) LOCKS_EXCLUDED(mu_) {
+    void UpdateWorkerThreads(IteratorContext* ctx) TF_LOCKS_EXCLUDED(mu_) {
       mutex_lock l(mu_);
       while (num_running_worker_threads_ < max_outstanding_requests_) {
         num_running_worker_threads_++;
@@ -631,7 +631,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
     bool job_finished_ = false;
     std::vector<std::unique_ptr<Thread>> worker_threads_ TF_GUARDED_BY(mu_);
-    std::unique_ptr<Thread> task_thread_manager_ GUARDED_BY(mu_);
+    std::unique_ptr<Thread> task_thread_manager_ TF_GUARDED_BY(mu_);
   };
 
   const int64 dataset_id_;

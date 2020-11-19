@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -3002,17 +3003,25 @@ XlaOp XlaBuilder::SelectAndScatterWithGeneralPadding(
 XlaOp XlaBuilder::ReducePrecision(XlaOp operand, const int exponent_bits,
                                   const int mantissa_bits) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
     TF_ASSIGN_OR_RETURN(Shape shape,
                         ShapeInference::InferReducePrecisionShape(
                             *operand_shape, exponent_bits, mantissa_bits));
-    *instr.mutable_shape() = shape.ToProto();
-    instr.set_exponent_bits(exponent_bits);
-    instr.set_mantissa_bits(mantissa_bits);
-    return AddInstruction(std::move(instr), HloOpcode::kReducePrecision,
-                          {operand});
+    return ReducePrecisionInternal(shape, operand, exponent_bits,
+                                   mantissa_bits);
   });
+}
+
+StatusOr<XlaOp> XlaBuilder::ReducePrecisionInternal(const Shape& shape,
+                                                    XlaOp operand,
+                                                    const int exponent_bits,
+                                                    const int mantissa_bits) {
+  HloInstructionProto instr;
+  *instr.mutable_shape() = shape.ToProto();
+  instr.set_exponent_bits(exponent_bits);
+  instr.set_mantissa_bits(mantissa_bits);
+  return AddInstruction(std::move(instr), HloOpcode::kReducePrecision,
+                        {operand});
 }
 
 void XlaBuilder::Send(XlaOp operand, const ChannelHandle& handle) {
@@ -3238,29 +3247,36 @@ XlaOp XlaBuilder::RemoveDynamicDimension(XlaOp operand, int64 dimension) {
 
 XlaOp XlaBuilder::SetDimensionSize(XlaOp operand, XlaOp val, int64 dimension) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
     TF_ASSIGN_OR_RETURN(const Shape* val_shape, GetShapePtr(val));
 
     TF_ASSIGN_OR_RETURN(Shape shape,
                         ShapeInference::InferSetDimensionSizeShape(
                             *operand_shape, *val_shape, dimension));
-    // Setting an op's dynamic dimension to the static size is a noop.
-    TF_ASSIGN_OR_RETURN(const HloInstructionProto* val_proto,
-                        LookUpInstruction(val));
-    if (StringToHloOpcode(val_proto->opcode()).ValueOrDie() ==
-        HloOpcode::kConstant) {
-      TF_ASSIGN_OR_RETURN(auto literal,
-                          Literal::CreateFromProto(val_proto->literal(), true));
-      if (literal.Get<int32>({}) == shape.dimensions(dimension)) {
-        return operand;
-      }
-    }
-    *instr.mutable_shape() = shape.ToProto();
-    instr.add_dimensions(dimension);
-    return AddInstruction(std::move(instr), HloOpcode::kSetDimensionSize,
-                          {operand, val});
+    return SetDimensionSizeInternal(shape, operand, val, dimension);
   });
+}
+
+StatusOr<XlaOp> XlaBuilder::SetDimensionSizeInternal(const Shape& shape,
+                                                     XlaOp operand, XlaOp val,
+                                                     int64 dimension) {
+  // Setting an op's dynamic dimension to the static size is a noop.
+  TF_ASSIGN_OR_RETURN(const HloInstructionProto* val_proto,
+                      LookUpInstruction(val));
+  if (StringToHloOpcode(val_proto->opcode()).ValueOrDie() ==
+      HloOpcode::kConstant) {
+    TF_ASSIGN_OR_RETURN(auto literal,
+                        Literal::CreateFromProto(val_proto->literal(), true));
+    if (literal.Get<int32>({}) == shape.dimensions(dimension)) {
+      return operand;
+    }
+  }
+
+  HloInstructionProto instr;
+  *instr.mutable_shape() = shape.ToProto();
+  instr.add_dimensions(dimension);
+  return AddInstruction(std::move(instr), HloOpcode::kSetDimensionSize,
+                        {operand, val});
 }
 
 StatusOr<bool> XlaBuilder::IsConstant(XlaOp operand) const {
@@ -3401,6 +3417,7 @@ StatusOr<XlaComputation> XlaBuilder::BuildDynamicInferenceGraph(XlaOp root_op) {
         break;
       }
       case HloOpcode::kConstant:
+      case HloOpcode::kIota:
         SetInstructionAsConstant(new_instr, id, new_shape, false);
         break;
       case HloOpcode::kCustomCall:

@@ -133,7 +133,7 @@ Status GetXlaInputShapes(
 // output based on static shapes in MLIR module. If an output is a resource
 // write, `resource_updates` is populated insead of `outputs` for that output.
 Status GetOutputInfo(
-    mlir::ModuleOp module,
+    mlir::ModuleOp module, bool use_resource_updates_for_aliases,
     const XlaHelpers::ShapeRepresentationFn shape_representation_fn,
     xla::Shape* xla_output_shape, std::vector<XlaOutputDescription>* outputs,
     std::vector<XlaResourceUpdate>* resource_updates) {
@@ -152,11 +152,11 @@ Status GetOutputInfo(
   std::vector<xla::Shape> shapes;
   shapes.reserve(func_type.getNumResults());
 
-  llvm::SmallDenseMap<unsigned, unsigned> resource_arg_to_write;
+  llvm::SmallDenseMap<unsigned, unsigned> output_to_input_alias;
   for (unsigned i = 0; i < main_func.getNumArguments(); ++i)
     if (auto aliasing_output = main_func.getArgAttrOfType<mlir::IntegerAttr>(
             i, "tf.aliasing_output"))
-      resource_arg_to_write.insert({aliasing_output.getInt(), i});
+      output_to_input_alias[aliasing_output.getInt()] = i;
 
   for (auto type_and_idx : llvm::enumerate(func_type.getResults())) {
     TF_ASSIGN_OR_RETURN(
@@ -166,8 +166,8 @@ Status GetOutputInfo(
     auto tensor_type = type_and_idx.value().dyn_cast<mlir::RankedTensorType>();
     shapes.push_back(shape);
 
-    auto it = resource_arg_to_write.find(type_and_idx.index());
-    if (it != resource_arg_to_write.end()) {
+    auto it = output_to_input_alias.find(type_and_idx.index());
+    if (it != output_to_input_alias.end() && use_resource_updates_for_aliases) {
       // Add resource write.
       resource_updates->emplace_back();
       XlaResourceUpdate& resource_update = resource_updates->back();
@@ -177,7 +177,6 @@ Status GetOutputInfo(
       TF_RETURN_IF_ERROR(XLAShapeToTensorShape(shape, &resource_update.shape));
       continue;
     }
-
     // Construct OutputDescription for result.
     outputs->emplace_back();
     XlaOutputDescription& out_desc = outputs->back();
@@ -185,11 +184,10 @@ Status GetOutputInfo(
     // TODO(ycao): Support constant output.
     out_desc.is_constant = false;
     TF_RETURN_IF_ERROR(XLAShapeToTensorShape(shape, &out_desc.shape));
-    // Input_index is only meaningful for resource output. Since MLIR-based
-    // TF-Compiler bridge doesn't support resource output yet. Setting it to
-    // meaningless value -1.
-    // TODO(ycao): Support resource-type output.
-    out_desc.input_index = -1;
+    // Input_index is only meaningful for resource output. Setting it to
+    // meaningless value -1 for non resource outputs.
+    out_desc.input_index =
+        it != output_to_input_alias.end() ? it->getSecond() : -1;
     // MLIR-based TF-Compiler bridge doesn't support tensorlist output yet.
     // TODO(ycao): Support tensorlist-type output.
     out_desc.is_tensor_list = false;
@@ -294,6 +292,9 @@ void CreateConvertMlirToXlaHloPipeline(
   // with a tuple argument which break the assumption of resource lifting
   // inside PromoteResourcesToArgs.
   pm.addPass(mlir::mhlo::createLegalizeTFControlFlowPass());
+  // The SCCP pass performs constant propagation across the IR, which, for
+  // example, propagates constant arguments into callee functions.
+  pm.addPass(mlir::createSCCPPass());
 
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeTFPass(
       /*allow_partial_conversion=*/true, /*legalize_chlo=*/true,
@@ -365,6 +366,7 @@ Status ConvertMLIRToXlaComputation(
 Status CompileMlirToXlaHlo(
     mlir::ModuleOp module_op, llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
     llvm::StringRef device_type, bool use_tuple_args, bool use_return_tuple,
+    bool use_resource_updates_for_aliases,
     XlaHelpers::ShapeRepresentationFn shape_representation_fn,
     XlaCompilationResult* compilation_result,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
@@ -399,8 +401,9 @@ Status CompileMlirToXlaHlo(
 
   // Compute all output descriptions and resource writes
   TF_RETURN_IF_ERROR(GetOutputInfo(
-      module_op, shape_representation_fn, &compilation_result->xla_output_shape,
-      &compilation_result->outputs, &compilation_result->resource_updates));
+      module_op, use_resource_updates_for_aliases, shape_representation_fn,
+      &compilation_result->xla_output_shape, &compilation_result->outputs,
+      &compilation_result->resource_updates));
 
   if (VLOG_IS_ON(1))
     tensorflow::DumpMlirOpToFile("mlir_compile_after", module_op);
@@ -425,10 +428,10 @@ Status CompileSerializedMlirToXlaHlo(
   tensor_or_resource_shapes.reserve(arg_shapes.size());
   for (const auto& arg_shape : arg_shapes)
     tensor_or_resource_shapes.push_back({arg_shape});
-  return CompileMlirToXlaHlo(mlir_module.get(), tensor_or_resource_shapes,
-                             device_type, use_tuple_args,
-                             /*use_return_tuple=*/true, shape_representation_fn,
-                             compilation_result, custom_legalization_passes);
+  return CompileMlirToXlaHlo(
+      mlir_module.get(), tensor_or_resource_shapes, device_type, use_tuple_args,
+      /*use_return_tuple=*/true, /*use_resource_updates_for_aliases=*/false,
+      shape_representation_fn, compilation_result, custom_legalization_passes);
 }
 
 // Rewrites the given module with specified args. For each of the constant args,
@@ -528,7 +531,8 @@ Status CompileGraphToXlaHlo(
 
   auto status = CompileMlirToXlaHlo(
       module_op, arg_shapes, device_type, use_tuple_args, use_return_tuple,
-      shape_representation_fn, compilation_result, custom_legalization_passes);
+      /*use_resource_updates_for_aliases=*/true, shape_representation_fn,
+      compilation_result, custom_legalization_passes);
   compilation_result->input_mapping = remaining_params;
   return status;
 }

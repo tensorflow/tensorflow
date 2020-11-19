@@ -29,16 +29,15 @@ namespace cl {
 DepthwiseConv3x3::DepthwiseConv3x3(const OperationDef& definition,
                                    bool weights_are_buffer,
                                    bool local_mem_uploads,
-                                   const DeviceInfo& device_info)
-    : GPUOperation(definition),
-      local_mem_uploads_(local_mem_uploads) {
+                                   const GpuInfo& gpu_info)
+    : GPUOperation(definition), local_mem_uploads_(local_mem_uploads) {
   work_group_size_ = int3(8, 4, 1);
   code_ = GenerateDepthwiseConvCode(definition_, weights_are_buffer,
                                     local_mem_uploads_);
 
   if (definition_.precision == CalculationsPrecision::F16 &&
-      device_info.IsPowerVR()) {
-    compiler_options_.push_back(CompilerOptions::POWERVR_FP16);
+      gpu_info.IsPowerVR()) {
+    compiler_options_.push_back(CompilerOptions::kClPowervrFp16);
   }
 }
 
@@ -293,12 +292,12 @@ int3 DepthwiseConv3x3::GetGridSize() const {
 }
 
 void DepthwiseConv3x3::GetPossibleKernelWorkGroups(
-    TuningType tuning_type, const DeviceInfo& device_info,
+    TuningType tuning_type, const GpuInfo& gpu_info,
     const KernelInfo& kernel_info, std::vector<int3>* work_groups) const {
   if (local_mem_uploads_) {
     work_groups->push_back(work_group_size_);
   } else {
-    GetPossibleWorkGroups(tuning_type, device_info, kernel_info, grid_size_,
+    GetPossibleWorkGroups(tuning_type, gpu_info, kernel_info, grid_size_,
                           work_groups);
   }
 }
@@ -313,12 +312,12 @@ bool IsDepthwiseConv3x3Supported(const DepthwiseConvolution2DAttributes& attr) {
 }
 
 DepthwiseConv3x3 CreateDepthwiseConv3x3(
-    const DeviceInfo& device_info, const OperationDef& definition,
+    const GpuInfo& gpu_info, const OperationDef& definition,
     const DepthwiseConvolution2DAttributes& attr) {
-  bool weights_are_buffer = device_info.IsPowerVR() || device_info.IsMali();
-  bool local_mem_uploads = weights_are_buffer && device_info.IsPowerVR();
+  bool weights_are_buffer = gpu_info.IsPowerVR() || gpu_info.IsMali();
+  bool local_mem_uploads = weights_are_buffer && gpu_info.IsPowerVR();
   DepthwiseConv3x3 result(definition, weights_are_buffer, local_mem_uploads,
-                          device_info);
+                          gpu_info);
   result.UploadWeightsAndBiases(attr.weights, attr.bias, weights_are_buffer);
   return result;
 }

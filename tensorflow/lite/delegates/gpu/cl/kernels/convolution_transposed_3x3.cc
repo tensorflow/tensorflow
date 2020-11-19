@@ -26,15 +26,15 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 ConvolutionTransposed3x3::ConvolutionTransposed3x3(
-    const OperationDef& definition, const DeviceInfo& device_info, int2 padding)
+    const OperationDef& definition, const GpuInfo& gpu_info, int2 padding)
     : GPUOperation(definition), padding_(padding) {
   work_group_size_ = int3(8, 4, 1);
   work_group_launch_order_ = int3(2, 0, 1);
-  if (device_info.IsPowerVR()) {
+  if (gpu_info.IsPowerVR()) {
     weights_upload_type_ = WeightsUploadType::LOCAL_MEM_ASYNC;
-  } else if (device_info.IsNvidia() || device_info.IsIntel()) {
+  } else if (gpu_info.IsNvidia() || gpu_info.IsIntel()) {
     weights_upload_type_ = WeightsUploadType::LOCAL_MEM_BY_THREADS;
-  } else if (device_info.IsAMD()) {
+  } else if (gpu_info.IsAMD()) {
     weights_upload_type_ = WeightsUploadType::CONSTANT_MEM;
   } else {
     weights_upload_type_ = WeightsUploadType::GLOBAL_MEM;
@@ -42,8 +42,8 @@ ConvolutionTransposed3x3::ConvolutionTransposed3x3(
   code_ = GenerateConvolutionTransposedCode(definition_, weights_upload_type_,
                                             padding_, work_group_launch_order_);
   if (definition_.precision == CalculationsPrecision::F16 &&
-      device_info.IsPowerVR()) {
-    compiler_options_.push_back(CompilerOptions::POWERVR_FP16);
+      gpu_info.IsPowerVR()) {
+    compiler_options_.push_back(CompilerOptions::kClPowervrFp16);
   }
 }
 
@@ -332,14 +332,14 @@ absl::Status ConvolutionTransposed3x3::BindArguments(ArgumentsBinder* args) {
 }
 
 void ConvolutionTransposed3x3::GetPossibleKernelWorkGroups(
-    TuningType tuning_type, const DeviceInfo& device_info,
+    TuningType tuning_type, const GpuInfo& gpu_info,
     const KernelInfo& kernel_info, std::vector<int3>* work_groups) const {
   if (weights_upload_type_ == WeightsUploadType::LOCAL_MEM_ASYNC ||
       weights_upload_type_ == WeightsUploadType::LOCAL_MEM_BY_THREADS) {
     work_groups->push_back(work_group_size_);
     return;
   }
-  GetPossibleWorkGroupsConv(tuning_type, device_info, kernel_info, grid_size_,
+  GetPossibleWorkGroupsConv(tuning_type, gpu_info, kernel_info, grid_size_,
                             work_groups);
 }
 
@@ -358,10 +358,10 @@ bool IsConvolutionTransposed3x3Supported(
 }
 
 ConvolutionTransposed3x3 CreateConvolutionTransposed3x3(
-    const DeviceInfo& device_info, const OperationDef& definition,
+    const GpuInfo& gpu_info, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr) {
   const int2 padding = int2(attr.padding.prepended.w, attr.padding.prepended.h);
-  ConvolutionTransposed3x3 result(definition, device_info, padding);
+  ConvolutionTransposed3x3 result(definition, gpu_info, padding);
   result.UploadWeights(attr.weights);
 
   TensorLinearDescriptor desc;

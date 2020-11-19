@@ -124,7 +124,7 @@ std::string GetConcatKernelCode(const OperationDef& op_def,
 
 GPUOperation CreateConcatZ(const OperationDef& definition,
                            const std::vector<int>& channels,
-                           const DeviceInfo& device_info) {
+                           const GpuInfo& gpu_info) {
   GPUOperation op(definition);
   for (int i = 0; i < definition.src_tensors.size(); ++i) {
     const std::string name = "src_tensor_" + std::to_string(i);
@@ -140,18 +140,17 @@ GPUOperation CreateConcatZ(const OperationDef& definition,
   }
   op.AddDstTensor("dst_tensor", dst_desc);
   op.code_ = GetConcatKernelCode(definition, channels);
-  if (device_info.IsPowerVR() &&
+  if (gpu_info.IsPowerVR() &&
       definition.precision == CalculationsPrecision::F32 &&
       !IsAllChannelsX4(channels)) {
     // BUG, some PowerVRs (GE8320) produce incorrect result without it
-    op.compiler_options_.push_back(CompilerOptions::CL_OPT_DISABLE);
+    op.compiler_options_.push_back(CompilerOptions::kClDisableOptimizations);
   }
-  if (device_info.IsAMD() &&
-      definition.precision != CalculationsPrecision::F32 &&
+  if (gpu_info.IsAMD() && definition.precision != CalculationsPrecision::F32 &&
       definition.src_tensors[0].storage_type != TensorStorageType::BUFFER &&
       !IsAllChannelsX4(channels)) {
     // BUG, some AMD gpus crash without it
-    op.compiler_options_.push_back(CompilerOptions::CL_OPT_DISABLE);
+    op.compiler_options_.push_back(CompilerOptions::kClDisableOptimizations);
   }
   op.tensor_to_grid_ = TensorToGrid::kWBToX_HToY_DToZ;
   return op;

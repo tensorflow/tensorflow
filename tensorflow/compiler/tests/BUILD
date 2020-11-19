@@ -1943,3 +1943,25 @@ tf_xla_py_test(
         "//tensorflow/python:platform_test",
     ],
 )
+
+tf_xla_py_test(
+    name = "where_op_test",
+    size = "small",
+    srcs = ["where_op_test.py"],
+    disabled_backends = [
+        "cpu",
+        "cpu_ondemand",
+        "gpu",
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/compiler/jit",
+        "//tensorflow/contrib/tpu",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework",
+        "//tensorflow/python/compiler/xla:compiler_py",
+    ],
+)

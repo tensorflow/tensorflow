@@ -819,6 +819,10 @@ class XlaBuilder {
 
   XlaOp ReducePrecision(XlaOp operand, const int exponent_bits,
                         const int mantissa_bits);
+  virtual StatusOr<XlaOp> ReducePrecisionInternal(const Shape& shape,
+                                                  XlaOp operand,
+                                                  const int exponent_bits,
+                                                  const int mantissa_bits);
 
   XlaOp Gather(XlaOp input, XlaOp start_indices,
                const GatherDimensionNumbers& dimension_numbers,
@@ -871,6 +875,10 @@ class XlaBuilder {
   XlaOp GetDimensionSize(XlaOp operand, int64 dimension);
 
   XlaOp SetDimensionSize(XlaOp operand, XlaOp val, int64 dimension);
+
+  virtual StatusOr<XlaOp> SetDimensionSizeInternal(const Shape& shape,
+                                                   XlaOp operand, XlaOp val,
+                                                   int64 dimension);
 
   XlaOp RemoveDynamicDimension(XlaOp operand, int64 dimension);
 

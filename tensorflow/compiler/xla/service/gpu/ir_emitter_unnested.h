@@ -72,6 +72,16 @@ struct MlirEmitterInput {
   absl::optional<MlirBufferSlice> extra_slice;
 };
 
+// Convenience struct that contains useful data structures in MLIR emitter.
+// Not all fields may be filled. It's entiredly dependent on the uses.
+struct MlirEmitterContext {
+  void SetOperation(mlir::Operation* op);
+
+  std::string name;
+  std::vector<Shape> operand_shapes;
+  std::vector<Shape> output_shapes;
+};
+
 // Emits LLVM IR for an "unnested computation".
 //
 // An unnested computation is an HloComputation which you run by executing one
@@ -147,15 +157,17 @@ class IrEmitterUnnested : public IrEmitter,
   }
 
   Status DefaultAction(HloInstruction* hlo) override;
+  Status DefaultActionForMlir(MlirEmitterInput input);
 
   // IrEmitterUnnested handles the following instructions differently from
   // IrEmitter. It also mixes in some special handling for custom kernels
   // via the ThunkEmitter.
   Status HandleCopy(HloInstruction* copy) override;
+  Status EmitCopyForMlir(MlirEmitterInput input);
+
   Status HandleConditional(HloInstruction* conditional) override;
   Status HandleConvolution(HloInstruction* convolution) override;
   Status HandleCustomCall(HloInstruction* custom_call) override;
-  Status HandleDot(HloInstruction* dot) override;
   Status HandleFft(HloInstruction* fft) override;
   Status HandleFusion(HloInstruction* fusion) override;
   Status EmitLoopFusionFromMlir(MlirEmitterInput input,
@@ -177,7 +189,6 @@ class IrEmitterUnnested : public IrEmitter,
   Status HandleSort(HloInstruction* sort) override;
   Status EmitSortFromMlir(MlirEmitterInput mlir_input);
   Status HandleTriangularSolve(HloInstruction* hlo) override;
-  Status HandleTupleSelect(HloInstruction* tuple_select) override;
   Status HandleAllReduce(HloInstruction* crs) override;
   Status HandleAfterAll(HloInstruction* after_all) override;
   Status HandleReplicaId(HloInstruction* hlo) override;
@@ -251,6 +262,7 @@ class IrEmitterUnnested : public IrEmitter,
   // }
   //   ```
   Status HandlePadToStatic(HloInstruction* pad_to_static);
+  Status EmitPadToStaticFromMlir(MlirEmitterInput mlir_input);
 
   // Input = {dynamic array(with dynamic dimension meta data at the end)}
   // Output = {static array, dynamic_dim0, dynamic_dim1}
@@ -297,6 +309,7 @@ class IrEmitterUnnested : public IrEmitter,
   // }
   //   ```
   Status HandleSliceToDynamic(HloInstruction* slice_to_dynamic);
+  Status EmitSliceToDynamicFromMlir(MlirEmitterInput mlir_input);
 
   // A convenient helper for calling BufferAssignment::GetUniqueSlice.
   StatusOr<BufferAllocation::Slice> MaybeGetAllocationSlice(
@@ -457,12 +470,15 @@ class IrEmitterUnnested : public IrEmitter,
 
   // Returns true if a 0-2-1 tiling algorithm is already used to emit the kernel
   // for the hlo instruction.
-  bool CheckAndEmitHloWithTile021(HloInstruction* hlo);
+  StatusOr<bool> CheckAndEmitHloWithTile021(MlirEmitterInput input);
 
   // Emits a kernel for the hlo instruction using a 0-2-1 tiling algorithm and
   // sets the corresponding launch dimensions. This is a helper to support
   // the implementation of CheckAndEmitHloWithTile021.
-  void EmitHlo021Tile(HloInstruction* hlo, Thunk* kernel_thunk,
+  void EmitHlo021Tile(mlir::Operation* op, Thunk* kernel_thunk,
+                      const MlirEmitterContext& context,
+                      absl::Span<const llvm_ir::IrArray> operand_arrays,
+                      absl::Span<const llvm_ir::IrArray> output_arrays,
                       absl::Span<const int64> reduced_output_dims,
                       absl::Span<const int64> tiled_param_ids);
 
@@ -517,7 +533,8 @@ class IrEmitterUnnested : public IrEmitter,
   // y_loc: The y coordinate within a tile.
   // x_loc: The x coordinate within a tile.
   void EmitTileElementForCopy(
-      HloInstruction* hlo, const llvm_ir::IrArray::Index& index,
+      const Shape& output_shape, const llvm_ir::IrArray& ir_array,
+      const llvm_ir::IrArray::Index& index,
       const KernelMappingScheme& mapping_scheme, llvm::Value* y_loc,
       llvm::Value* x_loc, absl::Span<llvm::Value* const> param_shmem_buffers);
 
@@ -526,7 +543,10 @@ class IrEmitterUnnested : public IrEmitter,
   // y_loc: The y coordinate within a tile.
   // x_loc: The x coordinate within a tile.
   void EmitTileElementForFusion(
-      HloInstruction* hlo, const llvm_ir::IrArray::Index& index,
+      mlir::lmhlo::FusionOp fusion,
+      absl::Span<const llvm_ir::IrArray> operand_arrays,
+      absl::Span<const llvm_ir::IrArray> output_arrays,
+      const llvm_ir::IrArray::Index& index,
       const KernelMappingScheme& mapping_scheme, llvm::Value* y_loc,
       llvm::Value* x_loc, absl::Span<llvm::Value* const> param_shmem_buffers);
 
@@ -593,9 +613,19 @@ class IrEmitterUnnested : public IrEmitter,
   std::unique_ptr<KernelThunk> BuildKernelThunk(
       const HloInstruction* inst, bool implements_whole_instruction);
 
-  std::unique_ptr<KernelThunk> BuildKernelThunkForMlir(
+  std::unique_ptr<KernelThunk> BuildKernelThunkForMlirImpl(
       absl::string_view name, Thunk::ThunkInfo thunk_info,
       absl::Span<const MlirBufferSlice> slices,
+      std::vector<llvm_ir::IrArray>* ir_arrays);
+
+  StatusOr<std::unique_ptr<KernelThunk>> BuildKernelThunkForMlir(
+      mlir::Operation* op, mlir::ValueRange operands,
+      Thunk::ThunkInfo thunk_info, absl::optional<MlirBufferSlice> extra_slice,
+      std::vector<llvm_ir::IrArray>* ir_arrays);
+
+  StatusOr<std::unique_ptr<KernelThunk>> BuildKernelThunkForMlir(
+      mlir::Operation* op, Thunk::ThunkInfo thunk_info,
+      absl::optional<MlirBufferSlice> extra_slice,
       std::vector<llvm_ir::IrArray>* ir_arrays);
 
   // Returns a thunk that, given a reduce or select-and-scatter op,
@@ -647,7 +677,7 @@ class IrEmitterUnnested : public IrEmitter,
       absl::optional<int64> block_id_filter = absl::nullopt);
 
   StatusOr<const HloComputation*> GetOrCreateSubComputationFromRegion(
-      mlir::Region* region);
+      mlir::Region* region, bool is_fusion);
 
   StatusOr<MlirEmitterInput> GetMlirEmitterInput(HloInstruction* hlo);
 

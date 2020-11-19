@@ -1000,6 +1000,55 @@ ENTRY main {
                               op::GetTupleElement(op::Conditional(), 1))));
 }
 
+TEST_F(ConditionalCodeMotionTest, MoveCopy2InBranch) {
+  absl::string_view hlo_string =
+      R"(
+HloModule RemoveIdenticalInstruction
+
+%branch0 (state.2: (f32[1,3,2])) -> (f32[1,3,2]) {
+  %state.2 = (f32[1,3,2]{1,2,0}) parameter(0)
+  %get-tuple-element.32 = f32[1,3,2]{1,2,0} get-tuple-element((f32[1,3,2]{1,2,0}) %state.2), index=0
+  %copy.1 = f32[1,3,2]{0,2,1} copy(f32[1,3,2]{1,2,0} %get-tuple-element.32)
+  ROOT %tuple.13 = (f32[1,3,2]{0,2,1}) tuple(f32[1,3,2]{0,2,1} %copy.1)
+}
+
+%branch1 (state.1: (s32[], f32[8,3,2], s32[2])) -> (f32[1,3,2]) {
+  %state.1 = (s32[], f32[8,3,2]{0,2,1}, s32[2]{0}) parameter(0)
+  %get-tuple-element.17 = f32[8,3,2]{0,2,1} get-tuple-element((s32[], f32[8,3,2]{0,2,1}, s32[2]{0}) %state.1), index=1
+  %get-tuple-element.18 = s32[2]{0} get-tuple-element((s32[], f32[8,3,2]{0,2,1}, s32[2]{0}) %state.1), index=2
+  %get-tuple-element.16 = s32[] get-tuple-element((s32[], f32[8,3,2]{0,2,1}, s32[2]{0}) %state.1), index=0
+  %dynamic-slice.3 = s32[1]{0} dynamic-slice(s32[2]{0} %get-tuple-element.18, s32[] %get-tuple-element.16), dynamic_slice_sizes={1}
+  %reshape.19 = s32[] reshape(s32[1]{0} %dynamic-slice.3)
+  %constant.21 = s32[] constant(0)
+  %dynamic-slice.4 = f32[1,3,2]{0,2,1} dynamic-slice(f32[8,3,2]{0,2,1} %get-tuple-element.17, s32[] %reshape.19, s32[] %constant.21, s32[] %constant.21), dynamic_slice_sizes={1,3,2}
+  ROOT %tuple.9 = (f32[1,3,2]{0,2,1}) tuple(f32[1,3,2]{0,2,1} %dynamic-slice.4)
+}
+
+ENTRY %f32_8_3_2__1-1.32 (idxs.1: s32[2], single_io.2: f32[8,3,2], repeated_io_0.3: f32[1,3,2]) -> (f32[1,3,2]) {
+  %idxs.1 = s32[2]{0} parameter(0)
+  %slice.10 = s32[1]{0} slice(s32[2]{0} %idxs.1), slice={[0:1]}
+  %reshape.11 = s32[] reshape(s32[1]{0} %slice.10)
+  %constant.12 = s32[] constant(0)
+  %compare.13 = pred[] compare(s32[] %reshape.11, s32[] %constant.12), direction=EQ
+  %repeated_io_0.3 = f32[1,3,2]{1,2,0} parameter(2)
+  %tuple.11 = (f32[1,3,2]{1,2,0}) tuple(f32[1,3,2]{1,2,0} %repeated_io_0.3)
+  %constant.5 = s32[] constant(1)
+  %single_io.2 = f32[8,3,2]{0,2,1} parameter(1)
+  %tuple.15 = (s32[], f32[8,3,2]{0,2,1}, s32[2]{0}) tuple(s32[] %constant.5, f32[8,3,2]{0,2,1} %single_io.2, s32[2]{0} %idxs.1)
+  %conditional.28 = (f32[1,3,2]{0,2,1}) conditional(pred[] %compare.13, (f32[1,3,2]{1,2,0}) %tuple.11, (s32[], f32[8,3,2]{0,2,1}, s32[2]{0}) %tuple.15), true_computation=%branch0, false_computation=%branch1
+  %get-tuple-element.33 = f32[1,3,2]{0,2,1} get-tuple-element((f32[1,3,2]{0,2,1}) %conditional.28), index=0
+  %copy.2 = f32[1,3,2]{1,2,0} copy(f32[1,3,2]{0,2,1} %get-tuple-element.33)
+  ROOT %tuple.16 = (f32[1,3,2]{1,2,0}) tuple(f32[1,3,2]{1,2,0} %copy.2)
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  ConditionalCodeMotion pass(true, true);
+  ASSERT_TRUE(pass.Run(&*module).ValueOrDie());
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  // Copy, tuple, gtes are all gone.
+  EXPECT_THAT(root, op::Conditional());
+}
+
 TEST_F(ConditionalCodeMotionTest, MoveReplicatedTupleEntryOut) {
   absl::string_view hlo_string =
       R"(

@@ -18,9 +18,9 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/lite/delegates/gpu/cl/cl_kernel.h"
 #include "tensorflow/lite/delegates/gpu/cl/device_info.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/tuning_parameters.h"
+#include "tensorflow/lite/delegates/gpu/common/kernel_info.h"
+#include "tensorflow/lite/delegates/gpu/common/task/tuning_type.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/common/workgroup_selection.h"
 
@@ -29,15 +29,13 @@ namespace gpu {
 namespace cl {
 
 // multiplier can be power of two only
-void GetPossibleWorkGroupsXYMultipleOf(int multiplier,
-                                       const DeviceInfo& device_info,
+void GetPossibleWorkGroupsXYMultipleOf(int multiplier, const GpuInfo& gpu_info,
                                        const KernelInfo& kernel_info,
                                        const int3& grid,
                                        WorkGroupSizeAlignment z_alignment,
                                        std::vector<int3>* work_groups);
 
-void GetPossibleWorkGroupsXMultipleOf(int multiplier,
-                                      const DeviceInfo& device_info,
+void GetPossibleWorkGroupsXMultipleOf(int multiplier, const GpuInfo& gpu_info,
                                       const KernelInfo& kernel_info,
                                       const int3& grid,
                                       WorkGroupSizeAlignment z_alignment,
@@ -50,13 +48,11 @@ int3 GetWorkGroupXY128Conv(const int3& grid);
 
 bool XY128RequiresMoreWorkGroupsThenXY128Linear(int width, int height);
 
-void GetPossibleWorkGroups(TuningType tuning_type,
-                           const DeviceInfo& device_info,
+void GetPossibleWorkGroups(TuningType tuning_type, const GpuInfo& gpu_info,
                            const KernelInfo& kernel_info, const int3& grid,
                            std::vector<int3>* work_groups);
 
-void GetPossibleWorkGroupsConv(TuningType tuning_type,
-                               const DeviceInfo& device_info,
+void GetPossibleWorkGroupsConv(TuningType tuning_type, const GpuInfo& gpu_info,
                                const KernelInfo& kernel_info, const int3& grid,
                                std::vector<int3>* work_groups);
 

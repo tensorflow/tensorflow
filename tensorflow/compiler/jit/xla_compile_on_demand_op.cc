@@ -153,7 +153,8 @@ Status XlaCompileOnDemandOp::Compile(
         ctx, variables_indices, variable_infos, variable_args));
 
     args = XlaComputationLaunchContext::BuildXlaCompilerArguments(
-        constant_input_indices, inputs, variable_infos);
+        constant_input_indices, inputs, variable_infos,
+        static_cast<Device*>(ctx->device()));
     TF_RETURN_IF_ERROR(args.status());
   }
 

@@ -61,7 +61,6 @@ py_library(
         "//tensorflow/python:check_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:clip_ops",
-        "//tensorflow/python:composite_tensor_utils",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:ctc_ops",
@@ -663,6 +662,14 @@ py_library(
     # This is a dummy rule used as a h5 dependency in open-source.
     # We expect h5py to already be installed on the system, e.g. via
     # `pip install h5py'
+    visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "expect_keras_preprocessing_installed",
+    # This is a dummy rule used as a keras_preprocessing dependency in open-source.
+    # We expect keras_preprocessing to already be installed on the system, e.g. via
+    # `pip install keras_preprocessing`
     visibility = ["//visibility:public"],
 )
 

@@ -42,6 +42,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_dump_hlo_as_html(false);
   opts.set_xla_dump_include_timestamp(true);
   opts.set_xla_dump_max_hlo_modules(-1);
+  opts.set_xla_dump_module_metadata(false);
 #ifdef INTEL_MKL
   opts.set_xla_cpu_use_mkl_dnn(true);
 #endif  // INTEL_MKL
@@ -74,7 +75,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_enable_xprof_traceme(false);
   opts.set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found(false);
   opts.set_xla_multiheap_size_constraint_per_heap(-1);
-
+  opts.set_xla_detailed_logging(true);
   return opts;
 }
 
@@ -230,7 +231,6 @@ static void AllocateFlags() {
   };
 
   flag_objects = new std::vector<tensorflow::Flag>();
-  flag_objects->reserve(55);
   // Don't use an initializer list for initializing the vector; this would
   // create a temporary copy, and exceeds the stack space when compiling with
   // certain configurations.
@@ -514,6 +514,12 @@ static void AllocateFlags() {
       "Max number of hlo module dumps in a directory. Set to < 0 for "
       "unbounded."));
   flag_objects->push_back(tensorflow::Flag(
+      "xla_dump_module_metadata",
+      bool_setter_for(&DebugOptions::set_xla_dump_module_metadata),
+      flag_values->xla_dump_module_metadata(),
+      "Dumps HloModuleMetadata as text protos to the directory specified "
+      "by --xla_dump_to."));
+  flag_objects->push_back(tensorflow::Flag(
       "xla_hlo_graph_addresses",
       bool_setter_for(&DebugOptions::set_xla_hlo_graph_addresses),
       flag_values->xla_hlo_graph_addresses(),
@@ -534,7 +540,12 @@ static void AllocateFlags() {
       "xla_gpu_force_conv_nchw",
       bool_setter_for(&DebugOptions::set_xla_gpu_force_conv_nchw),
       flag_values->xla_gpu_force_conv_nchw(),
-      "For cuDNN convolutions, always NCHW layouts."));
+      "For cuDNN convolutions, always use NCHW layouts."));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_gpu_force_conv_nhwc",
+      bool_setter_for(&DebugOptions::set_xla_gpu_force_conv_nhwc),
+      flag_values->xla_gpu_force_conv_nhwc(),
+      "For cuDNN convolutions, always use NHWC layouts."));
   flag_objects->push_back(tensorflow::Flag(
       "xla_gpu_algorithm_denylist_path",
       string_setter_for(&DebugOptions::set_xla_gpu_algorithm_denylist_path),

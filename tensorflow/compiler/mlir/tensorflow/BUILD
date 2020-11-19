@@ -42,10 +42,10 @@ filegroup(
         "ir/tf_ops.td",
         "ir/tfrt_ops.td",
         "@llvm-project//mlir:OpBaseTdFiles",
+        "@llvm-project//mlir:SideEffectTdFiles",
         "@llvm-project//mlir:include/mlir/Interfaces/CallInterfaces.td",
         "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
         "@llvm-project//mlir:include/mlir/Interfaces/LoopLikeInterface.td",
-        "@llvm-project//mlir:include/mlir/Interfaces/SideEffectInterfaces.td",
     ],
 )
 
@@ -943,6 +943,7 @@ cc_library(
         ":tpu_rewrite_device_util",
         ":translate_utils",
         ":unroll_batch_matmul_pass",
+        ":verification_utils",
         ":visitor_util",
         ":xla_sharding_util",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
@@ -1042,6 +1043,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -2007,6 +2009,16 @@ cc_library(
         "@llvm-project//mlir:DerivedAttributeOpInterface",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "verification_utils",
+    srcs = ["utils/verification_utils.cc"],
+    hdrs = ["utils/verification_utils.h"],
+    deps = [
+        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
 )

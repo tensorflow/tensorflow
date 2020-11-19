@@ -14,17 +14,85 @@
 # ==============================================================================
 """RISC operation gradient."""
 
-
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
 
 from tensorflow.python.framework import ops
 
 
 @ops.RegisterGradient("RiscAdd")
 def _RiscAddGrad(_, grad):
+  # pylint: disable=unused-argument
+  # TODO(b/171294012): Implement gradient of RISC with RISC ops.
+  return None, None
+
+
+@ops.RegisterGradient("RiscBroadcast")
+def _RiscBroadcastGrad(_, grad):
+  # pylint: disable=unused-argument
+  # TODO(b/171294012): Implement gradient of RISC with RISC ops.
+  return None, None
+
+
+@ops.RegisterGradient("RiscConcat")
+def _RiscConcatGrad(_, grad):
+  # pylint: disable=unused-argument
+  # TODO(b/171294012): Implement gradient of RISC with RISC ops.
+  return None, None
+
+
+@ops.RegisterGradient("RiscConv")
+def _RiscConvGrad(_, grad):
+  # pylint: disable=unused-argument
+  # TODO(b/171294012): Implement gradient of RISC with RISC ops.
+  return None, None
+
+
+@ops.RegisterGradient("RiscDot")
+def _RiscDotGrad(_, grad):
+  # pylint: disable=unused-argument
+  # TODO(b/171294012): Implement gradient of RISC with RISC ops.
+  return None, None
+
+
+@ops.RegisterGradient("RiscMax")
+def _RiscMaxGrad(_, grad):
+  # pylint: disable=unused-argument
+  # TODO(b/171294012): Implement gradient of RISC with RISC ops.
+  return None, None
+
+
+@ops.RegisterGradient("RiscPad")
+def _RiscPadGrad(_, grad):
+  # pylint: disable=unused-argument
+  # TODO(b/171294012): Implement gradient of RISC with RISC ops.
+  return None, None
+
+
+@ops.RegisterGradient("RiscPool")
+def _RiscPoolGrad(_, grad):
+  # pylint: disable=unused-argument
+  # TODO(b/171294012): Implement gradient of RISC with RISC ops.
+  return None, None
+
+
+@ops.RegisterGradient("RiscReshape")
+def _RiscReshapeGrad(_, grad):
+  # pylint: disable=unused-argument
+  # TODO(b/171294012): Implement gradient of RISC with RISC ops.
+  return None, None
+
+
+@ops.RegisterGradient("RiscShape")
+def _RiscShapeGrad(_, grad):
+  # pylint: disable=unused-argument
+  # TODO(b/171294012): Implement gradient of RISC with RISC ops.
+  return None, None
+
+
+@ops.RegisterGradient("RiscSlice")
+def _RiscSliceGrad(_, grad):
   # pylint: disable=unused-argument
   # TODO(b/171294012): Implement gradient of RISC with RISC ops.
   return None, None

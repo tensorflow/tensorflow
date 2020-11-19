@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/cl_kernel.h"
 #include "tensorflow/lite/delegates/gpu/cl/device_info.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/tuning_parameters.h"
 #include "tensorflow/lite/delegates/gpu/cl/texture2d.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -97,7 +96,7 @@ class FCFCAdd : public GPUOperation {
  public:
   FCFCAdd() = default;
   void GetPossibleKernelWorkGroups(
-      TuningType tuning_type, const DeviceInfo& device_info,
+      TuningType tuning_type, const GpuInfo& gpu_info,
       const KernelInfo& kernel_info,
       std::vector<int3>* work_groups) const override {
     work_groups->push_back(work_group_size_);
@@ -111,8 +110,8 @@ class FCFCAdd : public GPUOperation {
   FCFCAdd& operator=(const FCFCAdd&) = delete;
 
  private:
-  FCFCAdd(const OperationDef& definition, const DeviceInfo& device_info);
-  friend FCFCAdd CreateFCFCAdd(const DeviceInfo& device_info,
+  FCFCAdd(const OperationDef& definition, const GpuInfo& gpu_info);
+  friend FCFCAdd CreateFCFCAdd(const GpuInfo& gpu_info,
                                const OperationDef& definition,
                                const FullyConnectedAttributes& attr0,
                                const FullyConnectedAttributes& attr1);
@@ -122,7 +121,7 @@ class FCFCAdd : public GPUOperation {
                      const std::string& name, bool weights_are_buffer);
 
   std::string GetFCFCAddKernelCode(const OperationDef& op_def,
-                                   const DeviceInfo& device_info);
+                                   const GpuInfo& gpu_info);
 };
 
 template <DataType T>
@@ -175,8 +174,7 @@ void FCFCAdd::UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
   }
 }
 
-FCFCAdd CreateFCFCAdd(const DeviceInfo& device_info,
-                      const OperationDef& definition,
+FCFCAdd CreateFCFCAdd(const GpuInfo& gpu_info, const OperationDef& definition,
                       const FullyConnectedAttributes& attr0,
                       const FullyConnectedAttributes& attr1);
 

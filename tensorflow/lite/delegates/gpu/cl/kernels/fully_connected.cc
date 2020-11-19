@@ -32,32 +32,32 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 namespace {
-bool UseBufferForWeights(const DeviceInfo& device_info) {
-  return device_info.IsAdreno() || device_info.IsAMD() || device_info.IsMali();
+bool UseBufferForWeights(const GpuInfo& gpu_info) {
+  return gpu_info.IsAdreno() || gpu_info.IsAMD() || gpu_info.IsMali();
 }
 }  // namespace
 
 FullyConnected::FullyConnected(const OperationDef& definition,
-                               const DeviceInfo& device_info)
+                               const GpuInfo& gpu_info)
     : GPUOperation(definition) {
-  if (device_info.IsAdreno()) {
-    if (device_info.adreno_info.IsAdreno3xx()) {
+  if (gpu_info.IsAdreno()) {
+    if (gpu_info.adreno_info.IsAdreno3xx()) {
       work_group_size_ = int3(16, 4, 1);
-    } else if (device_info.adreno_info.IsAdreno4xx()) {
+    } else if (gpu_info.adreno_info.IsAdreno4xx()) {
       work_group_size_ = int3(32, 4, 1);
     } else {
       work_group_size_ = int3(32, 4, 1);
     }
-  } else if (device_info.IsIntel()) {
+  } else if (gpu_info.IsIntel()) {
     work_group_size_ = int3(8, 4, 1);
-  } else if (device_info.IsNvidia()) {
+  } else if (gpu_info.IsNvidia()) {
     work_group_size_ = int3(8, 4, 1);
-  } else if (device_info.IsPowerVR()) {
+  } else if (gpu_info.IsPowerVR()) {
     work_group_size_ = int3(8, 4, 1);
   } else {
     work_group_size_ = int3(16, 4, 1);
   }
-  code_ = GetFullyConnectedKernelCode(definition_, device_info);
+  code_ = GetFullyConnectedKernelCode(definition_, gpu_info);
 }
 
 FullyConnected::FullyConnected(FullyConnected&& kernel)
@@ -77,11 +77,11 @@ FullyConnected& FullyConnected::operator=(FullyConnected&& kernel) {
 // optimized shaders
 
 std::string FullyConnected::GetFullyConnectedKernelCode(
-    const OperationDef& op_def, const DeviceInfo& device_info) {
+    const OperationDef& op_def, const GpuInfo& gpu_info) {
   AddSrcTensor("src_tensor", op_def.src_tensors[0]);
   AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
 
-  const bool weights_are_buffer = UseBufferForWeights(device_info);
+  const bool weights_are_buffer = UseBufferForWeights(gpu_info);
 
   std::string c = GetCommonDefines(op_def.precision);
   switch (op_def.precision) {
@@ -150,11 +150,11 @@ int3 FullyConnected::GetGridSize() const {
   return int3(dst_[0]->Slices(), 1, 1);
 }
 
-FullyConnected CreateFullyConnected(const DeviceInfo& device_info,
+FullyConnected CreateFullyConnected(const GpuInfo& gpu_info,
                                     const OperationDef& definition,
                                     const FullyConnectedAttributes& attr) {
-  FullyConnected result(definition, device_info);
-  result.UploadWeights(attr.weights, UseBufferForWeights(device_info));
+  FullyConnected result(definition, gpu_info);
+  result.UploadWeights(attr.weights, UseBufferForWeights(gpu_info));
 
   TensorLinearDescriptor desc;
   desc.storage_type = LinearStorageType::TEXTURE_2D;

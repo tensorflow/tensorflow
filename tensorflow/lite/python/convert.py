@@ -492,15 +492,19 @@ def build_toco_convert_protos(input_tensors,
     else:
       shape = input_shapes[idx]
 
-    # Create shapes with -1 for unknown dimensions.
-    dims = []
-    for dim in shape:
-      if (dim is None or
-          (isinstance(dim, tensor_shape.Dimension) and dim.value is None)):
-        dims.append(-1)
-      else:
-        dims.append(int(dim))
-    input_array.shape.dims.extend(dims)
+    if shape.rank is not None:
+      # Create shapes with -1 for unknown dimensions.
+      dims = []
+      for dim in shape:
+        if (dim is None or
+            (isinstance(dim, tensor_shape.Dimension) and dim.value is None)):
+          dims.append(-1)
+        else:
+          dims.append(int(dim))
+      input_array.shape.dims.extend(dims)
+      input_array.shape.unknown_rank = False
+    else:
+      input_array.shape.unknown_rank = True
 
   for output_tensor in output_tensors:
     if saved_model_dir:

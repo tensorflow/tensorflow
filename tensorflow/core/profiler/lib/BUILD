@@ -58,13 +58,10 @@ cc_library(
         "@com_google_absl//absl/time",
         "//tensorflow/core:protos_all_cc",
     ] + if_not_android([
+        ":profiler_factory",
         ":profiler_lock",
         "//tensorflow/core/profiler/convert:post_process_single_host_xplane",
-        "//tensorflow/core/profiler/lib:profiler_factory",
-        "//tensorflow/core/profiler/utils:derived_timeline",
-        "//tensorflow/core/profiler/utils:group_events",
-        "//tensorflow/core/profiler/utils:xplane_utils",
-        "//tensorflow/core/profiler/utils:xplane_schema",
+        "//tensorflow/core/profiler/utils:time_utils",
     ]),
     alwayslink = True,
 )
@@ -145,6 +142,7 @@ cc_library(
         "//tensorflow/core/platform",
     ] + if_not_android([
         "//tensorflow/core/profiler/internal/cpu:traceme_recorder",
+        "//tensorflow/core/profiler/utils:time_utils",
     ]),
 )
 

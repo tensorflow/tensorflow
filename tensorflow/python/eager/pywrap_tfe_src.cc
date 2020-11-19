@@ -865,7 +865,8 @@ void TFE_Py_ExecuteCancelable(TFE_Context* ctx, const char* device_name,
   auto cleaner = tensorflow::gtl::MakeCleanup([ctx, op] { ReturnOp(ctx, op); });
   if (!out_status->status.ok()) return;
 
-  tensorflow::unwrap(op)->SetStackTrace(tensorflow::GetStackTrace());
+  tensorflow::unwrap(op)->SetStackTrace(tensorflow::GetStackTrace(
+      tensorflow::StackTrace::kDefaultStackTraceInitialSize));
 
   for (int i = 0; i < inputs->size() && out_status->status.ok(); ++i) {
     TFE_OpAddInput(op, inputs->at(i), out_status);
@@ -3629,7 +3630,8 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
     return nullptr;
   }
 
-  tensorflow::unwrap(op)->SetStackTrace(tensorflow::GetStackTrace());
+  tensorflow::unwrap(op)->SetStackTrace(tensorflow::GetStackTrace(
+      tensorflow::StackTrace::kDefaultStackTraceInitialSize));
 
   const tensorflow::OpDef* op_def = tensorflow::unwrap(op)->OpDef();
   if (op_def == nullptr) return nullptr;

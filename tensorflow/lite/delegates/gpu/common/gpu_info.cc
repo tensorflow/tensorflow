@@ -24,26 +24,28 @@ namespace tflite {
 namespace gpu {
 namespace {
 
-GpuVendor GetGpuVendor(const std::string& renderer) {
-  if (renderer.find("mali") != renderer.npos) {
-    return GpuVendor::kMali;
-  }
-  if (renderer.find("adreno") != renderer.npos) {
-    return GpuVendor::kQualcomm;
-  }
-  if (renderer.find("powervr") != renderer.npos) {
-    return GpuVendor::kPowerVR;
-  }
-  if (renderer.find("intel") != renderer.npos) {
-    return GpuVendor::kIntel;
-  }
-  if (renderer.find("nvidia") != renderer.npos) {
-    return GpuVendor::kNvidia;
+GpuVendor GetGpuVendor(const std::string& gpu_description) {
+  const std::map<std::string, GpuVendor> kMapping = {
+      {"adreno", GpuVendor::kQualcomm},
+      {"apple", GpuVendor::kApple},
+      {"qualcomm", GpuVendor::kQualcomm},
+      {"mali", GpuVendor::kMali},
+      {"powervr", GpuVendor::kPowerVR},
+      {"advanced micro devices", GpuVendor::kAMD},
+      {"intel", GpuVendor::kIntel},
+      {"nvidia", GpuVendor::kNvidia},
+      {"amd", GpuVendor::kAMD},
+      {"power", GpuVendor::kPowerVR},
+  };
+  for (const auto& v : kMapping) {
+    if (gpu_description.find(v.first) != std::string::npos) {
+      return v.second;
+    }
   }
   return GpuVendor::kUnknown;
 }
 
-AdrenoGpu GetAdrenoGpuVersion(const std::string& device_name) {
+AdrenoGpu GetAdrenoGpuVersion(const std::string& gpu_description) {
   const std::map<std::string, AdrenoGpu> kMapping = {
       // Adreno 6xx series
       {"685", AdrenoGpu::kAdreno685},
@@ -93,11 +95,33 @@ AdrenoGpu GetAdrenoGpuVersion(const std::string& device_name) {
   };
 
   for (const auto& v : kMapping) {
-    if (device_name.find(v.first) != std::string::npos) {
+    if (gpu_description.find(v.first) != std::string::npos) {
       return v.second;
     }
   }
   return AdrenoGpu::kUnknown;
+}
+
+MaliGpu GetMaliGpuVersion(const std::string& gpu_description) {
+  const std::map<std::string, MaliGpu> kMapping = {
+      {"t604", MaliGpu::kT604}, {"t622", MaliGpu::kT622},
+      {"t624", MaliGpu::kT624}, {"t628", MaliGpu::kT628},
+      {"t658", MaliGpu::kT658}, {"t678", MaliGpu::kT678},
+      {"t720", MaliGpu::kT720}, {"t760", MaliGpu::kT760},
+      {"t820", MaliGpu::kT820}, {"t830", MaliGpu::kT830},
+      {"t860", MaliGpu::kT860}, {"t880", MaliGpu::kT880},
+      {"g31", MaliGpu::kG31},   {"g51", MaliGpu::kG51},
+      {"g71", MaliGpu::kG71},   {"g52", MaliGpu::kG52},
+      {"g72", MaliGpu::kG72},   {"g76", MaliGpu::kG76},
+      {"g57", MaliGpu::kG57},   {"g77", MaliGpu::kG77},
+      {"g68", MaliGpu::kG68},   {"g78", MaliGpu::kG78},
+  };
+  for (const auto& v : kMapping) {
+    if (gpu_description.find(v.first) != std::string::npos) {
+      return v.second;
+    }
+  }
+  return MaliGpu::kUnknown;
 }
 
 }  // namespace
@@ -212,13 +236,125 @@ int AdrenoInfo::GetWaveSize(bool full_wave) const {
   }
 }
 
+AppleInfo::AppleInfo(const std::string& gpu_description) {
+  const std::map<std::string, AppleGpu> kMapping = {
+      {"apple a7 gpu", AppleGpu::kA7},     {"apple a8 gpu", AppleGpu::kA8},
+      {"apple a8x gpu", AppleGpu::kA8X},   {"apple a9 gpu", AppleGpu::kA9},
+      {"apple a9x gpu", AppleGpu::kA9X},   {"apple a10 gpu", AppleGpu::kA10},
+      {"apple a10x gpu", AppleGpu::kA10X}, {"apple a11 gpu", AppleGpu::kA11},
+      {"apple a12 gpu", AppleGpu::kA12},   {"apple a12x gpu", AppleGpu::kA12X},
+      {"apple a12z gpu", AppleGpu::kA12Z}, {"apple a13 gpu", AppleGpu::kA13},
+      {"apple a14 gpu", AppleGpu::kA14},
+  };
+  auto it = kMapping.find(gpu_description);
+  if (it != kMapping.end()) {
+    gpu_type = it->second;
+  } else {
+    gpu_type = AppleGpu::kUnknown;
+  }
+}
+
+bool AppleInfo::IsLocalMemoryPreferredOverGlobal() const {
+  return gpu_type == AppleGpu::kA7 || gpu_type == AppleGpu::kA8 ||
+         gpu_type == AppleGpu::kA8X;
+}
+
+bool AppleInfo::IsBionic() const {
+  return gpu_type == AppleGpu::kA11 || gpu_type == AppleGpu::kA12 ||
+         gpu_type == AppleGpu::kA12X || gpu_type == AppleGpu::kA12Z ||
+         gpu_type == AppleGpu::kA13 || gpu_type == AppleGpu::kA14;
+}
+
+bool AppleInfo::IsRoundToNearestSupported() const { return IsBionic(); }
+
+int AppleInfo::GetComputeUnitsCount() const {
+  switch (gpu_type) {
+    case AppleGpu::kA7:
+      return 4;
+    case AppleGpu::kA8:
+      return 4;
+    case AppleGpu::kA8X:
+      return 8;
+    case AppleGpu::kA9:
+      return 6;
+    case AppleGpu::kA9X:
+      return 12;
+    case AppleGpu::kA10:
+      return 6;
+    case AppleGpu::kA10X:
+      return 12;
+    case AppleGpu::kA11:
+      return 3;
+    case AppleGpu::kA12:
+      return 4;
+    case AppleGpu::kA12X:
+      return 7;
+    case AppleGpu::kA12Z:
+      return 8;
+    case AppleGpu::kA13:
+      return 4;
+    case AppleGpu::kA14:
+      return 4;
+    case AppleGpu::kUnknown:
+      return 1;
+  }
+}
+
+MaliInfo::MaliInfo(const std::string& gpu_description)
+    : gpu_version(GetMaliGpuVersion(gpu_description)) {}
+
+bool MaliInfo::IsMaliT6xx() const {
+  return gpu_version == MaliGpu::kT604 || gpu_version == MaliGpu::kT622 ||
+         gpu_version == MaliGpu::kT624 || gpu_version == MaliGpu::kT628 ||
+         gpu_version == MaliGpu::kT658 || gpu_version == MaliGpu::kT678;
+}
+
+bool MaliInfo::IsMaliT7xx() const {
+  return gpu_version == MaliGpu::kT720 || gpu_version == MaliGpu::kT760;
+}
+
+bool MaliInfo::IsMaliT8xx() const {
+  return gpu_version == MaliGpu::kT820 || gpu_version == MaliGpu::kT830 ||
+         gpu_version == MaliGpu::kT860 || gpu_version == MaliGpu::kT880;
+}
+
+bool MaliInfo::IsMidgard() const {
+  return IsMaliT6xx() || IsMaliT7xx() || IsMaliT8xx();
+}
+
+bool MaliInfo::IsBifrostGen1() const {
+  return gpu_version == MaliGpu::kG31 || gpu_version == MaliGpu::kG51 ||
+         gpu_version == MaliGpu::kG71;
+}
+
+bool MaliInfo::IsBifrostGen2() const {
+  return gpu_version == MaliGpu::kG52 || gpu_version == MaliGpu::kG72;
+}
+
+bool MaliInfo::IsBifrostGen3() const { return gpu_version == MaliGpu::kG76; }
+
+bool MaliInfo::IsBifrost() const {
+  return IsBifrostGen1() || IsBifrostGen2() || IsBifrostGen3();
+}
+
+bool MaliInfo::IsValhall() const {
+  return gpu_version == MaliGpu::kG57 || gpu_version == MaliGpu::kG77 ||
+         gpu_version == MaliGpu::kG68 || gpu_version == MaliGpu::kG78;
+}
+
 void GetGpuInfoFromDeviceDescription(const std::string& gpu_description,
-                                     GpuInfo* gpu_info) {
+                                     GpuApi gpu_api, GpuInfo* gpu_info) {
+  gpu_info->gpu_api = gpu_api;
   std::string lowered = gpu_description;
   absl::AsciiStrToLower(&lowered);
   gpu_info->vendor = GetGpuVendor(lowered);
   if (gpu_info->IsAdreno()) {
     gpu_info->adreno_info = AdrenoInfo(lowered);
+  } else if (gpu_info->IsApple()) {
+    gpu_info->apple_info = AppleInfo(lowered);
+    gpu_info->supported_subgroup_sizes = {32};
+  } else if (gpu_info->IsMali()) {
+    gpu_info->mali_info = MaliInfo(lowered);
   }
 }
 
@@ -235,6 +371,57 @@ bool GpuInfo::IsNvidia() const { return vendor == GpuVendor::kNvidia; }
 bool GpuInfo::IsAMD() const { return vendor == GpuVendor::kAMD; }
 
 bool GpuInfo::IsIntel() const { return vendor == GpuVendor::kIntel; }
+
+bool GpuInfo::IsRoundToNearestSupported() const {
+  if (IsApple()) {
+    return apple_info.IsRoundToNearestSupported();
+  } else {
+    return true;
+  }
+}
+
+bool GpuInfo::IsWaveSizeEqualTo32() const {
+  return supported_subgroup_sizes.size() == 1 &&
+         supported_subgroup_sizes[0] == 32;
+}
+
+int GpuInfo::GetComputeUnitsCount() const {
+  if (IsApple()) {
+    return apple_info.GetComputeUnitsCount();
+  } else {
+    return 1;
+  }
+}
+
+int GpuInfo::GetMaxImageArguments() const {
+  if (IsApiOpenGl()) {
+    return opengl_info.max_image_units;
+  } else if (IsApiVulkan()) {
+    return vulkan_info.max_per_stage_descriptor_sampled_images;
+  } else if (IsApiMetal()) {
+    return 32;
+  } else if (IsApiOpenCl()) {
+    return 128;
+  } else {
+    return 1;
+  }
+}
+
+bool GpuInfo::IsApiOpenGl() const { return gpu_api == GpuApi::kOpenGl; }
+
+bool GpuInfo::IsApiVulkan() const { return gpu_api == GpuApi::kVulkan; }
+
+bool GpuInfo::IsApiMetal() const { return gpu_api == GpuApi::kMetal; }
+
+bool GpuInfo::IsApiOpenCl() const { return gpu_api == GpuApi::kOpenCl; }
+
+bool GpuInfo::IsApiOpenGl31OrAbove() const {
+  if (!IsApiOpenGl()) {
+    return false;
+  }
+  return (opengl_info.major_version == 3 && opengl_info.minor_version >= 1) ||
+         opengl_info.major_version > 3;
+}
 
 }  // namespace gpu
 }  // namespace tflite

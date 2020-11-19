@@ -140,6 +140,7 @@ XlaCompilationCache::BuildSignature(
   for (const XlaCompiler::Argument& arg : args) {
     switch (arg.kind) {
       case XlaCompiler::Argument::kConstant:
+      case XlaCompiler::Argument::kConstantResource:
         signature.arg_values.push_back(arg.constant_value);
         break;
       case XlaCompiler::Argument::kParameter:
@@ -288,7 +289,7 @@ Status XlaCompilationCache::CompileSingleOp(
     const ConfigProto* config = ctx->function_library()->config_proto();
     // TODO(b/171039585): Support tf.VarIsInitializedOp using MLIR.
     bool use_mlir = config &&
-                    GetMlirBridgeRolloutPolicy(*config) ==
+                    GetMlirBridgeRolloutPolicy(*graph, *config) ==
                         MlirBridgeRolloutPolicy::kEnabledByUser &&
                     node_def.op() != "VarIsInitializedOp";
 #ifdef LIBTPU_ON_GCE

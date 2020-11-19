@@ -86,7 +86,7 @@ float4 filter_outside_tensor(float4 x, int num_channels, int slice) {
 }  // namespace
 
 MeanStdDevNormalization::MeanStdDevNormalization(const OperationDef& definition,
-                                                 const DeviceInfo& device_info,
+                                                 const GpuInfo& gpu_info,
                                                  const int tensor_slices)
     : GPUOperation(definition) {
   // The kernel code does not inherently need a fixed size, but in order to not
@@ -95,15 +95,15 @@ MeanStdDevNormalization::MeanStdDevNormalization(const OperationDef& definition,
   // For now, fix workgroup size to the biggest supported by the device, but not
   // larger than the number of tensor slices.
   int desired_work_group_size =
-      std::min(tensor_slices, device_info.max_work_group_size_x);
-  if (device_info.IsMali()) {
+      std::min(tensor_slices, gpu_info.max_work_group_size_x);
+  if (gpu_info.IsMali()) {
     // Don't use more than 64 work items per work group on ARM Mali. They
     // implement local memory using the global memory, larger workgroups have
     // severe performance penalty.
     desired_work_group_size = 64;
   }
-  if (device_info.IsAdreno()) {
-    AdrenoInfo info = device_info.adreno_info;
+  if (gpu_info.IsAdreno()) {
+    AdrenoInfo info = gpu_info.adreno_info;
     if (info.IsAdreno3xx()) {
       if (info.adreno_gpu == AdrenoGpu::kAdreno320 ||
           info.adreno_gpu == AdrenoGpu::kAdreno330) {
@@ -126,7 +126,7 @@ MeanStdDevNormalization::MeanStdDevNormalization(const OperationDef& definition,
       }
     }
   }
-  if (device_info.IsPowerVR()) {
+  if (gpu_info.IsPowerVR()) {
     desired_work_group_size = 64;
   }
   while (desired_work_group_size >= tensor_slices * 2) {
@@ -136,10 +136,10 @@ MeanStdDevNormalization::MeanStdDevNormalization(const OperationDef& definition,
   work_group_size_.y = 1;  // Required
   work_group_size_.z = 1;  // Required
   code_ = GetNormalizationCode();
-  if (device_info.cl_version >= OpenCLVersion::CL_3_0) {
-    compiler_options_.push_back(CompilerOptions::CL_3_0);
-  } else if (device_info.cl_version >= OpenCLVersion::CL_2_0) {
-    compiler_options_.push_back(CompilerOptions::CL_2_0);
+  if (gpu_info.cl_version >= OpenCLVersion::CL_3_0) {
+    compiler_options_.push_back(CompilerOptions::kCl30);
+  } else if (gpu_info.cl_version >= OpenCLVersion::CL_2_0) {
+    compiler_options_.push_back(CompilerOptions::kCl20);
   }
 }
 
@@ -205,9 +205,9 @@ int3 MeanStdDevNormalization::GetGridSize() const {
 }
 
 MeanStdDevNormalization CreateMeanStdDevNormalization(
-    const OperationDef& definition, const DeviceInfo& device_info,
+    const OperationDef& definition, const GpuInfo& gpu_info,
     const int tensor_slices) {
-  return MeanStdDevNormalization(definition, device_info, tensor_slices);
+  return MeanStdDevNormalization(definition, gpu_info, tensor_slices);
 }
 
 }  // namespace cl

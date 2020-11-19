@@ -343,6 +343,7 @@ cc_library(
         ":lib_internal",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/types:optional",
     ],
 )
@@ -537,15 +538,11 @@ cc_library(
         ],
 )
 
-# One target for all user ops
-cc_library(
+# One target for all user ops.
+alias(
     name = "user_ops_op_lib",
-    srcs = glob(["user_ops/**/*.cc"]),
-    copts = tf_copts(),
-    linkstatic = 1,
+    actual = "//tensorflow/core/user_ops:user_ops_op_lib",
     visibility = ["//visibility:public"],
-    deps = [":framework"],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -1121,12 +1118,11 @@ cc_library(
 
 # -----------------------------------------------------------------------------
 # Libraries with GPU facilities that are useful for writing kernels.
-cc_library(
+alias(
     name = "gpu_lib",
-    visibility = ["//visibility:public"],
-    deps = [
+    actual =
         "//tensorflow/core/common_runtime/gpu:gpu_lib",
-    ],
+    visibility = ["//visibility:public"],
 )
 
 alias(
@@ -1347,10 +1343,6 @@ cc_library(
         "//tensorflow/core/lib/monitoring:counter",
         "//tensorflow/core/lib/monitoring:gauge",
         "//tensorflow/core/lib/monitoring:metric_def",
-        "//tensorflow/core/lib/monitoring:mobile_counter",
-        "//tensorflow/core/lib/monitoring:mobile_gauge",
-        "//tensorflow/core/lib/monitoring:mobile_percentile_sampler",
-        "//tensorflow/core/lib/monitoring:mobile_sampler",
         "//tensorflow/core/lib/monitoring:percentile_sampler",
         "//tensorflow/core/lib/monitoring:sampler",
         "//tensorflow/core/lib/monitoring:timed",
@@ -1440,25 +1432,9 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_library(
+alias(
     name = "gif_internal",
-    srcs = [
-        "lib/gif/gif_io.cc",
-        "//tensorflow/core/platform:gif_hdrs",
-    ],
-    hdrs = ["lib/gif/gif_io.h"],
-    copts = tf_copts(),
-    linkopts = select({
-        "//tensorflow:freebsd": [],
-        "//tensorflow:windows": [],
-        "//conditions:default": ["-ldl"],
-    }),
-    deps = [
-        ":lib",
-        ":lib_internal",
-        "//tensorflow/core/platform:gif",
-        "@com_google_absl//absl/strings",
-    ],
+    actual = "//tensorflow/core/lib/gif:gif_internal",
 )
 
 alias(
@@ -1493,30 +1469,9 @@ alias(
     actual = "//tensorflow/core/lib/jpeg:portable_jpeg_internal",
 )
 
-cc_library(
+alias(
     name = "portable_gif_internal",
-    srcs = if_mobile([
-        "lib/gif/gif_io.cc",
-        "//tensorflow/core/platform:gif_hdrs",
-    ]),
-    hdrs = [
-        "lib/gif/gif_io.h",
-        "//tensorflow/core/lib/core:legacy_lib_core_stringpiece_header",
-        "//tensorflow/core/lib/gtl:legacy_android_gif_internal_headers",
-        "//tensorflow/core/platform:gif_internal_hdrs",
-        "//tensorflow/core/platform/default:integral_types.h",
-        "//tensorflow/core/platform/default:logging.h",
-    ],
-    copts = tf_copts(),
-    linkopts = if_android(["-ldl"]),
-    deps = [
-        "//tensorflow/core/platform:dynamic_annotations",
-        "//tensorflow/core/platform:gif",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:stringpiece",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/strings",
-    ],
+    actual = "//tensorflow/core/lib/gif:portable_gif_internal",
 )
 
 alias(

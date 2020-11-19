@@ -75,9 +75,9 @@ TEST(OverflowTest, Nonnegative) {
 TEST(OverflowTest, Negative) {
   const int64 negatives[] = {-1, std::numeric_limits<int64>::min()};
   for (const int64 n : negatives) {
-    EXPECT_DEATH(MultiplyWithoutOverflow(n, 0), "") << n;
-    EXPECT_DEATH(MultiplyWithoutOverflow(0, n), "") << n;
-    EXPECT_DEATH(MultiplyWithoutOverflow(n, n), "") << n;
+    EXPECT_LT(MultiplyWithoutOverflow(n, 0), 0) << n;
+    EXPECT_LT(MultiplyWithoutOverflow(0, n), 0) << n;
+    EXPECT_LT(MultiplyWithoutOverflow(n, n), 0) << n;
   }
 }
 

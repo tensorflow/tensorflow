@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_MLIR_GENERATED_UNRANKED_OP_GPU_ABS_H_
 #define TENSORFLOW_CORE_KERNELS_MLIR_GENERATED_UNRANKED_OP_GPU_ABS_H_
 
-#include "third_party/llvm/llvm-project/llvm/include/llvm/ADT/ArrayRef.h"
-#include "third_party/llvm/llvm-project/llvm/include/llvm/ADT/SmallVector.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/ExecutionEngine/CRunnerUtils.h"  // from @llvm-project
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
@@ -88,9 +88,12 @@ class MlirUnrankedOp : public OpKernel {
           std::move(ConvertTensorToDescriptor<data_type>(ctx->input(i))));
     }
     auto result_desc = Derived::Invoke(ctx, input_descs);
-
     for (const auto& input_desc : input_descs) {
       free(input_desc.descriptor);
+    }
+    if (!ctx->status().ok()) {
+      free(result_desc.descriptor);
+      return;
     }
     void* result_data_ptr = static_cast<void**>(result_desc.descriptor)[0];
 
@@ -112,12 +115,24 @@ class MlirUnrankedOp : public OpKernel {
 };
 
 #define MLIR_FUNCTION(tf_op, mlir_type) _mlir_ciface_##tf_op##_##mlir_type
+#define REGISTER_KERNEL(tf_op, mlir_type, data_type)                  \
+  REGISTER_KERNEL_BUILDER(                                            \
+      Name(#tf_op).Device(DEVICE_GPU).TypeConstraint<data_type>("T"), \
+      MlirUnranked##tf_op##mlir_type##Op);
+#define REGISTER_KERNEL_NO_TYPE_CONSTRAINT(tf_op, mlir_type) \
+  REGISTER_KERNEL_BUILDER(Name(#tf_op).Device(DEVICE_GPU),   \
+                          MlirUnranked##tf_op##mlir_type##Op);
+
 // OpKernel with Compute function that converts input tensors to unranked
 // memref descriptors and calls mlir-generated unranked kernel. The outputs
 // are converted back to tensors using MlirTensorBuffer to take ownership of
 // pre-allocated memory.
-#define REGISTER_AND_GENERATE_BINARY_KERNEL(tf_op, mlir_type, tf_data_type,   \
-                                            data_type)                        \
+#define GENERATE_AND_REGISTER_BINARY_KERNEL(tf_op, mlir_type, tf_data_type, \
+                                            data_type)                      \
+  GENERATE_BINARY_KERNEL(tf_op, mlir_type, tf_data_type, data_type)         \
+  REGISTER_KERNEL(tf_op, mlir_type, data_type)
+
+#define GENERATE_BINARY_KERNEL(tf_op, mlir_type, tf_data_type, data_type)     \
   extern "C" ::UnrankedMemRefType<data_type> MLIR_FUNCTION(tf_op, mlir_type)( \
       tensorflow::OpKernelContext * ctx,                                      \
       const ::UnrankedMemRefType<data_type>* arg1,                            \
@@ -128,9 +143,7 @@ class MlirUnrankedOp : public OpKernel {
       : public MlirUnrankedOp<tf_data_type, data_type,                        \
                               MlirUnranked##tf_op##mlir_type##Op> {           \
    public:                                                                    \
-    explicit MlirUnranked##tf_op##mlir_type##Op(OpKernelConstruction* ctx)    \
-        : MlirUnrankedOp<tf_data_type, data_type,                             \
-                         MlirUnranked##tf_op##mlir_type##Op>(ctx) {}          \
+    using MlirUnrankedOp::MlirUnrankedOp;                                     \
                                                                               \
     static ::UnrankedMemRefType<data_type> Invoke(                            \
         OpKernelContext* ctx,                                                 \
@@ -138,13 +151,14 @@ class MlirUnrankedOp : public OpKernel {
       return MLIR_FUNCTION(tf_op, mlir_type)(ctx, &args[0], &args[1]);        \
     }                                                                         \
   };                                                                          \
-  }                                                                           \
-  REGISTER_KERNEL_BUILDER(                                                    \
-      Name(#tf_op).Device(DEVICE_GPU).TypeConstraint<data_type>("T"),         \
-      MlirUnranked##tf_op##mlir_type##Op);
+  }
 
-#define REGISTER_AND_GENERATE_UNARY_KERNEL(tf_op, mlir_type, tf_data_type,    \
-                                           data_type)                         \
+#define GENERATE_AND_REGISTER_UNARY_KERNEL(tf_op, mlir_type, tf_data_type, \
+                                           data_type)                      \
+  GENERATE_UNARY_KERNEL(tf_op, mlir_type, tf_data_type, data_type)         \
+  REGISTER_KERNEL(tf_op, mlir_type, data_type)
+
+#define GENERATE_UNARY_KERNEL(tf_op, mlir_type, tf_data_type, data_type)      \
   extern "C" ::UnrankedMemRefType<data_type> MLIR_FUNCTION(tf_op, mlir_type)( \
       tensorflow::OpKernelContext * ctx,                                      \
       const ::UnrankedMemRefType<data_type>* arg);                            \
@@ -154,9 +168,7 @@ class MlirUnrankedOp : public OpKernel {
       : public MlirUnrankedOp<tf_data_type, data_type,                        \
                               MlirUnranked##tf_op##mlir_type##Op> {           \
    public:                                                                    \
-    explicit MlirUnranked##tf_op##mlir_type##Op(OpKernelConstruction* ctx)    \
-        : MlirUnrankedOp<tf_data_type, data_type,                             \
-                         MlirUnranked##tf_op##mlir_type##Op>(ctx) {}          \
+    using MlirUnrankedOp::MlirUnrankedOp;                                     \
                                                                               \
     static ::UnrankedMemRefType<data_type> Invoke(                            \
         OpKernelContext* ctx,                                                 \
@@ -164,10 +176,7 @@ class MlirUnrankedOp : public OpKernel {
       return MLIR_FUNCTION(tf_op, mlir_type)(ctx, &args[0]);                  \
     }                                                                         \
   };                                                                          \
-  }                                                                           \
-  REGISTER_KERNEL_BUILDER(                                                    \
-      Name(#tf_op).Device(DEVICE_GPU).TypeConstraint<data_type>("T"),         \
-      MlirUnranked##tf_op##mlir_type##Op);
+  }
 
 }  // namespace tensorflow
 

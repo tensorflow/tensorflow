@@ -28,14 +28,14 @@ namespace cl {
 
 ConvolutionTransposedThin::ConvolutionTransposedThin(
     const OperationDef& definition, const ConvolutionTransposedAttributes& attr,
-    const DeviceInfo& device_info)
+    const GpuInfo& gpu_info)
     : GPUOperation(definition) {
   code_ = GenerateConvolutionTransposedCode(
       definition_, DivideRoundUp(attr.weights.shape.i, 4), attr.weights.shape.o,
       int2(attr.weights.shape.w, attr.weights.shape.h));
   if (definition_.precision == CalculationsPrecision::F16 &&
-      device_info.IsAdreno() && device_info.adreno_info.IsAdreno3xx()) {
-    compiler_options_.push_back(CompilerOptions::ADRENO_FULL_SIMD_LINE);
+      gpu_info.IsAdreno() && gpu_info.adreno_info.IsAdreno3xx()) {
+    compiler_options_.push_back(CompilerOptions::kAdrenoFullSimd);
   }
 }
 
@@ -166,9 +166,9 @@ bool IsConvolutionTransposedThinSupported(
 }
 
 ConvolutionTransposedThin CreateConvolutionTransposedThin(
-    const DeviceInfo& device_info, const OperationDef& definition,
+    const GpuInfo& gpu_info, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr) {
-  ConvolutionTransposedThin result(definition, attr, device_info);
+  ConvolutionTransposedThin result(definition, attr, gpu_info);
   result.UploadData(attr.weights, attr.bias);
   return result;
 }

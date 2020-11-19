@@ -789,8 +789,6 @@ class TFRGen(transformer.CodeGenerator):
         # The out symbols are just a Tuple of names
         for out in node.args[5].elts[:nouts]:
           val, ty = self.symbol_table.lookup(out.value)
-          if ty != TFRTypes.AG_UNDEFINED_VAL:
-            raise ValueError('if stmt out symbol is not defined.')
           out_symbols.append(out.value)
         return self._visit_if_stmt(cond, body, orelse, get_state, out_symbols,
                                    node)
@@ -980,10 +978,8 @@ class TFRGen(transformer.CodeGenerator):
     if ret_ssa_values:
       self.emit(ret_str + ' = ')
 
-    # add ssa values to the symbol table
     out_types = []
     for symbol, ssa_value in zip(out_symbols, ret_ssa_values):
-      self.symbol_table.insert_symbol(symbol, ssa_value, TFRTypes.TENSOR)
       out_types.append(str(TFRTypes.TENSOR))
 
     self.emit('scf.if {} -> ({}) {{'.format(cond, ', '.join(out_types)))
@@ -1000,6 +996,10 @@ class TFRGen(transformer.CodeGenerator):
     self.visit_block(orelse_def.body)
     self.visit_block(get_state.body)
     self.symbol_table.exit_scope()
+
+    # add ssa values to the symbol table
+    for symbol, ssa_value in zip(out_symbols, ret_ssa_values):
+      self.symbol_table.insert_symbol(symbol, ssa_value, TFRTypes.TENSOR)
 
     self._emit_with_loc('\n}', node)
     return list(zip(ret_ssa_values, out_types))

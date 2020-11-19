@@ -29,11 +29,19 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "function"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "nest"
     mtype: "<type \'module\'>"
   }
   member {
     name: "ops"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "saved_model"
     mtype: "<type \'module\'>"
   }
   member {
@@ -49,7 +57,23 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member_method {
+    name: "create_c_op"
+    argspec: "args=[\'graph\', \'node_def\', \'inputs\', \'control_inputs\', \'op_def\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "execute_fn_for_device"
     argspec: "args=[\'device_branch_fns\', \'default_fn\', \'name\'], varargs=None, keywords=None, defaults=[\'execute_fn\'], "
+  }
+  member_method {
+    name: "get_enclosing_xla_context"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_name_scope"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "is_tfrt_enabled"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
 }
