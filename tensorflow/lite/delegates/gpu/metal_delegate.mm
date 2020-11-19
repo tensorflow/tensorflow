@@ -339,7 +339,7 @@ class Delegate {
 
     std::string device_name = std::string([[metal_device_ name] UTF8String]);
     GpuInfo gpu_info;
-    GetGpuInfoFromDeviceDescription(device_name, &gpu_info);
+    GetGpuInfoFromDeviceDescription(device_name, GpuApi::kMetal, &gpu_info);
     size_t storage_type_size;
     RuntimeOptions runtime_options;
     if (options_.allow_precision_loss) {

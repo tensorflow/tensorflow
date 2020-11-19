@@ -343,7 +343,8 @@ bool MaliInfo::IsValhall() const {
 }
 
 void GetGpuInfoFromDeviceDescription(const std::string& gpu_description,
-                                     GpuInfo* gpu_info) {
+                                     GpuApi gpu_api, GpuInfo* gpu_info) {
+  gpu_info->gpu_api = gpu_api;
   std::string lowered = gpu_description;
   absl::AsciiStrToLower(&lowered);
   gpu_info->vendor = GetGpuVendor(lowered);
@@ -390,6 +391,36 @@ int GpuInfo::GetComputeUnitsCount() const {
   } else {
     return 1;
   }
+}
+
+int GpuInfo::GetMaxImageArguments() const {
+  if (IsApiOpenGl()) {
+    return opengl_info.max_image_units;
+  } else if (IsApiVulkan()) {
+    return vulkan_info.max_per_stage_descriptor_sampled_images;
+  } else if (IsApiMetal()) {
+    return 32;
+  } else if (IsApiOpenCl()) {
+    return 128;
+  } else {
+    return 1;
+  }
+}
+
+bool GpuInfo::IsApiOpenGl() const { return gpu_api == GpuApi::kOpenGl; }
+
+bool GpuInfo::IsApiVulkan() const { return gpu_api == GpuApi::kVulkan; }
+
+bool GpuInfo::IsApiMetal() const { return gpu_api == GpuApi::kMetal; }
+
+bool GpuInfo::IsApiOpenCl() const { return gpu_api == GpuApi::kOpenCl; }
+
+bool GpuInfo::IsApiOpenGl31OrAbove() const {
+  if (!IsApiOpenGl()) {
+    return false;
+  }
+  return (opengl_info.major_version == 3 && opengl_info.minor_version >= 1) ||
+         opengl_info.major_version > 3;
 }
 
 }  // namespace gpu

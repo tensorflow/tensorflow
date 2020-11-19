@@ -34,6 +34,14 @@ enum class GpuVendor {
   kUnknown
 };
 
+enum class GpuApi {
+  kUnknown,
+  kOpenCl,
+  kMetal,
+  kVulkan,
+  kOpenGl,
+};
+
 enum class AdrenoGpu {
   // Adreno 6xx series
   kAdreno685,
@@ -190,6 +198,28 @@ struct MaliInfo {
   bool IsValhall() const;
 };
 
+struct OpenGlInfo {
+  std::string renderer_name;
+  std::string vendor_name;
+  std::string version;
+  int major_version = -1;
+  int minor_version = -1;
+
+  int max_image_units = 0;
+  int max_ssbo_bindings = 0;
+  int max_image_bindings = 0;
+};
+
+struct VulkanInfo {
+  std::string vendor_name;
+  uint32_t api_version = -1;
+  uint32_t api_version_major = -1;
+  uint32_t api_version_minor = -1;
+  uint32_t api_version_patch = -1;
+
+  uint32_t max_per_stage_descriptor_sampled_images = 0;
+};
+
 struct GpuInfo {
   bool IsAdreno() const;
   bool IsApple() const;
@@ -207,20 +237,15 @@ struct GpuInfo {
 
   int GetComputeUnitsCount() const;
 
-  GpuVendor vendor = GpuVendor::kUnknown;
+  int GetMaxImageArguments() const;
 
-  std::string renderer_name;
-  std::string vendor_name;
-  std::string version;
-  int major_version = -1;
-  int minor_version = -1;
+  GpuVendor vendor = GpuVendor::kUnknown;
+  GpuApi gpu_api = GpuApi::kUnknown;
+
   std::vector<std::string> extensions;
-  int max_ssbo_bindings = 0;
-  int max_image_bindings = 0;
   std::vector<int> max_work_group_size;
   int max_work_group_invocations;
   int max_texture_size = 0;
-  int max_image_units = 0;
   int max_array_texture_layers = 0;
 
   std::vector<int> supported_subgroup_sizes;
@@ -228,19 +253,34 @@ struct GpuInfo {
   AdrenoInfo adreno_info;
   AppleInfo apple_info;
   MaliInfo mali_info;
+
+  // OpenGL specific, gpu_api should be kOpenGl
+  OpenGlInfo opengl_info;
+  bool IsApiOpenGl() const;
+  bool IsApiOpenGl31OrAbove() const;
+
+  // Vulkan specific, gpu_api should be kVulkan
+  VulkanInfo vulkan_info;
+  bool IsApiVulkan() const;
+
+  bool IsApiMetal() const;
+
+  bool IsApiOpenCl() const;
 };
 
 inline bool IsOpenGl31OrAbove(const GpuInfo& gpu_info) {
-  return (gpu_info.major_version == 3 && gpu_info.minor_version >= 1) ||
-         gpu_info.major_version > 3;
+  return (gpu_info.opengl_info.major_version == 3 &&
+          gpu_info.opengl_info.minor_version >= 1) ||
+         gpu_info.opengl_info.major_version > 3;
 }
 
 // Currently it initializes:
 // vendor
 // AdrenoInfo if vendor is kQualcomm
 // AppleInfo if vendor is kApple
+// MaliInfo if vendor is kMali
 void GetGpuInfoFromDeviceDescription(const std::string& gpu_description,
-                                     GpuInfo* gpu_info);
+                                     GpuApi gpu_api, GpuInfo* gpu_info);
 
 }  // namespace gpu
 }  // namespace tflite
