@@ -176,9 +176,10 @@ StatusOr<BufferAllocation::Slice> GetAllocationSliceForMlir(
                                    size);
   }
 
-  // We match two patterns here:
-  // * v = ViewOp(arg);
-  // * v = MemRefReinterpretCastOp(ViewOp(arg));
+  // We match the following patterns here:
+  //  base := ViewOp(arg) | get_global_memref (global_memref)
+  //  root := base | MemRefReinterpretCastOp(base)
+
   if (mlir::Operation* op = v.getDefiningOp()) {
     if (auto cast = mlir::dyn_cast<mlir::MemRefReinterpretCastOp>(op)) {
       mlir::Value source = cast.getViewSource();
@@ -197,6 +198,14 @@ StatusOr<BufferAllocation::Slice> GetAllocationSliceForMlir(
               .getValue()
               .getSExtValue(),
           size);
+    } else if (mlir::isa<mlir::GetGlobalMemrefOp>(op)) {
+      int64_t index =
+          op->getAttrOfType<mlir::IntegerAttr>("lmhlo.alloc").getInt();
+      int64_t offset =
+          op->getAttrOfType<mlir::IntegerAttr>("lmhlo.slice_offset").getInt();
+      int64_t size =
+          op->getAttrOfType<mlir::IntegerAttr>("lmhlo.slice_size").getInt();
+      return BufferAllocation::Slice(&allocations[index], offset, size);
     }
     return Unimplemented("MemRefReinterpretCastOp has to wrap a ViewOp");
   }
