@@ -19,7 +19,9 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python import tf2
 from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -27,6 +29,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gradient_checker_v2
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
@@ -114,19 +117,45 @@ class ReluTest(test.TestCase):
           order="F")
       err = gradient_checker_v2.max_error(*gradient_checker_v2.compute_gradient(
           nn_ops.relu, [x], delta=1.0 / 1024))
-    self.assertLess(err, 1e-6)
+    self.assertLess(err, 1e-4)
 
-  # The gradient test for ReLU is a bit tricky as the derivative is not well
-  # defined at around zero and we want to avoid that in terms of input values.
+  # The gradient for fp16 is inaccurate due to the low-precision.
+  # We compare the fp16 analytical gradient against their fp32 counterpart.
   def testGradientFloat16(self):
-    with self.cached_session():
-      x = np.asarray(
-          [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]],
-          dtype=np.float16,
-          order="F")
-      err = gradient_checker_v2.max_error(
-          *gradient_checker_v2.compute_gradient(nn_ops.relu, [x]))
-    self.assertLess(err, 1e-6)
+
+    def grad(x):
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = nn_ops.l2_loss(nn_ops.relu(x))
+      return tape.gradient(y, x)
+
+    def f():
+      with test_util.use_gpu():
+        # Randomly construct a 1D shape from [1, 40)
+        shape = random_ops.random_uniform([1],
+                                          minval=1,
+                                          maxval=40,
+                                          dtype=dtypes.int32)
+        x32 = random_ops.random_uniform(shape, minval=-1, maxval=1)
+        x16 = math_ops.cast(x32, dtype=dtypes.float16)
+        return grad(x32), grad(x16)
+
+    # We're going to ensure that the fp16 and fp32 gradients
+    # are "close" to each other for ~100 random values.
+    #
+    # In TensorFlow 1.x, invoking f() (without eager execution enabled)
+    # would construct a graph. Instead of construct a graph with O(100) nodes,
+    # we construct a single graph to be executed ~100 times in a Session.
+    if not tf2.enabled():
+      d32_tensor, d16_tensor = f()
+      with self.cached_session() as sess:
+        f = lambda: sess.run([d32_tensor, d16_tensor])
+
+    # Repeat the experiment for 100 times. All tensor shapes and its tensor
+    # values are randomly generated for each run.
+    for _ in xrange(100):
+      d32, d16 = f()
+      self.assertAllClose(d32, d16, atol=3e-4)
 
   def testGradientFloat64(self):
     with self.cached_session():
@@ -136,7 +165,7 @@ class ReluTest(test.TestCase):
           order="F")
       err = gradient_checker_v2.max_error(*gradient_checker_v2.compute_gradient(
           nn_ops.relu, [x], delta=1.0 / 1024))
-    self.assertLess(err, 1e-15)
+    self.assertLess(err, 1e-10)
 
   def testGradGradFloat32(self):
     with self.cached_session():
