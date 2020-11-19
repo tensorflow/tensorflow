@@ -201,7 +201,7 @@ MatrixMap<Scalar> MapAsMatrixWithGivenNumberOfRows(Scalar* data,
   return MatrixMap<Scalar>(data, rows, cols);
 }
 
-// TODO(renjieliu): Refactor this to merge with other
+// TODO(b/173708994): Refactor this to merge with other
 // MultiplyByQuantizedMultipler.
 #ifdef USE_NEON
 inline int32x4x4_t MultiplyByQuantizedMultiplier4Rows(
