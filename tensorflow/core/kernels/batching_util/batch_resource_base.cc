@@ -204,7 +204,6 @@ BatchResourceBase::GetBatcherQueueOptions(
   batcher_queue_options.input_batch_size_limit = max_batch_size;
   batcher_queue_options.max_enqueued_batches = max_enqueued_batches;
   batcher_queue_options.batch_timeout_micros = batch_timeout_micros;
-  // Support for splitting large batch is still in progress.
   batcher_queue_options.enable_large_batch_splitting =
       enable_large_batch_splitting;
   if (enable_large_batch_splitting) {
@@ -222,6 +221,28 @@ BatchResourceBase::GetBatcherQueueOptions(
       batcher_queue_options.max_execution_batch_size =
           *allowed_batch_sizes.rbegin();
     }
+  }
+
+  return batcher_queue_options;
+}
+
+/*static*/ BatchResourceBase::AdaptiveBatcherT::QueueOptions
+BatchResourceBase::GetAdaptiveBatcherQueueOptions(
+    int32 max_batch_size, int32 batch_timeout_micros,
+    int32 max_enqueued_batches, bool enable_large_batch_splitting) {
+  AdaptiveBatcherT::QueueOptions batcher_queue_options;
+  batcher_queue_options.max_batch_size = max_batch_size;
+  batcher_queue_options.max_enqueued_batches = max_enqueued_batches;
+  batcher_queue_options.batch_timeout_micros = batch_timeout_micros;
+
+  if (enable_large_batch_splitting) {
+    batcher_queue_options.split_input_task_func =
+        [](std::unique_ptr<BatchTask>* input_task,
+           int open_batch_remaining_slot, int max_batch_size,
+           std::vector<std::unique_ptr<BatchTask>>* output_tasks) -> Status {
+      return SplitInputTask(input_task, open_batch_remaining_slot,
+                            max_batch_size, output_tasks);
+    };
   }
 
   return batcher_queue_options;

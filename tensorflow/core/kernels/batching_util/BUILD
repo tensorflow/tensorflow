@@ -241,6 +241,7 @@ cc_library(
     srcs = ["batch_resource_base.cc"],
     hdrs = ["batch_resource_base.h"],
     deps = [
+        ":adaptive_shared_batch_scheduler",
         ":batch_scheduler",
         ":concat_split_util",
         ":shared_batch_scheduler",
