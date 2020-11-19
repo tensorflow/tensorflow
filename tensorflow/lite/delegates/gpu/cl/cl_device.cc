@@ -89,34 +89,34 @@ void GetDeviceWorkDimsSizes(cl_device_id id, int3* result) {
   result->z = limits[2];
 }
 
-OpenCLVersion ParseCLVersion(const std::string& version) {
+OpenClVersion ParseCLVersion(const std::string& version) {
   const auto first_dot_pos = version.find_first_of('.');
   if (first_dot_pos == std::string::npos) {
-    return OpenCLVersion::CL_1_0;
+    return OpenClVersion::kCl1_0;
   }
   const int major = version[first_dot_pos - 1] - '0';
   const int minor = version[first_dot_pos + 1] - '0';
 
   if (major == 1) {
     if (minor == 2) {
-      return OpenCLVersion::CL_1_2;
+      return OpenClVersion::kCl1_2;
     } else if (minor == 1) {
-      return OpenCLVersion::CL_1_1;
+      return OpenClVersion::kCl1_1;
     } else {
-      return OpenCLVersion::CL_1_0;
+      return OpenClVersion::kCl1_0;
     }
   } else if (major == 2) {
     if (minor == 2) {
-      return OpenCLVersion::CL_2_2;
+      return OpenClVersion::kCl2_2;
     } else if (minor == 1) {
-      return OpenCLVersion::CL_2_1;
+      return OpenClVersion::kCl2_1;
     } else {
-      return OpenCLVersion::CL_2_0;
+      return OpenClVersion::kCl2_0;
     }
   } else if (major == 3) {
-    return OpenCLVersion::CL_3_0;
+    return OpenClVersion::kCl3_0;
   } else {
-    return OpenCLVersion::CL_1_0;
+    return OpenClVersion::kCl1_0;
   }
 }
 
@@ -168,7 +168,7 @@ GpuInfo GpuInfoFromDeviceID(cl_device_id id) {
   } else if (info.IsMali()) {
     info.mali_info = MaliInfo(device_name);
   }
-  info.cl_version = ParseCLVersion(opencl_c_version);
+  info.opencl_info.cl_version = ParseCLVersion(opencl_c_version);
   info.extensions =
       absl::StrSplit(GetDeviceInfo<std::string>(id, CL_DEVICE_EXTENSIONS), ' ');
   info.supports_fp16 = false;
@@ -226,7 +226,7 @@ GpuInfo GpuInfoFromDeviceID(cl_device_id id) {
       GetDeviceInfo<size_t>(id, CL_DEVICE_IMAGE2D_MAX_HEIGHT);
   info.buffer_max_size =
       GetDeviceInfo<cl_ulong>(id, CL_DEVICE_MAX_MEM_ALLOC_SIZE);
-  if (info.cl_version >= OpenCLVersion::CL_1_2) {
+  if (info.opencl_info.cl_version >= OpenClVersion::kCl1_2) {
     info.image_buffer_max_size =
         GetDeviceInfo<size_t>(id, CL_DEVICE_IMAGE_MAX_BUFFER_SIZE);
     info.image_array_max_layers =

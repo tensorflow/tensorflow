@@ -445,7 +445,7 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
 
   std::string c = GetCommonDefines(op_def.precision);
   if (use_simd_broadcast) {
-    if (gpu_info.cl_version == OpenCLVersion::CL_2_0) {
+    if (gpu_info.opencl_info.cl_version == OpenClVersion::kCl2_0) {
       c += "#pragma OPENCL EXTENSION cl_khr_subgroups : enable\n";
     } else if (gpu_info.SupportsExtension("cl_intel_subgroups")) {
       c += "#pragma OPENCL EXTENSION cl_intel_subgroups : enable\n";
