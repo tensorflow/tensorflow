@@ -24,14 +24,13 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/op_macros.h"
 #include "tensorflow/lite/micro/compatibility.h"
+#include "tensorflow/lite/micro/kernels/ethosu.h"
 #include "tensorflow/lite/micro/kernels/fully_connected.h"
 #include "tensorflow/lite/micro/kernels/micro_ops.h"
 #include "tensorflow/lite/micro/micro_op_resolver.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
-TfLiteRegistration* Register_ETHOSU();
-const char* GetString_ETHOSU();
 
 template <unsigned int tOpCount>
 class MicroMutableOpResolver : public MicroOpResolver {
