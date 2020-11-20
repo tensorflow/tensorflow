@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -46,6 +47,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace xla {
 
@@ -3350,6 +3352,11 @@ StatusOr<XlaComputation> XlaBuilder::BuildDynamicInferenceGraph(XlaOp root_op) {
     }
 
     if (!need_rewrite) {
+      if (opcode == HloOpcode::kCompare) {
+        CHECK(!instr_proto->comparison_type().empty());
+        new_instr->set_comparison_type(
+            ComparisonTypeToString(Comparison::DefaultComparisonType(PRED)));
+      }
       *new_instr->mutable_name() =
           GetFullName(instr_proto->opcode(), kNameSeparator, id);
       return Status::OK();
@@ -4009,11 +4016,26 @@ XlaOp Eq(const XlaOp lhs, const XlaOp rhs,
   return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kEq);
 }
 
+static XlaOp CompareTotalOrder(const XlaOp lhs, const XlaOp rhs,
+                               absl::Span<const int64> broadcast_dimensions,
+                               ComparisonDirection comparison_direction) {
+  auto b = lhs.builder();
+  return b->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(auto operand_shape, b->GetShape(lhs));
+    auto operand_element_type = operand_shape.element_type();
+    auto compare_type =
+        primitive_util::IsFloatingPointType(operand_element_type)
+            ? Comparison::Type::kFloatTotalOrder
+            : Comparison::DefaultComparisonType(operand_element_type);
+    return Compare(lhs, rhs, broadcast_dimensions, comparison_direction,
+                   compare_type);
+  });
+}
+
 XlaOp EqTotalOrder(const XlaOp lhs, const XlaOp rhs,
                    absl::Span<const int64> broadcast_dimensions) {
-  auto compare_type = Comparison::Type::kFloatTotalOrder;
-  return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kEq,
-                 compare_type);
+  return CompareTotalOrder(lhs, rhs, broadcast_dimensions,
+                           ComparisonDirection::kEq);
 }
 
 XlaOp Ne(const XlaOp lhs, const XlaOp rhs,
@@ -4023,9 +4045,8 @@ XlaOp Ne(const XlaOp lhs, const XlaOp rhs,
 
 XlaOp NeTotalOrder(const XlaOp lhs, const XlaOp rhs,
                    absl::Span<const int64> broadcast_dimensions) {
-  auto compare_type = Comparison::Type::kFloatTotalOrder;
-  return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kNe,
-                 compare_type);
+  return CompareTotalOrder(lhs, rhs, broadcast_dimensions,
+                           ComparisonDirection::kNe);
 }
 
 XlaOp Ge(const XlaOp lhs, const XlaOp rhs,
@@ -4035,9 +4056,8 @@ XlaOp Ge(const XlaOp lhs, const XlaOp rhs,
 
 XlaOp GeTotalOrder(const XlaOp lhs, const XlaOp rhs,
                    absl::Span<const int64> broadcast_dimensions) {
-  auto compare_type = Comparison::Type::kFloatTotalOrder;
-  return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kGe,
-                 compare_type);
+  return CompareTotalOrder(lhs, rhs, broadcast_dimensions,
+                           ComparisonDirection::kGe);
 }
 
 XlaOp Gt(const XlaOp lhs, const XlaOp rhs,
@@ -4047,9 +4067,8 @@ XlaOp Gt(const XlaOp lhs, const XlaOp rhs,
 
 XlaOp GtTotalOrder(const XlaOp lhs, const XlaOp rhs,
                    absl::Span<const int64> broadcast_dimensions) {
-  auto compare_type = Comparison::Type::kFloatTotalOrder;
-  return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kGt,
-                 compare_type);
+  return CompareTotalOrder(lhs, rhs, broadcast_dimensions,
+                           ComparisonDirection::kGt);
 }
 
 XlaOp Le(const XlaOp lhs, const XlaOp rhs,
@@ -4059,10 +4078,10 @@ XlaOp Le(const XlaOp lhs, const XlaOp rhs,
 
 XlaOp LeTotalOrder(const XlaOp lhs, const XlaOp rhs,
                    absl::Span<const int64> broadcast_dimensions) {
-  auto compare_type = Comparison::Type::kFloatTotalOrder;
-  return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kLe,
-                 compare_type);
+  return CompareTotalOrder(lhs, rhs, broadcast_dimensions,
+                           ComparisonDirection::kLe);
 }
+
 XlaOp Lt(const XlaOp lhs, const XlaOp rhs,
          absl::Span<const int64> broadcast_dimensions) {
   return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kLt);
@@ -4070,8 +4089,8 @@ XlaOp Lt(const XlaOp lhs, const XlaOp rhs,
 
 XlaOp LtTotalOrder(const XlaOp lhs, const XlaOp rhs,
                    absl::Span<const int64> broadcast_dimensions) {
-  return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kLt,
-                 Comparison::Type::kFloatTotalOrder);
+  return CompareTotalOrder(lhs, rhs, broadcast_dimensions,
+                           ComparisonDirection::kLt);
 }
 
 XlaOp Compare(const XlaOp lhs, const XlaOp rhs,
