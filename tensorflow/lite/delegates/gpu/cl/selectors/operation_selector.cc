@@ -212,7 +212,7 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
       conv_op.output_ids = {static_cast<int>(outputs[0]->id)};
       OperationDef conv_def = op_def;
       conv_def.src_tensors[1] = weights_desc;
-      ConvWeightsDescription conv_weights_desc;
+      WeightsDescription conv_weights_desc;
       conv_op.operation = SelectConvolutionWithDynamicWeights(
           attr, weights_shape, dst_shape, gpu_info, conv_def, hints,
           &conv_weights_desc);
@@ -289,7 +289,7 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
         conv_op.output_ids = {static_cast<int>(outputs[0]->id)};
         OperationDef conv_def = op_def;
         conv_def.src_tensors[1] = weights_desc;
-        ConvWeightsDescription conv_weights_desc;
+        WeightsDescription conv_weights_desc;
         conv_op.operation = SelectConvolutionWithDynamicWeights(
             attr, weights_shape, output_shape, gpu_info, conv_def, hints,
             &conv_weights_desc);
@@ -338,7 +338,7 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
         conv_op.output_ids = {static_cast<int>(outputs[0]->id)};
         OperationDef conv_def = op_def;
         conv_def.src_tensors[1] = weights_desc;
-        ConvWeightsDescription conv_weights_desc;
+        WeightsDescription conv_weights_desc;
         conv_op.operation = SelectConvolutionTransposedWithDynamicWeights(
             attr, gpu_info, conv_def, &conv_weights_desc);
 

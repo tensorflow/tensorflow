@@ -18,10 +18,10 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/lite/delegates/gpu/cl/kernels/conv_common.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/weights_layout.h"
 
 namespace tflite {
 namespace gpu {
@@ -33,7 +33,7 @@ std::unique_ptr<GPUOperation> SelectConvolutionTransposed(
 
 std::unique_ptr<GPUOperation> SelectConvolutionTransposedWithDynamicWeights(
     const ConvolutionTransposedAttributes& attr, const GpuInfo& gpu_info,
-    const OperationDef& op_def, ConvWeightsDescription* weights_desc);
+    const OperationDef& op_def, WeightsDescription* weights_desc);
 
 }  // namespace cl
 }  // namespace gpu

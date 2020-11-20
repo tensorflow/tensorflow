@@ -110,7 +110,6 @@ cc_library(
     srcs = ["conv_buffer_1x1.cc"],
     hdrs = ["conv_buffer_1x1.h"],
     deps = [
-        ":conv_common",
         ":gpu_operation",
         ":util",
         ":work_group_picking",
@@ -127,12 +126,8 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:tensor",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:winograd_util",
+        "//tensorflow/lite/delegates/gpu/common/task:weights_layout",
     ],
-)
-
-cc_library(
-    name = "conv_common",
-    hdrs = ["conv_common.h"],
 )
 
 cc_test(
@@ -195,7 +190,6 @@ cc_library(
     srcs = ["conv_powervr.cc"],
     hdrs = ["conv_powervr.h"],
     deps = [
-        ":conv_common",
         ":gpu_operation",
         ":util",
         ":work_group_picking",
@@ -212,6 +206,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:tensor",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:winograd_util",
+        "//tensorflow/lite/delegates/gpu/common/task:weights_layout",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -238,7 +233,6 @@ cc_library(
     srcs = ["conv_weights_converter.cc"],
     hdrs = ["conv_weights_converter.h"],
     deps = [
-        ":conv_common",
         ":gpu_operation",
         ":util",
         ":work_group_picking",
@@ -246,6 +240,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/cl:cl_kernel",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common/task:weights_layout",
     ],
 )
 
@@ -275,7 +270,6 @@ cc_library(
     srcs = ["convolution_transposed.cc"],
     hdrs = ["convolution_transposed.h"],
     deps = [
-        ":conv_common",
         ":gpu_operation",
         ":util",
         ":work_group_picking",
@@ -290,6 +284,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:tensor",
         "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common/task:weights_layout",
         "@com_google_absl//absl/strings",
     ],
 )

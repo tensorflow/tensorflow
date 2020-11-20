@@ -18,12 +18,12 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/lite/delegates/gpu/cl/kernels/conv_common.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/common/model_hints.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/weights_layout.h"
 
 namespace tflite {
 namespace gpu {
@@ -40,10 +40,10 @@ std::unique_ptr<GPUOperation> SelectConvolutionForWinograd(
 std::unique_ptr<GPUOperation> SelectConvolutionWithDynamicWeights(
     const Convolution2DAttributes& attr, const BHWC& weights_shape,
     const BHWC& dst_shape, const GpuInfo& gpu_info, const OperationDef& op_def,
-    ModelHints hints, ConvWeightsDescription* weights_desc);
+    ModelHints hints, WeightsDescription* weights_desc);
 
 std::unique_ptr<GPUOperation> SelectConverterToConvWeights(
-    const ConvWeightsDescription& weights_desc, const OperationDef& op_def,
+    const WeightsDescription& weights_desc, const OperationDef& op_def,
     ModelHints hints);
 
 }  // namespace cl

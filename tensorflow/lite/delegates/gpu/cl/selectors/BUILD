@@ -9,7 +9,6 @@ cc_library(
     hdrs = ["convolution_selector.h"],
     deps = [
         "//tensorflow/lite/delegates/gpu/cl/kernels:conv_buffer_1x1",
-        "//tensorflow/lite/delegates/gpu/cl/kernels:conv_common",
         "//tensorflow/lite/delegates/gpu/cl/kernels:conv_constants",
         "//tensorflow/lite/delegates/gpu/cl/kernels:conv_powervr",
         "//tensorflow/lite/delegates/gpu/cl/kernels:conv_weights_converter",
@@ -21,6 +20,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
+        "//tensorflow/lite/delegates/gpu/common/task:weights_layout",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -30,7 +30,6 @@ cc_library(
     srcs = ["convolution_transposed_selector.cc"],
     hdrs = ["convolution_transposed_selector.h"],
     deps = [
-        "//tensorflow/lite/delegates/gpu/cl/kernels:conv_common",
         "//tensorflow/lite/delegates/gpu/cl/kernels:convolution_transposed",
         "//tensorflow/lite/delegates/gpu/cl/kernels:convolution_transposed_3x3",
         "//tensorflow/lite/delegates/gpu/cl/kernels:convolution_transposed_3x3_thin",
@@ -40,6 +39,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
+        "//tensorflow/lite/delegates/gpu/common/task:weights_layout",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -102,7 +102,6 @@ cc_library(
         ":subgraph",
         "//tensorflow/lite/delegates/gpu/cl:cl_device",
         "//tensorflow/lite/delegates/gpu/cl:storage_type_util",
-        "//tensorflow/lite/delegates/gpu/cl/kernels:conv_common",
         "//tensorflow/lite/delegates/gpu/cl/kernels:elementwise",
         "//tensorflow/lite/delegates/gpu/cl/kernels:gpu_operation",
         "//tensorflow/lite/delegates/gpu/cl/kernels:mean_stddev_normalization",

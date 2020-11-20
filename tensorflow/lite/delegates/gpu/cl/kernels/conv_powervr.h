@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/buffer.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/conv_common.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/linear_storage.h"
@@ -32,6 +31,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/weights_layout.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/common/winograd_util.h"
@@ -50,9 +50,9 @@ class ConvPowerVR : public GPUOperation {
   absl::Status BindArguments(ArgumentsBinder* args) override;
   int3 GetGridSize() const override;
 
-  ConvWeightsDescription GetConvWeightsDescription() const {
-    ConvWeightsDescription desc;
-    desc.layout = ConvWeightsLayout::kOHWIOGroupI4O4;
+  WeightsDescription GetWeightsDescription() const {
+    WeightsDescription desc;
+    desc.layout = WeightsLayout::kOHWIOGroupI4O4;
     desc.output_group_size = conv_params_.block_size.w;
     return desc;
   }

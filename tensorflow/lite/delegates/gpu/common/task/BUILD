@@ -118,3 +118,8 @@ cc_library(
         ":gpu_object_desc",
     ],
 )
+
+cc_library(
+    name = "weights_layout",
+    hdrs = ["weights_layout.h"],
+)
