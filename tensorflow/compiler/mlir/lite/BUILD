@@ -704,6 +704,7 @@ cc_library(
         ":convert_type",
         ":flatbuffer_tflite_operator_lib",
         ":tensorflow_lite",
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:mangling_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
