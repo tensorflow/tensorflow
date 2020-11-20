@@ -23,6 +23,9 @@ cuda_py_test(
     name = "unstack_op_test",
     size = "small",
     srcs = ["unstack_op_test.py"],
+    tags = [
+        "no_cuda_asan",  # b/173806679
+    ],
     xla_tags = [
         "no_cuda_asan",  # times out
     ],
