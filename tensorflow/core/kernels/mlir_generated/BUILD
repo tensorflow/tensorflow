@@ -297,7 +297,7 @@ gen_kernel_library(
     name = "add_v2",
     generate_ranked = False,
     generate_unranked = True,
-    tile_size = "256",
+    tile_size = "256,1,1",
     types = [
         "f16",
         "f32",

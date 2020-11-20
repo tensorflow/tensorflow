@@ -100,15 +100,13 @@ Status LowerTFtoGPU(mlir::ModuleOp module, bool gpu_binary_only,
   // needed.
   llvm::SmallVector<unsigned, 4> tiling_for_unrolling;
   llvm::SmallVector<int64_t, 4> as_int64;
-  if (!unroll_factors.empty()) {
-    tiling_for_unrolling.reserve(tile_sizes.size());
-    for (auto pair : llvm::zip(tile_sizes, unroll_factors)) {
-      tiling_for_unrolling.push_back(std::get<0>(pair) * std::get<1>(pair));
-      as_int64.push_back(std::get<1>(pair));
-    }
-  } else {
-    tiling_for_unrolling.append(tile_sizes.begin(), tile_sizes.end());
+  tiling_for_unrolling.reserve(tile_sizes.size());
+  for (auto pair : llvm::zip(tile_sizes, unroll_factors)) {
+    tiling_for_unrolling.push_back(std::get<0>(pair) * std::get<1>(pair));
+    as_int64.push_back(std::get<1>(pair));
   }
+  tiling_for_unrolling.append(
+      tile_sizes.drop_front(unroll_factors.size()).begin(), tile_sizes.end());
   // Transform LHLO operations to LinAlg.
   pm.addNestedPass<mlir::FuncOp>(
       ::mlir::lmhlo::createLegalizeLhloToLinalgPass());
