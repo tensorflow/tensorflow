@@ -1656,7 +1656,6 @@ class Resize2DOperationParser : public TFLiteOperationParser {
     RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
                                        /*runtime_inputs=*/1, /*outputs=*/1));
 
-    RETURN_IF_ERROR(CheckOnlyUpsamplingIsSupported(context, tflite_node));
     bool align_corners;
     RETURN_IF_ERROR(GetAlignCornersValue(tflite_node, &align_corners));
     bool half_pixel_centers;
@@ -1724,27 +1723,6 @@ class Resize2DOperationParser : public TFLiteOperationParser {
       const TfLiteResizeNearestNeighborParams* tf_options;
       RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
       *half_pixel_centers = tf_options->half_pixel_centers;
-    }
-    return absl::OkStatus();
-  }
-
-  absl::Status CheckOnlyUpsamplingIsSupported(const TfLiteContext* context,
-                                              const TfLiteNode* tflite_node) {
-    const auto* input = context->tensors + tflite_node->inputs->data[0];
-    const auto* output = context->tensors + tflite_node->outputs->data[0];
-
-    if (!input->dims || input->dims->size != 4) {
-      return absl::InvalidArgumentError("input.dims.size != 4");
-    }
-    if (!output->dims || output->dims->size != 4) {
-      return absl::InvalidArgumentError("output.dims.size != 4");
-    }
-    if (output->dims->data[1] < input->dims->data[1] ||
-        output->dims->data[2] < input->dims->data[2]) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Only upsampling is supported, received output h,w = ",
-          output->dims->data[1], ",", output->dims->data[2],
-          " input h,w = ", input->dims->data[1], ",", input->dims->data[2]));
     }
     return absl::OkStatus();
   }
