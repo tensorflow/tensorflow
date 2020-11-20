@@ -28,6 +28,15 @@ tf_fuzz_target(
 )
 
 tf_fuzz_target(
+    name = "cleanpath_fuzz",
+    srcs = ["cleanpath_fuzz.cc"],
+    deps = [
+        "//tensorflow/core/platform:path",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_fuzz_target(
     name = "consume_leading_digits_fuzz",
     srcs = ["consume_leading_digits_fuzz.cc"],
     deps = [
