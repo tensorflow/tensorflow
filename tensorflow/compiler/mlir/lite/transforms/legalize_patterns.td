@@ -476,3 +476,14 @@ def LegalizeCumsum : Pat<
 def LegalizeReshape : Pat<
   (TF_ReshapeOp $input, $shape),
   (TFL_ReshapeOp $input, (CreateTFCastToInt32Op $shape))>;
+
+def LegalizeStridedSlice : Pat<
+  (TF_StridedSliceOp
+    $input, $begin, $end, $strides, $begin_mask, $end_mask, $ellipsis_mask,
+    $new_axis_mask, $shrink_axis_mask),
+  (TFL_StridedSliceOp $input,
+    (CreateTFCastToInt32Op $begin), (CreateTFCastToInt32Op $end),
+    (CreateTFCastToInt32Op $strides), (convertIntAttrTo32Bit $begin_mask),
+    (convertIntAttrTo32Bit $end_mask), (convertIntAttrTo32Bit $ellipsis_mask),
+    (convertIntAttrTo32Bit $new_axis_mask),
+    (convertIntAttrTo32Bit $shrink_axis_mask))>;
