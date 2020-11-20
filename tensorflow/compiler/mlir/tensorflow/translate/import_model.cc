@@ -971,6 +971,16 @@ StatusOr<mlir::Type> ImporterBase::InferOutputType(const Node& node, int idx,
                                        etype.getContext()));
   }
 
+  if (node.IsWhileNode()) {
+    auto* output_shapes = node.attrs().Find("output_shapes");
+    auto* element_types = node.attrs().Find("T");
+    if (output_shapes && !output_shapes->list().shape().empty()) {
+      const auto& output_shape = output_shapes->list().shape(idx);
+      const auto& element_type = element_types->list().type(idx);
+      return ConvertToMlirTensorType(output_shape, element_type, &builder);
+    }
+  }
+
   // Returns a simple, more conservative unranked tensor type.
   auto default_type = [&]() -> StatusOr<mlir::Type> {
     mlir::Type element_type;
@@ -1907,7 +1917,13 @@ Status ImporterBase::ConvertNode(const Node& node) {
   // Case/If/While op in MLIR and add the differentiating attribute.
   if (node.IsCaseNode()) composite_control_flow_op("Case");
   if (node.IsIfNode()) composite_control_flow_op("If");
-  if (node.IsWhileNode()) composite_control_flow_op("While");
+  if (node.IsWhileNode()) {
+    composite_control_flow_op("While");
+    auto* output_shapes = node.attrs().Find("output_shapes");
+    if (output_shapes && !output_shapes->list().shape().empty())
+      result.attributes.push_back(
+          builder_.getNamedAttr("shape_invariant", builder_.getUnitAttr()));
+  }
 
   // Register the mapping between the TF node and the newly created operation.
   node_values_[node.id()] =
