@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cmath>
+#include <complex>
 #include <functional>
 #include <initializer_list>
 #include <memory>
@@ -42,9 +43,13 @@ class GpuUnaryOpTest : public OpsTestBase {
     SetDevice(tensorflow::DEVICE_GPU, std::move(device_gpu));
   }
 
-  template <typename T, typename RT = T>
+  // 'T' is the input type, 'RT' is the input type for the callback function,
+  // 'OutT' is the output type, 'ROutT' is the output type for the callback
+  // function. In most cases it is enough to just provide the input type,
+  // because all the types are the same.
+  template <typename T, typename RT = T, typename OutT = T, typename ROutT = RT>
   void Run(std::vector<int64> input_shape, std::vector<T> input,
-           const std::string op_name, RT (*expected_callback)(RT),
+           const std::string op_name, ROutT (*expected_callback)(RT),
            bool expect_equal = true) {
     assert(std::accumulate(input_shape.begin(), input_shape.end(), 1,
                            std::multiplies<int64>()) == input.size() &&
@@ -60,14 +65,14 @@ class GpuUnaryOpTest : public OpsTestBase {
     AddInputFromArray<T>(shape, input);
     TF_ASSERT_OK(RunOpKernel());
 
-    Tensor expected_tensor(allocator(), DataTypeToEnum<T>::value, shape);
-    std::vector<T> expected;
+    Tensor expected_tensor(allocator(), DataTypeToEnum<OutT>::value, shape);
+    std::vector<OutT> expected;
     expected.reserve(input.size());
     for (const T& inp : input) {
       expected.push_back(
-          static_cast<T>(expected_callback(static_cast<RT>(inp))));
+          static_cast<OutT>(expected_callback(static_cast<RT>(inp))));
     }
-    test::FillValues<T>(&expected_tensor, expected);
+    test::FillValues<OutT>(&expected_tensor, expected);
     if (expect_equal) {
       test::ExpectEqual(expected_tensor, *GetOutput(0));
     } else {
@@ -414,6 +419,23 @@ TEST_F(GpuUnaryOpTest, SqrtHalf) {
                           /*op_name=*/"Sqrt",
                           /*expected_callback=*/std::sqrt,
                           /*expect_equal=*/false);
+}
+
+/// Test `tf.Imag`.
+
+TEST_F(GpuUnaryOpTest, ImagFloat) {
+  auto float_input = DefaultInput<float>();
+  std::vector<std::complex<float>> input;
+  for (float value : float_input) {
+    input.emplace_back(value, -value);
+  }
+  Run<std::complex<float>, std::complex<float>, float, float>(
+      DefaultInputShape(), input,
+      /*op_name=*/"Imag",
+      // We cannot directly use std::imag here, because its signature has a
+      // const reference parameter.
+      /*expected_callback=*/[](std::complex<float> v) { return std::imag(v); },
+      /*expect_equal=*/false);
 }
 
 }  // namespace
