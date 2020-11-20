@@ -48,6 +48,7 @@ from tensorflow.python.ops import dynamic_embedding_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.saved_model import revived_types
 from tensorflow.python.training.tracking import base as trackable
