@@ -60,3 +60,5 @@ bazel test \
       -//tensorflow/python/integration_testing/... \
       -//tensorflow/core/tpu/... \
       -//tensorflow/lite/... \
+      -//tensorflow/compiler/tf2tensorrt/... \
+
