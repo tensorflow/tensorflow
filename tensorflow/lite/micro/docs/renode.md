@@ -83,12 +83,8 @@ tensorflow/lite/micro/tools/make/downloads/renode/renode
 ```
 and issue following commands:
 ```
-mach create
-machine LoadPlatformDescription @platforms/cpus/stm32f103.repl    
-# Create additional semihosting interface peripheral
-machine LoadPlatformDescriptionFromString "uartSemihosting: UART.SemihostingUart @ cpu"
-# Open separate window for semihosting UART output
-showAnalyzer sysbus.cpu.uartSemihosting
+# Create platform
+include @tensorflow/lite/micro/testing/bluepill_nontest.resc
 # Load ELF file
 sysbus LoadELF @tensorflow/lite/micro/tools/make/gen/bluepill_cortex-m3/bin/kernel_add_test
 # Start simulation

@@ -1,0 +1,8 @@
+mach create
+# Load platform specification
+machine LoadPlatformDescription @platforms/cpus/stm32f103.repl    
+# Create additional semihosting interface peripheral
+machine LoadPlatformDescriptionFromString "uartSemihosting: UART.SemihostingUart @ cpu"
+# Open separate window for semihosting UART output
+showAnalyzer sysbus.cpu.uartSemihosting
+
