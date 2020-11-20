@@ -337,6 +337,7 @@ cc_library(
         ":tensorflow",
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:Dialect",
