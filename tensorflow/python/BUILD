@@ -3246,7 +3246,7 @@ py_library(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "batch_ops_test",
     size = "small",
     srcs = ["ops/batch_ops_test.py"],
