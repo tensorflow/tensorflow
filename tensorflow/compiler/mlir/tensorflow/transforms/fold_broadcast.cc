@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -38,6 +39,12 @@ class ConvertResultsBroadcastableShapeOp : public RewritePattern {
 
   LogicalResult matchAndRewrite(Operation* op,
                                 PatternRewriter& rewriter) const override;
+
+ private:
+  template <typename Op>
+  LogicalResult RewriteEqOp(Operation* op, PatternRewriter& rewriter) const;
+
+  LogicalResult RewriteOp(Operation* op, PatternRewriter& rewriter) const;
 };
 
 class BroadcastFoldPass : public PassWrapper<BroadcastFoldPass, FunctionPass> {
@@ -47,7 +54,27 @@ class BroadcastFoldPass : public PassWrapper<BroadcastFoldPass, FunctionPass> {
 
 LogicalResult ConvertResultsBroadcastableShapeOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
-  if (!op->hasTrait<OpTrait::ResultsBroadcastableShape>()) return failure();
+  if (op->hasTrait<OpTrait::ResultsBroadcastableShape>())
+    return RewriteOp(op, rewriter);
+
+  // tf.Equal and tf.NotEqual ops only satisfy ResultsBroadcastableShape when
+  // incompatible_shape_error is `true` (what is also checked by the verifier).
+  if (succeeded(RewriteEqOp<TF::EqualOp>(op, rewriter))) return success();
+  if (succeeded(RewriteEqOp<TF::NotEqualOp>(op, rewriter))) return success();
+
+  return failure();
+}
+
+template <typename Op>
+LogicalResult ConvertResultsBroadcastableShapeOp::RewriteEqOp(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto eq_op = llvm::dyn_cast_or_null<Op>(op);
+  if (eq_op && eq_op.incompatible_shape_error()) return RewriteOp(op, rewriter);
+  return failure();
+}
+
+LogicalResult ConvertResultsBroadcastableShapeOp::RewriteOp(
+    Operation* op, PatternRewriter& rewriter) const {
   if (op->getNumOperands() != 2 || op->getResultTypes().size() != 1)
     return failure();
 
