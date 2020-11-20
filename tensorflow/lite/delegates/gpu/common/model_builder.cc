@@ -1512,10 +1512,6 @@ class ReduceOperationParser : public TFLiteOperationParser {
       return absl::UnimplementedError(
           "Reduce has unsupported tensor for axes.");
     }
-    if (tflite::NumElements(axes) != 1) {
-      return absl::UnimplementedError(
-          "Supported reduce in single dimensions only.");
-    }
     return absl::OkStatus();
   }
 
@@ -1530,13 +1526,15 @@ class ReduceOperationParser : public TFLiteOperationParser {
     const TfLiteReducerParams* tf_options;
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
 
-    Tensor<Scalar, DataType::INT32> axes;
-    RETURN_IF_ERROR(reader->ReadTensor(1, &axes));
-    const TfLiteTensor* input = reader->GetInputTensor(0);
     ReduceAttributes attr;
-    Axis axis;
-    RETURN_IF_ERROR(ExtractAxisFromIndex(*input, axes.data[0], &axis));
-    attr.dims = {axis};
+    Tensor<Linear, DataType::INT32> axes;
+    RETURN_IF_ERROR(reader->ReadTensor(1, &axes));
+    const TfLiteTensor* output = reader->GetOutputTensor(0);
+    for (int i = 0; i < axes.data.size(); i++) {
+      Axis axis;
+      RETURN_IF_ERROR(ExtractAxisFromIndex(*output, axes.data[i], &axis));
+      attr.dims.insert(axis);
+    }
     node->operation.attributes = attr;
     return absl::OkStatus();
   }
@@ -2594,17 +2592,9 @@ class MeanOperationParser : public TFLiteOperationParser {
                                        /*runtime_inputs=*/1,
                                        /*outputs=*/1));
 
-    // Simple mechanism to check if MEAN is to be performed only on HW plane.
     auto* axes = &context->tensors[tflite_node->inputs->data[1]];
     if (axes->allocation_type != kTfLiteMmapRo || axes->type != kTfLiteInt32) {
       return absl::UnimplementedError("Mean has unsupported tensor for axes");
-    }
-    auto* axes_data = axes->data.i32;
-    const bool is_hw_mean = tflite::NumElements(axes) == 2 &&
-                            ((axes_data[0] == 1 && axes_data[1] == 2) ||
-                             (axes_data[0] == 2 && axes_data[1] == 1));
-    if (!is_hw_mean) {
-      return absl::UnimplementedError("Mean operation supports only HW plane");
     }
     return absl::OkStatus();
   }
@@ -2618,27 +2608,13 @@ class MeanOperationParser : public TFLiteOperationParser {
     RETURN_IF_ERROR(reader->AddOutputs(node));
 
     MeanAttributes attr;
-    Tensor<Linear, DataType::INT32> channel;
-    RETURN_IF_ERROR(reader->ReadTensor(1, &channel));
-    for (int i = 0; i < channel.data.size(); i++) {
-      std::string unsupported;
-      switch (channel.data[i]) {
-        case 1:
-          attr.dims.insert(Axis::HEIGHT);
-          break;
-        case 2:
-          attr.dims.insert(Axis::WIDTH);
-          break;
-        case 0:
-          unsupported = unsupported.empty() ? "batch" : unsupported;
-          ABSL_FALLTHROUGH_INTENDED;
-        case 3:
-          unsupported = unsupported.empty() ? "channels" : unsupported;
-          ABSL_FALLTHROUGH_INTENDED;
-        default:
-          return absl::UnimplementedError(
-              absl::StrCat("Unsupported mean dimension: ", unsupported));
-      }
+    Tensor<Linear, DataType::INT32> axes;
+    RETURN_IF_ERROR(reader->ReadTensor(1, &axes));
+    const TfLiteTensor* output = reader->GetOutputTensor(0);
+    for (int i = 0; i < axes.data.size(); i++) {
+      Axis axis;
+      RETURN_IF_ERROR(ExtractAxisFromIndex(*output, axes.data[i], &axis));
+      attr.dims.insert(axis);
     }
     node->operation.attributes = attr;
     return absl::OkStatus();
