@@ -3901,9 +3901,13 @@ class BatchDataset(UnaryDataset):
     self._drop_remainder = ops.convert_to_tensor(
         drop_remainder, dtype=dtypes.bool, name="drop_remainder")
 
-    constant_drop_remainder = tensor_util.constant_value(self._drop_remainder)
     # pylint: disable=protected-access
-    if constant_drop_remainder:
+    try:
+      batch_modulo = self._input_dataset.__len__() % self._batch_size
+    except TypeError:
+      batch_modulo = True
+    constant_drop_remainder = tensor_util.constant_value(self._drop_remainder)
+    if constant_drop_remainder or not batch_modulo:
       # NOTE(mrry): `constant_drop_remainder` may be `None` (unknown statically)
       # or `False` (explicitly retaining the remainder).
       # pylint: disable=g-long-lambda
