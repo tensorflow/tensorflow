@@ -80,8 +80,9 @@ Status SpmdPartitioningVisitor::HandleDot(HloInstruction* hlo) {
           const Window& conv_window) -> StatusOr<HloInstruction*> {
     TF_ASSIGN_OR_RETURN(
         auto sharded_dot_shape,
-        ShapeInference::InferDotOpShape(l->shape(), r->shape(),
-                                        hlo->dot_dimension_numbers()));
+        ShapeInference::InferDotOpShape(
+            l->shape(), r->shape(), hlo->dot_dimension_numbers(),
+            /*preferred_element_type=*/hlo->shape().element_type()));
     return b->AddInstruction(HloInstruction::CreateDot(
         sharded_dot_shape, l, r, hlo->dot_dimension_numbers(),
         hlo->precision_config()));

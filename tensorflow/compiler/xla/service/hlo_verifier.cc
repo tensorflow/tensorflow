@@ -136,13 +136,12 @@ Status ShapeVerifier::HandleCopy(HloInstruction* copy) {
 }
 
 Status ShapeVerifier::HandleDot(HloInstruction* dot) {
-  TF_ASSIGN_OR_RETURN(Shape expected,
-                      ShapeInference::InferDotOpShape(
-                          dot->operand(0)->shape(), dot->operand(1)->shape(),
-                          dot->dot_dimension_numbers()));
-  if (ShapeUtil::CanUpcastIntegral(expected, dot->shape())) {
-    expected.set_element_type(dot->shape().element_type());
-  }
+  TF_ASSIGN_OR_RETURN(
+      const Shape expected,
+      ShapeInference::InferDotOpShape(
+          dot->operand(0)->shape(), dot->operand(1)->shape(),
+          dot->dot_dimension_numbers(),
+          /*preferred_element_type=*/dot->shape().element_type()));
   return CheckShape(dot, expected);
 }
 
@@ -152,10 +151,8 @@ Status ShapeVerifier::HandleConvolution(HloInstruction* convolution) {
       ShapeInference::InferConvolveShape(
           convolution->operand(0)->shape(), convolution->operand(1)->shape(),
           convolution->feature_group_count(), convolution->batch_group_count(),
-          convolution->window(), convolution->convolution_dimension_numbers()));
-  if (ShapeUtil::CanUpcastIntegral(expected, convolution->shape())) {
-    expected.set_element_type(convolution->shape().element_type());
-  }
+          convolution->window(), convolution->convolution_dimension_numbers(),
+          /*preferred_element_type=*/convolution->shape().element_type()));
   return CheckShape(convolution, expected);
 }
 
