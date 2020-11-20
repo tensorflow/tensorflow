@@ -177,7 +177,7 @@ enum class OpenClVersion {
 };
 std::string OpenClVersionToString(OpenClVersion version);
 
-struct OpenСlInfo {
+struct OpenClInfo {
   OpenClVersion cl_version;
 };
 
@@ -242,7 +242,7 @@ struct GpuInfo {
   AdrenoInfo adreno_info;
   MaliInfo mali_info;
 
-  OpenСlInfo opencl_info;
+  OpenClInfo opencl_info;
 };
 
 }  // namespace cl
