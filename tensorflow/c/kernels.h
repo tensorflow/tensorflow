@@ -238,7 +238,7 @@ TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrBool(
 // attr_name, list_size, total_size)). *status is set to TF_OK.
 //
 // If the attribute could not be found or could not be interpreted as
-// bool, *status is populated with an error.
+// string, *status is populated with an error.
 TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrString(
     TF_OpKernelConstruction* ctx, const char* attr_name, void* val,
     size_t max_length, TF_Status* status);
