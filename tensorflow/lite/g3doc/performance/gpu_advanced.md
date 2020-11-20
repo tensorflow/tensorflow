@@ -65,7 +65,12 @@ allows the appropriate versions; for example, ADD v2.
 
 ## Basic usage
 
-### Android (Kotlin / Java)
+There are two ways to invoke model acceleration in Android depending on if you
+are using
+[Android Studio ML Model Binding](../inference_with_metadata/codegen#acceleration)
+or TensorFlow Lite Interpreter.
+
+### Android via TensorFlow Lite Interpreter
 
 Add the `tensorflow-lite-gpu` package alongside the existing `tensorflow-lite`
 package in the existing `dependencies` block.

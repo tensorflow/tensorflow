@@ -27,6 +27,12 @@
 # - Host Tools (i.e conversion / analysis tools etc.)
 
 cmake_minimum_required(VERSION 3.16)
+if(NOT CMAKE_BUILD_TYPE)
+  message(STATUS "Setting build type to Release, for debug builds use"
+    "'-DCMAKE_BUILD_TYPE=Debug'.")
+  set(CMAKE_BUILD_TYPE "Release")
+endif()
+
 # Double colon in target name means ALIAS or IMPORTED target.
 cmake_policy(SET CMP0028 NEW)
 # Enable MACOSX_RPATH (@rpath) for built dynamic libraries.
@@ -197,9 +203,14 @@ endif()
 if(TFLITE_ENABLE_GPU)
   find_package(opencl_headers REQUIRED)
   find_package(vulkan_headers REQUIRED)
+  # Android NDK already has OpenGL, EGL headers.
+  if(NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "Android")
+    find_package(opengl_headers REQUIRED)
+    find_package(egl_headers REQUIRED)
+  endif()
   populate_tflite_source_vars(
     "delegates/gpu/cl" TFLITE_DELEGATES_GPU_CL_SRCS
-    FILTER "(_test|gl_interop|egl_sync)\\.(cc|h)$"
+    FILTER "(_test|gl_interop|gpu_api_delegate|egl_sync)\\.(cc|h)$"
   )
   populate_tflite_source_vars(
     "delegates/gpu/cl/kernels" TFLITE_DELEGATES_GPU_CL_KERNELS_SRCS

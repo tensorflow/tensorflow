@@ -43,7 +43,7 @@ ConvolutionTransposed3x3::ConvolutionTransposed3x3(
                                             padding_, work_group_launch_order_);
   if (definition_.precision == CalculationsPrecision::F16 &&
       gpu_info.IsPowerVR()) {
-    compiler_options_.push_back(CompilerOptions::POWERVR_FP16);
+    compiler_options_.push_back(CompilerOptions::kClPowervrFp16);
   }
 }
 
@@ -348,6 +348,22 @@ int3 ConvolutionTransposed3x3::GetGridSize() const {
   const int grid_y = DivideRoundUp(dst_[0]->Height(), 2);
   const int grid_z = dst_[0]->Slices();
   return int3(grid_x, grid_y, grid_z);
+}
+
+std::vector<int> ConvolutionTransposed3x3::GetSpatialWeightsRemap() const {
+  const int padding_x_rem = abs(padding_.x) % 2;
+  const int padding_y_rem = abs(padding_.y) % 2;
+
+  std::vector<int> remap;
+  if (padding_x_rem == 1 && padding_y_rem == 1) {
+    return std::vector<int>{4, 5, 3, 7, 1, 8, 6, 2, 0};
+  } else if (padding_x_rem == 0 && padding_y_rem == 1) {
+    return std::vector<int>{5, 3, 4, 8, 6, 2, 0, 7, 1};
+  } else if (padding_x_rem == 1 && padding_y_rem == 0) {
+    return std::vector<int>{7, 1, 8, 6, 2, 0, 4, 5, 3};
+  } else {  // padding_x_rem == 0 && padding_y_rem == 0
+    return std::vector<int>{8, 6, 2, 0, 7, 1, 5, 3, 4};
+  }
 }
 
 bool IsConvolutionTransposed3x3Supported(

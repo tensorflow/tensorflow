@@ -2621,6 +2621,7 @@ Status Converter::DynamicReshape(nvinfer1::ITensor* input,
   nvinfer1::IConcatenationLayer* concat_layer = network()->addConcatenation(
       const_cast<nvinfer1::ITensor* const*>(concat_inputs.data()),
       concat_inputs.size());
+  SetLayerName(concat_layer, params->node_def, "concat", op_instance);
   concat_layer->setAxis(0);
   nvinfer1::ITensor* new_shape = concat_layer->getOutput(0);
   // Reshape input using new shape

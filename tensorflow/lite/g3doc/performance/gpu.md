@@ -158,6 +158,12 @@ Note: The TensorFlow Lite Interpreter must be created on the same thread as
 where it is run. Otherwise, `TfLiteGpuDelegate Invoke: GpuDelegate must run on
 the same thread where it was initialized.` may occur.
 
+There are two ways to invoke model acceleration depending on if you are using
+[Android Studio ML Model Binding](../inference_with_metadata/codegen#acceleration)
+or TensorFlow Lite Interpreter.
+
+#### TensorFlow Lite Interpreter
+
 Look at the demo to see how to add the delegate. In your application, add the
 AAR as above, import `org.tensorflow.lite.gpu.GpuDelegate` module, and use
 the`addDelegate` function to register the GPU delegate to the interpreter:

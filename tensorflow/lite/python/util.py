@@ -651,7 +651,7 @@ def _modify_model_input_type(model, inference_input_type=dtypes.float32):
     builtin_code = schema_util.get_builtin_code_from_operator_code(opcode)
     if builtin_code == schema_fb.BuiltinOperator.QUANTIZE:
       quant_opcode_idxs.append(idx)
-  if not quant_opcode_idxs:
+  if operators and not quant_opcode_idxs:
     raise ValueError("Model input is not quantized.")
 
   # Validate that the model input is quantized
@@ -736,7 +736,7 @@ def _modify_model_output_type(model, inference_output_type=dtypes.float32):
     builtin_code = schema_util.get_builtin_code_from_operator_code(opcode)
     if builtin_code == schema_fb.BuiltinOperator.DEQUANTIZE:
       dequant_opcode_idxs.append(idx)
-  if not dequant_opcode_idxs:
+  if operators and not dequant_opcode_idxs:
     raise ValueError("Model output is not dequantized.")
 
   # Validate that the model output is dequantized

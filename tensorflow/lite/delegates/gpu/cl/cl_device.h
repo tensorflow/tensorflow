@@ -47,7 +47,6 @@ class CLDevice {
   std::string GetPlatformVersion() const;
 
   GpuVendor vendor() const { return info_.gpu_vendor; }
-  OpenCLVersion cl_version() const { return info_.cl_version; }
   bool SupportsFP16() const;
   bool SupportsTextureArray() const;
   bool SupportsImageBuffer() const;

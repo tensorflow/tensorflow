@@ -128,22 +128,24 @@ std::string GpuVendorToString(GpuVendor v) {
   }
 }
 
-std::string OpenCLVersionToString(OpenCLVersion version) {
+std::string OpenClVersionToString(OpenClVersion version) {
   switch (version) {
-    case OpenCLVersion::CL_1_0:
+    case OpenClVersion::kCl1_0:
       return "1.0";
-    case OpenCLVersion::CL_1_1:
+    case OpenClVersion::kCl1_1:
       return "1.1";
-    case OpenCLVersion::CL_1_2:
+    case OpenClVersion::kCl1_2:
       return "1.2";
-    case OpenCLVersion::CL_2_0:
+    case OpenClVersion::kCl2_0:
       return "2.0";
-    case OpenCLVersion::CL_2_1:
+    case OpenClVersion::kCl2_1:
       return "2.1";
-    case OpenCLVersion::CL_2_2:
+    case OpenClVersion::kCl2_2:
       return "2.2";
-    case OpenCLVersion::CL_3_0:
+    case OpenClVersion::kCl3_0:
       return "3.0";
+    default:
+      return "Unknown OpenCL version";
   }
 }
 
@@ -300,11 +302,11 @@ bool MaliInfo::IsValhall() const {
 }
 
 bool GpuInfo::SupportsTextureArray() const {
-  return cl_version >= OpenCLVersion::CL_1_2;
+  return opencl_info.cl_version >= OpenClVersion::kCl1_2;
 }
 
 bool GpuInfo::SupportsImageBuffer() const {
-  return cl_version >= OpenCLVersion::CL_1_2;
+  return opencl_info.cl_version >= OpenClVersion::kCl1_2;
 }
 
 bool GpuInfo::SupportsImage3D() const {
@@ -343,9 +345,15 @@ bool GpuInfo::SupportsExtension(const std::string& extension) const {
 }
 
 bool GpuInfo::IsCL20OrHigher() const {
-  return cl_version != OpenCLVersion::CL_1_0 &&
-         cl_version != OpenCLVersion::CL_1_1 &&
-         cl_version != OpenCLVersion::CL_1_2;
+  return opencl_info.cl_version != OpenClVersion::kCl1_0 &&
+         opencl_info.cl_version != OpenClVersion::kCl1_1 &&
+         opencl_info.cl_version != OpenClVersion::kCl1_2;
+}
+
+bool GpuInfo::IsCL30OrHigher() const {
+  return IsCL20OrHigher() && opencl_info.cl_version != OpenClVersion::kCl2_0 &&
+         opencl_info.cl_version != OpenClVersion::kCl2_1 &&
+         opencl_info.cl_version != OpenClVersion::kCl2_2;
 }
 
 bool GpuInfo::SupportsSubGroupWithSize(int sub_group_size) const {

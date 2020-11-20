@@ -51,10 +51,10 @@ filegroup(
         "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.td",
         "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops_base.td",
         "@llvm-project//mlir:OpBaseTdFiles",
+        "@llvm-project//mlir:SideEffectTdFiles",
         "@llvm-project//mlir:include/mlir/Interfaces/CopyOpInterface.td",
         "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
         "@llvm-project//mlir:include/mlir/Interfaces/LoopLikeInterface.td",
-        "@llvm-project//mlir:include/mlir/Interfaces/SideEffectInterfaces.td",
         "@llvm-project//mlir:include/mlir/Interfaces/ViewLikeInterface.td",
     ],
 )

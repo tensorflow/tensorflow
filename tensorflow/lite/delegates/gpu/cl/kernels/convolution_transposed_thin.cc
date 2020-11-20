@@ -35,7 +35,7 @@ ConvolutionTransposedThin::ConvolutionTransposedThin(
       int2(attr.weights.shape.w, attr.weights.shape.h));
   if (definition_.precision == CalculationsPrecision::F16 &&
       gpu_info.IsAdreno() && gpu_info.adreno_info.IsAdreno3xx()) {
-    compiler_options_.push_back(CompilerOptions::ADRENO_FULL_SIMD_LINE);
+    compiler_options_.push_back(CompilerOptions::kAdrenoFullSimd);
   }
 }
 

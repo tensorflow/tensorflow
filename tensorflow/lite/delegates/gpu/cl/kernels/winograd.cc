@@ -38,11 +38,11 @@ Winograd4x4To36::Winograd4x4To36(const OperationDef& definition,
   work_group_size_ = int3(32, 1, 1);
   code_ = GetWinograd4x4To36Code(definition_);
   if (gpu_info.IsAdreno()) {
-    compiler_options_.push_back(CompilerOptions::ADRENO_MORE_WAVES);
+    compiler_options_.push_back(CompilerOptions::kAdrenoMoreWaves);
   }
   if (definition_.precision == CalculationsPrecision::F16 &&
       gpu_info.IsPowerVR()) {
-    compiler_options_.push_back(CompilerOptions::POWERVR_FP16);
+    compiler_options_.push_back(CompilerOptions::kClPowervrFp16);
   }
 }
 
@@ -310,7 +310,7 @@ Winograd36To4x4::Winograd36To4x4(const OperationDef& definition,
   work_group_size_ = int3(32, 1, 1);
   if (definition_.precision == CalculationsPrecision::F16 &&
       gpu_info.IsPowerVR()) {
-    compiler_options_.push_back(CompilerOptions::POWERVR_FP16);
+    compiler_options_.push_back(CompilerOptions::kClPowervrFp16);
   }
   code_ = GetWinograd36To4x4Code(definition_);
 }

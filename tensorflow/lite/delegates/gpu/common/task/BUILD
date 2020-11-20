@@ -35,6 +35,11 @@ cc_library(
 )
 
 cc_library(
+    name = "compiler_options",
+    hdrs = ["compiler_options.h"],
+)
+
+cc_library(
     name = "gpu_object_desc",
     hdrs = ["gpu_object_desc.h"],
     deps = [

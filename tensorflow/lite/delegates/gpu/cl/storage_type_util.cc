@@ -39,7 +39,8 @@ bool CanCreateTensorWithShape(const GpuInfo& gpu_info, const BHWDC& shape,
       return shape.b * shape.w * shape.h * shape.d * slices <=
              gpu_info.image_buffer_max_size;
     case TensorStorageType::TEXTURE_3D:
-      if (gpu_info.cl_version < OpenCLVersion::CL_1_2 && slices == 1) {
+      if (gpu_info.opencl_info.cl_version < OpenClVersion::kCl1_2 &&
+          slices == 1) {
         // clCreateImage3D (that used in CL 1.0/1.1) can not create image with
         // depth = 1 by specification;
         return false;

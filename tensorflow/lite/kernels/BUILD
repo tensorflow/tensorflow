@@ -220,6 +220,7 @@ cc_library(
         ],
     }),
     alwayslink = 1,
+    # TODO(b/161243354): add testonly=1?
 )
 
 cc_library(
@@ -787,7 +788,8 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":builtin_op_kernels",
-        "//tensorflow/lite:framework_lib",
+        "//tensorflow/lite:cc_api",
+        "//tensorflow/lite:mutable_op_resolver",
         "//tensorflow/lite:tflite_with_xnnpack_optional",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
@@ -2364,6 +2366,15 @@ cc_test(
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],
+)
+
+exports_files(
+    [
+        "register.h",
+        "builtin_op_kernels.h",
+        "fully_connected.h",
+    ],
+    visibility = ["//tensorflow/lite/core/shims:__subpackages__"],
 )
 
 tflite_portable_test_suite_combined(combine_conditions = {"deps": [":test_main"]})

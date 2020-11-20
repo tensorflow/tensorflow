@@ -386,8 +386,18 @@ cc_library(
     hdrs = ["winograd_util.h"],
     deps = [
         ":data_type",
+        ":operations",
         ":shape",
         ":tensor",
+    ],
+)
+
+cc_test(
+    name = "winograd_util_test",
+    srcs = ["winograd_util_test.cc"],
+    deps = [
+        ":winograd_util",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

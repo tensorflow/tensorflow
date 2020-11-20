@@ -89,8 +89,7 @@ class DirectBinaryPat<Op FromOp, Op ToOp>
   : Pat<(FromOp AnyTensor:$l, AnyTensor:$r),
         (ToOp $l, $r, (BinBroadcastDimensions $l, $r))>;
 
-foreach fromToBinPair = [[TF_AddOp, HLOClient_BroadcastAddOp],
-                         [TF_AddV2Op, HLOClient_BroadcastAddOp],
+foreach fromToBinPair = [[TF_AddV2Op, HLOClient_BroadcastAddOp],
                          [TF_DivOp, HLOClient_BroadcastDivOp],
                          [TF_LeftShiftOp, HLOClient_BroadcastShiftLeftOp],
                          [TF_MaximumOp, HLOClient_BroadcastMaxOp],

@@ -148,7 +148,6 @@ DECL_CONVERT_OP(MatrixDiagV3);
 DECL_CONVERT_OP(Pack);
 DECL_CONVERT_OP(Split);
 DECL_CONVERT_OP(SplitV);
-DECL_CONVERT_OP(StridedSlice);
 DECL_CONVERT_OP(Unpack);
 DECL_CONVERT_OP(RandomUniform);
 
@@ -322,81 +321,6 @@ LogicalResult ConvertTFSplitVOp::matchAndRewrite(
   rewriter.replaceOpWithNewOp<TFL::SplitVOp>(
       op, tf_splitv_op.output().getTypes(), tf_splitv_op.value(),
       tf_splitv_op.size_splits(), tf_splitv_op.split_dim(), num_split);
-  return success();
-}
-
-Value PadStridedSliceAttributeArray(Operation* op, PatternRewriter& rewriter,
-                                    Value attribute,
-                                    ArrayRef<int32_t> padding_val, int* mask) {
-  DenseIntElementsAttr dense_elem_attr;
-  SmallVector<int32_t, 8> padded_val;
-
-  auto ranked_attr_type = attribute.getType().dyn_cast<RankedTensorType>();
-  if (!ranked_attr_type ||
-      !matchPattern(attribute, m_Constant(&dense_elem_attr))) {
-    // If the input attribute is neither ranked type nor constant, we
-    // can't do any padding. Instead we just return it.
-    return attribute;
-  }
-  for (const auto& idx : dense_elem_attr.getIntValues()) {
-    padded_val.push_back(idx.getSExtValue());
-  }
-  auto attr_dim_count = ranked_attr_type.getShape()[0];
-  int full_dim_count = padding_val.size();
-  for (int i = attr_dim_count; i < full_dim_count; ++i) {
-    padded_val.push_back(padding_val[i]);
-    if (mask) *mask |= 1 << i;
-  }
-  auto type =
-      RankedTensorType::get({full_dim_count}, rewriter.getIntegerType(32));
-  auto attr = DenseElementsAttr::get<int32_t>(type, padded_val);
-  return rewriter.create<ConstantOp>(op->getLoc(), type, attr);
-}
-
-LogicalResult ConvertTFStridedSliceOp::matchAndRewrite(
-    Operation* op, PatternRewriter& rewriter) const {
-  auto tf_strided_slice_op = cast<TF::StridedSliceOp>(op);
-  auto ranked_input_type =
-      tf_strided_slice_op.input().getType().dyn_cast<RankedTensorType>();
-  if (!ranked_input_type) {
-    // If input is not a ranked tensor, we can't deduce the padding dimensions
-    // from it, so we just do a plain conversion here.
-    rewriter.replaceOpWithNewOp<TFL::StridedSliceOp>(
-        op, tf_strided_slice_op.output().getType(), tf_strided_slice_op.input(),
-        tf_strided_slice_op.begin(), tf_strided_slice_op.end(),
-        tf_strided_slice_op.strides(),
-        rewriter.getI32IntegerAttr(tf_strided_slice_op.begin_mask()),
-        rewriter.getI32IntegerAttr(tf_strided_slice_op.end_mask()),
-        rewriter.getI32IntegerAttr(tf_strided_slice_op.ellipsis_mask()),
-        rewriter.getI32IntegerAttr(tf_strided_slice_op.new_axis_mask()),
-        rewriter.getI32IntegerAttr(tf_strided_slice_op.shrink_axis_mask()));
-    return success();
-  }
-
-  int num_input_dims = ranked_input_type.getRank();
-  // Pad `begin` array with zero values and update the `begin_mask`.
-  SmallVector<int32_t, 8> begin_pad_val(num_input_dims, 0);
-  int begin_mask = tf_strided_slice_op.begin_mask();
-  Value padded_begin = PadStridedSliceAttributeArray(
-      op, rewriter, tf_strided_slice_op.begin(), begin_pad_val, &begin_mask);
-  // Pad `end` array with `input_shape` and update the `end_mask`.
-  int end_mask = tf_strided_slice_op.end_mask();
-  auto input_shape = ranked_input_type.getShape();
-  SmallVector<int32_t, 8> end_pad_val(input_shape.begin(), input_shape.end());
-  Value padded_end = PadStridedSliceAttributeArray(
-      op, rewriter, tf_strided_slice_op.end(), end_pad_val, &end_mask);
-  // Pad `strides` array with ones.
-  SmallVector<int32_t, 8> strides_pad_val(num_input_dims, 1);
-  Value padded_strides = PadStridedSliceAttributeArray(
-      op, rewriter, tf_strided_slice_op.strides(), strides_pad_val, nullptr);
-  rewriter.replaceOpWithNewOp<TFL::StridedSliceOp>(
-      op, tf_strided_slice_op.output().getType(), tf_strided_slice_op.input(),
-      padded_begin, padded_end, padded_strides,
-      rewriter.getI32IntegerAttr(begin_mask),
-      rewriter.getI32IntegerAttr(end_mask),
-      rewriter.getI32IntegerAttr(tf_strided_slice_op.ellipsis_mask()),
-      rewriter.getI32IntegerAttr(tf_strided_slice_op.new_axis_mask()),
-      rewriter.getI32IntegerAttr(tf_strided_slice_op.shrink_axis_mask()));
   return success();
 }
 
@@ -769,8 +693,8 @@ void addPatterns(MLIRContext* context, OwningRewritePatternList& patterns) {
   patterns
       .insert<ConvertTFConcatV2Op, ConvertTFMatMulOp, ConvertTFMatrixDiagV2Op,
               ConvertTFMatrixDiagV3Op, ConvertTFPackOp, ConvertTFSplitOp,
-              ConvertTFSplitVOp, ConvertTFStridedSliceOp, ConvertTFUnpackOp,
-              ConvertTFAssertOp, ConvertTFRandomUniformOp>(context);
+              ConvertTFSplitVOp, ConvertTFUnpackOp, ConvertTFAssertOp,
+              ConvertTFRandomUniformOp>(context);
 
   // Ophint python converter converted tf node pattern.
   patterns.insert<LegalizeUnidirectionalSequenceLstm,

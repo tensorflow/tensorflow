@@ -117,18 +117,11 @@ class SimpleMultiEnginesTest(trt_test.TfTrtIntegrationTestBase):
         "TRTEngineOp_1": ["c2", "conv", "div", "weights"]
     }
 
-  def GetConversionParams(self, run_params):
-    """Return a ConversionParams for test."""
-    conversion_params = super(SimpleMultiEnginesTest,
-                              self).GetConversionParams(run_params)
-    rewrite_config_with_trt = self.GetTrtRewriterConfig(
-        run_params=run_params,
-        conversion_params=conversion_params,
-        # Disable layout optimizer, since it will convert BiasAdd with NHWC
-        # format to NCHW format under four dimentional input.
-        disable_non_trt_optimizers=True)
-    return conversion_params._replace(
-        rewriter_config_template=rewrite_config_with_trt)
+  def setUp(self):
+    super(trt_test.TfTrtIntegrationTestBase, self).setUp()
+    # Disable layout optimizer, since it will convert BiasAdd with NHWC
+    # format to NCHW format under four dimentional input.
+    self.DisableNonTrtOptimizers()
 
 
 class SimpleMultiEnginesTest2(trt_test.TfTrtIntegrationTestBase):

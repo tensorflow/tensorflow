@@ -4975,6 +4975,11 @@ def gather(params,
   >>> tf.gather(params, indices, axis=1, batch_dims=1).shape.as_list()
   [3, 2]
 
+  This comes up naturally if you need to use the indices of an operation like
+  `tf.argsort`, or `tf.math.top_k` where the last dimension of the indices
+  indexes into the last dimension of input, at the corresponding location.
+  In this case you can use `tf.gather(values, indices, batch_dims=-1)`.
+
   See also:
 
   * `tf.Tensor.__getitem__`: The direct tensor index operation (`t[]`), handles
@@ -4986,7 +4991,7 @@ def gather(params,
     or columns)
   * `tf.boolean_mask`, `tf.where`: Binary indexing.
   * `tf.slice` and `tf.strided_slice`: For lower level access to the
-    implementation of `__getitem__`'s python-slice handling (`t[1:-1:2])
+    implementation of `__getitem__`'s python-slice handling (`t[1:-1:2]`)
 
   Args:
     params: The `Tensor` from which to gather values. Must be at least rank
@@ -6016,26 +6021,46 @@ def searchsorted(sorted_sequence,
                  side="left",
                  out_type=dtypes.int32,
                  name=None):
-  """Searches input tensor for values on the innermost dimension.
+  """Searches for where a value would go in a sorted sequence.
 
-  A 2-D example:
+  This is not a method for checking containment (like python `in`).
 
-  ```
-    sorted_sequence = [[0, 3, 9, 9, 10],
-                       [1, 2, 3, 4, 5]]
-    values = [[2, 4, 9],
-              [0, 2, 6]]
+  The typical use case for this operation is "binning", "bucketing", or
+  "discretizing". The `values` are assigned to bucket-indices based on the
+  **edges** listed in `sorted_sequence`. This operation
+  returns the bucket-index for each value.
 
-    result = searchsorted(sorted_sequence, values, side="left")
+  >>> edges = [-1, 3.3, 9.1, 10.0]
+  >>> values = [0.0, 4.1, 12.0]
+  >>> tf.searchsorted(edges, values).numpy()
+  array([1, 2, 4], dtype=int32)
 
-    result == [[1, 2, 2],
-               [0, 1, 5]]
+  The `side` argument controls which index is returned if a value lands exactly
+  on an edge:
 
-    result = searchsorted(sorted_sequence, values, side="right")
+  >>> seq = [0, 3, 9, 10, 10]
+  >>> values = [0, 4, 10]
+  >>> tf.searchsorted(seq, values).numpy()
+  array([0, 2, 3], dtype=int32)
+  >>> tf.searchsorted(seq, values, side="right").numpy()
+  array([1, 2, 5], dtype=int32)
 
-    result == [[1, 2, 4],
-               [0, 2, 5]]
-  ```
+  The `axis` is not settable for this operation. It always operates on the
+  innermost dimension (`axis=-1`). The operation will accept any number of
+  outer dimensions. Here it is applied to the rows of a matrix:
+
+  >>> sorted_sequence = [[0., 3., 8., 9., 10.],
+  ...                    [1., 2., 3., 4., 5.]]
+  >>> values = [[9.8, 2.1, 4.3],
+  ...           [0.1, 6.6, 4.5, ]]
+  >>> tf.searchsorted(sorted_sequence, values).numpy()
+  array([[4, 1, 2],
+         [0, 5, 4]], dtype=int32)
+
+  Note: This operation assumes that `sorted_sequence` **is sorted** along the
+  innermost axis, maybe using `tf.sort(..., axis=-1)`. **If the sequence is not
+  sorted no error is raised** and the content of the returned tensor is not well
+  defined.
 
   Args:
     sorted_sequence: N-D `Tensor` containing a sorted sequence.

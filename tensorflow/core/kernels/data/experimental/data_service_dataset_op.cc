@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/snappy.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
@@ -60,13 +61,8 @@ namespace data {
 /* static */ constexpr const char* const DataServiceDatasetOp::kOutputShapes;
 
 namespace {
-// Once we've spent `kRetryTimeoutMicros` in `GetNextInternal`, we will wait for
-// the current attempt to complete and perform no more retries.
-const int64 kRetryTimeoutMicros = 1000LL * 1000 * 60 * 60;  // 60 minutes.
-
 // Default interval between task list refreshes.
 const int64 kDefaultTaskRefreshIntervalMs = 1000;  // 1 second.
-
 }  // namespace
 
 // Dataset for reading data from the tf.data service non-deterministically.
@@ -224,7 +220,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           &deregister_fn_));
       dispatcher_ = absl::make_unique<DataServiceDispatcherClient>(
           dataset()->address_, dataset()->protocol_);
-      int64 deadline_micros = ctx->env()->NowMicros() + kRetryTimeoutMicros;
+      int64 deadline_micros = kint64max;
       if (dataset()->job_name_.empty()) {
         TF_RETURN_IF_ERROR(grpc_util::Retry(
             [&]() {
@@ -496,8 +492,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           DCHECK(task_to_process != nullptr);
           VLOG(3) << "Processing task " << task_to_process->task_id;
         }
-        int64 deadline_micros =
-            Env::Default()->NowMicros() + kRetryTimeoutMicros;
+        int64 deadline_micros = kint64max;
         Status s = GetElement(task_to_process.get(), deadline_micros);
         if (!s.ok()) {
           mutex_lock l(mu_);

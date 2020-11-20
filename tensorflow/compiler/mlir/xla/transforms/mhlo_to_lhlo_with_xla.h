@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_MHLO_TO_LHLO_WITH_XLA_H_
 #define TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_MHLO_TO_LHLO_WITH_XLA_H_
 
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
@@ -57,6 +58,13 @@ class LhloDialectEmitter : public ::xla::DfsHloVisitorWithDefault {
       ::xla::HloInstruction* instr);
   ::xla::StatusOr<lmhlo::CustomCallOp> EmitCustomCallOp(
       ::xla::HloInstruction* instr);
+
+  ::xla::StatusOr<mlir::GetGlobalMemrefOp> EmitConstant(
+      ::xla::HloInstruction* instr) {
+    return EmitConstant(static_cast<const ::xla::HloInstruction*>(instr));
+  }
+  ::xla::StatusOr<mlir::GetGlobalMemrefOp> EmitConstant(
+      const ::xla::HloInstruction* instr);
 
   ::xla::Status CreateOperands(::xla::HloInstruction* instr,
                                SmallVectorImpl<Value>& operands,
@@ -122,7 +130,7 @@ class LhloDialectEmitter : public ::xla::DfsHloVisitorWithDefault {
                                               OpBuilder* b, Location loc);
 
   // Return an MLIR location for an HLO instruction.
-  Location getLocation(::xla::HloInstruction* inst) {
+  Location getLocation(const ::xla::HloInstruction* inst) {
     return NameLoc::get(builder_.getIdentifier(inst->name()),
                         builder_.getContext());
   }
