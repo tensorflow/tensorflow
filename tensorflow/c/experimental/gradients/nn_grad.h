@@ -22,6 +22,7 @@ namespace gradients {
 BackwardFunction* ReluRegisterer(const ForwardOperation& op);
 BackwardFunction* SparseSoftmaxCrossEntropyWithLogitsRegisterer(
     const ForwardOperation& op);
+BackwardFunction* BiasAddRegisterer(const ForwardOperation& op);
 }  // namespace gradients
 }  // namespace tensorflow
 
