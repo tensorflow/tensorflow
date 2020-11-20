@@ -128,52 +128,6 @@ class GpuUnaryOpTest : public OpsTestBase {
   }
 };
 
-/// Test `tf.Tanh`.
-
-TEST_F(GpuUnaryOpTest, TanhFloat) {
-  Run<float>(DefaultInputShape(), DefaultInput<float>(),
-             /*op_name=*/"Tanh",
-             /*expected_callback=*/std::tanh,
-             /*expect_equal=*/false);
-}
-
-TEST_F(GpuUnaryOpTest, TanhDouble) {
-  Run<double>(DefaultInputShape(), DefaultInput<double>(),
-              /*op_name=*/"Tanh",
-              /*expected_callback=*/std::tanh,
-              /*expect_equal=*/false);
-}
-
-TEST_F(GpuUnaryOpTest, TanhHalf) {
-  Run<Eigen::half, float>(DefaultInputShape(), DefaultInput<Eigen::half>(),
-                          /*op_name=*/"Tanh",
-                          /*expected_callback=*/std::tanh,
-                          /*expect_equal=*/false);
-}
-
-/// Test `tf.Ceil`.
-
-TEST_F(GpuUnaryOpTest, CeilFloat) {
-  Run<float>(DefaultInputShape(), DefaultInput<float>(),
-             /*op_name=*/"Ceil",
-             /*expected_callback=*/std::ceil,
-             /*expect_equal=*/true);
-}
-
-TEST_F(GpuUnaryOpTest, CeilDouble) {
-  Run<double>(DefaultInputShape(), DefaultInput<double>(),
-              /*op_name=*/"Ceil",
-              /*expected_callback=*/std::ceil,
-              /*expect_equal=*/true);
-}
-
-TEST_F(GpuUnaryOpTest, CeilHalf) {
-  Run<Eigen::half, float>(DefaultInputShape(), DefaultInput<Eigen::half>(),
-                          /*op_name=*/"Ceil",
-                          /*expected_callback=*/std::ceil,
-                          /*expect_equal=*/true);
-}
-
 /// Test `tf.Abs`.
 
 TEST_F(GpuUnaryOpTest, AbsFloat) {
@@ -231,6 +185,29 @@ TEST_F(GpuUnaryOpTest, AbsInt64) {
       /*op_name=*/"Abs",
       /*expected_callback=*/std::abs,
       /*expect_equal=*/true);
+}
+
+/// Test `tf.Ceil`.
+
+TEST_F(GpuUnaryOpTest, CeilFloat) {
+  Run<float>(DefaultInputShape(), DefaultInput<float>(),
+             /*op_name=*/"Ceil",
+             /*expected_callback=*/std::ceil,
+             /*expect_equal=*/true);
+}
+
+TEST_F(GpuUnaryOpTest, CeilDouble) {
+  Run<double>(DefaultInputShape(), DefaultInput<double>(),
+              /*op_name=*/"Ceil",
+              /*expected_callback=*/std::ceil,
+              /*expect_equal=*/true);
+}
+
+TEST_F(GpuUnaryOpTest, CeilHalf) {
+  Run<Eigen::half, float>(DefaultInputShape(), DefaultInput<Eigen::half>(),
+                          /*op_name=*/"Ceil",
+                          /*expected_callback=*/std::ceil,
+                          /*expect_equal=*/true);
 }
 
 /// Test `tf.Cos`.
@@ -302,6 +279,28 @@ TEST_F(GpuUnaryOpTest, FloorHalf) {
                           /*expect_equal=*/true);
 }
 
+/// Test `tf.Imag`.
+
+TEST_F(GpuUnaryOpTest, ImagFloat) {
+  Run<std::complex<float>, std::complex<float>, float, float>(
+      DefaultInputShape(), DefaultComplexInput<float>(),
+      /*op_name=*/"Imag",
+      // We cannot directly use std::imag here, because its signature has a
+      // const reference parameter.
+      /*expected_callback=*/[](std::complex<float> v) { return std::imag(v); },
+      /*expect_equal=*/false);
+}
+
+TEST_F(GpuUnaryOpTest, ImagDouble) {
+  Run<std::complex<double>, std::complex<double>, double, double>(
+      DefaultInputShape(), DefaultComplexInput<double>(),
+      /*op_name=*/"Imag",
+      // We cannot directly use std::imag here, because its signature has a
+      // const reference parameter.
+      /*expected_callback=*/[](std::complex<double> v) { return std::imag(v); },
+      /*expect_equal=*/false);
+}
+
 /// Test `tf.Log`.
 
 TEST_F(GpuUnaryOpTest, LogFloat) {
@@ -357,6 +356,28 @@ TEST_F(GpuUnaryOpTest, NegHalf) {
                           /*expect_equal=*/true);
 }
 
+/// Test `tf.Real`.
+
+TEST_F(GpuUnaryOpTest, RealFloat) {
+  Run<std::complex<float>, std::complex<float>, float, float>(
+      DefaultInputShape(), DefaultComplexInput<float>(),
+      /*op_name=*/"Real",
+      // We cannot directly use std::real here, because its signature has a
+      // const reference parameter.
+      /*expected_callback=*/[](std::complex<float> v) { return std::real(v); },
+      /*expect_equal=*/false);
+}
+
+TEST_F(GpuUnaryOpTest, RealDouble) {
+  Run<std::complex<double>, std::complex<double>, double, double>(
+      DefaultInputShape(), DefaultComplexInput<double>(),
+      /*op_name=*/"Real",
+      // We cannot directly use std::real here, because its signature has a
+      // const reference parameter.
+      /*expected_callback=*/[](std::complex<double> v) { return std::real(v); },
+      /*expect_equal=*/false);
+}
+
 /// Test `tf.Rsqrt`.
 
 /// Reference implementation.
@@ -386,6 +407,39 @@ TEST_F(GpuUnaryOpTest, RsqrtHalf) {
                           /*op_name=*/"Rsqrt",
                           /*expected_callback=*/expected_rsqrt,
                           /*expect_equal=*/false);
+}
+
+/// Test `tf.Sign`.
+
+// Reference implementation
+template <typename T>
+T expected_sign(T x) {
+  if (x == 0) return 0;
+  if (x < 0) return -1;
+  return 1;
+}
+
+// TODO(b/162577610): Enable these tests when our generated kernels handle 0.0
+// and -0.0 correctly.
+TEST_F(GpuUnaryOpTest, DISABLED_SignFloat) {
+  Run<float>(DefaultInputShape(), DefaultInput<float>(),
+             /*op_name=*/"Sign",
+             /*expected_callback=*/expected_sign,
+             /*expect_equal=*/true);
+}
+
+TEST_F(GpuUnaryOpTest, DISABLED_SignDouble) {
+  Run<double>(DefaultInputShape(), DefaultInput<double>(),
+              /*op_name=*/"Sign",
+              /*expected_callback=*/expected_sign,
+              /*expect_equal=*/true);
+}
+
+TEST_F(GpuUnaryOpTest, DISABLED_SignHalf) {
+  Run<Eigen::half, float>(DefaultInputShape(), DefaultInput<Eigen::half>(),
+                          /*op_name=*/"Sign",
+                          /*expected_callback=*/expected_sign,
+                          /*expect_equal=*/true);
 }
 
 /// Test `tf.Sin`.
@@ -435,48 +489,27 @@ TEST_F(GpuUnaryOpTest, SqrtHalf) {
                           /*expect_equal=*/false);
 }
 
-/// Test `tf.Imag`.
+/// Test `tf.Tanh`.
 
-TEST_F(GpuUnaryOpTest, ImagFloat) {
-  Run<std::complex<float>, std::complex<float>, float, float>(
-      DefaultInputShape(), DefaultComplexInput<float>(),
-      /*op_name=*/"Imag",
-      // We cannot directly use std::imag here, because its signature has a
-      // const reference parameter.
-      /*expected_callback=*/[](std::complex<float> v) { return std::imag(v); },
-      /*expect_equal=*/false);
+TEST_F(GpuUnaryOpTest, TanhFloat) {
+  Run<float>(DefaultInputShape(), DefaultInput<float>(),
+             /*op_name=*/"Tanh",
+             /*expected_callback=*/std::tanh,
+             /*expect_equal=*/false);
 }
 
-TEST_F(GpuUnaryOpTest, ImagDouble) {
-  Run<std::complex<double>, std::complex<double>, double, double>(
-      DefaultInputShape(), DefaultComplexInput<double>(),
-      /*op_name=*/"Imag",
-      // We cannot directly use std::imag here, because its signature has a
-      // const reference parameter.
-      /*expected_callback=*/[](std::complex<double> v) { return std::imag(v); },
-      /*expect_equal=*/false);
+TEST_F(GpuUnaryOpTest, TanhDouble) {
+  Run<double>(DefaultInputShape(), DefaultInput<double>(),
+              /*op_name=*/"Tanh",
+              /*expected_callback=*/std::tanh,
+              /*expect_equal=*/false);
 }
 
-/// Test `tf.Real`.
-
-TEST_F(GpuUnaryOpTest, RealFloat) {
-  Run<std::complex<float>, std::complex<float>, float, float>(
-      DefaultInputShape(), DefaultComplexInput<float>(),
-      /*op_name=*/"Real",
-      // We cannot directly use std::real here, because its signature has a
-      // const reference parameter.
-      /*expected_callback=*/[](std::complex<float> v) { return std::real(v); },
-      /*expect_equal=*/false);
-}
-
-TEST_F(GpuUnaryOpTest, RealDouble) {
-  Run<std::complex<double>, std::complex<double>, double, double>(
-      DefaultInputShape(), DefaultComplexInput<double>(),
-      /*op_name=*/"Real",
-      // We cannot directly use std::real here, because its signature has a
-      // const reference parameter.
-      /*expected_callback=*/[](std::complex<double> v) { return std::real(v); },
-      /*expect_equal=*/false);
+TEST_F(GpuUnaryOpTest, TanhHalf) {
+  Run<Eigen::half, float>(DefaultInputShape(), DefaultInput<Eigen::half>(),
+                          /*op_name=*/"Tanh",
+                          /*expected_callback=*/std::tanh,
+                          /*expect_equal=*/false);
 }
 
 }  // namespace
