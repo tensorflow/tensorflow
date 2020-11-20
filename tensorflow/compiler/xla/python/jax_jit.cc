@@ -595,7 +595,7 @@ Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
 
   static const auto* xla_module =
       new py::module(py::module::import("jax.interpreters.xla"));
-  const auto& device_array = xla_module->attr("DeviceArray");
+  const auto& device_array = xla_module->attr("_DeviceArray");
 
   static const auto* numpy_module = new py::module(py::module::import("numpy"));
   const auto& np_array = numpy_module->attr("array");
@@ -613,7 +613,7 @@ Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
     for (py::handle arg : arguments.flat_dynamic_args) {
       // We specically only deal with DeviceArray (not ShardedDeviceArray).
       // (Can happen in jit(pmap), e.g. "test_jit_nested_donate_ignored").
-      if (arg.get_type().is(device_array)) {
+      if (py::isinstance<PyBuffer>(arg) || arg.get_type().is(device_array)) {
         xla::PyBuffer* buffer;
         if (arg.attr("_device").is_none()) {  // Skip non-sticky devices.
           continue;
@@ -653,7 +653,7 @@ Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
   xla::PjRtClient* pjrt_client = data_device->client();
 
   for (py::handle arg : arguments.flat_dynamic_args) {
-    if (arg.get_type().is(device_array)) {
+    if (py::isinstance<PyBuffer>(arg) || arg.get_type().is(device_array)) {
       if (!HasTrivialLazyExpr(arg)) {
         return InvalidArgument(
             "Non-trivial lazy expression not supported in C++. "
