@@ -19,6 +19,7 @@ limitations under the License.
 #include <initializer_list>
 #include <memory>
 #include <numeric>
+#include <type_traits>
 #include <vector>
 
 #include "tensorflow/core/common_runtime/device.h"
@@ -56,10 +57,13 @@ class GpuUnaryOpTest : public OpsTestBase {
            "Expected input length to equal to shape's number of elements.");
 
     TensorShape shape(input_shape);
-    TF_ASSERT_OK(NodeDefBuilder("some_name", op_name)
-                     .Input(FakeInput(DataTypeToEnum<T>::v()))
-                     .Attr("T", DataTypeToEnum<T>::v())
-                     .Finalize(node_def()));
+    NodeDefBuilder builder("some_name", op_name);
+    builder.Input(FakeInput(DataTypeToEnum<T>::v()))
+        .Attr("T", DataTypeToEnum<T>::v());
+    if (!std::is_same_v<OutT, T>) {
+      builder.Attr("Tout", DataTypeToEnum<OutT>::v());
+    }
+    TF_ASSERT_OK(builder.Finalize(node_def()));
 
     TF_ASSERT_OK(InitOp());
     AddInputFromArray<T>(shape, input);
@@ -88,6 +92,16 @@ class GpuUnaryOpTest : public OpsTestBase {
   std::vector<T> DefaultInput() {
     return InputAsVector<T>({-18.0, -9.0, -1e-6, -0.0, 0.0, 1e-6, 0.1, 0.2, 0.3,
                              0.5, 0.7, 0.9, 9.0, 18.0});
+  }
+
+  template <typename T>
+  std::vector<std::complex<T>> DefaultComplexInput() {
+    auto input = DefaultInput<T>();
+    std::vector<std::complex<T>> complex_input;
+    for (T value : input) {
+      complex_input.emplace_back(value, -value);
+    }
+    return complex_input;
   }
 
   template <typename T>
@@ -424,17 +438,44 @@ TEST_F(GpuUnaryOpTest, SqrtHalf) {
 /// Test `tf.Imag`.
 
 TEST_F(GpuUnaryOpTest, ImagFloat) {
-  auto float_input = DefaultInput<float>();
-  std::vector<std::complex<float>> input;
-  for (float value : float_input) {
-    input.emplace_back(value, -value);
-  }
   Run<std::complex<float>, std::complex<float>, float, float>(
-      DefaultInputShape(), input,
+      DefaultInputShape(), DefaultComplexInput<float>(),
       /*op_name=*/"Imag",
       // We cannot directly use std::imag here, because its signature has a
       // const reference parameter.
       /*expected_callback=*/[](std::complex<float> v) { return std::imag(v); },
+      /*expect_equal=*/false);
+}
+
+TEST_F(GpuUnaryOpTest, ImagDouble) {
+  Run<std::complex<double>, std::complex<double>, double, double>(
+      DefaultInputShape(), DefaultComplexInput<double>(),
+      /*op_name=*/"Imag",
+      // We cannot directly use std::imag here, because its signature has a
+      // const reference parameter.
+      /*expected_callback=*/[](std::complex<double> v) { return std::imag(v); },
+      /*expect_equal=*/false);
+}
+
+/// Test `tf.Real`.
+
+TEST_F(GpuUnaryOpTest, RealFloat) {
+  Run<std::complex<float>, std::complex<float>, float, float>(
+      DefaultInputShape(), DefaultComplexInput<float>(),
+      /*op_name=*/"Real",
+      // We cannot directly use std::real here, because its signature has a
+      // const reference parameter.
+      /*expected_callback=*/[](std::complex<float> v) { return std::real(v); },
+      /*expect_equal=*/false);
+}
+
+TEST_F(GpuUnaryOpTest, RealDouble) {
+  Run<std::complex<double>, std::complex<double>, double, double>(
+      DefaultInputShape(), DefaultComplexInput<double>(),
+      /*op_name=*/"Real",
+      // We cannot directly use std::real here, because its signature has a
+      // const reference parameter.
+      /*expected_callback=*/[](std::complex<double> v) { return std::real(v); },
       /*expect_equal=*/false);
 }
 
