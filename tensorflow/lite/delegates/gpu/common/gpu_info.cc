@@ -393,66 +393,90 @@ int GpuInfo::GetComputeUnitsCount() const {
   }
 }
 
-int GpuInfo::GetMaxWorkGroupSizeForX() const { return max_work_group_size[0]; }
+int GpuInfo::GetMaxWorkGroupSizeForX() const {
+  if (IsApiOpenGl()) {
+    return opengl_info.max_compute_work_group_size_x;
+  }
+  if (IsApiVulkan()) {
+    return vulkan_info.max_compute_work_group_size_x;
+  }
+  return 256;
+}
 
-int GpuInfo::GetMaxWorkGroupSizeForY() const { return max_work_group_size[1]; }
+int GpuInfo::GetMaxWorkGroupSizeForY() const {
+  if (IsApiOpenGl()) {
+    return opengl_info.max_compute_work_group_size_y;
+  }
+  if (IsApiVulkan()) {
+    return vulkan_info.max_compute_work_group_size_y;
+  }
+  return 256;
+}
 
-int GpuInfo::GetMaxWorkGroupSizeForZ() const { return max_work_group_size[2]; }
+int GpuInfo::GetMaxWorkGroupSizeForZ() const {
+  if (IsApiOpenGl()) {
+    return opengl_info.max_compute_work_group_size_z;
+  }
+  if (IsApiVulkan()) {
+    return vulkan_info.max_compute_work_group_size_z;
+  }
+  return 64;
+}
 
 int GpuInfo::GetMaxWorkGroupTotalSize() const {
   if (IsApiOpenGl()) {
     return opengl_info.max_work_group_invocations;
-  } else if (IsApiVulkan()) {
-    return vulkan_info.max_compute_work_group_invocations;
-  } else if (IsApiMetal()) {
-    return 256;
-  } else {
-    return 256;
   }
+  if (IsApiVulkan()) {
+    return vulkan_info.max_compute_work_group_invocations;
+  }
+  return 256;
 }
 
 uint64_t GpuInfo::GetMaxImage2DWidth() const {
   if (IsApiOpenGl()) {
     return opengl_info.max_texture_size;
-  } else if (IsApiVulkan()) {
-    return vulkan_info.max_image_dimension_2d;
-  } else {
-    return 2048;
   }
+  if (IsApiVulkan()) {
+    return vulkan_info.max_image_dimension_2d;
+  }
+  return 2048;
 }
 
 uint64_t GpuInfo::GetMaxImage2DHeight() const {
   if (IsApiOpenGl()) {
     return opengl_info.max_texture_size;
-  } else if (IsApiVulkan()) {
-    return vulkan_info.max_image_dimension_2d;
-  } else {
-    return 2048;
   }
+  if (IsApiVulkan()) {
+    return vulkan_info.max_image_dimension_2d;
+  }
+  return 2048;
 }
 
 uint64_t GpuInfo::GetMaxImage2DArrayLayers() const {
   if (IsApiOpenGl()) {
     return opengl_info.max_array_texture_layers;
-  } else if (IsApiVulkan()) {
-    return vulkan_info.max_image_array_layers;
-  } else {
-    return 256;
   }
+  if (IsApiVulkan()) {
+    return vulkan_info.max_image_array_layers;
+  }
+  return 256;
 }
 
 int GpuInfo::GetMaxImageArguments() const {
   if (IsApiOpenGl()) {
     return opengl_info.max_image_units;
-  } else if (IsApiVulkan()) {
-    return vulkan_info.max_per_stage_descriptor_sampled_images;
-  } else if (IsApiMetal()) {
-    return 32;
-  } else if (IsApiOpenCl()) {
-    return 128;
-  } else {
-    return 1;
   }
+  if (IsApiVulkan()) {
+    return vulkan_info.max_per_stage_descriptor_sampled_images;
+  }
+  if (IsApiMetal()) {
+    return 32;
+  }
+  if (IsApiOpenCl()) {
+    return 128;
+  }
+  return 1;
 }
 
 bool GpuInfo::IsApiOpenGl() const { return gpu_api == GpuApi::kOpenGl; }
