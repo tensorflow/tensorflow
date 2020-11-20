@@ -208,6 +208,9 @@ struct OpenGlInfo {
   int max_image_units = 0;
   int max_ssbo_bindings = 0;
   int max_image_bindings = 0;
+  int max_work_group_invocations = 0;
+  int max_texture_size = 0;
+  int max_array_texture_layers = 0;
 };
 
 struct VulkanInfo {
@@ -218,6 +221,9 @@ struct VulkanInfo {
   uint32_t api_version_patch = -1;
 
   uint32_t max_per_stage_descriptor_sampled_images = 0;
+  uint32_t max_compute_work_group_invocations;
+  uint32_t max_image_dimension_2d;
+  uint32_t max_image_array_layers;
 };
 
 struct GpuInfo {
@@ -239,14 +245,20 @@ struct GpuInfo {
 
   int GetMaxImageArguments() const;
 
+  int GetMaxWorkGroupSizeForX() const;
+  int GetMaxWorkGroupSizeForY() const;
+  int GetMaxWorkGroupSizeForZ() const;
+  int GetMaxWorkGroupTotalSize() const;
+
+  uint64_t GetMaxImage2DWidth() const;
+  uint64_t GetMaxImage2DHeight() const;
+  uint64_t GetMaxImage2DArrayLayers() const;
+
   GpuVendor vendor = GpuVendor::kUnknown;
   GpuApi gpu_api = GpuApi::kUnknown;
 
   std::vector<std::string> extensions;
   std::vector<int> max_work_group_size;
-  int max_work_group_invocations;
-  int max_texture_size = 0;
-  int max_array_texture_layers = 0;
 
   std::vector<int> supported_subgroup_sizes;
 

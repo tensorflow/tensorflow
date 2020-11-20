@@ -76,10 +76,11 @@ absl::Status RequestGpuInfo(GpuInfo* gpu_info) {
   glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_SIZE, 2,
                   &info.max_work_group_size[2]);
   glGetIntegerv(GL_MAX_COMPUTE_WORK_GROUP_INVOCATIONS,
-                &info.max_work_group_invocations);
-  glGetIntegerv(GL_MAX_TEXTURE_SIZE, &info.max_texture_size);
+                &info.opengl_info.max_work_group_invocations);
+  glGetIntegerv(GL_MAX_TEXTURE_SIZE, &info.opengl_info.max_texture_size);
   glGetIntegerv(GL_MAX_IMAGE_UNITS, &info.opengl_info.max_image_units);
-  glGetIntegerv(GL_MAX_ARRAY_TEXTURE_LAYERS, &info.max_array_texture_layers);
+  glGetIntegerv(GL_MAX_ARRAY_TEXTURE_LAYERS,
+                &info.opengl_info.max_array_texture_layers);
   RETURN_IF_ERROR(GetOpenGlErrors());
   *gpu_info = info;
   return absl::OkStatus();

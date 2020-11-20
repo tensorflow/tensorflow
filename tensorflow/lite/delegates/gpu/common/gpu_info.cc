@@ -393,6 +393,54 @@ int GpuInfo::GetComputeUnitsCount() const {
   }
 }
 
+int GpuInfo::GetMaxWorkGroupSizeForX() const { return max_work_group_size[0]; }
+
+int GpuInfo::GetMaxWorkGroupSizeForY() const { return max_work_group_size[1]; }
+
+int GpuInfo::GetMaxWorkGroupSizeForZ() const { return max_work_group_size[2]; }
+
+int GpuInfo::GetMaxWorkGroupTotalSize() const {
+  if (IsApiOpenGl()) {
+    return opengl_info.max_work_group_invocations;
+  } else if (IsApiVulkan()) {
+    return vulkan_info.max_compute_work_group_invocations;
+  } else if (IsApiMetal()) {
+    return 256;
+  } else {
+    return 256;
+  }
+}
+
+uint64_t GpuInfo::GetMaxImage2DWidth() const {
+  if (IsApiOpenGl()) {
+    return opengl_info.max_texture_size;
+  } else if (IsApiVulkan()) {
+    return vulkan_info.max_image_dimension_2d;
+  } else {
+    return 2048;
+  }
+}
+
+uint64_t GpuInfo::GetMaxImage2DHeight() const {
+  if (IsApiOpenGl()) {
+    return opengl_info.max_texture_size;
+  } else if (IsApiVulkan()) {
+    return vulkan_info.max_image_dimension_2d;
+  } else {
+    return 2048;
+  }
+}
+
+uint64_t GpuInfo::GetMaxImage2DArrayLayers() const {
+  if (IsApiOpenGl()) {
+    return opengl_info.max_array_texture_layers;
+  } else if (IsApiVulkan()) {
+    return vulkan_info.max_image_array_layers;
+  } else {
+    return 256;
+  }
+}
+
 int GpuInfo::GetMaxImageArguments() const {
   if (IsApiOpenGl()) {
     return opengl_info.max_image_units;
