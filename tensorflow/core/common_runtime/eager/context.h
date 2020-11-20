@@ -506,6 +506,8 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 
   void ResetClusterFLR(DistributedFunctionLibraryRuntime* cluster_flr);
 
+  void ClearResourceContainer(const string& name);
+
   template <typename T>
   struct OwnedOrUnownedHelper {
    public:
