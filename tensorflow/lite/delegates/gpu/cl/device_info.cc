@@ -301,6 +301,8 @@ bool MaliInfo::IsValhall() const {
          gpu_version == MaliGpu::kG68 || gpu_version == MaliGpu::kG78;
 }
 
+bool GpuInfo::SupportsFP16() const { return opencl_info.supports_fp16; }
+
 bool GpuInfo::SupportsTextureArray() const {
   return opencl_info.cl_version >= OpenClVersion::kCl1_2;
 }
@@ -314,29 +316,29 @@ bool GpuInfo::SupportsImage3D() const {
     // On Mali T880 read_imageh doesn't compile with image3d_t
     return false;
   }
-  return supports_image3d_writes;
+  return opencl_info.supports_image3d_writes;
 }
 
 bool GpuInfo::SupportsFloatImage2D(DataType data_type, int channels) const {
   if (channels == 1) {
-    return data_type == DataType::FLOAT32 ? supports_r_f32_tex2d
-                                          : supports_r_f16_tex2d;
+    return data_type == DataType::FLOAT32 ? opencl_info.supports_r_f32_tex2d
+                                          : opencl_info.supports_r_f16_tex2d;
   } else if (channels == 2) {
-    return data_type == DataType::FLOAT32 ? supports_rg_f32_tex2d
-                                          : supports_rg_f16_tex2d;
+    return data_type == DataType::FLOAT32 ? opencl_info.supports_rg_f32_tex2d
+                                          : opencl_info.supports_rg_f16_tex2d;
   } else if (channels == 3) {
-    return data_type == DataType::FLOAT32 ? supports_rgb_f32_tex2d
-                                          : supports_rgb_f16_tex2d;
+    return data_type == DataType::FLOAT32 ? opencl_info.supports_rgb_f32_tex2d
+                                          : opencl_info.supports_rgb_f16_tex2d;
   } else if (channels == 4) {
-    return data_type == DataType::FLOAT32 ? supports_rgba_f32_tex2d
-                                          : supports_rgba_f16_tex2d;
+    return data_type == DataType::FLOAT32 ? opencl_info.supports_rgba_f32_tex2d
+                                          : opencl_info.supports_rgba_f16_tex2d;
   } else {
     return false;
   }
 }
 
 bool GpuInfo::SupportsExtension(const std::string& extension) const {
-  for (const auto& ext : extensions) {
+  for (const auto& ext : opencl_info.extensions) {
     if (ext == extension) {
       return true;
     }
@@ -363,6 +365,58 @@ bool GpuInfo::SupportsSubGroupWithSize(int sub_group_size) const {
     }
   }
   return false;
+}
+
+int GpuInfo::GetComputeUnitsCount() const {
+  return opencl_info.compute_units_count;
+}
+
+bool GpuInfo::IsRoundToNearestSupported() const {
+  return opencl_info.supports_fp16_rtn || opencl_info.supports_fp32_rtn;
+}
+
+int GpuInfo::GetMaxWorkGroupSizeForX() const {
+  return opencl_info.max_work_group_size_x;
+}
+
+int GpuInfo::GetMaxWorkGroupSizeForY() const {
+  return opencl_info.max_work_group_size_y;
+}
+
+int GpuInfo::GetMaxWorkGroupSizeForZ() const {
+  return opencl_info.max_work_group_size_z;
+}
+
+uint64_t GpuInfo::GetMaxImage2DWidth() const {
+  return opencl_info.image2d_max_width;
+}
+
+uint64_t GpuInfo::GetMaxImage2DHeight() const {
+  return opencl_info.image2d_max_height;
+}
+
+uint64_t GpuInfo::GetMaxImage3DWidth() const {
+  return opencl_info.image3d_max_width;
+}
+
+uint64_t GpuInfo::GetMaxImage3DHeight() const {
+  return opencl_info.image3d_max_height;
+}
+
+uint64_t GpuInfo::GetMaxImage3DDepth() const {
+  return opencl_info.image3d_max_depth;
+}
+
+uint64_t GpuInfo::GetMaxBufferSize() const {
+  return opencl_info.buffer_max_size;
+}
+
+uint64_t GpuInfo::GetMaxImageBufferWidth() const {
+  return opencl_info.image_buffer_max_size;
+}
+
+uint64_t GpuInfo::GetMaxImage2DArrayLayers() const {
+  return opencl_info.image_array_max_layers;
 }
 
 bool GpuInfo::IsAdreno() const { return gpu_vendor == GpuVendor::kQualcomm; }

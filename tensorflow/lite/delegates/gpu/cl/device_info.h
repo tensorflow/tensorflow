@@ -179,34 +179,10 @@ std::string OpenClVersionToString(OpenClVersion version);
 
 struct OpenClInfo {
   OpenClVersion cl_version;
-};
-
-struct GpuInfo {
-  GpuInfo() = default;
-
-  bool IsAdreno() const;
-  bool IsApple() const;
-  bool IsMali() const;
-  bool IsPowerVR() const;
-  bool IsNvidia() const;
-  bool IsAMD() const;
-  bool IsIntel() const;
-
-  bool SupportsTextureArray() const;
-  bool SupportsImageBuffer() const;
-  bool SupportsImage3D() const;
-
-  bool SupportsFloatImage2D(DataType data_type, int channels) const;
-
-  bool SupportsExtension(const std::string& extension) const;
-  bool IsCL20OrHigher() const;
-  bool IsCL30OrHigher() const;
-  bool SupportsSubGroupWithSize(int sub_group_size) const;
 
   std::vector<std::string> extensions;
   bool supports_fp16;
   bool supports_image3d_writes;
-  GpuVendor gpu_vendor;
   int compute_units_count;
   uint64_t buffer_max_size;
   uint64_t image2d_max_width;
@@ -219,7 +195,6 @@ struct GpuInfo {
   int max_work_group_size_x;
   int max_work_group_size_y;
   int max_work_group_size_z;
-  std::vector<int> supported_subgroup_sizes;
 
   // rtn is ROUND_TO_NEAREST
   // with rtn precision is much better then with rtz (ROUND_TO_ZERO)
@@ -238,6 +213,54 @@ struct GpuInfo {
   bool supports_rg_f32_tex2d = false;
   bool supports_rgb_f32_tex2d = false;
   bool supports_rgba_f32_tex2d = false;
+};
+
+struct GpuInfo {
+  GpuInfo() = default;
+
+  bool IsAdreno() const;
+  bool IsApple() const;
+  bool IsMali() const;
+  bool IsPowerVR() const;
+  bool IsNvidia() const;
+  bool IsAMD() const;
+  bool IsIntel() const;
+
+  bool SupportsFP16() const;
+
+  bool SupportsTextureArray() const;
+  bool SupportsImageBuffer() const;
+  bool SupportsImage3D() const;
+
+  bool SupportsFloatImage2D(DataType data_type, int channels) const;
+
+  bool SupportsExtension(const std::string& extension) const;
+  bool IsCL20OrHigher() const;
+  bool IsCL30OrHigher() const;
+  bool SupportsSubGroupWithSize(int sub_group_size) const;
+
+  int GetComputeUnitsCount() const;
+
+  // floating point rounding mode
+  bool IsRoundToNearestSupported() const;
+
+  int GetMaxWorkGroupSizeForX() const;
+  int GetMaxWorkGroupSizeForY() const;
+  int GetMaxWorkGroupSizeForZ() const;
+
+  uint64_t GetMaxImage2DWidth() const;
+  uint64_t GetMaxImage2DHeight() const;
+  uint64_t GetMaxImage3DWidth() const;
+  uint64_t GetMaxImage3DHeight() const;
+  uint64_t GetMaxImage3DDepth() const;
+
+  uint64_t GetMaxBufferSize() const;
+  uint64_t GetMaxImageBufferWidth() const;
+  uint64_t GetMaxImage2DArrayLayers() const;
+
+  std::vector<int> supported_subgroup_sizes;
+
+  GpuVendor gpu_vendor;
 
   AdrenoInfo adreno_info;
   MaliInfo mali_info;
