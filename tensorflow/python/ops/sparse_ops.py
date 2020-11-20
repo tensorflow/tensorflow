@@ -1253,8 +1253,8 @@ def sparse_reduce_max_v2(
 
   # 'y' represents [[-7, ?]
   #                 [ 4, 3]
-  #                 [ ?, ?]
-  tf.sparse.reduce_max(x, 1) ==> [-7, 4, 0]
+  #                 [ ?, ?]]
+  tf.sparse.reduce_max(y, 1) ==> [-7, 4, 0]
   ```
 
   Args:
