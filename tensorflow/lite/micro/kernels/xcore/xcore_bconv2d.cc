@@ -60,7 +60,7 @@ ATTRIBUTE_THREAD_FUNCTION void bconv2d_bitpacked_deepin_thread_generator(
   auto *td = static_cast<BConv2DThreadData *>(context);
   auto *job = td->job;
   while (job) {
-    bnn_conv2d_bin_out_valid(
+    bconv2d_bin_DI_valid(
         td->common->Y, (bnn_b256_t *)td->common->X, (bnn_b256_t *)td->common->K,
         td->common->thresholds, &td->common->x, &td->common->y, &td->common->k,
         job->left, job->top, job->cols, job->rows);
@@ -73,7 +73,7 @@ ATTRIBUTE_THREAD_FUNCTION void bconv2d_bitpacked_thread_generator(
   auto *td = static_cast<BConv2DThreadData *>(context);
   auto *job = td->job;
   while (job) {
-    bnn_conv2d_bin_out_SISO_valid(
+    bconv2d_bin_valid(
         td->common->Y, td->common->X, td->common->K, td->common->thresholds,
         td->thread_scratch, &td->common->x, &td->common->y, &td->common->k,
         job->left, job->top, job->cols, job->rows);
