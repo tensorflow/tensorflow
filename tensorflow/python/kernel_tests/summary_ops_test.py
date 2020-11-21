@@ -1206,6 +1206,26 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
       # Reset to default state for other tests.
       summary_ops.set_step(None)
 
+  @test_util.run_v2_only
+  def testTrace_withProfiler(self):
+
+    @def_function.function
+    def f():
+      x = constant_op.constant(2)
+      y = constant_op.constant(3)
+      return x**y
+
+    assert context.executing_eagerly()
+    logdir = self.get_temp_dir()
+    writer = summary_ops.create_file_writer(logdir)
+    summary_ops.trace_on(graph=True, profiler=True)
+    profiler_outdir = self.get_temp_dir()
+    with writer.as_default():
+      f()
+      summary_ops.trace_export(
+          name='foo', step=1, profiler_outdir=profiler_outdir)
+    writer.close()
+
 
 def events_from_file(filepath):
   """Returns all events in a single event file.
