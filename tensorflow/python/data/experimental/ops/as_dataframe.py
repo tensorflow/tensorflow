@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# To do ... convert dataset to pandas dataframe
+# Copied over from https://github.com/tensorflow/datasets/blob/master/tensorflow_datasets/core/as_dataframe.py - all code belongs to original authors
 
 import tensorflow as tf
 import numpy as np

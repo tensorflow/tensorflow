@@ -13,13 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Copied over from https://github.com/tensorflow/datasets/blob/master/tensorflow_datasets/core/as_dataframe_test.py - all code belongs to original authors 
+# Copied over from https://github.com/tensorflow/datasets/blob/master/tensorflow_datasets/core/as_dataframe_test.py - all code belongs to original authors
 
 import pandas
 
 import tensorflow as tf
 from tensorflow_datasets import testing
-from tensorflow_datasets.experimental import as_dataframe
+from tensorflow.data.experimental import as_dataframe
 from tensorflow_datasets.core import load
 
 # Import for registration
