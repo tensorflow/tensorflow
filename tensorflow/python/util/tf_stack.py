@@ -141,16 +141,15 @@ def extract_stack(limit=-1):
     limit: A limit on the number of frames to return.
 
   Returns:
-    A sequence of FrameSummary objects (filename, lineno, name, line)
+    A sequence of StackFrame objects (filename, lineno, name, line)
     corresponding to the call stack of the current thread.
   """
   # N.B ExtractStack in tf_stack.cc will drop this frame prior to
   # traversing the stack.
   thread_key = _get_thread_key()
-  return _tf_stack.extract_stack(
-      limit,
-      _source_mapper_stacks[thread_key],
-      _source_filter_stacks[thread_key])
+  return _tf_stack.extract_stack(limit, _source_mapper_stacks[thread_key],
+                                 _source_filter_stacks[thread_key])
 
-StackSummary = _tf_stack.StackSummary
-FrameSummary = _tf_stack.FrameSummary
+
+StackSummary = _tf_stack.StackTraceWrapper
+FrameSummary = _tf_stack.StackFrame

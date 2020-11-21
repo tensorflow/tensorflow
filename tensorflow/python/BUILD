@@ -5690,7 +5690,12 @@ pybind_extension(
     # TODO(b/138203821): change to "util._tf_stack" once the bug is fixed.
     module_name = "_tf_stack",
     deps = [
+        ":stack_trace",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@pybind11",
     ],
 )
