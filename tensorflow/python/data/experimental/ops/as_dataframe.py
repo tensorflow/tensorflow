@@ -17,3 +17,11 @@
 
 import tensorflow as tf
 import numpy as np
+import dataclasses
+
+from tensorflow_datasets.core import dataset_info
+from tensorflow_datasets.core import dataset_utils
+from tensorflow_datasets.core import features
+from tensorflow_datasets.core import lazy_imports_lib
+from tensorflow_datasets.core.utils import py_utils
+from tensorflow_datasets.core.utils import type_utils
