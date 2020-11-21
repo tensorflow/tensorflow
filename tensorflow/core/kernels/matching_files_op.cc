@@ -54,13 +54,15 @@ class MatchingFilesOp : public OpKernel {
         context, context->allocate_output("filenames", TensorShape({num_files}),
                                           &output_t));
     auto output = output_t->vec<tstring>();
-    int index = 0;
-    for (int i = 0; i < num_patterns; ++i) {
-      for (int j = 0; j < all_fnames[i].size(); j++) {
-        output(index++) = all_fnames[i][j];
+    if (output.size() > 0) {
+      int index = 0;
+      for (int i = 0; i < num_patterns; ++i) {
+        for (int j = 0; j < all_fnames[i].size(); j++) {
+          output(index++) = all_fnames[i][j];
+        }
       }
+      std::sort(&output(0), &output(0) + num_files);
     }
-    std::sort(&output(0), &output(0) + num_files);
   }
 };
 

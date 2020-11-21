@@ -3,7 +3,10 @@
 #   and provide TensorRT operators and converter package.
 #   APIs are meant to change over time.
 
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 
 # cuda_py_test and cuda_py_tests enable XLA tests by default. We can't
@@ -37,6 +40,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/compiler/tf2tensorrt:_pywrap_py_utils",
+        "//tensorflow/compiler/tf2tensorrt:trt_engine_instance_proto_py",
         "//tensorflow/compiler/tf2tensorrt:trt_ops_loader",
         "//tensorflow/python:convert_to_constants",
         "//tensorflow/python:func_graph",
@@ -100,6 +104,7 @@ cuda_py_test(
     xla_enable_strict_auto_jit = False,
     deps = [
         ":trt_convert_py",
+        "//tensorflow/compiler/tf2tensorrt:trt_engine_instance_proto_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:graph_util",
@@ -118,10 +123,12 @@ cuda_py_test(
 cuda_py_tests(
     name = "tf_trt_integration_test",
     srcs = [
+        "test/annotate_max_batch_sizes_test.py",
         "test/base_test.py",
         "test/batch_matmul_test.py",
         "test/biasadd_matmul_test.py",
         "test/binary_tensor_weight_broadcast_test.py",
+        "test/cast_test.py",
         "test/combined_nms_test.py",
         "test/concatenation_test.py",
         "test/const_broadcast_test.py",
@@ -145,6 +152,7 @@ cuda_py_tests(
     python_version = "PY3",
     tags = [
         "no_cuda_on_cpu_tap",
+        "no_oss",  # TODO(b/165611343): Need to address the failures for CUDA 11 in OSS build.
         "no_rocm",
         "no_windows",
         "nomac",
@@ -171,7 +179,6 @@ cuda_py_test(
         "no_oss",  # TODO(b/125290478): allow running in at least some OSS configurations.
         "no_pip",
         "no_rocm",
-        "no_tap",  # It is not able to download the mnist data.
         "no_windows",
         "nomac",
     ],

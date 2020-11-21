@@ -26,31 +26,8 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-class Reshapex4 : public GPUOperation {
- public:
-  explicit Reshapex4(const OperationDef& definition)
-      : GPUOperation(definition), work_group_size_(8, 4, 1) {}
-  absl::Status AddToQueue(CLCommandQueue* queue) override;
-  absl::Status Tune(const TuningParameters& params) override;
-
-  absl::Status Compile(const CreationContext& creation_context) override;
-
-  // Move only
-  Reshapex4(Reshapex4&& operation);
-  Reshapex4& operator=(Reshapex4&& operation);
-  Reshapex4(const Reshapex4&) = delete;
-  Reshapex4& operator=(const Reshapex4&) = delete;
-
- private:
-  absl::Status BindArguments();
-  int3 GetGridSize() const;
-
-  CLKernel kernel_;
-  int3 work_group_size_;
-};
-
 // More optimized, but require src_channels % 4 == 0 and dst_channels % 4 == 0
-Reshapex4 CreateReshapex4(const OperationDef& definition);
+GPUOperation CreateReshapex4(const OperationDef& definition);
 
 }  // namespace cl
 }  // namespace gpu

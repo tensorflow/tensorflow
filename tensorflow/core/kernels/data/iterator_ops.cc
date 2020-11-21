@@ -25,11 +25,13 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/threadpool_device.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/resource_op_kernel.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/kernels/data/captured_function.h"
@@ -64,10 +66,38 @@ const char kIteratorVariantTypeName[] = "tensorflow::Iterator";
 const char kOutputShapes[] = "output_shapes";
 const char kOutputTypes[] = "output_types";
 
+// Safely subtracts x from y avoiding underflow.
+inline uint64 safe_sub(uint64 x, uint64 y) { return x >= y ? x - y : 0; }
+
 }  // namespace
 
 /* static */ constexpr const char* const
     SerializeIteratorOp::kExternalStatePolicy;
+
+IteratorResource::IteratorResource(
+    Env* env, const DataTypeVector& output_dtypes,
+    const std::vector<PartialTensorShape>& output_shapes,
+    std::unique_ptr<DeviceMgr> device_mgr,
+    std::unique_ptr<FunctionLibraryDefinition> flib_def,
+    std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
+    FunctionLibraryRuntime* flr)
+    : unbounded_thread_pool_(env, "tf_data_iterator_resource"),
+      device_mgr_(std::move(device_mgr)),
+      iterator_state_(std::make_shared<State>(std::move(flib_def),
+                                              std::move(pflr), flr,
+                                              /*iterator=*/nullptr)),
+      output_dtypes_(output_dtypes),
+      output_shapes_(output_shapes),
+      // We do not collect iterator resource metrics for non-CPU devices. This
+      // is a heuristic to avoid collecting metrics for device-side iterators
+      // created by the multi-device iterator mechanism.
+      collect_metrics_(flr->device()->device_type() == DEVICE_CPU) {
+  VLOG(2) << "creating iterator resource";
+}
+
+IteratorResource::~IteratorResource() {
+  VLOG(2) << "destroying iterator resource";
+}
 
 Status IteratorResource::GetNext(OpKernelContext* ctx,
                                  std::vector<Tensor>* out_tensors,
@@ -77,32 +107,57 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
     tf_shared_lock l(mu_);
     captured_state = iterator_state_;
   }
-  if (captured_state->iterator) {
-    IteratorContext::Params params(ctx);
-    params.flr = captured_state->flr;
-    params.function_handle_cache = captured_state->function_handle_cache.get();
-    params.resource_mgr = &captured_state->resource_mgr;
-    params.thread_factory = unbounded_thread_pool_.get_thread_factory();
-    params.thread_pool = &unbounded_thread_pool_;
-    params.cancellation_manager = &captured_state->cancellation_manager;
-    std::function<void()> deregister_fn;
-    TF_RETURN_IF_ERROR(RegisterCancellationCallback(
-        ctx->cancellation_manager(),
-        [cm = params.cancellation_manager]() { cm->StartCancel(); },
-        &deregister_fn));
-    auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
-    uint64 start_time_us = ctx->env()->NowMicros();
-    auto val = captured_state->iterator->GetNext(
-        IteratorContext(std::move(params)), out_tensors, end_of_sequence);
-    metrics::RecordTFDataGetNextDuration(ctx->env()->NowMicros() -
-                                         start_time_us);
-    metrics::RecordTFDataBytesFetched(GetTotalBytes(*out_tensors));
-    return val;
+  if (!captured_state->iterator) {
+    return errors::FailedPrecondition(
+        "GetNext() failed because the iterator has not been initialized. "
+        "Ensure that you have run the initializer operation for this iterator "
+        "before getting the next element.");
   }
-  return errors::FailedPrecondition(
-      "GetNext() failed because the iterator has not been initialized. Ensure "
-      "that you have run the initializer operation for this iterator before "
-      "getting the next element.");
+  IteratorContext::Params params(ctx);
+  params.flr = captured_state->flr;
+  params.function_handle_cache = captured_state->function_handle_cache.get();
+  params.resource_mgr = &captured_state->resource_mgr;
+  params.thread_factory = unbounded_thread_pool_.get_thread_factory();
+  params.thread_pool = &unbounded_thread_pool_;
+  params.cancellation_manager = &captured_state->cancellation_manager;
+  std::function<void()> deregister_fn;
+  TF_RETURN_IF_ERROR(RegisterCancellationCallback(
+      ctx->cancellation_manager(),
+      [cm = params.cancellation_manager]() { cm->StartCancel(); },
+      &deregister_fn));
+  auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
+  const uint64 start_time_us = ctx->env()->NowMicros();
+  if (collect_metrics_) {
+    mutex_lock l(mu_);
+    if (get_next_end_time_us_ == 0) {
+      // We initialize `get_next_end_time_us_` to the start time of the first
+      // request to make it possible to use the delta between
+      // `get_next_end_time_us_` and subsequent `GetNext()` end time to
+      // incrementally collect the duration of the iterator's lifetime.
+      get_next_end_time_us_ = start_time_us;
+    }
+    if (num_get_next_calls_ == 0) {
+      get_next_start_time_us_ = start_time_us;
+    }
+    num_get_next_calls_++;
+  }
+  auto status = captured_state->iterator->GetNext(
+      IteratorContext(std::move(params)), out_tensors, end_of_sequence);
+  if (collect_metrics_) {
+    const uint64 end_time_us = ctx->env()->NowMicros();
+    metrics::RecordTFDataGetNextDuration(safe_sub(end_time_us, start_time_us));
+    metrics::RecordTFDataBytesFetched(GetTotalBytes(*out_tensors));
+    mutex_lock l(mu_);
+    metrics::RecordTFDataIteratorLifetime(
+        safe_sub(end_time_us, get_next_end_time_us_));
+    get_next_end_time_us_ = std::max(get_next_end_time_us_, end_time_us);
+    num_get_next_calls_--;
+    if (num_get_next_calls_ == 0) {
+      metrics::RecordTFDataIteratorBusy(
+          safe_sub(get_next_end_time_us_, get_next_start_time_us_));
+    }
+  }
+  return status;
 }
 
 Status IteratorResource::Save(SerializationContext* ctx,
@@ -331,6 +386,12 @@ class IteratorVariantSerializer {
     data.reserve(num_tensors);
     for (int i = 0; i < num_tensors; ++i) {
       auto* w = serialized_vec(i).get<IteratorStateVariant>();
+      if (!w) {
+        return errors::Internal(
+            "Cannot initialize an iterator from tensor ",
+            serialized_vec(i).DebugString(),
+            ". Expected a variant tensor of type IteratorStateVariant");
+      }
       data.push_back(w->GetData());
     }
     reader_ = absl::make_unique<VariantTensorDataReader>(data);
@@ -349,6 +410,10 @@ class IteratorVariantSerializer {
     }
     int64 size = variants_.size();
     for (int64 i = 0; i < size; ++i) {
+      if (variants_[i].GetData() == nullptr) {
+        return errors::Internal(
+            "Cannot serialize an empty IteratorStateVariant");
+      }
       serialized->vec<Variant>()(i) = variants_[i];
     }
     return Status::OK();
@@ -426,8 +491,8 @@ void IteratorHandleOp::Compute(OpKernelContext* context)
                this](IteratorResource** ret) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
                 *ret = new IteratorResource(
                     context->env(), output_dtypes_, output_shapes_,
-                    graph_def_version_, std::move(device_mgr),
-                    std::move(flib_def), std::move(pflr), flr);
+                    std::move(device_mgr), std::move(flib_def), std::move(pflr),
+                    flr);
                 return Status::OK();
               }));
 
@@ -443,7 +508,7 @@ void IteratorHandleOp::Compute(OpKernelContext* context)
   }
   OP_REQUIRES_OK(context, MakeResourceHandleToOutput(
                               context, 0, cinfo_.container(), cinfo_.name(),
-                              MakeTypeIndex<IteratorResource>()));
+                              TypeIndex::Make<IteratorResource>()));
 }
 
 Status IteratorHandleOp::VerifyResource(IteratorResource* resource) {
@@ -499,8 +564,8 @@ Status AnonymousIteratorHandleOp::CreateResource(
     FunctionLibraryRuntime* lib, IteratorResource** resource) {
   std::unique_ptr<DeviceMgr> device_mgr(nullptr);
   *resource = new IteratorResource(ctx->env(), output_dtypes_, output_shapes_,
-                                   graph_def_version_, std::move(device_mgr),
-                                   std::move(flib_def), std::move(pflr), lib);
+                                   std::move(device_mgr), std::move(flib_def),
+                                   std::move(pflr), lib);
   return Status::OK();
 }
 
@@ -548,7 +613,10 @@ namespace {
 class ToSingleElementOp : public HybridAsyncOpKernel {
  public:
   explicit ToSingleElementOp(OpKernelConstruction* ctx)
-      : HybridAsyncOpKernel(ctx, "tf_data_to_single_element") {}
+      : HybridAsyncOpKernel(ctx, "tf_data_to_single_element") {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+  }
 
  protected:
   Status DoCompute(OpKernelContext* ctx) override {
@@ -580,8 +648,9 @@ class ToSingleElementOp : public HybridAsyncOpKernel {
     if (end_of_sequence) {
       return errors::InvalidArgument("Dataset was empty.");
     }
+    TF_RETURN_IF_ERROR(VerifyTypesMatch(output_types_, components));
+    TF_RETURN_IF_ERROR(VerifyShapesCompatible(output_shapes_, components));
     for (int i = 0; i < components.size(); ++i) {
-      // TODO(mrry): Check that the shapes match the shape attrs.
       ctx->set_output(i, components[i]);
     }
 
@@ -593,6 +662,10 @@ class ToSingleElementOp : public HybridAsyncOpKernel {
     }
     return Status::OK();
   }
+
+ private:
+  DataTypeVector output_types_;
+  std::vector<PartialTensorShape> output_shapes_;
 };
 
 class ReduceDatasetOp : public HybridAsyncOpKernel {
@@ -663,7 +736,7 @@ class ReduceDatasetOp : public HybridAsyncOpKernel {
 
       std::vector<Tensor> reduce_func_output;
       TF_RETURN_IF_ERROR(instantiated_captured_func->Run(
-          &iter_ctx, std::move(args), &reduce_func_output));
+          &iter_ctx, std::move(args), &reduce_func_output, /*node=*/nullptr));
       if (reduce_func_output.size() != state.size()) {
         return errors::InvalidArgument(
             "The number of components of the initial state and the "
@@ -674,33 +747,9 @@ class ReduceDatasetOp : public HybridAsyncOpKernel {
       std::swap(reduce_func_output, state);
     }
 
-    if (state.size() != output_types_.size()) {
-      return errors::InvalidArgument(
-          "The number of result elements does not match "
-          "the size of output types: ",
-          state.size(), " vs. ", output_types_.size());
-    }
-    if (state.size() != output_shapes_.size()) {
-      return errors::InvalidArgument(
-          "The number of result elements does not match "
-          "the size of output shapes: ",
-          state.size(), " vs. ", output_shapes_.size());
-    }
+    TF_RETURN_IF_ERROR(VerifyTypesMatch(output_types_, state));
+    TF_RETURN_IF_ERROR(VerifyShapesCompatible(output_shapes_, state));
     for (size_t i = 0; i < state.size(); ++i) {
-      if (state[i].dtype() != output_types_[i]) {
-        return errors::InvalidArgument(
-            "The result does not match the expected type for "
-            "component ",
-            i, ". Expected: ", DataTypeString(output_types_[i]),
-            ". Actual: ", DataTypeString(state[i].dtype()), ".");
-      }
-      if (!output_shapes_[i].IsCompatibleWith(state[i].shape())) {
-        return errors::InvalidArgument(
-            "The result does not match the expected shape for "
-            "component ",
-            i, ". Expected: ", output_shapes_[i].DebugString(),
-            ". Actual: ", state[i].shape().DebugString(), ".");
-      }
       ctx->set_output(i, state[i]);
     }
     return Status::OK();
@@ -811,7 +860,7 @@ class OneShotIteratorOp : public AsyncOpKernel {
                 TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
                   *ret = new IteratorResource(
                       ctx->env(), output_dtypes_, output_shapes_,
-                      graph_def_version_, nullptr, std::move(flib_def),
+                      /*device_mgr=*/nullptr, std::move(flib_def),
                       std::move(pflr), flr);
                   return Status::OK();
                 }));
@@ -917,8 +966,9 @@ Status IteratorGetNextOp::DoCompute(OpKernelContext* ctx) {
   if (end_of_sequence) {
     return errors::OutOfRange("End of sequence");
   }
+  TF_RETURN_IF_ERROR(VerifyTypesMatch(output_types_, components));
+  TF_RETURN_IF_ERROR(VerifyShapesCompatible(output_shapes_, components));
   for (int i = 0; i < components.size(); ++i) {
-    // TODO(mrry): Check that the shapes match the shape attrs.
     ctx->set_output(i, components[i]);
   }
   return Status::OK();

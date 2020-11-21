@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 
+#include <algorithm>
 #include <iterator>
 #include <set>
 #include <sstream>
@@ -43,7 +44,10 @@ namespace xla {
 HloModule::HloModule(const string& name, HloModuleConfig config)
     : name_(NameUniquer::GetSanitizedName(name)),
       config_(std::move(config)),
-      unique_id_(next_unique_module_id_++) {}
+      unique_id_(next_unique_module_id_++),
+      metadata_(tensorflow::Env::Default()) {
+  metadata_.set_canonical_module_id(unique_id_);
+}
 
 Status HloModule::set_schedule(HloSchedule schedule) {
   TF_RET_CHECK(schedule.module() == this);
@@ -62,14 +66,17 @@ void HloModule::ReplaceEntryComputation(HloComputation* entry_computation) {
 
 HloComputation* HloModule::AddComputationInternal(
     std::unique_ptr<HloComputation> computation, bool is_entry,
-    bool uniquify_identifiers) {
+    bool uniquify_identifiers, bool preserve_entry_layouts) {
   if (is_entry) {
     CHECK_EQ(nullptr, entry_computation_);
     entry_computation_ = computation.get();
 
-    // If the module configuration has no entry layout computation set, create a
-    // default one based on the program shape.
-    if (!config_.has_entry_computation_layout()) {
+    if (preserve_entry_layouts) {
+      config_.SetComputationLayoutIfExists(
+          entry_computation_->ComputeProgramShape());
+    } else if (!config_.has_entry_computation_layout()) {
+      // If the module configuration has no entry layout computation set, create
+      // a default one based on the program shape.
       config_.SetDefaultComputationLayout(
           entry_computation_->ComputeProgramShape());
     }
@@ -115,7 +122,15 @@ HloComputation* HloModule::AddComputationInternal(
 HloComputation* HloModule::AddEntryComputation(
     std::unique_ptr<HloComputation> computation) {
   return AddComputationInternal(std::move(computation), /*is_entry=*/true,
-                                /*uniquify_identifiers=*/true);
+                                /*uniquify_identifiers=*/true,
+                                /*preserve_entry_layouts=*/false);
+}
+
+HloComputation* HloModule::AddEntryComputationWithLayouts(
+    std::unique_ptr<HloComputation> computation) {
+  return AddComputationInternal(std::move(computation), /*is_entry=*/true,
+                                /*uniquify_identifiers=*/true,
+                                /*preserve_entry_layouts=*/true);
 }
 
 Status HloModule::RemoveEmbeddedComputation(HloComputation* to_remove) {
@@ -136,7 +151,8 @@ Status HloModule::RemoveEmbeddedComputation(HloComputation* to_remove) {
 HloComputation* HloModule::AddEmbeddedComputation(
     std::unique_ptr<HloComputation> computation) {
   return AddComputationInternal(std::move(computation), /*is_entry=*/false,
-                                /*uniquify_identifiers=*/true);
+                                /*uniquify_identifiers=*/true,
+                                /*preserve_entry_layouts=*/false);
 }
 
 void HloModule::ReplaceComputations(
@@ -218,10 +234,17 @@ void HloModule::ReplaceComputations(
 
 string HloModule::ToString(const HloPrintOptions& options) const {
   std::ostringstream s;
-  s << "HloModule " << PrintName(name(), options.print_ids());
+  // When print_ids() is false, exclude module's name because it includes and
+  // leads to non-deterministic fingerprint.
+  s << "HloModule "
+    << (options.print_ids() ? PrintName(name(), options.print_ids()) : "");
   if (has_schedule()) {
     TF_CHECK_OK(schedule().Verify());
     s << ", is_scheduled=true";
+  }
+  std::string serialized_aliasing = input_output_alias_config().ToShortString();
+  if (!serialized_aliasing.empty()) {
+    s << absl::StrFormat(", input_output_alias={ %s }", serialized_aliasing);
   }
   s << "\n\n";
   const auto& computations = options.canonicalize_computations()
@@ -373,7 +396,8 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
     // Don't uniquify names because we want names to be stable across
     // serialization and deserialization.
     module->AddComputationInternal(std::move(computation), is_entry,
-                                   /*uniquify_identifiers=*/false);
+                                   /*uniquify_identifiers=*/false,
+                                   /*preserve_entry_layouts=*/false);
   }
   TF_RET_CHECK(module->entry_computation_ != nullptr);
 
@@ -422,6 +446,7 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
     }
     module_config.set_use_spmd_partitioning(
         execution_options->use_spmd_partitioning());
+    module_config.set_deduplicate_hlo(execution_options->deduplicate_hlo());
     if (execution_options->has_device_assignment()) {
       TF_ASSIGN_OR_RETURN(std::unique_ptr<DeviceAssignment> device_assignment,
                           DeviceAssignment::Deserialize(
@@ -630,30 +655,28 @@ bool CompareComputationsByContent(HloComputation* a, HloComputation* b) {
 }  // anonymous namespace
 
 std::vector<HloComputation*> HloModule::MakeComputationSorted() const {
-  std::vector<HloComputation*> result;
-  result.reserve(computations_.size());
-  for (const auto& computation : computations_) {
-    result.push_back(computation.get());
+  std::vector<HloComputation*> result = MakeComputationPostOrder();
+  if (config().content_aware_computation_sorting()) {
+    absl::c_sort(result, CompareComputationsByContent);
   }
-  std::sort(result.begin(), result.end(), CompareComputationsByContent);
   return result;
 }
 
 std::vector<HloComputation*> HloModule::MakeNonfusionComputations() const {
-  std::vector<HloComputation*> result;
-  for (auto* c : computations()) {
-    if (c->IsFusionComputation()) {
-      continue;
-    }
-    result.push_back(c);
-  }
+  std::vector<HloComputation*> result = MakeComputationPostOrder();
+  result.erase(std::remove_if(
+                   result.begin(), result.end(),
+                   [](HloComputation* c) { return c->IsFusionComputation(); }),
+               result.end());
   return result;
 }
 
 std::vector<HloComputation*> HloModule::MakeNonfusionComputationsSorted()
     const {
   auto result = MakeNonfusionComputations();
-  std::sort(result.begin(), result.end(), CompareComputationsByContent);
+  if (config().content_aware_computation_sorting()) {
+    absl::c_sort(result, CompareComputationsByContent);
+  }
   return result;
 }
 
@@ -670,6 +693,7 @@ std::unique_ptr<HloModule> HloModule::Clone(const HloModuleConfig& config,
   HloCloneContext context(module.get(), suffix);
   auto cloned_computation = entry_computation_->Clone(suffix, &context);
   module->AddEntryComputation(std::move(cloned_computation));
+  module->input_output_alias_config() = input_output_alias_config();
 
   if (has_schedule() && schedule().Verify().ok()) {
     HloSchedule clone_schedule(module.get());

@@ -16,7 +16,9 @@ limitations under the License.
 #define TENSORFLOW_C_EAGER_C_API_TEST_UTIL_H_
 
 #include "tensorflow/c/eager/c_api.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 
 // Return a tensor handle containing a float scalar
 TFE_TensorHandle* TestScalarTensorHandle(TFE_Context* ctx, float value);
@@ -27,11 +29,29 @@ TFE_TensorHandle* TestScalarTensorHandle(TFE_Context* ctx, int value);
 // Return a tensor handle containing a bool scalar
 TFE_TensorHandle* TestScalarTensorHandle(TFE_Context* ctx, bool value);
 
+// Return a tensor handle containing a tstring scalar
+TFE_TensorHandle* TestScalarTensorHandle(TFE_Context* ctx,
+                                         const tensorflow::tstring& value);
+
 // Return a tensor handle containing a 2x2 matrix of doubles
 TFE_TensorHandle* DoubleTestMatrixTensorHandle(TFE_Context* ctx);
 
 // Return a tensor handle containing a 2x2 matrix of floats
 TFE_TensorHandle* TestMatrixTensorHandle(TFE_Context* ctx);
+
+// Return a tensor handle containing 2D matrix containing given data and
+// dimensions
+TFE_TensorHandle* TestMatrixTensorHandleWithInput(TFE_Context* ctx,
+                                                  float data[], int64_t dims[],
+                                                  int num_dims);
+
+// Get a Matrix TensorHandle with given float values and dimensions
+TFE_TensorHandle* TestTensorHandleWithDimsFloat(TFE_Context* ctx, float data[],
+                                                int64_t dims[], int num_dims);
+
+// Get a Matrix TensorHandle with given int values and dimensions
+TFE_TensorHandle* TestTensorHandleWithDimsInt(TFE_Context* ctx, int data[],
+                                              int64_t dims[], int num_dims);
 
 // Return a tensor handle containing a 100x100 matrix of floats
 TFE_TensorHandle* TestMatrixTensorHandle100x100(TFE_Context* ctx);
@@ -71,5 +91,12 @@ TFE_Op* MinOp(TFE_Context* ctx, TFE_TensorHandle* input,
 // `device_type` must be either "GPU" or "TPU".
 bool GetDeviceName(TFE_Context* ctx, tensorflow::string* device_name,
                    const char* device_type);
+
+// Create a ServerDef with the given `job_name` and add `num_tasks` tasks in it.
+tensorflow::ServerDef GetServerDef(const tensorflow::string& job_name,
+                                   int num_tasks);
+
+// Create a ServerDef with job name "localhost" and add `num_tasks` tasks in it.
+tensorflow::ServerDef GetServerDef(int num_tasks);
 
 #endif  // TENSORFLOW_C_EAGER_C_API_TEST_UTIL_H_

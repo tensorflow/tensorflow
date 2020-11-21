@@ -16,10 +16,10 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/compiler/rename.h"
 
 #include <algorithm>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
@@ -86,7 +86,7 @@ class VariableRewriter : public InlineRewrite {
   const std::string inline_delimiter_;
   const NameFunctor name_func_;
 
-  std::unordered_map<std::string, Variable> name_to_variable_;
+  absl::flat_hash_map<std::string, Variable> name_to_variable_;
 };
 
 // Rewrites names of all objects according to returned values from the
@@ -168,7 +168,7 @@ class ObjectRewriter : public InlineRewrite {
   const std::string inline_delimiter_;
   const NameFunctor name_func_;
 
-  std::unordered_map<std::string, std::pair<std::string, Object>>
+  absl::flat_hash_map<std::string, std::pair<std::string, Object>>
       name_to_object_;
 };
 

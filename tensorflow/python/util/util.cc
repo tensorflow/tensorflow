@@ -24,20 +24,30 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/python/lib/core/safe_ptr.h"
+#include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
 
 namespace tensorflow {
 namespace swig {
 
-std::unordered_map<string, PyObject*>* PythonTypesMap() {
+namespace {
+string PyObjectToString(PyObject* o);
+}  // namespace
+
+std::unordered_map<string, PyObject*>* RegisteredPyObjectMap() {
   static auto* m = new std::unordered_map<string, PyObject*>();
   return m;
 }
 
-PyObject* GetRegisteredType(const string& key) {
-  auto* m = PythonTypesMap();
-  auto it = m->find(key);
-  if (it == m->end()) return nullptr;
+PyObject* GetRegisteredPyObject(const string& name) {
+  const auto* m = RegisteredPyObjectMap();
+  auto it = m->find(name);
+  if (it == m->end()) {
+    PyErr_SetString(PyExc_TypeError,
+                    tensorflow::strings::StrCat("No object with name ", name,
+                                                " has been registered.")
+                        .c_str());
+    return nullptr;
+  }
   return it->second;
 }
 
@@ -49,26 +59,35 @@ PyObject* RegisterType(PyObject* type_name, PyObject* type) {
                         .c_str());
     return nullptr;
   }
+  return RegisterPyObject(type_name, type);
+}
 
+PyObject* RegisterPyObject(PyObject* name, PyObject* value) {
   string key;
-  if (PyBytes_Check(type_name)) {
-    key = PyBytes_AsString(type_name);
-  }
+  if (PyBytes_Check(name)) {
+    key = PyBytes_AsString(name);
 #if PY_MAJOR_VERSION >= 3
-  if (PyUnicode_Check(type_name)) {
-    key = PyUnicode_AsUTF8(type_name);
-  }
+  } else if (PyUnicode_Check(name)) {
+    key = PyUnicode_AsUTF8(name);
 #endif
-
-  if (PythonTypesMap()->find(key) != PythonTypesMap()->end()) {
+  } else {
     PyErr_SetString(PyExc_TypeError, tensorflow::strings::StrCat(
-                                         "Type already registered for ", key)
+                                         "Expected name to be a str, got",
+                                         PyObjectToString(name))
                                          .c_str());
     return nullptr;
   }
 
-  Py_INCREF(type);
-  PythonTypesMap()->emplace(key, type);
+  auto* m = RegisteredPyObjectMap();
+  if (m->find(key) != m->end()) {
+    PyErr_SetString(PyExc_TypeError, tensorflow::strings::StrCat(
+                                         "Value already registered for ", key)
+                                         .c_str());
+    return nullptr;
+  }
+
+  Py_INCREF(value);
+  m->emplace(key, value);
 
   Py_RETURN_NONE;
 }
@@ -196,7 +215,7 @@ class CachedTypeCheck {
 // Returns 0 otherwise.
 // Returns -1 if an error occurred (e.g., if 'type_name' is not registered.)
 int IsInstanceOfRegisteredType(PyObject* obj, const char* type_name) {
-  PyObject* type_obj = GetRegisteredType(type_name);
+  PyObject* type_obj = GetRegisteredPyObject(type_name);
   if (TF_PREDICT_FALSE(type_obj == nullptr)) {
     PyErr_SetString(PyExc_RuntimeError,
                     tensorflow::strings::StrCat(
@@ -338,6 +357,16 @@ int IsSequenceHelper(PyObject* o) {
     if (is_instance == -1) return -1;
 
     return static_cast<int>(is_instance != 0 && !IsString(to_check));
+  });
+  return check_cache->CachedLookup(o);
+}
+
+// Returns 1 if `o`'s class has a `__tf_dispatch__` attribute.
+// Returns 0 otherwise.
+int IsDispatchableHelper(PyObject* o) {
+  static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
+    return PyObject_HasAttrString(
+        reinterpret_cast<PyObject*>(to_check->ob_type), "__tf_dispatch__");
   });
   return check_cache->CachedLookup(o);
 }
@@ -513,7 +542,8 @@ class AttrsValueIterator : public ValueIterator {
 };
 
 bool IsSparseTensorValueType(PyObject* o) {
-  PyObject* sparse_tensor_value_type = GetRegisteredType("SparseTensorValue");
+  PyObject* sparse_tensor_value_type =
+      GetRegisteredPyObject("SparseTensorValue");
   if (TF_PREDICT_FALSE(sparse_tensor_value_type == nullptr)) {
     return false;
   }
@@ -897,6 +927,7 @@ bool IsResourceVariable(PyObject* o) {
 }
 bool IsVariable(PyObject* o) { return IsVariableHelper(o) == 1; }
 bool IsIndexedSlices(PyObject* o) { return IsIndexedSlicesHelper(o) == 1; }
+bool IsDispatchable(PyObject* o) { return IsDispatchableHelper(o) == 1; }
 
 bool IsTuple(PyObject* o) {
   tensorflow::Safe_PyObjectPtr wrapped;

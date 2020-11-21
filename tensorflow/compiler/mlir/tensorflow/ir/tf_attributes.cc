@@ -45,17 +45,44 @@ struct ShapeAttrStorage : public AttributeStorage {
   bool unranked = false;
 };
 
+// The storage class for FuncAttr.
+struct FuncAttrStorage : public AttributeStorage {
+  using KeyTy = std::pair<Attribute, Attribute>;
+
+  explicit FuncAttrStorage(Attribute name, Attribute attrs)
+      : name(name), attrs(attrs) {}
+
+  bool operator==(const KeyTy& key) const { return key == KeyTy(name, attrs); }
+  static unsigned hashKey(const KeyTy& key) {
+    return llvm::hash_combine(key.first, key.second);
+  }
+
+  static FuncAttrStorage* construct(mlir::AttributeStorageAllocator& allocator,
+                                    const KeyTy& key) {
+    return new (allocator.allocate<FuncAttrStorage>())
+        FuncAttrStorage(key.first, key.second);
+  }
+
+  Attribute name;
+  Attribute attrs;
+};
+
 }  // namespace detail
 
 // Get or create a shape attribute.
 ShapeAttr ShapeAttr::get(mlir::MLIRContext* context,
                          llvm::Optional<ArrayRef<int64_t>> shape) {
-  if (shape)
-    return Base::get(context, AttrKind::SHAPE, *shape,
-                     /*unranked=*/false);
+  if (shape) return Base::get(context, *shape, /*unranked=*/false);
 
-  return Base::get(context, AttrKind::SHAPE, ArrayRef<int64_t>(),
-                   /*unranked=*/true);
+  return Base::get(context, ArrayRef<int64_t>(), /*unranked=*/true);
+}
+
+// Get or create a shape attribute.
+ShapeAttr ShapeAttr::get(mlir::MLIRContext* context, ShapedType shaped_type) {
+  if (shaped_type.hasRank())
+    return Base::get(context, shaped_type.getShape(), /*unranked=*/false);
+
+  return Base::get(context, ArrayRef<int64_t>(), /*unranked=*/true);
 }
 
 llvm::Optional<ArrayRef<int64_t>> ShapeAttr::getValue() const {
@@ -83,6 +110,25 @@ bool ShapeAttr::hasStaticShape() const {
   }
 
   return true;
+}
+
+FuncAttr FuncAttr::get(mlir::MLIRContext* context, llvm::StringRef name,
+                       DictionaryAttr attr) {
+  auto symbol = SymbolRefAttr::get(name, context);
+  return Base::get(context, symbol, attr);
+}
+
+FuncAttr FuncAttr::get(mlir::MLIRContext* context, SymbolRefAttr symbol,
+                       DictionaryAttr attr) {
+  return Base::get(context, symbol, attr);
+}
+
+SymbolRefAttr FuncAttr::GetName() const {
+  return getImpl()->name.cast<SymbolRefAttr>();
+}
+
+DictionaryAttr FuncAttr::GetAttrs() const {
+  return getImpl()->attrs.cast<DictionaryAttr>();
 }
 
 }  // namespace TF

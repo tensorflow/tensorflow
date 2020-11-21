@@ -451,7 +451,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
       q = data_flow_ops.SparseConditionalAccumulator(
           dtypes_lib.float32, name="Q", shape=tensor_shape.TensorShape([3, 3]))
 
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           errors_impl.InvalidArgumentError,
           "Input indices should be vector but received shape:"):
         q.apply_grad(
@@ -464,8 +464,8 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
       q = data_flow_ops.SparseConditionalAccumulator(
           dtypes_lib.float32, name="Q", shape=tensor_shape.TensorShape([3, 3]))
 
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "Values cannot be 0-dimensional."):
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  "Values cannot be 0-dimensional."):
         q.apply_grad(
             grad_indices=[0], grad_values=np.array(1).astype(np.float32)).run()
 
@@ -475,8 +475,8 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
       q = data_flow_ops.SparseConditionalAccumulator(
           dtypes_lib.float32, name="Q", shape=tensor_shape.TensorShape([3, 3]))
 
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   " non-empty input values, got "):
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  " non-empty input values, got "):
         q.apply_grad(
             grad_indices=[0, 1],
             grad_values=np.array([[0, 1, 1]]).astype(np.float32)).run()
@@ -492,7 +492,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
 
       accum_op = q.apply_grad(grad_indices=x_indices, grad_values=x_values)
 
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           errors_impl.InvalidArgumentError,
           "Input indices should be vector but received shape:"):
         sess.run(accum_op,
@@ -512,8 +512,8 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
 
       accum_op = q.apply_grad(grad_indices=x_indices, grad_values=x_values)
 
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   " non-empty input values, got "):
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  " non-empty input values, got "):
         sess.run(accum_op,
                  feed_dict={
                      x_indices: [0, 1],
@@ -526,20 +526,20 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
       q = data_flow_ops.SparseConditionalAccumulator(
           dtypes_lib.float32, name="Q", shape=tensor_shape.TensorShape([]))
 
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "Input indices should be vector"):
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  "Input indices should be vector"):
         q.apply_grad(grad_indices=0, grad_values=[1.0], grad_shape=[]).run()
 
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "Input indices should be vector"):
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  "Input indices should be vector"):
         q.apply_grad(grad_indices=0, grad_values=[1.0]).run()
 
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "Values cannot be 0-dimensional."):
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  "Values cannot be 0-dimensional."):
         q.apply_grad(grad_indices=[0], grad_values=1.0, grad_shape=[]).run()
 
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "Values cannot be 0-dimensional."):
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  "Values cannot be 0-dimensional."):
         q.apply_grad(grad_indices=[0], grad_values=1.0).run()
 
       # The right way to apply a scalar
@@ -553,7 +553,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
           dtypes_lib.float32, name="Q", shape=[2, 2, None])
 
       # Provided shape has wrong rank
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           errors_impl.InvalidArgumentError,
           "Shape mismatch: expected shape rank at least 3, got 2"):
         q.apply_grad(
@@ -562,7 +562,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
             grad_shape=[2, 2]).run()
 
       # Provided shape has wrong dim
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           errors_impl.InvalidArgumentError,
           "Shape mismatch: expected shape dim 1 to be 2, got 3"):
         q.apply_grad(
@@ -571,7 +571,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
             grad_shape=[2, 3, 2]).run()
 
       # Indices exceeded accumulator's shape's limits
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           errors_impl.InvalidArgumentError,
           "Shape mismatch: index of slice 0 exceeded limits of shape;"
           " index is 3 exceeded 2"):
@@ -580,7 +580,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
             grad_values=np.array([[[1, 2], [3, 4]]]).astype(np.float32)).run()
 
       # Values' rank does not match shape
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           errors_impl.InvalidArgumentError,
           "Shape mismatch: expected values rank at least 3, got 2"):
         q.apply_grad(
@@ -588,7 +588,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
             grad_values=np.array([[1, 2], [3, 4]]).astype(np.float32)).run()
 
       # Values' dim does not match shape
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           errors_impl.InvalidArgumentError,
           "Shape mismatch: expected values dim 1 to be 2, got 3"):
         q.apply_grad(
@@ -604,7 +604,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
               [[[[1, 2], [3, 4]], [[5, 6], [7, 8]]]]).astype(np.float32)).run()
 
       # Values' rank does not match accumulated gradient
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           errors_impl.InvalidArgumentError,
           "Shape mismatch: expected values rank 4, got 3"):
         q.apply_grad(
@@ -612,7 +612,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
             grad_values=np.array([[[1, 2], [3, 4]]]).astype(np.float32)).run()
 
       # Values' dim does not match accumulated gradient
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           errors_impl.InvalidArgumentError,
           "Shape mismatch: expected values dim 3 to be 2, got 3"):
         q.apply_grad(
@@ -633,7 +633,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
                   np.float32),
           local_step=1).run()
 
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           errors_impl.InvalidArgumentError,
           "Shape mismatch: expected values dim 3 to be 3, got 2"):
         q.apply_grad(

@@ -14,7 +14,15 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "compute_dtype"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "dtype"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "dtype_policy"
     mtype: "<type \'property\'>"
   }
   member {
@@ -90,6 +98,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "supports_masking"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "trainable"
     mtype: "<type \'property\'>"
   }
@@ -106,6 +118,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "variable_dtype"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "variables"
     mtype: "<type \'property\'>"
   }
@@ -115,7 +131,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'max_tokens\', \'standardize\', \'split\', \'ngrams\', \'output_mode\', \'output_sequence_length\', \'pad_to_max_tokens\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'lower_and_strip_punctuation\', \'whitespace\', \'None\', \'int\', \'None\', \'True\'], "
+    argspec: "args=[\'self\', \'max_tokens\', \'standardize\', \'split\', \'ngrams\', \'output_mode\', \'output_sequence_length\', \'pad_to_max_tokens\', \'vocabulary\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'lower_and_strip_punctuation\', \'whitespace\', \'None\', \'int\', \'None\', \'True\', \'None\'], "
   }
   member_method {
     name: "adapt"
@@ -139,7 +155,7 @@ tf_class {
   }
   member_method {
     name: "add_weight"
-    argspec: "args=[\'self\', \'name\', \'shape\', \'dtype\', \'initializer\', \'regularizer\', \'trainable\', \'constraint\', \'partitioner\', \'use_resource\', \'synchronization\', \'aggregation\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'VariableSynchronization.AUTO\', \'VariableAggregation.NONE\'], "
+    argspec: "args=[\'self\', \'name\', \'shape\', \'dtype\', \'initializer\', \'regularizer\', \'trainable\', \'constraint\', \'use_resource\', \'synchronization\', \'aggregation\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'VariableSynchronization.AUTO\', \'VariableAggregation.NONE\'], "
   }
   member_method {
     name: "apply"

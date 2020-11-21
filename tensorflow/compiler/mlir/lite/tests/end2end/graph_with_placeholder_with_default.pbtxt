@@ -1,4 +1,4 @@
-# RUN: tf_tfl_translate -tf-input-arrays=unranked -tf-input-shapes=1,8,8,2 -tf-input-data-types=DT_INT32 -tf-output-arrays=unranked,static,static_10 %s -o - --output-mlir | FileCheck %s --dump-input-on-failure
+# RUN: tf_tfl_translate -tf-input-arrays=unranked -tf-input-shapes=1,8,8,2 -tf-input-data-types=DT_INT32 -tf-output-arrays=unranked,static,static_10 %s -o - --output-mlir | FileCheck %s
 
 node {
   name: "tf.Const"

@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/buffer.h"
 
+#include <string>
+
+#include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
 namespace tflite {
@@ -25,19 +28,10 @@ namespace {
 absl::Status CreateBuffer(size_t size_in_bytes, bool gpu_read_only,
                           const void* data, CLContext* context,
                           Buffer* result) {
-  cl_mem_flags flags = gpu_read_only ? CL_MEM_READ_ONLY : CL_MEM_READ_WRITE;
-  if (data != nullptr) {
-    flags |= CL_MEM_COPY_HOST_PTR;
-  }
-  cl_int error_code;
-  cl_mem buffer = clCreateBuffer(context->context(), flags, size_in_bytes,
-                                 const_cast<void*>(data), &error_code);
-  if (!buffer) {
-    return absl::UnknownError(
-        absl::StrCat("Failed to allocate device memory with clCreateBuffer",
-                     CLErrorCodeToString(error_code)));
-  }
-
+  cl_mem buffer;
+  RETURN_IF_ERROR(CreateCLBuffer(context->context(), size_in_bytes,
+                                 gpu_read_only, const_cast<void*>(data),
+                                 &buffer));
   *result = Buffer(buffer, size_in_bytes);
 
   return absl::OkStatus();
@@ -61,14 +55,34 @@ Buffer& Buffer::operator=(Buffer&& buffer) {
   return *this;
 }
 
-Buffer::~Buffer() { Release(); }
-
 void Buffer::Release() {
   if (buffer_) {
     clReleaseMemObject(buffer_);
     buffer_ = nullptr;
     size_ = 0;
   }
+}
+
+absl::Status Buffer::GetGPUResources(const GPUObjectDescriptor* obj_ptr,
+                                     GPUResourcesWithValue* resources) const {
+  const auto* buffer_desc = dynamic_cast<const BufferDescriptor*>(obj_ptr);
+  if (!buffer_desc) {
+    return absl::InvalidArgumentError("Expected BufferDescriptor on input.");
+  }
+
+  resources->buffers.push_back({"buffer", buffer_});
+  return absl::OkStatus();
+}
+
+absl::Status Buffer::CreateFromBufferDescriptor(const BufferDescriptor& desc,
+                                                CLContext* context) {
+  bool read_only = desc.memory_type == MemoryType::CONSTANT;
+  uint8_t* data_ptr = desc.data.empty()
+                          ? nullptr
+                          : const_cast<unsigned char*>(desc.data.data());
+  size_ = desc.size;
+  return CreateCLBuffer(context->context(), desc.size, read_only, data_ptr,
+                        &buffer_);
 }
 
 absl::Status CreateReadOnlyBuffer(size_t size_in_bytes, CLContext* context,

@@ -32,26 +32,33 @@ class HloModule;
 // parameter index in the entry computation.
 class HloInputOutputAliasConfig {
  public:
-  // The kind of aliases which can be set. A kUserAlias is one setup at
-  // compilation time by the user, and has to be respected. A kSystemAlias one
+  // The kind of aliases which can be set. A kMayAlias is one setup at
+  // compilation time by the user, and has to be respected. A kMustAlias one
   // might be setup by the compiler, if it decides it is convenient to do so.
   enum AliasKind {
-    kNoAlias,
-    kUserAlias,
-    kSystemAlias,
+    kMayAlias,
+    kMustAlias,
   };
-
   // Defines the alias information for a given output buffer. A given output
   // buffer shape index can refer only to one parameter+index.
   struct Alias {
-    Alias(AliasKind kind, int64 parameter_number, ShapeIndex parameter_index)
-        : kind(kind),
-          parameter_number(parameter_number),
-          parameter_index(std::move(parameter_index)) {}
+    Alias(int64 parameter_number, ShapeIndex parameter_index,
+          AliasKind kind = kMayAlias)
+        : parameter_number(parameter_number),
+          parameter_index(std::move(parameter_index)),
+          kind(kind) {}
 
-    AliasKind kind;
     int64 parameter_number;
     ShapeIndex parameter_index;
+    AliasKind kind;
+
+    bool must_alias() const { return kind == kMustAlias; }
+
+    std::string ToString() {
+      return absl::StrFormat("(%lld, %s, %s)", parameter_number,
+                             parameter_index.ToString(),
+                             kind == kMustAlias ? "must-alias" : "may-alias");
+    }
   };
 
   HloInputOutputAliasConfig() = default;
@@ -65,18 +72,13 @@ class HloInputOutputAliasConfig {
   // `param_number`.
   Status SetUpAlias(const ShapeIndex& output_index, int64 param_number,
                     const ShapeIndex& param_index,
-                    AliasKind kind = AliasKind::kUserAlias);
-
-  // Returns the kind of alias for the given parameter number and parameter
-  // index. If no alias exists, AliasKind::kNoAlias is returned.
-  AliasKind ParameterAliasKind(int64 param_number,
-                               const ShapeIndex& param_index) const;
+                    AliasKind must_alias = kMayAlias);
 
   // Returns true if the given parameter is aliased with one of the output
   // buffers.
   bool ParameterHasAlias(int64 param_number,
                          const ShapeIndex& param_index) const {
-    return ParameterAliasKind(param_number, param_index) != AliasKind::kNoAlias;
+    return GetAliasedOutput(param_number, param_index).has_value();
   }
 
   // Checks whether the provided output index has already been aliased.
@@ -101,6 +103,11 @@ class HloInputOutputAliasConfig {
   absl::optional<Alias> GetAliasedParameter(
       const ShapeIndex& output_index) const;
 
+  // Returns if the parameter at the given parameter number and parameter
+  // index must-alias with an output.
+  bool ParameterMustAlias(int64 param_number,
+                          const ShapeIndex& param_index) const;
+
   using AliasFn =
       std::function<void(const ShapeIndex& output_index, const Alias&)>;
 
@@ -122,6 +129,8 @@ class HloInputOutputAliasConfig {
   const Shape& shape() const;
 
   string ToString() const;
+
+  string ToShortString() const;
 
  private:
   // A ShapeTree which indicates the list of buffers that's expected to be

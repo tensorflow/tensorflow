@@ -74,7 +74,7 @@ class CentralStorageStrategy(distribute_lib.Strategy):
   def _from_num_gpus(cls, num_gpus):
     return cls(device_util.local_devices_from_num_gpus(num_gpus))
 
-  def experimental_distribute_dataset(self, dataset):  # pylint: disable=useless-super-delegation
+  def experimental_distribute_dataset(self, dataset, options=None):  # pylint: disable=useless-super-delegation
     """Distributes a tf.data.Dataset instance provided via dataset.
 
     The returned dataset is a wrapped strategy dataset which creates a
@@ -96,54 +96,21 @@ class CentralStorageStrategy(distribute_lib.Strategy):
     ```
     Args:
       dataset: `tf.data.Dataset` to be prefetched to device.
+      options: `tf.distribute.InputOptions` used to control options on how this
+        dataset is distributed.
 
     Returns:
       A "distributed `Dataset`" that the caller can iterate over.
     """
+    if (options and options.experimental_replication_moden ==
+        distribute_lib.InputReplicationMode.PER_REPLICA):
+      raise NotImplementedError(
+          'InputReplicationMode.PER_REPLICA '
+          'is only supported in '
+          '`experimental_distribute_datasets_from_function`.'
+      )
     return super(CentralStorageStrategy, self).experimental_distribute_dataset(
-        dataset)
-
-  def experimental_distribute_datasets_from_function(self, dataset_fn):  # pylint: disable=useless-super-delegation
-    """Distributes `tf.data.Dataset` instances created by calls to `dataset_fn`.
-
-    `dataset_fn` will be called once for each worker in the strategy. In this
-    case, we only have one worker so `dataset_fn` is called once. Each replica
-    on this worker will then dequeue a batch of elements from this local
-    dataset.
-
-    The `dataset_fn` should take an `tf.distribute.InputContext` instance where
-    information about batching and input replication can be accessed.
-
-    For Example:
-    ```
-    def dataset_fn(input_context):
-      batch_size = input_context.get_per_replica_batch_size(global_batch_size)
-      d = tf.data.Dataset.from_tensors([[1.]]).repeat().batch(batch_size)
-      return d.shard(
-          input_context.num_input_pipelines, input_context.input_pipeline_id)
-
-    inputs = strategy.experimental_distribute_datasets_from_function(dataset_fn)
-
-    for batch in inputs:
-      replica_results = strategy.run(replica_fn, args=(batch,))
-    ```
-
-    IMPORTANT: The `tf.data.Dataset` returned by `dataset_fn` should have a
-    per-replica batch size, unlike `experimental_distribute_dataset`, which uses
-    the global batch size.  This may be computed using
-    `input_context.get_per_replica_batch_size`.
-
-    Args:
-      dataset_fn: A function taking a `tf.distribute.InputContext` instance and
-        returning a `tf.data.Dataset`.
-
-    Returns:
-      A "distributed `Dataset`", which the caller can iterate over like regular
-      datasets.
-    """
-    return super(
-        CentralStorageStrategy,
-        self).experimental_distribute_datasets_from_function(dataset_fn)
+        dataset, options)
 
   def experimental_local_results(self, value):  # pylint: disable=useless-super-delegation
     """Returns the list of all local per-replica values contained in `value`.

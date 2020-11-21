@@ -1,4 +1,4 @@
-// RUN: tf-opt %s --run-tf-graph-optimization --graph-passes=MlirRoundtripPass | FileCheck %s --dump-input-on-failure
+// RUN: tf-opt %s --run-tf-graph-optimization --graph-passes=MlirRoundtripPass | FileCheck %s
 
 // The test uses the tf_graph_optimization_pass to run the MlirRoundtripPass.
 // We convert mlir -> Graph -> mlir -> Graph -> mlir

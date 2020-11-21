@@ -475,7 +475,7 @@ class MultiDeviceIteratorHandleOp : public OpKernel {
     }
     OP_REQUIRES_OK(context, MakeResourceHandleToOutput(
                                 context, 0, container_name, unique_name,
-                                MakeTypeIndex<MultiDeviceIterator>()));
+                                TypeIndex::Make<MultiDeviceIterator>()));
   }
 
  private:

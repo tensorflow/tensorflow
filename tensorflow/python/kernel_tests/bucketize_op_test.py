@@ -67,13 +67,12 @@ class BucketizationOpTest(test.TestCase):
     op = math_ops._bucketize(
         constant_op.constant([-5, 0]), boundaries=[0, 8, 3, 11])
     with self.session(use_gpu=True) as sess:
-      with self.assertRaisesRegexp(
-          errors_impl.InvalidArgumentError, "Expected sorted boundaries"):
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  "Expected sorted boundaries"):
         self.evaluate(op)
 
   def testBoundariesNotList(self):
-    with self.assertRaisesRegexp(
-        TypeError, "Expected list.*"):
+    with self.assertRaisesRegex(TypeError, "Expected list.*"):
       math_ops._bucketize(constant_op.constant([-5, 0]), boundaries=0)
 
 

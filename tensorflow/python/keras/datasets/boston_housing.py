@@ -67,9 +67,9 @@ def load_data(path='boston_housing.npz', test_split=0.2, seed=113):
     x = f['x']
     y = f['y']
 
-  np.random.seed(seed)
+  rng = np.random.RandomState(seed)
   indices = np.arange(len(x))
-  np.random.shuffle(indices)
+  rng.shuffle(indices)
   x = x[indices]
   y = y[indices]
 

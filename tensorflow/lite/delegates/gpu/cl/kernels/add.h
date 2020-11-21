@@ -27,41 +27,10 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-// Add operation inherited from ElementwiseOperation, but it is more
-// complicated than usual elementwise, that is why it has own versions for
-// Compile. Add operation support not equal tensors on input (for possibility to
-// remove Padding operation with zeroes in Z dimension)
-class Add : public ElementwiseOperation {
- public:
-  Add(const OperationDef& definition, const std::vector<int>& channels,
-      int dst_channels);
-
-  absl::Status Compile(const CreationContext& creation_context) override;
-
-  // Move only
-  Add(Add&& operation);
-  Add& operator=(Add&& operation);
-  Add(const Add&) = delete;
-  Add& operator=(const Add&) = delete;
-
-  void SetLinkIndex(int index) override;
-  std::string GetCoreCode(const LinkingContext& context) const override;
-  std::string GetArgsDeclaration() const override;
-  absl::Status BindArguments(CLKernel* kernel) override;
-  bool IsLinkable() const override { return dst_depth_ == src_depthes_[0]; }
-
- private:
-  std::string GetElementWiseCode(
-      const OperationDef& op_def,
-      const std::vector<ElementwiseOperation*>& linked_operations);
-
-  int link_index_;
-  std::vector<int> src_depthes_;
-  int dst_depth_;
-};
-
-Add CreateAdd(const OperationDef& definition, const std::vector<int>& channels,
-              int dst_channels);
+// Add operation supports not equal tensors on input (for possibility to
+// remove Padding operation with zeroes in channels dimension)
+GPUOperation CreateAdd(const OperationDef& definition,
+                       const std::vector<int>& channels, int dst_channels);
 
 }  // namespace cl
 }  // namespace gpu

@@ -23,7 +23,7 @@ const char* kProtobufUint64Typename = "::tensorflow::protobuf_uint64";
 TStringOutputStream::TStringOutputStream(tstring* target) : target_(target) {}
 
 bool TStringOutputStream::Next(void** data, int* size) {
-  int old_size = target_->size();
+  size_t old_size = target_->size();
 
   // Grow the string.
   if (old_size < target_->capacity()) {
@@ -32,16 +32,16 @@ bool TStringOutputStream::Next(void** data, int* size) {
     target_->resize_uninitialized(target_->capacity());
   } else {
     // Size has reached capacity, try to double the size.
-    if (old_size > std::numeric_limits<int>::max() / 2) {
+    if (old_size > std::numeric_limits<size_t>::max() / 2) {
       // Can not double the size otherwise it is going to cause integer
       // overflow in the expression below: old_size * 2 ";
       return false;
     }
     // Double the size, also make sure that the new size is at least
     // kMinimumSize.
-    target_->resize_uninitialized(
-        std::max(old_size * 2,
-                 kMinimumSize + 0));  // "+ 0" works around GCC4 weirdness.
+    target_->resize_uninitialized(std::max(
+        old_size * 2,
+        (size_t)kMinimumSize + 0));  // "+ 0" works around GCC4 weirdness.
   }
 
   *data = target_->data() + old_size;

@@ -54,12 +54,11 @@ uint64 AndroidArmV7ACpuUtilsHelper::GetCurrentClockCycle() {
   return static_cast<uint64>(count);
 }
 
-void AndroidArmV7ACpuUtilsHelper::EnableClockCycleProfiling(const bool enable) {
+void AndroidArmV7ACpuUtilsHelper::EnableClockCycleProfiling() {
   if (!is_initialized_) {
     // Initialize here to avoid unnecessary initialization
     InitializeInternal();
   }
-  if (enable) {
     const int64 cpu0_scaling_min = ReadCpuFrequencyFile(0, "scaling_min");
     const int64 cpu0_scaling_max = ReadCpuFrequencyFile(0, "scaling_max");
     if (cpu0_scaling_max != cpu0_scaling_min) {
@@ -69,9 +68,14 @@ void AndroidArmV7ACpuUtilsHelper::EnableClockCycleProfiling(const bool enable) {
     }
     ResetClockCycle();
     ioctl(fd_, PERF_EVENT_IOC_ENABLE, 0);
-  } else {
-    ioctl(fd_, PERF_EVENT_IOC_DISABLE, 0);
+}
+
+void AndroidArmV7ACpuUtilsHelper::DisableClockCycleProfiling() {
+  if (!is_initialized_) {
+    // Initialize here to avoid unnecessary initialization
+    InitializeInternal();
   }
+  ioctl(fd_, PERF_EVENT_IOC_DISABLE, 0);
 }
 
 int64 AndroidArmV7ACpuUtilsHelper::CalculateCpuFrequency() {
@@ -119,10 +123,14 @@ int64 AndroidArmV7ACpuUtilsHelper::ReadCpuFrequencyFile(
   const int retval = fscanf(fp, "%" SCNd64, &freq_in_khz);
   if (retval < 0) {
     LOG(WARNING) << "Failed to \"" << file_path << "\"";
-    fclose(fp);
+    if (fclose(fp) != 0) {
+      LOG(WARNING) << "fclose() failed: " << strerror(errno);
+    }
     return INVALID_CPU_FREQUENCY;
   }
-  fclose(fp);
+  if (fclose(fp) != 0) {
+    LOG(WARNING) << "fclose() failed: " << strerror(errno);
+  }
   return freq_in_khz * 1000;  // The file contains cpu frequency in khz
 }
 

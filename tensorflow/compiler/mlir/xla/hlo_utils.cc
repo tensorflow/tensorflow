@@ -22,7 +22,7 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/core/lib/bfloat16/bfloat16.h"
+#include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -43,31 +43,6 @@ template <typename CppType>
       type, llvm::makeArrayRef(data_span.data(), data_span.size()));
 }
 
-mlir::APFloat ConvertToAPFloat(bfloat16 val) {
-  // bfloat16 values are stored as double in MLIR.
-  return llvm::APFloat(static_cast<double>(val));
-}
-
-mlir::APFloat ConvertToAPFloat(half val) {
-  llvm::APFloat single_val = llvm::APFloat(static_cast<float>(val));
-  bool loses_info = false;
-  CHECK_EQ(single_val.convert(llvm::APFloat::IEEEhalf(),
-                              llvm::APFloat::rmTowardZero, &loses_info),
-           llvm::APFloat::opOK);
-  CHECK(!loses_info);
-  return single_val;
-}
-
-template <typename CppType>
-::mlir::DenseElementsAttr CreateDenseAttrFrom16BitFloat(
-    const ShapedType& type, const LiteralBase& literal) {
-  auto data_span = literal.data<CppType>();
-  llvm::SmallVector<mlir::APFloat, 4> vals;
-  vals.reserve(data_span.size());
-  for (CppType val : data_span) vals.push_back(ConvertToAPFloat(val));
-  return ::mlir::DenseElementsAttr::get(type, vals);
-}
-
 StatusOr<llvm::SmallVector<AffineMap, 1>> GetPermutationIfAvailable(
     const Shape& shape, mlir::Builder builder) {
   if (!shape.has_layout() ||
@@ -78,13 +53,17 @@ StatusOr<llvm::SmallVector<AffineMap, 1>> GetPermutationIfAvailable(
     return tensorflow::errors::Internal(
         "Permutations for dynamic shapes are not yet supported");
   }
-  llvm::SmallVector<int64_t, 2> permuted_sizes;
-  for (auto dim : llvm::reverse(shape.layout().minor_to_major())) {
-    permuted_sizes.push_back(shape.dimensions(dim));
+  int64_t accumulated_stride = 1;
+  llvm::SmallVector<int64_t, 4> strides(shape.rank(), 1);
+  for (int64 dim : LayoutUtil::MinorToMajor(shape)) {
+    strides[dim] = accumulated_stride;
+    accumulated_stride *= shape.dimensions(dim);
   }
-  return llvm::SmallVector<AffineMap, 1>{AffineMap::get(
-      permuted_sizes.size(), 0,
-      makeCanonicalStridedLayoutExpr(permuted_sizes, builder.getContext()))};
+  if (accumulated_stride == 0) {
+    return llvm::SmallVector<AffineMap, 1>{};
+  }
+  return llvm::SmallVector<AffineMap, 1>{
+      makeStridedLinearLayoutMap(strides, /*offset=*/0, builder.getContext())};
 }
 
 }  // namespace
@@ -116,9 +95,9 @@ StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
     case PrimitiveType::PRED:
       return CreateDenseAttrFromLiteral<bool>(type, literal);
     case PrimitiveType::F16:
-      return CreateDenseAttrFrom16BitFloat<half>(type, literal);
+      return CreateDenseAttrFromLiteral<half>(type, literal);
     case PrimitiveType::BF16:
-      return CreateDenseAttrFrom16BitFloat<bfloat16>(type, literal);
+      return CreateDenseAttrFromLiteral<bfloat16>(type, literal);
     case PrimitiveType::F32:
       return CreateDenseAttrFromLiteral<float>(type, literal);
     case PrimitiveType::F64:
@@ -196,6 +175,29 @@ StatusOr<mlir::Type> ConvertPrimitiveTypeToMLIRType(PrimitiveType element_type,
       return tensorflow::errors::Internal(
           absl::StrCat("Unsupported type: ", PrimitiveType_Name(element_type)));
   }
+}
+
+mlir::mhlo::GatherDimensionNumbers CreateGatherDimensionNumbers(
+    const GatherDimensionNumbers& input, mlir::Builder builder) {
+  auto offset_dims = CreateDenseIntElementsAttrFromVector(
+      llvm::SmallVector<int64, 4>{input.offset_dims().begin(),
+                                  input.offset_dims().end()},
+      builder);
+  auto collapsed_slice_dims = CreateDenseIntElementsAttrFromVector(
+      llvm::SmallVector<int64, 4>{input.collapsed_slice_dims().begin(),
+                                  input.collapsed_slice_dims().end()},
+      builder);
+  auto start_index_map = CreateDenseIntElementsAttrFromVector(
+      llvm::SmallVector<int64, 4>{input.start_index_map().begin(),
+                                  input.start_index_map().end()},
+      builder);
+
+  mlir::IntegerAttr index_vector_dim =
+      builder.getI64IntegerAttr(input.index_vector_dim());
+
+  return mlir::mhlo::GatherDimensionNumbers::get(
+      offset_dims, collapsed_slice_dims, start_index_map, index_vector_dim,
+      builder.getContext());
 }
 
 }  // namespace xla

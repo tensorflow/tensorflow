@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import textwrap
+
 from absl.testing import parameterized
 import numpy as np
 
@@ -71,8 +73,8 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
         self.assertAllEqual(a_value, b_value, msg)
 
   def testConstructorIsPrivate(self):
-    with self.assertRaisesRegexp(ValueError,
-                                 "StructuredTensor constructor is private"):
+    with self.assertRaisesRegex(ValueError,
+                                "StructuredTensor constructor is private"):
       structured_tensor.StructuredTensor({}, (), None, ())
 
   @parameterized.named_parameters([
@@ -451,7 +453,7 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
       nrows = nrows()  # deferred construction.
     if callable(row_partitions):
       row_partitions = row_partitions()  # deferred construction.
-    with self.assertRaisesRegexp(err, msg):
+    with self.assertRaisesRegex(err, msg):
       struct = StructuredTensor.from_fields(
           fields=fields,
           shape=shape,
@@ -466,9 +468,9 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
     nrows = constant_op.constant(5)
     static_nrows = tensor_shape.Dimension(5)
     value = constant_op.constant([1, 2, 3])
-    with self.assertRaisesRegexp(ValueError, "fields have incompatible nrows"):
-      structured_tensor._merge_nrows(nrows, static_nrows, value, dtypes.int32,
-                                     validate=False)
+    with self.assertRaisesRegex(ValueError, "fields have incompatible nrows"):
+      structured_tensor._merge_nrows(
+          nrows, static_nrows, value, dtypes.int32, validate=False)
 
   def testNestedStructConstruction(self):
     rt = ragged_factory_ops.constant([[1, 2], [3]])
@@ -498,7 +500,8 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
     self.assertAllEqual(struct4.field_value("s"), struct2)
 
   def testPartitionOuterDims(self):
-    if not context.executing_eagerly(): return  # TESTING
+    if not context.executing_eagerly():
+      return  # TESTING
     a = dict(x=1, y=[1, 2])
     b = dict(x=2, y=[3, 4])
     c = dict(x=3, y=[5, 6])
@@ -518,10 +521,18 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
     st4 = st1.partition_outer_dimension(
         row_partition.RowPartition.from_uniform_row_length(
             uniform_row_length=2, nvals=4, nrows=2))
-    self.assertAllEqual(st4, structured_tensor.StructuredTensor.from_pyval(
-        [[a, b], [c, d]], structured_tensor.StructuredTensorSpec([2, 2], {
-            "x": tensor_spec.TensorSpec([2, 2], dtypes.int32),
-            "y": ragged_tensor.RaggedTensorSpec([2, 2, None], dtypes.int32)})))
+    self.assertAllEqual(
+        st4,
+        structured_tensor.StructuredTensor.from_pyval(
+            [[a, b], [c, d]],
+            structured_tensor.StructuredTensorSpec(
+                [2, 2], {
+                    "x":
+                        tensor_spec.TensorSpec([2, 2], dtypes.int32),
+                    "y":
+                        ragged_tensor.RaggedTensorSpec([2, 2, None],
+                                                       dtypes.int32)
+                })))
 
   def testPartitionOuterDimension3(self):
     rt = ragged_tensor.RaggedTensor.from_value_rowids(
@@ -536,12 +547,12 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
   def testPartitionOuterDimsErrors(self):
     st = StructuredTensor.from_fields({})
     partition = row_partition.RowPartition.from_row_splits([0])
-    with self.assertRaisesRegexp(ValueError,
-                                 r"Shape \(\) must have rank at least 1"):
+    with self.assertRaisesRegex(ValueError,
+                                r"Shape \(\) must have rank at least 1"):
       st.partition_outer_dimension(partition)
 
-    with self.assertRaisesRegexp(TypeError,
-                                 "row_partition must be a RowPartition"):
+    with self.assertRaisesRegex(TypeError,
+                                "row_partition must be a RowPartition"):
       st.partition_outer_dimension(10)
 
   @parameterized.named_parameters([
@@ -674,6 +685,54 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
         self.assertEqual(actual.to_pyval(), pyval)
 
   @parameterized.named_parameters([
+      dict(
+          testcase_name="NoFieldsRaggedRank0",
+          st=lambda: StructuredTensor.from_fields({}, (3,)),
+          expected=[{}, {}, {}]),
+      dict(
+          testcase_name="NoFieldsRaggedRank1",
+          st=lambda: StructuredTensor.from_fields(
+              {}, (1, None),
+              row_partitions=[
+                  row_partition.RowPartition.from_row_lengths([3, 2])]),
+          expected=[[{}, {}, {}], [{}, {}]]),
+      dict(
+          testcase_name="NoFieldsRaggedRank2",
+          st=lambda: StructuredTensor.from_fields(
+              {}, (1, None, None),
+              row_partitions=[
+                  row_partition.RowPartition.from_row_lengths([2, 1]),
+                  row_partition.RowPartition.from_row_lengths([2, 3, 1])]),
+          expected=[[[{}, {}], [{}, {}, {}]], [[{}]]]),
+      dict(
+          testcase_name="NoFieldsRaggedRank2NoDicts",
+          st=lambda: StructuredTensor.from_fields(
+              {}, (1, None, None),
+              row_partitions=[
+                  row_partition.RowPartition.from_row_lengths([2]),
+                  row_partition.RowPartition.from_row_lengths([0, 0])]),
+          expected=[[[], []]]),
+      dict(
+          testcase_name="NestedStructTensorWithNoFields",
+          st=lambda: StructuredTensor.from_fields(
+              {
+                  "foo": ragged_factory_ops.constant([[[], []]]),
+                  "bar": StructuredTensor.from_fields(
+                      {}, (1, None, None, None), row_partitions=[
+                          row_partition.RowPartition.from_row_lengths([2]),
+                          row_partition.RowPartition.from_row_lengths([0, 0]),
+                          row_partition.RowPartition.from_row_lengths([]),
+                      ])
+
+              }, (1, None, None),),
+          expected=[[[], []]]),
+  ])  # pyformat: disable
+  def testToPyval(self, st, expected):
+    if context.executing_eagerly():  # to_pyval only available in eager.
+      st = st()  # Deferred init because it creates tensors.
+      self.assertEqual(st.to_pyval(), expected)
+
+  @parameterized.named_parameters([
       dict(testcase_name="MissingKeys",
            pyval=[{"a": [1, 2]}, {"b": [3, 4]}],
            err=KeyError,
@@ -726,13 +785,13 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
 
   ])  # pyformat: disable
   def testFromPyvalError(self, pyval, err=ValueError, type_spec=None, msg=None):
-    with self.assertRaisesRegexp(err, msg):
+    with self.assertRaisesRegex(err, msg):
       structured_tensor.StructuredTensor.from_pyval(pyval, type_spec)
 
   def testToPyvalRequiresEagerMode(self):
     st = structured_tensor.StructuredTensor.from_pyval({"a": 5})
     if not context.executing_eagerly():
-      with self.assertRaisesRegexp(ValueError, "only supported in eager mode."):
+      with self.assertRaisesRegex(ValueError, "only supported in eager mode."):
         st.to_pyval()
 
   @parameterized.named_parameters([
@@ -913,33 +972,208 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
 
   def testMergeDimsError(self):
     st = StructuredTensor.from_pyval([[[{"a": 5}]]])
-    with self.assertRaisesRegexp(
-        ValueError,
-        r"Expected outer_axis \(2\) to be less than inner_axis \(1\)"):
+    with self.assertRaisesRegex(
+        ValueError, r"Expected outer_axis \(2\) to be less than "
+        r"or equal to inner_axis \(1\)"):
       st.merge_dims(2, 1)
 
   def testTupleFieldValue(self):
     st = StructuredTensor.from_pyval({"a": 5, "b": {"c": [1, 2, 3]}})
     self.assertAllEqual(st.field_value(("a",)), 5)
     self.assertAllEqual(st.field_value(("b", "c")), [1, 2, 3])
-    expected = "Field path \(.*a.*,.*b.*\) not found in .*"
-    with self.assertRaisesRegexp(KeyError, expected):
+    expected = r"Field path \(.*a.*,.*b.*\) not found in .*"
+    with self.assertRaisesRegex(KeyError, expected):
       st.field_value(("a", "b"))
+
+  @parameterized.named_parameters([
+      dict(
+          testcase_name="scalar_scalar_scalar",
+          st={"b": {"a": 5}},
+          source_path=("b", "a"),
+          new_field_name="new_field",
+          expected={"b": {"a": 5}, "new_field": 5},),
+      dict(
+          testcase_name="scalar_scalar_repeated",
+          st={"b": {"a": [5, 3]}},
+          source_path=("b", "a"),
+          new_field_name="new_field",
+          expected={"b": {"a": [5, 3]}, "new_field": [5, 3]}),
+      dict(
+          testcase_name="scalar_scalar_repeated2",
+          st={"b": {"a": [[7], [5, 3]]}},
+          source_path=("b", "a"),
+          new_field_name="new_field",
+          expected={"b": {"a": [[7], [5, 3]]}, "new_field": [[7], [5, 3]]}),
+      dict(
+          testcase_name="repeated_scalar_repeated",
+          st=[{"b": {"a": [7]}},
+              {"b": {"a": [5, 3]}}],
+          source_path=("b", "a"),
+          new_field_name="new_field",
+          expected=[{"b": {"a": [7]}, "new_field": [7]},
+                    {"b": {"a": [5, 3]}, "new_field": [5, 3]}]),
+      dict(
+          testcase_name="repeated_scalar_repeated2",
+          st=[{"b": {"a": [[5, 7], []]}},
+              {"b": {"a": [[5, 1], [3]]}}],
+          source_path=("b", "a"),
+          new_field_name="new_field",
+          expected=[{"b": {"a": [[5, 7], []]},
+                     "new_field": [[5, 7], []]},
+                    {"b": {"a": [[5, 1], [3]]},
+                     "new_field": [[5, 1], [3]]}]),
+      dict(
+          testcase_name="scalar_scalar_scalar_scalar",
+          st={"a": {"b": {"c": 7}}},
+          source_path=("a", "b", "c"),
+          new_field_name="new_field",
+          expected={"a": {"b": {"c": 7}, "new_field": 7}}),
+      dict(
+          testcase_name="repeated_scalar_scalar_scalar",
+          st=[{"a": {"b": {"c": 7}}},
+              {"a": {"b": {"c": 5}}}],
+          source_path=("a", "b", "c"),
+          new_field_name="new_field",
+          expected=[{"a": {"b": {"c": 7}, "new_field": 7}},
+                    {"a": {"b": {"c": 5}, "new_field": 5}}],),
+      dict(
+          testcase_name="repeated_repeated_scalar_scalar",
+          st=[{"a": [{"b": {"c": 7}}, {"b": {"c": 3}}]},
+              {"a": [{"b": {"c": 5}}]}],
+          source_path=("a", "b", "c"),
+          new_field_name="new_field",
+          expected=[{"a": [{"b": {"c": 7}, "new_field": 7},
+                           {"b": {"c": 3}, "new_field": 3}]},
+                    {"a": [{"b": {"c": 5}, "new_field": 5}]}]),
+      dict(
+          testcase_name="docs_tokens",
+          st=[{"docs": [{"tokens": [7, 17]}, {"tokens": [3, 13]}]},
+              {"docs": [{"tokens": [5, 15]}]}],
+          source_path=("docs", "tokens"),
+          new_field_name="docs_tokens",
+          expected=[{"docs": [{"tokens": [7, 17]}, {"tokens": [3, 13]}],
+                     "docs_tokens": [7, 17, 3, 13]},
+                    {"docs": [{"tokens": [5, 15]}],
+                     "docs_tokens": [5, 15]}],
+          ),
+      dict(
+          testcase_name="repeated_repeated_scalar_repeated",
+          st=[{"a": [{"b": {"c": [7, 17]}}, {"b": {"c": [3, 13]}}]},
+              {"a": [{"b": {"c": [5, 15]}}]}],
+          source_path=("a", "b", "c"),
+          new_field_name="new_field",
+          expected=[{"a": [{"b": {"c": [7, 17]}, "new_field": [7, 17]},
+                           {"b": {"c": [3, 13]}, "new_field": [3, 13]}]},
+                    {"a": [{"b": {"c": [5, 15]}, "new_field": [5, 15]}]}]),
+      dict(
+          testcase_name="scalar_scalar_scalar_repeated",
+          st={"a": {"b": {"c": [7, 3, 5]}}},
+          source_path=("a", "b", "c"),
+          new_field_name="new_field",
+          expected={"a": {"b": {"c": [7, 3, 5]}, "new_field": [7, 3, 5]}}),
+      dict(
+          testcase_name="repeated_repeated_scalar_repeated2",
+          st=[{"a": [{"b": {"c": [[7, 3], [17]]}}, {"b": {"c": [[3, 13]]}}]},
+              {"a": [{"b": {"c": [[5, 15]]}}]}],
+          source_path=("a", "b", "c"),
+          new_field_name="new_field",
+          expected=[{"a": [{"b": {"c": [[7, 3], [17]]},
+                            "new_field": [[7, 3], [17]]},
+                           {"b": {"c": [[3, 13]]},
+                            "new_field": [[3, 13]]}]},
+                    {"a": [{"b": {"c": [[5, 15]]},
+                            "new_field": [[5, 15]]}]}]),
+      dict(testcase_name="example_4_promote_of_labeled_vector",
+           st=[{"user_info": [{"gaia_id": {"vec": [0, 1, 2]}}]},
+               {"user_info": [{"gaia_id": {"vec": [3, 4, 5]}}]}],
+           source_path=("user_info", "gaia_id"),
+           new_field_name="user_info_gaia_id",
+           expected=[{"user_info": [{"gaia_id": {"vec": [0, 1, 2]}}],
+                      "user_info_gaia_id": [{"vec": [0, 1, 2]}]},
+                     {"user_info": [{"gaia_id": {"vec": [3, 4, 5]}}],
+                      "user_info_gaia_id": [{"vec": [3, 4, 5]}]}]),
+      dict(
+          testcase_name="promote_structure",
+          st=[{"a": [{"aa": [{"b": {"c": 1}}, {"b": {"c": 8}}]}],},
+              {"a": [{"aa": [{"b": {"c": 12}}]}],}],
+          source_path=("a", "aa", "b"),
+          new_field_name="new_field",
+          expected=[{"a": [{"aa": [{"b": {"c": 1}}, {"b": {"c": 8}}],
+                            "new_field": [{"c": 1}, {"c": 8}]}]},
+                    {"a": [{"aa": [{"b": {"c": 12}}],
+                            "new_field": [{"c": 12}]}]}])])  # pyformat: disable
+  def testPromote(self, st, source_path, new_field_name, expected):
+    st2 = StructuredTensor.from_pyval(st)
+    expected2 = StructuredTensor.from_pyval(expected)
+    result = st2.promote(source_path, new_field_name)
+    self.assertAllEqual(result, expected2)
+
+  def testPromoteDense(self):
+    st = StructuredTensor.from_fields(
+        {
+            "a":
+                StructuredTensor.from_fields(
+                    {"b": [[[1, 11], [2, 12]], [[3, 13], [4, 14]]]},
+                    shape=[2, 2, 2])
+        },
+        shape=[2])
+    result = st.promote(("a", "b"), "new_field")
+    self.assertEqual(st.rank, 1)
+    self.assertEqual(st.field_value("a").rank, 3)
+    self.assertAllEqual(
+        result.field_value("new_field"), [[1, 11, 2, 12], [3, 13, 4, 14]])
+
+  def testMergeDimsGeneric(self):
+    """This is an example of a dense tensor being merged, when outer=rank.
+
+    Note that outer=rank is equivalent to outer=rank - 1. And yet, from the
+    perspective of promote, it is nice to be able to have this functionality
+    directly available, because sometimes the rank of the parent equals the
+    rank of the child.
+
+    Finally, note that merge_dims for Ragged and StructuredTensor would not
+    accept this as a valid argument.
+
+    Note: _merge_dims_generic is private, but these unit tests help to
+    discuss the proper API definition.
+    """
+    t = array_ops.constant([[[1, 11], [2, 12]], [[3, 13], [4, 14]]])
+    t2 = structured_tensor._merge_dims_generic(t, 1, 3)
+    self.assertAllEqual(t2, [[1, 11, 2, 12], [3, 13, 4, 14]])
+
+  def testMergeDimsGenericNoop(self):
+    """This is an example of a dense tensor being merged, when outer=inner.
+
+    Sometimes, when promoting, the parent and grandparent ranks are equal.
+    Finally, note that merge_dims for Ragged and StructuredTensor would not
+    accept this as a valid argument. This should be aligned.
+    """
+    t = array_ops.constant([[[1, 11], [2, 12]], [[3, 13], [4, 14]]])
+    t2 = structured_tensor._merge_dims_generic(t, 2, 2)
+    self.assertAllEqual(t2, [[[1, 11], [2, 12]], [[3, 13], [4, 14]]])
 
   def testRepr(self):
     st = StructuredTensor.from_pyval({"a": 5, "b": {"c": [1, 2, 3]}})
     if context.executing_eagerly():
-      expected = ("<StructuredTensor(fields={"
-                  '"a": tf.Tensor(5, shape=(), dtype=int32), '
-                  '"b": <StructuredTensor(fields={'
-                  '"c": tf.Tensor([1 2 3], shape=(3,), dtype=int32)}, '
-                  "shape=())>}, shape=())>")
+      expected = textwrap.dedent("""
+          <StructuredTensor(
+              fields={
+                  "a": tf.Tensor(5, shape=(), dtype=int32),
+                  "b": <StructuredTensor(
+                          fields={
+                              "c": tf.Tensor([1 2 3], shape=(3,), dtype=int32)},
+                          shape=())>},
+              shape=())>""")[1:]
     else:
-      expected = ("<StructuredTensor(fields={"
-                  '"a": Tensor("Const:0", shape=(), dtype=int32), '
-                  '"b": <StructuredTensor(fields={'
-                  '"c": Tensor("RaggedConstant/Const:0", shape=(3,), '
-                  "dtype=int32)}, shape=())>}, shape=())>")
+      expected = textwrap.dedent("""
+          <StructuredTensor(
+              fields={
+                  "a": Tensor("Const:0", shape=(), dtype=int32),
+                  "b": <StructuredTensor(
+                          fields={
+                              "c": Tensor("RaggedConstant/Const:0", shape=(3,), dtype=int32)},
+                          shape=())>},
+              shape=())>""")[1:]
     self.assertEqual(repr(st), expected)
 
   def testPartitionOuterDimension2DDenseField(self):
@@ -950,6 +1184,179 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
         row_partition.RowPartition.from_uniform_row_length(2, 2))
     r = result.field_value("r")
     self.assertAllEqual(r, [[[1, 2], [3, 4]]])
+
+  @parameterized.parameters([
+      # Simple example.
+      (
+          {"a": 12, "b": 23},
+          {"a": 7},
+      ),
+      # New field.
+      (
+          {"a": 12},
+          {("b",): 13},
+      ),
+      # Nested example.
+      (
+          {"a": 12, "b": {"c": 23}},
+          {("b", "c"): 7},
+      ),
+      # Multipe updates.
+      (
+          {"a": 12, "b": {"c": 23}},
+          {"a": 3, ("b", "c"): 7},
+      ),
+      # Deep updates.
+      (
+          {"a": 12, "b": {"c": 23, "d": {"e": 11}}},
+          {("b", "c"): 7, ("b", "d", "e"): 13},
+      ),
+      # Multiple updates to the same substructure.
+      (
+          {"a": 12, "b": {"c": 23, "d": {"e": 11}}},
+          {("b", "c"): 7, ("b", "f"): 13},
+      ),
+      # Scalar to non-scalar elements. Shape remains unchanged.
+      (
+          {"a": 5},
+          {"a": ragged_factory_ops.constant_value([[51, 52], [61, 62, 63]])},
+      ),
+      # Non-scalar element to scalar.
+      (
+          {"c": {"a": [5, 3], "b": 2}},
+          {("c", "a"): 5},
+      ),
+      # Rank-1 StructuredTensor: shape is preserved and an item is added.
+      (
+          [{"a": 5}, {"a": 6}],
+          {"a": [15, 16], "b": np.array([0.9, 1.1])},
+      ),
+      # Non-scalar ragged elements, within a rank-2 StructuredTensor: elements
+      # rows (inner dimensions) are changed, but StructuredTensor shape
+      # (outer dimensions) are preserved.
+      (
+          [[{"a": [5]}], [{"a": [3, 4]}, {"a": [8]}]],
+          {"a": ragged_factory_ops.constant_value([[[50, 60]], [[30], []]])},
+      ),
+  ])  # pyformat: disable
+  def testWithUpdatesValues(self, pyval, updates):
+    st = StructuredTensor.from_pyval(pyval)
+    updated_st = st.with_updates(updates, validate=False)
+    for key, value in updates.items():
+      got = updated_st.field_value(key)
+      self.assertAllEqual(
+          value, got,
+          "Update failed: key={}, value={}, got={}".format(key, value, got))
+
+  def testWithUpdatesFunctions(self):
+    pyval = {"a": 12, "b": {"c": 23, "d": {"e": 11}}}
+    st = StructuredTensor.from_pyval(pyval)
+    st_updated = st.with_updates(
+        {
+            "a": lambda x: x + 1,
+            ("b", "d", "e"): lambda x: x + 7
+        }, validate=True)
+    # Updated values.
+    self.assertAllEqual(st_updated.field_value("a"), 13)
+    self.assertAllEqual(st_updated.field_value(("b", "d", "e")), 18)
+    # Unchanged value.
+    self.assertAllEqual(st_updated.field_value(("b", "c")), 23)
+
+  def testWithUpdatesChecks(self):
+    pyval = {"a": 12, "b": {"c": 23, "d": {"e": 11}}}
+    st = StructuredTensor.from_pyval(pyval)
+
+    # Try to set non-existant sub-structure.
+    with self.assertRaisesRegex(
+        ValueError, r"cannot create new sub-field.*\('b', 'x'\).*is not set"):
+      st.with_updates({("b", "x", "e"): 5})
+
+    # Try to set with path to a non-sub-structure.
+    with self.assertRaisesRegex(
+        ValueError, r"cannot create new sub-field.*\('b', 'c'\).*is not a "
+        r"`StructuredTensor`"):
+      st.with_updates({("b", "c", "e"): 5})
+
+    # Try to apply function to non-existing value.
+    with self.assertRaisesRegex(
+        ValueError, r"cannot update.*\('b', 'd', 'x'\).*does not already "
+        r"exist"):
+      st.with_updates({("b", "d", "x"): lambda x: x + 1})
+
+    # Empty names not allowed.
+    with self.assertRaisesRegex(ValueError, r"does not allow empty names"):
+      st.with_updates({(): lambda x: x + 1})
+    with self.assertRaisesRegex(ValueError, r"does not allow empty names"):
+      st.with_updates({("b", ""): lambda x: x + 1})
+
+    # Parent and child nodes cannot be updated simultaneously.
+    with self.assertRaisesRegex(
+        ValueError, r"does not allow both parent and child nodes.*"
+        r"parent=\('b'.*child=\('b', 'd'"):
+      st.with_updates({("b", "d"): lambda x: x + 1, "a": 3, "b": 10})
+
+    # Invalid shape change.
+    with self.assertRaisesRegex(
+        ValueError, r"\('c'.*incompatible with the shape that was specified"):
+      st_with_shape = StructuredTensor.from_pyval([[{
+          "c": {
+              "a": 5,
+              "b": 2
+          }
+      }], [{
+          "c": {
+              "a": 3,
+              "b": 1
+          }
+      }, {
+          "c": {
+              "a": 8,
+              "b": 18
+          }
+      }]])
+      st_with_shape.with_updates({("c", "a"): 3})
+
+  def testWithUpdatesDelete(self):
+    pyval = {"a": 12, "b": {"c": 23, "d": {"e": 11}}}
+    st = StructuredTensor.from_pyval(pyval)
+    updated_st = st.with_updates({("b", "c"): None}, validate=True)
+    self.assertNotIn("c", updated_st.field_value("b").field_names())
+    with self.assertRaisesRegex(ValueError,
+                                r"cannot delete.*\('b', 'x'\).*not present"):
+      st.with_updates({("b", "x"): None}, validate=True)
+    with self.assertRaisesRegex(ValueError,
+                                r"cannot delete.*\'x'.*not present"):
+      st.with_updates({"x": None}, validate=False)
+
+    # Test that nrows() and rowpartitions() is preserved after removal.
+    pyval = [[{"a": 1}, {"a": 2}], [{"a": 3}]]
+    st = StructuredTensor.from_pyval(pyval)
+    self.assertLen(st.row_partitions, 1)
+    self.assertAllEqual(st.nrows(), 2)
+    self.assertAllEqual(st.row_partitions[0].row_lengths(), [2, 1])
+    updated_st = st.with_updates({("a",): None}, validate=True)
+    self.assertLen(updated_st.row_partitions, 1)
+    self.assertAllEqual(updated_st.nrows(), 2)
+    self.assertAllEqual(updated_st.row_partitions[0].row_lengths(), [2, 1])
+
+    # Test that it works also for rank-1 and rank-0 empty results.
+    pyval = [{"a": 1}, {"a": 2}]
+    st = StructuredTensor.from_pyval(pyval)
+    self.assertEqual(st.rank, 1)
+    updated_st = st.with_updates({("a",): None}, validate=True)
+    self.assertEqual(updated_st.rank, 1)
+
+    # assertEqual won't work because nrows() returns a tensor, and
+    # assertEqual doesn't do the magic to convert them to numbers in a
+    # way that works in eager/non-eager mode.
+    self.assertAllEqual(updated_st.nrows(), 2)
+    pyval = {"a": [0, 1]}
+    st = StructuredTensor.from_pyval(pyval)
+    self.assertEqual(st.rank, 0)
+    updated_st = st.with_updates({("a",): None}, validate=True)
+    self.assertEqual(updated_st.rank, 0)
+    self.assertFalse(updated_st.row_partitions)
+    self.assertIsNone(updated_st.nrows())
 
 
 if __name__ == "__main__":

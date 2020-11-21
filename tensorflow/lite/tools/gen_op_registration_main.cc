@@ -19,23 +19,25 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/str_split.h"
 #include "absl/strings/strip.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
 #include "tensorflow/lite/tools/gen_op_registration.h"
+#include "tensorflow/lite/util.h"
 
-const char kInputModelFlag[] = "input_model";
+const char kInputModelFlag[] = "input_models";
 const char kNamespace[] = "namespace";
 const char kOutputRegistrationFlag[] = "output_registration";
 const char kTfLitePathFlag[] = "tflite_path";
 const char kForMicro[] = "for_micro";
 
-void ParseFlagAndInit(int* argc, char** argv, std::string* input_model,
+void ParseFlagAndInit(int* argc, char** argv, std::string* input_models,
                       std::string* output_registration,
                       std::string* tflite_path, std::string* namespace_flag,
                       bool* for_micro) {
   std::vector<tflite::Flag> flag_list = {
-      tflite::Flag::CreateFlag(kInputModelFlag, input_model,
-                               "path to the tflite model"),
+      tflite::Flag::CreateFlag(kInputModelFlag, input_models,
+                               "path to the tflite models, separated by comma"),
       tflite::Flag::CreateFlag(kOutputRegistrationFlag, output_registration,
                                "filename for generated registration code"),
       tflite::Flag::CreateFlag(kTfLitePathFlag, tflite_path,
@@ -83,6 +85,8 @@ void GenerateFileContent(const std::string& tflite_path,
     fout << "namespace custom {\n";
     fout << "// Forward-declarations for the custom ops.\n";
     for (const auto& op : custom_ops) {
+      // Skips Tensorflow ops, only TFLite custom ops can be registered here.
+      if (tflite::IsFlexOp(op.first.c_str())) continue;
       fout << "TfLiteRegistration* Register_"
            << ::tflite::NormalizeCustomOpName(op.first) << "();\n";
     }
@@ -114,6 +118,8 @@ void GenerateFileContent(const std::string& tflite_path,
     fout << ");\n";
   }
   for (const auto& op : custom_ops) {
+    // Skips Tensorflow ops, only TFLite custom ops can be registered here.
+    if (tflite::IsFlexOp(op.first.c_str())) continue;
     fout << "  resolver->AddCustom(\"" << op.first
          << "\", ::tflite::ops::custom::Register_"
          << ::tflite::NormalizeCustomOpName(op.first) << "()";
@@ -144,22 +150,26 @@ void AddOpsFromModel(const std::string& input_model,
 }  // namespace
 
 int main(int argc, char** argv) {
-  std::string input_model;
+  std::string input_models;
   std::string output_registration;
   std::string tflite_path;
   std::string namespace_flag;
   bool for_micro = false;
-  ParseFlagAndInit(&argc, argv, &input_model, &output_registration,
+  ParseFlagAndInit(&argc, argv, &input_models, &output_registration,
                    &tflite_path, &namespace_flag, &for_micro);
 
   tflite::RegisteredOpMap builtin_ops;
   tflite::RegisteredOpMap custom_ops;
-  if (!input_model.empty()) {
-    AddOpsFromModel(input_model, &builtin_ops, &custom_ops);
+  if (!input_models.empty()) {
+    std::vector<std::string> models = absl::StrSplit(input_models, ',');
+    for (const std::string& input_model : models) {
+      AddOpsFromModel(input_model, &builtin_ops, &custom_ops);
+    }
   }
   for (int i = 1; i < argc; i++) {
     AddOpsFromModel(argv[i], &builtin_ops, &custom_ops);
   }
+
   GenerateFileContent(tflite_path, output_registration, namespace_flag,
                       builtin_ops, custom_ops, for_micro);
   return 0;

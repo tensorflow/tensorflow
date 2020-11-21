@@ -106,9 +106,19 @@ bool IsNodeSupportedByDelegate(const TfLiteRegistration* registration, const TfL
       const auto* params = reinterpret_cast<const TfLitePoolParams*>(node->builtin_data);
       return params != nullptr && params->activation == kTfLiteActNone;
     }
+    case kTfLiteBuiltinMirrorPad: {
+      return delegates::coreml::IsMirrorPadOpSupported(registration, node, context);
+    }
+    case kTfLiteBuiltinMean: {
+      return delegates::coreml::IsMeanOpSupported(registration, node, context);
+    }
     case kTfLiteBuiltinMul: {
       return node->builtin_data != nullptr &&
              delegates::coreml::IsBinaryOpSupported(registration, node, context);
+    }
+    case kTfLiteBuiltinPad:
+    case kTfLiteBuiltinPadv2: {
+      return delegates::coreml::IsPadOpSupported(registration, node, context);
     }
     case kTfLiteBuiltinRelu: {
       return true;
@@ -193,8 +203,7 @@ TfLiteRegistration GetCoreMlKernelRegistration() {
   kernel_registration.init = [](TfLiteContext* context, const char* buffer,
                                 size_t length) -> void* {
     const auto* params = reinterpret_cast<const TfLiteDelegateParams*>(buffer);
-    const auto* coreml_options =
-        (reinterpret_cast<CoreMlDelegate*>(params->delegate))->params();
+    const auto* coreml_options = (reinterpret_cast<CoreMlDelegate*>(params->delegate))->params();
     CoreMlDelegateKernel* coreml_kernel = new CoreMlDelegateKernel(coreml_options->coreml_version);
     if (coreml_kernel->Init(context, params) != kTfLiteOk) {
       delete coreml_kernel;
@@ -231,31 +240,18 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
     return IsNodeSupportedByDelegate(registration, node, context, params);
   };
 
-  delegates::GraphPartitionHelper helper(context, node_supported_fn);
-  TF_LITE_ENSURE_STATUS(helper.Partition(nullptr));
+  delegates::FP16GraphPartitionHelper partition_helper(context, node_supported_fn);
+  TF_LITE_ENSURE_STATUS(partition_helper.Partition(nullptr));
 
-  const auto delegate_partitions = helper.GetFirstNLargestPartitions(
+  std::vector<int> delegated_nodes = partition_helper.GetNodesOfFirstNLargestPartitions(
       params->max_delegated_partitions, params->min_nodes_per_partition);
-
-  // To avoid creating a new TfLiteIntArray and free it later, we reserve one
-  // element to represent TfLiteIntArray.size which is the 1st element of
-  // TfLiteIntArray C struct.
-  std::vector<int> supported_nodes(1);
-  for (const auto partition : delegate_partitions) {
-    auto nodes = TfLiteIntArrayView(partition->nodes_to_replace);
-    supported_nodes.insert(supported_nodes.end(), nodes.begin(), nodes.end());
-  }
-
-  // Set first element to the number of nodes to replace.
-  supported_nodes[0] = supported_nodes.size() - 1;
   TFLITE_LOG_PROD(tflite::TFLITE_LOG_INFO,
                   "CoreML delegate: %d nodes delegated out of %d nodes, "
                   "with %d partitions.\n",
-                  supported_nodes[0], helper.num_total_nodes(), delegate_partitions.size());
-
+                  delegated_nodes.size(), partition_helper.num_total_nodes(),
+                  partition_helper.num_partitions());
   return context->ReplaceNodeSubsetsWithDelegateKernels(
-      context, GetCoreMlKernelRegistration(),
-      reinterpret_cast<TfLiteIntArray*>(supported_nodes.data()), delegate);
+      context, GetCoreMlKernelRegistration(), BuildTfLiteIntArray(delegated_nodes).get(), delegate);
 }
 
 TfLiteDelegate* CreateCoreMlDelegate(const TfLiteCoreMlDelegateOptions* options) {

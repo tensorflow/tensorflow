@@ -58,6 +58,7 @@ class PartitionedCallOp : public AsyncOpKernel {
   std::unique_ptr<NameAttrList> func_;
   std::unique_ptr<ConfigProto> config_proto_;
   string executor_type_;
+  bool shared_rendezvous_;
   mutex mu_;
   // Cache the handle per FLR because this kernel may be instantiated for
   // a stateful op, different invocations of it may use different FLRs.

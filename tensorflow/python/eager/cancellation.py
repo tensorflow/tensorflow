@@ -24,6 +24,8 @@ from tensorflow.python import pywrap_tfe
 class CancellationManager(object):
   """A mechanism for cancelling blocking computation."""
 
+  __slots__ = ["_impl"]
+
   def __init__(self):
     self._impl = pywrap_tfe.TFE_NewCancellationManager()
 

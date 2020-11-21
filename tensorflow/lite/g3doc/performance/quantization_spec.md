@@ -27,7 +27,7 @@ values in the range `[-128, 127]`, with a zero-point in range `[-128, 127]`.
 
 There are other exceptions for particular operations that are documented below.
 
-Note: In the past our quantized tooling used per-tensor, asymmetric, `uint8`
+Note: In the past our quantization tooling used per-tensor, asymmetric, `uint8`
 quantization. New tooling, reference kernels, and optimized kernels for 8-bit
 quantization will use this spec.
 
@@ -46,19 +46,19 @@ entire tensor. Per-axis quantization means that there will be one scale and/or
 specifies the dimension of the Tensor's shape that the scales and zero-points
 correspond to. For example, a tensor `t`, with `dims=[4, 3, 2, 1]` with
 quantization params: `scale=[1.0, 2.0, 3.0]`, `zero_point=[1, 2, 3]`,
-`quantization_dimension=1` will be quantized across the second dimension of t:
+`quantization_dimension=1` will be quantized across the second dimension of `t`:
 
     t[:, 0, :, :] will have scale[0]=1.0, zero_point[0]=1
     t[:, 1, :, :] will have scale[1]=2.0, zero_point[1]=2
     t[:, 2, :, :] will have scale[2]=3.0, zero_point[2]=3
 
-Often, the quantized_dimension is the output_channel of the weights of
+Often, the `quantized_dimension` is the `output_channel` of the weights of
 convolutions, but in theory it can be the dimension that corresponds to each
 dot-product in the kernel implementation, allowing more quantization granularity
 without performance implications. This has large improvements to accuracy.
 
 TFLite has per-axis support for a growing number of operations. At the time of
-this document support exists for Conv2d and DepthwiseConv2d.
+this document, support exists for Conv2d and DepthwiseConv2d.
 
 ## Symmetric vs asymmetric
 
@@ -69,7 +69,7 @@ binary bit of precision. Since activations are only multiplied by constant
 weights, the constant zero-point value can be optimized pretty heavily.
 
 Weights are symmetric: forced to have zero-point equal to 0. Weight values are
-multiplied by dynamic input and activation values. This means that there is a
+multiplied by dynamic input and activation values. This means that there is an
 unavoidable runtime cost of multiplying the zero-point of the weight with the
 activation value. By enforcing that zero-point is 0 we can avoid this cost.
 

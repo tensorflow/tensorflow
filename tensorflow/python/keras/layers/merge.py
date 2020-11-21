@@ -489,9 +489,9 @@ class Concatenate(_Merge):
   @tf_utils.shape_type_conversion
   def build(self, input_shape):
     # Used purely for shape validation.
-    if not isinstance(input_shape[0], tuple) or len(input_shape) < 2:
+    if not isinstance(input_shape[0], tuple) or len(input_shape) < 1:
       raise ValueError('A `Concatenate` layer should be called '
-                       'on a list of at least 2 inputs')
+                       'on a list of at least 1 input.')
     if all(shape is None for shape in input_shape):
       return
     reduced_inputs_shapes = [list(shape) for shape in input_shape]
@@ -523,7 +523,11 @@ class Concatenate(_Merge):
 
   @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
-    if not isinstance(input_shape, (tuple, list)):
+    if ((not isinstance(input_shape, (tuple, list))) or
+        (not isinstance(input_shape[0], (tuple, list)))):
+      # The tf_utils.shape_type_conversion decorator turns tensorshapes
+      # into tuples, so we need to verify that `input_shape` is a list/tuple,
+      # *and* that the individual elements are themselves shape tuples.
       raise ValueError('A `Concatenate` layer should be called '
                        'on a list of inputs.')
     input_shapes = input_shape

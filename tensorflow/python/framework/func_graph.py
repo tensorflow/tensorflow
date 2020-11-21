@@ -36,6 +36,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import custom_gradient
@@ -48,8 +49,9 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
+from tensorflow.python.util.tf_export import tf_export
 
-WHITELIST_COLLECTIONS = [
+ALLOWLIST_COLLECTIONS = [
     ops.GraphKeys.GLOBAL_VARIABLES,
     ops.GraphKeys.LOCAL_VARIABLES,
     ops.GraphKeys.TRAINABLE_VARIABLES,
@@ -106,6 +108,7 @@ def convert_structure_to_signature(structure, arg_names=None):
         int,
         float,
         bool,
+        str,
         type(None),
         dtypes.DType,
         tensor_spec.TensorSpec,
@@ -131,6 +134,7 @@ def convert_structure_to_signature(structure, arg_names=None):
   return nest.pack_sequence_as(structure, mapped)
 
 
+@tf_export("__internal__.FuncGraph", v1=[])
 class FuncGraph(ops.Graph):
   """Graph representing a function body.
 
@@ -172,9 +176,9 @@ class FuncGraph(ops.Graph):
       name: the name of the function.
       collections: a dictionary of collections this FuncGraph should start
         with. If not specified (None), the FuncGraph will read (but not write
-        to) the outer graph's collections that are not whitelisted, and both
-        read and write to the outer graph's collections that are whitelisted.
-        The current whitelisted collections are the global variables, the
+        to) the outer graph's collections that are not allowlisted, and both
+        read and write to the outer graph's collections that are allowlisted.
+        The current allowlisted collections are the global variables, the
         local variables, and the trainable variables.
         Defaults to None.
       capture_by_value: An optional boolean. If True, the func graph will
@@ -192,6 +196,7 @@ class FuncGraph(ops.Graph):
     self.structured_outputs = None
     self._weak_variables = []
     self._watched_variables = object_identity.ObjectIdentityWeakSet()
+    self.is_control_flow_graph = False
 
     outer_graph = ops.get_default_graph()
     self._weak_outer_graph = weakref.ref(outer_graph)
@@ -241,10 +246,10 @@ class FuncGraph(ops.Graph):
 
     if collections is None:
       for collection_name in graph.get_all_collection_keys():
-        if collection_name not in WHITELIST_COLLECTIONS:
+        if collection_name not in ALLOWLIST_COLLECTIONS:
           self._collections[collection_name] = graph.get_collection(
               collection_name)
-      for collection_name in WHITELIST_COLLECTIONS:
+      for collection_name in ALLOWLIST_COLLECTIONS:
         self._collections[collection_name] = graph.get_collection_ref(
             collection_name)
     else:
@@ -365,35 +370,33 @@ class FuncGraph(ops.Graph):
     @tf_contextlib.contextmanager
     def inner_cm():
       """Context manager for copying distribute.Strategy scope information."""
-      graph = ops.get_default_graph()
       # pylint: disable=protected-access
       # TODO(b/112906995, nareshmodi): distribution strategy depends on
       # inheriting this stack from the default graph even in eager mode. Maybe
       # it should be part of the eager context? This would also allow us to
       # remove a get_default_graph() call from the function cache lookup.
+      graph = ops.get_default_graph()
       old_strategy_stack = self._distribution_strategy_stack
       self._distribution_strategy_stack = list(
           graph._distribution_strategy_stack)
-      uses_distribution_strategy = (
-          self._distribution_strategy_stack and
-          self._distribution_strategy_stack[-1].strategy.extended
-          ._retrace_functions_for_each_device)
+
       # We ignore device placements from any outer scopes while tracing the
       # function when possible, to avoid hard-coding them in the function
       # graph. "Default" placements come from the PartitionedCallOp's placement,
       # so that the same trace of the Python function may be placed on several
       # different devices and saved functions may be placed on new devices when
       # restored.
+      # However, we need to preserve the outer device stack in the following
+      # cases in non eager context:
+      # 1. device stack is callable
+      # 2. When using distribution strategy with legacy graph mode.
       old_device_stack = self._device_function_stack
-      if context.executing_eagerly():
-        if uses_distribution_strategy:
-          self._device_function_stack = self._device_function_stack.copy()
-          self._add_device_to_stack(context.context().device_name)
-      else:
-        if (uses_distribution_strategy or
-            device_stack_has_callable(graph._device_function_stack)):
-          # Hard-code devices from device functions in the function body
-          self._device_function_stack = graph._device_function_stack.copy()
+      if (not context.executing_eagerly() and
+          (device_stack_has_callable(graph._device_function_stack) or
+           (self._distribution_strategy_stack and
+            not ops.executing_eagerly_outside_functions()))):
+        # Hard-code devices from device functions in the function body
+        self._device_function_stack = graph._device_function_stack.copy()
 
       old_creator_stack = self._variable_creator_stack
       self._variable_creator_stack = graph._variable_creator_stack
@@ -401,10 +404,6 @@ class FuncGraph(ops.Graph):
       # optimizers.
       old_graph_key = self._graph_key
       self._graph_key = graph._graph_key
-      # Inherit the auto_cast_variable_read_dtype, since this should not change
-      # inside a function.
-      old_auto_cast_var_read_dtype = self._auto_cast_variable_read_dtype
-      self._auto_cast_variable_read_dtype = graph._auto_cast_variable_read_dtype
       # pylint: enable=protected-access
 
       old_scope_exit_callbacks = self._scope_exit_callbacks
@@ -423,7 +422,6 @@ class FuncGraph(ops.Graph):
             self._device_function_stack = old_device_stack
             self._variable_creator_stack = old_creator_stack
             self._graph_key = old_graph_key
-            self._auto_cast_variable_read_dtype = old_auto_cast_var_read_dtype
     return inner_cm()
 
   @property
@@ -446,6 +444,11 @@ class FuncGraph(ops.Graph):
     if current is None:
       return self._fallback_outer_graph
     return current
+
+  @outer_graph.setter
+  def outer_graph(self, new_outer_graph):
+    """Sets `outer_graph` to `new_outer_graph`."""
+    self._weak_outer_graph = weakref.ref(new_outer_graph)
 
   @property
   def output_types(self):
@@ -584,14 +587,16 @@ class FuncGraph(ops.Graph):
     # backward accumulators in the original graph before we create placeholders
     # to capture the inputs.
     ctxt = ops.get_default_graph()._control_flow_context  # pylint: disable=protected-access
-    for i, inp in enumerate(inputs):
+    # Use a different list to avoid modifying the original inputs list.
+    captured_inputs = []
+    for inp in inputs:
       # TPU Estimator defines a control flow context with no AddValue method.
       if ctxt is not None and hasattr(ctxt, "AddValue"):
         inp = ctxt.AddValue(inp)
       inp = self.capture(inp)
-      inputs[i] = inp
+      captured_inputs.append(inp)
     return super(FuncGraph, self)._create_op_internal(  # pylint: disable=protected-access
-        op_type, inputs, dtypes, input_types, name, attrs, op_def,
+        op_type, captured_inputs, dtypes, input_types, name, attrs, op_def,
         compute_device)
 
   def capture(self, tensor, name=None, shape=None):
@@ -648,6 +653,13 @@ class FuncGraph(ops.Graph):
     if capture is None:
       placeholder = _create_substitute_placeholder(
           tensor, name=name, dtype=tensor.dtype, shape=shape)
+      # Record the composite device as an attribute to the placeholder.
+      # This attribute would be propogated into the arg_attr of the FunctionDef.
+      # Currently, a packed eager tensor is always placed on a CompositeDevice.
+      if isinstance(tensor, ops.EagerTensor) and tensor.is_packed:
+        placeholder.op._set_attr(  # pylint: disable=protected-access
+            "_composite_device",
+            attr_value_pb2.AttrValue(s=compat.as_bytes(tensor.device)))
       self.add_capture(tensor, placeholder)
     else:
       placeholder = capture[1]
@@ -713,7 +725,12 @@ class FuncGraph(ops.Graph):
       # device as the source tensor. The device placement may be relaxed at
       # a later date.
       with ops.control_dependencies(None), self.device(tensor.device):
-        graph_const = constant_op.constant(tensor.numpy(), dtype=tensor.dtype,
+        constant_value = tensor_util.constant_value(tensor)
+        if constant_value is None:
+          # Some eager tensors, e.g. parallel tensors, are not convertible to a
+          # single constant. We'll use a placeholder for this case.
+          return self._capture_helper(tensor, name)
+        graph_const = constant_op.constant(constant_value, dtype=tensor.dtype,
                                            shape=tensor.shape, name=name)
       self.add_capture(tensor, graph_const)
     else:
@@ -837,9 +854,9 @@ def func_graph_from_py_func(name,
       set, returning an Operation triggers an error.
     collections: a dictionary of collections this FuncGraph should start
       with. If not specified (None), the FuncGraph will read (but not write to)
-      the outer graph's collections that are not whitelisted, and both
-      read and write to the outer graph's collections that are whitelisted.
-      The current whitelisted collections are the global variables, the
+      the outer graph's collections that are not allowlisted, and both
+      read and write to the outer graph's collections that are allowlisted.
+      The current allowlisted collections are the global variables, the
       local variables, and the trainable variables.
       Defaults to None.
     capture_by_value: An optional boolean. If True, the func graph will capture
@@ -1196,7 +1213,8 @@ def _get_defun_inputs(args, names, structure, flat_shapes=None):
       # Tensor or not.  For non-tensor entries it should be None.
       shape = next(shapes_iter)
       if isinstance(arg, (ops.Tensor, tensor_spec.TensorSpec)):
-        if isinstance(arg, tensor_spec.TensorSpec) and arg.name:
+        arg_is_spec = isinstance(arg, tensor_spec.TensorSpec)
+        if arg_is_spec and arg.name:
           requested_name = arg.name
         else:
           requested_name = name
@@ -1209,6 +1227,8 @@ def _get_defun_inputs(args, names, structure, flat_shapes=None):
           # Sometimes parameter names are not valid op names, so fall back to
           # unnamed placeholders.
           placeholder = graph_placeholder(arg.dtype, placeholder_shape)
+        if not arg_is_spec:
+          custom_gradient.copy_handle_data(arg, placeholder)
         if name is not None:
           # Record the requested/user-specified name in case it's different than
           # the uniquified name, for validation when exporting signatures.

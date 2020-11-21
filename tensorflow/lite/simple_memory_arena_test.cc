@@ -197,6 +197,9 @@ TEST_P(BufferAndPlanClearingTest, TestClearBufferAndClearPlan) {
   EXPECT_NE(resolved_ptr, nullptr);
 }
 
+INSTANTIATE_TEST_SUITE_P(BufferAndPlanClearingTest, BufferAndPlanClearingTest,
+                         ::testing::Values(true, false));
+
 }  // namespace
 }  // namespace tflite
 

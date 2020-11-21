@@ -69,12 +69,14 @@ XLA_TEST_F(DotOperationTest, DotOfInputTupleElem) {
   XlaBuilder builder(TestName());
 
   XlaOp param;
-  auto param_data = CreateParameterAndTransferLiteral(
-      0,
-      LiteralUtil::MakeTupleFromSlices(
-          {LiteralUtil::CreateR2<float>({{1, 2}, {3, 4}}),
-           LiteralUtil::CreateR2<float>({{5, 6}, {7, 8}})}),
-      "arg0", &builder, &param);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto param_data,
+      CreateParameterAndTransferLiteral(
+          0,
+          LiteralUtil::MakeTupleFromSlices(
+              {LiteralUtil::CreateR2<float>({{1, 2}, {3, 4}}),
+               LiteralUtil::CreateR2<float>({{5, 6}, {7, 8}})}),
+          "arg0", &builder, &param));
   auto lhs = GetTupleElement(param, 0);
   auto rhs = GetTupleElement(param, 1);
   Dot(lhs, rhs);
@@ -416,6 +418,10 @@ XLA_TEST_P(ParametricDotTest, TestF16) { TestImpl<Eigen::half>(); }
 #endif
 XLA_TEST_P(ParametricDotTest, TestF32) { TestImpl<float>(); }
 XLA_TEST_P(ParametricDotTest, TestF64) { TestImpl<double>(); }
+XLA_TEST_P(ParametricDotTest, TestC64) { TestImpl<std::complex<float>>(); }
+#ifndef XLA_BACKEND_DOES_NOT_SUPPORT_COMPLEX128
+XLA_TEST_P(ParametricDotTest, TestC128) { TestImpl<std::complex<double>>(); }
+#endif
 XLA_TEST_P(ParametricDotTest, TestS32) { TestImpl<int32>(); }
 
 INSTANTIATE_TEST_CASE_P(DotTests, ParametricDotTest,
@@ -1425,19 +1431,137 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
 }
 
-XLA_TEST_F(DotOperationTextTest, IntegerDotCodegen) {
+XLA_TEST_F(DotOperationTextTest, S32IotaDot) {
   absl::string_view hlo_string =
       R"(
 HloModule SmallIntegerDot
 
 ENTRY SmallIntegerDot {
-  arg0 = s32[1,2,2] parameter(0)
-  arg1 = s32[1,2,1] parameter(1)
-  ROOT dot = s32[1,2,1] dot(arg0, arg1), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+  arg0 = s32[5,55,8] iota(), iota_dimension=1
+  arg1 = s32[5,8,200] iota(), iota_dimension=2
+  ROOT dot = s32[5,55,200] dot(arg0, arg1), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}
 }
 )";
 
-  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
+}
+
+XLA_TEST_F(DotOperationTextTest, S32IotaSquaredDot) {
+  absl::string_view hlo_string =
+      R"(
+HloModule SmallIntegerDot
+
+ENTRY SmallIntegerDot {
+  arg0 = s32[16,2] iota(), iota_dimension=0
+  a = s32[16,2] multiply(arg0, arg0)
+  r = s32[16,2] multiply(a, a)
+  arg1 = s32[2,98] iota(), iota_dimension=1
+  b = s32[2,98] multiply(arg1, arg1)
+  s = s32[2,98] multiply(b, b)
+  ROOT dot = s32[16,98] dot(r, s), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
+}
+
+XLA_TEST_F(DotOperationTextTest, DISABLED_ON_CPU(U16IotaDot)) {
+  absl::string_view hlo_string =
+      R"(
+HloModule SmallIntegerDot
+
+ENTRY SmallIntegerDot {
+  arg0 = u16[5,55,8] parameter(0)
+  arg1 = u16[5,8,200] parameter(1)
+  dot = u16[5,55,200] dot(arg0, arg1), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+  ROOT c = s32[5,55,200] convert(dot)
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
+}
+
+XLA_TEST_F(DotOperationTextTest, DISABLED_ON_CPU(U16IotaSquaredDot)) {
+  absl::string_view hlo_string =
+      R"(
+HloModule SmallIntegerDot
+
+ENTRY SmallIntegerDot {
+  arg0 = u16[16,2] iota(), iota_dimension=0
+  a = u16[16,2] multiply(arg0, arg0)
+  r = u16[16,2] multiply(a, a)
+  arg1 = u16[2,98] iota(), iota_dimension=1
+  b = u16[2,98] multiply(arg1, arg1)
+  s = u16[2,98] multiply(b, b)
+  ROOT dot = u16[16,98] dot(r, s), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
+}
+
+XLA_TEST_F(DotOperationTextTest, DISABLED_ON_CPU(S16IotaDot)) {
+  absl::string_view hlo_string =
+      R"(
+HloModule SmallIntegerDot
+
+ENTRY SmallIntegerDot {
+  arg0 = s16[5,55,8] iota(), iota_dimension=1
+  arg1 = s16[5,8,200] iota(), iota_dimension=2
+  ROOT dot = s16[5,55,200] dot(arg0, arg1), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
+}
+
+XLA_TEST_F(DotOperationTextTest, DISABLED_ON_CPU(S16IotaSquaredDot)) {
+  absl::string_view hlo_string =
+      R"(
+HloModule SmallIntegerDot
+
+ENTRY SmallIntegerDot {
+  arg0 = s16[16,2] iota(), iota_dimension=0
+  a = s16[16,2] multiply(arg0, arg0)
+  r = s16[16,2] multiply(a, a)
+  arg1 = s16[2,98] iota(), iota_dimension=1
+  b = s16[2,98] multiply(arg1, arg1)
+  s = s16[2,98] multiply(b, b)
+  ROOT dot = s16[16,98] dot(r, s), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
+}
+
+XLA_TEST_F(DotOperationTextTest, DISABLED_ON_CPU(S8Dot)) {
+  absl::string_view hlo_string =
+      R"(
+HloModule SmallIntegerDot
+
+ENTRY SmallIntegerDot {
+  arg0 = s8[20,2] parameter(0)
+  arg1 = s8[2,20] parameter(1)
+  ROOT dot = s8[20,20] dot(arg0, arg1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
+}
+
+XLA_TEST_F(DotOperationTextTest, S32Dot) {
+  absl::string_view hlo_string =
+      R"(
+HloModule SmallIntegerDot
+
+ENTRY SmallIntegerDot {
+  arg0 = s32[20,55] parameter(0)
+  arg1 = s32[55,20] parameter(1)
+  ROOT dot = s32[20,20] dot(arg0, arg1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
 }
 
 XLA_TEST_F(DotOperationTextTest, GpuTransposeOutput) {
@@ -1627,6 +1751,22 @@ XLA_TEST_F(DotOperationTest, ReorderContractingDims_Multipass) {
   // and reshape that are moved to the constant side of the dot.
   mutable_debug_options()->clear_xla_disable_hlo_passes();
   ComputeAndCompare(&builder, {}, error_spec_);
+}
+
+XLA_TEST_F(DotOperationTextTest, WiderIntegralResultAccumulation) {
+  absl::string_view hlo_string =
+      R"(
+HloModule WiderIntegralAccumulation
+
+ENTRY MatrixVectorComplex {
+  p0 = s8[5,5]{1,0} parameter(0)
+  p1 = s16[5,1]{0,1} parameter(1)
+  ROOT dot = s32[5,1]{1,0} dot(p0, p1), lhs_contracting_dims={1},
+                                        rhs_contracting_dims={0}
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
 }
 
 // This benchmark is to show the performance impact of the following

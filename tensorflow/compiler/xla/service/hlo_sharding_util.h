@@ -70,6 +70,12 @@ absl::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
                                             const Shape& target_shape,
                                             const HloSharding& sharding);
 
+// Returns the HloSharding with the tile dimensions and tile assignment
+// reversed based on the specified dimension numbers. In case of a tile
+// maximal sharding returns the original sharding.
+HloSharding ReverseSharding(const HloSharding& sharding,
+                            absl::Span<const int64> dimensions);
+
 // Returns a sharding tiled on unique dimension dim by reshaping the tile
 // assignment of the sharding argument. Only dimensions in the dims span
 // argument are considered for reshaping, the others are ignored.
@@ -121,6 +127,26 @@ HloSharding ScatterEffectiveIndexSharding(const HloSharding& index_sharding,
 HloSharding ScatterEffectiveDataSharding(const HloSharding& data_sharding,
                                          const HloInstruction& hlo);
 
+// Returns an output sharding of gather by passing through the data operand's
+// sharding.
+absl::optional<HloSharding> GatherOutputShardingFromDataOperand(
+    const HloSharding& data_operand_sharding, const HloInstruction& hlo);
+
+// Returns a data operand sharding of gather by passing through the output's
+// sharding.
+absl::optional<HloSharding> GatherDataOperandShardingFromOutput(
+    const HloSharding& output_sharding, const HloInstruction& hlo);
+
+// Returns an output sharding of scatter by passing through the update operand's
+// sharding.
+absl::optional<HloSharding> ScatterOutputShardingFromUpdate(
+    const HloSharding& update_sharding, const HloInstruction& hlo);
+
+// Returns an update operand sharding of scatter by passing through the output's
+// sharding.
+absl::optional<HloSharding> ScatterUpdateShardingFromOutput(
+    const HloSharding& output_sharding, const HloInstruction& hlo);
+
 // Returns an identity value and an HloOpcode for reduce computation of scatter
 // instruction.
 // - If computation is add/or, return 0/false with corresponding op code;
@@ -136,6 +162,24 @@ IdentityValueAndHloOpcodeForScatterReduceComputation(
 // list of the devices that `sharding` applies to.
 std::vector<int64> DevicesForSharding(
     const HloSharding& sharding, const std::vector<int64>& available_devices);
+
+// Returns a sharding that replicates data across devices along the given
+// dimensions in the original sharding.
+HloSharding PartiallyReplicateTiledShardingOnDims(
+    const HloSharding& sharding, const std::vector<int64>& dims_to_replicate);
+
+// Returns a sharding the removes given tile dimensions.
+//
+// Precondition: if not tile maximal, the size of each tile dimension must be 1.
+HloSharding RemoveShapeDimensions(const HloSharding& sharding,
+                                  const std::vector<int64>& dims_to_remove);
+
+// Similar to TransposeSharding(), but allows removing/adding non-partitioned
+// dimensions. In src_to_tgt and tgt_to_src, -1 represents a non-existing
+// dimension.
+absl::optional<HloSharding> TransposeShardingWithCollapsedDims(
+    const HloSharding& source, absl::Span<int64 const> src_to_tgt,
+    absl::Span<int64 const> tgt_to_src);
 
 }  // namespace hlo_sharding_util
 }  // namespace xla

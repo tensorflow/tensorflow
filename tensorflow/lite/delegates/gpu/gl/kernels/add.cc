@@ -36,9 +36,17 @@ class Add : public NodeShader {
  public:
   absl::Status GenerateCode(const GenerationContext& ctx,
                             GeneratedCode* generated_code) const final {
-    const auto& attr = absl::any_cast<const AddAttributes&>(ctx.op_attr);
+    const auto& attr =
+        absl::any_cast<const ElementwiseAttributes&>(ctx.op_attr);
     auto adds = absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&attr.param);
     auto scalar = absl::get_if<float>(&attr.param);
+
+    const auto* hwc_tensor =
+        absl::get_if<Tensor<HWC, DataType::FLOAT32>>(&attr.param);
+    if (hwc_tensor) {
+      return absl::UnimplementedError(
+          "Add does not support HWC constant tensor");
+    }
 
     if (!adds && !scalar) {
       // check if it is a broadcast

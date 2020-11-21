@@ -1,4 +1,4 @@
-// RUN: xla-gpu-opt %s | FileCheck %s -dump-input-on-failure
+// RUN: xla-gpu-opt %s | FileCheck %s
 HloModule Broadcast
 
 ENTRY %Broadcast (x: f32[10]) -> f32[10, 5] {
@@ -7,7 +7,7 @@ ENTRY %Broadcast (x: f32[10]) -> f32[10, 5] {
 }
 
 //  CHECK: func @broadcast(%[[IN:.*]]: [[IN_T:.*]],  %[[OUT:.*]]: [[OUT_T:.*]]) {
-//  CHECK:   "xla_lhlo.broadcast_in_dim"(%[[IN]], %[[OUT]])
+//  CHECK:   "lmhlo.broadcast_in_dim"(%[[IN]], %[[OUT]])
 //  CHECK:   {broadcast_dimensions = dense<0> : tensor<1xi64>}
 //  CHECK:   : ([[IN_T]], [[OUT_T]]) -> ()
 //  CHECK: }

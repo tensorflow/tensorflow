@@ -832,7 +832,7 @@ class DepthwiseConv2DTest(test.TestCase):
       # double datatype is currently not supported for convolution ops
       # on the ROCm platform
       optional_float64 = [] if test.is_built_with_rocm() else [dtypes.float64]
-      for data_type in ([dtypes.float32] + optional_float64):
+      for data_type in ([dtypes.float16, dtypes.float32] + optional_float64):
         self._ConstructAndTestGradient(
             input_size,
             filter_size,

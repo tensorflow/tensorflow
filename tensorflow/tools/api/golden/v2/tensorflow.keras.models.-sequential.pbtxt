@@ -15,11 +15,19 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "compute_dtype"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "distribute_strategy"
     mtype: "<type \'property\'>"
   }
   member {
     name: "dtype"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "dtype_policy"
     mtype: "<type \'property\'>"
   }
   member {
@@ -111,6 +119,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "supports_masking"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "trainable"
     mtype: "<type \'property\'>"
   }
@@ -124,6 +136,10 @@ tf_class {
   }
   member {
     name: "updates"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "variable_dtype"
     mtype: "<type \'property\'>"
   }
   member {
@@ -160,7 +176,7 @@ tf_class {
   }
   member_method {
     name: "add_weight"
-    argspec: "args=[\'self\', \'name\', \'shape\', \'dtype\', \'initializer\', \'regularizer\', \'trainable\', \'constraint\', \'partitioner\', \'use_resource\', \'synchronization\', \'aggregation\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'VariableSynchronization.AUTO\', \'VariableAggregation.NONE\'], "
+    argspec: "args=[\'self\', \'name\', \'shape\', \'dtype\', \'initializer\', \'regularizer\', \'trainable\', \'constraint\', \'use_resource\', \'synchronization\', \'aggregation\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'VariableSynchronization.AUTO\', \'VariableAggregation.NONE\'], "
   }
   member_method {
     name: "apply"
@@ -176,7 +192,7 @@ tf_class {
   }
   member_method {
     name: "compile"
-    argspec: "args=[\'self\', \'optimizer\', \'loss\', \'metrics\', \'loss_weights\', \'weighted_metrics\', \'run_eagerly\'], varargs=None, keywords=kwargs, defaults=[\'rmsprop\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'self\', \'optimizer\', \'loss\', \'metrics\', \'loss_weights\', \'weighted_metrics\', \'run_eagerly\', \'steps_per_execution\'], varargs=None, keywords=kwargs, defaults=[\'rmsprop\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "compute_mask"
@@ -260,7 +276,7 @@ tf_class {
   }
   member_method {
     name: "load_weights"
-    argspec: "args=[\'self\', \'filepath\', \'by_name\', \'skip_mismatch\'], varargs=None, keywords=None, defaults=[\'False\', \'False\'], "
+    argspec: "args=[\'self\', \'filepath\', \'by_name\', \'skip_mismatch\', \'options\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'None\'], "
   }
   member_method {
     name: "make_predict_function"
@@ -312,11 +328,11 @@ tf_class {
   }
   member_method {
     name: "save"
-    argspec: "args=[\'self\', \'filepath\', \'overwrite\', \'include_optimizer\', \'save_format\', \'signatures\', \'options\'], varargs=None, keywords=None, defaults=[\'True\', \'True\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'self\', \'filepath\', \'overwrite\', \'include_optimizer\', \'save_format\', \'signatures\', \'options\', \'save_traces\'], varargs=None, keywords=None, defaults=[\'True\', \'True\', \'None\', \'None\', \'None\', \'True\'], "
   }
   member_method {
     name: "save_weights"
-    argspec: "args=[\'self\', \'filepath\', \'overwrite\', \'save_format\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+    argspec: "args=[\'self\', \'filepath\', \'overwrite\', \'save_format\', \'options\'], varargs=None, keywords=None, defaults=[\'True\', \'None\', \'None\'], "
   }
   member_method {
     name: "set_weights"

@@ -80,6 +80,11 @@ void XlaReductionOp::Compile(XlaOpKernelContext* ctx) {
                                         " for input with ", data_shape.dims(),
                                         " dimension(s)"));
     index = (index + data_shape.dims()) % data_shape.dims();
+    OP_REQUIRES(
+        ctx, !bitmap[index],
+        errors::InvalidArgument(
+            "Invalid reduction arguments: Axes contains duplicate dimension: ",
+            index));
     bitmap[index] = true;
     xla_axes.push_back(index);
   }

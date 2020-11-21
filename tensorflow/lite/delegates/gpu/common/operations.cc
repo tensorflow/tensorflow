@@ -15,11 +15,17 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 
+#include <algorithm>
 #include <cstdint>
-#include <unordered_map>
+#include <set>
+#include <string>
+#include <utility>
+#include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/tensor.h"
 
 namespace tflite {
 namespace gpu {
@@ -76,6 +82,8 @@ std::string ToString(enum OperationType op) {
       return "batch_normalization";
     case OperationType::BATCH_TO_SPACE:
       return "batch_to_space";
+    case OperationType::BATCHED_MATMUL:
+      return "batched_matmul";
     case OperationType::CONCAT:
       return "concat";
     case OperationType::CONST:
@@ -84,18 +92,32 @@ std::string ToString(enum OperationType op) {
       return "convolution_2d";
     case OperationType::CONVOLUTION_TRANSPOSED:
       return "convolution_transposed";
+    case OperationType::COPY:
+      return "copy";
     case OperationType::COS:
       return "cos";
     case OperationType::DEPTHWISE_CONVOLUTION:
       return "depthwise_convolution";
     case OperationType::DIV:
       return "div";
+    case OperationType::ELU:
+      return "elu";
+    case OperationType::EQUAL:
+      return "equal";
     case OperationType::EXP:
       return "exp";
     case OperationType::FULLY_CONNECTED:
       return "fully_connected";
+    case OperationType::GREATER:
+      return "greater";
+    case OperationType::GREATER_EQUAL:
+      return "greater_equal";
     case OperationType::HARD_SWISH:
       return "hard_swish";
+    case OperationType::LESS:
+      return "less";
+    case OperationType::LESS_EQUAL:
+      return "less_equal";
     case OperationType::LOG:
       return "log";
     case OperationType::LSTM:
@@ -106,10 +128,16 @@ std::string ToString(enum OperationType op) {
       return "max_unpooling";
     case OperationType::MEAN:
       return "mean";
+    case OperationType::MEAN_STDDEV_NORMALIZATION:
+      return "mean_stddev_normalization";
     case OperationType::MINIMUM:
       return "minimum";
     case OperationType::MUL:
       return "mul";
+    case OperationType::NEG:
+      return "neg";
+    case OperationType::NOT_EQUAL:
+      return "not_equal";
     case OperationType::PAD:
       return "pad";
     case OperationType::POOLING_2D:
@@ -120,6 +148,14 @@ std::string ToString(enum OperationType op) {
       return "prelu";
     case OperationType::QUANTIZE_AND_DEQUANTIZE:
       return "quantize_and_dequantize";
+    case OperationType::REDUCE_MAXIMUM:
+      return "reduce_maximum";
+    case OperationType::REDUCE_MINIMUM:
+      return "reduce_minimum";
+    case OperationType::REDUCE_PRODUCT:
+      return "reduce_product";
+    case OperationType::REDUCE_SUM:
+      return "reduce_sum";
     case OperationType::RELU:
       return "relu";
     case OperationType::RESHAPE:
@@ -152,40 +188,55 @@ std::string ToString(enum OperationType op) {
       return "tanh";
     case OperationType::TRANSPOSE:
       return "transpose";
-    default:
-      break;
+    case OperationType::UNKNOWN:
+      return "unknown_operation";
   }
-  return "unknown_operation";
 }
 
 OperationType OperationTypeFromString(const std::string& name) {
   static const auto operations =
-      new std::unordered_map<std::string, OperationType>({
+      new absl::flat_hash_map<std::string, OperationType>({
           {"abs", OperationType::ABS},
           {"add", OperationType::ADD},
           {"batch_normalization", OperationType::BATCH_NORMALIZATION},
+          {"batched_matmul", OperationType::BATCHED_MATMUL},
           {"concat", OperationType::CONCAT},
           {"const", OperationType::CONST},
           {"convolution_2d", OperationType::CONVOLUTION_2D},
           {"convolution_transposed", OperationType::CONVOLUTION_TRANSPOSED},
+          {"copy", OperationType::COPY},
           {"cos", OperationType::COS},
           {"depthwise_convolution", OperationType::DEPTHWISE_CONVOLUTION},
           {"div", OperationType::DIV},
+          {"elu", OperationType::ELU},
+          {"equal", OperationType::EQUAL},
           {"exp", OperationType::EXP},
           {"fully_connected", OperationType::FULLY_CONNECTED},
+          {"greater", OperationType::GREATER},
+          {"greater_equal", OperationType::GREATER_EQUAL},
           {"hard_swish", OperationType::HARD_SWISH},
+          {"less", OperationType::LESS},
+          {"less_equal", OperationType::LESS_EQUAL},
           {"log", OperationType::LOG},
           {"lstm", OperationType::LSTM},
           {"maximum", OperationType::MAXIMUM},
           {"max_unpooling", OperationType::MAX_UNPOOLING_2D},
           {"mean", OperationType::MEAN},
+          {"mean_stddev_normalization",
+           OperationType::MEAN_STDDEV_NORMALIZATION},
           {"minimum", OperationType::MINIMUM},
           {"mul", OperationType::MUL},
+          {"neg", OperationType::NEG},
+          {"not_equal", OperationType::NOT_EQUAL},
           {"pad", OperationType::PAD},
           {"pooling_2d", OperationType::POOLING_2D},
           {"pow", OperationType::POW},
           {"prelu", OperationType::PRELU},
           {"quantize_and_dequantize", OperationType::QUANTIZE_AND_DEQUANTIZE},
+          {"reduce_maximum", OperationType::REDUCE_MAXIMUM},
+          {"reduce_minimum", OperationType::REDUCE_MINIMUM},
+          {"reduce_product", OperationType::REDUCE_PRODUCT},
+          {"reduce_sum", OperationType::REDUCE_SUM},
           {"relu", OperationType::RELU},
           {"resize", OperationType::RESIZE},
           {"reshape", OperationType::RESHAPE},
@@ -499,6 +550,14 @@ BHWC CalculateOutputShape(const BHWC& input, const SliceAttributes& attr) {
               StridedSize(attr.ends.c - attr.starts.c, attr.strides.c));
 }
 
+BHWDC CalculateOutputShape(const BHWDC& input, const Slice3DAttributes& attr) {
+  return BHWDC(StridedSize(attr.ends.b - attr.starts.b, attr.strides.b),
+               StridedSize(attr.ends.h - attr.starts.h, attr.strides.h),
+               StridedSize(attr.ends.w - attr.starts.w, attr.strides.w),
+               StridedSize(attr.ends.d - attr.starts.d, attr.strides.d),
+               StridedSize(attr.ends.c - attr.starts.c, attr.strides.c));
+}
+
 BHWC CalculateOutputShape(const BHWC& input, const PadAttributes& attr) {
   return BHWC(attr.appended.b + attr.prepended.b + input.b,
               attr.appended.h + attr.prepended.h + input.h,
@@ -527,6 +586,15 @@ BHWC CalculateOutputShape(const BHWC& input, const MeanAttributes& attr) {
   return BHWC(b, h, w, c);
 }
 
+BHWDC CalculateOutputShape(const BHWDC& input, const MeanAttributes& attr) {
+  const int b = attr.dims.find(Axis::BATCH) == attr.dims.end() ? input.b : 1;
+  const int h = attr.dims.find(Axis::HEIGHT) == attr.dims.end() ? input.h : 1;
+  const int w = attr.dims.find(Axis::WIDTH) == attr.dims.end() ? input.w : 1;
+  const int d = attr.dims.find(Axis::DEPTH) == attr.dims.end() ? input.d : 1;
+  const int c = attr.dims.find(Axis::CHANNELS) == attr.dims.end() ? input.c : 1;
+  return BHWDC(b, h, w, d, c);
+}
+
 absl::Status CalculateOutputShape(const std::vector<BHWC>& input,
                                   const ConcatAttributes& attr,
                                   BHWC* output_shape) {
@@ -534,9 +602,10 @@ absl::Status CalculateOutputShape(const std::vector<BHWC>& input,
   switch (attr.axis) {
     case Axis::CHANNELS:
       for (int i = 1; i < input.size(); i++) {
-        if (input[i].h != new_shape.h || input[i].w != new_shape.w) {
+        if (input[i].h != new_shape.h || input[i].w != new_shape.w ||
+            input[i].b != new_shape.b) {
           return absl::InvalidArgumentError(
-              "Height and Width must be the same when concatenating "
+              "Height, Width and Batch must be the same when concatenating "
               "by channels axis");
         }
         new_shape.c += input[i].c;
@@ -544,9 +613,10 @@ absl::Status CalculateOutputShape(const std::vector<BHWC>& input,
       break;
     case Axis::HEIGHT:
       for (int i = 1; i < input.size(); i++) {
-        if (input[i].w != new_shape.w || input[i].c != new_shape.c) {
+        if (input[i].w != new_shape.w || input[i].c != new_shape.c ||
+            input[i].b != new_shape.b) {
           return absl::InvalidArgumentError(
-              "Channels and Width must be the same when concatenating "
+              "Channels, Width and Batch must be the same when concatenating "
               "by height axis");
         }
         new_shape.h += input[i].h;
@@ -554,12 +624,24 @@ absl::Status CalculateOutputShape(const std::vector<BHWC>& input,
       break;
     case Axis::WIDTH:
       for (int i = 1; i < input.size(); i++) {
-        if (input[i].h != new_shape.h || input[i].c != new_shape.c) {
+        if (input[i].h != new_shape.h || input[i].c != new_shape.c ||
+            input[i].b != new_shape.b) {
           return absl::InvalidArgumentError(
-              "Height and Channels must be the same when concatenating "
+              "Height, Channels and Batch must be the same when concatenating "
               "by width axis");
         }
         new_shape.w += input[i].w;
+      }
+      break;
+    case Axis::BATCH:
+      for (int i = 1; i < input.size(); i++) {
+        if (input[i].h != new_shape.h || input[i].c != new_shape.c ||
+            input[i].w != new_shape.w) {
+          return absl::InvalidArgumentError(
+              "Width, Height and Channels must be the same when concatenating "
+              "by batch axis");
+        }
+        new_shape.b += input[i].b;
       }
       break;
     default:
@@ -578,9 +660,10 @@ absl::Status CalculateOutputShape(const std::vector<BHWDC>& input,
     case Axis::CHANNELS:
       for (int i = 1; i < input.size(); ++i) {
         if (input[i].h != new_shape.h || input[i].w != new_shape.w ||
-            input[i].d != new_shape.d) {
+            input[i].d != new_shape.d || input[i].b != new_shape.b) {
           return absl::InvalidArgumentError(
-              "Height, Width and Depth must be the same when concatenating "
+              "Height, Width, Batch and Depth must be the same when "
+              "concatenating "
               "by channels axis");
         }
         new_shape.c += input[i].c;
@@ -589,9 +672,10 @@ absl::Status CalculateOutputShape(const std::vector<BHWDC>& input,
     case Axis::HEIGHT:
       for (int i = 1; i < input.size(); ++i) {
         if (input[i].w != new_shape.w || input[i].c != new_shape.c ||
-            input[i].d != new_shape.d) {
+            input[i].d != new_shape.d || input[i].b != new_shape.b) {
           return absl::InvalidArgumentError(
-              "Width, Depth and Channels must be the same when concatenating "
+              "Width, Depth, Batch and Channels must be the same when "
+              "concatenating "
               "by height axis");
         }
         new_shape.h += input[i].h;
@@ -600,9 +684,10 @@ absl::Status CalculateOutputShape(const std::vector<BHWDC>& input,
     case Axis::WIDTH:
       for (int i = 1; i < input.size(); ++i) {
         if (input[i].h != new_shape.h || input[i].c != new_shape.c ||
-            input[i].d != new_shape.d) {
+            input[i].d != new_shape.d || input[i].b != new_shape.b) {
           return absl::InvalidArgumentError(
-              "Height, Depth and Channels must be the same when concatenating "
+              "Height, Depth, Batch and Channels must be the same when "
+              "concatenating "
               "by width axis");
         }
         new_shape.w += input[i].w;
@@ -611,12 +696,25 @@ absl::Status CalculateOutputShape(const std::vector<BHWDC>& input,
     case Axis::DEPTH:
       for (int i = 1; i < input.size(); ++i) {
         if (input[i].w != new_shape.w || input[i].h != new_shape.h ||
-            input[i].c != new_shape.c) {
+            input[i].c != new_shape.c || input[i].b != new_shape.b) {
           return absl::InvalidArgumentError(
-              "Width, Height and Channels must be the same when concatenating "
+              "Width, Height, Batch and Channels must be the same when "
+              "concatenating "
               "by depth axis");
         }
         new_shape.d += input[i].d;
+      }
+      break;
+    case Axis::BATCH:
+      for (int i = 1; i < input.size(); ++i) {
+        if (input[i].w != new_shape.w || input[i].h != new_shape.h ||
+            input[i].c != new_shape.c || input[i].d != new_shape.d) {
+          return absl::InvalidArgumentError(
+              "Width, Height, Depth and Channels must be the same when "
+              "concatenating "
+              "by batch axis");
+        }
+        new_shape.b += input[i].b;
       }
       break;
     default:
@@ -702,6 +800,13 @@ BHWDC CalculateOutputShape(const BHWDC& input, const Resize3DAttributes& attr) {
 BHWC CalculateOutputShape(const BHWC& input, const TransposeAttributes& attr) {
   return BHWC(input.get(attr.perm.b), input.get(attr.perm.h),
               input.get(attr.perm.w), input.get(attr.perm.c));
+}
+
+BHWDC CalculateOutputShape(const BHWDC& input,
+                           const Transpose3DAttributes& attr) {
+  return BHWDC(input.get(attr.perm.b), input.get(attr.perm.h),
+               input.get(attr.perm.w), input.get(attr.perm.d),
+               input.get(attr.perm.c));
 }
 
 }  // namespace gpu

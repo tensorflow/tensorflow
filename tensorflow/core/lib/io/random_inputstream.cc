@@ -49,7 +49,7 @@ Status RandomAccessInputStream::ReadNBytes(int64 bytes_to_read,
   return s;
 }
 
-#if defined(PLATFORM_GOOGLE)
+#if defined(TF_CORD_SUPPORT)
 Status RandomAccessInputStream::ReadNBytes(int64 bytes_to_read,
                                            absl::Cord* result) {
   if (bytes_to_read < 0) {
@@ -92,7 +92,7 @@ Status RandomAccessInputStream::SkipNBytes(int64 bytes_to_skip) {
     } else {
       return s;
     }
-    if (data.size() < bytes_to_read) {
+    if (data.size() < static_cast<size_t>(bytes_to_read)) {
       return errors::OutOfRange("reached end of file");
     }
     bytes_to_skip -= bytes_to_read;

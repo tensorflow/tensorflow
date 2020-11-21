@@ -36,6 +36,7 @@ from tensorflow.python.keras.layers.preprocessing import string_lookup
 from tensorflow.python.keras.layers.preprocessing import string_lookup_v1
 from tensorflow.python.keras.saving import save
 from tensorflow.python.keras.utils.generic_utils import CustomObjectScope
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 
@@ -50,8 +51,7 @@ def get_layer_class():
 def _get_end_to_end_test_cases():
   test_cases = (
       {
-          "testcase_name":
-              "test_strings_soft_vocab_cap",
+          "testcase_name": "test_strings_soft_vocab_cap",
           # Create an array where 'earth' is the most frequent term, followed by
           # 'wind', then 'and', then 'fire'. This ensures that the vocab
           # accumulator is sorting by frequency.
@@ -150,12 +150,53 @@ class StringLookupVocabularyTest(keras_parameterized.TestCase,
     layer = get_layer_class()(vocabulary=vocab_data)
     int_data = layer(input_data)
     model = keras.Model(inputs=input_data, outputs=int_data)
-    output_dataset = model.predict(input_array)
-    self.assertAllEqual(expected_output, output_dataset)
+    output_data = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_data)
+
+  def test_no_vocab(self):
+    with self.assertRaisesRegex(
+        ValueError, "You must set the layer's vocabulary"):
+      layer = get_layer_class()()
+      layer([["a"]])
+
+  def test_binary_output(self):
+    vocab_data = ["earth", "wind", "and", "fire"]
+    input_array = np.array([["earth", "wind", "and", "fire"],
+                            ["fire", "and", "earth", "michigan"]])
+    expected_output = [[0, 0, 1, 1, 1, 1], [0, 1, 1, 0, 1, 1]]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()(vocabulary=vocab_data, output_mode="binary")
+    res = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=res)
+    output_data = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_data)
+
+  def test_count_output(self):
+    vocab_data = ["earth", "wind", "and", "fire"]
+    input_array = np.array([["earth", "earth", "fire", "fire"],
+                            ["fire", "and", "earth", "michigan"]])
+    expected_output = [[0, 0, 2, 0, 0, 2], [0, 1, 1, 0, 1, 1]]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()(vocabulary=vocab_data, output_mode="count")
+    res = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=res)
+    output_data = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_data)
+
+  def test_sparse_output(self):
+    vocab_data = ["earth", "wind", "and", "fire"]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        vocabulary=vocab_data, output_mode="binary", sparse=True)
+    res = layer(input_data)
+    self.assertTrue(res.__class__.__name__, "SparseKerasTensor")
 
   def test_get_vocab_returns_str(self):
     vocab_data = ["earth", "wind", "and", "fire"]
-    expected_vocab = ["", "[OOV]", "earth", "wind", "and", "fire"]
+    expected_vocab = ["", "[UNK]", "earth", "wind", "and", "fire"]
     layer = get_layer_class()(vocabulary=vocab_data)
     layer_vocab = layer.get_vocabulary()
     self.assertAllEqual(expected_vocab, layer_vocab)
@@ -173,8 +214,24 @@ class StringLookupVocabularyTest(keras_parameterized.TestCase,
     layer = get_layer_class()(vocabulary=vocab_path)
     int_data = layer(input_data)
     model = keras.Model(inputs=input_data, outputs=int_data)
-    output_dataset = model.predict(input_array)
-    self.assertAllEqual(expected_output, output_dataset)
+    output_data = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_data)
+
+  def test_int_output_explicit_vocab_from_file_via_setter(self):
+    vocab_list = ["earth", "wind", "and", "fire"]
+    vocab_path = self._write_to_temp_file("vocab_file", vocab_list)
+
+    input_array = np.array([["earth", "wind", "and", "fire"],
+                            ["fire", "and", "earth", "michigan"]])
+    expected_output = [[2, 3, 4, 5], [5, 4, 2, 1]]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()()
+    layer.set_vocabulary(vocab_path)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_data = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_data)
 
   def test_non_unique_vocab_fails(self):
     vocab_data = ["earth", "wind", "and", "fire", "fire"]
@@ -186,6 +243,51 @@ class StringLookupVocabularyTest(keras_parameterized.TestCase,
     vocab_path = self._write_to_temp_file("repeat_vocab_file", vocab_list)
     with self.assertRaisesRegex(ValueError, ".*repeated term.*earth.*"):
       _ = get_layer_class()(vocabulary=vocab_path)
+
+  def test_inverse_layer(self):
+    vocab_data = ["earth", "wind", "and", "fire"]
+    input_array = np.array([[1, 2, 3, 4], [4, 3, 1, 0]])
+    expected_output = np.array([["earth", "wind", "and", "fire"],
+                                ["fire", "and", "earth", ""]])
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.int64)
+    layer = get_layer_class()(vocabulary=vocab_data, invert=True)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_data = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_data)
+
+  def test_forward_backward_layer(self):
+    vocab_data = ["earth", "wind", "and", "fire"]
+    input_array = np.array([["earth", "wind", "and", "fire"],
+                            ["fire", "and", "earth", "michigan"]])
+    expected_output = np.array([["earth", "wind", "and", "fire"],
+                                ["fire", "and", "earth", "[UNK]"]])
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()(vocabulary=vocab_data)
+    invert_layer = get_layer_class()(
+        vocabulary=layer.get_vocabulary(), invert=True)
+    int_data = layer(input_data)
+    out_data = invert_layer(int_data)
+    model = keras.Model(inputs=input_data, outputs=out_data)
+    output_data = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_data)
+
+  def test_ragged_string_input_multi_bucket(self):
+    vocab_data = ["earth", "wind", "and", "fire"]
+    input_array = ragged_factory_ops.constant([["earth", "wind", "fire"],
+                                               ["fire", "and", "earth",
+                                                "ohio"]])
+    expected_output = [[3, 4, 6], [6, 5, 3, 2]]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string, ragged=True)
+    layer = get_layer_class()(num_oov_indices=2)
+    layer.set_vocabulary(vocab_data)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_data = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_data)
 
 
 @keras_parameterized.run_all_keras_modes(always_skip_eager=True)

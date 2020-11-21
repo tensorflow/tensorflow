@@ -56,11 +56,11 @@ TEST_F(OpenCLOperationTest, QuantAndDequant_Dim2Bits8) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      QuantizeAndDequantize operation;
-      ASSERT_OK(CreateQuantizeAndDequantize(creation_context_, op_def, attr,
-                                            &operation));
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 3, 2, 1), &dst_tensor));
+      GPUOperation operation = CreateQuantizeAndDequantize(op_def, attr);
+      ASSERT_OK(ExecuteGPUOperation(
+          src_tensor, creation_context_,
+          absl::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 3, 2, 1), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
                   Pointwise(FloatNear(eps), {0.0f, 1.0f, 0.25098f, 0.498039f,
                                              0.443137f, 0.0f}));
@@ -92,11 +92,11 @@ TEST_F(OpenCLOperationTest, QuantAndDequant_Dim3Bits8_NegativeRange) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      QuantizeAndDequantize operation;
-      ASSERT_OK(CreateQuantizeAndDequantize(creation_context_, op_def, attr,
-                                            &operation));
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 3, 1, 2), &dst_tensor));
+      GPUOperation operation = CreateQuantizeAndDequantize(op_def, attr);
+      ASSERT_OK(ExecuteGPUOperation(
+          src_tensor, creation_context_,
+          absl::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 3, 1, 2), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
                   Pointwise(FloatNear(eps), {0.0f, -0.896471f, 0.247059f,
                                              0.501176f, 0.444706f, 0.0f}));
@@ -128,11 +128,11 @@ TEST_F(OpenCLOperationTest, QuantAndDequant_Dim3Bits16) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      QuantizeAndDequantize operation;
-      ASSERT_OK(CreateQuantizeAndDequantize(creation_context_, op_def, attr,
-                                            &operation));
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 3, 1, 2), &dst_tensor));
+      GPUOperation operation = CreateQuantizeAndDequantize(op_def, attr);
+      ASSERT_OK(ExecuteGPUOperation(
+          src_tensor, creation_context_,
+          absl::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 3, 1, 2), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
                   Pointwise(FloatNear(eps), {0.0f, 1.0f, 0.250004f, 0.500008f,
                                              0.44445f, 1.5259e-05f}));
@@ -164,11 +164,11 @@ TEST_F(OpenCLOperationTest, QuantAndDequant_Dim2Bits16_NegativeRange) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      QuantizeAndDequantize operation;
-      ASSERT_OK(CreateQuantizeAndDequantize(creation_context_, op_def, attr,
-                                            &operation));
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 3, 2, 1), &dst_tensor));
+      GPUOperation operation = CreateQuantizeAndDequantize(op_def, attr);
+      ASSERT_OK(ExecuteGPUOperation(
+          src_tensor, creation_context_,
+          absl::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 3, 2, 1), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
                   Pointwise(FloatNear(eps), {0.0f, -0.900014f, 0.249998f,
                                              0.499995f, 0.444431f, 0.0f}));

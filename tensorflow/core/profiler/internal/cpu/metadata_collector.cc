@@ -18,12 +18,24 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#if defined(__clang__) && __cplusplus >= 201703L  // clang C++17
+#define TF_PROFILER_DISABLE_CXX17_WARNINGS \
+  _Pragma("clang diagnostic push")         \
+      _Pragma("clang diagnostic ignored \"-Wc++98-c++11-c++14-compat\"")
+#define TF_PROFILER_ENABLE_CXX17_WARNINGS _Pragma("clang diagnostic pop")
+#else
+#define TF_PROFILER_DISABLE_CXX17_WARNINGS
+#define TF_PROFILER_ENABLE_CXX17_WARNINGS
+#endif
+
+TF_PROFILER_DISABLE_CXX17_WARNINGS
 #include "tensorflow/compiler/xla/service/gpu/gpu_debug_info_manager.h"
+TF_PROFILER_ENABLE_CXX17_WARNINGS
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/profiler/internal/profiler_factory.h"
-#include "tensorflow/core/profiler/internal/profiler_interface.h"
+#include "tensorflow/core/profiler/lib/profiler_factory.h"
+#include "tensorflow/core/profiler/lib/profiler_interface.h"
 #include "tensorflow/core/profiler/profiler_options.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
@@ -65,15 +77,13 @@ class MetadataCollector : public ProfilerInterface {
 
   Status CollectData(XSpace* space) override {
     if (!debug_info_.empty()) {
-      XPlane* plane = GetOrCreatePlane(space, kMetadataPlane);
-      plane->set_id(kMetadataPlaneId);
+      XPlane* plane = FindOrAddMutablePlaneWithName(space, kMetadataPlaneName);
       XPlaneBuilder xplane(plane);
+      const XStatMetadata& hlo_proto_stat =
+          *xplane.GetOrCreateStatMetadata(kHloProto);
       for (auto& p : debug_info_) {
-        std::string hlo_proto;
-        p.hlo_proto->SerializeToString(&hlo_proto);
+        xplane.AddStatValue(hlo_proto_stat, *p.hlo_proto);
         p.hlo_proto.reset();
-        xplane.AddStatValue(*xplane.GetOrCreateStatMetadata(kHloProto),
-                            std::move(hlo_proto), /*is_bytes=*/true);
       }
       debug_info_.clear();
     }

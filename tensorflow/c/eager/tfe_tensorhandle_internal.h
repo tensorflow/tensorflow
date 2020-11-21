@@ -16,7 +16,7 @@ limitations under the License.
 #define TENSORFLOW_C_EAGER_TFE_TENSORHANDLE_INTERNAL_H_
 
 #include "tensorflow/c/conversion_macros.h"
-#include "tensorflow/c/eager/tensor_handle_interface.h"
+#include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 
 // Wraps a pointer to a tensor handle implementation.
 //
@@ -28,9 +28,9 @@ typedef struct TFE_TensorHandle TFE_TensorHandle;
 
 namespace tensorflow {
 
-DEFINE_CONVERSION_FUNCTIONS(tensorflow::AbstractTensorHandleInterface,
+DEFINE_CONVERSION_FUNCTIONS(tensorflow::ImmediateExecutionTensorHandle,
                             TFE_TensorHandle);
-DEFINE_CONVERSION_FUNCTIONS(tensorflow::AbstractTensorHandleInterface*,
+DEFINE_CONVERSION_FUNCTIONS(tensorflow::ImmediateExecutionTensorHandle*,
                             TFE_TensorHandle*);
 
 }  // namespace tensorflow

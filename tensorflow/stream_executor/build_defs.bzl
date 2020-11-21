@@ -10,6 +10,9 @@ def tf_additional_cuda_platform_deps():
 def tf_additional_cuda_driver_deps():
     return [":cuda_stub"]
 
+def tf_additional_cupti_deps():
+    return ["//tensorflow/stream_executor/cuda:cupti_stub"]
+
 def tf_additional_cudnn_plugin_deps():
     return []
 

@@ -1,4 +1,4 @@
-// RUN: xla-gpu-opt %s | FileCheck %s -dump-input-on-failure
+// RUN: xla-gpu-opt %s | FileCheck %s
 HloModule CopyTranspose
 
 ENTRY %CopyTranspose (x: f32[2,4]) -> f32[2,4]{0,1} {
@@ -6,8 +6,8 @@ ENTRY %CopyTranspose (x: f32[2,4]) -> f32[2,4]{0,1} {
   ROOT %copy = f32[2,4]{0,1} copy(f32[2,4] %x)
 }
 
-// CHECK: #[[MAP0:.*]] = affine_map<(d0, d1) -> (d0 * 2 + d1)>
+// CHECK: #[[MAP0:.*]] = affine_map<(d0, d1) -> (d0 + d1 * 2)>
 // CHECK: func @copy(%[[OPERAND:.*]]: memref<2x4xf32>,
 // CHECK-SAME:       %[[RESULT:.*]]: memref<2x4xf32, #[[MAP0]]>) 
-// CHECK:   "xla_lhlo.copy"(%[[OPERAND]], %[[RESULT]])
+// CHECK:   "lmhlo.copy"(%[[OPERAND]], %[[RESULT]])
 // CHECK-SAME: : (memref<2x4xf32>, memref<2x4xf32, #[[MAP0]]>)

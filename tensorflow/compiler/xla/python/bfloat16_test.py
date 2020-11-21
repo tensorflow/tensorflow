@@ -19,6 +19,8 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import copy
+import itertools
 import math
 
 from absl.testing import absltest
@@ -218,6 +220,12 @@ class Bfloat16Test(parameterized.TestCase):
     numpy_assert_allclose(
         a, b, rtol=0.1, atol=0.1, equal_nan=True, err_msg="", verbose=True)
 
+  def testSort(self):
+    values_to_sort = np.float32(FLOAT_VALUES)
+    sorted_f32 = np.sort(values_to_sort)
+    sorted_bf16 = np.sort(values_to_sort.astype(bfloat16))
+    np.testing.assert_equal(sorted_f32, np.float32(sorted_bf16))
+
 
 BinaryOp = collections.namedtuple("BinaryOp", ["op"])
 
@@ -246,6 +254,15 @@ class Bfloat16NumPyTest(parameterized.TestCase):
 
   def testDtype(self):
     self.assertEqual(bfloat16, np.dtype(bfloat16))
+
+  def testDeepCopyDoesNotAlterHash(self):
+    # For context, see https://github.com/google/jax/issues/4651. If the hash
+    # value of the type descriptor is not initialized correctly, a deep copy
+    # can change the type hash.
+    dtype = np.dtype(bfloat16)
+    h = hash(dtype)
+    _ = copy.deepcopy(dtype)
+    self.assertEqual(h, hash(dtype))
 
   def testArray(self):
     x = np.array([[1, 2, 3]], dtype=bfloat16)
@@ -276,7 +293,7 @@ class Bfloat16NumPyTest(parameterized.TestCase):
     for dtype in [
         np.float16, np.float32, np.float64, np.int8, np.int16, np.int32,
         np.int64, np.complex64, np.complex128, np.uint8, np.uint16, np.uint32,
-        np.uint64
+        np.uint64, np.intc, np.int_, np.longlong, np.uintc, np.ulonglong
     ]:
       x = np.array([[1, 2, 3]], dtype=dtype)
       y = x.astype(bfloat16)
@@ -397,6 +414,26 @@ class Bfloat16NumPyTest(parameterized.TestCase):
     mant2, exp2 = np.frexp(x.astype(np.float32))
     np.testing.assert_equal(exp1, exp2)
     numpy_assert_allclose(mant1, mant2, rtol=1e-2)
+
+  def testNextAfter(self):
+    one = np.array(1., dtype=bfloat16)
+    two = np.array(2., dtype=bfloat16)
+    zero = np.array(0., dtype=bfloat16)
+    nan = np.array(np.nan, dtype=bfloat16)
+    np.testing.assert_equal(np.nextafter(one, two) - one, epsilon)
+    np.testing.assert_equal(np.nextafter(one, zero) - one, -epsilon / 2)
+    np.testing.assert_equal(np.isnan(np.nextafter(nan, one)), True)
+    np.testing.assert_equal(np.isnan(np.nextafter(one, nan)), True)
+    np.testing.assert_equal(np.nextafter(one, one), one)
+    smallest_denormal = float.fromhex("1.0p-133")
+    np.testing.assert_equal(np.nextafter(zero, one), smallest_denormal)
+    np.testing.assert_equal(np.nextafter(zero, -one), -smallest_denormal)
+    for a, b in itertools.permutations([0., -0., nan], 2):
+      np.testing.assert_equal(
+          np.nextafter(
+              np.array(a, dtype=np.float32), np.array(b, dtype=np.float32)),
+          np.nextafter(
+              np.array(a, dtype=bfloat16), np.array(b, dtype=bfloat16)))
 
 
 if __name__ == "__main__":

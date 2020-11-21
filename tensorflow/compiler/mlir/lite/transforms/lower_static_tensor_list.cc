@@ -17,7 +17,7 @@ limitations under the License.
 // converting Tensorlist operations in TensorFlow dialect into operations that
 // can be legalized to TensorFlow Lite dialect with simple replacements.  The
 // newly created operations are in the TensorFlow dialect if the operation can
-// be represented using a TensorFlow op.  Otherwise, TensorFlow Lite dialect op
+// be represented using a TensorFlow op. Otherwise, TensorFlow Lite dialect op
 // is used.
 
 #include <climits>
@@ -332,9 +332,8 @@ struct ConvertTensorListInitOp : public OpConversionPattern<OpT> {
       ConversionPatternRewriter &rewriter) const override {
     Type dtype = op.element_dtype();
     if (!(dtype.isF16() || dtype.isF32() || dtype.isF64() ||
-          dtype.isInteger(1) || dtype.isSignlessInteger(8) ||
-          dtype.isSignlessInteger(16) || dtype.isSignlessInteger(32) ||
-          dtype.isSignlessInteger(64))) {
+          dtype.isInteger(1) || dtype.isInteger(8) || dtype.isInteger(16) ||
+          dtype.isInteger(32) || dtype.isInteger(64))) {
       op.emitError(
           "requires element_dtype to be 1-bit/8-bit/16-bit/32-bit/64-bit "
           "integer or 16-bit/32-bit/64-bit float type during TF Lite "
@@ -577,7 +576,6 @@ struct ConvertTensorListResize
         ArrayRef<Value>({input_handle, input_shape, size_diff, size}),
         /*then_branch=*/rewriter.getSymbolRefAttr(then_branch_op),
         /*else_branch=*/rewriter.getSymbolRefAttr(else_branch_op),
-        /*output_shapes=*/rewriter.getArrayAttr({}),
         /*is_stateless=*/rewriter.getBoolAttr(true));
     return success();
   }
@@ -716,7 +714,7 @@ struct ConvertTensorListStack
     RankedTensorType shape_type =
         RankedTensorType::get({-1}, rewriter.getIntegerType(32));
     auto new_shape = rewriter.create<TF::ShapeOp>(loc, shape_type, input);
-    SmallVector<int64_t, 8> output_shape = {op.num_elements().getSExtValue()};
+    SmallVector<int64_t, 8> output_shape(/*Size=*/1, op.num_elements());
     for (const auto &dim : dense_elem_attr.getIntValues())
       output_shape.push_back(dim.getSExtValue());
     RankedTensorType result_type =
@@ -740,14 +738,18 @@ struct ConvertIdentity : public OpConversionPattern<TF::IdentityOp> {
   }
 };
 
+// Returns an unranked tensor type with an element of the same type as `value`
+// if `type` is a tensor of variant. Otherwise, returns `type` unmodified.
+Type VariantToUnrankedTensorType(Type type, Value value) {
+  if (getElementTypeOrSelf(type).isa<TF::VariantType>())
+    return UnrankedTensorType::get(getElementTypeOrSelf(value.getType()));
+  return type;
+}
+
 // Changes the function type of `cond_func` and `body_func` for the given While
 // op.
-static LogicalResult UpdateFunctionTypes(TF::WhileOp op) {
-  auto module = op.getParentOfType<ModuleOp>();
-  auto *context = module.getContext();
-
-  for (StringRef func_name : {op.cond(), op.body()}) {
-    FuncOp func = module.lookupSymbol<FuncOp>(func_name);
+LogicalResult UpdateFunctionTypes(TF::WhileOp op) {
+  for (FuncOp func : {op.cond_function(), op.body_function()}) {
     if (!func) continue;
 
     FunctionType func_type = func.getType();
@@ -758,42 +760,29 @@ static LogicalResult UpdateFunctionTypes(TF::WhileOp op) {
     // tensor type if it's a variant type.
     SmallVector<Type, 8> updated_argument_types;
     updated_argument_types.reserve(num_inputs);
-    for (int i = 0; i < num_inputs; ++i) {
-      Type arg_type = func_type.getInput(i);
-      if (getElementTypeOrSelf(arg_type).isa<TF::VariantType>()) {
-        arg_type = UnrankedTensorType::get(
-            getElementTypeOrSelf(op.getOperand(i).getType()));
-      }
-      updated_argument_types.push_back(arg_type);
-    }
+    for (auto it : llvm::zip(func_type.getInputs(), op.getOperands()))
+      updated_argument_types.push_back(
+          VariantToUnrankedTensorType(std::get<0>(it), std::get<1>(it)));
 
-    // For each result type in function's results, change it to unranked tensor
-    // type if it's a variant type.
+    // Change all DT_VARIANT result types in function results to unranked tensor
+    // type with element type derived from the corresponding input operand. This
+    // is correct because while body's inputs and results have the same type.
     SmallVector<Type, 8> updated_result_types;
     updated_result_types.reserve(num_results);
-    for (int i = 0; i < num_results; ++i) {
-      Type result_type = func_type.getResult(i);
-      if (getElementTypeOrSelf(result_type).isa<TF::VariantType>()) {
-        // Here update the variant type with the unranked tensor type derived
-        // from the corresponding input operand. This is correct because while
-        // body's inputs and results have the same type.
-        result_type = UnrankedTensorType::get(
-            getElementTypeOrSelf(op.getOperand(i).getType()));
-      }
-      updated_result_types.push_back(result_type);
-    }
+    for (auto it : llvm::zip(func_type.getResults(), op.getOperands()))
+      updated_result_types.push_back(
+          VariantToUnrankedTensorType(std::get<0>(it), std::get<1>(it)));
 
     // Change `func`'s argument type to `unranked_argument_types`. If it
     // return types contain a `DT_VARIANT`, change it to the unranked type
     // derived from the corresponding argument.
     func.setType(FunctionType::get(updated_argument_types, updated_result_types,
-                                   context));
+                                   op.getContext()));
 
     // Change the argument type for the first block.
-    Block &body_first_bb = func.front();
-    for (int i = 0; i < body_first_bb.getNumArguments(); ++i) {
-      body_first_bb.getArgument(i).setType(updated_argument_types[i]);
-    }
+    llvm::for_each(func.getArguments(), [&](BlockArgument &arg) {
+      arg.setType(updated_argument_types[arg.getArgNumber()]);
+    });
   }
   return success();
 }
@@ -806,25 +795,60 @@ struct ConvertWhile : public OpConversionPattern<TF::WhileOp> {
       ConversionPatternRewriter &rewriter) const override {
     llvm::SmallVector<Type, 8> result_types;
     result_types.reserve(op.getNumOperands());
-    for (int i = 0, e = operands.size(); i != e; ++i) {
-      Type result_ty = op.getResult(i).getType();
+    // Change all DT_VARIANT result types to unranked tensor type.
+    for (auto it : llvm::zip(op.getResultTypes(), operands))
+      result_types.push_back(
+          VariantToUnrankedTensorType(std::get<0>(it), std::get<1>(it)));
 
-      // If we notice the result type is a DT_VARIANT, we change the
-      // corresponding result type to unranked tensor type.
-      if (getElementTypeOrSelf(result_ty).isa<TF::VariantType>()) {
-        Type element_ty = getElementTypeOrSelf(operands[i].getType());
-        result_ty = UnrankedTensorType::get(element_ty);
+    // Create a new while op with new operands and updated result types.
+    auto converted = rewriter.create<TF::WhileOp>(op.getLoc(), result_types,
+                                                  operands, op.getAttrs());
+    converted.removeAttr("T");
+    UpdateFunctionTypes(converted);
+
+    rewriter.replaceOp(op, converted.getResults());
+    return success();
+  }
+};
+
+struct ConvertWhileRegion : public OpConversionPattern<TF::WhileRegionOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      TF::WhileRegionOp op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const override {
+    llvm::SmallVector<Type, 8> result_types;
+    result_types.reserve(op.getNumOperands());
+    // Change all DT_VARIANT result types to unranked tensor type.
+    for (auto it : llvm::zip(op.getResultTypes(), operands))
+      result_types.push_back(
+          VariantToUnrankedTensorType(std::get<0>(it), std::get<1>(it)));
+
+    // Create a new while op with new operands and updated result types.
+    auto converted = rewriter.create<TF::WhileRegionOp>(
+        op.getLoc(), result_types, operands, op.getAttrs());
+
+    // Inline the regions from the old while into the new one, and apply
+    // signature conversion to inlined region.
+    for (auto it : llvm::zip(op.getRegions(), converted.getRegions())) {
+      Region &old_region = *std::get<0>(it);
+      Region &new_region = *std::get<1>(it);
+
+      Block &entry = old_region.front();
+      // Build signature conversion for the region.
+      TypeConverter::SignatureConversion signature_conversion(operands.size());
+      for (auto it : llvm::zip(entry.getArguments(), operands)) {
+        BlockArgument arg = std::get<0>(it);
+        signature_conversion.addInputs(
+            arg.getArgNumber(),
+            VariantToUnrankedTensorType(arg.getType(), std::get<1>(it)));
       }
-      result_types.push_back(result_ty);
+
+      rewriter.inlineRegionBefore(old_region, new_region, new_region.end());
+      rewriter.applySignatureConversion(&new_region, signature_conversion);
     }
 
-    // Clone original while op with new operands and updated result types.
-    auto cloned = rewriter.create<TF::WhileOp>(op.getLoc(), result_types,
-                                               operands, op.getAttrs());
-    cloned.removeAttr("T");
-    UpdateFunctionTypes(cloned);
-
-    rewriter.replaceOp(op, cloned.getResults());
+    rewriter.replaceOp(op, converted.getResults());
     return success();
   }
 };
@@ -838,7 +862,8 @@ LogicalResult LowerStaticTensorListPass::RewriteFunction(
   // TensorFlow operations that doesn't have operands and results of type
   // variant are legal. Here, we don't distinguish between variants encoding
   // TensorList or some other type as that information is not available here.
-  // This constraint should be relaxed to support other variant types in TFLite.
+  // Partial legalization is used below to still allow ops with variant types
+  // still.
   auto is_legal = [](Operation *op) {
     auto is_not_variant = [](Type ty) {
       return !ty.cast<ShapedType>().getElementType().isa<TF::VariantType>();
@@ -867,13 +892,14 @@ LogicalResult LowerStaticTensorListPass::RewriteFunction(
   target.addLegalOp<TFL::BidirectionalSequenceLSTMOp>();
 
   OwningRewritePatternList patterns;
-  populateWithGenerated(context, &patterns);
+  populateWithGenerated(context, patterns);
   patterns.insert<ConvertConst, ConvertEmptyTensorList, ConvertIdentity,
                   ConvertTensorListGetItem, ConvertTensorListLength,
                   ConvertTensorListPushBack, ConvertTensorListReserve,
                   ConvertTensorListSetItem, ConvertTensorListStack,
-                  ConvertTensorListResize, ConvertWhile>(context);
-  return applyFullConversion(func, target, patterns);
+                  ConvertTensorListResize, ConvertWhile, ConvertWhileRegion>(
+      context);
+  return applyPartialConversion(func, target, std::move(patterns));
 }
 
 void LowerStaticTensorListPass::runOnOperation() {

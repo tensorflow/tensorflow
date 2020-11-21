@@ -26,22 +26,35 @@ limitations under the License.
 #include "tensorflow/core/profiler/rpc/profiler_service_impl.h"
 
 namespace tensorflow {
+namespace profiler {
 
 void ProfilerServer::StartProfilerServer(int32 port) {
-  std::string server_address = absl::StrCat("0.0.0.0:", port);
+  VLOG(1) << "Starting profiler server.";
+  std::string server_address = absl::StrCat("[::]:", port);
   service_ = CreateProfilerService();
   ::grpc::ServerBuilder builder;
-  builder.AddListeningPort(server_address, ::grpc::InsecureServerCredentials());
+
+  int selected_port = 0;
+  builder.AddListeningPort(server_address, ::grpc::InsecureServerCredentials(),
+                           &selected_port);
   builder.RegisterService(service_.get());
   server_ = builder.BuildAndStart();
-  LOG(INFO) << "Profiling Server listening on " << server_address;
+  if (!selected_port) {
+    LOG(ERROR) << "Unable to bind to " << server_address
+               << " selected port:" << selected_port;
+  } else {
+    LOG(INFO) << "Profiler server listening on " << server_address
+              << " selected port:" << selected_port;
+  }
 }
 
 ProfilerServer::~ProfilerServer() {
   if (server_) {
     server_->Shutdown();
     server_->Wait();
+    LOG(INFO) << "Profiler server was shut down";
   }
 }
 
+}  // namespace profiler
 }  // namespace tensorflow

@@ -1,3 +1,5 @@
+load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
@@ -29,9 +31,12 @@ tf_cuda_library(
         ":context",
         ":eager_operation",
         ":execute",
+        ":placement_utils",
         ":tensor_handle",
         "//tensorflow/c:c_api_internal",
         "//tensorflow/c:tf_tensor_internal",
+        "//tensorflow/c/eager:abstract_function",
+        "//tensorflow/core/platform:errors",
     ],
     alwayslink = 1,
 )
@@ -74,13 +79,13 @@ tf_cuda_library(
         ":kernel_and_device",
         "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/c:tf_tensor_internal",
-        "//tensorflow/c/eager:context_interface",
-        "//tensorflow/c/eager:tensor_handle_interface",
-        "//tensorflow/c/eager:operation_interface",
-        "//tensorflow/c/experimental/saved_model/core:saved_model_api",
-        "//tensorflow/c/experimental/saved_model/core:tf_saved_model_impl",
+        "//tensorflow/c/eager:immediate_execution_context",
+        "//tensorflow/c/eager:immediate_execution_distributed_manager",
+        "//tensorflow/c/eager:immediate_execution_tensor_handle",
+        "//tensorflow/c/eager:immediate_execution_operation",
         "//tensorflow/core/distributed_runtime:rendezvous_mgr_interface",
         "//tensorflow/core/distributed_runtime:worker_env",
+        "//tensorflow/core/nccl:collective_communicator",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -105,6 +110,47 @@ tf_cuda_library(
     }),
 )
 
+tf_cuda_library(
+    name = "context_distributed_manager",
+    srcs = [
+        "context_distributed_manager.cc",
+    ],
+    hdrs = [
+        "context_distributed_manager.h",
+    ],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":context",
+        ":eager_executor",
+        "//tensorflow/c/eager:immediate_execution_context",
+        "//tensorflow/c/eager:immediate_execution_distributed_manager",
+        "//tensorflow/core/distributed_runtime:rendezvous_mgr_interface",
+        "//tensorflow/core/distributed_runtime:worker_env",
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:core_cpu_lib",
+            "//tensorflow/core:framework",
+            "//tensorflow/core:framework_internal",
+            "//tensorflow/core:lib",
+            "//tensorflow/core:lib_internal",
+            "//tensorflow/core:protos_all_cc",
+            "//tensorflow/core:session_options",
+            "//tensorflow/core/distributed_runtime:worker_cache",
+            "//tensorflow/core/distributed_runtime:worker_interface",
+            "//tensorflow/core/distributed_runtime:remote_device",
+            "//tensorflow/core/distributed_runtime:server_lib",
+            "//tensorflow/core/distributed_runtime:worker_session",
+            "//tensorflow/core/distributed_runtime/eager:eager_client",
+            "//tensorflow/core/distributed_runtime/eager:cluster_function_library_runtime",
+            "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
+            "//tensorflow/core/distributed_runtime/eager:remote_mgr",
+        ],
+    }),
+)
+
 tf_cc_test(
     name = "context_test",
     srcs = ["context_test.cc"],
@@ -113,9 +159,27 @@ tf_cc_test(
         ":core",
         ":eager_operation",
         ":execute",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/kernels:cast_op",
+    ],
+)
+
+tf_cc_test(
+    name = "placement_test",
+    srcs = ["placement_test.cc"],
+    deps = [
+        ":context",
+        ":core",
+        ":eager_operation",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 
@@ -139,12 +203,15 @@ tf_cuda_library(
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
         "//tensorflow/c:tf_tensor_internal",
-        "//tensorflow/c/eager:operation_interface",
-        "//tensorflow/c/eager:tensor_handle_interface",
+        "//tensorflow/c/eager:immediate_execution_operation",
+        "//tensorflow/c/eager:abstract_operation",
+        "//tensorflow/c/eager:immediate_execution_tensor_handle",
+        "//tensorflow/c/eager:abstract_tensor_handle",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:platform_port",
+        "//tensorflow/core/util:abstract_stack_trace",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -213,7 +280,7 @@ tf_cuda_library(
             "@com_google_absl//absl/strings",
             "@com_google_absl//absl/types:variant",
             "//tensorflow/c:tf_tensor_internal",
-            "//tensorflow/c/eager:tensor_handle_interface",
+            "//tensorflow/c/eager:immediate_execution_tensor_handle",
             "//tensorflow/core:core_cpu_lib",
             "//tensorflow/core:framework",
             "//tensorflow/core:framework_internal",
@@ -316,7 +383,7 @@ tf_cuda_library(
         ],
         "//tensorflow:windows": KERNEL_AND_DEVICE_DEPS,
         "//conditions:default": KERNEL_AND_DEVICE_DEPS + [
-            "//tensorflow/compiler/jit:xla_kernel_creator_util",
+            "//tensorflow/compiler/jit:xla_kernel_creator",
         ],
     }),
 )
@@ -422,10 +489,11 @@ cc_library(
     copts = tf_copts(allow_exceptions = True),
     deps = [
         ":eager_op_rewrite_registry",
+        "//tensorflow/core:all_kernels",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
-        "//tensorflow/core:mkl_graph_util",
+        "//tensorflow/core/graph:mkl_graph_util",
     ],
     alwayslink = 1,
 )
@@ -485,6 +553,7 @@ cc_library(
         ":eager_op_rewrite_registry",
         ":eager_operation",
         ":kernel_and_device",
+        ":placement_utils",
         ":tensor_handle",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
@@ -496,6 +565,8 @@ cc_library(
         "//tensorflow/c:tf_tensor_internal",
         "//tensorflow/compiler/jit:common",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/c/eager:abstract_function",
+        "//tensorflow/core/platform:errors",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -511,6 +582,35 @@ cc_library(
             "//tensorflow/core/distributed_runtime/eager:eager_client",
             "//tensorflow/core/distributed_runtime/eager:remote_execute_node",
             "//tensorflow/core/distributed_runtime/eager:remote_copy_node",
+        ],
+    }),
+)
+
+tf_cuda_library(
+    name = "placement_utils",
+    srcs = [
+        "placement_utils.cc",
+    ],
+    hdrs = [
+        "placement_utils.h",
+    ],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":context",
+        ":attr_builder",
+        ":eager_operation",
+        "//tensorflow/c/eager:immediate_execution_tensor_handle",
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:core_cpu_lib",
+            "//tensorflow/core:framework",
+            "//tensorflow/core:framework_internal",
+            "//tensorflow/core:lib",
+            "//tensorflow/core:lib_internal",
+            "//tensorflow/core:protos_all_cc",
         ],
     }),
 )

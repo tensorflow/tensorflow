@@ -84,7 +84,6 @@ def squeeze_or_expand_dimensions(y_pred, y_true=None, sample_weight=None):
   if sample_weight is None:
     return y_pred, y_true
 
-  sample_weight = ops.convert_to_tensor(sample_weight)
   weights_shape = sample_weight.shape
   weights_rank = weights_shape.ndims
   if weights_rank == 0:  # If weights is scalar, do nothing.
@@ -147,7 +146,7 @@ def scale_losses_by_sample_weight(losses, sample_weight):
 
 @tf_contextlib.contextmanager
 def check_per_example_loss_rank(per_example_loss):
-  """Context manager that checks that the rank of per_example_loss is atleast 1.
+  """Context manager that checks that the rank of per_example_loss is at least 1.
 
   Args:
     per_example_loss: Per example loss tensor.
@@ -184,7 +183,7 @@ def add_loss(loss, loss_collection=ops.GraphKeys.LOSSES):
     loss_collection: Optional collection to add the loss to.
   """
   # Since we have no way of figuring out when a training iteration starts or
-  # ends, holding on to a loss when executing eagerly is indistingishable from
+  # ends, holding on to a loss when executing eagerly is indistinguishable from
   # leaking memory. We instead leave the collection empty.
   if loss_collection and not context.executing_eagerly():
     ops.add_to_collection(loss_collection, loss)

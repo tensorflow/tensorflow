@@ -105,7 +105,7 @@ class ResourceOpKernel : public OpKernel {
     if (has_resource_type_) {
       OP_REQUIRES_OK(context, MakeResourceHandleToOutput(
                                   context, 0, cinfo_.container(), cinfo_.name(),
-                                  MakeTypeIndex<T>()));
+                                  TypeIndex::Make<T>()));
     } else {
       context->set_output_ref(0, &mu_, handle_.AccessTensor(context));
     }

@@ -72,7 +72,7 @@ Status HostTensorsToBorrowingLiteralTuple(absl::Span<const Tensor> host_tensors,
   buf_ptrs.reserve(host_tensors.size());
   std::vector<xla::Shape> tensor_shapes(host_tensors.size());
 
-  for (int i = 0; i < host_tensors.size(); i++) {
+  for (int i = 0, end = host_tensors.size(); i < end; i++) {
     // Validate runtime shapes and fail if it doesn't match the contract.
     const Tensor* tensor = &host_tensors[i];
     buf_ptrs.emplace_back(static_cast<const char*>(DMAHelper::base(tensor)));

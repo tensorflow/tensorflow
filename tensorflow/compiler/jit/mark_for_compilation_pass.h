@@ -50,15 +50,7 @@ class MarkForCompilationPass : public GraphOptimizationPass {
   friend class MarkForCompilationPassTestHelper;
 };
 
-// Returns true iff 'ndef' is a call to a function that is compilable.  A
-// function is compilable iff every operator in the function body is
-// compilable. If 'ndef' is not compilable and 'uncompilable_node_info' is not
-// null, we will populate 'uncompilable_node_info' with uncompilable node info.
-bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef,
-                  RecursiveCompilabilityChecker::UncompilableNodesMap*
-                      uncompilable_node_info = nullptr);
-
-absl::flat_hash_map<string, std::vector<string>>* GetWhitelistTable();
+absl::flat_hash_map<string, std::vector<string>>* GetAllowlistTable();
 
 namespace testing {
 // DO NOT USE IN PRODUCTION.
@@ -66,8 +58,8 @@ namespace testing {
 // Resets some internal state to let us write reliable unit tests.
 void ResetClusterSequenceNumber();
 
-// Return a list of operation that we choose not to put into the whitelist.
-absl::flat_hash_set<string> GetKnownXLAWhitelistOp();
+// Return a list of operation that we choose not to put into the allowlist.
+absl::flat_hash_set<string> GetKnownXLAAllowlistOp();
 }  // namespace testing
 }  // namespace tensorflow
 

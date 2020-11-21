@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Python command line interface for running TOCO."""
+"""Python command line interface for converting TF models to TFLite models."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -28,12 +28,13 @@ import six
 from six.moves import zip
 
 from tensorflow.lite.python import lite
-from tensorflow.lite.python import lite_constants
+from tensorflow.lite.python.convert import register_custom_opdefs
 from tensorflow.lite.toco import toco_flags_pb2 as _toco_flags_pb2
 from tensorflow.lite.toco.logging import gen_html
-from tensorflow.python import keras
 from tensorflow.python import tf2
+from tensorflow.python.framework import dtypes
 from tensorflow.python.platform import app
+from tensorflow.python.util import keras_deps
 
 
 def _parse_array(values, type_fn=str):
@@ -62,14 +63,17 @@ def _parse_inference_type(value, flag):
     ValueError: Unsupported value.
   """
   if value == "FLOAT":
-    return lite_constants.FLOAT
-  if value == "QUANTIZED_UINT8":
-    return lite_constants.QUANTIZED_UINT8
-  raise ValueError("Unsupported value for --{0}. Only FLOAT and "
-                   "QUANTIZED_UINT8 are supported.".format(flag))
+    return dtypes.float32
+  if value == "INT8":
+    return dtypes.int8
+  if value == "UINT8" or value == "QUANTIZED_UINT8":
+    return dtypes.uint8
+  raise ValueError(
+      "Unsupported value for `{}` flag. Expected FLOAT, INT8 or UINT8, instead "
+      "got {}.".format(flag, value))
 
 
-def _get_toco_converter(flags):
+def _get_tflite_converter(flags):
   """Makes a TFLiteConverter object based on the flags provided.
 
   Args:
@@ -126,8 +130,12 @@ def _convert_tf1_model(flags):
   Raises:
     ValueError: Invalid flags.
   """
+  # Register custom opdefs before converter object creation.
+  if flags.custom_opdefs:
+    register_custom_opdefs(_parse_array(flags.custom_opdefs))
+
   # Create converter.
-  converter = _get_toco_converter(flags)
+  converter = _get_tflite_converter(flags)
   if flags.inference_type:
     converter.inference_type = _parse_inference_type(flags.inference_type,
                                                      "inference_type")
@@ -144,10 +152,10 @@ def _convert_tf1_model(flags):
 
     # In quantized inference, mean_value has to be integer so that the real
     # value 0.0 is exactly representable.
-    if converter.inference_type == lite_constants.QUANTIZED_UINT8:
-      mean_values = _parse_array(flags.mean_values, type_fn=int)
-    else:
+    if converter.inference_type == dtypes.float32:
       mean_values = _parse_array(flags.mean_values, type_fn=float)
+    else:
+      mean_values = _parse_array(flags.mean_values, type_fn=int)
     quant_stats = list(zip(mean_values, std_dev_values))
     if ((not flags.input_arrays and len(input_arrays) > 1) or
         (len(input_arrays) != len(quant_stats))):
@@ -174,8 +182,7 @@ def _convert_tf1_model(flags):
 
   if flags.allow_custom_ops:
     converter.allow_custom_ops = flags.allow_custom_ops
-  if flags.custom_opdefs:
-    converter._custom_opdefs = _parse_array(flags.custom_opdefs)  # pylint: disable=protected-access
+
   if flags.target_ops:
     ops_set_options = lite.OpsSet.get_options()
     converter.target_spec.supported_ops = set()
@@ -187,13 +194,13 @@ def _convert_tf1_model(flags):
 
   if flags.post_training_quantize:
     converter.optimizations = [lite.Optimize.DEFAULT]
-    if converter.inference_type == lite_constants.QUANTIZED_UINT8:
+    if converter.inference_type != dtypes.float32:
       print("--post_training_quantize quantizes a graph of inference_type "
-            "FLOAT. Overriding inference type QUANTIZED_UINT8 to FLOAT.")
-      converter.inference_type = lite_constants.FLOAT
+            "FLOAT. Overriding inference_type to FLOAT.")
+      converter.inference_type = dtypes.float32
 
   if flags.quantize_to_float16:
-    converter.target_spec.supported_types = [lite.constants.FLOAT16]
+    converter.target_spec.supported_types = [dtypes.float16]
     if not flags.post_training_quantize:
       print("--quantize_to_float16 will only take effect with the "
             "--post_training_quantize flag enabled.")
@@ -227,7 +234,7 @@ def _convert_tf2_model(flags):
   if flags.saved_model_dir:
     converter = lite.TFLiteConverterV2.from_saved_model(flags.saved_model_dir)
   elif flags.keras_model_file:
-    model = keras.models.load_model(flags.keras_model_file)
+    model = keras_deps.get_load_model_function()(flags.keras_model_file)
     converter = lite.TFLiteConverterV2.from_keras_model(model)
 
   if flags.experimental_new_converter is not None:
@@ -352,14 +359,15 @@ def _get_tf1_flags(parser):
   parser.add_argument(
       "--inference_type",
       type=str.upper,
-      choices=["FLOAT", "QUANTIZED_UINT8"],
-      help="Target data type of real-number arrays in the output file.")
+      default="FLOAT",
+      help=("Target data type of real-number arrays in the output file. "
+            "Must be either FLOAT, INT8 or UINT8."))
   parser.add_argument(
       "--inference_input_type",
       type=str.upper,
-      choices=["FLOAT", "QUANTIZED_UINT8"],
       help=("Target data type of real-number input arrays. Allows for a "
-            "different type for input arrays in the case of quantization."))
+            "different type for input arrays in the case of quantization. "
+            "Must be either FLOAT, INT8 or UINT8."))
 
   # Input and output arrays flags.
   parser.add_argument(
@@ -587,7 +595,7 @@ def _get_parser(use_v2_converter):
       action=_ParseExperimentalNewConverter,
       nargs="?",
       help=("Experimental flag, subject to change. Enables MLIR-based "
-            "conversion instead of TOCO conversion."))
+            "conversion instead of TOCO conversion. (default True)"))
   return parser
 
 

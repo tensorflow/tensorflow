@@ -29,7 +29,7 @@ TEST(TocoCmdlineFlagsTest, DefaultValue) {
   // TF flag parsing lib is relaying on this invariant.
   const char* args[] = {"toco", nullptr};
 
-  string message;
+  std::string message;
   ParsedTocoFlags result_flags;
 
   EXPECT_TRUE(ParseTocoFlagsFromCommandLineFlags(
@@ -41,7 +41,7 @@ TEST(TocoCmdlineFlagsTest, ParseFlags) {
   int argc = 2;
   const char* args[] = {"toco", "--allow_dynamic_tensors=false", nullptr};
 
-  string message;
+  std::string message;
   ParsedTocoFlags result_flags;
 
   EXPECT_TRUE(ParseTocoFlagsFromCommandLineFlags(

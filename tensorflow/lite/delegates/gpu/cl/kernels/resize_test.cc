@@ -51,8 +51,10 @@ TEST_F(OpenCLOperationTest, ResizeBilinearAligned) {
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       Resize operation = CreateResize(op_def, attr);
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 4, 4, 1), &dst_tensor));
+      ASSERT_OK(
+          ExecuteGPUOperation(src_tensor, creation_context_,
+                              absl::make_unique<Resize>(std::move(operation)),
+                              BHWC(1, 4, 4, 1), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
                   Pointwise(FloatNear(eps),
                             {0.0f, 0.666667f, 1.33333f, 2.0f, 1.0f, 1.66667f,
@@ -82,8 +84,10 @@ TEST_F(OpenCLOperationTest, ResizeBilinearNonAligned) {
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       Resize operation = CreateResize(op_def, attr);
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 4, 4, 1), &dst_tensor));
+      ASSERT_OK(
+          ExecuteGPUOperation(src_tensor, creation_context_,
+                              absl::make_unique<Resize>(std::move(operation)),
+                              BHWC(1, 4, 4, 1), &dst_tensor));
       EXPECT_THAT(
           dst_tensor.data,
           Pointwise(FloatNear(eps),
@@ -114,8 +118,10 @@ TEST_F(OpenCLOperationTest, ResizeBilinearWithoutHalfPixel) {
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       Resize operation = CreateResize(op_def, attr);
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 3, 3, 1), &dst_tensor));
+      ASSERT_OK(
+          ExecuteGPUOperation(src_tensor, creation_context_,
+                              absl::make_unique<Resize>(std::move(operation)),
+                              BHWC(1, 3, 3, 1), &dst_tensor));
       EXPECT_THAT(
           dst_tensor.data,
           Pointwise(FloatNear(eps), {1.0f, 1.666666f, 2.0f, 2.333333f, 3.0f,
@@ -145,8 +151,10 @@ TEST_F(OpenCLOperationTest, ResizeBilinearWithHalfPixel) {
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       Resize operation = CreateResize(op_def, attr);
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 3, 3, 1), &dst_tensor));
+      ASSERT_OK(
+          ExecuteGPUOperation(src_tensor, creation_context_,
+                              absl::make_unique<Resize>(std::move(operation)),
+                              BHWC(1, 3, 3, 1), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
                   Pointwise(FloatNear(eps), {1.0f, 1.5f, 2.0f, 2.0f, 2.5f, 3.0f,
                                              3.0f, 3.5f, 4.0f}));
@@ -161,6 +169,7 @@ TEST_F(OpenCLOperationTest, ResizeNearest) {
 
   Resize2DAttributes attr;
   attr.align_corners = false;
+  attr.half_pixel_centers = false;
   attr.new_shape = HW(2, 4);
   attr.type = SamplingType::NEAREST;
 
@@ -174,11 +183,77 @@ TEST_F(OpenCLOperationTest, ResizeNearest) {
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       Resize operation = CreateResize(op_def, attr);
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 2, 4, 1), &dst_tensor));
+      ASSERT_OK(
+          ExecuteGPUOperation(src_tensor, creation_context_,
+                              absl::make_unique<Resize>(std::move(operation)),
+                              BHWC(1, 2, 4, 1), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
                   Pointwise(FloatNear(eps),
                             {1.0f, 1.0f, 2.0f, 2.0f, 1.0f, 1.0f, 2.0f, 2.0f}));
+    }
+  }
+}
+
+TEST_F(OpenCLOperationTest, ResizeNearestAlignCorners) {
+  TensorFloat32 src_tensor;
+  src_tensor.shape = BHWC(1, 2, 2, 1);
+  src_tensor.data = {3.0f, 6.0f, 9.0f, 12.0f};
+
+  Resize2DAttributes attr;
+  attr.align_corners = true;
+  attr.half_pixel_centers = false;
+  attr.new_shape = HW(3, 3);
+  attr.type = SamplingType::NEAREST;
+
+  for (auto storage : env_.GetSupportedStorages()) {
+    for (auto precision : env_.GetSupportedPrecisions()) {
+      const float eps = precision == CalculationsPrecision::F32 ? 1e-5f : 1e-2f;
+      OperationDef op_def;
+      op_def.precision = precision;
+      auto data_type = DeduceDataTypeFromPrecision(precision);
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
+      TensorFloat32 dst_tensor;
+      Resize operation = CreateResize(op_def, attr);
+      ASSERT_OK(
+          ExecuteGPUOperation(src_tensor, creation_context_,
+                              absl::make_unique<Resize>(std::move(operation)),
+                              BHWC(1, 3, 3, 1), &dst_tensor));
+      EXPECT_THAT(dst_tensor.data,
+                  Pointwise(FloatNear(eps), {3.0f, 6.0f, 6.0f, 9.0f, 12.0f,
+                                             12.0f, 9.0f, 12.0f, 12.0f}));
+    }
+  }
+}
+
+TEST_F(OpenCLOperationTest, ResizeNearestHalfPixelCenters) {
+  TensorFloat32 src_tensor;
+  src_tensor.shape = BHWC(1, 2, 2, 1);
+  src_tensor.data = {3.0f, 6.0f, 9.0f, 12.0f};
+
+  Resize2DAttributes attr;
+  attr.align_corners = false;
+  attr.half_pixel_centers = true;
+  attr.new_shape = HW(3, 3);
+  attr.type = SamplingType::NEAREST;
+
+  for (auto storage : env_.GetSupportedStorages()) {
+    for (auto precision : env_.GetSupportedPrecisions()) {
+      const float eps = precision == CalculationsPrecision::F32 ? 1e-5f : 1e-2f;
+      OperationDef op_def;
+      op_def.precision = precision;
+      auto data_type = DeduceDataTypeFromPrecision(precision);
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
+      TensorFloat32 dst_tensor;
+      Resize operation = CreateResize(op_def, attr);
+      ASSERT_OK(
+          ExecuteGPUOperation(src_tensor, creation_context_,
+                              absl::make_unique<Resize>(std::move(operation)),
+                              BHWC(1, 3, 3, 1), &dst_tensor));
+      EXPECT_THAT(dst_tensor.data,
+                  Pointwise(FloatNear(eps), {3.0f, 6.0f, 6.0f, 9.0f, 12.0f,
+                                             12.0f, 9.0f, 12.0f, 12.0f}));
     }
   }
 }

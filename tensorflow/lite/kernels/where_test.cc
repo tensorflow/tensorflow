@@ -12,13 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <stdint.h>
+
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace {
@@ -48,6 +50,30 @@ class IntegerWhereOpModel : public BaseWhereOpModel {
 
   std::vector<int64_t> GetOutput() { return ExtractVector<int64_t>(output_); }
 };
+
+template <typename T1>
+class ConstInputWhereOpModel : public SingleOpModel {
+ public:
+  ConstInputWhereOpModel(T1 constant_values, const TensorData& output) {
+    input_ = AddConstInput(GetTensorType<T1>(), {constant_values}, {});
+    output_ = AddOutput(output);
+    SetBuiltinOp(BuiltinOperator_WHERE, BuiltinOptions_WhereOptions,
+                 CreateWhereOptions(builder_).Union());
+    BuildInterpreter({{}});
+  }
+
+  int input() { return input_; }
+  std::vector<int64_t> GetOutput() { return ExtractVector<int64_t>(output_); }
+
+ protected:
+  int input_;
+  int output_;
+};
+
+TEST(WhereOpTest, ScalarValueFail) {
+  ConstInputWhereOpModel<bool> m(false, {TensorType_INT64, {}});
+  EXPECT_EQ(m.InvokeUnchecked(), kTfLiteError);
+}
 
 TEST(WhereOpTest, SelectFromVectorNoResult) {
   IntegerWhereOpModel m({TensorType_BOOL, {3}}, {TensorType_INT64, {}});

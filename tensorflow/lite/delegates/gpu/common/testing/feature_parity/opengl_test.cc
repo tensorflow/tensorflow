@@ -15,12 +15,14 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/delegates/gpu/common/testing/feature_parity/feature_parity.h"
 #include "tensorflow/lite/delegates/gpu/common/testing/feature_parity/utils.h"
 #include "tensorflow/lite/delegates/gpu/gl_delegate.h"
+#include "tensorflow/lite/interpreter.h"
 
 namespace tflite {
 

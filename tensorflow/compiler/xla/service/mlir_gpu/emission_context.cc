@@ -16,8 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/mlir_gpu/emission_context.h"
 
 #include "absl/strings/substitute.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
 namespace xla {
@@ -25,6 +28,8 @@ namespace mlir_gpu {
 
 EmissionContext::EmissionContext(std::unique_ptr<HloModule> module)
     : module_(std::move(module)), context_() {
+  context_.loadDialect<mlir::mhlo::MhloDialect, mlir::lmhlo::LmhloDialect,
+                       mlir::StandardOpsDialect>();
   error_handler_ = [](const ErrorMap& instructions_with_error,
                       HloModule* module) {
     std::set<const HloComputation*> computations_with_error;

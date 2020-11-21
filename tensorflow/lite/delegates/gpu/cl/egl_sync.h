@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
+
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
 namespace tflite {

@@ -32,6 +32,16 @@ TARGET=bluepill
 # TODO(b/143715361): downloading first to allow for parallel builds.
 readable_run make -f tensorflow/lite/micro/tools/make/Makefile TARGET=${TARGET} third_party_downloads
 
-# TODO(b/143286954): Run all the tests once they pass.
-readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile TARGET=${TARGET} kernel_add_test
+# check that the release build is ok.
+readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
+readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile TARGET=${TARGET} build BUILD_TYPE=release
 
+# Next, build w/o release so that we can run the tests and get additional
+# debugging info on failures.
+readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
+readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile TARGET=${TARGET} build
+
+# TODO(b/172939049): Using renode to run the tests is not currently integrated
+# with the Makefile.  So, we manually run the test script with the correct path
+# to the bluepill generated files.
+tensorflow/lite/micro/testing/test_bluepill_binary.sh tensorflow/lite/micro/tools/make/gen/bluepill_cortex-m3/bin/

@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import math
 
-from tensorflow.python.compat import compat
 from tensorflow.python.distribute import distribution_strategy_context as ds
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -89,7 +88,7 @@ def log_poisson_loss(targets, log_input, compute_full_loss=False, name=None):
     log_input = ops.convert_to_tensor(log_input, name="log_input")
     targets = ops.convert_to_tensor(targets, name="targets")
     try:
-      targets.get_shape().merge_with(log_input.get_shape())
+      targets.get_shape().assert_is_compatible_with(log_input.get_shape())
     except ValueError:
       raise ValueError(
           "log_input and targets must have the same shape (%s vs %s)" %
@@ -169,7 +168,7 @@ def sigmoid_cross_entropy_with_logits(  # pylint: disable=invalid-name
     logits = ops.convert_to_tensor(logits, name="logits")
     labels = ops.convert_to_tensor(labels, name="labels")
     try:
-      labels.get_shape().merge_with(logits.get_shape())
+      labels.get_shape().assert_is_compatible_with(logits.get_shape())
     except ValueError:
       raise ValueError("logits and labels must have the same shape (%s vs %s)" %
                        (logits.get_shape(), labels.get_shape()))
@@ -305,7 +304,7 @@ def weighted_cross_entropy_with_logits_v2(labels, logits, pos_weight,
     logits = ops.convert_to_tensor(logits, name="logits")
     labels = ops.convert_to_tensor(labels, name="labels")
     try:
-      labels.get_shape().merge_with(logits.get_shape())
+      labels.get_shape().assert_is_compatible_with(logits.get_shape())
     except ValueError:
       raise ValueError("logits and labels must have the same shape (%s vs %s)" %
                        (logits.get_shape(), labels.get_shape()))
@@ -428,6 +427,7 @@ def compute_average_loss(per_example_loss,
 
   with losses_util.check_per_example_loss_rank(per_example_loss):
     if sample_weight is not None:
+      sample_weight = ops.convert_to_tensor(sample_weight)
       per_example_loss = losses_util.scale_losses_by_sample_weight(
           per_example_loss, sample_weight)
     per_example_loss = math_ops.cast(per_example_loss, input_dtype)
@@ -509,15 +509,20 @@ def relu_layer(x, weights, biases, name=None):
     return nn_ops.relu(xw_plus_b, name=name)
 
 
-@tf_export("nn.swish")
+@tf_export("nn.silu", "nn.swish")
 @dispatch.add_dispatch_support
 @custom_gradient.custom_gradient
 def swish(features):
   # pylint: disable=g-doc-args
-  """Computes the Swish activation function: `x * sigmoid(x)`.
+  """Computes the SiLU or Swish activation function: `x * sigmoid(x)`.
 
-  Source: "Searching for Activation Functions" (Ramachandran et al. 2017)
-  https://arxiv.org/abs/1710.05941
+  The SiLU activation function was introduced in "Gaussian Error Linear Units
+  (GELUs)" [Hendrycks et al. 2016](https://arxiv.org/abs/1606.08415) and
+  "Sigmoid-Weighted Linear Units for Neural Network Function Approximation in
+  Reinforcement Learning"
+  [Elfwing et al. 2017](https://arxiv.org/abs/1702.03118) and was independently
+  discovered (and called swish) in "Searching for Activation Functions"
+  [Ramachandran et al. 2017](https://arxiv.org/abs/1710.05941)
 
   Args:
     features: A `Tensor` representing preactivation values.
@@ -654,6 +659,15 @@ def l2_normalize_v2(x, axis=None, epsilon=1e-12, name=None):
   """
   with ops.name_scope(name, "l2_normalize", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
+    if x.dtype.is_complex:
+      square_real = math_ops.square(math_ops.real(x))
+      square_imag = math_ops.square(math_ops.imag(x))
+      square_sum = math_ops.real(
+          math_ops.reduce_sum(square_real + square_imag, axis, keepdims=True))
+      x_inv_norm = math_ops.rsqrt(math_ops.maximum(square_sum, epsilon))
+      norm_real = math_ops.multiply(math_ops.real(x), x_inv_norm)
+      norm_imag = math_ops.multiply(math_ops.imag(x), x_inv_norm)
+      return math_ops.complex(norm_real, norm_imag, name=name)
     square_sum = math_ops.reduce_sum(math_ops.square(x), axis, keepdims=True)
     x_inv_norm = math_ops.rsqrt(math_ops.maximum(square_sum, epsilon))
     return math_ops.multiply(x, x_inv_norm, name=name)
@@ -1144,9 +1158,23 @@ def sufficient_statistics(x, axes, shift=None, keep_dims=None, name=None,
   an input that's optionally shifted. See:
   https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Computing_shifted_data
 
+  For example:
+  >>> t = [[1, 2, 3], [4, 5, 6]]
+  >>> sufficient_statistics(t, [1])
+  (<tf.Tensor: shape=(), dtype=int32, numpy=3>, <tf.Tensor: shape=(2,),
+  dtype=int32, numpy=array([ 6, 15], dtype=int32)>, <tf.Tensor: shape=(2,),
+  dtype=int32, numpy=array([14, 77], dtype=int32)>, None)
+  >>> sufficient_statistics(t, [-1])
+  (<tf.Tensor: shape=(), dtype=int32, numpy=3>, <tf.Tensor: shape=(2,),
+  dtype=int32, numpy=array([ 6, 15], dtype=int32)>, <tf.Tensor: shape=(2,),
+  dtype=int32, numpy=array([14, 77], dtype=int32)>, None)
+
   Args:
     x: A `Tensor`.
-    axes: Array of ints. Axes along which to compute mean and variance.
+    axes: Array of ints. Axes along which to compute mean and variance. As in
+      Python, the axes can also be negative numbers. A negative axis is
+      interpreted as counting from the end of the rank, i.e., axis +
+      rank(values)-th dimension.
     shift: A `Tensor` containing the value by which to shift the data for
       numerical stability, or `None` if no shift is to be performed. A shift
       close to the true mean provides the most numerically stable results.
@@ -1177,8 +1205,11 @@ def sufficient_statistics(x, axes, shift=None, keep_dims=None, name=None,
         counts *= x_shape.dims[d].value
       counts = constant_op.constant(counts, dtype=x.dtype)
     else:  # shape needs to be inferred at runtime.
+      # Normalize axes to be positive. Required for gather.
+      rank = array_ops.rank(x)
+      positive_axes = [axis + rank if axis < 0 else axis for axis in axes]
       x_dims = array_ops.gather(
-          math_ops.cast(array_ops.shape(x), x.dtype), axes)
+          math_ops.cast(array_ops.shape(x), x.dtype), positive_axes)
       counts = math_ops.reduce_prod(x_dims, name="count")
     if shift is not None:
       shift = ops.convert_to_tensor(shift, name="shift")
@@ -1498,7 +1529,7 @@ def batch_normalization(x,
       `tf.nn.moments(..., keepdims=False)` during training, or running averages
       thereof during inference.
 
-  See equation 11 in Algorithm 2 of source: 
+  See equation 11 in Algorithm 2 of source:
   [Batch Normalization: Accelerating Deep Network Training by
   Reducing Internal Covariate Shift; S. Ioffe, C. Szegedy]
   (http://arxiv.org/abs/1502.03167).
@@ -1554,7 +1585,7 @@ def fused_batch_norm(
   (http://arxiv.org/abs/1502.03167).
 
   Args:
-    x: Input `Tensor` of 4 dimensions.
+    x: Input `Tensor` of 4 or 5 dimensions.
     scale: A `Tensor` of 1 dimension for scaling.
     offset: A `Tensor` of 1 dimension for bias.
     mean: A `Tensor` of 1 dimension for population mean. The shape and meaning
@@ -1580,7 +1611,8 @@ def fused_batch_norm(
             Variance must be a `Tensor` of the same shape as scale containing
             the exponential running variance.
     epsilon: A small float number added to the variance of x.
-    data_format: The data format for x. Either "NHWC" (default) or "NCHW".
+    data_format: The data format for x. Support "NHWC" (default) or "NCHW" for
+                 4D tenors and "NDHWC" or "NCDHW" for 5D tensors.
     is_training: A bool value to specify if the operation is used for
                  training or inference.
     name: A name for this operation (optional).
@@ -1591,7 +1623,7 @@ def fused_batch_norm(
                             returned.
 
   Returns:
-    y: A 4D Tensor for the normalized, scaled, offsetted x.
+    y: A 4D or 5D Tensor for the normalized, scaled, offsetted x.
     running_mean: A 1D Tensor for the exponential running mean of x.
                   The output value is (1 - exponential_avg_factor) * mean +
                   exponential_avg_factor * batch_mean), where batch_mean
@@ -1607,16 +1639,11 @@ def fused_batch_norm(
       [Ioffe et al., 2015](http://proceedings.mlr.press/v37/ioffe15.html)
       ([pdf](http://proceedings.mlr.press/v37/ioffe15.pdf))
   """
-  if is_training and exponential_avg_factor == 1.0:
-    if (mean is not None) or (variance is not None):
-      raise ValueError("Both 'mean' and 'variance' must be None when "
-                       "is_training is True and "
-                       "exponential_avg_factor == 1.0.")
-  else:
-    if (mean is None) or (variance is None):
-      raise ValueError("Both 'mean' and 'variance' must be a 1D tensor when "
-                       "is_training is False or "
-                       "exponential_avg_factor != 1.0.")
+  if (not is_training or exponential_avg_factor != 1.0) and (
+      (mean is None) or (variance is None)):
+    raise ValueError("Both 'mean' and 'variance' must be a 1D tensor when "
+                     "is_training is False or "
+                     "exponential_avg_factor != 1.0.")
   x = ops.convert_to_tensor(x, name="input")
   scale = ops.convert_to_tensor(scale, name="scale")
   offset = ops.convert_to_tensor(offset, name="offset")
@@ -1630,31 +1657,18 @@ def fused_batch_norm(
   min_epsilon = 1.001e-5
   epsilon = epsilon if epsilon > min_epsilon else min_epsilon
 
-  if compat.forward_compatible(2020, 3, 6):
-    y, running_mean, running_var, _, _, _ = gen_nn_ops.fused_batch_norm_v3(
-        x,
-        scale,
-        offset,
-        mean,
-        variance,
-        epsilon=epsilon,
-        exponential_avg_factor=exponential_avg_factor,
-        data_format=data_format,
-        is_training=is_training,
-        name=name)
-    return y, running_mean, running_var
-  else:
-    y, running_mean, running_var, _, _, _ = gen_nn_ops.fused_batch_norm_v3(
-        x,
-        scale,
-        offset,
-        mean,
-        variance,
-        epsilon=epsilon,
-        data_format=data_format,
-        is_training=is_training,
-        name=name)
-    return y, running_mean, running_var
+  y, running_mean, running_var, _, _, _ = gen_nn_ops.fused_batch_norm_v3(
+      x,
+      scale,
+      offset,
+      mean,
+      variance,
+      epsilon=epsilon,
+      exponential_avg_factor=exponential_avg_factor,
+      data_format=data_format,
+      is_training=is_training,
+      name=name)
+  return y, running_mean, running_var
 
 
 @tf_export(v1=["nn.batch_norm_with_global_normalization"])

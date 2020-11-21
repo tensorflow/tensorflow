@@ -3,9 +3,18 @@ syntax = "proto3";
 package tensorflow.profiler;
 
 import "google/protobuf/any.proto";
+import "tensorflow/core/profiler/protobuf/diagnostics.proto";
 
 // Generic hardware bottleneck.
 message BottleneckAnalysis {
+  // Percentage of step time that is spent on input.
+  double input_percent = 7;
+  // Percentage of step time that is spent on output.
+  double output_percent = 8;
+  // Percentage of step time that is idle for non-I/O-related reason.
+  double idle_percent = 9;
+  // Percentage of step time that is spent on compute.
+  double compute_percent = 10;
   // Indicates if input is a bottleneck. Possible values:  "host", "device",
   // "both", or "unknown"
   string input_classification = 1;
@@ -21,6 +30,12 @@ message BottleneckAnalysis {
   string all_other_classification = 5;
   // A human-readable description of the all other overhead.
   string all_other_statement = 6;
+  // Indicates if device collective communication is a bottleneck. Possible
+  // values: "no", "moderate", "high".
+  string device_collectives_classification = 11;
+  // A human-readable description of the device collective communication
+  // overhead.
+  string device_collectives_statement = 12;
 }
 
 // Used for both step duration and Op duration.
@@ -51,6 +66,8 @@ message PerGenericStepDetails {
   double device_compute_ms = 6;
   // The device-to-device communication time (in ms).
   double device_to_device_ms = 7;
+  // The device time spent on collective communications (in ms).
+  double device_collectives_ms = 13;
   // The host-compute time (in ms).
   double host_compute_ms = 8;
   // The host-prepare time (in ms).
@@ -101,7 +118,7 @@ message InputPipelineAnalysisRecommendation {
   // An analysis of different types of bottlenecks. Can be unpacked into a
   // BottleneckAnalysis.
   google.protobuf.Any bottleneck_analysis = 2;
-  // A suggested of step to take next.
+  // A suggested step to take next.
   string summary_next_step = 3;
 }
 
@@ -120,6 +137,8 @@ message GenericStepTimeBreakdown {
   StepSummary device_compute_ms_summary = 4;
   // Summary of all device-to-device time as a part of step in ms.
   StepSummary device_to_device_ms_summary = 5;
+  // Summary of all device-collectives time as a part of step in ms.
+  StepSummary device_collectives_ms_summary = 12;
   // Summary of all host-compute time as a part of step in ms.
   StepSummary host_compute_ms_summary = 6;
   // Summary of all host-prepare time as a part of step in ms.
@@ -136,6 +155,14 @@ message InputPipelineAnalysisResult {
   StepSummary step_time_summary = 2;
   // Summary of all input-related stall as percentage of step duration.
   StepSummary input_percent_summary = 3;
+  // Percentage of step time that is waiting for input.
+  double input_percent = 11;
+  // Percentage of step time that is doing output.
+  double output_percent = 13;
+  // Percentage of step time that is idle for non-I/O-related reason.
+  double idle_percent = 14;
+  // Percentage of step time that is doing compute.
+  double compute_percent = 15;
   // Details of each step. Can be unpacked into a PerGenericStepDetails.
   repeated google.protobuf.Any step_details = 4;
   // The breakdown of the input processing time.
@@ -147,7 +174,7 @@ message InputPipelineAnalysisResult {
   // Breakdown of the step time. Can be unpacked into a
   // GenericStepTimeBreakdown.
   google.protobuf.Any step_time_breakdown = 8;
-  // Error messages.
-  repeated string error_messages = 10;
-  reserved 1;
+  // Error and warning messages for diagnosing profiling issues.
+  Diagnostics diagnostics = 12;
+  reserved 1, 10;
 }

@@ -24,6 +24,7 @@ from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.types import core
@@ -113,9 +114,9 @@ if _FAST_TENSOR_UTIL_AVAILABLE:
       dtypes.quint8.as_numpy_dtype:
           fast_tensor_util.AppendUInt8ArrayToTensorProto,
       dtypes.qint16.as_numpy_dtype:
-          fast_tensor_util.AppendInt8ArrayToTensorProto,
+          fast_tensor_util.AppendInt16ArrayToTensorProto,
       dtypes.quint16.as_numpy_dtype:
-          fast_tensor_util.AppendUInt8ArrayToTensorProto,
+          fast_tensor_util.AppendUInt16ArrayToTensorProto,
       dtypes.qint32.as_numpy_dtype:
           fast_tensor_util.AppendInt32ArrayToTensorProto,
       # NOTE(touts): Intentionally no way to feed a DT_BFLOAT16.
@@ -525,7 +526,7 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False,
     if nparray.size * nparray.itemsize >= (1 << 31):
       raise ValueError(
           "Cannot create a tensor proto whose content is larger than 2GB.")
-    tensor_proto.tensor_content = nparray.tostring()
+    tensor_proto.tensor_content = nparray.tobytes()
     return tensor_proto
 
   # If we were not given values as a numpy array, compute the proto_values
@@ -826,7 +827,12 @@ def constant_value(tensor, partial=False):  # pylint: disable=invalid-name
     TypeError: if tensor is not an ops.Tensor.
   """
   if isinstance(tensor, ops.EagerTensor):
-    return tensor.numpy()
+    try:
+      return tensor.numpy()
+    except errors_impl.UnimplementedError:
+      # Some EagerTensors may not implement .numpy/resolve, e.g. parallel
+      # tensors with multiple components on different devices.
+      return None
   if not is_tensor(tensor):
     return tensor
   if not isinstance(tensor, ops.Tensor):
@@ -859,7 +865,7 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
     ValueError: If the shape is rank-0 and is not statically known to be -1.
   """
   if isinstance(tensor, ops.EagerTensor):
-    return tensor_shape.as_shape(
+    return tensor_shape.TensorShape(
         [dim if dim != -1 else None for dim in tensor.numpy()])
 
   if tensor.get_shape().ndims == 0:

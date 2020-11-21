@@ -34,6 +34,7 @@ cc_library(
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs_with_reflection",
+        "//tensorflow/lite/schema:schema_utils",
     ],
 )
 

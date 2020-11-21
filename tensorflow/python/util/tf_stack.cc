@@ -63,6 +63,11 @@ struct FrameSummary {
   }
 
   bool operator!=(const FrameSummary& other) const { return !(*this == other); }
+
+  py::str toString() const {
+    return py::str("<FrameSummary file {}, line {} in {}>")
+        .format(filename, lineno, name);
+  }
 };
 
 std::vector<FrameSummary> ExtractStack(ssize_t limit, const py::list& mappers,
@@ -83,7 +88,8 @@ std::vector<FrameSummary> ExtractStack(ssize_t limit, const py::list& mappers,
   std::vector<FrameSummary> ret;
   // 16 is somewhat arbitrary, but TensorFlow stack traces tend to be deep.
   ret.reserve(limit < 0 ? 16 : static_cast<size_t>(limit));
-  for (; f != nullptr && (limit < 0 || ret.size() < limit); f = f->f_back) {
+  for (; f != nullptr && (limit < 0 || ret.size() < static_cast<size_t>(limit));
+       f = f->f_back) {
     const PyCodeObject* co = f->f_code;
     int lineno = PyFrame_GetLineNumber(const_cast<PyFrameObject*>(f));
     auto filename = py::reinterpret_borrow<py::str>(co->co_filename);
@@ -126,6 +132,11 @@ PYBIND11_MODULE(_tf_stack, m) {
       // For compatibility with the traceback module.
       .def("__eq__", &FrameSummary::operator==)
       .def("__ne__", &FrameSummary::operator!=)
+      .def("__hash__",
+           [](const FrameSummary& self) {
+             return py::hash(
+                 py::make_tuple(self.filename, self.lineno, self.name));
+           })
       .def("__getitem__",
            [](const FrameSummary& self, const py::object& index) -> py::object {
              return py::make_tuple(self.filename, self.lineno, self.name,
@@ -136,11 +147,7 @@ PYBIND11_MODULE(_tf_stack, m) {
              return py::iter(py::make_tuple(self.filename, self.lineno,
                                             self.name, self.line()));
            })
-      .def("__repr__",
-           [](const FrameSummary& self) {
-             return py::str("<FrameSummary file {}, line {} in {}>")
-                 .format(self.filename, self.lineno, self.name);
-           })
+      .def("__repr__", [](const FrameSummary& self) { return self.toString(); })
       .def("__len__", [](const FrameSummary&) { return 4; });
 
   py::bind_vector<std::vector<FrameSummary>>(m, "StackSummary",
@@ -156,7 +163,15 @@ PYBIND11_MODULE(_tf_stack, m) {
             }
             return self[eff_index];
           },
-          py::return_value_policy::reference_internal);
+          py::return_value_policy::reference_internal)
+      .def("__repr__", [](const std::vector<FrameSummary>& self) {
+        py::list frames;
+        for (const auto& frame : self) {
+          frames.append(frame.toString());
+        }
+        // "\n".join(frames)
+        return py::cast("\n").attr("join")(frames);
+      });
 
   m.def("extract_stack", [](const py::object& limit, const py::list& mappers,
                             const py::list& filters) {

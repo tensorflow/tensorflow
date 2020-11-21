@@ -14,17 +14,20 @@ License.
 ==============================================================================*/
 // Unit test for TFLite Lookup op.
 
+#include <stdint.h>
+
+#include <functional>
 #include <initializer_list>
-#include <iomanip>
+#include <memory>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
-#include "tensorflow/lite/kernels/register.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace {

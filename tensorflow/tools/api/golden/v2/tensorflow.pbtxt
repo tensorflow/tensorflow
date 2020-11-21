@@ -393,6 +393,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "types"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "uint16"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
@@ -670,7 +674,7 @@ tf_module {
   }
   member_method {
     name: "function"
-    argspec: "args=[\'func\', \'input_signature\', \'autograph\', \'experimental_implements\', \'experimental_autograph_options\', \'experimental_relax_shapes\', \'experimental_compile\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\', \'None\', \'None\', \'False\', \'None\'], "
+    argspec: "args=[\'func\', \'input_signature\', \'autograph\', \'jit_compile\', \'experimental_implements\', \'experimental_autograph_options\', \'experimental_relax_shapes\', \'experimental_compile\', \'experimental_follow_type_hints\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\', \'None\', \'None\', \'None\', \'False\', \'None\', \'None\'], "
   }
   member_method {
     name: "gather"
@@ -738,6 +742,10 @@ tf_module {
   }
   member_method {
     name: "init_scope"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "inside_function"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
@@ -826,7 +834,7 @@ tf_module {
   }
   member_method {
     name: "nondifferentiable_batch_function"
-    argspec: "args=[\'num_batch_threads\', \'max_batch_size\', \'batch_timeout_micros\', \'allowed_batch_sizes\', \'max_enqueued_batches\', \'autograph\'], varargs=None, keywords=None, defaults=[\'None\', \'10\', \'True\'], "
+    argspec: "args=[\'num_batch_threads\', \'max_batch_size\', \'batch_timeout_micros\', \'allowed_batch_sizes\', \'max_enqueued_batches\', \'autograph\', \'enable_large_batch_splitting\'], varargs=None, keywords=None, defaults=[\'None\', \'10\', \'True\', \'True\'], "
   }
   member_method {
     name: "norm"
@@ -871,6 +879,10 @@ tf_module {
   member_method {
     name: "py_function"
     argspec: "args=[\'func\', \'inp\', \'Tout\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "quantize_and_dequantize_v4"
+    argspec: "args=[\'input\', \'input_min\', \'input_max\', \'signed_input\', \'num_bits\', \'range_given\', \'round_mode\', \'narrow_range\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'8\', \'False\', \'HALF_TO_EVEN\', \'False\', \'-1\', \'None\'], "
   }
   member_method {
     name: "range"
@@ -1069,6 +1081,14 @@ tf_module {
     argspec: "args=[\'tensor\', \'indices\', \'updates\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "tensor_scatter_nd_max"
+    argspec: "args=[\'tensor\', \'indices\', \'updates\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "tensor_scatter_nd_min"
+    argspec: "args=[\'tensor\', \'indices\', \'updates\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "tensor_scatter_nd_sub"
     argspec: "args=[\'tensor\', \'indices\', \'updates\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -1107,6 +1127,10 @@ tf_module {
   member_method {
     name: "tuple"
     argspec: "args=[\'tensors\', \'control_inputs\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "type_spec_from_value"
+    argspec: "args=[\'value\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "unique"

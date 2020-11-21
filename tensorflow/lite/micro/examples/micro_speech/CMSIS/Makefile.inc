@@ -18,7 +18,6 @@ ifneq ($(filter CMSIS,$(ALL_TAGS)),)
     tensorflow/lite/micro/examples/micro_speech/CMSIS/hanning.h \
     tensorflow/lite/micro/examples/micro_speech/CMSIS/sin_1k.h \
     third_party/CMSIS_ext/README.md \
-    third_party/CMSIS_ext/arm_cmplx_mag_squared_q10p6.h
 
   PREPROCESSOR_TEST_SRCS += $(CMSIS_PREPROCESSOR_SRCS)
   PREPROCESSOR_TEST_HDRS += $(CMSIS_PREPROCESSOR_HDRS)
@@ -33,7 +32,6 @@ ifneq ($(filter CMSIS,$(ALL_TAGS)),)
   MICRO_SPEECH_HDRS += $(CMSIS_PREPROCESSOR_HDRS)
 
   THIRD_PARTY_CC_SRCS += \
-    $(MAKEFILE_DIR)/downloads/CMSIS_ext/arm_cmplx_mag_squared_q10p6.c \
     $(MAKEFILE_DIR)/downloads/cmsis/CMSIS/DSP/Source/BasicMathFunctions/arm_mult_q15.c \
     $(MAKEFILE_DIR)/downloads/cmsis/CMSIS/DSP/Source/TransformFunctions/arm_bitreversal.c \
     $(MAKEFILE_DIR)/downloads/cmsis/CMSIS/DSP/Source/TransformFunctions/arm_rfft_init_q15.c \

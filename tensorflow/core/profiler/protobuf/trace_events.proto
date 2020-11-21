@@ -40,6 +40,10 @@ message Resource {
 
   // The id of the resource. Unique within a device.
   uint32 resource_id = 2;
+
+  // The sort index of the resource. Resources within a device are ordered by
+  // this value. if absent, use resource id as sort index.
+  uint32 sort_index = 3;
 }
 
 message TraceEvent {

@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.keras.engine.base_preprocessing_layer_v1 import CombinerPreprocessingLayer
 from tensorflow.python.keras.layers.preprocessing import normalization
 from tensorflow.python.util.tf_export import keras_export
@@ -25,4 +26,8 @@ from tensorflow.python.util.tf_export import keras_export
 
 @keras_export(v1=['keras.layers.experimental.preprocessing.Normalization'])
 class Normalization(normalization.Normalization, CombinerPreprocessingLayer):
-  pass
+
+  def __init__(self, axis=-1, **kwargs):
+    super(Normalization, self).__init__(axis, **kwargs)
+    base_preprocessing_layer.keras_kpl_gauge.get_cell(
+        'Normalization v1').set(True)

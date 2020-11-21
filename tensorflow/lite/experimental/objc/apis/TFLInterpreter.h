@@ -14,6 +14,7 @@
 
 #import <Foundation/Foundation.h>
 
+@class TFLDelegate;
 @class TFLInterpreterOptions;
 @class TFLTensor;
 
@@ -111,6 +112,25 @@ typedef NS_ENUM(NSUInteger, TFLInterpreterErrorCode) {
  */
 - (nullable instancetype)initWithModelPath:(NSString *)modelPath
                                    options:(TFLInterpreterOptions *)options
+                                     error:(NSError **)error;
+
+/**
+ * Initializes a new TensorFlow Lite interpreter instance with the given model file path, options
+ * and delegates.
+ *
+ * @param modelPath An absolute path to a TensorFlow Lite model file stored locally on the device.
+ * @param options Options to use for configuring the TensorFlow Lite interpreter.
+ * @param delegates Delegates to use with the TensorFlow Lite interpreter. When the array is empty,
+ *     no delegate will be applied.
+ * @param error An optional error parameter populated when there is an error in initializing the
+ *     interpreter.
+ *
+ * @return A new instance of `TFLInterpreter` with the given model and options. `nil` if there is an
+ *     error in initializing the interpreter.
+ */
+- (nullable instancetype)initWithModelPath:(NSString *)modelPath
+                                   options:(TFLInterpreterOptions *)options
+                                 delegates:(NSArray<TFLDelegate *> *)delegates
                                      error:(NSError **)error NS_DESIGNATED_INITIALIZER;
 
 /**

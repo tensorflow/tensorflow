@@ -77,7 +77,9 @@ class Color {
 
   // Returns the string serialization of this color in graphviz format,
   // for use as 'fillcolor' in boxes.
-  string AsHexString() const { return StringF("#%.2X%.2X%.2X", r_, g_, b_); }
+  std::string AsHexString() const {
+    return StringF("#%.2X%.2X%.2X", r_, g_, b_);
+  }
   // The color to use for this node; will be used as 'fillcolor'
   // for its box. See Color::AsHexString. A suitable, different
   // color will be chosen for the 'fontcolor' for the inside text
@@ -85,7 +87,7 @@ class Color {
   // Returns the serialization in graphviz format of a suitable color to use
   // 'fontcolor' in the same boxes. It should black or white, whichever offers
   // the better contrast from AsHexString().
-  string TextColorString() const {
+  std::string TextColorString() const {
     // https://en.wikipedia.org/wiki/Relative_luminance
     const float luminance = 0.2126f * r_ + 0.7152f * g_ + 0.0722f * b_;
     const uint8 l = luminance > 128.f ? 0 : 255;
@@ -96,7 +98,7 @@ class Color {
   uint8 r_ = 0, g_ = 0, b_ = 0;
 };
 
-Color HashStringToColor(string s) {
+Color HashStringToColor(std::string s) {
   // Return a unique color for a name.
   //
   // This function removes Tensorflow anti-collision suffixes (eg "_2"), hashes
@@ -120,8 +122,8 @@ Color HashStringToColor(string s) {
   return Color(color_word);
 }
 
-void GetArrayColorAndShape(const Model& model, const string& array_name,
-                           Color* color, string* shape) {
+void GetArrayColorAndShape(const Model& model, const std::string& array_name,
+                           Color* color, std::string* shape) {
   // All colors in this file are from:
   // https://material.io/guidelines/style/color.html
   // Arrays involved in RNN back-edges have a different color
@@ -167,7 +169,8 @@ void GetArrayColorAndShape(const Model& model, const string& array_name,
   *shape = "box";
 }
 
-string GetArrayCompassPt(const Model& model, const string& array_name) {
+std::string GetArrayCompassPt(const Model& model,
+                              const std::string& array_name) {
   // The "compass point" is the point on the node where edge connections are
   // made. For most arrays we don't care, but input's and outputs look better
   // connected at the tip of the "house" and "invhouse" shapes used. So we
@@ -191,7 +194,7 @@ string GetArrayCompassPt(const Model& model, const string& array_name) {
   return "";
 }
 
-void AppendArrayVal(string* string, Array const& array, int index) {
+void AppendArrayVal(std::string* string, Array const& array, int index) {
   if (array.buffer->type == ArrayDataType::kFloat) {
     const auto& data = array.GetBuffer<ArrayDataType::kFloat>().data;
     if (index >= data.size()) {
@@ -231,10 +234,10 @@ void AppendArrayVal(string* string, Array const& array, int index) {
   }
 }
 
-typedef std::map<string, string> Attributes;
+typedef std::map<std::string, std::string> Attributes;
 
-string AttributesToHtml(Attributes attributes) {
-  string html;
+std::string AttributesToHtml(Attributes attributes) {
+  std::string html;
   for (const auto& attr : attributes) {
     html += R"CODE(<TR><TD CELLPADDING="1" ALIGN="RIGHT">)CODE";
     html += attr.first;
@@ -245,8 +248,8 @@ string AttributesToHtml(Attributes attributes) {
   return html;
 }
 
-string GetArrayLabel(const Model& model, const string& array_id) {
-  string html;
+std::string GetArrayLabel(const Model& model, const std::string& array_id) {
+  std::string html;
 
   // Use HTML-like labels (http://www.graphviz.org/doc/info/shapes.html#html)
   html += "<";
@@ -265,7 +268,7 @@ string GetArrayLabel(const Model& model, const string& array_id) {
   html += R"CODE(<TR><TD COLSPAN="2" ALIGN="CENTER">)CODE";
   html += R"CODE(<FONT POINT-SIZE="16" FACE="Helvetica"><I>)CODE";
   AppendF(&html, R"CODE(%s)CODE",
-          std::vector<string>(absl::StrSplit(array_id, '/')).back());
+          std::vector<std::string>(absl::StrSplit(array_id, '/')).back());
   html += R"CODE(</I></FONT>)CODE";
   html += "</TD></TR>";
 
@@ -371,7 +374,7 @@ Attributes GetOpAttributes(const Model& model, const Operator& op) {
   switch (op.type) {
     case OperatorType::kConv: {
       const auto& conv_op = static_cast<const ConvOperator&>(op);
-      string stride;
+      std::string stride;
       AppendF(&stride, "%d", conv_op.stride_width);
       stride += kUnicodeMult;
       AppendF(&stride, "%d", conv_op.stride_height);
@@ -382,7 +385,7 @@ Attributes GetOpAttributes(const Model& model, const Operator& op) {
     }
     case OperatorType::kDepthwiseConv: {
       const auto& depthconv_op = static_cast<const ConvOperator&>(op);
-      string stride;
+      std::string stride;
       AppendF(&stride, "%d", depthconv_op.stride_width);
       stride += kUnicodeMult;
       AppendF(&stride, "%d", depthconv_op.stride_height);
@@ -426,9 +429,9 @@ Color GetOpColor(const Operator& op) {
   }
 }
 
-string GetOpLabel(const Model& model, const Operator& op) {
+std::string GetOpLabel(const Model& model, const Operator& op) {
   // Use HTML-like labels (http://www.graphviz.org/doc/info/shapes.html#html)
-  string html;
+  std::string html;
   html += "<";
 
   // Begin Table
@@ -462,7 +465,8 @@ string GetOpLabel(const Model& model, const Operator& op) {
   if (op.type == OperatorType::kUnsupported) {
     html += static_cast<const TensorFlowUnsupportedOperator&>(op).tensorflow_op;
   } else {
-    html += string(absl::StripPrefix(OperatorTypeName(op.type), "TensorFlow"));
+    html +=
+        std::string(absl::StripPrefix(OperatorTypeName(op.type), "TensorFlow"));
   }
   html += R"CODE(</B></FONT>)CODE";
   html += "</TD></TR>";
@@ -498,7 +502,7 @@ string GetOpLabel(const Model& model, const Operator& op) {
   return html;
 }
 
-float GetLog2BufferSize(const Model& model, const string& array_id) {
+float GetLog2BufferSize(const Model& model, const std::string& array_id) {
   auto& array = model.GetArray(array_id);
   if (array.has_shape()) {
     int buffer_size = 0;
@@ -510,22 +514,23 @@ float GetLog2BufferSize(const Model& model, const string& array_id) {
   return 0.0f;
 }
 
-string GetOpId(int op_index) { return StringF("op%05d", op_index); }
+std::string GetOpId(int op_index) { return StringF("op%05d", op_index); }
 
-void DumpOperator(const Model& model, string* output_file, int op_index) {
+void DumpOperator(const Model& model, std::string* output_file, int op_index) {
   // Dump node for operator.
   const Operator& op = *model.operators[op_index];
   Color color = GetOpColor(op);
-  string label = GetOpLabel(model, op);
-  string op_id = GetOpId(op_index);
+  std::string label = GetOpLabel(model, op);
+  std::string op_id = GetOpId(op_index);
   AppendF(output_file, kOpNodeFmt, op_id, label, color.AsHexString(),
           color.TextColorString());
 }
 
-void DumpOperatorEdges(const Model& model, string* output_file, int op_index) {
+void DumpOperatorEdges(const Model& model, std::string* output_file,
+                       int op_index) {
   // Inputs
   const Operator& op = *model.operators[op_index];
-  string op_id = GetOpId(op_index);
+  std::string op_id = GetOpId(op_index);
   for (int i = 0; i < op.inputs.size(); i++) {
     const auto& input = op.inputs[i];
     if (!model.HasArray(input)) {
@@ -546,7 +551,7 @@ void DumpOperatorEdges(const Model& model, string* output_file, int op_index) {
       // would otherwise skew the layout.
       weight = 1.0f;
     }
-    string compass_pt = GetArrayCompassPt(model, input);
+    std::string compass_pt = GetArrayCompassPt(model, input);
     AppendF(output_file, kInputEdgeFmt, input, compass_pt, op_id, i, line_width,
             weight);
   }
@@ -563,7 +568,7 @@ void DumpOperatorEdges(const Model& model, string* output_file, int op_index) {
     if (!IsArrayConsumed(model, output)) {
       weight = 1.0f;
     }
-    string compass_pt = GetArrayCompassPt(model, output);
+    std::string compass_pt = GetArrayCompassPt(model, output);
     AppendF(output_file, kOutputEdgeFmt, op_id, i, output, compass_pt,
             line_width, weight);
   }
@@ -572,19 +577,19 @@ void DumpOperatorEdges(const Model& model, string* output_file, int op_index) {
 struct Node {
   Node() : math_ops(0) {}
   // Name used as a key in the model's array map
-  string array_id;
+  std::string array_id;
 
   // Estimated number of math ops incurred by this node (the sum of the op
   // with this array as 1st output, plus all children nodes).
   int64 math_ops;
 
   // A map of child nodes keyed by name.
-  std::map<const string, std::unique_ptr<Node>> children;
+  std::map<const std::string, std::unique_ptr<Node>> children;
 };
 
-string GetSubgraphLabel(Node const& node, const string& subgraph) {
+std::string GetSubgraphLabel(Node const& node, const std::string& subgraph) {
   // Use HTML-like labels (http://www.graphviz.org/doc/info/shapes.html#html)
-  string html;
+  std::string html;
   html += "<";
 
   // Begin Table
@@ -613,19 +618,19 @@ string GetSubgraphLabel(Node const& node, const string& subgraph) {
   return html;
 }
 
-void DumpSubgraphHeader(string* output_file, Node const& node,
-                        const string& node_name) {
+void DumpSubgraphHeader(std::string* output_file, Node const& node,
+                        const std::string& node_name) {
   Color color = HashStringToColor(node_name);
-  string label = GetSubgraphLabel(node, node_name);
+  std::string label = GetSubgraphLabel(node, node_name);
   AppendF(output_file, kSubgraphFmt, node_name, color.AsHexString(), label);
 }
 
-void DumpArray(const Model& model, string* output_file,
-               const string& array_id) {
+void DumpArray(const Model& model, std::string* output_file,
+               const std::string& array_id) {
   Color color;
-  string shape;
+  std::string shape;
   GetArrayColorAndShape(model, array_id, &color, &shape);
-  string label = GetArrayLabel(model, array_id);
+  std::string label = GetArrayLabel(model, array_id);
   AppendF(output_file, kArrayNodeFmt, array_id, label, array_id, shape,
           color.AsHexString(), color.TextColorString());
 
@@ -638,8 +643,8 @@ void DumpArray(const Model& model, string* output_file,
   }
 }
 
-void DumpNode(const Model& model, string* output_file, const string& node_name,
-              Node const& node) {
+void DumpNode(const Model& model, std::string* output_file,
+              const std::string& node_name, Node const& node) {
   bool not_root = !node_name.empty();
   if (not_root) {
     DumpSubgraphHeader(output_file, node, node_name);
@@ -662,7 +667,7 @@ void DumpNode(const Model& model, string* output_file, const string& node_name,
   }
 }
 
-int64 GetArithmeticOpsCount(const Model& model, const string& array_id) {
+int64 GetArithmeticOpsCount(const Model& model, const std::string& array_id) {
   for (const auto& op : model.operators) {
     if (!op->outputs.empty() && op->outputs[0] == array_id) {
       int64 count;
@@ -676,15 +681,15 @@ int64 GetArithmeticOpsCount(const Model& model, const string& array_id) {
   return 0;
 }
 
-void InsertNode(const Model& model, const string& array_id, Node* node,
-                std::vector<string> prefixes, int64* math_ops) {
+void InsertNode(const Model& model, const std::string& array_id, Node* node,
+                std::vector<std::string> prefixes, int64* math_ops) {
   if (prefixes.empty()) {
     // Base case: store array in this node.
     node->array_id = array_id;
     *math_ops = GetArithmeticOpsCount(model, array_id);
   } else {
     // Insert into the sub-tree for that prefix.
-    string prefix = prefixes.back();
+    std::string prefix = prefixes.back();
     prefixes.pop_back();
     if (node->children.count(prefix) == 0) {
       // Create a new node if this prefix is unseen.
@@ -700,16 +705,16 @@ void InsertNode(const Model& model, const string& array_id, Node* node,
 void BuildArrayTree(const Model& model, Node* tree) {
   // Delimit array names by path "/", then place into a tree based on this path.
   for (const auto& array_id : model.GetArrayMap()) {
-    std::vector<string> prefixes = absl::StrSplit(array_id.first, '/');
+    std::vector<std::string> prefixes = absl::StrSplit(array_id.first, '/');
     std::reverse(prefixes.begin(), prefixes.end());
     int64 math_ops;  // Temporary storage for math ops used during recursion.
     InsertNode(model, array_id.first, tree, prefixes, &math_ops);
   }
 }
 
-string GetGraphLabel(const Model& model, const string& graph_name) {
+std::string GetGraphLabel(const Model& model, const std::string& graph_name) {
   // Use HTML-like labels (http://www.graphviz.org/doc/info/shapes.html#html)
-  string html;
+  std::string html;
   html += "<";
 
   // Begin Table
@@ -753,8 +758,8 @@ string GetGraphLabel(const Model& model, const string& graph_name) {
 }
 }  // namespace
 
-void DumpGraphviz(const Model& model, string* output_file,
-                  const string& graph_name) {
+void DumpGraphviz(const Model& model, std::string* output_file,
+                  const std::string& graph_name) {
   // Start graphviz format
   AppendF(output_file, kGraphFmt, GetGraphLabel(model, graph_name));
 

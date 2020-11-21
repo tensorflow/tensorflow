@@ -20,7 +20,6 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
-#include "tensorflow/lite/delegates/gpu/common/status.h"
 
 namespace tflite {
 namespace gpu {
@@ -30,51 +29,28 @@ namespace gpu {
 // convolution.
 std::unique_ptr<SequenceTransformation> NewMergeConvolutionWithAdd();
 
-// Fuse Add Scalar or Add Broadcast before Convolution(Convolution2D,
-// DepthWise, FullyConnected) into biases of
-// convolution.
-std::unique_ptr<SequenceTransformation> NewMergeAddWithConvolution();
-
 // Modify Convolution2DAttributes so that after making convolution with
 // modified attributes we will have the same result as convolution
 // with old attributes and following add operation.
-void FuseConvolution2DWithAdd(const AddAttributes& add_attr,
+void FuseConvolution2DWithAdd(const ElementwiseAttributes& add_attr,
                               Convolution2DAttributes* attr);
 
 // Modify DepthwiseConvolution2DAttributes so that after making depth wise
 // convolution with modified attributes we will have the same result as depth
 // wise convolution with old attributes and following add operation.
-void FuseDepthwiseConvolution2DWithAdd(const AddAttributes& add_attr,
+void FuseDepthwiseConvolution2DWithAdd(const ElementwiseAttributes& add_attr,
                                        DepthwiseConvolution2DAttributes* attr);
 
 // Modify ConvolutionTransposedAttributes so that after making convolution
 // transposed with modified attributes we will have the same result as
 // convolution transposed with old attributes and following add operation.
-void FuseConvolutionTransposedWithAdd(const AddAttributes& add_attr,
+void FuseConvolutionTransposedWithAdd(const ElementwiseAttributes& add_attr,
                                       ConvolutionTransposedAttributes* attr);
 
 // Modify FullyConnectedAttributes so that after making fully connected with
 // modified attributes we will have the same result as fully connected
 // with old attributes and following add operation.
-void FuseFullyConnectedWithAdd(const AddAttributes& add_attr,
-                               FullyConnectedAttributes* attr);
-
-// Modify Convolution2DAttributes so that after making convolution with
-// modified attributes we will have the same result as add operation and
-// convolution with old attributes
-void FuseAddWithConvolution2D(const AddAttributes& add_attr,
-                              Convolution2DAttributes* attr);
-
-// Modify DepthwiseConvolution2DAttributes so that after making depth wise
-// convolution with modified attributes we will have the same result as add
-// operation and depth wise convolution with old attributes
-void FuseAddWithDepthwiseConvolution2D(const AddAttributes& add_attr,
-                                       DepthwiseConvolution2DAttributes* attr);
-
-// Modify FullyConnectedAttributes so that after making fully connected
-// with modified attributes we will have the same result as add operation and
-// fully connected with old attributes
-void FuseAddWithFullyConnected(const AddAttributes& add_attr,
+void FuseFullyConnectedWithAdd(const ElementwiseAttributes& add_attr,
                                FullyConnectedAttributes* attr);
 
 }  // namespace gpu

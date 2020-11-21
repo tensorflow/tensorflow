@@ -40,12 +40,15 @@ def if_cuda_clang_opt(if_true, if_false = []):
 
 def cuda_default_copts():
     """Default options for all CUDA compilations."""
-    return if_cuda(
-        ["-x", "cuda", "-DGOOGLE_CUDA=1"]
-    ) + if_cuda_clang_opt(
+    return if_cuda([
+        "-x", "cuda",
+        "-DGOOGLE_CUDA=1",
+        "-Xcuda-fatbinary=--compress-all",
+        "--no-cuda-include-ptx=all"
+    ] + %{cuda_extra_copts}) + if_cuda_clang_opt(
         # Some important CUDA optimizations are only enabled at O3.
         ["-O3"]
-    ) + %{cuda_extra_copts}
+    )
 
 def cuda_is_configured():
     """Returns true if CUDA was enabled during the configure process."""

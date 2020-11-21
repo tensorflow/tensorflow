@@ -1,4 +1,3 @@
-# Lint as: python3
 # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,14 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for the Python extension-based XLA client."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""Backend-dependent tests for the Python XLA client."""
 
 import functools
 import itertools
+import re
 import threading
 import unittest
 
@@ -36,12 +32,6 @@ try:
   from tensorflow.compiler.xla.python import custom_call_for_test
 except ImportError:
   custom_call_for_test = None
-
-try:
-  import portpicker
-except ImportError:
-  portpicker = None
-# pylint: enable=g-import-not-at-top
 
 bfloat16 = xla_client.bfloat16
 ops = xla_client.ops
@@ -105,7 +95,7 @@ def TestFactory(xla_backend, cloud_tpu=False):
                                 c,
                                 arguments=(),
                                 expected=None,
-                                rtol=1e-7,
+                                rtol=1e-4,
                                 atol=0):
       self._ExecuteAndAssertWith(
           functools.partial(np.testing.assert_allclose, rtol=rtol, atol=atol),
@@ -114,6 +104,10 @@ def TestFactory(xla_backend, cloud_tpu=False):
   def NumpyArrayF32(*args, **kwargs):
     """Convenience wrapper to create Numpy arrays with a np.float32 dtype."""
     return np.array(*args, dtype=np.float32, **kwargs)
+
+  def NumpyArrayF64(*args, **kwargs):
+    """Convenience wrapper to create Numpy arrays with a np.float64 dtype."""
+    return np.array(*args, dtype=np.float64, **kwargs)
 
   def NumpyArrayS32(*args, **kwargs):
     """Convenience wrapper to create Numpy arrays with a np.int32 dtype."""
@@ -138,27 +132,6 @@ def TestFactory(xla_backend, cloud_tpu=False):
       ops.Add(x, x)
       return builder.build()
 
-    def testComputationToHloText(self):
-      computation = self.ExampleComputation()
-      hlo_text = computation.as_hlo_text()
-      self.assertTrue(hlo_text.startswith("HloModule acomputation"))
-
-    def testComputationToHloGraph(self):
-      computation = self.ExampleComputation()
-      hlo_dot_graph = computation.as_hlo_dot_graph()
-      self.assertTrue(hlo_dot_graph.startswith("digraph "))
-
-    def testHloModuleToHloText(self):
-      computation = self.ExampleComputation()
-      hlo_text = computation.as_hlo_module().to_string()
-      self.assertTrue(hlo_text.startswith("HloModule acomputation"))
-
-    def testHloModuleToHloGraph(self):
-      computation = self.ExampleComputation()
-      hlo_dot_graph = xla_client._xla.hlo_module_to_dot_graph(
-          computation.as_hlo_module())
-      self.assertTrue(hlo_dot_graph.startswith("digraph "))
-
     @unittest.skipIf(cloud_tpu, "not implemented")
     def testCompiledHloModuleToHloText(self):
       computation = self.ExampleComputation()
@@ -169,30 +142,14 @@ def TestFactory(xla_backend, cloud_tpu=False):
       self.assertTrue(hlo_text.startswith("HloModule acomputation"))
       self.assertIn("fusion", hlo_text)
 
+    @unittest.skipIf(cloud_tpu, "not implemented")
+    def testFlopEstimate(self):
+      computation = self.ExampleComputation()
+      properties = xla_client._xla.hlo_module_cost_analysis(
+          self.backend, computation.as_hlo_module())
+      self.assertEqual(properties["flops"], 8.0)
+
   tests.append(ComputationPrinting)
-
-  class ComputationHashTest(absltest.TestCase):
-
-    def testHash(self):
-      builder0 = xla_client.XlaBuilder("computation0")
-      p0 = ops.Parameter(builder0, 0,
-                         xla_client.shape_from_pyval(np.float32(0)))
-      p1 = ops.Parameter(
-          builder0, 1, xla_client.shape_from_pyval(np.zeros((4,), np.float32)))
-      ops.Mul(p0, p1)
-      computation0 = builder0.build()
-
-      builder1 = xla_client.XlaBuilder("computation1")
-      p0 = ops.Parameter(builder1, 0,
-                         xla_client.shape_from_pyval(np.float32(0)))
-      p1 = ops.Parameter(
-          builder1, 1, xla_client.shape_from_pyval(np.zeros((4,), np.float32)))
-      ops.Mul(p0, p1)
-      computation1 = builder1.build()
-
-      self.assertEqual(computation0.hash(), computation1.hash())
-
-  tests.append(ComputationHashTest)
 
   class ComputationsWithConstantsTest(ComputationTest):
     """Tests focusing on Constant ops."""
@@ -484,10 +441,10 @@ def TestFactory(xla_backend, cloud_tpu=False):
       with self.assertRaises(RuntimeError):
         compiled_c.execute([arg_buffer])
 
-    def testShape(self):
+    def testXlaShape(self):
       pyval = np.array([[1., 2.]], np.float32)
       local_buffer = self.backend.buffer_from_pyval(pyval)
-      xla_shape = local_buffer.shape()
+      xla_shape = local_buffer.xla_shape()
       self.assertEqual(xla_shape.dimensions(), (1, 2))
       self.assertEqual(np.dtype(xla_shape.element_type()), np.dtype(np.float32))
 
@@ -497,6 +454,37 @@ def TestFactory(xla_backend, cloud_tpu=False):
       arg_buffer.block_host_until_ready()
       # This test merely checks that nothing goes awry when we call
       # block_host_until_ready(); it's difficult to test anything else.
+
+    def testBlockHostUntilReadyRaisesOnDeletedBuffer(self):
+      arg = np.array([[1., 2.]], np.float32)
+      buffer = self.backend.buffer_from_pyval(arg)
+      buffer.delete()
+      with self.assertRaisesRegex(
+          RuntimeError,
+          re.escape(
+              "BlockHostUntilReady() called on deleted or donated buffer")):
+        buffer.block_host_until_ready()
+
+    def testDeviceArrayBaseSignatures(self):
+      # When extending `DeviceArrayBase`, the object behaves as a `DeviceArray`
+      # and thus needs to correctly implement the following methods.
+      arg = np.array([[1., 2., 3.]], np.float32)
+      buffer = self.backend.buffer_from_pyval(arg)
+      if not isinstance(buffer, xla_client.DeviceArrayBase):
+        raise unittest.SkipTest(
+            "The objectof type {} do not extend DeviceArrayBase".format(
+                type(buffer)))
+
+      self.assertEqual(buffer.__array_priority__, 100)
+      self.assertEqual(buffer.shape, (1, 3))
+      self.assertEqual(buffer.dtype, np.float32)
+      self.assertEqual(buffer.size, 3)
+      self.assertEqual(buffer.ndim, 2)
+
+      self.assertIs(buffer, buffer.block_until_ready())
+      buffer.delete()
+      with self.assertRaises(RuntimeError):
+        buffer.block_until_ready()
 
     def testCopyToHost(self):
       arg0 = np.array([[1., 2.]], np.float32)
@@ -520,6 +508,14 @@ def TestFactory(xla_backend, cloud_tpu=False):
         buf = self.backend.buffer_from_pyval(x, device=device)
         self.assertEqual(buf.device(), device)
         np.testing.assert_equal(x, buf.to_py())
+
+    def testStandardTypes(self):
+      for dtype in standard_dtypes:
+        if dtype == bfloat16 or dtype == np.complex128:
+          continue
+        arr = self.backend.buffer_from_pyval(np.array([0, 1], dtype))
+        arr = arr.to_py()
+        self.assertEqual(dtype, type(arr[0]))
 
   tests.append(BufferTest)
 
@@ -545,6 +541,7 @@ def TestFactory(xla_backend, cloud_tpu=False):
       self._ExecuteAndCompareExact(
           c, expected=[np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], dtype=dtype)])
 
+    # pyformat: disable
     @parameterized.named_parameters({
         "testcase_name": "_{}_{}".format(src_dtype.__name__,
                                          dst_dtype.__name__),
@@ -552,6 +549,7 @@ def TestFactory(xla_backend, cloud_tpu=False):
         "dst_dtype": dst_dtype,
     } for src_dtype, dst_dtype in itertools.permutations(
         [np.bool, np.int32, np.int64, np.float32, np.float64], 2))
+    # pyformat: enable
     def testConvertElementType(self, src_dtype, dst_dtype):
       if ((src_dtype in [np.int64, np.float64] or
            dst_dtype in [np.int64, np.float64]) and
@@ -571,6 +569,7 @@ def TestFactory(xla_backend, cloud_tpu=False):
       self.assertEqual(result[0].dtype, expected.dtype)
       np.testing.assert_equal(result[0], expected)
 
+    # pyformat: disable
     @parameterized.named_parameters(
         {
             "testcase_name": "_{}_{}".format(src_dtype.__name__,
@@ -580,6 +579,7 @@ def TestFactory(xla_backend, cloud_tpu=False):
         }
         for dtypes in [[np.int32, np.float32], [np.int64, np.float64]]
         for src_dtype, dst_dtype in itertools.permutations(dtypes, 2))
+    # pyformat: enable
     def testBitcastConvertType(self, src_dtype, dst_dtype):
       if (np.float64 in (src_dtype, dst_dtype) and
           self.backend.platform == "tpu"):
@@ -882,11 +882,19 @@ def TestFactory(xla_backend, cloud_tpu=False):
       ops.Abs(ops.Constant(c, arr))
       self._ExecuteAndCompareClose(c, expected=[np.abs(arr)])
 
-    def testTanh(self):
+    def testTanhF32(self):
       c = self._NewComputation()
-      arr = NumpyArrayF32([3.3, 12.1])
+      arr = NumpyArrayF32([-0.2, 3.3, 12.1, 0.1, 0.0001])
       ops.Tanh(ops.Constant(c, arr))
       self._ExecuteAndCompareClose(c, expected=[np.tanh(arr)])
+
+    def testTanhF64(self):
+      if self.backend.platform == "tpu":
+        self.skipTest("TPU doesn't support 64bit tanh")
+      c = self._NewComputation()
+      arr = NumpyArrayF64([-0.2, 3.3, 12.1, 0.1, 0.0001])
+      ops.Tanh(ops.Constant(c, arr))
+      self._ExecuteAndCompareClose(c, expected=[np.tanh(arr)], rtol=1e-12)
 
     def testTranspose(self):
 
@@ -1801,6 +1809,14 @@ def TestFactory(xla_backend, cloud_tpu=False):
                           dtype=np.int32)
       self._ExecuteAndCompareClose(c, expected=[expected])
 
+  class DeviceTest(ComputationTest):
+
+    def testPlatform(self):
+      for device in self.backend.local_devices():
+        self.assertEqual(device.platform, self.backend.platform)
+
+  tests.append(DeviceTest)
+
   class ErrorTest(ComputationTest):
 
     def setUp(self):
@@ -1882,29 +1898,6 @@ def TestFactory(xla_backend, cloud_tpu=False):
 
   tests.append(SetShardingTest)
 
-  class AliasTest(ComputationTest):
-
-    def testSetUpAlias(self):
-      c = self._NewComputation()
-      p1 = ops.Parameter(
-          c, 0,
-          xla_client.shape_from_pyval(
-              NumpyArrayF32(1.0)).with_major_to_minor_layout_if_absent())
-      p2 = ops.Parameter(
-          c, 1,
-          xla_client.shape_from_pyval(
-              NumpyArrayF32(1.0)).with_major_to_minor_layout_if_absent())
-      out = ops.Add(p1, p2)
-      c.setup_alias([], 0, [])
-      c = c.build(out)
-      if self.backend.platform != "tpu":
-        with self.assertRaisesRegex(
-            RuntimeError, "Buffer aliasing is not supported "
-            "by XLA for non-TPU backends"):
-          self.backend.compile(c)
-
-  tests.append(AliasTest)
-
   testcase_shapes = [
       (),
       (1,),
@@ -1930,34 +1923,66 @@ def TestFactory(xla_backend, cloud_tpu=False):
         self.skipTest("DLPack requires CPU or GPU")
 
     # pylint: disable=g-complex-comprehension
+    # pyformat: disable
     @parameterized.named_parameters({
-        "testcase_name": FormatShapeAndDtype(shape, dtype),
+        "testcase_name": "{}_own={}".format(FormatShapeAndDtype(shape, dtype),
+                                            take_ownership),
         "dtype": dtype,
-        "shape": shape
-    } for dtype in dlpack_dtypes for shape in testcase_shapes)
-    def testRoundTrip(self, dtype, shape):
+        "shape": shape,
+        "take_ownership": take_ownership
+    } for dtype in dlpack_dtypes for shape in testcase_shapes
+                                    for take_ownership in [False, True])
+    # pyformat: enable
+    def testRoundTrip(self, dtype, shape, take_ownership):
       x = np.array(np.random.rand(*shape) * 100, dtype=dtype)
       buffer = self.backend.buffer_from_pyval(x)
-      dlt = xla_client._xla.buffer_to_dlpack_managed_tensor(buffer)
+      dlt = xla_client._xla.buffer_to_dlpack_managed_tensor(
+          buffer, take_ownership=take_ownership)
       del buffer  # Free "buffer" to make sure dlt retains ownership.
       self.assertEqual(type(dlt).__name__, "PyCapsule")
-      y = xla_client._xla.dlpack_managed_tensor_to_buffer(
-          dlt, self.backend)
+      y = xla_client._xla.dlpack_managed_tensor_to_buffer(dlt, self.backend)
       np.testing.assert_array_equal(x, y.to_py())
 
     def testTensorsCanBeConsumedOnceOnly(self):
       x = np.array(np.random.rand(3, 4, 5, 6), dtype=np.float32)
       buffer = self.backend.buffer_from_pyval(x)
-      dlt = xla_client._xla.buffer_to_dlpack_managed_tensor(buffer)
+      dlt = xla_client._xla.buffer_to_dlpack_managed_tensor(
+          buffer, take_ownership=True)
 
       def ConsumeDLPackTensor():
-        _ = xla_client._xla.dlpack_managed_tensor_to_buffer(
-            dlt, self.backend)
+        _ = xla_client._xla.dlpack_managed_tensor_to_buffer(dlt, self.backend)
 
       ConsumeDLPackTensor()
       self.assertRaisesRegex(
           RuntimeError, ".*a DLPack tensor may be consumed at most once.*",
           ConsumeDLPackTensor)
+
+    def testTensorsCanBeOwnedOnceOnly(self):
+      x = np.array(np.random.rand(3, 4, 5, 6), dtype=np.float32)
+      buffer = self.backend.buffer_from_pyval(x)
+      _ = xla_client._xla.buffer_to_dlpack_managed_tensor(
+          buffer, take_ownership=True)
+      self.assertTrue(buffer.is_deleted())
+      with self.assertRaisesRegex(
+          RuntimeError,
+          "Cannot convert deleted/invalid buffer to DLPack tensor.*"):
+        _ = xla_client._xla.buffer_to_dlpack_managed_tensor(
+            buffer, take_ownership=True)
+
+    def testNonOwnedDlpackCanBeViewedTwice(self):
+      x = np.array(np.random.rand(3, 4, 5, 6), dtype=np.float32)
+      buffer = self.backend.buffer_from_pyval(x)
+      d1 = xla_client._xla.buffer_to_dlpack_managed_tensor(
+          buffer, take_ownership=False)
+      d2 = xla_client._xla.buffer_to_dlpack_managed_tensor(
+          buffer, take_ownership=False)
+
+      y = xla_client._xla.dlpack_managed_tensor_to_buffer(d1, self.backend)
+      z = xla_client._xla.dlpack_managed_tensor_to_buffer(d2, self.backend)
+      del d1, d2
+      np.testing.assert_array_equal(x, buffer.to_py())
+      np.testing.assert_array_equal(x, y.to_py())
+      np.testing.assert_array_equal(x, z.to_py())
 
   tests.append(DLPackTest)
 
@@ -1979,7 +2004,8 @@ def TestFactory(xla_backend, cloud_tpu=False):
     def testRoundTrip(self, dtype, shape):
       x = np.array(np.random.rand(*shape) * 100, dtype=dtype)
       x_ptr = x.__array_interface__["data"][0]
-      buffer = self.backend.buffer_from_pyval(x)
+      buffer = self.backend.buffer_from_pyval(
+          x, host_buffer_semantics=xla_client.HostBufferSemantics.ZERO_COPY)
       y = np.array(buffer, copy=False)
       y_ptr = y.__array_interface__["data"][0]
       np.testing.assert_array_equal(x, y)
@@ -1988,7 +2014,9 @@ def TestFactory(xla_backend, cloud_tpu=False):
       self.assertTrue((x_ptr & 15) != 0 or x_ptr == y_ptr)
       self.assertEqual(y_ptr, buffer.unsafe_buffer_pointer())
 
-      buffer2 = self.backend.buffer_from_pyval(x, force_copy=True)
+      during_call = xla_client.HostBufferSemantics.IMMUTABLE_ONLY_DURING_CALL
+      buffer2 = self.backend.buffer_from_pyval(
+          x, host_buffer_semantics=during_call)
       z = np.array(buffer2, copy=False)
       self.assertNotEqual(x.__array_interface__["data"][0],
                           z.__array_interface__["data"][0])
@@ -2005,27 +2033,66 @@ def TestFactory(xla_backend, cloud_tpu=False):
 
   tests.append(BufferProtocolTest)
 
-  class ProfilerTest(absltest.TestCase):
+  class TracebackTest(absltest.TestCase):
 
-    def testTraceMe(self):
-      # TODO(phawkins): These tests just check that the TraceMe context manager
-      # acts like a context manager and doesn't explode. Ideally we'd check that
-      # the profiler saw the traceme too.
-      with xla_client.profiler.TraceMe("test1"):
-        pass
-      with xla_client.profiler.TraceMe("test2", foo=123):
-        pass
-      with self.assertRaises(ValueError):
-        with xla_client.profiler.TraceMe("test3"):
-          raise ValueError("test")
+    def setUp(self):
+      super(TracebackTest, self).setUp()
+      self.backend = xla_backend()
 
-    @unittest.skipIf(portpicker is None, "Test requires portpicker")
-    def testStartServer(self):
-      port = portpicker.pick_unused_port()
-      server = xla_client.profiler.start_server(port)
-      del server
+    def testNoTracebacksIfDisabled(self):
+      with xla_client.tracebacks(enabled=False):
+        self.assertEqual(None, xla_client.Traceback.get_traceback())
+        buffer = self.backend.buffer_from_pyval(np.array(7, np.int32))
+        self.assertEqual(None, buffer.traceback)
 
-  tests.append(ProfilerTest)
+        b = xla_client.XlaBuilder("computation")
+        ops.Add(ops.Constant(b, np.int32(1)), ops.Constant(b, np.int32(2)))
+        e = self.backend.compile(b.build())
+        self.assertEqual(None, e.traceback)
+
+    def assertIsTracebackContaining(self, tb, function):
+      self.assertIsInstance(tb, xla_client.Traceback)
+      self.assertIn(function, str(tb))
+      self.assertTrue(any(f.function_name == function for f in tb.frames))
+
+    def testTracebacks(self):
+      with xla_client.tracebacks(enabled=True):
+        tb = xla_client.Traceback.get_traceback()
+        self.assertIsTracebackContaining(tb, "testTracebacks")
+
+        # Tracebacks are not implemented on the TPU driver extension's variant
+        # of buffers and executables.
+        if not isinstance(self.backend, xla_client.Client):
+          return
+
+        buffer = self.backend.buffer_from_pyval(np.array(7, np.int32))
+        self.assertIsTracebackContaining(buffer.traceback, "testTracebacks")
+
+        b = xla_client.XlaBuilder("computation")
+        ops.Add(ops.Constant(b, np.int32(1)), ops.Constant(b, np.int32(2)))
+        e = self.backend.compile(b.build())
+        self.assertIsTracebackContaining(e.traceback, "testTracebacks")
+
+    def testNestedFunction(self):
+
+      def AFunction():
+
+        def AnotherFunction():
+          return xla_client.Traceback.get_traceback()
+
+        return AnotherFunction()
+
+      with xla_client.tracebacks(enabled=True):
+        tb = AFunction()
+        self.assertIsInstance(tb, xla_client.Traceback)
+        frames = tb.frames
+        i = next(
+            i for (i, f) in enumerate(frames) if f.function_name == "AFunction")
+        self.assertEqual(frames[i - 1].function_name, "AnotherFunction")
+        self.assertEqual(frames[i + 1].function_name, "testNestedFunction")
+
+  tests.append(TracebackTest)
+
   return tests
 
 

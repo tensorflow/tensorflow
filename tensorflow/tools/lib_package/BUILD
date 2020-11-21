@@ -73,7 +73,8 @@ pkg_tar(
     srcs = [
         "//tensorflow/c:headers",
     ],
-    package_dir = "include/tensorflow/c",
+    package_dir = "include/",
+    strip_prefix = "/",
     # Mark as "manual" till
     # https://github.com/bazelbuild/bazel/issues/2352
     # and https://github.com/bazelbuild/bazel/issues/1580
@@ -147,7 +148,7 @@ genrule(
         "@double_conversion//:LICENSE",
         "@eigen_archive//:COPYING.MPL2",
         "@farmhash_archive//:COPYING",
-        "@fft2d//:fft2d/readme2d.txt",
+        "@fft2d//:readme2d.txt",
         "@gemmlowp//:LICENSE",
         "@gif//:COPYING",
         "@highwayhash//:LICENSE",
@@ -156,7 +157,6 @@ genrule(
         "@llvm-project//llvm:LICENSE.TXT",
         "@llvm-project//mlir:LICENSE.TXT",
         "@lmdb//:LICENSE",
-        "@local_config_sycl//sycl:LICENSE.text",
         "@local_config_tensorrt//:LICENSE",
         "@nasm//:LICENSE",
         "@nsync//:LICENSE",
@@ -226,7 +226,7 @@ genrule(
         "@double_conversion//:LICENSE",
         "@eigen_archive//:COPYING.MPL2",
         "@farmhash_archive//:COPYING",
-        "@fft2d//:fft2d/readme2d.txt",
+        "@fft2d//:readme2d.txt",
         "@gemmlowp//:LICENSE",
         "@gif//:COPYING",
         "@com_github_grpc_grpc//:LICENSE",
@@ -237,7 +237,6 @@ genrule(
         "@llvm-project//llvm:LICENSE.TXT",
         "@llvm-project//mlir:LICENSE.TXT",
         "@lmdb//:LICENSE",
-        "@local_config_sycl//sycl:LICENSE.text",
         "@local_config_tensorrt//:LICENSE",
         "@nasm//:LICENSE",
         "@nsync//:LICENSE",

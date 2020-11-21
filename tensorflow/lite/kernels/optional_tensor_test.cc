@@ -14,16 +14,14 @@ limitations under the License.
 ==============================================================================*/
 // Unit test for TFLite LSTM op.
 
-#include <iomanip>
-#include <memory>
+#include <initializer_list>
 #include <vector>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/testing/util.h"
 
 namespace tflite {
 namespace {
@@ -80,7 +78,7 @@ class LSTMOpModel : public SingleOpModel {
       input_gate_bias_ = AddInput(TensorType_FLOAT32);
     }
     forget_gate_bias_ = AddInput(TensorType_FLOAT32);
-    cell_bias_ = AddInput(TensorType_FLOAT32);
+    cell_gate_bias_ = AddInput(TensorType_FLOAT32);
     output_gate_bias_ = AddInput(TensorType_FLOAT32);
 
     if (use_projection_weights) {
@@ -96,10 +94,10 @@ class LSTMOpModel : public SingleOpModel {
     }
 
     // Adding the 2 input state tensors.
-    input_activation_state_ =
-        AddInput(TensorData{TensorType_FLOAT32, {n_output_ * n_batch_}}, true);
+    input_activation_state_ = AddVariableInput(
+        TensorData{TensorType_FLOAT32, {n_output_ * n_batch_}});
     input_cell_state_ =
-        AddInput(TensorData{TensorType_FLOAT32, {n_cell_ * n_batch_}}, true);
+        AddVariableInput(TensorData{TensorType_FLOAT32, {n_cell_ * n_batch_}});
 
     output_ = AddOutput(TensorType_FLOAT32);
 
@@ -163,7 +161,7 @@ class LSTMOpModel : public SingleOpModel {
   }
 
   void SetCellBias(std::initializer_list<float> f) {
-    PopulateTensor(cell_bias_, f);
+    PopulateTensor(cell_gate_bias_, f);
   }
 
   void SetOutputGateBias(std::initializer_list<float> f) {
@@ -211,7 +209,7 @@ class LSTMOpModel : public SingleOpModel {
 
   int input_gate_bias_;
   int forget_gate_bias_;
-  int cell_bias_;
+  int cell_gate_bias_;
   int output_gate_bias_;
 
   int projection_weights_;
@@ -258,7 +256,7 @@ TEST(LSTMOpTest, BlackBoxTestWithCifgWithPeepholeNoProjectionNoClipping) {
 
                        {0},       // input_gate_bias tensor
                        {n_cell},  // forget_gate_bias tensor
-                       {n_cell},  // cell_bias tensor
+                       {n_cell},  // cell_gate_bias tensor
                        {n_cell},  // output_gate_bias tensor
 
                        {0, 0},  // projection_weight tensor

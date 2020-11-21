@@ -14,3 +14,12 @@ cc_library(
         "@com_google_absl//absl/types:any",
     ],
 )
+
+cc_library(
+    name = "custom_transformations",
+    srcs = ["custom_transformations.cc"],
+    hdrs = ["//tensorflow/lite/delegates/gpu/common:custom_transformations.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:model_transformer",
+    ],
+)

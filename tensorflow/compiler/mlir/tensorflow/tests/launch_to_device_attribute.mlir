@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-launch-to-device-attribute | FileCheck %s --dump-input=fail
+// RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-launch-to-device-attribute | FileCheck %s
 
 
 // Tests single TensorFlow op is hoisted out and has the correct device assigned
@@ -58,28 +58,26 @@ func @multi_op_launch() {
 // CHECK:      tf_executor.yield %[[A]], %[[C]], %[[B]], %[[D]]
 
 
-// -----
-
-
-// Tests ops are hoisted out and devices are set only if the `tf_device.launch`
-// contains TensorFlow ops.
-func @non_tf_dialect_op_launch() {
+// Tests empty device string attributes are overwritten.
+// CHECK-LABEL: func @empty_device_op
+func @empty_device_op() {
   tf_executor.graph {
-    %0:5 = tf_executor.island {
-      %a = "tf.opA"() : () -> tensor<i1>
-      // expected-error@+1 {{'tf_device.launch' op must contain only 'tf' dialect ops}}
+    %0:3 = tf_executor.island {
       %launch:2 = "tf_device.launch"() ( {
-        %b = "tf.opB"(%a) : (tensor<i1>) -> tensor<i32>
-        %c = addi %b, %b : tensor<i32>
-        tf_device.return %c, %b : tensor<i32>, tensor<i32>
+        %a:2 = "tf.opA"() {device = ""} : () -> (tensor<i32>, tensor<f32>)
+        tf_device.return %a#1, %a#0 : tensor<f32>, tensor<i32>
       }) {device = "CPU:0"} : () -> (tensor<f32>, tensor<i32>)
-      %d = "tf.opD"() : () -> tensor<i1>
-      tf_executor.yield %a, %launch#0, %launch#1, %d : tensor<i1>, tensor<f32>, tensor<i32>, tensor<i1>
+      tf_executor.yield %launch#0, %launch#1: tensor<f32>, tensor<i32>
     }
     tf_executor.fetch
   }
   return
 }
+
+// CHECK:      [[A:%.+]]:2 = "tf.opA"
+// CHECK-SAME: device = "CPU:0"
+// CHECK-NOT:  tf_device.launch
+// CHECK:      tf_executor.yield [[A]]#1, [[A]]#0
 
 
 // -----
@@ -90,7 +88,7 @@ func @non_tf_dialect_op_launch() {
 func @conflicting_device() {
   tf_executor.graph {
     %0 = tf_executor.island {
-      // expected-error@+1 {{'tf_device.launch' op inner 'tf' dialect op has conflicting 'device' attribute, got 'GPU:0' but expected 'CPU:0'}}
+      // expected-error@+1 {{'tf_device.launch' op inner op has conflicting 'device' attribute, got 'GPU:0' but expected 'CPU:0'}}
       "tf_device.launch"() ( {
         "tf.opA"() {device = "GPU:0"} : () -> ()
         tf_device.return
@@ -110,7 +108,7 @@ func @conflicting_device() {
 func @bad_tf_device_attr() {
   tf_executor.graph {
     %0 = tf_executor.island {
-      // expected-error@+1 {{'tf_device.launch' op inner 'tf' dialect op has bad 'device' attribute}}
+      // expected-error@+1 {{'tf_device.launch' op inner op has bad 'device' attribute}}
       "tf_device.launch"() ( {
         "tf.opA"() {device = 0 : i32} : () -> ()
         tf_device.return

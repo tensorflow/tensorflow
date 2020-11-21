@@ -80,6 +80,8 @@ static const char* param_structs[] = {"TfLiteAddParams",
                                       "TfLiteUnpackParams",
                                       "TfLiteReverseSequenceParams",
                                       "TfLiteWhileParams",
+                                      "TfLiteCumsumParams",
+                                      "TfLiteCallOnceParams",
                                       nullptr};
 }  // namespace
 
@@ -118,7 +120,7 @@ class OpOptionData {
   const std::unordered_map<std::string, std::string>& op_to_option() {
     return op_to_option_;
   }
-  // Maps from option to to C struct i.e. 'AddOptions' -> 'TfLiteAddOptions'
+  // Maps from option to C struct i.e. 'AddOptions' -> 'TfLiteAddOptions'
   const std::unordered_map<std::string, std::string>& option_to_struct() {
     return option_to_struct_;
   }
@@ -163,8 +165,11 @@ class OpOptionData {
     op_to_option_["UNIDIRECTIONAL_SEQUENCE_RNN"] = "SequenceRNNOptions";
     op_to_option_["MAXIMUM"] = "MaximumMinimumOptions";
     op_to_option_["MINIMUM"] = "MaximumMinimumOptions";
+
+    // These operators are not real ones.
     op_to_option_["CUSTOM"] = "";    // TODO(aselle): maybe something else.
     op_to_option_["DELEGATE"] = "";  // TODO(aselle): maybe something else.
+    op_to_option_["PLACEHOLDER_FOR_GREATER_OP_CODES"] = "";
 
     // Manually specified mappings between ops to "none" options -- these are
     // ops without a corresponding Options message in schema as yet. If these
@@ -265,6 +270,29 @@ void GenerateImportForResizeBilinearOp(FILE* fp) {
           "  }\n  break;\n");
 }
 
+// Reshape Op infers output shape either from Parameter or from shape tensor
+// that's is an additional input. When we have this additional shape tensor as
+// input we don't have the parameter present in this layer. In case of more than
+// one input we import an empty vector for the parameters.
+void GenerateImportForReshapeOp(FILE* fp) {
+  fprintf(fp,
+          "  case BuiltinOperator_RESHAPE:  {\n"
+          "    const auto* params = reinterpret_cast<const "
+          "TfLiteReshapeParams*>(builtin_op_data);\n"
+          "    flatbuffers::Offset<void> union_type;\n"
+          "    if (node.inputs->size > 1) {\n"
+          "      union_type = CreateReshapeOptions(*fbb).Union();\n"
+          "    } else {\n"
+          "      auto val0 = fbb->CreateVector(std::vector<int>(params->shape, "
+          "params->shape + params->num_dimensions));\n"
+          "      union_type = CreateReshapeOptions(*fbb, "
+          "val0).Union();\n"
+          "    }\n"
+          "    return std::make_pair(BuiltinOptions_ReshapeOptions, "
+          "union_type);\n"
+          "  }\n  break;\n");
+}
+
 void GenerateImportForOp(FILE* fp, const std::string& op_name,
                          const std::string& option_name,
                          const std::string& option_type,
@@ -273,6 +301,13 @@ void GenerateImportForOp(FILE* fp, const std::string& op_name,
   // Special-case ResizeBilinear which has some deprecated fields.
   if (struct_name == "TfLiteResizeBilinearParams") {
     GenerateImportForResizeBilinearOp(fp);
+    return;
+  }
+
+  // Special case Reshape that may have 'new_shape' field missing from the
+  // parameters.
+  if (struct_name == "TfLiteReshapeParams") {
+    GenerateImportForReshapeOp(fp);
     return;
   }
 

@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/lite/micro/examples/micro_speech/micro_features/model.h"
 #include "tensorflow/lite/micro/examples/micro_speech/micro_features/no_micro_features_data.h"
 #include "tensorflow/lite/micro/examples/micro_speech/micro_features/yes_micro_features_data.h"
-#include "tensorflow/lite/micro/kernels/micro_ops.h"
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
@@ -29,13 +28,12 @@ TF_LITE_MICRO_TESTS_BEGIN
 TF_LITE_MICRO_TEST(TestInvoke) {
   // Set up logging.
   tflite::MicroErrorReporter micro_error_reporter;
-  tflite::ErrorReporter* error_reporter = &micro_error_reporter;
 
   // Map the model into a usable data structure. This doesn't involve any
   // copying or parsing, it's a very lightweight operation.
   const tflite::Model* model = ::tflite::GetModel(g_model);
   if (model->version() != TFLITE_SCHEMA_VERSION) {
-    TF_LITE_REPORT_ERROR(error_reporter,
+    TF_LITE_REPORT_ERROR(&micro_error_reporter,
                          "Model provided is schema version %d not equal "
                          "to supported version %d.\n",
                          model->version(), TFLITE_SCHEMA_VERSION);
@@ -47,15 +45,12 @@ TF_LITE_MICRO_TEST(TestInvoke) {
   // incur some penalty in code space for op implementations that are not
   // needed by this graph.
   //
-  // tflite::ops::micro::AllOpsResolver resolver;
-  tflite::MicroOpResolver<3> micro_op_resolver;
-  micro_op_resolver.AddBuiltin(
-      tflite::BuiltinOperator_DEPTHWISE_CONV_2D,
-      tflite::ops::micro::Register_DEPTHWISE_CONV_2D());
-  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_FULLY_CONNECTED,
-                               tflite::ops::micro::Register_FULLY_CONNECTED());
-  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_SOFTMAX,
-                               tflite::ops::micro::Register_SOFTMAX());
+  // tflite::AllOpsResolver resolver;
+  tflite::MicroMutableOpResolver<4> micro_op_resolver;
+  micro_op_resolver.AddDepthwiseConv2D();
+  micro_op_resolver.AddFullyConnected();
+  micro_op_resolver.AddReshape();
+  micro_op_resolver.AddSoftmax();
 
   // Create an area of memory to use for input, output, and intermediate arrays.
   const int tensor_arena_size = 10 * 1024;
@@ -63,7 +58,8 @@ TF_LITE_MICRO_TEST(TestInvoke) {
 
   // Build an interpreter to run the model with.
   tflite::MicroInterpreter interpreter(model, micro_op_resolver, tensor_arena,
-                                       tensor_arena_size, error_reporter);
+                                       tensor_arena_size,
+                                       &micro_error_reporter);
   interpreter.AllocateTensors();
 
   // Get information about the memory area to use for the model's input.
@@ -71,24 +67,22 @@ TF_LITE_MICRO_TEST(TestInvoke) {
 
   // Make sure the input has the properties we expect.
   TF_LITE_MICRO_EXPECT_NE(nullptr, input);
-  TF_LITE_MICRO_EXPECT_EQ(4, input->dims->size);
+  TF_LITE_MICRO_EXPECT_EQ(2, input->dims->size);
   TF_LITE_MICRO_EXPECT_EQ(1, input->dims->data[0]);
-  TF_LITE_MICRO_EXPECT_EQ(49, input->dims->data[1]);
-  TF_LITE_MICRO_EXPECT_EQ(40, input->dims->data[2]);
-  TF_LITE_MICRO_EXPECT_EQ(1, input->dims->data[3]);
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteUInt8, input->type);
+  TF_LITE_MICRO_EXPECT_EQ(1960, input->dims->data[1]);
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteInt8, input->type);
 
   // Copy a spectrogram created from a .wav audio file of someone saying "Yes",
   // into the memory area used for the input.
-  const uint8_t* yes_features_data = g_yes_micro_f2e59fea_nohash_1_data;
-  for (int i = 0; i < input->bytes; ++i) {
-    input->data.uint8[i] = yes_features_data[i];
+  const int8_t* yes_features_data = g_yes_micro_f2e59fea_nohash_1_data;
+  for (size_t i = 0; i < input->bytes; ++i) {
+    input->data.int8[i] = yes_features_data[i];
   }
 
   // Run the model on this input and make sure it succeeds.
   TfLiteStatus invoke_status = interpreter.Invoke();
   if (invoke_status != kTfLiteOk) {
-    TF_LITE_REPORT_ERROR(error_reporter, "Invoke failed\n");
+    TF_LITE_REPORT_ERROR(&micro_error_reporter, "Invoke failed\n");
   }
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, invoke_status);
 
@@ -98,7 +92,7 @@ TF_LITE_MICRO_TEST(TestInvoke) {
   TF_LITE_MICRO_EXPECT_EQ(2, output->dims->size);
   TF_LITE_MICRO_EXPECT_EQ(1, output->dims->data[0]);
   TF_LITE_MICRO_EXPECT_EQ(4, output->dims->data[1]);
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteUInt8, output->type);
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteInt8, output->type);
 
   // There are four possible classes in the output, each with a score.
   const int kSilenceIndex = 0;
@@ -107,24 +101,24 @@ TF_LITE_MICRO_TEST(TestInvoke) {
   const int kNoIndex = 3;
 
   // Make sure that the expected "Yes" score is higher than the other classes.
-  uint8_t silence_score = output->data.uint8[kSilenceIndex];
-  uint8_t unknown_score = output->data.uint8[kUnknownIndex];
-  uint8_t yes_score = output->data.uint8[kYesIndex];
-  uint8_t no_score = output->data.uint8[kNoIndex];
+  uint8_t silence_score = output->data.uint8[kSilenceIndex] + 128;
+  uint8_t unknown_score = output->data.uint8[kUnknownIndex] + 128;
+  uint8_t yes_score = output->data.int8[kYesIndex] + 128;
+  uint8_t no_score = output->data.int8[kNoIndex] + 128;
   TF_LITE_MICRO_EXPECT_GT(yes_score, silence_score);
   TF_LITE_MICRO_EXPECT_GT(yes_score, unknown_score);
   TF_LITE_MICRO_EXPECT_GT(yes_score, no_score);
 
   // Now test with a different input, from a recording of "No".
-  const uint8_t* no_features_data = g_no_micro_f9643d42_nohash_4_data;
-  for (int i = 0; i < input->bytes; ++i) {
-    input->data.uint8[i] = no_features_data[i];
+  const int8_t* no_features_data = g_no_micro_f9643d42_nohash_4_data;
+  for (size_t i = 0; i < input->bytes; ++i) {
+    input->data.int8[i] = no_features_data[i];
   }
 
   // Run the model on this "No" input.
   invoke_status = interpreter.Invoke();
   if (invoke_status != kTfLiteOk) {
-    TF_LITE_REPORT_ERROR(error_reporter, "Invoke failed\n");
+    TF_LITE_REPORT_ERROR(&micro_error_reporter, "Invoke failed\n");
   }
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, invoke_status);
 
@@ -134,18 +128,18 @@ TF_LITE_MICRO_TEST(TestInvoke) {
   TF_LITE_MICRO_EXPECT_EQ(2, output->dims->size);
   TF_LITE_MICRO_EXPECT_EQ(1, output->dims->data[0]);
   TF_LITE_MICRO_EXPECT_EQ(4, output->dims->data[1]);
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteUInt8, output->type);
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteInt8, output->type);
 
   // Make sure that the expected "No" score is higher than the other classes.
-  silence_score = output->data.uint8[kSilenceIndex];
-  unknown_score = output->data.uint8[kUnknownIndex];
-  yes_score = output->data.uint8[kYesIndex];
-  no_score = output->data.uint8[kNoIndex];
+  silence_score = output->data.int8[kSilenceIndex] + 128;
+  unknown_score = output->data.int8[kUnknownIndex] + 128;
+  yes_score = output->data.int8[kYesIndex] + 128;
+  no_score = output->data.int8[kNoIndex] + 128;
   TF_LITE_MICRO_EXPECT_GT(no_score, silence_score);
   TF_LITE_MICRO_EXPECT_GT(no_score, unknown_score);
   TF_LITE_MICRO_EXPECT_GT(no_score, yes_score);
 
-  TF_LITE_REPORT_ERROR(error_reporter, "Ran successfully\n");
+  TF_LITE_REPORT_ERROR(&micro_error_reporter, "Ran successfully\n");
 }
 
 TF_LITE_MICRO_TESTS_END

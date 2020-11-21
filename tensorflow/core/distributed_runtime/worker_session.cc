@@ -144,7 +144,7 @@ Status WorkerSession::UpdateWorkerCacheAndDevices(
 std::shared_ptr<WorkerSession> WorkerSession::CreateWithBorrowedDeviceMgr(
     const string& session_name, const string& worker_name,
     std::unique_ptr<WorkerCacheInterface> worker_cache,
-    DeviceMgr* borrowed_device_mgr, std::unique_ptr<GraphMgr> graph_mgr,
+    const DeviceMgr* borrowed_device_mgr, std::unique_ptr<GraphMgr> graph_mgr,
     std::unique_ptr<DynamicDeviceMgr> remote_device_mgr) {
   return std::shared_ptr<WorkerSession>(new WorkerSession(
       session_name, worker_name, std::move(worker_cache), borrowed_device_mgr,
@@ -154,7 +154,7 @@ std::shared_ptr<WorkerSession> WorkerSession::CreateWithBorrowedDeviceMgr(
 WorkerSession::WorkerSession(
     const string& session_name, const string& worker_name,
     std::unique_ptr<WorkerCacheInterface> worker_cache,
-    DeviceMgr* borrowed_device_mgr, std::unique_ptr<GraphMgr> graph_mgr,
+    const DeviceMgr* borrowed_device_mgr, std::unique_ptr<GraphMgr> graph_mgr,
     std::unique_ptr<DynamicDeviceMgr> remote_device_mgr)
     : session_name_(session_name),
       worker_name_(worker_name),

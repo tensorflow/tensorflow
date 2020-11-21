@@ -161,6 +161,29 @@ class SimpleMetaGraphTest(test.TestCase):
     op_list = meta_graph.stripped_op_list_for_graph(graph)
     self.assertEqual(["Const"], [op.name for op in op_list.op])
 
+  def testStrippedOpListPartitionedCalls(self):
+    # Function A calls B via StatefulPartitionedCall.
+    graph = graph_pb2.GraphDef()
+    a = graph.library.function.add()
+    b = graph.library.function.add()
+    a.signature.name = "A"
+    b.signature.name = "B"
+    node_in_a = a.node_def.add()
+    node_in_a.op = "StatefulPartitionedCall"
+    node_in_a.attr["f"].func.name = "B"
+    b.node_def.add().op = "Const"
+    b.node_def.add().op = "A"
+
+    # Use A in the graph via PartitionedCall.
+    node = graph.node.add()
+    node.op = "PartitionedCall"
+    node.attr["f"].func.name = "A"
+
+    op_list = meta_graph.stripped_op_list_for_graph(graph)
+    self.assertSameElements(
+        ["Const", "PartitionedCall", "StatefulPartitionedCall"],
+        [op.name for op in op_list.op])
+
   @test_util.run_deprecated_v1
   def testDefaultAttrStripping(self):
     """Verifies that default attributes are stripped from a graph def."""
@@ -407,13 +430,13 @@ class ScopedMetaGraphTest(test.TestCase):
       new_image = constant_op.constant(
           1.2, dtypes.float32, shape=[100, 28], name="images")
 
-    with self.assertRaisesRegexp(ValueError, "Graph contains unbound inputs"):
+    with self.assertRaisesRegex(ValueError, "Graph contains unbound inputs"):
       meta_graph.import_scoped_meta_graph(
           os.path.join(test_dir, exported_filenames[0]),
           graph=graph,
           import_scope="new_hidden1")
 
-    with self.assertRaisesRegexp(ValueError, "Graph contains unbound inputs"):
+    with self.assertRaisesRegex(ValueError, "Graph contains unbound inputs"):
       meta_graph.import_scoped_meta_graph(
           os.path.join(test_dir, exported_filenames[0]),
           graph=graph,
@@ -829,7 +852,7 @@ class ScopedMetaGraphTest(test.TestCase):
 
     graph2 = ops.Graph()
     with graph2.as_default():
-      with self.assertRaisesRegexp(ValueError, "Graph contains unbound inputs"):
+      with self.assertRaisesRegex(ValueError, "Graph contains unbound inputs"):
         meta_graph.import_scoped_meta_graph(
             orig_meta_graph, import_scope="new_hidden1")
 
@@ -952,7 +975,7 @@ class MetaGraphWithVariableScopeTest(test.TestCase):
               "python/framework/testdata/metrics_export_meta_graph.pb"))
       self.assertEqual(len(ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES)),
                        2)
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           AttributeError, "'Tensor' object has no attribute 'initializer'"):
         initializer = variables.local_variables_initializer()
 

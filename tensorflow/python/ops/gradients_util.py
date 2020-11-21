@@ -24,6 +24,7 @@ import contextlib
 from six.moves import xrange, zip  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
@@ -333,7 +334,7 @@ def _MaybeCompile(scope, op, func, grad_fn):
           "_XlaSeparateCompiledGradients")
       xla_scope = op.get_attr("_XlaScope").decode()
     except ValueError:
-      return grad_fn()  # Exit early
+      xla_compile = False
 
   if not xla_compile:
     return grad_fn()  # Exit early
@@ -415,7 +416,7 @@ def _NonEagerInputs(op, xs_set):
   """Returns the inputs of op, crossing closure boundaries where necessary.
 
   Does not return any captured EagerTensors, i.e., the number of tensors
-  returned may be less than than the actual number of inputs.
+  returned may be less than the actual number of inputs.
 
   Args:
     op: Operation
@@ -608,8 +609,22 @@ def _GradientsHelper(ys,
           except LookupError:
             if is_func_call:
               if is_partitioned_call:
+                func_name = compat.as_bytes(op.get_attr("f").name)
                 func_call = src_graph._get_function(  # pylint: disable=protected-access
-                    compat.as_bytes(op.get_attr("f").name))
+                    func_name)
+                # When a graph is imported, the FunctionDefs are not copied over
+                # to each sub-graph so we recursively search the outer graphs
+                # for the FunctionDef.
+                if not func_call and hasattr(src_graph, "outer_graph"):
+                  graph = src_graph.outer_graph
+                  while graph is not None:
+                    func_call = graph._get_function(func_name)  # pylint: disable=protected-access
+                    if func_call  is not None:
+                      break
+                    if hasattr(graph, "outer_graph"):
+                      graph = graph.outer_graph
+                    else:
+                      break
               else:
                 func_call = src_graph._get_function(op.type)  # pylint: disable=protected-access
               # Note that __defun is not set if the graph is
@@ -781,18 +796,22 @@ def _SetGrad(grads, t, grad):
     op_grads[t.value_index] = grad
 
 
+def _ZerosLike(t):
+  t_dtype = default_gradient.get_zeros_dtype(t)
+  if t.dtype == dtypes.resource:
+    return array_ops.zeros(
+        resource_variable_ops.variable_shape(t), dtype=t_dtype)
+  else:
+    return array_ops.zeros_like(t, dtype=t_dtype)
+
+
 def _GetGrad(grads, t, unconnected_gradients):
   """Gets gradient for tensor "t"."""
   op = t.op
   op_grads = grads.get(op)
   if not op_grads:
     if unconnected_gradients == UnconnectedGradients.ZERO:
-      t_dtype = default_gradient.get_zeros_dtype(t)
-      if t.dtype == dtypes.resource:
-        return array_ops.zeros(
-            resource_variable_ops.variable_shape(t), dtype=t_dtype)
-      else:
-        return array_ops.zeros_like(t, dtype=t_dtype)
+      return _ZerosLike(t)
     elif unconnected_gradients == UnconnectedGradients.NONE:
       return None
     else:
@@ -800,6 +819,10 @@ def _GetGrad(grads, t, unconnected_gradients):
           "Unknown value for unconnected_gradients: %r" % unconnected_gradients)
 
   t_grad = op_grads[t.value_index]
+  # This can happen if some other output of `t.op` has non-None grad.
+  if unconnected_gradients == UnconnectedGradients.ZERO and t_grad is None:
+    return _ZerosLike(t)
+
   assert not isinstance(
       t_grad, list), ("gradients list should have been aggregated by now.")
   return t_grad
@@ -888,7 +911,7 @@ class AggregationMethod(object):
   be supported in future releases:
 
   * `EXPERIMENTAL_TREE`: Gradient terms are summed in pairs using
-    using the "AddN" op. This method of summing gradients may reduce
+    the "AddN" op. This method of summing gradients may reduce
     performance, but it can improve memory utilization because the
     gradients can be released earlier.
 
@@ -985,3 +1008,15 @@ def _AggregatedGrads(grads,
       # out_grads[i] is [], thus its aggregation is simply None.
       out_grads[i] = None
   return out_grads
+
+
+# Represents the output of TFE_Py_TapeSetPossibleGradientTypes. Real enums are
+# unfortunately too slow to use here.
+POSSIBLE_GRADIENT_TYPES_NONE = 0
+POSSIBLE_GRADIENT_TYPES_FIRST_ORDER = 1
+POSSIBLE_GRADIENT_TYPES_HIGHER_ORDER = 2
+
+
+def PossibleTapeGradientTypes(tensors):
+  """Determines whether and how `args` may require tape gradients."""
+  return pywrap_tfe.TFE_Py_TapeSetPossibleGradientTypes(tensors)

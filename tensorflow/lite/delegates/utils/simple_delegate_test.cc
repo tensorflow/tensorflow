@@ -12,77 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/delegates/utils/simple_delegate.h"
-
 #include <memory>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/delegates/utils/dummy_delegate/dummy_delegate.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/builtin_op_kernels.h"
 
 namespace tflite {
 namespace {
-// Delegate options.
-struct TestSimpleDelegateOptions {
-  // Allowed ops to delegate.
-  int allowed_builtin_code;
-  // Report error during init.
-  bool error_during_init = false;
-  // Report error during prepare.
-  bool error_during_prepare = false;
-  // Report error during invoke.
-  bool error_during_invoke = false;
-};
-
-// Dummy delegate kernel.
-class TestSimpleDelegateKernel : public SimpleDelegateKernelInterface {
- public:
-  explicit TestSimpleDelegateKernel(TestSimpleDelegateOptions options)
-      : options_(options) {}
-
-  TfLiteStatus Init(TfLiteContext* context,
-                    const TfLiteDelegateParams* params) override {
-    return !options_.error_during_init ? kTfLiteOk : kTfLiteError;
-  }
-
-  TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) override {
-    return !options_.error_during_prepare ? kTfLiteOk : kTfLiteError;
-  }
-
-  TfLiteStatus Invoke(TfLiteContext* context, TfLiteNode* node) override {
-    return !options_.error_during_invoke ? kTfLiteOk : kTfLiteError;
-  }
-
- private:
-  TestSimpleDelegateOptions options_;
-};
-
-// Simple delegate which implements the interface of SimpleDelegateInterface.
-// This holds the Delegate capabilities.
-class TestSimpleDelegate : public SimpleDelegateInterface {
- public:
-  explicit TestSimpleDelegate(TestSimpleDelegateOptions options)
-      : options_(options) {}
-  bool IsNodeSupportedByDelegate(const TfLiteRegistration* registration,
-                                 const TfLiteNode* node,
-                                 TfLiteContext* context) const override {
-    return options_.allowed_builtin_code == registration->builtin_code;
-  }
-
-  const char* name() const override { return "TestSimpleDelegate"; }
-
-  std::unique_ptr<SimpleDelegateKernelInterface> CreateDelegateKernelInterface()
-      override {
-    return std::make_unique<TestSimpleDelegateKernel>(options_);
-  }
-
- private:
-  TestSimpleDelegateOptions options_;
-};
-
 class TestDelegate : public ::testing::Test {
  protected:
   void SetUp() override {
@@ -113,27 +54,23 @@ class TestDelegate : public ::testing::Test {
                                         reg);
   }
 
-  void TearDown() override {
-    interpreter_.reset();
-    TfLiteDelegateFactory::DeleteSimpleDelegate(delegate_);
-  }
+  void TearDown() override { interpreter_.reset(); }
 
  protected:
   std::unique_ptr<Interpreter> interpreter_;
-  TfLiteDelegate* delegate_ = nullptr;
 };
 
 TEST_F(TestDelegate, BasicDelegate) {
-  TestSimpleDelegateOptions options;
+  DummyDelegateOptions options = TfLiteDummyDelegateOptionsDefault();
   options.allowed_builtin_code = kTfLiteBuiltinAdd;
-  delegate_ = TfLiteDelegateFactory::CreateSimpleDelegate(
-      std::make_unique<TestSimpleDelegate>(options));
-  interpreter_->ModifyGraphWithDelegate(delegate_);
+  auto delegate = TfLiteDummyDelegateCreateUnique(&options);
+  interpreter_->ModifyGraphWithDelegate(std::move(delegate));
 
   ASSERT_EQ(interpreter_->execution_plan().size(), 1);
   int node = interpreter_->execution_plan()[0];
   const auto* node_and_reg = interpreter_->node_and_registration(node);
-  EXPECT_EQ("TestSimpleDelegate", node_and_reg->second.custom_name);
+  EXPECT_STREQ("DummyDelegate", node_and_reg->second.custom_name);
+  EXPECT_EQ(1, node_and_reg->second.version);
 
   const TfLiteDelegateParams* params = static_cast<const TfLiteDelegateParams*>(
       node_and_reg->first.builtin_data);
@@ -152,43 +89,40 @@ TEST_F(TestDelegate, BasicDelegate) {
 }
 
 TEST_F(TestDelegate, NoNodesToDelegate) {
-  TestSimpleDelegateOptions options;
+  DummyDelegateOptions options = TfLiteDummyDelegateOptionsDefault();
   options.allowed_builtin_code = kTfLiteBuiltinSub;
-  delegate_ = TfLiteDelegateFactory::CreateSimpleDelegate(
-      std::make_unique<TestSimpleDelegate>(options));
-  interpreter_->ModifyGraphWithDelegate(delegate_);
+  auto delegate = TfLiteDummyDelegateCreateUnique(&options);
+  interpreter_->ModifyGraphWithDelegate(std::move(delegate));
 
   ASSERT_EQ(interpreter_->execution_plan().size(), 3);
 }
 
 TEST_F(TestDelegate, DelegateFailedPrepare) {
-  TestSimpleDelegateOptions options;
+  DummyDelegateOptions options = TfLiteDummyDelegateOptionsDefault();
   options.allowed_builtin_code = kTfLiteBuiltinAdd;
   options.error_during_prepare = true;
-  delegate_ = TfLiteDelegateFactory::CreateSimpleDelegate(
-      std::make_unique<TestSimpleDelegate>(options));
+  auto delegate = TfLiteDummyDelegateCreateUnique(&options);
   ASSERT_EQ(kTfLiteDelegateError,
-            interpreter_->ModifyGraphWithDelegate(delegate_));
+            interpreter_->ModifyGraphWithDelegate(std::move(delegate)));
 }
 
 TEST_F(TestDelegate, DelegateFailedInvoke) {
-  TestSimpleDelegateOptions options;
+  DummyDelegateOptions options = TfLiteDummyDelegateOptionsDefault();
   options.allowed_builtin_code = kTfLiteBuiltinAdd;
   options.error_during_invoke = true;
-  delegate_ = TfLiteDelegateFactory::CreateSimpleDelegate(
-      std::make_unique<TestSimpleDelegate>(options));
-  ASSERT_EQ(kTfLiteOk, interpreter_->ModifyGraphWithDelegate(delegate_));
+  auto delegate = TfLiteDummyDelegateCreateUnique(&options);
+  ASSERT_EQ(kTfLiteOk,
+            interpreter_->ModifyGraphWithDelegate(std::move(delegate)));
   ASSERT_EQ(kTfLiteError, interpreter_->Invoke());
 }
 
 TEST_F(TestDelegate, DelegateFailedInit) {
-  TestSimpleDelegateOptions options;
+  DummyDelegateOptions options = TfLiteDummyDelegateOptionsDefault();
   options.allowed_builtin_code = kTfLiteBuiltinAdd;
   options.error_during_init = true;
-  delegate_ = TfLiteDelegateFactory::CreateSimpleDelegate(
-      std::make_unique<TestSimpleDelegate>(options));
+  auto delegate = TfLiteDummyDelegateCreateUnique(&options);
   ASSERT_EQ(kTfLiteDelegateError,
-            interpreter_->ModifyGraphWithDelegate(delegate_));
+            interpreter_->ModifyGraphWithDelegate(std::move(delegate)));
 }
 }  // namespace
 }  // namespace tflite

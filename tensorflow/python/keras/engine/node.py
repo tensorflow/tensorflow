@@ -24,12 +24,15 @@ import json
 import numpy as np
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer_utils
+from tensorflow.python.keras.engine import keras_tensor
+from tensorflow.python.keras.saving.saved_model import json_utils
 from tensorflow.python.keras.utils import tf_utils
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
-from tensorflow.python.util import serialization
+
+_CONSTANT_VALUE = '_CONSTANT_VALUE'
 
 
 class Node(object):
@@ -73,12 +76,17 @@ class Node(object):
 
     # Cached for performance.
     self._flat_arguments = nest.flatten((self.call_args, self.call_kwargs))
+    # Used to avoid expensive `nest` operations in the most common case.
+    self._single_positional_tensor_passed = (not self.call_kwargs and len(
+        self.call_args) == 1 and tensor_util.is_tensor(self.call_args[0]))
 
-    # Create TensorFlowOpLayers if needed.
-    for obj in self._flat_arguments:
-      if (isinstance(obj, ops.Tensor) and
-          base_layer_utils.needs_keras_history(obj, ignore_call_context=True)):
-        base_layer_utils.create_keras_history(obj)
+    if not keras_tensor.keras_tensors_enabled():
+      # Create TensorFlowOpLayers if needed.
+      for obj in self._flat_arguments:
+        if (isinstance(obj, ops.Tensor) and
+            base_layer_utils.needs_keras_history(
+                obj, ignore_call_context=True)):
+          base_layer_utils.create_keras_history(obj)
 
     self._keras_inputs = []
     self._keras_inputs_ids_and_indices = []
@@ -137,13 +145,18 @@ class Node(object):
 
   def map_arguments(self, tensor_dict):
     """Maps Keras Tensors to computed Tensors using `tensor_dict`."""
-    flat_arguments = copy.copy(self._flat_arguments)
-    for kt_id, kt_index in self._keras_inputs_ids_and_indices:
-      flat_arguments[kt_index] = tensor_dict[kt_id].pop()
+    if self._single_positional_tensor_passed:
+      # Performance optimization for most common case.
+      kt_id, _ = self._keras_inputs_ids_and_indices[0]
+      return (tensor_dict[kt_id].pop(),), {}
+    else:
+      flat_arguments = copy.copy(self._flat_arguments)
+      for kt_id, kt_index in self._keras_inputs_ids_and_indices:
+        flat_arguments[kt_index] = tensor_dict[kt_id].pop()
 
-    args, kwargs = nest.pack_sequence_as(
-        (self.call_args, self.call_kwargs), flat_arguments)
-    return args, kwargs
+      args, kwargs = nest.pack_sequence_as((self.call_args, self.call_kwargs),
+                                           flat_arguments)
+      return args, kwargs
 
   def serialize(self, make_node_key, node_conversion_map):
     """Serializes `Node` for Functional API's `get_config`."""
@@ -156,31 +169,54 @@ class Node(object):
     arguments.update(kwargs)
     kwargs = arguments
 
+    def _serialize_keras_tensor(t):
+      """Serializes a single Tensor passed to `call`."""
+      if hasattr(t, '_keras_history'):
+        kh = t._keras_history
+        node_index = kh.node_index
+        node_key = make_node_key(kh.layer.name, node_index)
+        new_node_index = node_conversion_map.get(node_key, 0)
+        return [kh.layer.name, new_node_index, kh.tensor_index]
+
+      if isinstance(t, np.ndarray):
+        return t.tolist()
+
+      if isinstance(t, ops.Tensor):
+        return backend.get_value(t).tolist()
+
+      return t
+
     kwargs = nest.map_structure(_serialize_keras_tensor, kwargs)
     try:
-      json.dumps(kwargs, default=serialization.get_json_type)
+      json.dumps(kwargs, default=json_utils.get_json_type)
     except TypeError:
       kwarg_types = nest.map_structure(type, kwargs)
-      logging.warning('Layer ' + self.layer.name +
+      raise TypeError('Layer ' + self.layer.name +
                       ' was passed non-JSON-serializable arguments. ' +
                       'Arguments had types: ' +
-                      str(kwarg_types) + '. They will not be included '
-                      'in the serialized model (and thus will be missing '
-                      'at deserialization time).')
-      kwargs = {}
+                      str(kwarg_types) + '. They cannot be serialized out '
+                      'when saving the model.')
 
     # `kwargs` is added to each Tensor in the first arg. This should be
     # changed in a future version of the serialization format.
     def serialize_first_arg_tensor(t):
-      kh = t._keras_history
-      node_index = kh.node_index
-      node_key = make_node_key(kh.layer.name, node_index)
-      new_node_index = node_conversion_map.get(node_key, 0)
-      data = [kh.layer.name, new_node_index, kh.tensor_index, kwargs]
+      if is_keras_tensor(t):
+        kh = t._keras_history
+        node_index = kh.node_index
+        node_key = make_node_key(kh.layer.name, node_index)
+        new_node_index = node_conversion_map.get(node_key, 0)
+        data = [kh.layer.name, new_node_index, kh.tensor_index, kwargs]
+      else:
+        # If an element in the first call argument did not originate as a
+        # keras tensor and is a constant value, we save it using the format
+        # ['_CONSTANT_VALUE', -1, serializaed_tensor_or_python_constant]
+        # (potentially including serialized kwargs in an optional 4th argument
+        data = [_CONSTANT_VALUE, -1, _serialize_keras_tensor(t), kwargs]
       return tf_utils.ListWrapper(data)
 
     data = nest.map_structure(serialize_first_arg_tensor, inputs)
-    if not nest.is_sequence(data):
+    if (not nest.is_nested(data) and
+        not self.layer._preserve_input_structure_in_config):
       data = [data]
     data = tf_utils.convert_inner_node_data(data)
     return data
@@ -254,18 +290,3 @@ class KerasHistory(
 
 def is_keras_tensor(obj):
   return hasattr(obj, '_keras_history')
-
-
-def _serialize_keras_tensor(t):
-  """Serializes a single Tensor passed to `call`."""
-  if hasattr(t, '_keras_history'):
-    kh = t._keras_history
-    return [kh.layer.name, kh.node_index, kh.tensor_index]
-
-  if isinstance(t, np.ndarray):
-    return t.tolist()
-
-  if isinstance(t, ops.Tensor):
-    return backend.get_value(t).tolist()
-
-  return t

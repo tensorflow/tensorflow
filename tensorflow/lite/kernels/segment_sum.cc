@@ -13,10 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/c/builtin_op_data.h"
+#include <stdint.h>
+
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
 namespace tflite {
@@ -32,11 +34,24 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
                                 const TfLiteTensor* data,
                                 const TfLiteTensor* segment_ids,
                                 TfLiteTensor* output) {
-  int max_index = -1;
+  // Segment ids should be of same cardinality as first input dimension and they
+  // should be increasing by at most 1, from 0 (e.g., [0, 0, 1, 2, 3] is valid)
   const int segment_id_size = segment_ids->dims->data[0];
-  if (segment_id_size > 0) {
-    max_index = segment_ids->data.i32[segment_id_size - 1];
+  TF_LITE_ENSURE_EQ(context, segment_id_size, data->dims->data[0]);
+  int previous_segment_id = -1;
+  for (int i = 0; i < segment_id_size; i++) {
+    const int current_segment_id = GetTensorData<int32_t>(segment_ids)[i];
+    if (i == 0) {
+      TF_LITE_ENSURE_EQ(context, current_segment_id, 0);
+    } else {
+      int delta = current_segment_id - previous_segment_id;
+      TF_LITE_ENSURE(context, delta == 0 || delta == 1);
+    }
+    previous_segment_id = current_segment_id;
   }
+
+  const int max_index = previous_segment_id;
+
   const int data_rank = NumDimensions(data);
   TfLiteIntArray* output_shape = TfLiteIntArrayCreate(NumDimensions(data));
   output_shape->data[0] = max_index + 1;
@@ -49,11 +64,15 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
-  const TfLiteTensor* data = GetInput(context, node, kInputDataTensor);
-  const TfLiteTensor* segment_ids =
-      GetInput(context, node, kInputSegmentIdsTensor);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
-
+  const TfLiteTensor* data;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kInputDataTensor, &data));
+  const TfLiteTensor* segment_ids;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputSegmentIdsTensor,
+                                          &segment_ids));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
   TF_LITE_ENSURE(context,
                  data->type == kTfLiteInt32 || data->type == kTfLiteFloat32);
   TF_LITE_ENSURE_EQ(context, segment_ids->type, kTfLiteInt32);
@@ -67,10 +86,15 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* data = GetInput(context, node, kInputDataTensor);
-  const TfLiteTensor* segment_ids =
-      GetInput(context, node, kInputSegmentIdsTensor);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteTensor* data;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kInputDataTensor, &data));
+  const TfLiteTensor* segment_ids;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputSegmentIdsTensor,
+                                          &segment_ids));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
 
   if (IsDynamicTensor(output)) {
     TF_LITE_ENSURE_OK(context,

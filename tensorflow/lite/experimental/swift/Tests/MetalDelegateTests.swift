@@ -20,17 +20,45 @@ class MetalDelegateTests: XCTestCase {
 
   func testInitDefaultGPUDelegateOptions() {
     let delegate = MetalDelegate()
-    XCTAssertFalse(delegate.options.allowsPrecisionLoss)
+    XCTAssertFalse(delegate.options.isPrecisionLossAllowed)
     XCTAssertEqual(delegate.options.waitType, .passive)
   }
 
   func testInitWithCustomGPUDelegateOptions() {
     var options = MetalDelegate.Options()
-    options.allowsPrecisionLoss = true
+    options.isPrecisionLossAllowed = true
     options.waitType = .active
     let delegate = MetalDelegate(options: options)
-    XCTAssertTrue(delegate.options.allowsPrecisionLoss)
+    XCTAssertTrue(delegate.options.isPrecisionLossAllowed)
     XCTAssertEqual(delegate.options.waitType, .active)
+  }
+
+  func testInitInterpreterWithDelegate() throws {
+    // If metal device is not available, skip.
+    if MTLCreateSystemDefaultDevice() == nil {
+      return
+    }
+    let metalDelegate = MetalDelegate()
+    let interpreter = try Interpreter(modelPath: MultiAddModel.path, delegates: [metalDelegate])
+    XCTAssertEqual(interpreter.delegates?.count, 1)
+    XCTAssertNil(interpreter.options)
+  }
+
+  func testInitInterpreterWithOptionsAndDelegate() throws {
+    // If metal device is not available, skip.
+    if MTLCreateSystemDefaultDevice() == nil {
+      return
+    }
+    var options = Interpreter.Options()
+    options.threadCount = 1
+    let metalDelegate = MetalDelegate()
+    let interpreter = try Interpreter(
+      modelPath: MultiAddModel.path,
+      options: options,
+      delegates: [metalDelegate]
+    )
+    XCTAssertNotNil(interpreter.options)
+    XCTAssertEqual(interpreter.delegates?.count, 1)
   }
 }
 
@@ -38,15 +66,15 @@ class MetalDelegateOptionsTests: XCTestCase {
 
   func testInitWithDefaultValues() {
     let options = MetalDelegate.Options()
-    XCTAssertFalse(options.allowsPrecisionLoss)
+    XCTAssertFalse(options.isPrecisionLossAllowed)
     XCTAssertEqual(options.waitType, .passive)
   }
 
   func testInitWithCustomValues() {
     var options = MetalDelegate.Options()
-    options.allowsPrecisionLoss = true
+    options.isPrecisionLossAllowed = true
     options.waitType = .active
-    XCTAssertTrue(options.allowsPrecisionLoss)
+    XCTAssertTrue(options.isPrecisionLossAllowed)
     XCTAssertEqual(options.waitType, .active)
   }
 
@@ -55,19 +83,32 @@ class MetalDelegateOptionsTests: XCTestCase {
     var options2 = MetalDelegate.Options()
     XCTAssertEqual(options1, options2)
 
-    options1.allowsPrecisionLoss = true
-    options2.allowsPrecisionLoss = true
+    options1.isPrecisionLossAllowed = true
+    options2.isPrecisionLossAllowed = true
     XCTAssertEqual(options1, options2)
 
     options1.waitType = .none
     options2.waitType = .none
     XCTAssertEqual(options1, options2)
 
-    options2.allowsPrecisionLoss = false
+    options2.isPrecisionLossAllowed = false
     XCTAssertNotEqual(options1, options2)
-    options1.allowsPrecisionLoss = false
+    options1.isPrecisionLossAllowed = false
 
     options1.waitType = .aggressive
     XCTAssertNotEqual(options1, options2)
   }
 }
+
+
+/// Values for the `multi_add.bin` model.
+enum MultiAddModel {
+  static let info = (name: "multi_add", extension: "bin")
+
+  static var path: String = {
+    let bundle = Bundle(for: MetalDelegateTests.self)
+    guard let path = bundle.path(forResource: info.name, ofType: info.extension) else { return "" }
+    return path
+  }()
+}
+

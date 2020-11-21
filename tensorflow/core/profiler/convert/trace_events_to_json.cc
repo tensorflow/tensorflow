@@ -16,111 +16,110 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/trace_events_to_json.h"
 
 #include <algorithm>
-#include <map>
+#include <string>
 #include <utility>
 
+#include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
-#include "include/json/json.h"
+#include "json/json.h"
+#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
+#include "tensorflow/core/profiler/utils/format_utils.h"
+#include "tensorflow/core/profiler/utils/time_utils.h"
 
 namespace tensorflow {
 namespace profiler {
 namespace {
 
-constexpr double kPicosPerMicro = 1000000.0;
-
-inline void AppendEscapedName(string *json, const string &name) {
-  absl::StrAppend(json, "\"name\":", Json::valueToQuotedString(name.c_str()));
+// Converts the given time from picoseconds to microseconds and then to a string
+// using maximum precision.
+inline std::string PicosToMicrosString(uint64 ps) {
+  return MaxPrecision(PicosToMicros(ps));
 }
 
-// Adds resource events for a single device.
-void AddResourceMetadata(uint32 device_id,
-                         const std::map<uint32, const Resource *> &resources,
-                         string *json) {
-  for (const auto &pair : resources) {
-    uint32 resource_id = pair.first;
-    const Resource &resource = *pair.second;
-    if (!resource.name().empty()) {
-      absl::StrAppendFormat(json,
-                            R"({"ph":"M","pid":%u,"tid":%u,)"
-                            R"("name":"thread_name","args":{)",
-                            device_id, resource_id);
-      AppendEscapedName(json, resource.name());
-      absl::StrAppend(json, "}},");
-    }
-    absl::StrAppendFormat(
-        json,
-        R"({"ph":"M","pid":%u,"tid":%u,)"
-        R"("name":"thread_sort_index","args":{"sort_index":%u}},)",
-        device_id, resource_id, resource_id);
+// Escapes and quotes the given string.
+inline std::string JsonString(const std::string& s) {
+  return Json::valueToQuotedString(s.c_str());
+}
+
+// Returns a vector of pointers to the elements in the given map, sorted by key.
+template <typename Map>
+std::vector<const typename Map::value_type*> SortByKey(const Map& m) {
+  std::vector<const typename Map::value_type*> pairs;
+  pairs.reserve(m.size());
+  for (const auto& pair : m) {
+    pairs.push_back(&pair);
   }
+  absl::c_sort(pairs, [](const typename Map::value_type* a,
+                         const typename Map::value_type* b) {
+    return a->first < b->first;
+  });
+  return pairs;
 }
 
-void AddDeviceMetadata(const std::map<uint32, const Device *> &devices,
-                       string *json) {
-  for (const auto &pair : devices) {
-    uint32 device_id = pair.first;
-    const Device &device = *pair.second;
-    if (!device.name().empty()) {
-      absl::StrAppendFormat(json,
-                            R"({"ph":"M","pid":%u,"name":"process_name",)"
-                            R"("args":{)",
-                            device_id);
-      AppendEscapedName(json, device.name());
-      absl::StrAppend(json, "}},");
-    }
-    absl::StrAppendFormat(json,
-                          R"({"ph":"M","pid":%u,"name":"process_sort_index",)"
-                          R"("args":{"sort_index":%u}},)",
-                          device_id, device_id);
-    // Convert to a std::map so that resources are sorted by the device id.
-    std::map<uint32, const Resource *> sorted_resources;
-    for (const auto &pair : device.resources()) {
-      sorted_resources[pair.first] = &pair.second;
-    }
-    AddResourceMetadata(device_id, sorted_resources, json);
+inline void AddDeviceMetadata(uint32 device_id, const Device& device,
+                              std::string* json) {
+  if (!device.name().empty()) {
+    absl::StrAppend(json, R"({"ph":"M","pid":)", device_id,
+                    R"(,"name":"process_name","args":{"name":)",
+                    JsonString(device.name()), "}},");
   }
+  absl::StrAppend(json, R"({"ph":"M","pid":)", device_id,
+                  R"(,"name":"process_sort_index","args":{"sort_index":)",
+                  device_id, "}},");
 }
 
-inline void AddTraceEvent(const TraceEvent &event, string *json) {
-  absl::StrAppendFormat(json, R"({"pid":%u,"tid":%u,"ts":%.17g,)",
-                        event.device_id(), event.resource_id(),
-                        event.timestamp_ps() / kPicosPerMicro);
-  AppendEscapedName(json, event.name());
-  absl::StrAppend(json, ",");
-  uint64 duration_ps =
-      std::max(static_cast<uint64>(event.duration_ps()), uint64{1});
-  absl::StrAppendFormat(json, R"("ph":"X","dur":%.17g)",
-                        duration_ps / kPicosPerMicro);
+inline void AddResourceMetadata(uint32 device_id, uint32 resource_id,
+                                const Resource& resource, std::string* json) {
+  if (!resource.name().empty()) {
+    absl::StrAppend(json, R"({"ph":"M","pid":)", device_id, R"(,"tid":)",
+                    resource_id, R"(,"name":"thread_name","args":{"name":)",
+                    JsonString(resource.name()), "}},");
+  }
+  uint32 sort_index =
+      resource.sort_index() ? resource.sort_index() : resource_id;
+  absl::StrAppend(json, R"({"ph":"M","pid":)", device_id, R"(,"tid":)",
+                  resource_id, R"(,"name":"thread_sort_index")",
+                  R"(,"args":{"sort_index":)", sort_index, "}},");
+}
+
+inline void AddTraceEvent(const TraceEvent& event, string* json) {
+  auto duration_ps = std::max(event.duration_ps(), protobuf_uint64{1});
+  absl::StrAppend(json, R"({"ph":"X","pid":)", event.device_id(), R"(,"tid":)",
+                  event.resource_id(), R"(,"ts":)",
+                  PicosToMicrosString(event.timestamp_ps()), R"(,"dur":)",
+                  PicosToMicrosString(duration_ps), R"(,"name":)",
+                  JsonString(event.name()));
   if (!event.args().empty()) {
-    std::map<std::string, std::string> sorted_args(event.args().begin(),
-                                                   event.args().end());
     absl::StrAppend(json, R"(,"args":{)");
-    for (const auto &arg : sorted_args) {
-      absl::StrAppend(json, Json::valueToQuotedString(arg.first.c_str()), ":",
-                      Json::valueToQuotedString(arg.second.c_str()), ",");
+    for (const auto* arg : SortByKey(event.args())) {
+      absl::StrAppend(json, JsonString(arg->first), ":",
+                      JsonString(arg->second), ",");
     }
-    // Removes the trailing comma.
-    json->pop_back();
-    absl::StrAppend(json, "}");
+    // Replace trailing comma with closing brace.
+    json->back() = '}';
   }
   absl::StrAppend(json, "},");
 }
 
 }  // namespace
 
-string TraceEventsToJson(const Trace &trace) {
-  string json = R"({"displayTimeUnit":"ns","metadata":{"highres-ticks":true},)"
-                R"("traceEvents":[)";
-  // Convert to a std::map so that devices are sorted by the device id.
-  std::map<uint32, const Device *> sorted_devices;
-  for (const auto &pair : trace.devices()) {
-    sorted_devices[pair.first] = &pair.second;
+std::string TraceEventsToJson(const Trace& trace) {
+  std::string json =
+      R"({"displayTimeUnit":"ns","metadata":{"highres-ticks":true},)"
+      R"("traceEvents":[)";
+  for (const auto* id_and_device : SortByKey(trace.devices())) {
+    uint32 device_id = id_and_device->first;
+    const Device& device = id_and_device->second;
+    AddDeviceMetadata(device_id, device, &json);
+    for (const auto* id_and_resource : SortByKey(device.resources())) {
+      uint32 resource_id = id_and_resource->first;
+      const Resource& resource = id_and_resource->second;
+      AddResourceMetadata(device_id, resource_id, resource, &json);
+    }
   }
-  AddDeviceMetadata(sorted_devices, &json);
-  for (const TraceEvent &event : trace.trace_events()) {
+  for (const TraceEvent& event : trace.trace_events()) {
     AddTraceEvent(event, &json);
   }
   // Add one fake event to avoid dealing with no-trailing-comma rule.

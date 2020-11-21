@@ -31,7 +31,7 @@ namespace {
 
 class GraphHelper {
  public:
-  explicit GraphHelper(const Graph& graph) {
+  explicit GraphHelper(const Graph& graph) : graph_(graph) {
     for (Node* node : graph.nodes()) {
       nodes_by_name_[node->name()] = node;
     }
@@ -55,6 +55,16 @@ class GraphHelper {
         ->set_assigned_device_name(device_name);
   }
 
+  void CheckArgNum(const int expected_num) {
+    int arg_num = 0;
+    for (Node* node : graph_.op_nodes()) {
+      if (node->IsArg()) {
+        arg_num++;
+      }
+    }
+    EXPECT_EQ(arg_num, expected_num);
+  }
+
   void CheckAssignedDevice(const string& node_name,
                            const string& expected_device_name) {
     EXPECT_EQ(expected_device_name,
@@ -62,6 +72,7 @@ class GraphHelper {
   }
 
  private:
+  const Graph& graph_;
   // Maps from a node name to a Node* in the graph.
   absl::flat_hash_map<string, Node*> nodes_by_name_;
 };
@@ -103,6 +114,7 @@ TEST(ReplicatePerReplicaNodesTest, SingleCompositeDevice) {
     // ReadVariableOp(TPU:0) -> _Retval(CPU:0)
     EXPECT_EQ(graph.num_op_nodes(), 7);
     GraphHelper helper(graph);
+    helper.CheckArgNum(2);
     helper.CheckAssignedDevice("arg/R0", "TPU:0");
     helper.CheckAssignedDevice("arg/R1", "TPU:1");
     helper.CheckAssignedDevice("read", "TPU:0");
@@ -141,6 +153,7 @@ TEST(ReplicatePerReplicaNodesTest, SingleCompositeDeviceToSingleDevice) {
     // _Arg(TPU:0) -> ReadVariableOp(TPU:0) -> _Retval(CPU:0)
     EXPECT_EQ(graph.num_op_nodes(), 3);
     GraphHelper helper(graph);
+    helper.CheckArgNum(1);
     helper.CheckAssignedDevice("arg", "TPU:0");
     helper.CheckAssignedDevice("read", "TPU:0");
     helper.CheckAssignedDevice("ret", "CPU:0");
@@ -192,6 +205,7 @@ TEST(ReplicatePerReplicaNodesTest, MultipleCompositeDevices) {
     // TPU:3) -> Identity(TPU:1, TPU:3) -> Add(TPU:0)-> _Retval(CPU:0)
     EXPECT_EQ(graph.num_op_nodes(), 12);
     GraphHelper helper(graph);
+    helper.CheckArgNum(4);
     helper.CheckAssignedDevice("arg0/R0", "TPU:0");
     helper.CheckAssignedDevice("arg0/R1", "TPU:1");
     helper.CheckAssignedDevice("arg1/R0", "TPU:2");
@@ -258,16 +272,61 @@ TEST(ReplicatePerReplicaNodesTest, NestedFunctions) {
       ReplicatePerReplicaNodesInFunctionGraph(composite_devices, &graph));
 
   {
-    // _Arg(TPU:0) -> Func(CPU:0) -> _Retval(CPU:0)
-    EXPECT_EQ(graph.num_op_nodes(), 4);
+    // _Arg(TPU:0), _Arg(TPU:1) -> Pack(CPU:0) -> Func(CPU:0) -> _Retval(CPU:0)
+    EXPECT_EQ(graph.num_op_nodes(), 5);
     GraphHelper helper(graph);
+    helper.CheckArgNum(2);
     helper.CheckAssignedDevice("arg/R0", "TPU:0");
     helper.CheckAssignedDevice("arg/R1", "TPU:1");
+    helper.CheckAssignedDevice("arg/Packed", "CPU:0");
     helper.CheckAssignedDevice("func", "CPU:0");
     helper.CheckAssignedDevice("ret", "CPU:0");
-    const EdgeSet& in_edges = helper.GetNodeByName("func")->in_edges();
-    EXPECT_EQ(in_edges.size(), 1);
-    EXPECT_EQ(helper.GetNodeByName("arg/R0"), (*in_edges.begin())->src());
+    const EdgeSet& packed_in_edges =
+        helper.GetNodeByName("arg/Packed")->in_edges();
+    EXPECT_EQ(packed_in_edges.size(), 2);
+    auto it = packed_in_edges.begin();
+    EXPECT_EQ(helper.GetNodeByName("arg/R0"), (*it++)->src());
+    EXPECT_EQ(helper.GetNodeByName("arg/R1"), (*it)->src());
+    const EdgeSet& func_in_edges = helper.GetNodeByName("func")->in_edges();
+    EXPECT_EQ(func_in_edges.size(), 1);
+    EXPECT_EQ(helper.GetNodeByName("arg/Packed"),
+              (*func_in_edges.begin())->src());
+  }
+}
+
+TEST(ReplicatePerReplicaNodesTest, DeadArgNodes) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+  Output arg = ops::_Arg(scope.WithOpName("arg"), DT_RESOURCE, 0);
+  auto read = ops::ReadVariableOp(scope.WithOpName("read"), arg, DT_INT32);
+  auto ret = ops::_Retval(scope.WithOpName("ret"), read, 0);
+
+  const std::vector<string> underlying_devices = {"TPU:0", "TPU:1"};
+  const absl::flat_hash_map<string, const std::vector<string>*>
+      composite_devices = {{"TPU_COMPOSITE:0", &underlying_devices}};
+
+  Graph graph(OpRegistry::Global());
+  TF_ASSERT_OK(scope.ToGraph(&graph));
+  {
+    // _Arg(TPU_COMPOSITE:0) -> ReadVariableOp(TPU:0) -> _Retval(CPU:0)
+    ASSERT_EQ(graph.num_op_nodes(), 3);
+    GraphHelper helper(graph);
+    helper.SetAssignedDevice("arg", "TPU_COMPOSITE:0");
+    helper.SetAssignedDevice("read", "TPU:0");
+    helper.SetAssignedDevice("ret", "CPU:0");
+  }
+
+  TF_EXPECT_OK(
+      ReplicatePerReplicaNodesInFunctionGraph(composite_devices, &graph));
+
+  {
+    // _Arg(TPU:0) -> ReadVariableOp(TPU:0) -> _Retval(CPU:0)
+    // "arg/R1" is a dead node, so gets removed.
+    EXPECT_EQ(graph.num_op_nodes(), 3);
+    GraphHelper helper(graph);
+    helper.CheckArgNum(1);
+    helper.CheckAssignedDevice("arg/R0", "TPU:0");
+    helper.CheckAssignedDevice("read", "TPU:0");
+    helper.CheckAssignedDevice("ret", "CPU:0");
   }
 }
 

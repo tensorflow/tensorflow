@@ -51,8 +51,8 @@ class SingleThreadedExecutorImpl : public Executor {
     std::vector<Node*> ordered_nodes;
     ordered_nodes.reserve(graph.num_nodes());
     GetReversePostOrder(graph, &ordered_nodes);
-
-    if (ordered_nodes.size() != graph.num_nodes()) {
+    int ordered_nodes_size = ordered_nodes.size();
+    if (ordered_nodes_size != graph.num_nodes()) {
       return errors::InvalidArgument("Graph had ", graph.num_nodes(),
                                      " but reverse post-order had ",
                                      ordered_nodes.size());

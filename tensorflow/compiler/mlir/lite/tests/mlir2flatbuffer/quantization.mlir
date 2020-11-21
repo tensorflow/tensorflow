@@ -1,23 +1,28 @@
-// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string - | FileCheck --dump-input-on-failure %s
+// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string - | FileCheck %s
 
 func @main(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x1001xf32> {
 // CHECK: {
 // CHECK-NEXT:  version: 3,
 // CHECK-NEXT:  operator_codes: [ {
-// CHECK-NEXT:    builtin_code: QUANTIZE,
-// CHECK-NEXT:    version: 1
+// CHECK-NEXT:    deprecated_builtin_code: 114,
+// CHECK-NEXT:    version: 1,
+// CHECK-NEXT:    builtin_code: QUANTIZE
 // CHECK-NEXT:  }, {
-// CHECK-NEXT:    builtin_code: CONV_2D,
-// CHECK-NEXT:    version: 1
+// CHECK-NEXT:    deprecated_builtin_code: 3,
+// CHECK-NEXT:    version: 1,
+// CHECK-NEXT:    builtin_code: CONV_2D
 // CHECK-NEXT:  }, {
-// CHECK-NEXT:    builtin_code: RESHAPE,
-// CHECK-NEXT:    version: 1
+// CHECK-NEXT:    deprecated_builtin_code: 22,
+// CHECK-NEXT:    version: 1,
+// CHECK-NEXT:    builtin_code: RESHAPE
 // CHECK-NEXT:  }, {
-// CHECK-NEXT:    builtin_code: SOFTMAX,
-// CHECK-NEXT:    version: 1
+// CHECK-NEXT:    deprecated_builtin_code: 25,
+// CHECK-NEXT:    version: 1,
+// CHECK-NEXT:    builtin_code: SOFTMAX
 // CHECK-NEXT:  }, {
-// CHECK-NEXT:    builtin_code: DEQUANTIZE,
-// CHECK-NEXT:    version: 1
+// CHECK-NEXT:    deprecated_builtin_code: 6,
+// CHECK-NEXT:    version: 1,
+// CHECK-NEXT:    builtin_code: DEQUANTIZE
 // CHECK-NEXT:  } ],
 // CHECK-NEXT:  subgraphs: [ {
 // CHECK-NEXT:    tensors: [ {
@@ -154,12 +159,13 @@ func @main(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x1001xf32> {
 // CHECK-NEXT:  }, {
 // CHECK-EMPTY:
 // CHECK-NEXT:  }, {
-// CHECK-NEXT:    data: [ 49, 46, 49, 51, 46, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ]
+// CHECK-NEXT:    data: [ 49, 46, 49, 52, 46, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ]
 // CHECK-NEXT:  } ],
 // CHECK-NEXT:  metadata: [ {
 // CHECK-NEXT:  name: "min_runtime_version",
 // CHECK-NEXT:  buffer: 10
 // CHECK-NEXT:  } ]
+// CHECK-NEXT:  signature_defs: [ ]
 // CHECK-NEXT:}
 
   %0 = "tfl.pseudo_const" () {value = dense<[1, 1001]> : tensor<2xi32>} : () -> tensor<2xi32> loc("Const")

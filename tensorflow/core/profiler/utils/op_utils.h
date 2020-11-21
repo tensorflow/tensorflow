@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PROFILER_UTILS_OP_UTILS_H_
 
 #include "absl/strings/string_view.h"
+#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
@@ -48,12 +49,7 @@ class HostOpMetricsDbBuilder : public OpMetricsDbBuilder {
 
 class DeviceOpMetricsDbBuilder : public OpMetricsDbBuilder {
  public:
-  explicit DeviceOpMetricsDbBuilder(OpMetricsDb* db,
-                                    double peak_tera_flops_per_second,
-                                    double peak_hbm_bw_giga_bytes_per_second)
-      : OpMetricsDbBuilder(db),
-        peak_tera_flops_per_second_(peak_tera_flops_per_second),
-        peak_hbm_bw_giga_bytes_per_second_(peak_hbm_bw_giga_bytes_per_second) {}
+  explicit DeviceOpMetricsDbBuilder(OpMetricsDb* db) : OpMetricsDbBuilder(db) {}
 
   // A function that will be called when the end of an OP is
   // observed on a trace, where:
@@ -69,16 +65,14 @@ class DeviceOpMetricsDbBuilder : public OpMetricsDbBuilder {
   //                      picoseconds.
   //   flops = the number of floating-point operations computed.
   //   bytes_accessed = the sum of bytes read and bytes written by this OP.
+  //   memory_accessed_breakdown = the breakdown of memory accessed by operation
+  //                               type and memory space.
   void EnterOp(uint64 program_id, absl::string_view name,
                absl::string_view category, absl::string_view provenance,
                bool is_eager, uint64 occurrences, uint64 time_ps,
-               uint64 children_time_ps, int64 flops, int64 bytes_accessed);
-
- protected:
-  // Peak performance of a TensorCore or a GPU in TFLOP/s.
-  double peak_tera_flops_per_second_;
-  // Peak memory bandwidth of a TensorCore or a GPU in GiBs/s.
-  double peak_hbm_bw_giga_bytes_per_second_;
+               uint64 children_time_ps, int64 flops, int64 bytes_accessed,
+               const protobuf::RepeatedPtrField<OpMetrics::MemoryAccessed>&
+                   memory_accessed_breakdown = {});
 };
 
 }  // namespace profiler

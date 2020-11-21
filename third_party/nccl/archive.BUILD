@@ -46,6 +46,7 @@ gen_device_srcs(
         "src/collectives/device/broadcast.cu.cc",
         "src/collectives/device/reduce.cu.cc",
         "src/collectives/device/reduce_scatter.cu.cc",
+        "src/collectives/device/sendrecv.cu.cc",
     ],
 )
 
@@ -88,6 +89,7 @@ cc_library(
     ],
     hdrs = ["src/nccl.h"],
     include_prefix = "third_party/nccl",
+    linkopts = ["-lrt"],
     strip_include_prefix = "src",
     visibility = ["//visibility:public"],
     deps = [

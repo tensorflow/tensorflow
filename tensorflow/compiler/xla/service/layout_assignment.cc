@@ -951,8 +951,7 @@ Status LayoutAssignment::CheckLayouts(HloModule* module) {
                 if (!Shape::Equal()
                          .IgnoreDynamicDimension()
                          .MinorToMajorOnlyInLayout()(instruction_subshape,
-                                                     buffer->shape()) &&
-                    instruction->opcode() != HloOpcode::kBitcast) {
+                                                     buffer->shape())) {
                   return InternalError(
                       "Layout of instruction %s at index {%s} does not match "
                       "source LogicalBuffer %s: %s vs %s",
@@ -1358,6 +1357,20 @@ Status LayoutAssignment::PropagateOperandConstraint(
   // Propagate layouts between operands of the same instruction. This is a
   // constraint on non-layout-changing instructions.
   if (!instruction_can_change_layout_func_(user)) {
+    // Only propgate the layout of the largest concatenate operand.
+    if (user->opcode() == HloOpcode::kConcatenate) {
+      for (int64 operand_no = 0; operand_no < user->operand_count();
+           ++operand_no) {
+        const HloInstruction* sibling = user->operand(operand_no);
+        if (sibling == operand) {
+          continue;
+        }
+        if (sibling->shape().dimensions(user->concatenate_dimension()) >
+            operand->shape().dimensions(user->concatenate_dimension())) {
+          return Status::OK();
+        }
+      }
+    }
     // Make sure all siblings have the same layout as the operand.
     for (int64 operand_no = 0; operand_no < user->operand_count();
          ++operand_no) {
@@ -1799,6 +1812,13 @@ Status LayoutAssignment::ClearComputationLayouts(HloComputation* computation) {
   // potential bugs in the layout assignment pass that may accidentally use the
   // existing layout.
   for (HloInstruction* instruction : computation->instructions()) {
+    if (instruction->opcode() == HloOpcode::kBitcast) {
+      // bitcasts are inherently layout sensitive and so a bitcast instruction
+      // present in the IR before layout assignment is a bug.
+      return InternalError(
+          "Unexpected bitcast operation seen during layout assignment: %s.",
+          instruction->ToString());
+    }
     // Some instructions carry mandatory layouts in their shape.
     if (instruction->opcode() != HloOpcode::kInfeed &&
         !IsLayoutConstrainedCustomCall(instruction) &&
@@ -1871,7 +1891,7 @@ Status LayoutAssignment::RunOnComputation(
             ? ShapeUtil::GetSubshape(instruction->literal().shape(),
                                      buffer.index())
                   .layout()
-            : LayoutUtil::GetDefaultLayoutForShape(buffer.shape());
+            : GetUnconstrainedLayout(buffer);
     TF_RETURN_IF_ERROR(constraints.SetBufferLayout(new_layout, buffer,
                                                    /*mandatory=*/false));
 
@@ -2187,6 +2207,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kIsFinite:
     case HloOpcode::kLog:
     case HloOpcode::kLog1p:
+    case HloOpcode::kLogistic:
     case HloOpcode::kMap:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
@@ -2234,6 +2255,8 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kBitcast:
     case HloOpcode::kBroadcast:
     case HloOpcode::kCall:
+    case HloOpcode::kCollectivePermuteStart:
+    case HloOpcode::kCollectivePermuteDone:
     case HloOpcode::kConstant:
     case HloOpcode::kConvolution:
     case HloOpcode::kCopy:
@@ -2255,6 +2278,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kReduce:
     case HloOpcode::kReplicaId:
     case HloOpcode::kReshape:
+    case HloOpcode::kDynamicReshape:
     case HloOpcode::kRng:
     case HloOpcode::kRngBitGenerator:
     case HloOpcode::kRngGetAndUpdateState:

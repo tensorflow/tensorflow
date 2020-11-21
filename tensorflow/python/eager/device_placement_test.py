@@ -83,6 +83,14 @@ class SoftDevicePlacementTest(test.TestCase, parameterized.TestCase):
     self.assertIn('CPU', d.device)
 
   @test_util.run_gpu_only
+  def testSoftPlacedGPU(self):
+    a = constant_op.constant(1)
+    b = constant_op.constant(2)
+    with ops.device('GPU:110'):
+      c = a + b
+    self.assertIn('GPU:0', c.device)
+
+  @test_util.run_gpu_only
   def testNestedDeviceScope(self):
     a = constant_op.constant(1)
     b = constant_op.constant(2)

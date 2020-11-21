@@ -15,7 +15,9 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 
 #include "absl/types/span.h"
-#include "tensorflow/c/eager/tensor_handle_interface.h"
+#include "tensorflow/c/eager/abstract_operation.h"
+#include "tensorflow/c/eager/abstract_tensor_handle.h"
+#include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
@@ -91,8 +93,8 @@ Status EagerOperation::SetAttrShape(const char* attr_name, const int64_t* dims,
   return Status::OK();
 }
 
-Status EagerOperation::SetAttrFunction(
-    const char* attr_name, const AbstractOperationInterface* value) {
+Status EagerOperation::SetAttrFunction(const char* attr_name,
+                                       const AbstractOperation* value) {
   AttrValue attr_value;
   NameAttrList* func = attr_value.mutable_func();
   func->set_name(value->Name());
@@ -194,8 +196,7 @@ Status EagerOperation::SetAttrShapeList(const char* attr_name,
 }
 
 Status EagerOperation::SetAttrFunctionList(
-    const char* attr_name,
-    absl::Span<const AbstractOperationInterface*> values) {
+    const char* attr_name, absl::Span<const AbstractOperation*> values) {
   size_t num_values = values.size();
   std::unique_ptr<NameAttrList[]> funcs(new NameAttrList[num_values]);
   for (int i = 0; i < num_values; i++) {
@@ -234,6 +235,14 @@ Status EagerOperation::InputLength(const char* input_name, int* length) {
   return Status::OK();
 }
 
+absl::Span<ImmediateExecutionTensorHandle* const> EagerOperation::GetInputs()
+    const {
+  // TODO(b/162536003): Remove reinterpret_cast.
+  return absl::MakeSpan(
+      reinterpret_cast<ImmediateExecutionTensorHandle* const*>(inputs_.data()),
+      inputs_.size());
+}
+
 Status EagerOperation::OutputLength(const char* output_name, int* length) {
   Status status;
   const tensorflow::OpDef* op_def = GetOpDef(&status);
@@ -253,24 +262,19 @@ Status EagerOperation::OutputLength(const char* output_name, int* length) {
   return Status::OK();
 }
 
-Status EagerOperation::AddInput(AbstractTensorHandleInterface* input) {
+Status EagerOperation::AddInput(AbstractTensorHandle* input) {
   TensorHandle* h = TensorHandleFromInterface(input);
   AddTensorHandle(h);
   return MaybeInferSingleInputAttrs(h);
 }
 
 Status EagerOperation::AddInputList(
-    absl::Span<AbstractTensorHandleInterface*> inputs) {
+    absl::Span<AbstractTensorHandle* const> inputs) {
   for (auto& input : inputs) {
     TensorHandle* h = TensorHandleFromInterface(input);
     AddTensorHandle(h);
   }
   return InferInputListAttrs(inputs.size());
-}
-
-Status EagerOperation::SetUseXla(bool enable) {
-  use_xla_ = enable;
-  return Status::OK();
 }
 
 Status EagerOperation::Reset(
@@ -304,7 +308,7 @@ Status EagerOperation::Reset(
         "registered in the binary running in this process.");
   }
   attrs_.Reset(op);
-  use_xla_ = false;
+  stack_trace_.reset();
   is_function_ = is_function;
   cancellation_manager_ = nullptr;
   executor_ = executor ? executor : &ctx_.Executor();
@@ -374,6 +378,12 @@ Status EagerOperation::InferInputListAttrs(int num_inputs) {
   } else if (!input_def.type_attr().empty() &&
              !input_def.number_attr().empty()) {
     InferSingleTypeInputListAttrs(input_def, inputs_[start]->dtype, num_inputs);
+  } else if (!input_def.number_attr().empty()) {
+    if (inference_attrs_.find(input_def.number_attr()) ==
+        inference_attrs_.end()) {
+      MutableAttrs()->Set(input_def.number_attr(), num_inputs);
+      inference_attrs_.insert(input_def.number_attr());
+    }
   } else {
     return errors::InvalidArgument("Invalid input list definition");
   }
@@ -390,7 +400,7 @@ Status EagerOperation::SetDeviceName(const char* c_name) {
     last_set_device_name_ = name;
     device_name_ = DeviceNameUtils::ParsedNameToString(device_parsed_name_);
     CustomDevice* custom_device;
-    if (ctx_.FindCustomDeviceFromName(device_name_, &custom_device).ok()) {
+    if (ctx_.FindCustomDeviceFromName(device_name_, &custom_device)) {
       device_ = custom_device;
     } else {
       // Device placement for physical devices happens lazily in

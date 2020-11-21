@@ -70,11 +70,10 @@ void DynamicStitchGPUImpl(const Eigen::GpuDevice& gpu_device,
       const GpuDeviceArrayStruct<int32>& input_indices,           \
       const GpuDeviceArrayStruct<const T*>& input_ptrs, T* output);
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
-TF_CALL_complex64(REGISTER_GPU);
-TF_CALL_complex128(REGISTER_GPU);
+TF_CALL_int32(REGISTER_GPU);
 TF_CALL_int64(REGISTER_GPU);
-TF_CALL_int32(REGISTER_GPU)
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
+TF_CALL_COMPLEX_TYPES(REGISTER_GPU);
 
 #undef REGISTER_GPU
 

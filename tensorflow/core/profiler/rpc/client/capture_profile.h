@@ -17,26 +17,31 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_RPC_CLIENT_CAPTURE_PROFILE_H_
 #define TENSORFLOW_CORE_PROFILER_RPC_CLIENT_CAPTURE_PROFILE_H_
 
+#include <string>
+
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/profiler_options.pb.h"
+#include "tensorflow/core/profiler/profiler_service.pb.h"
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {
 
-Status ValidateHostPortPair(const string& host_port);
+// Convert XSpace to tool data and saves under <logdir>/plugins/profile/.
+Status ExportToTensorBoard(const XSpace& xspace, const std::string& logdir);
 
 // Collects one sample of monitoring profile and shows user-friendly metrics.
 // If timestamp flag is true, timestamp will be displayed in "%H:%M:%S" format.
-Status Monitor(const string& service_addr, int duration_ms,
-               int monitoring_level, bool display_timestamp, string* result);
+Status Monitor(const std::string& service_addr, int duration_ms,
+               int monitoring_level, bool display_timestamp,
+               std::string* result);
 
-// Starts tracing on a single or multiple hosts and saves the result in the
-// given logdir. If no trace was collected, retries tracing for
-// num_tracing_attempts.
-Status Trace(const string& service_addr, const string& logdir,
-             const string& workers_list, int duration_ms,
-             int num_tracing_attempts, const ProfileOptions& opts);
+// Starts tracing on a single or multiple hosts. Each host will save the result
+// in the given logdir. If no trace was collected, retries tracing for
+// num_tracing_attempts. Assumes that options have been validated.
+Status Trace(const std::string& logdir, int num_tracing_attempts,
+             RemoteProfilerSessionManagerOptions& opts,
+             bool is_cloud_tpu_session);
 
 }  // namespace profiler
 }  // namespace tensorflow

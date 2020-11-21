@@ -28,8 +28,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stacktrace.h"
 
-#if GOOGLE_CUDA
-#if GOOGLE_TENSORRT
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
 namespace tensorflow {
 namespace tensorrt {
 namespace convert {
@@ -87,6 +86,7 @@ void TRTOptimizationPass::PrintDebugInfo(grappler::Cluster* cluster,
   string offset2 = StrCat(offset, offset);
   string offset3 = StrCat(offset2, offset);
   string offset4 = StrCat(offset2, offset2);
+
   if (cluster) {
     LOG(INFO) << offset << "type             = " << cluster->type();
     LOG(INFO) << offset << "num warmup steps = " << cluster->NumWarmupSteps();
@@ -133,7 +133,15 @@ void TRTOptimizationPass::PrintDebugInfo(grappler::Cluster* cluster,
         }
       }
     }
+
+    if (cluster->GetDeviceSet()) {
+      for (const auto dev : cluster->GetDeviceSet()->devices()) {
+        LOG(INFO) << "Device name= " << dev->name() << "Pased name= "
+                  << DeviceNameUtils::ParsedNameToString(dev->parsed_name());
+      }
+    }
   }
+
   LOG(INFO) << "item: " << item.id;
   if (!item.feed.empty()) {
     LOG(INFO) << offset << "Feeds  :";
@@ -172,13 +180,6 @@ void TRTOptimizationPass::PrintDebugInfo(grappler::Cluster* cluster,
   } else {
     LOG(INFO) << offset << "No keep ops";
   }
-  for (const auto dev : cluster->GetDeviceSet()->devices()) {
-    const auto& pname = dev->parsed_name();
-    LOG(INFO) << "Device name= " << dev->name()
-              << " parsedname job= " << pname.job << " id= " << pname.id
-              << " has_id: " << pname.has_id << " has_job: " << pname.has_job
-              << "has_type: " << pname.has_type << " type =" << pname.type;
-  }
 }
 
 Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
@@ -202,35 +203,6 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
     LOG(INFO) << CurrentStackTrace();
     PrintDebugInfo(cluster, item);
   }
-  if (!is_dynamic_op_) {
-    int max_batch_dim = -1;
-    if (!item.feed.empty()) {
-      for (const auto& f : item.feed) {
-        const auto& shape = f.second.shape();
-        if (shape.dims() > 0) {
-          if (shape.dim_size(0) > max_batch_dim)
-            max_batch_dim = shape.dim_size(0);
-          VLOG(2) << "Setting max_batch_dim to " << max_batch_dim
-                  << " using batch dimension of " << f.first << " with shape "
-                  << shape;
-        }
-      }
-    }
-    if (max_batch_dim > maximum_batch_size_) {
-      return errors::InvalidArgument(
-          "Specified max_batch_size=", maximum_batch_size_,
-          " is less than maximum batch dimension of inputs (", max_batch_dim,
-          "). ", "To continue, set max_batch_size to >= ", max_batch_dim);
-    } else if (max_batch_dim < maximum_batch_size_) {
-      LOG(INFO) << "Specified max_batch_size=" << maximum_batch_size_
-                << " is larger than maximum batch dimension of inputs ("
-                << max_batch_dim << "). "
-                << "This can result in poor performance.";
-    }
-  }
-  grappler::GraphProperties static_graph_properties(item);
-  TF_RETURN_IF_ERROR(static_graph_properties.InferStatically(true));
-  ConversionParams cp;
 
   if (use_calibration_ && precision_mode_ != TrtPrecisionMode::INT8) {
     VLOG(1) << "Calibration with FP32 or FP16 is not implemented. "
@@ -255,7 +227,9 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
     }
     nodes_to_preserve.push_back(s);
   }
-  cp.input_graph_def = &item.graph;
+
+  ConversionParams cp;
+  cp.grappler_item = &item;
   cp.output_names = &nodes_to_preserve;
   cp.trt_logger_name = trt_logger_name_;
   cp.max_batch_size = maximum_batch_size_;
@@ -263,7 +237,6 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
   cp.output_graph_def = optimized_graph;
   cp.precision_mode = precision_mode_;
   cp.minimum_segment_size = minimum_segment_size_;
-  cp.graph_properties = &static_graph_properties;
   cp.cluster = cluster;
   cp.is_dyn_op = is_dynamic_op_;
   cp.max_cached_engines = max_cached_batches_;
@@ -304,5 +277,4 @@ static VerboseCustomGraphOptimizerRegistrar TRTOptimizationPass_Registrar(
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif
-#endif
+#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT

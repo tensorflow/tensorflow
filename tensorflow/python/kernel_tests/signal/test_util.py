@@ -50,7 +50,7 @@ def grappler_optimize(graph, fetches=None, config_proto=None):
   return tf_optimizer.OptimizeGraph(config_proto, metagraph)
 
 
-def tflite_convert(fn, input_templates, use_mlir=False):
+def tflite_convert(fn, input_templates):
   """Converts the provided fn to tf.lite model.
 
   Args:
@@ -59,7 +59,6 @@ def tflite_convert(fn, input_templates, use_mlir=False):
     input_templates: A list of Tensors, ndarrays or TensorSpecs describing the
       inputs that fn expects. The actual values of the Tensors or ndarrays are
       unused.
-    use_mlir: Experimental. Whether to use the tf.lite MLIR converter.
 
   Returns:
     The serialized tf.lite model.
@@ -67,7 +66,6 @@ def tflite_convert(fn, input_templates, use_mlir=False):
   fn = def_function.function(fn)
   concrete_func = fn.get_concrete_function(*input_templates)
   converter = lite.TFLiteConverterV2([concrete_func])
-  converter.experimental_new_converter = use_mlir
   return converter.convert()
 
 

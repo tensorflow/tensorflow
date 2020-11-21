@@ -34,14 +34,4 @@ REGISTER_KERNEL_BUILDER(Name("Maximum")
                         BinaryOp<CPUDevice, functor::maximum<int32>>);
 #endif
 
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER3(BinaryOp, SYCL, "Maximum", functor::maximum, float, double, int64);
-REGISTER_KERNEL_BUILDER(Name("Maximum")
-                            .Device(DEVICE_SYCL)
-                            .HostMemory("x")
-                            .HostMemory("y")
-                            .HostMemory("z")
-                            .TypeConstraint<int32>("T"),
-                        BinaryOp<CPUDevice, functor::maximum<int32>>);
-#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

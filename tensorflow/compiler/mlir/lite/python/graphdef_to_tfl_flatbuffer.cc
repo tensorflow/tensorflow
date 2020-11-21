@@ -18,6 +18,7 @@ limitations under the License.
 #include <ostream>
 #include <utility>
 
+#include "llvm/ADT/None.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
@@ -54,9 +55,9 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   // Parse input arrays.
   std::vector<string> node_names;
   std::vector<string> node_dtypes;
-  std::vector<std::vector<int>> node_shapes;
-  std::vector<double> node_mins;
-  std::vector<double> node_maxs;
+  std::vector<llvm::Optional<std::vector<int>>> node_shapes;
+  std::vector<llvm::Optional<double>> node_mins;
+  std::vector<llvm::Optional<double>> node_maxs;
 
   // Populate quantization specs.
   TF_RETURN_IF_ERROR(internal::PopulateQuantizationSpecs(
@@ -89,8 +90,10 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   pass_config.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
   pass_config.lower_tensor_list_ops = true;
 
-  return internal::ConvertMLIRToTFLiteFlatBuffer(toco_flags, std::move(module),
-                                                 pass_config, result);
+  return internal::ConvertMLIRToTFLiteFlatBuffer(
+      toco_flags, std::move(module), pass_config, /*saved_model_tags=*/{},
+      result,
+      /*session=*/llvm::None);
 }
 
 }  // namespace tensorflow

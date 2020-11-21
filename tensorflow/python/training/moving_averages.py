@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import reduce_util as ds_reduce_util
 from tensorflow.python.framework import dtypes
@@ -83,7 +84,6 @@ def assign_moving_average(variable, value, decay, zero_debias=True, name=None):
       [Kingma et al., 2015](https://arxiv.org/abs/1412.6980)
       ([pdf](https://arxiv.org/pdf/1412.6980.pdf))
   """
-
   with ops.name_scope(name, "AssignMovingAvg",
                       [variable, value, decay]) as scope:
     decay = ops.convert_to_tensor(1.0 - decay, name="decay")
@@ -97,7 +97,7 @@ def assign_moving_average(variable, value, decay, zero_debias=True, name=None):
       if zero_debias:
         return _zero_debias(strategy, v, value, decay)
       else:
-        return strategy.extended.update(v, update_fn, args=(value,))
+        return _update(strategy, v, update_fn, args=(value,))
 
     replica_context = distribution_strategy_context.get_replica_context()
     if replica_context:
@@ -176,6 +176,20 @@ def weighted_moving_average(value,
       return math_ops.truediv(numerator, denominator, name=scope.name)
     else:
       return math_ops.divide(numerator, denominator, name=scope.name)
+
+
+def _update(strategy, var, update_fn, args):
+  """Applies updates depending on the context."""
+  assert distribution_strategy_context.in_cross_replica_context(), (
+      "_update can only be called in cross-replica context")
+  if distribute_lib.get_update_replica_id() is not None:
+    # Call update_fn on var to delegate the implementation. We expect `var` will
+    # do the right thing in update context, e.g, if `var` is a MirroredVariable,
+    # it should pick its component variable based on `update_replica_id` and
+    # only update that.
+    return update_fn(var, *args)
+  else:
+    return strategy.extended.update(var, update_fn, args)
 
 
 def _zero_debias(strategy, unbiased_var, value, decay):
@@ -263,8 +277,8 @@ def _zero_debias(strategy, unbiased_var, value, decay):
     return state_ops.assign(
         v, update_biased / bias_factor, name=ops.get_name_scope() + "/")
 
-  return strategy.extended.update(
-      unbiased_var, update_fn, args=(value, biased_var, local_step))
+  return _update(
+      strategy, unbiased_var, update_fn, args=(value, biased_var, local_step))
 
 
 @tf_export("train.ExponentialMovingAverage")

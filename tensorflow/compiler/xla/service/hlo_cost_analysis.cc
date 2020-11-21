@@ -99,8 +99,11 @@ Status HloCostAnalysis::HandleElementwiseOp(
   auto opcode = hlo_instruction->opcode();
   // We treat transcendental operations separately since one transcendental
   // operation can correspond to several floating point ops.
+  // kLogistic is included in "trascendental" as it is implemented using
+  // trascendental ops (tanh or exp).
   if (opcode == HloOpcode::kExp || opcode == HloOpcode::kLog ||
-      opcode == HloOpcode::kPower || opcode == HloOpcode::kSqrt ||
+      opcode == HloOpcode::kLogistic || opcode == HloOpcode::kPower ||
+      opcode == HloOpcode::kSqrt || opcode == HloOpcode::kCbrt ||
       opcode == HloOpcode::kRsqrt || opcode == HloOpcode::kTanh ||
       opcode == HloOpcode::kSin || opcode == HloOpcode::kCos ||
       opcode == HloOpcode::kExpm1 || opcode == HloOpcode::kLog1p ||
@@ -483,6 +486,10 @@ Status HloCostAnalysis::HandleReshape(const HloInstruction*) {
   return Status::OK();
 }
 
+Status HloCostAnalysis::HandleDynamicReshape(const HloInstruction*) {
+  return Status::OK();
+}
+
 Status HloCostAnalysis::HandleBatchNormTraining(const HloInstruction*) {
   // TODO(b/62294698): Implement cost analysis for batch-norm-training.
   return Status::OK();
@@ -733,6 +740,16 @@ Status HloCostAnalysis::HandleAllToAll(const HloInstruction* hlo) {
 }
 
 Status HloCostAnalysis::HandleCollectivePermute(const HloInstruction* /*hlo*/) {
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleCollectivePermuteStart(
+    const HloInstruction* /*hlo*/) {
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleCollectivePermuteDone(
+    const HloInstruction* /*hlo*/) {
   return Status::OK();
 }
 
@@ -1029,6 +1046,42 @@ int64 HloCostAnalysis::output_bytes_accessed(const HloInstruction& hlo,
 
 float HloCostAnalysis::optimal_seconds(const HloInstruction& hlo) const {
   return GetPropertyForHlo(hlo, kOptimalSecondsKey, hlo_properties_);
+}
+
+int64 HloCostAnalysis::GetBytesRead(const HloInstruction& hlo,
+                                    absl::optional<int64> memory_space) const {
+  int64 bytes_read = 0;
+  for (int operand_number = 0; operand_number < hlo.operand_count();
+       ++operand_number) {
+    for (const ShapeUtil::IndexedShape& indexed_shape :
+         ShapeUtil::GetLeafShapes(hlo.operand(operand_number)->shape())) {
+      absl::optional<int64> index_memory_space;
+      if (indexed_shape.shape.has_layout()) {
+        index_memory_space = indexed_shape.shape.layout().memory_space();
+      }
+      if (!memory_space || memory_space == index_memory_space) {
+        bytes_read +=
+            operand_bytes_accessed(hlo, operand_number, indexed_shape.index);
+      }
+    }
+  }
+  return bytes_read;
+}
+
+int64 HloCostAnalysis::GetBytesWritten(
+    const HloInstruction& hlo, absl::optional<int64> memory_space) const {
+  int64 bytes_written = 0;
+  for (const ShapeUtil::IndexedShape& indexed_shape :
+       ShapeUtil::GetLeafShapes(hlo.shape())) {
+    absl::optional<int64> index_memory_space;
+    if (indexed_shape.shape.has_layout()) {
+      index_memory_space = indexed_shape.shape.layout().memory_space();
+    }
+    if (!memory_space || memory_space == index_memory_space) {
+      bytes_written += output_bytes_accessed(hlo, indexed_shape.index);
+    }
+  }
+  return bytes_written;
 }
 
 StatusOr<HloCostAnalysis::Properties> HloCostAnalysis::ProcessSubcomputation(

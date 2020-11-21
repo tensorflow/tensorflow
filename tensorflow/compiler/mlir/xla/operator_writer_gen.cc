@@ -47,7 +47,11 @@ static std::string GetDefaultAttrExport(
                              storage_type.endswith("FloatAttr") ||
                              storage_type.endswith("IntegerAttr") ||
                              storage_type.endswith("StringAttr"))) {
-    return "Convert" + attr.getReturnType().str();
+    // The return type may contains qualified namespaces. Split to remove them.
+    std::pair<StringRef, StringRef> splits = attr.getReturnType().rsplit("::");
+    StringRef symbol = splits.second;
+    if (symbol.empty()) symbol = splits.first;
+    return "Convert" + symbol.str();
   }
   return "Convert_" + named_attr.name.str();
 }
@@ -68,10 +72,11 @@ static StringRef GetClientBuilder(const Operator& op) {
   return kOpToXLABuilderMap->lookup(op_name);
 }
 
-static void BuildOperator(const Operator& op, raw_ostream* output) {
-  auto& os = *output;
-  os << "    auto& value_map = *lowering_context.values;\n"
-     << "    auto result = xla_op.getResult();\n";
+static void BuildOperator(const Operator& op, raw_ostream& os) {
+  os << "mlir::LogicalResult ExportXlaOp(mlir::mhlo::" << op.getCppClassName()
+     << " op, OpLoweringContext ctx) {\n"
+     << "  auto& value_map = *ctx.values;\n"
+     << "  auto result = op.getResult();\n";
 
   // Build a conversion for each of the arguments.
   int operand_number = 0;
@@ -80,36 +85,42 @@ static void BuildOperator(const Operator& op, raw_ostream* output) {
 
     // Emit an argument for an operand.
     if (auto* operand_cst = arg.dyn_cast<NamedTypeConstraint*>()) {
+      std::string xla_arg = "xla_arg_" + std::to_string(index);
       // Handle a non-variadic operand.
       if (!operand_cst->isVariableLength()) {
-        os << "    auto xla_arg_" << index
-           << " = value_map[*xla_op.getODSOperands(" << operand_number++
-           << ").begin()];\n";
+        os << "  xla::XlaOp " << xla_arg << ";\n";
+        os << "  if (failed(GetXlaOp(*op.getODSOperands(" << operand_number++
+           << ").begin(), value_map, &" << xla_arg << ", op)))\n";
+        os << "    return mlir::failure();\n";
         continue;
       }
 
       // Otherwise, this is a varidiac operand list.
-      os << "    std::vector<xla::XlaOp> xla_arg_" << index << ";\n"
-         << "    for (auto operand : xla_op.getODSOperands(" << operand_number++
-         << "))\n      xla_arg_" << index
-         << ".push_back(value_map[operand]);\n";
+      os << "  std::vector<xla::XlaOp> " << xla_arg << ";\n"
+         << "  for (auto operand : op.getODSOperands(" << operand_number++
+         << ")) {\n";
+      os << "    xla::XlaOp result;\n";
+      os << "    if (failed(GetXlaOp(operand, value_map, &result, op)))\n";
+      os << "      return mlir::failure();\n";
+      os << "    " << xla_arg << ".push_back(result);\n";
+      os << "  }\n";
       continue;
     }
 
     // Otherwise, this is an attribute.
     auto named_attr = arg.get<NamedAttribute*>();
-    os << "    auto xla_arg_" << index << " = "
-       << GetDefaultAttrExport(*named_attr) << "(xla_op."
-       << op.getArgName(index) << "());\n";
+    os << "  auto xla_arg_" << index << " = "
+       << GetDefaultAttrExport(*named_attr) << "(op." << op.getArgName(index)
+       << "());\n";
   }
 
   // Emit call to client API
-  os << "    auto xla_result = xla::" << GetClientBuilder(op) << "(";
+  os << "  auto xla_result = xla::" << GetClientBuilder(op) << "(";
 
   // If all operands are variadic, then pass the builder explicitly to xla
   // client API call
   if (op.getNumOperands() == op.getNumVariableLengthOperands()) {
-    os << "lowering_context.builder";
+    os << "ctx.builder";
     if (op.getNumArgs() != 0) os << ", ";
   }
 
@@ -118,8 +129,9 @@ static void BuildOperator(const Operator& op, raw_ostream* output) {
                   [&](int i) { os << "Unwrap(xla_arg_" << i << ')'; });
   os << ");\n";
 
-  os << "    value_map[result] = xla_result;\n";
-  os << "    return mlir::success();\n";
+  os << "  value_map[result] = xla_result;\n";
+  os << "  return mlir::success();\n";
+  os << "}\n";
 }
 
 // The function below has a non-constant reference as that is required by LLVM's
@@ -127,6 +139,14 @@ static void BuildOperator(const Operator& op, raw_ostream* output) {
 // NOLINTNEXTLINE
 static bool OperatorWritersMain(raw_ostream& os, RecordKeeper& records) {
   emitSourceFileHeader("MLIR XLA Builders", os);
+
+  // Emit all the helper functions.
+  for (const auto* def : records.getAllDerivedDefinitions("HLO_Op")) {
+    Operator op(def);
+
+    // Skip operations that have a custom exporter.
+    if (!def->getValueAsBit("hasCustomHLOConverter")) BuildOperator(op, os);
+  }
 
   // Emit a function to generate an XLA operation for the operations with
   // auto-generated builders.
@@ -138,20 +158,31 @@ static bool OperatorWritersMain(raw_ostream& os, RecordKeeper& records) {
   os << "  xla::XlaScopedShardingAssignment sharding(lowering_context.builder, "
         "CreateOpShardingFromAttribute(op));\n\n";
 
+  // Create a scoped object to assign frontend attributes to generated XLA ops.
+  // Any HLO can have an attribute of "frontend_attributes", which are used to
+  // pass hints / configuration options.
+  os << "  xla::XlaScopedFrontendAttributesAssignment "
+        "frontend_attributes(lowering_context.builder, "
+        "CreateOpFrontendAttributesFromAttribute(op));\n\n";
+
+  // Create a scoped object to assign op metadata to generated XLA ops.
+  os << "  xla::XlaScopedOpMetadataAssignment "
+        "op_metadata(lowering_context.builder, "
+        "CreateOpMetadataFromLocation(op));\n\n";
+
   // Retrieve all the definitions derived from HLO_Op and sort by record name.
   for (const auto* def : records.getAllDerivedDefinitions("HLO_Op")) {
     // Skip operations that have a custom exporter.
     Operator op(def);
 
     // Cast to the current operation and build the exporter.
-    os << "  if (auto xla_op = llvm::dyn_cast<mlir::xla_hlo::"
+    os << "  if (auto xla_op = llvm::dyn_cast<mlir::mhlo::"
        << op.getCppClassName() << ">(op)) {\n";
-    if (def->getValueAsBit("hasCustomHLOConverter")) {
-      os << "    return mlir::xla_hlo::ExportXlaOp(xla_op, "
-            "lowering_context);\n";
-    } else {
-      BuildOperator(op, &os);
-    }
+    os << "    return ";
+    // The autogenerated converters aren't in the same namespace.
+    // TODO(jpienaar): Reconsider this.
+    if (def->getValueAsBit("hasCustomHLOConverter")) os << "mlir::mhlo::";
+    os << "ExportXlaOp(xla_op, lowering_context);\n";
     os << "  }\n";
   }
 

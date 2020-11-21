@@ -49,6 +49,9 @@ class HloDataflowAnalysis {
   // Infrastructure for passing may-alias hints: HLO passes can populate the
   // may-alias table. If an empty optional is returned, default rules are used.
   //
+  // Must-alias rules (as defined by GetInPlaceInputOutputPairs) cannot be
+  // overriden using backend-specific overrides.
+  //
   // The first parameter of the function should be the instruction, the
   // second parameter should be an operand of the instruction. The third
   // parameter should be the output index of the instruction.
@@ -160,6 +163,15 @@ class HloDataflowAnalysis {
 
   const HloModule& module() const { return module_; }
 
+  // Returns true if the operation is an in-place operation and its operand 0
+  // must alias with the output.
+  static bool IsInPlaceOperation(HloOpcode opcode);
+
+  // Returns a vector consisting of the HloUse (operand number and shape index)
+  // and output shape index of the in-place operations within this HLO.
+  static std::vector<std::pair<HloUse, ShapeIndex>> GetInPlaceInputOutputPairs(
+      HloInstruction* instruction);
+
  protected:
   HloDataflowAnalysis(const HloModule& module, bool ssa_form,
                       bool bitcast_defines_value = false,
@@ -204,6 +216,7 @@ class HloDataflowAnalysis {
   bool UpdateCallValueSet(HloInstruction* call);
   bool UpdateConditionalValueSet(HloInstruction* conditional);
   bool UpdateCopyValueSet(HloInstruction* copy);
+  bool UpdateCustomCallValueSet(HloInstruction* custom_call);
   bool UpdateDomainValueSet(HloInstruction* domain);
   bool UpdateGetTupleElementValueSet(HloInstruction* gte);
   bool UpdateParameterValueSet(HloInstruction* parameter);
@@ -216,6 +229,10 @@ class HloDataflowAnalysis {
   bool UpdateTupleValueSet(HloInstruction* tuple);
   bool UpdateWhileValueSet(HloInstruction* xla_while);
   bool UpdateAddDependencyValueSet(HloInstruction* add_dependency);
+  bool UpdateCollectivePermuteStartValueSet(
+      HloInstruction* collective_permute_start);
+  bool UpdateCollectivePermuteDoneValueSet(
+      HloInstruction* collective_permute_done);
 
   // Propagates the dataflow through the module. In particular, it propagates
   // the HloValueSet from its defining instruction to the users of the

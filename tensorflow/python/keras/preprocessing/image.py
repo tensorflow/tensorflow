@@ -33,11 +33,11 @@ from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.preprocessing.image_dataset import image_dataset_from_directory  # pylint: disable=unused-import
 from tensorflow.python.keras.utils import data_utils
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging
-from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 
 random_rotation = image.random_rotation
@@ -62,7 +62,7 @@ def smart_resize(x, size, interpolation='bilinear'):
 
   You could simply do:
 
-  ````python
+  ```python
   size = (200, 200)
   ds = ds.map(lambda img: tf.image.resize(img, size))
   ```
@@ -111,7 +111,7 @@ def smart_resize(x, size, interpolation='bilinear'):
   if len(size) != 2:
     raise ValueError('Expected `size` to be a tuple of 2 integers, '
                      'but got: %s' % (size,))
-  img = ops.convert_to_tensor(x)
+  img = ops.convert_to_tensor_v2_with_dispatch(x)
   if img.shape.rank is not None:
     if img.shape.rank != 3:
       raise ValueError(
@@ -120,25 +120,24 @@ def smart_resize(x, size, interpolation='bilinear'):
   shape = array_ops.shape(img)
   height, width = shape[0], shape[1]
   target_height, target_width = size
-  target_ratio = float(target_height) / target_width
-  img_ratio = math_ops.cast(
-      height, 'float32') / math_ops.cast(width, 'float32')
-  if target_ratio < img_ratio:
-    crop_height = math_ops.cast(
-        math_ops.cast(width, 'float32') * target_height / target_width, 'int32')
-    crop_box_hstart = math_ops.cast(
-        math_ops.cast(height - crop_height, 'float32') / 2, 'int32')
-    crop_box_start = [crop_box_hstart, 0, 0]
-    crop_box_size = [crop_height, -1, -1]
-  else:
-    crop_width = math_ops.cast(
-        math_ops.cast(height * target_width, 'float32') / target_height,
-        'int32')
-    crop_box_wstart = math_ops.cast((width - crop_width) / 2, 'int32')
-    crop_box_start = [0, crop_box_wstart, 0]
-    crop_box_size = [-1, crop_width, -1]
-  crop_box_start = array_ops.stack(crop_box_start)
-  crop_box_size = array_ops.stack(crop_box_size)
+
+  crop_height = math_ops.cast(
+      math_ops.cast(width * target_height, 'float32') / target_width, 'int32')
+  crop_width = math_ops.cast(
+      math_ops.cast(height * target_width, 'float32') / target_height, 'int32')
+
+  # Set back to input height / width if crop_height / crop_width is not smaller.
+  crop_height = math_ops.minimum(height, crop_height)
+  crop_width = math_ops.minimum(width, crop_width)
+
+  crop_box_hstart = math_ops.cast(
+      math_ops.cast(height - crop_height, 'float32') / 2, 'int32')
+  crop_box_wstart = math_ops.cast(
+      math_ops.cast(width - crop_width, 'float32') / 2, 'int32')
+
+  crop_box_start = array_ops.stack([crop_box_hstart, crop_box_wstart, 0])
+  crop_box_size = array_ops.stack([crop_height, crop_width, -1])
+
   img = array_ops.slice(img, crop_box_start, crop_box_size)
   img = image_ops.resize_images_v2(
       images=img,
@@ -503,7 +502,7 @@ class DataFrameIterator(image.DataFrameIterator, Iterator):
           - `"raw"`: numpy array of values in `y_col` column(s),
           - `"sparse"`: 1D numpy array of integer labels, - `None`, no targets
             are returned (the generator will only yield batches of image data,
-            which is useful to use in `model.predict_generator()`).
+            which is useful to use in `model.predict()`).
       batch_size: Integer, size of a batch.
       shuffle: Boolean, whether to shuffle the data between epochs.
       seed: Random seed for data shuffling.
@@ -662,8 +661,8 @@ class ImageDataGenerator(image.ImageDataGenerator):
 
   ```python
   (x_train, y_train), (x_test, y_test) = cifar10.load_data()
-  y_train = np_utils.to_categorical(y_train, num_classes)
-  y_test = np_utils.to_categorical(y_test, num_classes)
+  y_train = utils.to_categorical(y_train, num_classes)
+  y_test = utils.to_categorical(y_test, num_classes)
   datagen = ImageDataGenerator(
       featurewise_center=True,
       featurewise_std_normalization=True,
@@ -743,7 +742,7 @@ class ImageDataGenerator(image.ImageDataGenerator):
       seed=seed)
   # combine generators into one which yields image and masks
   train_generator = zip(image_generator, mask_generator)
-  model.fit_generator(
+  model.fit(
       train_generator,
       steps_per_epoch=2000,
       epochs=50)
@@ -909,7 +908,7 @@ class ImageDataGenerator(image.ImageDataGenerator):
               will be images identical to input images (mainly used to work with
               autoencoders). - If None, no labels are returned (the generator
               will only yield batches of image data, which is useful to use with
-              `model.predict_generator()`). Please note that in case of
+              `model.predict()`). Please note that in case of
               class_mode None, the data still needs to reside in a subdirectory
               of `directory` for it to work correctly.
         batch_size: Size of the batches of data (default: 32).
@@ -1027,7 +1026,7 @@ class ImageDataGenerator(image.ImageDataGenerator):
             - `"raw"`: numpy array of values in `y_col` column(s),
             - `"sparse"`: 1D numpy array of integer labels, - `None`, no targets
               are returned (the generator will only yield batches of image data,
-              which is useful to use in `model.predict_generator()`).
+              which is useful to use in `model.predict()`).
         batch_size: size of the batches of data (default: 32).
         shuffle: whether to shuffle the data (default: True)
         seed: optional random seed for shuffling and transformations.

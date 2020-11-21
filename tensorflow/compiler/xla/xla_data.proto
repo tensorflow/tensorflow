@@ -120,7 +120,7 @@ enum Format {
 }
 
 // Describes a tile used in tiling-based layout. Refer to
-// g3doc/third_party/tensorflow/compiler/xla/g3doc/layout_with_tiling.md for
+// g3doc/third_party/tensorflow/compiler/xla/g3doc/tiled_layout.md for
 // details about tiling-based layout.
 message TileProto {
   // Number of elements in each dimension of the tile. It's ordered from the
@@ -245,6 +245,14 @@ message ComputationStats {
   double transcendental_count = 2;
 }
 
+// The type optimization profiles in use.
+enum ProfileType {
+  INVALID = 0;
+  WINDOW = 1;
+  FLAG = 2;
+  INTEGER = 3;
+}
+
 // Symbolization metadata for HLO Instructions.
 //
 // This metadata is used for debugging XLA code generation, as well as
@@ -268,6 +276,8 @@ message OpMetadata {
   // e.g. it could be the file and line of user code that generated the op.
   string source_file = 3;
   int32 source_line = 4;
+
+  repeated ProfileType profile_type = 5;
 }
 
 // Profile data from the execution of a computation.
@@ -526,6 +536,12 @@ message ConvolutionDimensionNumbers {
   // Next = 13
 }
 
+enum PaddingType {
+  PADDING_INVALID = 0;
+  PADDING_VALID = 1;  // Only valid portion of the base are covered.
+  PADDING_SAME = 2;  // Extra is added to produce same output size as the input.
+}
+
 enum FftType {
   FFT = 0;    // Forward FFT; complex in, complex out.
   IFFT = 1;   // Inverse FFT; complex in, complex out.
@@ -627,6 +643,11 @@ message OpSharding {
   // applied, this is inferred from the instruction this sharding gets attached
   // to.
   repeated OpSharding tuple_shardings = 5;
+
+  // Only used for OTHER type. If true, data is sharded according to other
+  // dimensions of tile_assignment(), but replicated across devices along the
+  // last dimension. (Experimental)
+  bool replicate_on_last_tile_dim = 6;
 }
 
 // Describes the replica groups in a cross replica op (e.g., all-reduce and
@@ -685,4 +706,12 @@ message WhileLoopBackendConfig {
   // This indirection lets us distinguish between known-trip-count == 0 and
   // unknown-trip-count.
   KnownTripCount known_trip_count = 1;
+}
+
+// Specifies a pair of output/operand buffers for kCustomCall that alias each
+// other.
+message CustomCallOutputOperandAliasing {
+  repeated int64 output_shape_index = 1;
+  int64 operand_index = 2;
+  repeated int64 operand_shape_index = 3;
 }

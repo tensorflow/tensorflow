@@ -33,6 +33,7 @@ import sysconfig
 
 from distutils.command.build_ext import build_ext
 import numpy
+import pybind11
 
 from setuptools import Extension
 from setuptools import find_packages
@@ -58,7 +59,9 @@ elif TARGET == 'aarch64':
   os.environ['CC'] = 'aarch64-linux-gnu-gcc'
 
 MAKE_CROSS_OPTIONS = []
-for name in ['TARGET', 'TARGET_ARCH', 'CC_PREFIX', 'EXTRA_CXXFLAGS']:
+for name in [
+    'TARGET', 'TARGET_ARCH', 'CC_PREFIX', 'EXTRA_CXXFLAGS', 'EXTRA_CFLAGS'
+]:
   value = os.environ.get('TENSORFLOW_%s' % name)
   if value:
     MAKE_CROSS_OPTIONS.append('%s=%s' % (name, value))
@@ -178,8 +181,9 @@ ext = Extension(
                      'pip_package'),
         numpy.get_include(),
         os.path.join(DOWNLOADS_DIR, 'flatbuffers', 'include'),
-        os.path.join(DOWNLOADS_DIR, 'absl')
-    ] + get_pybind_include(),
+        os.path.join(DOWNLOADS_DIR, 'absl'),
+        pybind11.get_include()
+    ],
     libraries=[LIB_TFLITE],
     library_dirs=[LIB_TFLITE_DIR])
 

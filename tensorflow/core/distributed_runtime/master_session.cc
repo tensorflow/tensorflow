@@ -57,6 +57,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 
@@ -262,7 +263,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
     // The interface to the worker. Owned.
     WorkerInterface* worker = nullptr;
 
-    // After registeration with the worker, graph_handle identifies
+    // After registration with the worker, graph_handle identifies
     // this partition on the worker.
     string graph_handle;
 
@@ -836,7 +837,7 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
           << execution_count;
   // Maps the names of fed tensors to their index in `req`.
   std::unordered_map<StringPiece, size_t, StringPieceHasher> feeds(3);
-  for (size_t i = 0; i < callable_opts_.feed_size(); ++i) {
+  for (size_t i = 0, end = callable_opts_.feed_size(); i < end; ++i) {
     if (!feeds.insert({callable_opts_.feed(i), i}).second) {
       // MakeCallable will fail if there are two feeds with the same name.
       return errors::Internal("Duplicated feeds in callable: ",
@@ -1314,12 +1315,21 @@ Status MasterSession::CreateWorkerSessions(
     }
   });
 
+  string task_name;
+  string local_device_name;
+  DeviceNameUtils::SplitDeviceName(devices_->client_device()->name(),
+                                   &task_name, &local_device_name);
+  const int64 client_device_incarnation =
+      devices_->client_device()->attributes().incarnation();
+
   Status status = Status::OK();
   // Create all the workers & kick off the computations.
   for (size_t i = 0; i < worker_names.size(); ++i) {
     workers[i].name = &worker_names[i];
     workers[i].worker = worker_cache->GetOrCreateWorker(worker_names[i]);
     workers[i].request.set_session_handle(handle_);
+    workers[i].request.set_master_task(task_name);
+    workers[i].request.set_master_incarnation(client_device_incarnation);
     if (session_opts_.config.share_cluster_devices_in_session() ||
         session_opts_.config.experimental()
             .share_cluster_devices_in_session()) {
@@ -1564,7 +1574,7 @@ uint64 MasterSession::NewStepId(int64 graph_key) {
   } else {
     uint64 step_id = env_->collective_executor_mgr->NextStepId(graph_key);
     int32 retry_count = 0;
-    while (step_id == CollectiveExecutor::kInvalidId) {
+    while (static_cast<int64>(step_id) == CollectiveExecutor::kInvalidId) {
       Notification note;
       Status status;
       env_->collective_executor_mgr->RefreshStepIdSequenceAsync(

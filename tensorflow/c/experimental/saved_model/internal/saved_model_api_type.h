@@ -18,13 +18,18 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/c/conversion_macros.h"
 #include "tensorflow/c/experimental/saved_model/core/saved_model_api.h"
 
 // Internal structures used by the SavedModel C API. These are likely to change
 // and should not be depended on.
 
-struct TF_SavedModel {
-  std::unique_ptr<tensorflow::SavedModelAPI> saved_model;
-};
+typedef struct TF_SavedModel TF_SavedModel;
+
+namespace tensorflow {
+
+DEFINE_CONVERSION_FUNCTIONS(tensorflow::SavedModelAPI, TF_SavedModel)
+
+}  // namespace tensorflow
 
 #endif  // TENSORFLOW_C_EXPERIMENTAL_SAVED_MODEL_INTERNAL_SAVED_MODEL_API_TYPE_H_

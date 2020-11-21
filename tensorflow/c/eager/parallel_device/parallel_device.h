@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_experimental.h"
 
 namespace tensorflow {
-namespace eager {
+namespace parallel_device {
 
 // Allocate a parallel device named `device_name` which forwards operations to
 // `underlying_devices`, maintaining "parallel tensors" with components placed
@@ -59,7 +59,7 @@ void AllocateParallelDevice(const char* device_name,
                             int num_underlying_devices,
                             TFE_CustomDevice* device, void** device_info);
 
-}  // namespace eager
+}  // namespace parallel_device
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_C_EAGER_PARALLEL_DEVICE_PARALLEL_DEVICE_H_

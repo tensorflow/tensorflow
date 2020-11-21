@@ -13,13 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <dlfcn.h>
 #include <jni.h>
 #include <stdio.h>
 #include <time.h>
 
+#include <atomic>
 #include <vector>
 
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/experimental/tflite_api_dispatcher/tflite_api_dispatcher.h"
 #include "tensorflow/lite/java/src/main/native/jni_utils.h"
 #include "tensorflow/lite/util.h"
@@ -100,6 +103,8 @@ int getDataType(TfLiteType data_type) {
       return 4;
     case kTfLiteString:
       return 5;
+    case kTfLiteBool:
+      return 6;
     default:
       return -1;
   }
@@ -295,17 +300,6 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputNames(JNIEnv* env,
 }
 
 JNIEXPORT void JNICALL
-Java_org_tensorflow_lite_NativeInterpreterWrapper_useNNAPI(JNIEnv* env,
-                                                           jclass clazz,
-                                                           jlong handle,
-                                                           jboolean state) {
-  tflite_api_dispatcher::Interpreter* interpreter =
-      convertLongToInterpreter(env, handle);
-  if (interpreter == nullptr) return;
-  interpreter->UseNNAPI(static_cast<bool>(state));
-}
-
-JNIEXPORT void JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_allowFp16PrecisionForFp32(
     JNIEnv* env, jclass clazz, jlong handle, jboolean allow) {
   tflite_api_dispatcher::Interpreter* interpreter =
@@ -321,6 +315,65 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_allowBufferHandleOutput(
       convertLongToInterpreter(env, handle);
   if (interpreter == nullptr) return;
   interpreter->SetAllowBufferHandleOutput(allow);
+}
+
+JNIEXPORT void JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_useXNNPACK(
+    JNIEnv* env, jclass clazz, jlong handle, jlong error_handle, jboolean state,
+    jint num_threads) {
+  // If not using xnnpack, simply don't apply the delegate.
+  if (!state) {
+    return;
+  }
+
+  tflite_api_dispatcher::Interpreter* interpreter =
+      convertLongToInterpreter(env, handle);
+  if (interpreter == nullptr) {
+    return;
+  }
+
+  BufferErrorReporter* error_reporter =
+      convertLongToErrorReporter(env, error_handle);
+  if (error_reporter == nullptr) {
+    return;
+  }
+
+  // We use dynamic loading to avoid taking a hard dependency on XNNPack.
+  // This allows clients that use trimmed builds to save on binary size.
+  auto xnnpack_options_default =
+      reinterpret_cast<decltype(TfLiteXNNPackDelegateOptionsDefault)*>(
+          dlsym(RTLD_DEFAULT, "TfLiteXNNPackDelegateOptionsDefault"));
+  auto xnnpack_create =
+      reinterpret_cast<decltype(TfLiteXNNPackDelegateCreate)*>(
+          dlsym(RTLD_DEFAULT, "TfLiteXNNPackDelegateCreate"));
+  auto xnnpack_delete =
+      reinterpret_cast<decltype(TfLiteXNNPackDelegateDelete)*>(
+          dlsym(RTLD_DEFAULT, "TfLiteXNNPackDelegateDelete"));
+
+  if (xnnpack_options_default && xnnpack_create && xnnpack_delete) {
+    TfLiteXNNPackDelegateOptions options = xnnpack_options_default();
+    if (num_threads > 0) {
+      options.num_threads = num_threads;
+    }
+    tflite_api_dispatcher::Interpreter::TfLiteDelegatePtr delegate(
+        xnnpack_create(&options), xnnpack_delete);
+    auto delegation_status =
+        interpreter->ModifyGraphWithDelegate(std::move(delegate));
+    // kTfLiteApplicationError occurs in cases where delegation fails but
+    // the runtime is invokable (eg. another delegate has already been applied).
+    // We don't throw an Exception in that case.
+    // TODO(b/166483905): Add support for multiple delegates when model allows.
+    if (delegation_status != kTfLiteOk &&
+        delegation_status != kTfLiteApplicationError) {
+      ThrowException(env, kIllegalArgumentException,
+                     "Internal error: Failed to apply XNNPACK delegate: %s",
+                     error_reporter->CachedErrorMessage());
+    }
+  } else {
+    ThrowException(env, kIllegalArgumentException,
+                   "Failed to load XNNPACK delegate from current runtime. "
+                   "Have you added the necessary dependencies?");
+  }
 }
 
 JNIEXPORT void JNICALL
@@ -442,6 +495,7 @@ JNIEXPORT void JNICALL Java_org_tensorflow_lite_NativeInterpreterWrapper_run(
   if (error_reporter == nullptr) return;
 
   if (interpreter->Invoke() != kTfLiteOk) {
+    // TODO(b/168266570): Return InterruptedException.
     ThrowException(env, kIllegalArgumentException,
                    "Internal error: Failed to run on the given Interpreter: %s",
                    error_reporter->CachedErrorMessage());
@@ -546,6 +600,43 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_resetVariableTensors(
     ThrowException(env, kIllegalArgumentException,
                    "Internal error: Failed to reset variable tensors: %s",
                    error_reporter->CachedErrorMessage());
+  }
+}
+
+JNIEXPORT jlong JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_createCancellationFlag(
+    JNIEnv* env, jclass clazz, jlong interpreter_handle) {
+  tflite_api_dispatcher::Interpreter* interpreter =
+      convertLongToInterpreter(env, interpreter_handle);
+  if (interpreter == nullptr) {
+    ThrowException(env, kIllegalArgumentException,
+                   "Internal error: Invalid handle to interpreter.");
+  }
+  std::atomic_bool* cancellation_flag = new std::atomic_bool(false);
+  interpreter->SetCancellationFunction(cancellation_flag, [](void* payload) {
+    std::atomic_bool* cancellation_flag =
+        reinterpret_cast<std::atomic_bool*>(payload);
+    return cancellation_flag->load() == true;
+  });
+  return reinterpret_cast<jlong>(cancellation_flag);
+}
+
+JNIEXPORT void JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_deleteCancellationFlag(
+    JNIEnv* env, jclass clazz, jlong flag_handle) {
+  std::atomic_bool* cancellation_flag =
+      reinterpret_cast<std::atomic_bool*>(flag_handle);
+  delete cancellation_flag;
+}
+
+JNIEXPORT void JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_setCancelled(
+    JNIEnv* env, jclass clazz, jlong interpreter_handle, jlong flag_handle,
+    jboolean value) {
+  std::atomic_bool* cancellation_flag =
+      reinterpret_cast<std::atomic_bool*>(flag_handle);
+  if (cancellation_flag != nullptr) {
+    cancellation_flag->store(static_cast<bool>(value));
   }
 }
 

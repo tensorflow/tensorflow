@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/lib/strings/str_util.h"
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
@@ -27,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/gpu_prim.h"
 #include "tensorflow/core/kernels/reduction_gpu_kernels.cu.h"
 #include "tensorflow/core/kernels/reduction_ops_common.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 
@@ -281,21 +281,20 @@ class SoftmaxOpGPU : public OpKernel {
   bool log_;
 };
 
-REGISTER_KERNEL_BUILDER(
-    Name("Softmax").Device(DEVICE_GPU).TypeConstraint<Eigen::half>("T"),
-    SoftmaxOpGPU<Eigen::half>);
-REGISTER_KERNEL_BUILDER(
-    Name("Softmax").Device(DEVICE_GPU).TypeConstraint<float>("T"),
-    SoftmaxOpGPU<float>);
-REGISTER_KERNEL_BUILDER(
-    Name("Softmax").Device(DEVICE_GPU).TypeConstraint<double>("T"),
-    SoftmaxOpGPU<double>);
-REGISTER_KERNEL_BUILDER(
-    Name("LogSoftmax").Device(DEVICE_GPU).TypeConstraint<Eigen::half>("T"),
-    SoftmaxOpGPU<Eigen::half>);
-REGISTER_KERNEL_BUILDER(
-    Name("LogSoftmax").Device(DEVICE_GPU).TypeConstraint<float>("T"),
-    SoftmaxOpGPU<float>);
+#define REGISTER_GPU(T)                                          \
+  REGISTER_KERNEL_BUILDER(                                       \
+      Name("Softmax").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
+      SoftmaxOpGPU<T>);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
+
+#undef REGISTER_GPU
+#define REGISTER_GPU(T)                                             \
+  REGISTER_KERNEL_BUILDER(                                          \
+      Name("LogSoftmax").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
+      SoftmaxOpGPU<T>);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
+
+#undef REGISTER_GPU
 
 }  // end namespace tensorflow
 

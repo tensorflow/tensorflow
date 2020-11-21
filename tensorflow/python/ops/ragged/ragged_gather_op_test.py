@@ -174,14 +174,14 @@ class RaggedGatherOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     tensor_indices = [0, 1, 2]
     ragged_params = ragged_factory_ops.constant([['a', 'b'], ['c']])
     ragged_indices = ragged_factory_ops.constant([[0, 3]])
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 r'indices\[1\] = 3 is not in \[0, 3\)'):
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                r'indices\[1\] = 3 is not in \[0, 3\)'):
       self.evaluate(ragged_gather_ops.gather(tensor_params, ragged_indices))
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 r'indices\[2\] = 2 is not in \[0, 2\)'):
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                r'indices\[2\] = 2 is not in \[0, 2\)'):
       self.evaluate(ragged_gather_ops.gather(ragged_params, tensor_indices))
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 r'indices\[1\] = 3 is not in \[0, 2\)'):
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                r'indices\[1\] = 3 is not in \[0, 2\)'):
       self.evaluate(ragged_gather_ops.gather(ragged_params, ragged_indices))
 
   def testUnknownIndicesRankError(self):
@@ -190,9 +190,9 @@ class RaggedGatherOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     params = ragged_factory_ops.constant([], ragged_rank=1)
     indices = constant_op.constant([0], dtype=dtypes.int64)
     indices = array_ops.placeholder_with_default(indices, None)
-    self.assertRaisesRegexp(ValueError,
-                            r'rank\(indices\) must be known statically',
-                            ragged_gather_ops.gather, params, indices)
+    self.assertRaisesRegex(ValueError,
+                           r'rank\(indices\) must be known statically',
+                           ragged_gather_ops.gather, params, indices)
 
   # pylint: disable=bad-whitespace
   @parameterized.parameters([

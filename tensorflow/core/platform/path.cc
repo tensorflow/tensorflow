@@ -320,12 +320,15 @@ string GetTempFilename(const string& extension) {
       if (fd < 0) {
         LOG(FATAL) << "Failed to create temp file.";
       } else {
-        close(fd);
+        if (close(fd) < 0) {
+          LOG(ERROR) << "close() failed: " << strerror(errno);
+        }
         return tmp_filepath;
       }
     }
   }
   LOG(FATAL) << "No temp directory found.";
+  std::abort();
 #endif
 }
 

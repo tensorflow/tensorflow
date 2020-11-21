@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/kernels/cl_test.h"
 
+#include "tensorflow/lite/delegates/gpu/cl/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
 namespace tflite {
@@ -23,7 +24,7 @@ namespace cl {
 
 absl::Status ExecuteGPUOperation(const std::vector<TensorFloat32>& src_cpu,
                                  const CreationContext& creation_context,
-                                 GPUOperation* operation,
+                                 std::unique_ptr<GPUOperation>&& operation,
                                  const std::vector<BHWC>& dst_sizes,
                                  const std::vector<TensorFloat32*>& dst_cpu) {
   const OperationDef& op_def = operation->GetDefinition();
@@ -34,8 +35,7 @@ absl::Status ExecuteGPUOperation(const std::vector<TensorFloat32>& src_cpu,
       return absl::InvalidArgumentError(
           "Layout doesn't have Batch dimension, but shape.b != 1");
     }
-    RETURN_IF_ERROR(CreateTensor(*creation_context.context,
-                                 *creation_context.device, src_shape,
+    RETURN_IF_ERROR(CreateTensor(*creation_context.context, src_shape,
                                  op_def.src_tensors[0], &src[i]));
     RETURN_IF_ERROR(src[i].WriteData(creation_context.queue, src_cpu[i]));
     operation->SetSrc(&src[i], i);
@@ -48,15 +48,18 @@ absl::Status ExecuteGPUOperation(const std::vector<TensorFloat32>& src_cpu,
       return absl::InvalidArgumentError(
           "Layout doesn't have Batch dimension, but shape.b != 1");
     }
-    RETURN_IF_ERROR(CreateTensor(*creation_context.context,
-                                 *creation_context.device, dst_shape,
+    RETURN_IF_ERROR(CreateTensor(*creation_context.context, dst_shape,
                                  op_def.dst_tensors[0], &dst[i]));
 
     operation->SetDst(&dst[i], i);
   }
 
-  RETURN_IF_ERROR(operation->Compile(creation_context));
-  RETURN_IF_ERROR(operation->AddToQueue(creation_context.queue));
+  ClOperation cl_op;
+  cl_op.Init(std::move(operation));
+  RETURN_IF_ERROR(cl_op.Compile(creation_context));
+  RETURN_IF_ERROR(cl_op.UpdateParams());
+  cl_op.GetGpuOperation().args_.ReleaseCPURepresentation();
+  RETURN_IF_ERROR(cl_op.AddToQueue(creation_context.queue));
   RETURN_IF_ERROR(creation_context.queue->WaitForCompletion());
 
   for (int i = 0; i < dst_cpu.size(); ++i) {
@@ -69,19 +72,21 @@ absl::Status ExecuteGPUOperation(const std::vector<TensorFloat32>& src_cpu,
 
 absl::Status ExecuteGPUOperation(const std::vector<TensorFloat32>& src_cpu,
                                  const CreationContext& creation_context,
-                                 GPUOperation* operation, const BHWC& dst_size,
-                                 TensorFloat32* result) {
-  return ExecuteGPUOperation(
-      std::vector<TensorFloat32>{src_cpu}, creation_context, operation,
-      std::vector<BHWC>{dst_size}, std::vector<TensorFloat32*>{result});
+                                 std::unique_ptr<GPUOperation>&& operation,
+                                 const BHWC& dst_size, TensorFloat32* result) {
+  return ExecuteGPUOperation(std::vector<TensorFloat32>{src_cpu},
+                             creation_context, std::move(operation),
+                             std::vector<BHWC>{dst_size},
+                             std::vector<TensorFloat32*>{result});
 }
 
 absl::Status ExecuteGPUOperation(const TensorFloat32& src_cpu,
                                  const CreationContext& creation_context,
-                                 GPUOperation* operation, const BHWC& dst_size,
-                                 TensorFloat32* result) {
+                                 std::unique_ptr<GPUOperation>&& operation,
+                                 const BHWC& dst_size, TensorFloat32* result) {
   return ExecuteGPUOperation(std::vector<TensorFloat32>{src_cpu},
-                             creation_context, operation, dst_size, result);
+                             creation_context, std::move(operation), dst_size,
+                             result);
 }
 
 }  // namespace cl

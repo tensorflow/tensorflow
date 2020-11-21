@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
@@ -33,22 +34,12 @@ class IteratorResource : public ResourceBase {
  public:
   IteratorResource(Env* env, const DataTypeVector& output_dtypes,
                    const std::vector<PartialTensorShape>& output_shapes,
-                   const int /*unused: graph_def_version*/,
                    std::unique_ptr<DeviceMgr> device_mgr,
                    std::unique_ptr<FunctionLibraryDefinition> flib_def,
                    std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
-                   FunctionLibraryRuntime* flr)
-      : unbounded_thread_pool_(env, "tf_data_iterator_resource"),
-        device_mgr_(std::move(device_mgr)),
-        iterator_state_(std::make_shared<State>(std::move(flib_def),
-                                                std::move(pflr), flr,
-                                                /*iterator=*/nullptr)),
-        output_dtypes_(output_dtypes),
-        output_shapes_(output_shapes) {
-    VLOG(2) << "constructor";
-  }
+                   FunctionLibraryRuntime* flr);
 
-  ~IteratorResource() override { VLOG(2) << "destructor"; }
+  ~IteratorResource() override;
 
   // Gets the next output from the iterator managed by this iterator resource.
   //
@@ -113,10 +104,18 @@ class IteratorResource : public ResourceBase {
 
   UnboundedThreadPool unbounded_thread_pool_;
   mutex mu_;
+  // Records the number of currently active `GetNext()` calls.
+  uint64 num_get_next_calls_ TF_GUARDED_BY(mu_) = 0;
+  // Records the start time (in microseconds) of the first `GetNext()` call that
+  // followed the last period of inactivity.
+  uint64 get_next_start_time_us_ TF_GUARDED_BY(mu_) = 0;
+  // Records the end time (in microseconds) of the most recent `GetNext()` call.
+  uint64 get_next_end_time_us_ TF_GUARDED_BY(mu_) = 0;
   const std::unique_ptr<DeviceMgr> device_mgr_ TF_GUARDED_BY(mu_);
   std::shared_ptr<State> iterator_state_ TF_GUARDED_BY(mu_);
   const DataTypeVector output_dtypes_;
   const std::vector<PartialTensorShape> output_shapes_;
+  const bool collect_metrics_;
 };
 
 class IteratorHandleOp : public OpKernel {
@@ -216,12 +215,19 @@ class MakeIteratorOp : public HybridAsyncOpKernel {
 class IteratorGetNextOp : public HybridAsyncOpKernel {
  public:
   explicit IteratorGetNextOp(OpKernelConstruction* ctx)
-      : HybridAsyncOpKernel(ctx, "tf_data_iterator_get_next") {}
+      : HybridAsyncOpKernel(ctx, "tf_data_iterator_get_next") {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+  }
 
   AsyncOpKernel* AsAsync() override;
 
  protected:
   Status DoCompute(OpKernelContext* ctx) override;
+
+ private:
+  DataTypeVector output_types_;
+  std::vector<PartialTensorShape> output_shapes_;
 };
 
 class DeleteIteratorOp : public HybridAsyncOpKernel {

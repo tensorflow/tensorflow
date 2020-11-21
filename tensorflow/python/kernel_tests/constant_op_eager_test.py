@@ -106,7 +106,7 @@ class ConstantTest(test.TestCase):
 
     # This integer is larger than all non-infinite numbers representable
     # by a double, raises an exception.
-    with self.assertRaisesRegexp(ValueError, "out-of-range integer"):
+    with self.assertRaisesRegex(ValueError, "out-of-range integer"):
       constant_op.constant(10**310, dtypes_lib.float64)
 
   def testInt32(self):
@@ -128,7 +128,7 @@ class ConstantTest(test.TestCase):
     self.assertAllClose(np.array(orig), tf_ans.numpy())
 
     # Out of range for an int64
-    with self.assertRaisesRegexp(ValueError, "out-of-range integer"):
+    with self.assertRaisesRegex(ValueError, "out-of-range integer"):
       constant_op.constant([2**72])
 
   def testComplex64(self):
@@ -149,6 +149,8 @@ class ConstantTest(test.TestCase):
             [2, 3, 5]).astype(np.complex128))
     self._testAll(np.empty((2, 0, 5)).astype(np.complex128))
 
+  @test_util.disable_tfrt("support creating string tensors from empty "
+                          "numpy arrays.")
   def testString(self):
     val = [compat.as_bytes(str(x)) for x in np.arange(-15, 15)]
     self._testCpu(np.array(val).reshape([2, 3, 5]))
@@ -168,6 +170,19 @@ class ConstantTest(test.TestCase):
     # NOTE(mrry): Do not use assertAllEqual, because it converts nested to a
     #   numpy array, which loses the null terminators.
     self.assertEqual(val.tolist(), nested)
+
+  def testStringConstantOp(self):
+    s = constant_op.constant("uiuc")
+    self.assertEqual(s.numpy().decode("utf-8"), "uiuc")
+    s_array = constant_op.constant(["mit", "stanford"])
+    self.assertAllEqual(s_array.numpy(), ["mit", "stanford"])
+
+    with ops.device("/cpu:0"):
+      s = constant_op.constant("cmu")
+      self.assertEqual(s.numpy().decode("utf-8"), "cmu")
+
+      s_array = constant_op.constant(["berkeley", "ucla"])
+      self.assertAllEqual(s_array.numpy(), ["berkeley", "ucla"])
 
   def testExplicitShapeNumPy(self):
     c = constant_op.constant(
@@ -216,7 +231,7 @@ class ConstantTest(test.TestCase):
       constant_op.constant([1, 2, 3, 4, 5, 6, 7], shape=[5])
 
   def testShapeWrong(self):
-    with self.assertRaisesRegexp(TypeError, None):
+    with self.assertRaisesRegex(TypeError, None):
       constant_op.constant([1, 2, 3, 4, 5, 6, 7], shape=[5])
 
   def testShape(self):
@@ -250,17 +265,17 @@ class ConstantTest(test.TestCase):
       def __len__(self):
         return -1
 
-    with self.assertRaisesRegexp(ValueError, "should return >= 0"):
+    with self.assertRaisesRegex(ValueError, "should return >= 0"):
       constant_op.constant([BadList()])
-    with self.assertRaisesRegexp(ValueError, "mixed types"):
+    with self.assertRaisesRegex(ValueError, "mixed types"):
       constant_op.constant([1, 2, BadList()])
-    with self.assertRaisesRegexp(ValueError, "should return >= 0"):
+    with self.assertRaisesRegex(ValueError, "should return >= 0"):
       constant_op.constant(BadList())
-    with self.assertRaisesRegexp(ValueError, "should return >= 0"):
+    with self.assertRaisesRegex(ValueError, "should return >= 0"):
       constant_op.constant([[BadList(), 2], 3])
-    with self.assertRaisesRegexp(ValueError, "should return >= 0"):
+    with self.assertRaisesRegex(ValueError, "should return >= 0"):
       constant_op.constant([BadList(), [1, 2, 3]])
-    with self.assertRaisesRegexp(ValueError, "should return >= 0"):
+    with self.assertRaisesRegex(ValueError, "should return >= 0"):
       constant_op.constant([BadList(), []])
 
     # TODO(allenl, josh11b): These cases should return exceptions rather than
@@ -268,19 +283,19 @@ class ConstantTest(test.TestCase):
     # sequence recursively). Maybe the first one is fine, but the second one
     # silently truncating is rather bad.
 
-    # with self.assertRaisesRegexp(ValueError, "should return >= 0"):
+    # with self.assertRaisesRegex(ValueError, "should return >= 0"):
     #   constant_op.constant([[3, 2, 1], BadList()])
-    # with self.assertRaisesRegexp(ValueError, "should return >= 0"):
+    # with self.assertRaisesRegex(ValueError, "should return >= 0"):
     #   constant_op.constant([[], BadList()])
 
   def testSparseValuesRaiseErrors(self):
-    with self.assertRaisesRegexp(ValueError, "non-rectangular Python sequence"):
+    with self.assertRaisesRegex(ValueError, "non-rectangular Python sequence"):
       constant_op.constant([[1, 2], [3]], dtype=dtypes_lib.int32)
 
-    with self.assertRaisesRegexp(ValueError, None):
+    with self.assertRaisesRegex(ValueError, None):
       constant_op.constant([[1, 2], [3]])
 
-    with self.assertRaisesRegexp(ValueError, None):
+    with self.assertRaisesRegex(ValueError, None):
       constant_op.constant([[1, 2], [3], [4, 5]])
 
   # TODO(ashankar): This test fails with graph construction since
@@ -412,6 +427,7 @@ class ZerosLikeTest(test.TestCase):
     self.assertFalse(np.any(z_value))
     self.assertEqual((2, 3), z_value.shape)
 
+  @test_util.disable_tfrt("b/169112823: unsupported dtype for Op:ZerosLike.")
   def testZerosLikeCPU(self):
     for dtype in [
         dtypes_lib.float32, dtypes_lib.float64, dtypes_lib.int32,
@@ -422,6 +438,7 @@ class ZerosLikeTest(test.TestCase):
     ]:
       self._compareZeros(dtype, use_gpu=False)
 
+  @test_util.disable_tfrt("b/169112823: unsupported dtype for Op:ZerosLike.")
   def testZerosLikeGPU(self):
     for dtype in [
         dtypes_lib.float32, dtypes_lib.float64, dtypes_lib.int32,
@@ -431,6 +448,7 @@ class ZerosLikeTest(test.TestCase):
     ]:
       self._compareZeros(dtype, use_gpu=True)
 
+  @test_util.disable_tfrt("b/169112823: unsupported dtype for Op:ZerosLike.")
   def testZerosLikeDtype(self):
     # Make sure zeros_like works even for dtypes that cannot be cast between
     shape = (3, 5)

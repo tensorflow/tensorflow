@@ -28,6 +28,10 @@ tf_module {
     name: "Topology"
     mtype: "<type \'type\'>"
   }
+  member {
+    name: "embedding"
+    mtype: "<type \'module\'>"
+  }
   member_method {
     name: "embedding_column"
     argspec: "args=[\'categorical_column\', \'dimension\', \'combiner\', \'initializer\', \'max_sequence_length\', \'learning_rate_fn\', \'embedding_lookup_device\', \'tensor_core_shape\', \'use_safe_embedding_lookup\'], varargs=None, keywords=None, defaults=[\'mean\', \'None\', \'0\', \'None\', \'None\', \'None\', \'True\'], "

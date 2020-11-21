@@ -2,74 +2,68 @@
 
 <img src="../images/image.png" class="attempt-right">
 
-Use a pre-trained and optimized model to identify hundreds of classes of
-objects, including people, activities, animals, plants, and places.
+The task of identifying what an image represents is called _image
+classification_. An image classification model is trained to recognize various
+classes of images. For example, you may train a model to recognize photos
+representing three different types of animals: rabbits, hamsters, and dogs.
+TensorFlow Lite provides optimized pre-trained models that you can deploy in
+your mobile applications. Learn more about image classification using TensorFlow
+[here](https://www.tensorflow.org/tutorials/images/classification).
+
+The following image shows the output of the image classification model on
+Android.
+
+<img src="images/android_banana.png" alt="Screenshot of Android example" width="30%">
 
 ## Get started
 
-If you are unfamiliar with the concept of image classification, you should start
-by reading <a href="#what_is_image_classification">What is image
-classification?</a>
+If you are new to TensorFlow Lite and are working with Android or iOS, it is
+recommended you explore the following example applications that can help you get
+started.
 
-To learn how to use image classification in a mobile app, we recommend exploring
-our <a href="#example_applications_and_guides">Example applications and
-guides</a>.
+You can leverage the out-of-box API from
+[TensorFlow Lite Task Library](../../inference_with_metadata/task_library/image_classifier)
+to integrate image classification models in just a few lines of code. You can
+also build your own custom inference pipeline using the
+[TensorFlow Lite Support Library](../../inference_with_metadata/lite_support).
 
-If you are using a platform other than Android or iOS, or you are already
-familiar with the TensorFlow Lite APIs, you can download our starter image
-classification model and the accompanying labels.
-
-<a class="button button-primary" href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/mobilenet_v1_1.0_224_quant_and_labels.zip">Download
-starter model and labels</a>
-
-Once you have the starter model running on your target device, you can
-experiment with different models to find the optimal balance between
-performance, accuracy, and model size. For guidance, see
-<a href="#choose_a_different_model">Choose a different model</a>.
-
-### Example applications and guides
-
-We have example applications for image classification for both Android and iOS.
-For each example, we provide a guide that explains how it works.
-
-#### Android
+The Android example below demonstrates the implementation for both methods as
+[lib_task_api](https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/android/lib_task_api)
+and
+[lib_support](https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/android/lib_support),
+respectively.
 
 <a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/android">View
 Android example</a>
 
-Read the
-[Android example guide](https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/android/EXPLORE_THE_CODE.md)
-to learn how the app works.
-
-#### iOS
-
 <a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/ios">View
 iOS example</a>
 
-Read the
-[iOS example guide](https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/ios/EXPLORE_THE_CODE.md)
-to learn how the app works.
+If you are using a platform other than Android/iOS, or if you are already
+familiar with the
+[TensorFlow Lite APIs](https://www.tensorflow.org/api_docs/python/tf/lite),
+download the starter model and supporting files (if applicable).
 
-#### Screenshot
+<a class="button button-primary" href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/mobilenet_v1_1.0_224_quant_and_labels.zip">Download
+starter model</a>
 
-The following screenshot shows the Android image classification example.
+## Model description
 
-<img src="images/android_banana.png" alt="Screenshot of Android example" width="30%">
+### How it works
 
-## What is image classification?
+During training, an image classification model is fed images and their
+associated _labels_. Each label is the name of a distinct concept, or class,
+that the model will learn to recognize.
 
-A common use of machine learning is to identify what an image represents. For
-example, we might want to know what type of animal appears in the following
-photograph.
+Given sufficient training data (often hundreds or thousands of images per
+label), an image classification model can learn to predict whether new images
+belong to any of the classes it has been trained on. This process of prediction
+is called _inference_. Note that you can also use
+[transfer learning](https://www.tensorflow.org/tutorials/images/transfer_learning)
+to identify new classes of images by using a pre-existing model. Transfer
+learning does not require a very large training dataset.
 
-<img src="images/dog.png" alt="dog" width="50%">
-
-The task of predicting what an image represents is called _image
-classification_. An image classification model is trained to recognize various
-classes of images. For example, a model might be trained to recognize photos
-representing three different types of animals: rabbits, hamsters, and dogs.
-
-When we subsequently provide a new image as input to the model, it will output
+When you subsequently provide a new image as input to the model, it will output
 the probabilities of the image representing each of the types of animal it was
 trained on. An example output might be as follows:
 
@@ -96,63 +90,10 @@ trained on. An example output might be as follows:
   </tbody>
 </table>
 
-Based on the output, we can see that the classification model has predicted that
-the image has a high probability of representing a dog.
-
-Note: Image classification can only tell you the probability that an image
-represents one or more of the classes that the model was trained on. It cannot
-tell you the position or identity of objects within the image. If you need to
-identify objects and their positions within images, you should use an
-<a href="../object_detection/overview.md">object detection</a> model.
-
-### Training, labels, and inference
-
-During training, an image classification model is fed images and their
-associated _labels_. Each label is the name of a distinct concept, or class,
-that the model will learn to recognize.
-
-Given sufficient training data (often hundreds or thousands of images per
-label), an image classification model can learn to predict whether new images
-belong to any of the classes it has been trained on. This process of prediction
-is called _inference_.
-
-To perform inference, an image is passed as input to a model. The model will
-then output an array of probabilities between 0 and 1. With our example model,
-this process might look like the following:
-
-<table style="width: 60%">
-  <tr style="border-top: 0px;">
-    <td style="width: 40%"><img src="images/dog.png" alt="dog"></td>
-    <td style="width: 20%; font-size: 2em; vertical-align: middle; text-align: center;">→</td>
-    <td style="width: 40%; vertical-align: middle; text-align: center;">[0.07, 0.02, 0.91]</td>
-</table>
-
-Each number in the output corresponds to a label in our training data.
-Associating our output with the three labels the model was trained on, we can
-see the model has predicted a high probability that the image represents a dog.
-
-<table style="width: 40%;">
-  <thead>
-    <tr>
-      <th>Label</th>
-      <th>Probability</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>rabbit</td>
-      <td>0.07</td>
-    </tr>
-    <tr>
-      <td>hamster</td>
-      <td>0.02</td>
-    </tr>
-    <tr>
-      <td style="background-color: #fcb66d;">dog</td>
-      <td style="background-color: #fcb66d;">0.91</td>
-    </tr>
-  </tbody>
-</table>
+Each number in the output corresponds to a label in the training data.
+Associating the output with the three labels the model was trained on, you can
+see that the model has predicted a high probability that the image represents a
+dog.
 
 You might notice that the sum of all the probabilities (for rabbit, hamster, and
 dog) is equal to 1. This is a common type of output for models with multiple
@@ -160,12 +101,18 @@ classes (see
 <a href="https://developers.google.com/machine-learning/crash-course/multi-class-neural-networks/softmax">Softmax</a>
 for more information).
 
-### Ambiguous results
+Note: Image classification can only tell you the probability that an image
+represents one or more of the classes that the model was trained on. It cannot
+tell you the position or identity of objects within the image. If you need to
+identify objects and their positions within images, you should use an
+<a href="../object_detection/overview.md">object detection</a> model.
 
-Since the probabilities will always sum to 1, if the image is not confidently
-recognized as belonging to any of the classes the model was trained on you may
-see the probability distributed throughout the labels without any one value
-being significantly larger.
+<h4>Ambiguous results</h4>
+
+Since the output probabilities will always sum to 1, if an image is not
+confidently recognized as belonging to any of the classes the model was trained
+on you may see the probability distributed throughout the labels without any one
+value being significantly larger.
 
 For example, the following might indicate an ambiguous result:
 
@@ -191,13 +138,29 @@ For example, the following might indicate an ambiguous result:
     </tr>
   </tbody>
 </table>
+If your model frequently returns ambiguous results, you may need a different,
+more accurate model.
 
-### Uses and limitations
+<h3>Choosing a model architecture</h3>
 
-The image classification models that we provide are useful for single-label
-classification, which means predicting which single label the image is most
-likely to represent. They are trained to recognize 1000 classes of image. For a
-full list of classes, see the labels file in the
+TensorFlow Lite provides you with a variety of image classification models which
+are all trained on the original dataset. Model architectures like MobileNet,
+Inception, and NASNet are available on the
+<a href="../../guide/hosted_models.md">hosted models page</a>. To choose the best model for
+your use case, you need to consider the individual architectures as well as some
+of the tradeoffs between various models. Some of these model tradeoffs are based
+on metrics such as performance, accuracy, and model size. For example, you might
+need a faster model for building a bar code scanner while you might prefer a
+slower, more accurate model for a medical imaging app.
+
+Note that the <a href=https://www.tensorflow.org/lite/guide/hosted_models#image_classification>image classification models</a> provided accept varying sizes of input. For some models, this is indicated in the filename. For example, the Mobilenet_V1_1.0_224 model accepts an input of 224x224 pixels. All of the models require three color channels per pixel (red, green, and blue). Quantized models require 1 byte per channel, and float models require 4 bytes per channel. The <a href="https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/android/EXPLORE_THE_CODE.md">Android</a> and <a href="https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/ios/EXPLORE_THE_CODE.md">iOS</a> code samples demonstrate how to process full-sized camera images into the required format for each model.
+
+<h3>Uses and limitations</h3>
+
+The TensorFlow Lite image classification models are useful for single-label
+classification; that is, predicting which single label the image is most likely to
+represent. They are trained to recognize 1000 image classes. For a full list of
+classes, see the labels file in the
 <a href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/mobilenet_v1_1.0_224_quant_and_labels.zip">model
 zip</a>.
 
@@ -213,13 +176,43 @@ For the following use cases, you should use a different type of model:
 
 Once you have the starter model running on your target device, you can
 experiment with different models to find the optimal balance between
-performance, accuracy, and model size. For guidance, see
-<a href="#choose_a_different_model">Choose a different model</a>.
+performance, accuracy, and model size.
 
-## Performance Benchmarks
+<h3>Customize model</h3>
 
-Performance benchmark numbers are generated with the tool
-[described here](https://www.tensorflow.org/lite/performance/benchmarks).
+The pre-trained models provided are trained to recognize 1000 classes of images.
+For a full list of classes, see the labels file in the
+<a href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/mobilenet_v1_1.0_224_quant_and_labels.zip">model
+zip</a>.
+
+You can also use transfer learning to re-train a model to
+recognize classes not in the original set. For example, you could re-train the
+model to distinguish between different species of tree, despite there being no
+trees in the original training data. To do this, you will need a set of training
+images for each of the new labels you wish to train.
+
+Learn how to perform transfer learning in the
+<a href="https://codelabs.developers.google.com/codelabs/recognize-flowers-with-tensorflow-on-android/index.html#0">Recognize
+flowers with TensorFlow</a> codelab, or with the
+<a href="https://www.tensorflow.org/lite/tutorials/model_maker_image_classification">Model Maker library</a>.
+
+<h2>Performance benchmarks</h2>
+
+Model performance is measured in terms of the amount of time it takes for a
+model to run inference on a given piece of hardware. The lower the time, the faster
+the model.
+
+The performance you require depends on your application. Performance can be
+important for applications like real-time video, where it may be important to
+analyze each frame in the time before the next frame is drawn (e.g. inference
+must be faster than 33ms to perform real-time inference on a 30fps video
+stream).
+
+The TensorFlow Lite quantized MobileNet models' performance range from 3.7ms to
+80.3 ms.
+
+Performance benchmark numbers are generated with the
+<a href="https://www.tensorflow.org/lite/performance/benchmarks">benchmarking tool</a>.
 
 <table>
   <thead>
@@ -258,75 +251,35 @@ Performance benchmark numbers are generated with the tool
 
 \*\* 2 threads used on iPhone for the best performance result.
 
-## Choose a different model
+### Model accuracy
 
-There are a large number of image classification models available on our
-<a href="../../guide/hosted_models.md">List of hosted models</a>. You should aim
-to choose the optimal model for your application based on performance, accuracy
-and model size. There are trade-offs between each of them.
-
-### Performance
-
-We measure performance in terms of the amount of time it takes for a model to
-run inference on a given piece of hardware. The less time, the faster the model.
-
-The performance you require depends on your application. Performance can be
-important for applications like real-time video, where it may be important to
-analyze each frame in the time before the next frame is drawn (e.g. inference
-must be faster than 33ms to perform real-time inference on a 30fps video
-stream).
-
-Our quantized MobileNet models’ performance ranges from 3.7ms to 80.3 ms.
-
-### Accuracy
-
-We measure accuracy in terms of how often the model correctly classifies an
+Accuracy is measured in terms of how often the model correctly classifies an
 image. For example, a model with a stated accuracy of 60% can be expected to
 classify an image correctly an average of 60% of the time.
 
-Our <a href="../../guide/hosted_models.md">list of hosted models</a> provides
-Top-1 and Top-5 accuracy statistics. Top-1 refers to how often the correct label
-appears as the label with the highest probability in the model’s output. Top-5
-refers to how often the correct label appears in the top 5 highest probabilities
-in the model’s output.
+The [list of hosted models](../../guide/hosted_models.md) provides Top-1 and
+Top-5 accuracy statistics. Top-1 refers to how often the correct label appears
+as the label with the highest probability in the model’s output. Top-5 refers to
+how often the correct label appears in the 5 highest probabilities in the
+model’s output.
 
-Our quantized MobileNet models’ Top-5 accuracy ranges from 64.4 to 89.9%.
+The TensorFlow Lite quantized MobileNet models’ Top-5 accuracy range from 64.4
+to 89.9%.
 
-### Size
+### Model size
 
 The size of a model on-disk varies with its performance and accuracy. Size may
 be important for mobile development (where it might impact app download sizes)
 or when working with hardware (where available storage might be limited).
 
-Our quantized MobileNet models’ size ranges from 0.5 to 3.4 Mb.
+The TensorFlow Lite quantized MobileNet models' sizes range from 0.5 to 3.4 MB.
 
-### Architecture
+## Further reading and resources
 
-There are several different architectures of models available on
-<a href="../../guide/hosted_models.md">List of hosted models</a>, indicated by
-the model’s name. For example, you can choose between MobileNet, Inception, and
-others.
+Use the following resources to learn more about concepts related to image
+classification:
 
-The architecture of a model impacts its performance, accuracy, and size. All of
-our hosted models are trained on the same data, meaning you can use the provided
-statistics to compare them and choose which is optimal for your application.
-
-Note: The image classification models we provide accept varying sizes of input. For some models, this is indicated in the filename. For example, the Mobilenet_V1_1.0_224 model accepts an input of 224x224 pixels. <br /><br />All of the models require three color channels per pixel (red, green, and blue). Quantized models require 1 byte per channel, and float models require 4 bytes per channel.<br /><br />Our <a href="https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/android/EXPLORE_THE_CODE.md">Android</a> and <a href="https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/ios/EXPLORE_THE_CODE.md">iOS</a> code samples demonstrate how to process full-sized camera images into the required format for each model.
-
-## Customize model
-
-The pre-trained models we provide are trained to recognize 1000 classes of
-image. For a full list of classes, see the labels file in the
-<a href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/mobilenet_v1_1.0_224_quant_and_labels.zip">model
-zip</a>.
-
-You can use a technique known as _transfer learning_ to re-train a model to
-recognize classes not in the original set. For example, you could re-train the
-model to distinguish between different species of tree, despite there being no
-trees in the original training data. To do this, you will need a set of training
-images for each of the new labels you wish to train.
-
-Learn how to perform transfer learning in the
-<a href="https://codelabs.developers.google.com/codelabs/recognize-flowers-with-tensorflow-on-android/#0">Recognize
-flowers with TensorFlow</a> codelab, or with the
-[model maker toolkit](/lite/tutorials/model_maker_image_classification).
+*   [Image classification using TensorFlow](https://www.tensorflow.org/tutorials/images/classification)
+*   [Image classification with CNNs](https://www.tensorflow.org/tutorials/images/cnn)
+*   [Transfer learning](https://www.tensorflow.org/tutorials/images/transfer_learning)
+*   [Data augmentation](https://www.tensorflow.org/tutorials/images/data_augmentation)

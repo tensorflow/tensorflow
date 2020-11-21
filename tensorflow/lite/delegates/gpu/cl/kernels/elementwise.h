@@ -20,86 +20,29 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
+#include "tensorflow/lite/delegates/gpu/common/status.h"
 
 namespace tflite {
 namespace gpu {
 namespace cl {
 
-// Class for simple one input operations without any parameters, for example
-// log, sin, cos and etc.
-class ElementwiseOneInput : public ElementwiseOperation {
- public:
-  explicit ElementwiseOneInput(const OperationDef& definition,
-                               const OperationType& op_type)
-      : ElementwiseOperation(definition), op_type_(op_type) {}
+// Creates simple one input operation without any parameters, for example
+// log, sin, cos, etc.
+GPUOperation CreateElementwiseOneInput(const OperationDef& definition,
+                                       const OperationType& op_type);
 
-  // Move only
-  ElementwiseOneInput(ElementwiseOneInput&& operation);
-  ElementwiseOneInput& operator=(ElementwiseOneInput&& operation);
-  ElementwiseOneInput(const ElementwiseOneInput&) = delete;
-  ElementwiseOneInput& operator=(const ElementwiseOneInput&) = delete;
-
-  std::string GetCoreCode(const LinkingContext& context) const override;
-
- private:
-  OperationType op_type_;
-};
-
-ElementwiseOneInput CreateElementwiseOneInput(const OperationDef& definition,
-                                              const OperationType& op_type);
-
-struct BroadcastSettings {
-  bool width;
-  bool height;
-  bool channels;
-};
-
-// Class for simple two input operations without any parameters, for example
-// sub, div and etc.
-class ElementwiseTwoInput : public ElementwiseOperation {
- public:
-  explicit ElementwiseTwoInput(const OperationDef& definition,
+// Creates simple two input(first input is runtime tensor and second input is
+// constant or linear/hwc tensor) operation, for example sub, div and etc.
+GPUOperation CreateElementwise(const GpuInfo& gpu_info,
+                               const OperationDef& definition,
                                const OperationType& op_type,
-                               const BroadcastSettings& broadcast)
-      : ElementwiseOperation(definition),
-        op_type_(op_type),
-        broadcast_(broadcast),
-        use_scalar_para_(false) {}
+                               const ElementwiseAttributes& attr);
 
-  // Move only
-  ElementwiseTwoInput(ElementwiseTwoInput&& operation);
-  ElementwiseTwoInput& operator=(ElementwiseTwoInput&& operation);
-  ElementwiseTwoInput(const ElementwiseTwoInput&) = delete;
-  ElementwiseTwoInput& operator=(const ElementwiseTwoInput&) = delete;
-
-  void SetLinkIndex(int index) override;
-  std::string GetCoreCode(const LinkingContext& context) const override;
-  std::string GetArgsDeclaration() const override;
-  absl::Status BindArguments(CLKernel* kernel) override;
-  inline void SetScalarPara(FLT scalar) {
-    scalar_para_ = scalar;
-    use_scalar_para_ = true;
-  }
-
- private:
-  int link_index_;
-  OperationType op_type_;
-  BroadcastSettings broadcast_;
-  FLT scalar_para_;
-  bool use_scalar_para_;
-};
-
-ElementwiseTwoInput CreateElementwiseTwoInput(
-    const CreationContext& creation_context, const OperationDef& definition,
-    const OperationType& op_type, const BroadcastSettings& broadcast,
-    const ElementwiseAttributes* attr);
-
-ElementwiseTwoInput CreateElementwiseTwoInput(
-    const OperationDef& definition, const OperationType& op_type,
-    const BroadcastSettings& broadcast);
-
-ElementwiseTwoInput CreateElementwiseTwoInput(const OperationDef& definition,
-                                              const OperationType& op_type);
+// Creates simple two input(2 runtime tensors) operation, for example
+// sub, div and etc.
+GPUOperation CreateElementwiseTwoInput(const OperationDef& definition,
+                                       const OperationType& op_type,
+                                       const BHWC& shape);
 
 }  // namespace cl
 }  // namespace gpu

@@ -138,5 +138,30 @@ TEST(TestReporter, SetProperties) {
   EXPECT_EQ(4.0, extras.at("double_prop").double_value());
 }
 
+TEST(TestReporter, AddMetrics) {
+  string fname =
+      strings::StrCat(testing::TmpDir(), "/test_reporter_benchmarks_");
+  TestReporter test_reporter(fname, "b3/4/5");
+  TF_EXPECT_OK(test_reporter.Initialize());
+  TF_EXPECT_OK(test_reporter.AddMetric("metric1", 2.0));
+  TF_EXPECT_OK(test_reporter.AddMetric("metric2", 3.0));
+
+  TF_EXPECT_OK(test_reporter.Close());
+  string expected_fname = strings::StrCat(fname, "b3__4__5");
+  string read;
+  TF_EXPECT_OK(ReadFileToString(Env::Default(), expected_fname, &read));
+
+  BenchmarkEntries benchmark_entries;
+  ASSERT_TRUE(benchmark_entries.ParseFromString(read));
+  ASSERT_EQ(1, benchmark_entries.entry_size());
+  const BenchmarkEntry& benchmark_entry = benchmark_entries.entry(0);
+  const auto& metrics = benchmark_entry.metrics();
+  ASSERT_EQ(2, metrics.size());
+  EXPECT_EQ("metric1", metrics.at(0).name());
+  EXPECT_EQ(2.0, metrics.at(0).value());
+  EXPECT_EQ("metric2", metrics.at(1).name());
+  EXPECT_EQ(3.0, metrics.at(1).value());
+}
+
 }  // namespace
 }  // namespace tensorflow

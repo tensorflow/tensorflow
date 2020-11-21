@@ -17,9 +17,11 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/event_span.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
@@ -50,6 +52,20 @@ inline bool IsRealCpuCompute(absl::string_view event_name) {
   return !not_real;
 }
 
+uint64 ParseNumBytesFromMemcpyDetail(absl::string_view memcpy_detail) {
+  const std::vector<absl::string_view> params =
+      absl::StrSplit(memcpy_detail, absl::ByAnyChar(":\n"));
+
+  // Processes value pairs.
+  for (uint32 ii = 0; ii < params.size(); ii += 2) {
+    if (params[ii] != "num_bytes") continue;
+    uint64 value = 0;
+    if (absl::SimpleAtoi(params[ii + 1], &value)) return value;
+    break;
+  }
+  return 0ULL;
+}
+
 }  // namespace
 
 StepEvents ConvertHostThreadsXLineToStepEvents(
@@ -61,12 +77,17 @@ StepEvents ConvertHostThreadsXLineToStepEvents(
     int64 group_id = -1;
     absl::string_view step_name;
     event.ForEachStat([&](const XStatVisitor& stat) {
-      if (stat.Type() == StatType::kCorrelationId) {
-        correlation_id = stat.IntValue();
-      } else if (stat.Type() == StatType::kGroupId) {
-        group_id = stat.IntValue();
-      } else if (stat.Type() == StatType::kStepName) {
-        step_name = stat.StrOrRefValue();
+      if (!stat.Type().has_value()) return;
+      switch (stat.Type().value()) {
+        case StatType::kCorrelationId:
+          correlation_id = stat.IntValue();
+          break;
+        case StatType::kGroupId:
+          group_id = stat.IntValue();
+          break;
+        case StatType::kStepName:
+          step_name = stat.StrOrRefValue();
+          break;
       }
     });
     if (group_id < 0) return;
@@ -112,39 +133,69 @@ StepEvents ConvertHostThreadsXPlaneToStepEvents(
 StepEvents ConvertDeviceStepInfoToStepMarkers(const XLineVisitor& line) {
   StepEvents result;
   line.ForEachEvent([&](const XEventVisitor& event) {
-    event.ForEachStat([&](const XStatVisitor& stat) {
-      if (stat.Type() == StatType::kGroupId) {
-        result[stat.IntValue()].AddMarker(
-            StepMarker(StepMarkerType::kDeviceStepMarker, event.Name(),
-                       Timespan(event.TimestampPs(), event.DurationPs())));
-        return;
-      }
-    });
+    if (absl::optional<XStatVisitor> stat = event.GetStat(StatType::kGroupId)) {
+      result[stat->IntValue()].AddMarker(
+          StepMarker(StepMarkerType::kDeviceStepMarker, event.Name(),
+                     Timespan(event.TimestampPs(), event.DurationPs())));
+    }
   });
   return result;
 }
 
-StepEvents ConvertDeviceTraceXLineToStepEvents(const XLineVisitor& line) {
+StepEvents ConvertDeviceTraceXLineToStepEvents(const uint64 device_id,
+                                               const XLineVisitor& line) {
   StepEvents result;
   line.ForEachEvent([&](const XEventVisitor& event) {
     int64 correlation_id = -1;
     int64 group_id = -1;
-    absl::string_view tensor_shapes = "";
+    absl::string_view tensor_shapes;
+    absl::string_view memcpy_details;
     event.ForEachStat([&](const XStatVisitor& stat) {
-      if (stat.Type() == StatType::kCorrelationId) {
-        correlation_id = stat.IntValue();
-      } else if (stat.Type() == StatType::kGroupId) {
-        group_id = stat.IntValue();
-      } else if (stat.Type() == StatType::kTensorShapes) {
-        tensor_shapes = stat.StrOrRefValue();
+      if (!stat.Type().has_value()) return;
+      switch (stat.Type().value()) {
+        case StatType::kCorrelationId:
+          correlation_id = stat.IntValue();
+          break;
+        case StatType::kGroupId:
+          group_id = stat.IntValue();
+          break;
+        case StatType::kTensorShapes:
+          tensor_shapes = stat.StrOrRefValue();
+          break;
+        case StatType::kMemcpyDetails:
+          memcpy_details = stat.StrOrRefValue();
+          break;
       }
     });
 
     if (correlation_id >= 0 && group_id >= 0) {
-      EventTypeSpan event_type_span(
-          ClassifyGpuEvent(event.Name(), tensor_shapes),
-          Timespan(event.TimestampPs(), event.DurationPs()));
+      EventType event_type = ClassifyGpuEvent(event.Name(), tensor_shapes);
+      EventTypeSpan event_type_span(event_type, event.GetTimespan());
       result[group_id].AddEvent(event_type_span);
+      switch (event_type) {
+        case DEVICE_COLLECTIVES: {
+          AllReduceInfo collective_ops;
+          collective_ops.set_name(string(event.Name()));
+          collective_ops.set_start_time_ps(event.TimestampPs());
+          collective_ops.set_end_time_ps(event.EndOffsetPs());
+          // TODO(jiesun): figure out how to get size info etc.
+          result[group_id].AddCollectiveOpEvent(device_id, collective_ops);
+          break;
+        }
+        case HOST_TO_DEVICE:
+        case DEVICE_TO_DEVICE:
+        case DEVICE_TO_HOST: {
+          // TODO(jiesun): not all memcpy events are grouped, figure out a
+          // better way to attribute them to steps.
+          uint64 bytes_transferred =
+              ParseNumBytesFromMemcpyDetail(memcpy_details);
+          result[group_id].AddDeviceMemoryTransferEvent(
+              event_type, event.GetTimespan(), bytes_transferred);
+          break;
+        }
+        default:
+          return;
+      }
     }
   });
   return result;
@@ -160,7 +211,8 @@ StepEvents ConvertDeviceTraceXPlaneToStepEvents(const XPlane& device_trace) {
     } else if (IsDerivedThreadId(line_id)) {
       return;
     } else {
-      CombineStepEvents(ConvertDeviceTraceXLineToStepEvents(line), &result);
+      CombineStepEvents(ConvertDeviceTraceXLineToStepEvents(plane.Id(), line),
+                        &result);
     }
   });
   return result;

@@ -31,7 +31,7 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 
-std::string GetResizeBilinearCode(bool half_pixel_centers) {
+std::string GetResizeBilinearCode(const Resize2DAttributes& attr) {
   std::string code = R"(
     #include <metal_stdlib>
     using namespace metal;
@@ -42,7 +42,7 @@ std::string GetResizeBilinearCode(bool half_pixel_centers) {
       if (int(gid.x) >= size.z || int(gid.y) >= size.w) {
         return;
       })";
-  if (half_pixel_centers) {
+  if (attr.half_pixel_centers) {
     code += "const float2 tex_coord = (float2(gid.xy) + 0.5f) * scale - 0.5f;";
   } else {
     code += "const float2 tex_coord = float2(gid.xy) * scale;";
@@ -74,8 +74,8 @@ std::string GetResizeBilinearCode(bool half_pixel_centers) {
   return code;
 }
 
-std::string GetResizeNearestCode() {
-  return R"(
+std::string GetResizeNearestCode(const Resize2DAttributes& attr) {
+  std::string code = R"(
     #include <metal_stdlib>
     using namespace metal;
     $0
@@ -85,7 +85,28 @@ std::string GetResizeNearestCode() {
       if (int(gid.x) >= size.z || int(gid.y) >= size.w) {
         return;
       }
-      const int2 coord = int2(float2(gid.xy) * scale);
+)";
+  std::string fxc;
+  std::string fyc;
+  if (attr.half_pixel_centers) {
+    fxc = "(float(gid.x) + 0.5f) * scale.x";
+    fyc = "(float(gid.y) + 0.5f) * scale.y";
+  } else {
+    fxc = "float(gid.x) * scale.x";
+    fyc = "float(gid.y) * scale.y";
+  }
+  if (attr.align_corners) {
+    fxc += " + 0.5f";
+    fyc += " + 0.5f";
+  }
+  code += "  int2 coord;\n";
+  code += "  coord.x = static_cast<int>(" + fxc + ");\n";
+  code += "  coord.y = static_cast<int>(" + fyc + ");\n";
+  code += "  coord.x = max(0, coord.x);\n";
+  code += "  coord.y = max(0, coord.y);\n";
+  code += "  coord.x = min(coord.x, size.x - 1);\n";
+  code += "  coord.y = min(coord.y, size.y - 1);\n";
+  code += R"(
       const int src_index = (gid.z * size.y + coord.y) * size.x + coord.x;
       FLT4 value = src_buffer[src_index];
       const int linear_index = (gid.z * size.w + gid.y) * size.z + gid.x;
@@ -93,6 +114,7 @@ std::string GetResizeNearestCode() {
       output_buffer[linear_index] = value;
     }
   )";
+  return code;
 }
 
 std::vector<ComputeTaskDescriptorPtr> Resize(int id, ValueId input_id,
@@ -103,10 +125,10 @@ std::vector<ComputeTaskDescriptorPtr> Resize(int id, ValueId input_id,
   desc->is_linkable = false;
   switch (attr.type) {
     case SamplingType::BILINEAR:
-      desc->shader_source = GetResizeBilinearCode(attr.half_pixel_centers);
+      desc->shader_source = GetResizeBilinearCode(attr);
       break;
     case SamplingType::NEAREST:
-      desc->shader_source = GetResizeNearestCode();
+      desc->shader_source = GetResizeNearestCode(attr);
       break;
     default:
       // Unknown sampling type

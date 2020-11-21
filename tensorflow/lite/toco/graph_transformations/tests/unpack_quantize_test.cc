@@ -40,10 +40,11 @@ class UnpackQuantizeTest : public ::testing::Test {
   // 1. calculate min and max of the input.
   // 2. insert dequantization nodes after quantized outputs of Unpack operation.
   void PrepareModel(Model* model, int axis) {
-    std::vector<string> unpack_output_names = {"unpack_out0", "unpack_out1"};
+    std::vector<std::string> unpack_output_names = {"unpack_out0",
+                                                    "unpack_out1"};
     model->flags.add_output_arrays(unpack_output_names[0]);
     model->flags.add_output_arrays(unpack_output_names[1]);
-    const string unpack_input_name("unpack_op_input");
+    const std::string unpack_input_name("unpack_op_input");
 
     const int kDim = 2;
     const int kElementPerDim = 2;
@@ -75,7 +76,7 @@ class UnpackQuantizeTest : public ::testing::Test {
     // Configuring the necessary outputs. The outputs also happen to be in
     // kFloat. This is because during quantization transformation data types for
     // these arrays are going to be forced to be kUint8.
-    for (const string& unpack_output_name : unpack_output_names) {
+    for (const std::string& unpack_output_name : unpack_output_names) {
       Array& out_array = model->GetOrCreateArray(unpack_output_name);
       out_array.GetOrCreateMinMax();
       out_array.data_type = ArrayDataType::kFloat;
@@ -109,7 +110,7 @@ TEST_F(UnpackQuantizeTest, CheckUnpackPreservesQuantizationParameters) {
                   ->Run(&model, /*op_index=*/0, &modified)
                   .ok());
 
-  const string output_name = model.flags.output_arrays(0);
+  const std::string output_name = model.flags.output_arrays(0);
 
   // Quantization transformation inserts NODE_NAME_DEQUANTIZE operations,
   // effectively making them the new outputs of the array. Old outputs of the

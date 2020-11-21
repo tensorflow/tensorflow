@@ -15,9 +15,10 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/micro/kernels/all_ops_resolver.h"
+#include "tensorflow/lite/micro/all_ops_resolver.h"
+#include "tensorflow/lite/micro/kernels/kernel_runner.h"
+#include "tensorflow/lite/micro/test_helpers.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
-#include "tensorflow/lite/micro/testing/test_utils.h"
 
 namespace tflite {
 namespace testing {
@@ -34,46 +35,23 @@ void TestReluFloat(const int* input_dims_data, const float* input_data,
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input_data, input_dims, "input_tensor"),
-      CreateFloatTensor(output_data, output_dims, "output_tensor"),
+      CreateTensor(input_data, input_dims),
+      CreateTensor(output_data, output_dims),
   };
 
-  TfLiteContext context;
-  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-
-  ::tflite::ops::micro::AllOpsResolver resolver;
-  const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_RELU, 1);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
-
-  const char* init_data = nullptr;
-  size_t init_data_size = 0;
-  void* user_data = nullptr;
-  if (registration->init) {
-    user_data = registration->init(&context, init_data, init_data_size);
-  }
   int inputs_array_data[] = {1, 0};
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {1, 1};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  TfLiteNode node;
-  node.inputs = inputs_array;
-  node.outputs = outputs_array;
-  node.temporaries = nullptr;
-  node.user_data = user_data;
-  node.builtin_data = nullptr;
-  node.custom_initial_data = nullptr;
-  node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
-  if (registration->prepare) {
-    TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
-  }
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(&context, &node));
-  if (registration->free) {
-    registration->free(&context, user_data);
-  }
+  const TfLiteRegistration registration = ops::micro::Register_RELU();
+  micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
+                             outputs_array,
+                             /*builtin_data=*/nullptr, micro_test::reporter);
+
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
+
   for (int i = 0; i < output_elements_count; ++i) {
     TF_LITE_MICRO_EXPECT_NEAR(golden[i], output_data[i], 1e-5f);
   }
@@ -90,46 +68,23 @@ void TestRelu6Float(const int* input_dims_data, const float* input_data,
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input_data, input_dims, "input_tensor"),
-      CreateFloatTensor(output_data, output_dims, "output_tensor"),
+      CreateTensor(input_data, input_dims),
+      CreateTensor(output_data, output_dims),
   };
 
-  TfLiteContext context;
-  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-
-  ::tflite::ops::micro::AllOpsResolver resolver;
-  const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_RELU6, 1);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
-
-  const char* init_data = nullptr;
-  size_t init_data_size = 0;
-  void* user_data = nullptr;
-  if (registration->init) {
-    user_data = registration->init(&context, init_data, init_data_size);
-  }
   int inputs_array_data[] = {1, 0};
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {1, 1};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  TfLiteNode node;
-  node.inputs = inputs_array;
-  node.outputs = outputs_array;
-  node.temporaries = nullptr;
-  node.user_data = user_data;
-  node.builtin_data = nullptr;
-  node.custom_initial_data = nullptr;
-  node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
-  if (registration->prepare) {
-    TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
-  }
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(&context, &node));
-  if (registration->free) {
-    registration->free(&context, user_data);
-  }
+  const TfLiteRegistration registration = ops::micro::Register_RELU6();
+  micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
+                             outputs_array,
+                             /*builtin_data=*/nullptr, micro_test::reporter);
+
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
+
   for (int i = 0; i < output_elements_count; ++i) {
     TF_LITE_MICRO_EXPECT_NEAR(golden[i], output_data[i], 1e-5f);
   }
@@ -150,50 +105,26 @@ void TestReluUint8(const int* input_dims_data, const float* input_data,
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
       CreateQuantizedTensor(input_data, input_data_quantized, input_dims,
-                            input_scale, input_zero_point, "input_tensor"),
+                            input_scale, input_zero_point),
       CreateQuantizedTensor(output_data, output_dims, output_scale,
-                            output_zero_point, "output_tensor"),
+                            output_zero_point),
   };
 
-  TfLiteContext context;
-  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-
-  ::tflite::ops::micro::AllOpsResolver resolver;
-  const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_RELU, 1);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
-
-  const char* init_data = nullptr;
-  size_t init_data_size = 0;
-  void* user_data = nullptr;
-  if (registration->init) {
-    user_data = registration->init(&context, init_data, init_data_size);
-  }
   int inputs_array_data[] = {1, 0};
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {1, 1};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  TfLiteNode node;
-  node.inputs = inputs_array;
-  node.outputs = outputs_array;
-  node.temporaries = nullptr;
-  node.user_data = user_data;
-  node.builtin_data = nullptr;
-  node.custom_initial_data = nullptr;
-  node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
-  if (registration->prepare) {
-    TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
-  }
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(&context, &node));
-  if (registration->free) {
-    registration->free(&context, user_data);
-  }
+  const TfLiteRegistration registration = ops::micro::Register_RELU();
+  micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
+                             outputs_array,
+                             /*builtin_data=*/nullptr, micro_test::reporter);
 
-  AsymmetricQuantize(golden, golden_quantized, output_elements_count,
-                     output_scale, output_zero_point);
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
+
+  Quantize(golden, golden_quantized, output_elements_count, output_scale,
+           output_zero_point);
 
   for (int i = 0; i < output_elements_count; ++i) {
     TF_LITE_MICRO_EXPECT_EQ(golden_quantized[i], output_data[i]);
@@ -215,50 +146,26 @@ void TestRelu6Uint8(const int* input_dims_data, const float* input_data,
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
       CreateQuantizedTensor(input_data, input_data_quantized, input_dims,
-                            input_scale, input_zero_point, "input_tensor"),
+                            input_scale, input_zero_point),
       CreateQuantizedTensor(output_data, output_dims, output_scale,
-                            output_zero_point, "output_tensor"),
+                            output_zero_point),
   };
 
-  TfLiteContext context;
-  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-
-  ::tflite::ops::micro::AllOpsResolver resolver;
-  const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_RELU6, 1);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
-
-  const char* init_data = nullptr;
-  size_t init_data_size = 0;
-  void* user_data = nullptr;
-  if (registration->init) {
-    user_data = registration->init(&context, init_data, init_data_size);
-  }
   int inputs_array_data[] = {1, 0};
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {1, 1};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  TfLiteNode node;
-  node.inputs = inputs_array;
-  node.outputs = outputs_array;
-  node.temporaries = nullptr;
-  node.user_data = user_data;
-  node.builtin_data = nullptr;
-  node.custom_initial_data = nullptr;
-  node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
-  if (registration->prepare) {
-    TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
-  }
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(&context, &node));
-  if (registration->free) {
-    registration->free(&context, user_data);
-  }
+  const TfLiteRegistration registration = ops::micro::Register_RELU6();
+  micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
+                             outputs_array,
+                             /*builtin_data=*/nullptr, micro_test::reporter);
 
-  AsymmetricQuantize(golden, golden_quantized, output_elements_count,
-                     output_scale, output_zero_point);
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
+
+  Quantize(golden, golden_quantized, output_elements_count, output_scale,
+           output_zero_point);
 
   for (int i = 0; i < output_elements_count; ++i) {
     TF_LITE_MICRO_EXPECT_EQ(golden_quantized[i], output_data[i]);
@@ -279,52 +186,26 @@ void TestReluInt8(const int* input_dims_data, const float* input_data,
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
       CreateQuantizedTensor(input_data, input_data_quantized, input_dims,
-                            input_scale, input_zero_point, "input_tensor"),
+                            input_scale, input_zero_point),
       CreateQuantizedTensor(output_data, output_dims, output_scale,
-                            output_zero_point, "output_tensor"),
+                            output_zero_point),
   };
 
-  TfLiteContext context;
-  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-
-  ::tflite::ops::micro::AllOpsResolver resolver;
-  const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_RELU, 1);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
-
-  const char* init_data = nullptr;
-  size_t init_data_size = 0;
-  void* user_data = nullptr;
-  if (registration->init) {
-    user_data = registration->init(&context, init_data, init_data_size);
-  }
   int inputs_array_data[] = {1, 0};
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {1, 1};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  TfLiteNode node;
-  node.inputs = inputs_array;
-  node.outputs = outputs_array;
-  node.temporaries = nullptr;
-  node.user_data = user_data;
-  node.builtin_data = nullptr;
-  node.custom_initial_data = nullptr;
-  node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
-  if (registration->prepare) {
-    TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
-  }
+  const TfLiteRegistration registration = ops::micro::Register_RELU();
+  micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
+                             outputs_array,
+                             /*builtin_data=*/nullptr, micro_test::reporter);
 
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(&context, &node));
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
 
-  if (registration->free) {
-    registration->free(&context, user_data);
-  }
-
-  AsymmetricQuantize(golden, golden_quantized, output_elements_count,
-                     output_scale, output_zero_point);
+  Quantize(golden, golden_quantized, output_elements_count, output_scale,
+           output_zero_point);
 
   for (int i = 0; i < output_elements_count; ++i) {
     TF_LITE_MICRO_EXPECT_EQ(golden_quantized[i], output_data[i]);
@@ -345,52 +226,26 @@ void TestRelu6Int8(const int* input_dims_data, const float* input_data,
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
       CreateQuantizedTensor(input_data, input_data_quantized, input_dims,
-                            input_scale, input_zero_point, "input_tensor"),
+                            input_scale, input_zero_point),
       CreateQuantizedTensor(output_data, output_dims, output_scale,
-                            output_zero_point, "output_tensor"),
+                            output_zero_point),
   };
 
-  TfLiteContext context;
-  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-
-  ::tflite::ops::micro::AllOpsResolver resolver;
-  const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_RELU6, 1);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
-
-  const char* init_data = nullptr;
-  size_t init_data_size = 0;
-  void* user_data = nullptr;
-  if (registration->init) {
-    user_data = registration->init(&context, init_data, init_data_size);
-  }
   int inputs_array_data[] = {1, 0};
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {1, 1};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  TfLiteNode node;
-  node.inputs = inputs_array;
-  node.outputs = outputs_array;
-  node.temporaries = nullptr;
-  node.user_data = user_data;
-  node.builtin_data = nullptr;
-  node.custom_initial_data = nullptr;
-  node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
-  if (registration->prepare) {
-    TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
-  }
+  const TfLiteRegistration registration = ops::micro::Register_RELU6();
+  micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
+                             outputs_array,
+                             /*builtin_data=*/nullptr, micro_test::reporter);
 
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(&context, &node));
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
 
-  if (registration->free) {
-    registration->free(&context, user_data);
-  }
-
-  AsymmetricQuantize(golden, golden_quantized, output_elements_count,
-                     output_scale, output_zero_point);
+  Quantize(golden, golden_quantized, output_elements_count, output_scale,
+           output_zero_point);
 
   for (int i = 0; i < output_elements_count; ++i) {
     TF_LITE_MICRO_EXPECT_EQ(golden_quantized[i], output_data[i]);

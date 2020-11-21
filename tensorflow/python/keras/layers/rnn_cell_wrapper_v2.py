@@ -26,7 +26,8 @@ from __future__ import print_function
 
 
 from tensorflow.python.keras.layers import recurrent
-from tensorflow.python.ops import rnn_cell_wrapper_impl
+from tensorflow.python.keras.layers.legacy_rnn import rnn_cell_wrapper_impl
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -41,6 +42,10 @@ class _RNNCellWrapperV2(recurrent.AbstractRNNCell):
   def __init__(self, cell, *args, **kwargs):
     super(_RNNCellWrapperV2, self).__init__(*args, **kwargs)
     self.cell = cell
+    cell_call_spec = tf_inspect.getfullargspec(cell.call)
+    self._expects_training_arg = ("training" in cell_call_spec.args) or (
+        cell_call_spec.varkw is not None
+    )
 
   def call(self, inputs, state, **kwargs):
     """Runs the RNN cell step computation.

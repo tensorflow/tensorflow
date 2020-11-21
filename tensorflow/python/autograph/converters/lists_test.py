@@ -18,12 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.autograph.converters import directives as directives_converter
 from tensorflow.python.autograph.converters import lists
 from tensorflow.python.autograph.core import converter_testing
 from tensorflow.python.autograph.lang import directives
 from tensorflow.python.autograph.lang import special_functions
-from tensorflow.python.autograph.pyct import anno
-from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -31,101 +30,81 @@ from tensorflow.python.ops import list_ops
 from tensorflow.python.platform import test
 
 
-tf = None  # Will be replaced by a mock.
-
-
 class ListTest(converter_testing.TestCase):
 
   def test_empty_list(self):
 
-    def test_fn():
+    def f():
       return []
 
-    with self.converted(test_fn, lists, {}) as result:
-      tl = result.test_fn()
-      # Empty tensor lists cannot be evaluated or stacked.
-      self.assertTrue(isinstance(tl, ops.Tensor))
-      self.assertEqual(tl.dtype, dtypes.variant)
+    tr = self.transform(f, lists)
+
+    tl = tr()
+    # Empty tensor lists cannot be evaluated or stacked.
+    self.assertIsInstance(tl, ops.Tensor)
+    self.assertEqual(tl.dtype, dtypes.variant)
 
   def test_initialized_list(self):
 
-    def test_fn():
+    def f():
       return [1, 2, 3]
 
-    with self.converted(test_fn, lists, {}) as result:
-      self.assertAllEqual(result.test_fn(), [1, 2, 3])
+    tr = self.transform(f, lists)
+
+    self.assertAllEqual(tr(), [1, 2, 3])
 
   def test_list_append(self):
 
-    def test_fn():
+    def f():
       l = special_functions.tensor_list([1])
       l.append(2)
       l.append(3)
       return l
 
-    ns = {'special_functions': special_functions}
-    with self.converted(test_fn, lists, ns) as result:
-      with self.cached_session() as sess:
-        tl = result.test_fn()
-        r = list_ops.tensor_list_stack(tl, dtypes.int32)
-        self.assertAllEqual(self.evaluate(r), [1, 2, 3])
+    tr = self.transform(f, lists)
+
+    tl = tr()
+    r = list_ops.tensor_list_stack(tl, dtypes.int32)
+    self.assertAllEqual(self.evaluate(r), [1, 2, 3])
 
   def test_list_pop(self):
 
-    def test_fn():
+    def f():
       l = special_functions.tensor_list([1, 2, 3])
+      directives.set_element_type(l, dtype=dtypes.int32, shape=())
       s = l.pop()
       return s, l
 
-    ns = {'special_functions': special_functions}
-    node, ctx = self.prepare(test_fn, ns)
-    def_, = anno.getanno(node.body[0].targets[0],
-                         anno.Static.ORIG_DEFINITIONS)
-    def_.directives[directives.set_element_type] = {
-        'dtype': parser.parse_expression('tf.int32'),
-        'shape': parser.parse_expression('()'),
-    }
-    node = lists.transform(node, ctx)
+    tr = self.transform(f, (directives_converter, lists))
 
-    with self.compiled(node, ns, (dtypes.int32,)) as result:
-      with self.cached_session() as sess:
-        ts, tl = result.test_fn()
-        r = list_ops.tensor_list_stack(tl, dtypes.int32)
-        self.assertAllEqual(self.evaluate(r), [1, 2])
-        self.assertAllEqual(self.evaluate(ts), 3)
+    ts, tl = tr()
+    r = list_ops.tensor_list_stack(tl, dtypes.int32)
+    self.assertAllEqual(self.evaluate(r), [1, 2])
+    self.assertAllEqual(self.evaluate(ts), 3)
 
   def test_double_list_pop(self):
 
-    def test_fn(l):
+    def f(l):
       s = l.pop().pop()
       return s
 
-    with self.converted(test_fn, lists, {}) as result:
-      test_input = [1, 2, [1, 2, 3]]
-      # TODO(mdan): Pass a list of lists of tensor when we fully support that.
-      # For now, we just pass a regular Python list of lists just to verify that
-      # the two pop calls are sequenced properly.
-      self.assertAllEqual(result.test_fn(test_input), 3)
+    tr = self.transform(f, lists)
+
+    test_input = [1, 2, [1, 2, 3]]
+    # TODO(mdan): Pass a list of lists of tensor when we fully support that.
+    # For now, we just pass a regular Python list of lists just to verify that
+    # the two pop calls are sequenced properly.
+    self.assertAllEqual(tr(test_input), 3)
 
   def test_list_stack(self):
 
-    def test_fn():
+    def f():
       l = [1, 2, 3]
-      return tf.stack(l)
+      return array_ops.stack(l)
 
-    node, ctx = self.prepare(test_fn, {})
-    def_, = anno.getanno(node.body[0].targets[0],
-                         anno.Static.ORIG_DEFINITIONS)
-    def_.directives[directives.set_element_type] = {
-        'dtype': parser.parse_expression('tf.int32')
-    }
-    node = lists.transform(node, ctx)
+    tr = self.transform(f, lists)
 
-    with self.compiled(node, {}, (array_ops.stack, dtypes.int32)) as result:
-      with self.cached_session() as sess:
-        self.assertAllEqual(self.evaluate(result.test_fn()), [1, 2, 3])
-
-  # TODO(mdan): Add a test with tf.stack with axis kwarg.
+    self.assertAllEqual(self.evaluate(tr()), [1, 2, 3])
 
 
 if __name__ == '__main__':

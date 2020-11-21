@@ -19,14 +19,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from absl import logging
+import collections
 import enum
+import typing
+from typing import Any, Callable, Iterable, List, Optional, Text, Tuple, Union
 
+from absl import logging
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf.tpu import dynamic_padding_pb2 as dynamic_padding
+from tensorflow.core.protobuf.tpu import tpu_embedding_configuration_pb2 as embedding_pb2
 from tensorflow.python.compiler.xla import xla
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribution_strategy_context
@@ -45,18 +49,23 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables
+from tensorflow.python.tpu import device_assignment as device_assignment_lib
+from tensorflow.python.tpu import tpu_feed
 from tensorflow.python.tpu import tpu_function
+from tensorflow.python.tpu import tpu_name_util
 from tensorflow.python.tpu.ops import tpu_ops
+from tensorflow.python.types import core as core_types
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
-from tensorflow.python.util.compat import collections_abc
+from tensorflow.python.util import object_identity
 from tensorflow.python.util.tf_export import tf_export
 
 ops.NotDifferentiable("TPUReplicatedInput")
 
 # Operations that indicate some error in the users graph, e.g. a placeholder
 # that's introduced outside of the infeed.
-_BLACKLISTED_OPS = set([
+_DENYLISTED_OPS = set([
     "Placeholder",
 ])
 
@@ -87,7 +96,10 @@ _OUTSIDE_COMPILATION_ATTR = "_xla_outside_compilation"
 _PIVOT_FOR_CLUSTER = "_pivot_for_cluster"
 
 
-def _tpu_system_device_name(job):
+core = tpu_name_util.core
+
+
+def _tpu_system_device_name(job: Optional[Text]) -> Text:
   """Returns the device name for the TPU_SYSTEM device of `job`."""
   if job is None:
     return "/device:TPU_SYSTEM:0"
@@ -96,9 +108,11 @@ def _tpu_system_device_name(job):
 
 
 @tf_export(v1=["tpu.initialize_system"])
-def initialize_system(embedding_config=None,
-                      job=None,
-                      compilation_failure_closes_chips=True):
+def initialize_system(
+    embedding_config: Optional[embedding_pb2.TPUEmbeddingConfiguration] = None,
+    job: Optional[Text] = None,
+    compilation_failure_closes_chips: bool = True
+) -> core_types.Tensor:
   """Initializes a distributed TPU system for use with TensorFlow.
 
   Args:
@@ -134,7 +148,10 @@ def initialize_system(embedding_config=None,
       return array_ops.identity(topology, name="tpu_init_identity")
 
 
-def initialize_system_for_tpu_embedding(embedding_config, job=None):
+def initialize_system_for_tpu_embedding(
+    embedding_config: embedding_pb2.TPUEmbeddingConfiguration,
+    job: Optional[Text] = None,
+) -> ops.Operation:
   """Initializes a distributed TPU Embedding system for use with TensorFlow.
 
   The following two are equivalent:
@@ -161,7 +178,7 @@ def initialize_system_for_tpu_embedding(embedding_config, job=None):
 
 
 @tf_export(v1=["tpu.shutdown_system"])
-def shutdown_system(job=None):
+def shutdown_system(job: Optional[Text] = None) -> ops.Operation:
   """Shuts down a running a distributed TPU system.
 
   Args:
@@ -175,20 +192,7 @@ def shutdown_system(job=None):
   return shutdown_distributed_tpu
 
 
-@tf_export(v1=["tpu.core"])
-def core(num):
-  """Returns the device name for a core in a replicated TPU computation.
-
-  Args:
-    num: the virtual core number within each replica to which operators should
-    be assigned.
-  Returns:
-    A device name, suitable for passing to `tf.device()`.
-  """
-  return "device:TPU_REPLICATED_CORE:{}".format(num)
-
-
-def _enclosing_tpu_context_and_graph():
+def _enclosing_tpu_context_and_graph() -> Tuple[Any, Any]:
   """Returns the TPUReplicateContext and its associated graph."""
   graph = ops.get_default_graph()
   while graph is not None:
@@ -205,13 +209,14 @@ def _enclosing_tpu_context_and_graph():
                    "a bug.")
 
 
-def is_tpu_strategy(strategy):
+def is_tpu_strategy(strategy: Any) -> bool:
   is_tpu_strat = lambda k: k.__name__.startswith("TPUStrategy")
   clz = strategy.__class__
   return is_tpu_strat(clz) or any(map(is_tpu_strat, clz.__bases__))
 
 
-def _enclosing_tpu_device_assignment():
+def _enclosing_tpu_device_assignment(
+) -> Optional[device_assignment_lib.DeviceAssignment]:
   if not distribution_strategy_context.has_strategy():
     return None
   strategy = distribution_strategy_context.get_strategy()
@@ -221,7 +226,10 @@ def _enclosing_tpu_device_assignment():
 
 
 @auto_control_deps.register_acd_resource_resolver
-def tpu_replicated_input_resolver(op, resource_reads, resource_writes):
+def tpu_replicated_input_resolver(
+    op: ops.Operation,
+    resource_reads: object_identity.ObjectIdentitySet,
+    resource_writes: object_identity.ObjectIdentitySet) -> bool:
   """Replaces TPUReplicatedInput outputs with its inputs in resource_inputs."""
   # Ignore TPUReplicatedInput for ACD purposes since we will be directly adding
   # control deps on the replicated inputs.
@@ -249,8 +257,8 @@ def tpu_replicated_input_resolver(op, resource_reads, resource_writes):
     resource_inputs.update(to_add)
     return to_add or to_remove
 
-  return (replace_with_unreplicated_resources(resource_reads) or
-          replace_with_unreplicated_resources(resource_writes))
+  return bool(replace_with_unreplicated_resources(resource_reads) or
+              replace_with_unreplicated_resources(resource_writes))
 
 
 class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
@@ -268,7 +276,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
   outside the replicated computation.
   """
 
-  def __init__(self, name, num_replicas, pivot):
+  def __init__(self, name: Text, num_replicas: int, pivot: ops.Operation):
     """Builds a new TPUReplicateContext.
 
     Args:
@@ -286,6 +294,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     self._outer_device_function_stack = None
     self._oc_dev_fn_stack = None
     self._outside_compilation_cluster = None
+    self._outside_compilation_v2_context = None
     self._outside_compilation_counter = 0
     self._in_gradient_colocation = None
     self._gradient_colocation_stack = []
@@ -298,7 +307,12 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     self._pivot = pivot
     self._replicated_vars = {}
 
-  def get_replicated_var_handle(self, name, vars_, is_mirrored=False):
+  def get_replicated_var_handle(
+      self,
+      name: Text,
+      vars_: List[variables.Variable],
+      is_mirrored: bool = False,
+      is_packed: bool = False) -> core_types.Tensor:
     """Returns a variable handle for replicated TPU variable 'var'.
 
     This is a method used by an experimental replicated variable implementation
@@ -309,6 +323,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
       vars_: The replicated TPU variables.
       is_mirrored: Whether the variables are mirrored, which guarantees the
         values in each replica are always the same.
+      is_packed: Whether the replicated variables are packed into one variable.
 
     Returns:
       The handle of the TPU replicated input node.
@@ -320,7 +335,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     if handle is not None:
       return handle
 
-    if device_assignment is not None:
+    if device_assignment is not None and not is_packed:
       # Find a variable copy for each replica in the device assignment.
       # Note that the order of devices for replicas for the variable and the
       # device assignment might not match.
@@ -356,13 +371,14 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
       graph._set_control_flow_context(self.outer_context)
       handle = tpu_ops.tpu_replicated_input([v.handle for v in replicated_vars],
                                             name=name + "/handle",
-                                            is_mirrored_variable=is_mirrored)
+                                            is_mirrored_variable=is_mirrored,
+                                            is_packed=is_packed)
       graph._set_control_flow_context(saved_context)
       # pylint: enable=protected-access
     self._replicated_vars[name] = handle
     return handle
 
-  def report_unsupported_operations(self):
+  def report_unsupported_operations(self) -> None:
     if self._unsupported_ops:
       op_str = "\n".join("  %s (%s)" % (op.type, op.name)
                          for op in self._unsupported_ops[:_MAX_WARNING_LINES])
@@ -372,8 +388,23 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
         logging.warning("... and %d more" %
                         (len(self._unsupported_ops) - _MAX_WARNING_LINES))
 
-  def EnterGradientColocation(self, op, gradient_uid):
+  def EnterGradientColocation(self, op: ops.Operation, gradient_uid: Text):
     if op is not None:
+      if ops.get_default_graph()._control_flow_context is None:  # pylint: disable=protected-access
+        # If we are in TF 2 functions (control flow V2 functions, or
+        # tf.function()), we need to attach _xla_outside_compilation attribute
+        # directly because we are not in TPUReplicateContext.
+        try:
+          outside_attr = op.get_attr(_OUTSIDE_COMPILATION_ATTR).decode("ascii")
+        except ValueError:
+          # The attr was not present: do nothing.
+          return
+        parts = outside_attr.split(".")
+        cluster = parts[0] + "." + gradient_uid
+        self._outside_compilation_v2_context = OutsideCompilationV2Context(
+            cluster)
+        self._outside_compilation_v2_context.Enter()
+        return
       self._gradient_colocation_stack.append(op)
       if not self._outside_compilation_cluster:
         try:
@@ -411,8 +442,19 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
           # The attr was not present: do nothing.
           pass
 
-  def ExitGradientColocation(self, op, gradient_uid):
+  def ExitGradientColocation(self, op: ops.Operation, gradient_uid: Text):
     if op is not None:
+      if ops.get_default_graph()._control_flow_context is None:  # pylint: disable=protected-access
+        # Inside a TF2 tf.function or control flow graph and `op` was not
+        # marked to be outside compiled.
+        assert self._outside_compilation_v2_context is None
+        return
+      if self._outside_compilation_v2_context is not None:
+        # Inside a TF2 tf.function or control flow graph and `op` was
+        # marked to be outside compiled.
+        self._outside_compilation_v2_context.Exit()
+        self._outside_compilation_v2_context = None
+        return
       if not self._gradient_colocation_stack:
         raise errors.InternalError(
             op.node_def, op,
@@ -428,7 +470,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
             op.node_def, op, "Badly nested gradient colocation, expected " +
             last_op + ", got " + op.name)
 
-  def _EnterOutsideCompilationScope(self, cluster=None):
+  def _EnterOutsideCompilationScope(self, cluster: Optional[Text] = None):
 
     class FakeOp(object):
       """A helper class to determine the current device.
@@ -483,7 +525,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     graph = ops.get_default_graph()
     graph._device_function_stack = self._oc_dev_fn_stack  # pylint: disable=protected-access
 
-  def Enter(self):
+  def Enter(self) -> None:
     if not self._outer_device_function_stack:
       # Capture the device function stack at the time of first entry
       # since that is the stack that will be used outside_compilation.
@@ -493,10 +535,12 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
       # pylint: enable=protected-access
     super(TPUReplicateContext, self).Enter()
 
-  def HostComputeCore(self):
+  def HostComputeCore(self) -> List[Text]:
     return self._host_compute_core
 
-  def _RemoveExternalControlEdges(self, op):
+  def _RemoveExternalControlEdges(
+      self, op: ops.Operation
+      ) -> Tuple[List[ops.Operation], List[ops.Operation]]:
     """Remove any external control dependency on this op."""
     internal_control_inputs = []
     external_control_inputs = []
@@ -520,12 +564,12 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     # pylint: enable=protected-access
     return internal_control_inputs, external_control_inputs
 
-  def AddOp(self, op):
+  def AddOp(self, op: ops.Operation) -> None:
     # pylint: disable=protected-access
-    if op.type in _BLACKLISTED_OPS:
+    if op.type in _DENYLISTED_OPS:
       logging.error("Operation of type %s (%s) is not supported on the TPU. "
-                    "Execution will fail if this op is used in the graph. " %
-                    (op.type, op.name))
+                    "Execution will fail if this op is used in the graph. ",
+                    op.type, op.name)
 
     if op.type in _UNSUPPORTED_OPS:
       self._unsupported_ops.append(op)
@@ -599,8 +643,11 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     if self._outer_context:
       self._outer_context.AddInnerOp(op)
 
-  def AddValue(self, val):
+  def AddValue(self, val: core_types.Tensor) -> core_types.Tensor:
     """Add `val` to the current context and its outer context recursively."""
+    if not self._outer_context:
+      return val
+
     if val.name in self._values:
       # Use the real value if it comes from outer context.
       result = self._external_values.get(val.name)
@@ -616,7 +663,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
 
     return result
 
-  def AddInnerOp(self, op):
+  def AddInnerOp(self, op: ops.Operation):
     self.AddOp(op)
     if self._outer_context:
       self._outer_context.AddInnerOp(op)
@@ -636,8 +683,14 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
       return self.GetWhileContext().back_prop
     return False
 
-  def GetControlPivot(self):
+  def GetControlPivot(self) -> ops.Operation:
     return self._pivot
+
+  def RequiresUniqueFunctionRetracing(self):
+    # More context: b/158152827. TPU stack uses the TPUReplicateContext to
+    # create replicated variable handles and cluster TPU computations, thus we
+    # always retrace a tf.function when the wrapped TPUReplicateContext changes.
+    return True
 
 
 class OutsideCompilationV2Context(control_flow_ops.ControlFlowContext):
@@ -647,11 +700,11 @@ class OutsideCompilationV2Context(control_flow_ops.ControlFlowContext):
   attribute.
   """
 
-  def __init__(self, name):
+  def __init__(self, name: Text):
     control_flow_ops.ControlFlowContext.__init__(self)
     self._name = name
 
-  def AddOp(self, op):
+  def AddOp(self, op: ops.Operation) -> None:
     if self._outer_context:
       self._outer_context.AddOp(op)
     # pylint: disable=protected-access
@@ -659,7 +712,7 @@ class OutsideCompilationV2Context(control_flow_ops.ControlFlowContext):
                  attr_value_pb2.AttrValue(s=compat.as_bytes(self._name)))
     # pylint: enable=protected-access
 
-  def AddInnerOp(self, op):
+  def AddInnerOp(self, op: ops.Operation) -> None:
     if self._outer_context:
       self._outer_context.AddInnerOp(op)
     # pylint: disable=protected-access
@@ -672,7 +725,9 @@ class OutsideCompilationV2Context(control_flow_ops.ControlFlowContext):
 
 
 @tf_export(v1=["tpu.outside_compilation"])
-def outside_compilation(computation, *args, **kwargs):
+def outside_compilation(
+    computation: Callable[..., Any], *args, **kwargs
+    ) -> Any:
   """Builds part of a computation outside any current TPU replicate scope.
 
   `tf.tpu.outside_compilation()` is used to run ops in `computation` on CPU
@@ -803,14 +858,33 @@ class PaddingSpec(enum.IntEnum):
   POWER_OF_TWO = 1
 
 
+@tf_export(v1=["tpu.XLAOptions"])
+class XLAOptions(
+    collections.namedtuple("XLAOptions", [
+        "use_spmd_for_xla_partitioning",
+    ])):
+  """XLA compilation options.
+
+  Attributes:
+    use_spmd_for_xla_partitioning: Boolean. Whether to use XLA's SPMD
+      partitioner instead of MPMD partitioner when compiler partitioning is
+      requested.
+  """
+
+  def __new__(cls, use_spmd_for_xla_partitioning=True):
+    return super(XLAOptions, cls).__new__(cls, use_spmd_for_xla_partitioning)
+
+
 @tf_export(v1=["tpu.replicate"])
-def replicate(computation,
-              inputs=None,
-              infeed_queue=None,
-              device_assignment=None,
-              name=None,
-              maximum_shapes=None,
-              padding_spec=None):
+def replicate(
+    computation: Callable[..., Any],
+    inputs: Optional[List[List[core_types.Tensor]]] = None,
+    infeed_queue: Optional[tpu_feed.InfeedQueue] = None,
+    device_assignment: Optional[device_assignment_lib.DeviceAssignment] = None,
+    name: Optional[Text] = None,
+    maximum_shapes: Any = None,
+    padding_spec: Optional[PaddingSpec] = None,
+    xla_options: Optional[XLAOptions] = None) -> List[Any]:
   """Builds a graph operator that runs a replicated TPU computation.
 
   Example for the basic usage that `inputs` has static shape:
@@ -875,6 +949,8 @@ def replicate(computation,
       One usage is to enable automatic bucketizing on the inputs by setting the
       value to `tpu.PaddingSpec.POWER_OF_TWO`, which can help to reduce the
       recompilation in the XLA side.
+    xla_options: An instance of `tpu.XLAOptions` which indicates the options
+      passed to XLA compiler. Use `None` for default options.
   Returns:
     A list of outputs, indexed by `[replica_num]` each output can be a nested
     structure same as what computation() returns with a few exceptions.
@@ -903,7 +979,8 @@ def replicate(computation,
       device_assignment,
       name,
       maximum_shapes=maximum_shapes,
-      padding_spec=padding_spec)[1]
+      padding_spec=padding_spec,
+      xla_options=xla_options)[1]
 
 
 def _ceil_to_pow_of_n(x, n):
@@ -916,7 +993,11 @@ def _ceil_to_pow_of_n(x, n):
   return result
 
 
-def _pad_all_input(inputs, padded_shapes, padding_spec):
+def _pad_all_input(
+    inputs: Iterable[core_types.Tensor],
+    padded_shapes: List[Optional[tensor_shape.TensorShape]],
+    padding_spec: PaddingSpec
+) -> Tuple[List[List[Any]], List[dynamic_padding.PaddingMap]]:
   """Pad all input tensors given padded_shapes.
 
   The real shape tensors will be concatenated with the padded original inputs.
@@ -1088,14 +1169,17 @@ def _flatten_and_filter_composite(maybe_composite, non_composite_output,
   return non_composite_output
 
 
-def split_compile_and_replicate(computation,
-                                inputs=None,
-                                infeed_queue=None,
-                                device_assignment=None,
-                                name=None,
-                                use_tpu=True,
-                                maximum_shapes=None,
-                                padding_spec=None):
+def split_compile_and_replicate(
+    computation: Callable[..., Any],
+    inputs: List[List[Optional[core_types.Tensor]]] = None,
+    infeed_queue: Optional[tpu_feed.InfeedQueue] = None,
+    device_assignment: Optional[device_assignment_lib.DeviceAssignment] = None,
+    name: Optional[Text] = None,
+    use_tpu: bool = True,
+    maximum_shapes: Any = None,
+    padding_spec: Optional[PaddingSpec] = None,
+    xla_options: Optional[XLAOptions] = None,
+) -> List[List[core_types.Tensor]]:
   """Builds graph operators that runs compilation and replicated computation.
 
   This is a lower level interface than replicate that returns a separate compile
@@ -1137,6 +1221,8 @@ def split_compile_and_replicate(computation,
       One usage is to enable automatic bucketizing on the inputs by setting the
       value to `tpu.PaddingSpec.POWER_OF_TWO`, which can help to reduce the
       recompilation in the XLA side.
+    xla_options: An instance of `tpu.XLAOptions` which indicates the options
+      passed to XLA compiler. Use `None` for default options.
 
   Returns:
     A list of lists with the first list corresponding to the compile op and the
@@ -1152,6 +1238,7 @@ def split_compile_and_replicate(computation,
   """
   del name
   inputs = [[]] if inputs is None else inputs
+  xla_options = xla_options or XLAOptions()
 
   metadata_kwargs = {}
   if device_assignment is not None:
@@ -1192,7 +1279,7 @@ def split_compile_and_replicate(computation,
       nest.flatten(per_replica_input, expand_composites=True)
       for per_replica_input in inputs
   ]
-  # Mask parallel to one replicat's inputs with True for tensors coming from
+  # Mask parallel to one replica's inputs with True for tensors coming from
   # composites.
   is_composite = nest.flatten(nest.map_structure(
       lambda x: _flatten_and_filter_composite(x, False, True), inputs[0]))
@@ -1275,6 +1362,8 @@ def split_compile_and_replicate(computation,
 
   metadata_kwargs["step_marker_location"] = getattr(
       computation, "step_marker_location", "STEP_MARK_AT_ENTRY")
+  metadata_kwargs["use_spmd_for_xla_partitioning"] = \
+      xla_options.use_spmd_for_xla_partitioning
 
   graph = ops.get_default_graph()
 
@@ -1375,15 +1464,20 @@ def split_compile_and_replicate(computation,
 
     outputs_is_flat = xla.is_flat(outputs)
     if outputs_is_flat:
-      output_tensors, control_deps = _postprocess_flat_outputs(outputs)
+      output_tensors, control_deps, pack_template = _postprocess_flat_outputs(
+          outputs)
     else:
-      output_tensors, control_deps = _postprocess_non_flat_outputs(outputs)
+      output_tensors, control_deps, pack_template = (
+          _postprocess_non_flat_outputs(outputs))
 
     # tensor_tracer imports tpu.py. Local import to tensor_tracer to avoid
     # import-cycle
-    # pylint: disable=g-import-not-at-top
-    from tensorflow.python.tpu import tensor_tracer
-    # pylint: enable=g-import-not-at-top
+    if typing.TYPE_CHECKING:
+      tensor_tracer = Any
+    else:
+      # pylint: disable=g-import-not-at-top
+      from tensorflow.python.tpu import tensor_tracer
+      # pylint: enable=g-import-not-at-top
     if tensor_tracer.TensorTracer.is_enabled():
       tt = tensor_tracer.TensorTracer()
       output_tensors = tt.trace_tpu(ops.get_default_graph(),
@@ -1436,23 +1530,26 @@ def split_compile_and_replicate(computation,
             array_ops.identity(
                 ys[replica], name="output_%d_shard_%d" % (i, replica)))
 
-  if not outputs_is_flat:
-    replicated_outputs = [
-        nest.pack_sequence_as(outputs, replica_outs)
-        for replica_outs in replicated_outputs
-    ]
+  replicated_outputs = [
+      nest.pack_sequence_as(pack_template, replica_outs, expand_composites=True)
+      for replica_outs in replicated_outputs
+  ]
 
   return [compile_status, replicated_outputs]
 
 
-def _postprocess_flat_outputs(outputs):
+def _postprocess_flat_outputs(
+    outputs: Any
+    ) -> Tuple[List[core_types.Tensor], List[ops.Operation], List[Any]]:
   """Validates non-flat outputs, add backs device assignments and other attrs.
 
   Args:
     outputs: Output from `computation` inside `tpu.rewrite`.
 
   Returns:
-    Tensors and Operations extracted from outputs.
+    - Tensors extracted from outputs.
+    - Operations extracted from outputs.
+    - A pack template for use with nest.pack_sequence_as to pack the tensors.
   """
   # Following code segment is to preserve legacy behavior. Previously we only
   # supported flat outputs and thus for consistency it was nice to convert even
@@ -1463,9 +1560,17 @@ def _postprocess_flat_outputs(outputs):
   # If the computation returns `None`, make it an empty tuple.
   if outputs is None:
     outputs = tuple()
-  # If the computation only returned one value, makes it a tuple.
-  if not isinstance(outputs, collections_abc.Sequence):
-    outputs = (outputs,)
+
+  # For legacy / backwards compatibility reasons we return a list for "flat"
+  # output values (even if the user's flat return value was a different type or
+  # even just a scalar value) so use nest.flatten to compute a flat list pack
+  # template.
+  pack_template = nest.flatten(outputs, expand_composites=False)
+
+  # Even though outputs is already "flat", we flatten any composites so their
+  # component tensors can be tagged and replicated. The pack_template will be
+  # used by the caller to repack the composite tensors.
+  outputs = nest.flatten(outputs, expand_composites=True)
 
   # Append `no_op` here so that fetching any return value of this function
   # will trigger TPUExecute node.
@@ -1490,6 +1595,11 @@ def _postprocess_flat_outputs(outputs):
         "TPU functions must return zero-or more Tensor values followed by "
         "zero or more Operations.")
 
+  # Trim operations off the end of the pack template. output_operations has 1
+  # extra element due to the no-op that is added.
+  if len(output_operations) > 1:
+    pack_template = pack_template[:1 - len(output_operations)]
+
   # Wraps outputs in Identity ops. Otherwise a replicated input copied
   # straight to an output would bypass the replicate(). This would be bad
   # because the TPUReplicatedInput/TPUReplicatedOutput operator would not
@@ -1503,22 +1613,26 @@ def _postprocess_flat_outputs(outputs):
       o.op._set_attr("_tpu_output_identity", attr_value_pb2.AttrValue(b=True))
       # pylint: enable=protected-access
       new_output_tensors.append(o)
-  return new_output_tensors, output_operations
+  return new_output_tensors, output_operations, pack_template
 
 
-def _postprocess_non_flat_outputs(outputs):
+def _postprocess_non_flat_outputs(
+    outputs: Any
+    ) -> Tuple[List[core_types.Tensor], List[ops.Operation], List[Any]]:
   """Validates non-flat outputs, add backs device assignments and other attrs.
 
   Args:
     outputs: Output from `computation` inside `tpu.rewrite`.
 
   Returns:
-    Tensors extracted from outputs and an empty list because Operations are not
-    allowed in non-flat outputs..
+    - Tensors extracted from outputs.
+    - An empty Operations list because Operations are not allowed in non-flat
+      outputs.
+    - A pack template for use with nest.pack_sequence_as to pack the tensors.
   """
 
   # Flatten output items.
-  flat_outputs = nest.flatten(outputs)
+  flat_outputs = nest.flatten(outputs, expand_composites=True)
 
   # Convert all non-Operation outputs to Tensors.
   for i, o in enumerate(flat_outputs):
@@ -1549,18 +1663,21 @@ def _postprocess_non_flat_outputs(outputs):
       flat_outputs[i] = array_ops.identity(o)
 
   # All flat_outputs are Tensors, and no Operations.
-  return flat_outputs, []
+  return flat_outputs, [], outputs
 
 
-def split_compile_and_shard(computation,
-                            inputs=None,
-                            num_shards=1,
-                            input_shard_axes=None,
-                            outputs_from_all_shards=True,
-                            output_shard_axes=None,
-                            infeed_queue=None,
-                            device_assignment=None,
-                            name=None):
+def split_compile_and_shard(
+    computation: Callable[..., Any],
+    inputs: List[List[Optional[core_types.Tensor]]] = None,
+    num_shards: int = 1,
+    input_shard_axes: Optional[List[int]] = None,
+    outputs_from_all_shards: Union[bool, List[bool]] = True,
+    output_shard_axes: Optional[List[int]] = None,
+    infeed_queue: Optional[tpu_feed.InfeedQueue] = None,
+    device_assignment: Optional[device_assignment_lib.DeviceAssignment] = None,
+    name: Optional[Text] = None,
+    xla_options: Optional[XLAOptions] = None,
+    ) -> Tuple[ops.Operation, List[core_types.Tensor]]:
   """Shards `computation` for parallel execution.
 
   `inputs` must be a list of Tensors or None (equivalent to an empty list), each
@@ -1610,6 +1727,8 @@ def split_compile_and_shard(computation,
       only one core, and there is either only one shard, or the number of shards
       is equal to the number of cores in the TPU system.
     name: (Deprecated) Does nothing.
+    xla_options: An instance of `tpu.XLAOptions` which indicates the options
+      passed to XLA compiler. Use `None` for default options.
   Returns:
     A tuple of (compile op, [output tensors]).
   Raises:
@@ -1653,7 +1772,8 @@ def split_compile_and_shard(computation,
       transposed_inputs,
       infeed_queue=infeed_queue,
       device_assignment=device_assignment,
-      name=name)
+      name=name,
+      xla_options=xla_options)
 
   # There must be at least one shard since num_shards > 0.
   # TODO(b/36647078) remove disable when pylint bug is fixed.
@@ -1703,15 +1823,17 @@ def split_compile_and_shard(computation,
 
 
 @tf_export(v1=["tpu.shard"])
-def shard(computation,
-          inputs=None,
-          num_shards=1,
-          input_shard_axes=None,
-          outputs_from_all_shards=True,
-          output_shard_axes=None,
-          infeed_queue=None,
-          device_assignment=None,
-          name=None):
+def shard(
+    computation: Callable[..., Any],
+    inputs: Optional[List[core_types.Tensor]] = None,
+    num_shards: int = 1,
+    input_shard_axes: Optional[List[int]] = None,
+    outputs_from_all_shards: Union[bool, List[bool]] = True,
+    output_shard_axes: Optional[List[int]] = None,
+    infeed_queue: Optional[tpu_feed.InfeedQueue] = None,
+    device_assignment: Optional[device_assignment_lib.DeviceAssignment] = None,
+    name: Optional[Text] = None,
+    xla_options: Optional[XLAOptions] = None) -> List[core_types.Tensor]:
   """Shards `computation` for parallel execution.
 
   `inputs` must be a list of Tensors or None (equivalent to an empty list), each
@@ -1764,6 +1886,8 @@ def shard(computation,
       only one core, and there is either only one shard, or the number of shards
       is equal to the number of cores in the TPU system.
     name: (Deprecated) Does nothing.
+    xla_options: An instance of `tpu.XLAOptions` which indicates the options
+      passed to XLA compiler. Use `None` for default options.
   Returns:
     A list of output tensors.
   Raises:
@@ -1780,16 +1904,19 @@ def shard(computation,
       output_shard_axes=output_shard_axes,
       infeed_queue=infeed_queue,
       device_assignment=device_assignment,
-      name=name)[1]
+      name=name,
+      xla_options=xla_options)[1]
 
 
 @tf_export(v1=["tpu.batch_parallel"])
-def batch_parallel(computation,
-                   inputs=None,
-                   num_shards=1,
-                   infeed_queue=None,
-                   device_assignment=None,
-                   name=None):
+def batch_parallel(
+    computation: Callable[..., Any],
+    inputs: List[List[Optional[core_types.Tensor]]] = None,
+    num_shards: int = 1,
+    infeed_queue: Optional[tpu_feed.InfeedQueue] = None,
+    device_assignment: Optional[device_assignment_lib.DeviceAssignment] = None,
+    name: Optional[Text] = None,
+    xla_options: Optional[XLAOptions] = None):
   """Shards `computation` along the batch dimension for parallel execution.
 
   Convenience wrapper around shard().
@@ -1826,6 +1953,8 @@ def batch_parallel(computation,
       only one core, and there is either only one shard, or the number of shards
       is equal to the number of cores in the TPU system.
     name: (Deprecated) Does nothing.
+    xla_options: An instance of `tpu.XLAOptions` which indicates the options
+      passed to XLA compiler. Use `None` for default options.
   Returns:
     A list of output tensors.
   Raises:
@@ -1837,15 +1966,18 @@ def batch_parallel(computation,
       num_shards=num_shards,
       infeed_queue=infeed_queue,
       device_assignment=device_assignment,
-      name=name)
+      name=name,
+      xla_options=xla_options)
 
 
 @tf_export(v1=["tpu.rewrite"])
-def rewrite(computation,
-            inputs=None,
-            infeed_queue=None,
-            device_assignment=None,
-            name=None):
+def rewrite(
+    computation: Callable[..., Any],
+    inputs: List[List[Optional[core_types.Tensor]]] = None,
+    infeed_queue: Optional[tpu_feed.InfeedQueue] = None,
+    device_assignment: Optional[device_assignment_lib.DeviceAssignment] = None,
+    name: Optional[Text] = None,
+    xla_options: Optional[XLAOptions] = None) -> Any:
   """Rewrites `computation` for execution on a TPU system.
 
   Args:
@@ -1873,6 +2005,8 @@ def rewrite(computation,
       the TPU topology. May be omitted for a single-core computation, in which
       case the core attached to task 0, TPU device 0 is used.
     name: (Deprecated) Does nothing.
+    xla_options: An instance of `tpu.XLAOptions` which indicates the options
+      passed to XLA compiler. Use `None` for default options.
   Returns:
     Same data structure as if computation(*inputs) is called directly with some
     exceptions for correctness. Exceptions include:
@@ -1890,11 +2024,14 @@ def rewrite(computation,
       None if inputs is None else [inputs],
       infeed_queue=infeed_queue,
       device_assignment=device_assignment,
-      name=name)[0]
+      name=name,
+      xla_options=xla_options)[0]
   # pylint: enable=indexing-exception
 
   # Operations that indicate some error in the user's inference graph.
-_BLACKLISTED_INFERENCE_OPS = set([
+
+
+_DENYLISTED_INFERENCE_OPS = set([
     "ReadVariableOp",
     "AssignVariableOp",
     "AssignAddVariableOp",
@@ -1905,7 +2042,7 @@ _BLACKLISTED_INFERENCE_OPS = set([
 ])
 
 
-def under_tpu_inference_context():
+def under_tpu_inference_context() -> bool:
   """Check if it is currently under `_TPUInferenceContext`."""
   graph = ops.get_default_graph()
   while graph:
@@ -1930,7 +2067,7 @@ class _TPUInferenceContext(control_flow_ops.XLAControlFlowContext):
   tpu.rewrite_for_inference() computation.
   """
 
-  def __init__(self, name, check_ops=True):
+  def __init__(self, name: Text, check_ops: bool = True):
     super(_TPUInferenceContext, self).__init__()
     self._name = name
     self._check_ops = check_ops
@@ -1940,7 +2077,7 @@ class _TPUInferenceContext(control_flow_ops.XLAControlFlowContext):
 
   def _AddOpInternal(self, op):
     # pylint: disable=protected-access
-    if self._check_ops and op.type in _BLACKLISTED_INFERENCE_OPS:
+    if self._check_ops and op.type in _DENYLISTED_INFERENCE_OPS:
       raise NotImplementedError(
           "Operation of type %s (%s) is not supported on the TPU for inference."
           " Execution will fail if this op is used in the graph. Make sure your"
@@ -1962,7 +2099,7 @@ class _TPUInferenceContext(control_flow_ops.XLAControlFlowContext):
     return None
 
 
-def validate_inference_rewrite_for_variables(graph):
+def validate_inference_rewrite_for_variables(graph: ops.Graph):
   """Validates whether rewrite_for_inference() 'worked' for variables.
 
      The rewrite_for_inference() method is supposed to append GuaranteeConstOps
@@ -1991,11 +2128,12 @@ def validate_inference_rewrite_for_variables(graph):
         "computation.")
 
 
-def rewrite_for_inference(computation,
-                          inputs=None,
-                          infeed_queue=None,
-                          device_assignment=None,
-                          name=None):
+def rewrite_for_inference(
+    computation: Callable[..., Any],
+    inputs: Optional[List[core_types.Tensor]] = None,
+    infeed_queue: Optional[tpu_feed.InfeedQueue] = None,
+    device_assignment: Optional[device_assignment_lib.DeviceAssignment] = None,
+    name: Optional[Text] = None) -> List[core_types.Tensor]:
   """Rewrites `computation` for inference on a TPU system.
 
      Other than 'rewriting' the computation to run on a TPU, if using variables
@@ -2060,7 +2198,7 @@ def rewrite_for_inference(computation,
   # pylint: enable=undefined-variable
 
 
-def prune_unconnected_ops_from_xla(prune_graph):
+def prune_unconnected_ops_from_xla(prune_graph: ops.Graph):
   """Prunes unconnected ops as listed in _UNCONNECTED_OPS_TO_PRUNE.
 
   Args:

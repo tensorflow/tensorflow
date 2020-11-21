@@ -15,7 +15,7 @@
 # pylint: disable=invalid-name
 """ResNet v2 models for Keras.
 
-Reference paper:
+Reference:
   - [Identity Mappings in Deep Residual Networks]
     (https://arxiv.org/abs/1603.05027) (CVPR 2016)
 """
@@ -133,7 +133,9 @@ def decode_predictions(preds, top=5):
 
 
 preprocess_input.__doc__ = imagenet_utils.PREPROCESS_INPUT_DOC.format(
-    mode='', ret=imagenet_utils.PREPROCESS_INPUT_RET_DOC_CAFFE)
+    mode='',
+    ret=imagenet_utils.PREPROCESS_INPUT_RET_DOC_TF,
+    error=imagenet_utils.PREPROCESS_INPUT_ERROR_DOC)
 decode_predictions.__doc__ = imagenet_utils.decode_predictions.__doc__
 
 DOC = """
@@ -146,8 +148,9 @@ DOC = """
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
 
-  Caution: Be sure to properly pre-process your inputs to the application.
-  Please see `applications.resnet_v2.preprocess_input` for an example.
+  Note: each Keras Application expects a specific kind of input preprocessing.
+  For ResNetV2, call `tf.keras.applications.resnet_v2.preprocess_input` on your
+  inputs before passing them to the model.
 
   Arguments:
     include_top: whether to include the fully-connected

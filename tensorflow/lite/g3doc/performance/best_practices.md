@@ -20,8 +20,9 @@ accuracy and latency tradeoffs for some common image classification models.
 
 One example of models optimized for mobile devices are
 [MobileNets](https://arxiv.org/abs/1704.04861), which are optimized for mobile
-vision applications. [Hosted models](../models/hosted.md) lists several other
-models that have been optimized specifically for mobile and embedded devices.
+vision applications. [Hosted models](../guide/hosted_models.md) lists several
+other models that have been optimized specifically for mobile and embedded
+devices.
 
 You can retrain the listed models on your own dataset by using transfer
 learning. Check out our transfer learning tutorial for
@@ -37,6 +38,12 @@ has a built-in profiler that shows per operator profiling statistics. This can
 help in understanding performance bottlenecks and which operators dominate the
 computation time.
 
+You can also use
+[TensorFlow Lite tracing](measurement.md#trace_tensorflow_lite_internals_in_android)
+to profile the model in your Android application, using standard Android system
+tracing, and to visualize the operator invocations by time with GUI based
+profiling tools.
+
 ## Profile and optimize operators in the graph
 
 If a particular operator appears frequently in the model and, based on
@@ -50,9 +57,8 @@ operator is executed. Check out our
 ## Optimize your model
 
 Model optimization aims to create smaller models that are generally faster and
-more energy efficient, so that they can be deployed on mobile devices. There are
-multiple optimization techniques supported by TensorFlow Lite, such as
-quantization.
+more energy efficient, so that they can be deployed on mobile devices.
+TensorFlow Lite supports multiple optimization techniques, such as quantization.
 
 Check out our [model optimization docs](model_optimization.md) for details.
 
@@ -78,7 +84,7 @@ If your application is not carefully designed, there can be redundant copies
 when feeding the input to and reading the output from the model. Make sure to
 eliminate redundant copies. If you are using higher level APIs, like Java, make
 sure to carefully check the documentation for performance caveats. For example,
-the Java API is a lot faster if ByteBuffers are used as
+the Java API is a lot faster if `ByteBuffers` are used as
 [inputs](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/java/src/main/java/org/tensorflow/lite/Interpreter.java#L175).
 
 ## Profile your application with platform specific tools
@@ -101,9 +107,8 @@ interpreter execution. TensorFlow Lite can use delegates by:
 *   Using Android's
     [Neural Networks API](https://developer.android.com/ndk/guides/neuralnetworks/).
     You can utilize these hardware accelerator backends to improve the speed and
-    efficiency of your model. To enable the Neural Networks API, call
-    [UseNNAPI](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/interpreter.h#L343)
-    on the interpreter instance.
+    efficiency of your model. To enable the Neural Networks API, check out
+    the [NNAPI delegate](nnapi.md) guide.
 *   GPU delegate is available on Android and iOS, using OpenGL/OpenCL and Metal,
     respectively. To try them out, see the [GPU delegate tutorial](gpu.md) and
     [documentation](gpu_advanced.md).
@@ -116,7 +121,7 @@ interpreter execution. TensorFlow Lite can use delegates by:
 
 Be aware that some accelerators work better for different types of models. Some
 delegates only support float models or models optimized in a specific way. It is
-important to [benchmark](benchmarks.md) each delegate to see if it is a good
+important to [benchmark](measurement.md) each delegate to see if it is a good
 choice for your application. For example, if you have a very small model, it may
 not be worth delegating the model to either the NN API or the GPU. Conversely,
 accelerators are a great choice for large models that have high arithmetic

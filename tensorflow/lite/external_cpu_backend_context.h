@@ -35,6 +35,8 @@ class TfLiteInternalBackendContext {
   // TfLite computation.
   virtual void SetMaxNumThreads(int max_num_threads) = 0;
 
+  // A context may internally cache prepacked versions of constant tensors for
+  // faster computation. This function will clear any caches on the context.
   virtual void ClearCaches() = 0;
 };
 

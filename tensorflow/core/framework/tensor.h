@@ -53,6 +53,8 @@ namespace batch_util {
 Status CopyElementToSlice(Tensor element, Tensor* parent, int64 index);
 Status CopySliceToElement(const Tensor& parent, Tensor* element, int64 index);
 Status MaybeMoveSliceToElement(Tensor* parent, Tensor* element, int64 index);
+Status CopyContiguousSlices(const Tensor& src, int64 src_offset,
+                            int64 dst_offset, int64 num_slices, Tensor* dst);
 }  // namespace batch_util
 
 /// @ingroup core
@@ -236,8 +238,8 @@ class Tensor {
   Tensor(const Tensor& other);
 
   /// \brief Move constructor. After this call, <other> is safely destructible
-  /// and can be assigned to, but other calls on it (e.g. shape manipulation)
-  /// are not valid.
+  /// can be assigned to, and IsInitialized() can be called and will return
+  /// false. Other calls on <other> (e.g. shape manipulation) are not valid.
   Tensor(Tensor&& other);
 
   // Explicitly delete constructor that take a pointer (except char*)
@@ -679,6 +681,9 @@ class Tensor {
   friend Status batch_util::MaybeMoveSliceToElement(
       Tensor* parent, Tensor* element,
       int64 index);  // For access to base<T>().
+  friend Status batch_util::CopyContiguousSlices(
+      const Tensor& src, int64 src_offset, int64 dst_offset, int64 num_slices,
+      Tensor* dst);  // For access to base<T>().
 
   bool CanUseDMA() const;
 
@@ -692,7 +697,19 @@ class Tensor {
     set_dtype(dt);
   }
 
-  void CopyFromInternal(const Tensor& other, const TensorShape& shape);
+  inline void CopyFromInternal(const Tensor& other, const TensorShape& shape) {
+    DCHECK_EQ(shape.num_elements(), other.NumElements());
+    // Data type will be overwritten if this == &other, since dtype is part of
+    // shape.
+    DataType other_dtype = other.dtype();
+    shape_ = shape;
+    set_dtype(other_dtype);
+    if (buf_ != other.buf_) {
+      if (buf_) buf_->Unref();
+      buf_ = other.buf_;
+      if (buf_) buf_->Ref();
+    }
+  }
 
   template <typename T>
   T* base() const;

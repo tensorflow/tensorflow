@@ -20,10 +20,13 @@ limitations under the License.
 #include <vector>
 
 #include "google/protobuf/text_format.h"
+#include "tensorflow/c/kernels.h"
 #include "tensorflow/compiler/mlir/lite/python/graphdef_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/python/saved_model_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/quantization/lite/quantize_model.h"
 #include "tensorflow/compiler/mlir/lite/sparsity/sparsify_model.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
@@ -47,9 +50,9 @@ namespace toco {
 
 void PopulateConversionLogHelper(const toco::ModelFlags& model_flags,
                                  toco::TocoFlags* toco_flags,
-                                 const string& input_contents_txt,
-                                 const string& output_file_contents_txt,
-                                 const string& error_message,
+                                 const std::string& input_contents_txt,
+                                 const std::string& output_file_contents_txt,
+                                 const std::string& error_message,
                                  GraphVizDumpOptions* dump_options) {
   // Make sure the graphviz file will be dumped under the same folder.
   dump_options->dump_graphviz = toco_flags->conversion_summary_dir();
@@ -118,11 +121,6 @@ PyObject* TocoConvert(PyObject* model_flags_proto_txt_raw,
     PyErr_SetString(PyExc_ValueError, "Toco flags are invalid.");
     return nullptr;
   }
-  std::string input_contents_txt = ConvertArg(input_contents_txt_raw, &error);
-  if (error) {
-    PyErr_SetString(PyExc_ValueError, "Input GraphDef is invalid.");
-    return nullptr;
-  }
 
   // Use TOCO to produce new outputs.
   toco::ModelFlags model_flags;
@@ -153,10 +151,18 @@ PyObject* TocoConvert(PyObject* model_flags_proto_txt_raw,
   }
 
   tensorflow::GraphDef graph_def;
-  if (!graph_def.ParseFromString(input_contents_txt)) {
-    PyErr_SetString(PyExc_ValueError,
-                    "Failed to convert GraphDef to Python String.");
-    return nullptr;
+  std::string input_contents_txt;
+  if (model_flags.saved_model_dir().empty()) {
+    input_contents_txt = ConvertArg(input_contents_txt_raw, &error);
+    if (error) {
+      PyErr_SetString(PyExc_ValueError, "Input GraphDef is invalid.");
+      return nullptr;
+    }
+    if (!graph_def.ParseFromString(input_contents_txt)) {
+      PyErr_SetString(PyExc_ValueError,
+                      "Failed to convert GraphDef to Python String.");
+      return nullptr;
+    }
   }
 
   auto& dump_options = *GraphVizDumpOptions::singleton();
@@ -167,7 +173,7 @@ PyObject* TocoConvert(PyObject* model_flags_proto_txt_raw,
     dump_options.dump_graphviz_video = toco_flags.dump_graphviz_include_video();
   }
 
-  string output_file_contents_txt;
+  std::string output_file_contents_txt;
   tensorflow::Status status;
   int64 arithmetic_ops_count;
 
@@ -221,7 +227,7 @@ PyObject* TocoGetPotentiallySupportedOps() {
   std::vector<std::string> supported_ops = toco::GetPotentiallySupportedOps();
   PyObject* list = PyList_New(supported_ops.size());
   for (size_t i = 0; i < supported_ops.size(); ++i) {
-    const string& op = supported_ops[i];
+    const std::string& op = supported_ops[i];
     PyObject* op_dict = PyDict_New();
     PyDict_SetItemString(op_dict, "op", PyUnicode_FromString(op.c_str()));
     PyList_SetItem(list, i, op_dict);
@@ -264,11 +270,13 @@ PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
     default:
       return nullptr;
   }
+  tflite::TensorType inference_io_type =
+      fully_quantize ? inference_tensor_type : tflite::TensorType_FLOAT32;
   flatbuffers::FlatBufferBuilder builder;
   auto status = mlir::lite::QuantizeModel(
-      *tflite_model, tflite::TensorType::TensorType_FLOAT32,
-      tflite::TensorType::TensorType_FLOAT32, inference_tensor_type, {},
-      disable_per_channel, fully_quantize, &builder, error_reporter.get());
+      *tflite_model, inference_io_type, inference_io_type,
+      inference_tensor_type, {}, disable_per_channel, fully_quantize, &builder,
+      error_reporter.get());
 
   if (status != kTfLiteOk) {
     error_reporter->exception();
@@ -310,6 +318,71 @@ PyObject* MlirSparsifyModel(PyObject* data) {
   return tflite::python_utils::ConvertToPyString(
       reinterpret_cast<const char*>(builder.GetCurrentBufferPointer()),
       builder.GetSize());
+}
+
+PyObject* RegisterCustomOpdefs(PyObject* list) {
+  if (!PyList_Check(list)) {
+    PyErr_SetString(PyExc_TypeError, "Expected list in argument");
+    return nullptr;
+  }
+
+  int64 size = PyList_Size(list);
+  for (int i = 0; i < size; ++i) {
+    // Get character array from Python object.
+    char* tf_opdefs;
+    Py_ssize_t len;
+    if (tflite::python_utils::ConvertFromPyString(PyList_GetItem(list, i),
+                                                  &tf_opdefs, &len) == -1) {
+      PyErr_Format(PyExc_ValueError,
+                   "Failed to convert Python string at index %d of custom op "
+                   "defs argument",
+                   i);
+      return nullptr;
+    }
+
+    // Parse op def from character array.
+    tensorflow::OpDef opdef;
+    if (!tensorflow::protobuf::TextFormat::ParseFromString(tf_opdefs, &opdef)) {
+      PyErr_Format(
+          PyExc_ValueError,
+          "Failed to parse opdefs at index %d of custom op defs argument: %s",
+          i, tf_opdefs);
+      return nullptr;
+    }
+
+    // Register extra opdefs to TensorFlow global op registry.
+    tensorflow::OpRegistry::Global()->Register(
+        [opdef](
+            tensorflow::OpRegistrationData* op_reg_data) -> tensorflow::Status {
+          *op_reg_data = tensorflow::OpRegistrationData(opdef);
+          return tensorflow::Status::OK();
+        });
+
+    // Register the corresponding fake op kernel.
+    const char* node_name = opdef.name().c_str();
+    const char* op_name = opdef.name().c_str();
+    const char* device_name = "CPU";
+    static auto fake_compute_func = [](void* kernel, TF_OpKernelContext* ctx) {
+    };
+
+    TF_KernelBuilder* builder =
+        TF_NewKernelBuilder(op_name, device_name, /*create_func=*/nullptr,
+                            fake_compute_func, /*delete_func=*/nullptr);
+
+    TF_Status* status = TF_NewStatus();
+    TF_RegisterKernelBuilder(node_name, builder, status);
+    if (TF_GetCode(status) != TF_OK) {
+      TF_DeleteStatus(status);
+      PyErr_Format(PyExc_ValueError,
+                   "Failed to register fake op kernel at index %d of custom op "
+                   "defs argument",
+                   i);
+      return nullptr;
+    }
+    TF_DeleteStatus(status);
+  }
+
+  Py_RETURN_TRUE;
 }
 
 }  // namespace toco

@@ -20,6 +20,8 @@ limitations under the License.
 
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/bundle_v2.h"
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
@@ -45,6 +47,13 @@ stream_executor::port::StatusOr<mlir::OwningModuleRef> ConvertGraphToMlir(
     const FunctionLibraryDefinition& flib_def, const GraphImportConfig& specs,
     mlir::MLIRContext* context);
 
+// [Experimental]
+// Given a Function, returns a MLIR module containing the graph, expressed with
+// tf_executor dialect.
+stream_executor::port::StatusOr<mlir::OwningModuleRef> ConvertFunctionToMlir(
+    mlir::StringRef name, const FunctionLibraryDefinition& flib_def,
+    mlir::MLIRContext* context);
+
 // Given a SavedModel, returns a MLIR module containing the functions, expressed
 // with tf_executor dialect.
 stream_executor::port::StatusOr<mlir::OwningModuleRef> ConvertSavedModelToMlir(
@@ -56,9 +65,22 @@ stream_executor::port::StatusOr<mlir::OwningModuleRef> ConvertSavedModelToMlir(
 stream_executor::port::StatusOr<mlir::OwningModuleRef>
 ConvertSavedModelV1ToMlir(const SavedModelBundle& saved_model,
                           absl::Span<std::string> exported_names,
-                          mlir::MLIRContext* context);
+                          mlir::MLIRContext* context,
+                          bool upgrade_legacy = false);
+
+// Given a V1 SavedModel, returns a MLIR module containing the functions,
+// expressed with tf_executor dialect. It does not require a session to be
+// created and it does not perform any graph transformation.
+stream_executor::port::StatusOr<mlir::OwningModuleRef>
+ConvertSavedModelV1ToMlirLite(const MetaGraphDef& meta_graph_def,
+                              const GraphDebugInfo& debug_info,
+                              absl::Span<std::string> exported_names,
+                              mlir::MLIRContext* context,
+                              bool upgrade_legacy = false);
 
 // Serialize a MLIR module to a string.
+std::string MlirModuleToString(mlir::ModuleOp module,
+                               mlir::OpPrintingFlags flags);
 std::string MlirModuleToString(mlir::ModuleOp m, bool show_debug_info = false);
 
 }  // namespace tensorflow

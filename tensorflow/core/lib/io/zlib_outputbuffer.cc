@@ -42,8 +42,8 @@ ZlibOutputBuffer::~ZlibOutputBuffer() {
 }
 
 Status ZlibOutputBuffer::Init() {
-  // Output buffer size should be greater than 1 because deflation needs atleast
-  // one byte for book keeping etc.
+  // Output buffer size should be greater than 1 because deflation needs at
+  // least one byte for book keeping etc.
   if (output_buffer_capacity_ <= 1) {
     return errors::InvalidArgument(
         "output_buffer_bytes should be greater than "
@@ -98,7 +98,7 @@ void ZlibOutputBuffer::AddToInputBuffer(StringPiece data) {
   int32 unread_bytes = z_stream_->avail_in;
   int32 free_tail_bytes = input_buffer_capacity_ - (read_bytes + unread_bytes);
 
-  if (bytes_to_write > free_tail_bytes) {
+  if (static_cast<int32>(bytes_to_write) > free_tail_bytes) {
     memmove(z_stream_input_.get(), z_stream_->next_in, z_stream_->avail_in);
     z_stream_->next_in = z_stream_input_.get();
   }
@@ -154,7 +154,7 @@ Status ZlibOutputBuffer::Append(StringPiece data) {
 
   size_t bytes_to_write = data.size();
 
-  if (bytes_to_write <= AvailableInputSpace()) {
+  if (static_cast<int32>(bytes_to_write) <= AvailableInputSpace()) {
     AddToInputBuffer(data);
     return Status::OK();
   }
@@ -162,7 +162,7 @@ Status ZlibOutputBuffer::Append(StringPiece data) {
   TF_RETURN_IF_ERROR(DeflateBuffered(zlib_options_.flush_mode));
 
   // At this point input stream should be empty.
-  if (bytes_to_write <= AvailableInputSpace()) {
+  if (static_cast<int32>(bytes_to_write) <= AvailableInputSpace()) {
     AddToInputBuffer(data);
     return Status::OK();
   }
@@ -190,7 +190,7 @@ Status ZlibOutputBuffer::Append(StringPiece data) {
   return Status::OK();
 }
 
-#if defined(PLATFORM_GOOGLE)
+#if defined(TF_CORD_SUPPORT)
 Status ZlibOutputBuffer::Append(const absl::Cord& cord) {
   for (absl::string_view fragment : cord.Chunks()) {
     TF_RETURN_IF_ERROR(Append(fragment));

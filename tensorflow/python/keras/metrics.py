@@ -39,6 +39,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_layer_utils
+from tensorflow.python.keras.engine import keras_tensor
 from tensorflow.python.keras.losses import binary_crossentropy
 from tensorflow.python.keras.losses import categorical_crossentropy
 from tensorflow.python.keras.losses import categorical_hinge
@@ -53,7 +54,9 @@ from tensorflow.python.keras.losses import poisson
 from tensorflow.python.keras.losses import sparse_categorical_crossentropy
 from tensorflow.python.keras.losses import squared_hinge
 from tensorflow.python.keras.saving.saved_model import metric_serialization
+from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.keras.utils import metrics_utils
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import to_list
@@ -67,11 +70,9 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops import weights_broadcast_ops
-from tensorflow.python.ops.losses import util as tf_losses_utils
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
-from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 
@@ -208,7 +209,12 @@ class Metric(base_layer.Layer):
 
     def replica_local_fn(*args, **kwargs):
       """Updates the state of the metric in a replica-local context."""
-      update_op = self.update_state(*args, **kwargs)  # pylint: disable=not-callable
+      if any(
+          isinstance(arg, keras_tensor.KerasTensor)
+          for arg in nest.flatten((args, kwargs))):
+        update_op = None
+      else:
+        update_op = self.update_state(*args, **kwargs)  # pylint: disable=not-callable
       update_ops = []
       if update_op is not None:
         update_ops.append(update_op)
@@ -310,6 +316,31 @@ class Metric(base_layer.Layer):
   ### End: For use by subclasses ###
 
   @property
+  def trainable_weights(self):
+    # Overridden from Layer class to track submetric weights.
+    if self.trainable:
+      trainable_weights = self._trainable_weights
+      for m in self._metrics:
+        trainable_weights += m.trainable_weights
+      return self._dedup_weights(trainable_weights)
+    else:
+      return []
+
+  @property
+  def non_trainable_weights(self):
+    # Overridden from Layer class to track submetric weights.
+    if self.trainable:
+      non_trainable_weights = self._non_trainable_weights
+      for m in self._metrics:
+        non_trainable_weights += m.non_trainable_weights
+    else:
+      non_trainable_weights = (
+          self._non_trainable_weights + self._trainable_weights)
+      for m in self._metrics:
+        non_trainable_weights += m.weights
+    return self._dedup_weights(non_trainable_weights)
+
+  @property
   def _trackable_saved_model_saver(self):
     return metric_serialization.MetricSavedModelSaver(self)
 
@@ -350,7 +381,7 @@ class Reduce(Metric):
     if sample_weight is not None:
       sample_weight = math_ops.cast(sample_weight, self._dtype)
       # Update dimensions of weights to match with values if possible.
-      values, _, sample_weight = tf_losses_utils.squeeze_or_expand_dimensions(
+      values, _, sample_weight = losses_utils.squeeze_or_expand_dimensions(
           values, sample_weight=sample_weight)
       try:
         # Broadcast weights if possible.
@@ -544,10 +575,10 @@ class MeanRelativeError(Mean):
     [y_pred, y_true], sample_weight = \
         metrics_utils.ragged_assert_compatible_and_get_flat_values(
             [y_pred, y_true], sample_weight)
-    y_pred, y_true = tf_losses_utils.squeeze_or_expand_dimensions(
+    y_pred, y_true = losses_utils.squeeze_or_expand_dimensions(
         y_pred, y_true)
 
-    y_pred, self.normalizer = confusion_matrix.remove_squeezable_dimensions(
+    y_pred, self.normalizer = losses_utils.remove_squeezable_dimensions(
         y_pred, self.normalizer)
     y_pred.shape.assert_is_compatible_with(y_true.shape)
     relative_errors = math_ops.div_no_nan(
@@ -605,7 +636,7 @@ class MeanMetricWrapper(Mean):
     [y_true, y_pred], sample_weight = \
         metrics_utils.ragged_assert_compatible_and_get_flat_values(
             [y_true, y_pred], sample_weight)
-    y_pred, y_true = tf_losses_utils.squeeze_or_expand_dimensions(
+    y_pred, y_true = losses_utils.squeeze_or_expand_dimensions(
         y_pred, y_true)
 
     ag_fn = autograph.tf_convert(self._fn, ag_ctx.control_status_ctx())
@@ -630,16 +661,15 @@ class MeanMetricWrapper(Mean):
   def from_config(cls, config):
     # Note that while MeanMetricWrapper itself isn't public, objects of this
     # class may be created and added to the model by calling model.compile.
+    fn = config.pop('fn', None)
     if cls is MeanMetricWrapper:
-      fn = get(config.pop('fn'))
-      return cls(fn, **config)
-
+      return cls(get(fn), **config)
     return super(MeanMetricWrapper, cls).from_config(config)
 
 
 @keras_export('keras.metrics.Accuracy')
 class Accuracy(MeanMetricWrapper):
-  """Calculates how often predictions equals labels.
+  """Calculates how often predictions equal labels.
 
   This metric creates two local variables, `total` and `count` that are used to
   compute the frequency with which `y_pred` matches `y_true`. This frequency is
@@ -681,7 +711,7 @@ class Accuracy(MeanMetricWrapper):
 
 @keras_export('keras.metrics.BinaryAccuracy')
 class BinaryAccuracy(MeanMetricWrapper):
-  """Calculates how often predictions matches binary labels.
+  """Calculates how often predictions match binary labels.
 
   This metric creates two local variables, `total` and `count` that are used to
   compute the frequency with which `y_pred` matches `y_true`. This frequency is
@@ -726,7 +756,7 @@ class BinaryAccuracy(MeanMetricWrapper):
 
 @keras_export('keras.metrics.CategoricalAccuracy')
 class CategoricalAccuracy(MeanMetricWrapper):
-  """Calculates how often predictions matches one-hot labels.
+  """Calculates how often predictions match one-hot labels.
 
   You can provide logits of classes as `y_pred`, since argmax of
   logits and probabilities are same.
@@ -778,7 +808,7 @@ class CategoricalAccuracy(MeanMetricWrapper):
 
 @keras_export('keras.metrics.SparseCategoricalAccuracy')
 class SparseCategoricalAccuracy(MeanMetricWrapper):
-  """Calculates how often predictions matches integer labels.
+  """Calculates how often predictions match integer labels.
 
   ```python
   acc = np.dot(sample_weight, np.equal(y_true, np.argmax(y_pred, axis=1))
@@ -958,7 +988,7 @@ class _ConfusionMatrixConditionCount(Metric):
       result = self.accumulator[0]
     else:
       result = self.accumulator
-    return ops.convert_to_tensor_v2(result)
+    return ops.convert_to_tensor_v2_with_dispatch(result)
 
   def reset_states(self):
     num_thresholds = len(to_list(self.thresholds))
@@ -1869,7 +1899,10 @@ class AUC(Metric):
       case, when multilabel data is passed to AUC, each label-prediction pair
       is treated as an individual data point. Should be set to False for
       multi-class data.
-    label_weights: (optional) list, array, or tensor of non-negative weights
+    num_labels: (Optional) The number of labels, used when `multi_label' is
+      True. If `num_labels` is not specified, then state variables get created
+      on the first call to `update_state`.
+    label_weights: (Optional) list, array, or tensor of non-negative weights
       used to compute AUCs for multilabel data. When `multi_label` is True,
       the weights are applied to the individual label AUCs when they are
       averaged to produce the multi-label AUC. When it's False, they are used
@@ -1912,6 +1945,7 @@ class AUC(Metric):
                dtype=None,
                thresholds=None,
                multi_label=False,
+               num_labels=None,
                label_weights=None):
     # Validate configurations.
     if isinstance(curve, metrics_utils.AUCCurve) and curve not in list(
@@ -1974,8 +2008,13 @@ class AUC(Metric):
 
     self._built = False
     if self.multi_label:
-      self._num_labels = None
+      if num_labels:
+        shape = tensor_shape.TensorShape([None, num_labels])
+        self._build(shape)
     else:
+      if num_labels:
+        raise ValueError(
+            '`num_labels` is needed only when `multi_label` is True.')
       self._build(None)
 
   @property
@@ -2594,7 +2633,7 @@ class RootMeanSquaredError(Mean):
     """
     y_true = math_ops.cast(y_true, self._dtype)
     y_pred = math_ops.cast(y_pred, self._dtype)
-    y_pred, y_true = tf_losses_utils.squeeze_or_expand_dimensions(
+    y_pred, y_true = losses_utils.squeeze_or_expand_dimensions(
         y_pred, y_true)
     error_sq = math_ops.squared_difference(y_pred, y_true)
     return super(RootMeanSquaredError, self).update_state(
@@ -2766,13 +2805,11 @@ class MeanIoU(Metric):
     super(MeanIoU, self).__init__(name=name, dtype=dtype)
     self.num_classes = num_classes
 
-    # Variable to accumulate the predictions in the confusion matrix. Setting
-    # the type to be `float64` as required by confusion_matrix_ops.
+    # Variable to accumulate the predictions in the confusion matrix.
     self.total_cm = self.add_weight(
         'total_confusion_matrix',
         shape=(num_classes, num_classes),
-        initializer=init_ops.zeros_initializer,
-        dtype=dtypes.float64)
+        initializer=init_ops.zeros_initializer)
 
   def update_state(self, y_true, y_pred, sample_weight=None):
     """Accumulates the confusion matrix statistics.
@@ -2809,7 +2846,7 @@ class MeanIoU(Metric):
         y_pred,
         self.num_classes,
         weights=sample_weight,
-        dtype=dtypes.float64)
+        dtype=self._dtype)
     return self.total_cm.assign_add(current_cm)
 
   def result(self):
@@ -2819,7 +2856,7 @@ class MeanIoU(Metric):
     sum_over_col = math_ops.cast(
         math_ops.reduce_sum(self.total_cm, axis=1), dtype=self._dtype)
     true_positives = math_ops.cast(
-        array_ops.diag_part(self.total_cm), dtype=self._dtype)
+        array_ops.tensor_diag_part(self.total_cm), dtype=self._dtype)
 
     # sum_over_row + sum_over_col =
     #     2 * true_positives + false_positives + false_negatives.
@@ -2922,7 +2959,7 @@ class MeanTensor(Metric):
       sample_weight = math_ops.cast(sample_weight, self._dtype)
 
       # Update dimensions of weights to match with values if possible.
-      values, _, sample_weight = tf_losses_utils.squeeze_or_expand_dimensions(
+      values, _, sample_weight = losses_utils.squeeze_or_expand_dimensions(
           values, sample_weight=sample_weight)
       try:
         # Broadcast weights if possible.
@@ -3186,7 +3223,7 @@ class SumOverBatchSizeMetricWrapper(SumOverBatchSize):
   def update_state(self, y_true, y_pred, sample_weight=None):
     y_true = math_ops.cast(y_true, self._dtype)
     y_pred = math_ops.cast(y_pred, self._dtype)
-    y_pred, y_true = tf_losses_utils.squeeze_or_expand_dimensions(
+    y_pred, y_true = losses_utils.squeeze_or_expand_dimensions(
         y_pred, y_true)
 
     ag_fn = autograph.tf_convert(self._fn, ag_ctx.control_status_ctx())
@@ -3215,7 +3252,7 @@ def accuracy(y_true, y_pred):
 @keras_export('keras.metrics.binary_accuracy')
 @dispatch.add_dispatch_support
 def binary_accuracy(y_true, y_pred, threshold=0.5):
-  """Calculates how often predictions matches binary labels.
+  """Calculates how often predictions match binary labels.
 
   Standalone usage:
   >>> y_true = [[1], [1], [0], [0]]
@@ -3234,7 +3271,7 @@ def binary_accuracy(y_true, y_pred, threshold=0.5):
   Returns:
     Binary accuracy values. shape = `[batch_size, d0, .. dN-1]`
   """
-  y_pred = ops.convert_to_tensor_v2(y_pred)
+  y_pred = ops.convert_to_tensor_v2_with_dispatch(y_pred)
   threshold = math_ops.cast(threshold, y_pred.dtype)
   y_pred = math_ops.cast(y_pred > threshold, y_pred.dtype)
   return K.mean(math_ops.equal(y_true, y_pred), axis=-1)
@@ -3243,7 +3280,7 @@ def binary_accuracy(y_true, y_pred, threshold=0.5):
 @keras_export('keras.metrics.categorical_accuracy')
 @dispatch.add_dispatch_support
 def categorical_accuracy(y_true, y_pred):
-  """Calculates how often predictions matches one-hot labels.
+  """Calculates how often predictions match one-hot labels.
 
   Standalone usage:
   >>> y_true = [[0, 0, 1], [0, 1, 0]]
@@ -3272,7 +3309,7 @@ def categorical_accuracy(y_true, y_pred):
 @keras_export('keras.metrics.sparse_categorical_accuracy')
 @dispatch.add_dispatch_support
 def sparse_categorical_accuracy(y_true, y_pred):
-  """Calculates how often predictions matches integer labels.
+  """Calculates how often predictions match integer labels.
 
   Standalone usage:
   >>> y_true = [2, 1]
@@ -3292,8 +3329,8 @@ def sparse_categorical_accuracy(y_true, y_pred):
   Returns:
     Sparse categorical accuracy values.
   """
-  y_pred = ops.convert_to_tensor_v2(y_pred)
-  y_true = ops.convert_to_tensor_v2(y_true)
+  y_pred = ops.convert_to_tensor_v2_with_dispatch(y_pred)
+  y_true = ops.convert_to_tensor_v2_with_dispatch(y_true)
   y_pred_rank = y_pred.shape.ndims
   y_true_rank = y_true.shape.ndims
   # If the shape of y_true is (num_samples, 1), squeeze to (num_samples,)
@@ -3359,8 +3396,8 @@ def sparse_top_k_categorical_accuracy(y_true, y_pred, k=5):
   Returns:
     Sparse top K categorical accuracy value.
   """
-  y_pred_rank = ops.convert_to_tensor_v2(y_pred).shape.ndims
-  y_true_rank = ops.convert_to_tensor_v2(y_true).shape.ndims
+  y_pred_rank = ops.convert_to_tensor_v2_with_dispatch(y_pred).shape.ndims
+  y_true_rank = ops.convert_to_tensor_v2_with_dispatch(y_true).shape.ndims
   # Flatten y_pred to (batch_size, num_samples) and y_true to (num_samples,)
   if (y_true_rank is not None) and (y_pred_rank is not None):
     if y_pred_rank > 2:
@@ -3397,6 +3434,7 @@ mae = MAE = mean_absolute_error
 mape = MAPE = mean_absolute_percentage_error
 msle = MSLE = mean_squared_logarithmic_error
 cosine_similarity = cosine_proximity
+log_cosh = logcosh
 
 
 def clone_metric(metric):

@@ -188,7 +188,7 @@ bool PluginRegistry::HasFactory(Platform::Id platform_id,
                                                                               \
   template port::Status                                                       \
   PluginRegistry::RegisterFactoryInternal<PluginRegistry::FACTORY_TYPE>(      \
-      PluginId plugin_id, const string& plugin_name,                          \
+      PluginId plugin_id, const std::string& plugin_name,                     \
       PluginRegistry::FACTORY_TYPE factory,                                   \
       std::map<PluginId, PluginRegistry::FACTORY_TYPE>* factories);           \
                                                                               \

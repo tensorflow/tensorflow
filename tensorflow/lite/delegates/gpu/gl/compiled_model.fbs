@@ -156,7 +156,7 @@ table CompiledModel {
 
 table Parameters {
   // indicated flow engine version that compiled this model. If engine version
-  // does not match compiled model, then a model need to be recompiled. 
+  // does not match compiled model, then a model need to be recompiled.
   // version:uint32; // not implemented
 
   // Could potentially be used to track environment when a model was compiled

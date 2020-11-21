@@ -38,7 +38,7 @@ absl::optional<ReductionKind> MatchReductionComputation(
     const HloComputation* computation);
 
 // Figures out which devices (named by their replica-ids) are participating in
-// the all-reduce subgroup that contains device_id.
+// the collective subgroup that contains device_id.
 StatusOr<std::vector<int64>> GetParticipatingReplicas(
     GlobalDeviceId device_id, absl::Span<const ReplicaGroup> replica_groups,
     int64 total_replica_count, const DeviceAssignment& device_assn);
@@ -81,22 +81,6 @@ struct RendezvousKey {
         num_local_participants(num_local_participants),
         collective_op_kind(collective_op_kind),
         op_id(op_id) {}
-
-  static RendezvousKey FromInstruction(
-      const RunId& run_id, std::vector<GlobalDeviceId> global_devices,
-      int num_local_participants, const HloInstruction* instr) {
-    CollectiveOpKind collective_op_kind;
-    int64 op_id;
-
-    std::tie(collective_op_kind, op_id) =
-        instr->channel_id().has_value()
-            ? std::make_pair(kCrossModule, instr->channel_id().value())
-            : std::make_pair(
-                  kCrossReplica,
-                  static_cast<int64>(instr->GetModule()->unique_id()));
-    return RendezvousKey(run_id, std::move(global_devices),
-                         num_local_participants, collective_op_kind, op_id);
-  }
 
   template <typename H>
   friend H AbslHashValue(H h, const RendezvousKey& k) {
@@ -147,13 +131,28 @@ void WaitAndLogIfStuck(tensorflow::BlockingCounter* counter,
              << desc_fn();
 }
 
-// Encapsulates parameters to Rendezvous::SubmitParticipant.
-struct AllReduceParticipantData {
-  explicit AllReduceParticipantData(const RendezvousKey& rendezvous_key)
-      : rendezvous_key(rendezvous_key) {}
+// Participant data for each rendezvous.
+struct ParticipantData {
+  ParticipantData(const RendezvousKey& rendezvous_key, int64 device_ordinal,
+                  se::Stream* stream)
+      : rendezvous_key(rendezvous_key),
+        device_ordinal(device_ordinal),
+        stream(stream) {}
 
-  int64 device_ordinal;
+  virtual ~ParticipantData() {}
+
   RendezvousKey rendezvous_key;
+  int64 device_ordinal;
+  se::Stream* stream;
+
+  virtual std::string ToString() const = 0;
+};
+
+// Encapsulates parameters to Rendezvous::SubmitParticipant.
+struct AllReduceParticipantData : ParticipantData {
+  AllReduceParticipantData(const RendezvousKey& rendezvous_key_p,
+                           int64 device_ordinal_p, se::Stream* stream_p)
+      : ParticipantData(rendezvous_key_p, device_ordinal_p, stream_p) {}
 
   // TODO(b/125951860): We should vet that we're buffer allocating such that
   // source_buffer == destination_buffer if that avoids a NCCL copy (will depend
@@ -166,7 +165,6 @@ struct AllReduceParticipantData {
     PrimitiveType primitive_type;
   };
   std::vector<Buffer> buffers;
-  se::Stream* stream;
   const NcclUniqueIdCallback* nccl_unique_id_callback = nullptr;
 
   ReductionKind reduction_kind;
@@ -175,7 +173,7 @@ struct AllReduceParticipantData {
   // pair for the participant. Participants are in no particular order.
   std::vector<std::pair<GlobalDeviceId, int64>> local_devices;
 
-  string ToString() const {
+  string ToString() const override {
     std::vector<std::string> buffer_strs;
     for (const Buffer& buffer : buffers) {
       buffer_strs.push_back(
@@ -189,30 +187,6 @@ struct AllReduceParticipantData {
   }
 };
 
-struct CollectivePermuteParticipantData {
-  explicit CollectivePermuteParticipantData(const RendezvousKey& rendezvous_key)
-      : rendezvous_key(rendezvous_key) {}
-
-  RendezvousKey rendezvous_key;
-
-  int64 device_ordinal;
-  int replica_id;
-  se::DeviceMemoryBase source_data;
-  se::DeviceMemoryBase destination_data;
-  int64 byte_size;
-  se::Stream* stream;
-  std::vector<int> replica_ids_to_copy_to;
-
-  string ToString() const {
-    return absl::StrFormat(
-        "CollectivePermuteParticipantData{replica_id=%d, "
-        "source_data=%p, destination_data=%p, byte_size=%d, "
-        "replica_ids_to_copy_to=[%s]}",
-        replica_id, source_data.opaque(), destination_data.opaque(), byte_size,
-        absl::StrJoin(replica_ids_to_copy_to, ", "));
-  }
-};
-
 // The set of threads that want to do a collective op together all pick the same
 // Rendezvous object out of the global cache and call SubmitParticipant.
 //
@@ -223,7 +197,9 @@ struct CollectivePermuteParticipantData {
 //
 // I: Participant data.
 // O: Participant output.
-template <typename I, typename O>
+template <typename I, typename O,
+          typename =
+              std::enable_if_t<std::is_base_of<ParticipantData, I>::value>>
 class Rendezvous {
  public:
   struct ParticipantImplOutput {
@@ -264,7 +240,7 @@ class Rendezvous {
 
  protected:
   // Returns domain-specific output O and whether this replica is primary.
-  virtual StatusOr<ParticipantImplOutput> SubmitParticipantImpl(
+  virtual StatusOr<ParticipantImplOutput> RunCollectiveOp(
       const I& participant) = 0;
 
   // Initialize the rendezvous by the first ("primary") thread which reaches the
@@ -320,7 +296,7 @@ class Rendezvous {
           participant.device_ordinal, participant.stream, key_.ToString());
     });
 
-    StatusOr<ParticipantImplOutput> p_or = SubmitParticipantImpl(participant);
+    StatusOr<ParticipantImplOutput> p_or = RunCollectiveOp(participant);
 
     done_.DecrementCount();
     if (!p_or.ok()) {

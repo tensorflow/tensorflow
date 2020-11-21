@@ -21,11 +21,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/core/platform/test.h"
@@ -34,6 +36,7 @@ namespace xla {
 namespace {
 
 using ConcatTest = ClientLibraryTestBase;
+using ConcatTestHlo = HloTestBase;
 using ::testing::HasSubstr;
 
 // Concatenate expects at least one argument.
@@ -518,6 +521,249 @@ XLA_TEST_F(ConcatTest, ConcatDeeplyNested) {
   ComputeAndCompareR1<float>(&builder, expected, {a_data.get()});
 }
 
+XLA_TEST_F(ConcatTestHlo, ConcatWithBitcast) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule jit_broken.874
+
+primitive_computation_add.866 {
+  parameter.867 = f32[] parameter(0)
+  parameter.868 = f32[] parameter(1)
+  ROOT add.869 = f32[] add(parameter.867, parameter.868)
+}
+
+ENTRY jit_broken.874 {
+  parameter.38 = f32[4,2]{1,0} parameter(0)
+  reshape.723 = f32[4,2,1]{2,1,0} reshape(parameter.38)
+  reshape.724 = f32[4,2,1]{2,1,0} reshape(parameter.38)
+  concatenate.42 = f32[4,2,2]{2,1,0} concatenate(reshape.723, reshape.724), dimensions={2}
+  slice.351 = f32[4,1,2]{2,1,0} slice(concatenate.42), slice={[0:4], [0:1], [0:2]}
+  reshape.1058 = f32[4,2]{1,0} reshape(slice.351)
+  slice.352 = f32[4,1]{1,0} slice(reshape.1058), slice={[0:4], [1:2]}
+  reshape.1059 = f32[4]{0} reshape(slice.352)
+  slice.353 = f32[4,1,1]{2,1,0} slice(concatenate.42), slice={[0:4], [0:1], [1:2]}
+  reshape.1060 = f32[4]{0} reshape(slice.353)
+  add.124 = f32[4]{0} add(reshape.1059, reshape.1060)
+  slice.354 = f32[4,1]{1,0} slice(reshape.1058), slice={[0:4], [0:1]}
+  reshape.1061 = f32[4]{0} reshape(slice.354)
+  slice.379 = f32[4,1,1]{2,1,0} slice(concatenate.42), slice={[0:4], [0:1], [0:1]}
+  reshape.1062 = f32[4]{0} reshape(slice.379)
+  add.89 = f32[4]{0} add(reshape.1061, reshape.1062)
+  subtract.126 = f32[4]{0} subtract(add.124, add.89)
+  is-finite.127 = pred[4]{0} is-finite(subtract.126)
+  not.128 = pred[4]{0} not(is-finite.127)
+  abs.129 = f32[4]{0} abs(subtract.126)
+  constant.130 = f32[] constant(inf)
+  broadcast.131 = f32[4]{0} broadcast(constant.130), dimensions={}
+  compare.132 = pred[4]{0} compare(abs.129, broadcast.131), direction=EQ
+  not.133 = pred[4]{0} not(compare.132)
+  and.134 = pred[4]{0} and(not.128, not.133)
+  add.135 = f32[4]{0} add(add.124, add.89)
+  maximum.125 = f32[4]{0} maximum(add.124, add.89)
+  abs.136 = f32[4]{0} abs(subtract.126)
+  negate.137 = f32[4]{0} negate(abs.136)
+  exponential.138 = f32[4]{0} exponential(negate.137)
+  log-plus-one.139 = f32[4]{0} log-plus-one(exponential.138)
+  add.140 = f32[4]{0} add(maximum.125, log-plus-one.139)
+  select.141 = f32[4]{0} select(and.134, add.135, add.140)
+  slice.356 = f32[4,1,1]{2,1,0} slice(concatenate.42), slice={[0:4], [0:1], [1:2]}
+  reshape.1064 = f32[4]{0} reshape(slice.356)
+  add.214 = f32[4]{0} add(select.141, reshape.1064)
+  slice.380 = f32[4,1,1]{2,1,0} slice(concatenate.42), slice={[0:4], [0:1], [0:1]}
+  reshape.1066 = f32[4]{0} reshape(slice.380)
+  add.179 = f32[4]{0} add(select.141, reshape.1066)
+  subtract.216 = f32[4]{0} subtract(add.214, add.179)
+  is-finite.217 = pred[4]{0} is-finite(subtract.216)
+  not.218 = pred[4]{0} not(is-finite.217)
+  abs.219 = f32[4]{0} abs(subtract.216)
+  constant.220 = f32[] constant(inf)
+  broadcast.221 = f32[4]{0} broadcast(constant.220), dimensions={}
+  compare.222 = pred[4]{0} compare(abs.219, broadcast.221), direction=EQ
+  not.223 = pred[4]{0} not(compare.222)
+  and.224 = pred[4]{0} and(not.218, not.223)
+  add.225 = f32[4]{0} add(add.214, add.179)
+  maximum.215 = f32[4]{0} maximum(add.214, add.179)
+  abs.226 = f32[4]{0} abs(subtract.216)
+  negate.227 = f32[4]{0} negate(abs.226)
+  exponential.228 = f32[4]{0} exponential(negate.227)
+  log-plus-one.229 = f32[4]{0} log-plus-one(exponential.228)
+  add.230 = f32[4]{0} add(maximum.215, log-plus-one.229)
+  select.231 = f32[4]{0} select(and.224, add.225, add.230)
+  slice.359 = f32[4,1,1]{2,1,0} slice(concatenate.42), slice={[0:4], [0:1], [1:2]}
+  reshape.1068 = f32[4]{0} reshape(slice.359)
+  add.304 = f32[4]{0} add(select.231, reshape.1068)
+  slice.381 = f32[4,1,1]{2,1,0} slice(concatenate.42), slice={[0:4], [0:1], [0:1]}
+  reshape.1070 = f32[4]{0} reshape(slice.381)
+  add.269 = f32[4]{0} add(select.231, reshape.1070)
+  subtract.306 = f32[4]{0} subtract(add.304, add.269)
+  is-finite.307 = pred[4]{0} is-finite(subtract.306)
+  not.308 = pred[4]{0} not(is-finite.307)
+  abs.309 = f32[4]{0} abs(subtract.306)
+  constant.310 = f32[] constant(inf)
+  broadcast.311 = f32[4]{0} broadcast(constant.310), dimensions={}
+  compare.312 = pred[4]{0} compare(abs.309, broadcast.311), direction=EQ
+  not.313 = pred[4]{0} not(compare.312)
+  and.314 = pred[4]{0} and(not.308, not.313)
+  add.315 = f32[4]{0} add(add.304, add.269)
+  maximum.305 = f32[4]{0} maximum(add.304, add.269)
+  abs.316 = f32[4]{0} abs(subtract.306)
+  negate.317 = f32[4]{0} negate(abs.316)
+  exponential.318 = f32[4]{0} exponential(negate.317)
+  log-plus-one.319 = f32[4]{0} log-plus-one(exponential.318)
+  add.320 = f32[4]{0} add(maximum.305, log-plus-one.319)
+  select.321 = f32[4]{0} select(and.314, add.315, add.320)
+  slice.362 = f32[4,1,1]{2,1,0} slice(concatenate.42), slice={[0:4], [0:1], [1:2]}
+  reshape.1072 = f32[4]{0} reshape(slice.362)
+  add.394 = f32[4]{0} add(select.321, reshape.1072)
+  slice.382 = f32[4,1,1]{2,1,0} slice(concatenate.42), slice={[0:4], [0:1], [0:1]}
+  reshape.1074 = f32[4]{0} reshape(slice.382)
+  add.359 = f32[4]{0} add(select.321, reshape.1074)
+  subtract.396 = f32[4]{0} subtract(add.394, add.359)
+  is-finite.397 = pred[4]{0} is-finite(subtract.396)
+  not.398 = pred[4]{0} not(is-finite.397)
+  abs.399 = f32[4]{0} abs(subtract.396)
+  constant.400 = f32[] constant(inf)
+  broadcast.401 = f32[4]{0} broadcast(constant.400), dimensions={}
+  compare.402 = pred[4]{0} compare(abs.399, broadcast.401), direction=EQ
+  not.403 = pred[4]{0} not(compare.402)
+  and.404 = pred[4]{0} and(not.398, not.403)
+  add.405 = f32[4]{0} add(add.394, add.359)
+  maximum.395 = f32[4]{0} maximum(add.394, add.359)
+  abs.406 = f32[4]{0} abs(subtract.396)
+  negate.407 = f32[4]{0} negate(abs.406)
+  exponential.408 = f32[4]{0} exponential(negate.407)
+  log-plus-one.409 = f32[4]{0} log-plus-one(exponential.408)
+  add.410 = f32[4]{0} add(maximum.395, log-plus-one.409)
+  select.411 = f32[4]{0} select(and.404, add.405, add.410)
+  slice.365 = f32[4,1,1]{2,1,0} slice(concatenate.42), slice={[0:4], [0:1], [1:2]}
+  reshape.1076 = f32[4]{0} reshape(slice.365)
+  add.484 = f32[4]{0} add(select.411, reshape.1076)
+  slice.383 = f32[4,1,1]{2,1,0} slice(concatenate.42), slice={[0:4], [0:1], [0:1]}
+  reshape.1078 = f32[4]{0} reshape(slice.383)
+  add.449 = f32[4]{0} add(select.411, reshape.1078)
+  subtract.486 = f32[4]{0} subtract(add.484, add.449)
+  is-finite.487 = pred[4]{0} is-finite(subtract.486)
+  not.488 = pred[4]{0} not(is-finite.487)
+  abs.489 = f32[4]{0} abs(subtract.486)
+  constant.490 = f32[] constant(inf)
+  broadcast.491 = f32[4]{0} broadcast(constant.490), dimensions={}
+  compare.492 = pred[4]{0} compare(abs.489, broadcast.491), direction=EQ
+  not.493 = pred[4]{0} not(compare.492)
+  and.494 = pred[4]{0} and(not.488, not.493)
+  add.495 = f32[4]{0} add(add.484, add.449)
+  maximum.485 = f32[4]{0} maximum(add.484, add.449)
+  abs.496 = f32[4]{0} abs(subtract.486)
+  negate.497 = f32[4]{0} negate(abs.496)
+  exponential.498 = f32[4]{0} exponential(negate.497)
+  log-plus-one.499 = f32[4]{0} log-plus-one(exponential.498)
+  add.500 = f32[4]{0} add(maximum.485, log-plus-one.499)
+  select.501 = f32[4]{0} select(and.494, add.495, add.500)
+  slice.368 = f32[4,1,1]{2,1,0} slice(concatenate.42), slice={[0:4], [0:1], [1:2]}
+  reshape.1080 = f32[4]{0} reshape(slice.368)
+  add.574 = f32[4]{0} add(select.501, reshape.1080)
+  slice.384 = f32[4,1,1]{2,1,0} slice(concatenate.42), slice={[0:4], [0:1], [0:1]}
+  reshape.1082 = f32[4]{0} reshape(slice.384)
+  add.539 = f32[4]{0} add(select.501, reshape.1082)
+  subtract.576 = f32[4]{0} subtract(add.574, add.539)
+  is-finite.577 = pred[4]{0} is-finite(subtract.576)
+  not.578 = pred[4]{0} not(is-finite.577)
+  abs.579 = f32[4]{0} abs(subtract.576)
+  constant.580 = f32[] constant(inf)
+  broadcast.581 = f32[4]{0} broadcast(constant.580), dimensions={}
+  compare.582 = pred[4]{0} compare(abs.579, broadcast.581), direction=EQ
+  not.583 = pred[4]{0} not(compare.582)
+  and.584 = pred[4]{0} and(not.578, not.583)
+  add.585 = f32[4]{0} add(add.574, add.539)
+  maximum.575 = f32[4]{0} maximum(add.574, add.539)
+  abs.586 = f32[4]{0} abs(subtract.576)
+  negate.587 = f32[4]{0} negate(abs.586)
+  exponential.588 = f32[4]{0} exponential(negate.587)
+  log-plus-one.589 = f32[4]{0} log-plus-one(exponential.588)
+  add.590 = f32[4]{0} add(maximum.575, log-plus-one.589)
+  select.591 = f32[4]{0} select(and.584, add.585, add.590)
+  slice.371 = f32[4,1,1]{2,1,0} slice(concatenate.42), slice={[0:4], [0:1], [1:2]}
+  reshape.1084 = f32[4]{0} reshape(slice.371)
+  add.664 = f32[4]{0} add(select.591, reshape.1084)
+  slice.385 = f32[4,1,1]{2,1,0} slice(concatenate.42), slice={[0:4], [0:1], [0:1]}
+  reshape.1086 = f32[4]{0} reshape(slice.385)
+  add.629 = f32[4]{0} add(select.591, reshape.1086)
+  subtract.666 = f32[4]{0} subtract(add.664, add.629)
+  is-finite.667 = pred[4]{0} is-finite(subtract.666)
+  not.668 = pred[4]{0} not(is-finite.667)
+  abs.669 = f32[4]{0} abs(subtract.666)
+  constant.670 = f32[] constant(inf)
+  broadcast.671 = f32[4]{0} broadcast(constant.670), dimensions={}
+  compare.672 = pred[4]{0} compare(abs.669, broadcast.671), direction=EQ
+  not.673 = pred[4]{0} not(compare.672)
+  and.674 = pred[4]{0} and(not.668, not.673)
+  add.675 = f32[4]{0} add(add.664, add.629)
+  maximum.665 = f32[4]{0} maximum(add.664, add.629)
+  abs.676 = f32[4]{0} abs(subtract.666)
+  negate.677 = f32[4]{0} negate(abs.676)
+  exponential.678 = f32[4]{0} exponential(negate.677)
+  log-plus-one.679 = f32[4]{0} log-plus-one(exponential.678)
+  add.680 = f32[4]{0} add(maximum.665, log-plus-one.679)
+  select.681 = f32[4]{0} select(and.674, add.675, add.680)
+  slice.374 = f32[4,1,1]{2,1,0} slice(concatenate.42), slice={[0:4], [0:1], [1:2]}
+  reshape.1088 = f32[4]{0} reshape(slice.374)
+  add.754 = f32[4]{0} add(select.681, reshape.1088)
+  slice.386 = f32[4,1,1]{2,1,0} slice(concatenate.42), slice={[0:4], [0:1], [0:1]}
+  reshape.1090 = f32[4]{0} reshape(slice.386)
+  add.719 = f32[4]{0} add(select.681, reshape.1090)
+  subtract.756 = f32[4]{0} subtract(add.754, add.719)
+  is-finite.757 = pred[4]{0} is-finite(subtract.756)
+  not.758 = pred[4]{0} not(is-finite.757)
+  abs.759 = f32[4]{0} abs(subtract.756)
+  constant.760 = f32[] constant(inf)
+  broadcast.761 = f32[4]{0} broadcast(constant.760), dimensions={}
+  compare.762 = pred[4]{0} compare(abs.759, broadcast.761), direction=EQ
+  not.763 = pred[4]{0} not(compare.762)
+  and.764 = pred[4]{0} and(not.758, not.763)
+  add.765 = f32[4]{0} add(add.754, add.719)
+  maximum.755 = f32[4]{0} maximum(add.754, add.719)
+  abs.766 = f32[4]{0} abs(subtract.756)
+  negate.767 = f32[4]{0} negate(abs.766)
+  exponential.768 = f32[4]{0} exponential(negate.767)
+  log-plus-one.769 = f32[4]{0} log-plus-one(exponential.768)
+  add.770 = f32[4]{0} add(maximum.755, log-plus-one.769)
+  select.771 = f32[4]{0} select(and.764, add.765, add.770)
+  slice.377 = f32[4,1,1]{2,1,0} slice(concatenate.42), slice={[0:4], [0:1], [1:2]}
+  reshape.1092 = f32[4]{0} reshape(slice.377)
+  add.844 = f32[4]{0} add(select.771, reshape.1092)
+  slice.387 = f32[4,1,1]{2,1,0} slice(concatenate.42), slice={[0:4], [0:1], [0:1]}
+  reshape.1094 = f32[4]{0} reshape(slice.387)
+  add.809 = f32[4]{0} add(select.771, reshape.1094)
+  subtract.846 = f32[4]{0} subtract(add.844, add.809)
+  is-finite.847 = pred[4]{0} is-finite(subtract.846)
+  not.848 = pred[4]{0} not(is-finite.847)
+  abs.849 = f32[4]{0} abs(subtract.846)
+  constant.850 = f32[] constant(inf)
+  broadcast.851 = f32[4]{0} broadcast(constant.850), dimensions={}
+  compare.852 = pred[4]{0} compare(abs.849, broadcast.851), direction=EQ
+  not.853 = pred[4]{0} not(compare.852)
+  and.854 = pred[4]{0} and(not.848, not.853)
+  add.855 = f32[4]{0} add(add.844, add.809)
+  maximum.845 = f32[4]{0} maximum(add.844, add.809)
+  abs.856 = f32[4]{0} abs(subtract.846)
+  negate.857 = f32[4]{0} negate(abs.856)
+  exponential.858 = f32[4]{0} exponential(negate.857)
+  log-plus-one.859 = f32[4]{0} log-plus-one(exponential.858)
+  add.860 = f32[4]{0} add(maximum.845, log-plus-one.859)
+  select.861 = f32[4]{0} select(and.854, add.855, add.860)
+  constant.865 = f32[] constant(0)
+  reduce.2 = f32[] reduce(select.861, constant.865), dimensions={0}, to_apply=primitive_computation_add.866
+  reduce.3 = f32[] reduce(select.861, constant.865), dimensions={0}, to_apply=primitive_computation_add.866
+  add.77 = f32[] add(reduce.2, reduce.3)
+  constant.719 = f32[] constant(0.125)
+  multiply = f32[] multiply(add.77, constant.719)
+  ROOT tuple.873 = (f32[]) tuple(multiply)
+})")
+                    .ConsumeValueOrDie();
+  auto input_array = absl::make_unique<Array2D<float>>(4, 2);
+  input_array->FillUnique(1.0f);
+  auto input = LiteralUtil::CreateR2FromArray2D<float>(*input_array);
+  EXPECT_TRUE(RunAndCompare(std::move(module), {&input}, error_spec_));
+}
+
 // Describes a binary rank-2 concatenation test.
 struct R2BinarySpec {
   int64 lhs_dim0;
@@ -578,7 +824,7 @@ XLA_TEST_F(ConcatTest, ConcatOperandsOfSameOperand) {
                              {x_data.get(), y_data.get()}, ErrorSpec(1e-4));
 }
 
-// Test that the HLO optimization to replace a concat of a bradcasted scalar
+// Test that the HLO optimization to replace a concat of a broadcasted scalar
 // produces the correct result in rank 1.
 XLA_TEST_F(ConcatTest, ConcatBroadcastArgument) {
   auto f32_scalar = ShapeUtil::MakeShape(xla::F32, {});
@@ -604,7 +850,7 @@ XLA_TEST_F(ConcatTest, ConcatBroadcastArgument) {
       {x_data.get(), y_data.get(), z_data.get()}, ErrorSpec(1e-4));
 }
 
-// Test that the HLO optimization to replace a concat of a bradcasted scalar
+// Test that the HLO optimization to replace a concat of a broadcasted scalar
 // produces the correct result in rank 3 with both high and low padding in
 // different dimensions.
 XLA_TEST_F(ConcatTest, ConcatBroadcastArgumentR3) {

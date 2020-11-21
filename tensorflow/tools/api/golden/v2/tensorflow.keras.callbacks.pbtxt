@@ -56,4 +56,8 @@ tf_module {
     name: "TerminateOnNaN"
     mtype: "<type \'type\'>"
   }
+  member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
+  }
 }

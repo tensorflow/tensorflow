@@ -22,11 +22,13 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/optional.h"
-#include "tensorflow/compiler/jit/union_find.h"
+#include "tensorflow/compiler/tf2xla/frontend_attributes_util.h"
 #include "tensorflow/compiler/tf2xla/functionalize_control_flow_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
+#include "tensorflow/compiler/xla/union_find.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
@@ -223,8 +225,8 @@ string DebugString(const CondArgNodes& nodes) {
 }
 
 StateMap::CondId StateMap::LookupCondId(const Node* node) const {
-  if (node->id() < node_to_condid_map_.size())
-    return node_to_condid_map_[node->id()];
+  const int64 map_size = node_to_condid_map_.size();
+  if (node->id() < map_size) return node_to_condid_map_[node->id()];
   return added_node_condid_mapping_.at(node->id());
 }
 
@@ -234,15 +236,16 @@ StateMap::CondId StateMap::GetCondId(const StateMap::CondState& state) {
 }
 
 void StateMap::ResetCondId(const Node* node, StateMap::CondId id) {
-  if (node->id() < node_to_condid_map_.size())
+  const int64 map_size = node_to_condid_map_.size();
+  if (node->id() < map_size)
     node_to_condid_map_[node->id()] = id;
   else
     added_node_condid_mapping_[node->id()] = id;
 }
 
 StateMap::AncestorId StateMap::LookupAncestorId(const Node* node) const {
-  if (node->id() < node_to_ancestorid_map_.size())
-    return node_to_ancestorid_map_[node->id()];
+  const int64 map_size = node_to_ancestorid_map_.size();
+  if (node->id() < map_size) return node_to_ancestorid_map_[node->id()];
   return added_node_ancestorid_mapping_.at(node->id());
 }
 
@@ -253,7 +256,8 @@ StateMap::AncestorId StateMap::GetAncestorId(
 }
 
 void StateMap::ResetAncestorId(const Node* node, StateMap::AncestorId id) {
-  if (node->id() < node_to_ancestorid_map_.size())
+  const int64 map_size = node_to_ancestorid_map_.size();
+  if (node->id() < map_size)
     node_to_ancestorid_map_[node->id()] = id;
   else
     added_node_ancestorid_mapping_[node->id()] = id;
@@ -285,8 +289,12 @@ string StateMap::AncestorStateToString(const Node* node) const {
 }
 
 FunctionalizeCond::FunctionalizeCond(Graph* graph,
-                                     FunctionLibraryDefinition* library)
-    : state_map_(graph), library_(library), graph_(graph) {}
+                                     FunctionLibraryDefinition* library,
+                                     const NodeFilter& node_filter)
+    : state_map_(graph),
+      library_(library),
+      graph_(graph),
+      node_filter_(node_filter) {}
 
 // Class representing the merge/switch nodes that will become a conditional.
 class Conditional {
@@ -807,11 +815,15 @@ Status Conditional::BuildIfNode(Graph* graph,
           << PartialTensorShapeUtils::PartialShapeListString(output_shapes);
 
   builder.Attr("Tcond", DT_BOOL);
-  string outside_compilation;
-  if (GetNodeAttr(predicate_.node->def(), kXlaOutsideCompilationAttrName,
-                  &outside_compilation)
-          .ok()) {
-    builder.Attr(kXlaOutsideCompilationAttrName, outside_compilation);
+  // Add some internal attributes which need to be propagated.
+  // TODO(b/160275126): attributes shouldn't be hard-coded here
+  for (const char* attr_name :
+       {kXlaFrontendAttributesAttrName, kXlaOutsideCompilationAttrName,
+        kTpuReplicateAttrName}) {
+    string attr_val;
+    if (GetNodeAttr(predicate_.node->def(), attr_name, &attr_val).ok()) {
+      builder.Attr(attr_name, attr_val);
+    }
   }
   builder.Device(predicate_.node->assigned_device_name());
   // Conditional should be the first input ...
@@ -1076,7 +1088,7 @@ StatusOr<StateMap::CondId> FunctionalizeCond::JoinCondStatesMerge(
   // Determine the flow state when joining two states for a merge
   // node. Combining the two states for a merge node is effectively performing a
   // disjunction of the states along the different input edges. For a merge that
-  // can be transformed into a If the two inputs paths have to have a predicate
+  // can be transformed into an If the two inputs paths have to have a predicate
   // on which they differ (e.g., along one edge predicate `p` has to hold while
   // on another it should not). This function first determines this predicate
   // and then the resultant state is the common path between the two inputs
@@ -1368,8 +1380,9 @@ void FunctionalizeCond::DeleteReachableAndDeadNodes(
   deleted[graph_->kSourceId] = true;
   deleted[graph_->kSinkId] = true;
 
-  // All remaining Switch nodes are not reachable from a Merge node and
-  // removed. This is to account for dead Switch nodes.
+  // All remaining switch nodes that were not excluded from functionalization
+  // according to `node_filter_` are not reachable from a merge node and
+  // removed. This is to account for dead switch nodes.
   for (int s_id : switch_ids_) {
     Node* s = graph_->FindNodeId(s_id);
     if (s == nullptr) continue;
@@ -1379,11 +1392,17 @@ void FunctionalizeCond::DeleteReachableAndDeadNodes(
       // conditional.
       if (!e->IsControlEdge()) delete_nodes.push_back(e->dst()->id());
     }
-    deleted[s_id] = true;
-    graph_->RemoveNode(s);
+    // Only remove switch node if we have functionalized the corresponding
+    // condition before (according to `node_filter_`).
+    if (!node_filter_ || node_filter_(s)) {
+      VLOG(2) << "Removing obsolete switch node " << s->name();
+      deleted[s_id] = true;
+      graph_->RemoveNode(s);
+    }
   }
 
-  // All merge nodes should have been transformed at this point and we remove
+  // All merge nodes that were not excluded from functionalization according to
+  // `node_filter_` should have been transformed at this point and we remove
   // them from the graph here.
   for (Node* m : merge_order) {
     for (const Edge* e : m->out_edges()) {
@@ -1393,8 +1412,13 @@ void FunctionalizeCond::DeleteReachableAndDeadNodes(
       // being removed in AddOutputEdges.
       if (!e->IsControlEdge()) delete_nodes.push_back(e->dst()->id());
     }
-    deleted[m->id()] = true;
-    graph_->RemoveNode(m);
+    // Only remove merge node if we have functionalized the corresponding
+    // condition before (according to `node_filter_`).
+    if (!node_filter_ || node_filter_(m)) {
+      VLOG(2) << "Removing obsolete merge node " << m->name();
+      deleted[m->id()] = true;
+      graph_->RemoveNode(m);
+    }
   }
 
   // Enqueue all the dead nodes.
@@ -1403,7 +1427,7 @@ void FunctionalizeCond::DeleteReachableAndDeadNodes(
       delete_nodes.push_back(n->id());
     }
   }
-
+  // Remove dead nodes and nodes that are reachable from dead nodes.
   while (!delete_nodes.empty()) {
     int d_id = delete_nodes.front();
     delete_nodes.pop_front();
@@ -1414,6 +1438,7 @@ void FunctionalizeCond::DeleteReachableAndDeadNodes(
     for (const Edge* e : d->out_edges()) {
       delete_nodes.push_back(e->dst()->id());
     }
+    VLOG(2) << "Removing obsolete node " << d->name();
     deleted[d_id] = true;
     graph_->RemoveNode(d);
   }
@@ -1454,6 +1479,7 @@ Status FunctionalizeCond::FunctionalizeInternal() {
   // AncestorState from the innermost to the outermost into IfOps;
   // Note: In the above only nodes that feed into a merge node will be
   // considered for functionalization.
+  // Note: Nodes for which `node_filter_` returns false are excluded.
 
   // Perform a DFS over the graph and
   // * Determine the reverse topological order of the nodes (there should be no
@@ -1463,12 +1489,18 @@ Status FunctionalizeCond::FunctionalizeInternal() {
   std::vector<Node*> rev_topo_order;
   std::vector<Node*> merge_order;
   DFS(*graph_, nullptr, [&](Node* n) {
-    if (IsSwitch(n)) {
-      AddSwitchId(n->id());
+    // Only collect switch and merge nodes that are not filtered out, those form
+    // the conditions that will be functionalized.
+    if (!node_filter_ || node_filter_(n)) {
+      if (IsSwitch(n)) {
+        AddSwitchId(n->id());
+      }
+      if (IsMerge(n)) {
+        merge_order.push_back(n);
+      }
     }
-    if (IsMerge(n)) {
-      merge_order.push_back(n);
-    }
+    // Collect all other nodes here, independent of `node_filter_`, because they
+    // might belong to a condition that should be functionalized.
     if (n->IsOp()) {
       rev_topo_order.push_back(n);
     }
@@ -1571,19 +1603,22 @@ void FunctionalizeCond::AddSwitchId(int switch_id) {
 }
 
 Status FunctionalizeCond::Functionalize(Graph* graph,
-                                        FunctionLibraryDefinition* library) {
+                                        FunctionLibraryDefinition* library,
+                                        const NodeFilter& node_filter) {
   VLOG(1) << "FunctionalizeCond::Functionalize";
-  FunctionalizeCond fc(graph, library);
+  FunctionalizeCond fc(graph, library, node_filter);
   return fc.FunctionalizeInternal();
 }
 
 }  // namespace functionalize_cond
 
-Status FunctionalizeCond(Graph* graph, FunctionLibraryDefinition* library) {
+Status FunctionalizeCond(Graph* graph, FunctionLibraryDefinition* library,
+                         const NodeFilter& node_filter) {
   // FunctionalizeControlFlow is invoked for every function, so the loops's
   // bodies and conditionals that were extracted into functions will be handled
   // in successive invocations.
-  return functionalize_cond::FunctionalizeCond::Functionalize(graph, library);
+  return functionalize_cond::FunctionalizeCond::Functionalize(graph, library,
+                                                              node_filter);
 }
 
 }  // namespace tensorflow

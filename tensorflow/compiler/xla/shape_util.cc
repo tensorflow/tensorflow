@@ -339,6 +339,15 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   TF_DCHECK_OK(ValidateShape(*shape));
 }
 
+/* static */ void ShapeUtil::CopyDynamicDimensions(Shape* to,
+                                                   const Shape& from) {
+  CHECK_EQ(to->rank(), from.rank());
+  for (int64 i = 0; i < from.rank(); ++i) {
+    to->set_dynamic_dimension(i, from.is_dynamic_dimension(i));
+  }
+  TF_DCHECK_OK(ValidateShape(*to));
+}
+
 /* static */ bool ShapeUtil::ElementIsIntegral(const Shape& shape) {
   return primitive_util::IsIntegralType(shape.element_type());
 }
@@ -522,13 +531,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
     text += ")";
     return text;
   }
-  string result = StrCat(
-      primitive_util::LowercasePrimitiveTypeName(shape.element_type()), "[");
-  for (int i = 0; i < shape.dimensions().size(); i++) {
-    StrAppend(&result, (i > 0) ? "," : "",
-              shape.is_dynamic_dimension(i) ? "<=" : "", shape.dimensions(i));
-  }
-  result += "]";
+  string result = HumanString(shape);
   if (IsScalar(shape)) {
     string layout_str = LayoutUtil::HumanString(shape.layout());
     // Don't print "{}" as layout for scalars.
@@ -780,9 +783,18 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 
 /* static */ Shape ShapeUtil::ChangeElementType(const Shape& original,
                                                 PrimitiveType type) {
-  Shape new_shape = original;
-  new_shape.set_element_type(type);
-  return new_shape;
+  if (original.IsTuple()) {
+    std::vector<Shape> new_operands;
+    new_operands.reserve(original.tuple_shapes_size());
+    for (const Shape& operand : original.tuple_shapes()) {
+      new_operands.push_back(ChangeElementType(operand, type));
+    }
+    return MakeTupleShape(new_operands);
+  } else {
+    Shape new_shape = original;
+    new_shape.set_element_type(type);
+    return new_shape;
+  }
 }
 
 /* static */ bool ShapeUtil::IndexIsValid(const Shape& shape,
@@ -968,17 +980,18 @@ Status ForEachMutableSubshapeHelper(
   // `shape`'s list of dimensions is isomorphic to the identity I.
   //
   // Let `shape`'s layout be L.  A layout is a permutation which maps a
-  // minor-to-major physical layout to the order of a shape's logical dims.
-  // Therefore inverse of a layout maps from logical to physical dims, and so
-  // the physical layout of I is simply L'.I = L', where L' is the inverse of L.
+  // minor-to-major physical dimension ordering to a shape's logical dimension
+  // ordering.  Therefore the inverse of a layout maps from logical to physical
+  // dims, and so the physical ordering of I is simply L'.I = L', where L' is
+  // the inverse of L.
   //
   // Let the argument `permutation` be P.  This is a permutation over `shape`'s
   // dimensions, so our return value will be a shape with dims P.I = P.  Our
-  // goal is to construct a layout permutation L* that we can apply to P such
-  // that the physical dimension ordering of the returned shape is the same
-  // as that of the original shape, namely L'.
+  // goal is to construct a layout permutation L* for this shape. The physical
+  // dimension ordering of this returned shape must be the same as that of the
+  // original shape, namely L'.
   //
-  // Our returned shape has dims P and layout L*, so its in-memory layout is
+  // Our returned shape has dims P and layout L*, so its in-memory ordering is
   // L*'.P.  Setting this equal to L' and solving for L*, we get:
   //
   //   L*'.P = L'    =>
@@ -1460,7 +1473,7 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
   return shape;
 }
 
-/* static */ bool ShapeUtil::DynamicShapeIsCompatible(
+/* static */ bool ShapeUtil::DynamicArrayShapeIsCompatible(
     const xla::Shape& dynamic_shape, const xla::Shape& bounded_shape) {
   if (dynamic_shape.rank() != bounded_shape.rank()) {
     return false;
@@ -1471,6 +1484,36 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
     }
   }
   return true;
+}
+
+/* static */ bool ShapeUtil::DynamicShapeIsCompatible(
+    const xla::Shape& dynamic_shape, const xla::Shape& bounded_shape) {
+  bool compatible = true;
+  xla::ShapeUtil::ForEachSubshape(dynamic_shape, [&](const Shape& sub_shape,
+                                                     const ShapeIndex& index) {
+    if (compatible) {
+      auto subshape_result = TryGetSubshape(bounded_shape, index);
+      if (subshape_result.ok()) {
+        const Shape* bounded_sub_shape = subshape_result.ConsumeValueOrDie();
+        if (sub_shape.IsTuple()) {
+          if (!bounded_sub_shape->IsTuple()) {
+            compatible = false;
+          }
+        } else {
+          if (bounded_sub_shape->IsTuple()) {
+            compatible = false;
+          } else if (!sub_shape.is_static() &&
+                     !DynamicArrayShapeIsCompatible(sub_shape,
+                                                    *bounded_sub_shape)) {
+            compatible = false;
+          }
+        }
+      } else {
+        compatible = false;
+      }
+    }
+  });
+  return compatible;
 }
 
 /* static */ Shape ShapeUtil::FilterDimensions(
@@ -1578,6 +1621,25 @@ static Shape MergeDimensions(absl::Span<const size_t> segs,
   }
 
   return absl::nullopt;
+}
+
+Shape ShapeUtil::DeviceShapeToHostShape(Shape s) {
+  ForEachMutableSubshape(&s, [](Shape* subshape, const ShapeIndex& index) {
+    if (subshape->IsArray()) {
+      subshape->mutable_layout()->clear_tiles();
+      subshape->mutable_layout()->set_memory_space(Layout::kDefaultMemorySpace);
+    }
+  });
+  return s;
+}
+
+/*static*/ bool ShapeUtil::CanUpcastIntegral(const Shape& from,
+                                             const Shape& to) {
+  return ElementIsIntegral(from) && ElementIsIntegral(to) &&
+         ElementIsSigned(from) == ElementIsSigned(to) &&
+         primitive_util::BitWidth(from.element_type()) <=
+             primitive_util::BitWidth(to.element_type()) &&
+         CompatibleIgnoringElementType(from, to);
 }
 
 }  // namespace xla

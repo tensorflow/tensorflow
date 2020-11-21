@@ -113,12 +113,14 @@ TfLiteStatus SymmetricQuantizeFloatsToInt16(ModelT* model, TensorT* tensor,
                                             ErrorReporter* error_reporter);
 
 // Symmetrically quantized the bias for per-layer ops (i.e. FullyConnected).
+template <typename BiasType>
 TfLiteStatus SymmetricPerLayerBiasQuantize(ModelT* model, TensorT* tensor,
                                            float scaling_factor,
                                            ErrorReporter* error_reporter);
 
 // Symmetrically quantizes the bias for ops like Conv and DepthwiseConv.
 // The scale of bias if weight_per_channel_scale[channel] * input_scale.
+template <typename BiasType>
 TfLiteStatus SymmetricPerChannelBiasQuantize(ModelT* model, TensorT* tensor,
                                              float input_scale,
                                              const float* weight_scales,
@@ -135,8 +137,14 @@ float GetEffectiveScale(ModelT* model, SubGraphT* subgraph, int op_idx,
                         std::vector<int> intermediate_index,
                         std::vector<float> factors);
 
+// Return quantization parameters depending on activations type.
+TfLiteStatus GetQuantizationParams(TensorT* tensor, TensorType activations_type,
+                                   QuantizationParametersT* quantization_params,
+                                   ErrorReporter* error_reporter);
+
 // Quantize activation.
-void QuantizeActivation(TensorT* tensor);
+TfLiteStatus QuantizeActivation(TensorT* tensor, TensorType activations_type,
+                                ErrorReporter* error_reporter);
 
 // Quantize activation to 16bit.
 TfLiteStatus QuantizeActivationToInt16(TensorT* tensor, float scale);

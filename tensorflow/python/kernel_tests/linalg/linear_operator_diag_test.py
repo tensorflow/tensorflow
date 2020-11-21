@@ -126,7 +126,7 @@ class LinearOperatorDiagTest(
       self.evaluate(operator.assert_self_adjoint())
 
   def test_scalar_diag_raises(self):
-    with self.assertRaisesRegexp(ValueError, "must have at least 1 dimension"):
+    with self.assertRaisesRegex(ValueError, "must have at least 1 dimension"):
       linalg.LinearOperatorDiag(1.)
 
   def test_broadcast_matmul_and_solve(self):

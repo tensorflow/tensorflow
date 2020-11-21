@@ -60,7 +60,8 @@ class TrainingOpsTest(TensorFlowTestCase):
       self.assertShapeEqual(out, apply_sgd)
       self.assertAllCloseAccordingToType(x - alpha * delta, out)
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only("ApplyGradientDescent op returns a ref, so it is not "
+                         "supported in eager mode.")
   def testApplyGradientDescent(self):
     for (dtype, use_gpu) in itertools.product(
         [np.float16, np.float32, np.float64], [False, True]):
@@ -184,7 +185,8 @@ class TrainingOpsTest(TensorFlowTestCase):
         self.assertAllClose(linear_update, self.evaluate(linear))
         self.assertAllClose(expected_out, out)
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only("ApplyAdagrad op returns a ref, so it is not "
+                         "supported in eager mode.")
   def testApplyAdagrad(self):
     for (dtype, use_gpu) in itertools.product(
         [np.float16, np.float32, np.float64], [False, True]):
@@ -194,7 +196,8 @@ class TrainingOpsTest(TensorFlowTestCase):
       grad = np.arange(100).astype(dtype)
       self._testTypesForAdagrad(x, y, lr, grad, use_gpu)
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only("ApplyFtrl op returns a ref, so it is not "
+                         "supported in eager mode.")
   def testApplyFtrl(self):
     for dtype in [np.float16, np.float32, np.float64]:
       x = np.arange(100).astype(dtype)
@@ -206,7 +209,8 @@ class TrainingOpsTest(TensorFlowTestCase):
       grad = np.arange(100).astype(dtype)
       self._testTypesForFtrl(x, y, z, lr, grad, use_gpu=False, l1=l1, l2=l2)
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only("ApplyFtrlMultiplyLinearByLr op returns a ref, so it "
+                         "is not supported in eager mode.")
   def testApplyFtrlMultiplyLinearByLr(self):
     for dtype in [np.float16, np.float32, np.float64]:
       x = np.arange(100).astype(dtype)
@@ -320,7 +324,8 @@ class TrainingOpsTest(TensorFlowTestCase):
         self.assertAllCloseAccordingToType(y[index] + grad[i] * grad[i],
                                            self.evaluate(accum)[index])
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only("SparseApplyAdagrad op returns a ref, so it is not "
+                         "supported in eager mode.")
   def testSparseApplyAdagrad(self):
     for (dtype, index_type) in itertools.product(
         [np.float16, np.float32, np.float64], [np.int32, np.int64]):
@@ -334,7 +339,8 @@ class TrainingOpsTest(TensorFlowTestCase):
       indices = np.array([0, 2]).astype(index_type)
       self._testTypesForSparseAdagrad(x, y, lr, grad, indices)
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only("SparseApplyAdagrad op returns a ref, so it is not "
+                         "supported in eager mode.")
   def testSparseApplyAdagradDim1(self):
     for (dtype, index_type) in itertools.product(
         [np.float16, np.float32, np.float64], [np.int32, np.int64]):
@@ -348,7 +354,8 @@ class TrainingOpsTest(TensorFlowTestCase):
       indices = np.array([0, 2]).astype(index_type)
       self._testTypesForSparseAdagrad(x, y, lr, grad, indices)
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only("SparseApplyFtrl op returns a ref, so it is not "
+                         "supported in eager mode.")
   def testSparseApplyFtrlDim1(self):
     for (dtype, index_type) in itertools.product(
         [np.float16, np.float32, np.float64], [np.int32, np.int64]):
@@ -364,7 +371,8 @@ class TrainingOpsTest(TensorFlowTestCase):
       indices = np.array([0, 2]).astype(index_type)
       self._testTypesForSparseFtrl(x, y, z, lr, grad, indices)
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only("SparseApplyFtrlMultiplyLinearByLr op returns a ref, "
+                         "so it is not supported in eager mode.")
   def testSparseApplyFtrlMultiplyLinearByLrDim1(self):
     for (dtype,
          index_type) in itertools.product([np.float16, np.float32, np.float64],
@@ -381,7 +389,8 @@ class TrainingOpsTest(TensorFlowTestCase):
       indices = np.array([0, 2]).astype(index_type)
       self._testTypesForSparseFtrlMultiplyLinearByLr(x, y, z, lr, grad, indices)
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only("ApplyAdam op returns a ref, so it is not "
+                         "supported in eager mode.")
   def testApplyAdam(self):
     for dtype, use_gpu in itertools.product(
         [np.float16, np.float32, np.float64], [False, True]):

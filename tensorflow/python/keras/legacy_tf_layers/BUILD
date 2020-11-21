@@ -5,8 +5,17 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 package(
-    default_visibility = ["//tensorflow:__subpackages__"],
+    default_visibility = [
+        "//tensorflow:__subpackages__",
+        "//tensorflow/python/keras:__subpackages__",
+    ],
     licenses = ["notice"],  # Apache 2.0
+)
+
+filegroup(
+    name = "all_py_srcs",
+    srcs = glob(["*.py"]),
+    visibility = ["//tensorflow/python/keras/google/private_tf_api_test:__pkg__"],
 )
 
 py_library(
@@ -25,7 +34,7 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras/engine:base_layer",
-        "//tensorflow/python/keras/mixed_precision/experimental:policy",
+        "//tensorflow/python/keras/mixed_precision:policy",
         "//tensorflow/python/training/tracking:base",
     ],
 )

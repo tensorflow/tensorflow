@@ -294,10 +294,8 @@ def main():
       new_version = Version.parse_from_string(args.version, NIGHTLY_VERSION)
       new_version.set_identifier_string("-dev" + time.strftime("%Y%m%d"))
     else:
-      # Dev minor version is one ahead of official.
-      nightly_minor_ver = int(old_version.minor) + 1
       new_version = Version(old_version.major,
-                            str(nightly_minor_ver),
+                            str(old_version.minor),
                             old_version.patch,
                             "-dev" + time.strftime("%Y%m%d"),
                             NIGHTLY_VERSION)

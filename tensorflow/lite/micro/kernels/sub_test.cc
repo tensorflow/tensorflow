@@ -17,9 +17,9 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/micro/kernels/all_ops_resolver.h"
+#include "tensorflow/lite/micro/kernels/kernel_runner.h"
+#include "tensorflow/lite/micro/test_helpers.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
-#include "tensorflow/lite/micro/testing/test_utils.h"
 
 namespace tflite {
 namespace testing {
@@ -66,51 +66,21 @@ void ValidateSubGoldens(TfLiteTensor* tensors, int tensors_size,
                         const T* golden, T* output, int output_size,
                         TfLiteFusedActivation activation,
                         float tolerance = 1e-5) {
-  TfLiteContext context;
-  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-
-  ::tflite::ops::micro::AllOpsResolver resolver;
-  const TfLiteRegistration* registration =
-      resolver.FindOp(::tflite::BuiltinOperator_SUB, 1);
-
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
-
   TfLiteSubParams builtin_data;
   builtin_data.activation = activation;
-
-  const char* init_data = reinterpret_cast<const char*>(&builtin_data);
-  const size_t init_data_size = 0;
-  void* user_data = nullptr;
-  if (registration->init) {
-    user_data = registration->init(&context, init_data, init_data_size);
-  }
 
   int inputs_array_data[] = {2, 0, 1};
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {1, 2};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
-  int temporaries_array_data[] = {0};
-  TfLiteIntArray* temporaries_array = IntArrayFromInts(temporaries_array_data);
 
-  TfLiteNode node;
-  node.inputs = inputs_array;
-  node.outputs = outputs_array;
-  node.temporaries = temporaries_array;
-  node.user_data = user_data;
-  node.builtin_data = reinterpret_cast<void*>(&builtin_data);
-  node.custom_initial_data = nullptr;
-  node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
+  const TfLiteRegistration registration = tflite::ops::micro::Register_SUB();
+  micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
+                             outputs_array, &builtin_data,
+                             micro_test::reporter);
 
-  if (registration->prepare) {
-    TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
-  }
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(&context, &node));
-
-  if (registration->free) {
-    registration->free(&context, user_data);
-  }
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
 
   for (int i = 0; i < output_size; ++i) {
     TF_LITE_MICRO_EXPECT_NEAR(golden[i], output[i], tolerance);
@@ -129,9 +99,9 @@ void TestSubFloat(const int* input1_dims_data, const float* input1_data,
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input1_data, input1_dims, "input1_tensor"),
-      CreateFloatTensor(input2_data, input2_dims, "input2_tensor"),
-      CreateFloatTensor(output_data, output_dims, "output_tensor"),
+      CreateTensor(input1_data, input1_dims),
+      CreateTensor(input2_data, input2_dims),
+      CreateTensor(output_data, output_dims),
   };
 
   ValidateSubGoldens(tensors, tensors_size, expected_output, output_data,
@@ -156,19 +126,17 @@ void TestSubQuantized(const int* input1_dims_data, const float* input1_data,
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      tflite::testing::CreateQuantizedTensor(
-          input1_data, input1_quantized, input1_dims, input1_scale,
-          input1_zero_point, "input1_tensor"),
-      tflite::testing::CreateQuantizedTensor(
-          input2_data, input2_quantized, input2_dims, input2_scale,
-          input2_zero_point, "input2_tensor"),
+      tflite::testing::CreateQuantizedTensor(input1_data, input1_quantized,
+                                             input1_dims, input1_scale,
+                                             input1_zero_point),
+      tflite::testing::CreateQuantizedTensor(input2_data, input2_quantized,
+                                             input2_dims, input2_scale,
+                                             input2_zero_point),
       tflite::testing::CreateQuantizedTensor(output_data, output_dims,
-                                             output_scale, output_zero_point,
-                                             "output_tensor"),
+                                             output_scale, output_zero_point),
   };
-  tflite::AsymmetricQuantize(golden, golden_quantized,
-                             ElementCount(*output_dims), output_scale,
-                             output_zero_point);
+  tflite::Quantize(golden, golden_quantized, ElementCount(*output_dims),
+                   output_scale, output_zero_point);
 
   ValidateSubGoldens(tensors, tensors_size, golden_quantized, output_data,
                      ElementCount(*output_dims), activation);
@@ -202,7 +170,7 @@ TF_LITE_MICRO_TEST(FloatSubActivationRelu1) {
   float output_data[output_dims_count];
   tflite::testing::TestSubFloat(inout_shape, input1_values, inout_shape,
                                 input2_values, inout_shape, golden_values,
-                                kTfLiteActRelu1, output_data);
+                                kTfLiteActReluN1To1, output_data);
 }
 
 TF_LITE_MICRO_TEST(FloatSubVariousInputShapes) {
@@ -314,7 +282,7 @@ TF_LITE_MICRO_TEST(QuantizedSubActivationRelu1Uint8) {
       inout_shape, input1_values, input1_quantized, scales[0], zero_points[0],
       inout_shape, input2_values, input2_quantized, scales[1], zero_points[1],
       inout_shape, golden_values, golden_quantized, scales[2], zero_points[2],
-      kTfLiteActRelu1, output);
+      kTfLiteActReluN1To1, output);
 }
 
 TF_LITE_MICRO_TEST(QuantizedSubActivationRelu1Int8) {
@@ -335,7 +303,7 @@ TF_LITE_MICRO_TEST(QuantizedSubActivationRelu1Int8) {
       inout_shape, input1_values, input1_quantized, scales[0], zero_points[0],
       inout_shape, input2_values, input2_quantized, scales[1], zero_points[1],
       inout_shape, golden_values, golden_quantized, scales[2], zero_points[2],
-      kTfLiteActRelu1, output);
+      kTfLiteActReluN1To1, output);
 }
 
 TF_LITE_MICRO_TEST(QuantizedSubVariousInputShapesUint8) {
@@ -436,12 +404,6 @@ TF_LITE_MICRO_TEST(QuantizedSubWithScalarBroadcastUint8) {
   }
 }
 TF_LITE_MICRO_TEST(QuantizedSubWithScalarBroadcastFloat) {
-  const float scales[] = {0.1, 0.05, 0.1};
-  const int zero_points[] = {127, 131, 139};
-  uint8_t input1_quantized[tflite::testing::broadcast_output_dims_count];
-  uint8_t input2_quantized[tflite::testing::broadcast_output_dims_count];
-  uint8_t golden_quantized[tflite::testing::broadcast_output_dims_count];
-  uint8_t output[tflite::testing::broadcast_output_dims_count];
   float output_float[tflite::testing::broadcast_output_dims_count];
 
   for (int i = 0; i < tflite::testing::broadcast_num_shapes; ++i) {
@@ -496,7 +458,6 @@ TF_LITE_MICRO_TEST(QuantizedSubWithMixedBroadcastUint8) {
   uint8_t input2_quantized[tflite::testing::broadcast_output_dims_count];
   uint8_t golden_quantized[tflite::testing::broadcast_output_dims_count];
   uint8_t output[tflite::testing::broadcast_output_dims_count];
-  float output_float[tflite::testing::broadcast_output_dims_count];
 
   for (int i = 0; i < tflite::testing::broadcast_num_shapes; ++i) {
     tflite::testing::TestSubQuantized(
@@ -517,7 +478,6 @@ TF_LITE_MICRO_TEST(QuantizedSubWithMixedBroadcastInt8) {
   int8_t input2_quantized[tflite::testing::broadcast_output_dims_count];
   int8_t golden_quantized[tflite::testing::broadcast_output_dims_count];
   int8_t output[tflite::testing::broadcast_output_dims_count];
-  float output_float[tflite::testing::broadcast_output_dims_count];
 
   for (int i = 0; i < tflite::testing::broadcast_num_shapes; ++i) {
     tflite::testing::TestSubQuantized(

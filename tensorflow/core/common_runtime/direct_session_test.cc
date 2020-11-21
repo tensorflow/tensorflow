@@ -1965,7 +1965,6 @@ static void TestSessionInterOpThreadsImpl(bool use_function_lib,
       ->set_constant_folding(RewriterConfig::OFF);
   (*options.config.mutable_device_count())["CPU"] = 2;
   (*options.config.mutable_device_count())["GPU"] = 0;
-  (*options.config.mutable_device_count())["SYCL"] = 0;
 
   auto* p = options.config.add_session_inter_op_thread_pool();
   if (use_global_pools) p->set_global_name("large pool");
@@ -2588,11 +2587,9 @@ TEST(DirectSessionTest,
 
 // A simple benchmark for the overhead of `DirectSession::Run()` calls
 // with varying numbers of feeds/fetches.
-void FeedFetchBenchmarkHelper(int iters, int num_feeds, bool use_make_callable,
-                              int inter_op_threads,
+void FeedFetchBenchmarkHelper(::testing::benchmark::State& state, int num_feeds,
+                              bool use_make_callable, int inter_op_threads,
                               bool use_single_threaded_executor) {
-  testing::StopTiming();
-
   Tensor value(DT_FLOAT, TensorShape());
   value.flat<float>()(0) = 37.0;
 
@@ -2644,13 +2641,11 @@ void FeedFetchBenchmarkHelper(int iters, int num_feeds, bool use_make_callable,
     }
     TF_CHECK_OK(session->MakeCallable(callable_options, &handle));
 
-    testing::StartTiming();
-    for (int i = 0; i < iters; ++i) {
+    for (auto s : state) {
       std::vector<Tensor> output_values;
       TF_CHECK_OK(
           session->RunCallable(handle, input_tensors, &output_values, nullptr));
     }
-    testing::StopTiming();
   } else {
     {
       // NOTE(mrry): Ignore the first run, which will incur the graph
@@ -2662,32 +2657,40 @@ void FeedFetchBenchmarkHelper(int iters, int num_feeds, bool use_make_callable,
       std::vector<Tensor> output_values;
       TF_CHECK_OK(session->Run(inputs, outputs, {}, &output_values));
     }
-    testing::StartTiming();
-    for (int i = 0; i < iters; ++i) {
+
+    for (auto s : state) {
       std::vector<Tensor> output_values;
       TF_CHECK_OK(session->Run(inputs, outputs, {}, &output_values));
     }
-    testing::StopTiming();
   }
 }
 
-void BM_FeedFetch(int iters, int num_feeds) {
-  FeedFetchBenchmarkHelper(iters, num_feeds, /* use_make_callable */ false,
+void BM_FeedFetch(::testing::benchmark::State& state) {
+  const int num_feeds = state.range(0);
+
+  FeedFetchBenchmarkHelper(state, num_feeds, /* use_make_callable */ false,
                            /* inter_op_threads */ 0,
                            /* use_single_threaded_executor */ false);
 }
-void BM_FeedFetchCallable(int iters, int num_feeds) {
-  FeedFetchBenchmarkHelper(iters, num_feeds, /* use_make_callable */ true,
+void BM_FeedFetchCallable(::testing::benchmark::State& state) {
+  const int num_feeds = state.range(0);
+
+  FeedFetchBenchmarkHelper(state, num_feeds, /* use_make_callable */ true,
                            /* inter_op_threads */ 0,
                            /* use_single_threaded_executor */ false);
 }
-void BM_FeedFetchCallableSingleThread(int iters, int num_feeds) {
-  FeedFetchBenchmarkHelper(iters, num_feeds, /* use_make_callable */ true,
+void BM_FeedFetchCallableSingleThread(::testing::benchmark::State& state) {
+  const int num_feeds = state.range(0);
+
+  FeedFetchBenchmarkHelper(state, num_feeds, /* use_make_callable */ true,
                            /* inter_op_threads */ -1,
                            /* use_single_threaded_executor */ false);
 }
-void BM_FeedFetchCallableSingleThreadExecutor(int iters, int num_feeds) {
-  FeedFetchBenchmarkHelper(iters, num_feeds, /* use_make_callable */ true,
+void BM_FeedFetchCallableSingleThreadExecutor(
+    ::testing::benchmark::State& state) {
+  const int num_feeds = state.range(0);
+
+  FeedFetchBenchmarkHelper(state, num_feeds, /* use_make_callable */ true,
                            /* inter_op_threads */ -1,
                            /* use_single_threaded_executor */ true);
 }
@@ -2822,7 +2825,7 @@ class StatefulOutputRequiredOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     // The op counts the number of outputs required in the current subgraph,
     // and emits that number on each of its required outputs.
-    Tensor count_outputs_required_t(0LL);
+    Tensor count_outputs_required_t(int64{0});
     int64& count_outputs_required = count_outputs_required_t.scalar<int64>()();
     for (int i = 0; i < num_outputs(); ++i) {
       if (ctx->output_required(i)) ++count_outputs_required;

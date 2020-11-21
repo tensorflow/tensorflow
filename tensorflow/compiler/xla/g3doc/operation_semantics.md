@@ -182,7 +182,7 @@ respect to `operand`, `offset` and `scale` across all the other dimensions. The
 `feature_index` must be a valid index for the feature dimension in `operand`.
 
 The three gradients are defined by the following formulas (assuming a
-4-dimensional array as `operand` and with feature dimension index $$l$$, batch
+4-dimensional array as `operand` and with feature dimension index `l`, batch
 size `m` and spatial sizes `w` and `h`):
 
 \\[ \begin{split} c_l&=
@@ -375,7 +375,7 @@ The `operand` is broadcast to the shape described by `out_dim_size`.
 `broadcast_dimensions` maps the dimensions of `operand` to the dimensions of the
 target shape, i.e. the i'th dimension of the operand is mapped to the
 broadcast_dimension\[i\]'th dimension of the output shape. The dimensions of
-`operand` must have size 1 or be the same size as the dimension in in the output
+`operand` must have size 1 or be the same size as the dimension in the output
 shape they are mapped to. The remaining dimensions are filled with dimensions of
 size 1. Degenerate-dimension broadcasting then broadcasts along these degenerate
 dimensions to reach the output shape. The semantics are described in detail on
@@ -618,36 +618,44 @@ See also
 <b> `Conditional(pred, true_operand, true_computation, false_operand,
 false_computation)` </b>
 
+<!-- mdformat off(disable mdformat for proper MathJax formatting) -->
+
 Arguments           | Type             | Semantics
-------------------- | ---------------- | --------------------------------------
+------------------- | ---------------- | ------------------------------------
 `pred`              | `XlaOp`          | Scalar of type `PRED`
-`true_operand`      | `XlaOp`          | Argument of type $$ T_0 $$
-`true_computation`  | `XlaComputation` | XlaComputation of type $$ T_0 \to S$$
-`false_operand`     | `XlaOp`          | Argument of type $$ T_1 $$
-`false_computation` | `XlaComputation` | XlaComputation of type $$ T_1 \to S $$
+`true_operand`      | `XlaOp`          | Argument of type \\(T_0\\)
+`true_computation`  | `XlaComputation` | XlaComputation of type \\(T_0 \to S\\)
+`false_operand`     | `XlaOp`          | Argument of type \\(T_1\\)
+`false_computation` | `XlaComputation` | XlaComputation of type \\(T_1 \to S\\)
 
 Executes `true_computation` if `pred` is `true`, `false_computation` if `pred`
 is `false`, and returns the result.
 
-The `true_computation` must take in a single argument of type $$ T_0 $$ and will
+The `true_computation` must take in a single argument of type \\(T_0\\) and will
 be invoked with `true_operand` which must be of the same type. The
-`false_computation` must take in a single argument of type $$ T_1 $$ and will be
+`false_computation` must take in a single argument of type \\(T_1\\) and will be
 invoked with `false_operand` which must be of the same type. The type of the
 returned value of `true_computation` and `false_computation` must be the same.
+
+<!-- mdformat on -->
 
 Note that only one of `true_computation` and `false_computation` will be
 executed depending on the value of `pred`.
 
 <b> `Conditional(branch_index, branch_computations, branch_operands)` </b>
 
+<!-- mdformat off(disable mdformat for proper MathJax formatting) -->
+
 | Arguments             | Type                  | Semantics                    |
 | --------------------- | --------------------- | ---------------------------- |
 | `branch_index`        | `XlaOp`               | Scalar of type `S32`         |
-| `branch_computations` | sequence of N         | XlaComputations of type $$   |
+| `branch_computations` | sequence of N         | XlaComputations of type \\(  |
 :                       : `XlaComputation`      : T_0 \to S , T_1 \to S , ..., :
-:                       :                       : T_{N-1} \to S $$             :
-| `branch_operands`     | sequence of N `XlaOp` | Arguments of type $$ T_0 ,   |
-:                       :                       : T_1 , ..., T_{N-1} $$        :
+:                       :                       : T_{N-1} \to S \\)            :
+| `branch_operands`     | sequence of N `XlaOp` | Arguments of type \\( T_0 ,  |
+:                       :                       : T_1 , ..., T_{N-1} \\)       :
+
+<!-- mdformat on -->
 
 Executes `branch_computations[branch_index]`, and returns the result. If
 `branch_index` is an `S32` which is < 0 or >= N, then `branch_computations[N-1]`
@@ -803,15 +811,15 @@ Here is pseudo-code for a 2d convolution with padding and striding:
 
 ```
 for (b, oz, oy, ox) {  // output coordinates
-value = 0;
-for (iz, ky, kx) {  // kernel coordinates and input z
-iy = oy*stride_y + ky - pad_low_y;
-ix = ox*stride_x + kx - pad_low_x;
-if ((iy, ix) inside the base area considered without padding) {
-value += input(b, iz, iy, ix) * kernel(oz, iz, ky, kx);
-}
-}
-output(b, oz, oy, ox) = value;
+  value = 0;
+  for (iz, ky, kx) {  // kernel coordinates and input z
+    iy = oy*stride_y + ky - pad_low_y;
+    ix = ox*stride_x + kx - pad_low_x;
+    if ((iy, ix) inside the base area considered without padding) {
+      value += input(b, iz, iy, ix) * kernel(oz, iz, ky, kx);
+    }
+  }
+  output(b, oz, oy, ox) = value;
 }
 ```
 
@@ -891,19 +899,19 @@ Here is an example of an implementation of `myfunc`:
 
 ```
 extern "C" void myfunc(void* out, void** in) {
-float (&x)[2] = *static_cast<float(*)[2]>(in[0]);
-float (&y)[2][3] = *static_cast<float(*)[2][3]>(in[1]);
-EXPECT_EQ(1, x[0]);
-EXPECT_EQ(2, x[1]);
-EXPECT_EQ(10, y[0][0]);
-EXPECT_EQ(20, y[0][1]);
-EXPECT_EQ(30, y[0][2]);
-EXPECT_EQ(40, y[1][0]);
-EXPECT_EQ(50, y[1][1]);
-EXPECT_EQ(60, y[1][2]);
-float (&z)[3][3] = *static_cast<float(*)[3][3]>(out);
-z[0][0] = x[1] + y[1][0];
-// ...
+  float (&x)[2] = *static_cast<float(*)[2]>(in[0]);
+  float (&y)[2][3] = *static_cast<float(*)[2][3]>(in[1]);
+  EXPECT_EQ(1, x[0]);
+  EXPECT_EQ(2, x[1]);
+  EXPECT_EQ(10, y[0][0]);
+  EXPECT_EQ(20, y[0][1]);
+  EXPECT_EQ(30, y[0][2]);
+  EXPECT_EQ(40, y[1][0]);
+  EXPECT_EQ(50, y[1][1]);
+  EXPECT_EQ(60, y[1][2]);
+  float (&z)[3][3] = *static_cast<float(*)[3][3]>(out);
+  z[0][0] = x[1] + y[1][0];
+  // ...
 }
 ```
 
@@ -1227,7 +1235,10 @@ floating-point types.
 
 Where `Op` is one of `Eq` (equal-to), `Ne` (not equal-to), `Ge`
 (greater-or-equal-than), `Gt` (greater-than), `Le` (less-or-equal-than), `Lt`
-(less-than).
+(less-than). Another set of operators, EqTotalOrder, NeTotalOrder, GeTotalOrder,
+GtTotalOrder, LeTotalOrder, and LtTotalOrder, provide the same functionalities,
+except that they additionally support a total order over the floating point
+numbers, by enforcing -NaN < -Inf < -Finite < -0 < +0 < +Finite < +Inf < +NaN.
 
 Arguments | Type    | Semantics
 --------- | ------- | ----------------------------------------
@@ -1280,6 +1291,9 @@ if and only if the corresponding input element is finite.
 
 <b>`LogicalNot(operand)`</b> Element-wise logical not `x -> !(x)`.
 
+<b>`Logistic(operand)`</b> Element-wise logistic function computation `x ->
+logistic(x)`.
+
 <b>`PopulationCount(operand)`</b> Computes the number of bits set in each
 element of `operand`.
 
@@ -1299,6 +1313,8 @@ using the comparison operator of the element type of `operand`.
 
 <b>`Sqrt(operand)`</b> Element-wise square root operation `x -> sqrt(x)`.
 
+<b>`Cbrt(operand)`</b> Element-wise cubic root operation `x -> cbrt(x)`.
+
 <b>`Tanh(operand)`</b> Element-wise hyperbolic tangent `x -> tanh(x)`.
 
 
@@ -1314,7 +1330,7 @@ array with the same shape. It is allowed for `operand` to be a scalar (rank 0).
 The XLA FFT operation implements the forward and inverse Fourier Transforms for
 real and complex inputs/outputs. Multidimensional FFTs on up to 3 axes are
 supported, except on TPU, where only a single axis is supported (please file a
-github issue if you require higher order).
+GitHub issue if you require higher order).
 
 See also
 [`XlaBuilder::Fft`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
@@ -1686,11 +1702,11 @@ dependency between the while loops.
 
 ```
 result1 = while (condition, init = init_value) {
-Infeed(shape)
+  Infeed(shape)
 }
 
 result2 = while (condition, init = result1) {
-Infeed(shape)
+  Infeed(shape)
 }
 ```
 
@@ -2299,20 +2315,26 @@ The output is guaranteed to be a deterministic function of the initial state but
 it is *not* guaranteed to be deterministic between backends and different
 compiler versions.
 
-<b>`RngBitGenerator(algorithm, key, shape)`</b> | Arguments | Type | Semantics |
-|---------------- | ----------------- | ------------------------------------- |
-| `algorithm` | `RandomAlgorithm` | PRNG algorithm to be used. | |
-`initial_state` | `XlaOp` | Initial state for the PRNG algorithm. | | `shape` |
-`Shape` | Output shape for generated data. |
+<b>`RngBitGenerator(algorithm, key, shape)`</b>
 
-Available values for `algorithm`: * `rng_default`: Backend specific algorithm
-with backend specific shape requirements. * `rng_three_fry`: ThreeFry
-counter-based PRNG algorithm. The `initial_state` shape is `u64[2]` with
-arbitrary values.
-[Salmon et al. SC 2011. Parallel random numbers: as easy as 1, 2, 3.](http://www.thesalmons.org/john/random123/papers/random123sc11.pdf)
-* `rng_philox`: Philox algorithm to generate random numbers in parallel. The
-`initial_state` shape is `u64[3]` with arbitrary values.
-[Salmon et al. SC 2011. Parallel random numbers: as easy as 1, 2, 3.](http://www.thesalmons.org/john/random123/papers/random123sc11.pdf)
+Arguments       | Type              | Semantics
+--------------- | ----------------- | -------------------------------------
+`algorithm`     | `RandomAlgorithm` | PRNG algorithm to be used.
+`initial_state` | `XlaOp`           | Initial state for the PRNG algorithm.
+`shape`         | `Shape`           | Output shape for generated data.
+
+Available values for `algorithm`:
+
+-   `rng_default`: Backend specific algorithm with backend specific shape
+    requirements.
+
+-   `rng_three_fry`: ThreeFry counter-based PRNG algorithm. The `initial_state`
+    shape is `u64[2]` with arbitrary values.
+    [Salmon et al. SC 2011. Parallel random numbers: as easy as 1, 2, 3.](http://www.thesalmons.org/john/random123/papers/random123sc11.pdf)
+
+-   `rng_philox`: Philox algorithm to generate random numbers in parallel. The
+    `initial_state` shape is `u64[3]` with arbitrary values.
+    [Salmon et al. SC 2011. Parallel random numbers: as easy as 1, 2, 3.](http://www.thesalmons.org/john/random123/papers/random123sc11.pdf)
 
 ## Scatter
 

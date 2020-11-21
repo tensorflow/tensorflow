@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tf-executor-island-coarsening | FileCheck %s --dump-input=fail
+// RUN: tf-opt %s -tf-executor-island-coarsening | FileCheck %s
 
 
 // Test that islands linked by a control dependency are merged.
@@ -220,7 +220,7 @@ func @merge_islands_only() {
     %11:2 = tf_executor.island(%10#1) wraps "tf.opF"() : () -> tensor<i32>
     %12:2 = tf_executor.island wraps "tf.opG"(%10#0, %11#0) : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
     %13 = tf_executor.ControlTrigger %2, %12#1, %9#1
-    tf_executor.NextIteration.Sink [%3#1] %12#0, %13 : tensor<*xi32>
+    tf_executor.NextIteration.Sink[%3#1] %12#0, %13 : tensor<*xi32>
     tf_executor.fetch
   }
   return
@@ -244,7 +244,7 @@ func @merge_islands_only() {
 // CHECK-NEXT:     %[[OP_G:[0-9]*]] = "tf.opG"(%[[OP_E]], %[[OP_F]])
 // CHECK-NEXT:     tf_executor.yield %[[OP_G]] : tensor<*xi32>
 // CHECK:        %[[CT:.*]] = tf_executor.ControlTrigger %[[ISLAND_1]], %[[ISLAND_3_control]], %[[EXIT_control]]
-// CHECK-NEXT:   tf_executor.NextIteration.Sink [%[[NEXTIT_SRC_token]]] %[[ISLAND_3]], %[[CT]]
+// CHECK-NEXT:   tf_executor.NextIteration.Sink[%[[NEXTIT_SRC_token]]] %[[ISLAND_3]], %[[CT]]
 
 
 // Test no merging took place as cycle would be formed otherwise.

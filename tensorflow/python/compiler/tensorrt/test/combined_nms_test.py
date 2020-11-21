@@ -18,7 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.compiler.tf2tensorrt._pywrap_py_utils import get_linked_tensorrt_version
+import os
+
 from tensorflow.python.compiler.tensorrt.test import tf_trt_integration_test_base as trt_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -62,7 +63,7 @@ class CombinedNmsTest(trt_test.TfTrtIntegrationTestBase):
   def GetParams(self):
     # Parameters
     q = 1
-    batch_size = 1
+    batch_size = 2
     num_boxes = 200
     num_classes = 2
     max_total_size = 3
@@ -94,10 +95,39 @@ class CombinedNmsTest(trt_test.TfTrtIntegrationTestBase):
     # calibration will fail.
     # TODO(laigd): fix this.
     # Only run for TRT 5.1 and above.
-    ver = get_linked_tensorrt_version()
-    return (ver[0] > 5 or
-            (ver[0] == 5 and ver[1] >= 1)) and not trt_test.IsQuantizationMode(
-                run_params.precision_mode), 'test >=TRT5.1 and non-INT8'
+    return trt_test.IsTensorRTVersionGreaterEqual(
+        5, 1) and not trt_test.IsQuantizationMode(
+            run_params.precision_mode), 'test >=TRT5.1 and non-INT8'
+
+
+class CombinedNmsExecuteNativeSegmentTest(CombinedNmsTest):
+
+  def setUp(self):
+    super().setUp()
+    os.environ['TF_TRT_ALLOW_ENGINE_NATIVE_SEGMENT_EXECUTION'] = 'True'
+
+  def tearDown(self):
+    super().tearDown()
+    os.environ['TF_TRT_ALLOW_ENGINE_NATIVE_SEGMENT_EXECUTION'] = 'False'
+
+  def GetMaxBatchSize(self, run_params):
+    """Returns the max_batch_size that the converter should use for tests."""
+    if run_params.dynamic_engine:
+      return None
+
+    # Build the engine with the allowed max_batch_size less than the actual
+    # max_batch_size, to fore the runtime to execute the native segment. This
+    # is to test that combined_non_max_suppression, which doesn't have a TF GPU
+    # implementation, can be executed natively even though the it is in the
+    # the graph for the TRTEngineOp with a GPU as a default device.
+    return super().GetMaxBatchSize(run_params) - 1
+
+  def ShouldRunTest(self, run_params):
+    should_run, reason = super().ShouldRunTest(run_params)
+    # max_batch_size is only useful for selecting static engines. As such,
+    # we shouldn't run the test for dynamic engines.
+    return should_run and \
+        not run_params.dynamic_engine, reason + ' and static engines'
 
 
 if __name__ == '__main__':

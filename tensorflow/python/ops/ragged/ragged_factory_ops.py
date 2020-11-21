@@ -59,8 +59,8 @@ def constant(pylist, dtype=None, ragged_rank=None, inner_shape=None,
       `pylist`.
     ragged_rank: An integer specifying the ragged rank of the returned
       `RaggedTensor`.  Must be nonnegative and less than `K`. Defaults to
-      `max(0, K - 1)` if `inner_shape` is not specified.  Defaults to `max(0, K
-      - 1 - len(inner_shape))` if `inner_shape` is specified.
+      `max(0, K - 1)` if `inner_shape` is not specified.  Defaults to
+      `max(0, K - 1 - len(inner_shape))` if `inner_shape` is specified.
     inner_shape: A tuple of integers specifying the shape for individual inner
       values in the returned `RaggedTensor`.  Defaults to `()` if `ragged_rank`
       is not specified.  If `ragged_rank` is specified, then a default is chosen
@@ -346,5 +346,6 @@ def placeholder(dtype, ragged_rank, value_shape=None, name=None):
     for i in reversed(range(ragged_rank)):
       row_splits = array_ops.placeholder(dtypes.int64, [None],
                                          "row_splits_%d" % i)
-      result = ragged_tensor.RaggedTensor.from_row_splits(result, row_splits)
+      result = ragged_tensor.RaggedTensor.from_row_splits(result, row_splits,
+                                                          validate=False)
     return result

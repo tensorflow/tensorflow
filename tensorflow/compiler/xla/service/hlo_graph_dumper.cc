@@ -312,12 +312,13 @@ optional<string> MatchTrivialComputation(const HloComputation* computation) {
 class HloDotDumper {
  public:
   HloDotDumper(const HloComputation* computation, absl::string_view label,
-               const DebugOptions& debug_options, bool show_backend_config,
+               const DebugOptions& debug_options,
+               HloRenderOptions hlo_render_options,
                const HloExecutionProfile* profile, NodeFilter filter)
       : computation_(computation),
         label_(label),
         debug_options_(debug_options),
-        show_backend_config_(show_backend_config),
+        hlo_render_options_(hlo_render_options),
         profile_(profile),
         filter_(std::move(filter)) {}
 
@@ -384,7 +385,7 @@ class HloDotDumper {
   const HloComputation* computation_;  // never null
   const string label_;                 // overall name for the graph
   const DebugOptions& debug_options_;
-  const bool show_backend_config_;
+  const HloRenderOptions hlo_render_options_;
   const HloExecutionProfile* profile_;  // may be null
   const NodeFilter filter_;
 
@@ -565,7 +566,8 @@ bool HloDotDumper::ShouldShowFusionSubcomputation(const HloInstruction* instr) {
 bool HloDotDumper::ShouldShowSubcomputation(const HloComputation* subcomp) {
   if (subcomp->IsFusionComputation()) {
     const HloInstruction* fusion = subcomp->FusionInstruction();
-    if (!filter_.Show(fusion) || filter_.SomeOrAllOperandsOmitted(fusion)) {
+    if (!filter_.Show(fusion) || filter_.SomeOrAllOperandsOmitted(fusion) ||
+        !hlo_render_options_.show_fusion_subcomputations) {
       return false;
     }
   }
@@ -975,6 +977,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
+    case HloOpcode::kLogistic:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
     case HloOpcode::kSlice:
@@ -1009,6 +1012,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kGather:
     case HloOpcode::kPad:
     case HloOpcode::kReshape:
+    case HloOpcode::kDynamicReshape:
     case HloOpcode::kReverse:
     case HloOpcode::kTupleSelect:
     case HloOpcode::kTranspose:
@@ -1061,6 +1065,8 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kAllReduce:
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectivePermute:
+    case HloOpcode::kCollectivePermuteStart:
+    case HloOpcode::kCollectivePermuteDone:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kPartitionId:
@@ -1131,7 +1137,8 @@ string HloDotDumper::GetInstructionNodeMetadata(const HloInstruction* instr) {
 
 string HloDotDumper::GetInstructionNodeBackendConfig(
     const HloInstruction* instr) {
-  if (!show_backend_config_ || instr->raw_backend_config_string().empty()) {
+  if (!hlo_render_options_.show_backend_config ||
+      instr->raw_backend_config_string().empty()) {
     return "";
   }
 
@@ -1175,7 +1182,7 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
       instr_shape = StrCat(
           absl::string_view(instr_shape).substr(0, kMaxShapeLen - 3), "...");
     }
-    lines.push_back(instr_shape);
+    lines.push_back(HtmlLikeStringSanitize(instr_shape));
   }
   if (debug_options_.xla_hlo_graph_addresses()) {
     lines.push_back(StrFormat("[%p]", instr));
@@ -1602,14 +1609,14 @@ StatusOr<string> RenderGraph(const HloComputation& computation,
                              const DebugOptions& debug_options,
                              RenderedGraphFormat format,
                              const HloExecutionProfile* hlo_execution_profile,
-                             bool show_backend_config) {
+                             HloRenderOptions hlo_render_options) {
   tensorflow::mutex_lock lock(url_renderer_mu);
   if (format == RenderedGraphFormat::kUrl && url_renderer == nullptr) {
     return Unavailable("Can't render as URL; no URL renderer was registered.");
   }
 
   string rendered_dot =
-      HloDotDumper(&computation, label, debug_options, show_backend_config,
+      HloDotDumper(&computation, label, debug_options, hlo_render_options,
                    hlo_execution_profile, NodeFilter())
           .Dump();
   return WrapDotInFormat(rendered_dot, format);
@@ -1617,7 +1624,7 @@ StatusOr<string> RenderGraph(const HloComputation& computation,
 
 StatusOr<string> RenderNeighborhoodAround(
     const HloInstruction& node, int radius, RenderedGraphFormat format,
-    bool show_backend_config,
+    HloRenderOptions hlo_render_options,
     const absl::flat_hash_set<const HloInstruction*>& boundary) {
   tensorflow::mutex_lock lock(url_renderer_mu);
   if (format == RenderedGraphFormat::kUrl && url_renderer == nullptr) {
@@ -1630,7 +1637,7 @@ StatusOr<string> RenderNeighborhoodAround(
   string rendered_dot =
       HloDotDumper(node.parent(), label,
                    node.GetModule()->config().debug_options(),
-                   show_backend_config, /*profile=*/nullptr,
+                   hlo_render_options, /*profile=*/nullptr,
                    MakeNodeRadiusAroundFilter(&node, radius, boundary))
           .Dump();
   return WrapDotInFormat(rendered_dot, format);
@@ -1639,7 +1646,7 @@ StatusOr<string> RenderNeighborhoodAround(
 StatusOr<string> RenderAllPathsFromTo(const HloInstruction& from,
                                       const HloInstruction& to, int64 max_nodes,
                                       RenderedGraphFormat format,
-                                      bool show_backend_config) {
+                                      HloRenderOptions hlo_render_options) {
   tensorflow::mutex_lock lock(url_renderer_mu);
   if (format == RenderedGraphFormat::kUrl && url_renderer == nullptr) {
     return FailedPrecondition(
@@ -1661,7 +1668,7 @@ StatusOr<string> RenderAllPathsFromTo(const HloInstruction& from,
                    "NODES***<br/><br/>");
   }
   string rendered_dot =
-      HloDotDumper(from.parent(), label, debug_options, show_backend_config,
+      HloDotDumper(from.parent(), label, debug_options, hlo_render_options,
                    /*profile=*/nullptr, filter)
           .Dump();
   return WrapDotInFormat(rendered_dot, format);

@@ -25,8 +25,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/errors.h"
 
-#if GOOGLE_CUDA
-#if GOOGLE_TENSORRT
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
 #include "third_party/tensorrt/NvInfer.h"
 
 namespace tensorflow {
@@ -46,6 +45,14 @@ Status GetTrtBindingShape(const nvinfer1::ICudaEngine* cuda_engine,
     // Get dims from context instead of engine in explicit batch mode because
     // the engine might have dynamic shapes.
     dims = execution_context->getBindingDimensions(binding_index);
+    if (dims.nbDims == -1) {
+      // Invalid dimensions. There can be multiple reasons for this. If we have
+      // incompatible input shapes (network invalid for the current profile)
+      // that can trigger this error.
+      return errors::Internal(
+          "Binding index out of range. This can happen if profile is not set, "
+          "or the network is invalid for the current profile.");
+    }
 #else
     return errors::Internal(
         "Explicit batch mode is only supported with TensorRT 6 and above.");
@@ -249,5 +256,4 @@ Status TrtEnqueue(nvinfer1::IExecutionContext* execution_context,
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif  // GOOGLE_TENSORRT
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT

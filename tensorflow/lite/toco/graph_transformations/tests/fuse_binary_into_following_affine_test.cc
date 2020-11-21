@@ -43,14 +43,15 @@ class FuseBinaryIntoFollowingAffineTest : public ::testing::Test {
 
   void SetUp() override { model_.reset(new Model); }
 
-  void CreateArray(const string& name, const std::vector<int>& shape) {
+  void CreateArray(const std::string& name, const std::vector<int>& shape) {
     Array& array = model_->GetOrCreateArray(name);
     array.data_type = ArrayDataType::kFloat;
     Shape* array_shape = array.mutable_shape();
     *(array_shape->mutable_dims()) = shape;
   }
 
-  void CreateConstantArray(const string& name, const std::vector<int>& shape,
+  void CreateConstantArray(const std::string& name,
+                           const std::vector<int>& shape,
                            const std::vector<float>& data) {
     CreateArray(name, shape);
     Array& array = model_->GetOrCreateArray(name);

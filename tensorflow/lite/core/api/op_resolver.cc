@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "tensorflow/lite/core/api/op_resolver.h"
 
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/schema/schema_utils.h"
+
 namespace tflite {
 
 TfLiteStatus GetRegistrationFromOpCode(
@@ -22,7 +27,7 @@ TfLiteStatus GetRegistrationFromOpCode(
     ErrorReporter* error_reporter, const TfLiteRegistration** registration) {
   TfLiteStatus status = kTfLiteOk;
   *registration = nullptr;
-  auto builtin_code = opcode->builtin_code();
+  auto builtin_code = GetBuiltinCode(opcode);
   int version = opcode->version();
 
   if (builtin_code > BuiltinOperator_MAX ||

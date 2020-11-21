@@ -17,9 +17,9 @@ limitations under the License.
  * micro_speech_test.cc */
 
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/examples/micro_speech/simple_features/model.h"
 #include "tensorflow/lite/micro/examples/micro_speech/simple_features/simple_features_generator.h"
-#include "tensorflow/lite/micro/kernels/all_ops_resolver.h"
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
@@ -69,7 +69,7 @@ TF_LITE_MICRO_TEST(TestSimpleFeaturesGenerator) {
   }
 
   // This pulls in all the operation implementations we need.
-  tflite::ops::micro::AllOpsResolver resolver;
+  tflite::AllOpsResolver resolver;
 
   // Create an area of memory to use for input, output, and intermediate arrays.
   const int tensor_arena_size = 10 * 1024;

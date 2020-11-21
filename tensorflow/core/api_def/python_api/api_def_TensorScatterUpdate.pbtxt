@@ -1,11 +1,4 @@
 op {
   graph_op_name: "TensorScatterUpdate"
-  deprecation_message: "Use tensor_scatter_nd_update instead"
-  endpoint {
-    name: "tensor_scatter_nd_update"
-  }
-  endpoint {
-    name: "tensor_scatter_update"
-    deprecation_version: 2
-  }
+  visibility: HIDDEN
 }

@@ -32,7 +32,11 @@ OpBuilder* CreateFullyConnectedOpBuilder(GraphBuilder* graph_builder);
 OpBuilder* CreateHardSwishOpBuilder(GraphBuilder* graph_builder);
 OpBuilder* CreateLogisticOpBuilder(GraphBuilder* graph_builder);
 OpBuilder* CreateMaxPool2dOpBuilder(GraphBuilder* graph_builder);
+OpBuilder* CreateMeanOpBuilder(GraphBuilder* graph_builder);
+OpBuilder* CreateMirrorPadOpBuilder(GraphBuilder* graph_builder);
 OpBuilder* CreateMulOpBuilder(GraphBuilder* graph_builder);
+// PAD handles PAD and PADV2 together.
+OpBuilder* CreatePadOpBuilder(GraphBuilder* graph_builder);
 OpBuilder* CreateReluOpBuilder(GraphBuilder* graph_builder);
 OpBuilder* CreateReluN1To1OpBuilder(GraphBuilder* graph_builder);
 OpBuilder* CreateRelu6OpBuilder(GraphBuilder* graph_builder);
@@ -44,6 +48,8 @@ OpBuilder* CreateTransposeConvolutionOpBuilder(GraphBuilder* graph_builder);
 
 OpBuilder* CreateActivationLayerBuilder(GraphBuilder* graph_builder);
 OpBuilder* CreateThresholdLayerBuilder(GraphBuilder* graph_builder);
+// Dummy Opbuilder for nodes that are claimed but not used. ex) FP16 dequantize
+OpBuilder* CreateDummyOpBuilder(GraphBuilder* graph_builder);
 
 }  // namespace coreml
 }  // namespace delegates

@@ -1,0 +1,66 @@
+op {
+  graph_op_name: "XlaHostCompute"
+  in_arg {
+    name: "inputs"
+    description: <<END
+A list of tensors that will be sent to the host.
+END
+  }
+  out_arg {
+    name: "outputs"
+    description: <<END
+A list of tensors that will be returned to the device.
+END
+  }
+  attr {
+    name: "Tinputs"
+    description: <<END
+The element types of each element in `inputs`.
+END
+  }
+  attr {
+    name: "Toutputs"
+    description: <<END
+The element types of each element in `outputs`.
+END
+  }
+  attr {
+    name: "ancestors"
+    description: <<END
+A list of names of HostCompute computations that must be
+sequenced before this computation.
+END
+  }
+  attr {
+    name: "shapes"
+    description: <<END
+If shape_inference_graph is empty, a list of the shapes of `outputs`.
+END
+  }
+  attr {
+    name: "shape_inference_graph"
+    description: <<END
+If non-empty, a serialized GraphDef representing a graph
+that must be analyzed at compile time to determine the shapes of the outputs.
+END
+  }
+  attr {
+    name: "key"
+    description: <<END
+A unique identifier for this region used to match up host transfers.
+END
+  }
+  attr {
+    name: "cost_estimate_ns"
+    description: <<END
+Estimated duration of the host computation in nanoseconds.
+END
+  }
+  attr {
+    name: "tpu_core"
+    description: <<END
+Default core to use for host to device transfers.
+END
+  }
+  summary: "A pseudo-op to represent host-side computation in an XLA program."
+}

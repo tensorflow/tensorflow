@@ -12,30 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-/// Deserialization infrastructure for tflite. Provides functionality
-/// to go from a serialized tflite model in flatbuffer format to an
-/// interpreter.
+/// \file
+/// Defines tflite::Interpreter and tflite::InterpreterBuilder.
 ///
 #ifndef TENSORFLOW_LITE_MODEL_H_
 #define TENSORFLOW_LITE_MODEL_H_
 
+#include "tensorflow/lite/interpreter_builder.h"
 #include "tensorflow/lite/model_builder.h"
 
-#if TFLITE_EXPERIMENTAL_RUNTIME_EAGER
-#include "tensorflow/lite/experimental/tf_runtime/lib/eager_model.h"
-#else
-#include "tensorflow/lite/interpreter_builder.h"
-#endif
-
-namespace tflite {
-
-#if TFLITE_EXPERIMENTAL_RUNTIME_EAGER
-using InterpreterBuilder = tflrt::EagerTfLiteInterpreterBuilderAPI;
-using Interpreter = tflrt::EagerInterpreter;
-#else
-using InterpreterBuilder = impl::InterpreterBuilder;
-#endif
-
-}  // namespace tflite
+// TODO(b/168725050): Address the issue of proxy header in this file.
 
 #endif  // TENSORFLOW_LITE_MODEL_H_

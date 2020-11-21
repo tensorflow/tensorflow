@@ -54,6 +54,20 @@ class AbstractTensorInterface {
   virtual ~AbstractTensorInterface() {}
 };
 
+namespace internal {
+struct AbstractTensorInterfaceDeleter {
+  void operator()(AbstractTensorInterface* p) const {
+    if (p != nullptr) {
+      p->Release();
+    }
+  }
+};
+}  // namespace internal
+
+using AbstractTensorPtr =
+    std::unique_ptr<AbstractTensorInterface,
+                    internal::AbstractTensorInterfaceDeleter>;
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_C_TENSOR_INTERFACE_H_

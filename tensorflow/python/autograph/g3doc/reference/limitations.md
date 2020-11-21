@@ -66,22 +66,48 @@ else:
   pass
 ```
 
-Similarly, variables may not be defined inside a TensorFlow loop, unless they
-are local to the loop. A variable is local to the loop if (1) it's not used
-after the loop and (2) the value from a previour iteration is not used in the
-next iteration:
+Similarly, variables must usually be defined before a TensorFlow loop.
+
+The most common example that is not allowed is a loop which initializes some
+accumulator variable in the first iteration:
 
 ```
 del x
-while tf.random.uniform(()) > 0.5:  # Error -- x must be defined before the loop
+for i in tf.range(100):  # Error -- x must be defined before the loop
+  if i == 0:
+    x = tf.constant(1)
+  else:
+    x = x + 1
+tf.print(x)
+```
+
+When the variable is only used inside the loop and does not depend on previous
+iterations, then it's ok to only be initialized inside the loop.
+
+```
+del x
+while tf.random.uniform(()) > 0.5:  # Okay -- x is not used after the loop
+  x = tf.constant(1)
+```
+
+* New in TF 2.4 *
+
+As long as it doesn't depend on previous iterations, the variable may also be
+used after the loop, however in that case the loop must execute at least one
+iteration, and will raise a runtime error otherwise.
+
+```
+del x
+for i in tf.range(10):  # Okay -- x does not depend on previous iterations
   x = tf.constant(1)
 tf.print(x)
 ```
 
 ```
 del x
-while tf.random.uniform(()) > 0.5:  # Okay -- x is local to the loop
+while tf.constant(False):  # Error -- loop must initialize x!
   x = tf.constant(1)
+tf.print(x)
 ```
 
 Avoid these limitations by defining a default value before the control flow
@@ -97,6 +123,34 @@ tf.print(x)  # Okay -- x is either 0 or 1
 Note: `None` values and undefined symbols are allowed in Eager control flow,
 because Eager execution uses Python control flow, rather than TensorFlow
 control flow ops.
+
+#### Special case: creating Tensors in a loop
+
+* New in TF 2.4 *
+
+A very common use-case is to run a training loop that creates some outputs:
+
+```
+for i in tf.range(num_steps):
+  outputs = train(next(data_iterator))
+```
+
+Often times these outputs can be nested structures of Tensors, which makes them
+impractical to initialize ahead of the loop.
+
+To help with this use-case, AutoGraph lets you run such loops, under certain
+conditions:
+
+ * outputs must be a Tensor, Python numeric, or a structure of these
+ * outputs must not depend on the value from a previous iteration; in other
+   words, the outputs may only appear to the left of an assignment operation
+ * the loop must run at least one iteration
+
+If the type of outputs is not recognized, then the usual
+"outputs must be defined before the loop" is raised at graph construction.
+
+AutoGraph also inserts a `tf.Assert` statement that raises a runtime error
+if the loop did not execute at least one iteration.
 
 ### Indirect modifications and hidden side effects in TensorFlow control flow
 
@@ -230,7 +284,7 @@ A special case of hidden side effects are methods, which are commonly used
 to change the value of objects:
 
 ```
-def MyClass(object):
+class MyClass(object):
   def change(self):
     self.y += 1
 
@@ -254,7 +308,7 @@ temporary objects when executing eagerly, but their number is greatly reduced
 in `@tf.function`:
 
 ```
-def MyClass(object):
+class MyClass(object):
   def change(self):
     self.y += 1
     return self
@@ -322,8 +376,7 @@ l()  # Prints 0!
 ```
 
 Note that none of these restrictions only apply to TensorFlow loops; Python
-loops correctly correctly handle closures in all cases.
-
+loops correctly handle closures in all cases.
 
 ### Python collections in TensorFlow control flow
 
@@ -645,16 +698,64 @@ to quickly diagnose whether the source code is available for a function.
 
 #### Source code of lambda functions
 
-Key Point: Declare lambda functions on separate lines to avoid failures to
-load their source code.
+##### Changes in TF 2.4
+
+Key Point: When nesting lambda functions, use distinguishing argument names
+to avoid parse errors.
 
 The Python runtime exposes the source code of lambda functions, however it
-may include surrounding code. Typically, the code includes all the lines that
-contained the lambda function, including surrounding code. This may make it
+may omit parts of the actual body, or include surrounding code. This may make it
+impossible to parse the exact source code of the lambda function (see
+https://github.com/tensorflow/tensorflow/issues/39832).
+
+AutoGraph uses alternate methods to parse the source code more robustly, but
+in rare cases it may be unable to distinguish between nested lambda functions
+of identical signatures.
+
+Example:
+
+```
+l = lambda x: lambda x: x + 1
+```
+
+AutoGraph raises an error for the code above because the parser cannot
+distinguish between the two function signatures. To work around this limitation,
+use distinct argument names:
+
+```
+l = lambda outer_x: lambda inner_x: inner_x + 1
+```
+
+##### TF 2.3 and older
+
+In older versions of TensorFlow, the loading code for lambda functions is not
+robust. Follow the guidance below to avoid errors.
+
+Important: Declare lambda functions on single lines to make sure their source
+code loads correctly.
+
+The Python runtime exposes the source code of lambda functions, however it
+may omit parts of the actual body, or include surrounding code. This may make it
 impossible to parse the exact source code of the lambda function.
 
-For example, consider the declaration of a lambda function below, which
-is otherwise valid Python code:
+For example, consider the declaration of a lambda function below:
+
+```
+foo = (
+    lambda y: lambda x: x * y
+    - y
+)
+```
+
+The Python runtime will report the following source code for `foo`:
+
+```
+>>> inspect.getsource(foo)
+'    lambda y: lambda x: x*y \n'
+```
+
+In other cases, the source code it returns is not valid Python code, resulting
+in an error:
 
 ```
 foo = (
@@ -662,20 +763,30 @@ foo = (
  lambda: x)
 ```
 
-The Python runtime will report the following source code for `foo[0]`:
+The reported source code contains an invalid token `)`:
 
 ```
->>> inspect.getsource(foo[0])
+>>> inspect.getsource(foo[1])
 ' lambda: x)\n'
 ```
 
-The code is the entire line of code at which the lambda was declared. Because
-the line is part of a larger expression, the line itself is not syntactically
-correct and cannot be parsed.
+This shortcoming can be avoided by declaring the lambda in a single assignment
+or return value, and avoiding placing it inside parentheses which could cause
+auto-formatting tools to break it into multiple lines:
 
-This shortcoming can be avoided by declaring the lambda function separately:
 
 ```
+# Good - single assignment
 my_lambda = lambda: x
-foo = ('bar', my_lambda)
+
+# Good - single return
+return lambda x, y: x*y - y
+```
+
+```
+# Bad - wrapped in parentheses
+my_lambda = (lambda x, y: x * y - y)
+
+# Bad - inlined in another expression
+foo(lambda x, y: x + y, bar)
 ```

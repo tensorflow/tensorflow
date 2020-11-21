@@ -149,7 +149,7 @@ bool RecursivelyBackwardPropagateDataType(GraphTransformation* transformation,
                                           ArrayDataType new_data_type,
                                           const MinMax& new_minmax) {
   bool did_change = false;
-  for (int input_index = 0; input_index < op->inputs.size(); ++input_index) {
+  for (size_t input_index = 0; input_index < op->inputs.size(); ++input_index) {
     const auto& input = op->inputs[input_index];
     auto& input_array = model->GetArray(input);
 

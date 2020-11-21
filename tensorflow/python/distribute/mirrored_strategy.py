@@ -20,9 +20,11 @@ from __future__ import print_function
 
 import copy
 
+from tensorflow.python.distribute import collective_util
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import mirrored_run
 from tensorflow.python.distribute import multi_worker_util
@@ -85,7 +87,7 @@ def _cluster_spec_to_device_list(cluster_spec, num_gpus_per_worker):
   for task_type in ("chief", "worker"):
     for task_id in range(len(cluster_spec.as_dict().get(task_type, []))):
       if num_gpus_per_worker == 0:
-        devices.append("/job:%s/task:%d" % (task_type, task_id))
+        devices.append("/job:%s/task:%d/device:CPU:0" % (task_type, task_id))
       else:
         devices.extend([
             "/job:%s/task:%d/device:GPU:%i" % (task_type, task_id, gpu_id)
@@ -189,9 +191,8 @@ class MirroredStrategy(distribute_lib.Strategy):
 
   This strategy is typically used for training on one
   machine with multiple GPUs. For TPUs, use
-  `tf.distribute.experimental.TPUStrategy`. To use `MirroredStrategy` with
-  multiple workers, please refer to
-  `tf.distribute.experimental.MultiWorkerMirroredStrategy`.
+  `tf.distribute.TPUStrategy`. To use `MirroredStrategy` with multiple workers,
+  please refer to `tf.distribute.experimental.MultiWorkerMirroredStrategy`.
 
   For example, a variable created under a `MirroredStrategy` is a
   `MirroredVariable`. If no devices are specified in the constructor argument of
@@ -199,13 +200,14 @@ class MirroredStrategy(distribute_lib.Strategy):
   will use the available CPUs. Note that TensorFlow treats all CPUs on a
   machine as a single device, and uses threads internally for parallelism.
 
-  >>> strategy = tf.distribute.MirroredStrategy()
+  >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
   >>> with strategy.scope():
   ...   x = tf.Variable(1.)
   >>> x
   MirroredVariable:{
-      0: <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=1.0>
-    }
+    0: <tf.Variable ... shape=() dtype=float32, numpy=1.0>,
+    1: <tf.Variable ... shape=() dtype=float32, numpy=1.0>
+  }
 
   While using distribution strategies, all the variable creation should be done
   within the strategy's scope. This will replicate the variables across all the
@@ -219,13 +221,15 @@ class MirroredStrategy(distribute_lib.Strategy):
   ... def create_variable():
   ...   if not x:
   ...     x.append(tf.Variable(1.))
-  >>> strategy = tf.distribute.MirroredStrategy()
+  ...   return x[0]
+  >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
   >>> with strategy.scope():
-  ...   create_variable()
-  ...   print (x[0])
+  ...   _ = create_variable()
+  ...   print(x[0])
   MirroredVariable:{
-      0: <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=1.0>
-    }
+    0: <tf.Variable ... shape=() dtype=float32, numpy=1.0>,
+    1: <tf.Variable ... shape=() dtype=float32, numpy=1.0>
+  }
 
   `experimental_distribute_dataset` can be used to distribute the dataset across
   the replicas when writing your own training loop. If you are using `.fit` and
@@ -310,11 +314,15 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     assert devices, ("Got an empty `devices` list and unable to recognize "
                      "any local devices.")
     self._cross_device_ops = cross_device_ops
+    self._communication_options = collective_util.Options()
     self._initialize_strategy(devices)
 
     # TODO(b/128995245): Enable last partial batch support in graph mode.
     if ops.executing_eagerly_outside_functions():
       self.experimental_enable_get_next_as_optional = True
+
+    # Flag to turn on VariablePolicy.
+    self._use_var_policy = False
 
   def _initialize_strategy(self, devices):
     # The _initialize_strategy method is intended to be used by distribute
@@ -331,16 +339,17 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
   def _initialize_single_worker(self, devices):
     """Initializes the object for single-worker training."""
     self._devices = tuple(device_util.canonicalize(d) for d in devices)
-    self._input_workers = input_lib.InputWorkers(
-        ((device_util.canonicalize("/device:CPU:0", devices[0]), devices),))
+    self._input_workers_devices = (
+        (device_util.canonicalize("/device:CPU:0", devices[0]), devices),)
+
     self._inferred_cross_device_ops = None if self._cross_device_ops else (
-        cross_device_ops_lib.choose_the_best(devices))
+        cross_device_ops_lib.select_cross_device_ops(devices))
     self._host_input_device = numpy_dataset.SingleDevice(
-        self._input_workers.worker_devices[0])
+        self._input_workers_devices[0][0])
     self._is_multi_worker_training = False
     logging.info("Using MirroredStrategy with devices %r", devices)
     device_spec = tf_device.DeviceSpec.from_string(
-        self._input_workers.worker_devices[0])
+        self._input_workers_devices[0][0])
     # Ensures when we enter strategy.scope() we use the correct default device
     if device_spec.job is not None and device_spec.job != "localhost":
       self._default_device = "/job:%s/replica:%d/task:%d" % (
@@ -368,22 +377,51 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     self._host_input_device = numpy_dataset.SingleDevice(workers[0])
 
     self._devices = tuple(devices)
-    self._input_workers = input_lib.InputWorkers(worker_devices)
+    self._input_workers_devices = worker_devices
     self._is_multi_worker_training = True
 
     if len(workers) > 1:
-      if not isinstance(self._cross_device_ops,
-                        cross_device_ops_lib.MultiWorkerAllReduce):
+      # Grandfather usage in the legacy tests if they're configured properly.
+      if (not isinstance(self._cross_device_ops,
+                         cross_device_ops_lib.ReductionToOneDevice) or
+          self._cross_device_ops._num_between_graph_workers > 1):  # pylint: disable=protected-access
         raise ValueError(
             "In-graph multi-worker training with `MirroredStrategy` is not "
             "supported.")
       self._inferred_cross_device_ops = self._cross_device_ops
     else:
-      # TODO(yuefengz): make `choose_the_best` work with device strings
+      # TODO(yuefengz): make `select_cross_device_ops` work with device strings
       # containing job names.
       self._inferred_cross_device_ops = cross_device_ops_lib.NcclAllReduce()
 
     logging.info("Using MirroredStrategy with remote devices %r", devices)
+
+  def _input_workers_with_options(self, options=None):
+    if not options:
+      return input_lib.InputWorkers(self._input_workers_devices)
+    if (options.experimental_replication_mode ==
+        distribute_lib.InputReplicationMode.PER_REPLICA):
+      if options.experimental_place_dataset_on_device:
+        self._input_workers_devices = (
+            tuple(
+                (device_util.canonicalize(d, d), (d,)) for d in self._devices))
+      else:
+        self._input_workers_devices = (
+            tuple((device_util.canonicalize("/device:CPU:0", d), (d,))
+                  for d in self._devices))
+      return input_lib.InputWorkers(self._input_workers_devices)
+    else:
+      if not options.experimental_prefetch_to_device:
+        return input_lib.InputWorkers([
+            (host_device, (host_device,) * len(compute_devices))
+            for host_device, compute_devices in self._input_workers_devices
+        ])
+      else:
+        return input_lib.InputWorkers(self._input_workers_devices)
+
+  @property
+  def _input_workers(self):
+    return self._input_workers_with_options()
 
   def _get_variable_creator_initial_value(self,
                                           replica_id,
@@ -445,20 +483,21 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
           value_list.append(v)
       return value_list
 
-    return values.create_mirrored_variable(self._container_strategy(),
-                                           _real_mirrored_creator,
-                                           values.MirroredVariable,
-                                           values.SyncOnReadVariable, **kwargs)
+    return distribute_utils.create_mirrored_variable(
+        self._container_strategy(), _real_mirrored_creator,
+        distribute_utils.VARIABLE_CLASS_MAPPING,
+        distribute_utils.VARIABLE_POLICY_MAPPING, **kwargs)
 
   def _validate_colocate_with_variable(self, colocate_with_variable):
-    values.validate_colocate_distributed_variable(colocate_with_variable, self)
+    distribute_utils.validate_colocate_distributed_variable(
+        colocate_with_variable, self)
 
   def _make_dataset_iterator(self, dataset):
     return input_lib.DatasetIterator(
         dataset,
         self._input_workers,
         self._container_strategy(),
-        split_batch_by=self._num_replicas_in_sync)
+        num_replicas_in_sync=self._num_replicas_in_sync)
 
   def _make_input_fn_iterator(
       self,
@@ -475,20 +514,28 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
                                            input_contexts,
                                            self._container_strategy())
 
-  def _experimental_distribute_dataset(self, dataset):
+  def _experimental_distribute_dataset(self, dataset, options):
+    if (options and options.experimental_replication_mode ==
+        distribute_lib.InputReplicationMode.PER_REPLICA):
+      raise NotImplementedError(
+          "InputReplicationMode.PER_REPLICA "
+          "is only supported in "
+          "`experimental_distribute_datasets_from_function`."
+      )
     return input_lib.get_distributed_dataset(
         dataset,
-        self._input_workers,
+        self._input_workers_with_options(options),
         self._container_strategy(),
-        split_batch_by=self._num_replicas_in_sync)
+        num_replicas_in_sync=self._num_replicas_in_sync)
 
   def _experimental_make_numpy_dataset(self, numpy_input, session):
     return numpy_dataset.one_host_numpy_dataset(
         numpy_input, self._host_input_device, session)
 
-  def _experimental_distribute_datasets_from_function(self, dataset_fn):
+  def _distribute_datasets_from_function(self, dataset_fn, options):
+    input_workers = self._input_workers_with_options(options)
     input_contexts = []
-    num_workers = self._input_workers.num_workers
+    num_workers = input_workers.num_workers
     for i in range(num_workers):
       input_contexts.append(distribute_lib.InputContext(
           num_input_pipelines=num_workers,
@@ -496,10 +543,8 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
           num_replicas_in_sync=self._num_replicas_in_sync))
 
     return input_lib.get_distributed_datasets_from_function(
-        dataset_fn,
-        self._input_workers,
-        input_contexts,
-        self._container_strategy())
+        dataset_fn, input_workers, input_contexts, self._container_strategy(),
+        options)
 
   def _experimental_distribute_values_from_function(self, value_fn):
     per_replica_values = []
@@ -507,7 +552,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
       per_replica_values.append(value_fn(
           distribute_lib.ValueContext(replica_id,
                                       self._num_replicas_in_sync)))
-    return values.regroup(per_replica_values, always_wrap=True)
+    return distribute_utils.regroup(per_replica_values, always_wrap=True)
 
   # TODO(priyag): Deal with OutOfRange errors once b/111349762 is fixed.
   def _experimental_run_steps_on_iterator(self, fn, iterator, iterations,
@@ -557,7 +602,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
       # For outputs that have already been reduced, wrap them in a Mirrored
       # container, else in a PerReplica container.
       if reduce_op is None:
-        last_step_tensor_outputs_dict[name] = values.regroup(output)
+        last_step_tensor_outputs_dict[name] = distribute_utils.regroup(output)
       else:
         assert len(output) == 1
         last_step_tensor_outputs_dict[name] = output[0]
@@ -577,11 +622,11 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     if not destinations:
       # TODO(josh11b): Use current logical device instead of 0 here.
       destinations = self._devices
-    return self._get_cross_device_ops().broadcast(tensor, destinations)
+    return self._get_cross_device_ops(tensor).broadcast(tensor, destinations)
 
   def _call_for_each_replica(self, fn, args, kwargs):
-    return mirrored_run.call_for_each_replica(self._container_strategy(), fn,
-                                              args, kwargs)
+    return mirrored_run.call_for_each_replica(
+        self._container_strategy(), fn, args, kwargs)
 
   def _configure(self,
                  session_config=None,
@@ -606,14 +651,25 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     updated_config.isolate_session_state = True
     return updated_config
 
-  def _get_cross_device_ops(self):
+  def _get_cross_device_ops(self, value):
+    del value  # Unused.
     return self._cross_device_ops or self._inferred_cross_device_ops
 
-  def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
-    if (isinstance(value, values.Mirrored) and
+  def _gather_to_implementation(self, value, destinations, axis, options):
+    if not isinstance(value, values.DistributedValues):
+      # ReductionToOneDevice._gather accepts DistributedValues only.
+      return value
+    return self._get_cross_device_ops(value)._gather(  # pylint: disable=protected-access
+        value,
+        destinations=destinations,
+        axis=axis,
+        options=self._communication_options.merge(options))
+
+  def _reduce_to(self, reduce_op, value, destinations, options):
+    if (distribute_utils.is_mirrored(value) and
         reduce_op == reduce_util.ReduceOp.MEAN):
       return value
-    assert not isinstance(value, values.Mirrored)
+    assert not distribute_utils.is_mirrored(value)
     if not isinstance(value, values.DistributedValues):
       # This function handles reducing values that are not PerReplica or
       # Mirrored values. For example, the same value could be present on all
@@ -621,17 +677,24 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
       # be 0.
       return cross_device_ops_lib.reduce_non_distributed_value(
           reduce_op, value, destinations, self._num_replicas_in_sync)
-    return self._get_cross_device_ops().reduce(
+    return self._get_cross_device_ops(value).reduce(
         reduce_op,
         value,
         destinations=destinations,
-        experimental_hints=experimental_hints)
+        options=self._communication_options.merge(options))
 
-  def _batch_reduce_to(self, reduce_op, value_destination_pairs,
-                       experimental_hints):
-    return self._get_cross_device_ops().batch_reduce(reduce_op,
-                                                     value_destination_pairs,
-                                                     experimental_hints)
+  def _batch_reduce_to(self, reduce_op, value_destination_pairs, options):
+    cross_device_ops = None
+    for value, _ in value_destination_pairs:
+      if cross_device_ops is None:
+        cross_device_ops = self._get_cross_device_ops(value)
+      elif cross_device_ops is not self._get_cross_device_ops(value):
+        raise ValueError("inputs to batch_reduce_to must be either all on the "
+                         "the host or all on the compute devices")
+    return cross_device_ops.batch_reduce(
+        reduce_op,
+        value_destination_pairs,
+        options=self._communication_options.merge(options))
 
   def _update(self, var, fn, args, kwargs, group):
     # TODO(josh11b): In eager mode, use one thread per device.
@@ -643,10 +706,10 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
            distribute_lib.UpdateContext(i), \
            ops.name_scope(name):
         # If args and kwargs are not mirrored, the value is returned as is.
-        updates.append(fn(v,
-                          *values.select_replica_mirrored(i, args),
-                          **values.select_replica_mirrored(i, kwargs)))
-    return values.update_regroup(self, updates, group)
+        updates.append(
+            fn(v, *distribute_utils.select_replica_mirrored(i, args),
+               **distribute_utils.select_replica_mirrored(i, kwargs)))
+    return distribute_utils.update_regroup(self, updates, group)
 
   def _update_non_slot(self, colocate_with, fn, args, kwargs, group):
     assert isinstance(colocate_with, tuple)
@@ -655,16 +718,19 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     for i, d in enumerate(colocate_with):
       name = "update_%d" % i
       with ops.device(d), distribute_lib.UpdateContext(i), ops.name_scope(name):
-        updates.append(fn(*values.select_replica_mirrored(i, args),
-                          **values.select_replica_mirrored(i, kwargs)))
-    return values.update_regroup(self, updates, group)
+        updates.append(
+            fn(*distribute_utils.select_replica_mirrored(i, args),
+               **distribute_utils.select_replica_mirrored(i, kwargs)))
+    return distribute_utils.update_regroup(self, updates, group)
 
   def read_var(self, replica_local_var):
     """Read the aggregate value of a replica-local variable."""
-    if isinstance(replica_local_var, values.SyncOnReadVariable):
-      return replica_local_var._get_cross_replica()  # pylint: disable=protected-access
-    assert isinstance(replica_local_var, values.Mirrored)
-    return array_ops.identity(replica_local_var._get())  # pylint: disable=protected-access
+    # pylint: disable=protected-access
+    if distribute_utils.is_sync_on_read(replica_local_var):
+      return replica_local_var._get_cross_replica()
+    assert distribute_utils.is_mirrored(replica_local_var)
+    return array_ops.identity(replica_local_var._get())
+    # pylint: enable=protected-access
 
   def _local_results(self, val):
     if isinstance(val, values.DistributedValues):
@@ -672,7 +738,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     return (val,)
 
   def value_container(self, val):
-    return values.value_container(val)
+    return distribute_utils.value_container(val)
 
   @property
   def _num_replicas_in_sync(self):
@@ -726,3 +792,9 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
   def _in_multi_worker_mode(self):
     """Whether this strategy indicates working in multi-worker settings."""
     return False
+
+  def _get_local_replica_id(self, replica_id_in_sync_group):
+    return replica_id_in_sync_group
+
+  def _get_replica_id_in_sync_group(self, replica_id):
+    return replica_id

@@ -64,6 +64,11 @@ ENABLE_SECURE_BUILD=${ENABLE_SECURE_BUILD:-no}
 BAZEL_VERSION=${BAZEL_VERSION}
 BUILD_PY2_CONTAINERS=${BUILD_PY2_CONTAINERS:-no}
 ENABLE_DNNL1=${ENABLE_DNNL1:-no}
+ENABLE_HOROVOD=${ENABLE_HOROVOD:-no}
+OPENMPI_VERSION=${OPENMPI_VERSION}
+OPENMPI_DOWNLOAD_URL=${OPENMPI_DOWNLOAD_URL}
+HOROVOD_VERSION=${HOROVOD_VERSION}
+IS_NIGHTLY=${IS_NIGHTLY:-no}
 
 debug "ROOT_CONTAINER=${ROOT_CONTAINER}"
 debug "TF_ROOT_CONTAINER_TAG=${TF_ROOT_CONTAINER_TAG}"
@@ -82,6 +87,11 @@ debug "TMP_DIR=${TMP_DIR}"
 debug "BAZEL_VERSION=${BAZEL_VERSION}"
 debug "BUILD_PY2_CONTAINERS=${BUILD_PY2_CONTAINERS}"
 debug "ENABLE_DNNL1=${ENABLE_DNNL1}"
+debug "ENABLE_HOROVOD=${ENABLE_HOROVOD}"
+debug "OPENMPI_VERSION=${OPENMPI_VERSION}"
+debug "OPENMPI_DOWNLOAD_URL=${OPENMPI_DOWNLOAD_URL}"
+debug "HOROVOD_VERSION=${HOROVOD_VERSION}"
+debug "IS_NIGHTLY=${IS_NIGHTLY}"
 
 function build_container()
 {
@@ -131,6 +141,19 @@ function build_container()
     TF_DOCKER_BUILD_ARGS+=("--build-arg BAZEL_VERSION=${BAZEL_VERSION}")
   fi
 
+  # Add build arg for installing OpenMPI/Horovod
+  if [[ ${ENABLE_HOROVOD} == "yes" ]]; then
+    TF_DOCKER_BUILD_ARGS+=("--build-arg ENABLE_HOROVOD=${ENABLE_HOROVOD}")
+    TF_DOCKER_BUILD_ARGS+=("--build-arg OPENMPI_VERSION=${OPENMPI_VERSION}")
+    TF_DOCKER_BUILD_ARGS+=("--build-arg OPENMPI_DOWNLOAD_URL=${OPENMPI_DOWNLOAD_URL}")
+    TF_DOCKER_BUILD_ARGS+=("--build-arg HOROVOD_VERSION=${HOROVOD_VERSION}")
+  fi
+
+  # Add build arg --nightly_flag for the nightly build
+  if [[ ${IS_NIGHTLY} == "yes" ]]; then
+    TF_DOCKER_BUILD_ARGS+=("--build-arg TF_NIGHTLY_FLAG=--nightly_flag")
+  fi
+
   # Perform docker build
   debug "Building docker image with image name and tag: ${TEMP_IMAGE_NAME}"
   CMD="${DOCKER_BINARY} build ${TF_DOCKER_BUILD_ARGS[@]} --no-cache --pull -t ${TEMP_IMAGE_NAME} -f Dockerfile.devel-mkl ."
@@ -178,16 +201,27 @@ function test_container()
   debug "ID of the running docker container: ${CONTAINER_ID}"
 
   debug "Performing basic sanity checks on the running container..."
-  TEST_CMD_1=$(${DOCKER_BINARY} exec ${CONTAINER_ID} bash -c "${PYTHON} -c 'from tensorflow.python import _pywrap_util_port; print(_pywrap_util_port.IsMklEnabled())'")
-  # Make TEST_CMD backward compatible with older code
-  TEST_CMD_2=$(${DOCKER_BINARY} exec ${CONTAINER_ID} bash -c "${PYTHON} -c 'from tensorflow.python import pywrap_tensorflow; print(pywrap_tensorflow.IsMklEnabled())'")
+  {
+    ${DOCKER_BINARY} exec ${CONTAINER_ID} bash -c "${PYTHON} -c 'from tensorflow.python import _pywrap_util_port; print(_pywrap_util_port.IsMklEnabled())'"
+    echo "PASS: MKL enabled test in ${TEMP_IMAGE_NAME}"
+  } || {
+    ${DOCKER_BINARY} exec ${CONTAINER_ID} bash -c "${PYTHON} -c 'from tensorflow.python import pywrap_tensorflow; print(pywrap_tensorflow.IsMklEnabled())'"
+    echo "PASS: Old MKL enabled in ${TEMP_IMAGE_NAME}"
+  } || {
+    die "FAIL: MKL enabled test in ${TEMP_IMAGE_NAME}"
+  }
 
-  if [ "${TEST_CMD_1}" = "True" -o "${TEST_CMD_2}" = "True" ] ; then
-      echo "PASS: MKL enabled test in ${TEMP_IMAGE_NAME}"
-  else
-      die "FAIL: MKL enabled test in ${TEMP_IMAGE_NAME}"
+  # Test to check if horovod is installed successfully
+  if [[ ${ENABLE_HOROVOD} == "yes" ]]; then
+      debug "Test horovod in the container..."
+      ${DOCKER_BINARY} exec ${CONTAINER_ID} bash -c "${PYTHON} -c 'import horovod.tensorflow as hvd;'"
+      if [[ $? == "0" ]]; then
+          echo "PASS: HOROVOD installation test in ${TEMP_IMAGE_NAME}"
+      else
+          die "FAIL: HOROVOD installation test in ${TEMP_IMAGE_NAME}"
+      fi
   fi
-
+  
   # Stop the running docker container
   sleep 1
   "${DOCKER_BINARY}" stop --time=0 ${CONTAINER_ID}

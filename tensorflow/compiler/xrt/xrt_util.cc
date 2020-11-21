@@ -221,6 +221,127 @@ xla::StatusOr<std::vector<InputCoords>> GetComputationInputs(
   return std::move(input_coords);
 }
 
+bool InputShapeMatches(const xla::Shape& parameter_shape,
+                       const xla::Shape& input_shape) {
+  auto shape_checker = [&](const xla::Shape& pshape,
+                           const xla::ShapeIndex& index) {
+    if (pshape.IsArray()) {
+      TF_ASSIGN_OR_RETURN(const xla::Shape* ishape,
+                          xla::ShapeUtil::TryGetSubshape(input_shape, index));
+      if (pshape.rank() != ishape->rank() ||
+          pshape.element_type() != ishape->element_type()) {
+        return errors::InvalidArgument("Mismatching shapes");
+      }
+      if (pshape.is_static() && pshape.layout() != ishape->layout()) {
+        return errors::InvalidArgument("Mismatching layouts");
+      }
+      for (int64 dim = 0; dim < pshape.rank(); ++dim) {
+        if (pshape.is_dynamic_dimension(dim)) {
+          if (pshape.dimensions(dim) < ishape->dimensions(dim)) {
+            return errors::InvalidArgument("Mismatching shapes");
+          }
+        } else if (pshape.dimensions(dim) != ishape->dimensions(dim)) {
+          return errors::InvalidArgument("Mismatching shapes");
+        }
+      }
+    }
+    return Status::OK();
+  };
+  return xla::ShapeUtil::ForEachSubshapeWithStatus(parameter_shape,
+                                                   shape_checker)
+      .ok();
+}
+
+xla::StatusOr<std::vector<RefPtr<XRTTupleAllocation>>> GetInputTupleAllocations(
+    const std::vector<InputCoords>& input_coords,
+    XRTMemoryManager::WorkingSet* working_set, xla::Backend* backend,
+    int64 num_input_shapes,
+    const std::function<xla::Shape(int64)>& shape_getter, bool release_inputs) {
+  if (input_coords.size() != num_input_shapes) {
+    return errors::InvalidArgument(
+        "Number of inputs does not match executable proto input shapes: ",
+        input_coords.size(), " vs. ", num_input_shapes);
+  }
+  std::vector<RefPtr<XRTTupleAllocation>> input_tuples;
+  input_tuples.reserve(input_coords.size());
+  for (size_t i = 0; i < input_coords.size(); ++i) {
+    TF_RETURN_IF_ERROR(
+        working_set->LookupAndPin(backend, input_coords[i].handle));
+    auto tuple = working_set->PinnedTuples().back();
+    if (release_inputs) {
+      // We are holding a reference to the tuple, so we can safely delete it
+      // from the resource manager here.
+      TF_RETURN_IF_ERROR(
+          working_set->MemoryManager()->Release(input_coords[i].handle));
+      VLOG(2) << "Released allocation handle " << input_coords[i].handle;
+    }
+    xla::Shape input_shape = shape_getter(i);
+    if (!InputShapeMatches(input_shape, tuple->on_host_shape())) {
+      return errors::InvalidArgument(
+          "Run-time shape mismatch for XRTExecute argument[", i, "] (",
+          input_coords[i].handle, "). Expected ", input_shape.DebugString(),
+          "; got ", tuple->on_host_shape().DebugString());
+    }
+    if (input_coords[i].index.empty()) {
+      input_tuples.emplace_back(std::move(tuple));
+    } else {
+      XRTTupleAllocation* sub_tuple;
+      TF_RETURN_IF_ERROR(XRTTupleAllocation::MakeSubBuffer(
+          tuple.get(), input_coords[i].index, &sub_tuple,
+          /*alias_parent_allocation=*/true));
+      input_tuples.emplace_back(sub_tuple);
+    }
+  }
+  return std::move(input_tuples);
+}
+
+Status RebuildOutputAliases(
+    const RefPtr<XRTTupleAllocation>& output_tuple,
+    absl::Span<const RefPtr<XRTTupleAllocation>> input_tuples,
+    const xla::HloInputOutputAliasConfig& input_output_alias) {
+  auto alias_function =
+      [&](const xla::ShapeIndex& output_index,
+          const xla::HloInputOutputAliasConfig::Alias& alias) -> Status {
+    TF_RET_CHECK(alias.parameter_number < input_tuples.size());
+    return output_tuple->AliasBufferFrom(*input_tuples[alias.parameter_number],
+                                         alias.parameter_index, output_index);
+  };
+  return input_output_alias.ForEachAliasWithStatus(alias_function);
+}
+
+xla::StatusOr<std::vector<xla::ExecutionInput>> GetArgumentsBuffers(
+    const xla::HloInputOutputAliasConfig& input_output_alias,
+    absl::Span<const RefPtr<XRTTupleAllocation>> input_tuples,
+    const std::vector<bool>& input_is_dynamic, bool release_inputs) {
+  auto is_dynamic = [&](size_t arg) {
+    return arg < input_is_dynamic.size() && input_is_dynamic[arg];
+  };
+  std::vector<xla::ExecutionInput> arguments;
+  // Don't alias dynamic input -- Due to the underlying implementation,
+  // aliased inputs have two owners: XRTAllocation and return value of
+  // this function. If an argument is dynamic and the ownership is
+  // released to output of this function, TPUExecute will free it and
+  // reallocate a new one, which creates a double freeing issue where
+  // XRTAllocation also attempts to release the buffer.
+  bool alias_outputs = release_inputs && input_tuples.size() == 1 &&
+                       input_tuples[0]->IsExclusiveOwner() && !is_dynamic(0);
+  arguments.reserve(input_tuples.size());
+  for (int64 i = 0; i < input_tuples.size(); ++i) {
+    auto alias_checker =
+        [&](const xla::ShapeIndex& index) -> xla::StatusOr<bool> {
+      if (input_output_alias.ParameterHasAlias(i, index)) {
+        TF_RET_CHECK(!is_dynamic(i));
+        return true;
+      }
+      return alias_outputs;
+    };
+    TF_ASSIGN_OR_RETURN(xla::ExecutionInput exec_input,
+                        input_tuples[i]->ToExecutionInput(alias_checker));
+    arguments.emplace_back(std::move(exec_input));
+  }
+  return std::move(arguments);
+}
+
 Status CreateExecuteOutput(OpKernelContext* context,
                            XRTMemoryManager* memory_manager,
                            RefPtr<XRTTupleAllocation> output_tuple,

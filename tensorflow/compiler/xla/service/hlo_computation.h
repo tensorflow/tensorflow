@@ -122,7 +122,8 @@ class HloComputation {
 
   // Add an instruction to the computation. The computation takes ownership of
   // the instruction.
-  HloInstruction* AddInstruction(std::unique_ptr<HloInstruction> instruction);
+  HloInstruction* AddInstruction(std::unique_ptr<HloInstruction> instruction,
+                                 const std::string& new_name = "");
 
   // Remove the param_no'th parameter from the computation.
   // Note this is only applicatable to the computation for the fusion
@@ -310,7 +311,19 @@ class HloComputation {
   ProgramShape ComputeProgramShape(bool include_ids = true) const;
 
   // Return whether `*this` and `other` are functionally equivalent.
-  bool Equal(const HloComputation& other, bool is_layout_sensitive) const;
+  bool Equal(const HloComputation& other, bool is_layout_sensitive) const {
+    return EqualInternal(other, is_layout_sensitive,
+                         /*ignore_channel_id_values=*/false);
+  }
+
+  // Same as Equal() but ignores channel ID value mismatches on instructions, as
+  // long as the two instructions both have channel IDs or neither has a channel
+  // ID.
+  bool EqualIgnoringChannelIdValues(const HloComputation& other,
+                                    bool is_layout_sensitive) const {
+    return EqualInternal(other, is_layout_sensitive,
+                         /*ignore_channel_id_values=*/true);
+  }
 
   // Return whether `*this` and `other` are functionally equivalent.
   bool operator==(const HloComputation& other) const {
@@ -390,7 +403,8 @@ class HloComputation {
                           std::unique_ptr<HloInstruction>>
           replacements,
       absl::Span<const HloInstruction* const> extra_parameters = {},
-      HloCloneContext* context = nullptr, const string& suffix = "clone");
+      HloCloneContext* context = nullptr, const string& suffix = "clone",
+      const HloInstruction* new_root = nullptr);
 
   // Convenience overloads for CloneWithReplacements.  You want to do
   //
@@ -475,6 +489,9 @@ class HloComputation {
   // HloInstructions in a pass.
   void Cleanup() { to_be_deleted_.clear(); }
 
+  // Returns true if a given instruction is marked dead in this computation.
+  bool IsMarkedAsDead(const HloInstruction* inst);
+
  private:
   explicit HloComputation(
       const string& name, int parameter_count,
@@ -484,6 +501,10 @@ class HloComputation {
   // Internal helper for adding instructions.
   HloInstruction* AddInstructionInternal(
       std::unique_ptr<HloInstruction> instruction);
+
+  // Internal helper for comparison with different options.
+  bool EqualInternal(const HloComputation& other, bool is_layout_sensitive,
+                     bool ignore_channel_id_values) const;
 
   // Fuses HLOs in instructions_to_fuse into fusion_instruction.
   //
@@ -505,7 +526,7 @@ class HloComputation {
 
   enum VisitState { kVisiting, kVisited };
   void ComputeInstructionPostOrder(
-      const HloComputation::ChannelDependencyGroup& channel_dependency_map,
+      const HloComputation::ChannelDependencyGroup& channel_dependency_group,
       std::vector<HloInstruction*>* post_order, HloInstruction* root,
       absl::flat_hash_map<HloInstruction*, VisitState>* visited) const;
 

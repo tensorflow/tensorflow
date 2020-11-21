@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for math_ops.bincount."""
+"""Tests for bincount_ops.bincount."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -25,8 +25,8 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import bincount_ops
 from tensorflow.python.ops import gen_math_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -37,45 +37,50 @@ class BincountTest(test_util.TensorFlowTestCase):
 
   def test_empty(self):
     with self.session(use_gpu=True):
-      self.assertAllEqual(self.evaluate(math_ops.bincount([], minlength=5)),
-                          [0, 0, 0, 0, 0])
-      self.assertAllEqual(self.evaluate(math_ops.bincount([], minlength=1)),
-                          [0])
-      self.assertAllEqual(self.evaluate(math_ops.bincount([], minlength=0)),
-                          [])
-      self.assertEqual(self.evaluate(math_ops.bincount([], minlength=0,
-                                                       dtype=np.float32)).dtype,
-                       np.float32)
-      self.assertEqual(self.evaluate(math_ops.bincount([], minlength=3,
-                                                       dtype=np.float64)).dtype,
-                       np.float64)
+      self.assertAllEqual(
+          self.evaluate(bincount_ops.bincount([], minlength=5)),
+          [0, 0, 0, 0, 0])
+      self.assertAllEqual(
+          self.evaluate(bincount_ops.bincount([], minlength=1)), [0])
+      self.assertAllEqual(
+          self.evaluate(bincount_ops.bincount([], minlength=0)), [])
+      self.assertEqual(
+          self.evaluate(
+              bincount_ops.bincount([], minlength=0, dtype=np.float32)).dtype,
+          np.float32)
+      self.assertEqual(
+          self.evaluate(
+              bincount_ops.bincount([], minlength=3, dtype=np.float64)).dtype,
+          np.float64)
 
   def test_values(self):
     with self.session(use_gpu=True):
-      self.assertAllEqual(self.evaluate(math_ops.bincount([1, 1, 1, 2, 2, 3])),
-                          [0, 3, 2, 1])
+      self.assertAllEqual(
+          self.evaluate(bincount_ops.bincount([1, 1, 1, 2, 2, 3])),
+          [0, 3, 2, 1])
       arr = [1, 1, 2, 1, 2, 3, 1, 2, 3, 4, 1, 2, 3, 4, 5]
-      self.assertAllEqual(self.evaluate(math_ops.bincount(arr)),
-                          [0, 5, 4, 3, 2, 1])
+      self.assertAllEqual(
+          self.evaluate(bincount_ops.bincount(arr)), [0, 5, 4, 3, 2, 1])
       arr += [0, 0, 0, 0, 0, 0]
-      self.assertAllEqual(self.evaluate(math_ops.bincount(arr)),
-                          [6, 5, 4, 3, 2, 1])
+      self.assertAllEqual(
+          self.evaluate(bincount_ops.bincount(arr)), [6, 5, 4, 3, 2, 1])
 
-      self.assertAllEqual(self.evaluate(math_ops.bincount([])), [])
-      self.assertAllEqual(self.evaluate(math_ops.bincount([0, 0, 0])), [3])
-      self.assertAllEqual(self.evaluate(math_ops.bincount([5])),
-                          [0, 0, 0, 0, 0, 1])
-      self.assertAllEqual(self.evaluate(math_ops.bincount(np.arange(10000))),
-                          np.ones(10000))
+      self.assertAllEqual(self.evaluate(bincount_ops.bincount([])), [])
+      self.assertAllEqual(self.evaluate(bincount_ops.bincount([0, 0, 0])), [3])
+      self.assertAllEqual(
+          self.evaluate(bincount_ops.bincount([5])), [0, 0, 0, 0, 0, 1])
+      self.assertAllEqual(
+          self.evaluate(bincount_ops.bincount(np.arange(10000))),
+          np.ones(10000))
 
   def test_maxlength(self):
     with self.session(use_gpu=True):
-      self.assertAllEqual(self.evaluate(math_ops.bincount([5], maxlength=3)),
-                          [0, 0, 0])
-      self.assertAllEqual(self.evaluate(math_ops.bincount([1], maxlength=3)),
-                          [0, 1])
-      self.assertAllEqual(self.evaluate(math_ops.bincount([], maxlength=3)),
-                          [])
+      self.assertAllEqual(
+          self.evaluate(bincount_ops.bincount([5], maxlength=3)), [0, 0, 0])
+      self.assertAllEqual(
+          self.evaluate(bincount_ops.bincount([1], maxlength=3)), [0, 1])
+      self.assertAllEqual(
+          self.evaluate(bincount_ops.bincount([], maxlength=3)), [])
 
   def test_random_with_weights(self):
     num_samples = 10000
@@ -88,7 +93,7 @@ class BincountTest(test_util.TensorFlowTestCase):
         else:
           weights = np.random.random(num_samples)
         self.assertAllClose(
-            self.evaluate(math_ops.bincount(arr, weights)),
+            self.evaluate(bincount_ops.bincount(arr, weights)),
             np.bincount(arr, weights))
 
   def test_random_without_weights(self):
@@ -99,37 +104,39 @@ class BincountTest(test_util.TensorFlowTestCase):
         arr = np.random.randint(0, 1000, num_samples)
         weights = np.ones(num_samples).astype(dtype)
         self.assertAllClose(
-            self.evaluate(math_ops.bincount(arr, None)),
+            self.evaluate(bincount_ops.bincount(arr, None)),
             np.bincount(arr, weights))
 
   def test_zero_weights(self):
     with self.session(use_gpu=True):
       self.assertAllEqual(
-          self.evaluate(math_ops.bincount(np.arange(1000), np.zeros(1000))),
+          self.evaluate(bincount_ops.bincount(np.arange(1000), np.zeros(1000))),
           np.zeros(1000))
 
   def test_negative(self):
     # unsorted_segment_sum will only report InvalidArgumentError on CPU
     with self.cached_session(), ops.device("/CPU:0"):
       with self.assertRaises(errors.InvalidArgumentError):
-        self.evaluate(math_ops.bincount([1, 2, 3, -1, 6, 8]))
+        self.evaluate(bincount_ops.bincount([1, 2, 3, -1, 6, 8]))
 
-  @test_util.run_deprecated_v1
   def test_shape_function(self):
     # size must be scalar.
-    with self.assertRaisesRegexp(
-        ValueError, "Shape must be rank 0 but is rank 1 for .*Bincount"):
-      gen_math_ops.bincount([1, 2, 3, -1, 6, 8], [1], [])
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "Shape must be rank 0 but is rank 1 .*Bincount"):
+      gen_math_ops.bincount([1, 2, 3, 1, 6, 8], [1], [])
     # size must be positive.
-    with self.assertRaisesRegexp(ValueError, "must be non-negative"):
-      gen_math_ops.bincount([1, 2, 3, -1, 6, 8], -5, [])
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                "must be non-negative"):
+      gen_math_ops.bincount([1, 2, 3, 1, 6, 8], -5, [])
     # if size is a constant then the shape is known.
-    v1 = gen_math_ops.bincount([1, 2, 3, -1, 6, 8], 5, [])
+    v1 = gen_math_ops.bincount([1, 2, 3, 1, 6, 8], 5, [])
     self.assertAllEqual(v1.get_shape().as_list(), [5])
     # if size is a placeholder then the shape is unknown.
-    s = array_ops.placeholder(dtype=dtypes.int32)
-    v2 = gen_math_ops.bincount([1, 2, 3, -1, 6, 8], s, [])
-    self.assertAllEqual(v2.get_shape().as_list(), [None])
+    with ops.Graph().as_default():
+      s = array_ops.placeholder(dtype=dtypes.int32)
+      v2 = gen_math_ops.bincount([1, 2, 3, 1, 6, 8], s, [])
+      self.assertAllEqual(v2.get_shape().as_list(), [None])
 
 
 class BincountOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
@@ -317,9 +324,9 @@ class BincountOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     size = 10
     self._test_bincount_col_binary(num_rows, num_cols, size, dtype)
 
-  @test_util.run_deprecated_v1
   def test_invalid_rank(self):
-    with self.assertRaisesRegexp(ValueError, "at most rank 2"):
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                "at most rank 2"):
       with test_util.use_gpu():
         self.evaluate(
             gen_math_ops.dense_bincount(

@@ -1,4 +1,4 @@
-#!/bin/bash -x
+#!/bin/bash +x
 # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,15 @@
 # limitations under the License.
 # ==============================================================================
 
-set -e
+echo "========================================================================="
+echo "WARNING: This build script is deprecated and no longer maintained. Please"
+echo "         refer to the iOS build guide to learn how to build the latest   "
+echo "         version of TFLite static framework for iOS using bazel.         "
+echo "         https://www.tensorflow.org/lite/guide/build_ios                 "
+echo "========================================================================="
+sleep 5s
+
+set -ex
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR/../../../.."

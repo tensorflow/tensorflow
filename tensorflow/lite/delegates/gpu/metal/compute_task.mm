@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <tuple>
 
+#include "tensorflow/lite/delegates/gpu/metal/metal_arguments.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -39,22 +40,28 @@ using ::tflite::gpu::metal::UniformsFunction;
 using ::tflite::gpu::uint3;
 using ::tflite::gpu::ValueId;
 
-@implementation TFLComputeTask {
-  struct InputBuffer {
-    ValueId uid;
-    id<MTLBuffer> metalHandle;
-  };
-  struct OutputBuffer {
-    ValueId uid;
-    id<MTLBuffer> metalHandle;
-    OutputDimensions dimensionsFunction;
-    std::vector<ValueId> alias;
-  };
-  struct UniformBuffer {
-    std::vector<uint8_t> data;
-    UniformsFunction dataFunction;
-  };
+namespace {
 
+struct InputBuffer {
+  ValueId uid;
+  id<MTLBuffer> metalHandle;
+};
+
+struct OutputBuffer {
+  ValueId uid;
+  id<MTLBuffer> metalHandle;
+  OutputDimensions dimensionsFunction;
+  std::vector<ValueId> alias;
+};
+
+struct UniformBuffer {
+  std::vector<uint8_t> data;
+  UniformsFunction dataFunction;
+};
+
+}  // namespace
+
+@implementation TFLComputeTask {
   id<MTLComputePipelineState> _program;
   std::vector<InputBuffer> _inputBuffers;
   std::vector<OutputBuffer> _outputBuffers;
@@ -64,11 +71,15 @@ using ::tflite::gpu::ValueId;
   uint3 _groupsCount;
   DispatchParamsFunction _resizeFunction;
   std::string _description;
+  tflite::gpu::metal::MetalArguments _metal_args;
 }
 
 - (absl::Status)compileWithDevice:(id<MTLDevice>)device
                    taskDescriptor:(ComputeTaskDescriptorPtr)desc
                    runtimeOptions:(const RuntimeOptions&)options {
+  size_t offset = desc->input_buffers.size() + desc->uniform_buffers.size()
+                  + desc->immutable_buffers.size() + 1;
+  RETURN_IF_ERROR(_metal_args.Init(device, offset, &desc->args, &desc->shader_source));
   NSString* barrier;
   // simdgroup_barrier is supported on macOS 10.13+ and Metal shading language version 2.0
   if (@available(macOS 10.13, iOS 10.0, tvOS 10.0, *)) {
@@ -207,8 +218,36 @@ using ::tflite::gpu::ValueId;
   return absl::OkStatus();
 }
 
-- (void)encodeWithEncoder:(id<MTLComputeCommandEncoder>)encoder
-       inputOutputBuffers:(const std::map<ValueId, id<MTLBuffer>>&)inputOutputBuffers {
+- (bool)hasInOutIds:(const std::set<::tflite::gpu::ValueId>&)ids {
+  for (auto& buffer : _inputBuffers) {
+    if (ids.count(buffer.uid)) {
+      return true;
+    }
+  }
+  for (auto& buffer : _outputBuffers) {
+    if (ids.count(buffer.uid)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+- (void)updateBuffers:(const std::map<::tflite::gpu::ValueId, id<MTLBuffer>>&)inputOutputBuffers {
+  for (auto& buffer : _inputBuffers) {
+    const auto externalBuffer = inputOutputBuffers.find(buffer.uid);
+    if (externalBuffer != inputOutputBuffers.end()) {
+      buffer.metalHandle = externalBuffer->second;
+    }
+  }
+  for (auto& buffer : _outputBuffers) {
+    const auto externalBuffer = inputOutputBuffers.find(buffer.uid);
+    if (externalBuffer != inputOutputBuffers.end()) {
+      buffer.metalHandle = externalBuffer->second;
+    }
+  }
+}
+
+- (void)encodeWithEncoder:(id<MTLComputeCommandEncoder>)encoder {
   // The dispatch call is intended to be skipped.
   if (_groupsCount.x * _groupsCount.y * _groupsCount.z == 0) {
     return;
@@ -217,24 +256,12 @@ using ::tflite::gpu::ValueId;
   [encoder setComputePipelineState:_program];
 
   int bindIndex = 0;
-  for (auto& buffer : _outputBuffers) {
-    const auto externalBuffer = inputOutputBuffers.find(buffer.uid);
-    if (externalBuffer == inputOutputBuffers.end()) {
-      [encoder setBuffer:buffer.metalHandle offset:0 atIndex:bindIndex];
-    } else {
-      // the buffer is input or output
-      [encoder setBuffer:externalBuffer->second offset:0 atIndex:bindIndex];
-    }
+  for (const auto& buffer : _outputBuffers) {
+    [encoder setBuffer:buffer.metalHandle offset:0 atIndex:bindIndex];
     bindIndex++;
   }
-  for (auto& buffer : _inputBuffers) {
-    const auto externalBuffer = inputOutputBuffers.find(buffer.uid);
-    if (externalBuffer == inputOutputBuffers.end()) {
-      [encoder setBuffer:buffer.metalHandle offset:0 atIndex:bindIndex];
-    } else {
-      // the buffer is input or output
-      [encoder setBuffer:externalBuffer->second offset:0 atIndex:bindIndex];
-    }
+  for (const auto& buffer : _inputBuffers) {
+    [encoder setBuffer:buffer.metalHandle offset:0 atIndex:bindIndex];
     bindIndex++;
   }
   for (auto& immutable : _immutableBuffers) {
@@ -245,6 +272,7 @@ using ::tflite::gpu::ValueId;
     [encoder setBytes:uniform.data.data() length:uniform.data.size() atIndex:bindIndex];
     bindIndex++;
   }
+  _metal_args.Encode(encoder, bindIndex);
 
   MTLSize groupsCount = MTLSizeMake(_groupsCount.x, _groupsCount.y, _groupsCount.z);
   MTLSize groupsSize = MTLSizeMake(_groupsSize.x, _groupsSize.y, _groupsSize.z);

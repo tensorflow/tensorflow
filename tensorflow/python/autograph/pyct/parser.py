@@ -21,7 +21,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import inspect
+import linecache
 import re
+import sys
 import textwrap
 import tokenize
 
@@ -31,13 +34,24 @@ import six
 
 from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.autograph.pyct import inspect_utils
+from tensorflow.python.util import tf_inspect
 
 
-STANDARD_PREAMBLE = textwrap.dedent("""
-    from __future__ import division
-    from __future__ import print_function
+PY2_PREAMBLE = textwrap.dedent("""
+from __future__ import division
+from __future__ import print_function
 """)
-STANDARD_PREAMBLE_LEN = 2
+PY3_PREAMBLE = ''
+MAX_SIZE = 0
+
+if sys.version_info >= (3,):
+  STANDARD_PREAMBLE = PY3_PREAMBLE
+  MAX_SIZE = sys.maxsize
+else:
+  STANDARD_PREAMBLE = PY2_PREAMBLE
+  MAX_SIZE = sys.maxint
+
+STANDARD_PREAMBLE_LEN = STANDARD_PREAMBLE.count('__future__')
 
 
 _LEADING_WHITESPACE = re.compile(r'\s*')
@@ -116,69 +130,6 @@ def dedent_block(code_string):
   return new_code
 
 
-def _attempt_to_parse_normal_source(source, future_features):
-  return parse(source, preamble_len=len(future_features)), source
-
-
-def _attempt_to_parse_lambda_source(source, original_source,
-                                    future_features, try_fallback=True):
-  """Parsing function specialized on dealing with lambdas.
-
-  Lambda functions, only hold the raw code lines which defined
-  them, which may include surrounding tokens and may be syntactically
-  invalid out of context. For example:
-
-      l = (
-          lambda x: x,)[0]
-
-  will have the dedented source "lambda x: x,)[0]"
-  This function makes an attempt to stip away the garbage by looking at the
-  information in the syntax error.
-
-  Args:
-    source: the processed source code of `entity`.
-    original_source: the source code of `entity`, as it was reported
-        by `inspect.getsource`.
-    future_features: see `parse`.
-    try_fallback: whether to attempt to remove extra code from `source` before
-        one more attempt to parse it.
-  Returns:
-    Same as `parse`.
-  """
-
-  try:
-    return parse(source, preamble_len=len(future_features)), source
-
-  # Note: the ValueError may be raised by parse.
-  except (SyntaxError, ValueError) as e:
-    def fail():
-      raise errors.UnsupportedLanguageElementError(
-          'could not parse the source code:'
-          '\n\n{}\n'
-          'This error may be avoided by creating the lambda in a standalone'
-          ' statement.\n'.format(original_source))
-
-    if not try_fallback:
-      fail()
-
-    lines = source.split('\n')
-    lineno, offset = e.lineno, e.offset  # 1-based
-
-    # Give up if there's nothing we can chip away.
-    if len(lines) == lineno and len(lines[-1]) == offset:
-      fail()
-
-    # Drop all lines following the error location
-    # TODO(mdan): What's with the pylint errors?
-    lines = lines[:lineno]  # pylint:disable=invalid-slice-index
-    # Drop all characters following the error location
-    lines[-1] = lines[-1][:offset - 1]  # pylint:disable=invalid-slice-index
-    source = '\n'.join(lines)
-
-    return _attempt_to_parse_lambda_source(
-        source, original_source, future_features, try_fallback=False)
-
-
 def parse_entity(entity, future_features):
   """Returns the AST and source code of given entity.
 
@@ -192,6 +143,9 @@ def parse_entity(entity, future_features):
     gast.AST, Text: the parsed AST node; the source code that was parsed to
     generate the AST (including any prefixes that this function may have added).
   """
+  if inspect_utils.islambda(entity):
+    return _parse_lambda(entity)
+
   try:
     original_source = inspect_utils.getimmediatesource(entity)
   except (IOError, OSError) as e:
@@ -209,11 +163,160 @@ def parse_entity(entity, future_features):
       'from __future__ import {}'.format(name) for name in future_features)
   source = '\n'.join(future_statements + (source,))
 
-  if inspect_utils.islambda(entity):
-    return _attempt_to_parse_lambda_source(
-        source, original_source, future_features)
-  else:
-    return _attempt_to_parse_normal_source(source, future_features)
+  return parse(source, preamble_len=len(future_features)), source
+
+
+def _without_context(node, lines, minl, maxl):
+  """Returns a clean node and source code without indenting and context."""
+  for n in gast.walk(node):
+    lineno = getattr(n, 'lineno', None)
+    if lineno is not None:
+      n.lineno = lineno - minl
+    end_lineno = getattr(n, 'end_lineno', None)
+    if end_lineno is not None:
+      n.end_lineno = end_lineno - minl
+
+  code_lines = lines[minl - 1:maxl]
+
+  # Attempt to clean up surrounding context code.
+
+  end_col_offset = getattr(node, 'end_col_offset', None)
+  if end_col_offset is not None:
+    # This is only available in 3.8.
+    code_lines[-1] = code_lines[-1][:end_col_offset]
+
+  col_offset = getattr(node, 'col_offset', None)
+  if col_offset is None:
+    # Older Python: try to find the "lambda" token. This is brittle.
+    match = re.search(r'(?<!\w)lambda(?!\w)', code_lines[0])
+    if match is not None:
+      col_offset = match.start(0)
+
+  if col_offset is not None:
+    code_lines[0] = code_lines[0][col_offset:]
+
+  code_block = '\n'.join([c.rstrip() for c in code_lines])
+
+  return node, code_block
+
+
+def _arg_name(node):
+  if node is None:
+    return None
+  if isinstance(node, gast.Name):
+    return node.id
+  assert isinstance(node, str)
+  return node
+
+
+def _node_matches_argspec(node, func):
+  """Returns True is node fits the argspec of func."""
+  # TODO(mdan): Use just inspect once support for Python 2 is dropped.
+  arg_spec = tf_inspect.getfullargspec(func)
+
+  node_args = tuple(_arg_name(arg) for arg in node.args.args)
+  if node_args != tuple(arg_spec.args):
+    return False
+
+  if arg_spec.varargs != _arg_name(node.args.vararg):
+    return False
+
+  if arg_spec.varkw != _arg_name(node.args.kwarg):
+    return False
+
+  node_kwonlyargs = tuple(_arg_name(arg) for arg in node.args.kwonlyargs)
+  if node_kwonlyargs != tuple(arg_spec.kwonlyargs):
+    return False
+
+  return True
+
+
+def _parse_lambda(lam):
+  """Returns the AST and source code of given lambda function.
+
+  Args:
+    lam: types.LambdaType, Python function/method/class
+
+  Returns:
+    gast.AST, Text: the parsed AST node; the source code that was parsed to
+    generate the AST (including any prefixes that this function may have added).
+  """
+  # TODO(mdan): Use a fast path if the definition is not multi-line.
+  # We could detect that the lambda is in a multi-line expression by looking
+  # at the surrounding code - an surrounding set of parentheses indicates a
+  # potential multi-line definition.
+
+  mod = inspect.getmodule(lam)
+  f = inspect.getsourcefile(lam)
+  def_line = lam.__code__.co_firstlineno
+
+  # This method is more robust that just calling inspect.getsource(mod), as it
+  # works in interactive shells, where getsource would fail. This is the
+  # same procedure followed by inspect for non-modules:
+  # https://github.com/python/cpython/blob/3.8/Lib/inspect.py#L772
+  lines = linecache.getlines(f, mod.__dict__)
+  source = ''.join(lines)
+
+  # Narrow down to the last node starting before our definition node.
+  all_nodes = parse(source, preamble_len=0, single_node=False)
+  search_nodes = []
+  for node in all_nodes:
+    # Also include nodes without a line number, for safety. This is defensive -
+    # we don't know whether such nodes might exist, and if they do, whether
+    # they are not safe to skip.
+    # TODO(mdan): Replace this check with an assertion or skip such nodes.
+    if getattr(node, 'lineno', def_line) <= def_line:
+      search_nodes.append(node)
+    else:
+      # Found a node starting past our lambda - can stop the search.
+      break
+
+  # Extract all lambda nodes from the shortlist.
+  lambda_nodes = []
+  for node in search_nodes:
+    lambda_nodes.extend(
+        n for n in gast.walk(node) if isinstance(n, gast.Lambda))
+
+  # Filter down to lambda nodes which span our actual lambda.
+  candidates = []
+  for ln in lambda_nodes:
+    minl, maxl = MAX_SIZE, 0
+    for n in gast.walk(ln):
+      minl = min(minl, getattr(n, 'lineno', minl))
+      lineno = getattr(n, 'lineno', maxl)
+      end_lineno = getattr(n, 'end_lineno', None)
+      if end_lineno is not None:
+        # end_lineno is more precise, but lineno should almost always work too.
+        lineno = end_lineno
+      maxl = max(maxl, lineno)
+    if minl <= def_line <= maxl:
+      candidates.append((ln, minl, maxl))
+
+  # Happy path: exactly one node found.
+  if len(candidates) == 1:
+    (node, minl, maxl), = candidates  # pylint:disable=unbalanced-tuple-unpacking
+    return _without_context(node, lines, minl, maxl)
+
+  elif not candidates:
+    raise errors.UnsupportedLanguageElementError(
+        'could not parse the source code of {}:'
+        ' no matching AST found'.format(lam))
+
+  # Attempt to narrow down selection by signature is multiple nodes are found.
+  matches = [v for v in candidates if _node_matches_argspec(v[0], lam)]
+  if len(matches) == 1:
+    (node, minl, maxl), = matches
+    return _without_context(node, lines, minl, maxl)
+
+  # Give up if could not narrow down to a single node.
+  matches = '\n'.join(
+      'Match {}:\n{}\n'.format(i, unparse(node, include_encoding_marker=False))
+      for i, (node, _, _) in enumerate(matches))
+  raise errors.UnsupportedLanguageElementError(
+      'could not parse the source code of {}: found multiple definitions with'
+      ' identical signatures at the location. This error'
+      ' may be avoided by defining each lambda on a single line and with'
+      ' unique argument names.\n{}'.format(lam, matches))
 
 
 # TODO(mdan): This should take futures as input instead.
@@ -236,7 +339,7 @@ def parse(src, preamble_len=0, single_node=True):
     nodes = nodes[preamble_len:]
   if single_node:
     if len(nodes) != 1:
-      raise ValueError('expected exactly one node node, found {}'.format(nodes))
+      raise ValueError('expected exactly one node, found {}'.format(nodes))
     return nodes[0]
   return nodes
 
@@ -267,7 +370,7 @@ def unparse(node, indentation=None, include_encoding_marker=True):
     node: The code to compile, as an AST object.
     indentation: Unused, deprecated. The returning code will always be indented
       at 4 spaces.
-    include_encoding_marker: Bool, thether to include a comment on the first
+    include_encoding_marker: Bool, whether to include a comment on the first
       line to explicitly specify UTF-8 encoding.
 
   Returns:

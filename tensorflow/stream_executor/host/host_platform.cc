@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <thread>
 
+#include "absl/memory/memory.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/stream_executor/host/host_gpu_executor.h"
 #include "tensorflow/stream_executor/host/host_platform_id.h"

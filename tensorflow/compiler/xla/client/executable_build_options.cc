@@ -76,6 +76,12 @@ ExecutableBuildOptions& ExecutableBuildOptions::set_use_spmd_partitioning(
   return *this;
 }
 
+ExecutableBuildOptions& ExecutableBuildOptions::set_deduplicate_hlo(
+    bool deduplicate_hlo) {
+  deduplicate_hlo_ = deduplicate_hlo;
+  return *this;
+}
+
 ExecutableBuildOptions& ExecutableBuildOptions::set_device_assignment(
     const DeviceAssignment& device_assignment) {
   device_assignment_ = device_assignment;

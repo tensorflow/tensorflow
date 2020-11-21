@@ -29,9 +29,6 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
-#ifdef TENSORFLOW_USE_SYCL
-typedef Eigen::SyclDevice SYCLDevice;
-#endif  // TENSORFLOW_USE_SYCL
 
 // Partial specialization for a CPUDevice, that uses the Eigen implementation
 // from SoftmaxEigenImpl.
@@ -46,10 +43,6 @@ struct SoftmaxFunctorBase {
 template <typename T>
 struct SoftmaxFunctor<CPUDevice, T> : SoftmaxFunctorBase<CPUDevice, T> {};
 
-#ifdef TENSORFLOW_USE_SYCL
-template <typename T>
-struct SoftmaxFunctor<SYCLDevice, T> : SoftmaxFunctorBase<SYCLDevice, T> {};
-#endif  // TENSORFLOW_USE_SYCL
 }  // namespace functor
 
 template <typename Device, typename T>
@@ -82,25 +75,15 @@ class SoftmaxOp : public OpKernel {
   REGISTER_KERNEL_BUILDER(                                       \
       Name("Softmax").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       SoftmaxOp<CPUDevice, T>);
-TF_CALL_half(REGISTER_CPU);
-TF_CALL_float(REGISTER_CPU);
-TF_CALL_double(REGISTER_CPU);
+TF_CALL_FLOAT_TYPES(REGISTER_CPU);
 
 #undef REGISTER_CPU
 #define REGISTER_CPU(T)                                             \
   REGISTER_KERNEL_BUILDER(                                          \
       Name("LogSoftmax").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       SoftmaxOp<CPUDevice, T>);
-TF_CALL_half(REGISTER_CPU);
-TF_CALL_float(REGISTER_CPU);
-TF_CALL_double(REGISTER_CPU);
+TF_CALL_FLOAT_TYPES(REGISTER_CPU);
 
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(
-    Name("Softmax").Device(DEVICE_SYCL).TypeConstraint<float>("T"),
-    SoftmaxOp<SYCLDevice, float>);
-REGISTER_KERNEL_BUILDER(
-    Name("Softmax").Device(DEVICE_SYCL).TypeConstraint<double>("T"),
-    SoftmaxOp<SYCLDevice, double>);
-#endif  // TENSORFLOW_USE_SYCL
+#undef REGISTER_CPU
+
 }  // namespace tensorflow

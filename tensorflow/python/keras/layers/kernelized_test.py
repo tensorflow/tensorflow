@@ -20,9 +20,12 @@ from __future__ import print_function
 
 import functools
 import math
+import os
+import shutil
 
 from absl.testing import parameterized
 import numpy as np
+import six
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -34,8 +37,12 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.keras import backend as keras_backend
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import initializers
+from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import base_layer_utils
+from tensorflow.python.keras.engine import input_layer
+from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import kernelized as kernel_layers
+from tensorflow.python.keras.saving import save
 from tensorflow.python.keras.utils import kernelized_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
@@ -65,19 +72,36 @@ class RandomFourierFeaturesTest(test.TestCase, parameterized.TestCase):
     else:
       self.assertAllClose(expected, actual, atol=atol)
 
+  @testing_utils.run_v2_only
+  def test_state_saving_and_loading(self):
+    with self.cached_session():
+      input_data = np.random.random((1, 2))
+      rff_layer = kernel_layers.RandomFourierFeatures(output_dim=10, scale=3.0)
+      inputs = input_layer.Input((2,))
+      outputs = rff_layer(inputs)
+      model = training.Model(inputs, outputs)
+      output_data = model.predict(input_data)
+      temp_dir = self.get_temp_dir()
+      self.addCleanup(shutil.rmtree, temp_dir)
+      saved_model_dir = os.path.join(temp_dir, 'rff_model')
+      model.save(saved_model_dir)
+      new_model = save.load_model(saved_model_dir)
+      new_output_data = new_model.predict(input_data)
+      self.assertAllClose(output_data, new_output_data, atol=1e-4)
+
   def test_invalid_output_dim(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, r'`output_dim` should be a positive integer. Given: -3.'):
       _ = kernel_layers.RandomFourierFeatures(output_dim=-3, scale=2.0)
 
   def test_unsupported_kernel_type(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, r'Unsupported kernel type: \'unsupported_kernel\'.'):
       _ = kernel_layers.RandomFourierFeatures(
           3, 'unsupported_kernel', stddev=2.0)
 
   def test_invalid_scale(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         r'When provided, `scale` should be a positive float. Given: 0.0.'):
       _ = kernel_layers.RandomFourierFeatures(output_dim=10, scale=0.0)
@@ -85,7 +109,7 @@ class RandomFourierFeaturesTest(test.TestCase, parameterized.TestCase):
   def test_invalid_input_shape(self):
     inputs = random_ops.random_uniform((3, 2, 4), seed=1)
     rff_layer = kernel_layers.RandomFourierFeatures(output_dim=10, scale=3.0)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         r'The rank of the input tensor should be 2. Got 3 instead.'):
       _ = rff_layer(inputs)
@@ -145,7 +169,7 @@ class RandomFourierFeaturesTest(test.TestCase, parameterized.TestCase):
           output_dim=5,
           kernel_initializer=initializer,
           name='random_fourier_features')
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, r'The last dimension of the inputs to '
           '`RandomFourierFeatures` should be defined. Found `None`.'):
         rff_layer(inputs)
@@ -155,7 +179,7 @@ class RandomFourierFeaturesTest(test.TestCase, parameterized.TestCase):
           output_dim=5,
           kernel_initializer=initializer,
           name='random_fourier_features')
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, r'The last dimension of the inputs to '
           '`RandomFourierFeatures` should be defined. Found `None`.'):
         rff_layer(inputs)
@@ -180,7 +204,7 @@ class RandomFourierFeaturesTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(ValueError):
       rff_layer.compute_output_shape(tensor_shape.TensorShape([3, 2, 3]))
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, r'The innermost dimension of input shape must be defined.'):
       rff_layer.compute_output_shape(tensor_shape.TensorShape([3, None]))
 
@@ -205,7 +229,7 @@ class RandomFourierFeaturesTest(test.TestCase, parameterized.TestCase):
         name='random_fourier_features',
     )
     expected_initializer = initializer
-    if isinstance(initializer, init_ops.Initializer):
+    if not isinstance(initializer, six.string_types):
       expected_initializer = initializers.serialize(initializer)
 
     expected_dtype = (
@@ -246,7 +270,7 @@ class RandomFourierFeaturesTest(test.TestCase, parameterized.TestCase):
     num_trainable_vars = 1 if trainable else 0
     self.assertLen(rff_layer.trainable_variables, num_trainable_vars)
     if trainable:
-      self.assertEqual('random_fourier_features/random_features_scale:0',
+      self.assertEqual('random_fourier_features/kernel_scale:0',
                        rff_layer.trainable_variables[0].name)
     self.assertLen(rff_layer.non_trainable_variables, 3 - num_trainable_vars)
 

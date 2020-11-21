@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/dequantize.h"
 #include "tensorflow/lite/kernels/internal/reference/floor.h"
 #include "tensorflow/lite/kernels/internal/reference/fully_connected.h"
+#include "tensorflow/lite/kernels/internal/reference/hard_swish.h"
 #include "tensorflow/lite/kernels/internal/reference/l2normalization.h"
 #include "tensorflow/lite/kernels/internal/reference/logistic.h"
 #include "tensorflow/lite/kernels/internal/reference/maximum_minimum.h"
@@ -58,7 +59,9 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/round.h"
 #include "tensorflow/lite/kernels/internal/reference/softmax.h"
 #include "tensorflow/lite/kernels/internal/reference/strided_slice.h"
+#include "tensorflow/lite/kernels/internal/reference/string_comparisons.h"
 #include "tensorflow/lite/kernels/internal/reference/sub.h"
+#include "tensorflow/lite/kernels/internal/reference/tanh.h"
 #include "tensorflow/lite/kernels/internal/strided_slice_logic.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/types.h"
@@ -247,8 +250,9 @@ inline void ReluX(const tflite::ActivationParams& params,
   const T min_value = params.quantized_activation_min;
   for (int i = 0; i < flat_size; ++i) {
     const T val = input_data[i];
-    const T clamped =
-        val > max_value ? max_value : val < min_value ? min_value : val;
+    const T clamped = val > max_value   ? max_value
+                      : val < min_value ? min_value
+                                        : val;
     output_data[i] = clamped;
   }
 }
@@ -1343,60 +1347,6 @@ inline void LogSoftmax(const SoftmaxParams& params,
   }
 }
 
-inline void Tanh(const RuntimeShape& input_shape, const float* input_data,
-                 const RuntimeShape& output_shape, float* output_data) {
-  const int flat_size = MatchingFlatSize(input_shape, output_shape);
-
-  for (int i = 0; i < flat_size; i++) {
-    float val = input_data[i];
-    float result = std::tanh(val);
-    output_data[i] = result;
-  }
-}
-
-// Convenience version that allows, for example, generated-code calls to be
-// uniform between data types.
-inline void Tanh(const TanhParams&, const RuntimeShape& input_shape,
-                 const float* input_data, const RuntimeShape& output_shape,
-                 float* output_data) {
-  // Drop params: not needed.
-  Tanh(input_shape, input_data, output_shape, output_data);
-}
-
-inline void Tanh(const TanhParams& params, const RuntimeShape& input_shape,
-                 const int16* input_data, const RuntimeShape& output_shape,
-                 int16* output_data) {
-  const int input_left_shift = params.input_left_shift;
-  // Support for shifts is limited until we have a parameterized version of
-  // SaturatingRoundingMultiplyByPOT().
-  TFLITE_DCHECK_GE(input_left_shift, 0);
-  TFLITE_DCHECK_LE(input_left_shift, 1);
-
-  const int flat_size = MatchingFlatSize(input_shape, output_shape);
-
-  // F0 uses 0 integer bits, range [-1, 1].
-  // This is the return type of math functions such as tanh, logistic,
-  // whose range is in [-1, 1].
-  using F0 = gemmlowp::FixedPoint<std::int16_t, 0>;
-  // F3 uses 3 integer bits, range [-8, 8], the input range expected here.
-  using F3 = gemmlowp::FixedPoint<std::int16_t, 3>;
-
-  if (input_left_shift == 0) {
-    for (int i = 0; i < flat_size; i++) {
-      F3 input = F3::FromRaw(input_data[i]);
-      F0 output = gemmlowp::tanh(input);
-      output_data[i] = output.raw();
-    }
-  } else {
-    for (int i = 0; i < flat_size; i++) {
-      F3 input = F3::FromRaw(
-          gemmlowp::SaturatingRoundingMultiplyByPOT<1>(input_data[i]));
-      F0 output = gemmlowp::tanh(input);
-      output_data[i] = output.raw();
-    }
-  }
-}
-
 inline void Dequantize(const RuntimeShape& input_shape,
                        const Eigen::half* input_data,
                        const RuntimeShape& output_shape, float* output_data) {
@@ -1547,6 +1497,7 @@ inline void GatherNd(const RuntimeShape& params_shape,
   }
 }
 
+#ifndef TF_LITE_STATIC_MEMORY
 template <typename IndicesT = int32>
 inline void GatherNdString(const RuntimeShape& params_shape,
                            const TfLiteTensor* params_data,
@@ -1569,6 +1520,7 @@ inline void GatherNdString(const RuntimeShape& params_shape,
   }
   buffer.WriteToTensor(output_data, /*new_shape=*/nullptr);
 }
+#endif
 
 template <typename IndicesT, typename UpdatesT>
 inline void ScatterNd(const RuntimeShape& indices_shape,
@@ -1690,6 +1642,111 @@ inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
                                  (1 - (input_y - y0)) * (input_x - x0) +
                              input_data[Offset(input_shape, b, y1, x1, c)] *
                                  (input_y - y0) * (input_x - x0));
+          output_data[Offset(output_shape, b, y, x, c)] = interpolation;
+        }
+      }
+    }
+  }
+}
+
+inline void ComputeInterpolationValues(const int32 value, const int32 scale_10,
+                                       const bool half_pixel_centers,
+                                       int32 input_size, int32* scaled_value,
+                                       int32* lower_bound, int32* upper_bound) {
+  if (half_pixel_centers) {
+    *scaled_value = value * scale_10 + scale_10 / 2 - (1 << 9);
+  } else {
+    *scaled_value = value * scale_10;
+  }
+  *lower_bound = std::max(*scaled_value / (1 << 10), 0);
+  *upper_bound =
+      std::min((*scaled_value + (1 << 10) - 1) / (1 << 10), input_size - 1);
+}
+
+// Same as above but takes int8 as input and output.
+inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
+                           const RuntimeShape& unextended_input_shape,
+                           const int8_t* input_data,
+                           const RuntimeShape& unextended_output_size_shape,
+                           const int32* output_size_data,
+                           const RuntimeShape& unextended_output_shape,
+                           int8_t* output_data) {
+  // If half_pixel_centers is True, align_corners must be False.
+  TFLITE_DCHECK(!op_params.half_pixel_centers || !op_params.align_corners);
+  TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_output_size_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
+  const RuntimeShape input_shape =
+      RuntimeShape::ExtendedShape(4, unextended_input_shape);
+  const RuntimeShape output_size_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_size_shape);
+  const RuntimeShape output_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_shape);
+
+  const int32 batches = MatchingDim(input_shape, 0, output_shape, 0);
+  const int32 input_height = input_shape.Dims(1);
+  const int32 input_width = input_shape.Dims(2);
+  const int32 depth = MatchingDim(input_shape, 3, output_shape, 3);
+
+  TFLITE_DCHECK_EQ(output_size_shape.Dims(0), 1);
+  TFLITE_DCHECK_EQ(output_size_shape.Dims(1), 1);
+  TFLITE_DCHECK_EQ(output_size_shape.Dims(2), 1);
+  TFLITE_DCHECK_EQ(output_size_shape.Dims(3), 2);
+  const int32 output_height =
+      output_size_data[Offset(output_size_shape, 0, 0, 0, 0)];
+  const int32 output_width =
+      output_size_data[Offset(output_size_shape, 0, 0, 0, 1)];
+
+  int32 height_scale_10 =
+      ((1 << 10) * input_height + output_height / 2) / output_height;
+  int32 width_scale_10 =
+      ((1 << 10) * input_width + output_width / 2) / output_width;
+  if (op_params.align_corners && output_height > 1) {
+    height_scale_10 =
+        ((1 << 10) * (input_height - 1) + (output_height - 1) / 2) /
+        (output_height - 1);
+  }
+  if (op_params.align_corners && output_width > 1) {
+    width_scale_10 = ((1 << 10) * (input_width - 1) + (output_width - 1) / 2) /
+                     (output_width - 1);
+  }
+
+  for (int b = 0; b < batches; ++b) {
+    for (int y = 0; y < output_height; ++y) {
+      int32 input_y, y0, y1;
+      ComputeInterpolationValues(y, height_scale_10,
+                                 op_params.half_pixel_centers, input_height,
+                                 &input_y, &y0, &y1);
+      for (int x = 0; x < output_width; ++x) {
+        int32 input_x, x0, x1;
+        ComputeInterpolationValues(x, width_scale_10,
+                                   op_params.half_pixel_centers, input_width,
+                                   &input_x, &x0, &x1);
+        for (int c = 0; c < depth; ++c) {
+          const int64_t output_20_ll =
+              static_cast<int64_t>(
+                  input_data[Offset(input_shape, b, y0, x0, c)]) *
+              ((1 << 10) - (input_y - (1 << 10) * y0)) *
+              ((1 << 10) - (input_x - (1 << 10) * x0));
+          const int64_t output_20_lu =
+              static_cast<int64_t>(
+                  input_data[Offset(input_shape, b, y1, x0, c)]) *
+              (input_y - (1 << 10) * y0) *
+              ((1 << 10) - (input_x - (1 << 10) * x0));
+          const int64_t output_20_rl =
+              static_cast<int64_t>(
+                  input_data[Offset(input_shape, b, y0, x1, c)]) *
+              ((1 << 10) - (input_y - (1 << 10) * y0)) *
+              (input_x - (1 << 10) * x0);
+          const int64_t output_20_ru =
+              static_cast<int64_t>(
+                  input_data[Offset(input_shape, b, y1, x1, c)]) *
+              (input_y - (1 << 10) * y0) * (input_x - (1 << 10) * x0);
+          const int64_t output_20 =
+              output_20_ll + output_20_lu + output_20_rl + output_20_ru;
+          const int64_t round = (output_20 > 0) ? (1 << 19) : -(1 << 19);
+          const int8_t interpolation =
+              static_cast<int8_t>((output_20 + round) / (1 << 20));
           output_data[Offset(output_shape, b, y, x, c)] = interpolation;
         }
       }
@@ -2255,11 +2312,16 @@ void RankOneSelect(const RuntimeShape& input_condition_shape,
                    const RuntimeShape& input_y_shape, const T* input_y_data,
                    const RuntimeShape& output_shape, T* output_data) {
   const int64_t outer_size = input_condition_shape.FlatSize();
-  TFLITE_DCHECK_EQ(
-      MatchingDim(input_x_shape, 0, input_y_shape, 0, output_shape, 0),
-      outer_size);
-  const int64_t inner_size =
-      MatchingFlatSizeSkipDim(input_x_shape, 0, input_y_shape, output_shape);
+  int64_t inner_size;
+  if (input_condition_shape.DimensionsCount() == 0) {
+    inner_size = MatchingFlatSize(input_x_shape, input_y_shape, output_shape);
+  } else {
+    TFLITE_DCHECK_EQ(
+        MatchingDim(input_x_shape, 0, input_y_shape, 0, output_shape, 0),
+        outer_size);
+    inner_size =
+        MatchingFlatSizeSkipDim(input_x_shape, 0, input_y_shape, output_shape);
+  }
 
   int64_t offset = 0;
   for (int64_t i = 0; i < outer_size; i++) {
@@ -2324,6 +2386,10 @@ template <typename D, typename T>
 void SelectTrueCoords(const RuntimeShape& input_condition_shape,
                       const D* input_condition_data, T* output_data) {
   const size_t size = input_condition_shape.FlatSize();
+  if (size == 0) {
+    // Dimension is zero, in which case we don't need to output.
+    return;
+  }
   const size_t cond_rank = input_condition_shape.DimensionsCount();
 
   std::vector<int> dims_to_count(cond_rank, 0);
@@ -2547,144 +2613,6 @@ void ReverseSequence(const TS* seq_lengths, const int seq_dim,
         }
       }
     }
-  }
-}
-
-template <typename T>
-inline void HardSwish(const RuntimeShape& input_shape, const T* input_data,
-                      const RuntimeShape& output_shape, T* output_data) {
-  ruy::profiler::ScopeLabel label("ReferenceHardSwish/Float");
-  auto matching_size = MatchingFlatSize(input_shape, output_shape);
-  const T* in_end = input_data + matching_size;
-  for (; input_data < in_end; input_data++, output_data++) {
-    const float in = *input_data;
-    *output_data =
-        in * std::min(static_cast<T>(6), std::max(static_cast<T>(0), in + 3)) /
-        6;
-  }
-}
-
-inline int16_t SaturatingLeftShift(int16_t value, int amount) {
-  int32_t result = static_cast<int32_t>(value) * (1 << amount);
-  result = std::min<int32_t>(result, std::numeric_limits<int16_t>::max());
-  result = std::max<int32_t>(result, std::numeric_limits<int16_t>::min());
-  return result;
-}
-
-// Similar to ARM instruction SQDMULH.
-// Similar to gemmlowp::SaturatingRoundingDoublingHighMul except
-// rounding to zero instead of to nearest (SQRDMULH).
-inline std::int16_t SaturatingDoublingHighMul(std::int16_t a, std::int16_t b) {
-  bool overflow = a == b && a == std::numeric_limits<std::int16_t>::min();
-  std::int32_t a_32(a);
-  std::int32_t b_32(b);
-  std::int32_t ab_32 = a_32 * b_32;
-  std::int16_t ab_x2_high16 = static_cast<std::int16_t>((ab_32) / (1 << 15));
-  return overflow ? std::numeric_limits<std::int16_t>::max() : ab_x2_high16;
-}
-
-template <typename T>
-inline void HardSwish(const HardSwishParams& params,
-                      const RuntimeShape& input_shape, const T* input_data,
-                      const RuntimeShape& output_shape, T* output_data) {
-  ruy::profiler::ScopeLabel label("ReferenceHardSwish/Quantized");
-
-  const int flat_size = MatchingFlatSize(input_shape, output_shape);
-
-  for (int i = 0; i < flat_size; i++) {
-    const int16_t input_value = input_data[i] - params.input_zero_point;
-    // Left-shift as much as we can without overflow/saturation to put
-    // significant bits in the high bits of our 16-bit fixedpoint values, so
-    // that fixed-point approximate computations below are as accurate as
-    // possible.
-    const int16_t input_value_on_hires_input_scale = input_value * (1 << 7);
-    // Compute the input value on essentially the output scale, just not
-    // right-shifted yet. This is the value that we'll use in the (x >= +3)
-    // case, and that in the general case we'll multiply against the "relu-ish"
-    // fixed-point multiplier in [0, 1].
-    const int16_t input_value_on_preshift_output_scale =
-        gemmlowp::SaturatingRoundingDoublingHighMul(
-            input_value_on_hires_input_scale,
-            params.output_multiplier_fixedpoint_int16);
-    // Now compute the "relu-ish multiplier". In the (-3 <= x <= +3) case, that
-    // is just an affine rescaling of x from [-3, 3] to [0, 1]. In the general
-    // case, it is just that plus saturation at the boundaries of [-3, 3].
-    // First, we rescale from [-3, 3] to [-1, 1], saturating.
-    // That is done by rescaling the input value with a fixed-point multiplier
-    // (reluish_multiplier_fixedpoint) and bit-shift such that we represent
-    // that input value on the scale where the real value 3.0f is represented
-    // by the quantized value 32768.  (+32768 is actually not representable as
-    // int16, so this saturates at +32767, and that is seen empirically to be
-    // a negligible contribution to numerical error/bias).
-    //
-    // This code is careful to correctly implement any magnitude of multiplier,
-    // involving either a right shift or a left shift, with correct saturation
-    // behavior in the left-shift case. This forces this code to be more
-    // complicated, but is necessary for real applications: a partially
-    // trained quantized MobileNet v3-small model that motivated this code
-    // exhibits some large [min, max] range boundaries, of the order of
-    // magnitude of 10 or 100 depending on layers.
-    //
-    // The next few lines are basically just an ordinary
-    // MultiplyByQuantizedMultiplier, except that we are more careful here
-    // about the fine details of saturation when left-shifting, because here
-    // overflow in left-shift is a common case, not an anomaly as
-    // MultiplyByQuantizedMultiplier assumes.
-    int16_t reluish_value = input_value_on_hires_input_scale;
-    // Shift left, saturating, as much as we can while ensuring that this
-    // saturation will not contribute to the result. That is, left shift amount
-    // reduced by 1.
-    if (params.reluish_multiplier_exponent > 0) {
-      reluish_value = SaturatingLeftShift(
-          reluish_value, params.reluish_multiplier_exponent - 1);
-    }
-    // Apply the fixed-point multiplier, dividing the value by a divisor
-    // ranging in [1, 2].
-    reluish_value = gemmlowp::SaturatingRoundingDoublingHighMul(
-        reluish_value, params.reluish_multiplier_fixedpoint_int16);
-    // Apply the last bit of left-shift. Thus, in the left-shifting case, if
-    // any saturation affects the result, it is happening here --- any
-    // saturation having occurred above is overwritten here, not affecting the
-    // result.
-    if (params.reluish_multiplier_exponent > 0) {
-      reluish_value = SaturatingLeftShift(reluish_value, 1);
-    }
-    // Shift right, in the right-shifting case.
-    if (params.reluish_multiplier_exponent < 0) {
-      reluish_value = gemmlowp::RoundingDivideByPOT(
-          reluish_value, -params.reluish_multiplier_exponent);
-    }
-    // At this point we have rescaled the value into a 16bit fixedpoint
-    // reluish_value in [-1, 1].
-    // We now convert that to a 16bit fixedpoint value in [0, 1].
-    reluish_value = (reluish_value + (1 << 15)) >> 1;
-    // Use of SaturatingDoublingHighMul here is important to cancel the biases
-    // from the above SaturatingRoundingDoublingHighMul.
-    //
-    // On a partially trained MobileNet-v3-small,
-    //
-    //                                       | bias on    |  ImageNet
-    //                                       | quantized  |  Top-1
-    // Operation used here                   | values     |  accuracy (50k)
-    // --------------------------------------+------------+-----------
-    // SaturatingDoublingHighMul             | -0.0024    |  58.920
-    // SaturatingRoundingDoublingHighMul     | -0.0067    |  58.064
-    //
-    // In activations_test, this is covered by this testcase:
-    //     QuantizedActivationsOpTest.HardSwishBias
-    //
-    const int16_t preshift_output_value = SaturatingDoublingHighMul(
-        reluish_value, input_value_on_preshift_output_scale);
-    // We were so far operating on the pre-shift output scale. Now we finally
-    // apply that output shift, arriving at the final output scale.
-    int16_t output_value = gemmlowp::RoundingDivideByPOT(
-        preshift_output_value, -params.output_multiplier_exponent);
-    output_value += params.output_zero_point;
-    output_value =
-        std::min<int16_t>(output_value, std::numeric_limits<T>::max());
-    output_value =
-        std::max<int16_t>(output_value, std::numeric_limits<T>::min());
-    output_data[i] = output_value;
   }
 }
 

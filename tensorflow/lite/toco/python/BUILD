@@ -30,11 +30,16 @@ cc_library(
     name = "toco_python_api",
     srcs = ["toco_python_api.cc"],
     hdrs = ["toco_python_api.h"],
+    features = ["-parse_headers"],
     visibility = [
         "//tensorflow/python:__subpackages__",
     ],
     deps = [
         "@com_google_protobuf//:protobuf_headers",
+        "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
+        "//tensorflow/c:kernels",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",

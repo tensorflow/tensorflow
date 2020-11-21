@@ -12,11 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <stdint.h>
+
+#include <vector>
+
 #include <gtest/gtest.h>
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace {
@@ -106,6 +108,38 @@ TEST(SegmentSumOpModelTest, Float32Test_ThreeDimensions) {
   model.Invoke();
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({4.0f, 6.0f, 5.0f, 6.0f}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 2, 1}));
+}
+
+TEST(SegmentSumOpModelTest, TestFailIfSegmentsAreNotSorted) {
+  SegmentSumOpModel<int32_t> model({TensorType_INT32, {3, 2}},
+                                   {TensorType_INT32, {3}});
+  model.PopulateTensor<int32_t>(model.data(), {1, 2, 3, 4, 5, 6});
+  model.PopulateTensor<int32_t>(model.segment_ids(), {0, 3, 1});
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteError);
+}
+
+TEST(SegmentSumOpModelTest, TestFailIfSegmentsAreNotConsecutive) {
+  SegmentSumOpModel<int32_t> model({TensorType_INT32, {3, 2}},
+                                   {TensorType_INT32, {3}});
+  model.PopulateTensor<int32_t>(model.data(), {1, 2, 3, 4, 5, 6});
+  model.PopulateTensor<int32_t>(model.segment_ids(), {0, 3, 5});
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteError);
+}
+
+TEST(SegmentSumOpModelTest, TestFailIfSegmentsAreNegative) {
+  SegmentSumOpModel<int32_t> model({TensorType_INT32, {3, 2}},
+                                   {TensorType_INT32, {3}});
+  model.PopulateTensor<int32_t>(model.data(), {1, 2, 3, 4, 5, 6});
+  model.PopulateTensor<int32_t>(model.segment_ids(), {-1, 0, 1});
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteError);
+}
+
+TEST(SegmentSumOpModelTest, TestFailIfSegmentsAreNotTheRightCardinality) {
+  SegmentSumOpModel<int32_t> model({TensorType_INT32, {3, 2}},
+                                   {TensorType_INT32, {2}});
+  model.PopulateTensor<int32_t>(model.data(), {1, 2, 3, 4, 5, 6});
+  model.PopulateTensor<int32_t>(model.segment_ids(), {0, 1});
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteError);
 }
 
 }  // namespace

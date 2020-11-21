@@ -206,7 +206,7 @@ bool ResolveDilatedConv(Model* model, Operator* conv_base_op, Operator* stb_op,
   }
 
   // Conv Op
-  const string& input_of_conv_op =
+  const std::string& input_of_conv_op =
       has_expand_op ? post_stb_op->outputs[0] : stb_op->outputs[0];
   auto* conv_base_op = GetOpWithInput(*model, input_of_conv_op);
   bool changed = false;

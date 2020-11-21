@@ -71,7 +71,7 @@ class ParamNames {
 class GenPythonOp {
  public:
   GenPythonOp(const OpDef& op_def, const ApiDef& api_def,
-              const string& function_name);
+              const string& function_name, bool add_type_annotations_);
   virtual ~GenPythonOp();
 
   virtual string Code();
@@ -98,6 +98,7 @@ class GenPythonOp {
   const OpDef& op_def_;
   const ApiDef& api_def_;
   const string function_name_;
+  bool add_type_annotations_;
   const int num_outs_;
 
   // Return value from Code() is prelude_ + result_.

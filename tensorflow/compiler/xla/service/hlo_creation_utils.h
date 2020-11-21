@@ -39,7 +39,7 @@ StatusOr<HloInstruction*> MakeBinaryHlo(HloOpcode opcode, HloInstruction* lhs,
 
 // Creates a compare HLO instruction and adds it to the computation containing
 // `lhs` and `rhs` (`lhs` and `rhs` must be in the same computation).
-StatusOr<HloInstruction*> MakeCompareHlo(ComparisonDirection direction,
+StatusOr<HloInstruction*> MakeCompareHlo(Comparison::Direction direction,
                                          HloInstruction* lhs,
                                          HloInstruction* rhs);
 
@@ -59,10 +59,14 @@ StatusOr<HloInstruction*> MakeSliceHlo(HloInstruction* operand,
 
 // Creates a convolution HLO instruction and adds it to the computation
 // containing `lhs` and `rhs` (`lhs` and `rhs` must be in the same computation).
+// If the result shape has integral element type, an optional
+// preferred_element_type can be specified to override the element type.
 StatusOr<HloInstruction*> MakeConvolveHlo(
     HloInstruction* lhs, HloInstruction* rhs, int64 feature_group_count,
-    const Window& window, const ConvolutionDimensionNumbers& dimension_numbers,
-    const PrecisionConfig& precision_config);
+    int64 batch_group_count, const Window& window,
+    const ConvolutionDimensionNumbers& dimension_numbers,
+    const PrecisionConfig& precision_config,
+    absl::optional<PrimitiveType> preferred_element_type);
 
 // Creates a transpose HLO instruction and adds it to the computation containing
 // `operand`.
@@ -127,10 +131,14 @@ HloInstruction* MakeIotaHlo(HloComputation* computation, const Shape& shape,
                             int64 iota_dimension);
 
 // Creates a Dot HLO instruction and adds it to the computation containing `lhs`
-// and `rhs` (both must be in the same computation).
-StatusOr<HloInstruction*> MakeDotHlo(HloInstruction* lhs, HloInstruction* rhs,
-                                     const DotDimensionNumbers& dim_numbers,
-                                     const PrecisionConfig& precision_config);
+// and `rhs` (both must be in the same computation). If the result shape has
+// integral element type, an optional preferred_element_type can be specified to
+// override the element type.
+StatusOr<HloInstruction*> MakeDotHlo(
+    HloInstruction* lhs, HloInstruction* rhs,
+    const DotDimensionNumbers& dim_numbers,
+    const PrecisionConfig& precision_config,
+    absl::optional<PrimitiveType> preferred_element_type);
 
 // Creates a Map HLO instruction and adds it to the computation containing the
 // operands. All operands must be in the same computation.
@@ -275,6 +283,11 @@ StatusOr<HloInstruction*> PadVectorWithZeros(HloInstruction* operand,
 HloInstruction* BroadcastZeros(HloComputation* computation,
                                PrimitiveType element_type,
                                absl::Span<const int64> broadcast_dimensions);
+
+// Same as above, but fill the tensor with ones.
+HloInstruction* BroadcastOnes(HloComputation* computation,
+                              PrimitiveType element_type,
+                              absl::Span<const int64> broadcast_dimensions);
 
 // Creates a HLO computation that takes arguments of type `domain` and produces
 // a value of type `range`.

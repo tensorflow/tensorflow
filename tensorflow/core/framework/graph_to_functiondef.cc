@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_node_util.h"
@@ -434,11 +435,21 @@ Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
       // _Arg/Placeholder nodes.
       if (absl::StartsWith(attr.first, "_")) {
         arg_attrs.mutable_attr()->insert(attr);
-      } else if (attr.first == "shape") {
+      } else if (attr.first == "shape" && argdef->type() != DT_RESOURCE) {
         // Preserve known shapes by moving them to the _output_shapes list.
         // The _Arg shape function knows how to extract them from there.
+        // Don't preserve the shape of a resource arg node, which is a scalar
+        // resource handle.
         AttrValue value;
         *(value.mutable_list()->add_shape()) = attr.second.shape();
+        arg_attrs.mutable_attr()->insert({"_output_shapes", value});
+      } else if (attr.first == "value" && node->type_string() == "Const") {
+        // Small eager tensors are captured as const ops rather than
+        // Placeholders. Add a _output_shapes arg_attr with the shape of the
+        // const tensor.
+        AttrValue value;
+        *(value.mutable_list()->add_shape()) =
+            attr.second.tensor().tensor_shape();
         arg_attrs.mutable_attr()->insert({"_output_shapes", value});
       }
       if (attr.first == "_resource_arg_unique_id") {

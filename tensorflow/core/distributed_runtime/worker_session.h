@@ -37,7 +37,7 @@ class WorkerSession {
   // sessions created with `isolate_session_state == false`. In the
   // those cases, this method returns a pointer to a borrowed
   // DeviceMgr (typically the `worker_env.device_mgr`).
-  DeviceMgr* device_mgr() {
+  const DeviceMgr* device_mgr() {
     return device_mgr_ ? device_mgr_.get() : borrowed_device_mgr_;
   }
 
@@ -65,7 +65,7 @@ class WorkerSession {
   static std::shared_ptr<WorkerSession> CreateWithBorrowedDeviceMgr(
       const string& session_name, const string& worker_name,
       std::unique_ptr<WorkerCacheInterface> worker_cache,
-      DeviceMgr* borrowed_device_mgr, std::unique_ptr<GraphMgr> graph_mgr,
+      const DeviceMgr* borrowed_device_mgr, std::unique_ptr<GraphMgr> graph_mgr,
       std::unique_ptr<DynamicDeviceMgr> remote_device_mgr);
 
   // In the eager runtime we allow WorkerSession to be updated, where the
@@ -90,7 +90,7 @@ class WorkerSession {
  private:
   WorkerSession(const string& session_name, const string& worker_name,
                 std::unique_ptr<WorkerCacheInterface> worker_cache,
-                DeviceMgr* borrowed_device_mgr,
+                const DeviceMgr* borrowed_device_mgr,
                 std::unique_ptr<GraphMgr> graph_mgr,
                 std::unique_ptr<DynamicDeviceMgr> remote_device_mgr);
 
@@ -113,8 +113,8 @@ class WorkerSession {
 
   std::unique_ptr<ClusterFunctionLibraryRuntime> cluster_flr_;
 
-  const std::unique_ptr<DeviceMgr> device_mgr_;
-  DeviceMgr* const borrowed_device_mgr_;  // Not owned.
+  const std::unique_ptr<const DeviceMgr> device_mgr_;
+  const DeviceMgr* const borrowed_device_mgr_;  // Not owned.
   std::unique_ptr<DynamicDeviceMgr> remote_device_mgr_;
 };
 

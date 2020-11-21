@@ -101,7 +101,7 @@ TfLiteDelegatePtr CreateNNAPIDelegate() {
       // NnApiDelegate() returns a singleton, so provide a no-op deleter.
       [](TfLiteDelegate*) {});
 #else
-  return TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
+  return CreateNullDelegate();
 #endif  // defined(__ANDROID__)
 }
 
@@ -116,15 +116,15 @@ TfLiteDelegatePtr CreateNNAPIDelegate(StatefulNnApiDelegate::Options options) {
 #endif  // defined(__ANDROID__)
 }
 
-#if defined(__ANDROID__)
+#if TFLITE_SUPPORTS_GPU_DELEGATE
 TfLiteDelegatePtr CreateGPUDelegate(TfLiteGpuDelegateOptionsV2* options) {
   return TfLiteDelegatePtr(TfLiteGpuDelegateV2Create(options),
-                           TfLiteGpuDelegateV2Delete);
+                           &TfLiteGpuDelegateV2Delete);
 }
-#endif  // defined(__ANDROID__)
+#endif  // TFLITE_SUPPORTS_GPU_DELEGATE
 
 TfLiteDelegatePtr CreateGPUDelegate() {
-#if defined(__ANDROID__)
+#if TFLITE_SUPPORTS_GPU_DELEGATE
   TfLiteGpuDelegateOptionsV2 options = TfLiteGpuDelegateOptionsV2Default();
   options.inference_priority1 = TFLITE_GPU_INFERENCE_PRIORITY_MIN_LATENCY;
   options.inference_preference =
@@ -133,7 +133,7 @@ TfLiteDelegatePtr CreateGPUDelegate() {
   return CreateGPUDelegate(&options);
 #else
   return CreateNullDelegate();
-#endif  // defined(__ANDROID__)
+#endif  // TFLITE_SUPPORTS_GPU_DELEGATE
 }
 
 TfLiteDelegatePtr CreateHexagonDelegate(
@@ -184,7 +184,9 @@ TfLiteDelegatePtr CreateXNNPACKDelegate() {
 TfLiteDelegatePtr CreateXNNPACKDelegate(
     const TfLiteXNNPackDelegateOptions* xnnpack_options) {
   auto xnnpack_delegate = TfLiteXNNPackDelegateCreate(xnnpack_options);
-  return TfLiteDelegatePtr(xnnpack_delegate, TfLiteXNNPackDelegateDelete);
+  return TfLiteDelegatePtr(xnnpack_delegate, [](TfLiteDelegate* delegate) {
+    TfLiteXNNPackDelegateDelete(delegate);
+  });
 }
 
 TfLiteDelegatePtr CreateXNNPACKDelegate(int num_threads) {

@@ -56,14 +56,25 @@ class MutableHashTableOfScalars final : public LookupInterface {
 
   Status Find(OpKernelContext* ctx, const Tensor& key, Tensor* value,
               const Tensor& default_value) override {
-    const V default_val = default_value.flat<V>()(0);
     const auto key_values = key.flat<K>();
     auto value_values = value->flat<V>();
+    const auto default_flat = default_value.flat<V>();
+
+    int64 total = value_values.size();
+    int64 default_total = default_flat.size();
+    bool is_full_size_default = (total == default_total);
 
     tf_shared_lock l(mu_);
     for (int64 i = 0; i < key_values.size(); ++i) {
+      // is_full_size_default is true:
+      //   Each key has an independent default value, key_values(i)
+      //   corresponding uses default_flat(i) as its default value.
+      //
+      // is_full_size_default is false:
+      //   All keys will share the default_flat(0) as default value.
       value_values(i) = gtl::FindWithDefault(
-          table_, SubtleMustCopyIfIntegral(key_values(i)), default_val);
+          table_, SubtleMustCopyIfIntegral(key_values(i)),
+          is_full_size_default ? default_flat(i) : default_flat(0));
     }
 
     return Status::OK();
@@ -173,10 +184,14 @@ class MutableHashTableOfTensors final : public LookupInterface {
 
   Status Find(OpKernelContext* ctx, const Tensor& key, Tensor* value,
               const Tensor& default_value) override {
-    const auto default_flat = default_value.flat<V>();
+    const auto default_flat = default_value.flat_inner_dims<V, 2>();
     const auto key_values = key.flat<K>();
     auto value_values = value->flat_inner_dims<V, 2>();
     int64 value_dim = value_shape_.dim_size(0);
+
+    int64 total = value_values.size();
+    int64 default_total = default_flat.size();
+    bool is_full_size_default = (total == default_total);
 
     tf_shared_lock l(mu_);
     for (int64 i = 0; i < key_values.size(); ++i) {
@@ -187,8 +202,15 @@ class MutableHashTableOfTensors final : public LookupInterface {
           value_values(i, j) = value_vec->at(j);
         }
       } else {
+        // is_full_size_default is true:
+        //   Each key has an independent default value, key_values(i)
+        //   corresponding uses default_flat(i) as its default value.
+        //
+        // is_full_size_default is false:
+        //   All keys will share the default_flat(0) as default value.
         for (int64 j = 0; j < value_dim; j++) {
-          value_values(i, j) = default_flat(j);
+          value_values(i, j) =
+              is_full_size_default ? default_flat(i, j) : default_flat(0, j);
         }
       }
     }
@@ -557,7 +579,7 @@ class MutableDenseHashTable final : public LookupInterface {
 
   TensorShape value_shape() const override { return value_shape_; }
 
-  int64 MemoryUsed() const override {
+  int64 MemoryUsed() const override TF_LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
     return sizeof(MutableDenseHashTable) + key_buckets_.AllocatedBytes() +
            value_buckets_.AllocatedBytes() + empty_key_.AllocatedBytes();

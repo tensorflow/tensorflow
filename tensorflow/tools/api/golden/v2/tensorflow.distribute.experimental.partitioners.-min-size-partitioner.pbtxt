@@ -1,0 +1,10 @@
+path: "tensorflow.distribute.experimental.partitioners.MinSizePartitioner"
+tf_class {
+  is_instance: "<class \'tensorflow.python.distribute.sharded_variable.MinSizePartitioner\'>"
+  is_instance: "<class \'tensorflow.python.distribute.sharded_variable.Partitioner\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'min_shard_bytes\', \'max_shards\', \'bytes_per_string\'], varargs=None, keywords=None, defaults=[\'262144\', \'1\', \'16\'], "
+  }
+}

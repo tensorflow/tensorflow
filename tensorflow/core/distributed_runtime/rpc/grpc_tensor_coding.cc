@@ -140,6 +140,15 @@ static void EncodeSkeleton(const Tensor& val, io::ProtoEncodeHelper* e) {
 void EncodeTensorToByteBuffer(bool is_dead, const Tensor& val, bool require_ack,
                               ::grpc::ByteBuffer* result) {
   const int kLargeTensorBytes = 1024;
+  const int64 kProtoBufLimitBytes = 1LL << 31;
+
+  if (val.TotalBytes() > kProtoBufLimitBytes) {
+    size_t exceeded_bytes = val.TotalBytes() - kProtoBufLimitBytes;
+    LOG(FATAL) << "Cannot encode a Tensor that exceeds the 2GB protobuf limit. "
+                  "Exceeded bytes: "
+               << exceeded_bytes;
+  }
+
   RecvTensorResponse response;
   if (is_dead) {
     response.set_is_dead(is_dead);

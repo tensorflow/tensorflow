@@ -901,7 +901,7 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(
         new_text,
-        "tf.nn.dropout(x, 1 - (keep_prob), name=\"foo\")\n",
+        "tf.nn.dropout(x, rate=1 - (keep_prob), name=\"foo\")\n",
     )
 
     text = "tf.nn.dropout(x, keep_prob=.4, name=\"foo\")\n"
@@ -934,7 +934,7 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(
         new_text,
-        "tf.nn.dropout(x, 1 - (1 - func(3 + 4.)), name=\"foo\")\n",
+        "tf.nn.dropout(x, rate=1 - (1 - func(3 + 4.)), name=\"foo\")\n",
     )
 
   def testContribL1(self):
@@ -1117,6 +1117,12 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
     _, report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual("optimizer.compute_gradients(a)\n", new_text)
     self.assertIn("Optimizer.compute_gradients no longer takes", report)
+
+  def testColocateGradientsWithHessians(self):
+    text = "tf.hessians(ys=a, xs=b, colocate_gradients_with_ops=False)\n"
+    _, report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual("tf.hessians(ys=a, xs=b)\n", new_text)
+    self.assertIn("tf.hessians no longer takes", report)
 
   def testExportSavedModelRename(self):
     text = "self.est.export_savedmodel(path)"
@@ -2155,7 +2161,7 @@ def _log_prob(self, x):
     expected = "tf.contrib.distribute.TPUStrategy"
     _, _, errors, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)
-    self.assertIn("migrated to tf.distribute.experimental.TPUStrategy",
+    self.assertIn("migrated to tf.distribute.TPUStrategy",
                   errors[0])
 
     text = "tf.contrib.distribute.foo"

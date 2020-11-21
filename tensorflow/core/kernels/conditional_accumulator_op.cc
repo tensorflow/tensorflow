@@ -90,7 +90,7 @@ class ResourceConditionalAccumulatorOp : public ConditionalAccumulatorBaseOp {
     h(1) = cinfo_.name();
     OP_REQUIRES_OK(ctx, MakeResourceHandleToOutput(
                             ctx, 0, cinfo_.container(), cinfo_.name(),
-                            MakeTypeIndex<ConditionalAccumulatorBase>()));
+                            TypeIndex::Make<ConditionalAccumulatorBase>()));
   }
 
   TF_DISALLOW_COPY_AND_ASSIGN(ResourceConditionalAccumulatorOp);

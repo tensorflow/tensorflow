@@ -73,7 +73,7 @@ class UniqueNodes {
     if (it == memoized_signatures_.end()) return;
 
     std::vector<NodeDef*>& candidates = rep_[it->second];
-    for (int i = 0; i < candidates.size(); ++i) {
+    for (int i = 0, end = candidates.size(); i < end; ++i) {
       if (candidates[i] == node) {
         std::swap(candidates[i], candidates[candidates.size() - 1]);
         candidates.resize(candidates.size() - 1);

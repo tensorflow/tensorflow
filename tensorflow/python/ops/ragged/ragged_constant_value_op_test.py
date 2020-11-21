@@ -306,7 +306,7 @@ class RaggedConstantValueOpTest(test_util.TensorFlowTestCase,
                             exception=None,
                             message=None):
     """Tests that `constant_value()` raises an expected exception."""
-    self.assertRaisesRegexp(
+    self.assertRaisesRegex(
         exception,
         message,
         ragged_factory_ops.constant_value,

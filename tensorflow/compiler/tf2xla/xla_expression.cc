@@ -38,6 +38,16 @@ XlaExpression XlaExpression::Constant(Tensor value) {
   return e;
 }
 
+XlaExpression XlaExpression::ConstantResource(Tensor value,
+                                              XlaResource* resource) {
+  XlaExpression e;
+  e.kind_ = Kind::kResource;
+  e.dtype_ = DT_RESOURCE;
+  e.resource_ = resource;
+  e.constant_value_ = value;
+  return e;
+}
+
 XlaExpression XlaExpression::XlaOp(xla::XlaOp value, DataType dtype) {
   XlaExpression e;
   e.kind_ = Kind::kXlaOp;
@@ -83,7 +93,7 @@ xla::XlaOp XlaExpression::AsXlaOp(xla::XlaBuilder* builder) const {
       case Kind::kConstant: {
         xla::BorrowingLiteral literal;
         TF_RETURN_IF_ERROR(
-            HostTensorToBorrowingLiteral(constant_value_, &literal));
+            HostTensorToBorrowingLiteral(*constant_value_, &literal));
         return xla::ConstantLiteral(builder, literal);
       }
       case Kind::kTensorList:
@@ -101,16 +111,57 @@ xla::XlaOp XlaExpression::AsXlaOp(xla::XlaBuilder* builder) const {
   });
 }
 
-xla::StatusOr<absl::optional<Tensor>> XlaExpression::ResolveConstant(
-    xla::Client* client, bool dynamic_dimension_is_minus_one) const {
+xla::StatusOr<Tensor> XlaExpression::ResolveDynamism(
+    xla::Client* client) const {
   switch (kind()) {
-    case Kind::kConstant:
-      return {constant_value()};
+    case Kind::kConstant: {
+      // Constant values are considered static.
+      Tensor constant_false(DT_BOOL, constant_value()->shape());
+      auto flat = constant_false.flat<bool>();
+      for (int64 i = 0; i < flat.size(); ++i) flat(i) = false;
+      return constant_false;
+    }
     case Kind::kXlaOp:
       break;
     case Kind::kTensorList:
       TF_FALLTHROUGH_INTENDED;
     case Kind::kResource:
+      TF_FALLTHROUGH_INTENDED;
+    case Kind::kInvalid:
+      return errors::InvalidArgument(
+          "ResolveDynamism called on unsupported XlaExpression: ",
+          HumanString());
+  }
+
+  if (!client)
+    return errors::InvalidArgument("client is required to resolve constant");
+
+  TF_ASSIGN_OR_RETURN(xla::XlaComputation constant_graph,
+                      handle().builder()->BuildDynamicInferenceGraph(handle()));
+
+  TF_ASSIGN_OR_RETURN(TensorShape shape, GetShape());
+
+  // The XLA layout is specified minor to major, and TensorFlow uses a major to
+  // minor order.
+  std::vector<int64> layout_indices(shape.dims());
+  std::iota(layout_indices.rbegin(), layout_indices.rend(), 0);
+  xla::Layout layout = xla::LayoutUtil::MakeLayout(layout_indices);
+  TF_ASSIGN_OR_RETURN(xla::Literal literal,
+                      client->ComputeConstant(constant_graph, &layout));
+  Tensor tensor(DT_BOOL);
+  TF_RETURN_IF_ERROR(LiteralToHostTensor(literal, DT_BOOL, &tensor));
+  return tensor;
+}
+
+xla::StatusOr<absl::optional<Tensor>> XlaExpression::ResolveConstant(
+    xla::Client* client, bool dynamic_dimension_is_minus_one) const {
+  switch (kind()) {
+    case Kind::kConstant:
+    case Kind::kResource:
+      return constant_value();
+    case Kind::kXlaOp:
+      break;
+    case Kind::kTensorList:
       TF_FALLTHROUGH_INTENDED;
     case Kind::kInvalid:
       return errors::InvalidArgument(
@@ -145,7 +196,12 @@ xla::StatusOr<absl::optional<Tensor>> XlaExpression::ResolveConstant(
 xla::StatusOr<TensorShape> XlaExpression::GetShape() const {
   switch (kind_) {
     case Kind::kConstant:
-      return constant_value().shape();
+      return constant_value()->shape();
+    case Kind::kResource:
+      if (constant_value()) {
+        return constant_value()->shape();
+      }
+      return TensorShape({});
     case Kind::kXlaOp: {
       TF_ASSIGN_OR_RETURN(xla::Shape xla_shape,
                           handle().builder()->GetShape(handle()));
@@ -155,12 +211,29 @@ xla::StatusOr<TensorShape> XlaExpression::GetShape() const {
     }
     case Kind::kTensorList:
       return TensorShape({});
-    case Kind::kResource:
-      return TensorShape({});
     case Kind::kInvalid:
       return errors::InvalidArgument(
           "GetShape() called on invalid XlaExpression");
   }
+}
+
+const XlaExpression* XlaExpression::CastExpressionFromTensor(
+    const Tensor& tensor) {
+  const XlaExpression* expression =
+      reinterpret_cast<const XlaExpression*>(tensor.tensor_data().data());
+  CHECK(expression->kind() != XlaExpression::Kind::kInvalid)
+      << expression->HumanString();
+  return expression;
+}
+
+// Assigns an XlaExpression to a tensor on an XLA compilation device.
+void XlaExpression::AssignExpressionToTensor(const XlaExpression& value,
+                                             Tensor* tensor) {
+  const XlaExpression* expression =
+      reinterpret_cast<const XlaExpression*>(tensor->tensor_data().data());
+  CHECK(expression->kind() == XlaExpression::Kind::kInvalid)
+      << expression->HumanString();
+  *const_cast<XlaExpression*>(expression) = value;
 }
 
 }  // namespace tensorflow

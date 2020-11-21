@@ -35,9 +35,10 @@ class ICpuUtilsHelper {
   virtual void ResetClockCycle() = 0;
   // Return current clock cycle.
   virtual uint64 GetCurrentClockCycle() = 0;
-  // Enable clock cycle profile
+  // Enable/Disable clock cycle profile
   // You can enable / disable profile if it's supported by the platform
-  virtual void EnableClockCycleProfiling(bool enable) = 0;
+  virtual void EnableClockCycleProfiling() = 0;
+  virtual void DisableClockCycleProfiling() = 0;
   // Return cpu frequency.
   // CAVEAT: as this method may read file and/or call system calls,
   // this call is supposed to be slow.

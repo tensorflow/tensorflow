@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import gc
+import warnings
 
 from absl.testing import parameterized
 import numpy as np
@@ -26,21 +27,23 @@ import scipy.sparse
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.eager.context import get_config
 from tensorflow.python.framework import config
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import activations
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.layers import advanced_activations
 from tensorflow.python.keras.layers import normalization
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
-from tensorflow.python.util import tf_inspect
 
 
 def compare_single_input_op_to_numpy(keras_op,
@@ -106,7 +109,7 @@ class BackendResetTest(test.TestCase, parameterized.TestCase):
     # User defined jit setting
     config.set_optimizer_jit(False)
     sess = backend.get_session()
-    default_config = context.context().config
+    default_config = get_config()
     self.assertEqual(
         sess._config.graph_options.optimizer_options.global_jit_level,
         default_config.graph_options.optimizer_options.global_jit_level)
@@ -114,7 +117,7 @@ class BackendResetTest(test.TestCase, parameterized.TestCase):
 
     # New session has the same jit setting
     sess = backend.get_session()
-    default_config = context.context().config
+    default_config = get_config()
     self.assertEqual(
         sess._config.graph_options.optimizer_options.global_jit_level,
         default_config.graph_options.optimizer_options.global_jit_level)
@@ -123,7 +126,7 @@ class BackendResetTest(test.TestCase, parameterized.TestCase):
     # Change respected
     config.set_optimizer_jit(True)
     sess = backend.get_session()
-    default_config = context.context().config
+    default_config = get_config()
     self.assertEqual(
         sess._config.graph_options.optimizer_options.global_jit_level,
         default_config.graph_options.optimizer_options.global_jit_level)
@@ -169,7 +172,7 @@ class BackendUtilsTest(test.TestCase):
           sess.run(y, feed_dict={x: np.random.random((2, 3))})
 
   def test_learning_phase_name(self):
-    with ops.name_scope('test_scope'):
+    with backend.name_scope('test_scope'):
       # Test that outer name scopes do not affect the learning phase's name.
       lp = backend.symbolic_learning_phase()
     self.assertEqual(lp.name, 'keras_learning_phase:0')
@@ -491,7 +494,7 @@ class BackendLinearAlgebraTest(test.TestCase, parameterized.TestCase):
                                      input_shape_b=(4, 7))
 
   def test_relu(self):
-    x = ops.convert_to_tensor_v2([[-4, 0], [2, 7]], 'float32')
+    x = ops.convert_to_tensor_v2_with_dispatch([[-4, 0], [2, 7]], 'float32')
 
     # standard relu
     relu_op = backend.relu(x)
@@ -1310,7 +1313,7 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
     inputs = backend.variable(input_val)
     initial_states = [
         backend.variable(init_state_val),
-        ops.convert_to_tensor_v2(
+        ops.convert_to_tensor_v2_with_dispatch(
             np.concatenate([init_state_val, init_state_val], axis=-1))
     ]
     mask = backend.variable(np_mask)
@@ -1617,9 +1620,11 @@ class BackendCrossEntropyLossesTest(test.TestCase, parameterized.TestCase):
     p = backend.placeholder()
     o = backend.categorical_crossentropy(t, p)
 
-    t_val = ops.convert_to_tensor_v2([[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]])
-    p_val = ops.convert_to_tensor_v2([[.9, .05, .05], [.05, .89, .06],
-                                      [.05, .01, .94]])
+    t_val = ops.convert_to_tensor_v2_with_dispatch([[1., 0., 0.], [0., 1., 0.],
+                                                    [0., 0., 1.]])
+    p_val = ops.convert_to_tensor_v2_with_dispatch([[.9, .05, .05],
+                                                    [.05, .89, .06],
+                                                    [.05, .01, .94]])
     f = backend.function([t, p], o)
 
     result = f([t_val, p_val])
@@ -1633,7 +1638,8 @@ class BackendCrossEntropyLossesTest(test.TestCase, parameterized.TestCase):
     self.assertArrayNear(result, [.105, .065, .111], 1e-3)
 
     # from logits
-    p_val = ops.convert_to_tensor_v2([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
+    p_val = ops.convert_to_tensor_v2_with_dispatch([[8., 1., 1.], [0., 9., 1.],
+                                                    [2., 3., 5.]])
     o = backend.categorical_crossentropy(t, p, from_logits=True)
     f = backend.function([t, p], o)
 
@@ -1677,15 +1683,18 @@ class BackendCrossEntropyLossesTest(test.TestCase, parameterized.TestCase):
         t, p, from_logits=True, axis=0),
     self.assertArrayNear(self.evaluate(result)[0], [.002, 0, .17], 1e-3)
 
-  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  @combinations.generate(combinations.combine(mode=['graph']))
   def test_sparse_categorical_crossentropy_loss_with_unknown_rank_tensor(self):
+    # This test only runs in graph because the TF op layer is not supported yet
+    # for sparse ops.
     t = backend.placeholder()
     p = backend.placeholder()
     o = backend.sparse_categorical_crossentropy(t, p)
 
-    t_val = ops.convert_to_tensor_v2([0, 1, 2])
-    p_val = ops.convert_to_tensor_v2([[.9, .05, .05], [.05, .89, .06],
-                                      [.05, .01, .94]])
+    t_val = ops.convert_to_tensor_v2_with_dispatch([0, 1, 2])
+    p_val = ops.convert_to_tensor_v2_with_dispatch([[.9, .05, .05],
+                                                    [.05, .89, .06],
+                                                    [.05, .01, .94]])
     f = backend.function([t, p], o)
 
     result = f([t_val, p_val])
@@ -1701,7 +1710,8 @@ class BackendCrossEntropyLossesTest(test.TestCase, parameterized.TestCase):
       _ = f([t_val, p_val])
 
     # from logits
-    p_val = ops.convert_to_tensor_v2([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
+    p_val = ops.convert_to_tensor_v2_with_dispatch([[8., 1., 1.], [0., 9., 1.],
+                                                    [2., 3., 5.]])
     o = backend.sparse_categorical_crossentropy(t, p, from_logits=True)
     f = backend.function([t, p], o)
 
@@ -1726,6 +1736,45 @@ class BackendCrossEntropyLossesTest(test.TestCase, parameterized.TestCase):
     p = array_ops.identity(array_ops.identity(p))
     result = self.evaluate(backend.sparse_categorical_crossentropy(t, p))
     self.assertArrayNear(result, [0.002, 0.0005, 0.17], 1e-3)
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_binary_crossentropy_from_logits_no_warnings(self):
+    t = backend.constant([[0, 1, 0]])
+    logits = backend.constant([[8., 1., 1.]])
+    with warnings.catch_warnings(record=True) as w:
+      self.evaluate(backend.binary_crossentropy(t, logits, from_logits=True))
+      self.assertEmpty(w)
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_binary_crossentropy_from_logits_with_sigmoid(self):
+    t = backend.constant([[0, 1, 0]])
+    logits = backend.constant([[8., 1., 1.]])
+    p = activations.sigmoid(logits)
+    with warnings.catch_warnings(record=True) as w:
+      self.evaluate(backend.binary_crossentropy(t, p, from_logits=True))
+      self.assertLen(w, 1)
+      self.assertIn('received `from_logits=True`', str(w[0].message))
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_categorical_crossentropy_from_logits_with_softmax(self):
+    t = backend.constant([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
+    logits = backend.constant([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
+    p = activations.softmax(logits)
+    with warnings.catch_warnings(record=True) as w:
+      self.evaluate(backend.categorical_crossentropy(t, p, from_logits=True))
+      self.assertLen(w, 1)
+      self.assertIn('received `from_logits=True`', str(w[0].message))
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_sparse_categorical_crossentropy_from_logits_with_softmax(self):
+    t = backend.constant([0, 1, 2])
+    logits = backend.constant([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
+    p = activations.softmax(logits)
+    with warnings.catch_warnings(record=True) as w:
+      self.evaluate(
+          backend.sparse_categorical_crossentropy(t, p, from_logits=True))
+      self.assertLen(w, 1)
+      self.assertIn('received `from_logits=True`', str(w[0].message))
 
 
 @test_util.with_control_flow_v2
@@ -1760,7 +1809,10 @@ class TestCTC(test.TestCase):
         -3.777835    # output beam 1
     ], np.float32)[np.newaxis, :]
 
-    decode_truth = [np.array([1, 0]), np.array([0, 1, 0])]
+    decode_truth = [
+        np.array([1, 0, -1, -1, -1, -1, -1]),
+        np.array([0, 1, 0, -1, -1, -1, -1])
+    ]
     beam_width = 2
     top_paths = 2
 
@@ -1870,6 +1922,8 @@ class TestRandomOps(test.TestCase):
 class FunctionTest(test.TestCase):
 
   def test_function_basics(self):
+    if context.executing_eagerly():
+      self.skipTest('eager backend.function does not support updates')
     x1 = backend.placeholder(shape=(), dtype='float32')
     x2 = backend.placeholder(shape=(), dtype='int32')
     v = backend.variable(10.)
@@ -1916,6 +1970,9 @@ class FunctionTest(test.TestCase):
     self.assertEqual(result, 4.)
 
   def test_tuple_updates(self):
+    if context.executing_eagerly():
+      self.skipTest('eager backend.function does not support updates')
+
     x_ph = backend.placeholder(ndim=2)
     v = backend.variable(np.ones((4, 2)))
     output = x_ph ** 2 + v
@@ -1929,7 +1986,7 @@ class FunctionTest(test.TestCase):
 
 class BackendGraphTests(test.TestCase, parameterized.TestCase):
 
-  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  @combinations.generate(combinations.combine(mode=['graph']))
   def test_function_placeholder_with_default(self):
     with backend.get_graph().as_default():
       x1 = array_ops.placeholder_with_default(
@@ -2114,9 +2171,10 @@ class ControlOpsTests(test.TestCase):
     self.assertEqual(backend.eval(tensor), [9.0])
 
   def test_unequal_rank(self):
-    x = ops.convert_to_tensor_v2(
+    x = ops.convert_to_tensor_v2_with_dispatch(
         np.array([[1, 2, 3], [4, 5, 6]]), dtype='float32')
-    y = ops.convert_to_tensor_v2(np.array([1, 2, 3]), dtype='float32')
+    y = ops.convert_to_tensor_v2_with_dispatch(
+        np.array([1, 2, 3]), dtype='float32')
 
     def true_func():
       return x
@@ -2124,8 +2182,8 @@ class ControlOpsTests(test.TestCase):
     def false_func():
       return y
 
-    with self.assertRaisesRegexp(ValueError,
-                                 'Rank of `condition` should be less than'):
+    with self.assertRaisesRegex(ValueError,
+                                'Rank of `condition` should be less than'):
       backend.switch(backend.equal(x, x), false_func, true_func)
 
 

@@ -129,7 +129,7 @@ bool IsCublasGemm(const HloInstruction& hlo) {
 std::array<int64, 3> GetReductionTiling(
     const ReductionDimensions& reduction_dimensions,
     int smallest_input_dtype_bits,
-    const stream_executor::DeviceDescription* device_description) {
+    absl::optional<CudaComputeCapability> cuda_compute_capability) {
   if (reduction_dimensions.is_row_reduction) {
     int64 tile_z = std::min(reduction_dimensions.dimensions[0], int64{8});
     if (reduction_dimensions.dimensions[1] == 1) {
@@ -140,9 +140,9 @@ std::array<int64, 3> GetReductionTiling(
         0) {
       return {tile_z, 1, 64};
     }
-    int cc_major = 0, cc_minor = 0;
-    if (device_description != nullptr) {
-      device_description->cuda_compute_capability(&cc_major, &cc_minor);
+    int cc_major = 0;
+    if (cuda_compute_capability) {
+      cc_major = cuda_compute_capability->cc_major;
     }
     int unroll_x = 8;
     if (cc_major >= 6 && smallest_input_dtype_bits == 16) {
@@ -226,6 +226,11 @@ bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce) {
       dims_to_keep.push_back(dim);
     }
   }
+
+  // We support fast codegen for three cases:
+  // 1) Row reduction: (K, R)
+  // 2) Column reduction: (K, R, K)
+  // 3) "Batched" row reduction: (R, K, R)
   if (!LayoutUtil::AreDimensionsConsecutive(input->shape().layout(),
                                             dims_to_keep) &&
       !LayoutUtil::AreDimensionsConsecutive(input->shape().layout(),
@@ -428,7 +433,7 @@ llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
       builder->CreateZExt(
           builder->CreateBitCast(value, builder->getIntNTy(bit_width)),
           builder->getIntNTy(32 * num_segments)),
-      llvm::VectorType::get(builder->getInt32Ty(), num_segments));
+      llvm::VectorType::get(builder->getInt32Ty(), num_segments, false));
   for (int i = 0; i < num_segments; ++i) {
     llvm::Value* insert_val;
     if (target_triple.isNVPTX()) {
@@ -467,39 +472,6 @@ StatusOr<CudnnConvKind> GetCudnnConvKind(
   return InternalError("Unexpected call target: %s", target);
 }
 
-StatusOr<se::dnn::ConvolutionKind> GetDnnConvolutionKind(
-    const HloCustomCallInstruction* instr) {
-  absl::string_view target = instr->custom_call_target();
-  if (target == kCudnnConvForwardCallTarget) {
-    return se::dnn::ConvolutionKind::FORWARD;
-  }
-  if (target == kCudnnConvBackwardInputCallTarget) {
-    return se::dnn::ConvolutionKind::BACKWARD_DATA;
-  }
-  if (target == kCudnnConvBackwardFilterCallTarget) {
-    return se::dnn::ConvolutionKind::BACKWARD_FILTER;
-  }
-  return InternalError("Unexpected call target: %s", target);
-}
-
-StatusOr<se::dnn::DataType> GetDnnDataType(
-    const HloCustomCallInstruction* conv) {
-  PrimitiveType output_primitive_type =
-      conv->shape().tuple_shapes(0).element_type();
-  switch (output_primitive_type) {
-    case F16:
-      return se::dnn::ToDataType<Eigen::half>::value;
-    case F32:
-      return se::dnn::ToDataType<float>::value;
-    case F64:
-      return se::dnn::ToDataType<double>::value;
-    default:
-      break;
-  }
-  return InternalError("Unsupported convolution datatype : %s",
-                       conv->ToString());
-}
-
 string CudnnConvKindToString(CudnnConvKind kind) {
   switch (kind) {
     case CudnnConvKind::kForward:
@@ -514,13 +486,14 @@ string CudnnConvKindToString(CudnnConvKind kind) {
 }
 
 llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b) {
-  return b->CreateAnd(
-      b->CreateICmpEQ(
-          b->getInt32(0),
-          EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b)),
-      b->CreateICmpEQ(
-          b->getInt32(0),
-          EmitCallToTargetIntrinsic(TargetIntrinsicID::kBlockIdx, {}, {}, b)));
+  llvm::Value* is_thread0 = b->CreateICmpEQ(
+      b->getInt32(0),
+      EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b));
+
+  llvm::Value* is_block0 = b->CreateICmpEQ(
+      b->getInt32(0),
+      EmitCallToTargetIntrinsic(TargetIntrinsicID::kBlockIdx, {}, {}, b));
+  return b->CreateAnd(is_thread0, is_block0);
 }
 
 bool AreFusedReductionOutputsConsistent(

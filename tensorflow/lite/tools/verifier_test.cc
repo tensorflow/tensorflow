@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
 #include "tensorflow/lite/op_resolver.h"
+#include "tensorflow/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/testing/util.h"
 #include "tensorflow/lite/util.h"
@@ -426,6 +427,19 @@ TEST(VerifyModel, UseUnsupportedCustomOps) {
   EXPECT_THAT(builder.GetErrorString(),
               ::testing::ContainsRegex(
                   "Unsupported custom op: Not supported, version: 1"));
+}
+
+TEST(VerifyModel, UseUnnamedCustomOps) {
+  TfLiteFlatbufferModelBuilder builder({BuiltinOperator_ADD}, {"NewOp"});
+  builder.AddTensor({2, 2}, TensorType_UINT8, {1, 2, 3, 4}, "input1");
+  builder.AddTensor({2, 2}, TensorType_UINT8, {1, 2, 3, 4}, "input2");
+  builder.AddTensor({2, 2}, TensorType_UINT8, {}, "output");
+  builder.AddOperator({0, 1}, {2}, BuiltinOperator_CUSTOM, "");
+  builder.FinishModel({}, {});
+  ASSERT_FALSE(builder.Verify());
+  EXPECT_THAT(builder.GetErrorString(),
+              ::testing::ContainsRegex(
+                  "Invalid custom op name, cannot be null/empty."));
 }
 
 TEST(VerifyModel, UnpopulatedInputToOp) {

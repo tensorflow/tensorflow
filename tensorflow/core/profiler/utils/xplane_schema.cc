@@ -21,15 +21,17 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/utils/tf_op_utils.h"
 
 namespace tensorflow {
 namespace profiler {
 
-const absl::string_view kHostThreads = "/host:CPU";
+const absl::string_view kHostThreadsPlaneName = "/host:CPU";
 const absl::string_view kGpuPlanePrefix = "/device:GPU:";
 const absl::string_view kCuptiDriverApiPlaneName = "/host:CUPTI";
-const absl::string_view kMetadataPlane = "/host:metadata";
-const absl::string_view kTFStreamzPlane = "/host:tfstreamz";
+const absl::string_view kMetadataPlaneName = "/host:metadata";
+const absl::string_view kTFStreamzPlaneName = "/host:tfstreamz";
+const absl::string_view kPythonTracerPlaneName = "/host:python-tracer";
 
 const absl::string_view kStepLineName = "Steps";
 const absl::string_view kTensorFlowNameScopeLineName = "TensorFlow Name Scope";
@@ -37,15 +39,6 @@ const absl::string_view kTensorFlowOpLineName = "TensorFlow Ops";
 const absl::string_view kXlaModuleLineName = "XLA Modules";
 const absl::string_view kXlaOpLineName = "XLA Ops";
 const absl::string_view kKernelLaunchLineName = "Launch Stats";
-
-const int32 kHostPlaneId = 49;
-const int32 kGpuPlaneBaseId = 0;
-const int32 kCuptiDriverApiPlaneId = 50;
-const int32 kMetadataPlaneId = 99;
-const int32 kTFStreamzPlaneId = 98;
-
-const int32 kThreadGroupMinPlaneId = kCuptiDriverApiPlaneId + 1;
-const int32 kThreadGroupMaxPlaneId = kTFStreamzPlaneId - 1;
 
 namespace {
 
@@ -99,16 +92,33 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       {"WhileOp-StartBody", kWhileOpStartBody},
       {"ForOp", kForOp},
       {"PartitionedCallOp", kPartitionedCallOp},
-      // XLA related.
-      {"LocalExecutable::ExecuteOnLocalDevices",
-       kLocalExecutableExecuteOnLocalDevice},
-      {"LocalExecutable::Execute", kLocalExecutableExecute},
       // tf.data related.
       {"IteratorGetNextOp::DoCompute", kIteratorGetNextOp},
       {"IteratorGetNextAsOptionalOp::DoCompute", kIteratorGetNextAsOptionalOp},
-      // Virtual events for grouping.
-      {"HostTrainingLoopIteration", kHostTrainingLoopIteration},
-      {"AsyncExecutorTraceContext", kAsyncExecutorTraceContext},
+      {"Iterator", kIterator},
+      {"Iterator::Prefetch::Generator", kDeviceInputPipelineSecondIterator},
+      {"PrefetchProduce", kPrefetchProduce},
+      {"PrefetchConsume", kPrefetchConsume},
+      {"ParallelInterleaveProduce", kParallelInterleaveProduce},
+      {"ParallelInterleaveConsume", kParallelInterleaveConsume},
+      {"ParallelInterleaveInitializeInput",
+       kParallelInterleaveInitializedInput},
+      {"ParallelMapProduce", kParallelMapProduce},
+      {"ParallelMapConsume", kParallelMapConsume},
+      {"MapAndBatchProduce", kMapAndBatchProduce},
+      {"MapAndBatchConsume", kMapAndBatchConsume},
+      {"ParseExampleProduce", kParseExampleProduce},
+      {"ParseExampleConsume", kParseExampleConsume},
+      // Batching related.
+      {"BatchingSessionRun", kBatchingSessionRun},
+      {"ProcessBatch", kProcessBatch},
+      {"ConcatInputTensors", kConcatInputTensors},
+      {"MergeInputTensors", kMergeInputTensors},
+      {"ScheduleWithoutSplit", kScheduleWithoutSplit},
+      {"ScheduleWithSplit", kScheduleWithSplit},
+      {"ASBSQueue::Schedule", kASBSQueueSchedule},
+      // JAX related.
+      {"LocalExecutable::ExecuteOnLocalDevices", kExecuteOnLocalDevices},
       // GPU related.
       {"KernelLaunch", kKernelLaunch},
       {"KernelExecute", kKernelExecute},
@@ -147,6 +157,17 @@ const StatTypeMap& GetStatTypeMap() {
       {"region_type", kRegionType},
       {"data_type", kDataType},
       {"shape", kTensorShapes},
+      {"kpi_name", kKpiName},
+      {"kpi_value", kKpiValue},
+      {"element_id", kElementId},
+      {"parent_id", kParentId},
+      // XPlane semantics related.
+      {"_pt", kProducerType},
+      {"_ct", kConsumerType},
+      {"_p", kProducerId},
+      {"_c", kConsumerId},
+      {"_r", kIsRoot},
+      {"_a", kIsAsync},
       // Device trace arguments.
       {"device_id", kDeviceId},
       {"context_id", kContextId},
@@ -158,6 +179,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"stream", kStream},
       // Stats added when processing traces.
       {"group_id", kGroupId},
+      {"flow", kFlow},
       {"step_name", kStepName},
       {"level 0", kLevel0},
       {"tf_op", kTfOp},
@@ -167,6 +189,9 @@ const StatTypeMap& GetStatTypeMap() {
       {"is_eager", kIsEager},
       {"tf_function_call", kTfFunctionCall},
       {"tracing_count", kTfFunctionTracingCount},
+      {"flops", kFlops},
+      {"bytes_accessed", kBytesAccessed},
+      {"selected_group_ids", kSelectedGroupIds},
       // Performance counter related.
       {"Raw Value", kRawValue},
       {"Scaled Value", kScaledValue},
@@ -182,6 +207,14 @@ const StatTypeMap& GetStatTypeMap() {
       {"memory_size", kDevCapMemorySize},
       {"compute_cap_major", kDevCapComputeCapMajor},
       {"compute_cap_minor", kDevCapComputeCapMinor},
+      // Batching related.
+      {"batch_size_after_padding", kBatchSizeAfterPadding},
+      {"padding_amount", kPaddingAmount},
+      {"batching_input_task_size", kBatchingInputTaskSize},
+      // GPU related metrics.
+      {"theoretical_occupancy_pct", kTheoreticalOccupancyPct},
+      {"occupancy_min_grid_size", kOccupancyMinGridSize},
+      {"occupancy_suggested_block_size", kOccupancySuggestedBlockSize},
   });
   DCHECK_EQ(stat_type_map->size(), kNumStatTypes);
   return *stat_type_map;
@@ -212,6 +245,19 @@ absl::optional<int64> FindHostEventType(absl::string_view event_name) {
   return absl::nullopt;
 }
 
+absl::optional<int64> FindTfOpEventType(absl::string_view event_name) {
+  // TF op names.
+  Category category = ParseTfOpFullname(event_name).category;
+  switch (category) {
+    case Category::kTensorFlow:
+      return HostEventType::kTfOpRun;
+    case Category::kTfData:
+      return HostEventType::kIterator;
+    default:
+      return absl::nullopt;
+  }
+}
+
 absl::string_view GetStatTypeStr(StatType stat_type) {
   return GetStatTypeStrMap().at(stat_type);
 }
@@ -221,6 +267,49 @@ absl::optional<int64> FindStatType(absl::string_view stat_name) {
     return *stat_type;
   }
   return absl::nullopt;
+}
+
+bool IsInternalEvent(absl::optional<int64> event_type) {
+  // TODO(b/162102421): Introduce a prefix for internal event names.
+  if (!event_type.has_value()) return false;
+  switch (*event_type) {
+    case HostEventType::kMemoryAllocation:
+    case HostEventType::kMemoryDeallocation:
+    case HostEventType::kPrefetchProduce:
+    case HostEventType::kPrefetchConsume:
+    case HostEventType::kParallelInterleaveProduce:
+    case HostEventType::kParallelInterleaveConsume:
+    case HostEventType::kParallelInterleaveInitializedInput:
+    case HostEventType::kParallelMapProduce:
+    case HostEventType::kParallelMapConsume:
+    case HostEventType::kMapAndBatchProduce:
+    case HostEventType::kMapAndBatchConsume:
+    case HostEventType::kParseExampleProduce:
+    case HostEventType::kParseExampleConsume:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool IsInternalStat(absl::optional<int64> stat_type) {
+  // TODO(b/162102421): Introduce a prefix for internal stat names.
+  if (!stat_type.has_value()) return false;
+  switch (*stat_type) {
+    case StatType::kKernelDetails:
+    case StatType::kLevel0:
+    case StatType::kProducerType:
+    case StatType::kProducerId:
+    case StatType::kConsumerType:
+    case StatType::kConsumerId:
+    case StatType::kIsRoot:
+    case StatType::kIsAsync:
+    case StatType::kFlops:
+    case StatType::kBytesAccessed:
+      return true;
+    default:
+      return false;
+  }
 }
 
 }  // namespace profiler

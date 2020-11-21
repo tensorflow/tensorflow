@@ -72,7 +72,18 @@ class MapDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64 Cardinality() const override { return input_->Cardinality(); }
+  int64 Cardinality() const override {
+    if (preserve_cardinality_) {
+      return input_->Cardinality();
+    } else {
+      return kUnknownCardinality;
+    }
+  }
+
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    inputs->push_back(input_);
+    return Status::OK();
+  }
 
   Status CheckExternalState() const override {
     TF_RETURN_IF_ERROR(captured_func_->CheckExternalState());
@@ -147,8 +158,8 @@ class MapDatasetOp::Dataset : public DatasetBase {
         return Status::OK();
       }
 
-      Status s =
-          instantiated_captured_func_->Run(ctx, std::move(args), out_tensors);
+      Status s = instantiated_captured_func_->Run(ctx, std::move(args),
+                                                  out_tensors, model_node());
       if (errors::IsOutOfRange(s)) {
         if (dataset()->preserve_cardinality_) {
           // To guarantee that the transformation preserves the cardinality of

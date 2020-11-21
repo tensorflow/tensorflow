@@ -18,11 +18,11 @@ limitations under the License.
 
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/micro/benchmarks/keyword_scrambled_model_data.h"
-#include "tensorflow/lite/micro/kernels/micro_ops.h"
+#include "tensorflow/lite/micro/benchmarks/micro_benchmark.h"
+#include "tensorflow/lite/micro/kernels/fully_connected.h"
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
-#include "tensorflow/lite/micro/testing/micro_benchmark.h"
 
 /*
  * Keyword Spotting Benchmark for performance optimizations. The model used in
@@ -32,71 +32,48 @@ limitations under the License.
 
 namespace {
 
-// Create an area of memory to use for input, output, and intermediate arrays.
-constexpr int tensor_arena_size = 73 * 1024;
-uint8_t tensor_arena[tensor_arena_size];
-// A random number generator seed to generate input values.
+using KeywordBenchmarkRunner = MicroBenchmarkRunner<int16_t>;
+using KeywordOpResolver = tflite::MicroMutableOpResolver<6>;
+
 constexpr int kRandomSeed = 42;
 
-class KeywordRunner {
- public:
-  KeywordRunner()
-      : keyword_spotting_model_(
-            tflite::GetModel(g_keyword_scrambled_model_data)),
-        reporter_(&micro_reporter_),
-        interpreter_(keyword_spotting_model_, resolver_, tensor_arena,
-                     tensor_arena_size, reporter_) {
-    resolver_.AddBuiltin(tflite::BuiltinOperator_SVDF,
-                         tflite::ops::micro::Register_SVDF());
-    resolver_.AddBuiltin(tflite::BuiltinOperator_FULLY_CONNECTED,
-                         tflite::ops::micro::Register_FULLY_CONNECTED());
-    resolver_.AddBuiltin(tflite::BuiltinOperator_QUANTIZE,
-                         tflite::ops::micro::Register_QUANTIZE());
-    resolver_.AddBuiltin(tflite::BuiltinOperator_DEQUANTIZE,
-                         tflite::ops::micro::Register_DEQUANTIZE(), 1, 2);
-    resolver_.AddBuiltin(tflite::BuiltinOperator_SOFTMAX,
-                         tflite::ops::micro::Register_SOFTMAX());
-    interpreter_.AllocateTensors();
+// Create an area of memory to use for input, output, and intermediate arrays.
+// Align arena to 16 bytes to avoid alignment warnings on certain platforms.
+constexpr int kTensorArenaSize = 21 * 1024;
+alignas(16) uint8_t tensor_arena[kTensorArenaSize];
 
-    // The pseudo-random number generator is initialized to a constant seed
-    std::srand(kRandomSeed);
-    TfLiteTensor* input = interpreter_.input(0);
-    TFLITE_CHECK_EQ(input->type, kTfLiteInt16);
+uint8_t benchmark_runner_buffer[sizeof(KeywordBenchmarkRunner)];
+uint8_t op_resolver_buffer[sizeof(KeywordOpResolver)];
+KeywordBenchmarkRunner* benchmark_runner = nullptr;
 
-    // Pre-populate input tensor with random values.
-    int input_length = input->bytes / sizeof(int16_t);
-    int16_t* input_values = tflite::GetTensorData<int16_t>(input);
-    for (int i = 0; i < input_length; i++) {
-      // Pre-populate input tensor with a random value based on a constant seed.
-      input_values[i] = static_cast<int16_t>(std::rand() % INT16_MAX);
-    }
-  }
+// Initialize benchmark runner instance explicitly to avoid global init order
+// issues on Sparkfun. Use new since static variables within a method
+// are automatically surrounded by locking, which breaks bluepill and stm32f4.
+void CreateBenchmarkRunner() {
+  // We allocate the KeywordOpResolver from a global buffer because the object's
+  // lifetime must exceed that of the KeywordBenchmarkRunner object.
+  KeywordOpResolver* op_resolver = new (op_resolver_buffer) KeywordOpResolver();
+  op_resolver->AddDequantize();
+  op_resolver->AddFullyConnected(tflite::Register_FULLY_CONNECTED_INT8());
+  op_resolver->AddQuantize();
+  op_resolver->AddSoftmax();
+  op_resolver->AddSvdf();
 
-  void RunSingleIteration() {
-    // Run the model on this input and make sure it succeeds.
-    TfLiteStatus invoke_status = interpreter_.Invoke();
-    if (invoke_status != kTfLiteOk) {
-      TF_LITE_REPORT_ERROR(reporter_, "Invoke failed.");
-    }
-  }
+  benchmark_runner = new (benchmark_runner_buffer)
+      KeywordBenchmarkRunner(g_keyword_scrambled_model_data, op_resolver,
+                             tensor_arena, kTensorArenaSize);
+}
 
- private:
-  const tflite::Model* keyword_spotting_model_;
-  tflite::MicroErrorReporter micro_reporter_;
-  tflite::ErrorReporter* reporter_;
-  tflite::MicroOpResolver<6> resolver_;
-  tflite::MicroInterpreter interpreter_;
-};
+// Initializes keyword runner and sets random inputs.
+void InitializeKeywordRunner() {
+  CreateBenchmarkRunner();
+  benchmark_runner->SetRandomInput(kRandomSeed);
+}
 
-// NOLINTNEXTLINE
-KeywordRunner runner;
-
-void KeywordRunFirstIteration() { runner.RunSingleIteration(); }
-
-void KeywordRunTenIerations() {
-  // TODO(b/152644476): Add a way to run more than a single deterministic input.
-  for (int i = 0; i < 10; i++) {
-    runner.RunSingleIteration();
+// This method assumes InitializeKeywordRunner has already been run.
+void KeywordRunNIerations(int iterations) {
+  for (int i = 0; i < iterations; i++) {
+    benchmark_runner->RunSingleIteration();
   }
 }
 
@@ -104,8 +81,10 @@ void KeywordRunTenIerations() {
 
 TF_LITE_MICRO_BENCHMARKS_BEGIN
 
-TF_LITE_MICRO_BENCHMARK(KeywordRunFirstIteration);
+TF_LITE_MICRO_BENCHMARK(InitializeKeywordRunner());
 
-TF_LITE_MICRO_BENCHMARK(KeywordRunTenIerations);
+TF_LITE_MICRO_BENCHMARK(KeywordRunNIerations(1));
+
+TF_LITE_MICRO_BENCHMARK(KeywordRunNIerations(10));
 
 TF_LITE_MICRO_BENCHMARKS_END

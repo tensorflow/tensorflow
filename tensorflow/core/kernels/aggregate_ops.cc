@@ -28,9 +28,6 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
-#ifdef TENSORFLOW_USE_SYCL
-typedef Eigen::SyclDevice SYCLDevice;
-#endif  // TENSORFLOW_USE_SYCL
 
 #define REGISTER_ADDN(type, dev)                                   \
   REGISTER_KERNEL_BUILDER(                                         \
@@ -48,11 +45,10 @@ REGISTER_ADDN_CPU(Variant);
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 #define REGISTER_ADDN_GPU(type) REGISTER_ADDN(type, GPU)
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_ADDN_GPU);
 TF_CALL_int64(REGISTER_ADDN_GPU);
-TF_CALL_complex64(REGISTER_ADDN_GPU);
-TF_CALL_complex128(REGISTER_ADDN_GPU);
 TF_CALL_variant(REGISTER_ADDN_GPU);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_ADDN_GPU);
+TF_CALL_COMPLEX_TYPES(REGISTER_ADDN_GPU);
 #undef REGISTER_ADDN_GPU
 
 // A special GPU kernel for int32.
@@ -68,21 +64,6 @@ REGISTER_KERNEL_BUILDER(
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER_ADDN(float, SYCL);
-REGISTER_ADDN(double, SYCL);
-
-// A special GPU kernel for int32.
-// TODO(b/25387198): Also enable int32 in device memory. This kernel
-// registration requires all int32 inputs and outputs to be in host memory.
-REGISTER_KERNEL_BUILDER(
-    Name("AddN")
-        .Device(DEVICE_SYCL)
-        .TypeConstraint<int32>("T")
-        .HostMemory("inputs")
-        .HostMemory("sum"),
-    AddNOp<CPUDevice, int32, OpKernel, OpKernelConstruction, OpKernelContext>);
-#endif  // TENSORFLOW_USE_SYCL
 
 #undef REGISTER_ADDN
 

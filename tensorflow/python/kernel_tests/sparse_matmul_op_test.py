@@ -154,15 +154,16 @@ class MatMulGradientTest(test.TestCase):
           transpose_b=tr_b,
           a_is_sparse=sp_a,
           b_is_sparse=sp_b)
-      err = (gradient_checker.compute_gradient_error(
-          a, [2, 3] if tr_a else [3, 2],
-          m, [3, 4],
-          x_init_value=a.eval(),
-          delta=delta) + gradient_checker.compute_gradient_error(
-              b, [4, 2] if tr_b else [2, 4],
+      err = (
+          gradient_checker.compute_gradient_error(
+              a, [2, 3] if tr_a else [3, 2],
               m, [3, 4],
-              x_init_value=b.eval(),
-              delta=delta))
+              x_init_value=self.evaluate(a),
+              delta=delta) + gradient_checker.compute_gradient_error(
+                  b, [4, 2] if tr_b else [2, 4],
+                  m, [3, 4],
+                  x_init_value=self.evaluate(b),
+                  delta=delta))
     self.assertLessEqual(err, delta / 2.)
 
   @test_util.run_deprecated_v1

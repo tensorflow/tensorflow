@@ -176,7 +176,7 @@ def map_and_batch_with_legacy_function(map_func,
     num_parallel_calls: (Optional.) A `tf.int32` scalar `tf.Tensor`,
       representing the number of elements to process in parallel. If not
       specified, `batch_size * num_parallel_batches` elements will be processed
-      in parallel. If the value `tf.data.experimental.AUTOTUNE` is used, then
+      in parallel. If the value `tf.data.AUTOTUNE` is used, then
       the number of parallel calls is set dynamically based on available CPU.
 
   Returns:
@@ -237,7 +237,7 @@ def map_and_batch(map_func,
     num_parallel_calls: (Optional.) A `tf.int32` scalar `tf.Tensor`,
       representing the number of elements to process in parallel. If not
       specified, `batch_size * num_parallel_batches` elements will be processed
-      in parallel. If the value `tf.data.experimental.AUTOTUNE` is used, then
+      in parallel. If the value `tf.data.AUTOTUNE` is used, then
       the number of parallel calls is set dynamically based on available CPU.
 
   Returns:

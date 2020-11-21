@@ -72,6 +72,7 @@ patch_am_sdk() {
 patch_kissfft() {
   sed -i -E $'s@#ifdef FIXED_POINT@// Patched automatically by download_dependencies.sh so default is 16 bit.\\\n#ifndef FIXED_POINT\\\n#define FIXED_POINT (16)\\\n#endif\\\n// End patch.\\\n\\\n#ifdef FIXED_POINT@g' tensorflow/lite/micro/tools/make/downloads/kissfft/kiss_fft.h
 
+  sed -i -E '/^#include <sys\/types.h>/d' tensorflow/lite/micro/tools/make/downloads/kissfft/kiss_fft.h
   # Fix for https://github.com/mborgerding/kissfft/issues/20
   sed -i -E $'s@#ifdef FIXED_POINT@#ifdef FIXED_POINT\\\n#include <stdint.h> /* Patched. */@g' tensorflow/lite/micro/tools/make/downloads/kissfft/kiss_fft.h
 
@@ -90,7 +91,18 @@ patch_cifar10_dataset() {
 }
 
 build_embarc_mli() {
-  gmake -j 4 -C ${1}/lib/make TCF_FILE=${2}
+  make -j 4 -C ${1}/lib/make TCF_FILE=${2}
+}
+
+setup_zephyr() {
+  command -v virtualenv >/dev/null 2>&1 || {
+    echo >&2 "The required 'virtualenv' tool isn't installed. Try 'pip install virtualenv'."; exit 1;
+  }
+  virtualenv -p python3 ${1}/venv-zephyr
+  . ${1}/venv-zephyr/bin/activate
+  python ${1}/venv-zephyr/bin/pip install -r ${1}/scripts/requirements.txt
+  west init -m https://github.com/zephyrproject-rtos/zephyr.git
+  deactivate
 }
 
 # Main function handling the download, verify, extract, and patch process.
@@ -106,6 +118,11 @@ download_and_extract() {
   local tempfile=${tempdir}/temp_file
   local curl_retries=3
 
+  # Destionation already downloaded.
+  if [ -d ${dir} ]; then
+      exit 0
+  fi
+
   command -v curl >/dev/null 2>&1 || {
     echo >&2 "The required 'curl' tool isn't installed. Try 'apt-get install curl'."; exit 1;
   }
@@ -116,12 +133,20 @@ download_and_extract() {
   # loop to attempt to recover from them.
   for (( i=1; i<=$curl_retries; ++i ))
   do
+    # We have to use this approach because we normally halt the script when
+    # there's an error, and instead we want to catch errors so we can retry.
+    set +e
     curl -Ls --fail --retry 5 "${url}" > ${tempfile}
     CURL_RESULT=$?
+    set -e
+
+    # Was the command successful? If so, continue.
     if [[ $CURL_RESULT -eq 0 ]]
     then
       break
     fi
+
+    # Keep trying if we see the '56' error code.
     if [[ ( $CURL_RESULT -ne 56 ) || ( $i -eq $curl_retries ) ]]
     then
       echo "Error $CURL_RESULT downloading '${url}'"
@@ -160,6 +185,7 @@ download_and_extract() {
     fi
   else
     echo "Error unsupported archive type. Failed to extract tool after download."
+    exit 1
   fi
   rm -rf ${tempdir2} ${tempdir}
 
@@ -173,7 +199,14 @@ download_and_extract() {
   elif [[ ${action} == "patch_cifar10_dataset" ]]; then
     patch_cifar10_dataset ${dir}
   elif [[ ${action} == "build_embarc_mli" ]]; then
-    build_embarc_mli ${dir} ${action_param1}
+    if [[ "${action_param1}" == *.tcf ]]; then
+      cp ${action_param1} ${dir}/hw/arc.tcf
+      build_embarc_mli ${dir} ../../hw/arc.tcf
+    else
+      build_embarc_mli ${dir} ${action_param1}
+    fi
+  elif [[ ${action} == "setup_zephyr" ]]; then
+    setup_zephyr ${dir}
   elif [[ ${action} ]]; then
     echo "Unknown action '${action}'"
     exit 1

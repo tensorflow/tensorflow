@@ -1,5 +1,6 @@
 # Description: Utilities.
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
@@ -49,6 +50,19 @@ cc_library(
     hdrs = ["batch_scheduler.h"],
     deps = [
         "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/lib:traceme",
+    ],
+)
+
+cc_library(
+    name = "threadsafe_status",
+    srcs = ["threadsafe_status.cc"],
+    hdrs = ["threadsafe_status.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -70,6 +84,7 @@ cc_library(
         ":batch_scheduler_hdrs",
         ":periodic_function_dynamic",
         "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/core/profiler/lib:traceme",
     ],
 )
@@ -81,7 +96,9 @@ cc_library(
         ":batch_scheduler",
         ":periodic_function_dynamic",
         "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/lib:traceme_encode",
     ],
     alwayslink = 1,
 )
@@ -106,6 +123,7 @@ cc_library(
         ":batch_scheduler",
         ":periodic_function_dynamic",
         "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/lib:connected_traceme",
     ],
 )
 
@@ -184,6 +202,18 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "threadsafe_status_test",
+    srcs = ["threadsafe_status_test.cc"],
+    deps = [
+        ":threadsafe_status",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 cc_library(
     name = "fake_clock_env",
     testonly = 1,
@@ -192,5 +222,38 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:tensorflow",
+    ],
+)
+
+cc_library(
+    name = "concat_split_util",
+    hdrs = ["concat_split_util.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core/kernels:concat_lib",
+        "//tensorflow/core/kernels:split_lib",
+        "//tensorflow/core/platform:status",
+    ],
+)
+
+cc_library(
+    name = "batch_resource_base",
+    srcs = ["batch_resource_base.cc"],
+    hdrs = ["batch_resource_base.h"],
+    deps = [
+        ":adaptive_shared_batch_scheduler",
+        ":batch_scheduler",
+        ":concat_split_util",
+        ":shared_batch_scheduler",
+        ":threadsafe_status",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:thread_annotations",
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/lib:traceme_encode",
+        "//tensorflow/core/util:incremental_barrier",
+        "@com_google_absl//absl/strings",
     ],
 )

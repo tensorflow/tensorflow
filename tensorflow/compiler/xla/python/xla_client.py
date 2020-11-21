@@ -19,11 +19,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import atexit
 import collections
+import contextlib
 import enum  # pylint: disable=g-bad-import-order
+import gzip
 import inspect
 import os
 from typing import List, Sequence, Tuple, Union
+
+from . import xla_extension as _xla
 
 from absl import logging
 import numpy as np
@@ -32,8 +37,6 @@ import numpy as np
 # Python bindings are currently packaged both as part of jaxlib and as part
 # of TensorFlow. If we use protocol buffers here, then importing both jaxlib
 # and TensorFlow may fail with duplicate protocol buffer message definitions.
-
-from tensorflow.compiler.xla.python import xla_extension as _xla
 
 # Most functions are snake_case for consistency with other modules, some
 # method names are CamelCase for consistency with XLA.
@@ -50,6 +53,10 @@ xla_platform_names = {
     'cpu': 'Host',
     'gpu': 'CUDA',
 }
+
+
+def _interpreter_backend_factory():
+  return _xla.get_interpreter_client()
 
 
 def _cpu_backend_factory():
@@ -83,10 +90,16 @@ def _gpu_backend_factory(distributed_client=None, node_id=0):
       node_id=node_id)
 
 
+def _tpu_backend_factory():
+  return _xla.get_tpu_client(asynchronous=True)
+
+
 # Backend factories, keyed by user-visible name, in increasing priority order.
 _local_backend_factories = collections.OrderedDict([
+    ('interpreter', _interpreter_backend_factory),
     ('cpu', _cpu_backend_factory),
     ('gpu', _gpu_backend_factory),
+    ('tpu', _tpu_backend_factory),
 ])
 
 
@@ -105,16 +118,17 @@ def _get_local_backends():
 
   _local_backends = collections.OrderedDict()
   for name, factory in _local_backend_factories.items():
-    logging.vlog(2, "Initializing backend '%s'" % name)
+    logging.vlog(1, "Initializing backend '%s'" % name)
     try:
       backend = factory()
-    except RuntimeError:
+    except RuntimeError as err:
       if name == 'cpu':
         # We always expect CPU to initialize successfully.
         raise
       else:
         # If the backend isn't built into the binary, or if it has no devices,
         # we expect a RuntimeError.
+        logging.vlog(1, "Error initializing backend '%s': %s" % (name, err))
         continue
     _local_backends[name] = backend
   return _local_backends
@@ -136,7 +150,8 @@ def get_local_backend(name=None):
     try:
       return backends[name]
     except KeyError:
-      raise RuntimeError('Unknown backend {}'.format(name))
+      raise RuntimeError(
+          'Unknown backend %s. Available: %s' % (name, list(backends.keys())))
 
   return list(backends.values())[-1]
 
@@ -183,8 +198,8 @@ XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.F64: np.dtype('float64'),
     PrimitiveType.C64: np.dtype('complex64'),
     PrimitiveType.C128: np.dtype('complex128'),
-    PrimitiveType.TUPLE: np.dtype(np.object),
-    PrimitiveType.TOKEN: np.dtype(np.object),
+    PrimitiveType.TUPLE: np.dtype(np.object_),
+    PrimitiveType.TOKEN: np.dtype(np.object_),
 }
 
 # Note the conversion on the key. Numpy has a known issue wherein dtype hashing
@@ -296,17 +311,18 @@ def computation_count():
 Device = _xla.Device
 CompileOptions = _xla.CompileOptions
 
+HostBufferSemantics = _xla.HostBufferSemantics
 
 # An Executable is a C++ class that duck types with the following API:
 # class Executable(object):
 #   def local_devices(self) -> [Device]:
-#   def Execute(self, arguments : [Buffer]) -> Buffer:
+#   def execute(self, arguments : [Buffer]) -> Buffer:
 #     """Execute on one replica with Buffer arguments and return value."""
 #
-#   def SizeOfGeneratedCodeInBytes(self) -> int:
+#   def size_of_generated_code_in_bytes(self) -> int:
 #     """Return generated binary size, or -1 if not known."""
 #
-#   def ExecuteOnLocalDevices(self, arguments: [[Buffer]]) -> [Buffer]:
+#   def execute_on_local_devices(self, arguments: [[Buffer]]) -> [Buffer]:
 #     """Execute on many replicas with Buffer arguments and return value.
 #
 #     Args:
@@ -329,7 +345,7 @@ def execute_with_python_values(executable, arguments, backend):
     return backend.buffer_from_pyval(arg, device=executable.local_devices()[0])
 
   arguments = [put(arg) for arg in arguments]
-  outputs = executable.Execute(arguments)
+  outputs = executable.execute(arguments)
   return [x.to_py() for x in outputs]
 
 
@@ -359,7 +375,7 @@ def execute_with_python_values_replicated(executable, arguments, backend):
     flat_arg_buffers = flat_arg_buffers[len(replica_args):]
   return [[x.to_py()
            for x in xs]
-          for xs in executable.ExecuteOnLocalDevices(arg_buffers)]
+          for xs in executable.execute_on_local_devices(arg_buffers)]
 
 
 class PaddingType(enum.Enum):
@@ -401,6 +417,10 @@ def window_padding_type_to_pad_values(padding_type, lhs_dims, rhs_dims,
 XlaBuilder = _xla.XlaBuilder
 XlaComputation = _xla.XlaComputation
 FftType = _xla.FftType
+Client = _xla.Client
+Buffer = _xla.Buffer
+DeviceArrayBase = _xla.DeviceArrayBase
+Executable = _xla.Executable
 
 
 def register_custom_call_target(name, fn, platform='cpu'):
@@ -656,3 +676,27 @@ def make_replica_groups(replica_groups):
         _make_replica_group_proto(group) for group in replica_groups
     ]
   return replica_groups_protos
+
+
+Traceback = _xla.Traceback
+
+
+@contextlib.contextmanager
+def tracebacks(enabled=True):
+  """Context manager that enables or disables traceback collection."""
+  saved = Traceback.enabled
+  Traceback.enabled = enabled
+  try:
+    yield
+  finally:
+    Traceback.enabled = saved
+
+
+def heap_profile(client: Client) -> str:
+  """Returns a gzipped pprof protocol buffer containing a heap profile."""
+  return gzip.compress(client.heap_profile())
+
+
+# Perform one last garbage collection of deferred Python references. This is
+# mostly to keep ASAN happy.
+atexit.register(_xla.collect_garbage)

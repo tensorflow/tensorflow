@@ -12,36 +12,19 @@ guidance on designing and training a model to fit in limited memory.
 For an end-to-end, runnable example of building and converting a model, see the
 following Colab which is part of the *Hello World* example:
 
-<a class="button button-primary" href="https://colab.research.google.com/github/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/examples/hello_world/create_sine_model.ipynb">create_sine_model.ipynb</a>
+<a class="button button-primary" href="https://colab.research.google.com/github/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/examples/hello_world/train/train_hello_world_model.ipynb">train_hello_world_model.ipynb</a>
 
 ## Model conversion
 
 To convert a trained TensorFlow model to run on microcontrollers, you should use
 the
-[TensorFlow Lite converter Python API](https://www.tensorflow.org/lite/convert/python_api).
+[TensorFlow Lite converter Python API](https://www.tensorflow.org/lite/convert/).
 This will convert the model into a
 [`FlatBuffer`](https://google.github.io/flatbuffers/), reducing the model size,
 and modify it to use TensorFlow Lite operations.
 
-### Quantization
-
 To obtain the smallest possible model size, you should consider using
-[Post-training quantization](https://www.tensorflow.org/lite/performance/post_training_quantization).
-This will reduce the precision of the numbers in your model, which results in a
-smaller model size. However, this is likely to reduce accuracy, particularly for
-small models. It is important to profile the accuracy of your model before and
-after quantization to confirm that this loss is acceptable.
-
-The following Python snippet shows how to convert a model using post-training
-quantization:
-
-```python
-import tensorflow as tf
-converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
-converter.optimizations = [tf.lite.Optimize.DEFAULT]
-quantized_model = converter.convert()
-open("converted_model.tflite", "wb").write(quantized_model)
-```
+[post-training quantization](https://www.tensorflow.org/lite/performance/post_training_quantization).
 
 ### Convert to a C array
 
@@ -109,4 +92,4 @@ to run. We are working on expanding operation support, both in terms of
 reference implementations and optimizations for specific architectures.
 
 The supported operations can be seen in the file
-[`all_ops_resolver.cc`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/kernels/all_ops_resolver.cc)
+[`all_ops_resolver.cc`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/all_ops_resolver.cc)

@@ -24,6 +24,7 @@ bool EagerTensor_CheckExact(const PyObject* o);
 tensorflow::int64 PyEagerTensor_ID(const PyObject* tensor);
 tensorflow::DataType PyEagerTensor_Dtype(const PyObject* tensor);
 tensorflow::int64 PyEagerTensor_NumElements(PyObject* tensor);
+TFE_TensorHandle* EagerTensor_Handle(const PyObject* o);
 
 namespace tensorflow {
 
@@ -36,6 +37,8 @@ namespace tensorflow {
 TFE_TensorHandle* ConvertToEagerTensor(TFE_Context* ctx, PyObject* value,
                                        DataType dtype,
                                        const char* device_name = nullptr);
+
+PyObject* TFE_TensorHandleToNumpy(TFE_TensorHandle* handle, TF_Status* status);
 
 }  // namespace tensorflow
 

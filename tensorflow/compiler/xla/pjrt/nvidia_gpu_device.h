@@ -25,7 +25,7 @@ limitations under the License.
 
 namespace xla {
 
-class GpuDevice : public Device {
+class GpuDevice : public PjRtDevice {
  public:
   GpuDevice(int id, std::unique_ptr<LocalDeviceState> local_device_state,
             std::string device_kind, int node_id);
@@ -52,8 +52,9 @@ struct GpuAllocatorConfig {
 };
 
 // distributed_client may be nullptr in non-distributed settings.
-// distributed_client should not be Open()ed before calling this function.
-StatusOr<std::shared_ptr<PjRtClient>> GetNvidiaGpuClient(
+// distributed_client should be in the connected state before calling this
+// function.
+StatusOr<std::unique_ptr<PjRtClient>> GetNvidiaGpuClient(
     bool asynchronous, const GpuAllocatorConfig& allocator_config,
     std::shared_ptr<DistributedRuntimeClient> distributed_client, int node_id);
 

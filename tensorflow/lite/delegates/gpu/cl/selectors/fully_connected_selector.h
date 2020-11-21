@@ -26,10 +26,9 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-absl::Status SelectFullyConnected(const FullyConnectedAttributes& attr,
-                                  const CreationContext& creation_context,
-                                  const OperationDef& op_def, int batch_size,
-                                  std::unique_ptr<GPUOperation>* ptr);
+std::unique_ptr<GPUOperation> SelectFullyConnected(
+    const FullyConnectedAttributes& attr, const GpuInfo& gpu_info,
+    const OperationDef& op_def, int batch_size);
 
 }  // namespace cl
 }  // namespace gpu

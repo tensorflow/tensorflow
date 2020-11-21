@@ -34,7 +34,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/profiler/internal/profiler_interface.h"
+#include "tensorflow/core/profiler/lib/profiler_interface.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
@@ -263,23 +263,21 @@ TEST_F(DeviceTracerTest, TraceToXSpace) {
   // At least one gpu plane and one host plane for launching events.
   const XPlane* host_plane = FindPlaneWithName(space, kCuptiDriverApiPlaneName);
   ASSERT_NE(host_plane, nullptr);
-  EXPECT_EQ(host_plane->id(), kCuptiDriverApiPlaneId);
 
   const XPlane* device_plane =
       FindPlaneWithName(space, strings::StrCat(kGpuPlanePrefix, 0));
   ASSERT_NE(device_plane, nullptr);  // Check if device plane is serialized.
-  EXPECT_EQ(device_plane->id(), kGpuPlaneBaseId);
   // one for MemcpyH2D, one for MemcpyD2H, two for Matmul (one from Eigen, one
   // from cudnn).
   EXPECT_EQ(device_plane->event_metadata_size(), 4);
   // Check if device capacity is serialized.
   XPlaneVisitor plane = CreateTfXPlaneVisitor(device_plane);
-  EXPECT_NE(plane.GetStats(kDevCapClockRateKHz), nullptr);
-  EXPECT_NE(plane.GetStats(kDevCapCoreCount), nullptr);
-  EXPECT_NE(plane.GetStats(kDevCapMemoryBandwidth), nullptr);
-  EXPECT_NE(plane.GetStats(kDevCapMemorySize), nullptr);
-  EXPECT_NE(plane.GetStats(kDevCapComputeCapMajor), nullptr);
-  EXPECT_NE(plane.GetStats(kDevCapComputeCapMinor), nullptr);
+  EXPECT_TRUE(plane.GetStat(kDevCapClockRateKHz).has_value());
+  EXPECT_TRUE(plane.GetStat(kDevCapCoreCount).has_value());
+  EXPECT_TRUE(plane.GetStat(kDevCapMemoryBandwidth).has_value());
+  EXPECT_TRUE(plane.GetStat(kDevCapMemorySize).has_value());
+  EXPECT_TRUE(plane.GetStat(kDevCapComputeCapMajor).has_value());
+  EXPECT_TRUE(plane.GetStat(kDevCapComputeCapMinor).has_value());
 
   // Check if the device events timestamps are set.
   int total_events = 0;
@@ -290,7 +288,7 @@ TEST_F(DeviceTracerTest, TraceToXSpace) {
       ++total_events;
     });
   });
-  EXPECT_EQ(total_events, 5);
+  EXPECT_GE(total_events, 5);
 }
 
 }  // namespace

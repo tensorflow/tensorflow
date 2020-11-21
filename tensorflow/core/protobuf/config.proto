@@ -13,7 +13,7 @@ option cc_enable_arenas = true;
 option java_outer_classname = "ConfigProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
-option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/core_protos_go_proto";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
 
 message GPUOptions {
   // Fraction of the available GPU memory to allocate for each process.
@@ -110,6 +110,18 @@ message GPUOptions {
       // For the concept of "visible" and "virtual" GPU, see the comments for
       // "visible_device_list" above for more information.
       repeated float memory_limit_mb = 1;
+
+      // Priority values to use with the virtual devices. Use the cuda function
+      // cudaDeviceGetStreamPriorityRange to query for valid range of values for
+      // priority.
+      //
+      // On a P4000 GPU with cuda 10.1, the priority range reported was 0 for
+      // least priority and -1 for greatest priority.
+      //
+      // If this field is not specified, then the virtual devices will be
+      // created with the default. If this field has values set, then the size
+      // of this must match with the above memory_limit_mb.
+      repeated int32 priority = 2;
     }
 
     // The multi virtual device settings. If empty (not set), it will create
@@ -556,6 +568,9 @@ message ConfigProto {
     // Session::Extend() may not be supported.
     bool optimize_for_static_graph = 12;
 
+    // This field will eventually be deprecated and replaced by
+    // mlir_bridge_rollout (b/166038521).
+    //
     // Whether to enable the MLIR-based TF->XLA bridge.
     //
     // This is a replacement to the existing bridge, and not ready for
@@ -568,6 +583,22 @@ message ConfigProto {
     // to an "execute" operation. The kernel for these operations is responsible
     // to lower the encapsulated graph to a particular device.
     bool enable_mlir_bridge = 13;
+
+    // An enum that describes the state of the MLIR bridge rollout.
+    enum MlirBridgeRollout {
+      // If this field is left unspecified, the MLIR bridge may be selectively
+      // enabled on a per graph basis.
+      MLIR_BRIDGE_ROLLOUT_UNSPECIFIED = 0;
+      // Enabling the MLIR bridge enables it for all graphs in this session.
+      MLIR_BRIDGE_ROLLOUT_ENABLED = 1;
+      // Disabling the MLIR bridge disables it for all graphs in this session.
+      MLIR_BRIDGE_ROLLOUT_DISABLED = 2;
+    }
+    // This field is underdevelopment, for now use enable_mlir_bridge
+    // (b/166038521).
+    //
+    // Whether to enable the MLIR-based TF->XLA bridge.
+    MlirBridgeRollout mlir_bridge_rollout = 17;
 
     // Whether to enable the MLIR-based Graph optimizations.
     //

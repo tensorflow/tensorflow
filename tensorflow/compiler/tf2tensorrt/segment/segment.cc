@@ -22,7 +22,8 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "tensorflow/compiler/tf2tensorrt/segment/union_find.h"
+#include "tensorflow/compiler/tf2tensorrt/common/utils.h"
+#include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
@@ -34,8 +35,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/env_var.h"
 
-#if GOOGLE_CUDA
-#if GOOGLE_TENSORRT
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
 
 namespace tensorflow {
 namespace tensorrt {
@@ -238,12 +238,6 @@ SimpleGraph::~SimpleGraph() {
 struct SimpleEdgePtrCompare {
   bool operator()(const SimpleEdge* lhs, const SimpleEdge* rhs) const {
     return lhs->id() < rhs->id();
-  }
-};
-
-struct NodePtrCompare {
-  bool operator()(const Node* lhs, const Node* rhs) const {
-    return lhs->name() < rhs->name();
   }
 };
 
@@ -477,7 +471,7 @@ absl::Span<const OpInfo::TensorProperties> GetInputsToDeterminateBatchSize(
       "Add",
       "AddV2",
       "Mul",
-      "Sub"
+      "Sub",
       "Div",
       "FloorDiv",
       "RealDiv",
@@ -645,10 +639,18 @@ ClusterBatchSize GetClusterBatchSizeForNode(
     return cluster_batch_size;
   }
 
+  const NodeDef& node_def = node->def();
+  if (node_def.attr().count(kTftrtOpMaxBatchSizeAttr)) {
+    cluster_batch_size.SetMaxBatchSize(
+        node_def.attr().at(kTftrtOpMaxBatchSizeAttr).i());
+  }
+
+  // As shape inference cannot provide any useful information about the batch
+  // size, we keep it as missing.
   if (!graph_properties ||
       !graph_properties->HasInputProperties(node->name())) {
     VLOG(3) << "doesn't have input property";
-    return cluster_batch_size.SetBatchSizeValue(-1);
+    return cluster_batch_size;
   }
 
   const std::vector<OpInfo::TensorProperties>& input_properties =
@@ -657,18 +659,22 @@ ClusterBatchSize GetClusterBatchSizeForNode(
       FindLeadingShape(GetInputsToDeterminateBatchSize(node, input_properties));
   DCHECK(optional_leading_shape.has_value());
   const TensorShapeProto* leading_shape = optional_leading_shape.value();
-
   DCHECK(!leading_shape->unknown_rank() && leading_shape->dim_size() >= 2);
-  return cluster_batch_size.SetBatchSizeValue(leading_shape->dim(0).size());
+  VLOG(3) << "set batch size as " << leading_shape->dim(0).size();
+  return cluster_batch_size.SetBatchSize(leading_shape->dim(0).size());
 }
 
 void AddSegmentForNode(const grappler::GraphProperties* graph_properties,
                        std::vector<UnionFind<SimpleNode*>>* segments,
-                       SimpleNode* node, bool use_implicit_batch) {
-  segments->emplace_back(
-      node, GetClusterBatchSizeForNode(
-                graph_properties, node == nullptr ? nullptr : node->tf_node(),
-                use_implicit_batch));
+                       SimpleNode* node,
+                       const DeviceNameUtils::ParsedName& device_name,
+                       bool use_implicit_batch) {
+  ClusterProperty property(
+      GetClusterBatchSizeForNode(graph_properties,
+                                 node == nullptr ? nullptr : node->tf_node(),
+                                 use_implicit_batch),
+      device_name);
+  segments->emplace_back(node, std::move(property));
 }
 
 }  // namespace
@@ -678,11 +684,14 @@ Status SegmentGraph(const Graph* tf_graph,
                     const std::function<Status(const Node*)>& candidate_fn,
                     const std::function<bool(const Edge*)>& input_candidate_fn,
                     const std::function<bool(const Edge*)>& output_candidate_fn,
-                    const SegmentOptions& options,
-                    SegmentNodesVector* segments) {
+                    const SegmentOptions& options, SegmentVector* segments) {
   if (!options.use_implicit_batch && !options.allow_dynamic_non_batch_dim) {
     return errors::Internal(
         "Explicit batch mode should allow dynamic non-batch dimensions");
+  }
+
+  if (options.use_implicit_batch && !options.maximum_batch_size.has_value()) {
+    return errors::Internal("Implicit batch mode requires maximum_batch_size");
   }
 
   if (!options.allow_dynamic_non_batch_dim && !graph_properties) {
@@ -706,21 +715,25 @@ Status SegmentGraph(const Graph* tf_graph,
   std::unordered_set<string> unsupported_ops;
   int num_unsupported_ops = 0;
 
-  // Getting the operations blacklisted for conversion
-  string tftrt_op_blacklist_str;
+  // Getting the operations denylisted for conversion
+  string tftrt_op_denylist_str;
   TF_CHECK_OK(
-      ReadStringFromEnvVar("TF_TRT_OP_BLACKLIST", "", &tftrt_op_blacklist_str));
+      ReadStringFromEnvVar("TF_TRT_OP_DENYLIST", "", &tftrt_op_denylist_str));
 
-  auto tftrt_op_blacklist = gtl::FlatSet<string>{};  // non-absl ok
+  auto tftrt_op_denylist = gtl::FlatSet<string>{};  // non-absl ok
 
-  for (const auto& x : str_util::Split(tftrt_op_blacklist_str, ",")) {
-    tftrt_op_blacklist.insert(x);
+  for (const auto& x : str_util::Split(tftrt_op_denylist_str, ",")) {
+    tftrt_op_denylist.insert(x);
   }
 
   // Parsing each node of the graph
   std::vector<UnionFind<SimpleNode*>> node_segments;
   for (int i = 0; i < graph->num_node_ids(); ++i) {
     SimpleNode* node = graph->FindNodeId(i);
+    if (!node) {
+      VLOG(3) << "Node " << i << " doesn't exist in the graph";
+      continue;
+    }
     auto exclude_node = [&](absl::string_view reason) {
       VLOG(1) << "Not a TF-TRT candidate, "
               << "(Op type: " << node->tf_node()->type_string() << "), "
@@ -730,7 +743,13 @@ Status SegmentGraph(const Graph* tf_graph,
       num_unsupported_ops++;
       node = nullptr;
     };
-    if (options.exclude_node_list.count(node->name()) != 0) {
+    absl::optional<DeviceNameUtils::ParsedName> device_name =
+        GetDeviceParsedName(node->tf_node());
+    // GetDeviceParseName capitalizes the device type.
+    if (!device_name.has_value() ||
+        (device_name->has_type && device_name->type != "GPU")) {
+      exclude_node("node can't be placed on GPU");
+    } else if (options.exclude_node_list.count(node->name()) != 0) {
       exclude_node("excluded by segmenter option");
     } else if (options.use_implicit_batch &&
                !OperationCanBeTranslatedToImplicitBatch(graph_properties,
@@ -746,19 +765,20 @@ Status SegmentGraph(const Graph* tf_graph,
       const Status status = candidate_fn(node->tf_node());
       if (!status.ok()) {
         exclude_node(status.error_message());
-      } else if (tftrt_op_blacklist.count(node->tf_node()->type_string())) {
+      } else if (tftrt_op_denylist.count(node->tf_node()->type_string())) {
         // WARNING verbosity since the user explicitly requests this behavior.
-        LOG(WARNING) << "Blacklisted as TF-TRT candidate, "
-                     << "(Op type: " << node->tf_node()->type_string() << "), "
-                     << "(Op name: " << node->name() << ")";
-        exclude_node("Blacklisted with the env var TF_TRT_OP_BLACKLIST");
+        LOG_WARNING_WITH_PREFIX
+            << "Denylisted as TF-TRT candidate, "
+            << "(Op type: " << node->tf_node()->type_string() << "), "
+            << "(Op name: " << node->name() << ")";
+        exclude_node("Denylisted with the env var TF_TRT_OP_DENYLIST");
       } else {
         VLOG(2) << "Accepted as a TF-TRT candidate, "
                 << "(Op type: " << node->tf_node()->type_string() << "), "
                 << "(Op name: " << node->name();
       }
     }
-    AddSegmentForNode(graph_properties, &node_segments, node,
+    AddSegmentForNode(graph_properties, &node_segments, node, *device_name,
                       options.use_implicit_batch);
   }
   string msg = StrCat(
@@ -803,7 +823,9 @@ Status SegmentGraph(const Graph* tf_graph,
     // step until no output edges can be further contracted. This is because
     // contracting an output edge may unblock new edges for contracting.
     ClusterBatchSize expected_batch_size =
-        node_segments[node->id()].BatchSize();
+        node_segments[node->id()].Property().BatchSize();
+    DeviceNameUtils::ParsedName expected_device_name =
+        node_segments[node->id()].Property().DeviceName();
     VLOG(3) << "batch size " << expected_batch_size;
     while (true) {
       std::set<const SimpleEdge*, SimpleEdgePtrCompare> contract_edges;
@@ -816,26 +838,39 @@ Status SegmentGraph(const Graph* tf_graph,
           VLOG(3) << "... ... Control Edge, Skipping";
           continue;
         }
+        UnionFind<SimpleNode*>* out_cluster =
+            &node_segments[out_edge->dst()->id()];
         // Out node must be a TRT candidate.
-        if (node_segments[out_edge->dst()->id()].Value() == nullptr) {
+        if (out_cluster->Value() == nullptr) {
           VLOG(3) << "... ... not a TRT candidate";
           continue;
         }
         // Out node must have compatible batch size.
-        ClusterBatchSize out_batch_size =
-            node_segments[out_edge->dst()->id()].BatchSize();
+        ClusterBatchSize out_batch_size = out_cluster->Property().BatchSize();
         ClusterBatchSize merged_batch_size = expected_batch_size;
         if (!merged_batch_size.MergeIfCompatible(out_batch_size)) {
-          VLOG(3) << "... ... incompatible batch size "
+          VLOG(3) << "... ... incompatible batch sizes "
                   << expected_batch_size.ToString() << " "
                   << out_batch_size.ToString();
           continue;
         }
+
+        const DeviceNameUtils::ParsedName& out_device_name =
+            out_cluster->Property().DeviceName();
+        absl::optional<DeviceNameUtils::ParsedName> merged_device_name =
+            MergeIfCompatible(expected_device_name, out_device_name);
+        if (!merged_device_name.has_value()) {
+          VLOG(3) << "... ... incompatible device names "
+                  << expected_device_name << " " << out_device_name;
+          continue;
+        }
+
         if (CanContractEdge(out_edge, graph)) {
           VLOG(3) << "... ... can contract. new batch size "
                   << merged_batch_size.ToString();
           contract_edges.insert(out_edge);
           expected_batch_size = merged_batch_size;
+          expected_device_name = *merged_device_name;
         } else {
           VLOG(3) << "... ... cannot contract, would form cycle";
         }
@@ -867,11 +902,15 @@ Status SegmentGraph(const Graph* tf_graph,
           graph->RemoveEdge(r);
         }
       }
-      ClusterBatchSize actual_batch_size =
-          node_segments[node->id()].BatchSize();
-      if (expected_batch_size != actual_batch_size) {
+      if (expected_batch_size !=
+          node_segments[node->id()].Property().BatchSize()) {
         return errors::Internal(
             "expected batch size is not the same as the actual batch size");
+      }
+      if (expected_device_name !=
+          node_segments[node->id()].Property().DeviceName()) {
+        return errors::Internal(
+            "expected device name is not the same as the actual device name");
       }
     }
   }
@@ -881,43 +920,21 @@ Status SegmentGraph(const Graph* tf_graph,
 
   // A map from the segment identifier (currently the name of the root node of
   // the segment tree) to the segment nodes set.
-  std::map<string, std::set<const Node*, NodePtrCompare>> sg_map;
-
-  // A map from the segment identifier (currently the name of the root node of
-  // the segment tree) to the device names that the nodes in the segment are
-  // assigned to.
-  //
-  // TODO(aaroey): nodes assigned to different devices should not be merged,
-  // fix this.
-  std::unordered_map<string, std::set<string>> device_maps;
+  std::map<string, Segment> sg_map;
 
   for (auto& u : node_segments) {
     if ((u.Value() != nullptr) && (u.ParentValue() != nullptr)) {
-      sg_map[u.ParentValue()->name()].insert(u.Value()->tf_node());
-      auto tf_node = u.Value()->tf_node();
-      // has_assigned_device_name() is expected to return true
-      // when called from optimization pass. However, since graph
-      // is converted back and forth between graph and graphdef,
-      // assigned devices demoted to requested devices. If the graph
-      // is passed directly to this module, assigned devices will be set.
-      if (tf_node->has_assigned_device_name()) {
-        device_maps[u.ParentValue()->name()].insert(
-            tf_node->assigned_device_name());
-      } else if (!tf_node->requested_device().empty()) {
-        device_maps[u.ParentValue()->name()].insert(
-            tf_node->requested_device());
-      } else {
-        VLOG(2) << "Node " << tf_node->name()
-                << " has no device assigned requested device is: "
-                << tf_node->requested_device();
-      }
+      sg_map[u.ParentValue()->name()].nodes.insert(u.Value()->tf_node());
+    }
+    if ((u.Value() != nullptr) && (u.ParentValue() == u.Value())) {
+      sg_map[u.Value()->name()].property = u.Property();
     }
   }
 
   // --------------------------------- Step 2 ---------------------------------
   // Remove ineligible input/output nodes.
   for (auto& itr : sg_map) {
-    std::set<const Node*, NodePtrCompare>& segment_nodes = itr.second;
+    std::set<const Node*, NodePtrCompare>& segment_nodes = itr.second.nodes;
     VLOG(1) << "Segment original size: " << segment_nodes.size();
     while (true) {
       std::deque<const Node*> in_nodes_que, out_nodes_que;
@@ -1005,7 +1022,8 @@ Status SegmentGraph(const Graph* tf_graph,
   for (const auto& itr : sg_map) {
     const string& segment_root = itr.first;
     // Return format does not require set comparator.
-    std::set<const Node*> segment_nodes(itr.second.begin(), itr.second.end());
+    std::set<const Node*, NodePtrCompare> segment_nodes(
+        itr.second.nodes.begin(), itr.second.nodes.end());
     if (VLOG_IS_ON(1) && !segment_nodes.empty()) {
       string s;
       for (auto node : segment_nodes) {
@@ -1023,36 +1041,15 @@ Status SegmentGraph(const Graph* tf_graph,
         });
 
     // Don't use segments whose number of effective nodes is small.
-    if (num_effective_nodes < options.minimum_segment_size) {
+    if (num_effective_nodes == 0 ||
+        num_effective_nodes < options.minimum_segment_size) {
       VLOG(1) << "Segment " << segments->size() << " has only "
               << num_effective_nodes << " effective nodes, dropping";
       continue;
     }
-
-    const auto& dev_itr = device_maps.find(segment_root);
-    if (dev_itr == device_maps.end() || dev_itr->second.empty()) {
-      VLOG(1) << "No device assigned to segment " << segments->size();
-    } else if (dev_itr->second.size() > 1) {
-      string s = StrCat("Segment ", segments->size(),
-                        " has multiple devices attached: ");
-      for (const auto& dev : dev_itr->second) {
-        StrAppend(&s, dev, ", ");
-      }
-      LOG(WARNING) << s;
-    }
-
-    segments->emplace_back(segment_nodes);
+    segments->emplace_back(itr.second.property, segment_nodes);
   }
-  if (VLOG_IS_ON(1)) {
-    for (const auto& d : device_maps) {
-      string s("Segment ");
-      StrAppend(&s, ": '", d.first, "' ");
-      for (const auto& dd : d.second) {
-        StrAppend(&s, dd, ", ");
-      }
-      VLOG(1) << "Devices " << s;
-    }
-  }
+
   return Status::OK();
 }
 
@@ -1060,5 +1057,4 @@ Status SegmentGraph(const Graph* tf_graph,
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif  // GOOGLE_TENSORRT
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT

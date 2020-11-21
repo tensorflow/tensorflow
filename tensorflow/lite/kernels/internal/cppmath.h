@@ -19,8 +19,9 @@ limitations under the License.
 
 namespace tflite {
 
-#if defined(TF_LITE_USE_GLOBAL_CMATH_FUNCTIONS) || \
-    (defined(__ANDROID__) && !defined(__NDK_MAJOR__)) || defined(ARDUINO)
+#if defined(TF_LITE_USE_GLOBAL_CMATH_FUNCTIONS) ||                           \
+    (defined(__ANDROID__) && !defined(__NDK_MAJOR__)) || defined(ARDUINO) || \
+    defined(__ZEPHYR__)
 #define TF_LITE_GLOBAL_STD_PREFIX
 #else
 #define TF_LITE_GLOBAL_STD_PREFIX std

@@ -18,5 +18,6 @@ limitations under the License.
 namespace tensorflow {
 
 REGISTER_KERNEL_BUILDER(Name("NoOp").Device(DEVICE_DEFAULT), NoOp);
+REGISTER_KERNEL_BUILDER(Name("NoOp").Device(DEVICE_TPU_SYSTEM), NoOp);
 
 }  // namespace tensorflow

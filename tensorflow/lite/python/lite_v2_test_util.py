@@ -77,6 +77,7 @@ class ModelTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def _getMultiFunctionModel(self):
 
     class BasicModel(tracking.AutoTrackable):
+      """Basic model with multiple functions."""
 
       def __init__(self):
         self.y = None

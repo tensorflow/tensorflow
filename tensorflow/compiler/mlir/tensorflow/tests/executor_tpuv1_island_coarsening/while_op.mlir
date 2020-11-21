@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tf-executor-tpu-v1-island-coarsening | FileCheck %s --dump-input=fail
+// RUN: tf-opt %s -tf-executor-tpu-v1-island-coarsening | FileCheck %s
 
 
 // Test that islands with a function call are merged if the call is to a function

@@ -676,8 +676,9 @@ def sigmoid_cross_entropy(
       `{0, 1}`.
     logits: Float `[batch_size, num_classes]` logits outputs of the network.
     weights: Optional `Tensor` whose rank is either 0, or the same rank as
-      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
-      be either `1`, or the same as the corresponding `losses` dimension).
+    `multi_class_labels`, and must be broadcastable to `multi_class_labels` 
+    (i.e., all dimensions must be either `1`, or the same as the 
+    corresponding `losses` dimension).
     label_smoothing: If greater than `0` then smooth the labels.
     scope: The scope for the operations performed in computing the loss.
     loss_collection: collection to which the loss will be added.

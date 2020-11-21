@@ -102,8 +102,10 @@ public final class Interpreter implements AutoCloseable {
      * Sets whether to allow float16 precision for FP32 calculation when possible. Defaults to false
      * (disallow).
      *
-     * <p>WARNING: This is an experimental API and subject to change.
+     * @deprecated Prefer using {@link
+     *     org.tensorflow.lite.nnapi.NnApiDelegate.Options#setAllowFp16(boolean enable)}.
      */
+    @Deprecated
     public Options setAllowFp16PrecisionForFp32(boolean allow) {
       this.allowFp16PrecisionForFp32 = allow;
       return this;
@@ -135,10 +137,48 @@ public final class Interpreter implements AutoCloseable {
       return this;
     }
 
+    /**
+     * Advanced: Set if the interpreter is able to be cancelled.
+     *
+     * @see {@link Interpreter#setCancelled(boolean)}.
+     */
+    public Options setCancellable(boolean allow) {
+      this.allowCancellation = allow;
+      return this;
+    }
+
+    /**
+     * Experimental: Enable an optimized set of floating point CPU kernels (provided by XNNPACK).
+     *
+     * <p>Enabling this flag will enable use of a new, highly optimized set of CPU kernels provided
+     * via the XNNPACK delegate. Currently, this is restricted to a subset of floating point
+     * operations. Eventually, we plan to enable this by default, as it can provide significant
+     * peformance benefits for many classes of floating point models. See
+     * https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/xnnpack/README.md
+     * for more details.
+     *
+     * <p>Things to keep in mind when enabling this flag:
+     *
+     * <ul>
+     *   <li>Startup time and resize time may increase.
+     *   <li>Baseline memory consumption may increase.
+     *   <li>May be ignored if another delegate (eg NNAPI) have been applied.
+     *   <li>Quantized models will not see any benefit.
+     * </ul>
+     *
+     * <p>WARNING: This is an experimental interface that is subject to change.
+     */
+    public Options setUseXNNPACK(boolean useXNNPACK) {
+      this.useXNNPACK = useXNNPACK;
+      return this;
+    }
+
     int numThreads = -1;
     Boolean useNNAPI;
     Boolean allowFp16PrecisionForFp32;
     Boolean allowBufferHandleOutput;
+    Boolean allowCancellation;
+    Boolean useXNNPACK;
     final List<Delegate> delegates = new ArrayList<>();
   }
 
@@ -252,6 +292,8 @@ public final class Interpreter implements AutoCloseable {
    *   <li>{@link LongBuffer} - compatible with int64 Tensors.
    * </ul>
    *
+   * Note that boolean types are only supported as arrays, not {@link Buffer}s, or as scalar inputs.
+   *
    * @param input an array or multidimensional array, or a {@link Buffer} of primitive types
    *     including int, float, long, and byte. {@link Buffer} is the preferred way to pass large
    *     input data for primitive types, whereas string types require using the (multi-dimensional)
@@ -267,6 +309,8 @@ public final class Interpreter implements AutoCloseable {
    *     bound to the output {@link Tensor}. See {@link Options#setAllowBufferHandleOutput()}.
    * @throws IllegalArgumentException if {@code input} or {@code output} is null or empty, or if
    *     error occurs when running the inference.
+   * @throws IllegalArgumentException (EXPERIMENTAL, subject to change) if the inference is
+   *     interrupted by {@code setCancelled(true)}.
    */
   public void run(Object input, Object output) {
     Object[] inputs = {input};
@@ -289,6 +333,8 @@ public final class Interpreter implements AutoCloseable {
    *   <li>{@link IntBuffer} - compatible with int32 Tensors.
    *   <li>{@link LongBuffer} - compatible with int64 Tensors.
    * </ul>
+   *
+   * Note that boolean types are only supported as arrays, not {@link Buffer}s, or as scalar inputs.
    *
    * <p>Note: {@code null} values for invididual elements of {@code inputs} and {@code outputs} is
    * allowed only if the caller is using a {@link Delegate} that allows buffer handle interop, and
@@ -323,6 +369,7 @@ public final class Interpreter implements AutoCloseable {
    * <p>Note: This call is *purely optional*. Tensor allocation will occur automatically during
    * execution if any input tensors have been resized. This call is most useful in determining the
    * shapes for any output tensors before executing the graph, e.g.,
+   *
    * <pre>{@code
    * interpreter.resizeInput(0, new int[]{1, 4, 4, 3}));
    * interpreter.allocateTensors();
@@ -440,18 +487,6 @@ public final class Interpreter implements AutoCloseable {
   }
 
   /**
-   * Turns on/off Android NNAPI for hardware acceleration when it is available.
-   *
-   * @deprecated Prefer using {@link Options#setUseNNAPI(boolean)} directly for enabling NN API.
-   *     This method will be removed in a future release.
-   */
-  @Deprecated
-  public void setUseNNAPI(boolean useNNAPI) {
-    checkNotClosed();
-    wrapper.setUseNNAPI(useNNAPI);
-  }
-
-  /**
    * Sets the number of threads to be used for ops that support multi-threading.
    *
    * @deprecated Prefer using {@link Options#setNumThreads(int)} directly for controlling thread
@@ -466,14 +501,11 @@ public final class Interpreter implements AutoCloseable {
   /**
    * Advanced: Modifies the graph with the provided {@link Delegate}.
    *
-   * <p>Note: The typical path for providing delegates is via {@link Options#addDelegate}, at
-   * creation time. This path should only be used when a delegate might require coordinated
-   * interaction between Interpeter creation and delegate application.
-   *
-   * <p>WARNING: This is an experimental API and subject to change.
-   *
    * @throws IllegalArgumentException if error occurs when modifying graph with {@code delegate}.
+   * @deprecated Prefer using {@link Options#addDelegate} to provide delegates at creation time.
+   *     This method will be removed in a future release.
    */
+  @Deprecated
   public void modifyGraphWithDelegate(Delegate delegate) {
     checkNotClosed();
     wrapper.modifyGraphWithDelegate(delegate);
@@ -491,6 +523,26 @@ public final class Interpreter implements AutoCloseable {
     wrapper.resetVariableTensors();
   }
 
+  /**
+   * Advanced: Interrupts inference in the middle of a call to {@link Interpreter#run}.
+   *
+   * <p>A cancellation flag will be set to true when this function gets called. The interpreter will
+   * check the flag between Op invocations, and if it's {@code true}, the interpreter will stop
+   * execution. The interpreter will remain a cancelled state until explicitly "uncancelled" by
+   * {@code setCancelled(false)}.
+   *
+   * <p>WARNING: This is an experimental API and subject to change.
+   *
+   * @param cancelled {@code true} to cancel inference in a best-effort way; {@code false} to
+   *     resume.
+   * @throws IllegalStateException if the interpreter is not initialized with the cancellable
+   *     option, which is by default off.
+   * @see {@link Interpreter.Options#setCancellable(boolean)}.
+   */
+  public void setCancelled(boolean cancelled) {
+    wrapper.setCancelled(cancelled);
+  }
+
   int getExecutionPlanLength() {
     checkNotClosed();
     return wrapper.getExecutionPlanLength();
@@ -505,6 +557,8 @@ public final class Interpreter implements AutoCloseable {
     }
   }
 
+  // for Object.finalize, see https://bugs.openjdk.java.net/browse/JDK-8165641
+  @SuppressWarnings("deprecation")
   @Override
   protected void finalize() throws Throwable {
     try {

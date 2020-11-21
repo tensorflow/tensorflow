@@ -53,7 +53,7 @@ std::string ConstructXStatName(absl::string_view name,
           }));
 }
 
-std::string SerializePercentile(const monitoring::Percentiles& percentiles) {
+tfstreamz::Percentiles ToProto(const monitoring::Percentiles& percentiles) {
   tfstreamz::Percentiles output;
   output.set_unit_of_measure(
       static_cast<tfstreamz::UnitOfMeasure>(percentiles.unit_of_measure));
@@ -71,7 +71,7 @@ std::string SerializePercentile(const monitoring::Percentiles& percentiles) {
     percentile_point->set_percentile(pp.percentile);
     percentile_point->set_value(pp.value);
   }
-  return output.SerializeAsString();
+  return output;
 }
 
 }  // namespace
@@ -113,14 +113,10 @@ Status SerializeToXPlane(const std::vector<TfStreamzSnapshot>& snapshots,
                                                point->string_value));
             break;
           case monitoring::ValueType::kHistogram:
-            xevent.AddStatValue(*metadata,
-                                point->histogram_value.SerializeAsString(),
-                                /*is_bytes=*/true);
+            xevent.AddStatValue(*metadata, point->histogram_value);
             break;
           case monitoring::ValueType::kPercentiles:
-            xevent.AddStatValue(*metadata,
-                                SerializePercentile(point->percentiles_value),
-                                /*is_bytes=*/true);
+            xevent.AddStatValue(*metadata, ToProto(point->percentiles_value));
             break;
         }
       }

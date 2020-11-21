@@ -16,14 +16,24 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TESTING_FEATURE_PARITY_UTILS_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TESTING_FEATURE_PARITY_UTILS_H_
 
+#include <stddef.h>
+
 #include <cstdint>
+#include <memory>
+#include <optional>
 #include <ostream>
 #include <string>
+#include <tuple>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/types/span.h"
+#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/model.h"
+#include "tensorflow/lite/string_type.h"
 
 namespace tflite {
 
@@ -115,7 +125,7 @@ class TensorEqMatcher {
         return false;
       }
 
-      // 4. Proceed to data comparison. Iterate throught elements as they lay
+      // 4. Proceed to data comparison. Iterate through elements as they lay
       // flat. If some pair of elements don't match, deduct the coordinate
       // basing on the dimensions, then return.
       absl::Span<float> lhs_span(lhs.data.f, lhs.bytes / sizeof(float));
@@ -163,7 +173,7 @@ class TensorEqMatcher {
   const TfLiteTensor rhs_;
 };
 
-// Builds intepreter for a model, allocates tensors.
+// Builds interpreter for a model, allocates tensors.
 absl::Status BuildInterpreter(const Model* model,
                               std::unique_ptr<Interpreter>* interpreter);
 

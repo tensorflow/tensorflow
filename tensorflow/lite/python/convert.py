@@ -35,6 +35,7 @@ from tensorflow.lite.python import wrap_toco
 from tensorflow.lite.toco import model_flags_pb2 as _model_flags_pb2
 from tensorflow.lite.toco import toco_flags_pb2 as _toco_flags_pb2
 from tensorflow.lite.toco import types_pb2 as _types_pb2
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.platform import resource_loader as _resource_loader
 from tensorflow.python.util import deprecation
@@ -94,6 +95,20 @@ class OpsSet(enum.Enum):
   # quantized implementations.
   TFLITE_BUILTINS_INT8 = "TFLITE_BUILTINS_INT8"
 
+  # Convert model using only TensorFlow Lite operations with quantized int8
+  # weights, int16 activations and int64 bias.
+  # Specifying this will throw an error for operations that do not yet have
+  # quantized implementations.
+  # This quantization mode may be used in models for super-resolution,
+  # audio signal processing or image de-noising. It improves accuracy
+  # significantly, but only slightly increases the model size.
+  # WARNING: These ops are currently experimental and have not yet been
+  # finalized.
+  # They are only compatible with CPU execution, and have not been optimized for
+  # production.
+  EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8 = \
+    "EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8"
+
   def __str__(self):
     return self.value
 
@@ -108,15 +123,19 @@ class ConverterError(Exception):
   pass
 
 
-def mlir_quantize(input_data_str, disable_per_channel=False,
+def mlir_quantize(input_data_str,
+                  disable_per_channel=False,
+                  fully_quantize=False,
                   inference_type=_types_pb2.INT8):
   """Quantize `input_data_str` with calibration results.
 
   Args:
     input_data_str: Input data in serialized form (e.g. a TFLITE model with
-                    calibration results).
-    disable_per_channel: Bool indicating whether to do per-channel or
-                         per-tensor quantization
+      calibration results).
+    disable_per_channel: Bool indicating whether to do per-channel or per-tensor
+      quantization
+    fully_quantize: Bool indicating whether to fully quantize the model. Besides
+      model body, the input/output will be quantized as well.
     inference_type: Data type for the activations. The default value is int8.
 
   Returns:
@@ -125,6 +144,7 @@ def mlir_quantize(input_data_str, disable_per_channel=False,
   """
   return wrap_toco.wrapped_experimental_mlir_quantize(input_data_str,
                                                       disable_per_channel,
+                                                      fully_quantize,
                                                       inference_type)
 
 
@@ -138,6 +158,19 @@ def mlir_sparsify(input_data_str):
     Sparsified model in serialized form (e.g. a TFLITE model).
   """
   return wrap_toco.wrapped_experimental_mlir_sparsify(input_data_str)
+
+
+def register_custom_opdefs(custom_opdefs_list):
+  """Register the given custom opdefs to the TensorFlow global op registry.
+
+  Args:
+    custom_opdefs_list: String representing the custom ops OpDefs that are
+      included in the GraphDef.
+
+  Returns:
+    True if the registration is successfully completed.
+  """
+  return wrap_toco.wrapped_register_custom_opdefs(custom_opdefs_list)
 
 
 def toco_convert_protos(model_flags_str,
@@ -169,9 +202,10 @@ def toco_convert_protos(model_flags_str,
     RuntimeError: When conversion fails, an exception is raised with the error
       message embedded.
   """
-  # TODO(aselle): When toco does not use fatal errors for failure, we can
-  # switch this on.
-  if not _toco_from_proto_bin:
+  # Historically, TOCO conversion failures would trigger a crash, so we would
+  # attempt to run the converter out-of-process. The MLIR conversion pipeline
+  # surfaces errors instead, and can be safely run in-process.
+  if enable_mlir_converter or not _toco_from_proto_bin:
     try:
       model_str = wrap_toco.wrapped_toco_convert(model_flags_str,
                                                  toco_flags_str, input_data_str,
@@ -268,9 +302,58 @@ Alternative, use virtualenv.""")
         pass
 
 
+def build_toco_flags(inference_type=dtypes.float32,
+                     inference_input_type=None,
+                     input_format=lite_constants.TENSORFLOW_GRAPHDEF,
+                     output_format=lite_constants.TFLITE,
+                     default_ranges_stats=None,
+                     drop_control_dependency=True,
+                     reorder_across_fake_quant=False,
+                     allow_custom_ops=False,
+                     custom_opdefs=None,
+                     post_training_quantize=False,
+                     quantize_to_float16=False,
+                     dump_graphviz_dir=None,
+                     dump_graphviz_video=False,
+                     target_ops=None,
+                     conversion_summary_dir=None,
+                     **_):
+  """Build the TOCO flags object from params."""
+  toco = _toco_flags_pb2.TocoFlags()
+  toco.input_format = input_format
+  toco.output_format = output_format
+  toco.inference_type = util.convert_dtype_to_tflite_type(inference_type)
+  if inference_input_type:
+    toco.inference_input_type = util.convert_dtype_to_tflite_type(
+        inference_input_type)
+  else:
+    toco.inference_input_type = toco.inference_type
+  toco.drop_control_dependency = drop_control_dependency
+  toco.reorder_across_fake_quant = reorder_across_fake_quant
+  toco.allow_custom_ops = allow_custom_ops
+  if custom_opdefs:
+    toco.custom_opdefs.extend(custom_opdefs)
+  toco.post_training_quantize = post_training_quantize
+  toco.quantize_to_float16 = quantize_to_float16
+  if default_ranges_stats:
+    toco.default_ranges_min = default_ranges_stats[0]
+    toco.default_ranges_max = default_ranges_stats[1]
+  if dump_graphviz_dir:
+    toco.dump_graphviz_dir = dump_graphviz_dir
+  toco.dump_graphviz_include_video = dump_graphviz_video
+  if conversion_summary_dir:
+    toco.conversion_summary_dir = conversion_summary_dir
+  if target_ops:
+    if OpsSet.SELECT_TF_OPS in set(target_ops):
+      toco.enable_select_tf_ops = True
+    if set(target_ops) == set([OpsSet.SELECT_TF_OPS]):
+      toco.force_select_tf_ops = True
+  return toco
+
+
 def build_toco_convert_protos(input_tensors,
                               output_tensors,
-                              inference_type=lite_constants.FLOAT,
+                              inference_type=dtypes.float32,
                               inference_input_type=None,
                               input_format=lite_constants.TENSORFLOW_GRAPHDEF,
                               input_shapes=None,
@@ -383,37 +466,13 @@ def build_toco_convert_protos(input_tensors,
     RuntimeError: If TOCO fails to convert (in which case the runtime error's
       error text will contain the TOCO error log)
   """
-  toco = _toco_flags_pb2.TocoFlags()
-  toco.input_format = input_format
-  toco.output_format = output_format
-  toco.inference_type = util.convert_dtype_to_tflite_type(inference_type)
-  if inference_input_type:
-    toco.inference_input_type = util.convert_dtype_to_tflite_type(
-        inference_input_type)
-  else:
-    toco.inference_input_type = toco.inference_type
-  toco.drop_control_dependency = drop_control_dependency
-  toco.reorder_across_fake_quant = reorder_across_fake_quant
-  toco.allow_custom_ops = allow_custom_ops
-  if custom_opdefs:
-    toco.custom_opdefs.extend(custom_opdefs)
-  toco.post_training_quantize = post_training_quantize
-  toco.quantize_to_float16 = quantize_to_float16
-  if default_ranges_stats:
-    toco.default_ranges_min = default_ranges_stats[0]
-    toco.default_ranges_max = default_ranges_stats[1]
-  if dump_graphviz_dir:
-    toco.dump_graphviz_dir = dump_graphviz_dir
-  toco.dump_graphviz_include_video = dump_graphviz_video
-  if conversion_summary_dir:
-    toco.conversion_summary_dir = conversion_summary_dir
-  if target_ops:
-    if set(target_ops) == set([OpsSet.TFLITE_BUILTINS, OpsSet.SELECT_TF_OPS]):
-      toco.enable_select_tf_ops = True
-    elif set(target_ops) == set([OpsSet.SELECT_TF_OPS]):
-      toco.enable_select_tf_ops = True
-      toco.force_select_tf_ops = True
-
+  toco = build_toco_flags(inference_type, inference_input_type, input_format,
+                          output_format, default_ranges_stats,
+                          drop_control_dependency, reorder_across_fake_quant,
+                          allow_custom_ops, custom_opdefs,
+                          post_training_quantize, quantize_to_float16,
+                          dump_graphviz_dir, dump_graphviz_video, target_ops,
+                          conversion_summary_dir)
   model = _model_flags_pb2.ModelFlags()
   model.change_concat_input_ranges = change_concat_input_ranges
   for idx, input_tensor in enumerate(input_tensors):
@@ -433,15 +492,19 @@ def build_toco_convert_protos(input_tensors,
     else:
       shape = input_shapes[idx]
 
-    # Create shapes with -1 for unknown dimensions.
-    dims = []
-    for dim in shape:
-      if (dim is None or
-          (isinstance(dim, tensor_shape.Dimension) and dim.value is None)):
-        dims.append(-1)
-      else:
-        dims.append(int(dim))
-    input_array.shape.dims.extend(dims)
+    if shape.rank is not None:
+      # Create shapes with -1 for unknown dimensions.
+      dims = []
+      for dim in shape:
+        if (dim is None or
+            (isinstance(dim, tensor_shape.Dimension) and dim.value is None)):
+          dims.append(-1)
+        else:
+          dims.append(int(dim))
+      input_array.shape.dims.extend(dims)
+      input_array.shape.unknown_rank = False
+    else:
+      input_array.shape.unknown_rank = True
 
   for output_tensor in output_tensors:
     if saved_model_dir:
@@ -552,6 +615,30 @@ def toco_convert_impl(input_data, input_tensors, output_tensors,
       input_data.SerializeToString(),
       debug_info_str=debug_info_str,
       enable_mlir_converter=enable_mlir_converter)
+  return data
+
+
+def convert_saved_model(saved_model_dir=None,
+                        saved_model_version=0,
+                        saved_model_tags=None,
+                        saved_model_exported_names=None,
+                        **kwargs):
+  """Converts a saved_model using TF Lite converter."""
+  model_flags = _model_flags_pb2.ModelFlags()
+  if saved_model_dir:
+    model_flags.saved_model_dir = saved_model_dir
+  model_flags.saved_model_version = saved_model_version
+  if saved_model_tags:
+    model_flags.saved_model_tags.extend(saved_model_tags)
+  if saved_model_exported_names:
+    model_flags.saved_model_exported_names.extend(saved_model_exported_names)
+  toco_flags = build_toco_flags(**kwargs)
+  data = toco_convert_protos(
+      model_flags.SerializeToString(),
+      toco_flags.SerializeToString(),
+      None,  # input_data, unused
+      None,  # debug_info_str, unused
+      enable_mlir_converter=True)
   return data
 
 

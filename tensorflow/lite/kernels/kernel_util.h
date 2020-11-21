@@ -15,52 +15,148 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_KERNEL_UTIL_H_
 #define TENSORFLOW_LITE_KERNELS_KERNEL_UTIL_H_
 
-#include <algorithm>
+#include <stdint.h>
+
 #include <limits>
 
-#include "flatbuffers/flatbuffers.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 
 namespace tflite {
 
+// A fair number of functions in this header have historically been inline.
+// It is ok to change functions to not be inline if the latency with
+// benchmark_model for MobileNet + MobileBERT is unaffected. If such a change is
+// made, move the newly non-inlined function declarations to the top of this
+// header file.
+
+// Note: You must check if result is not null:
+//
+//   TfLiteTensor* my_tensor = GetInput(context, node, kMyTensorIdx);
+//   TF_LITE_ENSURE(context, my_tensor != nullptr);
+//
+// This is because the index might point to the optional tensor constant
+// (kTfLiteOptionalTensor) in which case there is no tensor to return.
+const TfLiteTensor* GetInput(const TfLiteContext* context,
+                             const TfLiteNode* node, int index);
+
+// Same as `GetInput` but returns boolean and uses output argument for tensor.
+//
+//   TfLiteTensor* my_tensor;
+//   TF_LITE_ENSURE_OK(context,
+//                     GetInputSafe(context, node, kMyTensorIdx, &my_tensor));
+//   // can use my_tensor directly from here onwards, it is not nullptr
+//
+// Should be used in cases where the binary size is too large.
+TfLiteStatus GetInputSafe(const TfLiteContext* context, const TfLiteNode* node,
+                          int index, const TfLiteTensor** tensor);
+
+// Note: You must check if result is not null:
+//
+//   TfLiteTensor* my_tensor = GetVariableInput(context, node, kMyTensorIdx);
+//   TF_LITE_ENSURE(context, my_tensor != nullptr);
+//
+// This is because the index might point to the optional tensor constant
+// (kTfLiteOptionalTensor) in which case there is no tensor to return.
+TfLiteTensor* GetVariableInput(TfLiteContext* context, const TfLiteNode* node,
+                               int index);
+
+// Note: You must check if result is not null:
+//
+//   TfLiteTensor* my_tensor = GetOutput(context, node, kMyTensorIdx);
+//   TF_LITE_ENSURE(context, my_tensor != nullptr);
+//
+// This is because the index might point to the optional tensor constant
+// (kTfLiteOptionalTensor) in which case there is no tensor to return.
+TfLiteTensor* GetOutput(TfLiteContext* context, const TfLiteNode* node,
+                        int index);
+
+// Same as `GetOutput` but returns boolean and uses output argument for tensor.
+//
+//   TfLiteTensor* my_tensor;
+//   TF_LITE_ENSURE_OK(context,
+//                     GetOutputSafe(context, node, kMyTensorIdx, &my_tensor));
+//   // can use my_tensor directly from here onwards, it is not nullptr
+//
+// Should be used in cases where the binary size is too large.
+TfLiteStatus GetOutputSafe(const TfLiteContext* context, const TfLiteNode* node,
+                           int index, TfLiteTensor** tensor);
+
+// Note: You must check if result is not null:
+//
+//   TfLiteTensor* my_tensor = GetOptionalInputTensor(context, node, kIdx);
+//   TF_LITE_ENSURE(context, my_tensor != nullptr);
+//
+// This is because the index might point to the optional tensor constant
+// (kTfLiteOptionalTensor) in which case there is no tensor to return.
+//
+// Deprecated. GetInput has the same functionality.
+const TfLiteTensor* GetOptionalInputTensor(const TfLiteContext* context,
+                                           const TfLiteNode* node, int index);
+
+#ifndef TF_LITE_STATIC_MEMORY
+// Note: You must check if result is not null:
+//
+//   TfLiteTensor* my_tensor = GetTemporary(context, node, kMyTensorIdx);
+//   TF_LITE_ENSURE(context, my_tensor != nullptr);
+//
+// This is because the index might point to the optional tensor constant
+// (kTfLiteOptionalTensor) in which case there is no tensor to return.
+TfLiteTensor* GetTemporary(TfLiteContext* context, const TfLiteNode* node,
+                           int index);
+
+// Same as `GetTemporary` but returns boolean and uses output argument for
+// tensor.
+//
+//   TfLiteTensor* my_tensor;
+//   TF_LITE_ENSURE_OK(context,
+//                     GetTemporarySafe(context, node, kMyTensorIdx,
+//                     &my_tensor));
+//   // can use my_tensor directly from here onwards, it is not nullptr
+//
+// Should be used in cases where the binary size is too large.
+TfLiteStatus GetTemporarySafe(const TfLiteContext* context,
+                              const TfLiteNode* node, int index,
+                              TfLiteTensor** tensor);
+
+// Note: You must check if result is not null:
+//
+//   TfLiteTensor* my_tensor = GetIntermediates(context, node, kMyTensorIdx);
+//   TF_LITE_ENSURE(context, my_tensor != nullptr);
+//
+// This is because the index might point to the optional tensor constant
+// (kTfLiteOptionalTensor) in which case there is no tensor to return.
+const TfLiteTensor* GetIntermediates(TfLiteContext* context,
+                                     const TfLiteNode* node, int index);
+
+// Same as `GetIntermediates` but returns boolean and uses output argument for
+// tensor.
+//
+//   TfLiteTensor* my_tensor;
+//   TF_LITE_ENSURE_OK(context,
+//                     GetIntermediatesSafe(context, node, kMyTensorIdx,
+//                     &my_tensor));
+//   // can use my_tensor directly from here onwards, it is not nullptr
+//
+// Should be used in cases where the binary size is too large.
+TfLiteStatus GetIntermediatesSafe(const TfLiteContext* context,
+                                  const TfLiteNode* node, int index,
+                                  TfLiteTensor** tensor);
+#endif  // TF_LITE_STATIC_MEMORY
+
 inline int NumDimensions(const TfLiteTensor* t) { return t->dims->size; }
 inline int SizeOfDimension(const TfLiteTensor* t, int dim) {
   return t->dims->data[dim];
 }
-inline const TfLiteTensor* GetInput(TfLiteContext* context,
-                                    const TfLiteNode* node, int index) {
-  return &context
-              ->tensors[flatbuffers::EndianScalar(node->inputs->data[index])];
-}
-// Note: You must check if result is not null:
-// TfLiteTensor* my_tensor = GetVariableInput(context, node, kMyTensorIdx);
-// TF_LITE_ENSURE(context, my_tensor != nullptr);
-inline TfLiteTensor* GetVariableInput(TfLiteContext* context,
-                                      const TfLiteNode* node, int index) {
-  TfLiteTensor* tensor =
-      &context->tensors[flatbuffers::EndianScalar(node->inputs->data[index])];
-  return (tensor->is_variable) ? tensor : nullptr;
-}
-inline TfLiteTensor* GetOutput(TfLiteContext* context, const TfLiteNode* node,
-                               int index) {
-  return &context
-              ->tensors[flatbuffers::EndianScalar(node->outputs->data[index])];
-}
-inline TfLiteTensor* GetTemporary(TfLiteContext* context,
-                                  const TfLiteNode* node, int index) {
-  return &context->tensors[flatbuffers::EndianScalar(
-      node->temporaries->data[index])];
-}
-inline const TfLiteTensor* GetIntermediates(TfLiteContext* context,
-                                            const TfLiteNode* node, int index) {
-  return &context->tensors[node->intermediates->data[index]];
-}
+
 inline int NumInputs(const TfLiteNode* node) { return node->inputs->size; }
 inline int NumOutputs(const TfLiteNode* node) { return node->outputs->size; }
+
+#ifndef TF_LITE_STATIC_MEMORY
 inline int NumIntermediates(const TfLiteNode* node) {
   return node->intermediates->size;
 }
+#endif  // TF_LITE_STATIC_MEMORY
 
 inline int64_t NumElements(const TfLiteIntArray* dims) {
   int64_t count = 1;
@@ -72,18 +168,6 @@ inline int64_t NumElements(const TfLiteIntArray* dims) {
 
 inline int64_t NumElements(const TfLiteTensor* t) {
   return NumElements(t->dims);
-}
-
-inline const TfLiteTensor* GetOptionalInputTensor(TfLiteContext* context,
-                                                  const TfLiteNode* node,
-                                                  int index) {
-  const bool use_tensor = index < node->inputs->size &&
-                          node->inputs->data[index] != kTfLiteOptionalTensor;
-  if (use_tensor) {
-    return &context
-                ->tensors[flatbuffers::EndianScalar(node->inputs->data[index])];
-  }
-  return nullptr;
 }
 
 // Determines whether tensor is constant.
@@ -174,7 +258,7 @@ void CalculateActivationRange(TfLiteFusedActivation activation,
   } else if (activation == kTfLiteActRelu6) {
     *activation_min = 0;
     *activation_max = 6;
-  } else if (activation == kTfLiteActRelu1) {
+  } else if (activation == kTfLiteActReluN1To1) {
     *activation_min = -1;
     *activation_max = 1;
   } else {
@@ -200,6 +284,10 @@ TfLiteStatus CalculateShapeForBroadcast(TfLiteContext* context,
                                         const TfLiteTensor* input2,
                                         const TfLiteTensor* input3,
                                         TfLiteIntArray** output_shape);
+
+// Return the size of given type in bytes. Return 0 in in case of string.
+int TfLiteTypeGetSize(TfLiteType type);
+
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_KERNELS_KERNEL_UTIL_H_

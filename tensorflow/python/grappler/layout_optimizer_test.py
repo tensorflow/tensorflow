@@ -193,7 +193,9 @@ def _get_cluster():
 
 def _is_transpose(node):
   return node.endswith('TransposeNHWCToNCHW-LayoutOptimizer') or node.endswith(
-      'TransposeNCHWToNHWC-LayoutOptimizer')
+      'TransposeNCHWToNHWC-LayoutOptimizer') or node.endswith(
+          'TransposeNDHWCToNCDHW-LayoutOptimizer') or node.endswith(
+              'TransposeNCDHWToNDHWC-LayoutOptimizer')
 
 
 def _is_permute(node):
@@ -212,14 +214,31 @@ class LayoutOptimizerTest(test.TestCase):
   def _assert_trans_nhwc_to_nchw(self, name, nodes):
     self.assertIn(name + '-TransposeNHWCToNCHW-LayoutOptimizer', nodes)
 
+  def _assert_trans_ncdhw_to_ndhwc(self, name, nodes):
+    self.assertIn(name + '-TransposeNCDHWToNDHWC-LayoutOptimizer', nodes)
+
+  def _assert_trans_ndhwc_to_ncdhw(self, name, nodes):
+    self.assertIn(name + '-TransposeNDHWCToNCDHW-LayoutOptimizer', nodes)
+
   def _assert_map_nhwc_to_nchw(self, name, nodes):
     self.assertIn(name + '-DimMapNHWCToNCHW-LayoutOptimizer', nodes)
+
+  def _assert_map_ndhwc_to_ncdhw(self, name, nodes):
+    self.assertIn(name + '-DataFormatDimMapNDHWCToNCDHW-LayoutOptimizer', nodes)
 
   def _assert_vec_nchw_to_nhwc(self, name, nodes):
     self.assertIn(name + '-VecPermuteNCHWToNHWC-LayoutOptimizer', nodes)
 
   def _assert_vec_nhwc_to_nchw(self, name, nodes):
     self.assertIn(name + '-VecPermuteNHWCToNCHW-LayoutOptimizer', nodes)
+
+  def _assert_vec_ncdhw_to_ndhwc(self, name, nodes):
+    self.assertIn(name + '-DataFormatVecPermuteNCDHWToNDHWC-LayoutOptimizer',
+                  nodes)
+
+  def _assert_vec_ndhwc_to_ncdhw(self, name, nodes):
+    self.assertIn(name + '-DataFormatVecPermuteNDHWCToNCDHW-LayoutOptimizer',
+                  nodes)
 
   def _train(self, checkpoint_path, layout_optimizer=False, restore=False):
     ops.reset_default_graph()
@@ -1119,6 +1138,365 @@ class LayoutOptimizerTest(test.TestCase):
       self._assert_trans_nchw_to_nhwc('MaxPoolGradV2-0-0', nodes)
       self._assert_vec_nhwc_to_nchw('MaxPoolGradV2-4', nodes)
       self.assertIn('MaxPoolGradV2-3-LayoutOptimizer', nodes)
+      self.assertAllClose(output_val_ref, output_val, atol=1e-3)
+
+  @test_util.deprecated_graph_mode_only
+  def testLeakyRelu(self):
+    if test.is_gpu_available(cuda_only=True):
+      random_seed.set_random_seed(0)
+      x = random_ops.truncated_normal([4, 14, 14, 1], seed=0)
+      w = random_ops.truncated_normal([2, 2, 1, 2], seed=0)
+      y = nn.conv2d(x, w, strides=[1, 1, 1, 1], padding='SAME')
+      y = nn.leaky_relu(y, alpha=0.2)
+      output = array_ops.identity(y)
+
+      with session.Session(config=_get_config(False)) as sess:
+        output_val_ref = sess.run(output)
+
+      with session.Session(config=_get_config()) as sess:
+        metadata = config_pb2.RunMetadata()
+        output_val = sess.run(output, run_metadata=metadata)
+
+      nodes = []
+      num_transposes = 0
+      for node in metadata.cost_graph.node:
+        if _is_transpose(node.name):
+          num_transposes += 1
+        nodes.append(node.name)
+
+      expected_num_transposes = 2
+      self.assertEqual(expected_num_transposes, num_transposes)
+      self._assert_trans_nchw_to_nhwc('LeakyRelu-0-0', nodes)
+      self.assertAllClose(output_val_ref, output_val, atol=1e-3)
+
+  @test_util.deprecated_graph_mode_only
+  def testLeakyReluGrad(self):
+    if test.is_gpu_available(cuda_only=True):
+      random_seed.set_random_seed(0)
+      x = random_ops.truncated_normal([4, 14, 14, 1], seed=0)
+      w = random_ops.truncated_normal([2, 2, 1, 1], seed=0)
+      y = nn.conv2d(x, w, strides=[1, 1, 1, 1], padding='SAME')
+      y = gen_nn_ops.leaky_relu_grad(y, x, alpha=0.2)
+      output = array_ops.identity(y)
+
+      with session.Session(config=_get_config(False)) as sess:
+        output_val_ref = sess.run(output)
+
+      with session.Session(config=_get_config()) as sess:
+        metadata = config_pb2.RunMetadata()
+        output_val = sess.run(output, run_metadata=metadata)
+
+      nodes = []
+      num_transposes = 0
+      for node in metadata.cost_graph.node:
+        if _is_transpose(node.name):
+          num_transposes += 1
+        nodes.append(node.name)
+
+      expected_num_transposes = 3
+      self.assertEqual(expected_num_transposes, num_transposes)
+      self._assert_trans_nhwc_to_nchw('LeakyReluGrad-1', nodes)
+      self._assert_trans_nchw_to_nhwc('LeakyReluGrad-0-0', nodes)
+      self.assertAllClose(output_val_ref, output_val, atol=1e-3)
+
+  @test_util.deprecated_graph_mode_only
+  def testLeakyReluGradFor5DTensors(self):
+    if test.is_gpu_available(cuda_only=True):
+      random_seed.set_random_seed(0)
+      x = random_ops.truncated_normal([1, 4, 2, 3, 3], seed=0)
+      w = random_ops.truncated_normal([2, 2, 2, 3, 3], seed=0)
+      y = gen_nn_ops.conv3d(x, w, [1, 1, 1, 1, 1], 'SAME')
+      y = gen_nn_ops.leaky_relu_grad(y, x, alpha=0.2)
+      output = array_ops.identity(y)
+
+      with session.Session(config=_get_config(False)) as sess:
+        output_val_ref = sess.run(output)
+
+      with session.Session(config=_get_config()) as sess:
+        metadata = config_pb2.RunMetadata()
+        output_val = sess.run(output, run_metadata=metadata)
+
+      nodes = []
+      num_transposes = 0
+      for node in metadata.cost_graph.node:
+        if _is_transpose(node.name):
+          num_transposes += 1
+        nodes.append(node.name)
+
+      expected_num_transposes = 3
+      self.assertEqual(expected_num_transposes, num_transposes)
+      self._assert_trans_ndhwc_to_ncdhw('LeakyReluGrad-1', nodes)
+      self._assert_trans_ncdhw_to_ndhwc('LeakyReluGrad-0-0', nodes)
+      self.assertAllClose(output_val_ref, output_val, atol=1e-3)
+
+  @test_util.deprecated_graph_mode_only
+  def testReduceOpsFor5DTensors(self):
+    if test.is_gpu_available(cuda_only=True):
+      random_seed.set_random_seed(0)
+      x = random_ops.truncated_normal([1, 4, 2, 3, 3], seed=0)
+      w = random_ops.truncated_normal([2, 2, 2, 3, 3], seed=0)
+      conv3d = gen_nn_ops.conv3d(x, w, [1, 1, 1, 1, 1], 'SAME')
+      y = math_ops.reduce_mean(conv3d, [0, 1, 2, 3], keepdims=True)
+      output = array_ops.identity(y)
+
+      with session.Session(config=_get_config(False)) as sess:
+        output_val_ref = sess.run(output)
+
+      with session.Session(config=_get_config()) as sess:
+        metadata = config_pb2.RunMetadata()
+        output_val = sess.run(output, run_metadata=metadata)
+
+      nodes = []
+      num_transposes = 0
+      for node in metadata.cost_graph.node:
+        if _is_transpose(node.name):
+          num_transposes += 1
+        nodes.append(node.name)
+
+      # The reduce op Mean needs to dim map the input reduce index to NCDHW.
+      # Then, the output needs to be tranposed back to NDHWC.
+      expected_num_transposes = 2
+      self.assertEqual(expected_num_transposes, num_transposes)
+      self._assert_trans_ndhwc_to_ncdhw('Conv3D-0', nodes)
+      self._assert_map_ndhwc_to_ncdhw('Mean-1', nodes)
+      self._assert_trans_ncdhw_to_ndhwc('Mean-0-0', nodes)
+      self.assertAllClose(output_val_ref, output_val, atol=1e-3)
+
+  @test_util.deprecated_graph_mode_only
+  def testBinaryOpsFor5DTensors(self):
+    if test.is_gpu_available(cuda_only=True):
+      random_seed.set_random_seed(0)
+      x = random_ops.truncated_normal([1, 4, 2, 3, 3], seed=0)
+      w = random_ops.truncated_normal([2, 2, 2, 3, 3], seed=0)
+      mean = random_ops.truncated_normal([1, 1, 1, 1, 3], seed=0)
+      variance = random_ops.truncated_normal([1, 1, 1, 1, 3], seed=0)
+      gamma = random_ops.truncated_normal([1, 1, 1, 1, 3], seed=0)
+      beta = random_ops.truncated_normal([1, 1, 1, 1, 3], seed=0)
+      conv3d = gen_nn_ops.conv3d(x, w, [1, 1, 1, 1, 1], 'SAME')
+      y = nn.batch_normalization(
+          conv3d,
+          mean=mean,
+          variance=variance,
+          scale=gamma,
+          offset=beta,
+          variance_epsilon=0.001)
+      output = array_ops.identity(y)
+
+      with session.Session(config=_get_config(False)) as sess:
+        output_val_ref = sess.run(output)
+
+      with session.Session(config=_get_config()) as sess:
+        metadata = config_pb2.RunMetadata()
+        output_val = sess.run(output, run_metadata=metadata)
+
+      nodes = []
+      num_transposes = 0
+      for node in metadata.cost_graph.node:
+        if _is_transpose(node.name):
+          num_transposes += 1
+        nodes.append(node.name)
+
+      # The binary ops mul_1 and add_1 in batch norm need to transpose one of
+      # the two inputs to NCDHW. The other input has already been tranposed via
+      # Conv3D.
+      expected_num_transposes = 4
+      self.assertEqual(expected_num_transposes, num_transposes)
+      self._assert_trans_ndhwc_to_ncdhw('Conv3D-0', nodes)
+      self._assert_trans_ndhwc_to_ncdhw('batchnorm/mul_1-1', nodes)
+      self._assert_trans_ndhwc_to_ncdhw('batchnorm/add_1-1', nodes)
+      self._assert_trans_ncdhw_to_ndhwc('batchnorm/add_1-0-0', nodes)
+
+  @test_util.deprecated_graph_mode_only
+  def testBatchNorm3D(self):
+    if test.is_gpu_available(cuda_only=True):
+      random_seed.set_random_seed(0)
+      x_3d = random_ops.truncated_normal([1, 4, 2, 3, 3], seed=0)
+      filters = random_ops.truncated_normal([2, 2, 2, 3, 3], seed=0)
+      strides_val = [1, 1, 1, 1, 1]
+      scale = constant_op.constant(0.1, shape=[3])
+      offset = constant_op.constant(0.3, shape=[3])
+      conv3d = gen_nn_ops.conv3d(x_3d, filters, strides_val, 'SAME')
+      y, _, _ = nn.fused_batch_norm(conv3d, scale, offset, data_format='NDHWC')
+      output = array_ops.identity(y)
+
+      with session.Session(config=_get_config(False)) as sess:
+        output_val_ref = sess.run(output)
+
+      with session.Session(config=_get_config()) as sess:
+        metadata = config_pb2.RunMetadata()
+        output_val = sess.run(output, run_metadata=metadata)
+
+      nodes = []
+      num_transposes = 0
+      for node in metadata.cost_graph.node:
+        if _is_transpose(node.name):
+          num_transposes += 1
+        nodes.append(node.name)
+
+      expected_num_transposes = 2
+      self.assertEqual(expected_num_transposes, num_transposes)
+      self._assert_trans_ndhwc_to_ncdhw('Conv3D-0', nodes)
+      self._assert_trans_ncdhw_to_ndhwc('FusedBatchNormV3-0-0', nodes)
+      self.assertAllClose(output_val_ref, output_val, atol=1e-3)
+
+  @test_util.deprecated_graph_mode_only
+  def testBatchNormGrad3D(self):
+    if test.is_gpu_available(cuda_only=True):
+      random_seed.set_random_seed(0)
+      x_3d = random_ops.truncated_normal([1, 4, 2, 3, 3], seed=0)
+      filters = random_ops.truncated_normal([2, 2, 2, 3, 3], seed=0)
+      strides_val = [1, 1, 1, 1, 1]
+      scale = constant_op.constant(0.1, shape=[3])
+      offset = constant_op.constant(0.3, shape=[3])
+      mean = constant_op.constant(0.1, shape=[3])
+      variance = constant_op.constant(0.3, shape=[3])
+      conv3d = gen_nn_ops.conv3d(x_3d, filters, strides_val, 'SAME')
+      y, running_mean, running_var, r0, r1, r2 = gen_nn_ops.fused_batch_norm_v3(
+          conv3d,
+          scale,
+          offset,
+          mean,
+          variance,
+          epsilon=1.001e-5,
+          exponential_avg_factor=1.0,
+          data_format='NDHWC',
+          is_training=True,
+          name='batch_norm')
+      dx, dscale, doffset, _, _ = gen_nn_ops.fused_batch_norm_grad_v3(
+          y,
+          x_3d,
+          scale,
+          r0,
+          r1,
+          r2,
+          epsilon=1.001e-5,
+          data_format='NDHWC',
+          is_training=True)
+      output = array_ops.identity(dx)
+
+      with session.Session(config=_get_config(False)) as sess:
+        output_val_ref = sess.run(output)
+
+      with session.Session(config=_get_config()) as sess:
+        metadata = config_pb2.RunMetadata()
+        output_val = sess.run(output, run_metadata=metadata)
+
+      nodes = []
+      num_transposes = 0
+      for node in metadata.cost_graph.node:
+        if _is_transpose(node.name):
+          num_transposes += 1
+        nodes.append(node.name)
+
+      expected_num_transposes = 3
+      self.assertEqual(expected_num_transposes, num_transposes)
+      self._assert_trans_ndhwc_to_ncdhw('Conv3D-0', nodes)
+      self._assert_trans_ndhwc_to_ncdhw('FusedBatchNormGradV3-1', nodes)
+      self._assert_trans_ncdhw_to_ndhwc('FusedBatchNormGradV3-0-0', nodes)
+      self.assertAllClose(output_val_ref, output_val, atol=1e-3)
+
+  @test_util.deprecated_graph_mode_only
+  def testConv3D(self):
+    if test.is_gpu_available(cuda_only=True):
+      random_seed.set_random_seed(0)
+      x = random_ops.truncated_normal([1, 784], seed=0)
+      conv = _two_layer_model(x)
+      filters = random_ops.truncated_normal([2, 2, 2, 1, 2], seed=0)
+      strides_val = [1, 1, 1, 1, 1]
+      x_3d = array_ops.reshape(conv, [-1, 4, 14, 14, 1])
+      conv3d = gen_nn_ops.conv3d(x_3d, filters, strides_val, 'VALID')
+      output = array_ops.identity(conv3d)
+
+      with session.Session(config=_get_config(False)) as sess:
+        output_val_ref = sess.run(output)
+
+      with session.Session(config=_get_config()) as sess:
+        metadata = config_pb2.RunMetadata()
+        output_val = sess.run(output, run_metadata=metadata)
+
+      nodes = []
+      num_transposes = 0
+      for node in metadata.cost_graph.node:
+        if _is_transpose(node.name):
+          num_transposes += 1
+        nodes.append(node.name)
+
+      expected_num_transposes = 2
+      self.assertEqual(expected_num_transposes, num_transposes)
+      self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
+      self._assert_trans_ndhwc_to_ncdhw('Conv3D-0', nodes)
+      self._assert_trans_ncdhw_to_ndhwc('Conv3D-0-0', nodes)
+      self.assertAllClose(output_val_ref, output_val, atol=1e-3)
+
+  @test_util.deprecated_graph_mode_only
+  def testConv3DBackpropInput(self):
+    if test.is_gpu_available(cuda_only=True):
+      random_seed.set_random_seed(0)
+      x = random_ops.truncated_normal([1, 784], seed=0)
+      conv = _two_layer_model(x)
+      x_3d = array_ops.reshape(conv, [-1, 4, 14, 14, 1])
+      filters = random_ops.truncated_normal([2, 2, 2, 1, 1], seed=0)
+      strides_val = [1, 1, 1, 1, 1]
+      shape = array_ops.shape(x_3d)
+      conv3d_grad = gen_nn_ops.conv3d_backprop_input_v2(shape, filters, x_3d,
+                                                        strides_val, 'SAME')
+      output = array_ops.identity(conv3d_grad)
+
+      with session.Session(config=_get_config(False)) as sess:
+        output_val_ref = sess.run(output)
+
+      with session.Session(config=_get_config()) as sess:
+        metadata = config_pb2.RunMetadata()
+        output_val = sess.run(output, run_metadata=metadata)
+
+      nodes = []
+      num_transposes = 0
+      for node in metadata.cost_graph.node:
+        if _is_transpose(node.name):
+          num_transposes += 1
+        nodes.append(node.name)
+
+      expected_num_transposes = 2
+      self.assertEqual(expected_num_transposes, num_transposes)
+      self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
+      self._assert_vec_ndhwc_to_ncdhw('Conv3DBackpropInputV2-0', nodes)
+      self._assert_trans_ndhwc_to_ncdhw('Conv3DBackpropInputV2-2', nodes)
+      self._assert_trans_ncdhw_to_ndhwc('Conv3DBackpropInputV2-0-0', nodes)
+      self.assertAllClose(output_val_ref, output_val, atol=1e-3)
+
+  @test_util.deprecated_graph_mode_only
+  def testConv3DBackpropFilter(self):
+    if test.is_gpu_available(cuda_only=True):
+      random_seed.set_random_seed(0)
+      x = random_ops.truncated_normal([1, 784], seed=0)
+      conv = _two_layer_model(x)
+      x_3d = array_ops.reshape(conv, [-1, 4, 14, 14, 1])
+      filters = random_ops.truncated_normal([2, 2, 2, 1, 1], seed=0)
+      strides_val = [1, 1, 1, 1, 1]
+      shape = constant_op.constant([2, 2, 2, 1, 1], shape=[5])
+      conv3d_grad = gen_nn_ops.conv3d_backprop_filter_v2(
+          x_3d, shape, x_3d, strides_val, 'SAME')
+      output = array_ops.identity(conv3d_grad)
+
+      with session.Session(config=_get_config(False)) as sess:
+        output_val_ref = sess.run(output)
+
+      with session.Session(config=_get_config()) as sess:
+        metadata = config_pb2.RunMetadata()
+        output_val = sess.run(output, run_metadata=metadata)
+
+      nodes = []
+      num_transposes = 0
+      for node in metadata.cost_graph.node:
+        if _is_transpose(node.name):
+          num_transposes += 1
+        nodes.append(node.name)
+
+      expected_num_transposes = 2
+      self.assertEqual(expected_num_transposes, num_transposes)
+      self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
+      self._assert_trans_ndhwc_to_ncdhw('Conv3DBackpropFilterV2-0', nodes)
+      self._assert_trans_ndhwc_to_ncdhw('Conv3DBackpropFilterV2-2', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
   @test_util.deprecated_graph_mode_only

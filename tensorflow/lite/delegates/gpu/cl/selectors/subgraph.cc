@@ -18,8 +18,8 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
-#include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
+#include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 
 namespace tflite {
 namespace gpu {
@@ -32,10 +32,10 @@ std::unique_ptr<GPUOperation>* InitSingleOpSubgraph(
   gpu_subgraph->new_tensors.clear();
   gpu_subgraph->operations.push_back({});
   for (int i = 0; i < inputs.size(); ++i) {
-    gpu_subgraph->operations[0].input_ids.push_back(i);
+    gpu_subgraph->operations[0].input_ids.push_back(inputs[i]->id);
   }
   for (int i = 0; i < outputs.size(); ++i) {
-    gpu_subgraph->operations[0].output_ids.push_back(i);
+    gpu_subgraph->operations[0].output_ids.push_back(outputs[i]->id);
   }
 
   return &gpu_subgraph->operations[0].operation;

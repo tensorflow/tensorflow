@@ -2,9 +2,9 @@
 
 Post-training quantization is a conversion technique that can reduce model size
 while also improving CPU and hardware accelerator latency, with little
-degradation in model accuracy. You can perform these techniques using an
-already-trained float TensorFlow model when you convert it to TensorFlow Lite
-format using the [TensorFlow Lite Converter](../convert/).
+degradation in model accuracy. You can quantize an already-trained float
+TensorFlow model when you convert it to TensorFlow Lite format using the
+[TensorFlow Lite Converter](../convert/).
 
 Note: The procedures on this page require TensorFlow 1.15 or higher.
 
@@ -15,15 +15,15 @@ summary table of the choices and the benefits they provide:
 
 | Technique            | Benefits                  | Hardware         |
 | -------------------- | ------------------------- | ---------------- |
-| Dynamic range        | 4x smaller, 2-3x speedup  | CPU              |
+| Dynamic range        | 4x smaller, 2x-3x speedup | CPU              |
 : quantization         :                           :                  :
 | Full integer         | 4x smaller, 3x+ speedup   | CPU, Edge TPU,   |
 : quantization         :                           : Microcontrollers :
-| Float16 quantization | 2x smaller, potential GPU | CPU, GPU         |
+| Float16 quantization | 2x smaller, GPU           | CPU, GPU         |
 :                      : acceleration              :                  :
 
-This decision tree can help determine which post-training quantization method is
-best for your use case:
+The following decision tree can help determine which post-training quantization
+method is best for your use case:
 
 ![post-training optimization options](images/optimization.jpg)
 
@@ -47,27 +47,18 @@ To further improve latency, "dynamic-range" operators dynamically quantize
 activations based on their range to 8-bits and perform computations with 8-bit
 weights and activations. This optimization provides latencies close to fully
 fixed-point inference. However, the outputs are still stored using floating
-point, so that the speedup with dynamic-range ops is less than a full
-fixed-point computation. Dynamic-range ops are available for the most
-compute-intensive operators in a network:
-
-*   `tf.keras.layers.Dense`
-*   `tf.keras.layers.Conv2D`
-*   `tf.keras.layers.LSTM`
-*   `tf.nn.embedding_lookup`
-*   `tf.compat.v1.nn.rnn_cell.BasicRNNCell`
-*   `tf.compat.v1.nn.bidirectional_dynamic_rnn`
-*   `tf.compat.v1.nn.dynamic_rnn`
+point so that the speedup with dynamic-range ops is less than a full fixed-point
+computation.
 
 ### Full integer quantization
 
 You can get further latency improvements, reductions in peak memory usage, and
-access to integer only hardware devices or accelerators by making sure all model
-math is integer quantized.
+compatibility with integer only hardware devices or accelerators by making sure
+all model math is integer quantized.
 
-To do this, you need to measure the dynamic range of activations and inputs by
-supplying sample input data to the converter. Refer to the
-`representative_dataset_gen()` function used in the following code.
+For full integer quantization, you need to measure the dynamic range of
+activations and inputs by supplying sample input data to the converter. Refer to
+the `representative_dataset_gen()` function used in the following code.
 
 #### Integer with float fallback (using default float input/output)
 
@@ -87,16 +78,19 @@ converter.representative_dataset = representative_dataset_gen</b>
 tflite_quant_model = converter.convert()
 </pre>
 
-Note: This won't be compatible with integer only devices (such as 8-bit
-microcontrollers) and accelerators (such as the Coral Edge TPU). For convenience
-during inference, the input and output still remain float in order to have the
-same interface as the original float only model.
+Note: This `tflite_quant_model` won't be compatible with integer only devices
+(such as 8-bit microcontrollers) and accelerators (such as the Coral Edge TPU)
+because the input and output still remain float in order to have the same
+interface as the original float only model.
 
 #### Integer only
 
-*This is a common use case for
+*Creating integer only models is a common use case for
 [TensorFlow Lite for Microcontrollers](https://www.tensorflow.org/lite/microcontrollers)
 and [Coral Edge TPUs](https://coral.ai/).*
+
+Note: Starting TensorFlow 2.3.0, we support the `inference_input_type` and
+`inference_output_type` attributes.
 
 Additionally, to ensure compatibility with integer only devices (such as 8-bit
 microcontrollers) and accelerators (such as the Coral Edge TPU), you can enforce
@@ -131,25 +125,82 @@ quantization of weights, use the following steps:
 import tensorflow as tf
 converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
 <b>converter.optimizations = [tf.lite.Optimize.DEFAULT]
-converter.target_spec.supported_types = [tf.lite.constants.FLOAT16]</b>
+converter.target_spec.supported_types = [tf.float16]</b>
 tflite_quant_model = converter.convert()
 </pre>
 
-The advantages of this quantization are as follows:
+The advantages of float16 quantization are as follows:
 
-*   Reduce model size by up to half (since all weights are now half the original
-    size).
-*   Minimal loss in accuracy.
-*   Supports some delegates (e.g. the GPU delegate) can operate directly on
-    float16 data, which results in faster execution than float32 computations.
+*   It reduces model size by up to half (since all weights become half of their
+    original size).
+*   It causes minimal loss in accuracy.
+*   It supports some delegates (e.g. the GPU delegate) which can operate
+    directly on float16 data, resulting in faster execution than float32
+    computations.
 
-The disadvantages of this quantization are as follows:
+The disadvantages of float16 quantization are as follows:
 
-*   Not a good choice for maximum performance (a quantization to fixed point
-    math would be better in that case).
+*   It does not reduce latency as much as a quantization to fixed point math.
 *   By default, a float16 quantized model will "dequantize" the weights values
     to float32 when run on the CPU. (Note that the GPU delegate will not perform
     this dequantization, since it can operate on float16 data.)
+
+### Integer only: 16-bit activations with 8-bit weights (experimental)
+
+This is an experimental quantization scheme. It is similar to the "integer only"
+scheme, but activations are quantized based on their range to 16-bits, weights
+are quantized in 8-bit integer and bias is quantized into 64-bit integer. This
+is referred to as 16x8 quantization further.
+
+The main advantage of this quantization is that it can improve accuracy
+significantly, but only slightly increase model size.
+
+<pre>
+import tensorflow as tf
+converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+def representative_dataset_gen():
+  for _ in range(num_calibration_steps):
+    # Get sample input data as a numpy array in a method of your choosing.
+    yield [input]
+converter.representative_dataset = representative_dataset_gen
+<b>converter.optimizations = [tf.lite.Optimize.DEFAULT]
+converter.target_spec.supported_ops = [tf.lite.OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8]</b>
+tflite_quant_model = converter.convert()
+</pre>
+
+If 16x8 quantization is not supported for some operators in the model,
+then the model still can be quantized, but unsupported operators kept in float.
+The following option should be added to the target_spec to allow this.
+<pre>
+import tensorflow as tf
+converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+def representative_dataset_gen():
+  for _ in range(num_calibration_steps):
+    # Get sample input data as a numpy array in a method of your choosing.
+    yield [input]
+converter.representative_dataset = representative_dataset_gen
+converter.optimizations = [tf.lite.Optimize.DEFAULT]
+converter.target_spec.supported_ops = [tf.lite.OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8,
+<b>tf.lite.OpsSet.TFLITE_BUILTINS</b>]
+tflite_quant_model = converter.convert()
+</pre>
+
+Examples of the use cases where accuracy improvements provided by this
+quantization scheme include: * super-resolution, * audio signal processing such
+as noise cancelling and beamforming, * image de-noising, * HDR reconstruction
+from a single image.
+
+The disadvantage of this quantization is:
+
+*   Currently inference is noticeably slower than 8-bit full integer due to the
+    lack of optimized kernel implementation.
+*   Currently it is incompatible with the existing hardware accelerated TFLite
+    delegates.
+
+Note: This is an experimental feature.
+
+A tutorial for this quantization mode can be found
+[here](post_training_integer_quant_16x8.ipynb).
 
 ### Model accuracy
 
@@ -158,8 +209,9 @@ particularly for smaller networks. Pre-trained fully quantized models are
 provided for specific networks in the
 [TensorFlow Lite model repository](../models/). It is important to check the
 accuracy of the quantized model to verify that any degradation in accuracy is
-within acceptable limits. There is a tool to evaluate
-[TensorFlow Lite model accuracy](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tools/accuracy/ilsvrc/README.md){:.external}.
+within acceptable limits. There are tools to evaluate
+[TensorFlow Lite model accuracy](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/evaluation/tasks){:.external}.
+
 
 Alternatively, if the accuracy drop is too high, consider using
 [quantization aware training](https://www.tensorflow.org/model_optimization/guide/quantization/training)

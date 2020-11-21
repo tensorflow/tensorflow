@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.platform import test
@@ -101,6 +102,7 @@ class SparseToDenseTest(xla_test.XLATestCase):
       with self.assertRaisesWithPredicateMatch(ValueError, "must be rank 1"):
         _SparseToDense([1, 3], [[5], [3]], 1, -1)
 
+  @test_util.disable_mlir_bridge("Error handling")
   def testBadValue(self):
     with self.session(), self.test_scope():
       with self.assertRaisesOpError(
@@ -108,12 +110,14 @@ class SparseToDenseTest(xla_test.XLATestCase):
           r"should be \[\] or \[2\]"):
         _SparseToDense([1, 3], [5], [[5], [3]], -1)
 
+  @test_util.disable_mlir_bridge("Error handling")
   def testBadNumValues(self):
     with self.session(), self.test_scope():
       with self.assertRaisesOpError(
           r"sparse_values has incorrect shape \[3\], should be \[\] or \[2\]"):
         _SparseToDense([1, 3], [5], [1, 2, 3], -1)
 
+  @test_util.disable_mlir_bridge("Error handling")
   def testBadDefault(self):
     with self.session(), self.test_scope():
       with self.assertRaisesOpError("default_value should be a scalar"):

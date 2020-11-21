@@ -313,6 +313,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "MultiHeadAttention"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Multiply"
     mtype: "<type \'type\'>"
   }

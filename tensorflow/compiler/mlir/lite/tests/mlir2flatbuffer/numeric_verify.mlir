@@ -1,10 +1,11 @@
-// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string - | FileCheck --dump-input-on-failure %s
+// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string - | FileCheck %s
 
 // CHECK:      {
 // CHECK-NEXT:    version: 3,
 // CHECK-NEXT:    operator_codes: [ {
-// CHECK-NEXT:    builtin_code: CUSTOM,
-// CHECK-NEXT:    custom_code: "NumericVerify"
+// CHECK-NEXT:    deprecated_builtin_code: 32,
+// CHECK-NEXT:    custom_code: "NumericVerify",
+// CHECK-NEXT:    builtin_code: CUSTOM
 // CHECK-NEXT:  } ],
 // CHECK-NEXT:  subgraphs: [ {
 // CHECK-NEXT:    tensors: [ {
@@ -47,6 +48,7 @@
 // CHECK-NEXT:  name: "min_runtime_version",
 // CHECK-NEXT:  buffer: 3
 // CHECK-NEXT:  } ]
+// CHECK-NEXT:  signature_defs: [ ]
 // CHECK-NEXT:}
 
 func @main(%arg0: tensor<4xf32>, %arg1: tensor<4x!quant.uniform<u8:f32, 0.1>>) -> tensor<4xf32> {

@@ -48,6 +48,14 @@ limitations under the License.
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/transform_output_iterator.h"
 
+#if GOOGLE_CUDA
+#include "tensorflow/stream_executor/cuda/cuda_activation.h"
+using stream_executor::cuda::ScopedActivateExecutorContext;
+#elif TENSORFLOW_USE_ROCM
+#include "tensorflow/core/platform/rocm.h"
+using stream_executor::rocm::ScopedActivateExecutorContext;
+#endif  // GOOGLE_CUDA
+
 namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
@@ -302,6 +310,9 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
     TensorReference partition_ref(partition_count);
     auto wrapped_callback = [this, c, &data, &partitions, indices_out,
                              partition_ref, cpu_tensor, done]() {
+      auto stream = c->op_device_context()->stream();
+      ScopedActivateExecutorContext scoped_activation{stream->parent()};
+
       OpOutputList outputs;
       this->AllocateOutputs(c, &data, &partitions, &cpu_tensor, &outputs, done);
       if (!c->status().ok()) {
@@ -467,8 +478,7 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
       DynamicPartitionOpGPU<T>)
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_DYNAMIC_PARTITION_GPU);
-TF_CALL_complex64(REGISTER_DYNAMIC_PARTITION_GPU);
-TF_CALL_complex128(REGISTER_DYNAMIC_PARTITION_GPU);
+TF_CALL_COMPLEX_TYPES(REGISTER_DYNAMIC_PARTITION_GPU);
 #undef REGISTER_DYNAMIC_PARTITION_GPU
 
 }  // namespace tensorflow

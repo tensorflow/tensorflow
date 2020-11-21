@@ -15,174 +15,55 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/model_builder_helper.h"
 
-#include <set>
+#include <stddef.h>
+#include <stdint.h>
+#include <string.h>
+
+#include <any>
+#include <limits>
 #include <string>
-#include <unordered_map>
+#include <vector>
 
 #include <fp16.h>
 #include "absl/strings/str_cat.h"
-#include "tensorflow/lite/builtin_ops.h"
+#include "absl/strings/str_join.h"
+#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/context.h"
 #include "tensorflow/lite/context_util.h"
+#include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
+#include "tensorflow/lite/delegates/gpu/common/operations.h"
+#include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
-#include "tensorflow/lite/delegates/utils.h"
+#include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
 namespace tflite {
 namespace gpu {
+namespace {
 
-TfLiteStatus GraphWithDequantPartitionHelper::Partition(
-    std::set<std::string>* unsupported_nodes_info) {
-  const auto status = GraphPartitionHelper::Partition(unsupported_nodes_info);
-  // Clean up those partitions that have a single dequant op. NoteThose
-  // removed dequant ops have to be reserved in the graph and should not be
-  // delegated.
-  RemoveSingleDequantNodePartitions();
-  return status;
+// Creates a node that consumes output from the given node. Because output need
+// to stay the same, newly created node will inherit the output from the given
+// node, which will in turn get newly created copy of output. This is necessary
+// to preserve reference consistency if another node was pointing at that
+// output:
+//   node(output)
+// will turn into:
+//   node(copy(output)) <- passthrough_node(output)
+absl::Status NewPassthroughNode(GraphFloat32* graph, Node* node,
+                                const Value* output, Node** passthru_node) {
+  *passthru_node = graph->NewNode();
+  // Make copies for every output in the original node.
+  RETURN_IF_ERROR(graph->SetProducer((*passthru_node)->id, output->id));
+  Value* copy_output = graph->NewValue();
+  RETURN_IF_ERROR(graph->SetProducer(node->id, copy_output->id));
+  RETURN_IF_ERROR(graph->AddConsumer((*passthru_node)->id, copy_output->id));
+  copy_output->tensor = output->tensor;
+  copy_output->tensor.ref = -1;
+  return absl::OkStatus();
 }
 
-std::vector<int>
-GraphWithDequantPartitionHelper::GetNodesOfFirstNLargestPartitions(int n) {
-  // We first get partitions to reduce the number of nodes to be checked in
-  // deciding which dequant ops could actually be replaced. And then we
-  // remap input-tensor to dequant nodes' inputs and remove those
-  // to-be-reserved dequant nodes.
-  auto first_nps = GetFirstNLargestPartitions(n);
-  std::vector<int> ops_to_replace;
-  for (const auto p : first_nps) {
-    auto nodes = p->nodes_to_replace;
-    ops_to_replace.insert(ops_to_replace.end(), nodes->data,
-                          nodes->data + nodes->size);
-  }
-  RemapInputTensors(ops_to_replace);
-  RemoveReservedDequantsFromNodes(&ops_to_replace);
-  return ops_to_replace;
-}
-
-bool GraphWithDequantPartitionHelper::IsNodeSupported(
-    TfLiteContext* context, TfLiteNode* node, TfLiteRegistration* registration,
-    int node_id, std::string* unsupported_details) {
-  // If we need to handle dequant nodes, we have to remap input tensors of
-  // this node if some of them come from a dequant node before testing if
-  // the node is supported.
-  std::vector<int> orig_inputs;
-  if (RecordAndRemapInputTensors(registration->builtin_code, node_id, node,
-                                 &orig_inputs)) {
-    // We have a dequant op here. Note that we retrun an Ok status because a
-    // dequant node is first added as supported. Later, this dequant node
-    // will be removed if it has to be preserved in the graph which happens
-    // when its immediate downstream nodes cannot be supported.
-    return true;
-  }
-  const auto status = GraphPartitionHelper::IsNodeSupported(
-      context, node, registration, node_id, unsupported_details);
-  RestoreToOrigInputTensors(node, orig_inputs);
-  return status;
-}
-
-bool GraphWithDequantPartitionHelper::RecordAndRemapInputTensors(
-    int32_t op_code, int node_id, TfLiteNode* node,
-    std::vector<int>* orig_inputs) {
-  orig_inputs->clear();
-  // Record the dequant node.
-  if (op_code == kTfLiteBuiltinDequantize &&
-      context_->tensors[node->inputs->data[0]].type ==
-          TfLiteType::kTfLiteFloat16) {
-    dequant_nodes_[node->outputs->data[0]] = node->inputs->data[0];
-    return true;
-  }
-  // For a dequantize op, there's no need to remap its input tensors.
-  if (dequant_nodes_.empty()) return false;
-  RemapInputTensors(node, orig_inputs);
-  return false;
-}
-
-void GraphWithDequantPartitionHelper::RestoreToOrigInputTensors(
-    TfLiteNode* node, const std::vector<int>& orig_inputs) {
-  if (node->inputs->size != orig_inputs.size()) return;
-  for (int j = 0; j < node->inputs->size; ++j) {
-    node->inputs->data[j] = orig_inputs[j];
-  }
-}
-
-void GraphWithDequantPartitionHelper::RemapInputTensors(
-    const std::vector<int>& nodes) const {
-  for (int node_id : nodes) {
-    TfLiteNode* node;
-    TfLiteRegistration* registration;
-    GetNodeAndRegistration(context_, node_id, &node, &registration)
-        .IgnoreError();
-    RemapInputTensors(node, nullptr /* orig_inputs*/);
-  }
-}
-
-void GraphWithDequantPartitionHelper::RemoveSingleDequantNodePartitions() {
-  auto it = partitions_.begin();
-  while (it != partitions_.end()) {
-    auto p = *it;
-    if (p->nodes_to_replace->size != 1) {
-      ++it;
-      continue;
-    }
-    int node_id = p->nodes_to_replace->data[0];
-    TfLiteNode* node = nullptr;
-    TfLiteRegistration* registration = nullptr;
-    GetNodeAndRegistration(context_, node_id, &node, &registration)
-        .IgnoreError();
-    if (registration->builtin_code != kTfLiteBuiltinDequantize ||
-        context_->tensors[node->inputs->data[0]].type !=
-            TfLiteType::kTfLiteFloat16) {
-      ++it;
-      continue;
-    }
-    // Note such dequant nodes have to be preserved in the graph as dequant
-    // ops are not actually supported in the GPU delegate.
-    dequant_nodes_to_save_.insert(node_id);
-    it = partitions_.erase(it);
-  }
-}
-
-void GraphWithDequantPartitionHelper::RemoveReservedDequantsFromNodes(
-    std::vector<int>* nodes) {
-  if (dequant_nodes_to_save_.empty()) return;
-  auto it = nodes->begin();
-  while (it != nodes->end()) {
-    if (dequant_nodes_to_save_.find(*it) == dequant_nodes_to_save_.end()) {
-      ++it;
-      continue;
-    }
-    it = nodes->erase(it);
-  }
-}
-
-void GraphWithDequantPartitionHelper::RemapInputTensors(
-    TfLiteNode* node, std::vector<int>* orig_inputs) const {
-  TfLiteIntArray* inputs = node->inputs;
-  auto inputs_view = TfLiteIntArrayView(inputs);
-  // Prepopulate 'orig_inputs' first and clear it if there's no input from a
-  // dequant op.
-  if (orig_inputs) {
-    orig_inputs->clear();
-    orig_inputs->reserve(inputs->size);
-    for (auto tid : inputs_view) {
-      orig_inputs->push_back(tid);
-    }
-  }
-  // Fix this node's inputs (i.e. prune out the preceding dequantize node) in
-  // order to test if it is supported.
-  bool is_remapped = false;
-  for (int j = 0; j < inputs->size; ++j) {
-    const int input_tid = inputs->data[j];
-    const auto it = dequant_nodes_.find(input_tid);
-    if (it != dequant_nodes_.end()) {
-      inputs->data[j] = it->second;
-      is_remapped = true;
-    }
-  }
-  if (!is_remapped && orig_inputs) orig_inputs->clear();
-}
+}  // namespace
 
 absl::Status GetNodeAndRegistration(TfLiteContext* context, int node_id,
                                     TfLiteNode** tflite_node,
@@ -216,15 +97,19 @@ absl::Status ExtractTensorShape(const TfLiteTensor& tflite_tensor, BHWC* bhwc) {
   const TfLiteIntArray* dims = tflite_tensor.dims;
   switch (dims->size) {
     case 1:
+      // B layout
       *bhwc = BHWC(dims->data[0], 1, 1, 1);
       return absl::OkStatus();
     case 2:
+      // BC layout
       *bhwc = BHWC(dims->data[0], 1, 1, dims->data[1]);
       return absl::OkStatus();
     case 3:
+      // BWC layout
       *bhwc = BHWC(dims->data[0], 1, dims->data[1], dims->data[2]);
       return absl::OkStatus();
     case 4:
+      // BHWC layout
       *bhwc = BHWC(dims->data[0], dims->data[1], dims->data[2], dims->data[3]);
       return absl::OkStatus();
     default:
@@ -232,6 +117,40 @@ absl::Status ExtractTensorShape(const TfLiteTensor& tflite_tensor, BHWC* bhwc) {
           "Tensor \"", tflite_tensor.name ? tflite_tensor.name : "nullptr",
           "\" has bad input dims size: ", dims->size, "."));
   }
+}
+
+absl::Status ExtractAxisFromIndex(const TfLiteTensor& tflite_tensor, int index,
+                                  Axis* axis) {
+  const TfLiteIntArray* dims = tflite_tensor.dims;
+  if (index == -1) {
+    index = dims->size - 1;
+  }
+  if (index < 0 || index >= dims->size) {
+    return absl::OutOfRangeError("Index for axis out of range");
+  }
+  std::vector<Axis> index_to_axis;
+  switch (dims->size) {
+    case 1:
+      // B layout
+      index_to_axis = {Axis::BATCH};
+      break;
+    case 2:
+      // BC layout
+      index_to_axis = {Axis::BATCH, Axis::CHANNELS};
+      break;
+    case 3:
+      // BWC layout
+      index_to_axis = {Axis::BATCH, Axis::WIDTH, Axis::CHANNELS};
+      break;
+    case 4:
+      // BHWC layout
+      index_to_axis = {Axis::BATCH, Axis::HEIGHT, Axis::WIDTH, Axis::CHANNELS};
+      break;
+    default:
+      return absl::UnavailableError("Unknown layout.");
+  }
+  *axis = index_to_axis[index];
+  return absl::OkStatus();
 }
 
 absl::Status ConvertTfLiteTensorToTensorRef(const TfLiteTensor& tflite_tensor,
@@ -279,8 +198,10 @@ absl::Status PopulateQuantParams(const TfLiteTensor& tensor,
 int GetNumberOfRuntimeInputsForNode(const TfLiteContext* context,
                                     const TfLiteNode* tflite_node) {
   int number_of_runtime_inputs = 0;
-  for (int i = 0; i < tflite_node->inputs->size; i++) {
-    if (!IsConstantTensor(&context->tensors[tflite_node->inputs->data[i]])) {
+  for (int i = 0; i < NumInputs(tflite_node); i++) {
+    const TfLiteTensor* tensor =
+        GetOptionalInputTensor(context, tflite_node, i);
+    if (tensor != nullptr && !IsConstantTensor(tensor)) {
       number_of_runtime_inputs++;
     }
   }
@@ -289,19 +210,8 @@ int GetNumberOfRuntimeInputsForNode(const TfLiteContext* context,
 
 int GetNumberOfConstInputsForNode(const TfLiteContext* context,
                                   const TfLiteNode* tflite_node) {
-  return tflite_node->inputs->size -
+  return NumInputs(tflite_node) -
          GetNumberOfRuntimeInputsForNode(context, tflite_node);
-}
-
-int GetNumberOfRuntimeOutputsForNode(const TfLiteContext* context,
-                                     const TfLiteNode* tflite_node) {
-  int number_of_runtime_outputs = 0;
-  for (int i = 0; i < tflite_node->outputs->size; i++) {
-    if (!IsConstantTensor(&context->tensors[tflite_node->outputs->data[i]])) {
-      number_of_runtime_outputs++;
-    }
-  }
-  return number_of_runtime_outputs;
 }
 
 absl::Status CheckInputsOutputs(const TfLiteContext* context,
@@ -314,12 +224,11 @@ absl::Status CheckInputsOutputs(const TfLiteContext* context,
         "Expected ", runtime_inputs, " runtime input tensor(s), but node has ",
         runtime_inputs_from_model, " runtime input(s)."));
   }
-  const int runtime_outputs =
-      GetNumberOfRuntimeOutputsForNode(context, tflite_node);
-  if (runtime_outputs != outputs) {
+  const int outputs_from_model = NumOutputs(tflite_node);
+  if (outputs_from_model != outputs) {
     return absl::InternalError(absl::StrCat("Expected ", outputs,
                                             " output tensor(s), but node has ",
-                                            runtime_outputs, " output(s)."));
+                                            outputs_from_model, " output(s)."));
   }
   return absl::OkStatus();
 }
@@ -373,50 +282,70 @@ absl::Status CreateVectorCopyData<float>(const TfLiteTensor& tensor,
   return absl::OkStatus();
 }
 
+const std::string GetDimensionString(const TfLiteIntArray* dimensions) {
+  return absl::StrJoin(TfLiteIntArrayView(dimensions), "x");
+}
+
 absl::Status SetAllDimensions(const TfLiteIntArray* dimensions, Scalar* shape) {
   if (dimensions->size < 0) {
     return absl::InvalidArgumentError("Invalid Scalar dimensions");
   }
   for (int i = 0; i < dimensions->size; ++i) {
     if (dimensions->data[i] != 1) {
-      return absl::InvalidArgumentError(
-          "Dimension can not be reduced to scalar.");
+      return absl::InvalidArgumentError(absl::StrCat(
+          GetDimensionString(dimensions), "  cannot be reduced to scalar."));
     }
   }
   shape->v = 1;
   return absl::OkStatus();
 }
 
-absl::Status SetAllDimensions(const TfLiteIntArray* dimensions, Linear* shape) {
+absl::Status CheckIfLinearConvertible(const TfLiteIntArray* dimensions) {
   if (dimensions->size <= 0) {
     return absl::InvalidArgumentError("Dimension is empty.");
   }
   for (int i = 0; i < dimensions->size - 1; ++i) {
     if (dimensions->data[i] != 1) {
-      return absl::InvalidArgumentError(
-          "Dimension can not be reduced to linear.");
+      return absl::InvalidArgumentError(absl::StrCat(
+          GetDimensionString(dimensions), "  cannot be reduced to linear."));
     }
   }
+  return absl::OkStatus();
+}
+
+absl::Status SetAllDimensions(const TfLiteIntArray* dimensions, Linear* shape) {
+  RETURN_IF_ERROR(CheckIfLinearConvertible(dimensions));
   shape->v = dimensions->data[dimensions->size - 1];
   return absl::OkStatus();
 }
 
 absl::Status SetAllDimensions(const TfLiteIntArray* dimensions, HWC* shape) {
-  if (dimensions->size != 4) {
-    return absl::InvalidArgumentError("Dimensions are not HWC");
+  if (dimensions->size == 3) {
+    shape->h = dimensions->data[0];
+    shape->w = dimensions->data[1];
+    shape->c = dimensions->data[2];
+    return absl::OkStatus();
   }
-  if (dimensions->data[0] != 1) {
-    return absl::UnimplementedError("Batch size is not equal to 1.");
+  if (dimensions->size == 4) {
+    if (dimensions->data[0] != 1) {
+      return absl::UnimplementedError("Batch size is not equal to 1.");
+    }
+    shape->h = dimensions->data[1];
+    shape->w = dimensions->data[2];
+    shape->c = dimensions->data[3];
+    return absl::OkStatus();
   }
-  shape->h = dimensions->data[1];
-  shape->w = dimensions->data[2];
-  shape->c = dimensions->data[3];
-  return absl::OkStatus();
+  return absl::InvalidArgumentError(
+      absl::StrCat("Expected a 3D tensor of shape HxWxC or a 4D tensor of "
+                   "shape 1xHxWxC but got ",
+                   GetDimensionString(dimensions)));
 }
 
 absl::Status SetAllDimensions(const TfLiteIntArray* dimensions, HW* shape) {
   if (dimensions->size != 2) {
-    return absl::InvalidArgumentError("Dimensions are not HW");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Expected a 2D tensor of shape HxW but got ",
+                     GetDimensionString(dimensions)));
   }
   shape->h = dimensions->data[0];
   shape->w = dimensions->data[1];
@@ -426,7 +355,8 @@ absl::Status SetAllDimensions(const TfLiteIntArray* dimensions, HW* shape) {
 absl::Status SetAllDimensions(const TfLiteIntArray* dimensions, OHWI* shape) {
   if (dimensions->size != 4) {
     return absl::InvalidArgumentError(
-        absl::StrCat("Dimensions are not OHWI: ", dimensions->size));
+        absl::StrCat("Expected a 4D tensor of shape OxHxWxI but got ",
+                     GetDimensionString(dimensions)));
   }
   shape->o = dimensions->data[0];
   shape->h = dimensions->data[1];
@@ -437,13 +367,80 @@ absl::Status SetAllDimensions(const TfLiteIntArray* dimensions, OHWI* shape) {
 
 absl::Status SetAllDimensions(const TfLiteIntArray* dimensions, BHWC* shape) {
   if (dimensions->size != 4) {
-    return absl::InvalidArgumentError("Dimensions are not BHWC");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Expected a 4D tensor of shape BxHxWxC but got ",
+                     GetDimensionString(dimensions)));
   }
   shape->b = dimensions->data[0];
   shape->h = dimensions->data[1];
   shape->w = dimensions->data[2];
   shape->c = dimensions->data[3];
   return absl::OkStatus();
+}
+
+absl::Status IsActivationSupported(TfLiteFusedActivation fused_activation) {
+  switch (fused_activation) {
+    case kTfLiteActNone:
+    case kTfLiteActRelu:
+    case kTfLiteActReluN1To1:
+    case kTfLiteActRelu6:
+    case kTfLiteActTanh:
+    case kTfLiteActSigmoid:
+      return absl::OkStatus();
+    case kTfLiteActSignBit:
+      return absl::UnimplementedError(
+          "TfLiteFusedActivation.kTfLiteActSignBit");
+
+      // Do not add default; we want compilation error rather than run-time
+      // error.
+  }
+}
+
+// If there is fused activation present, then there will be another node created
+// that will have identical output as the given node. New operation node will
+// depend on the given node output.
+absl::Status MaybeFuseActivation(TfLiteFusedActivation fused_activation,
+                                 GraphFloat32* graph, Node* node) {
+  const auto outputs = graph->FindOutputs(node->id);
+  if (outputs.size() != 1) {
+    return absl::InternalError("Number of outputs != 1");
+  }
+  switch (fused_activation) {
+    case kTfLiteActNone:
+      // Nothing to do here
+      return absl::OkStatus();
+    case kTfLiteActRelu:
+    case kTfLiteActReluN1To1:
+    case kTfLiteActRelu6: {
+      ReLUAttributes attr;
+      attr.clip = fused_activation == kTfLiteActRelu
+                      ? 0.0f
+                      : (fused_activation == kTfLiteActReluN1To1 ? 1.0f : 6.0f);
+      Node* activation_node;
+      RETURN_IF_ERROR(
+          NewPassthroughNode(graph, node, outputs[0], &activation_node));
+      activation_node->operation.type = ToString(OperationType::RELU);
+      activation_node->operation.attributes = attr;
+      return absl::OkStatus();
+    }
+    case kTfLiteActTanh: {
+      Node* activation_node;
+      RETURN_IF_ERROR(
+          NewPassthroughNode(graph, node, outputs[0], &activation_node));
+      activation_node->operation.type = ToString(OperationType::TANH);
+      return absl::OkStatus();
+    }
+    case kTfLiteActSigmoid: {
+      Node* activation_node;
+      RETURN_IF_ERROR(
+          NewPassthroughNode(graph, node, outputs[0], &activation_node));
+      activation_node->operation.type = ToString(OperationType::SIGMOID);
+      return absl::OkStatus();
+    } break;
+    default:
+      return absl::NotFoundError(
+          absl::StrCat("Unsupported fused activation: ", fused_activation));
+  }
 }
 
 }  // namespace gpu

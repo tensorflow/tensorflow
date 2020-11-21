@@ -71,14 +71,14 @@ class SparseReshapeTest(test.TestCase):
   def testRaisesIfMoreThanOneInferredDim(self):
     sp_input = sparse_tensor.SparseTensor.from_value(
         self._SparseTensorValue_2x3x4())
-    with self.assertRaisesRegexp(ValueError, "At most one dimension can"):
+    with self.assertRaisesRegex(ValueError, "At most one dimension can"):
       sparse_ops.sparse_reshape(sp_input, shape=(-1, 2, -1))
 
   @test_util.run_deprecated_v1
   def testRaisesIfInferredShapeNotPossible(self):
     sp_input = sparse_tensor.SparseTensor.from_value(
         self._SparseTensorValue_2x3x4())
-    with self.assertRaisesRegexp(ValueError, "Cannot reshape"):
+    with self.assertRaisesRegex(ValueError, "Cannot reshape"):
       sparse_ops.sparse_reshape(sp_input, shape=(-1, 7))
 
   @test_util.run_deprecated_v1
@@ -249,7 +249,7 @@ class SparseReshapeTest(test.TestCase):
   def testProvideStaticallyMismatchedSizes(self):
     input_val = self._SparseTensorValue_5x6()
     sp_input = sparse_tensor.SparseTensor.from_value(input_val)
-    with self.assertRaisesRegexp(ValueError, "Cannot reshape"):
+    with self.assertRaisesRegex(ValueError, "Cannot reshape"):
       sparse_ops.sparse_reshape(sp_input, [4, 7])
 
   @test_util.run_deprecated_v1

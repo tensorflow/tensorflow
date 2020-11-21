@@ -43,13 +43,14 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-
+#include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #define DEBUG_TYPE "tf-tpu-merge-variables-with-execute"
 
 namespace mlir {
 namespace TFTPU {
 
 namespace {
+constexpr char kAliasingAttr[] = "tf.aliasing_output";
 constexpr char kDeviceAttr[] = "device";
 constexpr char kFuncDeviceAttr[] = "tf.device";
 
@@ -298,7 +299,7 @@ VariableAccessesForTPUExecute BuildVariableAccessInfo(
   // Populate infos.old_to_new_output_mapping.
   int new_output_index = 0;
   infos.old_to_new_output_mapping.resize(execute_launch.getNumResults());
-  for (int i = 0; i < execute_launch.getNumResults(); ++i) {
+  for (int i = 0, end = execute_launch.getNumResults(); i < end; ++i) {
     if (output_fused[i]) {
       infos.old_to_new_output_mapping[i] = -1;
     } else {
@@ -375,7 +376,7 @@ void ReplaceParallelExecute(tf_device::ParallelExecuteOp parallel_execute,
   // Replace the uses of the original parallel_execute for the region containing
   // the merged execute.
   auto old_region_results = parallel_execute.GetRegionOutputs(region_index);
-  for (int i = 0; i < infos.old_to_new_output_mapping.size(); ++i) {
+  for (int i = 0, end = infos.old_to_new_output_mapping.size(); i < end; ++i) {
     if (infos.old_to_new_output_mapping[i] < 0) continue;
     old_region_results[i].replaceAllUsesWith(new_parallel_execute_op->getResult(
         infos.old_to_new_output_mapping[i] + num_results_before_region));
@@ -407,7 +408,7 @@ void ReplaceExecute(tf_device::LaunchOp execute_launch,
                     tf_device::LaunchOp merged_execute_launch,
                     const VariableAccessesForTPUExecute& infos) {
   // Replace the uses.
-  for (int i = 0; i < infos.old_to_new_output_mapping.size(); ++i) {
+  for (int i = 0, end = infos.old_to_new_output_mapping.size(); i < end; ++i) {
     if (infos.old_to_new_output_mapping[i] < 0) continue;
     execute_launch.getResult(i).replaceAllUsesWith(
         merged_execute_launch.getResult(infos.old_to_new_output_mapping[i]));
@@ -416,6 +417,69 @@ void ReplaceExecute(tf_device::LaunchOp execute_launch,
   // Remove the original TPUExecute op.
   execute_launch.getOperation()->dropAllUses();
   execute_launch.erase();
+}
+
+// Returns TPUCompileMlir op that generates the program executed by the
+// TPUExecute op.
+TF::_TPUCompileMlirOp GetTPUCompileOp(tf_device::LaunchOp execute_launch) {
+  auto execute =
+      llvm::dyn_cast<TF::TPUExecuteOp>(execute_launch.GetBody().front());
+  if (!execute) return {};
+  auto compile_launch = llvm::dyn_cast_or_null<tf_device::LaunchOp>(
+      execute.getOperand(execute.getNumOperands() - 1).getDefiningOp());
+  if (!compile_launch) return {};
+  return llvm::dyn_cast<TF::_TPUCompileMlirOp>(
+      compile_launch.GetBody().front());
+}
+
+// Updates the serialized module associated with the TPUExecute op to reflect
+// the aliasing information for better management of device memory.
+LogicalResult UpdateSerializedModule(tf_device::LaunchOp execute_launch,
+                                     VariableAccessesForTPUExecute& infos) {
+  TF::_TPUCompileMlirOp compile = GetTPUCompileOp(execute_launch);
+
+  // Skip adding alias information in case of model parallelism i.e.,
+  // TPUCompileMlir op generates multiple programs.
+  if (!compile || compile.program().size() > 1) return failure();
+
+  // Parse the serialized module
+  mlir::OwningModuleRef module_ref;
+  tensorflow::Status status = tensorflow::DeserializeMlirModule(
+      compile.mlir_module().str(), compile.getContext(), &module_ref);
+  if (!status.ok()) {
+    LLVM_DEBUG(llvm::dbgs() << "Error in parsing serialized module: "
+                            << status.error_message() << "\n");
+
+    return failure();
+  }
+
+  // Add aliasing information to main function arguments.
+  FuncOp main_func = module_ref->lookupSymbol<FuncOp>("main");
+  if (!main_func) return failure();
+
+  OpBuilder builder(main_func.getContext());
+  for (auto resource : infos.resources_read) {
+    auto& info = infos.per_resource_info[resource];
+    if (info.execute_input_index < 0 || info.execute_output_index < 0) continue;
+    auto aliasing_attr = main_func.getArgAttrOfType<mlir::IntegerAttr>(
+        info.execute_input_index, kAliasingAttr);
+
+    // Set only if aliasing attribute does not exist.
+    if (!aliasing_attr) {
+      main_func.setArgAttr(
+          info.execute_input_index, kAliasingAttr,
+          builder.getI64IntegerAttr(info.execute_output_index));
+      continue;
+    }
+    // If aliasing attribute already exists, it must match the new value.
+    assert(aliasing_attr.getInt() == info.execute_output_index);
+  }
+
+  // Serialize the updated module back into the TPUCompileMlir op.
+  auto module_string = tensorflow::SerializeMlirModule(module_ref.get());
+  compile.mlir_moduleAttr(
+      mlir::StringAttr::get(module_string, module_ref->getContext()));
+  return success();
 }
 
 // Merges the variable accesses into one TPUExecute op.
@@ -427,6 +491,19 @@ void MergeForOneTPUExecute(tf_device::LaunchOp execute_launch,
   if (infos.per_resource_info.empty()) {
     return;
   }
+
+  // Update the serialized module with aliasing information for better memory
+  // management on device.
+  // TODO(b/172608422): Benchmark the cost of deserialization/serialization of
+  // the attached module. We can avoid it by serializing it at the end of the
+  // bridge pipeline.
+  if (failed(UpdateSerializedModule(execute_launch, infos))) {
+    LLVM_DEBUG(
+        llvm::dbgs()
+        << "Unable to update the serialized module with aliasing information "
+           "which can lead to poor memory management on device.\n");
+  }
+
   // Start creating the new TPUExecuteAndUpdateVariables op.
   builder->setInsertionPoint(execute_launch);
   // Output types. Skip the original outputs for fused assigns.

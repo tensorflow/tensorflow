@@ -70,14 +70,21 @@ class WhileContext;
 class NeighborIter;     // Declared below
 class NodeIter;         // Declared below
 
+// Indicates where the graph instance is originated from.
+enum class ConstructionContext {
+  kNotTracked,     // Not tracked.
+  kDirectSession,  // From `tensorflow::DirectSession`, TF1 session API.
+  kFunctionDef,    // From `FunctionDef`, @tf.function.
+};
+
 class Node {
  public:
-  string DebugString() const;
+  std::string DebugString() const;
   int id() const { return id_; }
   int cost_id() const { return cost_id_; }
-  const string& name() const;
-  void set_name(string name);
-  const string& type_string() const;
+  const std::string& name() const;
+  void set_name(std::string name);
+  const std::string& type_string() const;
 
   // def() provides the NodeDef the user supplied, but the specifics
   // of this Node may have changed due to placement, optimization, etc.
@@ -103,11 +110,11 @@ class Node {
 
   // The device requested by the user.  For the actual assigned device,
   // use assigned_device_name() below.
-  const string& requested_device() const;
+  const std::string& requested_device() const;
 
   // This changes the user requested device but not necessarily the device that
   // on which the operation will run.
-  void set_requested_device(const string& device);
+  void set_requested_device(const std::string& device);
 
   // This gives the device the runtime has assigned this node to.  If
   // you want the device the user requested, use def().device() instead.
@@ -115,8 +122,8 @@ class Node {
   // fully specifies a device, and satisfies def().device().
   // TODO(josh11b): Move assigned_device_name outside of Node into a
   // NodeId->DeviceName map.
-  const string& assigned_device_name() const;
-  void set_assigned_device_name(const string& device_name);
+  const std::string& assigned_device_name() const;
+  void set_assigned_device_name(const std::string& device_name);
   bool has_assigned_device_name() const {
     return assigned_device_name_index_ > 0;
   }
@@ -189,23 +196,24 @@ class Node {
 
   bool IsIfNode() const { return class_ == NC_IF; }
   bool IsWhileNode() const { return class_ == NC_WHILE; }
+  bool IsCaseNode() const { return class_ == NC_CASE; }
   // Is this node a function input
   bool IsArg() const { return class_ == NC_ARG; }
   // Is this node a function output
   bool IsRetval() const { return class_ == NC_RETVAL; }
 
   template <typename T>
-  void AddAttr(const string& name, const T& val) {
+  void AddAttr(const std::string& name, const T& val) {
     SetAttrValue(val, AddAttrHelper(name));
     UpdateProperties();
   }
 
-  void AddAttr(const string& name, std::vector<string>&& val) {
+  void AddAttr(const std::string& name, std::vector<string>&& val) {
     MoveAttrValue(std::move(val), AddAttrHelper(name));
     UpdateProperties();
   }
 
-  void ClearAttr(const string& name);
+  void ClearAttr(const std::string& name);
 
   // Returns into '*e' the edge connecting to the 'idx' input of this Node.
   Status input_edge(int idx, const Edge** e) const;
@@ -249,7 +257,7 @@ class Node {
   // property of the node (stored in props_).
   void UpdateProperties();
 
-  AttrValue* AddAttrHelper(const string& name);
+  AttrValue* AddAttrHelper(const std::string& name);
 
   // A set of mutually exclusive classes for different kinds of nodes,
   // class_ is initialized in the Node::Initialize routine based on the
@@ -282,6 +290,7 @@ class Node {
     NC_SYMBOLIC_GRADIENT,
     NC_IF,
     NC_WHILE,
+    NC_CASE,
     NC_ARG,
     NC_RETVAL,
     NC_OTHER  // Not a special kind of node
@@ -290,7 +299,7 @@ class Node {
   void Initialize(int id, int cost_id, std::shared_ptr<NodeProperties> props,
                   NodeClass node_class);
 
-  static NodeClass GetNodeClassForOp(const string& ts);
+  static NodeClass GetNodeClassForOp(const std::string& ts);
 
   int id_;       // -1 until Initialize() is called
   int cost_id_;  // -1 if there is no corresponding cost accounting node
@@ -327,7 +336,7 @@ class Node {
 
 // Stores debug information associated with the Node.
 struct NodeDebugInfo {
-  const string name;
+  const std::string name;
   std::vector<string> original_node_names;
 
   NodeDebugInfo(const Node& n);
@@ -396,7 +405,7 @@ class Edge {
   // (as opposed to a data-flow) dependency.
   bool IsControlEdge() const;
 
-  string DebugString() const;
+  std::string DebugString() const;
 
  private:
   Edge() {}
@@ -593,7 +602,7 @@ class Graph {
 
   // Generate new node name with the specified prefix that is unique
   // across this graph.
-  string NewName(StringPiece prefix);
+  std::string NewName(StringPiece prefix);
 
   // Access to the list of all nodes.  Example usage:
   //   for (Node* node : graph.nodes()) { ... }
@@ -615,9 +624,9 @@ class Graph {
   int num_edge_ids() const { return edges_.size(); }
 
   // Returns the Edge associated with an id, or nullptr if no edge
-  // with that id (the node with that id was removed and the id has
+  // with that id (the edge with that id was removed and the id has
   // not yet been re-used). *this owns the returned instance.
-  // REQUIRES: 0 <= id < num_node_ids().
+  // REQUIRES: 0 <= id < num_edge_ids().
   const Edge* FindEdgeId(int id) const { return edges_[id]; }
 
   // Access to the set of all edges.  Example usage:
@@ -637,9 +646,9 @@ class Graph {
     DCHECK_LT(index, static_cast<int>(device_names_.size()));
   }
 
-  int InternDeviceName(const string& device_name);
+  int InternDeviceName(const std::string& device_name);
 
-  const string& get_assigned_device_name(const Node& node) const {
+  const std::string& get_assigned_device_name(const Node& node) const {
     return device_names_[node.assigned_device_name_index()];
   }
 
@@ -648,7 +657,7 @@ class Graph {
     node->assigned_device_name_index_ = device_name_index;
   }
 
-  void set_assigned_device_name(Node* node, const string& device_name) {
+  void set_assigned_device_name(Node* node, const std::string& device_name) {
     node->assigned_device_name_index_ = InternDeviceName(device_name);
   }
 
@@ -678,6 +687,19 @@ class Graph {
 
   absl::optional<std::vector<bool>>& GetConstArgIndicesCache() const {
     return const_arg_indices_cache_;
+  }
+
+  // TODO(kkb): Add to the constructor when it becomes managable.
+  // Sets the graph construction context.
+  void SetConstructionContext(ConstructionContext construction_context) {
+    construction_context_ = construction_context;
+  }
+
+  // TODO(kkb): Rename to `GetConstructionContext` once we're comfortable
+  // making this stable and make it available widely.
+  // Returns the graph construction context. It's `kUnknown` if not set.
+  ConstructionContext GetConstructionContextInternal() const {
+    return construction_context_;
   }
 
   // TODO(josh11b): uint64 hash() const;
@@ -756,6 +778,9 @@ class Graph {
   // Cache of the indices of the arguments which need to be constant for the XLA
   // compilation.
   mutable absl::optional<std::vector<bool>> const_arg_indices_cache_;
+
+  // Indicates the context that this Graph instance is constructed.
+  ConstructionContext construction_context_ = ConstructionContext::kNotTracked;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Graph);
 };
@@ -923,11 +948,11 @@ inline void Node::set_assigned_device_name_index(int index) {
   assigned_device_name_index_ = index;
 }
 
-inline void Node::set_assigned_device_name(const string& device_name) {
+inline void Node::set_assigned_device_name(const std::string& device_name) {
   graph_->set_assigned_device_name(this, device_name);
 }
 
-inline const string& Node::assigned_device_name() const {
+inline const std::string& Node::assigned_device_name() const {
   return graph_->get_assigned_device_name(*this);
 }
 

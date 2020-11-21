@@ -14,16 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include <cstdint>
 #include <initializer_list>
-#include <memory>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/register.h"
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace {
@@ -64,9 +61,8 @@ class QuantizedLSTMOpModel : public MultiOpModel {
 
     input_ = AddInput(input_tensor_data);
 
-    prev_output_ =
-        AddInput({TensorType_UINT8, output_shape, 0.0f, 0.0f, 1. / 128., 128},
-                 /*is_variable=*/true);
+    prev_output_ = AddVariableInput(
+        {TensorType_UINT8, output_shape, 0.0f, 0.0f, 1. / 128., 128});
     // Biases and Weights have to be constant in order to allow NNAPI
     // delegation
     weights_ = AddConstInput<uint8_t>({TensorType_UINT8, weight_shape, 0.0f,
@@ -75,9 +71,8 @@ class QuantizedLSTMOpModel : public MultiOpModel {
     biases_ = AddConstInput<int32_t>(
         {TensorType_INT32, bias_shape, 0.0f, 0.0f, weightsScale / 128, 0},
         biases);
-    prev_cell_state_ =
-        AddInput({TensorType_INT16, state_shape, 0.0f, 0.0f, 1. / 2048., 0},
-                 /*is_variable=*/true);
+    prev_cell_state_ = AddVariableInput(
+        {TensorType_INT16, state_shape, 0.0f, 0.0f, 1. / 2048., 0});
 
     sum_out_ = AddOutput(input_tensor_data);
 

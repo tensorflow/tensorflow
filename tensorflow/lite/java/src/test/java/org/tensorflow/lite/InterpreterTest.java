@@ -42,6 +42,8 @@ public final class InterpreterTest {
       "tensorflow/lite/java/src/testdata/add_unknown_dimensions.bin";
   private static final String DYNAMIC_SHAPES_MODEL_PATH =
       "tensorflow/lite/testdata/dynamic_shapes.bin";
+  private static final String BOOL_MODEL =
+      "tensorflow/lite/java/src/testdata/tile_with_bool_input.bin";
 
   private static final ByteBuffer MODEL_BUFFER = TestUtils.getTestFileAsBuffer(MODEL_PATH);
   private static final ByteBuffer MULTIPLE_INPUTS_MODEL_BUFFER =
@@ -52,6 +54,7 @@ public final class InterpreterTest {
       TestUtils.getTestFileAsBuffer(UNKNOWN_DIMS_MODEL_PATH);
   private static final ByteBuffer DYNAMIC_SHAPES_MODEL_BUFFER =
       TestUtils.getTestFileAsBuffer(DYNAMIC_SHAPES_MODEL_PATH);
+  private static final ByteBuffer BOOL_MODEL_BUFFER = TestUtils.getTestFileAsBuffer(BOOL_MODEL);
 
   @Test
   public void testInterpreter() throws Exception {
@@ -65,6 +68,7 @@ public final class InterpreterTest {
   }
 
   @Test
+  @SuppressWarnings("deprecation")
   public void testInterpreterWithOptions() throws Exception {
     Interpreter interpreter =
         new Interpreter(
@@ -390,6 +394,8 @@ public final class InterpreterTest {
   }
 
   @Test
+  // setAllowFp16PrecisionForFp32 is deprecated, suppress the warning to allow testing.
+  @SuppressWarnings("deprecation")
   public void testTurnOnNNAPI() throws Exception {
     Interpreter interpreter =
         new Interpreter(
@@ -405,6 +411,38 @@ public final class InterpreterTest {
     float[] expected = {3.69f, 19.62f, 23.43f};
     assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
     interpreter.close();
+  }
+
+  @Test
+  public void testUseXNNPACK() throws Exception {
+    Interpreter interpreter =
+        new Interpreter(MODEL_BUFFER, new Interpreter.Options().setUseXNNPACK(true));
+    float[] oneD = {1.23f, 6.54f, 7.81f};
+    float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
+    float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
+    float[][][][] fourD = {threeD, threeD};
+    float[][][][] parsedOutputs = new float[2][8][8][3];
+    interpreter.run(fourD, parsedOutputs);
+    float[] outputOneD = parsedOutputs[0][0][0];
+    float[] expected = {3.69f, 19.62f, 23.43f};
+    assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
+    interpreter.close();
+  }
+
+  @Test
+  public void testResizeWithEnhancedCpuKernels() throws Exception {
+    Interpreter interpreter =
+        new Interpreter(MODEL_BUFFER, new Interpreter.Options().setUseXNNPACK(true));
+    float[] input = {1.f};
+    float[] output = new float[1];
+    interpreter.run(input, output);
+    assertThat(output).usingTolerance(0.1f).containsExactly(new float[] {3.f}).inOrder();
+
+    // The new input shape should trigger a resize. Inference should still work properly.
+    float[] input2 = {1.f, 2.f};
+    float[] output2 = new float[2];
+    interpreter.run(input2, output2);
+    assertThat(output2).usingTolerance(0.1f).containsExactly(new float[] {3.f, 6.f}).inOrder();
   }
 
   @Test
@@ -496,6 +534,8 @@ public final class InterpreterTest {
   }
 
   @Test
+  // modifyGraphWithDelegate(...) is deprecated, suppress the warning to allow testing.
+  @SuppressWarnings("deprecation")
   public void testModifyGraphWithDelegate() throws Exception {
     System.loadLibrary("tensorflowlite_test_jni");
     Delegate delegate =
@@ -505,7 +545,8 @@ public final class InterpreterTest {
             return getNativeHandleForDelegate();
           }
         };
-    Interpreter interpreter = new Interpreter(MODEL_BUFFER);
+    Interpreter interpreter =
+        new Interpreter(MODEL_BUFFER, new Interpreter.Options().setUseXNNPACK(false));
     interpreter.modifyGraphWithDelegate(delegate);
 
     // The native delegate stubs out the graph with a single op that produces the scalar value 7.
@@ -574,6 +615,68 @@ public final class InterpreterTest {
       interpreter.resetVariableTensors();
       interpreter.resetVariableTensors();
       interpreter.run(inputs, parsedOutputs);
+    }
+  }
+
+  @Test
+  public void testBoolModel() throws Exception {
+    boolean[][][] inputs = {{{true, false}, {false, true}}, {{true, true}, {false, true}}};
+    int[] multipliers = {1, 1, 2};
+    boolean[][][] parsedOutputs = new boolean[2][2][4];
+
+    try (Interpreter interpreter = new Interpreter(BOOL_MODEL_BUFFER)) {
+      assertThat(interpreter.getInputTensor(0).dataType()).isEqualTo(DataType.BOOL);
+      Object[] inputsArray = {inputs, multipliers};
+      Map<Integer, Object> outputsMap = new HashMap<>();
+      outputsMap.put(0, parsedOutputs);
+      interpreter.runForMultipleInputsOutputs(inputsArray, outputsMap);
+
+      boolean[][][] expectedOutputs = {
+        {{true, false, true, false}, {false, true, false, true}},
+        {{true, true, true, true}, {false, true, false, true}}
+      };
+      assertThat(parsedOutputs).isEqualTo(expectedOutputs);
+    }
+  }
+
+  @Test
+  public void testCancelInference() throws Exception {
+    float[][][][] inputs = new float[2][8][8][3];
+    float[][][][] parsedOutputs = new float[2][8][8][3];
+    Interpreter interpreter =
+        new Interpreter(MODEL_BUFFER, new Interpreter.Options().setCancellable(true));
+
+    // Part 1: Should be interrupted when flag is set to true.
+    try {
+      interpreter.setCancelled(true);
+      interpreter.run(inputs, parsedOutputs);
+      fail();
+    } catch (IllegalArgumentException e) {
+      // TODO(b/168266570): Return InterruptedException.
+      assertThat(e)
+          .hasMessageThat()
+          .contains(
+              "Internal error: Failed to run on the given Interpreter: Client requested cancel"
+                  + " during Invoke()");
+    }
+
+    // Part 2: Should be resumed when flag is set to false.
+    interpreter.setCancelled(false);
+    interpreter.run(inputs, parsedOutputs);
+  }
+
+  @Test
+  public void testCancelInferenceOnNoncancellableInterpreter() throws Exception {
+    Interpreter interpreter = new Interpreter(MODEL_BUFFER);
+
+    try {
+      interpreter.setCancelled(true);
+      fail();
+    } catch (IllegalStateException e) {
+      assertThat(e)
+          .hasMessageThat()
+          .contains(
+              "Cannot cancel the inference. Have you called Interpreter.Options.setCancellable?");
     }
   }
 

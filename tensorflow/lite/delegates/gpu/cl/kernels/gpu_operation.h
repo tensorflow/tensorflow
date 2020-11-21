@@ -16,40 +16,51 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_GPU_OPERATION_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_GPU_OPERATION_H_
 
-#include <memory>
 #include <string>
 #include <vector>
 
-#include "tensorflow/lite/delegates/gpu/cl/cl_context.h"
-#include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/tuning_parameters.h"
-#include "tensorflow/lite/delegates/gpu/cl/precision.h"
-#include "tensorflow/lite/delegates/gpu/cl/program_cache.h"
-#include "tensorflow/lite/delegates/gpu/cl/tensor.h"
-#include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
+#include "tensorflow/lite/delegates/gpu/cl/serialization_generated.h"
+#include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
+#include "tensorflow/lite/delegates/gpu/common/kernel_info.h"
+#include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/arguments.h"
+#include "tensorflow/lite/delegates/gpu/common/task/buffer_desc.h"
+#include "tensorflow/lite/delegates/gpu/common/task/compiler_options.h"
+#include "tensorflow/lite/delegates/gpu/common/task/gpu_tensor.h"
+#include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
+#include "tensorflow/lite/delegates/gpu/common/task/tuning_type.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 
 namespace tflite {
 namespace gpu {
 namespace cl {
 
-struct CreationContext {
-  const CLDevice* device;
-  CLContext* context;
-  CLCommandQueue* queue;
-  ProgramCache* cache;
-};
-
-struct LinkingContext {
-  // variable(FLT4) name to apply subsequent transformations
-  std::string var_name;
-  // x coordinate name (as it appears in kernel) for variable
-  std::string x_coord;
-  // y coordinate name (as it appears in kernel) for variable
-  std::string y_coord;
-  // s coordinate name (as it appears in kernel) for variable
-  std::string s_coord;
+// kCustom: default value
+//   GPUOperation::GetGridSize must be overloaded
+// kWBToX_HDToY_SToZ:
+//   grid_x = dst_[0]->Width() * dst_[0]->Batch();
+//   grid_y = dst_[0]->Height() * dst_[0]->Depth();
+//   grid_z = dst_[0]->Slices();
+// kWBToX_HDToY_ZIs1:
+//   grid_x = dst_[0]->Width() * dst_[0]->Batch();
+//   grid_y = dst_[0]->Height() * dst_[0]->Depth();
+//   grid_z = 1;
+// kWBToX_HToY_DToZ:
+//   grid_x = dst_[0]->Width() * dst_[0]->Batch();
+//   grid_y = dst_[0]->Height();
+//   grid_z = dst_[0]->Depth();
+// kBToX_YIs1_ZIs1:
+//   grid_x = dst_[0]->Batch();
+//   grid_y = 1;
+//   grid_z = 1;
+enum class TensorToGrid {
+  kCustom,
+  kWBToX_HDToY_SToZ,
+  kWBToX_HDToY_ZIs1,
+  kWBToX_HToY_DToZ,
+  kBToX_YIs1_ZIs1
 };
 
 struct OperationDef {
@@ -63,22 +74,18 @@ struct OperationDef {
   // the structure of kernel, all other resources(biases) types and etc.
   DataType GetPrimaryDataType() const;
   TensorStorageType GetPrimaryStorageType() const;
-  bool HasAllTensorsOfType(TensorStorageType storage_type) const;
   bool IsBatchSupported() const;
 };
 
-class ElementwiseOperation;
-
 // GPUOperation represents some implementation of neural network operation on
-// GPU. GPUOperation can contain ElementwiseOperation operations, in this case,
-// ElementwiseOperation still hold necessary data and should be alive.
-// When GPUOperation contains ElementwiseOperations, this GPUoperation replaces
-// some sequence of operations Op + el_op0 + el_op1 + ...
+// GPU. GPUOperation can contain another GPU operations with flag elementwise_.
+// When GPUOperation contains another GPU ops, this GPUoperation replaces
+// some sequence of operations Op + op0 + op1 + ...
 // Because of this abilities of GPUOperation, usage scenario is next:
 // Create instance of GPUOperation.
-// Create all instances of ElementwiseOperations that we will(probably) attach
-// to GPUOperation. Attach all ElementwiseOperations to GPUOperation. Call
-// GPUOperation.Compile(). Don't call ElementwiseOperation.Compile() if it
+// Create all instances of GPUOperations that we will(probably) attach
+// to GPUOperation. Attach all GPUOperations to GPUOperation. Call
+// GPUOperation.Compile(). Don't call GPUOperations.Compile() if it
 // attached, it useless(and may be error)
 class GPUOperation {
  public:
@@ -91,97 +98,75 @@ class GPUOperation {
   GPUOperation(const GPUOperation&) = delete;
   GPUOperation& operator=(const GPUOperation&) = delete;
 
-  void AddOperation(ElementwiseOperation* operation);
+  absl::Status AddOperation(GPUOperation* operation);
 
-  void SetSrc(Tensor* ptr, int index = 0);
-  void SetDst(Tensor* ptr, int index = 0);
+  void SetSrc(GpuSpatialTensor* ptr, int index = 0);
+  void SetDst(GpuSpatialTensor* ptr, int index = 0);
 
-  virtual absl::Status AddToQueue(CLCommandQueue* queue) {
-    return absl::OkStatus();
-  }
-  virtual absl::Status Tune(const TuningParameters& params) {
-    return absl::OkStatus();
-  }
+  virtual void GetPossibleKernelWorkGroups(
+      TuningType tuning_type, const GpuInfo& gpu_info,
+      const KernelInfo& kernel_info, std::vector<int3>* work_groups) const;
 
-  virtual absl::Status Compile(const CreationContext& creation_context) {
+  void AssembleCode(const GpuInfo& gpu_info);
+
+  virtual absl::Status PostCompileCheck(const GpuInfo& gpu_info,
+                                        const KernelInfo& kernel_info) {
     return absl::OkStatus();
   }
 
   const OperationDef& GetDefinition() const { return definition_; }
 
+  void AddSrcTensor(const std::string& tensor_name,
+                    const TensorDescriptor& desc);
+  void AddSrcBuffer(const std::string& buffer_name,
+                    const BufferDescriptor& desc);
+  void AddDstTensor(const std::string& tensor_name,
+                    const TensorDescriptor& desc);
+
+  bool IsLinkable() const { return elementwise_ && linkable_; }
+
+  // for linking
+  void AddUniquePostfix(const std::string& unique_postfix);
+
+  Arguments args_;
+  std::string code_;
+  int3 work_group_size_ = int3(8, 4, 1);
+  std::vector<CompilerOptions> compiler_options_;
+  // not applicable to elementwise
+  TensorToGrid tensor_to_grid_ = TensorToGrid::kCustom;
+
+  bool elementwise_ = false;
+  // applicable only with elementwise_ = true;
+  bool linkable_ = true;  // by default every elementwise is linkable
+  // applicable only with elementwise_ = true;
+  bool check_src_channels_size_ = false;
+
  protected:
-  // Defines operation calculation precision and format of src/dst tensors.
-  OperationDef definition_;
-  std::vector<Tensor*> src_;
-  std::vector<Tensor*> dst_;
-  std::vector<ElementwiseOperation*> linked_operations_;
-};
+  friend class ClOperation;
+  friend flatbuffers::Offset<data::GPUOperation> Encode(
+      const GPUOperation& op, flatbuffers::FlatBufferBuilder* builder);
+  friend absl::Status Decode(const data::GPUOperation* fb_op, GPUOperation* op);
 
-// ElementwiseOperation can be fused(linked) to another operation.
-// field linked_ indicate about this
-// link_index_ used mostly for generating of correct names for
-//   linked code variables
-// link_index_ is number of operation in sequence of linked operations
-// and should be unique in this sequence
-// link_index_ = 0 is equivalent that operation not linked.
-class ElementwiseOperation : public GPUOperation {
- public:
-  ElementwiseOperation() {}
-  explicit ElementwiseOperation(const OperationDef& definition)
-      : GPUOperation(definition) {}
-
-  virtual ~ElementwiseOperation() {}
-  absl::Status AddToQueue(CLCommandQueue* queue) override;
-  absl::Status Tune(const TuningParameters& params) override;
-
-  absl::Status Compile(const CreationContext& creation_context) override;
-
-  // Move only
-  ElementwiseOperation(ElementwiseOperation&& operation);
-  ElementwiseOperation& operator=(ElementwiseOperation&& operation);
-  ElementwiseOperation(const ElementwiseOperation&) = delete;
-  ElementwiseOperation& operator=(const ElementwiseOperation&) = delete;
-
-  // We need this function for resolving naming conflicts.
-  // Unfortunately we don't know upfront(at creation time) will be the operation
-  // linked or not. Operation should be created and SetLinkIndex(0) must be
-  // called to initialize specific for this op linked info, and this is mean
-  // that operation is not linked. But if we decided to link it, we need update
-  // operation linked info and use names for kernel arguments according to this
-  // index(this is responsibility of particular implementation of
-  // ElementwiseOperation to generate right names).
-  virtual void SetLinkIndex(int index) {}
-
-  virtual std::string GetCoreCode(const LinkingContext& context) const = 0;
-  virtual std::string GetArgsDeclaration() const { return ""; }
-  virtual absl::Status BindArguments(CLKernel* kernel) {
+  virtual absl::Status BindArguments(ArgumentsBinder* args) {
     return absl::OkStatus();
   }
+  virtual int3 GetGridSize() const;
 
-  // ovveride to return false if for any reason operation can not be linked.
-  virtual bool IsLinkable() const { return true; }
+  // Defines operation calculation precision and format of src/dst tensors.
+  OperationDef definition_;
+  std::vector<GpuSpatialTensor*> src_;
+  std::vector<GpuSpatialTensor*> dst_;
+  int grid_dimension_ = 3;  // can be 1, 2 or 3
+  int3 work_group_launch_order_ = int3(0, 1, 2);
+  int3 grid_size_ = int3(0, 0, 0);
+  std::vector<std::string> src_tensors_names_;
+  std::vector<std::string> dst_tensors_names_;
 
- protected:
-  absl::Status BindArguments();
-  int3 GetGridSize() const;
-  CLKernel kernel_;
-  int3 work_group_size_ = int3(8, 4, 1);
+ private:
+  int3 work_groups_count_ = int3(0, 0, 0);
+  int linkable_count_ = 0;
+  std::string elementwise_code_;  // temporary, used during op construction
 };
-
-// Generates arguments declarations string for elementwise
-// operations in linked_ops.
-// Every ElementwiseOperation can generate arguments declarations.
-std::string GetArgsDeclaration(
-    const std::vector<ElementwiseOperation*>& linked_ops);
-
-std::string PostProcess(const std::vector<ElementwiseOperation*>& linked_ops,
-                        const LinkingContext& context);
-
-// Binds arguments to given kernel for elementwise operations in
-// linked_ops.
-// Every ElementwiseOperation can bind her arguments.
-absl::Status BindArgs(CLKernel* kernel,
-                      const std::vector<ElementwiseOperation*>& linked_ops);
 
 }  // namespace cl
 }  // namespace gpu

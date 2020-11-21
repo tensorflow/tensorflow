@@ -14,15 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/python/interpreter_wrapper/interpreter_wrapper.h"
 
-// Windows does not have dlfcn.h/dlsym, use GetProcAddress() instead.
-#if defined(_WIN32)
-#include <windows.h>
-#else
-#include <dlfcn.h>
-#endif  // defined(_WIN32)
-
 #include <stdarg.h>
 
+#include <functional>
 #include <sstream>
 #include <string>
 
@@ -36,6 +30,7 @@ limitations under the License.
 #include "tensorflow/lite/python/interpreter_wrapper/numpy.h"
 #include "tensorflow/lite/python/interpreter_wrapper/python_error_reporter.h"
 #include "tensorflow/lite/python/interpreter_wrapper/python_utils.h"
+#include "tensorflow/lite/shared_library.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/util.h"
 
@@ -154,25 +149,13 @@ bool RegisterCustomOpByName(const char* registerer_name,
 
   // Look for the Registerer function by name.
   RegistererFunctionType registerer = reinterpret_cast<RegistererFunctionType>(
-  // We don't have dlsym on Windows, use GetProcAddress instead.
-#if defined(_WIN32)
-      GetProcAddress(nullptr, registerer_name)
-#else
-      dlsym(RTLD_DEFAULT, registerer_name)
-#endif  // defined(_WIN32)
-  );
+      SharedLibrary::GetSymbol(registerer_name));
 
   // Fail in an informative way if the function was not found.
   if (registerer == nullptr) {
-    // We don't have dlerror on Windows, use GetLastError instead.
     *error_msg =
-#if defined(_WIN32)
-        absl::StrFormat("Looking up symbol '%s' failed with error (0x%x).",
-                        registerer_name, GetLastError());
-#else
         absl::StrFormat("Looking up symbol '%s' failed with error '%s'.",
-                        registerer_name, dlerror());
-#endif  // defined(_WIN32)
+                        registerer_name, SharedLibrary::GetError());
     return false;
   }
 
@@ -186,16 +169,21 @@ bool RegisterCustomOpByName(const char* registerer_name,
 InterpreterWrapper* InterpreterWrapper::CreateInterpreterWrapper(
     std::unique_ptr<tflite_api_dispatcher::TfLiteModel> model,
     std::unique_ptr<PythonErrorReporter> error_reporter,
-    const std::vector<std::string>& registerers, std::string* error_msg) {
+    const std::vector<std::string>& registerers_by_name,
+    const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
+    std::string* error_msg) {
   if (!model) {
     *error_msg = error_reporter->message();
     return nullptr;
   }
 
   auto resolver = absl::make_unique<tflite::ops::builtin::BuiltinOpResolver>();
-  for (const auto& registerer : registerers) {
+  for (const auto& registerer : registerers_by_name) {
     if (!RegisterCustomOpByName(registerer.c_str(), resolver.get(), error_msg))
       return nullptr;
+  }
+  for (const auto& registerer : registerers_by_func) {
+    registerer(reinterpret_cast<uintptr_t>(resolver.get()));
   }
   auto interpreter = CreateInterpreter(model.get(), *resolver);
   if (!interpreter) {
@@ -673,18 +661,27 @@ PyObject* InterpreterWrapper::tensor(PyObject* base_object, int i) {
 }
 
 InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromFile(
-    const char* model_path, const std::vector<std::string>& registerers,
+    const char* model_path, const std::vector<std::string>& registerers_by_name,
+    const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
     std::string* error_msg) {
   std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
   std::unique_ptr<tflite_api_dispatcher::TfLiteModel> model =
       tflite_api_dispatcher::TfLiteModel::BuildFromFile(model_path,
                                                         error_reporter.get());
   return CreateInterpreterWrapper(std::move(model), std::move(error_reporter),
-                                  registerers, error_msg);
+                                  registerers_by_name, registerers_by_func,
+                                  error_msg);
+}
+
+InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromFile(
+    const char* model_path, const std::vector<std::string>& registerers,
+    std::string* error_msg) {
+  return CreateWrapperCPPFromFile(model_path, registerers, {}, error_msg);
 }
 
 InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
-    PyObject* data, const std::vector<std::string>& registerers,
+    PyObject* data, const std::vector<std::string>& registerers_by_name,
+    const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
     std::string* error_msg) {
   char* buf = nullptr;
   Py_ssize_t length;
@@ -697,12 +694,25 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
       tflite_api_dispatcher::TfLiteModel::BuildFromBuffer(buf, length,
                                                           error_reporter.get());
   return CreateInterpreterWrapper(std::move(model), std::move(error_reporter),
-                                  registerers, error_msg);
+                                  registerers_by_name, registerers_by_func,
+                                  error_msg);
+}
+
+InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
+    PyObject* data, const std::vector<std::string>& registerers,
+    std::string* error_msg) {
+  return CreateWrapperCPPFromBuffer(data, registerers, {}, error_msg);
 }
 
 PyObject* InterpreterWrapper::ResetVariableTensors() {
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
   TFLITE_PY_CHECK(interpreter_->ResetVariableTensors());
+  Py_RETURN_NONE;
+}
+
+PyObject* InterpreterWrapper::SetNumThreads(int num_threads) {
+  TFLITE_PY_ENSURE_VALID_INTERPRETER();
+  interpreter_->SetNumThreads(num_threads);
   Py_RETURN_NONE;
 }
 

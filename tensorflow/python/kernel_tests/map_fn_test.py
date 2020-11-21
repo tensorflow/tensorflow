@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
@@ -32,6 +33,8 @@ from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 import tensorflow.python.ops.tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
@@ -78,11 +81,22 @@ class MapFnTest(test.TestCase):
       self.assertAllEqual(result.values, st.values)
       self.assertAllEqual(result.dense_shape, st.dense_shape)
 
+  def testMapRaggedTensor(self):
+    # Note: there are additional tests in ragged/ragged_map_fn_op_test.py
+    with self.cached_session():
+      rt = ragged_factory_ops.constant([[1, 2], [3]])
+      result = map_fn.map_fn(
+          lambda x: x + 1,
+          rt,
+          fn_output_signature=ragged_tensor.RaggedTensorSpec([None], rt.dtype))
+      self.assertAllEqual([[2, 3], [4]], result)
+      self.assertEqual([2, None], result.shape.as_list())
+
   @test_util.run_in_graph_and_eager_modes
   def testMapOverScalarErrors(self):
-    with self.assertRaisesRegexp(ValueError, "not scalars"):
+    with self.assertRaisesRegex(ValueError, "not scalars"):
       map_fn.map_fn(lambda x: x, [1, 2])
-    with self.assertRaisesRegexp(ValueError, "not a scalar"):
+    with self.assertRaisesRegex(ValueError, "not a scalar"):
       map_fn.map_fn(lambda x: x, 1)
 
   @test_util.run_deprecated_v1
@@ -154,7 +168,7 @@ class MapFnTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testMap_MultiOutputMismatchedDtype(self):
     nums = np.array([1, 2, 3, 4, 5, 6])
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         TypeError, r"two structures don't have the same nested structure"):
       # lambda emits tuple, but dtype is a list
       map_fn.map_fn(
@@ -187,6 +201,25 @@ class MapFnTest(test.TestCase):
     self.assertAllEqual(nums, received[2])
 
   @test_util.run_in_graph_and_eager_modes
+  def testMap_autograph_indirect(self):
+
+    def test_function(x):
+      cond = constant_op.constant(-1)
+      if cond == 0:
+        result = x
+      else:
+        result = x
+      return result
+
+    @def_function.function
+    def map_call(x):
+      return map_fn.map_fn(test_function, x)
+
+    x = constant_op.constant([1])
+    y = map_call(x)
+    self.assertAllEqual([1], self.evaluate(y))
+
+  @test_util.run_in_graph_and_eager_modes
   def testMapShape(self):
     x = constant_op.constant([[1, 2, 3], [4, 5, 6]])
     y = map_fn.map_fn(lambda e: e, x)
@@ -216,6 +249,12 @@ class MapFnTest(test.TestCase):
                                  constant_op.constant([]))
       self.assertAllEqual([0, 3, 2], map_return.get_shape().dims)
       self.assertAllEqual([0, 3, 2], self.evaluate(map_return).shape)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testMapEmptyList(self):
+    x = []
+    with self.assertRaisesRegex(ValueError, r"elems must be a Tensor or"):
+      _ = map_fn.map_fn(lambda e: e, x)
 
 
 if __name__ == "__main__":

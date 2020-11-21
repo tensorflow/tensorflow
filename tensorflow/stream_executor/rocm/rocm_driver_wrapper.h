@@ -117,6 +117,7 @@ namespace wrap {
   __macro(hipSetDevice)                             \
   __macro(hipStreamAddCallback)                     \
   __macro(hipStreamCreateWithFlags)                 \
+  __macro(hipStreamCreateWithPriority)		    \
   __macro(hipStreamDestroy)                         \
   __macro(hipStreamQuery)                           \
   __macro(hipStreamSynchronize)                     \

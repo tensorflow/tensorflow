@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-promote-resources-to-args | FileCheck %s -dump-input-on-failure
+// RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-promote-resources-to-args | FILECHECK_OPTS="" FileCheck %s
 
 // One resource, one read. The initial value of the resource is read.
 // CHECK-LABEL: func @main(%arg0: tensor<i1>, %arg1: tensor<f32> {tf.resource_name = "x"}) -> tensor<2xf32>
@@ -145,8 +145,8 @@ func @main(%arg0: tensor<i1>) -> tensor<2xf32> attributes {tf.entry_function = {
   %2 = "tf.ReadVariableOp"(%1) : (tensor<!tf.resource<tensor<f32>>>) -> tensor<f32>
   %3 = "tf.Less"(%2, %0) : (tensor<f32>, tensor<f32>) -> tensor<i1>
   %4 = "tf.If"(%3, %1, %2) {Tcond = i1, Tin = ["tfdtype$DT_RESOURCE", "tfdtype$DT_FLOAT"], Tout = ["tfdtype$DT_FLOAT"],
-       else_branch = @cond_false, is_stateless = false, output_shapes = [#tf.shape<>],
-       then_branch = @cond_true} : (tensor<i1>, tensor<!tf.resource<tensor<f32>>>, tensor<f32>) -> tensor<f32>
+       else_branch = @cond_false, is_stateless = false,then_branch = @cond_true} :
+       (tensor<i1>, tensor<!tf.resource<tensor<f32>>>, tensor<f32>) -> tensor<f32>
   %5 = "tf.Identity"(%4) : (tensor<f32>) -> tensor<f32>
   %6 = "tf.Pack"(%2, %5) {N = 2 : i64, T = f32, axis = 0 : i64, device = ""} : (tensor<f32>, tensor<f32>) -> tensor<2xf32>
   return %6 : tensor<2xf32>
@@ -258,6 +258,19 @@ func @main(%arg0: tensor<!tf.resource<tensor<f32>>>, %arg1: tensor<f32>)  {
 
 // -----
 
+// Tests removal of dead local variables.
+
+// CHECK-LABEL: func @main
+func @main(%arg0: tensor<2xf32>) {
+  // CHECK-NOT: tf.MlirLocalVarOp
+  // CHECK-NOT: tf.AssignVariableOp
+  %0 = "tf.MlirLocalVarOp"() : () -> tensor<!tf.resource<tensor<2xf32>>>
+  "tf.AssignVariableOp"(%0, %arg0) : (tensor<!tf.resource<tensor<2xf32>>>, tensor<2xf32>) -> ()
+  return
+}
+
+// -----
+
 // Tests first read of one resource is used as a value to write to another
 // resource.
 
@@ -271,6 +284,26 @@ func @main(%arg0: tensor<!tf.resource<tensor<f32>>>, %arg1: tensor<!tf.resource<
   // CHECK-NEXT: return %[[ARG_1]] : tensor<f32>
   return
 }
+
+// -----
+
+// Tests if local variables that are dead after resource op lifting are removed.
+
+// CHECK-LABEL: func @main
+func @main(%arg0: tensor<i32>) -> tensor<2xf32> {
+  // CHECK-NOT: tf.MlirLocalVarOp
+  // CHECK-NOT: tf.AssignVariableOp
+  %0 = "tf.MlirLocalVarOp"() : () -> tensor<!tf.resource<tensor<2xf32>>>
+  %1 = "tf._SomeOp"() : () -> tensor<2xf32>
+  "tf.AssignVariableOp"(%0, %1) : (tensor<!tf.resource<tensor<2xf32>>>, tensor<2xf32>) -> ()
+  %2 = "tf.PartitionedCall"(%0) {config = "", config_proto = "", executor_type = "", f = @callee} : (tensor<!tf.resource<tensor<2xf32>>>) -> tensor<2xf32>
+  return %2 : tensor<2xf32>
+}
+func private @callee(%arg0: tensor<!tf.resource<tensor<2xf32>>>) -> tensor<2xf32> {
+  %0 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf.resource<tensor<2xf32>>>) -> tensor<2xf32>
+  return %0 : tensor<2xf32>
+}
+
 
 // -----
 

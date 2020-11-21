@@ -17,8 +17,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import functools
-import weakref
+import copy
+import warnings
+
+from absl import logging
 
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -46,6 +48,7 @@ class NotTrackable(object):
   pass
 
 
+@tf_export("__internal__.tracking.AutoTrackable", v1=[])
 class AutoTrackable(base.Trackable):
   """Manages dependencies on other objects.
 
@@ -101,12 +104,22 @@ class AutoTrackable(base.Trackable):
     """Return a dict of `Function`s of a trackable."""
     functions = {}
     for attribute_name in dir(self):
+      # We get the attributes, suppressing warnings and exceptions.
+      logging_verbosity = logging.get_verbosity()
       try:
-        attribute_value = getattr(self, attribute_name, None)
+        logging.set_verbosity(logging.FATAL)
+        with warnings.catch_warnings():
+          warnings.simplefilter("ignore")
+          attribute_value = getattr(self, attribute_name, None)
       except Exception:  # pylint: disable=broad-except
         # We really don't want to throw an exception just because some object's
         # attribute accessor is broken.
         attribute_value = None
+      finally:
+        # We reset the verbosity setting in a `finally` block, to make
+        # sure it always happens, even if we make the exception catching above
+        # be less broad.
+        logging.set_verbosity(logging_verbosity)
       if isinstance(attribute_value, (def_function.Function,
                                       defun.ConcreteFunction)):
         functions[attribute_name] = attribute_value
@@ -128,6 +141,8 @@ def delete_tracking(obj, name):
 
 class ResourceTracker(object):
   """An object that tracks a list of resources."""
+
+  __slots__ = ["_resources"]
 
   def __init__(self):
     self._resources = []
@@ -171,6 +186,8 @@ def resource_tracker_scope(resource_tracker):
 
 class CapturableResourceDeleter(object):
   """Deleter to destroy CapturableResource without overriding its __del__()."""
+
+  __slots__ = ["_destruction_context", "_destroy_resource"]
 
   def __init__(self, destroy_resource_fn=None):
     if destroy_resource_fn:
@@ -232,6 +249,18 @@ class CapturableResource(base.Trackable):
       with ops.device(self._resource_device):
         self._resource_handle = self._create_resource()
     return self._resource_handle
+
+  def _map_resources(self, _):
+    """For implementing `Trackable`."""
+    new_obj = copy.copy(self)
+    # pylint: disable=protected-access
+    with ops.device(self._resource_device):
+      new_resource = new_obj._create_resource()
+    new_obj._resource_handle = new_resource
+    # pylint: enable=protected-access
+    obj_map = {self: new_obj}
+    resource_map = {self.resource_handle: new_resource}
+    return obj_map, resource_map
 
   def _list_functions_for_serialization(self, unused_functions):
     @def_function.function(input_signature=[], autograph=False)
@@ -328,101 +357,6 @@ class Asset(base.Trackable):
   def asset_path(self):
     """Fetch the current asset path."""
     return self._path
-
-
-def cached_per_instance(f):
-  """Lightweight decorator for caching lazily constructed properties.
-
-  When to use:
-  This decorator provides simple caching with minimal overhead. It is designed
-  for properties which are expensive to compute and static over the life of a
-  class instance, and provides no mechanism for cache invalidation. Thus it is
-  best suited for lazily exposing derived properties of other static data.
-
-  For classes with custom getattr / setattr behavior (such as trackable
-  objects), storing cache results as object attributes is not performant.
-  Instead, a specialized cache can significantly reduce property lookup
-  overhead. (While still allowing the decorated property to be lazily computed.)
-  Consider the following class:
-
-  ```
-  class MyClass(object):
-    def __setattr__(self, key, value):
-      # Some expensive class specific code
-      # ...
-      # ...
-
-      super(MyClass, self).__setattr__(key, value)
-
-    @property
-    def thing(self):
-      # `thing` is expensive to compute (and may not even be requested), so we
-      # want to lazily compute it and then cache it.
-      output = getattr(self, '_thing', None)
-      if output is None:
-        self._thing = output = compute_thing(self)
-      return output
-  ```
-
-  It's also worth noting that ANY overriding of __setattr__, even something as
-  simple as:
-  ```
-    def __setattr__(self, key, value):
-      super(MyClass, self).__setattr__(key, value)
-  ```
-
-  Slows down attribute assignment by nearly 10x.
-
-  By contrast, replacing the definition of `thing` with the following sidesteps
-  the expensive __setattr__ altogether:
-
-  '''
-  @property
-  @tracking.cached_per_instance
-  def thing(self):
-    # `thing` is expensive to compute (and may not even be requested), so we
-    # want to lazily compute it and then cache it.
-    return compute_thing(self)
-  '''
-
-  Performance:
-  The overhead for this decorator is ~0.4 us / call. A much lower overhead
-  implementation (~0.085 us / call) can be achieved by using a custom dict type:
-
-  ```
-  def dict_based_cache(f):
-    class Cache(dict):
-      __slots__ = ()
-      def __missing__(self, key):
-        self[key] = output = f(key)
-        return output
-
-    return property(Cache().__getitem__)
-  ```
-
-  However, that implementation holds class instances as keys, and as a result
-  blocks garbage collection. (And modifying it to use weakref's as keys raises
-  the lookup overhead to ~0.4 us) As a result, the WeakKeyDictionary
-  implementation below turns out to be more prudent.
-
-  Args:
-    f: The function to cache.
-
-  Returns:
-    f decorated with simple caching behavior.
-  """
-
-  cache = weakref.WeakKeyDictionary()
-
-  @functools.wraps(f)
-  def wrapped(item):
-    output = cache.get(item)
-    if output is None:
-      cache[item] = output = f(item)
-    return output
-
-  wrapped.cache = cache
-  return wrapped
 
 
 ops.register_tensor_conversion_function(

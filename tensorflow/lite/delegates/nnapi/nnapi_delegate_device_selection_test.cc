@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <cstdint>
 #include <iterator>
 #include <memory>
 #include <numeric>
@@ -30,7 +31,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate_mock_test.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
@@ -38,45 +38,24 @@ limitations under the License.
 namespace tflite {
 namespace {
 
-class SingleOpModelWithNNAPI : public SingleOpModel {
- public:
-  SingleOpModelWithNNAPI() = default;
-  void Init(const NnApi* nnapi,
-            tflite::StatefulNnApiDelegate::Options options) {
-    stateful_delegate_.reset(new StatefulNnApiDelegate(nnapi, options));
-    auto* delegate = stateful_delegate_.get();
-    this->SetApplyDelegate([delegate, this](Interpreter* interpreter) {
-      compilation_status_ = interpreter->ModifyGraphWithDelegate(delegate);
-    });
-  }
-
-  StatefulNnApiDelegate* GetDelegate() { return stateful_delegate_.get(); }
-
-  void SetBufferHandle(int index, TfLiteBufferHandle handle) {
-    interpreter_->SetBufferHandle(index, handle, stateful_delegate_.get());
-  }
-  TfLiteStatus GetCompilationStatus() { return compilation_status_; }
-
- private:
-  std::unique_ptr<StatefulNnApiDelegate> stateful_delegate_;
-  TfLiteStatus compilation_status_;
-};
-
-class FloatAddOpModel : public SingleOpModelWithNNAPI {
+class FloatAddOpModel : public SingleOpModel {
  public:
   FloatAddOpModel() = default;
   void Init(const NnApi* nnapi, tflite::StatefulNnApiDelegate::Options options,
             const TensorData& input1, const TensorData& input2,
             const TensorData& output, ActivationFunctionType activation_type,
             bool allow_fp32_relax_to_fp16 = false) {
-    SingleOpModelWithNNAPI::Init(nnapi, options);
+    stateful_delegate_.reset(new StatefulNnApiDelegate(nnapi, options));
+    SetDelegate(stateful_delegate_.get());
+
     input1_ = AddInput(input1);
     input2_ = AddInput(input2);
     output_ = AddOutput(output);
     SetBuiltinOp(BuiltinOperator_ADD, BuiltinOptions_AddOptions,
                  CreateAddOptions(builder_, activation_type).Union());
-    BuildInterpreter({GetShape(input1_), GetShape(input2_)},
-                     allow_fp32_relax_to_fp16);
+    BuildInterpreter({GetShape(input1_), GetShape(input2_)}, /*num_threads=*/-1,
+                     allow_fp32_relax_to_fp16, /*apply_delegate=*/false);
+    compilation_status_ = ApplyDelegate();
   }
 
   int input1() { return input1_; }
@@ -84,12 +63,16 @@ class FloatAddOpModel : public SingleOpModelWithNNAPI {
 
   std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
 
+  TfLiteStatus GetCompilationStatus() { return compilation_status_; }
+
  protected:
   int input1_;
   int input2_;
   int output_;
 
  private:
+  std::unique_ptr<StatefulNnApiDelegate> stateful_delegate_;
+  TfLiteStatus compilation_status_;
 };
 
 struct NnApiDeviceSelectionTest
@@ -131,7 +114,7 @@ struct NnApiDeviceSelectionTest
   FloatAddOpModel m;
 };
 
-TEST_F(NnApiDeviceSelectionTest, DoesntSetDevicesWithoutFlags) {
+TEST_F(NnApiDeviceSelectionTest, DoesntSetDevicesWhenCpuAllowed) {
   nnapi_mock_->StubCompilationCreateForDevicesWith(
       [](ANeuralNetworksModel* model,
          const ANeuralNetworksDevice* const* devices, uint32_t numDevices,
@@ -141,6 +124,7 @@ TEST_F(NnApiDeviceSelectionTest, DoesntSetDevicesWithoutFlags) {
       });
 
   tflite::StatefulNnApiDelegate::Options options;
+  options.disallow_nnapi_cpu = false;
   InitWithOptions(options);
   m.Invoke();
   EXPECT_EQ(m.GetCompilationStatus(), kTfLiteOk);
@@ -280,17 +264,17 @@ class ArgMaxOpModel : public SingleOpModel, public AcceleratedModel {
 
   void Init(std::initializer_list<int> input_shape, TensorType input_type,
             int axis_value, TensorType output_type) {
-    auto* delegate = GetDelegate();
-    this->SetApplyDelegate([delegate](Interpreter* interpreter) {
-      interpreter->ModifyGraphWithDelegate(delegate);
-    });
+    SetDelegate(GetDelegate());
     input_ = AddInput(input_type);
     axis_ = AddConstInput(TensorType_INT32, {axis_value}, {1});
     output_ = AddOutput(output_type);
 
     SetBuiltinOp(BuiltinOperator_ARG_MAX, BuiltinOptions_ArgMaxOptions,
                  CreateArgMaxOptions(builder_, output_type).Union());
-    BuildInterpreter({input_shape, {1}});
+    BuildInterpreter({input_shape, {1}}, /*num_threads*/ -1,
+                     /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/false);
+    ApplyDelegate();
   }
 };
 
@@ -394,10 +378,7 @@ class AddSubOpsAcceleratedModel : public MultiOpModel, public AcceleratedModel {
                             const std::string& accelerator_name,
                             bool allow_fp32_relax_to_fp16 = false)
       : MultiOpModel(), AcceleratedModel(nnapi, accelerator_name) {
-    auto* delegate = GetDelegate();
-    this->SetApplyDelegate([delegate](Interpreter* interpreter) {
-      interpreter->ModifyGraphWithDelegate(delegate);
-    });
+    SetDelegate(GetDelegate());
     Init(input1, input2, input3, output, activation_type,
          allow_fp32_relax_to_fp16);
   }
@@ -432,7 +413,9 @@ class AddSubOpsAcceleratedModel : public MultiOpModel, public AcceleratedModel {
                  CreateSubOptions(builder_, activation_type).Union(),
                  {add_output, input3_}, {output_});
     BuildInterpreter({GetShape(input1_), GetShape(input2_), GetShape(input3_)},
-                     allow_fp32_relax_to_fp16);
+                     /*num_threads=*/-1, allow_fp32_relax_to_fp16,
+                     /*apply_delegate=*/false);
+    ApplyDelegate();
   }
 };
 
@@ -568,12 +551,9 @@ TEST_F(UnsupportedOperationOnDeviceTest,
 
 // This is a model with two ops:
 //
-//  input1 ---->
-//                ADD --
-//  input2   -->        |
-//                       -->
-//                          SUB --> output
-//  input3 ---------------->
+//  input1 ----> HARD_SWISH ---->
+//                                ADD --> output
+//  input2 ---------------------->
 //
 class HardSwishAddOpsAcceleratedModel : public MultiOpModel,
                                         public AcceleratedModel {
@@ -586,10 +566,7 @@ class HardSwishAddOpsAcceleratedModel : public MultiOpModel,
                                   const std::string& accelerator_name,
                                   bool allow_fp32_relax_to_fp16 = false)
       : MultiOpModel(), AcceleratedModel(nnapi, accelerator_name) {
-    auto* delegate = GetDelegate();
-    this->SetApplyDelegate([delegate](Interpreter* interpreter) {
-      interpreter->ModifyGraphWithDelegate(delegate);
-    });
+    SetDelegate(GetDelegate());
     Init(input1, input2, output, activation_type, allow_fp32_relax_to_fp16);
   }
 
@@ -618,8 +595,9 @@ class HardSwishAddOpsAcceleratedModel : public MultiOpModel,
     AddBuiltinOp(BuiltinOperator_ADD, BuiltinOptions_AddOptions,
                  CreateAddOptions(builder_, activation_type).Union(),
                  {input1_, hard_swish_output}, {output_});
-    BuildInterpreter({GetShape(input1_), GetShape(input2_)},
-                     allow_fp32_relax_to_fp16);
+    BuildInterpreter({GetShape(input1_), GetShape(input2_)}, /*num_threads=*/-1,
+                     allow_fp32_relax_to_fp16, /*apply_delegate=*/false);
+    ApplyDelegate();
   }
 };
 
@@ -714,6 +692,118 @@ TEST_F(TfLiteOpMappedToMultipleNnApiOps, AllConstitutentOpsSupported) {
   ASSERT_EQ(m.CountOpsExecutedByCpuKernel(), 0);
 }
 
+class QuantizedWeightsConvolutionOpModel : public SingleOpModel,
+                                           public AcceleratedModel {
+ public:
+  QuantizedWeightsConvolutionOpModel(
+      const NnApi* nnapi, std::string accelerator_name, const TensorData& input,
+      const TensorData& filter, const TensorData& output, int stride_width = 2,
+      int stride_height = 2, enum Padding padding = Padding_VALID,
+      enum ActivationFunctionType activation = ActivationFunctionType_NONE,
+      int dilation_width_factor = 1, int dilation_height_factor = 1,
+      int num_threads = -1, std::initializer_list<uint8_t> filter_data = {})
+      : SingleOpModel(), AcceleratedModel(nnapi, accelerator_name) {
+    SetDelegate(GetDelegate());
+
+    input_ = AddInput(input);
+
+    if (filter_data.size()) {
+      filter_ = AddConstInput(filter, filter_data);
+    } else {
+      filter_ = AddInput(filter);
+    }
+
+    int bias_size = GetShape(filter_)[0];
+
+    bias_ = AddInput({TensorType_FLOAT32, {bias_size}});
+
+    output_ = AddOutput(output);
+
+    SetBuiltinOp(BuiltinOperator_CONV_2D, BuiltinOptions_Conv2DOptions,
+                 CreateConv2DOptions(
+                     builder_, padding, stride_width, stride_height, activation,
+                     dilation_width_factor, dilation_height_factor)
+                     .Union());
+
+    BuildInterpreter({GetShape(input_), GetShape(filter_), GetShape(bias_)},
+                     num_threads, /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/false);
+    ApplyDelegate();
+  }
+
+  void SetInput(std::initializer_list<float> data) {
+    PopulateTensor(input_, data);
+  }
+
+  void SetFilter(std::initializer_list<float> data) {
+    QuantizeAndPopulate<uint8_t>(filter_, data);
+  }
+
+  void SetBias(std::initializer_list<float> data) {
+    PopulateTensor(input_, data);
+  }
+
+  std::vector<uint8_t> GetOutput() { return ExtractVector<uint8_t>(output_); }
+  std::vector<float> GetDequantizedOutput() {
+    return Dequantize<uint8_t>(ExtractVector<uint8_t>(output_),
+                               GetScale(output_), GetZeroPoint(output_));
+  }
+
+ protected:
+  int input_;
+  int filter_;
+  int bias_;
+  int output_;
+};
+
+int quantized_conv2d_model_added_nnapi_ops_count = 0;
+TEST_F(TfLiteOpMappedToMultipleNnApiOps,
+       AddedDequantizationsAreAccountedInModelOps) {
+  nnapi_mock_->ModelCreateReturns<0>();
+  nnapi_mock_->StubGetSupportedOperationsForDevicesWith(
+      [](const ANeuralNetworksModel* model,
+         const ANeuralNetworksDevice* const* devices, uint32_t numDevices,
+         bool* supportedOps) -> int {
+        std::fill(supportedOps,
+                  supportedOps + quantized_conv2d_model_added_nnapi_ops_count,
+                  true);
+        return ANEURALNETWORKS_NO_ERROR;
+      });
+  nnapi_mock_->StubAddOperationWith(
+      [](ANeuralNetworksModel* model, ANeuralNetworksOperationType type,
+         uint32_t inputCount, const uint32_t* inputs, uint32_t outputCount,
+         const uint32_t* outputs) -> int {
+        ++quantized_conv2d_model_added_nnapi_ops_count;
+        return ANEURALNETWORKS_NO_ERROR;
+      });
+
+  QuantizedWeightsConvolutionOpModel m(
+      nnapi_mock_->GetNnApi(),
+      /*accelerator_name=*/"test-device", {TensorType_FLOAT32, {2, 2, 4, 1}},
+      {TensorType_UINT8, {3, 2, 2, 1}, -63.5, 64}, {TensorType_FLOAT32, {}});
+  m.SetInput({
+      // First batch
+      1, 1, 1, 1,  // row = 1
+      2, 2, 2, 2,  // row = 2
+      // Second batch
+      1, 2, 3, 4,  // row = 1
+      1, 2, 3, 4,  // row = 2
+  });
+  m.SetFilter({
+      1, 2, 3, 4,    // first 2x2 filter
+      -1, 1, -1, 1,  // second 2x2 filter
+      -1, -1, 1, 1,  // third 2x2 filter
+  });
+  m.SetBias({1, 2, 3});
+
+  EXPECT_EQ(m.CountOpsExecutedByCpuKernel(), 0);
+  // When delegating quantized Conv2D, for each quantized inputs a
+  // dequantize operation is added to the model.
+  // In our case 1 Dequantize op for the weights is expected generating
+  // a 2 ops model.
+  EXPECT_EQ(quantized_conv2d_model_added_nnapi_ops_count, 2);
+}
+
 // Model with a chain of no-op (add with zero operations)
 // interleaved with no-op custom nodes.
 class LongIdentityModel : public MultiOpModel, public AcceleratedModel {
@@ -748,10 +838,7 @@ class LongIdentityModel : public MultiOpModel, public AcceleratedModel {
  private:
   void Init(const std::vector<int>& input_shape, int graph_size,
             const std::unordered_set<int>& custom_nodes_indexes) {
-    auto* delegate = GetDelegate();
-    this->SetApplyDelegate([delegate](Interpreter* interpreter) {
-      interpreter->ModifyGraphWithDelegate(delegate);
-    });
+    SetDelegate(GetDelegate());
 
     const TensorData tensor_data{TensorType_FLOAT32, input_shape};
 
@@ -787,7 +874,11 @@ class LongIdentityModel : public MultiOpModel, public AcceleratedModel {
         {intermediate_outputs[intermediate_outputs.size() - 1], zero_input_},
         {output_});
 
-    BuildInterpreter({GetShape(input_), GetShape(zero_input_)});
+    BuildInterpreter({GetShape(input_), GetShape(zero_input_)},
+                     /*num_threads*/ -1,
+                     /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/false);
+    ApplyDelegate();
 
     std::vector<float> zero(GetTensorSize(input_), 0.0);
     PopulateTensor(zero_input_, zero);

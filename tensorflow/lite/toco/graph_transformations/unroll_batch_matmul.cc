@@ -34,9 +34,10 @@ absl::InlinedVector<int64, 4> ToInlinedVector(const std::vector<int>& vec) {
   return absl::InlinedVector<int64, 4>(vec.begin(), vec.end());
 }
 
-std::vector<string> SliceInput(
-    const string& input, const string& base_name, const string& input_name,
-    const int batch_size, const Array& input_array, Model* model,
+std::vector<std::string> SliceInput(
+    const std::string& input, const std::string& base_name,
+    const std::string& input_name, const int batch_size,
+    const Array& input_array, Model* model,
     std::vector<std::unique_ptr<Operator>>::iterator* tail_it) {
   int rank = input_array.shape().dimensions_count();
   int num_rows = input_array.shape().dims(rank - 2);
@@ -54,7 +55,7 @@ std::vector<string> SliceInput(
   *tail_it = model->operators.emplace(*tail_it, reshape_op) + 1;
 
   // Slice along each batch index and remember the slice output for future use.
-  std::vector<string> slice_outputs;
+  std::vector<std::string> slice_outputs;
   for (int batch_idx = 0; batch_idx < batch_size; ++batch_idx) {
     std::string batch_name =
         absl::StrCat(base_name, "_b", batch_idx, "/slice_", input_name);
@@ -110,10 +111,10 @@ std::vector<int32> GetTransposeShape(const Shape& input_shape,
   return output_shape;
 }
 
-TransposeOperator* TransposeInput(const string& input, Model* model) {
+TransposeOperator* TransposeInput(const std::string& input, Model* model) {
   const auto& input_array = model->GetArray(input);
   const auto perm_array = GetTransposePerm(input_array);
-  const string perm_array_name = CreateInt32Array(
+  const std::string perm_array_name = CreateInt32Array(
       model, AvailableArrayName(*model, input + "/transpose/perm"), perm_array);
   auto* transpose_op = new TransposeOperator;
   transpose_op->inputs = {input, perm_array_name};
@@ -141,8 +142,8 @@ TransposeOperator* TransposeInput(const string& input, Model* model) {
       static_cast<const BatchMatMulOperator*>(batch_op_it->get());
   auto& tail_it = batch_op_it;
 
-  string input_lhs = batch_op->inputs[0];
-  string input_rhs = batch_op->inputs[1];
+  std::string input_lhs = batch_op->inputs[0];
+  std::string input_rhs = batch_op->inputs[1];
   const auto& input_lhs_array = model->GetArray(input_lhs);
   const auto& input_rhs_array = model->GetArray(input_rhs);
   if (!input_lhs_array.has_shape() || !input_rhs_array.has_shape())
@@ -195,19 +196,19 @@ TransposeOperator* TransposeInput(const string& input, Model* model) {
   }
   AddMessageF("Unrolling BatchMatMul %s %d times", LogName(*batch_op),
               bcast.output_batch_size());
-  string base_name = std::string(batch_op->outputs[0]);
+  std::string base_name = std::string(batch_op->outputs[0]);
 
   // Compute slices for each batch in the LHS and RHS.
-  std::vector<string> slice_a_outputs =
+  std::vector<std::string> slice_a_outputs =
       SliceInput(input_lhs, base_name, "a", bcast.x_batch_size(), input_array_a,
                  model, &tail_it);
-  std::vector<string> slice_b_outputs =
+  std::vector<std::string> slice_b_outputs =
       SliceInput(input_rhs, base_name, "b", bcast.y_batch_size(), input_array_b,
                  model, &tail_it);
 
   // Compute (single batch) MatMul for each output batch. The MatMul outputs are
   // then packed together into one output Tensor.
-  std::vector<string> pack_inputs;
+  std::vector<std::string> pack_inputs;
   for (int batch_idx = 0; batch_idx < bcast.output_batch_size(); ++batch_idx) {
     std::string batch_name =
         absl::StrCat(batch_op->outputs[0], "_b", batch_idx);

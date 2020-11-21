@@ -16,10 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_WORK_GROUP_PICKING_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_WORK_GROUP_PICKING_H_
 
-#include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"
-#include "tensorflow/lite/delegates/gpu/cl/cl_kernel.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/tuning_parameters.h"
-#include "tensorflow/lite/delegates/gpu/common/status.h"
+#include <vector>
+
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
+#include "tensorflow/lite/delegates/gpu/common/kernel_info.h"
+#include "tensorflow/lite/delegates/gpu/common/task/tuning_type.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/common/workgroup_selection.h"
 
@@ -27,20 +28,18 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-// writes best_work_group if successful
-// Here and later you can find XY128, this is because 128 is SIMD width of A6xx
-// And XY128 means that work_group_size.x * work_group_size.y % 128 = 0
-// We need it to correctly work with constants uploading on A6xx
-absl::Status GetBestWorkGroupXY128(const TuningParameters& params,
-                                   const CLKernel& kernel, const int3& grid,
-                                   WorkGroupSizeAlignment z_alignment,
-                                   int3* best_work_group);
+// multiplier can be power of two only
+void GetPossibleWorkGroupsXYMultipleOf(int multiplier, const GpuInfo& gpu_info,
+                                       const KernelInfo& kernel_info,
+                                       const int3& grid,
+                                       WorkGroupSizeAlignment z_alignment,
+                                       std::vector<int3>* work_groups);
 
-absl::Status GetBestWorkGroupXY128Linear(const TuningParameters& params,
-                                         const CLKernel& kernel,
-                                         const int3& grid,
-                                         WorkGroupSizeAlignment z_alignment,
-                                         int3* best_work_group);
+void GetPossibleWorkGroupsXMultipleOf(int multiplier, const GpuInfo& gpu_info,
+                                      const KernelInfo& kernel_info,
+                                      const int3& grid,
+                                      WorkGroupSizeAlignment z_alignment,
+                                      std::vector<int3>* work_groups);
 
 int3 GetWorkGroupXY128ConvLinear(const int3& grid);
 
@@ -49,13 +48,13 @@ int3 GetWorkGroupXY128Conv(const int3& grid);
 
 bool XY128RequiresMoreWorkGroupsThenXY128Linear(int width, int height);
 
-absl::Status GetBestWorkGroup(const TuningParameters& params,
-                              const CLKernel& kernel, const int3& grid,
-                              int3* best_work_group);
+void GetPossibleWorkGroups(TuningType tuning_type, const GpuInfo& gpu_info,
+                           const KernelInfo& kernel_info, const int3& grid,
+                           std::vector<int3>* work_groups);
 
-absl::Status GetBestWorkGroupConv(const TuningParameters& params,
-                                  const CLKernel& kernel, const int3& grid,
-                                  int3* best_work_group);
+void GetPossibleWorkGroupsConv(TuningType tuning_type, const GpuInfo& gpu_info,
+                               const KernelInfo& kernel_info, const int3& grid,
+                               std::vector<int3>* work_groups);
 
 }  // namespace cl
 }  // namespace gpu

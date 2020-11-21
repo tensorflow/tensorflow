@@ -18,9 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import warnings
+
 import numpy as np
 
+
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -30,6 +34,7 @@ from tensorflow.python.keras import combinations
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import layers
+from tensorflow.python.keras import losses
 from tensorflow.python.keras import models
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import base_layer
@@ -42,6 +47,7 @@ from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
 from tensorflow.python.training.tracking.util import Checkpoint
@@ -53,6 +59,18 @@ except ImportError:
 
 
 class NetworkConstructionTest(keras_parameterized.TestCase):
+
+  def test_default_model_name(self):
+    inputs = input_layer_lib.Input(shape=(1,))
+    outputs = layers.Dense(1, activation='relu')(inputs)
+    model = training_lib.Model(inputs=inputs, outputs=outputs)
+    self.assertEqual(model.name, 'model')
+
+    model_2 = training_lib.Model(inputs=inputs, outputs=outputs)
+    self.assertEqual(model_2.name, 'model_1')
+
+    model_3 = training_lib.Model(inputs=inputs, outputs=outputs)
+    self.assertEqual(model_3.name, 'model_2')
 
   def test_get_updates(self):
 
@@ -106,7 +124,7 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
       network.add_update(state_ops.assign_add(layer.b, x4), inputs=True)
       self.assertEqual(len(network.updates), 7)
 
-  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  @combinations.generate(combinations.combine(mode=['graph']))
   def test_get_updates_bn(self):
     x1 = input_layer_lib.Input(shape=(1,))
     layer = layers.BatchNormalization()
@@ -126,26 +144,26 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     self.assertEqual(network.get_layer(index=1), dense_a)
 
     # test invalid get_layer by index
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Was asked to retrieve layer at index ' + str(3) +
         ' but model only has ' + str(len(network.layers)) + ' layers.'):
       network.get_layer(index=3)
 
     # test that only one between name and index is requested
-    with self.assertRaisesRegexp(ValueError,
-                                 'Provide only a layer name or a layer index'):
+    with self.assertRaisesRegex(ValueError,
+                                'Provide only a layer name or a layer index'):
       network.get_layer(index=1, name='dense_b')
 
     # test that a name or an index must be provided
-    with self.assertRaisesRegexp(ValueError,
-                                 'Provide either a layer name or layer index.'):
+    with self.assertRaisesRegex(ValueError,
+                                'Provide either a layer name or layer index.'):
       network.get_layer()
 
     # test various get_layer by name
     self.assertEqual(network.get_layer(name='dense_a'), dense_a)
 
     # test invalid get_layer by name
-    with self.assertRaisesRegexp(ValueError, 'No such layer: dense_c.'):
+    with self.assertRaisesRegex(ValueError, 'No such layer: dense_c.'):
       network.get_layer(name='dense_c')
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
@@ -926,8 +944,77 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     # Check that second input was correctly added to first.
     self.assertEqual(history.history['loss'][0], 0.0)
 
-  @combinations.generate(combinations.keras_mode_combinations())
-  def test_call_kwarg_derived_from_keras_layer(self):
+  @combinations.generate(combinations.times(
+      combinations.keras_mode_combinations(mode='eager'),
+      combinations.combine(use_keras_tensors=False)))
+  def test_only_some_in_first_arg_derived_from_keras_layer(self):
+    class MyAddAll(layers.Layer):
+
+      def call(self, inputs):
+        x = inputs[0]
+        for inp in inputs[1:]:
+          if inp is not None:
+            x = x + inp
+        return x
+
+    input1 = input_layer_lib.Input(10)
+    input2 = input_layer_lib.Input(10)
+    layer = MyAddAll()
+
+    with self.assertRaisesRegexp(ValueError, 'construct a functional'):
+      layer([0.0, input1, None, input2, None])
+
+  @combinations.generate(combinations.times(
+      combinations.keras_mode_combinations(mode='eager'),
+      combinations.combine(use_keras_tensors=True)))
+  def test_only_some_in_first_arg_derived_from_keras_layer_keras_tensors(self):
+    # This functionality is unsupported in v1 graphs
+
+    class MyAddAll(layers.Layer):
+
+      def call(self, inputs):
+        x = inputs[0]
+        for inp in inputs[1:]:
+          if inp is not None:
+            x = x + inp
+        return x
+
+    input1 = input_layer_lib.Input(10)
+    input2 = input_layer_lib.Input(10)
+    layer = MyAddAll()
+    outputs = layer([0.0, input1, None, input2, None])
+    model = training_lib.Model([input1, input2], outputs)
+    self.assertIn(layer, model.layers)
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly())
+    history = model.fit(
+        x=[3 * np.ones((10, 10)), 7 * np.ones((10, 10))],
+        y=10 * np.ones((10, 10)),
+        batch_size=2)
+    # Check that second input was correctly added to first.
+    self.assertEqual(history.history['loss'][0], 0.0)
+
+    # Check serialization.
+    model = training_lib.Model.from_config(
+        model.get_config(), custom_objects={'MyAddAll': MyAddAll})
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly())
+    history = model.fit(
+        x=[3 * np.ones((10, 10)), 7 * np.ones((10, 10))],
+        y=10 * np.ones((10, 10)),
+        batch_size=2)
+    # Check that second input was correctly added to first.
+    self.assertEqual(history.history['loss'][0], 0.0)
+
+  @combinations.generate(
+      combinations.times(
+          combinations.keras_mode_combinations(),
+          combinations.combine(share_already_used_layer=[True, False])))
+  def test_call_kwarg_derived_from_keras_layer(self, share_already_used_layer):
 
     class MaybeAdd(layers.Layer):
 
@@ -936,9 +1023,26 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
           return x1 + x2
         return x1
 
+    class IdentityLayer(layers.Layer):
+
+      def call(self, x):
+        return x
+
     input1 = input_layer_lib.Input(10)
     input2 = input_layer_lib.Input(10)
-    outputs = MaybeAdd()(input1, x2=input2)
+    identity_layer = IdentityLayer()
+
+    if share_already_used_layer:
+      # We have had model serialization/deserialization break in the past:
+      # when a layer was previously used to construct other functional models
+      # and had a non-empty list of inbound nodes before being used to define
+      # the model being serialized/deserialized.
+      # (The serialization/deserialization was not correctly adjusting
+      # the node_index serialization/deserialization).
+      # So, we explicitly test this case.
+      training_lib.Model([input1], identity_layer(input1))
+
+    outputs = MaybeAdd()(input1, x2=identity_layer(input2))
     model = training_lib.Model([input1, input2], outputs)
     model.compile(
         'sgd',
@@ -952,13 +1056,150 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     self.assertEqual(history.history['loss'][0], 0.0)
 
     model = training_lib.Model.from_config(
-        model.get_config(), custom_objects={'MaybeAdd': MaybeAdd})
+        model.get_config(),
+        custom_objects={
+            'MaybeAdd': MaybeAdd,
+            'IdentityLayer': IdentityLayer
+        })
     model.compile(
         'sgd',
         'mse',
         run_eagerly=testing_utils.should_run_eagerly())
     history = model.fit(
         x=[3 * np.ones((10, 10)), 7 * np.ones((10, 10))],
+        y=10 * np.ones((10, 10)),
+        batch_size=2)
+    # Check that second input was correctly added to first.
+    self.assertEqual(history.history['loss'][0], 0.0)
+
+  @combinations.generate(combinations.keras_mode_combinations())
+  def test_call_kwarg_dtype_serialization(self):
+
+    class Double(layers.Layer):
+
+      def call(self, x1, dtype=None):
+        return math_ops.cast(x1 + x1, dtype=dtype)
+
+    input1 = input_layer_lib.Input(10)
+    outputs = Double()(input1, dtype=dtypes.float16)
+    model = training_lib.Model([input1], outputs)
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly())
+    history = model.fit(
+        x=[3 * np.ones((10, 10))],
+        y=6 * np.ones((10, 10)),
+        batch_size=2)
+    # Check that input was correctly doubled.
+    self.assertEqual(history.history['loss'][0], 0.0)
+
+    # Check the output dtype
+    self.assertEqual(model(array_ops.ones((3, 10))).dtype, dtypes.float16)
+
+    model = training_lib.Model.from_config(
+        model.get_config(), custom_objects={'Double': Double})
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly())
+    history = model.fit(
+        x=[3 * np.ones((10, 10))],
+        y=6 * np.ones((10, 10)),
+        batch_size=2)
+    # Check that input was correctly doubled.
+    self.assertEqual(history.history['loss'][0], 0.0)
+
+    # Check the output dtype
+    self.assertEqual(model(array_ops.ones((3, 10))).dtype, dtypes.float16)
+
+  @combinations.generate(combinations.keras_mode_combinations())
+  def test_call_kwarg_nonserializable(self):
+
+    class Double(layers.Layer):
+
+      def call(self, x1, kwarg=None):
+        return x1 + x1
+
+    class NonSerializable(object):
+
+      def __init__(self, foo=None):
+        self.foo = foo
+
+    input1 = input_layer_lib.Input(10)
+    outputs = Double()(input1, kwarg=NonSerializable())
+    model = training_lib.Model([input1], outputs)
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly())
+    history = model.fit(
+        x=[3 * np.ones((10, 10))],
+        y=6 * np.ones((10, 10)),
+        batch_size=2)
+    # Check that input was correctly doubled.
+    self.assertEqual(history.history['loss'][0], 0.0)
+    with self.assertRaisesRegex(
+        TypeError, 'Layer double was passed non-JSON-serializable arguments.'):
+      model.get_config()
+
+  @combinations.generate(
+      combinations.times(
+          combinations.keras_mode_combinations(),
+          combinations.keras_tensor_combinations(),
+          combinations.combine(share_already_used_layer=[True, False])))
+  def test_call_kwarg_derived_from_keras_layer_and_first_arg_is_constant(
+      self, share_already_used_layer):
+
+    class IdentityLayer(layers.Layer):
+
+      def call(self, x):
+        return x
+
+    class MaybeAdd(layers.Layer):
+
+      def call(self, x1, x2=None):
+        if x2 is not None:
+          return x1 + x2
+        return x1
+
+    input2 = input_layer_lib.Input(10)
+    identity_layer = IdentityLayer()
+    if share_already_used_layer:
+      # We have had model serialization/deserialization break in the past:
+      # when a layer was previously used to construct other functional models
+      # and had a non-empty list of inbound nodes before being used to define
+      # the model being serialized/deserialized.
+      # (The serialization/deserialization was not correctly adjusting
+      # the node_index serialization/deserialization).
+      # So, we explicitly test this case.
+      training_lib.Model([input2], identity_layer(input2))
+
+    outputs = MaybeAdd()(3., x2=identity_layer(input2))
+    model = training_lib.Model([input2], outputs)
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly())
+    history = model.fit(
+        x=7 * np.ones((10, 10)),
+        y=10 * np.ones((10, 10)),
+        batch_size=2)
+    # Check that second input was correctly added to first.
+    self.assertEqual(history.history['loss'][0], 0.0)
+
+    model = training_lib.Model.from_config(
+        model.get_config(),
+        custom_objects={
+            'MaybeAdd': MaybeAdd,
+            'IdentityLayer': IdentityLayer
+        })
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly())
+    history = model.fit(
+        x=7 * np.ones((10, 10)),
         y=10 * np.ones((10, 10)),
         batch_size=2)
     # Check that second input was correctly added to first.
@@ -1003,6 +1244,60 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
         run_eagerly=testing_utils.should_run_eagerly())
     history = model.fit(x=input_data, y=expected_data)
     # Check that second input was correctly added to first.
+    self.assertEqual(history.history['loss'][0], 0.0)
+
+  @combinations.generate(combinations.times(
+      combinations.keras_mode_combinations(mode='eager'),
+      combinations.keras_tensor_combinations()))
+  def test_call_some_not_all_nested_in_first_arg_derived_from_keras_layer(self):
+    # This functionality is unsupported in v1 graphs
+
+    class AddAll(layers.Layer):
+
+      def call(self, x1_x2, x3):
+        x1, x2 = x1_x2
+        out = x1 + x2
+        if x3 is not None:
+          for t in x3.values():
+            out += t
+        return out
+
+    input1 = input_layer_lib.Input(10)
+    input2 = input_layer_lib.Input(10)
+    input3 = input_layer_lib.Input(10)
+
+    layer = AddAll()
+    outputs = layer(
+        [input1, 4 * array_ops.ones((1, 10))],
+        x3={
+            'a': input2,
+            'b': input3,
+            'c': 5 * array_ops.ones((1, 10))
+        })
+    model = training_lib.Model([input1, input2, input3], outputs)
+    self.assertIn(layer, model.layers)
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly())
+    history = model.fit(
+        x=[np.ones((10, 10)), 2 * np.ones((10, 10)), 3 * np.ones((10, 10))],
+        y=15 * np.ones((10, 10)),
+        batch_size=2)
+    # Check that all inputs were correctly added.
+    self.assertEqual(history.history['loss'][0], 0.0)
+
+    model = training_lib.Model.from_config(
+        model.get_config(), custom_objects={'AddAll': AddAll})
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly())
+    history = model.fit(
+        x=[np.ones((10, 10)), 2 * np.ones((10, 10)), 3 * np.ones((10, 10))],
+        y=15 * np.ones((10, 10)),
+        batch_size=2)
+    # Check that all inputs were correctly added.
     self.assertEqual(history.history['loss'][0], 0.0)
 
   @combinations.generate(combinations.keras_mode_combinations())
@@ -1107,7 +1402,7 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
       def __init__(self):
         self._foo = [layers.Dense(10), layers.Dense(10)]
 
-    with self.assertRaisesRegexp(RuntimeError, 'forgot to call'):
+    with self.assertRaisesRegex(RuntimeError, 'forgot to call'):
       MyNetwork()
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
@@ -1124,12 +1419,12 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     inputs = input_layer_lib.Input(shape=(32,))
     outputs = layers.Dense(4)(inputs)
 
-    with self.assertRaisesRegexp(TypeError,
-                                 'got an unexpected keyword argument'):
+    with self.assertRaisesRegex(TypeError,
+                                'Keyword argument not understood'):
       model = training_lib.Model(
           inputs, outputs, name='m', trainable=False, dtype='int64')
-    with self.assertRaisesRegexp(TypeError,
-                                 'got an unexpected keyword argument'):
+    with self.assertRaisesRegex(TypeError,
+                                'Keyword argument not understood'):
       model = training_lib.Model(
           inputs, outputs, name='m', trainable=False, dynamic=False)
 
@@ -1167,6 +1462,28 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     model.trackable = Checkpoint()
     self.assertIn('trackable', model._unconditional_dependency_names)
     self.assertEqual(model.trackable, model._lookup_dependency('trackable'))
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_model_construction_in_tf_function(self):
+
+    d = {'model': None}
+
+    @def_function.function
+    def fn(x):
+      if d['model'] is None:
+        # Check that Functional can be built in a `tf.function`.
+        inputs = input_layer_lib.Input(10)
+        outputs = layers.Dense(1)(inputs)
+        model = functional.Functional(inputs, outputs)
+        d['model'] = model
+      else:
+        model = d['model']
+
+      return model(x)
+
+    x = array_ops.ones((10, 10))
+    y = fn(x)
+    self.assertEqual(y.shape.as_list(), [10, 1])
 
 
 class DeferredModeTest(keras_parameterized.TestCase):
@@ -1451,6 +1768,48 @@ class DefaultShapeInferenceBehaviorTest(keras_parameterized.TestCase):
     self.assertEqual(config['layers'][2]['inbound_nodes'],
                      [[['in1', 0, 0, {}], ['in2', 0, 0, {}]]])
 
+  @combinations.generate(combinations.combine(mode=['eager']))
+  def test_dict_inputs_tensors(self):
+    # Note that this test is running with v2 eager only, since the v1
+    # will behave differently wrt to dict input for training.
+    inputs = {
+        'sentence2': input_layer_lib.Input(
+            shape=(), name='a', dtype=dtypes.string),
+        'sentence1': input_layer_lib.Input(
+            shape=(), name='b', dtype=dtypes.string),
+    }
+    strlen = layers.Lambda(string_ops.string_length_v2)
+    diff = layers.Subtract()(
+        [strlen(inputs['sentence1']), strlen(inputs['sentence2'])])
+    diff = math_ops.cast(diff, dtypes.float32)
+    model = training_lib.Model(inputs, diff)
+
+    extra_keys = {
+        'sentence1': constant_op.constant(['brown fox', 'lazy dog']),
+        'sentence2': constant_op.constant(['owl', 'cheeky cat']),
+        'label': constant_op.constant([0, 1]),
+    }
+
+    with warnings.catch_warnings(record=True) as w:
+      warnings.simplefilter('always')
+      model(extra_keys)
+      self.assertIn('ignored by the model', str(w[-1].message))
+
+    model.compile('sgd', 'mse')
+    with warnings.catch_warnings(record=True) as w:
+      warnings.simplefilter('always')
+      model.fit(extra_keys, y=constant_op.constant([0, 1]), steps_per_epoch=1)
+      self.assertIn('ignored by the model', str(w[-1].message))
+
+    with warnings.catch_warnings(record=True) as w:
+      warnings.simplefilter('always')
+      model.evaluate(extra_keys, constant_op.constant([0, 1]))
+      self.assertIn('ignored by the model', str(w[-1].message))
+
+    # Make sure the model inputs are sorted with the dict keys.
+    self.assertEqual(model.inputs[0]._keras_history.layer.name, 'b')
+    self.assertEqual(model.inputs[1]._keras_history.layer.name, 'a')
+
 
 class GraphUtilsTest(test.TestCase):
 
@@ -1479,9 +1838,9 @@ class GraphUtilsTest(test.TestCase):
           tf_utils.get_reachable_from_inputs([x_3]), {x_3, x_5, x_5.op})
 
 
-@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class NestedNetworkTest(keras_parameterized.TestCase):
 
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_nested_inputs_network(self):
     inputs = {
         'x1': input_layer_lib.Input(shape=(1,)),
@@ -1493,8 +1852,8 @@ class NestedNetworkTest(keras_parameterized.TestCase):
     network = functional.Functional.from_config(network.get_config())
 
     result_tensor = network({
-        'x': array_ops.ones((1, 1), 'float32'),
-        'y': array_ops.ones((1, 1), 'float32')
+        'x1': array_ops.ones((1, 1), 'float32'),
+        'x2': array_ops.ones((1, 1), 'float32')
     })
     result = self.evaluate(result_tensor)
     self.assertAllEqual(result, [[2.]])
@@ -1506,6 +1865,7 @@ class NestedNetworkTest(keras_parameterized.TestCase):
     })
     self.assertListEqual(output_shape.as_list(), [None, 1])
 
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_nested_outputs_network(self):
     inputs = input_layer_lib.Input(shape=(1,))
     outputs = {
@@ -1526,6 +1886,7 @@ class NestedNetworkTest(keras_parameterized.TestCase):
     self.assertListEqual(output_shape['x+x'].as_list(), [None, 1])
     self.assertListEqual(output_shape['x*x'].as_list(), [None, 1])
 
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_nested_network_inside_network(self):
     inner_inputs = {
         'x1': input_layer_lib.Input(shape=(1,)),
@@ -1558,6 +1919,7 @@ class NestedNetworkTest(keras_parameterized.TestCase):
     output_shape = network.compute_output_shape([(None, 1), (None, 1)])
     self.assertListEqual(output_shape.as_list(), [None, 1])
 
+  @combinations.generate(combinations.combine(mode=['graph']))
   def test_updates_with_direct_call(self):
     inputs = input_layer_lib.Input(shape=(10,))
     x = layers.BatchNormalization()(inputs)
@@ -1569,6 +1931,7 @@ class NestedNetworkTest(keras_parameterized.TestCase):
 
     self.assertLen(model.updates, 4)
 
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_dict_mapping_input(self):
 
     class ReturnFirst(layers.Layer):
@@ -1594,6 +1957,7 @@ class NestedNetworkTest(keras_parameterized.TestCase):
     res = reversed_model({'a': a_val, 'b': b_val})
     self.assertAllClose(self.evaluate(res), self.evaluate(b_val))
 
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_dict_mapping_single_input(self):
     b = input_layer_lib.Input(shape=(1,), name='b')
     outputs = b * 2
@@ -1607,6 +1971,28 @@ class NestedNetworkTest(keras_parameterized.TestCase):
 
     # Check that 'b' was used and 'a' was ignored.
     self.assertEqual(res.shape.as_list(), [1, 1])
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_nested_dict_mapping(self):
+    a = input_layer_lib.Input(shape=(1,), dtype='int32', name='a')
+    b = input_layer_lib.Input(shape=(1,), dtype='int32', name='b')
+    c = input_layer_lib.Input(shape=(1,), dtype='int32', name='c')
+    d = input_layer_lib.Input(shape=(1,), dtype='int32', name='d')
+    inputs = {'a': (a, b), 'c': (c, d)}
+    outputs = 1000 * a + 100 * b + 10 * c + d
+    model = training_lib.Model(inputs, outputs)
+
+    a_val = array_ops.ones((1, 1), dtype='int32')
+    b_val = 2 * array_ops.ones((1, 1), dtype='int32')
+    c_val = 3 * array_ops.ones((1, 1), dtype='int32')
+    d_val = 4 * array_ops.ones((1, 1), dtype='int32')
+
+    inputs_val = {'a': (a_val, b_val), 'c': (c_val, d_val)}
+    res = model(inputs_val)
+
+    # Check that inputs were flattened in the correct order.
+    self.assertFalse(model._enable_dict_to_input_mapping)
+    self.assertEqual(self.evaluate(res), [1234])
 
 
 @combinations.generate(combinations.keras_mode_combinations())
@@ -1668,6 +2054,37 @@ class AddLossTest(keras_parameterized.TestCase):
 
     self.assertAllClose(model.get_weights(), model2.get_weights())
 
+  def test_add_loss_crossentropy_backtracking(self):
+    inputs = input_layer_lib.Input((2,))
+    labels = input_layer_lib.Input((1,))
+    outputs = layers.Dense(1, activation='sigmoid')(inputs)
+    model = functional.Functional([inputs, labels], outputs)
+    model.add_loss(losses.binary_crossentropy(labels, outputs))
+    model.compile('adam')
+    x = np.random.random((2, 2))
+    y = np.random.random((2, 1))
+    model.fit([x, y])
+
+    inputs = input_layer_lib.Input((2,))
+    labels = input_layer_lib.Input((2,))
+    outputs = layers.Dense(2, activation='softmax')(inputs)
+    model = functional.Functional([inputs, labels], outputs)
+    model.add_loss(losses.categorical_crossentropy(labels, outputs))
+    model.compile('adam')
+    x = np.random.random((2, 2))
+    y = np.random.random((2, 2))
+    model.fit([x, y])
+
+    inputs = input_layer_lib.Input((2,))
+    labels = input_layer_lib.Input((1,), dtype='int32')
+    outputs = layers.Dense(2, activation='softmax')(inputs)
+    model = functional.Functional([inputs, labels], outputs)
+    model.add_loss(losses.sparse_categorical_crossentropy(labels, outputs))
+    model.compile('adam')
+    x = np.random.random((2, 2))
+    y = np.random.randint(0, 2, size=(2, 1))
+    model.fit([x, y])
+
 
 @combinations.generate(combinations.keras_mode_combinations())
 class WeightAccessTest(keras_parameterized.TestCase):
@@ -1695,7 +2112,7 @@ class WeightAccessTest(keras_parameterized.TestCase):
     x3 = layers.Dense(1)
     model = sequential.Sequential([x1, x2, x3])
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Weights for model .* have not yet been created'):
       _ = model.weights
 
@@ -1711,7 +2128,7 @@ class WeightAccessTest(keras_parameterized.TestCase):
 
     model = SubclassModel()
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Weights for model .* have not yet been created'):
       _ = model.weights
 
@@ -1917,42 +2334,214 @@ class CacheCorrectnessTest(keras_parameterized.TestCase):
 
   def test_training_passed_during_construction(self):
 
+    def _call(inputs, training):
+      if training is None:
+        return inputs * -1.0
+      elif training:
+        return inputs
+      else:
+        return inputs * 0.0
+
     class MyLayer(base_layer.Layer):
 
-      def call(self, x, training=None):
-        if training is None:
-          return x * -1.0
-        elif training:
-          return x
-        else:
-          return x * 0.0
+      def call(self, inputs, training=True):
+        return _call(inputs, training)
 
     my_layer = MyLayer()
     x = np.ones((1, 10))
 
+    # Hard-coded `true` value passed during construction is respected.
     inputs = input_layer_lib.Input(10)
     outputs = my_layer(inputs, training=True)
     network = functional.Functional(inputs, outputs)
+    self.assertAllEqual(network(x, training=True), _call(x, True))
+    self.assertAllEqual(network(x, training=False), _call(x, True))
+    self.assertAllEqual(network(x), _call(x, True))
 
-    # Hard-coded value passed during construction is respected.
-    self.assertAllEqual(network(x, training=False), x)
-
+    # Hard-coded `false` value passed during construction is respected.
     inputs = input_layer_lib.Input(10)
     outputs = my_layer(inputs, training=False)
     network = functional.Functional(inputs, outputs)
+    self.assertAllEqual(network(x, training=True), _call(x, False))
+    self.assertAllEqual(network(x, training=False), _call(x, False))
+    self.assertAllEqual(network(x), _call(x, False))
 
-    network(x, training=True)
-    # Hard-coded value passed during construction is respected.
-    self.assertAllEqual(network(x, training=True), x * 0.0)
+    if context.executing_eagerly():
+      # In v2, construction still works when no `training` is specified
+      # When no value passed during construction, it uses the local default.
+      inputs = input_layer_lib.Input(10)
+      outputs = my_layer(inputs)
+      network = functional.Functional(inputs, outputs)
+      self.assertAllEqual(network(x, training=True), _call(x, True))
+      self.assertAllEqual(network(x, training=False), _call(x, False))
+      self.assertAllEqual(network(x), _call(x, True))  # Use local default
 
+    # `None` value passed positionally during construction is ignored at runtime
+    inputs = input_layer_lib.Input(10)
+    outputs = my_layer(inputs, None)
+    network = functional.Functional(inputs, outputs)
+    self.assertAllEqual(network(x, training=True), _call(x, True))
+    self.assertAllEqual(network(x, training=False), _call(x, False))
+    if context.executing_eagerly():
+      self.assertAllEqual(network(x), _call(x, True))  # Use local default
+    else:
+      # in v1 training would have defaulted to using the `None` inside the layer
+      # if training is not passed at runtime
+      self.assertAllEqual(network(x), _call(x, None))
+
+    # `None` value passed as kwarg during construction is ignored at runtime.
     inputs = input_layer_lib.Input(10)
     outputs = my_layer(inputs, training=None)
     network = functional.Functional(inputs, outputs)
+    self.assertAllEqual(network(x, training=True), _call(x, True))
+    self.assertAllEqual(network(x, training=False), _call(x, False))
+    if context.executing_eagerly():
+      self.assertAllEqual(network(x), _call(x, True))  # Use local default
+    else:
+      # in v1 training would have defaulted to using the `None` inside the layer
+      # if training is not passed at runtime
+      self.assertAllEqual(network(x), _call(x, None))
 
-    # `None` value passed during construction is overridden.
-    self.assertAllEqual(network(x, training=True), x)
-    # `None` value passed during construction is overridden.
-    self.assertAllEqual(network(x, training=False), x * 0.0)
+
+class InputsOutputsErrorTest(keras_parameterized.TestCase):
+
+  @testing_utils.enable_v2_dtype_behavior
+  def test_input_error(self):
+    inputs = input_layer_lib.Input((10,))
+    outputs = layers.Dense(10)(inputs)
+    with self.assertRaisesRegex(
+        TypeError, "('Keyword argument not understood:', 'input')"):
+      models.Model(input=inputs, outputs=outputs)
+
+  @testing_utils.enable_v2_dtype_behavior
+  def test_output_error(self):
+    inputs = input_layer_lib.Input((10,))
+    outputs = layers.Dense(10)(inputs)
+    with self.assertRaisesRegex(
+        TypeError, "('Keyword argument not understood:', 'output')"):
+      models.Model(inputs=inputs, output=outputs)
+
+  def test_input_spec(self):
+    if not context.executing_eagerly():
+      return
+    inputs = input_layer_lib.Input((10,))
+    outputs = layers.Dense(10)(inputs)
+    model = models.Model(inputs, outputs)
+    with self.assertRaisesRegex(
+        ValueError, r'.*expected shape=.*'):
+      model(np.zeros((3, 11)))
+
+  def test_input_spec_list_of_inputs(self):
+    if not context.executing_eagerly():
+      return
+    input_1 = input_layer_lib.Input((10,), name='1')
+    input_2 = input_layer_lib.Input((5,), name='2')
+    x = layers.Concatenate()([input_1, input_2])
+    outputs = layers.Dense(10)(x)
+    model = models.Model([input_1, input_2], outputs)
+    with self.assertRaisesRegex(
+        ValueError, r'.*expects 2 input.*'):
+      model(np.zeros((3, 10)))
+    with self.assertRaisesRegex(
+        ValueError, r'.*expects 2 input.*'):
+      model([np.zeros((3, 10)), np.zeros((3, 5)), np.zeros((3, 10))])
+    with self.assertRaisesRegex(
+        ValueError, r'.*expected shape=.*'):
+      model([np.zeros((3, 10)), np.zeros((3, 6))])
+
+    # Test passing data via dict keyed by input name
+    with self.assertRaisesRegex(
+        ValueError, r'Missing data for input.*'):
+      model({'1': np.zeros((3, 10))})
+    with self.assertRaisesRegex(
+        ValueError, r'.*expected shape=.*'):
+      model({'1': np.zeros((3, 10)), '2': np.zeros((3, 6))})
+
+  def test_input_spec_dict(self):
+    if not context.executing_eagerly():
+      return
+    input_1 = input_layer_lib.Input((10,))
+    input_2 = input_layer_lib.Input((5,))
+    x = layers.Concatenate()([input_1, input_2])
+    outputs = layers.Dense(10)(x)
+    model = models.Model({'1': input_1, '2': input_2}, outputs)
+    with self.assertRaisesRegex(
+        ValueError, r'Missing data for input.*'):
+      model({'1': np.zeros((3, 10))})
+    with self.assertRaisesRegex(
+        ValueError, r'.*expected shape=.*'):
+      model({'1': np.zeros((3, 10)), '2': np.zeros((3, 6))})
+
+
+class FunctionalSubclassModel(training_lib.Model):
+
+  def __init__(self, *args, **kwargs):
+    my_input = input_layer_lib.Input(shape=(16,))
+    dense = layers.Dense(32, activation='relu')
+    output = dense(my_input)
+    outputs = {'output': output}
+    super().__init__(inputs=[my_input], outputs=outputs, *args, **kwargs)
+
+
+class MixinClass(object):
+
+  def __init__(self, foo, **kwargs):
+    self._foo = foo
+    super().__init__(**kwargs)
+
+  def get_foo(self):
+    return self._foo
+
+
+class SubclassedModel(training_lib.Model):
+
+  def __init__(self, bar, **kwargs):
+    self._bar = bar
+    super().__init__(**kwargs)
+
+  def get_bar(self):
+    return self._bar
+
+
+class MultipleInheritanceModelTest(keras_parameterized.TestCase):
+
+  def testFunctionalSubclass(self):
+    m = FunctionalSubclassModel()
+    # Some smoke test for the weights and output shape of the model
+    self.assertLen(m.weights, 2)
+    self.assertEqual(m.outputs[0].shape.as_list(), [None, 32])
+
+  def testFunctionalSubclassPreMixin(self):
+    class MixedFunctionalSubclassModel(MixinClass, FunctionalSubclassModel):
+      pass
+
+    m = MixedFunctionalSubclassModel(foo='123')
+    self.assertTrue(m._is_graph_network)
+    self.assertLen(m.weights, 2)
+    self.assertEqual(m.outputs[0].shape.as_list(), [None, 32])
+    self.assertEqual(m.get_foo(), '123')
+
+  def testFunctionalSubclassPostMixin(self):
+    # Make sure the the mixin class is also init correct when the order changed.
+
+    class MixedFunctionalSubclassModel(FunctionalSubclassModel, MixinClass):
+      pass
+
+    m = MixedFunctionalSubclassModel(foo='123')
+    self.assertTrue(m._is_graph_network)
+    self.assertLen(m.weights, 2)
+    self.assertEqual(m.outputs[0].shape.as_list(), [None, 32])
+    self.assertEqual(m.get_foo(), '123')
+
+  def testSubclassModelPreMixin(self):
+    class MixedSubclassModel(MixinClass, SubclassedModel):
+      pass
+
+    m = MixedSubclassModel(foo='123', bar='456')
+    self.assertFalse(m._is_graph_network)
+    self.assertEqual(m.get_foo(), '123')
+    self.assertEqual(m.get_bar(), '456')
+
 
 if __name__ == '__main__':
   test.main()

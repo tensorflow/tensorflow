@@ -44,18 +44,18 @@ are handled correctly.
 
 The following types of functions are not converted:
 
-  * functions already converted
-  * functions defined in in a whitelisted module (see autograph/core/config.py)
-  * non-Python functions (such as native bindings)
-  * `print`, `pdb.set_trace`, `ipdb.set_trace`
-  * most built-in functions (exceptions are listed in
+*   functions already converted
+*   functions defined in a allowlisted module (see autograph/core/config.py)
+*   non-Python functions (such as native bindings)
+*   `print`, `pdb.set_trace`, `ipdb.set_trace`
+*   most built-in functions (exceptions are listed in
     autograph/operators/py_builtins.py)
-  * constructors
-  * functions without source code attached (prints a warning)(see
+*   constructors
+*   functions without source code attached (prints a warning)(see
     [limitations](limitations.md))
-  * generator functions (prints a warning)
-  * iterator protocol methods (`__next__`, `__iter__`)
-  * context manager methods (`__enter__`, `__exit__`)
+*   generator functions (prints a warning)
+*   iterator protocol methods (`__next__`, `__iter__`)
+*   context manager methods (`__enter__`, `__exit__`)
 
 When AutoGraph encounters a function that it cannot convert outside of this
 list, it prints a warning.

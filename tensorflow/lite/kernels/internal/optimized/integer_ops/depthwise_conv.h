@@ -15,13 +15,20 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_INTEGER_OPS_DEPTHWISE_CONV_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_INTEGER_OPS_DEPTHWISE_CONV_H_
 
+#include <string.h>
+
+#include <algorithm>
+#include <vector>
+
 #include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_threadpool.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_3x3_filter_common.h"
 #include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_uint8_3x3_filter.h"
 #include "tensorflow/lite/kernels/internal/optimized/integer_ops/depthwise_conv_3x3_filter.h"
+#include "tensorflow/lite/kernels/internal/optimized/neon_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h"
 #include "tensorflow/lite/kernels/internal/types.h"
@@ -1423,7 +1430,7 @@ void QuantizedDepthwiseConvAccumRow(int stride, int dilation_factor,
                                     int out_x_buffer_end, int output_depth,
                                     int32* acc_buffer) {
   ruy::profiler::ScopeLabel label(__PRETTY_FUNCTION__);
-  // Sanity check parameters. This is important in particular to ensure
+  // Consistency check parameters. This is important in particular to ensure
   // that we keep the number of template instantiations minimal, so we don't
   // increase binary size unnecessarily.
   static_assert(kFixedDepthMultiplier || !kFixedInputDepth, "");
@@ -1812,8 +1819,7 @@ inline void DepthwiseConvWithRounding(
 #if defined(__ANDROID__) && defined(__clang__)
   CpuFlags cpu_flags;
   GetCpuFlags(&cpu_flags);
-  // TODO(b/150208140): Re-enable once erroneous activation in test is resolved.
-  const bool has_dot_product_instructions = false && cpu_flags.neon_dotprod;
+  const bool has_dot_product_instructions = cpu_flags.neon_dotprod;
 
   // Dispatch to dot-product 3x3 kernels when supported.
   if (has_dot_product_instructions) {

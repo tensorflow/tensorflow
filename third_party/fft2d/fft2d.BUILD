@@ -8,11 +8,11 @@ package(
 # Unrestricted use; can only distribute original package.
 licenses(["notice"])
 
-exports_files(["fft2d/readme2d.txt"])
+exports_files(["readme2d.txt"])
 
 FFT2D_SRCS = [
-    "fft2d/fftsg.c",
-    "fft2d/fftsg2d.c",
+    "fftsg.c",
+    "fftsg2d.c",
 ]
 
 config_setting(

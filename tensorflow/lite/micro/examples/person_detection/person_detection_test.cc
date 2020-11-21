@@ -18,7 +18,6 @@ limitations under the License.
 #include "tensorflow/lite/micro/examples/person_detection/no_person_image_data.h"
 #include "tensorflow/lite/micro/examples/person_detection/person_detect_model_data.h"
 #include "tensorflow/lite/micro/examples/person_detection/person_image_data.h"
-#include "tensorflow/lite/micro/kernels/micro_ops.h"
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
@@ -28,6 +27,7 @@ limitations under the License.
 
 // Create an area of memory to use for input, output, and intermediate arrays.
 constexpr int tensor_arena_size = 93 * 1024;
+__attribute__((section(".bss.NoInit"), aligned(16)))
 uint8_t tensor_arena[tensor_arena_size];
 
 TF_LITE_MICRO_TESTS_BEGIN
@@ -35,13 +35,12 @@ TF_LITE_MICRO_TESTS_BEGIN
 TF_LITE_MICRO_TEST(TestInvoke) {
   // Set up logging.
   tflite::MicroErrorReporter micro_error_reporter;
-  tflite::ErrorReporter* error_reporter = &micro_error_reporter;
 
   // Map the model into a usable data structure. This doesn't involve any
   // copying or parsing, it's a very lightweight operation.
   const tflite::Model* model = ::tflite::GetModel(g_person_detect_model_data);
   if (model->version() != TFLITE_SCHEMA_VERSION) {
-    TF_LITE_REPORT_ERROR(error_reporter,
+    TF_LITE_REPORT_ERROR(&micro_error_reporter,
                          "Model provided is schema version %d not equal "
                          "to supported version %d.\n",
                          model->version(), TFLITE_SCHEMA_VERSION);
@@ -53,19 +52,16 @@ TF_LITE_MICRO_TEST(TestInvoke) {
   // incur some penalty in code space for op implementations that are not
   // needed by this graph.
   //
-  // tflite::ops::micro::AllOpsResolver resolver;
-  tflite::MicroOpResolver<3> micro_op_resolver;
-  micro_op_resolver.AddBuiltin(
-      tflite::BuiltinOperator_DEPTHWISE_CONV_2D,
-      tflite::ops::micro::Register_DEPTHWISE_CONV_2D());
-  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_CONV_2D,
-                               tflite::ops::micro::Register_CONV_2D());
-  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_AVERAGE_POOL_2D,
-                               tflite::ops::micro::Register_AVERAGE_POOL_2D());
+  // tflite::AllOpsResolver resolver;
+  tflite::MicroMutableOpResolver<3> micro_op_resolver;
+  micro_op_resolver.AddAveragePool2D();
+  micro_op_resolver.AddConv2D();
+  micro_op_resolver.AddDepthwiseConv2D();
 
   // Build an interpreter to run the model with.
   tflite::MicroInterpreter interpreter(model, micro_op_resolver, tensor_arena,
-                                       tensor_arena_size, error_reporter);
+                                       tensor_arena_size,
+                                       &micro_error_reporter);
   interpreter.AllocateTensors();
 
   // Get information about the memory area to use for the model's input.
@@ -82,14 +78,14 @@ TF_LITE_MICRO_TEST(TestInvoke) {
 
   // Copy an image with a person into the memory area used for the input.
   const uint8_t* person_data = g_person_data;
-  for (int i = 0; i < input->bytes; ++i) {
+  for (size_t i = 0; i < input->bytes; ++i) {
     input->data.uint8[i] = person_data[i];
   }
 
   // Run the model on this input and make sure it succeeds.
   TfLiteStatus invoke_status = interpreter.Invoke();
   if (invoke_status != kTfLiteOk) {
-    TF_LITE_REPORT_ERROR(error_reporter, "Invoke failed\n");
+    TF_LITE_REPORT_ERROR(&micro_error_reporter, "Invoke failed\n");
   }
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, invoke_status);
 
@@ -106,21 +102,21 @@ TF_LITE_MICRO_TEST(TestInvoke) {
   // Make sure that the expected "Person" score is higher than the other class.
   uint8_t person_score = output->data.uint8[kPersonIndex];
   uint8_t no_person_score = output->data.uint8[kNotAPersonIndex];
-  TF_LITE_REPORT_ERROR(error_reporter,
+  TF_LITE_REPORT_ERROR(&micro_error_reporter,
                        "person data.  person score: %d, no person score: %d\n",
                        person_score, no_person_score);
   TF_LITE_MICRO_EXPECT_GT(person_score, no_person_score);
 
   // Now test with a different input, from an image without a person.
   const uint8_t* no_person_data = g_no_person_data;
-  for (int i = 0; i < input->bytes; ++i) {
+  for (size_t i = 0; i < input->bytes; ++i) {
     input->data.uint8[i] = no_person_data[i];
   }
 
   // Run the model on this "No Person" input.
   invoke_status = interpreter.Invoke();
   if (invoke_status != kTfLiteOk) {
-    TF_LITE_REPORT_ERROR(error_reporter, "Invoke failed\n");
+    TF_LITE_REPORT_ERROR(&micro_error_reporter, "Invoke failed\n");
   }
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, invoke_status);
 
@@ -138,12 +134,12 @@ TF_LITE_MICRO_TEST(TestInvoke) {
   person_score = output->data.uint8[kPersonIndex];
   no_person_score = output->data.uint8[kNotAPersonIndex];
   TF_LITE_REPORT_ERROR(
-      error_reporter,
+      &micro_error_reporter,
       "no person data.  person score: %d, no person score: %d\n", person_score,
       no_person_score);
   TF_LITE_MICRO_EXPECT_GT(no_person_score, person_score);
 
-  TF_LITE_REPORT_ERROR(error_reporter, "Ran successfully\n");
+  TF_LITE_REPORT_ERROR(&micro_error_reporter, "Ran successfully\n");
 }
 
 TF_LITE_MICRO_TESTS_END

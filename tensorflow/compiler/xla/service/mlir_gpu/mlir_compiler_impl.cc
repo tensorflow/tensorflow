@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "llvm/IR/LLVMContext.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
@@ -39,9 +40,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/kernel_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
-#include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
@@ -103,7 +104,7 @@ class MlirCompilerImpl : public MlirCompiler {
                      const AotCompilationOptions& options) override;
 
   HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const override {
-    int64 pointer_size = pointer_size_;
+    int64 pointer_size = data_layout_.getPointerSize();
     return [pointer_size](const Shape& shape) {
       return ShapeUtil::ByteSizeOf(shape, pointer_size);
     };
@@ -292,10 +293,10 @@ Status InsertBufferLoadPreduleIntoKernel(
     BufferAssignment* assignment,
     const std::vector<const BufferAllocation*>& buffers) {
   mlir::OpBuilder builder(kernel.getBody());
-  auto llvm_dialect = kernel.getContext()->getRegisteredDialect<LLVMDialect>();
-  auto offset_type = LLVMType::getInt64Ty(llvm_dialect);
-  auto ptr_type = LLVMType::getInt8PtrTy(llvm_dialect);
-  auto void_type = LLVMType::getVoidTy(llvm_dialect);
+  auto* context = kernel.getContext();
+  auto offset_type = LLVMType::getInt64Ty(context);
+  auto ptr_type = LLVMType::getInt8PtrTy(context);
+  auto void_type = LLVMType::getVoidTy(context);
   auto loc = kernel.getLoc();
 
   auto num_original_args = kernel.getNumArguments();
@@ -436,9 +437,9 @@ StatusOr<std::unique_ptr<gpu::KernelThunk>> TransformKernelToXlaThunk(
       kernel, operand_to_value_map, ordered_operands, assignment, buffers));
 
   // Finally, create the thunk and set the launch dimensions.
-  auto thunk = absl::make_unique<gpu::KernelThunk>(
-      buffers, kernel.getName().str(), instr,
-      /*unroll_factor=*/1);
+  gpu::Thunk::ThunkInfo info;
+  auto thunk = absl::make_unique<gpu::KernelThunk>(info, buffers,
+                                                   kernel.getName().str());
 
   // Set launch bounds.
   mlir::gpu::KernelDim3 block = launchOp.getBlockSizeOperandValues();
@@ -460,9 +461,9 @@ StatusOr<std::unique_ptr<Executable>> MlirCompilerImpl::RunBackend(
   // must also be used to determine the thunk launch schedule.
   std::unique_ptr<StreamAssignment> stream_assignment =
       xla::gpu::AssignStreams(*module);
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<GpuHloSchedule> hlo_schedule,
-      GpuHloSchedule::Build(*module, *stream_assignment, pointer_size_));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<GpuHloSchedule> hlo_schedule,
+                      GpuHloSchedule::Build(*module, *stream_assignment,
+                                            data_layout_.getPointerSize()));
 
   // Run buffer analysis on the HLO graph. This analysis figures out which
   // temporary buffers are required to run the computation.
@@ -489,8 +490,17 @@ StatusOr<std::unique_ptr<Executable>> MlirCompilerImpl::RunBackend(
   LhloDialectEmitter lhlo_emitter(&emission_context, *buffer_assignment,
                                   stream_exec->platform(), *mlir_module);
 
-  TF_RETURN_IF_ERROR(lhlo_emitter.EmitComputation(
-      *emission_context.getHloModule()->entry_computation()));
+  absl::flat_hash_map<const HloInstruction*, std::unique_ptr<gpu::Thunk>>
+      hlo_to_thunk;
+  for (HloInstruction* instruction : hlo_schedule->ThunkLaunchOrder()) {
+    TF_RETURN_IF_ERROR(instruction->Visit(&lhlo_emitter));
+    gpu::ThunkSequence thunks = lhlo_emitter.ConsumeThunkSequence();
+    TF_RET_CHECK(thunks.size() <= 1) << instruction->ToString();
+    if (!thunks.empty()) {
+      auto thunk = std::move(thunks.front());
+      hlo_to_thunk[instruction] = std::move(thunk);
+    }
+  }
 
   TF_RETURN_IF_ERROR(
       module_hook_.invoke(IRHook::LoweringStage::LHLO, *mlir_module));
@@ -508,19 +518,36 @@ StatusOr<std::unique_ptr<Executable>> MlirCompilerImpl::RunBackend(
   TF_ASSIGN_OR_RETURN(OwningModuleRef kernel_module,
                       ExtractKernelModule(*mlir_module));
 
-  auto thunk_sequence = lhlo_emitter.ConsumeThunkSequence();
   for (auto entry : lhlo_emitter.InstructionToFunctionMap()) {
     TF_ASSIGN_OR_RETURN(
         auto thunk,
         TransformKernelToXlaThunk(entry.second, entry.first, *kernel_module,
                                   buffer_assignment.get()));
-    thunk_sequence->push_back(std::move(thunk));
+    hlo_to_thunk[entry.first] = std::move(thunk);
+  }
+
+  absl::flat_hash_map<const gpu::Thunk*, const HloInstruction*> thunk_to_hlo;
+  gpu::ThunkSequence thunk_sequence;
+  {
+    for (HloInstruction* hlo : hlo_schedule->ThunkLaunchOrder()) {
+      auto it = hlo_to_thunk.find(hlo);
+      if (it != hlo_to_thunk.end()) {
+        const HloInstruction* hlo = it->first;
+        auto& thunk = it->second;
+        thunk_to_hlo[thunk.get()] = hlo;
+        thunk_sequence.push_back(std::move(thunk));
+      }
+    }
   }
 
   TF_RETURN_IF_ERROR(
       module_hook_.invoke(IRHook::LoweringStage::KERNEL, *kernel_module));
 
-  auto llvmModule = mlir::translateModuleToNVVMIR(*kernel_module);
+  // Translate to LLVM IR in a fresh context. The module is further translated
+  // to textual PTX and a CUBIN blob so there is no need for the context to live
+  // longer than this function.
+  llvm::LLVMContext llvmContext;
+  auto llvmModule = mlir::translateModuleToNVVMIR(*kernel_module, llvmContext);
 
   if (!llvmModule) {
     return InternalError("Translation to LLVM failed");
@@ -535,13 +562,24 @@ StatusOr<std::unique_ptr<Executable>> MlirCompilerImpl::RunBackend(
       auto ptx, xla::gpu::nvptx::CompileToPtx(llvmModule.get(),
                                               GetGpuVersion(stream_exec),
                                               config, GetLibdeviceDir(config)));
-  TF_ASSIGN_OR_RETURN(
-      auto cubin, se::CompileGpuAsm(stream_exec->device_ordinal(), ptx.c_str(),
-                                    gpu::PtxOptsFromConfig(config)));
+  // Allow to fallback to the driver compilation when ptxas isn't able to
+  // compile.
+  StatusOr<std::vector<uint8>> maybe_cubin =
+      se::CompileGpuAsm(stream_exec->device_ordinal(), ptx.c_str(),
+                        gpu::PtxOptsFromConfig(config));
+  std::vector<uint8> cubin;
+  if (maybe_cubin.ok()) {
+    cubin = std::move(maybe_cubin).ValueOrDie();
+  } else if (maybe_cubin.status().code() ==
+             tensorflow::error::Code::UNIMPLEMENTED) {
+    xla::gpu::WarnIfBadDriverJITVersion();
+  } else {
+    return maybe_cubin.status();
+  }
 
   auto thunk_schedule = absl::make_unique<ThunkSchedule>(
-      std::move(thunk_sequence), std::move(stream_assignment),
-      hlo_schedule->ThunkLaunchOrder());
+      std::make_unique<gpu::ThunkSequence>(std::move(thunk_sequence)),
+      std::move(stream_assignment), std::move(thunk_to_hlo));
 
   if (DumpingEnabledForHloModule(*emission_context.getHloModule())) {
     DumpToFileInDirOrStdout(*emission_context.getHloModule(), "",
@@ -552,7 +590,7 @@ StatusOr<std::unique_ptr<Executable>> MlirCompilerImpl::RunBackend(
   return {absl::make_unique<GpuExecutable>(
       ptx, cubin, GetGpuVersion(stream_exec), std::move(thunk_schedule),
       emission_context.releaseHloModule(), std::move(buffer_assignment),
-      nullptr, nullptr)};
+      nullptr, nullptr, std::vector<GpuExecutable::ConstantInfo>())};
 }
 
 StatusOr<std::vector<std::unique_ptr<Executable>>> MlirCompilerImpl::Compile(

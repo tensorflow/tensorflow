@@ -12,25 +12,24 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <string.h>
+#include <math.h>
+#include <stddef.h>
+#include <stdlib.h>
 
 #include <algorithm>
-#include <cassert>
 #include <cstdint>
 #include <numeric>
 #include <vector>
 
-#include "third_party/eigen3/Eigen/Core"
-#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/dequantize.h"
+#include "tensorflow/lite/kernels/internal/optimized/neon_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/dequantize.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
 
 namespace tflite {
 namespace ops {
@@ -110,7 +109,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   node->temporaries = TfLiteIntArrayCreate(1);
   node->temporaries->data[0] = op_data->cache_tensor_id;
 
-  TfLiteTensor* dequantized = GetTemporary(context, node, /*index=*/0);
+  TfLiteTensor* dequantized;
+  TF_LITE_ENSURE_OK(context,
+                    GetTemporarySafe(context, node, /*index=*/0, &dequantized));
   dequantized->type = op_context.ref->type;
   dequantized->allocation_type = kTfLiteDynamic;
 
@@ -143,7 +144,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
 
   // Dequantize the input
-  TfLiteTensor* dequantized = GetTemporary(context, node, /*index=*/0);
+  TfLiteTensor* dequantized;
+  TF_LITE_ENSURE_OK(context,
+                    GetTemporarySafe(context, node, /*index=*/0, &dequantized));
   auto status = builtin::dequantize::DequantizeImpl<kernel_type>(
       context, node, op_context.input, dequantized);
   if (status != kTfLiteOk) {

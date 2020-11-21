@@ -1,4 +1,4 @@
-// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string - | FileCheck --dump-input-on-failure %s
+// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string - | FileCheck %s
 // RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_translate -tflite-flatbuffer-to-mlir - -o - | FileCheck --check-prefix=IMPORT %s
 
 func @main(tensor<4xf32>) -> tensor<4xf32> {
@@ -6,8 +6,9 @@ func @main(tensor<4xf32>) -> tensor<4xf32> {
 // CHECK: {
 // CHECK-NEXT:   version: 3,
 // CHECK-NEXT:     operator_codes: [ {
-// CHECK-NEXT:       builtin_code: FAKE_QUANT,
-// CHECK-NEXT:       version: 1
+// CHECK-NEXT:       deprecated_builtin_code: 80,
+// CHECK-NEXT:       version: 1,
+// CHECK-NEXT:       builtin_code: FAKE_QUANT
 // CHECK-NEXT:     } ],
 // CHECK-NEXT:     subgraphs: [ {
 // CHECK-NEXT:       tensors: [ {
@@ -53,6 +54,7 @@ func @main(tensor<4xf32>) -> tensor<4xf32> {
 // CHECK-NEXT:     name: "min_runtime_version",
 // CHECK-NEXT:     buffer: 3
 // CHECK-NEXT:     } ]
+// CHECK-NEXT:     signature_defs: [ ]
 // CHECK-NEXT:   }
 
 // IMPORT: "tfl.fake_quant"(%arg0) {max = 1.400000e+00 : f32, min = 3.000000e-01 : f32, narrow_range = false, num_bits = 6 : i32}

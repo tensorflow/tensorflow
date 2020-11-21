@@ -150,14 +150,16 @@ class AsyncExecuteNode : public EagerNode {
       core::RefCountPtr<KernelAndDevice> kernel,
       GraphCollector* graph_collector,
       CancellationManager* cancellation_manager,
-      absl::Span<TensorHandle*> retvals)
+      absl::Span<TensorHandle*> retvals,
+      absl::optional<AbstractStackTrace> stack_trace)
       : EagerNode(),
         ctx_(ctx),
         inputs_(inputs),
         remote_func_params_(remote_func_params),
         kernel_(std::move(kernel)),
         graph_collector_(graph_collector),
-        cancellation_manager_(cancellation_manager) {
+        cancellation_manager_(cancellation_manager),
+        stack_trace_(stack_trace) {
     // Copy the output handles, since the container for them might get
     // destroyed.
     for (auto handle : retvals) {
@@ -194,10 +196,14 @@ class AsyncExecuteNode : public EagerNode {
       }
       ++i;
     }
-    const Status status = EagerKernelExecute(
+    Status status = EagerKernelExecute(
         ctx_, inputs_, remote_func_params_, kernel_, graph_collector_,
         cancellation_manager_, absl::MakeSpan(retvals_));
     if (!status.ok()) {
+      if (stack_trace_.has_value()) {
+        status = Status(status.code(), status.error_message(),
+                        stack_trace_->ToStackFrames());
+      }
       Abort(status);
       return status;
     }
@@ -227,6 +233,7 @@ class AsyncExecuteNode : public EagerNode {
   core::RefCountPtr<KernelAndDevice> kernel_;
   GraphCollector* graph_collector_;
   CancellationManager* const cancellation_manager_;
+  absl::optional<AbstractStackTrace> stack_trace_;
   absl::InlinedVector<TensorHandle*, 2> retvals_;
 };
 

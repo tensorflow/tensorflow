@@ -37,6 +37,10 @@ NcclCliqueKey::NcclCliqueKey(std::vector<GlobalDeviceId> devices)
       << GlobalDeviceIdsToString(devices_);
 }
 
+std::string NcclCliqueKey::ToString() const {
+  return GlobalDeviceIdsToString(devices_);
+}
+
 GpuExecutableRunOptions& GpuExecutableRunOptions::set_gpu_global_device_ids(
     absl::optional<std::vector<GlobalDeviceId>> gpu_global_device_ids) {
   gpu_global_device_ids_ = std::move(gpu_global_device_ids);

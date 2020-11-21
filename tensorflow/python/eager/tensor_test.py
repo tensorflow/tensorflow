@@ -70,11 +70,11 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     ctx = context.context()
     device = ctx.device_name
     # Missing device.
-    with self.assertRaisesRegexp(TypeError, r".*argument 'device' \(pos 2\).*"):
+    with self.assertRaisesRegex(TypeError, r".*argument 'device' \(pos 2\).*"):
       ops.EagerTensor(1)
     # Bad dtype type.
-    with self.assertRaisesRegexp(TypeError,
-                                 "Expecting a DataType value for dtype. Got"):
+    with self.assertRaisesRegex(TypeError,
+                                "Expecting a DataType value for dtype. Got"):
       ops.EagerTensor(1, device=device, dtype="1")
 
     # Following errors happen when trying to copy to GPU.
@@ -83,7 +83,7 @@ class TFETensorTest(test_util.TensorFlowTestCase):
 
     with ops.device("/device:GPU:0"):
       # Bad device.
-      with self.assertRaisesRegexp(TypeError, "Error parsing device argument"):
+      with self.assertRaisesRegex(TypeError, "Error parsing device argument"):
         ops.EagerTensor(1.0, device=1)
 
   def testNumpyValue(self):
@@ -109,7 +109,7 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(values, t)
     ctx = context.context()
     # Bad dtype value.
-    with self.assertRaisesRegexp(TypeError, "Invalid dtype argument value"):
+    with self.assertRaisesRegex(TypeError, "Invalid dtype argument value"):
       ops.EagerTensor(values, device=ctx.device_name, dtype=12345)
 
   def testNumpyOrderHandling(self):
@@ -140,8 +140,7 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     tensor = constant_op.constant(numpy_tensor)
     with self.assertRaises(TypeError):
       len(numpy_tensor)
-    with self.assertRaisesRegexp(
-        TypeError, r"Scalar tensor has no `len[(][)]`"):
+    with self.assertRaisesRegex(TypeError, r"Scalar tensor has no `len[(][)]`"):
       len(tensor)
 
     numpy_tensor = np.asarray([1.0, 2.0, 3.0])
@@ -274,8 +273,8 @@ class TFETensorTest(test_util.TensorFlowTestCase):
 
   def testIterateOverScalarTensorRaises(self):
     t = _create_tensor(1)
-    with self.assertRaisesRegexp(TypeError,
-                                 "Cannot iterate over a scalar tensor"):
+    with self.assertRaisesRegex(TypeError,
+                                "Cannot iterate over a scalar tensor"):
       iter(t)
 
   @test_util.run_gpu_only
@@ -367,9 +366,8 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(x, [321, 16])
 
   def testEagerTensorError(self):
-    with self.assertRaisesRegexp(
-        TypeError,
-        "Cannot convert .* to EagerTensor of dtype .*"):
+    with self.assertRaisesRegex(TypeError,
+                                "Cannot convert .* to EagerTensor of dtype .*"):
       _ = ops.convert_to_tensor(1., dtype=dtypes.int32)
 
   def testEagerLargeConstant(self):
@@ -418,6 +416,8 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(
         np.array(memoryview(t)), np.array([0.0], dtype=np.float32))
 
+  @test_util.disable_tfrt("b/169877776: ResourceVariable is not initialized "
+                          "properly in TFRT")
   def testResourceTensorCopy(self):
     if not test_util.is_gpu_available():
       self.skipTest("GPU only")
@@ -435,6 +435,10 @@ class TFETensorTest(test_util.TensorFlowTestCase):
 
 
 class TFETensorUtilTest(test_util.TensorFlowTestCase):
+
+  def setUp(self):
+    super(TFETensorUtilTest, self).setUp()
+    context.ensure_initialized()
 
   def testListOfThree(self):
     t1 = _create_tensor([[1, 2], [3, 4], [5, 6]], dtype=dtypes.int32)
@@ -455,12 +459,12 @@ class TFETensorUtilTest(test_util.TensorFlowTestCase):
   def testTensorListContainsNonTensors(self):
     t1 = _create_tensor([1, 2], dtype=dtypes.int32)
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         TypeError,
         r"Expected a list of EagerTensors but element 1 has type \"str\""):
       pywrap_tfe.TFE_Py_TensorShapeSlice([t1, "abc"], 0)
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         TypeError,
         r"Expected a list of EagerTensors but element 0 has type \"int\""):
       pywrap_tfe.TFE_Py_TensorShapeSlice([2, t1], 0)
@@ -468,7 +472,7 @@ class TFETensorUtilTest(test_util.TensorFlowTestCase):
   def testTensorListNotList(self):
     t1 = _create_tensor([1, 2], dtype=dtypes.int32)
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         TypeError,
         r"tensors argument must be a list or a tuple. Got.*EagerTensor"):
       pywrap_tfe.TFE_Py_TensorShapeSlice(t1, -2)
@@ -476,9 +480,8 @@ class TFETensorUtilTest(test_util.TensorFlowTestCase):
   def testNegativeSliceDim(self):
     t1 = _create_tensor([1, 2], dtype=dtypes.int32)
 
-    with self.assertRaisesRegexp(
-        ValueError,
-        r"Slice dimension must be non-negative. Got -2"):
+    with self.assertRaisesRegex(
+        ValueError, r"Slice dimension must be non-negative. Got -2"):
       pywrap_tfe.TFE_Py_TensorShapeSlice([t1], -2)
 
   def testUnicode(self):
@@ -495,31 +498,31 @@ class TFETensorUtilTest(test_util.TensorFlowTestCase):
     t2 = _create_tensor([1, 2], dtype=dtypes.int32)
     t3 = _create_tensor(2, dtype=dtypes.int32)
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         IndexError,
         r"Slice dimension \(2\) must be smaller than rank of all tensors, "
         "but tensor at index 0 has rank 2"):
       pywrap_tfe.TFE_Py_TensorShapeSlice([t1], 2)
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         IndexError,
         r"Slice dimension \(1\) must be smaller than rank of all tensors, "
         "but tensor at index 0 has rank 1"):
       pywrap_tfe.TFE_Py_TensorShapeSlice([t2], 1)
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         IndexError,
         r"Slice dimension \(1\) must be smaller than rank of all tensors, "
         "but tensor at index 1 has rank 1"):
       pywrap_tfe.TFE_Py_TensorShapeSlice([t1, t2], 1)
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         IndexError,
         r"Slice dimension \(0\) must be smaller than rank of all tensors, "
         "but tensor at index 0 has rank 0"):
       pywrap_tfe.TFE_Py_TensorShapeSlice([t3], 0)
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         IndexError,
         r"Slice dimension \(0\) must be smaller than rank of all tensors, "
         "but tensor at index 2 has rank 0"):
@@ -541,9 +544,15 @@ class TFETensorUtilTest(test_util.TensorFlowTestCase):
   def testNonRectangularPackAsConstant(self):
     l = [array_ops.zeros((10, 1)).numpy(), array_ops.zeros(1).numpy()]
 
-    with self.assertRaisesRegexp(
-        ValueError, "non-rectangular Python sequence"):
+    with self.assertRaisesRegex(ValueError, "non-rectangular Python sequence"):
       constant_op.constant(l)
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testFloatAndIntAreConvertibleToComplex(self):
+    a = [[1., 1], [1j, 2j]]
+    np_value = np.array(a, dtype=np.complex128)
+    tf_value = ops.convert_to_tensor(a, dtype=dtypes.complex128)
+    self.assertAllEqual(tf_value.numpy(), np_value)
 
 
 if __name__ == "__main__":

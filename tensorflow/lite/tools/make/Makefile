@@ -41,6 +41,10 @@ INCLUDES := \
 -I$(MAKEFILE_DIR)/downloads/farmhash/src \
 -I$(MAKEFILE_DIR)/downloads/flatbuffers/include \
 -I$(MAKEFILE_DIR)/downloads/fp16/include \
+-I$(MAKEFILE_DIR)/downloads/cpuinfo \
+-I$(MAKEFILE_DIR)/downloads/cpuinfo/include \
+-I$(MAKEFILE_DIR)/downloads/cpuinfo/src \
+-I$(MAKEFILE_DIR)/downloads/cpuinfo/deps/clog/include \
 -I$(OBJDIR)
 # This is at the end so any globally-installed frameworks like protobuf don't
 # override local versions in the source tree.
@@ -58,7 +62,7 @@ LIBS := \
 # There are no rules for compiling objects for the host system (since we don't
 # generate things like the protobuf compiler that require that), so all of
 # these settings are for the target compiler.
-CFLAGS := -O3 -DNDEBUG -fPIC
+CFLAGS := -O3 -DNDEBUG -DCPU_SETSIZE=__CPU_SETSIZE -fPIC $(EXTRA_CFLAGS)
 CXXFLAGS := $(CFLAGS) --std=c++11 $(EXTRA_CXXFLAGS)
 LDOPTS := -L/usr/local/lib
 ARFLAGS := -r
@@ -67,6 +71,13 @@ CC_PREFIX :=
 
 ifeq ($(HOST_OS),windows)
 CXXFLAGS += -fext-numeric-literals -D__LITTLE_ENDIAN__
+endif
+
+ifeq ($(TARGET_ARCH),x86_64)
+  ifeq ($(TARGET),linux)
+    CXXFLAGS += -DTFLITE_HAVE_CPUINFO
+    TFLITE_HAVE_CPUINFO := true
+  endif
 endif
 
 # Auto-detect optimization opportunity if building natively.
@@ -97,6 +108,11 @@ BENCHMARK_PERF_OPTIONS_BINARY_NAME := benchmark_model_performance_options
 MINIMAL_SRCS := \
 	tensorflow/lite/examples/minimal/minimal.cc
 
+LABEL_IMAGE_SRCS := \
+	tensorflow/lite/examples/label_image/bitmap_helpers.cc \
+	tensorflow/lite/examples/label_image/label_image.cc \
+	tensorflow/lite/tools/evaluation/utils.cc
+
 # What sources we want to compile, must be kept in sync with the main Bazel
 # build files.
 
@@ -118,10 +134,21 @@ CORE_CC_ALL_SRCS := \
 $(wildcard tensorflow/lite/*.cc) \
 $(wildcard tensorflow/lite/*.c) \
 $(wildcard tensorflow/lite/c/*.c) \
+$(wildcard tensorflow/lite/c/*.cc) \
 $(wildcard tensorflow/lite/core/*.cc) \
 $(wildcard tensorflow/lite/core/api/*.cc) \
 $(wildcard tensorflow/lite/experimental/resource/*.cc) \
+$(wildcard tensorflow/lite/schema/schema_utils.cc) \
 $(wildcard tensorflow/lite/tools/make/downloads/ruy/ruy/*.cc)
+ifeq ($(TFLITE_HAVE_CPUINFO),true)
+CORE_CC_ALL_SRCS += \
+$(wildcard tensorflow/lite/tools/make/downloads/cpuinfo/src/*.c) \
+$(wildcard tensorflow/lite/tools/make/downloads/cpuinfo/src/x86/*.c) \
+$(wildcard tensorflow/lite/tools/make/downloads/cpuinfo/src/x86/linux/*.c) \
+$(wildcard tensorflow/lite/tools/make/downloads/cpuinfo/src/x86/cache/*.c) \
+$(wildcard tensorflow/lite/tools/make/downloads/cpuinfo/src/linux/*.c) \
+$(wildcard tensorflow/lite/tools/make/downloads/cpuinfo/deps/clog/src/*.c)
+endif
 ifneq ($(BUILD_TYPE),micro)
 CORE_CC_ALL_SRCS += \
 $(wildcard tensorflow/lite/kernels/*.cc) \
@@ -142,6 +169,7 @@ endif
 CORE_CC_ALL_SRCS := $(sort $(CORE_CC_ALL_SRCS))
 CORE_CC_EXCLUDE_SRCS := \
 $(wildcard tensorflow/lite/*test.cc) \
+$(wildcard tensorflow/lite/*/*test.c) \
 $(wildcard tensorflow/lite/*/*test.cc) \
 $(wildcard tensorflow/lite/*/*/benchmark.cc) \
 $(wildcard tensorflow/lite/*/*/example*.cc) \
@@ -160,6 +188,7 @@ $(wildcard tensorflow/lite/*/*/*/*/*/*test.cc) \
 $(wildcard tensorflow/lite/*/*/*/*/*/*tool.cc) \
 $(wildcard tensorflow/lite/kernels/*test_main.cc) \
 $(wildcard tensorflow/lite/kernels/*test_util*.cc) \
+$(wildcard tensorflow/lite/tools/make/downloads/cpuinfo/src/*/mock*.c) \
 tensorflow/lite/tflite_with_xnnpack.cc \
 $(MINIMAL_SRCS)
 
@@ -171,9 +200,9 @@ ifeq ($(BUILD_TYPE),windows)
 	BUILD_WITH_MMAP=false
 endif
 ifeq ($(BUILD_WITH_MMAP),true)
-	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/mmap_allocation.cc
-else
 	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/mmap_allocation_disabled.cc
+else
+	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/mmap_allocation.cc
 endif
 
 BUILD_WITH_RUY ?= false
@@ -271,6 +300,7 @@ BENCHMARK_LIB := $(LIBDIR)$(BENCHMARK_LIB_NAME)
 BENCHMARK_BINARY := $(BINDIR)$(BENCHMARK_BINARY_NAME)
 BENCHMARK_PERF_OPTIONS_BINARY := $(BINDIR)$(BENCHMARK_PERF_OPTIONS_BINARY_NAME)
 MINIMAL_BINARY := $(BINDIR)minimal
+LABEL_IMAGE_BINARY := $(BINDIR)label_image
 
 CXX := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}g++
 CC := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}gcc
@@ -278,6 +308,9 @@ AR := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}ar
 
 MINIMAL_OBJS := $(addprefix $(OBJDIR), \
 $(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(MINIMAL_SRCS))))
+
+LABEL_IMAGE_OBJS := $(addprefix $(OBJDIR), \
+$(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(LABEL_IMAGE_SRCS))))
 
 LIB_OBJS := $(addprefix $(OBJDIR), \
 $(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(patsubst %.cpp,%.o,$(TF_LITE_CC_SRCS)))))
@@ -304,9 +337,6 @@ $(OBJDIR)%.o: %.cc
 $(OBJDIR)%.o: %.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
-$(OBJDIR)%.o: %.cpp
-	@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 # The target that's compiled if there's no command-line arguments.
 all: $(LIB_PATH)  $(MINIMAL_BINARY) $(BENCHMARK_BINARY) $(BENCHMARK_PERF_OPTIONS_BINARY)
@@ -316,7 +346,7 @@ micro: $(LIB_PATH)
 
 # Hack for generating schema file bypassing flatbuffer parsing
 tensorflow/lite/schema/schema_generated.h:
-	@cp -u tensorflow/lite/schema/schema_generated.h.OPENSOURCE tensorflow/lite/schema/schema_generated.h
+	@cp -u tensorflow/lite/schema/schema_generated.h.oss tensorflow/lite/schema/schema_generated.h
 
 # Gathers together all the objects we've compiled into a single '.a' archive.
 $(LIB_PATH): tensorflow/lite/schema/schema_generated.h $(LIB_OBJS)
@@ -333,17 +363,32 @@ $(MINIMAL_BINARY): $(MINIMAL_OBJS) $(LIB_PATH)
 
 minimal: $(MINIMAL_BINARY)
 
+$(LABEL_IMAGE_BINARY): $(LABEL_IMAGE_OBJS) $(LIB_PATH)
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) \
+	-o $(LABEL_IMAGE_BINARY) $(LABEL_IMAGE_OBJS) \
+	$(LIBFLAGS) $(LIB_PATH) $(LDFLAGS) $(LIBS)
+
+label_image: $(LABEL_IMAGE_BINARY)
+
 $(BENCHMARK_LIB) : $(LIB_PATH) $(BENCHMARK_LIB_OBJS)
 	@mkdir -p $(dir $@)
 	$(AR) $(ARFLAGS) $(BENCHMARK_LIB) $(LIB_OBJS) $(BENCHMARK_LIB_OBJS)
 
 benchmark_lib: $(BENCHMARK_LIB)
 
+BENCHMARK_LINKOPTS :=
+ifeq ($(HOST_OS),osx)
+	BENCHMARK_LINKOPTS += $(LIBFLAGS) -Wl,-force_load $(BENCHMARK_LIB) $(LIBS) $(LDFLAGS) -framework CoreFoundation
+else
+	BENCHMARK_LINKOPTS += $(LIBFLAGS) -Wl,--whole-archive $(BENCHMARK_LIB) -Wl,--no-whole-archive $(LDFLAGS) $(LIBS)
+endif
+
 $(BENCHMARK_BINARY) : $(BENCHMARK_MAIN_OBJ) $(BENCHMARK_LIB)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) \
 	-o $(BENCHMARK_BINARY) $(BENCHMARK_MAIN_OBJ) \
-	$(LIBFLAGS) -Wl,--whole-archive $(BENCHMARK_LIB) -Wl,--no-whole-archive $(LDFLAGS) $(LIBS)
+	$(LIBFLAGS) $(BENCHMARK_LINKOPTS)
 
 $(BENCHMARK_PERF_OPTIONS_BINARY) : $(BENCHMARK_PERF_OPTIONS_OBJ) $(BENCHMARK_LIB)
 	@mkdir -p $(dir $@)

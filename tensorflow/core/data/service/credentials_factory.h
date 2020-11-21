@@ -36,11 +36,11 @@ class CredentialsFactory {
 
   // Stores server credentials to `*out`.
   virtual Status CreateServerCredentials(
-      std::shared_ptr<grpc::ServerCredentials>* out) = 0;
+      std::shared_ptr<::grpc::ServerCredentials>* out) = 0;
 
   // Stores client credentials to `*out`.
   virtual Status CreateClientCredentials(
-      std::shared_ptr<grpc::ChannelCredentials>* out) = 0;
+      std::shared_ptr<::grpc::ChannelCredentials>* out) = 0;
 
   // Registers a credentials factory.
   static void Register(CredentialsFactory* factory);
@@ -49,13 +49,13 @@ class CredentialsFactory {
   // `protocol`, and stores them to `*out`.
   static Status CreateServerCredentials(
       absl::string_view protocol,
-      std::shared_ptr<grpc::ServerCredentials>* out);
+      std::shared_ptr<::grpc::ServerCredentials>* out);
 
   // Creates client credentials using the credentials factory registered as
   // `protocol`, and stores them to `*out`.
   static Status CreateClientCredentials(
       absl::string_view protocol,
-      std::shared_ptr<grpc::ChannelCredentials>* out);
+      std::shared_ptr<::grpc::ChannelCredentials>* out);
 
  private:
   // Gets the credentials factory registered via `Register` for the specified

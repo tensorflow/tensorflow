@@ -27,7 +27,6 @@ ifeq ($(TARGET), ecm3531)
     -fmessage-length=0 \
     -fno-exceptions \
     -fno-unwind-tables \
-    -fno-builtin \
     -ffunction-sections \
     -fdata-sections \
     -funsigned-char \

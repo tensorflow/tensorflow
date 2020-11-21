@@ -543,11 +543,12 @@ ComputeTaskDescriptorPtr FuseChain(const FusionSequence& chain) {
       function_index++;
     }
   }
+  fused_descriptor->args = std::move(sequence.front()->args);
 
   ComputeTaskDescriptorPtr non_linkable = sequence.front();
   fused_descriptor->shader_source =
-      absl::Substitute(non_linkable->shader_source, function_code,
-                       buffer_declarations, call_code);
+      absl::Substitute(non_linkable->shader_source, function_code + "$0",
+                       buffer_declarations + "$1", call_code);
   std::vector<ValueId> alias;
   alias.reserve(chain.size() - 1);
   for (int i = 0; i < chain.size() - 1; i++) {

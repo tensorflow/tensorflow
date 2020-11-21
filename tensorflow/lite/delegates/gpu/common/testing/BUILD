@@ -10,6 +10,8 @@ cc_library(
     hdrs = ["interpreter_utils.h"],
     deps = [
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:string",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:tensor",
@@ -25,13 +27,12 @@ cc_library(
     hdrs = ["tflite_model_reader.h"],
     deps = [
         "//tensorflow/lite:framework_lib",
-        "//tensorflow/lite:kernel_api",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:model_builder",
+        "//tensorflow/lite/delegates/gpu/common:model_transformer",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common/transformations:general_transformations",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/delegates/gpu/common/transformations:model_transformations",
     ],
 )

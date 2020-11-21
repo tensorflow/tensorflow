@@ -49,9 +49,11 @@ TEST_F(OpenCLOperationTest, AddTwoEqualTensors) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      Add operation = CreateAdd(op_def, channels, channels[0]);
-      ASSERT_OK(ExecuteGPUOperation({src0, src1}, creation_context_, &operation,
-                                    BHWC(1, 2, 1, 2), &dst_tensor));
+      GPUOperation operation = CreateAdd(op_def, channels, channels[0]);
+      ASSERT_OK(ExecuteGPUOperation(
+          {src0, src1}, creation_context_,
+          absl::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 2, 1, 2), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
                   Pointwise(FloatNear(eps), {0.0f, 0.0f, -0.1f, 0.0f}));
     }
@@ -77,9 +79,11 @@ TEST_F(OpenCLOperationTest, AddFirstTensorHasMoreChannelsThanSecond) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      Add operation = CreateAdd(op_def, channels, channels[0]);
-      ASSERT_OK(ExecuteGPUOperation({src0, src1}, creation_context_, &operation,
-                                    BHWC(1, 2, 1, 6), &dst_tensor));
+      GPUOperation operation = CreateAdd(op_def, channels, channels[0]);
+      ASSERT_OK(ExecuteGPUOperation(
+          {src0, src1}, creation_context_,
+          absl::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 2, 1, 6), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
                   Pointwise(FloatNear(eps),
                             {0.0f, 0.0f, -0.05f, 0.045f, 1.0f, -2.0f, -1.1f,
@@ -107,9 +111,11 @@ TEST_F(OpenCLOperationTest, AddFirstTensorHasLessChannelsThanSecond) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      Add operation = CreateAdd(op_def, channels, 6);
-      ASSERT_OK(ExecuteGPUOperation({src0, src1}, creation_context_, &operation,
-                                    BHWC(1, 2, 1, 6), &dst_tensor));
+      GPUOperation operation = CreateAdd(op_def, channels, 6);
+      ASSERT_OK(ExecuteGPUOperation(
+          {src0, src1}, creation_context_,
+          absl::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 2, 1, 6), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
                   Pointwise(FloatNear(eps),
                             {0.0f, 0.0f, -0.05f, 0.045f, 1.0f, -2.0f, -1.1f,

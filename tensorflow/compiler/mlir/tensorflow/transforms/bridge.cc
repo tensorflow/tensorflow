@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/bridge_logger.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 
 namespace mlir {
@@ -40,20 +41,24 @@ void EnableLogging(PassManager *pm) {
 namespace TFTPU {
 namespace {
 void AddGraphExportLoweringPasses(OpPassManager &pm) {
+  auto add_pass = [&](std::unique_ptr<Pass> pass) {
+    pm.addNestedPass<FuncOp>(std::move(pass));
+    pm.addPass(CreateBreakUpIslandsPass());
+  };
+
   pm.addNestedPass<FuncOp>(CreateFunctionalToExecutorDialectConversionPass());
-  pm.addNestedPass<FuncOp>(CreateBreakUpIslandsPass());
-  pm.addNestedPass<FuncOp>(TFDevice::CreateReplicateToIslandPass());
-  pm.addNestedPass<FuncOp>(CreateBreakUpIslandsPass());
-  pm.addNestedPass<FuncOp>(TFDevice::CreateParallelExecuteToIslandsPass());
-  pm.addNestedPass<FuncOp>(CreateBreakUpIslandsPass());
-  pm.addNestedPass<FuncOp>(TFDevice::CreateLaunchToDeviceAttributePass());
-  pm.addNestedPass<FuncOp>(CreateBreakUpIslandsPass());
+  add_pass(TFDevice::CreateParallelizeEmbeddingParamsOpsPass());
+  add_pass(TFDevice::CreateReplicateToIslandPass());
+  add_pass(TFDevice::CreateParallelExecuteToIslandsPass());
+  add_pass(TFDevice::CreateLaunchToDeviceAttributePass());
+  pm.addPass(createSymbolDCEPass());
 }
 
 tensorflow::Status RunTPUBridge(
     ModuleOp module, bool enable_logging,
     llvm::function_ref<void(OpPassManager &pm)> pipeline_builder) {
   PassManager bridge(module.getContext());
+  ::tensorflow::applyTensorflowAndCLOptions(bridge);
   if (enable_logging) EnableLogging(&bridge);
 
   // Populate a passmanager with the list of passes that implement the bridge.
@@ -72,41 +77,58 @@ tensorflow::Status RunTPUBridge(
 }  // namespace
 
 void CreateTPUBridgePipeline(OpPassManager &pm) {
-  // Run island coarsening before shape inference to allow more exact shape
-  // inference using constant folding within islands.
-  pm.addNestedPass<FuncOp>(tf_executor::CreateTFExecutorIslandCoarseningPass());
-  // TODO(b/150462212): Move graph pruning before island coarsening.
   pm.addNestedPass<FuncOp>(tf_executor::CreateTFExecutorGraphPruningPass());
+  // It is assumed at this stage there are no V1 control flow ops as Graph
+  // functionalization is ran before import. Ops can be lifted out of
+  // tf_executor dialect islands/graphs.
+  pm.addNestedPass<FuncOp>(CreateExecutorDialectToFunctionalConversionPass());
   // Run shape inference so that tf_executor/tf_device ops created later will
   // likely to inherit more concrete types.
   pm.addPass(TF::CreateTFShapeInferencePass());
-  OpPassManager &func_pm = pm.nest<FuncOp>();
-  func_pm.addPass(CreateTPUClusterFormationPass());
-  func_pm.addPass(createCanonicalizerPass());
-  // Place DecomposeResourceOpsPass before TFExecutorConstantSinking pass
-  // because DecomposeResourceOpsPass uses pattern rewriter which hoists
-  // changed constants out of tf_device.Launch.
-  func_pm.addPass(TFDevice::CreateDecomposeResourceOpsPass());
-
+  // Encode this in its own scope so that func_pm is not mistakenly used
+  // later on.
+  {
+    pm.addPass(CreateTPUClusterFormationPass());
+    OpPassManager &func_pm = pm.nest<FuncOp>();
+    // Place DecomposeResourceOpsPass before TFExecutorConstantSinking pass
+    // because DecomposeResourceOpsPass uses pattern rewriter which hoists
+    // changed constants out of tf_device.Launch.
+    func_pm.addPass(TFDevice::CreateDecomposeResourceOpsPass());
+    func_pm.addPass(CreateTPUHostComputationExpansionPass());
+    func_pm.addPass(CreateTPUUpdateEmbeddingEnqueueOpInputsPass());
+  }
   // Run another shape inference pass because resource decomposition might have
   // created new partial types.
   pm.addPass(TF::CreateTFShapeInferencePass());
-  pm.addNestedPass<FuncOp>(tf_executor::CreateTFExecutorConstantSinkingPass());
+  pm.addPass(TF::CreateTFFunctionalControlFlowToRegions());
+  pm.addPass(mlir::createInlinerPass());
+  pm.addPass(CreateTPUClusterCleanupAttributesPass());
   pm.addPass(TFDevice::CreateResourceOpLiftingPass());
+  pm.addNestedPass<FuncOp>(createCSEPass());
+  pm.addPass(TFDevice::CreateMarkOpsForOutsideCompilationPass());
+  pm.addPass(CreateTPUExtractHeadTailOutsideCompilationPass());
+  pm.addPass(CreateTPUOutsideCompilationClusterPass());
+  pm.addPass(CreateTPUExtractOutsideCompilationPass());
+
+  pm.addNestedPass<FuncOp>(tf_executor::CreateTFExecutorConstantSinkingPass());
   pm.addPass(TF::CreateResourceDeviceInferencePass());
   pm.addPass(TFDevice::CreateClusterOutliningPass());
   pm.addPass(CreateTPUDynamicPaddingMapperPass());
+  pm.addPass(CreateTPUResourceReadForWritePass());
   pm.addPass(CreateTPUShardingIdentificationPass());
   pm.addPass(TFDevice::CreateAnnotateParameterReplicationPass());
   pm.addPass(CreateTPURewritePass());
   pm.addPass(createSymbolDCEPass());
   pm.addNestedPass<FuncOp>(TFDevice::CreateReplicateInvariantOpHoistingPass());
-  pm.addNestedPass<FuncOp>(CreateTPUDynamicLayoutPass());
+  pm.addPass(CreateTPUDynamicLayoutPass());
   pm.addNestedPass<FuncOp>(CreateTPUMergeVariablesWithExecutePass());
+  pm.addNestedPass<FuncOp>(CreateTPUColocateCompositeResourceOps());
   pm.addPass(CreateTPUVariableReformattingPass());
+  pm.addPass(TF::CreateTFRegionControlFlowToFunctional());
 }
 
 void CreateTPUBridgePipelineV1(OpPassManager &pm) {
+  pm.addPass(TF::CreateTFShapeInferencePass());
   // For V1 compatibility, we process a module where the graph does not have
   // feeds and fetched. We extract first the TPU computation in a submodule,
   // where it'll be in a function with args and returned values, much more like

@@ -14,13 +14,21 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/python/profiler/internal/python_hooks.h"
 
+#include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/profiler/utils/time_utils.h"
+#include "tensorflow/core/profiler/utils/xplane_builder.h"
+#include "tensorflow/core/profiler/utils/xplane_schema.h"
+#include "tensorflow/core/profiler/utils/xplane_utils.h"
 
 namespace tensorflow {
 namespace profiler {
 
 namespace py = ::pybind11;
+
+namespace {
 
 template <typename T>
 int ProfileFunction(PyObject* obj, PyFrameObject* frame, int what,
@@ -39,24 +47,165 @@ void ThreadingSetProfile(const py::object& callback) {
   setprofile(callback);
 }
 
+std::string GetEventName(PyCodeObject* py_code) {
+  string filename(py::reinterpret_borrow<py::str>(py_code->co_filename));
+  string function;
+  if (py_code->co_name == nullptr) {
+    function = "<unknown>";
+  } else {
+    function = py::reinterpret_borrow<py::str>(py_code->co_name);
+  }
+
+  return absl::StrCat("$", io::Basename(filename), ":", py_code->co_firstlineno,
+                      " ", function);
+}
+
+string GetEventName(PyCFunctionObject* py_cfunc) {
+  PyObject* module = py_cfunc->m_module;
+  string filename;
+  bool filename_ok;
+#if PY_MAJOR_VERSION < 3
+  filename_ok = (module != nullptr && PyString_Check(module));
+#else
+  filename_ok = (module != nullptr && PyUnicode_Check(module));
+#endif
+  if (filename_ok) {
+    filename = py::reinterpret_borrow<py::str>(module);
+  } else {
+    filename = "<unknown>";
+  }
+
+  return absl::StrCat("$", filename, " ", py_cfunc->m_ml->ml_name);
+}
+
+void AddEventToXLine(const PythonTraceEntry& event, XLineBuilder* line,
+                     XPlaneBuilder* plane) {
+  // TODO(jiesun): maybe add full filename as event stats.
+  auto xevent = line->AddEvent(*plane->GetOrCreateEventMetadata(event.Name()));
+  xevent.SetTimestampNs(event.start_time_ns);
+  xevent.SetEndTimestampNs(event.end_time_ns);
+}
+
+}  // namespace
+
+std::string PythonTraceEntry::Name() const {
+  std::string event_name;
+  if (code_object) {
+    return GetEventName(code_object);
+  } else if (function_object) {
+    return GetEventName(function_object);
+  }
+  return "<unknown>";
+}
+
 PythonHooks* PythonHooks::GetSingleton() {
   static PythonHooks* singleton = new PythonHooks;
   return singleton;
 }
 
-void PythonHooks::Start() {
-  PyGILState_STATE gil_state = PyGILState_Ensure();
-  SetProfilerInAllThreads();
-  PyGILState_Release(gil_state);
+void PythonHooks::Start(const PythonHooksOptions& options) {
+  if (!Py_IsInitialized()) return;
+
+#if PY_MAJOR_VERSION < 3 || (PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION < 7)
+  // Before Python 3.7, the GIL is created on demand by PyEval_InitThreads().
+  // When a thread was not started by Python (e.g., when starting profiling via
+  // RPC) there might be no GIL. Before Python 3.6, PyGILState_Ensure would
+  // crash. The crash was fixed in Python 3.6 but the fix introduced a race for
+  // GIL creation. Calling PyEval_InitThreads() prevents the race. This is a
+  // no-op when called for a second time so it is innocuous. See
+  // https://vstinner.github.io/python37-gil-change.html for details.
+  PyEval_InitThreads();
+#endif
+
+  options_ = options;
+  start_timestamp_ns_ = GetCurrentTimeNanos();
+  if (options_.enable_python_traceme || options_.enable_trace_python_function) {
+    PyGILState_STATE gil_state = PyGILState_Ensure();
+    if (options_.enable_trace_python_function) {
+      SetProfilerInAllThreads();
+    }
+    if (options_.enable_python_traceme) {
+      EnableTraceMe(true);
+    }
+    if (options_.end_to_end_mode) {
+      // When end to end mode is used, Stop() and Finalize() i.e. symbolization
+      // and data collection happens during C's atexit(), when Py_FinalizeEx()
+      // already called.
+      try {
+        auto atexit = py::module::import("atexit");
+        atexit.attr("register")(py::cpp_function([]() {
+          PythonHooks* singleton = PythonHooks::GetSingleton();
+          singleton->Stop();
+          singleton->CollectData(&(singleton->end_to_end_xplane_.emplace()));
+        }));
+      } catch (const py::error_already_set& e) {
+        LOG(ERROR) << "Can't install atexit handler for e2e mode." << e.what();
+      }
+    }
+    PyGILState_Release(gil_state);
+    active_session_ = true;
+  }
 }
 
 void PythonHooks::Stop() {
-  PyGILState_STATE gil_state = PyGILState_Ensure();
-  ClearProfilerInAllThreads();
-  PyGILState_Release(gil_state);
+  if (!Py_IsInitialized()) return;
+  if (!active_session_) return;  // Makes sure Stop() can be reentrant.
+  if (options_.enable_python_traceme || options_.enable_trace_python_function) {
+    PyGILState_STATE gil_state = PyGILState_Ensure();
+    if (options_.enable_trace_python_function) {
+      ClearProfilerInAllThreads();
+    }
+    if (options_.enable_python_traceme) {
+      EnableTraceMe(false);
+    }
+    PyGILState_Release(gil_state);
+    active_session_ = false;
+  }
 }
 
-void PythonHooks::Finalize() { tracemes_.clear(); }
+void PythonHooks::CollectData(XPlane* raw_plane) {
+  DCHECK(raw_plane);
+  XPlaneBuilder plane(raw_plane);
+  for (auto& it : entries_) {
+    uint64 thread_id = it.first;
+    auto& thread_events = it.second;
+    VLOG(1) << "Collecting " << thread_events.completed.size() << ":"
+            << thread_events.active.size() << " events on thread " << thread_id;
+    auto line = plane.GetOrCreateLine(thread_id);
+    line.SetTimestampNs(start_timestamp_ns_);
+    for (const auto& event : thread_events.completed) {
+      AddEventToXLine(event, &line, &plane);
+    }
+    if (options_.include_incomplete_events) {
+      uint64 now = GetCurrentTimeNanos();
+      while (!thread_events.active.empty()) {
+        auto& event = thread_events.active.top();
+        event.end_time_ns = now;
+        AddEventToXLine(event, &line, &plane);
+        thread_events.active.pop();
+      }
+    }
+  }
+  entries_.clear();
+}
+
+void PythonHooks::Finalize(XSpace* space) {
+  if (space && options_.enable_trace_python_function) {
+    XPlane* plane =
+        FindOrAddMutablePlaneWithName(space, kPythonTracerPlaneName);
+    if (options_.end_to_end_mode) {
+      if (end_to_end_xplane_) {
+        end_to_end_xplane_->set_name(plane->name());
+        plane->Swap(&*end_to_end_xplane_);
+        end_to_end_xplane_.reset();
+      }
+    } else {
+      PyGILState_STATE gil_state = PyGILState_Ensure();
+      CollectData(plane);
+      PyGILState_Release(gil_state);
+    }
+  }
+}
 
 void PythonHooks::ProfileSlow(const py::object& frame, const string& event,
                               const py::object& arg) {
@@ -89,48 +238,58 @@ void PythonHooks::ProfileSlow(const py::object& frame, const string& event,
 }
 
 void PythonHooks::ProfileFast(PyFrameObject* frame, int what, PyObject* arg) {
-  const int64 thread_id = PyThread_get_thread_ident();
+  const int64 thread_id = Env::Default()->GetCurrentThreadId();
+  uint64 now = GetCurrentTimeNanos();
+  auto& thread_traces = entries_[thread_id];
 
-  if (what == PyTrace_CALL) {
-    PyCodeObject* f_code = frame->f_code;
-    string filename(py::reinterpret_borrow<py::str>(f_code->co_filename));
-    int line_no = frame->f_lineno;
-
-    string function;
-    if (f_code->co_name == nullptr) {
-      function = "<unknown>";
-    } else {
-      function = py::reinterpret_borrow<py::str>(f_code->co_name);
+  switch (what) {
+    case PyTrace_CALL: {
+      PyCodeObject* f_code = frame->f_code;
+      thread_traces.active.emplace(now, 0, f_code, nullptr);
+      break;
     }
-
-    tracemes_[thread_id].push_back(absl::make_unique<TraceMe>(absl::StrCat(
-        "$", io::Basename(filename), ":", line_no, " ", function)));
-  } else if (what == PyTrace_C_CALL && PyCFunction_Check(arg)) {
-    // Python stack does not have a filename/line_no for native calls.
-    auto* func = reinterpret_cast<PyCFunctionObject*>(arg);
-    PyObject* module = func->m_module;
-    string filename;
-    bool filename_ok;
-#if PY_MAJOR_VERSION < 3
-    filename_ok = (module != nullptr && PyString_Check(module));
-#else
-    filename_ok = (module != nullptr && PyUnicode_Check(module));
-#endif
-    if (filename_ok) {
-      filename = py::reinterpret_borrow<py::str>(module);
-    } else {
-      filename = "<unknown>";
+    case PyTrace_RETURN:
+    case PyTrace_EXCEPTION: {
+      if (!thread_traces.active.empty()) {
+        auto& entry = thread_traces.active.top();
+        entry.end_time_ns = now;
+        thread_traces.completed.emplace_back(std::move(entry));
+        thread_traces.active.pop();
+      } else if (options_.include_incomplete_events) {
+        PyCodeObject* f_code = frame->f_code;
+        thread_traces.completed.emplace_back(start_timestamp_ns_, now, f_code,
+                                             nullptr);
+      }
+      break;
     }
-
-    string function(func->m_ml->ml_name);
-    tracemes_[thread_id].push_back(absl::make_unique<TraceMe>(
-        absl::StrCat(filename, " ", func->m_ml->ml_name)));
-  } else if (what == PyTrace_RETURN || what == PyTrace_C_RETURN ||
-             what == PyTrace_EXCEPTION || what == PyTrace_C_EXCEPTION) {
-    auto& thread_tracemes = tracemes_[thread_id];
-    if (!thread_tracemes.empty()) {
-      thread_tracemes.pop_back();
+    case PyTrace_C_CALL: {
+      if (PyCFunction_Check(arg)) {
+        // Python stack does not have a filename/line_no for native calls.
+        auto* func = reinterpret_cast<PyCFunctionObject*>(arg);
+        entries_[thread_id].active.emplace(now, 0, nullptr, func);
+      }
+      break;
     }
+    case PyTrace_C_RETURN:
+    case PyTrace_C_EXCEPTION: {
+      if (!thread_traces.active.empty()) {
+        auto& entry = thread_traces.active.top();
+        entry.end_time_ns = now;
+        thread_traces.completed.emplace_back(std::move(entry));
+        thread_traces.active.pop();
+      } else if (options_.include_incomplete_events) {
+        // Only the end of the events is recorded, use profiler start as start.
+        if (PyCFunction_Check(arg)) {
+          // Python stack does not have a filename/line_no for native calls.
+          auto* func = reinterpret_cast<PyCFunctionObject*>(arg);
+          entries_[thread_id].completed.emplace_back(start_timestamp_ns_, now,
+                                                     nullptr, func);
+        }
+      }
+      break;
+    }
+    default:
+      break;
   }
 }
 
@@ -178,6 +337,17 @@ void PythonHooks::ClearProfilerInAllThreads() {
 
   // And notify the threading library that we're done.
   ThreadingSetProfile(py::none());
+}
+
+void PythonHooks::EnableTraceMe(bool enable) {
+  const char* kModuleName =
+      "tensorflow.python.profiler.trace";
+  try {
+    auto trace_module = py::module::import(kModuleName);
+    trace_module.attr("enabled") = py::bool_(enable);
+  } catch (const py::error_already_set& e) {
+    LOG(ERROR) << "Can't import " << kModuleName;
+  }
 }
 
 }  // namespace profiler

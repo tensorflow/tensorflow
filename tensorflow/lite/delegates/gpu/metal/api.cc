@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/substitute.h"
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
@@ -25,7 +26,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compiled_model.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
-#include "tensorflow/lite/delegates/gpu/metal/environment.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/add.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/concat.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/conv.h"
@@ -35,10 +35,10 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/kernels/fully_connected.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/max_unpooling.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/mean.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/mul.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/padding.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/pooling.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/prelu.h"
+#include "tensorflow/lite/delegates/gpu/metal/kernels/quantize_and_dequantize.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/relu.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/reshape.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/resize.h"
@@ -53,22 +53,6 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 namespace {
-
-bool IsWidthBroadcastedForSecondInput(const std::vector<Value*>& inputs) {
-  return inputs.size() == 2 &&
-         inputs[0]->tensor.shape.w != inputs[1]->tensor.shape.w &&
-         inputs[1]->tensor.shape.w == 1;
-}
-bool IsHeightBroadcastedForSecondInput(const std::vector<Value*>& inputs) {
-  return inputs.size() == 2 &&
-         inputs[0]->tensor.shape.h != inputs[1]->tensor.shape.h &&
-         inputs[1]->tensor.shape.h == 1;
-}
-bool IsChannelsBroadcastedForSecondInput(const std::vector<Value*>& inputs) {
-  return inputs.size() == 2 &&
-         inputs[0]->tensor.shape.c != inputs[1]->tensor.shape.c &&
-         inputs[1]->tensor.shape.c == 1;
-}
 
 std::vector<ComputeTaskDescriptorPtr> SelectDepthWiseConv(
     int id, ValueId input_id, ValueId output_id,
@@ -85,15 +69,21 @@ std::vector<ComputeTaskDescriptorPtr> SelectDepthWiseConv(
 
 std::vector<ComputeTaskDescriptorPtr> SelectConvolutionTransposed(
     int id, ValueId input_id, ValueId output_id,
-    const ConvolutionTransposedAttributes& attr, const DeviceInfo& device_info,
+    const ConvolutionTransposedAttributes& attr, const GpuInfo& gpu_info,
     const metal::RuntimeOptions& options) {
   if (CheckConvolutionTransposed4x4Support(attr)) {
-    return ConvolutionTransposed4x4(id, input_id, output_id, attr, device_info,
+    return ConvolutionTransposed4x4(id, input_id, output_id, attr, gpu_info,
                                     options);
   } else {
-    return ConvolutionTransposed(id, input_id, output_id, attr, device_info,
+    return ConvolutionTransposed(id, input_id, output_id, attr, gpu_info,
                                  options);
   }
+}
+
+std::vector<ComputeTaskDescriptorPtr> SelectQuantizeAndDequantize(
+    int id, ValueId input_id, ValueId output_id,
+    const QuantizeAndDequantizeAttributes& attr) {
+  return QuantizeAndDequantize(id, input_id, output_id, attr);
 }
 
 std::vector<ComputeTaskDescriptorPtr> SelectPReLU(
@@ -126,12 +116,13 @@ std::vector<ComputeTaskDescriptorPtr> SelectReshape(
   }
 }
 
-std::vector<ComputeTaskDescriptorPtr> SelectSoftmax(
-    const GraphFloat32& graph, int id, ValueId input_id, ValueId output_id,
-    const DeviceInfo& device_info) {
+std::vector<ComputeTaskDescriptorPtr> SelectSoftmax(const GraphFloat32& graph,
+                                                    int id, ValueId input_id,
+                                                    ValueId output_id,
+                                                    const GpuInfo& gpu_info) {
   const auto src_shape = graph.FindInputs(id)[0]->tensor.shape;
   if (src_shape.w == 1 && src_shape.h == 1) {
-    return Softmax1x1(id, input_id, output_id, device_info, src_shape.c);
+    return Softmax1x1(id, input_id, output_id, gpu_info, src_shape.c);
   } else {
     return Softmax(id, input_id, output_id, src_shape.c);
   }
@@ -145,9 +136,9 @@ std::vector<ComputeTaskDescriptorPtr> SelectSpaceToDepth(
 
 std::vector<ComputeTaskDescriptorPtr> SelectWinograd4x4To36(
     int id, ValueId input_id, ValueId output_id,
-    const Winograd4x4To36Attributes& attr, const DeviceInfo& device_info,
+    const Winograd4x4To36Attributes& attr, const GpuInfo& gpu_info,
     const metal::RuntimeOptions& options) {
-  if (device_info.IsAppleGPU()) {
+  if (gpu_info.IsApple()) {
     return Winograd4x4To36(id, input_id, output_id, attr);
   } else {
     return Winograd4x4To36TileX6(id, input_id, output_id, attr, options);
@@ -156,9 +147,9 @@ std::vector<ComputeTaskDescriptorPtr> SelectWinograd4x4To36(
 
 std::vector<ComputeTaskDescriptorPtr> SelectWinograd36To4x4(
     int id, ValueId input_id, ValueId output_id,
-    const Winograd36To4x4Attributes& attr, const DeviceInfo& device_info,
+    const Winograd36To4x4Attributes& attr, const GpuInfo& gpu_info,
     const metal::RuntimeOptions& options) {
-  if (device_info.IsAppleGPU()) {
+  if (gpu_info.IsApple()) {
     return Winograd36To4x4(id, input_id, output_id, options, attr);
   } else {
     return Winograd36To4x4Tile4x1(id, input_id, output_id, options, attr);
@@ -186,7 +177,7 @@ bool IsSuitableForWinograd4x4To6x6(const Convolution2DAttributes& attr,
 absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
                                 const std::vector<ValueId>& inputs,
                                 const std::vector<ValueId>& outputs,
-                                const DeviceInfo& device_info,
+                                const GpuInfo& gpu_info,
                                 const RuntimeOptions& options,
                                 int* last_node_id, int* last_value_id,
                                 std::vector<ComputeTaskDescriptorPtr>* tasks) {
@@ -198,18 +189,23 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
   auto op_type = OperationTypeFromString(node->operation.type);
   switch (op_type) {
     case OperationType::ADD: {
-      const auto srcs = graph.FindInputs(node_id);
-      ElementwiseBroadcastSettings broadcast;
-      broadcast.width = IsWidthBroadcastedForSecondInput(srcs);
-      broadcast.height = IsHeightBroadcastedForSecondInput(srcs);
-      broadcast.channels = IsChannelsBroadcastedForSecondInput(srcs);
-      if (broadcast.width || broadcast.height || broadcast.channels) {
-        *tasks = ElementwiseWithTwoInputs(node_id, inputs, outputs[0], op_type,
-                                          broadcast);
-      } else {
-        *tasks = Add(node_id, inputs, outputs[0],
-                     absl::any_cast<AddAttributes>(node->operation.attributes),
-                     options);
+      if (inputs.size() == 1) {
+        if (node->operation.attributes.has_value()) {
+          auto attr =
+              absl::any_cast<ElementwiseAttributes>(node->operation.attributes);
+          *tasks = ElementwiseWithOneInputAndConstantArguent(
+              node_id, inputs[0], outputs[0], options, op_type, attr.param);
+        } else {
+          return absl::UnimplementedError(
+              "Missing attributes for single input op: " +
+              node->operation.type);
+        }
+      } else if (inputs.size() == 2) {
+        const auto srcs = graph.FindInputs(node_id);
+        *tasks = ElementwiseWithTwoInputs(node_id, inputs, outputs[0],
+                                          srcs[1]->tensor.shape, op_type);
+      } else {  // more than 2 inputs
+        *tasks = Add(node_id, inputs, outputs[0], options);
       }
       break;
     }
@@ -241,13 +237,12 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
         (*last_node_id) += 1;
         int value_id = *last_value_id + 1;
         *tasks = SelectWinograd4x4To36(*last_node_id, inputs[0], value_id,
-                                       wino_up_attr, device_info, options);
+                                       wino_up_attr, gpu_info, options);
 
         BHWC conv_shape{dst_shape.b, 36, tiles_x * tiles_y, dst_shape.c};
         (*last_node_id) += 1;
-        auto t1 =
-            ConvolutionWino4x4To6x6(*last_node_id, value_id, value_id + 1,
-                                    conv_shape, attr, device_info, options);
+        auto t1 = ConvolutionWino4x4To6x6(*last_node_id, value_id, value_id + 1,
+                                          conv_shape, attr, gpu_info, options);
         tasks->insert(tasks->end(), t1.begin(), t1.end());
 
         Winograd36To4x4Attributes wino_down_attr;
@@ -255,23 +250,33 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
         wino_down_attr.biases = attr.bias;
         (*last_node_id) += 1;
         auto t2 = SelectWinograd36To4x4(*last_node_id, value_id + 1, outputs[0],
-                                        wino_down_attr, device_info, options);
+                                        wino_down_attr, gpu_info, options);
         tasks->insert(tasks->end(), t2.begin(), t2.end());
         (*last_value_id) += 2;
       } else {
         *tasks = ConvolutionGeneric(node_id, inputs[0], outputs[0], dst_shape,
-                                    attr, device_info, options);
+                                    attr, gpu_info, options);
       }
       break;
     }
     case OperationType::CONVOLUTION_TRANSPOSED:
+      if (graph.FindInputs(node->id).size() != 1) {
+        return absl::UnimplementedError(
+            "Convolution Transposed does not support more than 1 runtime "
+            "tensor");
+      }
       *tasks = SelectConvolutionTransposed(
           node_id, inputs[0], outputs[0],
           absl::any_cast<ConvolutionTransposedAttributes>(
               node->operation.attributes),
-          device_info, options);
+          gpu_info, options);
       break;
     case OperationType::DEPTHWISE_CONVOLUTION:
+      if (graph.FindInputs(node->id).size() != 1) {
+        return absl::UnimplementedError(
+            "DepthWise Convolution does not support more than 1 runtime "
+            "tensor");
+      }
       *tasks =
           SelectDepthWiseConv(node_id, inputs[0], outputs[0],
                               absl::any_cast<DepthwiseConvolution2DAttributes>(
@@ -282,36 +287,37 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
       *tasks = FullyConnected(
           node_id, inputs[0], outputs[0],
           absl::any_cast<FullyConnectedAttributes>(node->operation.attributes),
-          device_info, options);
+          gpu_info, options);
       break;
     case OperationType::MAX_UNPOOLING_2D:
       *tasks = MaxUnpooling(
           node_id, inputs[0], inputs[1], outputs[0],
           absl::any_cast<MaxUnpooling2DAttributes>(node->operation.attributes));
       break;
-    case OperationType::MEAN:
-      *tasks = Mean(node_id, inputs[0], outputs[0],
-                    absl::any_cast<MeanAttributes>(node->operation.attributes));
+    case OperationType::MEAN: {
+      auto attr = absl::any_cast<MeanAttributes>(node->operation.attributes);
+      if (attr.dims != std::set<Axis>({Axis::HEIGHT, Axis::WIDTH})) {
+        return absl::UnimplementedError("Mean supports HW axis only in Metal");
+      }
+      *tasks = Mean(node_id, inputs[0], outputs[0], attr);
       break;
+    }
     case OperationType::MUL:
-      if (node->operation.attributes.has_value()) {
-        *tasks = Multiply(
-            node_id, inputs[0], outputs[0],
-            absl::any_cast<MultiplyAttributes>(node->operation.attributes),
-            options);
-      } else {
-        if (inputs.size() == 2) {
-          const auto srcs = graph.FindInputs(node_id);
-          ElementwiseBroadcastSettings broadcast;
-          broadcast.width = IsWidthBroadcastedForSecondInput(srcs);
-          broadcast.height = IsHeightBroadcastedForSecondInput(srcs);
-          broadcast.channels = IsChannelsBroadcastedForSecondInput(srcs);
-          *tasks = ElementwiseWithTwoInputs(node_id, inputs, outputs[0],
-                                            op_type, broadcast);
+      if (inputs.size() == 1) {
+        if (node->operation.attributes.has_value()) {
+          auto attr =
+              absl::any_cast<ElementwiseAttributes>(node->operation.attributes);
+          *tasks = ElementwiseWithOneInputAndConstantArguent(
+              node_id, inputs[0], outputs[0], options, op_type, attr.param);
         } else {
           return absl::UnimplementedError(
-              "No support of multiply with more than 2 inputs");
+              "Missing attributes for single input op: " +
+              node->operation.type);
         }
+      } else if (inputs.size() == 2) {
+        const auto srcs = graph.FindInputs(node_id);
+        *tasks = ElementwiseWithTwoInputs(node_id, inputs, outputs[0],
+                                          srcs[1]->tensor.shape, op_type);
       }
       break;
     case OperationType::PAD: {
@@ -336,6 +342,12 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
       *tasks = ReLU(node_id, inputs[0], outputs[0],
                     absl::any_cast<ReLUAttributes>(node->operation.attributes));
       break;
+    case OperationType::QUANTIZE_AND_DEQUANTIZE:
+      *tasks = SelectQuantizeAndDequantize(
+          node_id, inputs[0], outputs[0],
+          absl::any_cast<QuantizeAndDequantizeAttributes>(
+              node->operation.attributes));
+      break;
     case OperationType::RESHAPE:
       *tasks = SelectReshape(
           graph, node_id, inputs[0], outputs[0],
@@ -357,8 +369,7 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
         return absl::UnimplementedError(
             "Softmax supports only CHANNELS dimension");
       }
-      *tasks =
-          SelectSoftmax(graph, node_id, inputs[0], outputs[0], device_info);
+      *tasks = SelectSoftmax(graph, node_id, inputs[0], outputs[0], gpu_info);
       break;
     }
     case OperationType::SPACE_TO_DEPTH:
@@ -367,10 +378,13 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
           absl::any_cast<SpaceToDepthAttributes>(node->operation.attributes));
       break;
     case OperationType::ABS:
+    case OperationType::COPY:
     case OperationType::COS:
+    case OperationType::ELU:
     case OperationType::EXP:
     case OperationType::HARD_SWISH:
     case OperationType::LOG:
+    case OperationType::NEG:
     case OperationType::RSQRT:
     case OperationType::SIGMOID:
     case OperationType::SIN:
@@ -385,26 +399,41 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
     case OperationType::POW:
     case OperationType::SQUARED_DIFF:
     case OperationType::SUB: {
-      const ElementwiseAttributes* attr =
-          absl::any_cast<ElementwiseAttributes>(&node->operation.attributes);
-      if (attr) {
-        *tasks = ElementwiseWithOneInputAndConstantArguent(
-            node_id, inputs[0], outputs[0], options, op_type, *attr);
-      } else {
+      if (inputs.size() == 1) {
+        if (node->operation.attributes.has_value()) {
+          auto attr =
+              absl::any_cast<ElementwiseAttributes>(node->operation.attributes);
+          *tasks = ElementwiseWithOneInputAndConstantArguent(
+              node_id, inputs[0], outputs[0], options, op_type, attr.param);
+        } else {
+          return absl::UnimplementedError(
+              "Missing attributes for single input op: " +
+              node->operation.type);
+        }
+      } else if (inputs.size() == 2) {
         const auto srcs = graph.FindInputs(node_id);
-        ElementwiseBroadcastSettings broadcast;
-        broadcast.width = IsWidthBroadcastedForSecondInput(srcs);
-        broadcast.height = IsHeightBroadcastedForSecondInput(srcs);
-        broadcast.channels = IsChannelsBroadcastedForSecondInput(srcs);
-        *tasks = ElementwiseWithTwoInputs(node_id, inputs, outputs[0], op_type,
-                                          broadcast);
+        *tasks = ElementwiseWithTwoInputs(node_id, inputs, outputs[0],
+                                          srcs[1]->tensor.shape, op_type);
       }
     } break;
     case OperationType::BATCH_NORMALIZATION:
     case OperationType::BATCH_TO_SPACE:
+    case OperationType::BATCHED_MATMUL:
     case OperationType::CONST:
     case OperationType::LSTM:
-    case OperationType::QUANTIZE_AND_DEQUANTIZE:
+    // TODO(b/162763635): implement MeanStddevNormalization for Metal.
+    case OperationType::MEAN_STDDEV_NORMALIZATION:
+    case OperationType::REDUCE_MAXIMUM:
+    case OperationType::REDUCE_MINIMUM:
+    case OperationType::REDUCE_PRODUCT:
+    case OperationType::REDUCE_SUM:
+    // comparison operations
+    case OperationType::LESS:
+    case OperationType::LESS_EQUAL:
+    case OperationType::EQUAL:
+    case OperationType::NOT_EQUAL:
+    case OperationType::GREATER:
+    case OperationType::GREATER_EQUAL:
     case OperationType::SPACE_TO_BATCH:
     case OperationType::TRANSPOSE:
     case OperationType::UNKNOWN:
@@ -416,7 +445,7 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
 
 }  // namespace
 
-absl::Status Compile(const GraphFloat32& graph, const DeviceInfo& device_info,
+absl::Status Compile(const GraphFloat32& graph, const GpuInfo& gpu_info,
                      const RuntimeOptions& options,
                      CompiledModel* compiled_model) {
   int last_node_id = 0;
@@ -441,7 +470,7 @@ absl::Status Compile(const GraphFloat32& graph, const DeviceInfo& device_info,
         RegisterCustomOps(graph, node, inputs, outputs, options, &tasks);
     if (!custom_status.ok()) {
       auto primary_status =
-          RegisterPrimaryOps(graph, node, inputs, outputs, device_info, options,
+          RegisterPrimaryOps(graph, node, inputs, outputs, gpu_info, options,
                              &last_node_id, &last_value_id, &tasks);
       if (!primary_status.ok()) {
         return absl::UnimplementedError(

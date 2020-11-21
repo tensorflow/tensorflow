@@ -24,9 +24,6 @@ limitations under the License.
 // NEON_2_SSE translator library. If a native SSE version of a function is
 // implemented, replace the appropriate one to SSE_OR_PORTABLE.
 
-// TODO(ghodrat): Remove this header file and the dependency to internal data
-// structure.
-#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/optimized/neon_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/neon_tensor_utils_impl.h"
@@ -59,10 +56,9 @@ void MatrixBatchVectorMultiplyAccumulate(
     int n_batch, float* __restrict__ result, const float* per_channel_scale,
     const int32_t* input_offset, int32_t* scratch, int32_t* row_sums,
     bool* compute_row_sums, CpuBackendContext* context) {
-  PortableMatrixBatchVectorMultiplyAccumulate(
-      matrix, m_rows, m_cols, vectors, scaling_factors, n_batch, result,
-      per_channel_scale, input_offset, scratch, row_sums, compute_row_sums,
-      context);
+  SSE_OR_PORTABLE(MatrixBatchVectorMultiplyAccumulate, matrix, m_rows, m_cols,
+                  vectors, scaling_factors, n_batch, result, per_channel_scale,
+                  input_offset, scratch, row_sums, compute_row_sums, context);
 }
 
 void MatrixBatchVectorMultiplyAccumulate(
@@ -72,18 +68,7 @@ void MatrixBatchVectorMultiplyAccumulate(
     int32_t* __restrict__ scratch, float* __restrict__ result,
     CpuBackendContext* __restrict__ context) {
   SSE_OR_PORTABLE(MatrixBatchVectorMultiplyAccumulate, matrix, m_rows, m_cols,
-                  vectors, scaling_factors, n_batch, result);
-}
-
-void MatrixBatchVectorMultiplyAccumulate(
-    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
-    const int8_t* __restrict__ vectors,
-    const float* __restrict__ scaling_factors, int n_batch,
-    float* __restrict__ result, const float* __restrict__ per_channel_scale,
-    const int32_t* __restrict__ input_offset) {
-  SSE_OR_PORTABLE(MatrixBatchVectorMultiplyAccumulate, matrix, m_rows, m_cols,
-                  vectors, scaling_factors, n_batch, result, per_channel_scale,
-                  input_offset);
+                  vectors, scaling_factors, n_batch, scratch, result, context);
 }
 
 void SparseMatrixBatchVectorMultiplyAccumulate1x4(
@@ -218,14 +203,19 @@ void CwiseAdd(const int16_t* input_1, const int16_t* input_2, int n_batch,
   PortableCwiseAdd(input_1, input_2, n_batch, n_input, output);
 }
 
-void CwiseClipping(int16_t* input, const int16_t clipping_value,
-                   int32_t n_batch, int32_t n_input) {
-  PortableCwiseClipping(input, clipping_value, n_batch, n_input);
+void CwiseClipping(float* vector, const int v_size,
+                   const float clipping_value) {
+  PortableCwiseClipping(vector, v_size, clipping_value);
 }
 
-void CwiseClipping(int8_t* input, const int8_t clipping_value, int32_t n_batch,
-                   int32_t n_input) {
-  PortableCwiseClipping(input, clipping_value, n_batch, n_input);
+void CwiseClipping(int16_t* vector, const int v_size,
+                   const int16_t clipping_value) {
+  PortableCwiseClipping(vector, v_size, clipping_value);
+}
+
+void CwiseClipping(int8_t* vector, const int v_size,
+                   const int8_t clipping_value) {
+  PortableCwiseClipping(vector, v_size, clipping_value);
 }
 
 void BatchVectorBatchVectorDotProduct(const int16_t* vector1,
@@ -239,8 +229,8 @@ void VectorBatchVectorCwiseProductAccumulate(const int16_t* vector, int v_size,
                                              const int16_t* batch_vector,
                                              int n_batch, int32_t multiplier,
                                              int shift, int16_t* result) {
-  PortableVectorBatchVectorCwiseProductAccumulate(
-      vector, v_size, batch_vector, n_batch, multiplier, shift, result);
+  NEON_OR_PORTABLE(VectorBatchVectorCwiseProductAccumulate, vector, v_size,
+                   batch_vector, n_batch, multiplier, shift, result);
 }
 
 float VectorVectorDotProduct(const float* vector1, const float* vector2,
@@ -274,10 +264,6 @@ bool IsZeroVector(const int8_t* vector, int v_size) {
 void VectorScalarMultiply(const int8_t* vector, int v_size, float scale,
                           float* result) {
   NEON_OR_PORTABLE(VectorScalarMultiply, vector, v_size, scale, result);
-}
-void ClipVector(const float* vector, int v_size, float abs_limit,
-                float* result) {
-  NEON_OR_PORTABLE(ClipVector, vector, v_size, abs_limit, result);
 }
 
 void SymmetricQuantizeFloats(const float* values, const int size,
@@ -315,8 +301,8 @@ void ReductionSumVector(const int32_t* input_vector, int32_t* output_vector,
 
 void ReductionSumVector(const int8_t* input_vector, int32_t* output_vector,
                         int output_size, int reduction_size) {
-  NEON_OR_PORTABLE(ReductionSumVector, input_vector, output_vector, output_size,
-                   reduction_size);
+  SSE_OR_PORTABLE(ReductionSumVector, input_vector, output_vector, output_size,
+                  reduction_size);
 }
 
 void MeanStddevNormalization(const float* input_vector, float* output_vector,
@@ -324,14 +310,14 @@ void MeanStddevNormalization(const float* input_vector, float* output_vector,
   PortableMeanStddevNormalization(input_vector, output_vector, v_size, n_batch);
 }
 
-void TwoGateSaturationgAdd(const int8_t* input, int8_t input_zp,
-                           const int8_t* recurrent, int8_t recurrent_zp,
-                           int32_t input_effective_scale_a,
-                           int32_t input_effective_scale_b,
-                           int32_t recurrent_effective_scale_a,
-                           int32_t recurrent_effective_scale_b, int32_t n_batch,
-                           int32_t n_cell, int16_t* output) {
-  PortableTwoGateSaturationgAdd(
+void TwoGateSaturatingAdd(const int8_t* input, int8_t input_zp,
+                          const int8_t* recurrent, int8_t recurrent_zp,
+                          int32_t input_effective_scale_a,
+                          int32_t input_effective_scale_b,
+                          int32_t recurrent_effective_scale_a,
+                          int32_t recurrent_effective_scale_b, int32_t n_batch,
+                          int32_t n_cell, int16_t* output) {
+  PortableTwoGateSaturatingAdd(
       input, input_zp, recurrent, recurrent_zp, input_effective_scale_a,
       input_effective_scale_b, recurrent_effective_scale_a,
       recurrent_effective_scale_b, n_batch, n_cell, output);

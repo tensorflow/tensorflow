@@ -14,22 +14,17 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/micro/all_ops_resolver.h"
+#include "tensorflow/lite/micro/benchmarks/micro_benchmark.h"
 #include "tensorflow/lite/micro/examples/person_detection/model_settings.h"
 #include "tensorflow/lite/micro/examples/person_detection/no_person_image_data.h"
 #include "tensorflow/lite/micro/examples/person_detection/person_detect_model_data.h"
 #include "tensorflow/lite/micro/examples/person_detection/person_image_data.h"
-#include "tensorflow/lite/micro/kernels/micro_ops.h"
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
-#include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
 #include "tensorflow/lite/micro/micro_utils.h"
-#include "tensorflow/lite/micro/testing/micro_benchmark.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
-
-// Create an area of memory to use for input, output, and intermediate arrays.
-constexpr int tensor_arena_size = 73 * 1024;
-uint8_t tensor_arena[tensor_arena_size];
 
 /*
  * Person Detection benchmark.  Evaluates runtime performance of the visual
@@ -39,85 +34,54 @@ uint8_t tensor_arena[tensor_arena_size];
 
 namespace {
 
+using PersonDetectionOpResolver = tflite::AllOpsResolver;
+using PersonDetectionBenchmarkRunner = MicroBenchmarkRunner<uint8_t>;
+
+constexpr int kRandomSeed = 42;
+
 // Create an area of memory to use for input, output, and intermediate arrays.
-constexpr int tensor_arena_size = 73 * 1024;
-uint8_t tensor_arena[tensor_arena_size];
+// Align arena to 16 bytes to avoid alignment warnings on certain platforms.
+constexpr int kTensorArenaSize = 95 * 1024;
+alignas(16) uint8_t tensor_arena[kTensorArenaSize];
 
-class PersonDetectionRunner {
- public:
-  PersonDetectionRunner()
-      : person_detection_model_(tflite::GetModel(g_person_detect_model_data)),
-        reporter_(&micro_reporter_),
-        interpreter_(person_detection_model_, resolver_, tensor_arena,
-                     tensor_arena_size, reporter_) {
-    resolver_.AddBuiltin(tflite::BuiltinOperator_DEPTHWISE_CONV_2D,
-                         tflite::ops::micro::Register_DEPTHWISE_CONV_2D());
-    resolver_.AddBuiltin(tflite::BuiltinOperator_CONV_2D,
-                         tflite::ops::micro::Register_CONV_2D());
-    resolver_.AddBuiltin(tflite::BuiltinOperator_AVERAGE_POOL_2D,
-                         tflite::ops::micro::Register_AVERAGE_POOL_2D());
-    interpreter_.AllocateTensors();
+uint8_t op_resolver_buffer[sizeof(PersonDetectionOpResolver)];
+uint8_t benchmark_runner_buffer[sizeof(PersonDetectionBenchmarkRunner)];
+PersonDetectionBenchmarkRunner* benchmark_runner = nullptr;
 
-    TfLiteTensor* input = interpreter_.input(0);
-    TFLITE_CHECK_EQ(input->type, kTfLiteUInt8);
+// Initialize benchmark runner instance explicitly to avoid global init order
+// issues on Sparkfun. Use new since static variables within a method
+// are automatically surrounded by locking, which breaks bluepill and stm32f4.
+void CreateBenchmarkRunner() {
+  // We allocate PersonDetectionOpResolver from a global buffer because the
+  // object's lifetime must exceed that of the PersonDetectionBenchmarkRunner
+  // object.
+  benchmark_runner = new (benchmark_runner_buffer)
+      PersonDetectionBenchmarkRunner(g_person_detect_model_data,
+                                     new (op_resolver_buffer)
+                                         PersonDetectionOpResolver(),
+                                     tensor_arena, kTensorArenaSize);
+}
+
+void PersonDetectionTenIterationsWithRandomInput() {
+  benchmark_runner->SetRandomInput(kRandomSeed);
+  for (int i = 0; i < 10; i++) {
+    benchmark_runner->RunSingleIteration();
   }
-
-  void RunSingleIterationWithPerson() {
-    // Populate input tensor with an image with a person
-    TfLiteTensor* input = interpreter_.input(0);
-    int8_t* input_buffer = tflite::GetTensorData<int8_t>(input);
-    int input_length = tflite::ElementCount(*input->dims);
-    for (int i = 0; i < input_length; i++) {
-      input_buffer[i] = g_person_data[i];
-    }
-
-    // Run the model on this input and make sure it succeeds.
-    TfLiteStatus invoke_status = interpreter_.Invoke();
-    if (invoke_status != kTfLiteOk) {
-      TF_LITE_REPORT_ERROR(reporter_, "Invoke failed.");
-    }
-  }
-
-  void RunSingleIterationWithoutPerson() {
-    // Populate input tensor with an image with no person.
-    TfLiteTensor* input = interpreter_.input(0);
-    int8_t* input_buffer = tflite::GetTensorData<int8_t>(input);
-    int input_length = tflite::ElementCount(*input->dims);
-    for (int i = 0; i < input_length; i++) {
-      input_buffer[i] = g_no_person_data[i];
-    }
-
-    // Run the model on this input and make sure it succeeds.
-    TfLiteStatus invoke_status = interpreter_.Invoke();
-    if (invoke_status != kTfLiteOk) {
-      TF_LITE_REPORT_ERROR(reporter_, "Invoke failed.");
-    }
-  }
-
- private:
-  const tflite::Model* person_detection_model_;
-  tflite::MicroErrorReporter micro_reporter_;
-  tflite::ErrorReporter* reporter_;
-  tflite::MicroOpResolver<6> resolver_;
-  tflite::MicroInterpreter interpreter_;
-};
-
-// NOLINTNEXTLINE
-PersonDetectionRunner runner;
-
-void PersonDetectionFirstIteration() { runner.RunSingleIterationWithPerson(); }
+}
 
 void PersonDetectionTenIerationsWithPerson() {
   // TODO(b/152644476): Add a way to run more than a single deterministic input.
+  benchmark_runner->SetInput(g_person_data);
   for (int i = 0; i < 10; i++) {
-    runner.RunSingleIterationWithPerson();
+    benchmark_runner->RunSingleIteration();
   }
 }
 
 void PersonDetectionTenIerationsWithoutPerson() {
   // TODO(b/152644476): Add a way to run more than a single deterministic input.
+  benchmark_runner->SetInput(g_no_person_data);
   for (int i = 0; i < 10; i++) {
-    runner.RunSingleIterationWithoutPerson();
+    benchmark_runner->RunSingleIteration();
   }
 }
 
@@ -125,8 +89,9 @@ void PersonDetectionTenIerationsWithoutPerson() {
 
 TF_LITE_MICRO_BENCHMARKS_BEGIN
 
-TF_LITE_MICRO_BENCHMARK(PersonDetectionFirstIteration);
-TF_LITE_MICRO_BENCHMARK(PersonDetectionTenIerationsWithPerson);
-TF_LITE_MICRO_BENCHMARK(PersonDetectionTenIerationsWithoutPerson);
+TF_LITE_MICRO_BENCHMARK(CreateBenchmarkRunner());
+TF_LITE_MICRO_BENCHMARK(PersonDetectionTenIterationsWithRandomInput());
+TF_LITE_MICRO_BENCHMARK(PersonDetectionTenIerationsWithPerson());
+TF_LITE_MICRO_BENCHMARK(PersonDetectionTenIerationsWithoutPerson());
 
 TF_LITE_MICRO_BENCHMARKS_END

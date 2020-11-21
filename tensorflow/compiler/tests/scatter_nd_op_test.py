@@ -24,6 +24,7 @@ import numpy as np
 
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
@@ -161,6 +162,7 @@ class ScatterNdTest(xla_test.XLATestCase):
     expected = np.zeros([2, 2], dtype=np.int32)
     self.assertAllEqual(expected, self._runScatterNd(indices, updates, [2, 2]))
 
+  @test_util.disable_mlir_bridge("Error messages differ")
   def testRank3InvalidShape1(self):
     indices = np.zeros([3, 2, 2], np.int32)
     updates = np.zeros([2, 2, 2], np.int32)
@@ -168,6 +170,7 @@ class ScatterNdTest(xla_test.XLATestCase):
                                              "Must have updates.shape"):
       self._runScatterNd(indices, updates, [2, 2, 2])
 
+  @test_util.disable_mlir_bridge("Error messages differ")
   def testRank3InvalidShape2(self):
     indices = np.zeros([2, 2, 1], np.int32)
     updates = np.zeros([2, 2], np.int32)

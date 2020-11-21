@@ -33,6 +33,7 @@ MarkForCompilationPassFlags* mark_for_compilation_flags;
 XlaDeviceFlags* device_flags;
 XlaOpsCommonFlags* ops_flags;
 IntroduceFloatingPointJitterPassFlags* jitter_flags;
+MlirCommonFlags* mlir_flags;
 
 std::vector<Flag>* flag_list;
 absl::once_flag flags_init;
@@ -158,13 +159,24 @@ void AllocateAndParseFlags() {
 
   device_flags = new XlaDeviceFlags;
   device_flags->tf_xla_compile_on_demand = false;
-  device_flags->tf_xla_enable_xla_devices = true;
+  device_flags->tf_xla_enable_xla_devices = false;
 
   ops_flags = new XlaOpsCommonFlags;
   ops_flags->tf_xla_always_defer_compilation = false;
 
   jitter_flags = new IntroduceFloatingPointJitterPassFlags;
   jitter_flags->jitter_amount = 1e-5;
+
+  // The `enable_mlir_bridge` flag allows the user to explicitly request that
+  // their program is (or isn't) compiled using the MLIR-based TF-to-XLA bridge.
+  //
+  // The `enable_mlir_bridge_is_explicit` variable tracks whether or not the
+  // user has made an explicit request. That is, if this variable is set to
+  // true, the program honors the user's request as per `enable_mlir_bridge`; if
+  // it's set to false, the default behavior is used (which may run either
+  // bridge, on a per-graph basis).
+  bool enable_mlir_bridge = false;
+  bool enable_mlir_bridge_is_explicit = false;
 
   auto setter_for_jitter_tensor_names = [](string sequence) {
     jitter_flags->tensor_names = absl::StrSplit(sequence, ',');
@@ -180,11 +192,11 @@ void AllocateAndParseFlags() {
             "XLA clusters."),
        Flag("tf_xla_check_cluster_input_numerics",
             &build_ops_flags->tf_xla_check_cluster_input_numerics,
-            "If true then insert CheckNumerics nodes to to check all cluster "
+            "If true then insert CheckNumerics nodes to check all cluster "
             "inputs."),
        Flag("tf_xla_check_cluster_output_numerics",
             &build_ops_flags->tf_xla_check_cluster_output_numerics,
-            "If true then insert CheckNumerics nodes to to check all cluster "
+            "If true then insert CheckNumerics nodes to check all cluster "
             "outputs."),
        Flag("tf_xla_disable_constant_folding",
             &build_ops_flags->tf_xla_disable_constant_folding,
@@ -211,10 +223,26 @@ void AllocateAndParseFlags() {
        Flag("tf_introduce_floating_point_jitter_amount",
             &jitter_flags->jitter_amount,
             "The amount of jitter to introduce.  This amount is added to each "
-            "element in the tensors named in `tensor_names.")});
+            "element in the tensors named in `tensor_names."),
+
+       Flag("tf_mlir_enable_mlir_bridge", &enable_mlir_bridge,
+            "Enables experimental MLIR-Based TensorFlow Compiler Bridge.",
+            &enable_mlir_bridge_is_explicit)});
 
   AppendMarkForCompilationPassFlagsInternal(flag_list);
   xla::ParseFlagsFromEnvAndDieIfUnknown("TF_XLA_FLAGS", *flag_list);
+
+  mlir_flags = new MlirCommonFlags;
+  if (!enable_mlir_bridge_is_explicit) {
+    mlir_flags->tf_mlir_enable_mlir_bridge =
+        ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_UNSPECIFIED;
+  } else if (enable_mlir_bridge) {
+    mlir_flags->tf_mlir_enable_mlir_bridge =
+        ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED;
+  } else {
+    mlir_flags->tf_mlir_enable_mlir_bridge =
+        ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_DISABLED;
+  }
 }
 
 }  // namespace
@@ -250,15 +278,20 @@ GetIntroduceFloatingPointJitterPassFlags() {
   return *jitter_flags;
 }
 
+MlirCommonFlags* GetMlirCommonFlags() {
+  absl::call_once(flags_init, &AllocateAndParseFlags);
+  return mlir_flags;
+}
+
 void AppendMarkForCompilationPassFlags(std::vector<Flag>* flag_list) {
   absl::call_once(flags_init, &AllocateAndParseFlags);
   AppendMarkForCompilationPassFlagsInternal(flag_list);
 }
 
-static bool xla_is_enabled = false;
+static std::atomic<bool> xla_compilation_disabled(false);
 
-void SetXlaIsEnabled() { xla_is_enabled = true; }
+void DisableXlaCompilation() { xla_compilation_disabled = true; }
 
-bool IsXlaEnabled() { return xla_is_enabled; }
+bool FailOnXlaCompilation() { return xla_compilation_disabled; }
 
 }  // namespace tensorflow

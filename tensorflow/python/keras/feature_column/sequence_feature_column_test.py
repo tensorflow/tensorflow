@@ -31,7 +31,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
-from tensorflow.python.framework import test_util
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras.feature_column import sequence_feature_column as ksfc
 from tensorflow.python.keras.saving import model_config
@@ -47,6 +46,7 @@ def _initialized_session(config=None):
   return sess
 
 
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.named_parameters(
@@ -91,7 +91,6 @@ class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
            [[1., 2., 17., 18., 19.], [3., 4., 11., 12., 13.]]],
        'expected_sequence_length': [2, 2]},
       )
-  @test_util.run_in_graph_and_eager_modes
   def test_embedding_column(
       self, sparse_input_args_a, sparse_input_args_b, expected_input_layer,
       expected_sequence_length):
@@ -151,7 +150,6 @@ class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(
         expected_sequence_length, self.evaluate(sequence_length))
 
-  @test_util.run_in_graph_and_eager_modes
   def test_embedding_column_with_non_sequence_categorical(self):
     """Tests that error is raised for non-sequence embedding column."""
     vocabulary_size = 3
@@ -167,13 +165,12 @@ class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
     embedding_column_a = fc.embedding_column(
         categorical_column_a, dimension=2)
     sequence_input_layer = ksfc.SequenceFeatures([embedding_column_a])
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         r'In embedding_column: aaa_embedding\. categorical_column must be of '
         r'type SequenceCategoricalColumn to use SequenceFeatures\.'):
       _, _ = sequence_input_layer({'aaa': sparse_input})
 
-  @test_util.run_in_graph_and_eager_modes
   def test_shared_embedding_column(self):
     with ops.Graph().as_default():
       vocabulary_size = 3
@@ -241,37 +238,38 @@ class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
         self.assertAllEqual(
             expected_sequence_length, sequence_length.eval(session=sess))
 
-  @test_util.run_deprecated_v1
   def test_shared_embedding_column_with_non_sequence_categorical(self):
     """Tests that error is raised for non-sequence shared embedding column."""
-    vocabulary_size = 3
-    sparse_input_a = sparse_tensor.SparseTensorValue(
-        # example 0, ids [2]
-        # example 1, ids [0, 1]
-        indices=((0, 0), (1, 0), (1, 1)),
-        values=(2, 0, 1),
-        dense_shape=(2, 2))
-    sparse_input_b = sparse_tensor.SparseTensorValue(
-        # example 0, ids [2]
-        # example 1, ids [0, 1]
-        indices=((0, 0), (1, 0), (1, 1)),
-        values=(2, 0, 1),
-        dense_shape=(2, 2))
+    with ops.Graph().as_default():
+      vocabulary_size = 3
+      sparse_input_a = sparse_tensor.SparseTensorValue(
+          # example 0, ids [2]
+          # example 1, ids [0, 1]
+          indices=((0, 0), (1, 0), (1, 1)),
+          values=(2, 0, 1),
+          dense_shape=(2, 2))
+      sparse_input_b = sparse_tensor.SparseTensorValue(
+          # example 0, ids [2]
+          # example 1, ids [0, 1]
+          indices=((0, 0), (1, 0), (1, 1)),
+          values=(2, 0, 1),
+          dense_shape=(2, 2))
 
-    categorical_column_a = fc.categorical_column_with_identity(
-        key='aaa', num_buckets=vocabulary_size)
-    categorical_column_b = fc.categorical_column_with_identity(
-        key='bbb', num_buckets=vocabulary_size)
-    shared_embedding_columns = fc.shared_embedding_columns_v2(
-        [categorical_column_a, categorical_column_b], dimension=2)
+      categorical_column_a = fc.categorical_column_with_identity(
+          key='aaa', num_buckets=vocabulary_size)
+      categorical_column_b = fc.categorical_column_with_identity(
+          key='bbb', num_buckets=vocabulary_size)
+      shared_embedding_columns = fc.shared_embedding_columns_v2(
+          [categorical_column_a, categorical_column_b], dimension=2)
 
-    sequence_input_layer = ksfc.SequenceFeatures(shared_embedding_columns)
-    with self.assertRaisesRegexp(
-        ValueError,
-        r'In embedding_column: aaa_shared_embedding\. categorical_column must '
-        r'be of type SequenceCategoricalColumn to use SequenceFeatures\.'):
-      _, _ = sequence_input_layer({'aaa': sparse_input_a,
-                                   'bbb': sparse_input_b})
+      sequence_input_layer = ksfc.SequenceFeatures(shared_embedding_columns)
+      with self.assertRaisesRegex(
+          ValueError,
+          r'In embedding_column: aaa_shared_embedding\. '
+          r'categorical_column must '
+          r'be of type SequenceCategoricalColumn to use SequenceFeatures\.'):
+        _, _ = sequence_input_layer({'aaa': sparse_input_a,
+                                     'bbb': sparse_input_b})
 
   @parameterized.named_parameters(
       {'testcase_name': '2D',
@@ -315,7 +313,6 @@ class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
            [[2., 0., 0., 0., 1.], [0., 1., 0., 1., 0.]]],
        'expected_sequence_length': [2, 2]},
       )
-  @test_util.run_in_graph_and_eager_modes
   def test_indicator_column(
       self, sparse_input_args_a, sparse_input_args_b, expected_input_layer,
       expected_sequence_length):
@@ -341,7 +338,6 @@ class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(
         expected_sequence_length, self.evaluate(sequence_length))
 
-  @test_util.run_in_graph_and_eager_modes
   def test_indicator_column_with_non_sequence_categorical(self):
     """Tests that error is raised for non-sequence categorical column."""
     vocabulary_size = 3
@@ -357,7 +353,7 @@ class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
     indicator_column_a = fc.indicator_column(categorical_column_a)
 
     sequence_input_layer = ksfc.SequenceFeatures([indicator_column_a])
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         r'In indicator_column: aaa_indicator\. categorical_column must be of '
         r'type SequenceCategoricalColumn to use SequenceFeatures\.'):
@@ -387,7 +383,6 @@ class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
            [[3.], [0.], [8.], [0.]]],
        'expected_sequence_length': [2, 2]},
       )
-  @test_util.run_in_graph_and_eager_modes
   def test_numeric_column(
       self, sparse_input_args, expected_input_layer, expected_sequence_length):
     sparse_input = sparse_tensor.SparseTensorValue(**sparse_input_args)
@@ -430,7 +425,6 @@ class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
            [[10., 11., 12., 13.], [0., 0., 0., 0.]]],
        'expected_sequence_length': [2, 1]},
       )
-  @test_util.run_in_graph_and_eager_modes
   def test_numeric_column_multi_dim(
       self, sparse_input_args, expected_input_layer, expected_sequence_length):
     """Tests SequenceFeatures for multi-dimensional numeric_column."""
@@ -445,7 +439,6 @@ class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(
         expected_sequence_length, self.evaluate(sequence_length))
 
-  @test_util.run_in_graph_and_eager_modes
   def test_sequence_length_not_equal(self):
     """Tests that an error is raised when sequence lengths are not equal."""
     # Input a with sequence_length = [2, 1]
@@ -464,8 +457,8 @@ class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
     sequence_input_layer = ksfc.SequenceFeatures(
         [numeric_column_a, numeric_column_b])
 
-    with self.assertRaisesRegexp(
-        errors.InvalidArgumentError, r'Condition x == y did not hold.*'):
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                r'Condition x == y did not hold.*'):
       _, sequence_length = sequence_input_layer({
           'aaa': sparse_input_a,
           'bbb': sparse_input_b
@@ -493,7 +486,6 @@ class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
            'dense_shape': (2, 2, 4)},
        'expected_shape': [2, 2, 4]},
       )
-  @test_util.run_in_graph_and_eager_modes
   def test_static_shape_from_tensors_numeric(
       self, sparse_input_args, expected_shape):
     """Tests that we return a known static shape when we have one."""
@@ -528,7 +520,6 @@ class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
            'dense_shape': (4, 2, 2)},
        'expected_shape': [4, 2, 3]}
       )
-  @test_util.run_in_graph_and_eager_modes
   def test_static_shape_from_tensors_indicator(
       self, sparse_input_args, expected_shape):
     """Tests that we return a known static shape when we have one."""
@@ -542,7 +533,6 @@ class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
     shape = input_layer.get_shape()
     self.assertEqual(shape, expected_shape)
 
-  @test_util.run_in_graph_and_eager_modes
   def test_compute_output_shape(self):
     price1 = sfc.sequence_numeric_column('price1', shape=2)
     price2 = sfc.sequence_numeric_column('price2')
@@ -579,7 +569,7 @@ class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose([2, 1, 1, 1], self.evaluate(seq_len))
 
 
-@test_util.run_all_in_graph_and_eager_modes
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class SequenceFeaturesSerializationTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.named_parameters(('default', None, None),

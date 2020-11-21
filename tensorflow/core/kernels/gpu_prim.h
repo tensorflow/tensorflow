@@ -15,19 +15,19 @@ limitations under the license, the license you must see.
 #define TENSORFLOW_CORE_KERNELS_GPU_PRIM_H_
 
 #if GOOGLE_CUDA
-#include "third_party/cub/block/block_load.cuh"
-#include "third_party/cub/block/block_scan.cuh"
-#include "third_party/cub/block/block_store.cuh"
-#include "third_party/cub/device/device_histogram.cuh"
-#include "third_party/cub/device/device_radix_sort.cuh"
-#include "third_party/cub/device/device_reduce.cuh"
-#include "third_party/cub/device/device_segmented_radix_sort.cuh"
-#include "third_party/cub/device/device_segmented_reduce.cuh"
-#include "third_party/cub/device/device_select.cuh"
-#include "third_party/cub/iterator/counting_input_iterator.cuh"
-#include "third_party/cub/iterator/transform_input_iterator.cuh"
-#include "third_party/cub/thread/thread_operators.cuh"
-#include "third_party/cub/warp/warp_reduce.cuh"
+#include "cub/block/block_load.cuh"
+#include "cub/block/block_scan.cuh"
+#include "cub/block/block_store.cuh"
+#include "cub/device/device_histogram.cuh"
+#include "cub/device/device_radix_sort.cuh"
+#include "cub/device/device_reduce.cuh"
+#include "cub/device/device_segmented_radix_sort.cuh"
+#include "cub/device/device_segmented_reduce.cuh"
+#include "cub/device/device_select.cuh"
+#include "cub/iterator/counting_input_iterator.cuh"
+#include "cub/iterator/transform_input_iterator.cuh"
+#include "cub/thread/thread_operators.cuh"
+#include "cub/warp/warp_reduce.cuh"
 #include "third_party/gpus/cuda/include/cusparse.h"
 
 namespace gpuprim = ::cub;
@@ -35,13 +35,15 @@ namespace gpuprim = ::cub;
 #include "rocm/include/hipcub/hipcub.hpp"
 namespace gpuprim = ::hipcub;
 
+// Required for sorting Eigen::half
 namespace rocprim {
 namespace detail {
 template <>
 struct radix_key_codec_base<Eigen::half>
-    : radix_key_codec_floating<Eigen::half, unsigned short> {};
+    : radix_key_codec_floating<Eigen::half, uint16_t> {};
 };  // namespace detail
 };  // namespace rocprim
-#endif  // GOOGLE_CUDA
+
+#endif  // TENSORFLOW_USE_ROCM
 
 #endif  // TENSORFLOW_CORE_KERNELS_GPU_PRIM_H_

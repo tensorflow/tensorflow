@@ -41,7 +41,5 @@ message ResourceHandleProto {
   // Data types and shapes for the underlying resource.
   repeated DtypeAndShape dtypes_and_shapes = 6;
 
-  // A set of devices containing the resource. If empty, the resource only
-  // exists on `device`.
-  repeated string allowed_devices = 7;
+  reserved 7;
 }

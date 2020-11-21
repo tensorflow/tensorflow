@@ -16,6 +16,7 @@ limitations under the License.
 #include <iostream>
 
 #include "absl/strings/str_split.h"
+#include "llvm/ADT/None.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -28,7 +29,9 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
+#include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
@@ -37,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/tf_tfl_translate_cl.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate_cl.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
@@ -140,6 +144,11 @@ int main(int argc, char **argv) {
   mlir::SourceMgrDiagnosticHandler sourceMgrHandler(source_mgr, &context);
 
   StatusOr<mlir::OwningModuleRef> module;
+  std::unordered_set<std::string> tags;
+
+  tensorflow::GraphImportConfig specs;
+  specs.upgrade_legacy = upgrade_legacy;
+  specs.prune_unused_nodes = true;
 
   // TODO(b/147435528): We need to test the e2e behavior once the graph freezing
   // inside mlir is done.
@@ -154,8 +163,7 @@ int main(int argc, char **argv) {
       module = tensorflow::errors::InvalidArgument(
           "Importing saved model should not have input_mlir set");
 
-    std::unordered_set<std::string> tags =
-        absl::StrSplit(saved_model_tags, ',');
+    tags = absl::StrSplit(saved_model_tags, ',');
     std::vector<std::string> exported_names_vector =
         absl::StrSplit(saved_model_exported_names, ',', absl::SkipEmpty());
     absl::Span<std::string> exported_names(exported_names_vector);
@@ -164,23 +172,24 @@ int main(int argc, char **argv) {
       llvm::errs() << "There should be only one exported name";
       return kTrFailure;
     }
-
+    std::vector<std::string> extra_opdefs(custom_opdefs.begin(),
+                                          custom_opdefs.end());
     module = tensorflow::ImportSavedModel(input_file_name, saved_model_version,
-                                          tags, exported_names, &context);
+                                          tags, extra_opdefs, exported_names,
+                                          specs, &context);
   } else {
     module = tensorflow::LoadFromGraphdefOrMlirSource(
         input_file_name, input_mlir, use_splatted_constant, custom_opdefs,
-        debug_info_file, input_arrays, input_dtypes, input_shapes,
-        output_arrays,
-        /*prune_unused_nodes=*/true, &source_mgr, &context);
+        specs, debug_info_file, input_arrays, input_dtypes, input_shapes,
+        output_arrays, &source_mgr, &context);
   }
 
   // If errors occur, the library call in the above already logged the error
   // message. So we can just return here.
   if (!module.ok()) return kTrFailure;
 
-  mlir::PassManager pm(&context);
-  applyPassManagerCLOptions(pm);
+  mlir::PassManager pm(&context, mlir::OpPassManager::Nesting::Implicit);
+  mlir::applyPassManagerCLOptions(pm);
 
   // Set the quantization specifications from the command line flags.
   mlir::TFL::QuantizationSpecs quant_specs;
@@ -220,7 +229,9 @@ int main(int argc, char **argv) {
   pass_config.lower_tensor_list_ops = lower_tensor_list_ops;
   pass_config.legalize_tf_while = convert_tf_while_to_tfl_while;
 
-  tensorflow::AddTFToTFLConversionPasses(pass_config, &pm);
+  // TODO(b/153507667): Pass the session object when importing logic is removed.
+  tensorflow::AddTFToTFLConversionPasses(pass_config, &pm,
+                                         /*session=*/llvm::None);
   // TODO(b/150901738): Move those into tf_tfl_translate.cc.
   // Convert back to outlined while format for export back to flatbuffer.
   if (pass_config.legalize_tf_while) {
@@ -231,7 +242,7 @@ int main(int argc, char **argv) {
   std::string result;
   auto status = tensorflow::ConvertTFExecutorToTFLOrFlatbuffer(
       module.ValueOrDie().get(), output_mlir, emit_builtin_tflite_ops,
-      emit_select_tf_ops, emit_custom_ops, quant_specs, &result, &pm);
+      emit_select_tf_ops, emit_custom_ops, quant_specs, tags, &result, &pm);
   if (!status.ok()) return kTrFailure;
 
   std::string error_msg;

@@ -23,8 +23,6 @@ import functools
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python import tf2
-from tensorflow.python.compat import compat
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import function
@@ -37,6 +35,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.training import checkpoint_management
+from tensorflow.python.training.tracking import util as trackable_utils
 
 
 class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
@@ -331,17 +331,11 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
-  # We skip v2 eager since the v2 eager shuffle dataset is not serializable due
-  # to its use of an external seed generator resource.
   @combinations.generate(
       combinations.times(
-          test_base.graph_only_combinations() +
-          combinations.combine(mode=["eager"]),
+          test_base.default_test_combinations(),
           combinations.combine(reshuffle=[True, False])))
   def testRerandomizeOnReplicate(self, reshuffle):
-    if tf2.enabled() and not compat.forward_compatible(2020, 5, 22):
-      self.skipTest("Functionality currently not supported.")
-
     random_seed.set_random_seed(None)
     # When no seeds are fixed, each instantiation of the shuffle dataset should
     # produce elements in a different order.
@@ -355,6 +349,23 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     self.assertCountEqual(shuffle_1, shuffle_2)
     self.assertNotEqual(shuffle_1, shuffle_2)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testCheckpointLargeShuffleBuffer(self):
+    # Tensor of size 100M
+    dataset = dataset_ops.Dataset.from_tensors(
+        array_ops.ones((25, 1000, 1000), dtype=dtypes.float32))
+    dataset = dataset.repeat()
+    # Shuffle 25 tensors to exceed the 2GB protocol buffer limit
+    dataset = dataset.shuffle(25)
+
+    iterator = iter(dataset)
+    next(iterator)  # request an element to fill the shuffle buffer
+    ckpt = trackable_utils.Checkpoint(iterator=iterator)
+    manager = checkpoint_management.CheckpointManager(
+        ckpt, self.get_temp_dir(), max_to_keep=1)
+    manager.save()
+    ckpt.restore(manager.latest_checkpoint)
 
 
 if __name__ == "__main__":

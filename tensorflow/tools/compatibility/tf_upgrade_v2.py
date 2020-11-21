@@ -883,7 +883,7 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
     contrib_tpu_strategy_warning = (
         ast_edits.ERROR,
         "(Manual edit required) tf.contrib.distribute.TPUStrategy has "
-        "been migrated to tf.distribute.experimental.TPUStrategy. Note the "
+        "been migrated to tf.distribute.TPUStrategy. Note the "
         "slight changes in constructor. " + distribute_strategy_api_changes)
 
     contrib_collective_strategy_warning = (
@@ -895,13 +895,13 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
         "changes in constructor. " + distribute_strategy_api_changes)
 
     contrib_ps_strategy_warning = (
-        ast_edits.ERROR,
-        "(Manual edit required) "
+        ast_edits.ERROR, "(Manual edit required) "
         "tf.contrib.distribute.ParameterServerStrategy has "
         "been migrated to "
-        "tf.distribute.experimental.ParameterServerStrategy (multi machine) "
-        " and tf.distribute.experimental.CentralStorageStrategy (one machine). "
-        "Note the changes in constructors. " + distribute_strategy_api_changes)
+        "tf.compat.v1.distribute.experimental.ParameterServerStrategy (multi "
+        "machine) and tf.distribute.experimental.CentralStorageStrategy (one "
+        "machine). Note the changes in constructors. " +
+        distribute_strategy_api_changes)
 
     keras_experimental_export_comment = (
         ast_edits.WARNING,
@@ -1282,69 +1282,72 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
     # Warnings that are emitted only if a specific arg is found.
     self.function_arg_warnings = {
         "tf.nn.conv1d": {
-            ("use_cudnn_on_gpu", 4): (
-                ast_edits.WARNING,
-                "use_cudnn_on_gpu has been removed, behavior is now equivalent"
-                "to setting it to True."),
+            ("use_cudnn_on_gpu", 4):
+                (ast_edits.WARNING,
+                 "use_cudnn_on_gpu has been removed, behavior is now equivalent"
+                 "to setting it to True."),
         },
         "tf.nn.conv2d": {
-            ("use_cudnn_on_gpu", 4): (
-                ast_edits.WARNING,
-                "use_cudnn_on_gpu has been removed, behavior is now equivalent"
-                "to setting it to True."),
+            ("use_cudnn_on_gpu", 4):
+                (ast_edits.WARNING,
+                 "use_cudnn_on_gpu has been removed, behavior is now equivalent"
+                 "to setting it to True."),
         },
         "tf.nn.conv2d_backprop_filter": {
-            ("use_cudnn_on_gpu", 5): (
-                ast_edits.WARNING,
-                "use_cudnn_on_gpu has been removed, behavior is now equivalent"
-                "to setting it to True."),
+            ("use_cudnn_on_gpu", 5):
+                (ast_edits.WARNING,
+                 "use_cudnn_on_gpu has been removed, behavior is now equivalent"
+                 "to setting it to True."),
         },
         "tf.nn.conv2d_backprop_input": {
-            ("use_cudnn_on_gpu", 5): (
-                ast_edits.WARNING,
-                "use_cudnn_on_gpu has been removed, behavior is now equivalent"
-                "to setting it to True."),
+            ("use_cudnn_on_gpu", 5):
+                (ast_edits.WARNING,
+                 "use_cudnn_on_gpu has been removed, behavior is now equivalent"
+                 "to setting it to True."),
         },
         "tf.gradients": {
-            ("colocate_gradients_with_ops", 4): (
-                ast_edits.INFO,
-                "tf.gradients no longer takes "
-                "'colocate_gradients_with_ops' argument, it behaves as if it "
-                "was set to True."),
+            ("colocate_gradients_with_ops", 4):
+                (ast_edits.INFO, "tf.gradients no longer takes "
+                 "'colocate_gradients_with_ops' argument, it behaves as if it "
+                 "was set to True."),
+        },
+        "tf.hessians": {
+            ("colocate_gradients_with_ops", 3):
+                (ast_edits.INFO, "tf.hessians no longer takes "
+                 "'colocate_gradients_with_ops' argument, it behaves as if it "
+                 "was set to True."),
         },
         "*.minimize": {
-            ("colocate_gradients_with_ops", 5): (
-                ast_edits.INFO,
-                "Optimizer.minimize no longer takes "
-                "'colocate_gradients_with_ops' argument, it behaves as if it "
-                "was set to True."),
+            ("colocate_gradients_with_ops", 5):
+                (ast_edits.INFO, "Optimizer.minimize no longer takes "
+                 "'colocate_gradients_with_ops' argument, it behaves as if it "
+                 "was set to True."),
         },
         "*.compute_gradients": {
-            ("colocate_gradients_with_ops", 4): (
-                ast_edits.INFO,
-                "Optimizer.compute_gradients no "
-                "longer takes 'colocate_gradients_with_ops' argument, it "
-                "behaves as if it was set to True."),
+            ("colocate_gradients_with_ops", 4):
+                (ast_edits.INFO, "Optimizer.compute_gradients no "
+                 "longer takes 'colocate_gradients_with_ops' argument, it "
+                 "behaves as if it was set to True."),
         },
         "tf.cond": {
-            ("strict", 3): (
-                ast_edits.WARNING,
-                "tf.cond no longer takes 'strict' argument, it behaves as "
-                "if was set to True.")
+            ("strict", 3):
+                (ast_edits.WARNING,
+                 "tf.cond no longer takes 'strict' argument, it behaves as "
+                 "if was set to True.")
         },
         "tf.contrib.summary.audio": {
             ("family", 4): contrib_summary_family_arg_comment,
         },
         "tf.contrib.summary.create_file_writer": {
-            ("name", 4): (
-                ast_edits.WARNING,
-                "tf.contrib.summary.create_file_writer() no longer supports "
-                "implicit writer re-use based on shared logdirs or resource "
-                "names; this call site passed a 'name' argument that has been "
-                "removed. The new tf.compat.v2.summary.create_file_writer() "
-                "replacement has a 'name' parameter but the semantics are "
-                "the usual ones to name the op itself and do not control "
-                "writer re-use; writers must be manually re-used if desired.")
+            ("name", 4):
+                (ast_edits.WARNING,
+                 "tf.contrib.summary.create_file_writer() no longer supports "
+                 "implicit writer re-use based on shared logdirs or resource "
+                 "names; this call site passed a 'name' argument that has been "
+                 "removed. The new tf.compat.v2.summary.create_file_writer() "
+                 "replacement has a 'name' parameter but the semantics are "
+                 "the usual ones to name the op itself and do not control "
+                 "writer re-use; writers must be manually re-used if desired.")
         },
         "tf.contrib.summary.generic": {
             ("name", 0): (
@@ -1374,44 +1377,44 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
             ("family", 2): contrib_summary_family_arg_comment,
         },
         "tf.image.resize": {
-            ("align_corners",
-             3): (ast_edits.WARNING,
-                  "align_corners is not supported by tf.image.resize, the new "
-                  "default transformation is close to what v1 provided. If you "
-                  "require exactly the same transformation as before, use "
-                  "compat.v1.image.resize."),
+            ("align_corners", 3):
+                (ast_edits.WARNING,
+                 "align_corners is not supported by tf.image.resize, the new "
+                 "default transformation is close to what v1 provided. If you "
+                 "require exactly the same transformation as before, use "
+                 "compat.v1.image.resize."),
         },
         "tf.image.resize_bilinear": {
-            ("align_corners",
-             2): (ast_edits.WARNING,
-                  "align_corners is not supported by tf.image.resize, the new "
-                  "default transformation is close to what v1 provided. If you "
-                  "require exactly the same transformation as before, use "
-                  "compat.v1.image.resize_bilinear."),
+            ("align_corners", 2):
+                (ast_edits.WARNING,
+                 "align_corners is not supported by tf.image.resize, the new "
+                 "default transformation is close to what v1 provided. If you "
+                 "require exactly the same transformation as before, use "
+                 "compat.v1.image.resize_bilinear."),
         },
         "tf.image.resize_area": {
-            ("align_corners",
-             2): (ast_edits.WARNING,
-                  "align_corners is not supported by tf.image.resize, the new "
-                  "default transformation is close to what v1 provided. If you "
-                  "require exactly the same transformation as before, use "
-                  "compat.v1.image.resize_area."),
+            ("align_corners", 2):
+                (ast_edits.WARNING,
+                 "align_corners is not supported by tf.image.resize, the new "
+                 "default transformation is close to what v1 provided. If you "
+                 "require exactly the same transformation as before, use "
+                 "compat.v1.image.resize_area."),
         },
         "tf.image.resize_bicubic": {
-            ("align_corners",
-             2): (ast_edits.WARNING,
-                  "align_corners is not supported by tf.image.resize, the new "
-                  "default transformation is close to what v1 provided. If you "
-                  "require exactly the same transformation as before, use "
-                  "compat.v1.image.resize_bicubic."),
+            ("align_corners", 2):
+                (ast_edits.WARNING,
+                 "align_corners is not supported by tf.image.resize, the new "
+                 "default transformation is close to what v1 provided. If you "
+                 "require exactly the same transformation as before, use "
+                 "compat.v1.image.resize_bicubic."),
         },
         "tf.image.resize_nearest_neighbor": {
-            ("align_corners",
-             2): (ast_edits.WARNING,
-                  "align_corners is not supported by tf.image.resize, the new "
-                  "default transformation is close to what v1 provided. If you "
-                  "require exactly the same transformation as before, use "
-                  "compat.v1.image.resize_nearest_neighbor."),
+            ("align_corners", 2):
+                (ast_edits.WARNING,
+                 "align_corners is not supported by tf.image.resize, the new "
+                 "default transformation is close to what v1 provided. If you "
+                 "require exactly the same transformation as before, use "
+                 "compat.v1.image.resize_nearest_neighbor."),
         },
     }
     all_renames_v2.add_contrib_direct_import_support(self.function_arg_warnings)
@@ -1842,7 +1845,10 @@ def _dropout_transformer(parent, node, full_name, name, logs):
                  "automatic fix was disabled. tf.nn.dropout has changed "
                  "the semantics of the second argument."))
   else:
-    _replace_keep_prob_node(node, node.args[1])
+    rate_arg = ast.keyword(arg="rate", value=node.args[1])
+    _replace_keep_prob_node(rate_arg, rate_arg.value)
+    node.keywords.append(rate_arg)
+    del node.args[1]
     logs.append((ast_edits.INFO, node.lineno, node.col_offset,
                  "Changing keep_prob arg of tf.nn.dropout to rate, and "
                  "recomputing value.\n"))

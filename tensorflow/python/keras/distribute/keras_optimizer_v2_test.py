@@ -21,13 +21,14 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 from tensorflow.python import keras
-from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.ops import math_ops
@@ -45,14 +46,13 @@ def get_model():
 
 class MirroredStrategyOptimizerV2Test(test.TestCase, parameterized.TestCase):
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.combine(
           distribution=[
               strategy_combinations.central_storage_strategy_with_two_gpus,
           ],
           mode=['graph', 'eager']))
   def testKerasOptimizerWithUnequalInput(self, distribution):
-    self.skipTest('b/130309197')
     with distribution.scope():
       var = variables.Variable(
           2.0, name='var', aggregation=variable_scope.VariableAggregation.SUM)
@@ -102,14 +102,13 @@ class MirroredStrategyOptimizerV2Test(test.TestCase, parameterized.TestCase):
       # v(2) = beta2 * v(1) + (1-beta2) * grad^2 = 0.2 * 1.8 + 0.8 * 2.25
       self.assertAllClose(2.16, self.evaluate(all_vars[2]))
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.combine(
           distribution=[
               strategy_combinations.central_storage_strategy_with_two_gpus,
           ],
           mode=['graph', 'eager']))
   def testOptimizerWithKerasModelAndNumpyArrays(self, distribution):
-    self.skipTest('b/130309197')
     with self.cached_session():
       with distribution.scope():
         model = get_model()

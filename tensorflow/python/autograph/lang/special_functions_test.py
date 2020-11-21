@@ -62,12 +62,12 @@ class SpecialFunctionsTest(test.TestCase):
       self.assertAllEqual(self.evaluate(sl), [])
 
   def test_tensor_list_unsupported_initializer(self):
-    with self.assertRaisesRegexp(ValueError, 'unknown type'):
+    with self.assertRaisesRegex(ValueError, 'unknown type'):
       special_functions.tensor_list(np.array([1, 2, 3]))
 
   def test_tensor_list_empty_list_no_type(self):
-    with self.assertRaisesRegexp(
-        ValueError, 'element_dtype and element_shape are required'):
+    with self.assertRaisesRegex(ValueError,
+                                'element_dtype and element_shape are required'):
       special_functions.tensor_list([])
 
   def test_tensor_list_from_elements(self):

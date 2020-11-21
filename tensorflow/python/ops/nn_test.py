@@ -32,6 +32,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_impl
@@ -129,6 +130,18 @@ class SoftmaxTest(test_lib.TestCase, parameterized.TestCase):
     eps = 1e-3
     self.assertAllClose(x_neg_axis_tf, y_pos_axis_tf, eps)
     self.assertAllClose(y_pos_axis_tf, z_gt_axis_tf, eps)
+
+  def testSoftmaxExtendType(self):
+    x_shape = [5, 10]
+    x_np = np.random.randn(*x_shape).astype(np.float32)
+
+    x_f32_tf = constant_op.constant(x_np)
+    x_bf16_tf = math_ops.cast(x_f32_tf, dtypes.bfloat16)
+    y_f32_tf = self.evaluate(nn_ops.softmax(x_f32_tf))
+    y_bf16_tf = self.evaluate(nn_ops.softmax(x_bf16_tf))
+    expected = math_ops.cast(y_f32_tf, dtypes.bfloat16)
+    tol = x_shape[1] * 1e-3
+    self.assertAllClose(y_bf16_tf, expected, rtol=tol, atol=tol)
 
   @parameterized.parameters(((5, 10),), ((2, 3, 4),))
   @test_util.run_deprecated_v1
@@ -302,6 +315,20 @@ class L2NormalizeTest(test_lib.TestCase):
                                                       x_shape)
       print("L2Normalize gradient err = %g " % err)
       self.assertLess(err, 1e-4)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testL2NormalizeComplex(self):
+    x_shape = [20, 7, 3]
+    for dtype in [np.complex64, np.complex128]:
+      np.random.seed(1)
+      x_np = (
+          np.random.random_sample(x_shape).astype(dtype) +
+          np.random.random_sample(x_shape).astype(dtype) * 1j)
+      for dim in range(len(x_shape)):
+        y_np = self._l2Normalize(x_np, dim)
+        x_tf = constant_op.constant(x_np, name="x")
+        y_tf = nn_impl.l2_normalize_v2(x_tf, dim)
+        self.assertAllClose(y_np, self.evaluate(y_tf))
 
 
 class DropoutTest(test_lib.TestCase):
@@ -514,6 +541,8 @@ class DropoutTest(test_lib.TestCase):
       _ = nn_ops.dropout(x, 0.5)
 
 
+@test_util.run_all_without_tensor_float_32(
+    "Tests _compute_sampled_logits and related functions, which call matmul")
 class ComputeSampledLogitsTest(test_lib.TestCase):
 
   def setUp(self):
@@ -600,7 +629,7 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
           partitioner=partitioned_variables.fixed_size_partitioner(num_shards),
           initializer=constant_op.constant(biases))
       with self.session(graph=g) as sess:
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         return self.evaluate([list(sharded_weights), list(sharded_biases)])
 
   def testShapes(self):
@@ -978,6 +1007,8 @@ class ReluTest(test_lib.TestCase):
     z = self.evaluate(nn_ops.relu(constant_op.constant(x)))
     self.assertAllEqual(y, z)
 
+  @test_util.disable_xla(
+      "This test relies on undefined behavior that XLA does not replicate")
   @test_util.run_deprecated_v1
   def testNaNs(self):
     # Test that relu(nan) = nan for various sizes.
@@ -999,7 +1030,7 @@ class LeakyReluTest(test_lib.TestCase):
     inputs = constant_op.constant(inputs)
 
     outputs = nn_ops.leaky_relu(inputs)
-    self.assertEquals(inputs.shape, outputs.shape)
+    self.assertEqual(inputs.shape, outputs.shape)
 
     inputs, outputs = self.evaluate([inputs, outputs])
 
@@ -1029,6 +1060,29 @@ class LeakyReluTest(test_lib.TestCase):
     outputs_without_name_set = nn_ops.leaky_relu(
         constant_op.constant(np_values))
     self.assertEqual(outputs_without_name_set.name, 'LeakyRelu:0')
+
+
+class GeluTest(test_lib.TestCase):
+
+  def test(self):
+
+    def gelu(x, approximate=False):
+      if approximate:
+        return 0.5 * x * (1.0 + np.tanh(
+            np.sqrt(2.0 / np.pi) * (x + 0.044715 * np.power(x, 3))))
+      else:
+        from scipy.stats import norm  # pylint: disable=g-import-not-at-top
+        return x * norm.cdf(x)
+
+    np.random.seed(1)  # Make it reproducible.
+    x = np.random.randn(3, 4).astype(np.float32)
+    y = gelu(x)
+    z = self.evaluate(nn_ops.gelu(x))
+    self.assertAllClose(y, z)
+
+    y = gelu(x, True)
+    z = self.evaluate(nn_ops.gelu(x, True))
+    self.assertAllClose(y, z)
 
 
 class SwishTest(test_lib.TestCase):
@@ -1179,6 +1233,33 @@ class DataFormatDimMapTest(test_lib.TestCase):
       y_val = self.evaluate(y)
       self.assertAllEqual(y_val, y_val_expected)
 
+  def testNDHWCtoNCDHW(self):
+    x_val = [1, -4, -3, -2]
+    y_val_expected = [2, 2, 3, 4]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_dim_map(x, src_format="NDHWC", dst_format="NCDHW")
+    with test_util.use_gpu():
+      y_val = self.evaluate(y)
+      self.assertAllEqual(y_val, y_val_expected)
+
+  def testNDHWCtoDHWNC(self):
+    x_val = [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4]
+    y_val_expected = [3, 0, 1, 2, 4, 3, 0, 1, 2, 4]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_dim_map(x, src_format="NDHWC", dst_format="DHWNC")
+    with test_util.use_gpu():
+      y_val = self.evaluate(y)
+      self.assertAllEqual(y_val, y_val_expected)
+
+  def testDNHWCtoWHDCN(self):
+    x_val = [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4]
+    y_val_expected = [4, 2, 1, 0, 3, 4, 2, 1, 0, 3]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_dim_map(x, src_format="NDHWC", dst_format="WHDCN")
+    with test_util.use_gpu():
+      y_val = self.evaluate(y)
+      self.assertAllEqual(y_val, y_val_expected)
+
   def testArbitraryASCII(self):
     x_val = [-4, -3, -2, -1, 0, 1, 2, 3]
     y_val_expected = [3, 2, 1, 0, 3, 2, 1, 0]
@@ -1199,6 +1280,32 @@ class DataFormatVectorPermuteTest(test_lib.TestCase):
       y_val = self.evaluate(y)
       self.assertAllEqual(y_val, [7, 3, 4, 9])
 
+  def testNHWCToNCHW_Size2(self):
+    x_val = [4, 9]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(x)
+    with test_util.use_gpu():
+      y_val = self.evaluate(y)
+      self.assertAllEqual(y_val, [4, 9])
+
+  @test_util.disable_xla("unsupported data format")
+  def testNHWCToWHCN(self):
+    x_val = [7, 4, 9, 3]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(x, src_format="NHWC", dst_format="WHCN")
+    with test_util.use_gpu():
+      y_val = self.evaluate(y)
+      self.assertAllEqual(y_val, [9, 4, 3, 7])
+
+  @test_util.disable_xla("unsupported data format")
+  def testNHWCToWHCN_Size2(self):
+    x_val = [4, 9]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(x, src_format="NHWC", dst_format="WHCN")
+    with test_util.use_gpu():
+      y_val = self.evaluate(y)
+      self.assertAllEqual(y_val, [9, 4])
+
   def testNCHWToNHWC(self):
     x_val = [7, 4, 9, 3]
     x = constant_op.constant(x_val)
@@ -1206,6 +1313,14 @@ class DataFormatVectorPermuteTest(test_lib.TestCase):
     with test_util.use_gpu():
       y_val = self.evaluate(y)
       self.assertAllEqual(y_val, [7, 9, 3, 4])
+
+  def testNCHWToNHWC_Size2(self):
+    x_val = [9, 3]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(x)
+    with test_util.use_gpu():
+      y_val = self.evaluate(y)
+      self.assertAllEqual(y_val, [9, 3])
 
   def testNHWCToHWNC(self):
     x_val = [7, 4, 9, 3]
@@ -1442,11 +1557,8 @@ class MaxPoolTest(test_lib.TestCase):
 class ConvolutionTest(test_lib.TestCase):
 
   def testUnknownSize(self):
-    # explicitly use float32 for ROCm, as MIOpen does not yet support float64
-    # np.ones defaults to using float64 when dtype is not explicitly specified
-    dtype = np.float32 if test_lib.is_built_with_rocm() else np.float64
     x = tensor_spec.TensorSpec(None, dtypes.float32, name="x")
-    k = np.ones([3, 6, 6, 5], dtype=dtype)
+    k = np.ones([3, 6, 6, 5], dtype=np.float32)
 
     @def_function.function
     def F(value):
@@ -1617,6 +1729,89 @@ class RaggedEmbeddingTest(test_lib.TestCase):
       self.assertAllClose(
           ragged_factory_ops.constant(expected, dtype=float, ragged_rank=1),
           actual)
+
+
+class IsotonicTest(parameterized.TestCase, test_lib.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_increasing_and_decreasing(self):
+    x = constant_op.constant([[0, 1, 2, 3, 4], [5, 6, 7, 8, 9]],
+                             dtype=dtypes.float64)
+    y, segments = nn_ops.isotonic_regression(x, decreasing=False)
+    self.assertAllClose(y, x)
+    self.assertAllClose(segments, [[0, 1, 2, 3, 4], [0, 1, 2, 3, 4]])
+
+    y, segments = nn_ops.isotonic_regression(x, decreasing=True)
+    self.assertAllClose(
+        y,
+        [
+            [2, 2, 2, 2, 2],  # Average of the inputs.
+            [7, 7, 7, 7, 7]
+        ])
+    self.assertAllClose(segments, array_ops.zeros((2, 5)))
+
+    y, segments = nn_ops.isotonic_regression(-x, decreasing=True)
+    self.assertAllClose(segments, [[0, 1, 2, 3, 4], [0, 1, 2, 3, 4]])
+
+    self.assertAllClose(y, -x)
+    y, segments = nn_ops.isotonic_regression(-x, decreasing=False)
+    self.assertAllClose(
+        -y,
+        [
+            [2, 2, 2, 2, 2],  # Average of the inputs.
+            [7, 7, 7, 7, 7]
+        ])
+    self.assertAllClose(segments, array_ops.zeros((2, 5)))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_different_axis(self):
+    x = constant_op.constant([[0, 6, 2, 8, 4], [5, 1, 7, 3, 9]],
+                             dtype=dtypes.float64)
+    y, segments = nn_ops.isotonic_regression(x, decreasing=True, axis=0)
+    self.assertAllClose(
+        y,
+        [
+            [2.5, 6, 4.5, 8, 6.5],  # Either identity or average.
+            [2.5, 1, 4.5, 3, 6.5]
+        ])
+    self.assertAllClose(segments, [[0, 0, 0, 0, 0], [0, 1, 0, 1, 0]])
+
+  @test_util.run_v2_only
+  def testGradientV2(self, dtype=np.float64, batch_size=30, dimensions=50):
+
+    @def_function.function
+    def ComputeIsotonicFn(x):
+      y, _ = nn_ops.isotonic_regression(x)  # No gradient wrt segments.
+      return y
+
+    np.random.seed(0)
+    x_init = np.random.randn(batch_size, dimensions).astype(dtype)
+    grad_theoretical, grad_numerical = gradient_checker_v2.compute_gradient(
+        ComputeIsotonicFn, [x_init], delta=1e-5)
+    self.assertAllClose(grad_theoretical, grad_numerical)
+
+  @test_util.run_v1_only("compute_gradient_error is v1 only")
+  def testGradientV1(self, dtype=np.float64, batch_size=30, dimensions=50):
+    np.random.seed(0)
+    x_init = np.random.randn(batch_size, dimensions).astype(dtype)
+    with self.cached_session():
+      x = array_ops.placeholder(dtype, (batch_size, dimensions))
+      y, _ = nn_ops.isotonic_regression(x)  # Segments have no gradient.
+      max_error = gradient_checker.compute_gradient_error(
+          x, (batch_size, dimensions), y, (batch_size, dimensions), x_init)
+    self.assertAllClose(max_error, 0.)
+
+  @parameterized.parameters([[dtypes.half, dtypes.half],
+                             [dtypes.bfloat16, dtypes.bfloat16],
+                             [dtypes.float32, dtypes.float32],
+                             [dtypes.float64, dtypes.float64],
+                             [dtypes.int32, dtypes.float64],
+                             [dtypes.int16, dtypes.float32]])
+  def testTypePromotion(self, dtype_in, expected_dtype_out):
+    x = constant_op.constant([[0, 6, 2, 8, 4], [5, 1, 7, 3, 9]], dtype=dtype_in)
+    y, segments = nn_ops.isotonic_regression(x)
+    self.assertEqual(y.dtype, expected_dtype_out)
+    self.assertEqual(segments.dtype, dtypes.int32)
 
 
 if __name__ == "__main__":

@@ -28,11 +28,11 @@ namespace {
 // computation wait for the inputs to be produced before executing.
 TEST(GpuMultiStream, Basics) {
   TF_ASSERT_OK_AND_ASSIGN(
-      std::shared_ptr<PjRtClient> client,
+      std::unique_ptr<PjRtClient> client,
       GetNvidiaGpuClient(/*asynchronous=*/true, GpuAllocatorConfig(),
                          /*distributed_client=*/nullptr, /*node_id=*/0));
 
-  Device* device = client->local_devices().at(0);
+  PjRtDevice* device = client->local_devices().at(0);
 
   int n = 1024;
   Shape shape = ShapeUtil::MakeShape(S32, {n});
@@ -54,9 +54,9 @@ TEST(GpuMultiStream, Basics) {
   device_assignment(0, 0) = device->id();
   compile_options.executable_build_options.set_device_assignment(
       device_assignment);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtExecutable> executable,
-                          PjRtExecutable::Compile(computation, client.get(),
-                                                  std::move(compile_options)));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtExecutable> executable,
+      client->Compile(computation, std::move(compile_options)));
 
   int64 dummy_size = 1 << 20;
   std::vector<int32> dummy_inputs(dummy_size);
@@ -71,19 +71,22 @@ TEST(GpuMultiStream, Basics) {
     // must wait.
     TF_ASSERT_OK_AND_ASSIGN(
         auto dummy_buffer,
-        PjRtBuffer::FromHostBuffer(
-            dummy_inputs.data(), dummy_shape, /*force_copy=*/false,
-            /*buffer_reference=*/nullptr, client.get(), device));
+        client->BufferFromHostBuffer(
+            dummy_inputs.data(), dummy_shape,
+            PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes,
+            /*buffer_reference=*/nullptr, device));
     TF_ASSERT_OK_AND_ASSIGN(
         auto in_buffer0,
-        PjRtBuffer::FromHostBuffer(inputs.data(), shape, /*force_copy=*/false,
-                                   /*buffer_reference=*/nullptr, client.get(),
-                                   device));
+        client->BufferFromHostBuffer(
+            inputs.data(), shape,
+            PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes,
+            /*buffer_reference=*/nullptr, device));
     TF_ASSERT_OK_AND_ASSIGN(
         auto in_buffer1,
-        PjRtBuffer::FromHostBuffer(inputs.data(), shape, /*force_copy=*/false,
-                                   /*buffer_reference=*/nullptr, client.get(),
-                                   device));
+        client->BufferFromHostBuffer(
+            inputs.data(), shape,
+            PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes,
+            /*buffer_reference=*/nullptr, device));
     // The execution may be enqueued before the transfers complete, requiring
     // adequate device-side synchronization.
     ExecuteOptions options;

@@ -51,6 +51,8 @@ class GroupLock(object):
   can also use the `acquire` and `release` method directly.
   """
 
+  __slots__ = ["_ready", "_num_groups", "_group_member_counts"]
+
   def __init__(self, num_groups=2):
     """Initialize a group lock.
 
@@ -115,6 +117,8 @@ class GroupLock(object):
 
   class _Context(object):
     """Context manager helper for `GroupLock`."""
+
+    __slots__ = ["_lock", "_group_id"]
 
     def __init__(self, lock, group_id):
       self._lock = lock

@@ -20,6 +20,7 @@ limitations under the License.
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <cstdlib>
 
 #ifdef __ANDROID__
@@ -64,8 +65,21 @@ void* LoadFunction(void* handle, const char* name, bool optional) {
 
 #ifndef __ANDROID__
 // Add /dev/shm implementation of shared memory for non-Android platforms
-int ASharedMemory_create(const char* name, size_t size) {
-  int fd = shm_open(name, O_RDWR | O_CREAT, 0644);
+int ASharedMemory_create(const char* /* name */, size_t size) {
+  // Each call to ASharedMemory_create produces a unique memory space, hence
+  // name should not be used to create the shared memory file, otherwise
+  // two calls to create memory regions using the same 'name', will collide.
+  char shm_name_buffer[L_tmpnam];
+  if (tmpnam(shm_name_buffer) == nullptr) {
+    return -1;
+  }
+
+  // tmpnam will produce a string containing with slashes, but shm_open
+  // won't like that.
+  std::string shm_region_name = std::string(shm_name_buffer);
+  std::replace(shm_region_name.begin(), shm_region_name.end(), '/', '-');
+
+  int fd = shm_open(shm_region_name.c_str(), O_RDWR | O_CREAT, 0644);
   if (fd < 0) {
     return fd;
   }
@@ -75,6 +89,31 @@ int ASharedMemory_create(const char* name, size_t size) {
     return -1;
   }
   return fd;
+}
+
+// Determine the NnApi version from loaded entry points
+uint32_t CalculateAndroidSdkVersion(NnApi const& nnapi) {
+  // Test for specific NNAPI 1.0, 1.1, 1.2 and 1.3 functions
+  bool has_10 = nnapi.ANeuralNetworksMemory_createFromFd != nullptr;
+  bool has_11 =
+      nnapi.ANeuralNetworksModel_relaxComputationFloat32toFloat16 != nullptr;
+  bool has_12 = nnapi.ANeuralNetworks_getDeviceCount != nullptr;
+  bool has_13 = nnapi.ANeuralNetworksCompilation_setTimeout != nullptr;
+
+  uint32_t sdk_version = 0;
+  if (has_10) {
+    sdk_version = 27;
+  }
+  if (sdk_version == 27 && has_11) {
+    sdk_version = 28;
+  }
+  if (sdk_version == 28 && has_12) {
+    sdk_version = 29;
+  }
+  if (sdk_version == 29 && has_13) {
+    sdk_version = 30;
+  }
+  return sdk_version;
 }
 #endif  // __ANDROID__
 
@@ -107,9 +146,14 @@ const NnApi LoadNnApi() {
   void* libneuralnetworks = nullptr;
   // TODO(b/123243014): change RTLD_LOCAL? Assumes there can be multiple
   // instances of nn api RT
-  libneuralnetworks = dlopen("libneuralnetworks.so", RTLD_LAZY | RTLD_LOCAL);
+  static const char nnapi_library_name[] = "libneuralnetworks.so";
+  libneuralnetworks = dlopen(nnapi_library_name, RTLD_LAZY | RTLD_LOCAL);
   if (libneuralnetworks == nullptr) {
-    NNAPI_LOG("nnapi error: unable to open library %s", "libneuralnetworks.so");
+    const char* error = dlerror();
+    if (error) {
+      NNAPI_LOG("%s\n", error);
+    }
+    NNAPI_LOG("nnapi error: unable to open library %s", nnapi_library_name);
   }
 
   nnapi.nnapi_exists = libneuralnetworks != nullptr;
@@ -225,6 +269,33 @@ const NnApi LoadNnApi() {
                          ANeuralNetworksExecution_setTimeout);
   LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
                          ANeuralNetworksExecution_setLoopTimeout);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks, ANeuralNetworksMemoryDesc_create);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks, ANeuralNetworksMemoryDesc_free);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
+                         ANeuralNetworksMemoryDesc_addInputRole);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
+                         ANeuralNetworksMemoryDesc_addOutputRole);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
+                         ANeuralNetworksMemoryDesc_setDimensions);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks, ANeuralNetworksMemoryDesc_finish);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
+                         ANeuralNetworksMemory_createFromDesc);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks, ANeuralNetworksMemory_copy);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
+                         ANeuralNetworksEvent_createFromSyncFenceFd);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
+                         ANeuralNetworksEvent_getSyncFenceFd);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
+                         ANeuralNetworksExecution_startComputeWithDependencies);
+
+#ifndef __ANDROID__
+  // If libneuralnetworks.so is loaded, but android_sdk_version is not set,
+  // then determine android_sdk_version by testing which functions are
+  // available.
+  if (nnapi.nnapi_exists && nnapi.android_sdk_version == 0) {
+    nnapi.android_sdk_version = CalculateAndroidSdkVersion(nnapi);
+  }
+#endif  // __ANDROID__
 
   return nnapi;
 }

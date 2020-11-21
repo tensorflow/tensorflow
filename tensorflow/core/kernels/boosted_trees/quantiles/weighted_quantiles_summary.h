@@ -16,6 +16,7 @@
 #define TENSORFLOW_CORE_KERNELS_BOOSTED_TREES_QUANTILES_WEIGHTED_QUANTILES_SUMMARY_H_
 
 #include <cstring>
+#include <list>
 #include <vector>
 
 #include "tensorflow/core/kernels/boosted_trees/quantiles/weighted_quantiles_buffer.h"
@@ -250,10 +251,37 @@ class WeightedQuantilesSummary {
     float compression_eps = ApproximationError() + (1.0 / num_boundaries);
     compressed_summary.Compress(num_boundaries, compression_eps);
 
+    // Remove the least important boundaries by the gap removing them would
+    // create.
+    std::list<int64> boundaries_to_keep;
+    for (int64 i = 0; i != compressed_summary.entries_.size(); ++i) {
+      boundaries_to_keep.push_back(i);
+    }
+    while (boundaries_to_keep.size() > num_boundaries) {
+      std::list<int64>::iterator min_element = boundaries_to_keep.end();
+      auto prev = boundaries_to_keep.begin();
+      auto curr = prev;
+      ++curr;
+      auto next = curr;
+      ++next;
+      WeightType min_weight = TotalWeight();
+      for (; next != boundaries_to_keep.end(); ++prev, ++curr, ++next) {
+        WeightType new_weight =
+            compressed_summary.entries_[*next].PrevMaxRank() -
+            compressed_summary.entries_[*prev].NextMinRank();
+        if (new_weight < min_weight) {
+          min_element = curr;
+          min_weight = new_weight;
+        }
+      }
+      boundaries_to_keep.erase(min_element);
+    }
+
     // Return boundaries.
-    output.reserve(compressed_summary.entries_.size());
-    for (const auto& entry : compressed_summary.entries_) {
-      output.push_back(entry.value);
+    output.reserve(boundaries_to_keep.size());
+    for (auto itr = boundaries_to_keep.begin(); itr != boundaries_to_keep.end();
+         ++itr) {
+      output.push_back(compressed_summary.entries_[*itr].value);
     }
     return output;
   }

@@ -39,17 +39,11 @@ limitations under the License.
 #include "tensorflow/core/kernels/pooling_ops_3d_gpu.h"
 #endif
 
-#ifdef TENSORFLOW_USE_SYCL
-#include "tensorflow/core/kernels/pooling_ops_3d_sycl.h"
-#endif  // TENSORFLOW_USE_SYCL
 
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
-#ifdef TENSORFLOW_USE_SYCL
-typedef Eigen::SyclDevice SYCLDevice;
-#endif  // TENSORFLOW_USE_SYCL
 
 Pool3dParameters::Pool3dParameters(OpKernelContext* context,
                                    const std::vector<int32>& ksize,
@@ -192,6 +186,7 @@ class Pooling3DOp : public UnaryOp<T> {
                                             {{out[2], out[1], out[0]}}, depth);
     Tensor* output;
     OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &output));
+    if (out_shape.num_elements() == 0) return;
     LaunchPoolingOp<Device, T, Type>::launch(context, tensor_in, window, stride,
                                              padding, data_format_, padding_,
                                              output);
@@ -829,11 +824,6 @@ TF_CALL_float(REGISTER_GPU_KERNELS) TF_CALL_half(REGISTER_GPU_KERNELS)
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNELS(T) REGISTER_KERNELS(SYCL, T)
-    TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL_KERNELS)
-#undef REGISTER_SYCL_KERNELS
-#endif  // TENSORFLOW_USE_SYCL
 
 #undef REGISTER_KERNELS
 

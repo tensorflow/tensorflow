@@ -1,3 +1,5 @@
+<!-- mdformat off(b/169948621#comment2) -->
+
 # Micro Speech Example
 
 This example shows how to run a 20 kB model that can recognize 2 keywords,
@@ -16,21 +18,121 @@ kilobytes of Flash.
 
 ## Table of contents
 
+-   [Deploy to ARC EM SDP](#deploy-to-arc-em-sdp)
 -   [Deploy to Arduino](#deploy-to-arduino)
 -   [Deploy to ESP32](#deploy-to-esp32)
 -   [Deploy to SparkFun Edge](#deploy-to-sparkfun-edge)
 -   [Deploy to STM32F746](#deploy-to-STM32F746)
 -   [Deploy to NXP FRDM K66F](#deploy-to-nxp-frdm-k66f)
+-   [Deploy to HIMAX WE1 EVB](#deploy-to-himax-we1-evb)
+-   [Deploy to CEVA-BX1](#deploy-to-ceva-bx1)
 -   [Run on macOS](#run-on-macos)
 -   [Run the tests on a development machine](#run-the-tests-on-a-development-machine)
 -   [Train your own model](#train-your-own-model)
 
+## Deploy to ARC EM SDP
+
+The following instructions will help you to build and deploy this example to
+[ARC EM SDP](https://www.synopsys.com/dw/ipdir.php?ds=arc-em-software-development-platform)
+board. General information and instructions on using the board with TensorFlow
+Lite Micro can be found in the common
+[ARC targets description](/tensorflow/lite/micro/tools/make/targets/arc/README.md).
+
+This example uses asymmetric int8 quantization and can therefore leverage
+optimized int8 kernels from the embARC MLI library
+
+The ARC EM SDP board contains a rich set of extension interfaces. You can choose
+any compatible microphone and modify
+[audio_provider.cc](/tensorflow/lite/micro/examples/micro_speech/audio_provider.cc)
+file accordingly to use input from your specific microphone. By default, results
+of running this example are printed to the console. If you would like to instead
+implement some target-specific actions, you need to modify
+[command_responder.cc](/tensorflow/lite/micro/examples/micro_speech/command_responder.cc)
+accordingly.
+
+The reference implementations of these files are used by default on the EM SDP.
+
+### Initial setup
+
+Follow the instructions on the
+[ARC EM SDP Initial Setup](/tensorflow/lite/micro/tools/make/targets/arc/README.md#ARC-EM-Software-Development-Platform-ARC-EM-SDP)
+to get and install all required tools for work with ARC EM SDP.
+
+### Generate Example Project
+
+As default example doesn’t provide any output without real audio, it is
+recommended to get started with example for mock data. The project for ARC EM
+SDP platform can be generated with the following command:
+
+```
+make -f tensorflow/lite/micro/tools/make/Makefile \
+TARGET=arc_emsdp TAGS=reduce_codesize  \
+generate_micro_speech_mock_make_project
+```
+
+Note that `TAGS=reduce_codesize` applies example specific changes of code to
+reduce total size of application. It can be omitted.
+
+### Build and Run Example
+
+For more detailed information on building and running examples see the
+appropriate sections of general descriptions of the
+[ARC EM SDP usage with TFLM](/tensorflow/lite/micro/tools/make/targets/arc/README.md#ARC-EM-Software-Development-Platform-ARC-EM-SDP).
+In the directory with generated project you can also find a
+*README_ARC_EMSDP.md* file with instructions and options on building and
+running. Here we only briefly mention main steps which are typically enough to
+get it started.
+
+1.  You need to
+    [connect the board](/tensorflow/lite/micro/tools/make/targets/arc/README.md#connect-the-board)
+    and open an serial connection.
+
+2.  Go to the generated example project director
+
+    ```
+    cd tensorflow/lite/micro/tools/make/gen/arc_emsdp_arc/prj/micro_speech_mock/make
+    ```
+
+3.  Build the example using
+
+    ```
+    make app
+    ```
+
+4.  To generate artefacts for self-boot of example from the board use
+
+    ```
+    make flash
+    ```
+
+5.  To run application from the board using microSD card:
+
+    *   Copy the content of the created /bin folder into the root of microSD
+        card. Note that the card must be formatted as FAT32 with default cluster
+        size (but less than 32 Kbytes)
+    *   Plug in the microSD card into the J11 connector.
+    *   Push the RST button. If a red LED is lit beside RST button, push the CFG
+        button.
+    *   Type or copy next commands one-by-another into serial terminal: `setenv
+        loadaddr 0x10800000 setenv bootfile app.elf setenv bootdelay 1 setenv
+        bootcmd fatload mmc 0 \$\{loadaddr\} \$\{bootfile\} \&\& bootelf
+        saveenv`
+    *   Push the RST button.
+
+6.  If you have the MetaWare Debugger installed in your environment:
+
+    *   To run application from the console using it type `make run`.
+    *   To stop the execution type `Ctrl+C` in the console several times.
+
+In both cases (step 5 and 6) you will see the application output in the serial
+terminal.
+
 ## Deploy to Arduino
 
-The following instructions will help you build and deploy this sample
-to [Arduino](https://www.arduino.cc/) devices.
+The following instructions will help you build and deploy this example to
+[Arduino](https://www.arduino.cc/) devices.
 
-The sample has been tested with the following devices:
+The example has been tested with the following devices:
 
 - [Arduino Nano 33 BLE Sense](https://store.arduino.cc/usa/nano-33-ble-sense-with-headers)
 
@@ -84,11 +186,11 @@ If you don't see any output, repeat the process again.
 
 ## Deploy to ESP32
 
-The following instructions will help you build and deploy this sample to
+The following instructions will help you build and deploy this example to
 [ESP32](https://www.espressif.com/en/products/hardware/esp32/overview) devices
 using the [ESP IDF](https://github.com/espressif/esp-idf).
 
-The sample has been tested on ESP-IDF version 4.0 with the following devices: -
+The example has been tested on ESP-IDF version 4.0 with the following devices: -
 [ESP32-DevKitC](http://esp-idf.readthedocs.io/en/latest/get-started/get-started-devkitc.html) -
 [ESP-EYE](https://github.com/espressif/esp-who/blob/master/docs/en/get-started/ESP-EYE_Getting_Started_Guide.md)
 
@@ -114,32 +216,40 @@ The next steps assume that the
 
 ### Generate the examples
 
-The example project can be generated with the following command: `make -f
-tensorflow/lite/micro/tools/make/Makefile TARGET=esp
-generate_micro_speech_esp_project`
+The example project can be generated with the following command:
+```
+make -f tensorflow/lite/micro/tools/make/Makefile TARGET=esp generate_micro_speech_esp_project
+```
 
 ### Building the example
 
-Go the the example project directory `cd
-tensorflow/lite/micro/tools/make/gen/esp_xtensa-esp32/prj/micro_speech/esp-idf`
+Go to the example project directory
+```
+cd tensorflow/lite/micro/tools/make/gen/esp_xtensa-esp32/prj/micro_speech/esp-idf
+```
 
 Then build with `idf.py` `idf.py build`
 
 ### Load and run the example
 
-To flash (replace `/dev/ttyUSB0` with the device serial port): `idf.py --port
-/dev/ttyUSB0 flash`
+To flash (replace `/dev/ttyUSB0` with the device serial port):
+```
+idf.py --port /dev/ttyUSB0 flash
+```
 
-Monitor the serial output: `idf.py --port /dev/ttyUSB0 monitor`
+Monitor the serial output:
+```idf.py --port /dev/ttyUSB0 monitor```
 
 Use `Ctrl+]` to exit.
 
-The previous two commands can be combined: `idf.py --port /dev/ttyUSB0 flash
-monitor`
+The previous two commands can be combined:
+```
+idf.py --port /dev/ttyUSB0 flash monitor
+```
 
 ## Deploy to SparkFun Edge
 
-The following instructions will help you build and deploy this sample on the
+The following instructions will help you build and deploy this example on the
 [SparkFun Edge development board](https://sparkfun.com/products/15170).
 
 The program will toggle the blue LED on and off with each inference. It will
@@ -288,7 +398,7 @@ followed by the `K` key, then hit the `Y` key.
 
 ## Deploy to STM32F746
 
-The following instructions will help you build and deploy the sample to the
+The following instructions will help you build and deploy the example to the
 [STM32F7 discovery kit](https://os.mbed.com/platforms/ST-Discovery-F746NG/)
 using [ARM Mbed](https://github.com/ARMmbed/mbed-cli).
 
@@ -392,7 +502,7 @@ followed by the `K` key, then hit the `Y` key.
 
 ## Deploy to NXP FRDM K66F
 
-The following instructions will help you build and deploy the sample to the
+The following instructions will help you build and deploy the example to the
 [NXP FRDM K66F](https://www.nxp.com/design/development-boards/freedom-development-boards/mcu-boards/freedom-development-platform-for-kinetis-k66-k65-and-k26-mcus:FRDM-K66F)
 using [ARM Mbed](https://github.com/ARMmbed/mbed-cli).
 
@@ -407,29 +517,21 @@ using [ARM Mbed](https://github.com/ARMmbed/mbed-cli).
     make -f tensorflow/lite/micro/tools/make/Makefile TARGET=mbed TAGS="nxp_k66f" generate_micro_speech_mbed_project
     ```
 
-4.  Go to the location of the generated project. The generated project is
-    usually in
+4.  Change into the following directory that has been generated:
     `tensorflow/lite/micro/tools/make/gen/mbed_cortex-m4/prj/micro_speech/mbed`
 
-5.  Create a mbed project using the generated files: `mbed new .`
+5.  Create an Mbed project using the generated files, run ensuring your
+    environment is using Python 2.7: `mbed config root .`
 
-6.  Change the project setting to use C++ 11 rather than C++ 14 using:
+6.  Next, tell Mbed to download the dependencies and prepare to build: `mbed
+    deploy`
 
-    ```
-    python -c 'import fileinput, glob;
-    for filename in glob.glob("mbed-os/tools/profiles/*.json"):
-      for line in fileinput.input(filename, inplace=True):
-        print line.replace("\"-std=gnu++14\"","\"-std=c++11\", \"-fpermissive\"")'
-    ```
+7.  Finally, we can run the following command to compile the code: `mbed compile
+    -m K66F -t GCC_ARM`
 
-7.  To compile project, use the following command:
-
-    ```
-    mbed compile --target K66F --toolchain GCC_ARM --profile release
-    ```
-
-8.  For some mbed compilers, you may get compile error in mbed_rtc_time.cpp. Go
-    to `mbed-os/platform/mbed_rtc_time.h` and comment line 32 and line 37:
+8.  For some Mbed compilers (such as GCC), you may get compile error in
+    mbed_rtc_time.cpp. Go to `mbed-os/platform/mbed_rtc_time.h` and comment line
+    32 and line 37:
 
     ```
     //#if !defined(__GNUC__) || defined(__CC_ARM) || defined(__clang__)
@@ -440,11 +542,10 @@ using [ARM Mbed](https://github.com/ARMmbed/mbed-cli).
     //#endif
     ```
 
-9.  Look at helpful resources from NXP website such as
-    [NXP FRDM-K66F User guide](https://www.nxp.com/docs/en/user-guide/FRDMK66FUG.pdf)
-    and
-    [NXP FRDM-K66F Getting Started](https://www.nxp.com/document/guide/get-started-with-the-frdm-k66f:NGS-FRDM-K66F)
-    to understand information about the board.
+9.  If your system does not recognize the board with the `mbed detect` command.
+    Follow the instructions for setting up
+    [DAPLink](https://armmbed.github.io/DAPLink/?board=FRDM-K66F) for the
+    [K66F](https://os.mbed.com/platforms/FRDM-K66F/).
 
 10. Connect the USB cable to the micro USB port. When the Ethernet port is
     facing towards you, the micro USB port is left of the Ethernet port.
@@ -452,7 +553,7 @@ using [ARM Mbed](https://github.com/ARMmbed/mbed-cli).
 11. To compile and flash in a single step, add the `--flash` option:
 
     ```
-    mbed compile --target K66F --toolchain GCC_ARM --profile release --flash
+    mbed compile -m K66F -t GCC_ARM --flash
     ```
 
 12. Disconnect USB cable from the device to power down the device and connect
@@ -471,6 +572,142 @@ using [ARM Mbed](https://github.com/ARMmbed/mbed-cli).
 15. A loopback path from microphone to headset jack is enabled. Headset jack is
     in black color. If there is no output on the serial port, you can connect
     headphone to headphone port to check if audio loopback path is working.
+
+## Deploy to HIMAX WE1 EVB
+
+The following instructions will help you build and deploy this example to
+[HIMAX WE1 EVB](https://github.com/HimaxWiseEyePlus/bsp_tflu/tree/master/HIMAX_WE1_EVB_board_brief)
+board. To understand more about using this board, please check
+[HIMAX WE1 EVB user guide](https://github.com/HimaxWiseEyePlus/bsp_tflu/tree/master/HIMAX_WE1_EVB_user_guide).
+
+### Initial Setup
+
+To use the HIMAX WE1 EVB, please make sure following software are installed:
+
+#### MetaWare Development Toolkit
+
+See
+[Install the Synopsys DesignWare ARC MetaWare Development Toolkit](/tensorflow/lite/micro/tools/make/targets/arc/README.md#install-the-synopsys-designware-arc-metaware-development-toolkit)
+section for instructions on toolchain installation.
+
+#### Make Tool version
+
+A `'make'` tool is required for deploying Tensorflow Lite Micro applications on
+HIMAX WE1 EVB, See
+[Check make tool version](/tensorflow/lite/micro/tools/make/targets/arc/README.md#make-tool)
+section for proper environment.
+
+#### Serial Terminal Emulation Application
+
+There are 2 main purposes for HIMAX WE1 EVB Debug UART port
+
+-   print application output
+-   burn application to flash by using xmodem send application binary
+
+You can use any terminal emulation program (like [PuTTY](https://www.putty.org/)
+or [minicom](https://linux.die.net/man/1/minicom)).
+
+### Generate Example Project
+
+The example project for HIMAX WE1 EVB platform can be generated with the
+following command:
+
+Download related third party data
+
+```
+make -f tensorflow/lite/micro/tools/make/Makefile TARGET=himax_we1_evb third_party_downloads
+```
+
+Generate micro speech project
+
+```
+make -f tensorflow/lite/micro/tools/make/Makefile generate_micro_speech_make_project TARGET=himax_we1_evb
+```
+
+### Build and Burn Example
+
+Following the Steps to run micro speech example at HIMAX WE1 EVB platform.
+
+1.  Go to the generated example project directory.
+
+    ```
+    cd tensorflow/lite/micro/tools/make/gen/himax_we1_evb_arc/prj/micro_speech/make
+    ```
+
+2.  Build the example using
+
+    ```
+    make app
+    ```
+
+3.  After example build finish, copy ELF file and map file to image generate
+    tool directory. \
+    image generate tool directory located at
+    `'tensorflow/lite/micro/tools/make/downloads/himax_we1_sdk/image_gen_linux_v3/'`
+
+    ```
+    cp micro_speech.elf himax_we1_evb.map ../../../../../downloads/himax_we1_sdk/image_gen_linux_v3/
+    ```
+
+4.  Go to flash image generate tool directory.
+
+    ```
+    cd ../../../../../downloads/himax_we1_sdk/image_gen_linux_v3/
+    ```
+
+    make sure this tool directory is in $PATH. You can permanently set it to
+    PATH by
+
+    ```
+    export PATH=$PATH:$(pwd)
+    ```
+
+5.  run image generate tool, generate flash image file.
+
+    *   Before running image generate tool, by typing `sudo chmod +x image_gen`
+        and `sudo chmod +x sign_tool` to make sure it is executable.
+
+    ```
+    image_gen -e micro_speech.elf -m himax_we1_evb.map -o out.img
+    ```
+
+6.  Download flash image file to HIMAX WE1 EVB by UART:
+
+    *   more detail about download image through UART can be found at
+        [HIMAX WE1 EVB update Flash image](https://github.com/HimaxWiseEyePlus/bsp_tflu/tree/master/HIMAX_WE1_EVB_user_guide#flash-image-update)
+
+After these steps, press reset button on the HIMAX WE1 EVB, you will see
+application output in the serial terminal and lighting LED.
+
+![Animation on Himax WE1 EVB](https://raw.githubusercontent.com/HimaxWiseEyePlus/bsp_tflu/master/HIMAX_WE1_EVB_user_guide/images/tflm_example_micro_speech_int8_led.gif)
+
+## Deploy to CEVA-BX1
+
+The following instructions will help you build and deploy the sample to the
+[CEVA-BX1](https://www.ceva-dsp.com/product/ceva-bx1-sound/)
+
+1.  Contact CEVA at [sales@ceva-dsp.com](mailto:sales@ceva-dsp.com)
+2.  Download and install CEVA-BX Toolbox v18.0.2 and run
+3.  Set the TARGET_TOOLCHAIN_ROOT variable in
+    /tensorflow/lite/micro/tools/make/templates/ceva_bx1/ceva_app_makefile.tpl
+    To your installation location. For example: TARGET_TOOLCHAIN_ROOT :=
+    /home/myuser/work/CEVA-ToolBox/V18/BX
+4.  Generate the Makefile for the project: /tensorflow$ make -f
+    tensorflow/lite/micro/tools/make/Makefile TARGET=ceva TARGET_ARCH=bx1
+    generate_micro_speech_make_project
+5.  Build the project:
+    /tensorflow/lite/micro/tools/make/gen/ceva_bx1/prj/micro_speech/make$ make
+6.  This should build the project and create a file called micro_speech.elf.
+7.  The supplied configuration reads input from a files and expects a file
+    called input.wav (easily changed in audio_provider.cc) to be placed in the
+    same directory of the .elf file
+8.  We used Google's speech command dataset: V0.0.2:
+    http://download.tensorflow.org/data/speech_commands_v0.02.tar.gz V0.0.1:
+    http://download.tensorflow.org/data/speech_commands_v0.01.tar.gz
+9.  Follow CEVA Toolbox instructions for creating a debug target and running the
+    project.
+10. Output should look like: Heard silence (208) @352ms Heard no (201) @1696ms
+    Heard yes (203) @3904ms
 
 ## Run on macOS
 

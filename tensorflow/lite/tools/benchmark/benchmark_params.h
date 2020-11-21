@@ -21,6 +21,11 @@ namespace tflite {
 namespace benchmark {
 using BenchmarkParam = tflite::tools::ToolParam;
 using BenchmarkParams = tflite::tools::ToolParams;
+
+// To be used in BenchmarkModel::LogParams() and its overrides as we assume
+// logging the parameters defined in BenchmarkModel as 'params_'.
+#define LOG_BENCHMARK_PARAM(type, name, description, verbose) \
+  LOG_TOOL_PARAM(params_, type, name, description, verbose)
 }  // namespace benchmark
 }  // namespace tflite
 #endif  // TENSORFLOW_LITE_TOOLS_BENCHMARK_BENCHMARK_PARAMS_H_

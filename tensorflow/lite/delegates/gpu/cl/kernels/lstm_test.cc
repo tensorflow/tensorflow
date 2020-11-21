@@ -67,9 +67,10 @@ TEST_F(OpenCLOperationTest, LSTM) {
       op_def.dst_tensors.push_back({data_type, storage, Layout::BHWC});
       TensorFloat32 new_state;
       TensorFloat32 new_activ;
-      LSTM operation = CreateLSTM(op_def);
+      GPUOperation operation = CreateLSTM(op_def, env_.GetDevicePtr()->info_);
       ASSERT_OK(ExecuteGPUOperation(
-          {src_tensor, prev_state}, creation_context_, &operation,
+          {src_tensor, prev_state}, creation_context_,
+          absl::make_unique<GPUOperation>(std::move(operation)),
           {BHWC(1, 1, 1, 4), BHWC(1, 1, 1, 4)}, {&new_state, &new_activ}));
       EXPECT_THAT(new_state.data,
                   Pointwise(FloatNear(eps), {7.0 / 15.0, 10.0 / 15.0,

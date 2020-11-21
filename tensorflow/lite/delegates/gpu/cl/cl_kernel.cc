@@ -58,8 +58,7 @@ absl::Status GetKernelPrivateMemorySize(cl_kernel kernel,
 }  // namespace
 
 CLKernel::CLKernel(CLKernel&& kernel)
-    : private_memory_size_(kernel.private_memory_size_),
-      max_work_group_size_(kernel.max_work_group_size_),
+    : info_(kernel.info_),
       binding_counter_(kernel.binding_counter_),
       function_name_(std::move(kernel.function_name_)),
       program_(kernel.program_),
@@ -70,8 +69,7 @@ CLKernel::CLKernel(CLKernel&& kernel)
 CLKernel& CLKernel::operator=(CLKernel&& kernel) {
   if (this != &kernel) {
     Release();
-    std::swap(private_memory_size_, kernel.private_memory_size_);
-    std::swap(max_work_group_size_, kernel.max_work_group_size_);
+    std::swap(info_, kernel.info_);
     std::swap(binding_counter_, kernel.binding_counter_);
     function_name_ = std::move(kernel.function_name_);
     std::swap(program_, kernel.program_);
@@ -119,9 +117,9 @@ absl::Status CLKernel::CreateFromProgram(const CLProgram& program,
   clRetainProgram(program_);
 
   RETURN_IF_ERROR(GetKernelPrivateMemorySize(kernel_, program.GetDeviceId(),
-                                             &private_memory_size_));
+                                             &info_.private_memory_size));
   RETURN_IF_ERROR(GetKernelMaxWorkGroupSize(kernel_, program.GetDeviceId(),
-                                            &max_work_group_size_));
+                                            &info_.max_work_group_size));
   return absl::OkStatus();
 }
 
@@ -151,36 +149,6 @@ absl::Status CLKernel::SetBytesAuto(const void* ptr, int length) {
   }
   binding_counter_++;
   return absl::OkStatus();
-}
-
-template <>
-absl::Status CLKernel::SetBytes<FLT>(int index, const FLT& value) const {
-  return SetBytes(index, value.GetData(), value.GetSize());
-}
-
-template <>
-absl::Status CLKernel::SetBytes<FLT2>(int index, const FLT2& value) const {
-  return SetBytes(index, value.GetData(), value.GetSize());
-}
-
-template <>
-absl::Status CLKernel::SetBytes<FLT4>(int index, const FLT4& value) const {
-  return SetBytes(index, value.GetData(), value.GetSize());
-}
-
-template <>
-absl::Status CLKernel::SetBytesAuto<FLT>(const FLT& value) {
-  return SetBytesAuto(value.GetData(), value.GetSize());
-}
-
-template <>
-absl::Status CLKernel::SetBytesAuto<FLT2>(const FLT2& value) {
-  return SetBytesAuto(value.GetData(), value.GetSize());
-}
-
-template <>
-absl::Status CLKernel::SetBytesAuto<FLT4>(const FLT4& value) {
-  return SetBytesAuto(value.GetData(), value.GetSize());
 }
 
 }  // namespace cl

@@ -89,27 +89,27 @@ class LinearOperatorIdentityTest(
       self.assertAllClose(x, self.evaluate(y))
 
   def test_non_scalar_num_rows_raises_static(self):
-    with self.assertRaisesRegexp(ValueError, "must be a 0-D Tensor"):
+    with self.assertRaisesRegex(ValueError, "must be a 0-D Tensor"):
       linalg_lib.LinearOperatorIdentity(num_rows=[2])
 
   def test_non_integer_num_rows_raises_static(self):
-    with self.assertRaisesRegexp(TypeError, "must be integer"):
+    with self.assertRaisesRegex(TypeError, "must be integer"):
       linalg_lib.LinearOperatorIdentity(num_rows=2.)
 
   def test_negative_num_rows_raises_static(self):
-    with self.assertRaisesRegexp(ValueError, "must be non-negative"):
+    with self.assertRaisesRegex(ValueError, "must be non-negative"):
       linalg_lib.LinearOperatorIdentity(num_rows=-2)
 
   def test_non_1d_batch_shape_raises_static(self):
-    with self.assertRaisesRegexp(ValueError, "must be a 1-D"):
+    with self.assertRaisesRegex(ValueError, "must be a 1-D"):
       linalg_lib.LinearOperatorIdentity(num_rows=2, batch_shape=2)
 
   def test_non_integer_batch_shape_raises_static(self):
-    with self.assertRaisesRegexp(TypeError, "must be integer"):
+    with self.assertRaisesRegex(TypeError, "must be integer"):
       linalg_lib.LinearOperatorIdentity(num_rows=2, batch_shape=[2.])
 
   def test_negative_batch_shape_raises_static(self):
-    with self.assertRaisesRegexp(ValueError, "must be non-negative"):
+    with self.assertRaisesRegex(ValueError, "must be non-negative"):
       linalg_lib.LinearOperatorIdentity(num_rows=2, batch_shape=[-2])
 
   def test_non_scalar_num_rows_raises_dynamic(self):
@@ -148,7 +148,7 @@ class LinearOperatorIdentityTest(
   def test_wrong_matrix_dimensions_raises_static(self):
     operator = linalg_lib.LinearOperatorIdentity(num_rows=2)
     x = rng.randn(3, 3).astype(np.float32)
-    with self.assertRaisesRegexp(ValueError, "Dimensions.*not compatible"):
+    with self.assertRaisesRegex(ValueError, "Dimensions.*not compatible"):
       operator.matmul(x)
 
   def test_wrong_matrix_dimensions_raises_dynamic(self):
@@ -241,7 +241,7 @@ class LinearOperatorIdentityTest(
     self.assertTrue(operator.is_self_adjoint)
 
     # Any of them False raises because the identity is always self-adjoint etc..
-    with self.assertRaisesRegexp(ValueError, "is always non-singular"):
+    with self.assertRaisesRegex(ValueError, "is always non-singular"):
       operator = linalg_lib.LinearOperatorIdentity(
           num_rows=2,
           is_non_singular=None,
@@ -269,10 +269,10 @@ class LinearOperatorIdentityTest(
         operator.inverse(), linalg_lib.LinearOperatorIdentity)
 
   def test_ref_type_shape_args_raises(self):
-    with self.assertRaisesRegexp(TypeError, "num_rows.*reference"):
+    with self.assertRaisesRegex(TypeError, "num_rows.*reference"):
       linalg_lib.LinearOperatorIdentity(num_rows=variables_module.Variable(2))
 
-    with self.assertRaisesRegexp(TypeError, "batch_shape.*reference"):
+    with self.assertRaisesRegex(TypeError, "batch_shape.*reference"):
       linalg_lib.LinearOperatorIdentity(
           num_rows=2, batch_shape=variables_module.Variable([3]))
 
@@ -380,7 +380,7 @@ class LinearOperatorScaledIdentityTest(
 
   def test_non_scalar_num_rows_raises_static(self):
     # Many "test_...num_rows" tests are performed in LinearOperatorIdentity.
-    with self.assertRaisesRegexp(ValueError, "must be a 0-D Tensor"):
+    with self.assertRaisesRegex(ValueError, "must be a 0-D Tensor"):
       linalg_lib.LinearOperatorScaledIdentity(
           num_rows=[2], multiplier=123.)
 
@@ -388,7 +388,7 @@ class LinearOperatorScaledIdentityTest(
     operator = linalg_lib.LinearOperatorScaledIdentity(
         num_rows=2, multiplier=2.2)
     x = rng.randn(3, 3).astype(np.float32)
-    with self.assertRaisesRegexp(ValueError, "Dimensions.*not compatible"):
+    with self.assertRaisesRegex(ValueError, "Dimensions.*not compatible"):
       operator.matmul(x)
 
   def test_wrong_matrix_dimensions_raises_dynamic(self):
@@ -540,7 +540,7 @@ class LinearOperatorScaledIdentityTest(
         linalg_lib.LinearOperatorScaledIdentity)
 
   def test_ref_type_shape_args_raises(self):
-    with self.assertRaisesRegexp(TypeError, "num_rows.*reference"):
+    with self.assertRaisesRegex(TypeError, "num_rows.*reference"):
       linalg_lib.LinearOperatorScaledIdentity(
           num_rows=variables_module.Variable(2), multiplier=1.23)
 

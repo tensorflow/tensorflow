@@ -89,7 +89,7 @@ absl::Status CreateClEventFromEglSync(cl_context context,
 }
 
 bool IsClEventFromEglSyncSupported(const CLDevice& device) {
-  return device.SupportsExtension("cl_khr_egl_event");
+  return device.GetInfo().SupportsExtension("cl_khr_egl_event");
 }
 
 absl::Status CreateClMemoryFromGlBuffer(GLuint gl_ssbo_id,
@@ -126,7 +126,7 @@ absl::Status CreateClMemoryFromGlTexture(GLenum texture_target,
 
 bool IsGlSharingSupported(const CLDevice& device) {
   return clCreateFromGLBuffer && clCreateFromGLTexture &&
-         device.SupportsExtension("cl_khr_gl_sharing");
+         device.GetInfo().SupportsExtension("cl_khr_gl_sharing");
 }
 
 AcquiredGlObjects::~AcquiredGlObjects() { Release({}, nullptr).IgnoreError(); }
@@ -273,7 +273,7 @@ GlClBufferCopier::GlClBufferCopier(const TensorObjectDef& input_def,
 
 absl::Status GlClBufferCopier::Convert(const TensorObject& input_obj,
                                        const TensorObject& output_obj) {
-  if (absl::get_if<OpenGlBuffer>(&input_obj)) {
+  if (absl::holds_alternative<OpenGlBuffer>(input_obj)) {
     auto ssbo = absl::get_if<OpenGlBuffer>(&input_obj);
     auto cl_mem = absl::get_if<OpenClBuffer>(&output_obj);
     RETURN_IF_ERROR(

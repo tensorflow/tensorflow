@@ -1,4 +1,4 @@
-# Question and Answer
+# BERT Question and Answer
 
 Use a pre-trained model to answer questions based on the content of a given
 passage.
@@ -7,18 +7,26 @@ passage.
 
 <img src="images/screenshot.gif" class="attempt-right" style="max-width: 300px">
 
-If you are new to TensorFlow Lite and are working with Android, we recommend
-exploring the following example applications that can help you get started.
+If you are new to TensorFlow Lite and are working with Android or iOS, we
+recommend exploring the following example applications that can help you get
+started.
 
 <a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/bert_qa/android">Android
 example</a>
+<a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/bert_qa/ios">iOS
+example</a>
 
-If you are using a platform other than Android, or you are already familiar with
-the [TensorFlow Lite APIs](https://www.tensorflow.org/api_docs/python/tf/lite),
-you can download our starter question and answer model.
+If you are using a platform other than Android/iOS, or you are already familiar
+with the
+[TensorFlow Lite APIs](https://www.tensorflow.org/api_docs/python/tf/lite), you
+can download our starter question and answer model.
 
-<a class="button button-primary" href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/bert_qa/mobilebert_qa_vocab.zip">Download
+<a class="button button-primary" href="https://tfhub.dev/tensorflow/lite-model/mobilebert/1/metadata/1?lite-format=tflite">Download
 starter model and vocab</a>
+
+For more information about metadata and associated fields (e.g. `vocab.txt`) see
+<a href="https://www.tensorflow.org/lite/convert/metadata#read_the_metadata_from_models">Read
+the metadata from models</a>.
 
 ## How it works
 
@@ -44,7 +52,7 @@ pre-processing including tokenization and post-processing steps that are
 described in the BERT [paper](https://arxiv.org/abs/1810.04805) and implemented
 in the sample app.
 
-## Performance Benchmarks
+## Performance benchmarks
 
 Performance benchmark numbers are generated with the tool
 [described here](https://www.tensorflow.org/lite/performance/benchmarks).
@@ -60,7 +68,7 @@ Performance benchmark numbers are generated with the tool
   </thead>
   <tr>
     <td rowspan = 3>
-      <a href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/bert_qa/mobilebert_qa_vocab.zip">Mobile Bert</a>
+      <a href="https://tfhub.dev/tensorflow/lite-model/mobilebert/1/metadata/1?lite-format=tflite">Mobile Bert</a>
     </td>
     <td rowspan = 3>
       100.5 Mb

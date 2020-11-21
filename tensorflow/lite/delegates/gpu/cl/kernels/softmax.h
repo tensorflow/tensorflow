@@ -18,7 +18,6 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/cl_kernel.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
-#include "tensorflow/lite/delegates/gpu/cl/precision.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 
@@ -26,31 +25,7 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-class Softmax : public GPUOperation {
- public:
-  Softmax() = default;
-  explicit Softmax(const OperationDef& definition) : GPUOperation(definition) {}
-  absl::Status AddToQueue(CLCommandQueue* queue) override;
-  absl::Status Tune(const TuningParameters& params) override;
-
-  absl::Status Compile(const CreationContext& creation_context) override;
-
-  // Move only
-  Softmax(Softmax&& kernel);
-  Softmax& operator=(Softmax&& kernel);
-  Softmax(const Softmax&) = delete;
-  Softmax& operator=(const Softmax&) = delete;
-
-  friend Softmax CreateSoftmax();
-
- private:
-  absl::Status BindArguments();
-  int3 GetGridSize() const;
-  CLKernel kernel_;
-  int3 work_group_size_ = int3(8, 4, 1);
-};
-
-Softmax CreateSoftmax(const OperationDef& definition);
+GPUOperation CreateSoftmax(const OperationDef& definition);
 
 }  // namespace cl
 }  // namespace gpu

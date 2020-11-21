@@ -1,3 +1,5 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow:tensorflow.bzl", "if_nccl")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
@@ -25,7 +27,7 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor",
+        "//tensorflow/core/platform:stream_executor",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/synchronization",
     ],
@@ -59,6 +61,10 @@ cc_library(
     name = "tracked_device_buffer",
     srcs = ["tracked_device_buffer.cc"],
     hdrs = ["tracked_device_buffer.h"],
+    visibility = [
+        "//learning/pathways/data_parallel:__pkg__",
+        "//tensorflow:internal",
+    ],
     deps = [
         ":event_pool",
         ":local_device_state",
@@ -104,7 +110,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor",
+        "//tensorflow/core/platform:stream_executor",
         "//tensorflow/stream_executor:event",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/synchronization",
@@ -136,17 +142,21 @@ cc_library(
         "//tensorflow/compiler/xla/service:computation_placer",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_cost_analysis",
         "//tensorflow/compiler/xla/service:maybe_owning_device_memory",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
-        "//tensorflow/core:allocator",
         "//tensorflow/core:lib",
+        "//tensorflow/core/framework:allocator",
+        "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/lib:traceme_encode",
         "//tensorflow/stream_executor:event",
         "//tensorflow/stream_executor:stream",
         "//tensorflow/stream_executor/host:host_platform_id",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/memory",
@@ -154,7 +164,63 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "tpu_client",
+    srcs = ["tpu_client.cc"],
+    hdrs = ["tpu_client.h"],
+    visibility = [
+        "//learning/brain/research/jax:__subpackages__",
+        "//learning/deepmind/tensorflow/tensorfn:__subpackages__",
+        "//learning/pathways:__subpackages__",
+        "//tensorflow/compiler/xla:friends",
+    ],
+    deps = [
+        ":local_device_state",
+        ":pjrt_client",
+        ":tracked_device_buffer",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/service:computation_placer",
+        "//tensorflow/compiler/xla/service:shaped_buffer",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/tpu:tpu_executor_dlsym_initializer",
+        "//tensorflow/core/tpu:tpu_on_demand_compiler",
+        "//tensorflow/stream_executor:device_memory",
+        "//tensorflow/stream_executor:stream",
+        "//tensorflow/stream_executor/lib",
+        "//tensorflow/stream_executor/tpu:tpu_computation_placer",
+        "//tensorflow/stream_executor/tpu:tpu_executable_interface",
+        "//tensorflow/stream_executor/tpu:tpu_executor",
+        "//tensorflow/stream_executor/tpu:tpu_executor_interface",
+        "//tensorflow/stream_executor/tpu:tpu_platform_interface",
+        "//tensorflow/stream_executor/tpu:tpu_topology_external",
+        "//tensorflow/stream_executor/tpu:tpu_transfer_manager",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+cc_library(
+    name = "interpreter_device",
+    srcs = ["interpreter_device.cc"],
+    hdrs = ["interpreter_device.h"],
+    deps = [
+        ":pjrt_client",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/service:interpreter_plugin",
+        "//tensorflow/compiler/xla/service:platform_util",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -175,9 +241,9 @@ cc_library(
     name = "nvidia_gpu_device",
     srcs = ["nvidia_gpu_device.cc"],
     hdrs = ["nvidia_gpu_device.h"],
-    copts = if_cuda(["-DNCCL_ENABLED=1"]),
     deps = [
         ":pjrt_client",
+        "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:client_library",
@@ -185,9 +251,20 @@ cc_library(
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core/common_runtime:bfc_allocator",
-        "//tensorflow/core/common_runtime/gpu:gpu_mem_allocator",
+        "//tensorflow/core/common_runtime/device:device_mem_allocator",
+        "//tensorflow/core/common_runtime/device:device_id",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/stream_executor:tf_allocator_adapter",
-    ] + if_cuda(["@local_config_nccl//:nccl"]),
+    ] + if_nccl([":nccl_plugin"]),
+)
+
+# We actually wish we could write if_cuda(if_nccl(...)) in :nvidia_gpu_device,
+# but Bazel does not allow nested selects. We can work around the problem using
+# an intermediate library.
+cc_library(
+    name = "nccl_plugin",
+    defines = if_cuda(["NCCL_ENABLED=1"]),
+    deps = if_cuda(["@local_config_nccl//:nccl"]),
 )
 
 tf_cc_test(
@@ -197,6 +274,7 @@ tf_cc_test(
         # TODO(phawkins): figure out TF test infra such that this only runs under GPU.
         "no_oss",
         "requires-gpu-nvidia",
+        "notap",
     ],
     deps = [
         ":nvidia_gpu_device",

@@ -12,13 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <memory>
+#include <stdint.h>
 
+#include <initializer_list>
+#include <memory>
+#include <vector>
+
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace {
@@ -185,6 +188,17 @@ TEST(MaximumOpTest, Int32WithBroadcastTest_ScalarY) {
   TestModel<int32_t>(BuiltinOperator_MINIMUM, {TensorType_INT32, {3, 1, 2}},
                      {TensorType_INT32, {}}, {TensorType_INT32, {3, 1, 2}},
                      data1, data2, {1, 0, -1, -2, 2, 2}, /*is_constant=*/true);
+}
+
+TEST(MaximumOpTest, Int8WithBroadcastTest_ScalarY) {
+  std::initializer_list<int8_t> data1 = {1, 0, -1, -2, 3, 11};
+  std::initializer_list<int8_t> data2 = {2};
+  TestModel<int8_t>(BuiltinOperator_MAXIMUM, {TensorType_INT8, {3, 1, 2}},
+                    {TensorType_INT8, {}}, {TensorType_INT8, {3, 1, 2}}, data1,
+                    data2, {2, 2, 2, 2, 3, 11}, /*is_constant=*/true);
+  TestModel<int8_t>(BuiltinOperator_MINIMUM, {TensorType_INT8, {3, 1, 2}},
+                    {TensorType_INT8, {}}, {TensorType_INT8, {3, 1, 2}}, data1,
+                    data2, {1, 0, -1, -2, 2, 2}, /*is_constant=*/true);
 }
 
 TEST(MaxMinOpTest, Int8Test8D) {

@@ -153,6 +153,10 @@ class XlaOpRegistry {
   static void RegisterCompilationDevice(const string& device_name,
                                         const DeviceRegistration& registration);
 
+  // Returns whether the device name is for the JIT device used exclusively for
+  // TF2XLA conversion.
+  static bool IsCompilationDevice(const string& device_name);
+
   // Returns the JIT device name associated with 'device_name', setting
   // 'jit_device_name', 'requires_jit', and 'enabled_jit_by_default', if they
   // are not null. Returns false and leaves the outputs unchanged if no matching
@@ -197,6 +201,11 @@ class XlaOpRegistry {
     return CompileTimeConstantInputs(op_kernel.def(), /*op_kernel=*/&op_kernel,
                                      /*op_def=*/nullptr, result);
   }
+
+  // Return names of arguments for a given op which are supposed to be
+  // constants.
+  static const std::unordered_set<std::string>*
+  CompileTimeConstantInputArgNames(const string& op);
 
   // Returns true if `op` is a "metadata" op, one that only looks at the shapes
   // of its operands and not their values.
@@ -258,10 +267,10 @@ class XlaOpRegistry {
     // Mapping from attribute name to a list of supported types.
     std::unordered_map<string, std::set<DataType>> type_constraints;
 
-    // An optional whitelist of devices. If there is no whitelist, all devices
+    // An optional allowlist of devices. If there is no allowlist, all devices
     // are permitted.
-    bool has_device_whitelist = false;
-    std::unordered_set<string> device_whitelist;
+    bool has_device_allowlist = false;
+    std::unordered_set<string> device_allowlist;
 
     // Names of arguments that must be compile-time constants.
     std::unordered_set<string> compile_time_constant_inputs;
@@ -279,8 +288,8 @@ class XlaOpRegistry {
   // Returns true if registrations x and y can both be added to the registry.
   // This is always the case if they refer to different ops. If they refer to
   // the same op name, they must: have the same values for compilation_only,
-  // allow_resource_types and allow_variant_types; use a device_whitelist; and
-  // their whitelists must not intersect.
+  // allow_resource_types and allow_variant_types; use a device_allowlist; and
+  // their allowlists must not intersect.
   static bool IsCompatible(const OpRegistration& x, const OpRegistration& y);
 
   static Status CompileTimeConstantInputs(const NodeDef& node_def,
@@ -319,7 +328,7 @@ class XlaOpRegistrationBuilder {
   // Starts an operator registration chain.
   static XlaOpRegistrationBuilder Name(absl::string_view name);
 
-  // Specifies a whitelist of devices on which the operator may run.
+  // Specifies a allowlist of devices on which the operator may run.
   XlaOpRegistrationBuilder& Device(absl::string_view devices);
   XlaOpRegistrationBuilder& Device(absl::Span<const absl::string_view> devices);
 

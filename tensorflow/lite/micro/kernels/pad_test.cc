@@ -15,10 +15,10 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/micro/kernels/all_ops_resolver.h"
+#include "tensorflow/lite/micro/all_ops_resolver.h"
+#include "tensorflow/lite/micro/kernels/kernel_runner.h"
 #include "tensorflow/lite/micro/test_helpers.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
-#include "tensorflow/lite/micro/testing/test_utils.h"
 
 namespace tflite {
 namespace testing {
@@ -28,33 +28,28 @@ template <typename T>
 TfLiteStatus ValidatePadGoldens(TfLiteTensor* tensors, int tensors_size,
                                 const T* golden, T* output_data,
                                 int output_length) {
-  TfLiteContext context;
-  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-  ::tflite::ops::micro::AllOpsResolver resolver;
-  const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_PAD, 1);
-  TF_LITE_ENSURE(&context, registration != nullptr);
-
   int inputs_array_data[] = {2, 0, 1};
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {1, 2};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
-  int temporaries_array_data[] = {0};
-  TfLiteIntArray* temporaries_array = IntArrayFromInts(temporaries_array_data);
-  TfLiteNode node;
-  node.inputs = inputs_array;
-  node.outputs = outputs_array;
-  node.temporaries = temporaries_array;
-  node.user_data = nullptr;
-  node.builtin_data = nullptr;
-  node.custom_initial_data = nullptr;
-  node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration->prepare);
-  TF_LITE_ENSURE_EQ(&context, kTfLiteOk,
-                    registration->prepare(&context, &node));
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
-  TF_LITE_ENSURE_EQ(&context, kTfLiteOk, registration->invoke(&context, &node));
+
+  const TfLiteRegistration registration = tflite::ops::micro::Register_PAD();
+  micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
+                             outputs_array,
+                             /*builtin_data=*/nullptr, micro_test::reporter);
+
+  // Prepare should catch dimension mismatches.
+  TfLiteStatus prepare_status = runner.InitAndPrepare();
+  if (prepare_status != kTfLiteOk) {
+    return prepare_status;
+  }
+
+  // Eval should catch quantization mismatches.
+  TfLiteStatus invoke_status = runner.Invoke();
+  if (invoke_status != kTfLiteOk) {
+    return invoke_status;
+  }
+
   for (int i = 0; i < output_length; ++i) {
     TF_LITE_MICRO_EXPECT_EQ(golden[i], output_data[i]);
   }
@@ -65,38 +60,24 @@ template <typename T>
 TfLiteStatus ValidatePadV2Goldens(TfLiteTensor* tensors, int tensors_size,
                                   const T* golden, T* output_data,
                                   int output_length) {
-  TfLiteContext context;
-  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-  ::tflite::ops::micro::AllOpsResolver resolver;
-  const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_PADV2, 1);
-  TF_LITE_ENSURE(&context, registration != nullptr);
-
   int inputs_array_data[] = {3, 0, 1, 2};
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {1, 3};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
-  int temporaries_array_data[] = {0};
-  TfLiteIntArray* temporaries_array = IntArrayFromInts(temporaries_array_data);
-  TfLiteNode node;
-  node.inputs = inputs_array;
-  node.outputs = outputs_array;
-  node.temporaries = temporaries_array;
-  node.user_data = nullptr;
-  node.builtin_data = nullptr;
-  node.custom_initial_data = nullptr;
-  node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration->prepare);
+
+  const TfLiteRegistration registration = tflite::ops::micro::Register_PADV2();
+  micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
+                             outputs_array,
+                             /*builtin_data=*/nullptr, micro_test::reporter);
+
   // Prepare should catch dimension mismatches.
-  TfLiteStatus prepare_status = registration->prepare(&context, &node);
+  TfLiteStatus prepare_status = runner.InitAndPrepare();
   if (prepare_status != kTfLiteOk) {
     return prepare_status;
   }
 
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
   // Eval should catch quantization mismatches.
-  TfLiteStatus invoke_status = registration->invoke(&context, &node);
+  TfLiteStatus invoke_status = runner.Invoke();
   if (invoke_status != kTfLiteOk) {
     return invoke_status;
   }
@@ -120,10 +101,9 @@ void TestPadFloat(const int* input_dims_data, const float* input_data,
   constexpr int inputs_size = 2;
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
-  TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input_data, input_dims, "input_tensor"),
-      CreateInt32Tensor(pad_data, pad_dims, "padding tensor"),
-      CreateFloatTensor(output_data, output_dims, "output_tensor")};
+  TfLiteTensor tensors[tensors_size] = {CreateTensor(input_data, input_dims),
+                                        CreateTensor(pad_data, pad_dims),
+                                        CreateTensor(output_data, output_dims)};
 
   // Pad tensor must be constant.
   tensors[1].allocation_type = kTfLiteMmapRo;
@@ -149,10 +129,9 @@ void TestPadV2Float(const int* input_dims_data, const float* input_data,
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input_data, input_dims, "input_tensor"),
-      CreateInt32Tensor(pad_data, pad_dims, "padding tensor"),
-      CreateFloatTensor(&pad_value, pad_value_dims, "pad value tensor"),
-      CreateFloatTensor(output_data, output_dims, "output_tensor")};
+      CreateTensor(input_data, input_dims), CreateTensor(pad_data, pad_dims),
+      CreateTensor(&pad_value, pad_value_dims),
+      CreateTensor(output_data, output_dims)};
 
   // Pad tensor must be constant.
   tensors[1].allocation_type = kTfLiteMmapRo;
@@ -179,16 +158,16 @@ void TestPadQuantized(const int* input_dims_data, const float* input_data,
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
       CreateQuantizedTensor(input_data, input_quantized, input_dims,
-                            input_scale, input_zero_point, "input_tensor"),
-      CreateInt32Tensor(pad_data, pad_dims, "padding tensor"),
+                            input_scale, input_zero_point),
+      CreateTensor(pad_data, pad_dims),
       CreateQuantizedTensor(output_data, output_dims, output_scale,
-                            output_zero_point, "output_tensor")};
+                            output_zero_point)};
 
   // Pad tensor must be constant.
   tensors[1].allocation_type = kTfLiteMmapRo;
 
-  tflite::AsymmetricQuantize(golden, golden_quantized, output_dims_count,
-                             output_scale, output_zero_point);
+  tflite::Quantize(golden, golden_quantized, output_dims_count, output_scale,
+                   output_zero_point);
   TF_LITE_MICRO_EXPECT_EQ(
       expected_status,
       ValidatePadGoldens(tensors, tensors_size, golden_quantized, output_data,
@@ -218,21 +197,20 @@ void TestPadV2Quantized(const int* input_dims_data, const float* input_data,
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
       CreateQuantizedTensor(input_data, input_quantized, input_dims,
-                            input_scale, input_zero_point, "input_tensor"),
-      CreateInt32Tensor(pad_data, pad_dims, "padding tensor"),
+                            input_scale, input_zero_point),
+      CreateTensor(pad_data, pad_dims),
       CreateQuantizedTensor(&pad_value, &pad_value_quantized, pad_value_dims,
-                            pad_value_scale, pad_value_zero_point,
-                            "pad value tensor"),
+                            pad_value_scale, pad_value_zero_point),
       CreateQuantizedTensor(output_data, output_dims, output_scale,
-                            output_zero_point, "output_tensor")};
+                            output_zero_point)};
 
   // Pad tensor must be constant.
   tensors[1].allocation_type = kTfLiteMmapRo;
   tensors[2].params.scale = pad_value_scale;
   tensors[3].params.scale = output_scale;
 
-  tflite::AsymmetricQuantize(golden, golden_quantized, output_dims_count,
-                             output_scale, output_zero_point);
+  tflite::Quantize(golden, golden_quantized, output_dims_count, output_scale,
+                   output_zero_point);
   TF_LITE_MICRO_EXPECT_EQ(
       expected_status,
       ValidatePadV2Goldens(tensors, tensors_size, golden_quantized, output_data,

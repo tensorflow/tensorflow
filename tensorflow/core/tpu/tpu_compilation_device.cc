@@ -18,7 +18,14 @@ limitations under the License.
 #include "tensorflow/core/tpu/tpu_node_device_util.h"
 
 namespace tensorflow {
+namespace {
 
-REGISTER_XLA_BACKEND(DEVICE_TPU_XLA_JIT, kTpuAllTypes, TpuOpFilter);
+bool RegisterTpuXlaBackend() {
+  REGISTER_XLA_BACKEND(DEVICE_TPU_XLA_JIT, kTpuAllTypes, TpuOpFilter);
+  return true;
+}
 
+static bool tpu_xla_backend_registered = RegisterTpuXlaBackend();
+
+}  // namespace
 }  // namespace tensorflow

@@ -108,7 +108,7 @@ class UtilsTest(test.TestCase):
 
   def testBuildTensorInfoEager(self):
     x = constant_op.constant(1, name="x")
-    with context.eager_mode(), self.assertRaisesRegexp(
+    with context.eager_mode(), self.assertRaisesRegex(
         RuntimeError, "build_tensor_info is not supported in Eager mode"):
       utils.build_tensor_info(x)
 

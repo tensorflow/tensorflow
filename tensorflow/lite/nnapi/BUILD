@@ -1,4 +1,5 @@
 load("//tensorflow/lite:special_rules.bzl", "if_nnapi")
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 package(
     default_visibility = [
@@ -13,6 +14,7 @@ cc_library(
         "NeuralNetworksShim.h",
         "NeuralNetworksTypes.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     linkopts = if_nnapi(["-ldl"]),
 )
 
@@ -25,6 +27,7 @@ cc_library(
     hdrs = [
         "nnapi_implementation.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     linkopts = if_nnapi(["-ldl"]) + if_nnapi(
         supported = ["-lrt"],
         supported_android = [],
@@ -38,6 +41,7 @@ cc_library(
     name = "nnapi_util",
     srcs = ["nnapi_util.cc"],
     hdrs = ["nnapi_util.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":nnapi_implementation",
         "//tensorflow/lite:util",

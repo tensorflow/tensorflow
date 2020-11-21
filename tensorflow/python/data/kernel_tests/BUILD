@@ -1,7 +1,7 @@
 # Tests of TensorFlow kernels written using the Python API.
 
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "tf_py_test")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")  # buildifier: disable=same-origin-load
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -29,7 +29,7 @@ tf_py_test(
 
 tf_py_test(
     name = "cache_test",
-    size = "small",
+    size = "medium",
     srcs = ["cache_test.py"],
     deps = [
         ":test_base",
@@ -43,6 +43,17 @@ tf_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
         "//third_party/py/numpy",
+    ],
+)
+
+tf_py_test(
+    name = "cardinality_test",
+    srcs = ["cardinality_test.py"],
+    deps = [
+        "//tensorflow/python/data/experimental/ops:cardinality",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -76,24 +87,6 @@ tf_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
         "//third_party/py/numpy",
-    ],
-)
-
-tf_py_test(
-    name = "data_service_ops_test",
-    size = "medium",
-    srcs = ["data_service_ops_test.py"],
-    deps = [
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python/data",
-        "//tensorflow/python/data/experimental/ops:testing",
-        "//tensorflow/python/data/kernel_tests:test_base",
-        "//tensorflow/python/data/service:server_lib",
     ],
 )
 
@@ -213,6 +206,7 @@ tf_py_test(
     name = "from_generator_test",
     size = "medium",
     srcs = ["from_generator_test.py"],
+    shard_count = 10,
     deps = [
         ":test_base",
         "//tensorflow/python:client_testlib",
@@ -386,6 +380,19 @@ cuda_py_test(
 )
 
 tf_py_test(
+    name = "len_test",
+    size = "small",
+    srcs = ["len_test.py"],
+    deps = [
+        ":test_base",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_combinations",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
     name = "list_files_test",
     size = "small",
     srcs = ["list_files_test.py"],
@@ -549,6 +556,26 @@ tf_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "placement_test",
+    size = "small",
+    srcs = ["placement_test.py"],
+    deps = [
+        ":test_base",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:test_ops",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:def_function",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 tf_py_test(
     name = "prefetch_test",
     size = "small",
@@ -581,6 +608,9 @@ cuda_py_test(
     name = "reduce_test",
     size = "small",
     srcs = ["reduce_test.py"],
+    tags = [
+        "no_cuda_asan",  # times out
+    ],
     deps = [
         ":test_base",
         "//tensorflow/python:array_ops",
@@ -624,7 +654,7 @@ tf_py_test(
 
 tf_py_test(
     name = "shuffle_test",
-    size = "small",
+    size = "medium",
     srcs = ["shuffle_test.py"],
     deps = [
         ":test_base",

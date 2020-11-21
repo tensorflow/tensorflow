@@ -39,7 +39,8 @@ class LoggingOpResolver : public OpResolver {
   LoggingOpResolver(const BuiltinOpsSet& builtin_ops_to_replace,
                     const CustomOpsSet& custom_ops_to_replace,
                     const OpResolver& base_resolver,
-                    KernelEvalFuncPtr logging_eval_fn);
+                    KernelEvalFuncPtr logging_eval_fn,
+                    ErrorReporter* error_reporter);
 
   const TfLiteRegistration* FindOp(BuiltinOperator op,
                                    int version) const override;

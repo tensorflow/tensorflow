@@ -65,10 +65,12 @@ Status DeviceContext::CopyCPUTensorToDeviceSync(const Tensor* cpu_tensor,
 
 const DeviceAttributes& DeviceBase::attributes() const {
   LOG(FATAL) << "Device does not implement attributes()";
+  std::abort();
 }
 
 const string& DeviceBase::name() const {
   LOG(FATAL) << "Device does not implement name()";
+  std::abort();
 }
 
 void DeviceBase::set_eigen_cpu_device(Eigen::ThreadPoolDevice* d) {

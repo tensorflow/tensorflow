@@ -76,6 +76,11 @@ extern const char* kModelWithFCOp;
 // reshape->custom->custom->squeeze.
 extern const char* kModelMixed;
 
+// Test model with mixed quantizable and
+// and un-quantizable ops for
+// activations in 16-bit.
+extern const char* kModelMixed16x8;
+
 // Test model with split op.
 extern const char* kModelSplit;
 
@@ -87,16 +92,22 @@ extern const char* kModelPack;
 extern const char* kLstmCalibrated;
 extern const char* kLstmQuantized;
 
+// Test model with LSTM op that has peephole, without layer norm, without
+// projection, without cifg.
+extern const char* kLstmCalibrated2;
+extern const char* kLstmQuantized2;
+
+extern const char* kUnidirectionalSequenceLstmCalibrated;
+extern const char* kUnidirectionalSequenceLstmQuantized;
+
 // Test model with a minimum op.
 extern const char* kModelWithMinimumOp;
 
 // Test model with a maximum op.
 extern const char* kModelWithMaximumOp;
 
-// Test model with LSTM op that has peephole, without layer norm, without
-// projection, without cifg.
-extern const char* kLstmCalibrated2;
-extern const char* kLstmQuantized2;
+// Test model with a transpose op.
+extern const char* kModelWithTranspose;
 
 // Test model with SVDF op.
 extern const char* kSvdfCalibrated;

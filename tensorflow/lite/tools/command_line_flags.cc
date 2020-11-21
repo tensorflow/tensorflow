@@ -185,7 +185,10 @@ std::string Flag::GetTypeName() const {
 
     const auto it = processed_flags.find(flag.name_);
     if (it != processed_flags.end()) {
+#ifndef NDEBUG
+      // Only log this in debug builds.
       TFLITE_LOG(WARN) << "Duplicate flags: " << flag.name_;
+#endif
       if (it->second != -1) {
         bool value_parsing_ok;
         flag.Parse(argv[it->second], &value_parsing_ok);
@@ -325,6 +328,15 @@ std::string Flag::GetTypeName() const {
     usage_text << "\t" << flag.usage_text_ << "\n";
   }
   return usage_text.str();
-}  // namespace tflite
+}
+
+/*static*/ std::string Flags::ArgsToString(int argc, const char** argv) {
+  std::string args;
+  for (int i = 1; i < argc; ++i) {
+    args.append(argv[i]);
+    if (i != argc - 1) args.append(" ");
+  }
+  return args;
+}
 
 }  // namespace tflite

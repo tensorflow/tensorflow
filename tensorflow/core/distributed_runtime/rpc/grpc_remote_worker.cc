@@ -20,6 +20,7 @@ limitations under the License.
 #include "grpcpp/generic/generic_stub.h"
 #include "grpcpp/grpcpp.h"
 #include "tensorflow/core/common_runtime/process_util.h"
+#include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_client_cq_tag.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_state.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
@@ -35,17 +36,16 @@ limitations under the License.
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/protobuf/transport_options.pb.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
+#include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
-
-const int kMaxWorkerRpcRetries = 10;
 
 class GrpcRemoteWorker : public WorkerInterface {
  public:
   explicit GrpcRemoteWorker(SharedGrpcChannelPtr channel,
                             ::grpc::CompletionQueue* completion_queue,
                             thread::ThreadPool* callback_threadpool,
-                            WorkerCacheLogger* logger)
+                            WorkerCacheLogger* logger, const string& target)
       : channel_(std::move(channel)),
         stub_(channel_),
         cq_(completion_queue),
@@ -66,14 +66,15 @@ class GrpcRemoteWorker : public WorkerInterface {
         instancesource_(Method(GrpcWorkerMethod::kCompleteInstance)),
         getstepsequence_(Method(GrpcWorkerMethod::kGetStepSequence)),
         markrecvfinished_(Method(GrpcWorkerMethod::kMarkRecvFinished)),
-        logger_(logger) {}
+        logger_(logger),
+        target_(target) {}
 
   ~GrpcRemoteWorker() override {}
 
-  void GetStatusAsync(const GetStatusRequest* request,
+  void GetStatusAsync(CallOptions* call_opts, const GetStatusRequest* request,
                       GetStatusResponse* response, bool fail_fast,
                       StatusCallback done) override {
-    IssueRequest(request, response, getstatus_, std::move(done), nullptr,
+    IssueRequest(request, response, getstatus_, std::move(done), call_opts,
                  fail_fast);
   }
 
@@ -273,7 +274,7 @@ class GrpcRemoteWorker : public WorkerInterface {
                     bool fail_fast = true) {
     new RPCState<protobuf::Message>(
         &stub_, cq_, method, *request, response, std::move(done), call_opts,
-        callback_threadpool_, /*max_retries=*/0, fail_fast);
+        callback_threadpool_, MaxRetries(), fail_fast, &target_);
   }
 
   void IssueRequest(const protobuf::Message* request, TensorResponse* response,
@@ -281,7 +282,8 @@ class GrpcRemoteWorker : public WorkerInterface {
                     CallOptions* call_opts = nullptr) {
     new RPCState<TensorResponse>(&stub_, cq_, method, *request, response,
                                  std::move(done), call_opts,
-                                 callback_threadpool_);
+                                 callback_threadpool_, MaxRetries(),
+                                 /*fail_fast=*/true, &target_);
   }
 
   void IssueMarkRecvFinishedRequest(int64 request_id) {
@@ -296,6 +298,14 @@ class GrpcRemoteWorker : public WorkerInterface {
 
   // Helper function for initializing the RpcMethod objects below.
   const char* Method(GrpcWorkerMethod id) { return GrpcWorkerMethodName(id); }
+
+  // Helper function for configuring max GRPC retries. Defaults to 0 (no
+  // retries).
+  const int64 MaxRetries() {
+    int64 max_retries = -1;
+    TF_CHECK_OK(ReadInt64FromEnvVar("GRPC_MAX_RETRIES", 0, &max_retries));
+    return max_retries;
+  }
 
   SharedGrpcChannelPtr channel_;
   ::grpc::GenericStub stub_;
@@ -321,6 +331,7 @@ class GrpcRemoteWorker : public WorkerInterface {
 
   // Support for logging.
   WorkerCacheLogger* logger_;
+  const string target_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GrpcRemoteWorker);
 };
@@ -328,9 +339,10 @@ class GrpcRemoteWorker : public WorkerInterface {
 WorkerInterface* NewGrpcRemoteWorker(SharedGrpcChannelPtr channel,
                                      ::grpc::CompletionQueue* completion_queue,
                                      thread::ThreadPool* callback_threadpool,
-                                     WorkerCacheLogger* logger) {
+                                     WorkerCacheLogger* logger,
+                                     const string& target) {
   return new GrpcRemoteWorker(std::move(channel), completion_queue,
-                              callback_threadpool, logger);
+                              callback_threadpool, logger, target);
 }
 
 }  // namespace tensorflow

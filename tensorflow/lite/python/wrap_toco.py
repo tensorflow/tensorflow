@@ -44,13 +44,19 @@ def wrapped_get_potentially_supported_ops():
 
 
 def wrapped_experimental_mlir_quantize(input_data_str, disable_per_channel,
-                                       inference_type):
+                                       fully_quantize, inference_type):
   """Wraps experimental mlir quantize model."""
   return _pywrap_toco_api.ExperimentalMlirQuantizeModel(input_data_str,
                                                         disable_per_channel,
+                                                        fully_quantize,
                                                         inference_type)
 
 
 def wrapped_experimental_mlir_sparsify(input_data_str):
   """Wraps experimental mlir sparsify model."""
   return _pywrap_toco_api.ExperimentalMlirSparsifyModel(input_data_str)
+
+
+def wrapped_register_custom_opdefs(custom_opdefs_list):
+  """Wraps RegisterCustomOpdefs with lazy loader."""
+  return _pywrap_toco_api.RegisterCustomOpdefs(custom_opdefs_list)

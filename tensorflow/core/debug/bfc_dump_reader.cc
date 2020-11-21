@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cinttypes>
 #include <string>
 
 #include "tensorflow/core/platform/env.h"
@@ -70,17 +71,18 @@ void PrintChunk(const MemChunk& mc, const uint64 ac_offset, bool freed_at,
   // A size class corresponding approximately to log base 100.
   int size_class = floor(0.5 * log10(static_cast<double>(mc.size())));
   *cumulative_bytes += mc.size();
-  printf("  %c %d %p bin=%d bytes=%llu %3.1f%%", mc.in_use() ? 'U' : 'F',
+  printf("  %c %d %p bin=%d bytes=%" PRIu64 " %3.1f%%", mc.in_use() ? 'U' : 'F',
          size_class, reinterpret_cast<const void*>(mc.address()), mc.bin(),
-         mc.size(),
+         static_cast<uint64_t>(mc.size()),
          100 * (*cumulative_bytes / static_cast<float>(total_bytes)));
   if (freed_at) {
-    printf(" freed_at=%llu", mc.freed_at_count());
+    printf(" freed_at=%" PRIu64, static_cast<uint64_t>(mc.freed_at_count()));
   }
   if (ac_offset > 0) {
-    printf(" age=%llu", ac_offset - mc.action_count());
+    printf(" age=%" PRIu64,
+           static_cast<uint64_t>(ac_offset - mc.action_count()));
   } else {
-    printf(" ac=%llu", mc.action_count());
+    printf(" ac=%" PRIu64, static_cast<uint64_t>(mc.action_count()));
   }
   // step_ids are random, so save space by showing only low 16 bits.
   printf(" step=%x op=%s\n", static_cast<uint>(0xFFFF & mc.step_id()),
@@ -90,18 +92,24 @@ void PrintChunk(const MemChunk& mc, const uint64 ac_offset, bool freed_at,
 void PrintSummary(const MemoryDump& md) {
   printf("MemoryMap for allocator %s\n", md.allocator_name().c_str());
   for (auto& it : md.bin_summary()) {
-    printf(
-        "   Bin %2d total bytes=%10lld \tin use=%10lld \ttotal_chunks=%6lld "
-        "\tin_use=%6lld\n",
-        it.bin(), it.total_bytes_in_bin(), it.total_bytes_in_use(),
-        it.total_chunks_in_bin(), it.total_chunks_in_use());
+    printf("   Bin %2d total bytes=%10" PRId64 " \tin use=%10" PRId64
+           " \ttotal_chunks=%6" PRId64
+           " "
+           "\tin_use=%6" PRId64 "\n",
+           it.bin(), static_cast<int64_t>(it.total_bytes_in_bin()),
+           static_cast<int64_t>(it.total_bytes_in_use()),
+           static_cast<int64_t>(it.total_chunks_in_bin()),
+           static_cast<int64_t>(it.total_chunks_in_use()));
   }
-  printf(
-      "Total num_allocs: %lld, bytes_in_use: %lld, peak_bytes_in_use: %lld,\n"
-      "largest_alloc_size: %lld, fragmentation: %f\n",
-      md.stats().num_allocs(), md.stats().bytes_in_use(),
-      md.stats().peak_bytes_in_use(), md.stats().largest_alloc_size(),
-      md.stats().fragmentation_metric());
+  printf("Total num_allocs: %" PRId64 ", bytes_in_use: %" PRId64
+         ", peak_bytes_in_use: %" PRId64
+         ",\n"
+         "largest_alloc_size: %" PRId64 ", fragmentation: %f\n",
+         static_cast<int64_t>(md.stats().num_allocs()),
+         static_cast<int64_t>(md.stats().bytes_in_use()),
+         static_cast<int64_t>(md.stats().peak_bytes_in_use()),
+         static_cast<int64_t>(md.stats().largest_alloc_size()),
+         md.stats().fragmentation_metric());
 }
 
 void PrintSortedChunks(
@@ -125,10 +133,10 @@ void PrintSortedChunks(
   for (int i = 0; i < chunks.size(); ++i) {
     const MemChunk* c = chunks[i];
     if (by_addr && i > 0 && last_end != c->address()) {
-      printf("  empty range from %p to %p  (%lld)\n",
+      printf("  empty range from %p to %p  (%" PRId64 ")\n",
              reinterpret_cast<const void*>(last_end),
              reinterpret_cast<const void*>(c->address()),
-             (c->address() - last_end));
+             static_cast<int64_t>(c->address() - last_end));
     }
     PrintChunk(*c, max_action_count, freed_at, total_bytes, &cumulative_bytes);
     last_end = c->address() + c->size();
@@ -182,8 +190,8 @@ void PrintChunksByOpName(const MemoryDump& md, const string& op_name,
       total_bytes += it.size();
     }
   }
-  printf("\t%d matching Chunks of total size %llu bytes:\n",
-         filtered.chunk_size(), total_bytes);
+  printf("\t%d matching Chunks of total size %" PRIu64 " bytes:\n",
+         filtered.chunk_size(), static_cast<uint64_t>(total_bytes));
   PrintSortedChunks(
       filtered,
       [](const MemChunk* a, const MemChunk* b) {
@@ -205,10 +213,13 @@ void PrintSizeHistory(const MemoryDump& md, bool by_age) {
   }
   for (auto& it : md.snap_shot()) {
     if (by_age) {
-      printf("\tage=%llu, size=%lld\n", max_action_count - it.action_count(),
-             it.size());
+      printf("\tage=%" PRIu64 ", size=%" PRId64 "\n",
+             static_cast<uint64_t>(max_action_count - it.action_count()),
+             static_cast<int64_t>(it.size()));
     } else {
-      printf("\tac=%llu, size=%lld\n", it.action_count(), it.size());
+      printf("\tac=%" PRIu64 ", size=%" PRId64 "\n",
+             static_cast<uint64_t>(it.action_count()),
+             static_cast<int64_t>(it.size()));
     }
   }
 }

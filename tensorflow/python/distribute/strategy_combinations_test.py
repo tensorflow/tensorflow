@@ -20,40 +20,62 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
+from tensorflow.python import tf2
+from tensorflow.python.distribute import central_storage_strategy
+from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import mirrored_strategy
+from tensorflow.python.distribute import one_device_strategy
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
-from tensorflow.python.framework import config
+from tensorflow.python.distribute import test_util
+from tensorflow.python.distribute import tpu_strategy
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
 class StrategyCombinationsTest(test.TestCase, parameterized.TestCase):
 
-  def setUp(self):
-    # Need to call set_virtual_cpus_to_at_least() in setUp with the maximum
-    # value needed in any test.
-    strategy_combinations.set_virtual_cpus_to_at_least(3)
-    super(StrategyCombinationsTest, self).setUp()
+  @combinations.generate(
+      combinations.combine(
+          strategy=strategy_combinations.two_replica_strategies,
+          mode=["graph", "eager"]))
+  def testTwoReplicaStrategy(self, strategy):
+    with strategy.scope():
 
-  def test3VirtualCPUs(self):
-    cpu_device = config.list_physical_devices("CPU")[0]
-    self.assertLen(config.get_logical_device_configuration(cpu_device), 3)
+      @def_function.function
+      def one():
+        return array_ops.identity(1.)
 
-  def testSetVirtualCPUsAgain(self):
-    strategy_combinations.set_virtual_cpus_to_at_least(2)
-    cpu_device = config.list_physical_devices("CPU")[0]
-    self.assertLen(config.get_logical_device_configuration(cpu_device), 3)
+      one_per_replica = strategy.run(one)
+      num_replicas = strategy.reduce(
+          reduce_util.ReduceOp.SUM, one_per_replica, axis=None)
+      self.assertEqual(self.evaluate(num_replicas), 2.)
 
-  def testSetVirtualCPUsErrors(self):
-    with self.assertRaises(ValueError):
-      strategy_combinations.set_virtual_cpus_to_at_least(0)
-    with self.assertRaisesRegexp(RuntimeError, "with 3 < 5 virtual CPUs"):
-      strategy_combinations.set_virtual_cpus_to_at_least(5)
+  @combinations.generate(
+      combinations.combine(
+          strategy=strategy_combinations.four_replica_strategies,
+          mode=["graph", "eager"]))
+  def testFourReplicaStrategy(self, strategy):
+    with strategy.scope():
 
-  @combinations.generate(combinations.combine(
-      distribution=[strategy_combinations.mirrored_strategy_with_cpu_1_and_2],
-      mode=["graph", "eager"]))
+      @def_function.function
+      def one():
+        return array_ops.identity(1.)
+
+      one_per_replica = strategy.run(one)
+      num_replicas = strategy.reduce(
+          reduce_util.ReduceOp.SUM, one_per_replica, axis=None)
+      self.assertEqual(self.evaluate(num_replicas), 4.)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_cpu_1_and_2
+          ],
+          mode=["graph", "eager"]))
   def testMirrored2CPUs(self, distribution):
     with distribution.scope():
       one_per_replica = distribution.run(lambda: constant_op.constant(1))
@@ -62,5 +84,112 @@ class StrategyCombinationsTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(2, self.evaluate(num_replicas))
 
 
+class V1StrategyTest(test.TestCase, parameterized.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    tf2.disable()
+
+  @combinations.generate(
+      combinations.combine(strategy=[
+          strategy_combinations.one_device_strategy,
+          strategy_combinations.one_device_strategy_gpu,
+          strategy_combinations.one_device_strategy_gpu_on_worker_1,
+          strategy_combinations.one_device_strategy_on_worker_1
+      ]))
+  def testOneDevice(self, strategy):
+    self.assertIsInstance(strategy, one_device_strategy.OneDeviceStrategyV1)
+
+  @combinations.generate(
+      combinations.combine(strategy=[
+          strategy_combinations.mirrored_strategy_with_cpu_1_and_2,
+          strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          strategy_combinations.mirrored_strategy_with_one_cpu,
+          strategy_combinations.mirrored_strategy_with_one_gpu,
+          strategy_combinations.mirrored_strategy_with_two_gpus,
+      ]))
+  def testMirrored(self, strategy):
+    self.assertIsInstance(strategy, mirrored_strategy.MirroredStrategyV1)
+
+  @combinations.generate(
+      combinations.combine(strategy=[
+          strategy_combinations.multi_worker_mirrored_2x1_cpu,
+          strategy_combinations.multi_worker_mirrored_2x1_gpu,
+          strategy_combinations.multi_worker_mirrored_2x2_gpu,
+          strategy_combinations.multi_worker_mirrored_4x1_cpu,
+      ]))
+  def testMultiWorkerMirrored(self, strategy):
+    # MultiWorkerMirroredStrategy combinations only supports V2.
+    self.assertIsInstance(
+        strategy, collective_all_reduce_strategy.CollectiveAllReduceStrategy)
+
+  @combinations.generate(
+      combinations.combine(strategy=[
+          strategy_combinations.central_storage_strategy_with_gpu_and_cpu,
+          strategy_combinations.central_storage_strategy_with_two_gpus,
+      ]))
+  def testCentralStorage(self, strategy):
+    self.assertIsInstance(strategy,
+                          central_storage_strategy.CentralStorageStrategyV1)
+
+  @combinations.generate(
+      combinations.combine(strategy=strategy_combinations.tpu_strategies))
+  def testTPU(self, strategy):
+    self.assertIsInstance(strategy, tpu_strategy.TPUStrategyV1)
+
+
+class V2StrategyTest(test.TestCase, parameterized.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    tf2.enable()
+
+  @combinations.generate(
+      combinations.combine(strategy=[
+          strategy_combinations.one_device_strategy,
+          strategy_combinations.one_device_strategy_gpu,
+          strategy_combinations.one_device_strategy_gpu_on_worker_1,
+          strategy_combinations.one_device_strategy_on_worker_1
+      ]))
+  def testOneDevice(self, strategy):
+    self.assertIsInstance(strategy, one_device_strategy.OneDeviceStrategy)
+
+  @combinations.generate(
+      combinations.combine(strategy=[
+          strategy_combinations.mirrored_strategy_with_cpu_1_and_2,
+          strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          strategy_combinations.mirrored_strategy_with_one_cpu,
+          strategy_combinations.mirrored_strategy_with_one_gpu,
+          strategy_combinations.mirrored_strategy_with_two_gpus,
+      ]))
+  def testMirrored(self, strategy):
+    self.assertIsInstance(strategy, mirrored_strategy.MirroredStrategy)
+
+  @combinations.generate(
+      combinations.combine(strategy=[
+          strategy_combinations.multi_worker_mirrored_2x1_cpu,
+          strategy_combinations.multi_worker_mirrored_2x1_gpu,
+          strategy_combinations.multi_worker_mirrored_2x2_gpu,
+          strategy_combinations.multi_worker_mirrored_4x1_cpu,
+      ]))
+  def testMultiWorkerMirrored(self, strategy):
+    self.assertIsInstance(
+        strategy, collective_all_reduce_strategy.CollectiveAllReduceStrategy)
+
+  @combinations.generate(
+      combinations.combine(strategy=[
+          strategy_combinations.central_storage_strategy_with_gpu_and_cpu,
+          strategy_combinations.central_storage_strategy_with_two_gpus,
+      ]))
+  def testCentralStorage(self, strategy):
+    self.assertIsInstance(strategy,
+                          central_storage_strategy.CentralStorageStrategy)
+
+  @combinations.generate(
+      combinations.combine(strategy=strategy_combinations.tpu_strategies))
+  def testTPU(self, strategy):
+    self.assertIsInstance(strategy, tpu_strategy.TPUStrategy)
+
+
 if __name__ == "__main__":
-  test.main()
+  test_util.main()

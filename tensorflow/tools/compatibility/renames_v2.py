@@ -282,6 +282,8 @@ renames = {
         'tf.compat.v1.disable_v2_behavior',
     'tf.disable_v2_tensorshape':
         'tf.compat.v1.disable_v2_tensorshape',
+    'tf.distribute.experimental.ParameterServerStrategy':
+        'tf.compat.v1.distribute.experimental.ParameterServerStrategy',
     'tf.distribute.get_loss_reduction':
         'tf.compat.v1.distribute.get_loss_reduction',
     'tf.distributions.Bernoulli':
@@ -768,6 +770,12 @@ renames = {
         'tf.linalg.matrix_transpose',
     'tf.matrix_triangular_solve':
         'tf.linalg.triangular_solve',
+    'tf.mixed_precision.DynamicLossScale':
+        'tf.compat.v1.mixed_precision.DynamicLossScale',
+    'tf.mixed_precision.FixedLossScale':
+        'tf.compat.v1.mixed_precision.FixedLossScale',
+    'tf.mixed_precision.LossScale':
+        'tf.compat.v1.mixed_precision.LossScale',
     'tf.metrics.accuracy':
         'tf.compat.v1.metrics.accuracy',
     'tf.metrics.auc':
@@ -836,6 +844,12 @@ renames = {
         'tf.compat.v1.metrics.true_positives_at_thresholds',
     'tf.min_max_variable_partitioner':
         'tf.compat.v1.min_max_variable_partitioner',
+    'tf.mixed_precision.MixedPrecisionLossScaleOptimizer':
+        'tf.compat.v1.mixed_precision.MixedPrecisionLossScaleOptimizer',
+    'tf.mixed_precision.disable_mixed_precision_graph_rewrite':
+        'tf.compat.v1.mixed_precision.disable_mixed_precision_graph_rewrite',
+    'tf.mixed_precision.enable_mixed_precision_graph_rewrite':
+        'tf.compat.v1.mixed_precision.enable_mixed_precision_graph_rewrite',
     'tf.mod':
         'tf.math.floormod',
     'tf.model_variables':
@@ -1128,6 +1142,10 @@ renames = {
         'tf.compat.v1.scatter_nd_add',
     'tf.scatter_nd_sub':
         'tf.compat.v1.scatter_nd_sub',
+    'tf.scatter_nd_max':
+        'tf.compat.v1.scatter_nd_max',
+    'tf.scatter_nd_min':
+        'tf.compat.v1.scatter_nd_min',
     'tf.scatter_nd_update':
         'tf.compat.v1.scatter_nd_update',
     'tf.scatter_sub':
@@ -1368,6 +1386,8 @@ renames = {
         'tf.compat.v1.tpu.shard',
     'tf.tpu.shutdown_system':
         'tf.compat.v1.tpu.shutdown_system',
+    'tf.tpu.XLAOptions':
+        'tf.compat.v1.tpu.XLAOptions',
     'tf.trace':
         'tf.linalg.trace',
     'tf.train.AdadeltaOptimizer':

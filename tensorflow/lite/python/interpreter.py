@@ -21,26 +21,16 @@ from __future__ import print_function
 import ctypes
 import platform
 import sys
+import os
 
 import numpy as np
 
 # pylint: disable=g-import-not-at-top
-if not __file__.endswith('tflite_runtime/interpreter.py'):
+if not os.path.splitext(__file__)[0].endswith(
+    os.path.join('tflite_runtime', 'interpreter')):
   # This file is part of tensorflow package.
-  from tensorflow.python.util.lazy_loader import LazyLoader
+  from tensorflow.lite.python.interpreter_wrapper import _pywrap_tensorflow_interpreter_wrapper as _interpreter_wrapper
   from tensorflow.python.util.tf_export import tf_export as _tf_export
-
-  # Lazy load since some of the performance benchmark skylark rules
-  # break dependencies. Must use double quotes to match code internal rewrite
-  # rule.
-  # pylint: disable=g-inconsistent-quotes
-  _interpreter_wrapper = LazyLoader(
-      "_interpreter_wrapper", globals(),
-      "tensorflow.lite.python.interpreter_wrapper."
-      '_pywrap_tensorflow_interpreter_wrapper')
-  # pylint: enable=g-inconsistent-quotes
-
-  del LazyLoader
 else:
   # This file is part of tflite_runtime package.
   from tflite_runtime import _pywrap_tensorflow_interpreter_wrapper as _interpreter_wrapper
@@ -184,7 +174,8 @@ class Interpreter(object):
   def __init__(self,
                model_path=None,
                model_content=None,
-               experimental_delegates=None):
+               experimental_delegates=None,
+               num_threads=None):
     """Constructor.
 
     Args:
@@ -193,6 +184,10 @@ class Interpreter(object):
       experimental_delegates: Experimental. Subject to change. List of
         [TfLiteDelegate](https://www.tensorflow.org/lite/performance/delegates)
           objects returned by lite.load_delegate().
+      num_threads: Sets the number of threads used by the interpreter and
+        available to CPU kernels. If not set, the interpreter will use an
+        implementation-dependent default number of threads. Currently, only a
+        subset of kernels, such as conv, support multi-threading.
 
     Raises:
       ValueError: If the interpreter was unable to create.
@@ -200,23 +195,44 @@ class Interpreter(object):
     if not hasattr(self, '_custom_op_registerers'):
       self._custom_op_registerers = []
     if model_path and not model_content:
+      custom_op_registerers_by_name = [
+          x for x in self._custom_op_registerers if isinstance(x, str)
+      ]
+      custom_op_registerers_by_func = [
+          x for x in self._custom_op_registerers if not isinstance(x, str)
+      ]
       self._interpreter = (
           _interpreter_wrapper.CreateWrapperFromFile(
-              model_path, self._custom_op_registerers))
+              model_path, custom_op_registerers_by_name,
+              custom_op_registerers_by_func))
       if not self._interpreter:
         raise ValueError('Failed to open {}'.format(model_path))
     elif model_content and not model_path:
+      custom_op_registerers_by_name = [
+          x for x in self._custom_op_registerers if isinstance(x, str)
+      ]
+      custom_op_registerers_by_func = [
+          x for x in self._custom_op_registerers if not isinstance(x, str)
+      ]
       # Take a reference, so the pointer remains valid.
       # Since python strings are immutable then PyString_XX functions
       # will always return the same pointer.
       self._model_content = model_content
       self._interpreter = (
           _interpreter_wrapper.CreateWrapperFromBuffer(
-              model_content, self._custom_op_registerers))
+              model_content, custom_op_registerers_by_name,
+              custom_op_registerers_by_func))
     elif not model_content and not model_path:
       raise ValueError('`model_path` or `model_content` must be specified.')
     else:
       raise ValueError('Can\'t both provide `model_path` and `model_content`')
+
+    if num_threads is not None:
+      if not isinstance(num_threads, int):
+        raise ValueError('type of num_threads should be int')
+      if num_threads < 1:
+        raise ValueError('num_threads should >= 1')
+      self._interpreter.SetNumThreads(num_threads)
 
     # Each delegate is a wrapper that owns the delegates that have been loaded
     # as plugins. The interpreter wrapper will be using them, but we need to
@@ -329,7 +345,7 @@ class Interpreter(object):
     tensor_sparsity_params = self._interpreter.TensorSparsityParameters(
         tensor_index)
 
-    if not tensor_name or not tensor_type:
+    if not tensor_type:
       raise ValueError('Could not get tensor details')
 
     details = {
@@ -444,7 +460,7 @@ class Interpreter(object):
     ]
 
   def get_tensor(self, tensor_index):
-    """Gets the value of the input tensor (get a copy).
+    """Gets the value of the output tensor (get a copy).
 
     If you wish to avoid the copy, use `tensor()`. This function cannot be used
     to read intermediate results.
@@ -526,6 +542,28 @@ class Interpreter(object):
   def reset_all_variables(self):
     return self._interpreter.ResetVariableTensors()
 
+  # Experimental and subject to change.
+  def _native_handle(self):
+    """Returns a pointer to the underlying tflite::Interpreter instance.
+
+    This allows extending tflite.Interpreter's functionality in a custom C++
+    function. Consider how that may work in a custom pybind wrapper:
+
+      m.def("SomeNewFeature", ([](py::object handle) {
+        auto* interpreter =
+          reinterpret_cast<tflite::Interpreter*>(handle.cast<intptr_t>());
+        ...
+      }))
+
+    and corresponding Python call:
+
+      SomeNewFeature(interpreter.native_handle())
+
+    Note: This approach is fragile. Users must guarantee the C++ extension build
+    is consistent with the tflite.Interpreter's underlying C++ build.
+    """
+    return self._interpreter.interpreter()
+
 
 class InterpreterWithCustomOps(Interpreter):
   """Interpreter interface for TensorFlow Lite Models that accepts custom ops.
@@ -551,8 +589,10 @@ class InterpreterWithCustomOps(Interpreter):
       experimental_delegates: Experimental. Subject to change. List of
         [TfLiteDelegate](https://www.tensorflow.org/lite/performance/delegates)
           objects returned by lite.load_delegate().
-      custom_op_registerers: List of str, symbol names of functions that take a
-        pointer to a MutableOpResolver and register a custom op.
+      custom_op_registerers: List of str (symbol names) or functions that take a
+        pointer to a MutableOpResolver and register a custom op. When passing
+        functions, use a pybind function that takes a uintptr_t that can be
+        recast as a pointer to a MutableOpResolver.
 
     Raises:
       ValueError: If the interpreter was unable to create.

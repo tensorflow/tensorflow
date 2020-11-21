@@ -12,11 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <stdint.h>
+
+#include <limits>
+#include <vector>
+
 #include <gtest/gtest.h>
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace {
@@ -57,6 +61,13 @@ class IntegerSubOpModel : public BaseSubOpModel {
   using BaseSubOpModel::BaseSubOpModel;
 
   std::vector<int32_t> GetOutput() { return ExtractVector<int32_t>(output_); }
+};
+
+class Int64SubOpModel : public BaseSubOpModel {
+ public:
+  using BaseSubOpModel::BaseSubOpModel;
+
+  std::vector<int64_t> GetOutput() { return ExtractVector<int64_t>(output_); }
 };
 
 class QuantizedSubOpModel : public BaseSubOpModel {
@@ -209,6 +220,57 @@ TEST(IntegerSubOpModel, WithBroadcast) {
   }
 }
 
+TEST(Int64SubOpModel, NoActivation) {
+  Int64SubOpModel m({TensorType_INT64, {1, 2, 2, 1}},
+                    {TensorType_INT64, {1, 2, 2, 1}}, {TensorType_INT64, {}},
+                    ActivationFunctionType_NONE);
+  m.PopulateTensor<int64_t>(m.input1(), {-20, 2, 7, 8});
+  m.PopulateTensor<int64_t>(m.input2(), {1, 2, 3, 5});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-21, 0, 4, 3}));
+}
+
+TEST(Int64SubOpModel, ActivationRELU_N1_TO_1) {
+  Int64SubOpModel m({TensorType_INT64, {1, 2, 2, 1}},
+                    {TensorType_INT64, {1, 2, 2, 1}}, {TensorType_INT64, {}},
+                    ActivationFunctionType_RELU_N1_TO_1);
+  m.PopulateTensor<int64_t>(m.input1(), {-20, 2, 7, 8});
+  m.PopulateTensor<int64_t>(m.input2(), {1, 2, 3, 5});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1, 0, 1, 1}));
+}
+
+TEST(Int64SubOpModel, VariousInputShapes) {
+  std::vector<std::vector<int>> test_shapes = {
+      {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
+  for (int i = 0; i < test_shapes.size(); ++i) {
+    Int64SubOpModel m({TensorType_INT64, test_shapes[i]},
+                      {TensorType_INT64, test_shapes[i]},
+                      {TensorType_INT64, {}}, ActivationFunctionType_NONE);
+    m.PopulateTensor<int64_t>(m.input1(), {-20, 2, 7, 8, 11, 20});
+    m.PopulateTensor<int64_t>(m.input2(), {1, 2, 3, 5, 11, 1});
+    m.Invoke();
+    EXPECT_THAT(m.GetOutput(), ElementsAreArray({-21, 0, 4, 3, 0, 19}))
+        << "With shape number " << i;
+  }
+}
+
+TEST(Int64SubOpModel, WithBroadcast) {
+  std::vector<std::vector<int>> test_shapes = {
+      {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}, {1, 3, 1, 2, 1}};
+  for (int i = 0; i < test_shapes.size(); ++i) {
+    Int64SubOpModel m({TensorType_INT64, test_shapes[i]},
+                      {TensorType_INT64, {}},  // always a scalar
+                      {TensorType_INT64, {}}, ActivationFunctionType_NONE);
+    m.PopulateTensor<int64_t>(m.input1(), {-20, 2, 7, 8, 11, 20});
+    m.PopulateTensor<int64_t>(m.input2(), {1});
+    m.Invoke();
+    EXPECT_THAT(m.GetOutput(),
+                ElementsAreArray(ArrayFloatNear({-21, 1, 6, 7, 10, 19})))
+        << "With shape number " << i;
+  }
+}
+
 template <TensorType tensor_type, typename integer_dtype>
 void QuantizedTestsNoActivation() {
   float kQuantizedTolerance = GetTolerance(-1.0, 1.0);
@@ -240,6 +302,10 @@ TEST(QuantizedSubOpModel, QuantizedTestsNoActivationUInt8) {
 
 TEST(QuantizedSubOpModel, QuantizedTestsNoActivationInt8) {
   QuantizedTestsNoActivation<TensorType_INT8, int8_t>();
+}
+
+TEST(QuantizedSubOpModel, QuantizedTestsNoActivationGenericInt16) {
+  QuantizedTestsNoActivation<TensorType_INT16, int16_t>();
 }
 
 template <TensorType tensor_type, typename integer_dtype>
@@ -303,6 +369,10 @@ TEST(QuantizedSubOpModel, QuantizedVariousInputShapesInt8) {
   QuantizedVariousInputShapes<TensorType_INT8, int8_t>();
 }
 
+TEST(QuantizedSubOpModel, QuantizedVariousInputShapesInt16) {
+  QuantizedVariousInputShapes<TensorType_INT16, int16_t>();
+}
+
 template <TensorType tensor_type, typename integer_dtype>
 void QuantizedWithBroadcast() {
   float kQuantizedTolerance = GetTolerance(-3.0, 3.0);
@@ -329,6 +399,10 @@ TEST(QuantizedSubOpModel, QuantizedWithBroadcastUInt8) {
 
 TEST(QuantizedSubOpModel, QuantizedWithBroadcastInt8) {
   QuantizedWithBroadcast<TensorType_INT8, int8_t>();
+}
+
+TEST(QuantizedSubOpModel, QuantizedWithBroadcastInt16) {
+  QuantizedWithBroadcast<TensorType_INT16, int16_t>();
 }
 
 TEST(QuantizedSubOpModel, QuantizedTestsNoActivationInt16) {

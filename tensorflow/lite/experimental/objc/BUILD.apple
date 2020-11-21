@@ -64,6 +64,9 @@ objc_library(
     visibility = ios_visibility_whitelist(),
     deps = [
         "//tensorflow/lite/c:c_api",
+        "//tensorflow/lite/delegates/gpu:metal_delegate",
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+        "//tensorflow/lite/experimental/delegates/coreml:coreml_delegate",
     ],
     alwayslink = 1,
 )
@@ -97,7 +100,7 @@ objc_library(
         "//tensorflow/lite:testdata/add.bin",
         "//tensorflow/lite:testdata/add_quantized.bin",
     ],
-    tags = TFL_DEFAULT_TAGS,
+    tags = TFL_DEFAULT_TAGS + ["builder_default_ios_x86_64"],
     deps = [
         ":TensorFlowLite",
     ],
@@ -135,7 +138,10 @@ objc_library(
         "apis",
     ],
     module_name = "TestApp",
-    tags = TFL_DEFAULT_TAGS + ["manual"],
+    tags = TFL_DEFAULT_TAGS + [
+        "manual",
+        "builder_default_ios_x86_64",
+    ],
     deps = [
         ":TensorFlowLite",
     ],

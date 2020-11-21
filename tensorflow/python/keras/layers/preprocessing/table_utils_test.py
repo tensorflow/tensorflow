@@ -18,6 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+import tempfile
+
 import numpy as np
 
 from tensorflow.python.eager import context
@@ -28,6 +31,7 @@ from tensorflow.python.keras.layers.preprocessing import preprocessing_test_util
 from tensorflow.python.keras.layers.preprocessing import table_utils
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 
 
@@ -107,6 +111,15 @@ class CategoricalEncodingInputTest(
     output_data = table.lookup(input_array)
 
     self.assertAllEqual(expected_output, output_data)
+
+  def test_tensor_multi_dim_values_fails(self):
+    key_data = np.array([0, 1], dtype=np.int64)
+    value_data = np.array([[11, 12], [21, 22]])
+
+    table = get_table(dtype=dtypes.int64, oov_tokens=[1, 2])
+
+    with self.assertRaisesRegex(ValueError, "must be 1-dimensional"):
+      table.insert(key_data, value_data)
 
 
 @keras_parameterized.run_all_keras_modes
@@ -238,6 +251,39 @@ class IndexLookupOutputTest(keras_parameterized.TestCase,
 
     self.assertAllEqual(expected_output, output_data)
 
+
+class GetVocabularyFromFileTest(test.TestCase):
+
+  def setUp(self):
+    super(GetVocabularyFromFileTest, self).setUp()
+    dir_path = tempfile.mkdtemp(prefix=test.get_temp_dir())
+    self._vocab_path = os.path.join(dir_path, "vocab")
+
+  def test_only_line_separator_is_stripped(self):
+    expected = ["foo", " foo", "foo ", " foo "]
+    with gfile.GFile(self._vocab_path, "w") as writer:
+      for word in expected:
+        writer.write(word)
+        writer.write(os.linesep)
+
+    actual = actual = table_utils.get_vocabulary_from_file(self._vocab_path)
+    self.assertAllEqual(expected, actual)
+
+  def test_linux_file(self):
+    content = b"line1\nline2\nline3"
+    with gfile.GFile(self._vocab_path, "wb") as writer:
+      writer.write(content)
+
+    actual = table_utils.get_vocabulary_from_file(self._vocab_path)
+    self.assertAllEqual(["line1", "line2", "line3"], actual)
+
+  def test_windows_file(self):
+    content = b"line1\r\nline2\r\nline3"
+    with gfile.GFile(self._vocab_path, "wb") as writer:
+      writer.write(content)
+
+    actual = table_utils.get_vocabulary_from_file(self._vocab_path)
+    self.assertAllEqual(["line1", "line2", "line3"], actual)
 
 if __name__ == "__main__":
   test.main()

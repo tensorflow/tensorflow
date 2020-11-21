@@ -1,6 +1,6 @@
 // Test to verify loop outlining.
 
-// RUN: tf-opt --split-input-file --tfl-while-loop-outline %s | FileCheck %s --dump-input-on-failure
+// RUN: tf-opt --split-input-file --tfl-while-loop-outline %s | FileCheck %s
 // Check that while loop outlining is nop if re-ran.
 // RUN: tf-opt --tfl-while-loop-outline %s -o %t1
 // RUN: tf-opt --tfl-while-loop-outline %t1 -o %t2
@@ -30,9 +30,9 @@ func @while() -> tensor<1xf32>
   }) : (tensor<i32>, tensor<1xf32>) -> (tensor<i32>, tensor<1xf32>) loc("WhileOp")
   return %0#1 : tensor<1xf32>
 }
-// CHECK-LABEL: func @WhileOp_cond(
+// CHECK-LABEL: func private @WhileOp_cond(
 // CHECK: tfl.greater
-// CHECK-LABEL: func @WhileOp_body(
+// CHECK-LABEL: func private @WhileOp_body(
 // CHECK: tfl.sub
 // CHECK: tfl.add
 
@@ -63,21 +63,21 @@ func @while2(%cst : tensor<i32>) -> tensor<1xf32> attributes {tf.entry_function 
   return %0#1 : tensor<1xf32>
 }
 
-func @WhileOp_cond(%arg0: tensor<*xi32>, %arg1: tensor<*xf32>, %arg2: tensor<i32>) -> tensor<i1> attributes {sym_visibility = "private"} {
+func private @WhileOp_cond(%arg0: tensor<*xi32>, %arg1: tensor<*xf32>, %arg2: tensor<i32>) -> tensor<i1> {
   %cst = constant dense<0> : tensor<i32>
   %0 = "tfl.greater"(%arg0, %cst) : (tensor<*xi32>, tensor<i32>) -> tensor<i1>
   return %0 : tensor<i1>
 }
 
-func @WhileOp_body(%arg0: tensor<*xi32>, %arg1: tensor<*xf32>, %arg2: tensor<i32>) -> (tensor<*xi32>, tensor<*xf32>, tensor<i32>) attributes {sym_visibility = "private"} {
+func private @WhileOp_body(%arg0: tensor<*xi32>, %arg1: tensor<*xf32>, %arg2: tensor<i32>) -> (tensor<*xi32>, tensor<*xf32>, tensor<i32>) {
   %0 = "tfl.sub"(%arg0, %arg2) {fused_activation_function = "NONE"} : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
   %1 = tfl.add %arg1, %arg1 {fused_activation_function = "NONE"} : tensor<*xf32>
   return %0, %1, %arg2 : tensor<*xi32>, tensor<*xf32>, tensor<i32>
 }
 
-// CHECK-LABEL: func @WhileOp_cond(
+// CHECK-LABEL: func private @WhileOp_cond(
 // CHECK: tfl.greater
-// CHECK-LABEL: func @WhileOp_body(
+// CHECK-LABEL: func private @WhileOp_body(
 // CHECK: tfl.sub
 // CHECK: tfl.add
 
@@ -152,14 +152,14 @@ func @rnn(%arg0: tensor<4x4x3xf32> {tf.device = "/device:CPU:0"}) -> tensor<4x?x
 // CHECK:             tfl.yield
 // CHECK-SAME: (tensor<i32>, tensor<i32>, tensor<*xf32>, tensor<4x2xf32>, tensor<4x2xf32>, tensor<*xf32>, tensor<4x4x3xf32>) -> ()
 
-// CHECK-LABEL:   func @tfl.while_cond(
-// CHECK-SAME:                         [[VAL_35:%.*]]: tensor<i32>, [[VAL_36:%.*]]: tensor<i32>, [[VAL_37:%.*]]: tensor<*xf32>, [[VAL_38:%.*]]: tensor<4x2xf32>, [[VAL_39:%.*]]: tensor<4x2xf32>, [[VAL_40:%.*]]: tensor<*xf32>, [[VAL_41:%.*]]: tensor<4x4x3xf32>) -> tensor<i1> attributes {sym_visibility = "private"} {
+// CHECK-LABEL:   func private @tfl.while_cond(
+// CHECK-SAME:                         [[VAL_35:%.*]]: tensor<i32>, [[VAL_36:%.*]]: tensor<i32>, [[VAL_37:%.*]]: tensor<*xf32>, [[VAL_38:%.*]]: tensor<4x2xf32>, [[VAL_39:%.*]]: tensor<4x2xf32>, [[VAL_40:%.*]]: tensor<*xf32>, [[VAL_41:%.*]]: tensor<4x4x3xf32>) -> tensor<i1> {
 // CHECK:           return
 // CHECK-SAME:        tensor<i1>
 // CHECK:         }
 
-// CHECK-LABEL:   func @tfl.while_body(
-// CHECK-SAME:                         [[VAL_46:%.*]]: tensor<i32>, [[VAL_47:%.*]]: tensor<i32>, [[VAL_48:%.*]]: tensor<*xf32>, [[VAL_49:%.*]]: tensor<4x2xf32>, [[VAL_50:%.*]]: tensor<4x2xf32>, [[VAL_51:%.*]]: tensor<*xf32>, [[VAL_52:%.*]]: tensor<4x4x3xf32>) -> (tensor<i32>, tensor<i32>, tensor<*xf32>, tensor<4x2xf32>, tensor<4x2xf32>, tensor<*xf32>, tensor<4x4x3xf32>) attributes {sym_visibility = "private"} {
+// CHECK-LABEL:   func private @tfl.while_body(
+// CHECK-SAME:                         [[VAL_46:%.*]]: tensor<i32>, [[VAL_47:%.*]]: tensor<i32>, [[VAL_48:%.*]]: tensor<*xf32>, [[VAL_49:%.*]]: tensor<4x2xf32>, [[VAL_50:%.*]]: tensor<4x2xf32>, [[VAL_51:%.*]]: tensor<*xf32>, [[VAL_52:%.*]]: tensor<4x4x3xf32>) -> (tensor<i32>, tensor<i32>, tensor<*xf32>, tensor<4x2xf32>, tensor<4x2xf32>, tensor<*xf32>, tensor<4x4x3xf32>) {
 // CHECK:           [[VAL_91:%.*]] = "tfl.cast"
 // CHECK:           return
 // CHECK-SAME:       [[VAL_91]], [[VAL_52]] : tensor<i32>, tensor<i32>, tensor<*xf32>, tensor<4x2xf32>, tensor<4x2xf32>, tensor<*xf32>, tensor<4x4x3xf32>

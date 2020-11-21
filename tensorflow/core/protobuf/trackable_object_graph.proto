@@ -3,7 +3,7 @@ syntax = "proto3";
 package tensorflow;
 
 option cc_enable_arenas = true;
-option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/core_protos_go_proto";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
 
 // A TensorBundle addition which saves extra information about the objects which
 // own variables, allowing for more robust checkpoint loading into modified

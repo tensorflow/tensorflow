@@ -21,15 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/grappler_item.h"
-#include "tensorflow/core/grappler/optimizers/arithmetic_optimizer.h"
-#include "tensorflow/core/grappler/optimizers/common_subgraph_elimination.h"
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
-#include "tensorflow/core/grappler/optimizers/dependency_optimizer.h"
-#include "tensorflow/core/grappler/optimizers/function_optimizer.h"
-#include "tensorflow/core/grappler/optimizers/loop_optimizer.h"
-#include "tensorflow/core/grappler/optimizers/model_pruner.h"
-#include "tensorflow/core/grappler/optimizers/remapper.h"
-#include "tensorflow/core/grappler/optimizers/shape_optimizer.h"
 #include "tensorflow/core/grappler/utils/functions.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/util/ptr_util.h"
@@ -43,8 +35,9 @@ using ConfigMap =
     std::map<string, tensorflow::RewriterConfig_CustomGraphOptimizer>;
 
 // tf.data optimizations, in the order we want to perform them.
-constexpr std::array<const char*, 15> kTFDataOptimizations = {
+constexpr std::array<const char*, 19> kTFDataOptimizations = {
     "noop_elimination",
+    "disable_intra_op_parallelism",
     "shuffle_and_repeat_fusion",
     "map_fusion",
     "filter_fusion",
@@ -57,16 +50,11 @@ constexpr std::array<const char*, 15> kTFDataOptimizations = {
     "latency_all_edges",
     "make_sloppy",
     "parallel_batch",
+    "reorder_data_discarding_ops",
     "slack",
-    "inject_prefetch"};
-
-// Standard grappler optimizations, in the order we want to perform them.
-// The order matches the order in the generic meta optimizer.
-constexpr std::array<const char*, 9> kGrapplerOptimizations = {
-    "pruning",  "function",   "common_subgraph_elimination",
-    "shape",    "arithmetic", "layout_optimizer",
-    "remapper", "loop",       "dependency",
-};
+    "autotune_buffer_sizes",
+    "disable_prefetch_legacy_autotune",
+    "enable_gradient_descent"};
 
 // Parses a list of string optimizer configurations into a map from
 // optimizer name -> rewriter config for that optimizer.
@@ -118,11 +106,6 @@ Status TFDataMetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
         ApplyOptimization(optimization, cluster, &optimized_item));
   }
 
-  for (const auto& optimization : kGrapplerOptimizations) {
-    TF_RETURN_IF_ERROR(
-        ApplyOptimization(optimization, cluster, &optimized_item));
-  }
-
   // Store the final result of all the optimizations in `output`.
   output->Swap(&optimized_item.graph);
 
@@ -132,16 +115,17 @@ Status TFDataMetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
           .ReachableDefinitions(*output);
   const auto producer = output->versions().producer();
   bool optimized_functions = false;
-  for (const FunctionDef& func : output->library().function()) {
+  for (const auto& name : flib.ListFunctionNames()) {
+    auto* func = flib.Find(name);
     // Skip non tf.data functions.
-    if (!func.attr().contains(data::kTFDataFunction)) continue;
-    VLOG(3) << "Optimize function: function=" << func.signature().name();
+    if (!data::IsTFDataFunction(*func)) continue;
+    VLOG(3) << "Optimize function: function=" << func->signature().name();
     optimized_functions = true;
 
     // Make a GrapplerItem from a FunctionDef.
     GrapplerFunctionItem func_item;
     TF_RETURN_IF_ERROR(
-        MakeGrapplerFunctionItem(func, flib, producer, &func_item));
+        MakeGrapplerFunctionItem(*func, flib, producer, &func_item));
 
     GraphDef optimized_func_graph;
     TF_RETURN_IF_ERROR(Optimize(cluster, func_item, &optimized_func_graph));
@@ -162,7 +146,7 @@ Status TFDataMetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
 
     // Replace optimized function with a new FunctionDef.
     TF_RETURN_IF_ERROR(
-        flib.ReplaceFunction(func.signature().name(), optimized_func));
+        flib.ReplaceFunction(func->signature().name(), optimized_func));
   }
   if (optimized_functions) {
     *output->mutable_library() = flib.ToProto();
@@ -220,27 +204,6 @@ Status TFDataMetaOptimizer::Init(
           optimizer_name);
     }
   }
-
-  // Enable a subset of grappler optimization that are enabled by default.
-  //
-  // Layout optimizations are excluded because they assume that ops without
-  // explicit device assignment will be placed on GPU (if available) but that's
-  // not the case for operations within tf.data functions.
-  //
-  // TODO(b/120437209): Re-enable constant folding.
-  //
-  // TODO(jsimsa): Make the set of generic Grappler optimization applied to
-  // tf.data functions configurable.
-  enabled_optimizers_["pruning"] = MakeUnique<ModelPruner>();
-  enabled_optimizers_["shape"] = MakeUnique<ShapeOptimizer>();
-  enabled_optimizers_["remapping"] = MakeUnique<Remapper>(RewriterConfig::ON);
-  enabled_optimizers_["common_subgraph_elimination"] =
-      MakeUnique<CommonSubgraphElimination>();
-  enabled_optimizers_["arithmetic"] = MakeUnique<ArithmeticOptimizer>();
-  enabled_optimizers_["dependency"] = MakeUnique<DependencyOptimizer>();
-  enabled_optimizers_["loop"] = MakeUnique<LoopOptimizer>();
-  enabled_optimizers_["function"] = MakeUnique<FunctionOptimizer>(
-      RewriterConfig::ON, /*lower_control_flow=*/true);
 
   return Status::OK();
 }

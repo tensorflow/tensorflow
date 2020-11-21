@@ -36,73 +36,50 @@ bool IsAllChannelsX4(const std::vector<int>& channels) {
   return true;
 }
 
-std::string GetSrcDepthSizeVar(int src_index) {
-  return "src_size_" + std::to_string(src_index) + "_depth";
-}
-
-std::string GetConcatKernelCode(
-    const OperationDef& op_def, const std::vector<int>& channels,
-    const std::vector<ElementwiseOperation*>& linked_operations) {
-  std::vector<TensorCodeGenerator> srcs(channels.size());
-  for (int i = 0; i < channels.size(); ++i) {
-    const std::string tensor_name = "src_data_" + std::to_string(i);
-    srcs[i] = TensorCodeGenerator(
-        tensor_name,
-        WHSPoint{"dst_size.x", "dst_size.y", GetSrcDepthSizeVar(i)},
-        op_def.src_tensors[i]);
+std::string GetConcatKernelCode(const OperationDef& op_def,
+                                const std::vector<int>& channels) {
+  std::vector<std::string> tensor_names(op_def.src_tensors.size());
+  for (int i = 0; i < op_def.src_tensors.size(); ++i) {
+    tensor_names[i] = "src_tensor_" + std::to_string(i);
   }
-  TensorCodeGenerator dst("dst_data",
-                          WHSPoint{"dst_size.x", "dst_size.y", "dst_size.z"},
-                          op_def.dst_tensors[0]);
 
   std::string c = GetCommonDefines(op_def.precision);
-  const std::string postfix[] = {".x", ".y", ".z", ".w"};
-
   c += "__kernel void main_function(\n";
-  for (const auto& src : srcs) {
-    c += src.GetDeclaration(AccessType::READ) + ",\n";
-  }
-  c += dst.GetDeclaration(AccessType::WRITE);
-  c += GetArgsDeclaration(linked_operations);
-  for (int i = 0; i < channels.size(); ++i) {
-    c += "    int " + GetSrcDepthSizeVar(i) + ",\n";
-  }
-  c += "    int4 dst_size\n";
-  c += ") {\n";
+  c += "$0) {\n";
   c += "  int X = get_global_id(0);\n";
   c += "  int Y = get_global_id(1);\n";
-  c += "  if (X >= dst_size.x || Y >= dst_size.y) return; \n";
+  std::string coords = "X, Y";
+  if (op_def.dst_tensors[0].HasAxis(Axis::DEPTH)) {
+    c += "  int Z = get_global_id(2);\n";
+    c += "  if (Z >= args.dst_tensor.Depth()) return;\n";
+    coords = "X, Y, Z";
+  }
+  c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height()) "
+       "return; \n";
 
   if (IsAllChannelsX4(channels)) {
     // When all channels % 4 == 0 we can read/assign/write FLT4 elements easily.
     // Also it is easy to write a loop in this case, to prevent long kernel
     // generation.
-    c += "  int Z = 0;\n";
+    c += "  int S = 0;\n";
     for (int i = 0; i < channels.size(); ++i) {
+      std::string t_name = "args." + tensor_names[i];
       const int depth = DivideRoundUp(channels[i], 4);
       if (depth % 2 == 0) {
         // We can read more at once inside of loop in case depth % 2 == 0
         // it should be better for reading latency hiding
-        c += "  for (int i = 0; i < " + GetSrcDepthSizeVar(i) + "; i += 2) {\n";
-        c += "    FLT4 result0 = " + srcs[i].ReadWHS("X", "Y", "i") + ";\n";
-        c += "    FLT4 result1 = " + srcs[i].ReadWHS("X", "Y", "i + 1") + ";\n";
-        c += "    " + dst.GetAddressWHS("dst_adr0", "X", "Y", "Z") + "\n";
-        c += "    " + dst.GetAddressWHS("dst_adr1", "X", "Y", "Z + 1") + "\n";
-        const LinkingContext context_0{"result0", "X", "Y", "Z"};
-        const LinkingContext context_1{"result1", "X", "Y", "Z + 1"};
-        c += PostProcess(linked_operations, context_0);
-        c += PostProcess(linked_operations, context_1);
-        c += "    " + dst.WriteWHS("result0", "X", "Y", "Z");
-        c += "    " + dst.WriteWHS("result1", "X", "Y", "Z + 1");
-        c += "    Z += 2;\n";
+        c += "  for (int i = 0; i < " + t_name + ".Slices(); i += 2) {\n";
+        c += "    FLT4 result0 = " + t_name + ".Read(" + coords + ", i);\n";
+        c += "    FLT4 result1 = " + t_name + ".Read(" + coords + ", i + 1);\n";
+        c += "    args.dst_tensor.Write(result0, " + coords + ", S);\n";
+        c += "    args.dst_tensor.Write(result1, " + coords + ", S + 1);\n";
+        c += "    S += 2;\n";
         c += "  }\n";
       } else {
-        c += "  for (int i = 0; i < " + GetSrcDepthSizeVar(i) + "; ++i) {\n";
-        c += "    FLT4 result = " + srcs[i].ReadWHS("X", "Y", "i") + ";\n";
-        const LinkingContext context{"result", "X", "Y", "Z"};
-        c += PostProcess(linked_operations, context);
-        c += "    " + dst.WriteWHS("result", "X", "Y", "Z");
-        c += "    Z++;\n";
+        c += "  for (int i = 0; i < " + t_name + ".Slices(); ++i) {\n";
+        c += "    FLT4 result = " + t_name + ".Read(" + coords + ", i);\n";
+        c += "    args.dst_tensor.Write(result, " + coords + ", S);\n";
+        c += "    S++;\n";
         c += "  }\n";
       }
     }
@@ -111,24 +88,23 @@ std::string GetConcatKernelCode(
     int out_channel = 0;
     int read_index = 0;
     int z = 0;
+    const std::string postfix[] = {".x", ".y", ".z", ".w"};
     for (int i = 0; i < channels.size(); ++i) {
+      std::string tensor_name = "args." + tensor_names[i];
       const int depth = DivideRoundUp(channels[i], 4);
       for (int d = 0; d < depth; ++d) {
         const int channels_in_group = std::min(4, channels[i] - d * 4);
         const std::string temp_name = "t" + std::to_string(read_index);
-        c += "  FLT4 " + temp_name + " = ";
-        c += srcs[i].ReadWHS("X", "Y", std::to_string(d)) + ";\n";
+        c += "  FLT4 " + temp_name + " = " + tensor_name + ".Read(" + coords +
+             ", " + std::to_string(d) + ");\n";
         for (int ch = 0; ch < channels_in_group; ++ch) {
           c += "  result" + postfix[out_channel] + " = ";
           c += temp_name + postfix[ch] + ";\n";
           out_channel++;
           if (out_channel == 4) {
             out_channel = 0;
-            c += "  {\n";
-            const LinkingContext context{"result", "X", "Y", std::to_string(z)};
-            c += PostProcess(linked_operations, context);
-            c += "  " + dst.WriteWHS("result", "X", "Y", std::to_string(z));
-            c += "  }\n";
+            c += "  args.dst_tensor.Write(result, " + coords + ", " +
+                 std::to_string(z) + ");\n";
             z++;
           }
         }
@@ -136,11 +112,8 @@ std::string GetConcatKernelCode(
       }
     }
     if (out_channel != 0) {
-      c += "  {\n";
-      const LinkingContext context{"result", "X", "Y", std::to_string(z)};
-      c += PostProcess(linked_operations, context);
-      c += "  " + dst.WriteWHS("result", "X", "Y", std::to_string(z));
-      c += "  }\n";
+      c += "  args.dst_tensor.Write(result, " + coords + ", " +
+           std::to_string(z) + ");\n";
     }
   }
   c += "}\n";
@@ -149,78 +122,38 @@ std::string GetConcatKernelCode(
 
 }  // namespace
 
-ConcatZ::ConcatZ(ConcatZ&& kernel)
-    : GPUOperation(std::move(kernel)),
-      channels_(std::move(kernel.channels_)),
-      kernel_(std::move(kernel.kernel_)),
-      work_group_size_(kernel.work_group_size_) {}
-
-ConcatZ& ConcatZ::operator=(ConcatZ&& kernel) {
-  if (this != &kernel) {
-    channels_ = std::move(kernel.channels_);
-    kernel_ = std::move(kernel.kernel_);
-    std::swap(work_group_size_, kernel.work_group_size_);
-    GPUOperation::operator=(std::move(kernel));
+GPUOperation CreateConcatZ(const OperationDef& definition,
+                           const std::vector<int>& channels,
+                           const GpuInfo& gpu_info) {
+  GPUOperation op(definition);
+  for (int i = 0; i < definition.src_tensors.size(); ++i) {
+    const std::string name = "src_tensor_" + std::to_string(i);
+    auto src_desc = definition.src_tensors[i];
+    if (definition.IsBatchSupported()) {
+      src_desc.SetStateVar("BatchedWidth", "true");
+    }
+    op.AddSrcTensor(name, src_desc);
   }
-  return *this;
-}
-
-absl::Status ConcatZ::Compile(const CreationContext& creation_context) {
-  const auto code =
-      GetConcatKernelCode(definition_, channels_, linked_operations_);
-  std::vector<CompilerOptions> options;
-  if (creation_context.device->IsPowerVR() &&
-      definition_.precision == CalculationsPrecision::F32 &&
-      !IsAllChannelsX4(channels_)) {
+  auto dst_desc = definition.dst_tensors[0];
+  if (definition.IsBatchSupported()) {
+    dst_desc.SetStateVar("BatchedWidth", "true");
+  }
+  op.AddDstTensor("dst_tensor", dst_desc);
+  op.code_ = GetConcatKernelCode(definition, channels);
+  if (gpu_info.IsPowerVR() &&
+      definition.precision == CalculationsPrecision::F32 &&
+      !IsAllChannelsX4(channels)) {
     // BUG, some PowerVRs (GE8320) produce incorrect result without it
-    options.push_back(CompilerOptions::CL_OPT_DISABLE);
+    op.compiler_options_.push_back(CompilerOptions::kClDisableOptimizations);
   }
-  if (creation_context.device->IsAMD() &&
-      definition_.precision != CalculationsPrecision::F32 &&
-      definition_.src_tensors[0].storage_type != TensorStorageType::BUFFER &&
-      !IsAllChannelsX4(channels_)) {
-    // BUG, some AMD gpus crashe without it
-    options.push_back(CompilerOptions::CL_OPT_DISABLE);
+  if (gpu_info.IsAMD() && definition.precision != CalculationsPrecision::F32 &&
+      definition.src_tensors[0].storage_type != TensorStorageType::BUFFER &&
+      !IsAllChannelsX4(channels)) {
+    // BUG, some AMD gpus crash without it
+    op.compiler_options_.push_back(CompilerOptions::kClDisableOptimizations);
   }
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", options, *creation_context.context,
-      *creation_context.device, &kernel_);
-}
-
-absl::Status ConcatZ::BindArguments() {
-  kernel_.ResetBindingCounter();
-  for (int i = 0; i < channels_.size(); ++i) {
-    RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[i]->GetMemoryPtr()));
-  }
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
-  RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
-  for (int i = 0; i < channels_.size(); ++i) {
-    RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[i]->Slices()));
-  }
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHSB()));
-  return absl::OkStatus();
-}
-
-int3 ConcatZ::GetGridSize() const {
-  const int grid_x = dst_[0]->Width() * dst_[0]->Batch();
-  const int grid_y = dst_[0]->Height();
-  const int grid_z = 1;
-  return int3(grid_x, grid_y, grid_z);
-}
-
-absl::Status ConcatZ::Tune(const TuningParameters& params) {
-  RETURN_IF_ERROR(BindArguments());
-  return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
-}
-
-absl::Status ConcatZ::AddToQueue(CLCommandQueue* queue) {
-  RETURN_IF_ERROR(BindArguments());
-  return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
-}
-
-ConcatZ CreateConcatZ(const OperationDef& definition,
-                      const std::vector<int>& channels) {
-  return ConcatZ(definition, channels);
+  op.tensor_to_grid_ = TensorToGrid::kWBToX_HToY_DToZ;
+  return op;
 }
 
 }  // namespace cl

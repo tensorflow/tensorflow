@@ -28,7 +28,7 @@ from tensorflow.python.ops import io_ops
 from tensorflow.python.util.tf_export import keras_export
 
 
-WHITELIST_FORMATS = ('.bmp', '.gif', '.jpeg', '.jpg', '.png')
+ALLOWLIST_FORMATS = ('.bmp', '.gif', '.jpeg', '.jpg', '.png')
 
 
 @keras_export('keras.preprocessing.image_dataset_from_directory', v1=[])
@@ -147,7 +147,7 @@ def image_dataset_from_directory(directory,
           'directory. If you wish to infer the labels from the subdirectory '
           'names in the target directory, pass `labels="inferred"`. '
           'If you wish to get a dataset that only contains images '
-          '(no labels), pass `labels=None`.')
+          '(no labels), pass `label_mode=None`.')
     if class_names:
       raise ValueError('You can only pass `class_names` if the labels are '
                        'inferred from the subdirectory names in the target '
@@ -175,7 +175,7 @@ def image_dataset_from_directory(directory,
   image_paths, labels, class_names = dataset_utils.index_directory(
       directory,
       labels,
-      formats=WHITELIST_FORMATS,
+      formats=ALLOWLIST_FORMATS,
       class_names=class_names,
       shuffle=shuffle,
       seed=seed,
@@ -203,6 +203,8 @@ def image_dataset_from_directory(directory,
   dataset = dataset.batch(batch_size)
   # Users may need to reference `class_names`.
   dataset.class_names = class_names
+  # Include file paths for images as attribute.
+  dataset.file_paths = image_paths
   return dataset
 
 
@@ -228,4 +230,6 @@ def path_to_image(path, image_size, num_channels, interpolation):
   img = io_ops.read_file(path)
   img = image_ops.decode_image(
       img, channels=num_channels, expand_animations=False)
-  return image_ops.resize_images_v2(img, image_size, method=interpolation)
+  img = image_ops.resize_images_v2(img, image_size, method=interpolation)
+  img.set_shape((image_size[0], image_size[1], num_channels))
+  return img

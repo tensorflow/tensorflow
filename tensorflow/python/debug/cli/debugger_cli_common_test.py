@@ -64,7 +64,7 @@ class RichTextLinesTest(test_util.TensorFlowTestCase):
     self.assertEqual(2, screen_output.num_lines())
 
   def testRichTextLinesConstructorWithInvalidType(self):
-    with self.assertRaisesRegexp(ValueError, "Unexpected type in lines"):
+    with self.assertRaisesRegex(ValueError, "Unexpected type in lines"):
       debugger_cli_common.RichTextLines(123)
 
   def testRichTextLinesConstructorWithString(self):
@@ -320,7 +320,7 @@ class CommandHandlerRegistryTest(test_util.TensorFlowTestCase):
 
     # Attempt to register an empty-string as a command prefix should trigger
     # an exception.
-    with self.assertRaisesRegexp(ValueError, "Empty command prefix"):
+    with self.assertRaisesRegex(ValueError, "Empty command prefix"):
       registry.register_command_handler("", self._noop_handler, "")
 
   def testRegisterAndInvokeHandler(self):
@@ -335,11 +335,11 @@ class CommandHandlerRegistryTest(test_util.TensorFlowTestCase):
 
     # Attempt to invoke an unregistered command prefix should trigger an
     # exception.
-    with self.assertRaisesRegexp(ValueError, "No handler is registered"):
+    with self.assertRaisesRegex(ValueError, "No handler is registered"):
       registry.dispatch_command("beep", [])
 
     # Empty command prefix should trigger an exception.
-    with self.assertRaisesRegexp(ValueError, "Prefix is empty"):
+    with self.assertRaisesRegex(ValueError, "Prefix is empty"):
       registry.dispatch_command("", [])
 
   def testExitingHandler(self):
@@ -391,7 +391,7 @@ class CommandHandlerRegistryTest(test_util.TensorFlowTestCase):
 
     # If the command handler fails to return a RichTextLines instance, an error
     # should be triggered.
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         "Return value from command handler.*is not None or a RichTextLines "
         "instance"):
@@ -403,7 +403,7 @@ class CommandHandlerRegistryTest(test_util.TensorFlowTestCase):
 
     # Registering the same command prefix more than once should trigger an
     # exception.
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, "A handler is already registered for command prefix"):
       registry.register_command_handler("noop", self._noop_handler, "")
 
@@ -416,8 +416,8 @@ class CommandHandlerRegistryTest(test_util.TensorFlowTestCase):
         "noop", self._noop_handler, "", prefix_aliases=["n"])
 
     # Clash with existing alias.
-    with self.assertRaisesRegexp(ValueError,
-                                 "clashes with existing prefixes or aliases"):
+    with self.assertRaisesRegex(ValueError,
+                                "clashes with existing prefixes or aliases"):
       registry.register_command_handler(
           "cols", self._echo_screen_cols, "", prefix_aliases=["n"])
 
@@ -425,8 +425,8 @@ class CommandHandlerRegistryTest(test_util.TensorFlowTestCase):
     self.assertFalse(registry.is_registered("cols"))
 
     # Aliases can also clash with command prefixes.
-    with self.assertRaisesRegexp(ValueError,
-                                 "clashes with existing prefixes or aliases"):
+    with self.assertRaisesRegex(ValueError,
+                                "clashes with existing prefixes or aliases"):
       registry.register_command_handler(
           "cols", self._echo_screen_cols, "", prefix_aliases=["noop"])
 
@@ -451,13 +451,13 @@ class CommandHandlerRegistryTest(test_util.TensorFlowTestCase):
     registry = debugger_cli_common.CommandHandlerRegistry()
 
     # Attempt to register a non-callable handler should fail.
-    with self.assertRaisesRegexp(ValueError, "handler is not callable"):
+    with self.assertRaisesRegex(ValueError, "handler is not callable"):
       registry.register_command_handler("non_callable", 1, "")
 
   def testRegisterHandlerWithInvalidHelpInfoType(self):
     registry = debugger_cli_common.CommandHandlerRegistry()
 
-    with self.assertRaisesRegexp(ValueError, "help_info is not a str"):
+    with self.assertRaisesRegex(ValueError, "help_info is not a str"):
       registry.register_command_handler("noop", self._noop_handler, ["foo"])
 
   def testGetHelpFull(self):
@@ -629,7 +629,7 @@ class RegexFindTest(test_util.TensorFlowTestCase):
         debugger_cli_common.REGEX_MATCH_LINES_KEY])
 
   def testInvalidRegex(self):
-    with self.assertRaisesRegexp(ValueError, "Invalid regular expression"):
+    with self.assertRaisesRegex(ValueError, "Invalid regular expression"):
       debugger_cli_common.regex_find(self._orig_screen_output, "[", "yellow")
 
   def testRegexFindOnPrependedLinesWorks(self):
@@ -755,11 +755,11 @@ class WrapScreenOutputTest(test_util.TensorFlowTestCase):
     self.assertEqual(new_line_indices, [0, 2, 5])
 
   def testWrappingInvalidArguments(self):
-    with self.assertRaisesRegexp(ValueError,
-                                 "Invalid type of input screen_output"):
+    with self.assertRaisesRegex(ValueError,
+                                "Invalid type of input screen_output"):
       debugger_cli_common.wrap_rich_text_lines("foo", 12)
 
-    with self.assertRaisesRegexp(ValueError, "Invalid type of input cols"):
+    with self.assertRaisesRegex(ValueError, "Invalid type of input cols"):
       debugger_cli_common.wrap_rich_text_lines(
           debugger_cli_common.RichTextLines(["foo", "bar"]), "12")
 
@@ -813,7 +813,7 @@ class SliceRichTextLinesTest(test_util.TensorFlowTestCase):
     self.assertEqual(1, sliced.num_lines())
 
   def testAttemptSliceWithNegativeIndex(self):
-    with self.assertRaisesRegexp(ValueError, "Encountered negative index"):
+    with self.assertRaisesRegex(ValueError, "Encountered negative index"):
       self._original.slice(0, -1)
 
 
@@ -872,8 +872,8 @@ class TabCompletionRegistryTest(test_util.TensorFlowTestCase):
                      self._tc_reg.get_completions("node_info", "node_"))
 
   def testExtendCompletionItemsNonexistentContext(self):
-    with self.assertRaisesRegexp(
-        KeyError, "Context word \"foo\" has not been registered"):
+    with self.assertRaisesRegex(KeyError,
+                                "Context word \"foo\" has not been registered"):
       self._tc_reg.extend_comp_items("foo", ["node_A:1", "node_A:2"])
 
   def testRemoveCompletionItems(self):
@@ -891,8 +891,8 @@ class TabCompletionRegistryTest(test_util.TensorFlowTestCase):
                      self._tc_reg.get_completions("node_info", "node_"))
 
   def testRemoveCompletionItemsNonexistentContext(self):
-    with self.assertRaisesRegexp(
-        KeyError, "Context word \"foo\" has not been registered"):
+    with self.assertRaisesRegex(KeyError,
+                                "Context word \"foo\" has not been registered"):
       self._tc_reg.remove_comp_items("foo", ["node_a:1", "node_a:2"])
 
   def testDeregisterContext(self):
@@ -921,7 +921,7 @@ class TabCompletionRegistryTest(test_util.TensorFlowTestCase):
 
     self._tc_reg.deregister_context(["print_tensor"])
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         KeyError,
         "Cannot deregister unregistered context word \"print_tensor\""):
       self._tc_reg.deregister_context(["print_tensor"])
@@ -992,7 +992,7 @@ class CommandHistoryTest(test_util.TensorFlowTestCase):
     self.assertEqual([], self._cmd_hist.lookup_prefix("print_tensor", 10))
 
   def testAddNonStrCommand(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         TypeError, "Attempt to enter non-str entry to command history"):
       self._cmd_hist.add_command(["print_tensor node_a:0"])
 

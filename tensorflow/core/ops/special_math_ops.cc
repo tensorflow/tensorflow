@@ -20,34 +20,33 @@ limitations under the License.
 
 namespace tensorflow {
 
-REGISTER_OP("Dawsn")
-    .Input("x: T")
-    .Output("y: T")
-    .Attr("T: {float, double}")
-    .SetShapeFn(shape_inference::UnchangedShape);
+#define UNARY_REAL()                              \
+  Input("x: T")                                   \
+      .Output("y: T")                             \
+      .Attr("T: {bfloat16, half, float, double}") \
+      .SetShapeFn(shape_inference::UnchangedShape)
 
-REGISTER_OP("Expint")
-    .Input("x: T")
-    .Output("y: T")
-    .Attr("T: {float, double}")
-    .SetShapeFn(shape_inference::UnchangedShape);
+REGISTER_OP("Dawsn").UNARY_REAL();
+REGISTER_OP("Expint").UNARY_REAL();
+REGISTER_OP("FresnelCos").UNARY_REAL();
+REGISTER_OP("FresnelSin").UNARY_REAL();
+REGISTER_OP("Spence").UNARY_REAL();
 
-REGISTER_OP("FresnelCos")
-    .Input("x: T")
-    .Output("y: T")
-    .Attr("T: {float, double}")
-    .SetShapeFn(shape_inference::UnchangedShape);
+// Bessel functions
 
-REGISTER_OP("FresnelSin")
-    .Input("x: T")
-    .Output("y: T")
-    .Attr("T: {float, double}")
-    .SetShapeFn(shape_inference::UnchangedShape);
+REGISTER_OP("BesselI0").UNARY_REAL();
+REGISTER_OP("BesselI1").UNARY_REAL();
+REGISTER_OP("BesselI0e").UNARY_REAL();
+REGISTER_OP("BesselI1e").UNARY_REAL();
 
-REGISTER_OP("Spence")
-    .Input("x: T")
-    .Output("y: T")
-    .Attr("T: {float, double}")
-    .SetShapeFn(shape_inference::UnchangedShape);
+REGISTER_OP("BesselK0").UNARY_REAL();
+REGISTER_OP("BesselK1").UNARY_REAL();
+REGISTER_OP("BesselK0e").UNARY_REAL();
+REGISTER_OP("BesselK1e").UNARY_REAL();
+
+REGISTER_OP("BesselJ0").UNARY_REAL();
+REGISTER_OP("BesselJ1").UNARY_REAL();
+REGISTER_OP("BesselY0").UNARY_REAL();
+REGISTER_OP("BesselY1").UNARY_REAL();
 
 }  // namespace tensorflow

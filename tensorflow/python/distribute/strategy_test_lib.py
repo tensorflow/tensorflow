@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import os
 import tempfile
 
@@ -27,9 +28,10 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.util import event_pb2
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import reduce_util
-from tensorflow.python.distribute import values
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -38,11 +40,12 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.keras.layers import core
 from tensorflow.python.lib.io import tf_record
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import init_ops_v2
 from tensorflow.python.ops import summary_ops_v2 as summary_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
@@ -50,10 +53,20 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.training import optimizer
 from tensorflow.python.training import training_util
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_inspect
 
 
 class _TestException(Exception):
   pass
+
+
+# Conditionally wrap the fn in a def_function.function (so it runs in graph
+# mode).
+def _maybe_run_in_function(fn, run_in_function=False):
+  if not run_in_function or not context.executing_eagerly():
+    return fn
+  else:
+    return def_function.function()(fn)
 
 
 # May be the argument to either distribution.extended.call_for_each_replica() or
@@ -111,15 +124,31 @@ def _events_from_logdir(test_case, logdir):
   return result
 
 
+def create_variable_like_keras_layer(name, shape, dtype):
+  """Utitlity for create variables that works like variable in keras layer."""
+  initializer = functools.partial(
+      init_ops_v2.GlorotUniform(), shape, dtype=dtype)
+  return variables.Variable(
+      initial_value=initializer, name=name, trainable=True)
+
+
+def is_optimizer_v2_instance(optimizer_obj):
+  # For a optimizer instance, the v2 implementation has var_list as a required
+  # argument.
+  arg_spec = tf_inspect.getfullargspec(optimizer_obj.minimize)
+  return "var_list" in arg_spec.args[:-len(arg_spec.defaults)]
+
+
 class DistributionTestBase(test.TestCase):
   """Some tests that should work with any DistributionStrategy."""
 
   def _test_minimize_loss_eager(self, d):
     with d.scope():
-      l = core.Dense(1, use_bias=False)
-
+      kernel = create_variable_like_keras_layer(
+          name="kernel", shape=(1, 1), dtype=dtypes.float32)
       def loss(x):
-        y = array_ops.reshape(l(x), []) - array_ops.identity(1.)
+        y = array_ops.reshape(
+            gen_math_ops.mat_mul(x, kernel), []) - array_ops.identity(1.)
         return y * y
       # TODO(isaprykin): Extract implicit_grad+get_filtered_grad_fn into a
       # common `implicit_grad` function and put it in DistributionStrategy.
@@ -173,10 +202,12 @@ class DistributionTestBase(test.TestCase):
          ops.Graph().as_default(), \
          self.cached_session(config=config) as sess, \
          d.scope():
-      l = core.Dense(1, use_bias=False)
+      kernel = create_variable_like_keras_layer(
+          name="kernel", shape=(1, 1), dtype=dtypes.float32)
 
       def loss(x):
-        y = array_ops.reshape(l(x), []) - array_ops.identity(1.)
+        y = array_ops.reshape(
+            gen_math_ops.mat_mul(x, kernel), []) - array_ops.identity(1.)
         return y * y
 
       grad_fn = backprop.implicit_grad(loss)
@@ -310,7 +341,7 @@ class DistributionTestBase(test.TestCase):
       self, strategy, input_fn, expected_values, ignore_order=False):
     assert_same = self.assertCountEqual if ignore_order else self.assertEqual
 
-    iterable = strategy.experimental_distribute_datasets_from_function(input_fn)
+    iterable = strategy.distribute_datasets_from_function(input_fn)
     if context.executing_eagerly():
       iterator = iter(iterable)
 
@@ -348,7 +379,8 @@ class DistributionTestBase(test.TestCase):
     for expected_value in expected_values:
       next_element = iterator.get_next()
       computed_value = evaluate(
-          [values.select_replica(r, next_element) for r in range(len(devices))])
+          [distribute_utils.select_replica(r, next_element) for r in
+           range(len(devices))])
       if ignore_order:
         self.assertCountEqual(expected_value, computed_value)
       else:
@@ -357,7 +389,8 @@ class DistributionTestBase(test.TestCase):
     with self.assertRaises(errors.OutOfRangeError):
       next_element = iterator.get_next()
       evaluate(
-          [values.select_replica(r, next_element) for r in range(len(devices))])
+          [distribute_utils.select_replica(r, next_element) for r in
+           range(len(devices))])
 
     # After re-initializing the iterator, should be able to iterate again.
     if test_reinitialize:
@@ -366,7 +399,8 @@ class DistributionTestBase(test.TestCase):
       for expected_value in expected_values:
         next_element = iterator.get_next()
         computed_value = evaluate([
-            values.select_replica(r, next_element) for r in range(len(devices))
+            distribute_utils.select_replica(r, next_element) for r in
+            range(len(devices))
         ])
         if ignore_order:
           self.assertCountEqual(expected_value, computed_value)
@@ -395,7 +429,9 @@ class DistributionTestBase(test.TestCase):
       global_step_values = self.evaluate(global_step_tensors)
       self.assertEqual((1,) * len(global_step_tensors), global_step_values)
 
-  def _test_numpy_dataset(self, strategy, session=None):
+  def _test_numpy_dataset(self, strategy, session=None, run_in_function=False):
+    if not isinstance(strategy, distribute_lib.StrategyV1):
+      self.skipTest("n/a: V1 only")
     cached_session = session or self.cached_session()
     with strategy.scope(), cached_session as sess:
       x = np.asarray([[1, 2], [6, 12], [2, 4], [5, 10], [3, 6], [4, 8]])
@@ -416,7 +452,8 @@ class DistributionTestBase(test.TestCase):
       self.evaluate(i.initializer)
 
       def run_and_concatenate(strategy, i):
-        x, y = strategy.experimental_run(lambda z: z, i)
+        x, y = strategy.experimental_run(
+            _maybe_run_in_function(lambda z: z, run_in_function), i)
         x, y = self.evaluate((strategy.experimental_local_results(x),
                               strategy.experimental_local_results(y)))
         return np.concatenate(x), np.concatenate(y)
@@ -572,50 +609,61 @@ class OneDeviceDistributionTestBase(test.TestCase):
 class TwoDeviceDistributionTestBase(test.TestCase):
   """Some tests that should work with any two-device DistributionStrategy."""
 
-  def _test_run(self, strategy):
-    out1 = strategy.run(
-        lambda: ds_context.get_replica_context().replica_id_in_sync_group + 1)
+  def _test_run(self, strategy, run_in_function=False):
+    out1 = strategy.run(_maybe_run_in_function(
+        lambda: ds_context.get_replica_context().replica_id_in_sync_group + 1,
+        run_in_function))
     self.assertAllEqual([1, 2], self.evaluate(strategy.unwrap(out1)))
 
-    out2 = strategy.run(lambda x: {"a": x * 2, "b": x * x}, args=(out1,))
+    out2 = strategy.run(_maybe_run_in_function(
+        lambda x: {"a": x * 2, "b": x * x}, run_in_function), args=(out1,))
     out2_vals = self.evaluate(nest.map_structure(strategy.unwrap, out2))
     self.assertAllEqual([2, 4], out2_vals["a"])
     self.assertAllEqual([1, 4], out2_vals["b"])
 
-    out3 = strategy.run(lambda b, a: a + 2 * b + 2, kwargs=out2)
+    out3 = strategy.run(_maybe_run_in_function(
+        lambda b, a: a + 2 * b + 2, run_in_function), kwargs=out2)
     self.assertAllEqual([6, 14], self.evaluate(strategy.unwrap(out3)))
 
-  def _test_all_reduce_sum(self, strategy):
+  def _test_all_reduce_sum(self, strategy, run_in_function=False):
     self._test_collective_comms(
         strategy,
         _all_sum,
         inputs=([1., 3.], [[39., 2.], [3., 41.]]),
-        expected=(4., [42., 43.]))
+        expected=(4., [42., 43.]),
+        run_in_function=run_in_function)
 
-  def _test_all_reduce_sum_gradients(self, strategy):
+  def _test_all_reduce_sum_gradients(self, strategy, run_in_function=False):
     self._test_collective_comms_gradients(
-        strategy, _all_sum, inputs=[1., 3.], expected_grads=[4., 4.])
+        strategy, _all_sum, inputs=[1., 3.], expected_grads=[4., 4.],
+        run_in_function=run_in_function)
 
-  def _test_all_reduce_sum_gradient_tape(self, strategy):
+  def _test_all_reduce_sum_gradient_tape(self, strategy, run_in_function=False):
     self._test_collective_comms_gradient_tape(
-        strategy, _all_sum, inputs=[1., 3.], expected_grads=[4., 4.])
+        strategy, _all_sum, inputs=[1., 3.], expected_grads=[4., 4.],
+        run_in_function=run_in_function)
 
-  def _test_all_reduce_mean(self, strategy):
+  def _test_all_reduce_mean(self, strategy, run_in_function=False):
     self._test_collective_comms(
         strategy,
         _all_mean,
         inputs=([1., 3.], [[39., 2.], [3., 41.]]),
-        expected=(2., [21., 21.5]))
+        expected=(2., [21., 21.5]),
+        run_in_function=run_in_function)
 
-  def _test_all_reduce_mean_gradients(self, strategy):
+  def _test_all_reduce_mean_gradients(self, strategy, run_in_function=False):
     self._test_collective_comms_gradients(
-        strategy, _all_mean, inputs=[1., 3.], expected_grads=[2., 2.])
+        strategy, _all_mean, inputs=[1., 3.], expected_grads=[2., 2.],
+        run_in_function=run_in_function)
 
-  def _test_all_reduce_mean_gradient_tape(self, strategy):
+  def _test_all_reduce_mean_gradient_tape(self, strategy,
+                                          run_in_function=False):
     self._test_collective_comms_gradient_tape(
-        strategy, _all_mean, inputs=[1., 3.], expected_grads=[2., 2.])
+        strategy, _all_mean, inputs=[1., 3.], expected_grads=[2., 2.],
+        run_in_function=run_in_function)
 
-  def _test_collective_comms(self, strategy, comm_fn, inputs, expected):
+  def _test_collective_comms(self, strategy, comm_fn, inputs, expected,
+                             run_in_function=False):
     inputs = strategy.make_input_fn_iterator(
         lambda _: dataset_ops.Dataset.from_tensor_slices(inputs))
 
@@ -623,14 +671,16 @@ class TwoDeviceDistributionTestBase(test.TestCase):
     outputs = self.evaluate(
         list(
             map(strategy.experimental_local_results,
-                strategy.experimental_run(comm_fn, inputs))))
+                strategy.experimental_run(
+                    _maybe_run_in_function(comm_fn, run_in_function), inputs))))
     self.assertAllEqual([expected[0], expected[0]], outputs[0])
     self.assertAllEqual([expected[1], expected[1]], outputs[1])
 
   def _test_collective_comms_gradients(self, strategy, comm_fn, inputs,
-                                       expected_grads):
-    if context.executing_eagerly():
-      self.skipTest("`tf.gradients` is not supported with eager execution.")
+                                       expected_grads, run_in_function=False):
+    if context.executing_eagerly() and not run_in_function:
+      self.skipTest("`tf.gradients` is not supported with eager execution "
+                    "without using tf.functions.")
 
     def step(c):
       x = array_ops.identity(42.)
@@ -645,10 +695,12 @@ class TwoDeviceDistributionTestBase(test.TestCase):
         expected_grads,
         self.evaluate(
             strategy.experimental_local_results(
-                strategy.experimental_run(step, inputs))))
+                strategy.experimental_run(
+                    _maybe_run_in_function(step, run_in_function), inputs))))
 
   def _test_collective_comms_gradient_tape(self, strategy, comm_fn, inputs,
-                                           expected_grads):
+                                           expected_grads,
+                                           run_in_function=False):
 
     def step(c):
       x = array_ops.identity(42.)
@@ -665,7 +717,9 @@ class TwoDeviceDistributionTestBase(test.TestCase):
         expected_grads,
         self.evaluate(
             strategy.experimental_local_results(
-                strategy.experimental_run(step, inputs))))
+                strategy.experimental_run(
+                    _maybe_run_in_function(step, run_in_function),
+                    inputs))))
 
 
 class RemoteSingleWorkerMirroredStrategyBase(DistributionTestBase):

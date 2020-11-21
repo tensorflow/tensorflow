@@ -80,8 +80,8 @@ class FunctionTest(tf.test.TestCase):
     # matmul to fail, due to incompatible dims.  What would have been a graph
     # build time error (layer would complain about the inner dim being 4).
     with self.captureWritesToStream(sys.stderr) as printed:
-      with self.assertRaisesRegexp(tf.errors.InvalidArgumentError,
-                                   r'Matrix size-incompatible'):
+      with self.assertRaisesRegex(tf.errors.InvalidArgumentError,
+                                  r'Matrix size-incompatible'):
         fn(tf.ones((3, 4)))
 
   def testDefunKerasModelCall(self):

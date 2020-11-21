@@ -27,6 +27,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_BATCHING_UTIL_BATCH_SCHEDULER_H_
 
 #include <stddef.h>
+
 #include <algorithm>
 #include <functional>
 #include <memory>
@@ -40,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
 namespace serving {
@@ -77,7 +79,8 @@ class BatchTask {
 template <typename TaskType>
 class Batch {
  public:
-  Batch() = default;
+  Batch();
+  explicit Batch(uint64 traceme_context_id);
   virtual ~Batch();  // Blocks until the batch is closed.
 
   // Appends 'task' to the batch. After calling AddTask(), the newly-added task
@@ -113,6 +116,9 @@ class Batch {
   // Marks the batch as closed. Dies if called more than once.
   void Close();
 
+  // Returns the TraceMe context id of this batch.
+  uint64 traceme_context_id() const;
+
  private:
   mutable mutex mu_;
 
@@ -122,8 +128,13 @@ class Batch {
   // The sum of the sizes of the tasks in 'tasks_'.
   size_t size_ TF_GUARDED_BY(mu_) = 0;
 
+  std::atomic<bool> empty_ TF_GUARDED_BY(mu_){true};
+
   // Whether the batch has been closed.
   Notification closed_;
+
+  // The TracMe context id.
+  const uint64 traceme_context_id_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Batch);
 };
@@ -188,6 +199,13 @@ class BatchScheduler {
 // Implementation details follow. API users need not read.
 
 template <typename TaskType>
+Batch<TaskType>::Batch() : Batch(0) {}
+
+template <typename TaskType>
+Batch<TaskType>::Batch(uint64 traceme_context_id)
+    : traceme_context_id_(traceme_context_id) {}
+
+template <typename TaskType>
 Batch<TaskType>::~Batch() {
   WaitUntilClosed();
 }
@@ -199,6 +217,7 @@ void Batch<TaskType>::AddTask(std::unique_ptr<TaskType> task) {
     mutex_lock l(mu_);
     size_ += task->size();
     tasks_.push_back(std::move(task));
+    empty_.store(false);
   }
 }
 
@@ -212,6 +231,9 @@ std::unique_ptr<TaskType> Batch<TaskType>::RemoveTask() {
     std::unique_ptr<TaskType> task = std::move(tasks_.back());
     size_ -= task->size();
     tasks_.pop_back();
+    if (tasks_.empty()) {
+      empty_.store(true);
+    }
     return task;
   }
 }
@@ -225,11 +247,13 @@ int Batch<TaskType>::num_tasks() const {
 }
 
 template <typename TaskType>
-bool Batch<TaskType>::empty() const {
-  {
-    mutex_lock l(mu_);
-    return tasks_.empty();
-  }
+bool Batch<TaskType>::empty() const TF_NO_THREAD_SAFETY_ANALYSIS {
+  // tracer is added to zoom in about this method.
+  // TODO(b/160249203): Remove tracer after evaluating a change to reduce
+  // lock contention and cpu usage (which is observed in profiler and
+  // very data-driven).
+  tensorflow::profiler::TraceMe tracer("BatchTask::empty");
+  return empty_.load();
 }
 
 template <typename TaskType>
@@ -273,6 +297,11 @@ void Batch<TaskType>::WaitUntilClosed() const {
 template <typename TaskType>
 void Batch<TaskType>::Close() {
   closed_.Notify();
+}
+
+template <typename TaskType>
+uint64 Batch<TaskType>::traceme_context_id() const {
+  return traceme_context_id_;
 }
 
 }  // namespace serving

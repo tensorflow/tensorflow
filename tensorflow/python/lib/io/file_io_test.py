@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import os.path
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.framework import errors
@@ -29,7 +30,25 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 
 
-class FileIoTest(test.TestCase):
+class PathLike(object):
+  """Backport of pathlib.Path for Python < 3.6"""
+
+  def __init__(self, name):
+    self.name = name
+
+  def __fspath__(self):
+    return self.name
+
+  def __str__(self):
+    return self.name
+
+
+run_all_path_types = parameterized.named_parameters(
+    ("str", os.path.join),
+    ("pathlike", lambda *paths: PathLike(os.path.join(*paths))))
+
+
+class FileIoTest(test.TestCase, parameterized.TestCase):
 
   def setUp(self):
     self._base_dir = os.path.join(self.get_temp_dir(), "base_dir")
@@ -43,14 +62,16 @@ class FileIoTest(test.TestCase):
     with self.assertRaises(errors.NotFoundError):
       _ = f.read()
 
-  def testFileDoesntExist(self):
-    file_path = os.path.join(self._base_dir, "temp_file")
+  @run_all_path_types
+  def testFileDoesntExist(self, join):
+    file_path = join(self._base_dir, "temp_file")
     self.assertFalse(file_io.file_exists(file_path))
     with self.assertRaises(errors.NotFoundError):
       _ = file_io.read_file_to_string(file_path)
 
-  def testWriteToString(self):
-    file_path = os.path.join(self._base_dir, "temp_file")
+  @run_all_path_types
+  def testWriteToString(self, join):
+    file_path = join(self._base_dir, "temp_file")
     file_io.write_string_to_file(file_path, "testing")
     self.assertTrue(file_io.file_exists(file_path))
     file_contents = file_io.read_file_to_string(file_path)
@@ -75,14 +96,16 @@ class FileIoTest(test.TestCase):
     file_contents = file_io.read_file_to_string(file_path)
     self.assertEqual("new", file_contents)
 
-  def testReadBinaryMode(self):
-    file_path = os.path.join(self._base_dir, "temp_file")
+  @run_all_path_types
+  def testReadBinaryMode(self, join):
+    file_path = join(self._base_dir, "temp_file")
     file_io.write_string_to_file(file_path, "testing")
     with file_io.FileIO(file_path, mode="rb") as f:
       self.assertEqual(b"testing", f.read())
 
-  def testWriteBinaryMode(self):
-    file_path = os.path.join(self._base_dir, "temp_file")
+  @run_all_path_types
+  def testWriteBinaryMode(self, join):
+    file_path = join(self._base_dir, "temp_file")
     file_io.FileIO(file_path, "wb").write("testing")
     with file_io.FileIO(file_path, mode="r") as f:
       self.assertEqual("testing", f.read())
@@ -128,8 +151,9 @@ class FileIoTest(test.TestCase):
     with self.assertRaises(errors.PermissionDeniedError):
       file_io.FileIO(file_path, mode="w").read()
 
-  def testFileDelete(self):
-    file_path = os.path.join(self._base_dir, "temp_file")
+  @run_all_path_types
+  def testFileDelete(self, join):
+    file_path = join(self._base_dir, "temp_file")
     file_io.FileIO(file_path, mode="w").write("testing")
     file_io.delete_file(file_path)
     self.assertFalse(file_io.file_exists(file_path))
@@ -171,20 +195,22 @@ class FileIoTest(test.TestCase):
     self.assertItemsEqual(
         file_io.get_matching_files(glob_pattern), expected_match)
 
-  def testCreateRecursiveDir(self):
-    dir_path = os.path.join(self._base_dir, "temp_dir/temp_dir1/temp_dir2")
+  @run_all_path_types
+  def testCreateRecursiveDir(self, join):
+    dir_path = join(self._base_dir, "temp_dir/temp_dir1/temp_dir2")
     file_io.recursive_create_dir(dir_path)
     file_io.recursive_create_dir(dir_path)  # repeat creation
-    file_path = os.path.join(dir_path, "temp_file")
+    file_path = os.path.join(str(dir_path), "temp_file")
     file_io.FileIO(file_path, mode="w").write("testing")
     self.assertTrue(file_io.file_exists(file_path))
     file_io.delete_recursively(os.path.join(self._base_dir, "temp_dir"))
     self.assertFalse(file_io.file_exists(file_path))
 
-  def testCopy(self):
-    file_path = os.path.join(self._base_dir, "temp_file")
+  @run_all_path_types
+  def testCopy(self, join):
+    file_path = join(self._base_dir, "temp_file")
     file_io.FileIO(file_path, mode="w").write("testing")
-    copy_path = os.path.join(self._base_dir, "copy_file")
+    copy_path = join(self._base_dir, "copy_file")
     file_io.copy(file_path, copy_path)
     self.assertTrue(file_io.file_exists(copy_path))
     f = file_io.FileIO(file_path, mode="r")
@@ -208,10 +234,11 @@ class FileIoTest(test.TestCase):
     with self.assertRaises(errors.AlreadyExistsError):
       file_io.copy(file_path, copy_path, overwrite=False)
 
-  def testRename(self):
-    file_path = os.path.join(self._base_dir, "temp_file")
+  @run_all_path_types
+  def testRename(self, join):
+    file_path = join(self._base_dir, "temp_file")
     file_io.FileIO(file_path, mode="w").write("testing")
-    rename_path = os.path.join(self._base_dir, "rename_file")
+    rename_path = join(self._base_dir, "rename_file")
     file_io.rename(file_path, rename_path)
     self.assertTrue(file_io.file_exists(rename_path))
     self.assertFalse(file_io.file_exists(file_path))
@@ -240,13 +267,14 @@ class FileIoTest(test.TestCase):
     with self.assertRaises(errors.NotFoundError):
       file_io.delete_recursively(fake_dir_path)
 
-  def testIsDirectory(self):
-    dir_path = os.path.join(self._base_dir, "test_dir")
+  @run_all_path_types
+  def testIsDirectory(self, join):
+    dir_path = join(self._base_dir, "test_dir")
     # Failure for a non-existing dir.
     self.assertFalse(file_io.is_directory(dir_path))
     file_io.create_dir(dir_path)
     self.assertTrue(file_io.is_directory(dir_path))
-    file_path = os.path.join(dir_path, "test_file")
+    file_path = join(str(dir_path), "test_file")
     file_io.FileIO(file_path, mode="w").write("test")
     # False for a file.
     self.assertFalse(file_io.is_directory(file_path))
@@ -254,16 +282,17 @@ class FileIoTest(test.TestCase):
     file_statistics = file_io.stat(dir_path)
     self.assertTrue(file_statistics.is_directory)
 
-  def testListDirectory(self):
-    dir_path = os.path.join(self._base_dir, "test_dir")
+  @run_all_path_types
+  def testListDirectory(self, join):
+    dir_path = join(self._base_dir, "test_dir")
     file_io.create_dir(dir_path)
     files = ["file1.txt", "file2.txt", "file3.txt"]
     for name in files:
-      file_path = os.path.join(dir_path, name)
+      file_path = join(str(dir_path), name)
       file_io.FileIO(file_path, mode="w").write("testing")
-    subdir_path = os.path.join(dir_path, "sub_dir")
+    subdir_path = join(str(dir_path), "sub_dir")
     file_io.create_dir(subdir_path)
-    subdir_file_path = os.path.join(subdir_path, "file4.txt")
+    subdir_file_path = join(str(subdir_path), "file4.txt")
     file_io.FileIO(subdir_file_path, mode="w").write("testing")
     dir_list = file_io.list_directory(dir_path)
     self.assertItemsEqual(files + ["sub_dir"], dir_list)
@@ -289,9 +318,11 @@ class FileIoTest(test.TestCase):
         mode="w").write("testing")
     file_io.create_dir(os.path.join(dir_path, "subdir1_2/subdir2"))
 
-  def testWalkInOrder(self):
-    dir_path = os.path.join(self._base_dir, "test_dir")
-    self._setupWalkDirectories(dir_path)
+  @run_all_path_types
+  def testWalkInOrder(self, join):
+    dir_path_str = os.path.join(self._base_dir, "test_dir")
+    dir_path = join(self._base_dir, "test_dir")
+    self._setupWalkDirectories(dir_path_str)
     # Now test the walk (in_order = True)
     all_dirs = []
     all_subdirs = []
@@ -300,15 +331,14 @@ class FileIoTest(test.TestCase):
       all_dirs.append(w_dir)
       all_subdirs.append(w_subdirs)
       all_files.append(w_files)
-    self.assertItemsEqual(all_dirs, [dir_path] + [
-        os.path.join(dir_path, item)
-        for item in
+    self.assertItemsEqual(all_dirs, [dir_path_str] + [
+        os.path.join(dir_path_str, item) for item in
         ["subdir1_1", "subdir1_2", "subdir1_2/subdir2", "subdir1_3"]
     ])
-    self.assertEqual(dir_path, all_dirs[0])
+    self.assertEqual(dir_path_str, all_dirs[0])
     self.assertLess(
-        all_dirs.index(os.path.join(dir_path, "subdir1_2")),
-        all_dirs.index(os.path.join(dir_path, "subdir1_2/subdir2")))
+        all_dirs.index(os.path.join(dir_path_str, "subdir1_2")),
+        all_dirs.index(os.path.join(dir_path_str, "subdir1_2/subdir2")))
     self.assertItemsEqual(all_subdirs[1:5], [[], ["subdir2"], [], []])
     self.assertItemsEqual(all_subdirs[0],
                           ["subdir1_1", "subdir1_2", "subdir1_3"])
@@ -357,11 +387,12 @@ class FileIoTest(test.TestCase):
     self.assertItemsEqual(all_subdirs, [])
     self.assertItemsEqual(all_files, [])
 
-  def testStat(self):
-    file_path = os.path.join(self._base_dir, "temp_file")
+  @run_all_path_types
+  def testStat(self, join):
+    file_path = join(self._base_dir, "temp_file")
     file_io.FileIO(file_path, mode="w").write("testing")
     file_statistics = file_io.stat(file_path)
-    os_statistics = os.stat(file_path)
+    os_statistics = os.stat(str(file_path))
     self.assertEqual(7, file_statistics.length)
     self.assertEqual(
         int(os_statistics.st_mtime), int(file_statistics.mtime_nsec / 1e9))
@@ -388,6 +419,18 @@ class FileIoTest(test.TestCase):
     self.assertEqual("testing2\n", f.read(9))
     self.assertEqual("t", f.read(1))
     self.assertEqual("esting3\n\ntesting5", f.read())
+
+  def testReadErrorReacquiresGil(self):
+    file_path = os.path.join(self._base_dir, "temp_file")
+    with file_io.FileIO(file_path, mode="r+") as f:
+      f.write("testing1\ntesting2\ntesting3\n\ntesting5")
+    with self.assertRaises(errors.InvalidArgumentError):
+      # At present, this is sufficient to convince ourselves that the change
+      # fixes the problem. That is, this test will seg fault without the change,
+      # and pass with it. Unfortunately, this is brittle, as it relies on the
+      # Python layer to pass the argument along to the wrapped C++ without
+      # checking the argument itself.
+      f.read(-2)
 
   def testTell(self):
     file_path = os.path.join(self._base_dir, "temp_file")
@@ -500,8 +543,9 @@ class FileIoTest(test.TestCase):
     f.flush()
     self.assertEqual(content, f.read(len(content) + 1))
 
-  def testUTF8StringPathExists(self):
-    file_path = os.path.join(self._base_dir, "UTF8测试_file_exist")
+  @run_all_path_types
+  def testUTF8StringPathExists(self, join):
+    file_path = join(self._base_dir, "UTF8测试_file_exist")
     file_io.write_string_to_file(file_path, "testing")
     v = file_io.file_exists(file_path)
     self.assertEqual(v, True)

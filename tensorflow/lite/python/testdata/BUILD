@@ -26,7 +26,7 @@ tf_to_tflite(
         "--input_arrays=input",
         "--output_arrays=output",
         "--inference_type=QUANTIZED_UINT8",
-        "--std_values=1",
+        "--std_dev_values=1",
         "--mean_values=0",
         "--default_ranges_min=0",
         "--default_ranges_max=255",
@@ -43,11 +43,22 @@ tf_to_tflite(
     ],
 )
 
+tf_to_tflite(
+    name = "gather_string_0d",
+    src = "gather_0d.pbtxt",
+    out = "gather_string_0d.tflite",
+    options = [
+        "--input_arrays=input,indices",
+        "--output_arrays=output",
+    ],
+)
+
 filegroup(
     name = "interpreter_test_data",
     srcs = [
         "pc_conv.bin",
         ":gather_string",
+        ":gather_string_0d",
         ":permute_float",
         ":permute_uint8",
     ],

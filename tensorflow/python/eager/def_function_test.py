@@ -45,6 +45,8 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.saved_model import save_context
+from tensorflow.python.saved_model import save_options
 
 
 def undecorated_function(x):
@@ -209,8 +211,8 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
           state.append(variables.Variable(2.0 * x))
         return state[0] * x
 
-      with self.assertRaisesRegexp(
-          lift_to_graph.UnliftableError, r'transitively.* mul .* x'):
+      with self.assertRaisesRegex(lift_to_graph.UnliftableError,
+                                  r'transitively.* mul .* x'):
         fn(constant_op.constant(3.0))
 
   def testMethod(self):
@@ -378,8 +380,8 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
         outputs.append(inputs[t])
       return outputs
 
-    with self.assertRaisesRegexp(errors.InaccessibleTensorError,
-                                 'defined in another function or code block'):
+    with self.assertRaisesRegex(errors.InaccessibleTensorError,
+                                'defined in another function or code block'):
       f(array_ops.zeros(shape=(8, 42, 3)))
 
   def testRuntimeErrorNotSticky(self):
@@ -456,7 +458,7 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
       with ops.init_scope():
         _ = a + a
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         TypeError,
         re.compile('An op outside of the function.*passed.*Const', re.DOTALL)):
       failing_function()
@@ -548,10 +550,10 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(trace_count[0], 1)
     self.assertEqual(self.evaluate(v1), 2.0)
     double_variable(v2)
-    self.assertEqual(trace_count[0], 1 if ops.Tensor._USE_EQUALITY else 2)
+    self.assertEqual(trace_count[0], 2)
     self.assertEqual(self.evaluate(v2), 4.0)
     double_variable(v3)
-    self.assertEqual(trace_count[0], 2 if ops.Tensor._USE_EQUALITY else 3)
+    self.assertEqual(trace_count[0], 3)
     self.assertEqual(self.evaluate(v3), 8)
 
   def testShapeCache(self):
@@ -565,6 +567,30 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
         tensor_spec.TensorSpec([None], dtypes.int32))
 
     self.assertIs(func_a, func_b)
+
+  def testCacheWithinSaveContext(self):
+
+    @def_function.function
+    def func(x):
+      return 2 * x
+
+    func_a = func.get_concrete_function(constant_op.constant(2.))
+    func_b = func.get_concrete_function(constant_op.constant(2.))
+
+    self.assertIs(func_a, func_b)
+
+    with save_context.save_context(
+        save_options.SaveOptions(experimental_variable_policy=save_options
+                                 .VariablePolicy.EXPAND_DISTRIBUTED_VARIABLES)):
+      func_c = func.get_concrete_function(constant_op.constant(2.))
+
+    with save_context.save_context(
+        save_options.SaveOptions(
+            experimental_variable_policy=save_options.VariablePolicy.NONE)):
+      func_d = func.get_concrete_function(constant_op.constant(2.))
+
+    self.assertIsNot(func_a, func_c)
+    self.assertIsNot(func_a, func_d)
 
   def testInitializationInNestedCall(self):
     v_holder = []
@@ -605,7 +631,7 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
       return a[0].read_value()
 
     create_variable()
-    self.assertRegexpMatches(a[0].device, 'CPU')
+    self.assertRegex(a[0].device, 'CPU')
 
   @test_util.run_gpu_only
   def testDeviceAnnotationForInitializerRespected(self):
@@ -624,8 +650,8 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
 
     with ops.device('CPU:0'):
       create_variable()
-    self.assertRegexpMatches(a[0].device, 'CPU')
-    self.assertRegexpMatches(initial_value[0].device, 'CPU')
+    self.assertRegex(a[0].device, 'CPU')
+    self.assertRegex(initial_value[0].device, 'CPU')
 
   def testDecorate(self):
     func = def_function.function(lambda: 1)
@@ -644,6 +670,7 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
       (True, False),                          # compile
       (True, False),                          # override_function
   ))
+
   def testClone(self, input_signature, autograph, autograph_options, implements,
                 relax_shapes, compile_, override_function):
     original_py_function = lambda x: x
@@ -656,7 +683,7 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
         experimental_implements=implements,
         experimental_autograph_options=autograph_options,
         experimental_relax_shapes=relax_shapes,
-        experimental_compile=compile_)
+        jit_compile=compile_)
 
     if override_function:
       cloned_py_function = lambda x: x + 1
@@ -672,7 +699,7 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(implements, cloned._implements)
     self.assertEqual(autograph_options, cloned._experimental_autograph_options)
     self.assertEqual(relax_shapes, cloned._experimental_relax_shapes)
-    self.assertEqual(compile_, cloned._experimental_compile)
+    self.assertEqual(compile_, cloned._jit_compile)
 
     # This test does not run with XLA JIT support linked in so we can only check
     # the output of the function if compile is disabled.
@@ -703,7 +730,7 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     func = def_function.function(lambda: 1)
     self.assertEqual(func().numpy(), 1)
     msg = 'Functions cannot be decorated after they have been traced.'
-    with self.assertRaisesRegexp(ValueError, msg):
+    with self.assertRaisesRegex(ValueError, msg):
       func._decorate(lambda f: f)
 
   def testGetConcreteFunctionGraphLifetime(self):
@@ -725,6 +752,7 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
       (None, 'foo.bar'),  # implements
       (None, True, False),  # relax_shapes
   ))
+
   def test_pickle(self, input_signature, autograph, autograph_options,
                   implements, relax_shapes):
     """@function objects can be pickled and unpickled."""
@@ -891,6 +919,70 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
 
     self.assertLen(logs.output, 1)
     self.assertIn('Tracing is expensive', logs.output[0])
+
+  def test_experimental_get_tracing_count_function(self):
+
+    @def_function.function
+    def double(a):
+      return a + a
+
+    double(constant_op.constant(1))
+    double(constant_op.constant(2))
+    self.assertAllEqual(double.experimental_get_tracing_count(), 1)
+    double(constant_op.constant('a'))
+    self.assertAllEqual(double.experimental_get_tracing_count(), 2)
+
+  def test_experimental_get_tracing_count_method(self):
+
+    class TestClass():
+
+      @def_function.function
+      def testDouble(self, a):
+        return a + a
+
+    obj1 = TestClass()
+    obj1.testDouble(constant_op.constant(1))
+    obj1.testDouble(constant_op.constant(2))
+    obj1.testDouble(constant_op.constant(1.1))
+    self.assertAllEqual(obj1.testDouble.experimental_get_tracing_count(), 2)
+    obj2 = TestClass()
+    obj2.testDouble(constant_op.constant(1))
+    obj2.testDouble(constant_op.constant(1.1))
+    obj2.testDouble(constant_op.constant('a'))
+    self.assertAllEqual(obj2.testDouble.experimental_get_tracing_count(), 3)
+    self.assertAllEqual(obj1.testDouble.experimental_get_tracing_count(), 2)
+
+  def test_experimental_get_tracing_count_function(self):
+
+    @def_function.function
+    def double(a):
+      return a + a
+
+    double(constant_op.constant(1))
+    double(constant_op.constant(2))
+    self.assertAllEqual(double.experimental_get_tracing_count(), 1)
+    double(constant_op.constant('a'))
+    self.assertAllEqual(double.experimental_get_tracing_count(), 2)
+
+  def test_experimental_get_tracing_count_method(self):
+
+    class TestClass():
+
+      @def_function.function
+      def testDouble(self, a):
+        return a + a
+
+    obj1 = TestClass()
+    obj1.testDouble(constant_op.constant(1))
+    obj1.testDouble(constant_op.constant(2))
+    obj1.testDouble(constant_op.constant(1.1))
+    self.assertAllEqual(obj1.testDouble.experimental_get_tracing_count(), 2)
+    obj2 = TestClass()
+    obj2.testDouble(constant_op.constant(1))
+    obj2.testDouble(constant_op.constant(1.1))
+    obj2.testDouble(constant_op.constant('a'))
+    self.assertAllEqual(obj2.testDouble.experimental_get_tracing_count(), 3)
+    self.assertAllEqual(obj1.testDouble.experimental_get_tracing_count(), 2)
 
 
 if __name__ == '__main__':

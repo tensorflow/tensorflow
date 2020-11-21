@@ -217,15 +217,15 @@ class DimensionTest(test_util.TensorFlowTestCase):
     two = tensor_shape.Dimension(2)
     message = (r"unsupported operand type\(s\) for /: "
                r"'Dimension' and 'Dimension', please use // instead")
-    with self.assertRaisesRegexp(TypeError, message):
+    with self.assertRaisesRegex(TypeError, message):
       _ = six / two
     message = (r"unsupported operand type\(s\) for /: "
                r"'Dimension' and 'int', please use // instead")
-    with self.assertRaisesRegexp(TypeError, message):
+    with self.assertRaisesRegex(TypeError, message):
       _ = six / 2
     message = (r"unsupported operand type\(s\) for /: "
                r"'int' and 'Dimension', please use // instead")
-    with self.assertRaisesRegexp(TypeError, message):
+    with self.assertRaisesRegex(TypeError, message):
       _ = 6 / two
 
 
@@ -390,7 +390,7 @@ class ShapeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testTruedivFails(self):
     unknown = tensor_shape.Dimension(None)
     self.assertEqual((unknown // unknown).value, None)
-    with self.assertRaisesRegexp(TypeError, r"unsupported operand type"):
+    with self.assertRaisesRegex(TypeError, r"unsupported operand type"):
       unknown / unknown  # pylint: disable=pointless-statement
 
   def testConvertFromProto(self):
@@ -481,8 +481,8 @@ class ShapeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       _ = unk1 != unk0
 
   def testAsList(self):
-    with self.assertRaisesRegexp(ValueError,
-                                 "not defined on an unknown TensorShape"):
+    with self.assertRaisesRegex(ValueError,
+                                "not defined on an unknown TensorShape"):
       tensor_shape.unknown_shape().as_list()
     self.assertAllEqual([None, None], tensor_shape.unknown_shape(2).as_list())
     self.assertAllEqual([2, None, 4], tensor_shape.TensorShape(

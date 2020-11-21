@@ -114,9 +114,9 @@ class FunctionDefHelper {
 
   // Constructs an AttrValue.func given the "name" and "attrs".
   static AttrValueWrapper FunctionRef(
-      const string& name,
+      const std::string& name,
       gtl::ArraySlice<std::pair<string, AttrValueWrapper>> attrs);
-  static AttrValueWrapper FunctionRef(const string& name) {
+  static AttrValueWrapper FunctionRef(const std::string& name) {
     return FunctionRef(name, {});
   }
 
@@ -127,11 +127,11 @@ class FunctionDefHelper {
     // When constructing a NodeDef, the first entry in ret is used as
     // the node name, the remaining values are ignored.
     std::vector<string> ret;
-    string op;
+    std::string op;
     std::vector<string> arg;
     std::vector<std::pair<string, AttrValueWrapper>> attr;
     std::vector<string> dep;
-    string device;
+    std::string device;
 
     NodeDef ToNodeDef() const;
   };
@@ -143,7 +143,7 @@ class FunctionDefHelper {
   // - `control_ret_def` holds a mapping from the function control
   //   output names to the nodes from `node_def`.
   static FunctionDef Create(
-      const string& function_name, gtl::ArraySlice<string> in_def,
+      const std::string& function_name, gtl::ArraySlice<string> in_def,
       gtl::ArraySlice<string> out_def, gtl::ArraySlice<string> attr_def,
       gtl::ArraySlice<Node> node_def,
       gtl::ArraySlice<std::pair<string, string>> ret_def,
@@ -153,7 +153,7 @@ class FunctionDefHelper {
   // function encoding (node_name:output_name[:output_index]).
   // - `ret_def` holds a mapping from the function output names from `out_def`
   //   to the node outputs from `node_def`.
-  static FunctionDef Create(const string& function_name,
+  static FunctionDef Create(const std::string& function_name,
                             gtl::ArraySlice<string> in_def,
                             gtl::ArraySlice<string> out_def,
                             gtl::ArraySlice<string> attr_def,
@@ -161,7 +161,7 @@ class FunctionDefHelper {
                             gtl::ArraySlice<std::pair<string, string>> ret_def);
 
   // TODO(josh11b): Get rid of these and transition to the one above.
-  static FunctionDef Define(const string& function_name,
+  static FunctionDef Define(const std::string& function_name,
                             gtl::ArraySlice<string> arg_def,
                             gtl::ArraySlice<string> ret_def,
                             gtl::ArraySlice<string> attr_def,
@@ -175,7 +175,7 @@ class FunctionDefHelper {
 
   // Helpers to construct a constant scalar.
   template <typename T>
-  static Node Const(const string& name, const T& val) {
+  static Node Const(const std::string& name, const T& val) {
     Node n = {{name}, "Const"};
     const DataType dtype = DataTypeToEnum<T>::value;
     n.attr.push_back({"dtype", dtype});
@@ -186,7 +186,7 @@ class FunctionDefHelper {
   }
 
   template <typename T>
-  static Node Const(const string& name, gtl::ArraySlice<T> vals) {
+  static Node Const(const std::string& name, gtl::ArraySlice<T> vals) {
     Node n = {{name}, "Const"};
     const DataType dtype = DataTypeToEnum<T>::value;
     n.attr.push_back({"dtype", dtype});
@@ -207,7 +207,7 @@ inline FunctionDefHelper::AttrValueWrapper::AttrValueWrapper(const char* val) {
 
 template <>
 inline FunctionDefHelper::AttrValueWrapper::AttrValueWrapper(
-    const string& val) {
+    const std::string& val) {
   InitFromString(val);
 }
 
@@ -251,13 +251,13 @@ Status InstantiateFunction(const FunctionDef& fdef, AttrSlice attr_values,
 // Particularly, it may not include all information presented in
 // "func_def" (e.g., comments, description of the function arguments,
 // etc.)
-string DebugString(const FunctionDef& func_def);
-string DebugString(const GraphDef& instantiated_func_def);
-string DebugString(gtl::ArraySlice<NodeDef> instantiated_func_nodes);
+std::string DebugString(const FunctionDef& func_def);
+std::string DebugString(const GraphDef& instantiated_func_def);
+std::string DebugString(gtl::ArraySlice<NodeDef> instantiated_func_nodes);
 
 // Returns a debug string for a top level graph (the main program and
 // its supporting functions defined in its library).
-string DebugStringWhole(const GraphDef& gdef);
+std::string DebugStringWhole(const GraphDef& gdef);
 
 // Returns true if f1 == f2. Compares all fields, including descriptions. Order
 // of NodeDefs doesn't matter.
@@ -344,6 +344,8 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   static constexpr const char* const kDeviceRetOp = "_DeviceRetval";
   static constexpr const char* const kIntsOnDeviceAttr =
       "experimental_ints_on_device";
+  static constexpr const char* const kSharedRendezvousAttr =
+      "shared_rendezvous";
 
   static constexpr const char* const kGradientOp = "SymbolicGradient";
   static constexpr const char* const kFuncAttr = "f";
@@ -358,14 +360,14 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
       delete;
 
   // Returns True if the library contains `func`, False otherwise.
-  bool Contains(const string& func) const;
+  bool Contains(const std::string& func) const;
 
   // Returns nullptr if "func" is not defined in "lib_def". Otherwise,
   // returns its definition proto.
   //
   // NB: This function returns a borrowed pointer, which can be invalidated by a
   // subsequent call to `ReplaceFunction()` with the given name.
-  const FunctionDef* Find(const string& func) const TF_LOCKS_EXCLUDED(mu_);
+  const FunctionDef* Find(const std::string& func) const TF_LOCKS_EXCLUDED(mu_);
 
   // Adds function definition 'fdef' to this function library.
   // Returns status 'ok' on success, or error otherwise. This is a no-op if
@@ -386,7 +388,7 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // a non-OK status if "func" was not found in the library, OK otherwise.
   // Please be careful when replacing function: make sure all previous pointers
   // returned by `Find()` are no longer in use.
-  Status ReplaceFunction(const string& func, const FunctionDef& fdef)
+  Status ReplaceFunction(const std::string& func, const FunctionDef& fdef)
       TF_LOCKS_EXCLUDED(mu_);
 
   // Replaces the gradient corresponding to `grad.function_name()`. Returns
@@ -399,7 +401,10 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // Please be careful when removing function: make sure there are no other
   // nodes using the function, and all previous pointers returned by `Find()`
   // are no longer in use.
-  Status RemoveFunction(const string& func) TF_LOCKS_EXCLUDED(mu_);
+  Status RemoveFunction(const std::string& func) TF_LOCKS_EXCLUDED(mu_);
+
+  // Removes all the functions and gradient functions.
+  void Clear() TF_LOCKS_EXCLUDED(mu_);
 
   // Adds the functions and gradients in 'other' to this function library.
   // Duplicate functions and gradients are ignored.
@@ -415,7 +420,8 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // If the gradient function for 'func' is specified explicitly in
   // the library, returns the gradient function name.  Otherwise,
   // returns an empty string.
-  string FindGradient(const string& func) const TF_LOCKS_EXCLUDED(mu_);
+  std::string FindGradient(const std::string& func) const
+      TF_LOCKS_EXCLUDED(mu_);
 
   // OpRegistryInterface method. Useful for constructing a Graph.
   //
@@ -425,26 +431,27 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   //
   // NB: This function outputs a borrowed pointer, which can be invalidated by a
   // subsequent call to `ReplaceFunction()` with the given name.
-  Status LookUp(const string& op_type_name,
+  Status LookUp(const std::string& op_type_name,
                 const OpRegistrationData** op_reg_data) const override
       TF_LOCKS_EXCLUDED(mu_);
 
   // Generates new function name with the specified prefix that is unique
   // across this library.
-  string UniqueFunctionName(StringPiece prefix) const TF_LOCKS_EXCLUDED(mu_);
+  std::string UniqueFunctionName(StringPiece prefix) const
+      TF_LOCKS_EXCLUDED(mu_);
 
   // Given a node def 'ndef', inspects attributes of the callee
   // function to derive the attribute 'value' for 'attr'. Returns OK
   // iff the attribute is given by the function's definition.
   // TODO(irving): Remove; keep only the const Node& version.
   template <typename T>
-  Status GetAttr(const NodeDef& ndef, const string& attr, T* value) const;
+  Status GetAttr(const NodeDef& ndef, const std::string& attr, T* value) const;
 
   // Given a node, inspects attributes of the callee function to derive the
   // attribute 'value' for 'attr'. Returns OK iff the attribute is given by the
   // function's definition.
   template <typename T>
-  Status GetAttr(const Node& node, const string& attr, T* value) const;
+  Status GetAttr(const Node& node, const std::string& attr, T* value) const;
 
   // Returns a proto representation of the state of this function library.
   FunctionDefLibrary ToProto() const TF_LOCKS_EXCLUDED(mu_);
@@ -473,7 +480,7 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // name `func` already exists in this function library, and has the same
   // implementation as in `other`. If the implementations conflict, an invalid
   // argument error is returned.
-  Status CopyFunctionDefFrom(const string& func,
+  Status CopyFunctionDefFrom(const std::string& func,
                              const FunctionLibraryDefinition& other)
       TF_LOCKS_EXCLUDED(mu_);
 
@@ -489,7 +496,7 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
 
   std::shared_ptr<FunctionDefAndOpRegistration> FindHelper(
       const string& func) const TF_SHARED_LOCKS_REQUIRED(mu_);
-  string FindGradientHelper(const string& func) const
+  std::string FindGradientHelper(const std::string& func) const
       TF_SHARED_LOCKS_REQUIRED(mu_);
 
   Status AddHelper(std::shared_ptr<FunctionDefAndOpRegistration> registration,
@@ -516,12 +523,13 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // Remove `func` from the library. Returns non-OK Status unless `func` is in
   // the library. This should only be called when there is a guarantee that the
   // function being removed hasn't been retrieved with `Find`.
-  Status RemoveFunctionHelper(const string& func)
+  Status RemoveFunctionHelper(const std::string& func)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Remove gradient of function `func` from the library. Returns non-OK Status
   // unless `func` has a gradient.
-  Status RemoveGradient(const string& func) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  Status RemoveGradient(const std::string& func)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   mutable mutex mu_;
   const OpRegistryInterface* const default_registry_;
@@ -564,10 +572,14 @@ class FunctionLibraryRuntime {
     // The canonical device name of the device on which the function
     // should be instantiated. If empty, the function will be
     // instantiated on the local device.
-    string target;
+    std::string target;
 
     // Should the function be instantiated as a multi-device function?
     bool is_multi_device_function = false;
+
+    // If true, graph passes will be skipped when instantiating the function
+    // since they have already run on the main function side.
+    bool is_component_function = false;
 
     // For multi-device functions, a vector of canonical device names for
     // function's inputs. The device of resource inputs must be the device
@@ -603,6 +615,9 @@ class FunctionLibraryRuntime {
     // infer correct device.
     std::vector<string> output_devices;
 
+    // If set, it indicates the original output indices of a component function.
+    absl::optional<std::vector<int>> ret_indices = absl::nullopt;
+
     // Maps from a CompositeDevice name to a list of underlying physical
     // devices.
     absl::flat_hash_map<string, const std::vector<string>*> composite_devices;
@@ -634,13 +649,13 @@ class FunctionLibraryRuntime {
     // `state_handle` will have the same handle and share the same
     // state (in stateful kernels); and two functions with different
     // values for `state_handle` will have independent state.
-    string state_handle;
+    std::string state_handle;
 
     // This interface is EXPERIMENTAL and subject to change.
     //
     // Instantiates the function using an executor of the given type. If empty,
     // the default TensorFlow executor will be used.
-    string executor_type;
+    std::string executor_type;
 
     // If true, the runtime will attempt to create kernels for the function at
     // instantiation time, rather than on the first run. This can be used to
@@ -674,10 +689,10 @@ class FunctionLibraryRuntime {
     bool include_optimized_graph_in_debug_string = false;
   };
   typedef uint64 Handle;
-  virtual Status Instantiate(const string& function_name, AttrSlice attrs,
+  virtual Status Instantiate(const std::string& function_name, AttrSlice attrs,
                              const InstantiateOptions& options,
                              Handle* handle) = 0;
-  Status Instantiate(const string& function_name, AttrSlice attrs,
+  Status Instantiate(const std::string& function_name, AttrSlice attrs,
                      Handle* handle) {
     auto opts = absl::make_unique<InstantiateOptions>();
     return Instantiate(function_name, attrs, *opts, handle);
@@ -732,7 +747,7 @@ class FunctionLibraryRuntime {
 
     // Parameters for remote function execution.
     bool remote_execution = false;
-    string source_device = "";  // Fully specified device name.
+    std::string source_device = "";  // Fully specified device name.
 
     // Allocator attributes specifying where the args are / rets should be put.
     // These should either be {} or match the length of args / retvals. If {},
@@ -752,7 +767,7 @@ class FunctionLibraryRuntime {
     bool run_all_kernels_inline = false;
 
     // Returns a human readable representation of this.
-    string DebugString() const;
+    std::string DebugString() const;
   };
   typedef std::function<void(const Status&)> DoneCallback;
   virtual void Run(const Options& opts, Handle handle,
@@ -780,7 +795,7 @@ class FunctionLibraryRuntime {
   // NOTE(mrry): This method assumes that the runtime is associated with a
   // default function library, and looks up `function_name` in that library.
   // It does not support overriding the function library.
-  virtual bool IsStateful(const string& function_name) const = 0;
+  virtual bool IsStateful(const std::string& function_name) const = 0;
 
   // Returns the device on which the function executes.
   virtual Device* device() = 0;
@@ -811,7 +826,7 @@ class FunctionLibraryRuntime {
 
   // Returns a debug string showing the definition of the function of
   // 'handle'.
-  virtual string DebugString(Handle handle) = 0;
+  virtual std::string DebugString(Handle handle) = 0;
 
   // Returns the graph version number.
   virtual int graph_def_version() const = 0;
@@ -841,9 +856,15 @@ class FunctionLibraryRuntime {
   // `ExecutorFactory::GetFactory()`) that will be used based on the given
   // dynamic `options` and static `attrs`. If none is specified, this method
   // will return an empty string, which leaves the decision up to the runtime.
-  static string ExecutorType(const InstantiateOptions& options,
-                             AttrSlice attrs);
+  static std::string ExecutorType(const InstantiateOptions& options,
+                                  AttrSlice attrs);
 };
+
+// Returns the device of the `arg_index`-th function input. Update
+// `composite_devices` if the input device is a composite device.
+std::string GetFunctionResourceInputDevice(
+    const Tensor& input, const int arg_index, const FunctionDef& function_def,
+    absl::flat_hash_map<string, std::vector<string>>* composite_devices);
 
 // Returns a canonicalized string for the instantiation of the
 // function of the given "name", attributes "attrs", and "options".
@@ -852,9 +873,10 @@ class FunctionLibraryRuntime {
 // space. But it may be change as the implementation
 // evolves. Therefore, it should not be persisted or compared across
 // address spaces.
-string Canonicalize(const string& funcname, AttrSlice attrs,
-                    const FunctionLibraryRuntime::InstantiateOptions& options);
-string Canonicalize(const string& funcname, AttrSlice attrs);
+std::string Canonicalize(
+    const std::string& funcname, AttrSlice attrs,
+    const FunctionLibraryRuntime::InstantiateOptions& options);
+std::string Canonicalize(const std::string& funcname, AttrSlice attrs);
 
 const FunctionLibraryRuntime::Handle kInvalidHandle = -1;
 const FunctionLibraryRuntime::LocalHandle kInvalidLocalHandle = -1;
@@ -885,38 +907,54 @@ typedef
         FunctionArg;
 #endif
 
+// Either a local tensor or the shape of a remote tensor.
+typedef absl::variant<Tensor, TensorShape> FunctionRet;
+
 // Used to instantiate and run functions in a distributed system.
 class DistributedFunctionLibraryRuntime {
  public:
   virtual ~DistributedFunctionLibraryRuntime() {}
 
-  // The _target attr in attrs determines where the function is instantiated.
+  // Instantiate a function on a remote target specified in `options.target`, by
+  // sending the name and definition of the function to the remote worker. The
+  // local `handle` is filled for the instantiated function data and can be used
+  // for subsequent run function calls on the remote target.
   virtual void Instantiate(
-      const string& function_name, const FunctionLibraryDefinition& lib_def,
-      AttrSlice attrs,
+      const std::string& function_name,
+      const FunctionLibraryDefinition& lib_def, AttrSlice attrs,
       const FunctionLibraryRuntime::InstantiateOptions& options,
       FunctionLibraryRuntime::LocalHandle* handle,
       FunctionLibraryRuntime::DoneCallback done) = 0;
 
+  // Run an instantiated remote function (specified by `handle`) with a list of
+  // input Tensors in `args` and get its output Tensors in `rets`. The input
+  // tensor data will be sent with the function execution request, and must be
+  // available on the current caller side.
   // opts.runner isn't used for execution.
   virtual void Run(const FunctionLibraryRuntime::Options& opts,
                    FunctionLibraryRuntime::LocalHandle handle,
                    gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
                    FunctionLibraryRuntime::DoneCallback done) = 0;
 
-  // TODO(yujingzhang): Support outputting tensors on remote devices.
+  // Run an instantiated remote function (specified by `handle`) with a list of
+  // input Tensors or RemoteTensorHandles as `args` and get its output Tensors
+  // or TensorShapes in `rets`. When using RemoteTensorHandles as function
+  // inputs or TensorShapes as outputs, the corresponding tensor data will be
+  // resolved on the remote worker, so it is not required to be locally
+  // available on the caller side. Using RemoteTensorHandle inputs is not
+  // supported in TensorFlow v1 runtime.
   virtual void Run(const FunctionLibraryRuntime::Options& opts,
                    FunctionLibraryRuntime::LocalHandle handle,
-                   gtl::ArraySlice<FunctionArg> args, std::vector<Tensor>* rets,
-                   FunctionLibraryRuntime::DoneCallback done) {
-    done(errors::Unimplemented("Unimplemented."));
-  }
+                   gtl::ArraySlice<FunctionArg> args,
+                   std::vector<FunctionRet>* rets,
+                   FunctionLibraryRuntime::DoneCallback done) = 0;
 
+  // Clean up a previously instantiated function on remote worker.
   virtual void CleanUp(uint64 step_id,
                        FunctionLibraryRuntime::LocalHandle handle,
                        FunctionLibraryRuntime::DoneCallback done) = 0;
 
-  // DeviceMgr with *all* available devices.
+  // DeviceMgr with *all* available devices (i.e., local and remote).
   virtual DeviceMgr* remote_device_mgr() const = 0;
 };
 
@@ -998,11 +1036,11 @@ Status ArgNumType(AttrSlice attrs, const OpDef::ArgDef& arg_def,
 namespace gradient {
 // Register a gradient creator for the "op".
 typedef std::function<Status(const AttrSlice& attrs, FunctionDef*)> Creator;
-bool RegisterOp(const string& op, Creator func);
+bool RegisterOp(const std::string& op, Creator func);
 
 // Returns OK the gradient creator for the "op" is found (may be
 // nullptr if REGISTER_OP_NO_GRADIENT is used.
-Status GetOpGradientCreator(const string& op, Creator* creator);
+Status GetOpGradientCreator(const std::string& op, Creator* creator);
 };  // namespace gradient
 
 // Declare explicit instantiations of GetAttr

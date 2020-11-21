@@ -68,21 +68,23 @@ inline Options Defaults() {
   Options o;
   return o;
 }
-tensorflow::Status GetContents(const string& filename, string* contents,
+tensorflow::Status GetContents(const std::string& filename,
+                               std::string* contents, const Options& options);
+tensorflow::Status SetContents(const std::string& filename,
+                               const std::string& contents,
                                const Options& options);
-tensorflow::Status SetContents(const string& filename, const string& contents,
-                               const Options& options);
-string JoinPath(const string& base, const string& filename);
-tensorflow::Status Writable(const string& filename);
-tensorflow::Status Readable(const string& filename, const Options& options);
-tensorflow::Status Exists(const string& filename, const Options& options);
+std::string JoinPath(const std::string& base, const std::string& filename);
+tensorflow::Status Writable(const std::string& filename);
+tensorflow::Status Readable(const std::string& filename,
+                            const Options& options);
+tensorflow::Status Exists(const std::string& filename, const Options& options);
 }  // namespace file
 
 // Copy `src` string to `dest`. User must ensure `dest` has enough space.
 #if defined(PLATFORM_GOOGLE)
 void CopyToBuffer(const ::absl::Cord& src, char* dest);
 #endif  // PLATFORM_GOOGLE
-void CopyToBuffer(const string& src, char* dest);
+void CopyToBuffer(const std::string& src, char* dest);
 
 inline uint32 ReverseBits32(uint32 n) {
   n = ((n >> 1) & 0x55555555) | ((n & 0x55555555) << 1);

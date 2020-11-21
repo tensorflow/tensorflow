@@ -1,4 +1,4 @@
-# RUN: tf_tfl_translate -tf-input-arrays=input -tf-input-shapes=1,1,1,256 -tf-input-data-types=DT_FLOAT -tf-inference-type=DT_QINT8  -tf-input-min-values='-33.614346' -tf-input-max-values='21.54917' -tf-output-arrays=output %s -o - --output-mlir 2>&1 | FileCheck --check-prefix=MLIR %s --dump-input-on-failure
+# RUN: tf_tfl_translate -tf-input-arrays=input -tf-input-shapes=1,1,1,256 -tf-input-data-types=DT_FLOAT -tf-inference-type=DT_QINT8  -tf-input-min-values='-33.614346' -tf-input-max-values='21.54917' -tf-output-arrays=output %s -o - --output-mlir 2>&1 | FileCheck --check-prefix=MLIR %s
 # RUN: tf_tfl_translate -tf-input-arrays=input -tf-input-shapes=1,1,1,256 -tf-input-data-types=DT_FLOAT -tf-inference-type=DT_QINT8  -tf-input-min-values='-33.614346' -tf-input-max-values='21.54917' -tf-output-arrays=output %s -o - | flatbuffer_to_string - | FileCheck %s
 
 node {
@@ -459,11 +459,13 @@ node {
 # CHECK-LABEL: {
 # CHECK:   version: 3,
 # CHECK:   operator_codes: [ {
-# CHECK:     builtin_code: CONV_2D,
-# CHECK:     version: 3
+# CHECK:     deprecated_builtin_code: 3,
+# CHECK:     version: 3,
+# CHECK:     builtin_code: CONV_2D
 # CHECK:   }, {
-# CHECK:     builtin_code: RESHAPE,
+# CHECK:     deprecated_builtin_code: 22,
 # CHECK:     version: 1
+# CHECK:     builtin_code: RESHAPE
 # CHECK:   } ],
 # CHECK:   subgraphs: [ {
 # CHECK:     tensors: [ {

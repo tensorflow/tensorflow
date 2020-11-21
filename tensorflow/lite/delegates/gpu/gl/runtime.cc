@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
-#include <unordered_map>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
@@ -483,7 +482,7 @@ absl::Status ApplyTexturesAssignment(
     Object* object = global_ref_to_object_ptr[global_ref];
     if (usage_rec_id == kNotAssigned || object == nullptr ||
         object->object_type != ObjectType::TEXTURE ||
-        !absl::get_if<ObjectSizeT>(&object->size)) {
+        !absl::holds_alternative<ObjectSizeT>(object->size)) {
       // Skip objects with other data type, non-textures and textures with wrong
       // number of dimensions.
       continue;

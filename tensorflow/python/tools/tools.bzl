@@ -1,6 +1,7 @@
 """Definitions for using tools like saved_model_cli."""
 
 load("//tensorflow:tensorflow.bzl", "clean_dep", "if_xla_available")
+load("//tensorflow:tensorflow.bzl", "tfcompile_target_cpu")
 load("//tensorflow/compiler/aot:tfcompile.bzl", "target_llvm_triple")
 
 def _maybe_force_compile(args, force_compile):
@@ -19,6 +20,8 @@ def saved_model_compile_aot(
         signature_def = "serving_default",
         variables_to_feed = "",
         target_triple = None,
+        target_cpu = None,
+        multithreading = False,
         force_without_xla_support_flag = True,
         tags = None):
     """Compile a SavedModel directory accessible from a filegroup.
@@ -88,7 +91,14 @@ def saved_model_compile_aot(
         uninitialized in the compiled object (this applies to all input
         arguments from the signature as well).
       target_triple: The LLVM target triple to use (defaults to current build's
-        target architecture's triple).
+        target architecture's triple).  Similar to clang's -target flag.
+      target_cpu: The LLVM cpu name used for compilation.  Similar to clang's
+        -mcpu flag.
+      multithreading: Whether to compile multithreaded AOT code.
+        Note, this increases the set of dependencies for binaries using
+        the AOT library at both build and runtime.  For example,
+        the resulting object files may have external dependencies on
+        multithreading libraries like nsync.
       force_without_xla_support_flag: Whether to compile even when
         `--define=with_xla_support=true` is not set.  If `False`, and the
         define is not passed when building, then the created `cc_library`
@@ -100,6 +110,7 @@ def saved_model_compile_aot(
     """
     saved_model = "{}/saved_model.pb".format(directory)
     target_triple = target_triple or target_llvm_triple()
+    target_cpu = target_cpu or tfcompile_target_cpu() or ""
     variables_to_feed = variables_to_feed or "''"
     if checkpoint_path:
         checkpoint_cmd_args = (
@@ -130,7 +141,9 @@ def saved_model_compile_aot(
             "--cpp_class {} ".format(cpp_class) +
             "--variables_to_feed {} ".format(variables_to_feed) +
             "--signature_def_key {} ".format(signature_def) +
+            "--multithreading {} ".format(multithreading) +
             "--target_triple " + target_triple + " " +
+            ("--target_cpu " + target_cpu + " " if target_cpu else "") +
             "--tag_set {} ".format(tag_set)
         ),
         tags = tags,

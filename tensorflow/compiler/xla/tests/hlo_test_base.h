@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_layout.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
+#include "tensorflow/compiler/xla/tests/manifest_checking_test.h"
 #include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -67,7 +68,7 @@ namespace xla {
 //  )
 //
 // For a more detailed example, see "../tests/sample_text_test.cc".
-class HloTestBase : public ::testing::Test {
+class HloTestBase : public ManifestCheckingTest {
  public:
   // Creates a new HLO module for a test. The module created will have
   // TestName() for its name; it will also automatically populate its debug
@@ -168,6 +169,13 @@ class HloTestBase : public ::testing::Test {
       int64 num_replicas, DeviceAssignment* device_assignment,
       bool run_hlo_passes, bool use_threads);
 
+  // Same as above, but allows passing different programs for replicas.
+  StatusOr<std::vector<Literal>> ExecuteReplicated(
+      std::function<Executable*(int64)> executable_provider,
+      std::function<int64(int64)> argument_count_provider,
+      std::function<const Literal*(int64, int64)> argument_provider,
+      int64 num_replicas, bool run_hlo_passes);
+
   // Executes the given hlo module on two backends and compares results.
   //
   // 'arguments': the input of the hlo module.
@@ -225,6 +233,11 @@ class HloTestBase : public ::testing::Test {
                                  bool run_hlo_passes = true,
                                  ExecutionProfile* profile = nullptr,
                                  string backend_config = "") TF_MUST_USE_RESULT;
+
+  // Executes an hlo module with fake inputs on multiple replicas.
+  ::testing::AssertionResult RunReplicated(
+      const absl::string_view hlo_string, bool run_hlo_passes = true,
+      int64 num_replicas = 1, string backend_config = "") TF_MUST_USE_RESULT;
 
   // If assert_determinism is true, the assertion will fail unless all runs
   // produce exactly the same output.

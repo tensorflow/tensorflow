@@ -23,10 +23,46 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
+// Represents the four lists of ops: the allow list, infer list, deny list, and
+// clear list. These lists determine which ops are converted to fp16/bf16
+// (referred to as 'f16' for short) and which ops stay as fp32.
 class AutoMixedPrecisionLists {
- private:
-  static void UpdateList(gtl::FlatSet<string>* list, const string& to_add,
-                         const string& to_remove) {
+ public:
+  virtual ~AutoMixedPrecisionLists() {}
+
+  // Returns the set of ops that are considered numerically-safe (for execution
+  // in f16), performance-critical, and can run in f16. These ops are always
+  // converted to f16.
+  virtual gtl::FlatSet<string> AllowList() = 0;
+  // Returns the set of ops that can run in f16 and are considered numerically-
+  // safe (for execution in f16), but which may be made unsafe by an upstream
+  // denylist op.
+  virtual gtl::FlatSet<string> InferList() = 0;
+  // Returns the set of ops that are considered numerically-dangerous (i.e.,
+  // unsafe for execution in f16) and whose effects may also be observed in
+  // downstream nodes (e.g. for f16, in Exp -> Add, the Add is unsafe due to
+  // the Exp).
+  virtual gtl::FlatSet<string> DenyList() = 0;
+  // Returns the set of ops that do not have numerically-significant effects
+  // (i.e., they are always considered safe for execution in f16 precision), and
+  // can run in f16.
+  virtual gtl::FlatSet<string> ClearList() = 0;
+
+ protected:
+  // Adds or removes ops from list if certain environmental variables are set.
+  static void UpdateList(const string& list_name, gtl::FlatSet<string>* list) {
+    CHECK(list_name == "ALLOWLIST" || list_name == "INFERLIST" ||  // Crash OK.
+          list_name == "DENYLIST" || list_name == "CLEARLIST" ||
+          // TODO(reedwm): for bkwds compat; remove when no longer necessary:
+          list_name == "WHITELIST" || list_name == "GRAYLIST" ||
+          list_name == "BLACKLIST");
+    string add_env_var =
+        "TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_" + list_name + "_ADD";
+    string remove_env_var =
+        "TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_" + list_name + "_REMOVE";
+    string to_add, to_remove;
+    TF_CHECK_OK(ReadStringFromEnvVar(add_env_var, "", &to_add));
+    TF_CHECK_OK(ReadStringFromEnvVar(remove_env_var, "", &to_remove));
     for (const auto& x : str_util::Split(to_add, ",")) {
       list->insert(x);
     }
@@ -35,6 +71,29 @@ class AutoMixedPrecisionLists {
     }
   }
 
+  // Subclasses should include these on the ClearList.
+  static void AddTensorListOps(gtl::FlatSet<string>* list) {
+    // Note: if a data structure op (such as TensorListPopBack) is added here,
+    // IsTensorListReaderOp or IsTensorListWriterOp may need to be modified
+    // LINT.IfChange
+    constexpr const char* tensor_list_ops[] = {
+        "TensorListConcat",     "TensorListConcatLists",
+        "TensorListConcatV2",   "TensorListGather",
+        "TensorListGetItem",    "TensorListPopBack",
+        "TensorListPushBack",   "TensorListPushBackBatch",
+        "TensorListFromTensor", "TensorListScatter",
+        "TensorListScatterV2",  "TensorListScatterIntoExistingList",
+        "TensorListSetItem",    "TensorListSplit",
+        "TensorListStack"};
+    // LINT.ThenChange(//tensorflow/core/grappler/optimizers/auto_mixed_precision.cc)
+    for (auto op : tensor_list_ops) {
+      list->insert(op);
+    }
+  }
+};
+
+class AutoMixedPrecisionListsCuda : public AutoMixedPrecisionLists {
+ private:
   static bool IsPseudoFastMath() {
     string optimization_level;
     TF_CHECK_OK(
@@ -45,16 +104,10 @@ class AutoMixedPrecisionLists {
   }
 
  public:
-  // Returns the set of ops that are considered numerically-safe (for execution
-  // in fp16) and performance-critical. These ops are always converted to fp16.
-  static gtl::FlatSet<string> WhiteList(int cuda_version, int cudnn_version) {
-    string to_add, to_remove;
-    TF_CHECK_OK(ReadStringFromEnvVar(
-        "TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_WHITELIST_ADD", "", &to_add));
-    TF_CHECK_OK(ReadStringFromEnvVar(
-        "TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_WHITELIST_REMOVE", "",
-        &to_remove));
+  AutoMixedPrecisionListsCuda(int cuda_version, int cudnn_version)
+      : cuda_version_(cuda_version), cudnn_version_(cudnn_version) {}
 
+  gtl::FlatSet<string> AllowList() override {
     auto list = gtl::FlatSet<string>{
         "BlockLSTM",
         "BlockLSTMV2",
@@ -74,19 +127,14 @@ class AutoMixedPrecisionLists {
         "GRUBlockCellGrad",
         "LSTMBlockCell",
         "LSTMBlockCellGrad",
-        // TODO(benbarsdell): Enable these when fast and safe fp16 kernels are
-        // available for depthwise convolutions.
-        // "DepthwiseConv2dNative",
-        // "DepthwiseConv2dNativeBackpropFilter",
-        // "DepthwiseConv2dNativeBackpropInput",
         "MatMul",
     };
-    if (cuda_version >= 9010) {
+    if (cuda_version_ >= 9010) {
       // Fp16 BatchMatMul is slow before CUDA 9.1.
       list.insert("BatchMatMul");
       list.insert("BatchMatMulV2");
     }
-    if (cudnn_version >= 7602) {
+    if (cudnn_version_ >= 7602) {
       // Fp16 3D conv is slow before CUDNN 7.6.2.
       list.insert("Conv3D");
       list.insert("Conv3DBackpropFilter");
@@ -94,22 +142,23 @@ class AutoMixedPrecisionLists {
       list.insert("Conv3DBackpropInput");
       list.insert("Conv3DBackpropInputV2");
     }
-    UpdateList(&list, to_add, to_remove);
+    if (cudnn_version_ >= 8000) {
+      list.insert("DepthwiseConv2dNative");
+      list.insert("DepthwiseConv2dNativeBackpropFilter");
+      list.insert("DepthwiseConv2dNativeBackpropInput");
+    }
+    UpdateList("ALLOWLIST", &list);
+    // For backwards compatibility, keeping the original env variable here.
+    // TODO(reedwm): This should be removed if we don't have active users.
+    UpdateList("WHITELIST", &list);
+
     return list;
   }
 
-  // Returns the set of ops that are considered numerically-safe (for execution
-  // in fp16), but which may be made unsafe by an upstream blacklist op.
-  static gtl::FlatSet<string> GrayList() {
+  gtl::FlatSet<string> InferList() override {
     if (IsPseudoFastMath()) {
       return gtl::FlatSet<string>{};
     }
-    string to_add, to_remove;
-    TF_CHECK_OK(ReadStringFromEnvVar(
-        "TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_GRAYLIST_ADD", "", &to_add));
-    TF_CHECK_OK(ReadStringFromEnvVar(
-        "TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_GRAYLIST_REMOVE", "",
-        &to_remove));
 
     auto list = gtl::FlatSet<string>{
         "Add",
@@ -156,23 +205,17 @@ class AutoMixedPrecisionLists {
         "Tanh",
         "TanhGrad",
     };
-    UpdateList(&list, to_add, to_remove);
+    UpdateList("INFERLIST", &list);
+    // For backwards compatibility, keeping the original env variable here.
+    // TODO(reedwm): This should be removed if we don't have active users.
+    UpdateList("GRAYLIST", &list);
     return list;
   }
 
-  // Returns the set of ops that are considered numerically-dangerous (i.e.,
-  // unsafe for execution in fp16) and whose effects may also be observed in
-  // downstream nodes (e.g., in Exp -> Add, the Add is unsafe due to the Exp).
-  static gtl::FlatSet<string> BlackList() {
+  gtl::FlatSet<string> DenyList() override {
     if (IsPseudoFastMath()) {
       return gtl::FlatSet<string>{};
     }
-    string to_add, to_remove;
-    TF_CHECK_OK(ReadStringFromEnvVar(
-        "TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_BLACKLIST_ADD", "", &to_add));
-    TF_CHECK_OK(ReadStringFromEnvVar(
-        "TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_BLACKLIST_REMOVE", "",
-        &to_remove));
 
     auto list = gtl::FlatSet<string>{
         "Exp",
@@ -185,22 +228,17 @@ class AutoMixedPrecisionLists {
         "SparseSoftmaxCrossEntropyWithLogits",
         "Sum",
     };
-    UpdateList(&list, to_add, to_remove);
+    UpdateList("DENYLIST", &list);
+    // For backwards compatibility, keeping the original env variable here.
+    // TODO(reedwm): This should be removed if we don't have active users.
+    UpdateList("BLACKLIST", &list);
     return list;
   }
 
-  // Returns the set of ops that do not have numerically-significant effects
-  // (i.e., they are always considered safe for execution in fp16 precision).
-  static gtl::FlatSet<string> ClearList() {
+  gtl::FlatSet<string> ClearList() override {
     if (IsPseudoFastMath()) {
       return gtl::FlatSet<string>{};
     }
-    string to_add, to_remove;
-    TF_CHECK_OK(ReadStringFromEnvVar(
-        "TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_CLEARLIST_ADD", "", &to_add));
-    TF_CHECK_OK(ReadStringFromEnvVar(
-        "TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_CLEARLIST_REMOVE", "",
-        &to_remove));
 
     auto list = gtl::FlatSet<string>{
         "Abs",
@@ -291,21 +329,6 @@ class AutoMixedPrecisionLists {
         "StridedSlice",
         "StridedSliceGrad",
         "Switch",
-        "TensorListConcat",
-        "TensorListConcatLists",
-        "TensorListConcatV2",
-        "TensorListGather",
-        "TensorListGetItem",
-        "TensorListPopBack",
-        "TensorListPushBack",
-        "TensorListPushBackBatch",
-        "TensorListFromTensor",
-        "TensorListScatter",
-        "TensorListScatterV2",
-        "TensorListScatterIntoExistingList",
-        "TensorListSetItem",
-        "TensorListSplit",
-        "TensorListStack",
         "Tile",
         "TopK",
         "TopKV2",
@@ -313,7 +336,105 @@ class AutoMixedPrecisionLists {
         "Where",
         "ZerosLike",
     };
-    UpdateList(&list, to_add, to_remove);
+    AddTensorListOps(&list);
+    UpdateList("CLEARLIST", &list);
+    return list;
+  }
+
+ private:
+  int cuda_version_;
+  int cudnn_version_;
+};
+
+class AutoMixedPrecisionListsMkl : public AutoMixedPrecisionLists {
+ public:
+  AutoMixedPrecisionListsMkl() {}
+
+  // Only ops which are supported by MKL in bfloat16 should be added to the
+  // allow list, infer list, or clear list.
+  gtl::FlatSet<string> AllowList() override {
+    auto list = gtl::FlatSet<string>{"Conv2D",
+                                     "Conv2DBackpropFilter",
+                                     "Conv2DBackpropInput",
+                                     "Conv3D",
+                                     "Conv3DBackpropFilterV2",
+                                     "Conv3DBackpropInputV2",
+                                     "DepthwiseConv2dNative",
+                                     "DepthwiseConv2dNativeBackpropFilter",
+                                     "DepthwiseConv2dNativeBackpropInput",
+                                     "MatMul",
+                                     "BatchMatMul",
+                                     "BatchMatMulV2"};
+
+    UpdateList("ALLOWLIST", &list);
+    // For backwards compatibility, keeping the original env variable here.
+    // TODO(reedwm): This should be removed if we don't have active users.
+    UpdateList("WHITELIST", &list);
+    return list;
+  }
+
+  gtl::FlatSet<string> InferList() override {
+    auto list = gtl::FlatSet<string>{
+        "Add",
+        "AddN",
+        "AddV2",
+        "AvgPool",
+        "AvgPool3D",
+        "AvgPool3DGrad",
+        "AvgPoolGrad",
+        "BiasAdd",
+        "BiasAddGrad",
+        "BiasAddV1",
+        "FusedBatchNormV2",
+        "FusedBatchNormGradV2",
+        "FusedBatchNormV3",
+        "FusedBatchNormGradV3",
+        "LeakyRelu",
+        "LeakyReluGrad",
+        "Mul",
+        "Sub",
+    };
+    UpdateList("INFERLIST", &list);
+    // For backwards compatibility, keeping the original env variable here.
+    // TODO(reedwm): This should be removed if we don't have active users.
+    UpdateList("GRAYLIST", &list);
+    return list;
+  }
+
+  gtl::FlatSet<string> DenyList() override {
+    auto list = gtl::FlatSet<string>{
+        "Exp",
+        "Expm1",
+        "L2Loss",
+        "Mean",
+        "Pow",
+        "SaveV2",
+        "Softmax",
+        "SoftmaxCrossEntropyWithLogits",
+        "SparseSoftmaxCrossEntropyWithLogits",
+        "Sum",
+    };
+    UpdateList("DENYLIST", &list);
+    // For backwards compatibility, keeping the original env variable here.
+    // TODO(reedwm): This should be removed if we don't have active users.
+    UpdateList("BLACKLIST", &list);
+    return list;
+  }
+
+  gtl::FlatSet<string> ClearList() override {
+    auto list = gtl::FlatSet<string>{
+        "Concat",          "ConcatV2",  "Enter",         "EnsureShape",
+        "Equal",           "Exit",      "ExpandDims",    "Identity",
+        "MaxPool",         "MaxPool3D", "MaxPool3DGrad", "MaxPoolGrad",
+        "MaxPoolV2",       "Maximum",   "Merge",         "NextIteration",
+        "PreventGradient", "Relu",      "Relu6",         "Relu6Grad",
+        "ReluGrad",        "Reshape",   "Select",        "SelectV2",
+        "Shape",           "ShapeN",    "Slice",         "Split",
+        "SplitV",          "Squeeze",   "StopGradient",  "Switch",
+        "Transpose",       "ZerosLike",
+    };
+    AddTensorListOps(&list);
+    UpdateList("CLEARLIST", &list);
     return list;
   }
 };

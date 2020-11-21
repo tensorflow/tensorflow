@@ -1,24 +1,29 @@
-// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string - | FileCheck --dump-input-on-failure %s
+// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string - | FileCheck %s
 
 func @main(tensor<4xf32>) -> tensor<4xf32> {
 ^bb0(%arg0: tensor<4xf32>):
   // CHECK:      {
   // CHECK-NEXT:   version: 3,
   // CHECK-NEXT:   operator_codes: [ {
-  // CHECK-NEXT:     builtin_code: SQUARED_DIFFERENCE,
-  // CHECK-NEXT:     version: 1
+  // CHECK-NEXT:     deprecated_builtin_code: 99,
+  // CHECK-NEXT:     version: 1,
+  // CHECK-NEXT:     builtin_code: SQUARED_DIFFERENCE
   // CHECK-NEXT:   }, {
-  // CHECK-NEXT:     builtin_code: MUL,
-  // CHECK-NEXT:     version: 1
+  // CHECK-NEXT:     deprecated_builtin_code: 18,
+  // CHECK-NEXT:     version: 1,
+  // CHECK-NEXT:     builtin_code: MUL
   // CHECK-NEXT:   }, {
-  // CHECK-NEXT:     builtin_code: DIV,
-  // CHECK-NEXT:     version: 1
+  // CHECK-NEXT:     deprecated_builtin_code: 42,
+  // CHECK-NEXT:     version: 1,
+  // CHECK-NEXT:     builtin_code: DIV
   // CHECK-NEXT:   }, {
-  // CHECK-NEXT:     builtin_code: EXP,
-  // CHECK-NEXT:     version: 1
+  // CHECK-NEXT:     deprecated_builtin_code: 47,
+  // CHECK-NEXT:     version: 1,
+  // CHECK-NEXT:     builtin_code: EXP
   // CHECK-NEXT:   }, {
-  // CHECK-NEXT:     builtin_code: NEG,
-  // CHECK-NEXT:     version: 1
+  // CHECK-NEXT:     deprecated_builtin_code: 59,
+  // CHECK-NEXT:     version: 1,
+  // CHECK-NEXT:     builtin_code: NEG
   // CHECK-NEXT:   } ],
   // CHECK-NEXT:   subgraphs: [ {
   // CHECK-NEXT:     tensors: [ {
@@ -135,6 +140,7 @@ func @main(tensor<4xf32>) -> tensor<4xf32> {
   // CHECK-NEXT:   name: "min_runtime_version",
   // CHECK-NEXT:   buffer: 8
   // CHECK-NEXT:   } ]
+  // CHECK-NEXT:   signature_defs: [ ]
   // CHECK-NEXT: }
 
   %0 = "tfl.pseudo_const" () {value = dense<1.0> : tensor<4xf32>} : () -> tensor<4xf32> loc("Const")

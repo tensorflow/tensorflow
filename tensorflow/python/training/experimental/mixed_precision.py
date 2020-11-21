@@ -23,6 +23,7 @@ from tensorflow.python.platform import tf_logging
 from tensorflow.python.training import optimizer
 from tensorflow.python.training.experimental import loss_scale_optimizer as loss_scale_optimizer_v1
 from tensorflow.python.training.experimental import mixed_precision_global_state
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -61,6 +62,12 @@ def _wrap_optimizer(opt, loss_scale, use_v1_behavior):
                      'tf.keras.optimizers.Optimizer, but got: %s' % opt)
 
 
+@deprecation.deprecated(
+    '2020-11-30',
+    'Use tf.keras.mixed_precision. There is a guide at '
+    'https://www.tensorflow.org/guide/mixed_precision. Alternatively, '
+    '`tf.compat.v1.mixed_precision.enable_mixed_precision_graph_rewrite` can '
+    'be used, but this is not recommended for TF2 code.')
 @tf_export('train.experimental.enable_mixed_precision_graph_rewrite', v1=[])
 def enable_mixed_precision_graph_rewrite(opt, loss_scale='dynamic'):
   """Enable mixed precision via a graph rewrite.
@@ -122,12 +129,12 @@ def enable_mixed_precision_graph_rewrite(opt, loss_scale='dynamic'):
 
   * `ClearList`: Ops that do not have numerically significant adverse effects.
   E.g. `ArgMax` and `Floor`.
-  * `WhiteList`: Ops that are considered numerically safe for execution in
+  * `AllowList`: Ops that are considered numerically safe for execution in
   float16, and thus are always converted. E.g. `Conv2D`.
-  * `BlackList`: Ops that are numerically unsafe to execute in float16 and
+  * `DenyList`: Ops that are numerically unsafe to execute in float16 and
   can negatively affect downstream nodes. E.g. `Softmax`.
   * `GrayList`: Ops that are considered numerically safe for execution in
-  float16 unless downstream from a BlackList Op. E.g. `Add` and `AvgPool`.
+  float16 unless downstream from a DenyList Op. E.g. `Add` and `AvgPool`.
 
   When this function is used, gradients should be computed and applied with the
   returned optimizer, either by calling `opt.minimize()` or
@@ -206,7 +213,10 @@ def enable_mixed_precision_graph_rewrite(opt, loss_scale='dynamic'):
                                                     use_v1_behavior=False)
 
 
-@tf_export(v1=['train.experimental.enable_mixed_precision_graph_rewrite'])
+@deprecation.deprecated_endpoints(
+    'train.experimental.enable_mixed_precision_graph_rewrite')
+@tf_export(v1=['mixed_precision.enable_mixed_precision_graph_rewrite',
+               'train.experimental.enable_mixed_precision_graph_rewrite'])
 def enable_mixed_precision_graph_rewrite_v1(opt, loss_scale='dynamic'):
   """Enable mixed precision via a graph rewrite.
 
@@ -267,12 +277,12 @@ def enable_mixed_precision_graph_rewrite_v1(opt, loss_scale='dynamic'):
 
   * `ClearList`: Ops that do not have numerically significant adverse effects.
   E.g. `ArgMax` and `Floor`.
-  * `WhiteList`: Ops that are considered numerically safe for execution in
+  * `AllowList`: Ops that are considered numerically safe for execution in
   float16, and thus are always converted. E.g. `Conv2D`.
-  * `BlackList`: Ops that are numerically unsafe to execute in float16 and
+  * `DenyList`: Ops that are numerically unsafe to execute in float16 and
   can negatively affect downstream nodes. E.g. `Softmax`.
   * `GrayList`: Ops that are considered numerically safe for execution in
-  float16 unless downstream from a BlackList Op. E.g. `Add` and `AvgPool`.
+  float16 unless downstream from a DenyList Op. E.g. `Add` and `AvgPool`.
 
   When this function is used, gradients should only be computed and applied
   with the returned optimizer, either by calling `opt.minimize()` or
@@ -348,6 +358,12 @@ def _enable_mixed_precision_graph_rewrite_base(opt, loss_scale,
   return opt
 
 
+@deprecation.deprecated(
+    '2020-11-30',
+    'Use tf.keras.mixed_precision. There is a guide at '
+    'https://www.tensorflow.org/guide/mixed_precision. Alternatively, '
+    '`tf.compat.v1.mixed_precision.disable_mixed_precision_graph_rewrite` can '
+    'be used, but this is not recommended for TF2 code.')
 @tf_export('train.experimental.disable_mixed_precision_graph_rewrite', v1=[])
 def disable_mixed_precision_graph_rewrite():
   """Disables the mixed precision graph rewrite.
@@ -372,7 +388,10 @@ def disable_mixed_precision_graph_rewrite():
   mixed_precision_global_state.mixed_precision_graph_rewrite_is_enabled = False
 
 
-@tf_export(v1=['train.experimental.disable_mixed_precision_graph_rewrite'])
+@deprecation.deprecated_endpoints(
+    'train.experimental.disable_mixed_precision_graph_rewrite')
+@tf_export(v1=['mixed_precision.disable_mixed_precision_graph_rewrite',
+               'train.experimental.disable_mixed_precision_graph_rewrite'])
 def disable_mixed_precision_graph_rewrite_v1():
   """Disables the mixed precision graph rewrite.
 

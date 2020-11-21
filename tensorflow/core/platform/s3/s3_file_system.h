@@ -49,37 +49,48 @@ class S3FileSystem : public FileSystem {
   S3FileSystem();
   ~S3FileSystem();
 
-  Status NewRandomAccessFile(
-      const string& fname, std::unique_ptr<RandomAccessFile>* result) override;
+  TF_USE_FILESYSTEM_METHODS_WITH_NO_TRANSACTION_SUPPORT;
 
-  Status NewWritableFile(const string& fname,
+  Status NewRandomAccessFile(
+      const string& fname, TransactionToken* token,
+      std::unique_ptr<RandomAccessFile>* result) override;
+
+  Status NewRandomAccessFile(const string& fname, TransactionToken* token,
+                             std::unique_ptr<RandomAccessFile>* result,
+                             bool use_multi_part_download);
+
+  Status NewWritableFile(const string& fname, TransactionToken* token,
                          std::unique_ptr<WritableFile>* result) override;
 
-  Status NewAppendableFile(const string& fname,
+  Status NewAppendableFile(const string& fname, TransactionToken* token,
                            std::unique_ptr<WritableFile>* result) override;
 
   Status NewReadOnlyMemoryRegionFromFile(
-      const string& fname,
+      const string& fname, TransactionToken* token,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override;
 
-  Status FileExists(const string& fname) override;
+  Status FileExists(const string& fname, TransactionToken* token) override;
 
-  Status GetChildren(const string& dir, std::vector<string>* result) override;
+  Status GetChildren(const string& dir, TransactionToken* token,
+                     std::vector<string>* result) override;
 
-  Status Stat(const string& fname, FileStatistics* stat) override;
+  Status Stat(const string& fname, TransactionToken* token,
+              FileStatistics* stat) override;
 
-  Status GetMatchingPaths(const string& pattern,
+  Status GetMatchingPaths(const string& pattern, TransactionToken* token,
                           std::vector<string>* results) override;
 
-  Status DeleteFile(const string& fname) override;
+  Status DeleteFile(const string& fname, TransactionToken* token) override;
 
-  Status CreateDir(const string& name) override;
+  Status CreateDir(const string& name, TransactionToken* token) override;
 
-  Status DeleteDir(const string& name) override;
+  Status DeleteDir(const string& name, TransactionToken* token) override;
 
-  Status GetFileSize(const string& fname, uint64* size) override;
+  Status GetFileSize(const string& fname, TransactionToken* token,
+                     uint64* size) override;
 
-  Status RenameFile(const string& src, const string& target) override;
+  Status RenameFile(const string& src, const string& target,
+                    TransactionToken* token) override;
 
   Status HasAtomicMove(const string& path, bool* has_atomic_move) override;
 
@@ -101,8 +112,12 @@ class S3FileSystem : public FileSystem {
   std::shared_ptr<Aws::S3::S3Client> s3_client_;
 
   // Returns the member transfer manager, initializing as-needed.
-  std::shared_ptr<Aws::Transfer::TransferManager> GetTransferManager();
-  std::shared_ptr<Aws::Transfer::TransferManager> transfer_manager_;
+  std::shared_ptr<Aws::Transfer::TransferManager> GetTransferManager(
+      const Aws::Transfer::TransferDirection& direction);
+  void InitializeTransferManagers();
+  std::map<Aws::Transfer::TransferDirection,
+           std::shared_ptr<Aws::Transfer::TransferManager> >
+      transfer_managers_;
 
   // Returns the member executor for transfer manager, initializing as-needed.
   std::shared_ptr<Aws::Utils::Threading::PooledThreadExecutor> GetExecutor();
@@ -132,8 +147,10 @@ class S3FileSystem : public FileSystem {
   // Lock held when checking for s3_client_ and transfer_manager_ initialization
   mutex initialization_lock_;
 
-  // size to split objects during multipart copy
-  uint64 multi_part_copy_part_size_;
+  // size to split objects during multipart upload/download/copy
+  std::map<Aws::Transfer::TransferDirection, uint64> multi_part_chunk_size_;
+
+  bool use_multi_part_download_;
 };
 
 /// S3 implementation of a file system with retry on failures.
@@ -145,6 +162,16 @@ class RetryingS3FileSystem : public RetryingFileSystem<S3FileSystem> {
             RetryConfig(100000 /* init_delay_time_us */,
                         32000000 /* max_delay_time_us */, 10 /* max_retries */
                         )) {}
+};
+
+// AWS Streams destroy the buffer (buf) passed, so creating a new
+// IOStream that retains the buffer so the calling function
+// can control it's lifecycle
+class TFS3UnderlyingStream : public Aws::IOStream {
+ public:
+  using Base = Aws::IOStream;
+  TFS3UnderlyingStream(std::streambuf* buf) : Base(buf) {}
+  virtual ~TFS3UnderlyingStream() = default;
 };
 
 }  // namespace tensorflow

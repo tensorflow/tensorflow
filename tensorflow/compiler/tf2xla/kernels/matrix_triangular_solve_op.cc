@@ -50,6 +50,14 @@ class MatrixTriangularSolveOp : public XlaOpKernel {
       return;
     }
 
+    auto lhs_size = lhs_shape.dims();
+    OP_REQUIRES(
+        ctx,
+        lhs_shape.dim_size(lhs_size - 1) == lhs_shape.dim_size(lhs_size - 2),
+        errors::InvalidArgument("The coefficient matrix must be square in "
+                                "the inner-most two dimensions: ",
+                                lhs_shape.DebugString()));
+
     xla::XlaOp a = ctx->Input(0);
     xla::XlaOp b = ctx->Input(1);
     std::tie(a, b) = Broadcast(a, lhs_shape, b, rhs_shape, bcast);

@@ -116,12 +116,15 @@ void DeviceSet::SortPrioritizedDeviceVector(PrioritizedDeviceVector* vector) {
     if (a_type_name != b_type_name) {
       auto a_priority = DeviceFactory::DevicePriority(a_type_name);
       auto b_priority = DeviceFactory::DevicePriority(b_type_name);
-      // First sort by prioritized device type (higher is preferred) and
-      // then by device name (lexicographically).
       if (a_priority != b_priority) {
         return a_priority > b_priority;
       }
     }
+
+    if (a.first->IsLocal() != b.first->IsLocal()) {
+      return a.first->IsLocal();
+    }
+
     return StringPiece(a.first->name()) < StringPiece(b.first->name());
   };
   std::sort(vector->begin(), vector->end(), device_sort);

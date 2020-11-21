@@ -25,6 +25,7 @@ import numpy as np
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gradient_checker
@@ -255,6 +256,17 @@ class SegmentReductionOpTest(SegmentReductionHelper):
             delta=1)
       self.assertAllClose(jacob_t, jacob_n)
 
+  def testDataInvalid(self):
+    # Test case for GitHub issue 40653.
+    for use_gpu in [True, False]:
+      with self.cached_session(use_gpu=use_gpu):
+        with self.assertRaisesRegex(
+            (ValueError, errors_impl.InvalidArgumentError),
+            "must be at least rank 1"):
+          s = math_ops.segment_mean(
+              data=np.uint16(10), segment_ids=np.array([]).astype("int64"))
+          self.evaluate(s)
+
 
 class UnsortedSegmentTest(SegmentReductionHelper):
 
@@ -464,7 +476,7 @@ class UnsortedSegmentTest(SegmentReductionHelper):
           data = np.zeros((2, 0), dtype=dtype)
           segment_ids = np.array([0, 1], dtype=itype)
           unsorted = math_ops.unsorted_segment_sum(data, segment_ids, 2)
-          self.assertAllEqual(unsorted.eval(), np.zeros((2, 0), dtype=dtype))
+          self.assertAllEqual(unsorted, np.zeros((2, 0), dtype=dtype))
 
   def testDropNegatives(self):
     # Note: the test is done by replacing segment_ids with 8 to -1
@@ -782,7 +794,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
     tf_indices = [8, 3, 0, 9]
     with self.session(use_gpu=False):
       for tf_op in ops_list:
-        with self.assertRaisesRegexp(
+        with self.assertRaisesRegex(
             ValueError, "Cannot specify a negative value for num_segments"):
           tf_op(
               data=tf_x,
@@ -969,7 +981,7 @@ class SegmentReductionOpBenchmark(test.Benchmark):
       vc = variables.Variable(const.astype(dtype))
     name, op = op_functor(vc, vs, seg_ids)
     with session.Session() as sess:
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       r = self.run_op_benchmark(
           sess,
           op,

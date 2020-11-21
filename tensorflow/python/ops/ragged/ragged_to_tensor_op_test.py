@@ -396,11 +396,11 @@ class RaggedTensorToTensorOpTest(test_util.TensorFlowTestCase,
                 shape=None):
 
     rt = ragged_factory_ops.constant(rt_input, ragged_rank=ragged_rank)
-    with self.assertRaisesRegexp(error_type, error):
+    with self.assertRaisesRegex(error_type, error):
       self.evaluate(rt.to_tensor(default_value=default, shape=shape))
     rt_placeholder = nest.map_structure(
         make_placeholder, rt, expand_composites=True)
-    with self.assertRaisesRegexp(error_type, error):
+    with self.assertRaisesRegex(error_type, error):
       self.evaluate(
           rt_placeholder.to_tensor(default_value=default, shape=shape))
 
@@ -610,7 +610,6 @@ class RaggedTensorToTensorOpTest(test_util.TensorFlowTestCase,
           output_value  = [],
           output_grad   = [])
   ])  # pyformat: disable
-  @test_util.run_deprecated_v1
   def test_gradient(self,
                     shape,
                     rt_value,
@@ -720,6 +719,11 @@ class RaggedTensorToTensorOpTest(test_util.TensorFlowTestCase,
     if shape_info == 'unknown_dims':
       return array_ops.placeholder_with_default(arg, [None] * arg.shape.rank)
     raise AssertionError('Unexpected shape_info %r' % shape_info)
+
+  def test_shape_is_list_including_tensor_element(self):
+    rt = ragged_factory_ops.constant([[1, 2, 3], [4], [5, 6]])
+    result = rt.to_tensor(shape=[2, constant_op.constant(2)])
+    self.assertAllEqual(result, [[1, 2], [4, 0]])
 
 
 class RaggedToDenseBenchmark(googletest.Benchmark):

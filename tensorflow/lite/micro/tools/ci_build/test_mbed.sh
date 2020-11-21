@@ -49,7 +49,7 @@ fi
 
 make -f tensorflow/lite/micro/tools/make/Makefile \
   TARGET=${TARGET} \
-  TAGS="portable_optimized disco_f746ng" \
+  TAGS="disco_f746ng" \
   ${PROJECTS}
 
 readable_run tensorflow/lite/micro/tools/ci_build/install_mbed_cli.sh

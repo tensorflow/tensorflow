@@ -1,5 +1,3 @@
-load("//tensorflow/lite/micro:build_def.bzl", "cc_library")
-
 package(
     default_visibility = [
         "//visibility:public",
@@ -25,7 +23,6 @@ cc_library(
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/kernels:kernel_util",
-        "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/schema:schema_fbs",
         "@flatbuffers",

@@ -36,6 +36,7 @@ def make_batch_to_space_nd_tests(options):
           "crops": [[[0, 0], [0, 0]], [[1, 1], [1, 1]]],
           "constant_block_shape": [True, False],
           "constant_crops": [True, False],
+          "dynamic_range_quantize": [False],
       },
       # Single batch (no-op)
       {
@@ -45,6 +46,7 @@ def make_batch_to_space_nd_tests(options):
           "crops": [[[0, 0], [0, 0]], [[1, 1], [1, 1]]],
           "constant_block_shape": [True],
           "constant_crops": [True],
+          "dynamic_range_quantize": [True, False],
       },
       # 3D use case.
       {
@@ -54,6 +56,7 @@ def make_batch_to_space_nd_tests(options):
           "crops": [[[0, 0]], [[1, 1]]],
           "constant_block_shape": [True],
           "constant_crops": [True],
+          "dynamic_range_quantize": [True, False],
       },
   ]
 
@@ -66,6 +69,7 @@ def make_batch_to_space_nd_tests(options):
         "crops": [[[0, 0], [0, 0], [0, 0]]],
         "constant_block_shape": [True, False],
         "constant_crops": [True, False],
+        "dynamic_range_quantize": [False],
     }]
 
   def build_graph(parameters):

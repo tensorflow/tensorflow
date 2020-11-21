@@ -60,6 +60,8 @@ class ShapeVerifier : public DfsHloVisitor {
   Status HandleAllReduce(HloInstruction* crs) override;
   Status HandleAllToAll(HloInstruction* hlo) override;
   Status HandleCollectivePermute(HloInstruction* hlo) override;
+  Status HandleCollectivePermuteStart(HloInstruction* hlo) override;
+  Status HandleCollectivePermuteDone(HloInstruction* hlo) override;
   Status HandlePartitionId(HloInstruction* hlo) override;
   Status HandleReplicaId(HloInstruction* hlo) override;
   Status HandleReducePrecision(HloInstruction* reduce_precision) override;
@@ -76,6 +78,7 @@ class ShapeVerifier : public DfsHloVisitor {
   Status HandleBitcast(HloInstruction* bitcast) override;
   Status HandleBroadcast(HloInstruction* broadcast) override;
   Status HandleReshape(HloInstruction* reshape) override;
+  Status HandleDynamicReshape(HloInstruction* dynamic_reshape) override;
   Status HandleTranspose(HloInstruction* transpose) override;
   Status HandleParameter(HloInstruction*) override;
   Status HandleFusion(HloInstruction*) override;

@@ -46,7 +46,7 @@ function run_build () {
   tag_filters="-no_oss,-oss_serial,-gpu,-tpu,-benchmark-test""$(maybe_skip_v1)"
 
   # Get the default test targets for bazel.
-  source tensorflow/tools/ci_build/build_scripts/PRESUBMIT_BUILD_TARGETS.sh
+  source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
 
   # Run bazel test command. Double test timeouts to avoid flakes.
   # //tensorflow/core/platform:setround_test is not supported. See b/64264700
@@ -65,11 +65,15 @@ function run_build () {
     --define=framework_shared_object=true \
     --define=with_xla_support=true \
     -c opt \
+    --host_copt="-w" \
     --copt="-w" \
+    --host_copt=-mavx \
     --copt=-mavx \
+    --host_linkopt=-lrt \
     --linkopt=-lrt \
     --distinct_host_configuration=false \
-    --remote_default_exec_properties=build=${CACHE_SILO_VAL} \
+    --remote_default_platform_properties="properties:{name:\"build\" value:\"${CACHE_SILO_VAL}\"}" \
+    --host_crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010:toolchain \
     --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010:toolchain \
     --host_javabase=@bazel_toolchains//configs/ubuntu16_04_clang/1.1:jdk8 \
     --javabase=@bazel_toolchains//configs/ubuntu16_04_clang/1.1:jdk8 \

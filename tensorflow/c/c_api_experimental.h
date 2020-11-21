@@ -86,7 +86,7 @@ TF_CAPI_EXPORT void TF_SetXlaConstantFoldingDisabled(
 
 // Create a serialized tensorflow.ConfigProto proto, where:
 //
-// a) ConfigProto.optimizer_options.global_jit_level is set to to ON_1 if
+// a) ConfigProto.optimizer_options.global_jit_level is set to ON_1 if
 // `enable_xla_compilation` is non-zero, and OFF otherwise.
 // b) ConfigProto.gpu_options.allow_growth is set to `gpu_memory_allow_growth`.
 // c) ConfigProto.device_count is set to `num_cpu_devices`.
@@ -145,48 +145,6 @@ TF_CAPI_EXPORT extern void TF_EnqueueNamedTensor(TF_Session* session,
                                                  TF_Status* status);
 // Create a serialized tensorflow.ServerDef proto.
 TF_Buffer* TFE_GetServerDef(const char* text_proto, TF_Status* status);
-
-// TODO: remove this API in favor of the next one.
-TF_CAPI_EXPORT extern TFE_Context* TFE_NewContextFromSession(
-    const TFE_ContextOptions* opts, TF_Session* sess, TF_Status* status);
-
-// Creates from `session` a new eager context to run a graph function or
-// sends/recvs, so that these concurrent TFE executions can share (via
-// `session` and its associated device mgr) the same set of fifo queue resource
-// ops, used for host<->TF tensor transfers. This way the sends/recvs calls and
-// graph function execution can access the same fifo queue resource handles
-// (associated with devices managed by the device manager, which can be obtained
-// from `session`).
-//
-// TODO: Remove this function once we migrate away from using session.
-TF_CAPI_EXPORT extern TFE_Context* TFE_CreateContextFromSession(
-    TF_Session* session, TF_Status* status);
-
-// TODO: Retire this API in favor of the next one.
-TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_DequeueNamedTensor(
-    TF_Session* session, int tensor_id, TF_DataType inputType,
-    TF_Status* status);
-
-TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_DequeueNamedTensorFromCtx(
-    TFE_Context* ctx, int tensor_id, TF_DataType inputType, TF_Status* status);
-
-TF_CAPI_EXPORT extern void TFE_EnqueueNamedTensor(TF_Session* session,
-                                                  int tensor_id,
-                                                  TFE_TensorHandle* tensor,
-                                                  TF_Status* status);
-
-TF_CAPI_EXPORT extern void TFE_EnqueueNamedTensorFromCtx(
-    TFE_Context* ctx, int tensor_id, TFE_TensorHandle* tensor,
-    TF_Status* status);
-
-// TODO: consider folding the 2 APIs below into the ones above.
-TF_CAPI_EXPORT extern void TFE_EnqueueVariantTensor(TF_Session* session,
-                                                    int tensor_id,
-                                                    TFE_TensorHandle* tensor,
-                                                    TF_Status* status);
-
-TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_DequeueVariantTensor(
-    TF_Session* session, int tensor_id, TF_Status* status);
 
 TF_CAPI_EXPORT extern void TF_MakeInternalErrorStatus(TF_Status* status,
                                                       const char* errMsg);
@@ -271,6 +229,21 @@ TF_CAPI_EXPORT extern void TFE_EnableCollectiveOps(TFE_Context* ctx,
                                                    const void* proto,
                                                    size_t proto_len,
                                                    TF_Status* status);
+
+// Aborts all ongoing collectives with the specified status. After abortion,
+// subsequent collectives will error with this status immediately. To reset the
+// collectives, create a new EagerContext.
+//
+// This is intended to be used when a peer failure is detected.
+TF_CAPI_EXPORT extern void TFE_AbortCollectiveOps(TFE_Context* ctx,
+                                                  TF_Status* status);
+
+// Checks the health of collective ops peers. Explicit health check is needed in
+// multi worker collective ops to detect failures in the cluster.  If a peer is
+// down, collective ops may hang.
+TF_CAPI_EXPORT extern void TFE_CollectiveOpsCheckPeerHealth(
+    TFE_Context* ctx, const char* task, int64_t timeout_in_ms,
+    TF_Status* status);
 
 // Information about the shape of a Tensor and its type.
 struct TF_ShapeAndType {

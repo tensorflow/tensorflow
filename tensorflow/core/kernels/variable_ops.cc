@@ -16,12 +16,30 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 #include "tensorflow/core/kernels/variable_ops.h"
 
+#include "tensorflow/core/framework/control_flow.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
+
+namespace {
+
+// Makes a unique name for a temporary variable inside a while loop body,
+// because loop can be executed in multiple iterations in parallel.
+string TemporaryVariableName(const string& var_name,
+                             const FrameAndIter& control_frame) {
+  if (control_frame.frame_id != kIllegalFrameId &&
+      control_frame.iter_id != kIllegalIterId) {
+    return strings::StrCat(var_name, "/frame:", control_frame.frame_id,
+                           "/iter:", control_frame.iter_id);
+  }
+  return var_name;
+}
+
+}  // namespace
 
 // Resource stored by variables in the resource manager
 // (legacy, ref-style version).
@@ -89,15 +107,16 @@ class TemporaryVariableOp : public OpKernel {
     Status s;
     ResourceMgr* rm = context->resource_manager();
     OP_REQUIRES(context, rm, errors::Internal("No per-step resource manager."));
+    auto unique_name = TemporaryVariableName(var_name_, context->frame_iter());
     auto* tmp_var = new TmpVar;
     OP_REQUIRES(context, tmp_var,
                 errors::ResourceExhausted("Could not allocate TmpVar."));
-    tmp_var->name = var_name_;
+    tmp_var->name = unique_name;
     s = context->allocate_temp(dtype_, shape_, &tmp_var->val);
     if (!s.ok()) tmp_var->Unref();
     OP_REQUIRES_OK(context, s);
     OP_REQUIRES_OK(context,
-                   context->step_container()->Create(rm, var_name_, tmp_var));
+                   context->step_container()->Create(rm, unique_name, tmp_var));
     context->set_output_ref(0, &tmp_var->mu, &tmp_var->val);
     if (context->track_allocations()) {
       context->record_persistent_memory_allocation(
@@ -141,9 +160,10 @@ class DestroyTemporaryVariableOp : public OpKernel {
     context->set_output(0, tmpvar);
     ResourceMgr* rm = context->resource_manager();
     OP_REQUIRES(context, rm, errors::Internal("No per-step resource manager."));
+    auto unique_name = TemporaryVariableName(var_name_, context->frame_iter());
     OP_REQUIRES_OK(
         context, context->step_container()->Delete<TemporaryVariableOp::TmpVar>(
-                     rm, var_name_));
+                     rm, unique_name));
     if (context->track_allocations()) {
       context->record_persistent_memory_allocation(
           -static_cast<int64>(tmpvar.AllocatedBytes()));
@@ -180,31 +200,6 @@ REGISTER_KERNEL_BUILDER(Name("DestroyTemporaryVariable").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("IsVariableInitialized").Device(DEVICE_CPU),
                         IsVariableInitializedOp);
 
-#ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNEL(type)                                          \
-  REGISTER_KERNEL_BUILDER(                                                  \
-      Name("Variable").Device(DEVICE_SYCL).TypeConstraint<type>("dtype"),   \
-      VariableOp);                                                          \
-  REGISTER_KERNEL_BUILDER(                                                  \
-      Name("VariableV2").Device(DEVICE_SYCL).TypeConstraint<type>("dtype"), \
-      VariableOp);                                                          \
-  REGISTER_KERNEL_BUILDER(Name("TemporaryVariable")                         \
-                              .Device(DEVICE_SYCL)                          \
-                              .TypeConstraint<type>("dtype"),               \
-                          TemporaryVariableOp);                             \
-  REGISTER_KERNEL_BUILDER(Name("DestroyTemporaryVariable")                  \
-                              .Device(DEVICE_SYCL)                          \
-                              .TypeConstraint<type>("T"),                   \
-                          DestroyTemporaryVariableOp);                      \
-  REGISTER_KERNEL_BUILDER(Name("IsVariableInitialized")                     \
-                              .Device(DEVICE_SYCL)                          \
-                              .TypeConstraint<type>("dtype")                \
-                              .HostMemory("is_initialized"),                \
-                          IsVariableInitializedOp);
-
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL_KERNEL);
-#undef REGISTER_SYCL_KERNEL
-#endif  // TENSORFLOW_USE_SYCL
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Only register 'Variable' on GPU for the subset of types also supported by
@@ -230,11 +225,9 @@ TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL_KERNEL);
                               .HostMemory("is_initialized"),               \
                           IsVariableInitializedOp);
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
-TF_CALL_complex64(REGISTER_GPU_KERNELS);
-TF_CALL_complex128(REGISTER_GPU_KERNELS);
 TF_CALL_int64(REGISTER_GPU_KERNELS);
 TF_CALL_uint32(REGISTER_GPU_KERNELS);
+TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

@@ -73,7 +73,7 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     os.mkdir(dir_path)
     self.assertTrue(os.path.isdir(dir_path))
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, "session_root path points to a non-empty directory"):
       dumping_wrapper.DumpingDebugWrapperSession(
           session.Session(), session_root=self.session_root, log_usage=False)
@@ -83,8 +83,8 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     open(file_path, "a").close()  # Create the file
     self.assertTrue(gfile.Exists(file_path))
     self.assertFalse(gfile.IsDirectory(file_path))
-    with self.assertRaisesRegexp(ValueError,
-                                 "session_root path points to a file"):
+    with self.assertRaisesRegex(ValueError,
+                                "session_root path points to a file"):
       dumping_wrapper.DumpingDebugWrapperSession(
           session.Session(), session_root=file_path, log_usage=False)
 
@@ -161,7 +161,7 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
 
   def testUsingNonCallableAsWatchFnRaisesTypeError(self):
     bad_watch_fn = "bad_watch_fn"
-    with self.assertRaisesRegexp(TypeError, "watch_fn is not callable"):
+    with self.assertRaisesRegex(TypeError, "watch_fn is not callable"):
       dumping_wrapper.DumpingDebugWrapperSession(
           self.sess,
           session_root=self.session_root,
@@ -169,7 +169,7 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
           log_usage=False)
 
   def testDumpingWithLegacyWatchFnOnFetchesWorks(self):
-    """Use a watch_fn that returns different whitelists for different runs."""
+    """Use a watch_fn that returns different allowlists for different runs."""
 
     def watch_fn(fetches, feeds):
       del feeds
@@ -240,9 +240,9 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
       del fetches, feeds
       return framework.WatchOptions(
           debug_ops=["DebugIdentity", "DebugNumericSummary"],
-          node_name_regex_whitelist=r"^v.*",
-          op_type_regex_whitelist=r".*",
-          tensor_dtype_regex_whitelist=".*_ref")
+          node_name_regex_allowlist=r"^v.*",
+          op_type_regex_allowlist=r".*",
+          tensor_dtype_regex_allowlist=".*_ref")
 
     sess = dumping_wrapper.DumpingDebugWrapperSession(
         self.sess,
@@ -288,14 +288,13 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
       if watch_fn_state["run_counter"] % 2 == 1:
         # If odd-index run (1-based), watch every ref-type tensor.
         return framework.WatchOptions(
-            debug_ops="DebugIdentity",
-            tensor_dtype_regex_whitelist=".*_ref")
+            debug_ops="DebugIdentity", tensor_dtype_regex_allowlist=".*_ref")
       else:
         # If even-index run, watch nothing.
         return framework.WatchOptions(
             debug_ops="DebugIdentity",
-            node_name_regex_whitelist=r"^$",
-            op_type_regex_whitelist=r"^$")
+            node_name_regex_allowlist=r"^$",
+            op_type_regex_allowlist=r"^$")
 
     dumping_hook = hooks.DumpingDebugHook(
         self.session_root, watch_fn=counting_watch_fn, log_usage=False)

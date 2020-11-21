@@ -315,7 +315,7 @@ class IntegerLookupOutputTest(keras_parameterized.TestCase,
 
   def test_output_shape(self):
     input_data = keras.Input(shape=(4,), dtype=dtypes.int64)
-    layer = get_layer_class()(max_values=None, num_oov_indices=1)
+    layer = get_layer_class()(max_values=2, num_oov_indices=1)
     int_data = layer(input_data)
     self.assertAllEqual(int_data.shape[1:], input_data.shape[1:])
 
@@ -347,6 +347,36 @@ class IntegerLookupOutputTest(keras_parameterized.TestCase,
     output_dataset = model.predict(input_array)
     self.assertAllEqual(expected_output, output_dataset)
 
+  def test_inverse_output(self):
+    vocab_data = [0, -1, 42, 1138, 725, 1729]
+    input_array = np.array([[2, 3, 4, 5], [5, 4, 2, 1]])
+    expected_output = np.array([[42, 1138, 725, 1729], [1729, 725, 42, -1]])
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.int64)
+    layer = get_layer_class()(invert=True)
+    layer.set_vocabulary(vocab_data)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_dataset = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_dataset)
+
+  def test_forward_backward_output(self):
+    vocab_data = [42, 1138, 725, 1729]
+    input_array = np.array([[42, 1138, 725, 1729], [1729, 725, 42, 203]])
+    expected_output = np.array([[42, 1138, 725, 1729], [1729, 725, 42, -1]])
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.int64)
+    layer = get_layer_class()()
+    inverse_layer = get_layer_class()()
+    layer.set_vocabulary(vocab_data)
+    inverse_layer = get_layer_class()(
+        vocabulary=layer.get_vocabulary(), invert=True)
+    int_data = layer(input_data)
+    inverse_data = inverse_layer(int_data)
+    model = keras.Model(inputs=input_data, outputs=inverse_data)
+    output_dataset = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_dataset)
+
 
 @keras_parameterized.run_all_keras_modes
 class IntegerLookupVocabularyTest(
@@ -374,6 +404,45 @@ class IntegerLookupVocabularyTest(
     output_dataset = model.predict(input_array)
     self.assertAllEqual(expected_output, output_dataset)
 
+  def test_no_vocab(self):
+    with self.assertRaisesRegex(
+        ValueError, "You must set the layer's vocabulary"):
+      layer = get_layer_class()()
+      layer([[1]])
+
+  def test_binary_output(self):
+    vocab_data = [2, 3, 4, 5]
+    input_array = np.array([[2, 2, 3, 4], [0, 1, 5, 2]])
+    expected_output = [[0, 0, 1, 1, 1, 0], [1, 1, 1, 0, 0, 1]]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.int64)
+    layer = get_layer_class()(vocabulary=vocab_data, output_mode="binary")
+    res = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=res)
+    output_data = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_data)
+
+  def test_count_output(self):
+    vocab_data = [2, 3, 4, 5]
+    input_array = np.array([[2, 2, 3, 4], [0, 1, 5, 6]])
+    expected_output = [[0, 0, 2, 1, 1, 0], [1, 2, 0, 0, 0, 1]]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.int64)
+    layer = get_layer_class()(vocabulary=vocab_data, output_mode="count")
+    res = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=res)
+    output_data = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_data)
+
+  def test_sparse_output(self):
+    vocab_data = [2, 3, 4, 5]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.int64)
+    layer = get_layer_class()(
+        vocabulary=vocab_data, output_mode="binary", sparse=True)
+    res = layer(input_data)
+    self.assertTrue(res.__class__.__name__, "SparseKerasTensor")
+
   def test_get_vocab_returns_int(self):
     vocab_data = [42, 1138, 725, 1729]
     expected_vocab = [0, -1, 42, 1138, 725, 1729]
@@ -391,6 +460,21 @@ class IntegerLookupVocabularyTest(
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.int64)
     layer = get_layer_class()(vocabulary=vocab_path)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_dataset = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_dataset)
+
+  def test_int_output_explicit_vocab_from_file_via_setter(self):
+    vocab_list = [42, 1138, 725, 1729]
+    vocab_path = self._write_to_temp_file("vocab_file", vocab_list)
+
+    input_array = np.array([[42, 1138, 725, 1729], [1729, 725, 42, 203]])
+    expected_output = [[2, 3, 4, 5], [5, 4, 2, 1]]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.int64)
+    layer = get_layer_class()()
+    layer.set_vocabulary(vocab_path)
     int_data = layer(input_data)
     model = keras.Model(inputs=input_data, outputs=int_data)
     output_dataset = model.predict(input_array)
