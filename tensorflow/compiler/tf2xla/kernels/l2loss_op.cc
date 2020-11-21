@@ -46,7 +46,6 @@ class L2LossOp : public XlaOpKernel {
   }
 };
 
-// ROCM TODO: improve perf for IR emitted for L2Loss
 REGISTER_XLA_OP(Name("L2Loss"), L2LossOp);
 
 }  // namespace

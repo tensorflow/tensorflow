@@ -614,9 +614,9 @@ cc_library(
         "//tensorflow/stream_executor",
         "//tensorflow/stream_executor:blas",
         "//tensorflow/stream_executor:device_memory",
+        "//tensorflow/stream_executor:device_memory_allocator",
         "//tensorflow/stream_executor:kernel",
         "//tensorflow/stream_executor/gpu:gpu_stream",
-        "//tensorflow/stream_executor:device_memory_allocator",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -1355,7 +1355,7 @@ cc_library(
         "amdgpu_compiler.cc",
     ],
     hdrs = [
-        "amdgpu_compiler.h"
+        "amdgpu_compiler.h",
     ],
     deps = [
         ":gemm_rewriter",

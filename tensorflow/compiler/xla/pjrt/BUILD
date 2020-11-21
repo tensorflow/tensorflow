@@ -264,7 +264,6 @@ tf_cc_test(
         "no_oss",
         "requires-gpu-nvidia",
         "notap",
-        "gpu",
     ],
     deps = [
         ":nvidia_gpu_device",

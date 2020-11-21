@@ -57,7 +57,7 @@ cc_library(
 
 tf_cuda_cc_test(
     name = "nccl_manager_test",
-    size = "large",
+    size = "medium",
     srcs = ["nccl_manager_test.cc"],
     tags = tf_cuda_tests_tags() + [
         "guitar",

@@ -2009,10 +2009,7 @@ tf_cuda_cc_test(
         "permuter_test.cc",
     ],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = [
-        "no_cuda_on_cpu_tap",
-        "no_rocm",
-    ],
+    tags = ["no_cuda_on_cpu_tap"],
     deps = [
         ":core",
         ":core_cpu",

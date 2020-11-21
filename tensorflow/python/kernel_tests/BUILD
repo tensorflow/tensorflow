@@ -263,6 +263,7 @@ tf_py_test(
     size = "small",
     srcs = ["clip_ops_test.py"],
     tags = [
+        "no_gpu",  # b/127001953
         "no_windows",
     ],
     deps = [

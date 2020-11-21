@@ -62,6 +62,7 @@ cuda_py_test(
     srcs = ["run_metadata_test.py"],
     python_version = "PY3",
     tags = [
+        "no_gpu",  # b/138442728
         "no_pip",
     ],
     xla_enable_strict_auto_jit = False,  # Node names are different with autojit

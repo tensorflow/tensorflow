@@ -2268,7 +2268,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core:stream_executor_no_cuda",
+        "//tensorflow/stream_executor",
         "@com_google_absl//absl/memory",
         "@llvm-project//llvm:Core",
     ],
@@ -2642,7 +2642,7 @@ xla_test(
     tags = [
         # Disabled in OSS until nvidia publicly releases a fixed ptxas.
         "no_oss",
-    ] + tf_cuda_tests_tags(),
+    ],
     deps = [
         ":hlo_test_base",
         ":test_macros_header",
