@@ -69,7 +69,7 @@ class WorkgroupsCalculatorFromMetadata : public WorkgroupsCalculator {
 const data::HardcodedWorkgroups* FindWorkgroups(
     const data::CustomWorkgroups& workgroups, const GpuInfo& gpu_info) {
   for (auto workgroup : *workgroups.hardcoded_workgroups()) {
-    if (workgroup->gpu_info()->c_str() == gpu_info.renderer_name) {
+    if (workgroup->gpu_info()->c_str() == gpu_info.opengl_info.renderer_name) {
       return workgroup;
     }
   }

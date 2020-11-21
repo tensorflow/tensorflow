@@ -248,8 +248,17 @@ class PjRtClient {
   virtual StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options);
 
+  // Creates a buffer on the device without initializing or copying any data.
+  // An optional `definition_event` may be speficied that can be used to
+  // ensure the buffer isn't referenced until some external mechanism has
+  // initialized the data.
+  // NOTE: The sequencing mechanism is not guaranteed to be supported by all
+  // future backends and so callers should avoid wherever possible.
   virtual StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
       const Shape& shape, PjRtDevice* device);
+  virtual StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
+      const Shape& shape, PjRtDevice* device,
+      std::shared_ptr<BufferSequencingEvent> definition_event);
 
   // Describes the semantics the caller to BufferFromHostBuffer expects from the
   // runtime, in a total order from most restrictive to least restrictive.
@@ -316,6 +325,7 @@ class PjRtClient {
   friend class PjRtBuffer;
   virtual void EnqueueCrossHostReceive(
       std::vector<std::unique_ptr<PjRtBuffer>>&& buffers,
+      std::shared_ptr<BufferSequencingEvent> definition_event,
       PjRtCrossHostRecvNotifier&& notifier) const {
     notifier(Unimplemented("Cross host receives not implemented."));
   }

@@ -4944,6 +4944,11 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
   # activations cache logits on the `output` Tensor.
   if hasattr(output, '_keras_logits'):
     output = output._keras_logits  # pylint: disable=protected-access
+    if from_logits:
+      warnings.warn(
+          '"`categorical_crossentropy` received `from_logits=True`, but '
+          'the `output` argument was produced by a sigmoid or softmax '
+          'activation and thus does not represent logits. Was this intended?"')
     from_logits = True
 
   if from_logits:
@@ -4999,6 +5004,11 @@ def sparse_categorical_crossentropy(target, output, from_logits=False, axis=-1):
   # activations cache logits on the `output` Tensor.
   if hasattr(output, '_keras_logits'):
     output = output._keras_logits  # pylint: disable=protected-access
+    if from_logits:
+      warnings.warn(
+          '"`sparse_categorical_crossentropy` received `from_logits=True`, but '
+          'the `output` argument was produced by a sigmoid or softmax '
+          'activation and thus does not represent logits. Was this intended?"')
     from_logits = True
   elif (not from_logits and
         not isinstance(output, (ops.EagerTensor, variables_module.Variable)) and
@@ -5081,6 +5091,11 @@ def binary_crossentropy(target, output, from_logits=False):
   # activations cache logits on the `output` Tensor.
   if hasattr(output, '_keras_logits'):
     output = output._keras_logits  # pylint: disable=protected-access
+    if from_logits:
+      warnings.warn(
+          '"`binary_crossentropy` received `from_logits=True`, but the `output`'
+          ' argument was produced by a sigmoid or softmax activation and thus '
+          'does not represent logits. Was this intended?"')
     from_logits = True
 
   if from_logits:

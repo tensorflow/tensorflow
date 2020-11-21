@@ -385,7 +385,7 @@ absl::Status Compile(const CompilationOptions& options,
   }
   GpuInfo gpu_info;
   RETURN_IF_ERROR(RequestGpuInfo(&gpu_info));
-  if (!IsOpenGl31OrAbove(gpu_info)) {
+  if (!gpu_info.IsApiOpenGl31OrAbove()) {
     return absl::InternalError(
         "OpenGL ES 3.1 or above is required to use OpenGL inference.");
   }
@@ -406,7 +406,7 @@ absl::Status ReadSerializedModel(
     std::unique_ptr<CompiledModel>* compiled_model) {
   GpuInfo gpu_info;
   RETURN_IF_ERROR(RequestGpuInfo(&gpu_info));
-  if (!IsOpenGl31OrAbove(gpu_info)) {
+  if (!gpu_info.IsApiOpenGl31OrAbove()) {
     return absl::InternalError(
         "OpenGL ES 3.1 or above is required to use OpenGL inference.");
   }

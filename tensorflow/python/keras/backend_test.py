@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import gc
+import warnings
 
 from absl.testing import parameterized
 import numpy as np
@@ -32,6 +33,7 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import activations
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras.engine import input_layer
@@ -1734,6 +1736,45 @@ class BackendCrossEntropyLossesTest(test.TestCase, parameterized.TestCase):
     p = array_ops.identity(array_ops.identity(p))
     result = self.evaluate(backend.sparse_categorical_crossentropy(t, p))
     self.assertArrayNear(result, [0.002, 0.0005, 0.17], 1e-3)
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_binary_crossentropy_from_logits_no_warnings(self):
+    t = backend.constant([[0, 1, 0]])
+    logits = backend.constant([[8., 1., 1.]])
+    with warnings.catch_warnings(record=True) as w:
+      self.evaluate(backend.binary_crossentropy(t, logits, from_logits=True))
+      self.assertEmpty(w)
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_binary_crossentropy_from_logits_with_sigmoid(self):
+    t = backend.constant([[0, 1, 0]])
+    logits = backend.constant([[8., 1., 1.]])
+    p = activations.sigmoid(logits)
+    with warnings.catch_warnings(record=True) as w:
+      self.evaluate(backend.binary_crossentropy(t, p, from_logits=True))
+      self.assertLen(w, 1)
+      self.assertIn('received `from_logits=True`', str(w[0].message))
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_categorical_crossentropy_from_logits_with_softmax(self):
+    t = backend.constant([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
+    logits = backend.constant([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
+    p = activations.softmax(logits)
+    with warnings.catch_warnings(record=True) as w:
+      self.evaluate(backend.categorical_crossentropy(t, p, from_logits=True))
+      self.assertLen(w, 1)
+      self.assertIn('received `from_logits=True`', str(w[0].message))
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_sparse_categorical_crossentropy_from_logits_with_softmax(self):
+    t = backend.constant([0, 1, 2])
+    logits = backend.constant([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
+    p = activations.softmax(logits)
+    with warnings.catch_warnings(record=True) as w:
+      self.evaluate(
+          backend.sparse_categorical_crossentropy(t, p, from_logits=True))
+      self.assertLen(w, 1)
+      self.assertIn('received `from_logits=True`', str(w[0].message))
 
 
 @test_util.with_control_flow_v2

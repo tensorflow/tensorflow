@@ -70,6 +70,35 @@ func @main() -> tensor<i32> {
 
 // -----
 
+// Test inferring shape from the result type of gather.
+
+// CHECK-LABEL: func @main
+func @main() -> tensor<2x3xf32> {
+  %size = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
+  // CHECK: %[[VAR:.*]] = "tf.MlirLocalVarOp"() : () -> tensor<!tf.resource<tensor<5x3xf32>>>
+  %ta:2 = "tf.TensorArrayV3"(%size) {dtype = f32, element_shape = #tf.shape<*>, dynamic_size = false, clear_after_read = true, identical_element_shapes = true, tensor_array_name = "ta"} : (tensor<i32>) -> (tensor<!tf.resource>, tensor<f32>)
+  %indices = "tf.Const"() {value = dense<[1, 2]> : tensor<2xi32>} : () -> tensor<2xi32>
+  %gather = "tf.TensorArrayGatherV3"(%ta#0, %indices, %ta#1) : (tensor<!tf.resource>, tensor<2xi32>, tensor<f32>) -> tensor<2x3xf32>
+  return %gather : tensor<2x3xf32>
+}
+
+// -----
+
+// Test inferring shape from the element_shape attribute of gather.
+
+// CHECK-LABEL: func @main
+func @main() -> tensor<*xf32> {
+  %size = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
+  // CHECK: %[[VAR:.*]] = "tf.MlirLocalVarOp"() : () -> tensor<!tf.resource<tensor<5x3xf32>>>
+  %ta:2 = "tf.TensorArrayV3"(%size) {dtype = f32, element_shape = #tf.shape<*>, dynamic_size = false, clear_after_read = true, identical_element_shapes = true, tensor_array_name = "ta"} : (tensor<i32>) -> (tensor<!tf.resource>, tensor<f32>)
+  %indices = "tf.Const"() {value = dense<[1, 2]> : tensor<2xi32>} : () -> tensor<2xi32>
+  %gather = "tf.TensorArrayGatherV3"(%ta#0, %indices, %ta#1) {element_shape = #tf.shape<3>} : (tensor<!tf.resource>, tensor<2xi32>, tensor<f32>) -> tensor<*xf32>
+  return %gather : tensor<*xf32>
+}
+
+
+// -----
+
 // Test tensor array concat and split.
 
 // CHECK-LABEL: func @main

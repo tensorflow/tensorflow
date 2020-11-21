@@ -75,6 +75,7 @@ struct TensorDescriptor : public GPUObjectDescriptor {
       const std::vector<std::string>& args, std::string* value_name,
       std::string* x_coord, std::string* y_coord, std::string* s_coord) const;
 
+  void UploadData(const tflite::gpu::Tensor<BHWC, DataType::FLOAT32>& src);
   void UploadData(const tflite::gpu::Tensor<HWC, DataType::FLOAT32>& src);
   void UploadData(const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& src);
 

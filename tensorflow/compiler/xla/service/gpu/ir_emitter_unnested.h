@@ -168,7 +168,6 @@ class IrEmitterUnnested : public IrEmitter,
   Status HandleConditional(HloInstruction* conditional) override;
   Status HandleConvolution(HloInstruction* convolution) override;
   Status HandleCustomCall(HloInstruction* custom_call) override;
-  Status HandleDot(HloInstruction* dot) override;
   Status HandleFft(HloInstruction* fft) override;
   Status HandleFusion(HloInstruction* fusion) override;
   Status EmitLoopFusionFromMlir(MlirEmitterInput input,
@@ -176,8 +175,7 @@ class IrEmitterUnnested : public IrEmitter,
   Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
   Status HandleReduce(HloInstruction* reduce) override;
   Status HandleSelectAndScatter(HloInstruction* instruction) override;
-  Status EmitSelectAndScatterFromMlir(
-      MlirEmitterInput mlir_input, std::unique_ptr<Thunk>&& initializer_thunk);
+  Status EmitSelectAndScatterFromMlir(MlirEmitterInput mlir_input);
   Status HandleTuple(HloInstruction* tuple) override;
   Status HandleWhile(HloInstruction* xla_while) override;
   Status HandleInfeed(HloInstruction* xla_infeed) override;
@@ -633,6 +631,13 @@ class IrEmitterUnnested : public IrEmitter,
   // initializes its memory to the appropriate initial value.
   StatusOr<std::unique_ptr<Thunk>> BuildInitializerThunk(
       HloInstruction* hlo, const ShapeIndex& index = {});
+
+  std::unique_ptr<Thunk> BuildConstantInitializerThunk(
+      absl::Span<const uint8> init_value, const BufferAllocation::Slice& dest,
+      const Shape& output_shape);
+
+  StatusOr<std::unique_ptr<Thunk>> BuildInitializerThunkForMlir(
+      mlir::Operation* op, mlir::Value init_value, mlir::Value dest);
 
   // Returns a WhileThunk that invokes thunk sequences for 'condition' and
   // 'body' sub-computations of while instruction 'hlo'.

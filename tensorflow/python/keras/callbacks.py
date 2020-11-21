@@ -2201,7 +2201,7 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
         train_fn = self.model.train_function
         # If the train_function is a `tf.function`, we can write out a graph
         if hasattr(train_fn, 'function_spec'):
-          summary_ops_v2.graph(train_fn._concrete_stateful_fn.graph, step=0)  # pylint: disable=protected-access
+          summary_ops_v2.graph(train_fn._concrete_stateful_fn.graph)  # pylint: disable=protected-access
 
   def _write_keras_model_summary(self):
     """Writes Keras graph network summary to TensorBoard."""

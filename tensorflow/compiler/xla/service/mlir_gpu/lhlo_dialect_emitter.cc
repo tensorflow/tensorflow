@@ -345,7 +345,9 @@ Status LhloDialectEmitter::HandleReduce(HloInstruction* instr) {
       CreateDenseIntElementsAttrFromVector(instr->dimensions(), builder_);
   auto reduce_op = builder.create<lhlo::ReduceOp>(loc, inputs, init_values,
                                                   results, dimensions_attr);
-  reduce_op.ensureTerminator(reduce_op.body(), builder, getLocation(instr));
+  builder.createBlock(&reduce_op.body());
+  OpBuilder::atBlockEnd(&reduce_op.body().front())
+      .create<lhlo::TerminatorOp>(getLocation(instr));
   return SpliceHloComputation(OpBuilder{&reduce_op.body()}, loc,
                               *instr->to_apply(), emission_context_);
 }

@@ -103,7 +103,9 @@ static Status CreateXlaKernel(FunctionLibraryRuntime* flr,
   if (flr->config_proto()) {
     config_proto = *flr->config_proto();
   }
-  if (!IsMlirBridgePassEnabled(*fbody->graph, config_proto)) {
+  MlirBridgeRolloutPolicy policy =
+      GetMlirBridgeRolloutPolicy(*fbody->graph, config_proto);
+  if (policy != MlirBridgeRolloutPolicy::kEnabledByUser) {
     RecursiveCompilabilityChecker::UncompilableNodesMap uncompilable_nodes_map;
     if (!IsCompilable(flr, node_def, &uncompilable_nodes_map)) {
       std::vector<RecursiveCompilabilityChecker::UncompilableNodeInfo>

@@ -167,7 +167,8 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
       case 32:
         return tflite::TensorType_INT32;
       case 64:
-        return tflite::TensorType_INT64;
+        return itype.isUnsigned() ? tflite::TensorType_UINT64
+                                  : tflite::TensorType_INT64;
     }
   } else if (auto q_uniform_type =
                  type.dyn_cast<mlir::quant::UniformQuantizedType>()) {

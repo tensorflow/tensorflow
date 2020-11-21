@@ -502,6 +502,9 @@ def build_toco_convert_protos(input_tensors,
         else:
           dims.append(int(dim))
       input_array.shape.dims.extend(dims)
+      input_array.shape.unknown_rank = False
+    else:
+      input_array.shape.unknown_rank = True
 
   for output_tensor in output_tensors:
     if saved_model_dir:

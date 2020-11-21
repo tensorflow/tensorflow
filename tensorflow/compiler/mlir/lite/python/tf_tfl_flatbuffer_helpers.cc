@@ -119,6 +119,8 @@ DataType ConvertIODataTypeToDataType(toco::IODataType dtype) {
       return DT_INT32;
     case toco::IODataType::INT64:
       return DT_INT64;
+    case toco::IODataType::UINT64:
+      return DT_UINT64;
     case toco::IODataType::STRING:
       return DT_STRING;
     case toco::IODataType::BOOL:
@@ -185,7 +187,7 @@ Status PopulateQuantizationSpecs(
     const toco::ModelFlags& model_flags, const toco::TocoFlags& toco_flags,
     mlir::TFL::QuantizationSpecs* quant_specs, std::vector<string>* node_names,
     std::vector<string>* node_dtypes,
-    std::vector<std::vector<int>>* node_shapes,
+    std::vector<llvm::Optional<std::vector<int>>>* node_shapes,
     std::vector<llvm::Optional<double>>* node_mins,
     std::vector<llvm::Optional<double>>* node_maxs) {
   quant_specs->inference_input_type =
@@ -210,8 +212,12 @@ Status PopulateQuantizationSpecs(
       node_dtypes->push_back(
           DataType_Name(ConvertIODataTypeToDataType(toco_data_type)));
     }
-    node_shapes->push_back(std::vector<int>(flag.shape().dims().begin(),
-                                            flag.shape().dims().end()));
+    if (flag.shape().unknown_rank()) {
+      node_shapes->push_back(llvm::None);
+    } else {
+      node_shapes->push_back(std::vector<int>(flag.shape().dims().begin(),
+                                              flag.shape().dims().end()));
+    }
     // Currently, only UINT8 and INT8 require inputs stats
     if (inference_type == DT_QINT8 || inference_type == DT_QUINT8) {
       if (flag.has_mean_value() && flag.has_std_value()) {

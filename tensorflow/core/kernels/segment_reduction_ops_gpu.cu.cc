@@ -124,7 +124,7 @@ __global__ void SortedSegmentMeanCustomKernel(
     const Index input_outer_dim_index_base =
         stripe_index / inner_dim_size * Index(OuterDimTileSize);
 
-    T sum = T(0);
+    T reduce_res = initial_value;
     Index first_segment_id = segment_ids[input_outer_dim_index_base];
     Index last_output_segment_id = output_outer_dim_size;
 
@@ -149,10 +149,12 @@ __global__ void SortedSegmentMeanCustomKernel(
         } else {
           *(output + output_index) = sum / T(cur_segment_num);
         }
-        sum = T(0);
+        reduce_res = initial_value;
       }
-      sum += ldg(input + (input_outer_dim_index_base + j) * inner_dim_size +
-                 segment_offset);
+      ReductionF()(
+          &reduce_res,
+          ldg(input + (input_outer_dim_index_base + j) * inner_dim_size +
+              segment_offset));
       last_output_segment_id = current_output_segment_id;
     }
 
@@ -319,11 +321,12 @@ void SegmentMeanFunctor<T, Index>::operator()(
   if (output.size() == 0) {
     return;
   }
-  // Set 'output' to zeros.
+  // Set 'output' to initial value.
   GpuLaunchConfig config = GetGpuLaunchConfig(output.size(), d);
-  TF_CHECK_OK(GpuLaunchKernel(SetZero<T>, config.block_count,
+  const T InitialValue = InitialValueF()();
+  TF_CHECK_OK(GpuLaunchKernel(SetToValue<T>, config.block_count,
                               config.thread_per_block, 0, d.stream(),
-                              output.size(), output.data()));
+                              output.size(), output.data(), InitialValue));
   if (data_size == 0 || segment_ids_shape.num_elements() == 0) {
     return;
   }

@@ -37,10 +37,6 @@ namespace {
 #define GEN_PASS_CLASSES
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
-// TODO(herhut): Move upstream to MLIR.
-static constexpr StringRef kLLVMAlignAttrName = "llvm.align";
-static constexpr StringRef kLLVMNoAliasAttrName = "llvm.noalias";
-
 struct PropagateTfAbiKnowledgeToKernelsPass
     : public PropagateTfAbiKnowledgeToKernelsBase<
           PropagateTfAbiKnowledgeToKernelsPass> {
@@ -116,7 +112,7 @@ struct PropagateTfAbiKnowledgeToKernelsPass
           }
           inner_stride.replaceAllUsesWith(one);
           kernel.setArgAttr(
-              kernel_p + 1, kLLVMAlignAttrName,
+              kernel_p + 1, LLVM::LLVMDialect::getAlignAttrName(),
               b.getIndexAttr(
                   tf_framework::TFFrameworkDialect::kAllocationAlignment));
         }
@@ -126,7 +122,8 @@ struct PropagateTfAbiKnowledgeToKernelsPass
           //     but we could use the alias analysis from buffer placement here
           //     to make sure.
           // Add the no_alias attribute to the correspondign pointer.
-          kernel.setArgAttr(kernel_p + 1, kLLVMNoAliasAttrName,
+          kernel.setArgAttr(kernel_p + 1,
+                            LLVM::LLVMDialect::getNoAliasAttrName(),
                             b.getBoolAttr(true));
         }
         // Advance base, aligned, offset, strides and sizes many arguments.

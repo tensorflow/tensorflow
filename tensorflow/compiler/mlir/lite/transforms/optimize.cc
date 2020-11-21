@@ -289,6 +289,18 @@ static bool ShapeMatchesReduceWithKeepAxes(Value input,
   return true;
 }
 
+static bool FloatValueEquals(const Attribute &attr, double value) {
+  auto fp_attr = attr.dyn_cast_or_null<DenseFPElementsAttr>();
+  if (!fp_attr) return false;
+
+  if (fp_attr.isSplat()) {
+    return fp_attr.getSplatValue<APFloat>().isExactlyValue(value);
+  }
+  return llvm::all_of(fp_attr.getFloatValues(), [value](const APFloat &f) {
+    return f.isExactlyValue(value);
+  });
+}
+
 #include "tensorflow/compiler/mlir/lite/transforms/generated_optimize.inc"
 
 // Fuse Add with proceeding FullyConnected.
@@ -766,7 +778,8 @@ struct ScalarizeSplatConstantForBroadcastableOps
     // cannot scalarize the splat constant because the result shape relies on
     // the splat constant op's shape for broadcasting.
     if (!non_splat_operand_type.hasStaticShape() ||
-        non_splat_operand_type.getShape() != result_type.getShape()) {
+        non_splat_operand_type.getShape() != result_type.getShape() ||
+        non_splat_operand_type.getRank() > 4) {
       return failure();
     }
 

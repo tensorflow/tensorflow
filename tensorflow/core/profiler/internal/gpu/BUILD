@@ -158,6 +158,26 @@ tf_cuda_library(
     ],
 )
 
+cc_library(
+    name = "cupti_collector_header",
+    hdrs = ["cupti_collector.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler/utils:parse_annotation",
+        "//tensorflow/core/profiler/utils:xplane_builder",
+        "//tensorflow/core/profiler/utils:xplane_schema",
+        "//tensorflow/core/profiler/utils:xplane_utils",
+        "@com_google_absl//absl/container:fixed_array",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:node_hash_set",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 tf_cuda_library(
     name = "cupti_utils",
     srcs = if_cuda_is_configured_compat(["cupti_utils.cc"]),

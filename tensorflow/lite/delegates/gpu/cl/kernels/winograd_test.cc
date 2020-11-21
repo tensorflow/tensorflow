@@ -78,9 +78,13 @@ TEST_F(OpenCLOperationTest, Winograd4x4To36) {
     for (auto precision : env_.GetSupportedPrecisions()) {
       float eps;
       if (precision == CalculationsPrecision::F32) {
-        eps = 1e-5f * (env_.device().SupportsFP32RTN() ? 1.0f : 4.0f);
+        eps = 1e-5f * (env_.device().GetInfo().opencl_info.supports_fp32_rtn
+                           ? 1.0f
+                           : 4.0f);
       } else {
-        eps = 1e-2f * (env_.device().SupportsFP16RTN() ? 1.0f : 4.0f);
+        eps = 1e-2f * (env_.device().GetInfo().opencl_info.supports_fp16_rtn
+                           ? 1.0f
+                           : 4.0f);
       }
       OperationDef op_def;
       op_def.precision = precision;
@@ -151,9 +155,13 @@ TEST_F(OpenCLOperationTest, Winograd36To4x4) {
     for (auto precision : env_.GetSupportedPrecisions()) {
       float eps;
       if (precision == CalculationsPrecision::F32) {
-        eps = 1e-5f * (env_.device().SupportsFP32RTN() ? 1.0f : 4.0f);
+        eps = 1e-5f * (env_.device().GetInfo().opencl_info.supports_fp32_rtn
+                           ? 1.0f
+                           : 4.0f);
       } else {
-        eps = 1e-2f * (env_.device().SupportsFP16RTN() ? 1.0f : 4.0f);
+        eps = 1e-2f * (env_.device().GetInfo().opencl_info.supports_fp16_rtn
+                           ? 1.0f
+                           : 4.0f);
       }
       OperationDef op_def;
       op_def.precision = precision;

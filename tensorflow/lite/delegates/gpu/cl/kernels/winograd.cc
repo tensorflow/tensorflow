@@ -38,11 +38,11 @@ Winograd4x4To36::Winograd4x4To36(const OperationDef& definition,
   work_group_size_ = int3(32, 1, 1);
   code_ = GetWinograd4x4To36Code(definition_);
   if (gpu_info.IsAdreno()) {
-    compiler_options_.push_back(CompilerOptions::ADRENO_MORE_WAVES);
+    compiler_options_.push_back(CompilerOptions::kAdrenoMoreWaves);
   }
   if (definition_.precision == CalculationsPrecision::F16 &&
       gpu_info.IsPowerVR()) {
-    compiler_options_.push_back(CompilerOptions::POWERVR_FP16);
+    compiler_options_.push_back(CompilerOptions::kClPowervrFp16);
   }
 }
 
@@ -285,11 +285,11 @@ void Winograd4x4To36::GetPossibleKernelWorkGroups(
     TuningType tuning_type, const GpuInfo& gpu_info,
     const KernelInfo& kernel_info, std::vector<int3>* work_groups) const {
   switch (tuning_type) {
-    case TuningType::EXHAUSTIVE:
+    case TuningType::kExhaustive:
       GetPossibleWorkGroups(tuning_type, gpu_info, kernel_info, grid_size_,
                             work_groups);
       return;
-    case TuningType::FAST:
+    case TuningType::kFast:
     default:
       work_groups->push_back(SelectBestWorkGroup(kernel_info));
       return;
@@ -310,7 +310,7 @@ Winograd36To4x4::Winograd36To4x4(const OperationDef& definition,
   work_group_size_ = int3(32, 1, 1);
   if (definition_.precision == CalculationsPrecision::F16 &&
       gpu_info.IsPowerVR()) {
-    compiler_options_.push_back(CompilerOptions::POWERVR_FP16);
+    compiler_options_.push_back(CompilerOptions::kClPowervrFp16);
   }
   code_ = GetWinograd36To4x4Code(definition_);
 }
@@ -481,11 +481,11 @@ void Winograd36To4x4::GetPossibleKernelWorkGroups(
     TuningType tuning_type, const GpuInfo& gpu_info,
     const KernelInfo& kernel_info, std::vector<int3>* work_groups) const {
   switch (tuning_type) {
-    case TuningType::EXHAUSTIVE:
+    case TuningType::kExhaustive:
       GetPossibleWorkGroups(tuning_type, gpu_info, kernel_info, grid_size_,
                             work_groups);
       return;
-    case TuningType::FAST:
+    case TuningType::kFast:
     default:
       work_groups->push_back(SelectBestWorkGroup(kernel_info));
       return;

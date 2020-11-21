@@ -117,12 +117,18 @@ Status ParseArgumentShapes(
     absl::string_view input_shapes_str,
     llvm::SmallVectorImpl<TensorOrResourceShape>& arg_shapes) {
   arg_shapes.clear();
-  std::vector<std::vector<int>> input_shapes_vector;
+  std::vector<llvm::Optional<std::vector<int>>> input_shapes_vector;
   TF_RETURN_IF_ERROR(ParseNodeShapes(input_shapes_str, input_shapes_vector));
   arg_shapes.resize(input_shapes_vector.size());
-  for (const auto& shape : llvm::enumerate(input_shapes_vector))
+  for (const auto& shape : llvm::enumerate(input_shapes_vector)) {
+    if (!shape.value().hasValue()) {
+      TF_RETURN_IF_ERROR(TensorShapeUtils::MakeShape(
+          static_cast<int*>(nullptr), 0, &arg_shapes[shape.index()].shape));
+      continue;
+    }
     TF_RETURN_IF_ERROR(TensorShapeUtils::MakeShape(
-        shape.value(), &arg_shapes[shape.index()].shape));
+        shape.value().getValue(), &arg_shapes[shape.index()].shape));
+  }
 
   return Status::OK();
 }
@@ -180,7 +186,7 @@ Status ParseXlaArguments(absl::string_view input_shapes_str,
                          absl::string_view arg_kinds_str,
                          llvm::SmallVectorImpl<XlaArgument>& xla_arguments) {
   xla_arguments.clear();
-  std::vector<std::vector<int>> input_shapes_vector;
+  std::vector<llvm::Optional<std::vector<int>>> input_shapes_vector;
   TF_RETURN_IF_ERROR(
       tensorflow::ParseNodeShapes(input_shapes_str, input_shapes_vector));
   llvm::SmallVector<DataType, 4> dtypes_vector;
@@ -209,8 +215,14 @@ Status ParseXlaArguments(absl::string_view input_shapes_str,
                  arg_kinds_vector)) {
     XlaArgument& arg = std::get<0>(arg_components);
     TensorShape shape;
-    TF_RETURN_IF_ERROR(
-        TensorShapeUtils::MakeShape(std::get<1>(arg_components), &shape));
+    auto input_shapes = std::get<1>(arg_components);
+    if (input_shapes.hasValue()) {
+      TF_RETURN_IF_ERROR(
+          TensorShapeUtils::MakeShape(input_shapes.getValue(), &shape));
+    } else {
+      TF_RETURN_IF_ERROR(
+          TensorShapeUtils::MakeShape(static_cast<int*>(nullptr), 0, &shape));
+    }
     arg.shape = std::move(shape);
     arg.type = std::get<2>(arg_components);
     arg.kind = std::get<3>(arg_components);

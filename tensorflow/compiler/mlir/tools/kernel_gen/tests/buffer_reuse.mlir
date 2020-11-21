@@ -49,10 +49,56 @@ func @local_reuse_with_memref_maps(
     iterator_types = ["parallel"]
   } ins(%arg : memref<?xi64, offset: 2, strides: [3]>)
     outs(%result : memref<?xi64, offset: 2, strides: [3]>) {
-  ^bb0(%a: i64, %b: i64):
+  ^bb0(%a : i64, %b : i64):
     linalg.yield %a : i64
   }
   return %result : memref<?xi64, offset: 2, strides: [3]>
+}
+
+// CHECK-LABEL: @memref_reinterpret_cast_alias
+func @memref_reinterpret_cast_alias(%arg : memref<f32>, %n : index)
+    -> memref<?xf32> attributes {tf_entry} {
+  %c0 = constant 0 : index
+  %reinterpreted = memref_reinterpret_cast %arg to
+      offset: [0],
+      sizes: [%n],
+      strides: [%c0]: memref<f32> to memref<?xf32>
+
+  // CHECK: alloc
+  // CHECK-SAME: reuse_input_candidates = [0 : index]
+  %result = alloc(%n) : memref<?xf32>
+
+  // reinterpreted (arg) and result are of same size.
+  linalg.generic {
+    indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>],
+    iterator_types = ["parallel"]
+  } ins(%reinterpreted : memref<?xf32>) outs(%result : memref<?xf32>) {
+  ^bb0(%a : f32, %b : f32):
+    linalg.yield %a : f32
+  }
+
+  return %result : memref<?xf32>
+}
+
+// CHECK-LABEL: @memref_cast_alias
+func @memref_cast_alias(%arg : memref<*xf32>, %n : index)
+    -> memref<?xf32> attributes {tf_entry} {
+  %casted = memref_cast %arg : memref<*xf32> to memref<?xf32>
+
+  // CHECK: alloc
+  // CHECK-SAME: reuse_input_candidates = [0 : index]
+  %result = alloc(%n) : memref<?xf32>
+
+  // reinterpreted (arg) and result are of same size.
+  linalg.generic {
+    indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>],
+    iterator_types = ["parallel"]
+  } ins(%casted : memref<?xf32>) outs(%result : memref<?xf32>) {
+  ^bb0(%a : f32, %b : f32):
+    linalg.yield %a : f32
+  }
+
+  return %result : memref<?xf32>
 }
 
 // CHECK-LABEL: @indirect_size_equality
@@ -65,7 +111,7 @@ func @indirect_size_equality(%arg0 : memref<?xi64>,
     indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>],
     iterator_types = ["parallel"]
   } ins(%arg0 : memref<?xi64>) outs(%arg1 : memref<?xi64>) {
-  ^bb0(%a: i64, %b: i64):
+  ^bb0(%a : i64, %b : i64):
     linalg.yield %a : i64
   }
 
@@ -78,7 +124,7 @@ func @indirect_size_equality(%arg0 : memref<?xi64>,
     indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>],
     iterator_types = ["parallel"]
   } ins(%arg0 : memref<?xi64>) outs(%result : memref<?xi64>) {
-  ^bb0(%a: i64, %b: i64):
+  ^bb0(%a : i64, %b : i64):
     linalg.yield %a : i64
   }
 
@@ -317,7 +363,7 @@ func @abs_unranked_i64(%arg : memref<*xi64>,
     indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>],
     iterator_types = ["parallel"]
   } ins(%flat_arg : memref<?xi64>) outs(%flat_result : memref<?xi64>) {
-  ^bb0(%a: i64, %b: i64):
+  ^bb0(%a : i64, %b : i64):
     %c0 = constant 0 : i64
     %a_pos = cmpi "sge", %a, %c0 : i64
     %a_neg = subi %c0, %a : i64

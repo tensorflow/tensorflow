@@ -291,7 +291,7 @@ TEST_F(HloPassPipelineTest, SetHloModuleMetadata) {
                   ElementsAre(module_group.module(0).unique_id(),
                               module_group.module(1).unique_id()));
       EXPECT_GT(pass_metadata.start_timestamp_usec(), 0);
-      EXPECT_LT(pass_metadata.start_timestamp_usec(),
+      EXPECT_LE(pass_metadata.start_timestamp_usec(),
                 pass_metadata.end_timestamp_usec());
     }
   }

@@ -34,11 +34,14 @@ from tensorflow.python.ops.rnn import _best_effort_input_batch_size
 from tensorflow.python.ops.rnn import _dynamic_rnn_loop
 from tensorflow.python.ops.rnn import _should_cache
 from tensorflow.python.ops.rnn import _transpose_batch_time
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export(v1=["lite.experimental.nn.dynamic_rnn"])
+@deprecation.deprecated(
+    None, "Use `keras.layers.LSTM` instead.")
 def dynamic_rnn(cell,
                 inputs,
                 sequence_length=None,

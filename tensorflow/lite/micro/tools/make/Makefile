@@ -249,9 +249,6 @@ MICROLITE_CC_KERNEL_SRCS := $(filter-out $(MICROLITE_TEST_SRCS), $(MICROLITE_CC_
 MICROLITE_TEST_HDRS := \
 $(wildcard tensorflow/lite/micro/testing/*.h)
 
-MICROLITE_TEST_HELPERS_SRC := \
-tensorflow/lite/micro/test_helpers.cc
-
 MICROLITE_CC_BASE_SRCS := \
 $(wildcard tensorflow/lite/micro/*.cc) \
 $(wildcard tensorflow/lite/micro/benchmarks/*model_data.cc) \
@@ -268,10 +265,6 @@ tensorflow/lite/schema/schema_utils.cc
 
 MICROLITE_CC_SRCS := $(filter-out $(MICROLITE_TEST_SRCS), $(MICROLITE_CC_BASE_SRCS))
 MICROLITE_CC_SRCS := $(filter-out $(MICROLITE_BENCHMARK_SRCS), $(MICROLITE_CC_SRCS))
-MICROLITE_CC_SRCS := $(filter-out $(MICROLITE_TEST_HELPERS_SRC), $(MICROLITE_CC_SRCS))
-
-MICROLITE_TEST_HELPERS_HDRS := \
-tensorflow/lite/micro/test_helpers.h
 
 MICROLITE_CC_HDRS := \
 $(wildcard tensorflow/lite/micro/*.h) \
@@ -346,8 +339,6 @@ tensorflow/lite/portable_type_to_tflitetype.h \
 tensorflow/lite/schema/schema_generated.h \
 tensorflow/lite/schema/schema_utils.h \
 tensorflow/lite/version.h
-
-MICROLITE_CC_HDRS := $(filter-out $(MICROLITE_TEST_HELPERS_HDRS), $(MICROLITE_CC_HDRS))
 
 # TODO(b/165940489): Figure out how to avoid including fixed point
 # platform-specific headers.
@@ -455,7 +446,6 @@ ALL_TAGS += $(TARGET_ARCH)
 
 ALL_SRCS := \
 	$(MICROLITE_CC_SRCS) \
-	$(MICROLITE_TEST_HELPERS_SRC) \
 	$(MICROLITE_TEST_SRCS)
 
 # Where compiled objects are stored.

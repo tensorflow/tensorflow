@@ -33,9 +33,21 @@ class ShapeInference
     : public PassWrapper<ShapeInference, OperationPass<ModuleOp>> {
  public:
   ShapeInference() = default;
-  void runOnOperation() override {
-    if (failed(InferModuleShape(getOperation()))) return signalPassFailure();
+  ShapeInference(const ShapeInference &) {}
+  explicit ShapeInference(int64_t max_iterations) {
+    max_iterations_ = max_iterations;
   }
+  void runOnOperation() override {
+    if (failed(InferModuleShape(getOperation(), max_iterations_))) {
+      return signalPassFailure();
+    }
+  }
+
+ private:
+  Option<int64_t> max_iterations_{
+      *this, "max-iterations",
+      llvm::cl::desc("Maximum shape inference iterations."),
+      llvm::cl::init(10)};
 };
 
 PassRegistration<ShapeInference> pass(

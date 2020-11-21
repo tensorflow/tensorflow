@@ -31,7 +31,7 @@ func @dealloc(%ctx: !tf_framework.op_kernel_context,
 
 // CHECK-LABEL: func @assert
 func @assert(%ctx: !tf_framework.op_kernel_context) {
-  tf_framework.report_error %ctx, "Everything is awesome"
+  tf_framework.report_error %ctx, "INVALID_ARGUMENT", "Everything is awesome"
   return
 }
 

@@ -4567,5 +4567,46 @@ TEST_F(HloEvaluatorTest, MapBF16) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
+TEST_F(HloEvaluatorTest, DotUpcast) {
+  const absl::string_view hlo_text = R"(
+  HloModule test
+  ENTRY DotUpcast {
+    l = s16[4,3]{1,0} parameter(0)
+    r = s8[3,2]{1,0} parameter(1)
+    ROOT result = s32[4,2] dot(l, r), lhs_contracting_dims={1},
+                                      rhs_contracting_dims={0}
+  }
+  )";
+  // lhs:
+  // s16[4,3] {
+  //  { 1, 2, 3 },
+  //  { 5, 6, 7 },
+  //  { 9, 10, 11 },
+  //  { 13, 14, 15 },
+  // }
+  auto lhs_array = absl::make_unique<Array2D<int16>>(4, 3);
+  lhs_array->FillUnique(1);
+  auto lhs_literal = LiteralUtil::CreateR2FromArray2D<int16>(*lhs_array);
+
+  // rhs:
+  // s8[3,2] {
+  //  { 1, 2 },
+  //  { 3, 4 },
+  //  { 5, 6 },
+  // }
+  auto rhs_array = absl::make_unique<Array2D<int8>>(3, 2);
+  rhs_array->FillUnique(1);
+  auto rhs_literal = LiteralUtil::CreateR2FromArray2D<int8>(*rhs_array);
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  TF_ASSERT_OK_AND_ASSIGN(Literal result,
+                          Evaluate({&lhs_literal, &rhs_literal}));
+
+  auto expected_array =
+      Array2D<int32>({{22, 28}, {58, 76}, {94, 124}, {130, 172}});
+  auto expected = LiteralUtil::CreateR2FromArray2D<int32>(expected_array);
+
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
 }  // namespace
 }  // namespace xla

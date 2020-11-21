@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/elementwise.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/mean_stddev_normalization.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/reduce.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/transpose.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/convolution_selector.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/convolution_transposed_selector.h"
@@ -35,28 +34,34 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
+#include "tensorflow/lite/delegates/gpu/common/winograd_util.h"
 
 namespace tflite {
 namespace gpu {
 namespace cl {
 namespace {
-bool IsSuitableForWinograd4x4To6x6(const Convolution2DAttributes& attr,
-                                   const GpuInfo& gpu_info,
-                                   const BHWC& dst_shape) {
+bool IsRecommendedForWinograd4x4To6x6(const Convolution2DAttributes& attr,
+                                      const GpuInfo& gpu_info,
+                                      const BHWC& dst_shape) {
   const int tiles_x = DivideRoundUp(dst_shape.w, 4);
   const int tiles_y = DivideRoundUp(dst_shape.h, 4);
+  const int total_tiles = tiles_x * tiles_y;
   const int src_depth = DivideRoundUp(attr.weights.shape.i, 4);
   const int dst_depth = DivideRoundUp(attr.weights.shape.o, 4);
-  const bool suitable_attributes =
-      attr.weights.shape.w == 3 && attr.weights.shape.h == 3 &&
-      attr.dilations == HW(1, 1) && attr.strides == HW(1, 1);
   // Mali among other devices has smaller SIMD line size
-  const int min_depth = gpu_info.IsMali() ? 16 : 32;
-  const int min_hw = gpu_info.IsMali() ? 32 : 128;
+  int min_depth = gpu_info.IsMali() ? 16 : 32;
+  const int min_tiles = gpu_info.IsMali() ? 32 : 128;
+  if (total_tiles >= min_tiles * 8) {
+    min_depth /= 4;
+    min_depth = std::max(min_depth, 8);
+  } else if (total_tiles >= min_tiles * 4) {
+    min_depth /= 2;
+    min_depth = std::max(min_depth, 8);
+  }
   const bool recommended_channels =
       dst_depth % 4 == 0 && src_depth >= min_depth && dst_depth >= min_depth;
-  const bool recommended_hw = tiles_x * tiles_y >= min_hw;
-  return suitable_attributes && recommended_channels && recommended_hw;
+  const bool recommended_hw = total_tiles >= min_tiles;
+  return recommended_channels && recommended_hw;
 }
 
 absl::Status WinogradFromNode(const GpuInfo& gpu_info,
@@ -66,8 +71,11 @@ absl::Status WinogradFromNode(const GpuInfo& gpu_info,
                               const BHWC& input_shape, const BHWC& output_shape,
                               const Convolution2DAttributes& attr,
                               GPUOperationsSubgraph* gpu_subgraph) {
-  if (!IsSuitableForWinograd4x4To6x6(attr, gpu_info, output_shape)) {
+  if (!IsSuitableForWinograd4x4To6x6(attr)) {
     return absl::UnimplementedError("No implementation for this case.");
+  }
+  if (!IsRecommendedForWinograd4x4To6x6(attr, gpu_info, output_shape)) {
+    return absl::UnimplementedError("Not recommended for this case.");
   }
 
   const int tiles_x = DivideRoundUp(output_shape.w, 4);
@@ -204,7 +212,7 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
       conv_op.output_ids = {static_cast<int>(outputs[0]->id)};
       OperationDef conv_def = op_def;
       conv_def.src_tensors[1] = weights_desc;
-      ConvWeightsDescription conv_weights_desc;
+      WeightsDescription conv_weights_desc;
       conv_op.operation = SelectConvolutionWithDynamicWeights(
           attr, weights_shape, dst_shape, gpu_info, conv_def, hints,
           &conv_weights_desc);
@@ -281,7 +289,7 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
         conv_op.output_ids = {static_cast<int>(outputs[0]->id)};
         OperationDef conv_def = op_def;
         conv_def.src_tensors[1] = weights_desc;
-        ConvWeightsDescription conv_weights_desc;
+        WeightsDescription conv_weights_desc;
         conv_op.operation = SelectConvolutionWithDynamicWeights(
             attr, weights_shape, output_shape, gpu_info, conv_def, hints,
             &conv_weights_desc);
@@ -309,8 +317,50 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
     case OperationType::CONVOLUTION_TRANSPOSED: {
       auto attr = absl::any_cast<ConvolutionTransposedAttributes>(
           node.operation.attributes);
-      *gpu_op = SelectConvolutionTransposed(attr, gpu_info, op_def);
-      return absl::OkStatus();
+      if (inputs.size() == 1) {
+        *gpu_op = SelectConvolutionTransposed(attr, gpu_info, op_def);
+        return absl::OkStatus();
+      } else {
+        // CONVOLUTION_TRANSPOSED with runtime weights
+        auto weights_shape = inputs[1]->tensor.shape;
+        if (attr.bias.data.empty()) {
+          attr.bias.shape = Linear(weights_shape.b);
+          attr.bias.data.resize(weights_shape.b, 0.0f);
+        }
+        TensorDescriptor weights_desc = {op_def.src_tensors[1].data_type,
+                                         TensorStorageType::BUFFER,
+                                         Layout::BHWC};
+        gpu_subgraph->operations.clear();
+        gpu_subgraph->operations.resize(2);
+        auto& converter_op = gpu_subgraph->operations[0];
+        auto& conv_op = gpu_subgraph->operations[1];
+        conv_op.input_ids = {static_cast<int>(inputs[0]->id), -1};
+        conv_op.output_ids = {static_cast<int>(outputs[0]->id)};
+        OperationDef conv_def = op_def;
+        conv_def.src_tensors[1] = weights_desc;
+        WeightsDescription conv_weights_desc;
+        conv_op.operation = SelectConvolutionTransposedWithDynamicWeights(
+            attr, gpu_info, conv_def, &conv_weights_desc);
+
+        int aligned_output =
+            AlignByN(weights_shape.b, conv_weights_desc.output_group_size * 4);
+        int aligned_input = AlignByN(weights_shape.c, 4);
+        gpu_subgraph->new_tensors = {
+            {BHWC(1, 1, 1,
+                  aligned_output * aligned_input * weights_shape.h *
+                      weights_shape.w),
+             weights_desc}};
+        OperationDef converter_def;
+        converter_def.precision = op_def.precision;
+        converter_def.src_tensors.push_back(op_def.src_tensors[1]);
+        converter_def.dst_tensors.push_back(weights_desc);
+
+        converter_op.input_ids = {static_cast<int>(inputs[1]->id)};
+        converter_op.output_ids = {-1};
+        converter_op.operation = SelectConverterToConvWeights(
+            conv_weights_desc, converter_def, hints);
+        return absl::OkStatus();
+      }
     }
     case OperationType::DEPTHWISE_CONVOLUTION: {
       auto attr = absl::any_cast<DepthwiseConvolution2DAttributes>(
@@ -346,7 +396,9 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
     }
     case OperationType::MEAN: {
       auto attr = absl::any_cast<MeanAttributes>(node.operation.attributes);
-      return SelectMean(attr, op_def, gpu_info, gpu_op);
+      *gpu_op = SelectReduce(attr.dims, inputs[0]->tensor.shape, op_type,
+                             op_def, gpu_info);
+      return absl::OkStatus();
     }
     case OperationType::MEAN_STDDEV_NORMALIZATION: {
       MeanStdDevNormalization operation = CreateMeanStdDevNormalization(
@@ -465,12 +517,8 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
     case OperationType::REDUCE_PRODUCT:
     case OperationType::REDUCE_SUM: {
       auto attr = absl::any_cast<ReduceAttributes>(node.operation.attributes);
-      if (attr.dims != std::set<Axis>({Axis::CHANNELS})) {
-        return absl::UnimplementedError(
-            "Currently we can reduce only in channels dimension.");
-      }
-      GPUOperation operation = CreateReduce(op_def, attr, op_type);
-      *gpu_op = absl::make_unique<GPUOperation>(std::move(operation));
+      *gpu_op = SelectReduce(attr.dims, inputs[0]->tensor.shape, op_type,
+                             op_def, gpu_info);
       return absl::OkStatus();
     }
     default:

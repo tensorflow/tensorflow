@@ -345,6 +345,11 @@ std::unique_ptr<OperationPass<FuncOp>> CreateTPUColocateCompositeResourceOps();
 // run-time according to compilation result.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUVariableReformattingPass();
 
+// Creates a pass that wraps ops with the same `_xla_outside_compilation`
+// attribute value in a tf_device.launch op with host device assignment.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateOutsideCompiledToHostLaunchPass();
+
 // Creates a pass that groups outside compiled operations (CPU ops inside TPU
 // cluster) into clusters that can be extracted and run on the CPU.
 std::unique_ptr<OperationPass<ModuleOp>>

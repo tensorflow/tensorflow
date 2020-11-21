@@ -103,7 +103,7 @@ Status DataServiceWorkerImpl::ProcessTask(const ProcessTaskRequest* request,
 }
 
 Status DataServiceWorkerImpl::ProcessTaskInternal(const TaskDef& task_def)
-    EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::unique_ptr<Task>& task = tasks_[task_def.task_id()];
   if (task) {
     VLOG(1) << "Received request to process already-processed task "
@@ -245,7 +245,7 @@ Status DataServiceWorkerImpl::GetWorkerTasks(
   return Status::OK();
 }
 
-void DataServiceWorkerImpl::TaskCompletionThread() LOCKS_EXCLUDED(mu_) {
+void DataServiceWorkerImpl::TaskCompletionThread() TF_LOCKS_EXCLUDED(mu_) {
   while (true) {
     {
       mutex_lock l(mu_);
@@ -269,7 +269,7 @@ void DataServiceWorkerImpl::TaskCompletionThread() LOCKS_EXCLUDED(mu_) {
   }
 }
 
-Status DataServiceWorkerImpl::SendTaskUpdates() LOCKS_EXCLUDED(mu_) {
+Status DataServiceWorkerImpl::SendTaskUpdates() TF_LOCKS_EXCLUDED(mu_) {
   std::vector<TaskProgress> task_progress;
   {
     mutex_lock l(mu_);
@@ -292,7 +292,7 @@ Status DataServiceWorkerImpl::SendTaskUpdates() LOCKS_EXCLUDED(mu_) {
   return Status::OK();
 }
 
-void DataServiceWorkerImpl::HeartbeatThread() LOCKS_EXCLUDED(mu_) {
+void DataServiceWorkerImpl::HeartbeatThread() TF_LOCKS_EXCLUDED(mu_) {
   while (true) {
     int64 next_heartbeat_micros =
         Env::Default()->NowMicros() + (config_.heartbeat_interval_ms() * 1000);
@@ -321,7 +321,7 @@ void DataServiceWorkerImpl::HeartbeatThread() LOCKS_EXCLUDED(mu_) {
   }
 }
 
-Status DataServiceWorkerImpl::Heartbeat() LOCKS_EXCLUDED(mu_) {
+Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
   std::vector<int64> current_tasks;
   {
     mutex_lock l(mu_);

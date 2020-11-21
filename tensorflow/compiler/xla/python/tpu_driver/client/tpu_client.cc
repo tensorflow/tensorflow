@@ -427,7 +427,12 @@ StatusOr<std::unique_ptr<PyTpuBuffer>> PyTpuBuffer::CopyToDevice(
 
 Status PyTpuBuffer::BlockHostUntilReady() {
   tensorflow::profiler::TraceMe traceme("PyTpuBuffer::BlockHostUntilReady");
-  return DeviceBuffer()->handle->OnReady()->Await();
+  std::shared_ptr<TpuSharedBuffer> device_buffer = DeviceBuffer();
+  if (!device_buffer) {
+    return InvalidArgument(
+        "BlockHostUntilReady() called on deleted or donated buffer");
+  }
+  return device_buffer->handle->OnReady()->Await();
 }
 
 /* static */
