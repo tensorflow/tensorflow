@@ -88,14 +88,14 @@ std::vector<bool> GetDynamicInputInfo(
 xla::StatusOr<std::vector<RefPtr<XRTTupleAllocation>>> GetInputTuples(
     xla::LocalExecutable* executable, XRTMemoryManager::WorkingSet* working_set,
     xla::Backend* backend, const std::vector<InputCoords>& input_coords,
-    bool release_inputs) {
+    bool release_inputs, se::DeviceMemoryAllocator* allocator) {
   const xla::ComputationLayout& computation_layout =
       executable->executable()->module_config().entry_computation_layout();
 
   return GetInputTupleAllocations(
       input_coords, working_set, backend, computation_layout.parameter_count(),
       [&](int64 i) { return computation_layout.parameter_shape(i); },
-      release_inputs);
+      release_inputs, allocator);
 }
 
 xla::StatusOr<std::vector<RefPtr<XRTTupleAllocation>>> GetChainedOpInputTuples(
@@ -266,7 +266,7 @@ Status UpdateDynamicInputs(
 
 xla::StatusOr<RefPtr<XRTTupleAllocation>> CreateOutputTuple(
     se::Stream* stream, xla::ExecutionOutput run_result, xla::Backend* backend,
-    int device_ordinal) {
+    int device_ordinal, se::DeviceMemoryAllocator* allocator) {
   XRTTupleAllocation* output_tuple;
   xla::ScopedShapedBuffer* shaped_buffer = run_result.MutableResult();
   if (shaped_buffer->on_device_shape().is_dynamic()) {
@@ -281,11 +281,12 @@ xla::StatusOr<RefPtr<XRTTupleAllocation>> CreateOutputTuple(
     TF_RETURN_IF_ERROR(XRTTupleAllocation::CreateFromBuffer(
         *shaped_buffer,
         xla::ShapeUtil::DeviceShapeToHostShape(output_device_shape),
-        output_device_shape, backend, device_ordinal, &output_tuple));
+        output_device_shape, backend, device_ordinal, &output_tuple,
+        allocator));
   } else {
     // Fast-path: Don't copy shapes of output buffer.
     TF_RETURN_IF_ERROR(XRTTupleAllocation::CreateFromBuffer(
-        *shaped_buffer, backend, device_ordinal, &output_tuple));
+        *shaped_buffer, backend, device_ordinal, &output_tuple, allocator));
   }
   // After the output tuple is created, we can release the output result
   // buffers, to make sure they won't be cleared by its destructor.
@@ -310,7 +311,7 @@ xla::StatusOr<RefPtr<XRTTupleAllocation>> RunExecutable(
 
   xla::ExecutableRunOptions run_options;
   run_options.set_stream(stream);
-  run_options.set_allocator(device_ref->backend()->memory_allocator());
+  run_options.set_allocator(device_ref->GetMemoryAllocator());
   run_options.set_intra_op_thread_pool(&context->eigen_cpu_device());
   run_options.set_rng_seed(rng_seed);
   if (config.run_id() != 0) {
@@ -359,7 +360,8 @@ xla::StatusOr<RefPtr<XRTTupleAllocation>> RunExecutable(
   TF_ASSIGN_OR_RETURN(
       RefPtr<XRTTupleAllocation> output_tuple_ptr,
       CreateOutputTuple(stream, std::move(run_result), device_ref->backend(),
-                        device_ref->device_ordinal()));
+                        device_ref->device_ordinal(),
+                        device_ref->GetMemoryAllocator()));
   // The ScopedShapedBuffer returned by the executable Run() API, in case of
   // input/output buffer aliasing, might have holes in it, which need to be
   // filled using the proper input tuples buffers which are the source of
@@ -377,7 +379,8 @@ xla::StatusOr<RefPtr<XRTTupleAllocation>> ExecuteComputation(
     xla::LocalExecutable* executable,
     absl::Span<const RefPtr<XRTTupleAllocation>> input_tuples,
     bool release_inputs, se::Stream* stream, int rng_seed,
-    const xrt::CommonExecutionConfig& config) {
+    const xrt::CommonExecutionConfig& config,
+    se::DeviceMemoryAllocator* allocator) {
   auto runfn = [&]() {
     return RunExecutable(context, device_ref, executable, input_tuples,
                          release_inputs, stream, rng_seed, config);
@@ -388,7 +391,7 @@ xla::StatusOr<RefPtr<XRTTupleAllocation>> ExecuteComputation(
   // memory, until either the runfn can run, or we run out of freeable memory.
   return memory_manager->Run<RefPtr<XRTTupleAllocation>>(
       runfn, device_ref->backend(), device_ref->device_ordinal(),
-      /*requested_free_size=*/0);
+      /*requested_free_size=*/0, allocator);
 }
 
 xla::StatusOr<RefPtr<XRTTupleAllocation>> ExecuteComputation(
@@ -396,16 +399,16 @@ xla::StatusOr<RefPtr<XRTTupleAllocation>> ExecuteComputation(
     XRTGenericDeviceAccessor::ScopedRef* device_ref,
     xla::LocalExecutable* executable,
     const std::vector<InputCoords>& input_coords, bool release_inputs,
-    se::Stream* stream, int rng_seed,
-    const xrt::CommonExecutionConfig& config) {
+    se::Stream* stream, int rng_seed, const xrt::CommonExecutionConfig& config,
+    se::DeviceMemoryAllocator* allocator) {
   XRTMemoryManager::WorkingSet working_set(memory_manager);
   TF_ASSIGN_OR_RETURN(
       std::vector<RefPtr<XRTTupleAllocation>> input_tuples,
       GetInputTuples(executable, &working_set, device_ref->backend(),
-                     input_coords, release_inputs));
+                     input_coords, release_inputs, allocator));
   return ExecuteComputation(context, memory_manager.get(), device_ref,
                             executable, input_tuples, release_inputs, stream,
-                            rng_seed, config);
+                            rng_seed, config, allocator);
 }
 
 // XRTExecuteOp
@@ -488,7 +491,8 @@ Status XRTExecuteOp::DoWork(OpKernelContext* context) {
       RefPtr<XRTTupleAllocation> output_tuple,
       ExecuteComputation(context, memory_manager, &device_ref, executable,
                          input_coords, release_inputs, stream, rng_seed,
-                         config_proto.common_config()));
+                         config_proto.common_config(),
+                         device_ref.GetMemoryAllocator()));
 
   return CreateExecuteOutput(context, memory_manager.get(),
                              std::move(output_tuple),
@@ -567,11 +571,13 @@ Status XRTExecuteChainedOp::DoWork(OpKernelContext* context) {
 
     return ExecuteComputation(
         context, memory_manager.get(), &device_ref, executable, input_tuples,
-        /*release_inputs=*/false, stream, rng_seed, config.common_config());
+        /*release_inputs=*/false, stream, rng_seed, config.common_config(),
+        device_ref.GetMemoryAllocator());
   };
 
   return ExecuteChained(context, memory_manager, device_ref.backend(),
-                        device_ref.device_ordinal(), plan, config, execute_op);
+                        device_ref.device_ordinal(), plan, config, execute_op,
+                        device_ref.GetMemoryAllocator());
 }
 
 XRTExecuteChainedOp::~XRTExecuteChainedOp() = default;

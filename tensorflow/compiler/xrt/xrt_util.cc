@@ -150,7 +150,8 @@ Status MakeOutput(const RefPtr<XRTTupleAllocation>& output, int64 index,
 Status PopulateOpWorkingSet(xla::Backend* backend,
                             const xrt::XRTChainedExecuteOp& op,
                             int current_index, const ScopedHandles& outputs,
-                            XRTMemoryManager::WorkingSet* working_set) {
+                            XRTMemoryManager::WorkingSet* working_set,
+                            se::DeviceMemoryAllocator* allocator) {
   for (int i = 0; i < op.inputs_size(); ++i) {
     auto& input = op.inputs(i);
     if (input.op_index() >= current_index) {
@@ -158,8 +159,8 @@ Status PopulateOpWorkingSet(xla::Backend* backend,
           "Input index ", input.op_index(),
           " is above the current position: ", current_index);
     }
-    TF_RETURN_IF_ERROR(
-        working_set->LookupAndPin(backend, outputs[input.op_index()]));
+    TF_RETURN_IF_ERROR(working_set->LookupAndPin(
+        backend, outputs[input.op_index()], allocator));
   }
   return Status::OK();
 }
@@ -256,7 +257,8 @@ xla::StatusOr<std::vector<RefPtr<XRTTupleAllocation>>> GetInputTupleAllocations(
     const std::vector<InputCoords>& input_coords,
     XRTMemoryManager::WorkingSet* working_set, xla::Backend* backend,
     int64 num_input_shapes,
-    const std::function<xla::Shape(int64)>& shape_getter, bool release_inputs) {
+    const std::function<xla::Shape(int64)>& shape_getter, bool release_inputs,
+    se::DeviceMemoryAllocator* allocator) {
   if (input_coords.size() != num_input_shapes) {
     return errors::InvalidArgument(
         "Number of inputs does not match executable proto input shapes: ",
@@ -266,7 +268,7 @@ xla::StatusOr<std::vector<RefPtr<XRTTupleAllocation>>> GetInputTupleAllocations(
   input_tuples.reserve(input_coords.size());
   for (size_t i = 0; i < input_coords.size(); ++i) {
     TF_RETURN_IF_ERROR(
-        working_set->LookupAndPin(backend, input_coords[i].handle));
+        working_set->LookupAndPin(backend, input_coords[i].handle, allocator));
     auto tuple = working_set->PinnedTuples().back();
     if (release_inputs) {
       // We are holding a reference to the tuple, so we can safely delete it
@@ -375,7 +377,8 @@ Status ExecuteChained(OpKernelContext* context,
                       xla::Backend* backend, int device_ordinal,
                       const xrt::XRTChainedExecutePlan& plan,
                       const xrt::XRTChainedExecuteConfig& config,
-                      const ChainedExecuteFn& execute_op) {
+                      const ChainedExecuteFn& execute_op,
+                      se::DeviceMemoryAllocator* allocator) {
   // Create the vector which tracks the uses of the intermediate chained
   // operations outputs.
   std::vector<int64> uses(plan.ops_size(), 0);
@@ -399,8 +402,8 @@ Status ExecuteChained(OpKernelContext* context,
       // handler. Populating the working set makes sure the input allocations
       // for this execute operations are pinned to device memory.
       XRTMemoryManager::WorkingSet working_set(memory_manager);
-      TF_RETURN_IF_ERROR(
-          PopulateOpWorkingSet(backend, op, i, outputs, &working_set));
+      TF_RETURN_IF_ERROR(PopulateOpWorkingSet(backend, op, i, outputs,
+                                              &working_set, allocator));
       TF_ASSIGN_OR_RETURN(auto tuple,
                           execute_op(op, working_set.PinnedTuples()));
       TF_RETURN_IF_ERROR(outputs.Add(i, std::move(tuple)));
