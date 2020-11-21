@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/weights_conversion.h"
+#include "tensorflow/lite/delegates/gpu/common/task/weights_layout.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 
@@ -49,16 +50,28 @@ class ConvolutionTransposed3x3Thin : public GPUOperation {
   ConvolutionTransposed3x3Thin& operator=(const ConvolutionTransposed3x3Thin&) =
       delete;
 
+  WeightsDescription GetWeightsDescription() const {
+    WeightsDescription desc;
+    desc.layout = WeightsLayout::kOICustomSSpatialI4O4;
+    desc.spatial_remap = GetSpatialWeightsRemap();
+    return desc;
+  }
+
  private:
-  friend ConvolutionTransposed3x3Thin CreateConvolutionTransposed3x3Thin(
-      const GpuInfo& gpu_info, const OperationDef& definition,
-      const ConvolutionTransposedAttributes& attr);
   explicit ConvolutionTransposed3x3Thin(
       const OperationDef& definition,
       const ConvolutionTransposedAttributes& attr);
+
+  friend ConvolutionTransposed3x3Thin CreateConvolutionTransposed3x3Thin(
+      const GpuInfo& gpu_info, const OperationDef& definition,
+      const ConvolutionTransposedAttributes& attr);
+  friend ConvolutionTransposed3x3Thin
+  CreateConvolutionTransposed3x3ThinDynamicWeights(
+      const GpuInfo& gpu_info, const OperationDef& definition,
+      const ConvolutionTransposedAttributes& attr);
+
   template <DataType T>
-  void UploadData(const tflite::gpu::Tensor<OHWI, T>& weights,
-                  const tflite::gpu::Tensor<Linear, T>& biases);
+  void UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights);
 
   std::vector<int> GetSpatialWeightsRemap() const;
 
@@ -67,9 +80,8 @@ class ConvolutionTransposed3x3Thin : public GPUOperation {
 };
 
 template <DataType T>
-void ConvolutionTransposed3x3Thin::UploadData(
-    const tflite::gpu::Tensor<OHWI, T>& weights,
-    const tflite::gpu::Tensor<Linear, T>& biases) {
+void ConvolutionTransposed3x3Thin::UploadWeights(
+    const tflite::gpu::Tensor<OHWI, T>& weights) {
   const int src_depth = DivideRoundUp(weights.shape.i, 4);
   const int dst_depth = DivideRoundUp(weights.shape.o, 4);
   const int kernel_x = 3;  //  This operation support only 3x3 kernel
@@ -83,33 +95,17 @@ void ConvolutionTransposed3x3Thin::UploadData(
   desc.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
   desc.element_size = 4;
   desc.memory_type = MemoryType::CONSTANT;
-  desc.size = flt4_size * (flt4_count + dst_depth);
+  desc.size = flt4_size * flt4_count;
   desc.data.resize(desc.size);
 
   if (f32_weights) {
     float4* gpu_data = reinterpret_cast<float4*>(desc.data.data());
     RearrangeWeightsToOICustomSpatialI4O4(weights, GetSpatialWeightsRemap(),
                                           absl::MakeSpan(gpu_data, flt4_count));
-    for (int i = 0; i < dst_depth; ++i) {
-      float4 bias_value(0.0f);
-      for (int c = 0; c < 4; ++c) {
-        int ch = i * 4 + c;
-        bias_value[c] = ch < weights.shape.o ? biases.data[ch] : 0.0f;
-      }
-      gpu_data[flt4_count + i] = bias_value;
-    }
   } else {
     half4* gpu_data = reinterpret_cast<half4*>(desc.data.data());
     RearrangeWeightsToOICustomSpatialI4O4(weights, GetSpatialWeightsRemap(),
                                           absl::MakeSpan(gpu_data, flt4_count));
-    for (int i = 0; i < dst_depth; ++i) {
-      half4 bias_value(0.0f);
-      for (int c = 0; c < 4; ++c) {
-        int ch = i * 4 + c;
-        bias_value[c] = ch < weights.shape.o ? biases.data[ch] : 0.0f;
-      }
-      gpu_data[flt4_count + i] = bias_value;
-    }
   }
 
   args_.AddObject("weights",
@@ -120,6 +116,10 @@ bool IsConvolutionTransposed3x3ThinSupported(
     const ConvolutionTransposedAttributes& attr);
 
 ConvolutionTransposed3x3Thin CreateConvolutionTransposed3x3Thin(
+    const GpuInfo& gpu_info, const OperationDef& definition,
+    const ConvolutionTransposedAttributes& attr);
+
+ConvolutionTransposed3x3Thin CreateConvolutionTransposed3x3ThinDynamicWeights(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr);
 

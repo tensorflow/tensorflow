@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/weights_conversion.h"
+#include "tensorflow/lite/delegates/gpu/common/task/weights_layout.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 
@@ -52,6 +53,13 @@ class ConvolutionTransposed3x3 : public GPUOperation {
   ConvolutionTransposed3x3(const ConvolutionTransposed3x3&) = delete;
   ConvolutionTransposed3x3& operator=(const ConvolutionTransposed3x3&) = delete;
 
+  WeightsDescription GetWeightsDescription() const {
+    WeightsDescription desc;
+    desc.layout = WeightsLayout::kOICustomSSpatialI4O4;
+    desc.spatial_remap = GetSpatialWeightsRemap();
+    return desc;
+  }
+
   enum class WeightsUploadType {
     LOCAL_MEM_ASYNC,
     LOCAL_MEM_BY_THREADS,
@@ -65,6 +73,10 @@ class ConvolutionTransposed3x3 : public GPUOperation {
   friend ConvolutionTransposed3x3 CreateConvolutionTransposed3x3(
       const GpuInfo& gpu_info, const OperationDef& definition,
       const ConvolutionTransposedAttributes& attr);
+  friend ConvolutionTransposed3x3 CreateConvolutionTransposed3x3DynamicWeights(
+      const GpuInfo& gpu_info, const OperationDef& definition,
+      const ConvolutionTransposedAttributes& attr);
+
   template <DataType T>
   void UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights);
 
@@ -121,6 +133,10 @@ bool IsConvolutionTransposed3x3Supported(
     const ConvolutionTransposedAttributes& attr);
 
 ConvolutionTransposed3x3 CreateConvolutionTransposed3x3(
+    const GpuInfo& gpu_info, const OperationDef& definition,
+    const ConvolutionTransposedAttributes& attr);
+
+ConvolutionTransposed3x3 CreateConvolutionTransposed3x3DynamicWeights(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr);
 

@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/weights_conversion.h"
+#include "tensorflow/lite/delegates/gpu/common/task/weights_layout.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 
@@ -54,6 +55,13 @@ class ConvolutionTransposed4x4 : public GPUOperation {
   ConvolutionTransposed4x4(const ConvolutionTransposed4x4&) = delete;
   ConvolutionTransposed4x4& operator=(const ConvolutionTransposed4x4&) = delete;
 
+  WeightsDescription GetWeightsDescription() const {
+    WeightsDescription desc;
+    desc.layout = WeightsLayout::kOICustomSSpatialI4O4;
+    desc.spatial_remap = GetSpatialWeightsRemap();
+    return desc;
+  }
+
   enum class WeightsUploadType {
     LOCAL_MEM_ASYNC,
     LOCAL_MEM_BY_THREADS,
@@ -63,11 +71,15 @@ class ConvolutionTransposed4x4 : public GPUOperation {
 
  private:
   ConvolutionTransposed4x4(const OperationDef& definition,
-                           const GpuInfo& gpu_info,
-                           const ConvolutionTransposedAttributes& attr);
+                           const GpuInfo& gpu_info);
+
   friend ConvolutionTransposed4x4 CreateConvolutionTransposed4x4(
       const GpuInfo& gpu_info, const OperationDef& definition,
       const ConvolutionTransposedAttributes& attr);
+  friend ConvolutionTransposed4x4 CreateConvolutionTransposed4x4DynamicWeights(
+      const GpuInfo& gpu_info, const OperationDef& definition,
+      const ConvolutionTransposedAttributes& attr);
+
   template <DataType T>
   void UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
                      WeightsUploadType weights_upload_type);
@@ -121,6 +133,10 @@ bool IsConvolutionTransposed4x4Supported(
     const ConvolutionTransposedAttributes& attr);
 
 ConvolutionTransposed4x4 CreateConvolutionTransposed4x4(
+    const GpuInfo& gpu_info, const OperationDef& definition,
+    const ConvolutionTransposedAttributes& attr);
+
+ConvolutionTransposed4x4 CreateConvolutionTransposed4x4DynamicWeights(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr);
 
