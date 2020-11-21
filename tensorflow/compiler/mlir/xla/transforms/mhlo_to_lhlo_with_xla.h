@@ -58,6 +58,7 @@ class LhloDialectEmitter : public ::xla::DfsHloVisitorWithDefault {
       ::xla::HloInstruction* instr);
   ::xla::StatusOr<lmhlo::CustomCallOp> EmitCustomCallOp(
       ::xla::HloInstruction* instr);
+  ::xla::StatusOr<lmhlo::ReduceOp> EmitReduceOp(::xla::HloInstruction* instr);
 
   ::xla::StatusOr<mlir::GetGlobalMemrefOp> EmitConstant(
       ::xla::HloInstruction* instr) {
