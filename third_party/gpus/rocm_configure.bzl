@@ -293,6 +293,7 @@ def _batch_files_exist(repository_ctx, libs_paths, bash_bin):
 
 def _select_rocm_lib_paths(repository_ctx, libs_paths, bash_bin):
     test_results = _batch_files_exist(repository_ctx, libs_paths, bash_bin)
+
     libs = {}
     i = 0
     for name, lib_paths in libs_paths:

@@ -1277,7 +1277,7 @@ __launch_bounds__(1024, 2) void DepthwiseConv2dBackpropFilterGPUKernelNHWCSmall(
           for (int delta = 16; delta >= kBlockDepth; delta /= 2) {
             val += GpuShuffleXorSync(active_threads, val, delta);
           }
-          if (!(thread_idx & (32 - kBlockDepth)) /* lane_idx < kBlockDepth */) {
+          if (!(thread_idx & 32 - kBlockDepth) /* lane_idx < kBlockDepth */) {
             *accum_ptr = val;
           }
           shared_offset += kBlockDepth;
@@ -1300,7 +1300,7 @@ __launch_bounds__(1024, 2) void DepthwiseConv2dBackpropFilterGPUKernelNHWCSmall(
         S val = accum_data[i];
         // Warp-accumulate the pixels of the same depth from the accumulator.
         val = WarpSumReduce<kAccumPixels>(val);
-        if (!(thread_idx & (kAccumPixels - 1))) {
+        if (!(thread_idx & kAccumPixels - 1)) {
           GpuAtomicAdd(filter_offset + filter, static_cast<T>(val));
         }
       }
@@ -1741,6 +1741,7 @@ Status LaunchDepthwiseConv2dBackpropFilterGPU(
             .ok()) {
       return Status::OK();
     }
+
     return LaunchDepthwiseConv2dBackpropFilterGPU<T, kKnownFilterWidth,
                                                   kKnownFilterHeight, 1>(
         ctx, args, out_backprop, input, filter_backprop, data_format);

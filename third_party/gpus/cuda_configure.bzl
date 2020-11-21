@@ -902,6 +902,7 @@ def make_copy_dir_rule(repository_ctx, name, src_dir, out_dir, exceptions = None
             for y in exceptions
         ])]
     outs = [('        "%s",' % out.replace(src_dir, out_dir)) for out in outs]
+
     # '@D' already contains the relative path for a single file, see
     # http://docs.bazel.build/versions/master/be/make-variables.html#predefined_genrule_variables
     out_dir = "$(@D)/%s" % out_dir if len(outs) > 1 else "$(@D)"
