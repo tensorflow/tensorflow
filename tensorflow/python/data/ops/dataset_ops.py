@@ -454,6 +454,19 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       raise TypeError("dataset length is unknown.")
     return length
 
+  def __evenly_divisible__(self, batch_size):
+    if smart_cond.smart_cond(self.cardinality()>0,
+                            lambda: constant_op.constant(True),
+                            lambda: constant_op.constant(False)
+                            ):
+      pred = self.cardinality() % batch_size == 0
+      const_true = lambda: constant_op.constant(True)
+      const_false = lambda: constant_op.constant(False)
+      evenly_divisible = smart_cond.smart_cond(pred, const_true, const_false)
+    else:
+      evenly_divisible = False
+    return evenly_divisible
+
   @abc.abstractproperty
   def element_spec(self):
     """The type specification of an element of this dataset.
@@ -3902,12 +3915,9 @@ class BatchDataset(UnaryDataset):
         drop_remainder, dtype=dtypes.bool, name="drop_remainder")
 
     # pylint: disable=protected-access
-    try:
-      batch_modulo = self._input_dataset.__len__() % self._batch_size
-    except TypeError:
-      batch_modulo = True
+    evenly_divisible = input_dataset.__evenly_divisible__(self._batch_size)
     constant_drop_remainder = tensor_util.constant_value(self._drop_remainder)
-    if constant_drop_remainder or not batch_modulo:
+    if constant_drop_remainder or tensor_util.constant_value(evenly_divisible):
       # NOTE(mrry): `constant_drop_remainder` may be `None` (unknown statically)
       # or `False` (explicitly retaining the remainder).
       # pylint: disable=g-long-lambda

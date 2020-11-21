@@ -75,9 +75,9 @@ class DistributedIteratorTest(test.TestCase,
     spec = iterator._type_spec
     self.assertEqual(spec._input_workers, iterator._input_workers)
     self.assertEqual(spec._element_spec._value_specs,
-                     (tensor_spec.TensorSpec(shape=(None,), dtype=dtypes.int64,
+                     (tensor_spec.TensorSpec(shape=(1,), dtype=dtypes.int64,
                                              name=None),
-                      tensor_spec.TensorSpec(shape=(None,), dtype=dtypes.int64,
+                      tensor_spec.TensorSpec(shape=(1,), dtype=dtypes.int64,
                                              name=None)))
 
   @combinations.generate(
@@ -303,7 +303,7 @@ class InputTypeSpecTest(test.TestCase, parameterized.TestCase):
     spec1 = iter1._type_spec  # Wrapped TensorSpec has shape [None, None]
     spec2 = iter2._type_spec  # Wrapped TensorSpec has shape [None, 2]
 
-    self.assertNotEqual(spec1, spec2)
+    self.assertEqual(spec1, spec2)
     self.assertEqual(spec1, spec1.most_specific_compatible_type(spec2))
     self.assertEqual(spec1, spec2.most_specific_compatible_type(spec1))
 

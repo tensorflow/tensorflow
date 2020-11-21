@@ -25,6 +25,7 @@ from tensorflow.python.data.experimental.ops import distribute
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
+from tensorflow.python.eager import context
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -184,7 +185,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(
       combinations.times(test_base.default_test_combinations()))
   def testShapeInferenceInputBatchDimUnknown(self):
-    dataset = dataset_ops.Dataset.range(8).batch(4, drop_remainder=False)
+    dataset = dataset_ops.Dataset.range(9).batch(4, drop_remainder=False)
     rebatched_dataset = distribute._RebatchDataset(
         dataset, batch_sizes=[2, 2], drop_remainder=False)
     expected_shapes = [[None]]
@@ -408,7 +409,11 @@ class LegacyRebatchDatasetTest(test_base.DatasetTestBase,
     rebatched_dataset = distribute._LegacyRebatchDataset(
         dataset, num_replicas=2)
 
-    expected_shapes = [[2]] if drop_remainder else [[None]]
+    evenly_divisible = dataset.__evenly_divisible__(2)
+    if drop_remainder or tensor_util.constant_value(evenly_divisible):
+      expected_shapes = [[2]] 
+    else:
+      expected_shapes = [[None]]
     self.assertEqual(expected_shapes, _flat_shapes(rebatched_dataset))
 
     expected_output = [[0, 1], [2, 3], [4, 5], [6, 7]]
@@ -432,7 +437,7 @@ class LegacyRebatchDatasetTest(test_base.DatasetTestBase,
 
   @combinations.generate(test_base.default_test_combinations())
   def testCanHandleUnknownDims(self):
-    dataset = dataset_ops.Dataset.range(1000)
+    dataset = dataset_ops.Dataset.range(1001)
     dataset = dataset.batch(10, drop_remainder=False)
     dataset = dataset.batch(10, drop_remainder=False)
     self.assertEqual([[None, None]], _flat_shapes(dataset))
@@ -520,15 +525,21 @@ class LegacyRebatchDatasetTest(test_base.DatasetTestBase,
   @combinations.generate(test_base.default_test_combinations())
   def testMultipleBatches(self):
     dataset = dataset_ops.Dataset.range(16).batch(2).batch(4)
-    self.assertEqual([[None, None]], _flat_shapes(dataset))
-
+    #TODO(bhack): investigate why this diverge beteewn Eager and Graph
+    if context.executing_eagerly():
+      self.assertEqual([[4, 2]], _flat_shapes(dataset))
+    else:
+      self.assertEqual([[None, None]], _flat_shapes(dataset))
     # Each element is a list of 4 elements where each element is a list of 2.
     expected_output = [[[0, 1], [2, 3], [4, 5], [6, 7]],
                        [[8, 9], [10, 11], [12, 13], [14, 15]]]
     self.assertDatasetProduces(dataset, expected_output)
-
     rebatched_dataset = distribute._LegacyRebatchDataset(dataset, 2)
-    self.assertEqual([[None, None]], _flat_shapes(rebatched_dataset))
+    #TODO(bhack): investigate why this diverge beteewn Eager and Graph
+    if context.executing_eagerly():
+      self.assertEqual([[2, 2]], _flat_shapes(rebatched_dataset))
+    else:
+      self.assertEqual([[None, None]], _flat_shapes(dataset))
     # Each element is a list of 2 elements where each element is a list of 2.
     expected_output = [[[0, 1], [2, 3]], [[4, 5], [6, 7]], [[8, 9], [10, 11]],
                        [[12, 13], [14, 15]]]
@@ -605,7 +616,7 @@ class ComputeBatchSizeTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
   def testComputeBatchSizeWithPassthroughInvalid(self):
-    dataset = dataset_ops.Dataset.range(32).batch(4)
+    dataset = dataset_ops.Dataset.range(33).batch(4)
     dataset = dataset.map(lambda x: x + 1)
     batch_size = distribute.compute_batch_size(dataset)
     self.assertEqual(-1, self.evaluate(batch_size))

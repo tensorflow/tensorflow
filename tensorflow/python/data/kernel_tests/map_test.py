@@ -840,7 +840,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.from_tensor_slices(sparse)
     dataset = dataset.batch(32, drop_remainder=False)
     dataset = apply_map(dataset, lambda x: x)
-    self.assertEqual([None, 3], dataset.element_spec.shape.as_list())
+    self.assertEqual([32, 3], dataset.element_spec.shape.as_list())
 
   @combinations.generate(_test_combinations())
   def testTensorArray(self, apply_map):

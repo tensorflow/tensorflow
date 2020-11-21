@@ -28,6 +28,7 @@ from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_concat_ops
@@ -67,8 +68,8 @@ class BatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.from_tensor_slices(components).map(
         _map_fn).repeat(count).batch(batch_size, drop_remainder)
     get_next = self.getNext(dataset)
-
-    if drop_remainder:
+    evenly_divisible = dataset.__evenly_divisible__(batch_size)
+    if drop_remainder or tensor_util.constant_value(evenly_divisible):
       dim0 = batch_size
     else:
       dim0 = None

@@ -1038,8 +1038,10 @@ class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,
              "tf_function": def_function.function}[defun_type]
     distribution.extended.experimental_enable_get_next_as_optional = True
     global_batch_size = 8
+    evenly_divisible = False
 
     def dataset_fn(ctx=None):
+      nonlocal evenly_divisible
       ctx = ctx or distribute_lib.InputContext()
       batch_size = ctx.get_per_replica_batch_size(global_batch_size)
       # Use 20 which isn't divisible by 8 to test partial batch behavior.
@@ -1052,6 +1054,7 @@ class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,
           "sparse": ragged_tensor.to_sparse(),
       })
       dataset = dataset.shard(ctx.num_input_pipelines, ctx.input_pipeline_id)
+      evenly_divisible = dataset.__evenly_divisible__(batch_size)
       return dataset.batch(batch_size, drop_remainder=drop_remainder)
 
     dataset_or_input_fn = self._create_dataset_or_input_fn(
@@ -1117,20 +1120,19 @@ class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,
           sums = reduce_fn(sums, iterator)
         except (StopIteration, errors.OutOfRangeError):
           return sums
-
     while_sums = sum_while_loop(
         iter(dataset),
         defun(lambda state, iterator: _reduce(state, next(iterator))))
     self.assertAllEqual(
         nest.flatten(while_sums),
         # When there's no partial batch, the sum is smaller.
-        [200. if drop_remainder else 310.] * 3)
+        [200. if drop_remainder or evenly_divisible else 310.] * 3)
     for_sums = defun(sum_for_loop)(dataset)
     # For loops always call get next as optional inside tf functions, so we
     # expect 310 here when using an input function (as there are 5 batches of
     # size 4 round robined over 2 replicas.
     expected_for_sum = 200.
-    if (not drop_remainder or (
+    if ((not drop_remainder and not evenly_divisible) or (
         defun_type == "tf_function" and input_type == "input_fn")):
       expected_for_sum = 310.
     self.assertAllEqual(nest.flatten(for_sums), [expected_for_sum] * 3)
@@ -1159,8 +1161,9 @@ class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,
     distribution.extended.experimental_enable_get_next_as_optional = (
         enable_get_next_as_optional)
     global_batch_size = 8
-
+    evenly_divisible = False
     def dataset_fn(ctx=None):
+      nonlocal evenly_divisible
       ctx = ctx or distribute_lib.InputContext()
       batch_size = ctx.get_per_replica_batch_size(global_batch_size)
       # Use 20 which isn't divisible by 8 to test partial batch behavior.
@@ -1172,7 +1175,9 @@ class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,
                         ragged_tensor.to_sparse()),
       })
       dataset = dataset.shard(ctx.num_input_pipelines, ctx.input_pipeline_id)
-      return dataset.batch(batch_size, drop_remainder=drop_remainder)
+      dataset_batch = dataset.batch(batch_size, drop_remainder=drop_remainder)
+      evenly_divisible = dataset.__evenly_divisible__(batch_size)
+      return dataset_batch
 
     if input_type == "dataset":
       ds = distribution.experimental_distribute_dataset(
@@ -1180,9 +1185,9 @@ class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,
     else:
       ds = distribution.distribute_datasets_from_function(dataset_fn)
     iterator = iter(ds)
-
     self.assertEqual(iterator._enable_get_next_as_optional,
-                     (not drop_remainder) and enable_get_next_as_optional)
+                     (not drop_remainder and not evenly_divisible)
+                     and enable_get_next_as_optional)
 
   @combinations.generate(
       combinations.combine(
