@@ -51,8 +51,8 @@ using GPUDevice = Eigen::GpuDevice;
 // size OuterDimTileSize x 1. This strip runs across multiple
 // rows of input data and all reduction elements share one inner
 // dimension index.
-template <typename T, typename Index, int OuterDimTileSize,
-          typename ReductionF, typename AtomicReductionF>
+template <typename T, typename Index, int OuterDimTileSize, typename ReductionF,
+          typename AtomicReductionF>
 __global__ void SortedSegmentReductionCustomKernel(
     const Index input_outer_dim_size, const Index inner_dim_size,
     const Index output_outer_dim_size, const Index* __restrict__ segment_ids,
@@ -88,9 +88,10 @@ __global__ void SortedSegmentReductionCustomKernel(
         }
         reduce_res = initial_value;
       }
-      ReductionF()(&reduce_res,
-                          ldg(input + (input_outer_dim_index_base + j)
-                              * inner_dim_size + segment_offset));
+      ReductionF()(
+          &reduce_res,
+          ldg(input + (input_outer_dim_index_base + j) * inner_dim_size +
+              segment_offset));
       last_output_segment_id = current_output_segment_id;
     }
     // For the last result in a strip, always write using atomic operations
@@ -261,12 +262,14 @@ namespace functor {
 
 template <typename T, typename Index, typename InitialValueF,
           typename ReductionF, typename AtomicReductionF>
-void SegmentReductionFunctor<T, Index, InitialValueF, ReductionF,
-                             AtomicReductionF>::operator()(
-    OpKernelContext* ctx, const GPUDevice& d, const Index output_rows,
-    const TensorShape& segment_ids_shape,
-    typename TTypes<Index>::ConstFlat segment_ids, const Index data_size,
-    const T* data, typename TTypes<T, 2>::Tensor output) {
+void SegmentReductionFunctor<
+    T, Index, InitialValueF, ReductionF,
+    AtomicReductionF>::operator()(OpKernelContext* ctx, const GPUDevice& d,
+                                  const Index output_rows,
+                                  const TensorShape& segment_ids_shape,
+                                  typename TTypes<Index>::ConstFlat segment_ids,
+                                  const Index data_size, const T* data,
+                                  typename TTypes<T, 2>::Tensor output) {
   if (output.size() == 0) {
     return;
   }
@@ -299,8 +302,8 @@ void SegmentReductionFunctor<T, Index, InitialValueF, ReductionF,
 
   config = GetGpuLaunchConfig(total_stripe_count, d);
   TF_CHECK_OK(GpuLaunchKernel(
-      SortedSegmentReductionCustomKernel<T, Index, OuterDimTileSize,
-                                         ReductionF, AtomicReductionF>,
+      SortedSegmentReductionCustomKernel<T, Index, OuterDimTileSize, ReductionF,
+                                         AtomicReductionF>,
       config.block_count, config.thread_per_block, 0, d.stream(),
       input_outer_dim_size, input_inner_dim_size, output_rows,
       segment_ids.data(), data, output.data(), total_stripe_count,
@@ -403,16 +406,20 @@ struct UnsortedSegmentFunctor<GPUDevice, T, Index, InitialValueF, ReductionF> {
   }
 };
 
-#define DEFINE_SORTED_GPU_SPECS_INDEX(T, Index)                                \
-  template struct SegmentMeanFunctor<T, Index>;                                \
-  template struct SegmentReductionFunctor<T, Index, functor::Zero<T>,          \
-      functor::NonAtomicSumOpGpu<T>, functor::AtomicSumOpGpu<T>>;              \
-  template struct SegmentReductionFunctor<T, Index, functor::One<T>,           \
-      functor::NonAtomicProdOpGpu<T>, functor::AtomicProdOpGpu<T>>;            \
-  template struct SegmentReductionFunctor<T, Index, functor::Highest<T>,       \
-      functor::NonAtomicMinOpGpu<T>, functor::AtomicMinOpGpu<T>>;              \
-  template struct SegmentReductionFunctor<T, Index, functor::Lowest<T>,        \
-      functor::NonAtomicMaxOpGpu<T>, functor::AtomicMaxOpGpu<T>>;
+#define DEFINE_SORTED_GPU_SPECS_INDEX(T, Index)                           \
+  template struct SegmentReductionFunctor<T, Index, functor::Zero<T>,     \
+                                          functor::NonAtomicSumOpGpu<T>,  \
+                                          functor::AtomicSumOpGpu<T>>;    \
+  template struct SegmentReductionFunctor<T, Index, functor::One<T>,      \
+                                          functor::NonAtomicProdOpGpu<T>, \
+                                          functor::AtomicProdOpGpu<T>>;   \
+  template struct SegmentReductionFunctor<T, Index, functor::Highest<T>,  \
+                                          functor::NonAtomicMinOpGpu<T>,  \
+                                          functor::AtomicMinOpGpu<T>>;    \
+  template struct SegmentReductionFunctor<T, Index, functor::Lowest<T>,   \
+                                          functor::NonAtomicMaxOpGpu<T>,  \
+                                          functor::AtomicMaxOpGpu<T>>;    \
+  template struct SegmentMeanFunctor<T, Index>;
 
 #define DEFINE_SORTED_GPU_SPECS(T)         \
   DEFINE_SORTED_GPU_SPECS_INDEX(T, int32); \
