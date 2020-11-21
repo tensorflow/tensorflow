@@ -427,7 +427,8 @@ class CSRSparseMatrixOpsTest(test.TestCase):
     for (mat, sm_rt_value) in zip(mats, sm_rt_values):
       self.assertAllEqual(mat, sm_rt_value)
 
-  @test.disable_for_rocm(skip_message='sparse-matrix-add op '
+  @test.disable_with_predicate(pred=test.is_built_with_rocm,
+                               skip_message='sparse-matrix-add op '
                                       'not supported on ROCm')
   @test_util.run_in_graph_and_eager_modes
   def testSparseMatrixAdd(self):
@@ -466,7 +467,8 @@ class CSRSparseMatrixOpsTest(test.TestCase):
 
       self.assertAllClose(a_sum_b_sparse_mat.todense(), c_dense_value)
 
-  @test.disable_for_rocm(skip_message='sparse-matrix-add op '
+  @test.disable_with_predicate(pred=test.is_built_with_rocm,
+                               skip_message='sparse-matrix-add op '
                                       'not supported on ROCm')
   @test_util.run_in_graph_and_eager_modes
   def testLargeBatchSparseMatrixAdd(self):
@@ -590,7 +592,8 @@ class CSRSparseMatrixOpsTest(test.TestCase):
   # TODO(rocm): fix this
   # This test is currently failing on the ROCm platform
   # Re-enable it once the fix is available
-  @test.disable_for_rocm(skip_message='hipSPARSE all failure '
+  @test.disable_with_predicate(pred=test.is_built_with_rocm,
+                               skip_message='hipSPARSE all failure '
                                       'on the ROCm platform')
   @test_util.run_in_graph_and_eager_modes
   def testLargeBatchSparseMatrixMatMulTransposed(self):
@@ -649,7 +652,8 @@ class CSRSparseMatrixOpsTest(test.TestCase):
             self.assertAllClose(
                 c_t_value, c_dense_t_value, rtol=1e-6, atol=1e-5)
 
-  @test.disable_for_rocm(skip_message='complex type is not '
+  @test.disable_with_predicate(pred=test.is_built_with_rocm,
+                               skip_message='complex type is not '
                                       'yet supported in ROCm')
   @test_util.run_in_graph_and_eager_modes
   def testLargeBatchSparseMatrixMatMulConjugate(self):
@@ -779,7 +783,8 @@ class CSRSparseMatrixOpsTest(test.TestCase):
 
         self.assertAllClose(c_sm_dense_value, c_dense_t_value)
 
-  @test.disable_for_rocm(skip_message='sparse-matrix-add op is not '
+  @test.disable_with_predicate(pred=test.is_built_with_rocm,
+                               skip_message='sparse-matrix-add op is not '
                                       'yet supported on ROCm')
   @test_util.run_in_graph_and_eager_modes
   def testLargeBatchRegisteredAddN(self):

@@ -79,7 +79,8 @@ class CSRSparseMatrixGradTest(test.TestCase):
                         dense_shape)
         self.assertAllEqual(grad_vals, grad_out_value)
 
-  @test.disable_for_rocm(skip_message='sparse-matrix-add op '
+  @test.disable_with_predicate(pred=test.is_built_with_rocm,
+                               skip_message='sparse-matrix-add op '
                                       'not supported on ROCm')
   @test_util.run_deprecated_v1
   def testLargeBatchSparseMatrixAddGrad(self):

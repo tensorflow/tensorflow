@@ -148,7 +148,8 @@ class GRUV2Test(keras_parameterized.TestCase):
       l2 = layer_class.from_config(l1.get_config())
       assert l1.get_config() == l2.get_config()
 
-  @test.disable_for_rocm(skip_message='Skipping the test as ROCm '
+  @test.disable_with_predicate(pred=test.is_built_with_rocm,
+                               skip_message='Skipping the test as ROCm '
                                       'MIOpen does not support '
                                       'padded input yet.')
   @testing_utils.run_v2_only
@@ -320,7 +321,8 @@ class GRUV2Test(keras_parameterized.TestCase):
 
     self.assertAllClose(y, y_ref)
 
-  @test.disable_for_rocm(skip_message='Skipping the test as ROCm '
+  @test.disable_with_predicate(pred=test.is_built_with_rocm,
+                               skip_message='Skipping the test as ROCm '
                                       'MIOpen does not support '
                                       'padded input yet.')
   def test_with_masking_layer_GRU(self):
@@ -335,7 +337,8 @@ class GRUV2Test(keras_parameterized.TestCase):
                   optimizer=gradient_descent.GradientDescentOptimizer(0.001))
     model.fit(inputs, targets, epochs=1, batch_size=2, verbose=1)
 
-  @test.disable_for_rocm(skip_message='Skipping the test as ROCm '
+  @test.disable_with_predicate(pred=test.is_built_with_rocm,
+                               skip_message='Skipping the test as ROCm '
                                       'MIOpen does not support '
                                       'padded input yet.')
   def test_masking_with_stacking_GRU(self):
@@ -362,7 +365,8 @@ class GRUV2Test(keras_parameterized.TestCase):
                 'return_sequences': True},
         input_shape=(num_samples, timesteps, embedding_dim))
 
-  @test.disable_for_rocm(skip_message='Double type is not '
+  @test.disable_with_predicate(pred=test.is_built_with_rocm,
+                               skip_message='Double type is not '
                                       'yet supported in ROCm')
   @testing_utils.run_v2_only
   def test_float64_GRU(self):
@@ -378,7 +382,8 @@ class GRUV2Test(keras_parameterized.TestCase):
         input_shape=(num_samples, timesteps, embedding_dim),
         input_dtype='float64')
 
-  @test.disable_for_rocm(skip_message='Skipping the test as ROCm '
+  @test.disable_with_predicate(pred=test.is_built_with_rocm,
+                               skip_message='Skipping the test as ROCm '
                                       'MIOpen does not support '
                                       'padded input yet.')
   def test_return_states_GRU(self):
@@ -461,7 +466,8 @@ class GRUV2Test(keras_parameterized.TestCase):
     else:
       self.assertEqual(len(layer.get_losses_for(x)), 1)
 
-  @test.disable_for_rocm(skip_message='Skipping the test as ROCm '
+  @test.disable_with_predicate(pred=test.is_built_with_rocm,
+                               skip_message='Skipping the test as ROCm '
                                       'MIOpen does not support '
                                       'padded input yet.')
   def test_statefulness_GRU(self):
@@ -559,7 +565,8 @@ class GRUV2Test(keras_parameterized.TestCase):
         run_eagerly=testing_utils.should_run_eagerly())
     model.fit(x, y, epochs=1, shuffle=False)
 
-  @test.disable_for_rocm(skip_message='Skipping the test as ROCm '
+  @test.disable_with_predicate(pred=test.is_built_with_rocm,
+                               skip_message='Skipping the test as ROCm '
                                       'MIOpen does not support '
                                       'padded input yet.')
   @testing_utils.run_v2_only
@@ -712,7 +719,8 @@ class GRUGraphRewriteTest(keras_parameterized.TestCase):
     model = keras.models.Model(inputs=inputs, outputs=[outputs, runtime])
     self._test_runtime_with_model(model)
 
-  @test.disable_for_rocm(skip_message='Skipping the test as ROCm '
+  @test.disable_with_predicate(pred=test.is_built_with_rocm,
+                               skip_message='Skipping the test as ROCm '
                                       'MIOpen does not support '
                                       'padded input yet.')
   @testing_utils.run_v2_only

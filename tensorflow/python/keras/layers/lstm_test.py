@@ -46,7 +46,8 @@ class LSTMLayerTest(keras_parameterized.TestCase):
                 'return_sequences': True},
         input_shape=(num_samples, timesteps, embedding_dim))
 
-  @test.disable_for_rocm(skip_message='Double type is yet'
+  @test.disable_with_predicate(pred=test.is_built_with_rocm,
+                               skip_message='Double type is yet'
                                       'not supported in ROCm')
   @testing_utils.run_v2_only
   def test_float64_LSTM(self):
@@ -143,7 +144,8 @@ class LSTMLayerTest(keras_parameterized.TestCase):
     self.assertEqual(layer.cell.bias.constraint, b_constraint)
 
   @parameterized.parameters([True, False])
-  @test.disable_for_rocm(skip_message='Skipping the test as ROCm MIOpen '
+  @test.disable_with_predicate(pred=test.is_built_with_rocm,
+                               skip_message='Skipping the test as ROCm MIOpen '
                                       'does not support padded input.')
   def test_with_masking_layer_LSTM(self, unroll):
     layer_class = keras.layers.LSTM
@@ -384,7 +386,8 @@ class LSTMLayerTest(keras_parameterized.TestCase):
     else:
       self.assertEqual(len(layer.get_losses_for(x)), 1)
 
-  @test.disable_for_rocm(skip_message='Skipping the test as ROCm MIOpen '
+  @test.disable_with_predicate(pred=test.is_built_with_rocm,
+                               skip_message='Skipping the test as ROCm MIOpen '
                                       'does not support padded input.')
   def test_statefulness_LSTM(self):
     num_samples = 2
