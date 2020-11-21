@@ -24,14 +24,19 @@ limitations under the License.
 namespace stream_executor {
 
 TfAllocatorAdapter::TfAllocatorAdapter(tensorflow::Allocator *wrapped,
-                                       Stream *stream)
+                                       Stream *stream, bool allow_async_dealloc)
     : DeviceMemoryAllocator(stream->parent()->platform()),
       wrapped_(wrapped),
-      stream_(stream) {}
+      stream_(stream),
+      allow_async_dealloc_(allow_async_dealloc) {}
 
 TfAllocatorAdapter::TfAllocatorAdapter(tensorflow::Allocator *wrapped,
-                                       Platform *platform)
-    : DeviceMemoryAllocator(platform), wrapped_(wrapped), stream_(nullptr) {}
+                                       Platform *platform,
+                                       bool allow_async_dealloc)
+    : DeviceMemoryAllocator(platform),
+      wrapped_(wrapped),
+      stream_(nullptr),
+      allow_async_dealloc_(allow_async_dealloc) {}
 
 TfAllocatorAdapter::~TfAllocatorAdapter() {}
 

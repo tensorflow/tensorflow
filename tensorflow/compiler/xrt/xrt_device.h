@@ -22,6 +22,8 @@ limitations under the License.
 #include "tensorflow/compiler/xrt/xrt_compilation_cache.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/stream_executor/tf_allocator_adapter.h"
 
 namespace tensorflow {
 
@@ -50,19 +52,32 @@ class XRTGenericDeviceAccessor {
     xla::LocalClient* client() const { return client_; }
     xla::Backend* backend() { return client_->mutable_backend(); }
     int device_ordinal() const { return ordinal_; }
+    // XRTCompileOp needs to use a memory allocator constructed with stream.
+    se::DeviceMemoryAllocator* GetMemoryAllocator(OpKernelContext* ctx);
+    // GetMemoryAllocator with no args is for other XRT ops.
+    se::DeviceMemoryAllocator* GetMemoryAllocator();
 
    private:
     // XRTGenericDeviceAccessor::InitScopedRef is the only way to initialize
     // ScopedRef.
     friend class XRTGenericDeviceAccessor;
 
-    void Acquire(xla::LocalClient* client, int ordinal) {
+    void Acquire(xla::LocalClient* client, int ordinal,
+                 const std::string& platform_name) {
       client_ = client;
       ordinal_ = ordinal;
+      platform_name_ = platform_name;
     }
 
     xla::LocalClient* client_ = nullptr;
     int ordinal_ = 0;
+    std::string platform_name_;
+    se::Platform::Id platform_id_ = nullptr;
+    static mutex mutex_;
+    static std::map<void*, std::unique_ptr<se::TfAllocatorAdapter>>
+        compile_cuda_allocators_;
+    static std::map<std::string, std::unique_ptr<se::TfAllocatorAdapter>>
+        other_cuda_allocators_;
   };
 
   static Status InitScopedRef(OpKernelContext* ctx, int device_ordinal,
