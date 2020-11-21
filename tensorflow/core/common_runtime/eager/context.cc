@@ -993,12 +993,6 @@ void EagerContext::ClearResourceContainer(const string& name) {
     // Only ignore container not found errors.
     device->resource_manager()->Cleanup(name).IgnoreError();
   }
-  if (remote_device_mgr() != nullptr) {
-    auto remote_devices = remote_device_mgr()->ListDevices();
-    for (Device* device : remote_devices) {
-      device->resource_manager()->Cleanup(name).IgnoreError();
-    }
-  }
 }
 
 namespace {
