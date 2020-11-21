@@ -469,6 +469,7 @@ tf_cuda_cc_test(
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + [
         "nomac",
+        "no_cuda_asan",  # b/173825513
     ],
     deps = [
         ":abstract_tensor_handle",
