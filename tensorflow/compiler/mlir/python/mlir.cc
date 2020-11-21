@@ -30,8 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/import_utils.h"
-#include "tensorflow/core/common_runtime/function_body.h"
-#include "tensorflow/core/common_runtime/function_def_utils.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/op.h"
@@ -113,24 +111,8 @@ std::string ImportFunction(const std::string &functiondef_proto,
   }
 
   const std::string &function_name = functiondef.signature().name();
-
-  const tensorflow::FunctionDef *fdef = flib_def.Find(function_name);
-  if (fdef == nullptr) {
-    s = tensorflow::errors::NotFound("Cannot find function ", function_name);
-    Set_TF_Status_from_Status(status, s);
-    return "// error";
-  }
-
-  std::unique_ptr<tensorflow::FunctionBody> fbody;
-  s = FunctionDefToBodyHelper(*fdef, tensorflow::AttrSlice(), &flib_def,
-                              &fbody);
-  if (!s.ok()) {
-    Set_TF_Status_from_Status(status, s);
-    return "// error";
-  }
-
   mlir::MLIRContext context;
-  auto module = ConvertFunctionToMlir(fbody.get(), flib_def, &context);
+  auto module = ConvertFunctionToMlir(function_name, flib_def, &context);
   if (!module.ok()) {
     Set_TF_Status_from_Status(status, module.status());
     return "// error";

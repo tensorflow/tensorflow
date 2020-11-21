@@ -51,7 +51,7 @@ stream_executor::port::StatusOr<mlir::OwningModuleRef> ConvertGraphToMlir(
 // Given a Function, returns a MLIR module containing the graph, expressed with
 // tf_executor dialect.
 stream_executor::port::StatusOr<mlir::OwningModuleRef> ConvertFunctionToMlir(
-    const FunctionBody* fbody, const FunctionLibraryDefinition& flib_def,
+    mlir::StringRef name, const FunctionLibraryDefinition& flib_def,
     mlir::MLIRContext* context);
 
 // Given a SavedModel, returns a MLIR module containing the functions, expressed
