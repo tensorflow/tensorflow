@@ -1717,8 +1717,6 @@ miopenDataType_t ToMIOpenDataType(
   switch (data_type) {
     case dnn::DataType::kFloat:
       return miopenFloat;
-    case dnn::DataType::kBFloat16:
-      return miopenBFloat16;
     case dnn::DataType::kHalf:
       return miopenHalf;
     case dnn::DataType::kDouble:
