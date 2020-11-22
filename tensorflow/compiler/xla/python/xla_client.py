@@ -28,6 +28,8 @@ import inspect
 import os
 from typing import List, Sequence, Tuple, Union
 
+from . import xla_extension as _xla
+
 from absl import logging
 import numpy as np
 
@@ -35,8 +37,6 @@ import numpy as np
 # Python bindings are currently packaged both as part of jaxlib and as part
 # of TensorFlow. If we use protocol buffers here, then importing both jaxlib
 # and TensorFlow may fail with duplicate protocol buffer message definitions.
-
-from tensorflow.compiler.xla.python import xla_extension as _xla
 
 # Most functions are snake_case for consistency with other modules, some
 # method names are CamelCase for consistency with XLA.

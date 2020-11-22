@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/delegates/gpu/cl/buffer.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_kernel.h"
-#include "tensorflow/lite/delegates/gpu/cl/device_info.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/texture2d.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"

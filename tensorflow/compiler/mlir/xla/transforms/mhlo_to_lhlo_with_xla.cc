@@ -277,6 +277,8 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(HloInstruction* instr) {
       return EmitCustomCallOp(instr);
     case HloOpcode::kConstant:
       return EmitConstant(instr);
+    case HloOpcode::kReduce:
+      return EmitReduceOp(instr);
     default:
       llvm::errs() << instr->ToString();
       return tensorflow::errors::Internal(
@@ -559,6 +561,19 @@ StatusOr<mlir::GetGlobalMemrefOp> LhloDialectEmitter::EmitConstant(
   TF_RET_CHECK(cached_value == nullptr);
   cached_value = get_global_memref;
   return get_global_memref;
+}
+
+StatusOr<lmhlo::ReduceOp> LhloDialectEmitter::EmitReduceOp(
+    HloInstruction* instr) {
+  TF_ASSIGN_OR_RETURN(auto reduce_op,
+                      CreateOpWithoutAttrs<lmhlo::ReduceOp>(instr));
+  auto* reduce = ::xla::Cast<::xla::HloReduceInstruction>(instr);
+  std::vector<int64_t> dimensions(reduce->dimensions().begin(),
+                                  reduce->dimensions().end());
+  reduce_op.dimensionsAttr(GetI64DenseElementsAttr(dimensions));
+  TF_RETURN_IF_ERROR(::xla::HloFunctionImporter::ImportAsRegion(
+      *instr->called_computations()[0], &reduce_op.body(), &builder_));
+  return reduce_op;
 }
 
 StatusOr<Value> LhloDialectEmitter::GetOrCreateArrayView(

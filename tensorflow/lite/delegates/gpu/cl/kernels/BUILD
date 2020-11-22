@@ -110,7 +110,6 @@ cc_library(
     srcs = ["conv_buffer_1x1.cc"],
     hdrs = ["conv_buffer_1x1.h"],
     deps = [
-        ":conv_common",
         ":gpu_operation",
         ":util",
         ":work_group_picking",
@@ -127,12 +126,9 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:tensor",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:winograd_util",
+        "//tensorflow/lite/delegates/gpu/common/task:weights_conversion",
+        "//tensorflow/lite/delegates/gpu/common/task:weights_layout",
     ],
-)
-
-cc_library(
-    name = "conv_common",
-    hdrs = ["conv_common.h"],
 )
 
 cc_test(
@@ -195,7 +191,6 @@ cc_library(
     srcs = ["conv_powervr.cc"],
     hdrs = ["conv_powervr.h"],
     deps = [
-        ":conv_common",
         ":gpu_operation",
         ":util",
         ":work_group_picking",
@@ -212,6 +207,8 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:tensor",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:winograd_util",
+        "//tensorflow/lite/delegates/gpu/common/task:weights_conversion",
+        "//tensorflow/lite/delegates/gpu/common/task:weights_layout",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -238,7 +235,6 @@ cc_library(
     srcs = ["conv_weights_converter.cc"],
     hdrs = ["conv_weights_converter.h"],
     deps = [
-        ":conv_common",
         ":gpu_operation",
         ":util",
         ":work_group_picking",
@@ -246,6 +242,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/cl:cl_kernel",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common/task:weights_layout",
     ],
 )
 
@@ -275,7 +272,6 @@ cc_library(
     srcs = ["convolution_transposed.cc"],
     hdrs = ["convolution_transposed.h"],
     deps = [
-        ":conv_common",
         ":gpu_operation",
         ":util",
         ":work_group_picking",
@@ -290,6 +286,8 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:tensor",
         "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common/task:weights_conversion",
+        "//tensorflow/lite/delegates/gpu/common/task:weights_layout",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -329,6 +327,8 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:tensor",
         "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common/task:weights_conversion",
+        "//tensorflow/lite/delegates/gpu/common/task:weights_layout",
     ],
 )
 
@@ -368,6 +368,8 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:tensor",
         "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common/task:weights_conversion",
+        "//tensorflow/lite/delegates/gpu/common/task:weights_layout",
     ],
 )
 
@@ -406,6 +408,8 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:tensor",
         "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common/task:weights_conversion",
+        "//tensorflow/lite/delegates/gpu/common/task:weights_layout",
     ],
 )
 
@@ -583,7 +587,6 @@ cc_library(
         ":util",
         "//tensorflow/lite/delegates/gpu/cl:buffer",
         "//tensorflow/lite/delegates/gpu/cl:cl_kernel",
-        "//tensorflow/lite/delegates/gpu/cl:device_info",
         "//tensorflow/lite/delegates/gpu/cl:linear_storage",
         "//tensorflow/lite/delegates/gpu/cl:tensor",
         "//tensorflow/lite/delegates/gpu/cl:texture2d",
@@ -625,10 +628,10 @@ cc_library(
     deps = [
         ":util",
         ":work_group_picking",
-        "//tensorflow/lite/delegates/gpu/cl:device_info",
         "//tensorflow/lite/delegates/gpu/cl:serialization_cc_fbs",
         "//tensorflow/lite/delegates/gpu/common:access_type",
         "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:gpu_info",
         "//tensorflow/lite/delegates/gpu/common:kernel_info",
         "//tensorflow/lite/delegates/gpu/common:precision",
         "//tensorflow/lite/delegates/gpu/common:status",
@@ -733,7 +736,6 @@ cc_library(
         ":util",
         ":work_group_picking",
         "//tensorflow/lite/delegates/gpu/cl:cl_program",
-        "//tensorflow/lite/delegates/gpu/cl:device_info",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
@@ -1211,8 +1213,8 @@ cc_library(
     srcs = ["util.cc"],
     hdrs = ["util.h"],
     deps = [
-        "//tensorflow/lite/delegates/gpu/cl:device_info",
         "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:gpu_info",
         "//tensorflow/lite/delegates/gpu/common:precision",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:tensor",
@@ -1269,7 +1271,7 @@ cc_library(
     hdrs = ["work_group_picking.h"],
     deps = [
         "//tensorflow/lite/delegates/gpu/cl:cl_kernel",
-        "//tensorflow/lite/delegates/gpu/cl:device_info",
+        "//tensorflow/lite/delegates/gpu/common:gpu_info",
         "//tensorflow/lite/delegates/gpu/common:kernel_info",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",

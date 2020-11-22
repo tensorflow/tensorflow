@@ -13,25 +13,29 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_CONV_COMMON_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_CONV_COMMON_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_WEIGHTS_LAYOUT_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_WEIGHTS_LAYOUT_H_
+
+#include <vector>
 
 namespace tflite {
 namespace gpu {
-namespace cl {
 
-enum class ConvWeightsLayout {
+enum class WeightsLayout {
   kUnknown,
   kOHWIOGroupI4O4,
+  kOICustomSSpatialI4O4,
 };
 
-struct ConvWeightsDescription {
-  ConvWeightsLayout layout;
+struct WeightsDescription {
+  WeightsLayout layout;
+  // applicable with kOHWIOGroupI4O4
   int output_group_size;
+  // applicable with kOICustomSSpatialI4O4
+  std::vector<int> spatial_remap;
 };
 
-}  // namespace cl
 }  // namespace gpu
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_CONV_COMMON_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_WEIGHTS_LAYOUT_H_

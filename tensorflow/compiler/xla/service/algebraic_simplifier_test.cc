@@ -3785,9 +3785,11 @@ TEST_P(ConvInputPaddingTest, DoTest) {
       ParseWindow(absl::StrCat("size=3x3 ", testcase.orig_conv_window))
           .ValueOrDie();
   builder.AddInstruction(HloInstruction::CreateConvolve(
-      ShapeInference::InferConvolveShape(lhs_pad->shape(), filter->shape(),
-                                         /*feature_group_count=*/1,
-                                         /*batch_group_count=*/1, window, dnums)
+      ShapeInference::InferConvolveShape(
+          lhs_pad->shape(), filter->shape(),
+          /*feature_group_count=*/1,
+          /*batch_group_count=*/1, window, dnums,
+          /*preferred_element_type=*/absl::nullopt)
           .ValueOrDie(),
       lhs_pad, filter, /*feature_group_count=*/1, /*batch_group_count=*/1,
       window, dnums, DefaultPrecisionConfig(2)));
@@ -3902,9 +3904,11 @@ TEST_P(ConvFilterPaddingTest, DoIt) {
   precision_config.add_operand_precision(PrecisionConfig::HIGHEST);
 
   builder.AddInstruction(HloInstruction::CreateConvolve(
-      ShapeInference::InferConvolveShape(input->shape(), rhs_pad->shape(),
-                                         /*feature_group_count=*/1,
-                                         /*batch_group_count=*/1, window, dnums)
+      ShapeInference::InferConvolveShape(
+          input->shape(), rhs_pad->shape(),
+          /*feature_group_count=*/1,
+          /*batch_group_count=*/1, window, dnums,
+          /*preferred_element_type=*/absl::nullopt)
           .ValueOrDie(),
       input, rhs_pad, /*feature_group_count=*/1, /*batch_group_count=*/1,
       window, dnums, precision_config));
@@ -4050,7 +4054,8 @@ TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
         b.AddInstruction(HloInstruction::CreateParameter(1, f_shape, "filter"));
     Shape out_shape = ShapeInference::InferConvolveShape(
                           in_shape, f_shape, /*feature_group_count=*/1,
-                          /*batch_group_count=*/1, window, dnums)
+                          /*batch_group_count=*/1, window, dnums,
+                          /*preferred_element_type=*/absl::nullopt)
                           .ValueOrDie();
     if (options.output_minor_to_major_layout) {
       out_shape = ShapeUtil::MakeShapeWithLayout(F32, out_shape.dimensions(),

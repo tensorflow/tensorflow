@@ -57,9 +57,18 @@ class TypeSpec(object):
   For example, `tf.function`'s `input_signature` argument accepts a list
   (or nested structure) of `TypeSpec`s.
 
-  Creating new subclasses of TypeSpec (outside of TensorFlow core) is not
+  Creating new subclasses of `TypeSpec` (outside of TensorFlow core) is not
   currently supported.  In particular, we may make breaking changes to the
   private methods and properties defined by this base class.
+
+  Example:
+
+  >>> spec = tf.RaggedTensorSpec(shape=[None, None], dtype=tf.int32)
+  >>> @tf.function(input_signature=[spec])
+  ... def double(x):
+  ...   return x * 2
+  >>> print(double(tf.ragged.constant([[1, 2], [3]])))
+  <tf.RaggedTensor [[2, 4], [6]]>
   """
   # === Subclassing ===
   #

@@ -1520,10 +1520,11 @@ Status ConvolutionVisitor::PropagateOnConv(HloInstruction* convolution) {
       ->set_padding_low(0);
   TF_ASSIGN_OR_RETURN(
       HloInstruction * new_conv,
-      MakeConvolveHlo(activations_new, /*rhs=*/convolution->mutable_operand(1),
-                      convolution->feature_group_count(),
-                      convolution->batch_group_count(), new_window,
-                      new_dim_numbers, convolution->precision_config()));
+      MakeConvolveHlo(
+          activations_new, /*rhs=*/convolution->mutable_operand(1),
+          convolution->feature_group_count(), convolution->batch_group_count(),
+          new_window, new_dim_numbers, convolution->precision_config(),
+          /*preferred_element_type=*/convolution->shape().element_type()));
   convolution->SetupDerivedInstruction(new_conv);
 
   old_to_new_instrs_[convolution] = new_conv;
@@ -1800,10 +1801,11 @@ Status ConvolutionVisitor::PropagateOnBackpropFilterConv(
 
   TF_ASSIGN_OR_RETURN(
       HloInstruction * new_conv,
-      MakeConvolveHlo(activations_new, kernel_new,
-                      convolution->feature_group_count(),
-                      convolution->batch_group_count(), new_window,
-                      new_dim_numbers, convolution->precision_config()));
+      MakeConvolveHlo(
+          activations_new, kernel_new, convolution->feature_group_count(),
+          convolution->batch_group_count(), new_window, new_dim_numbers,
+          convolution->precision_config(),
+          /*preferred_element_type=*/convolution->shape().element_type()));
   convolution->SetupDerivedInstruction(new_conv);
 
   std::vector<int64> output_sizes(new_conv->shape().dimensions().begin(),
@@ -2043,10 +2045,11 @@ Status ConvolutionVisitor::PerformSpaceToBatchOnConvolution(
       ->set_padding_low(0);
   TF_ASSIGN_OR_RETURN(
       HloInstruction * new_conv,
-      MakeConvolveHlo(activations, /*rhs=*/convolution->mutable_operand(1),
-                      convolution->feature_group_count(),
-                      convolution->batch_group_count(), new_window,
-                      new_dim_numbers, convolution->precision_config()));
+      MakeConvolveHlo(
+          activations, /*rhs=*/convolution->mutable_operand(1),
+          convolution->feature_group_count(), convolution->batch_group_count(),
+          new_window, new_dim_numbers, convolution->precision_config(),
+          /*preferred_element_type=*/convolution->shape().element_type()));
   convolution->SetupDerivedInstruction(new_conv);
 
   VLOG(1) << "Space-to-batched convolution " << new_conv->ToString();

@@ -163,14 +163,14 @@ absl::Status InferenceContext::InitFromGraph(
   ReserveGraphTensors(create_info, creation_context.GetGpuInfo(), graph);
   precision_ = create_info.precision;
   storage_type_ = create_info.storage_type;
-  if (env->device().IsMali()) {
+  if (env->device().GetInfo().IsMali()) {
     need_flush_ = true;
     need_manual_release_ = true;
 
     flush_periodically_ = true;
     flush_period_ = 24;
   }
-  if (env->device().IsPowerVR()) {
+  if (env->device().GetInfo().IsPowerVR()) {
     need_flush_ = true;
   }
   CopyInAndOutIds(graph);

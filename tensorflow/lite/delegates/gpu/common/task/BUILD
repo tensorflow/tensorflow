@@ -118,3 +118,21 @@ cc_library(
         ":gpu_object_desc",
     ],
 )
+
+cc_library(
+    name = "weights_conversion",
+    hdrs = ["weights_conversion.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:tensor",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common:util",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "weights_layout",
+    hdrs = ["weights_layout.h"],
+)

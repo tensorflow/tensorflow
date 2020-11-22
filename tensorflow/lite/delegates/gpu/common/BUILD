@@ -40,6 +40,7 @@ cc_library(
     srcs = ["gpu_info.cc"],
     hdrs = ["gpu_info.h"],
     deps = [
+        ":data_type",
         "@com_google_absl//absl/strings",
     ],
 )

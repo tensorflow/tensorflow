@@ -18,7 +18,6 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/lite/delegates/gpu/cl/cl_program.h"
-#include "tensorflow/lite/delegates/gpu/cl/device_info.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
 
@@ -95,7 +94,7 @@ MeanStdDevNormalization::MeanStdDevNormalization(const OperationDef& definition,
   // For now, fix workgroup size to the biggest supported by the device, but not
   // larger than the number of tensor slices.
   int desired_work_group_size =
-      std::min(tensor_slices, gpu_info.max_work_group_size_x);
+      std::min(tensor_slices, gpu_info.GetMaxWorkGroupSizeForX());
   if (gpu_info.IsMali()) {
     // Don't use more than 64 work items per work group on ARM Mali. They
     // implement local memory using the global memory, larger workgroups have

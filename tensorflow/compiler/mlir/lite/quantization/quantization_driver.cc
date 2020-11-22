@@ -670,33 +670,43 @@ void QuantizationDriver::PreprocessConstantOps() {
 
     Value value = cst.getResult();
     builder_.setInsertionPoint(cst);
-    for (auto indexed_use : llvm::enumerate(value.getUses())) {
-      auto &use = indexed_use.value();
-      auto spec = GetQuantSpec(use.getOwner());
-      auto biases = spec->biases_params;
-      Operation *user = use.getOwner();
-      int operand_num = use.getOperandNumber();
 
+    // The following loop will change the value uses, thus we cache all the uses
+    // needs to be changed.
+    llvm::SmallVector<std::pair<Operation *, int>, 4> uses;
+    for (auto &use : value.getUses()) {
+      uses.push_back({use.getOwner(), use.getOperandNumber()});
+    }
+    for (auto indexed_use : llvm::enumerate(uses)) {
+      Operation *user = indexed_use.value().first;
+      int operand_num = indexed_use.value().second;
+
+      auto spec = GetQuantSpec(user);
+      auto biases = spec->biases_params;
+
+      // The quantization parameters of a `weight` shouldn't be determined by
+      // other values. So any constants which are not bias, an operand of an
+      // op with same scale requirements, and haven't been quantized are
+      // weights.
       if (biases.find(operand_num) == biases.end() &&
           !llvm::dyn_cast<mlir::SameScalesOpInterface>(user) &&
           !llvm::dyn_cast<quant::QuantizeCastOp>(user)) {
-        // Needs to scan the content to get the quantization parameters if there
-        // are no quantization parameters (FakeQuant ops).
-        // For this case, the weight isn't duplicated.
+        // Needs to scan the content of weights to get the quantization
+        // parameters if there are no quantization parameters (FakeQuant ops).
+        // For this case, the weight will not be duplicated.
         weights_.insert(cst);
         auto affine_user =
             llvm::dyn_cast<mlir::AffineQuantizedOpInterface>(user);
-        if (affine_user &&
-            affine_user.GetAffineOperandIndex() == use.getOperandNumber() &&
+        if (affine_user && affine_user.GetAffineOperandIndex() == operand_num &&
             affine_user.RequiredNarrowRangeAffineOperand()) {
           optimized_weights_.insert(
               {cst, affine_user.GetQuantizationDimIndex()});
         }
       } else {
-        // This is a bias, so the quantization parameter isn't determined by the
-        // local content. Same if the user can have quantization parameter
-        // propagated from other places.
-        // Duplicate this constant in case it is shared by different users.
+        // This is a bias or an operand of an op with same scale requirements,
+        // so the quantization parameter are propagated from or determined by
+        // other values. Duplicate this constant in case it is shared by
+        // different users.
         if (indexed_use.index() > 0) {
           cst = builder_.create<ConstantOp>(cst.getLoc(), cst.getValue());
         }

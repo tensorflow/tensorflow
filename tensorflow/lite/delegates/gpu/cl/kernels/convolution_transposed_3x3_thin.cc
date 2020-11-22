@@ -53,6 +53,15 @@ std::string ConvolutionTransposed3x3Thin::GenerateConvolutionTransposedCode(
   AddSrcTensor("src_tensor", src_desc);
   AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
 
+  if (op_def.src_tensors.size() == 2) {
+    // dynamic weights
+    BufferDescriptor desc;
+    desc.element_type = op_def.src_tensors[1].data_type;
+    desc.element_size = 4;
+    desc.memory_type = MemoryType::CONSTANT;
+    AddSrcBuffer("weights", desc);
+  }
+
   const auto src_tensor_type = op_def.src_tensors[0].storage_type;
 
   std::string c = GetCommonDefines(op_def.precision);
@@ -160,8 +169,7 @@ std::string ConvolutionTransposed3x3Thin::GenerateConvolutionTransposedCode(
   for (int d = 0; d < dst_depth; ++d) {
     const std::string layer = std::to_string(d);
     c += "  {\n";
-    c += "  FLT4 bias_val = args.weights.Read(" +
-         std::to_string(36 * filters_index + d) + ");\n";
+    c += "  FLT4 bias_val = args.biases.Read(" + layer + ");\n";
     for (int y = 0; y < 2; ++y) {
       for (int x = 0; x < 2; ++x) {
         const std::string x_coord = "X + " + std::to_string(x);
@@ -205,7 +213,28 @@ ConvolutionTransposed3x3Thin CreateConvolutionTransposed3x3Thin(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr) {
   ConvolutionTransposed3x3Thin result(definition, attr);
-  result.UploadData(attr.weights, attr.bias);
+  result.UploadWeights(attr.weights);
+
+  TensorLinearDescriptor desc;
+  desc.storage_type = LinearStorageType::TEXTURE_2D;
+  desc.element_type = definition.GetDataType();
+  desc.UploadLinearData(attr.bias);
+  result.args_.AddObject(
+      "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+  return result;
+}
+
+ConvolutionTransposed3x3Thin CreateConvolutionTransposed3x3ThinDynamicWeights(
+    const GpuInfo& gpu_info, const OperationDef& definition,
+    const ConvolutionTransposedAttributes& attr) {
+  ConvolutionTransposed3x3Thin result(definition, attr);
+
+  TensorLinearDescriptor desc;
+  desc.storage_type = LinearStorageType::TEXTURE_2D;
+  desc.element_type = definition.GetDataType();
+  desc.UploadLinearData(attr.bias);
+  result.args_.AddObject(
+      "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
   return result;
 }
 

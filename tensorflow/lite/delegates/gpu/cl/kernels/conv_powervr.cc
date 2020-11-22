@@ -1045,7 +1045,7 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
     if (dst_shape) {
       int task_size = dst_shape->w * dst_shape->b * dst_shape->h * dst_depth;
       float task_size_per_cu =
-          static_cast<float>(task_size) / gpu_info.compute_units_count;
+          static_cast<float>(task_size) / gpu_info.GetComputeUnitsCount();
       int block_size = conv_params.block_size.x * conv_params.block_size.y *
                        conv_params.block_size.w;
       float threads_per_cu = task_size_per_cu / block_size;

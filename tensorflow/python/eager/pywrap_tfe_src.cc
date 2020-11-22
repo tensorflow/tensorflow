@@ -243,7 +243,7 @@ struct FastPathOpExecInfo {
 
 #if PY_MAJOR_VERSION >= 3
 PARSE_VALUE(ParseIntValue, int, PyLong_Check, PyLong_AsLong)
-PARSE_VALUE(ParseInt64Value, int64_t, PyLong_Check, PyLong_AsLong)
+PARSE_VALUE(ParseInt64Value, int64_t, PyLong_Check, PyLong_AsLongLong)
 #else
 PARSE_VALUE(ParseIntValue, int, PyInt_Check, PyInt_AsLong)
 #endif

@@ -3721,6 +3721,7 @@ cc_library(
         ":hlo_casting_utils",
         ":hlo_pass",
         ":shape_inference",
+        "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",

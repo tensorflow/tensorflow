@@ -80,6 +80,19 @@ std::string ConvolutionTransposed3x3::GenerateConvolutionTransposedCode(
   }
   AddDstTensor("dst_tensor", dst_desc);
 
+  if (op_def.src_tensors.size() == 2) {
+    // dynamic weights
+    BufferDescriptor desc;
+    desc.element_type = op_def.src_tensors[1].data_type;
+    desc.element_size = 4;
+    desc.memory_type =
+        weights_upload_type ==
+                ConvolutionTransposed3x3::WeightsUploadType::CONSTANT_MEM
+            ? MemoryType::CONSTANT
+            : MemoryType::GLOBAL;
+    AddSrcBuffer("weights", desc);
+  }
+
   args_.AddInt("filter_offset");
   args_.AddInt("padding_x");
   args_.AddInt("padding_y");
@@ -379,6 +392,21 @@ ConvolutionTransposed3x3 CreateConvolutionTransposed3x3(
   const int2 padding = int2(attr.padding.prepended.w, attr.padding.prepended.h);
   ConvolutionTransposed3x3 result(definition, gpu_info, padding);
   result.UploadWeights(attr.weights);
+
+  TensorLinearDescriptor desc;
+  desc.storage_type = LinearStorageType::TEXTURE_2D;
+  desc.element_type = definition.GetDataType();
+  desc.UploadLinearData(attr.bias);
+  result.args_.AddObject(
+      "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+  return result;
+}
+
+ConvolutionTransposed3x3 CreateConvolutionTransposed3x3DynamicWeights(
+    const GpuInfo& gpu_info, const OperationDef& definition,
+    const ConvolutionTransposedAttributes& attr) {
+  const int2 padding = int2(attr.padding.prepended.w, attr.padding.prepended.h);
+  ConvolutionTransposed3x3 result(definition, gpu_info, padding);
 
   TensorLinearDescriptor desc;
   desc.storage_type = LinearStorageType::TEXTURE_2D;
