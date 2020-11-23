@@ -83,12 +83,7 @@ std::string GetOneInputCode(const OperationType& op_type,
       result = "$0 *= $0;\n";
       break;
     case OperationType::TANH:
-      if (precision != CalculationsPrecision::F32) {
-        result = "float4 t = native_exp(convert_float4($0 * 2.0h));\n";
-        result += "$0 = convert_half4(native_divide(t - 1.0f, t + 1.0f));\n";
-      } else {
-        result = "$0 = tanh($0);\n";
-      }
+      result = "$0 = tanh($0);\n";
       break;
     default:
       return "Unknown operation type;\n";
