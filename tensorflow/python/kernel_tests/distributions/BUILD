@@ -60,13 +60,10 @@ cuda_py_test(
     name = "beta_test",
     size = "small",
     srcs = ["beta_test.py"],
-<<<<<<< HEAD
-    tags = ["no_rocm"],  # ROCm 3.9 regression
-=======
     tags = [
         "notsan",  # b/173653918
+        "no_rocm",  # ROCm 3.9 regression
     ],
->>>>>>> upstream/master
     xla_tags = [
         "no_cuda_asan",  # times out
     ],
