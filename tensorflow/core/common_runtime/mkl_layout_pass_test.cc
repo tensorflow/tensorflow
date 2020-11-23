@@ -53,7 +53,6 @@ static void InitGraph(const string& s, Graph* graph,
   GraphDef graph_def;
 
   auto parser = protobuf::TextFormat::Parser();
-  //  parser.AllowRelaxedWhitespace(true);
   CHECK(parser.MergeFromString(s, &graph_def)) << s;
   GraphConstructorOptions opts;
   TF_CHECK_OK(ConvertGraphDefToGraph(opts, graph_def, graph));
@@ -66,7 +65,6 @@ static void InitGraph(const string& s, Graph* graph,
 class MklLayoutPassTest : public ::testing::Test {
  public:
   MklLayoutPassTest() : graph_(OpRegistry::Global()) {}
-  // Ashraf added
   Node* FindNode(const string& name) {
     for (Node* node : graph_.nodes()) {
       if (node->name() == name) return node;
@@ -3054,8 +3052,6 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_LeakyReluGrad_Negative);
 REGISTER_TEST_ALL_TYPES(NodeRewrite_LeakyReluLeakyReluGrad_Positive);
 #undef REGISTER_TEST
 
-#ifdef ENABLE_MKLDNN_V1
-
 #define REGISTER_TEST(NAME, T, INPUT)                                        \
   TEST_F(MklLayoutPassTest, NAME##_##T) {                                    \
     DCHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);     \
@@ -3113,7 +3109,6 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_TanhGrad_Positive);
 }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_TanhTanhGrad_Positive);
 #undef REGISTER_TEST
-#endif  // ENABLE_MKLDNN_V1
 
 #define REGISTER_TEST(NAME, T, INPUT)                                        \
   TEST_F(MklLayoutPassTest, NAME##_##T) {                                    \
@@ -3480,7 +3475,6 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedBatchNormGradV3_5D_Negative_2);
 #undef DATA_FORMAT
 #undef REGISTER_TEST
 
-#ifdef ENABLE_MKLDNN_V1
 #define REGISTER_TEST(NAME, T, INPUT)                                        \
   TEST_F(MklLayoutPassTest, NAME##_##T) {                                    \
     InitGraph("node { name: 'A' op: '" #INPUT "'}"                           \
@@ -3570,7 +3564,6 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedBatchNormEx_Negative1);
   }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedBatchNormEx_Negative2);
 #undef REGISTER_TEST
-#endif  // ENABLE_MKLDNN_V1
 
 TEST_F(MklLayoutPassTest, NodeRewrite_QuantizedDepthwiseConv2D_Positive) {
   InitGraph(
@@ -5166,7 +5159,6 @@ static void BM_MklLayoutRewritePass(int iters, int op_nodes) {
     }
     iters -= N;  // Our benchmark units are individual graph nodes,
                  // not whole graphs
-    // delete graph;
   }
 }
 BENCHMARK(BM_MklLayoutRewritePass)->Arg(1000)->Arg(10000);
