@@ -202,10 +202,6 @@ inline void Add(const ArithmeticParams& params,
   }
 }
 
-// TODO(jiawen): We can implement BroadcastAdd on buffers of arbitrary
-// dimensionality if the runtime code does a single loop over one dimension
-// that handles broadcasting as the base case. The code generator would then
-// generate max(D1, D2) nested for loops.
 inline void BroadcastAdd4DSlow(const ArithmeticParams& params,
                                const RuntimeShape& input1_shape,
                                const float* input1_data,
