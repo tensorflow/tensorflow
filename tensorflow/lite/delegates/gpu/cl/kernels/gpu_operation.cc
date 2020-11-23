@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 
 #include "absl/strings/substitute.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/common/access_type.h"
 #include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
 

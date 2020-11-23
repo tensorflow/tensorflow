@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/util.h"
 
 namespace tflite {
 namespace gpu {

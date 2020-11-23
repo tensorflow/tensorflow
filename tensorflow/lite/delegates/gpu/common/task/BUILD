@@ -116,6 +116,11 @@ cc_library(
     hdrs = ["util.h"],
     deps = [
         ":gpu_object_desc",
+        "//tensorflow/lite/delegates/gpu/common:gpu_info",
+        "//tensorflow/lite/delegates/gpu/common:precision",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common:util",
+        "@com_google_absl//absl/strings",
     ],
 )
 

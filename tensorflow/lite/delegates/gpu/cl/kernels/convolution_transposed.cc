@@ -20,7 +20,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/substitute.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"

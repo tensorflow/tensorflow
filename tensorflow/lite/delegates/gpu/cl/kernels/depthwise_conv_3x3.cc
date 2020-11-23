@@ -18,7 +18,6 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
 

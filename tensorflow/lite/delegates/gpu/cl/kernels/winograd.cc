@@ -20,7 +20,6 @@ limitations under the License.
 
 #include "absl/strings/str_format.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
