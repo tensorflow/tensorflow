@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_WORK_GROUP_PICKING_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_WORK_GROUP_PICKING_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_WORK_GROUP_PICKING_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_WORK_GROUP_PICKING_H_
 
 #include <vector>
 
@@ -26,7 +26,6 @@ limitations under the License.
 
 namespace tflite {
 namespace gpu {
-namespace cl {
 
 // multiplier can be power of two only
 void GetPossibleWorkGroupsXYMultipleOf(int multiplier, const GpuInfo& gpu_info,
@@ -60,8 +59,7 @@ void GetPossibleWorkGroupsConv(TuningType tuning_type, const GpuInfo& gpu_info,
 // if no suitable groups among wgs, returns {1, 1, 1}
 int3 GetFirstSuitableWorkGroup(const std::vector<int3>& wgs, int max_wg_size);
 
-}  // namespace cl
 }  // namespace gpu
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_WORK_GROUP_PICKING_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_WORK_GROUP_PICKING_H_

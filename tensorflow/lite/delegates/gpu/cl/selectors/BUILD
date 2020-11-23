@@ -13,7 +13,6 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/cl/kernels:conv_powervr",
         "//tensorflow/lite/delegates/gpu/cl/kernels:conv_weights_converter",
         "//tensorflow/lite/delegates/gpu/cl/kernels:gpu_operation",
-        "//tensorflow/lite/delegates/gpu/cl/kernels:work_group_picking",
         "//tensorflow/lite/delegates/gpu/common:model_hints",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:shape",
@@ -21,6 +20,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
         "//tensorflow/lite/delegates/gpu/common/task:weights_layout",
+        "//tensorflow/lite/delegates/gpu/common/task:work_group_picking",
         "@com_google_absl//absl/memory",
     ],
 )

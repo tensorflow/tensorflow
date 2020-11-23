@@ -136,3 +136,18 @@ cc_library(
     name = "weights_layout",
     hdrs = ["weights_layout.h"],
 )
+
+cc_library(
+    name = "work_group_picking",
+    srcs = ["work_group_picking.cc"],
+    hdrs = ["work_group_picking.h"],
+    deps = [
+        ":tuning_type",
+        "//tensorflow/lite/delegates/gpu/cl:cl_kernel",
+        "//tensorflow/lite/delegates/gpu/common:gpu_info",
+        "//tensorflow/lite/delegates/gpu/common:kernel_info",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common:util",
+        "//tensorflow/lite/delegates/gpu/common:workgroup_selection",
+    ],
+)

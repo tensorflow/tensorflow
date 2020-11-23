@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
+#include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
 
 #include <algorithm>
 #include <limits>
@@ -24,7 +24,6 @@ limitations under the License.
 
 namespace tflite {
 namespace gpu {
-namespace cl {
 
 namespace {
 
@@ -300,6 +299,5 @@ int3 GetFirstSuitableWorkGroup(const std::vector<int3>& wgs, int max_wg_size) {
   return {1, 1, 1};
 }
 
-}  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

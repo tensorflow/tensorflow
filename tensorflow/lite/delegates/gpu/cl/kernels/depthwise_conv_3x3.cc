@@ -19,8 +19,8 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
 
 namespace tflite {
 namespace gpu {
