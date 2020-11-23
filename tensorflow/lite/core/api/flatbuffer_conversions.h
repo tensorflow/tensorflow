@@ -236,6 +236,9 @@ TfLiteStatus ParseSplit(const Operator* op, ErrorReporter* error_reporter,
 TfLiteStatus ParseSplitV(const Operator* op, ErrorReporter* error_reporter,
                          BuiltinDataAllocator* allocator, void** builtin_data);
 
+TfLiteStatus ParseSqueeze(const Operator* op, ErrorReporter* error_reporter,
+                          BuiltinDataAllocator* allocator, void** builtin_data);
+
 TfLiteStatus ParseSqrt(const Operator* op, ErrorReporter* error_reporter,
                        BuiltinDataAllocator* allocator, void** builtin_data);
 

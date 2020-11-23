@@ -368,6 +368,11 @@ class MicroMutableOpResolver : public MicroOpResolver {
                       tflite::ops::micro::Register_SPLIT_V(), ParseSplitV);
   }
 
+  TfLiteStatus AddSqueeze() {
+    return AddBuiltin(BuiltinOperator_SQUEEZE, Register_SQUEEZE(),
+                      ParseSqueeze);
+  }
+
   TfLiteStatus AddSqrt() {
     return AddBuiltin(BuiltinOperator_SQRT, tflite::ops::micro::Register_SQRT(),
                       ParseSqrt);
