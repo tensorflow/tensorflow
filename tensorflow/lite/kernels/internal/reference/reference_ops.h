@@ -179,7 +179,7 @@ inline void Elu(const RuntimeShape& input_shape, const float* input_data,
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
     const float val = input_data[i];
-    output_data[i] = val < 0.0 ? std::exp(val) - 1 : val;
+    output_data[i] = val < 0.0f ? std::expm1(val) : val;
   }
 }
 
