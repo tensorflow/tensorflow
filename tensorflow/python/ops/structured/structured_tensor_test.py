@@ -36,6 +36,10 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import row_partition
+
+# TODO(b/173144447): remove when structured_array_ops is included in init.
+from tensorflow.python.ops.structured import structured_array_ops  # pylint: disable=unused-import
+
 from tensorflow.python.ops.structured import structured_tensor
 from tensorflow.python.ops.structured.structured_tensor import StructuredTensor
 from tensorflow.python.platform import googletest
@@ -976,6 +980,114 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
         ValueError, r"Expected outer_axis \(2\) to be less than "
         r"or equal to inner_axis \(1\)"):
       st.merge_dims(2, 1)
+
+  @parameterized.named_parameters([
+      dict(
+          testcase_name="0D_0",
+          st={"x": 1},
+          axis=0,
+          expected=[{"x": 1}]),
+      dict(
+          testcase_name="0D_minus_1",
+          st={"x": 1},
+          axis=-1,
+          expected=[{"x": 1}]),
+      dict(
+          testcase_name="1D_0",
+          st=[{"x": [1, 3]}, {"x": [2, 7, 9]}],
+          axis=0,
+          expected=[[{"x": [1, 3]}, {"x": [2, 7, 9]}]]),
+      dict(
+          testcase_name="1D_1",
+          st=[{"x": [1]}, {"x": [2, 10]}],
+          axis=1,
+          expected=[[{"x": [1]}], [{"x": [2, 10]}]]),
+      dict(
+          testcase_name="2D_0",
+          st=[[{"x": [1]}, {"x": [2]}], [{"x": [3, 4]}]],
+          axis=0,
+          expected=[[[{"x": [1]}, {"x": [2]}], [{"x": [3, 4]}]]]),
+      dict(
+          testcase_name="2D_1",
+          st=[[{"x": 1}, {"x": 2}], [{"x": 3}]],
+          axis=1,
+          expected=[[[{"x": 1}, {"x": 2}]], [[{"x": 3}]]]),
+      dict(
+          testcase_name="2D_2",
+          st=[[{"x": [1]}, {"x": [2]}], [{"x": [3, 4]}]],
+          axis=2,
+          expected=[[[{"x": [1]}], [{"x": [2]}]], [[{"x": [3, 4]}]]]),
+      dict(
+          testcase_name="3D_0",
+          st=[[[{"x": [1]}, {"x": [2]}], [{"x": [3]}]], [[{"x": [4, 5]}]]],
+          axis=0,
+          expected=[[[[{"x": [1]}, {"x": [2]}], [{"x": [3]}]],
+                     [[{"x": [4, 5]}]]]]),
+      dict(
+          testcase_name="3D_minus_4",
+          st=[[[{"x": [1]}, {"x": [2]}], [{"x": [3]}]], [[{"x": [4, 5]}]]],
+          axis=-4,  # same as zero
+          expected=[[[[{"x": [1]}, {"x": [2]}], [{"x": [3]}]],
+                     [[{"x": [4, 5]}]]]]),
+      dict(
+          testcase_name="3D_1",
+          st=[[[{"x": [1]}, {"x": [2]}], [{"x": [3]}]], [[{"x": [4, 5]}]]],
+          axis=1,
+          expected=[[[[{"x": [1]}, {"x": [2]}], [{"x": [3]}]]],
+                    [[[{"x": [4, 5]}]]]]),
+      dict(
+          testcase_name="3D_minus_3",
+          st=[[[{"x": [1]}, {"x": [2]}], [{"x": [3]}]], [[{"x": [4, 5]}]]],
+          axis=-3,  # same as 1
+          expected=[[[[{"x": [1]}, {"x": [2]}], [{"x": [3]}]]],
+                    [[[{"x": [4, 5]}]]]]),
+      dict(
+          testcase_name="3D_2",
+          st=[[[{"x": [1]}, {"x": [2]}], [{"x": [3]}]], [[{"x": [4, 5]}]]],
+          axis=2,
+          expected=[[[[{"x": [1]}, {"x": [2]}]], [[{"x": [3]}]]],
+                    [[[{"x": [4, 5]}]]]]),
+      dict(
+          testcase_name="3D_minus_2",
+          st=[[[{"x": [1]}, {"x": [2]}], [{"x": [3]}]], [[{"x": [4, 5]}]]],
+          axis=-2,  # same as 2
+          expected=[[[[{"x": [1]}, {"x": [2]}]], [[{"x": [3]}]]],
+                    [[[{"x": [4, 5]}]]]]),
+      dict(
+          testcase_name="3D_3",
+          st=[[[{"x": [1]}, {"x": [2]}], [{"x": [3]}]], [[{"x": [4, 5]}]]],
+          axis=3,
+          expected=[[[[{"x": [1]}], [{"x": [2]}]], [[{"x": [3]}]]],
+                    [[[{"x": [4, 5]}]]]]),
+  ])  # pyformat: disable
+  def testExpandDims(self, st, axis, expected):
+    st = StructuredTensor.from_pyval(st)
+    result = array_ops.expand_dims(st, axis)
+    self.assertAllEqual(result, expected)
+
+  def testExpandDimsAxisTooBig(self):
+    st = [[[{"x": [1]}, {"x": [2]}], [{"x": [3]}]], [[{"x": [4, 5]}]]]
+    st = StructuredTensor.from_pyval(st)
+    with self.assertRaisesRegex(ValueError,
+                                "axis=4 out of bounds: expected -4<=axis<4"):
+      array_ops.expand_dims(st, 4)
+
+  def testExpandDimsAxisTooSmall(self):
+    st = [[[{"x": [1]}, {"x": [2]}], [{"x": [3]}]], [[{"x": [4, 5]}]]]
+    st = StructuredTensor.from_pyval(st)
+    with self.assertRaisesRegex(ValueError,
+                                "axis=-5 out of bounds: expected -4<=axis<4"):
+      array_ops.expand_dims(st, -5)
+
+  def testExpandDimsScalar(self):
+    # Note that if we expand_dims for the final dimension and there are scalar
+    # fields, then the shape is (2, None, None, 1), whereas if it is constructed
+    # from pyval it is (2, None, None, None).
+    st = [[[{"x": 1}, {"x": 2}], [{"x": 3}]], [[{"x": 4}]]]
+    st = StructuredTensor.from_pyval(st)
+    result = array_ops.expand_dims(st, 3)
+    expected_shape = tensor_shape.TensorShape([2, None, None, 1])
+    self.assertEqual(repr(expected_shape), repr(result.shape))
 
   def testTupleFieldValue(self):
     st = StructuredTensor.from_pyval({"a": 5, "b": {"c": [1, 2, 3]}})
