@@ -270,6 +270,18 @@ Status ExplicitShapes(InferenceContext* c);
 // Shape function for SparseReduceMax and SparseReduceSum.
 Status SparseReduceShapeFn(InferenceContext* c);
 
+// Shape function for QuantizedConv2D op.
+Status QuantizedConv2DShape(InferenceContext* c);
+
+// Shape function for QuantizedAvgPool op
+Status QuantizedAvgPoolShape(InferenceContext* c);
+
+// Shape function for QuantizeV2 op
+Status QuantizeV2Shape(InferenceContext* c);
+
+// Shape function for Dequantize op
+Status DequantizeShape(InferenceContext* c);
+
 }  // namespace shape_inference
 
 }  // namespace tensorflow

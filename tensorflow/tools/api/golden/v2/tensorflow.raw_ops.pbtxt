@@ -2982,63 +2982,63 @@ tf_module {
   }
   member_method {
     name: "QuantizedConv2DAndRelu"
-    argspec: "args=[\'input\', \'filter\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'strides\', \'padding\', \'out_type\', \'dilations\', \'padding_list\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'qint32\'>\", \'[1, 1, 1, 1]\', \'[]\', \'None\'], "
+    argspec: "args=[\'input\', \'filter\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'strides\', \'padding\', \'out_type\', \'data_format\', \'is_filter_const\', \'dilations\', \'padding_list\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'qint32\'>\", \'NHWC\', \'True\', \'[1, 1, 1, 1]\', \'[]\', \'None\'], "
   }
   member_method {
     name: "QuantizedConv2DAndReluAndRequantize"
-    argspec: "args=[\'input\', \'filter\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'min_freezed_output\', \'max_freezed_output\', \'strides\', \'padding\', \'out_type\', \'dilations\', \'padding_list\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'quint8\'>\", \'[1, 1, 1, 1]\', \'[]\', \'None\'], "
+    argspec: "args=[\'input\', \'filter\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'min_freezed_output\', \'max_freezed_output\', \'strides\', \'padding\', \'out_type\', \'data_format\', \'is_filter_const\', \'dilations\', \'padding_list\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'quint8\'>\", \'NHWC\', \'True\', \'[1, 1, 1, 1]\', \'[]\', \'None\'], "
   }
   member_method {
     name: "QuantizedConv2DAndRequantize"
-    argspec: "args=[\'input\', \'filter\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'min_freezed_output\', \'max_freezed_output\', \'strides\', \'padding\', \'out_type\', \'dilations\', \'padding_list\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'qint8\'>\", \'[1, 1, 1, 1]\', \'[]\', \'None\'], "
+    argspec: "args=[\'input\', \'filter\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'min_freezed_output\', \'max_freezed_output\', \'strides\', \'padding\', \'out_type\', \'data_format\', \'is_filter_const\', \'dilations\', \'padding_list\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'qint8\'>\", \'NHWC\', \'True\', \'[1, 1, 1, 1]\', \'[]\', \'None\'], "
   }
   member_method {
     name: "QuantizedConv2DPerChannel"
-    argspec: "args=[\'input\', \'filter\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'strides\', \'padding\', \'out_type\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'qint32\'>\", \'[1, 1, 1, 1]\', \'None\'], "
+    argspec: "args=[\'input\', \'filter\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'strides\', \'padding\', \'out_type\', \'data_format\', \'is_filter_const\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'qint32\'>\", \'NHWC\', \'True\', \'[1, 1, 1, 1]\', \'None\'], "
   }
   member_method {
     name: "QuantizedConv2DWithBias"
-    argspec: "args=[\'input\', \'filter\', \'bias\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'strides\', \'padding\', \'out_type\', \'dilations\', \'padding_list\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'qint32\'>\", \'[1, 1, 1, 1]\', \'[]\', \'None\'], "
+    argspec: "args=[\'input\', \'filter\', \'bias\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'strides\', \'padding\', \'out_type\', \'data_format\', \'is_filter_const\', \'is_bias_const\', \'dilations\', \'padding_list\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'qint32\'>\", \'NHWC\', \'True\', \'True\', \'[1, 1, 1, 1]\', \'[]\', \'None\'], "
   }
   member_method {
     name: "QuantizedConv2DWithBiasAndRelu"
-    argspec: "args=[\'input\', \'filter\', \'bias\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'strides\', \'padding\', \'out_type\', \'dilations\', \'padding_list\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'qint32\'>\", \'[1, 1, 1, 1]\', \'[]\', \'None\'], "
+    argspec: "args=[\'input\', \'filter\', \'bias\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'strides\', \'padding\', \'out_type\', \'data_format\', \'is_filter_const\', \'is_bias_const\', \'dilations\', \'padding_list\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'qint32\'>\", \'NHWC\', \'True\', \'True\', \'[1, 1, 1, 1]\', \'[]\', \'None\'], "
   }
   member_method {
     name: "QuantizedConv2DWithBiasAndReluAndRequantize"
-    argspec: "args=[\'input\', \'filter\', \'bias\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'min_freezed_output\', \'max_freezed_output\', \'strides\', \'padding\', \'out_type\', \'dilations\', \'padding_list\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'quint8\'>\", \'[1, 1, 1, 1]\', \'[]\', \'None\'], "
+    argspec: "args=[\'input\', \'filter\', \'bias\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'min_freezed_output\', \'max_freezed_output\', \'strides\', \'padding\', \'out_type\', \'data_format\', \'is_filter_const\', \'is_bias_const\', \'dilations\', \'padding_list\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'quint8\'>\", \'NHWC\', \'True\', \'True\', \'[1, 1, 1, 1]\', \'[]\', \'None\'], "
   }
   member_method {
     name: "QuantizedConv2DWithBiasAndRequantize"
-    argspec: "args=[\'input\', \'filter\', \'bias\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'min_freezed_output\', \'max_freezed_output\', \'strides\', \'padding\', \'out_type\', \'dilations\', \'padding_list\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'qint8\'>\", \'[1, 1, 1, 1]\', \'[]\', \'None\'], "
+    argspec: "args=[\'input\', \'filter\', \'bias\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'min_freezed_output\', \'max_freezed_output\', \'strides\', \'padding\', \'out_type\', \'data_format\', \'is_filter_const\', \'is_bias_const\', \'dilations\', \'padding_list\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'qint8\'>\", \'NHWC\', \'True\', \'True\', \'[1, 1, 1, 1]\', \'[]\', \'None\'], "
   }
   member_method {
     name: "QuantizedConv2DWithBiasSignedSumAndReluAndRequantize"
-    argspec: "args=[\'input\', \'filter\', \'bias\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'min_freezed_output\', \'max_freezed_output\', \'summand\', \'min_summand\', \'max_summand\', \'strides\', \'padding\', \'out_type\', \'dilations\', \'padding_list\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'quint8\'>\", \'[1, 1, 1, 1]\', \'[]\', \'None\'], "
+    argspec: "args=[\'input\', \'filter\', \'bias\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'min_freezed_output\', \'max_freezed_output\', \'summand\', \'min_summand\', \'max_summand\', \'strides\', \'padding\', \'out_type\', \'data_format\', \'is_filter_const\', \'is_bias_const\', \'dilations\', \'padding_list\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'quint8\'>\", \'NHWC\', \'True\', \'True\', \'[1, 1, 1, 1]\', \'[]\', \'None\'], "
   }
   member_method {
     name: "QuantizedConv2DWithBiasSumAndRelu"
-    argspec: "args=[\'input\', \'filter\', \'bias\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'summand\', \'strides\', \'padding\', \'out_type\', \'dilations\', \'padding_list\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'qint32\'>\", \'[1, 1, 1, 1]\', \'[]\', \'None\'], "
+    argspec: "args=[\'input\', \'filter\', \'bias\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'summand\', \'strides\', \'padding\', \'out_type\', \'data_format\', \'is_filter_const\', \'is_bias_const\', \'dilations\', \'padding_list\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'qint32\'>\", \'NHWC\', \'True\', \'True\', \'[1, 1, 1, 1]\', \'[]\', \'None\'], "
   }
   member_method {
     name: "QuantizedConv2DWithBiasSumAndReluAndRequantize"
-    argspec: "args=[\'input\', \'filter\', \'bias\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'min_freezed_output\', \'max_freezed_output\', \'summand\', \'min_summand\', \'max_summand\', \'strides\', \'padding\', \'out_type\', \'dilations\', \'padding_list\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'quint8\'>\", \'[1, 1, 1, 1]\', \'[]\', \'None\'], "
+    argspec: "args=[\'input\', \'filter\', \'bias\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'min_freezed_output\', \'max_freezed_output\', \'summand\', \'min_summand\', \'max_summand\', \'strides\', \'padding\', \'out_type\', \'data_format\', \'is_filter_const\', \'is_bias_const\', \'dilations\', \'padding_list\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'quint8\'>\", \'NHWC\', \'True\', \'True\', \'[1, 1, 1, 1]\', \'[]\', \'None\'], "
   }
   member_method {
     name: "QuantizedDepthwiseConv2D"
-    argspec: "args=[\'input\', \'filter\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'strides\', \'padding\', \'out_type\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'qint32\'>\", \'[1, 1, 1, 1]\', \'None\'], "
+    argspec: "args=[\'input\', \'filter\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'strides\', \'padding\', \'out_type\', \'data_format\', \'is_filter_const\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'qint32\'>\", \'NHWC\', \'True\', \'[1, 1, 1, 1]\', \'None\'], "
   }
   member_method {
     name: "QuantizedDepthwiseConv2DWithBias"
-    argspec: "args=[\'input\', \'filter\', \'bias\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'strides\', \'padding\', \'out_type\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'qint32\'>\", \'[1, 1, 1, 1]\', \'None\'], "
+    argspec: "args=[\'input\', \'filter\', \'bias\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'strides\', \'padding\', \'out_type\', \'data_format\', \'is_filter_const\', \'is_bias_const\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'qint32\'>\", \'NHWC\', \'True\', \'True\', \'[1, 1, 1, 1]\', \'None\'], "
   }
   member_method {
     name: "QuantizedDepthwiseConv2DWithBiasAndRelu"
-    argspec: "args=[\'input\', \'filter\', \'bias\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'strides\', \'padding\', \'out_type\', \'dilations\', \'padding_list\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'qint32\'>\", \'[1, 1, 1, 1]\', \'[]\', \'None\'], "
+    argspec: "args=[\'input\', \'filter\', \'bias\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'strides\', \'padding\', \'out_type\', \'data_format\', \'is_filter_const\', \'is_bias_const\', \'dilations\', \'padding_list\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'qint32\'>\", \'NHWC\', \'True\', \'True\', \'[1, 1, 1, 1]\', \'[]\', \'None\'], "
   }
   member_method {
     name: "QuantizedDepthwiseConv2DWithBiasAndReluAndRequantize"
-    argspec: "args=[\'input\', \'filter\', \'bias\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'min_freezed_output\', \'max_freezed_output\', \'strides\', \'padding\', \'out_type\', \'dilations\', \'padding_list\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'quint8\'>\", \'[1, 1, 1, 1]\', \'[]\', \'None\'], "
+    argspec: "args=[\'input\', \'filter\', \'bias\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'min_freezed_output\', \'max_freezed_output\', \'strides\', \'padding\', \'out_type\', \'data_format\', \'is_filter_const\', \'is_bias_const\', \'dilations\', \'padding_list\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'quint8\'>\", \'NHWC\', \'True\', \'True\', \'[1, 1, 1, 1]\', \'[]\', \'None\'], "
   }
   member_method {
     name: "QuantizedInstanceNorm"
@@ -3050,7 +3050,7 @@ tf_module {
   }
   member_method {
     name: "QuantizedMatMulWithBias"
-    argspec: "args=[\'a\', \'b\', \'bias\', \'min_a\', \'max_a\', \'min_b\', \'max_b\', \'Toutput\', \'transpose_a\', \'transpose_b\', \'input_quant_mode\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'qint32\'>\", \'False\', \'False\', \'MIN_FIRST\', \'None\'], "
+    argspec: "args=[\'a\', \'b\', \'bias\', \'min_a\', \'max_a\', \'min_b\', \'max_b\', \'Toutput\', \'transpose_a\', \'transpose_b\', \'input_quant_mode\', \'is_weight_const\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'qint32\'>\", \'False\', \'False\', \'MIN_FIRST\', \'True\', \'None\'], "
   }
   member_method {
     name: "QuantizedMatMulWithBiasAndDequantize"
@@ -3058,15 +3058,15 @@ tf_module {
   }
   member_method {
     name: "QuantizedMatMulWithBiasAndRelu"
-    argspec: "args=[\'a\', \'b\', \'bias\', \'min_a\', \'max_a\', \'min_b\', \'max_b\', \'Toutput\', \'transpose_a\', \'transpose_b\', \'input_quant_mode\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'qint32\'>\", \'False\', \'False\', \'MIN_FIRST\', \'None\'], "
+    argspec: "args=[\'a\', \'b\', \'bias\', \'min_a\', \'max_a\', \'min_b\', \'max_b\', \'Toutput\', \'transpose_a\', \'transpose_b\', \'input_quant_mode\', \'is_weight_const\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'qint32\'>\", \'False\', \'False\', \'MIN_FIRST\', \'True\', \'None\'], "
   }
   member_method {
     name: "QuantizedMatMulWithBiasAndReluAndRequantize"
-    argspec: "args=[\'a\', \'b\', \'bias\', \'min_a\', \'max_a\', \'min_b\', \'max_b\', \'min_freezed_output\', \'max_freezed_output\', \'Toutput\', \'transpose_a\', \'transpose_b\', \'input_quant_mode\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'quint8\'>\", \'False\', \'False\', \'MIN_FIRST\', \'None\'], "
+    argspec: "args=[\'a\', \'b\', \'bias\', \'min_a\', \'max_a\', \'min_b\', \'max_b\', \'min_freezed_output\', \'max_freezed_output\', \'Toutput\', \'transpose_a\', \'transpose_b\', \'input_quant_mode\', \'is_weight_const\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'quint8\'>\", \'False\', \'False\', \'MIN_FIRST\', \'True\', \'None\'], "
   }
   member_method {
     name: "QuantizedMatMulWithBiasAndRequantize"
-    argspec: "args=[\'a\', \'b\', \'bias\', \'min_a\', \'max_a\', \'min_b\', \'max_b\', \'min_freezed_output\', \'max_freezed_output\', \'Toutput\', \'transpose_a\', \'transpose_b\', \'input_quant_mode\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'quint8\'>\", \'False\', \'False\', \'MIN_FIRST\', \'None\'], "
+    argspec: "args=[\'a\', \'b\', \'bias\', \'min_a\', \'max_a\', \'min_b\', \'max_b\', \'min_freezed_output\', \'max_freezed_output\', \'Toutput\', \'transpose_a\', \'transpose_b\', \'input_quant_mode\', \'is_weight_const\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'quint8\'>\", \'False\', \'False\', \'MIN_FIRST\', \'True\', \'None\'], "
   }
   member_method {
     name: "QuantizedMaxPool"

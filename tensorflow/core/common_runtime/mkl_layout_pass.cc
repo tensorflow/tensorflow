@@ -616,25 +616,27 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back(
         {csinfo_.quantized_matmul_with_bias,
          mkl_op_registry::GetMklOpName(csinfo_.quantized_matmul_with_bias),
-         CopyAttrsQuantizedMatMulWithBias, AlwaysRewrite});
+         CopyAttrsQuantizedMatMulWithBias, AlwaysRewrite, GetRewriteCause()});
     rinfo_.push_back({csinfo_.quantized_matmul_with_bias_and_relu,
                       mkl_op_registry::GetMklOpName(
                           csinfo_.quantized_matmul_with_bias_and_relu),
-                      CopyAttrsQuantizedMatMulWithBias, AlwaysRewrite});
+                      CopyAttrsQuantizedMatMulWithBias, AlwaysRewrite,
+                      GetRewriteCause()});
     rinfo_.push_back(
         {csinfo_.quantized_matmul_with_bias_and_relu_and_requantize,
          mkl_op_registry::GetMklOpName(
              csinfo_.quantized_matmul_with_bias_and_relu_and_requantize),
-         CopyAttrsQuantizedMatMulWithBias, AlwaysRewrite});
+         CopyAttrsQuantizedMatMulWithBias, AlwaysRewrite, GetRewriteCause()});
     rinfo_.push_back({csinfo_.quantized_matmul_with_bias_and_requantize,
                       mkl_op_registry::GetMklOpName(
                           csinfo_.quantized_matmul_with_bias_and_requantize),
-                      CopyAttrsQuantizedMatMulWithBias, AlwaysRewrite});
+                      CopyAttrsQuantizedMatMulWithBias, AlwaysRewrite,
+                      GetRewriteCause()});
     rinfo_.push_back({csinfo_.quantized_matmul_with_bias_and_dequantize,
                       mkl_op_registry::GetMklOpName(
                           csinfo_.quantized_matmul_with_bias_and_dequantize),
                       CopyAttrsQuantizedMatMulWithBiasAndDequantize,
-                      AlwaysRewrite});
+                      AlwaysRewrite, GetRewriteCause()});
     rinfo_.push_back(
         {csinfo_.quantized_depthwise_conv2d,
          mkl_op_registry::GetMklOpName(csinfo_.quantized_depthwise_conv2d),
@@ -2351,17 +2353,10 @@ int MklLayoutRewritePass::SetUpContiguousInputs(
   return nn_slot_idx;
 }
 
-Status MklLayoutRewritePass::SetUpInputs(
-    std::unique_ptr<Graph>* g,
-    const gtl::InlinedVector<std::pair<Node*, int>, 4>& old_node_inputs,
-    NodeBuilder* nb, const Node* old_node) {
-  // Let's check if we need to add workspace tensors for this node.
-  // We add workspace edge only for MaxPool, LRN and BatchNorm.
-  std::vector<NodeBuilder::NodeOut> workspace_tensors;
-  bool are_workspace_tensors_available = false;
-
-  // Avoid workspace check for QuantizedConv2D and the fused
-  // Ops as they don't have attribute: "T".
+// This method finds out if checking workspace is needed or not. Workspace is
+// not used in quantized ops, so checking that would fail as quantized ops
+// don't have attribute: "T".
+bool IsWorkspaceCheckNeeded(const Node* node) {
   std::vector<string> quant_ops{
       "Dequantize",
       "QuantizeV2",
@@ -2386,12 +2381,23 @@ Status MklLayoutRewritePass::SetUpInputs(
       "QuantizedDepthwiseConv2DWithBias",
       "QuantizedDepthwiseConv2DWithBiasAndRelu",
       "QuantizedDepthwiseConv2DWithBiasAndReluAndRequantize"};
-  bool should_check_workspace =
-      std::find(std::begin(quant_ops), std::end(quant_ops),
-                old_node->type_string()) == std::end(quant_ops);
-  if (should_check_workspace)
+  return std::find(std::begin(quant_ops), std::end(quant_ops),
+                   node->type_string()) == std::end(quant_ops);
+}
+
+Status MklLayoutRewritePass::SetUpInputs(
+    std::unique_ptr<Graph>* g,
+    const gtl::InlinedVector<std::pair<Node*, int>, 4>& old_node_inputs,
+    NodeBuilder* nb, const Node* old_node) {
+  // Let's check if we need to add workspace tensors for this node.
+  // We add workspace edge only for MaxPool, LRN and BatchNorm.
+  std::vector<NodeBuilder::NodeOut> workspace_tensors;
+  bool are_workspace_tensors_available = false;
+
+  if (IsWorkspaceCheckNeeded(old_node)) {
     AddWorkSpaceEdgeIfNeeded(g, old_node, nb, &workspace_tensors,
                              &are_workspace_tensors_available);
+  }
 
   int new_node_input_slots = 0;
   if (kTensorOrdering == MklTfTensorOrdering::TENSORS_INTERLEAVED) {
@@ -2849,7 +2855,9 @@ void MklLayoutRewritePass::CopyAttrsQuantizedConv2D(const Node* orig_node,
   nb->Attr("is_filter_const", filter_node->IsConstant());
   nb->Attr("strides", strides);
   nb->Attr("dilations", dilations);
-  nb->Attr("T", out_type);  // added "T" for facilitating MklToTf conversion.
+  if (!NativeFormatEnabled()) {
+    nb->Attr("T", out_type);  // added "T" for facilitating MklToTf conversion.
+  }
   nb->Attr("data_format", data_format);
   if (has_padding_list) {
     nb->Attr("padding_list", padding_list);
@@ -2874,7 +2882,9 @@ void MklLayoutRewritePass::CopyAttrsQuantizedMatMulWithBiasAndDequantize(
   nb->Attr("T1", T1);
   nb->Attr("T2", T2);
   nb->Attr("Toutput", Toutput);
-  nb->Attr("T", T1);  // added "T" for facilitating MklToTf conversion.
+  if (!NativeFormatEnabled()) {
+    nb->Attr("T", T1);  // added "T" for facilitating MklToTf conversion.
+  }
 
   // Requantization attr Tbias
   DataType Tbias;
@@ -2899,7 +2909,9 @@ void MklLayoutRewritePass::CopyAttrsQuantizedMatMulWithBias(
   nb->Attr("T2", T2);
   nb->Attr("Toutput", Toutput);
   nb->Attr("is_weight_const", weight_node->IsConstant());
-  nb->Attr("T", Toutput);  // added "T" for facilitating MklToTf conversion.
+  if (!NativeFormatEnabled()) {
+    nb->Attr("T", Toutput);  // added "T" for facilitating MklToTf conversion.
+  }
 
   // Requantization attr Tbias
   DataType Tbias;
@@ -3708,11 +3720,13 @@ Status MklLayoutRewritePass::RewriteNodeForJustOpNameChange(
 
   std::vector<NodeBuilder::NodeOut> workspace_tensors;
   bool are_workspace_tensors_available = false;
-  AddWorkSpaceEdgeIfNeeded(g, orig_node, &nb, &workspace_tensors,
-                           &are_workspace_tensors_available);
-  if (are_workspace_tensors_available) {
-    DCHECK_EQ(workspace_tensors.size(), 1);
-    nb.Input(workspace_tensors[0].node, workspace_tensors[0].index);
+  if (IsWorkspaceCheckNeeded(orig_node)) {
+    AddWorkSpaceEdgeIfNeeded(g, orig_node, &nb, &workspace_tensors,
+                             &are_workspace_tensors_available);
+    if (are_workspace_tensors_available) {
+      DCHECK_EQ(workspace_tensors.size(), 1);
+      nb.Input(workspace_tensors[0].node, workspace_tensors[0].index);
+    }
   }
 
   if (!NativeFormatEnabled()) {
@@ -3721,7 +3735,14 @@ Status MklLayoutRewritePass::RewriteNodeForJustOpNameChange(
     ri->copy_attrs(const_cast<const Node*>(orig_node), &nb, false);
   }
 
-  nb.Attr("_kernel", mkl_op_registry::kMklNameChangeOpLabel);
+  if (mkl_op_registry::IsMklPrefixNeeded(orig_node->type_string())) {
+    if (DataTypeIsQuantized(orig_node->input_type(0)) ||
+        DataTypeIsQuantized(orig_node->output_type(0))) {
+      nb.Attr("_kernel", mkl_op_registry::kMklQuantizedOpLabel);
+    } else {
+      nb.Attr("_kernel", mkl_op_registry::kMklNameChangeOpLabel);
+    }
+  }
 
   // Finalize graph and get new node.
   s = nb.Finalize(&**g, new_node);
@@ -3806,12 +3827,12 @@ MklLayoutRewritePass::CheckForQuantizedNodeRewrite(const Node* n) const {
 
   if (TryGetNodeAttr(n->def(), "Tinput", &Tinput) &&
       TryGetNodeAttr(n->def(), "Tfilter", &Tfilter) &&
-      mkl_op_registry::IsMklLayoutDependentOp(
+      mkl_op_registry::IsMklQuantizedOp(
           mkl_op_registry::GetMklOpName(n->type_string()), Tinput, Tfilter)) {
     type_attrs_present = true;
   } else if (TryGetNodeAttr(n->def(), "T1", &T1) &&
              TryGetNodeAttr(n->def(), "T2", &T2) &&
-             mkl_op_registry::IsMklLayoutDependentOp(
+             mkl_op_registry::IsMklQuantizedOp(
                  mkl_op_registry::GetMklOpName(n->type_string()), T1, T2)) {
     type_attrs_present = true;
   }

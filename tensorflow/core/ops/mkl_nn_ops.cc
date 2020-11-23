@@ -630,15 +630,7 @@ REGISTER_OP("_MklQuantizedAvgPool")
     .Attr("ksize: list(int) >= 4")
     .Attr("strides: list(int) >= 4")
     .Attr(GetPaddingAttrString())
-    .SetShapeFn([](InferenceContext* c) {
-      TF_RETURN_IF_ERROR(shape_inference::AvgPoolShape(c));
-      ShapeHandle unused;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
-      c->set_output(1, c->Scalar());
-      c->set_output(2, c->Scalar());
-      return Status::OK();
-    })
+    .SetShapeFn(shape_inference::QuantizedAvgPoolShape)
     .Doc(R"doc(
 MKL version of QuantizedAvgPool operator. Uses MKL DNN APIs to perform average pooling
 on the quantized input.
@@ -676,17 +668,7 @@ REGISTER_OP("_MklQuantizedConv2D")
     .Attr(GetPaddingAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .Attr("padding_list: list(int) = []")
-    .SetShapeFn([](InferenceContext* c) {
-      TF_RETURN_IF_ERROR(shape_inference::Conv2DShape(c));
-      ShapeHandle unused;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));
-      c->set_output(1, c->Scalar());
-      c->set_output(2, c->Scalar());
-      return Status::OK();
-    });
+    .SetShapeFn(shape_inference::QuantizedConv2DShape);
 
 // TODO(nammbash): Most of the  TF_RETURN_IF_ERROR(c->WithRank) checks
 // seems to be similar and hence can be moved into a single function
@@ -1993,6 +1975,54 @@ Uses oneDNN APIs to perform fused batch normalization and relu.
 *NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
+
+REGISTER_OP("_MklNativeQuantizedConv2D")
+    .Input("input: Tinput")
+    .Input("filter: Tfilter")
+    .Input("min_input: float")
+    .Input("max_input: float")
+    .Input("min_filter: float")
+    .Input("max_filter: float")
+    .Output("output: out_type")
+    .Output("min_output: float")
+    .Output("max_output: float")
+    .Attr("Tinput: quantizedtype")
+    .Attr("Tfilter: quantizedtype")
+    .Attr("T: quantizedtype")
+    .Attr("out_type: quantizedtype = DT_QINT32")
+    .Attr("data_format: string = 'NHWC'")
+    .Attr("strides: list(int)")
+    .Attr("is_filter_const: bool = true")
+    .Attr(GetPaddingAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .Attr("padding_list: list(int) = []")
+    .SetShapeFn(shape_inference::QuantizedConv2DShape);
+
+REGISTER_OP("_MklNativeQuantizedMaxPool")
+    .Input("input:         T")
+    .Input("min_input:     float")
+    .Input("max_input:     float")
+    .Output("output:       T")
+    .Output("min_output:   float")
+    .Output("max_output:   float")
+    .Attr("T: quantizedtype")
+    .Attr("ksize: list(int) >= 4")
+    .Attr("strides: list(int) >= 4")
+    .Attr(GetPaddingAttrString())
+    .SetShapeFn(shape_inference::MaxPoolShape);
+
+REGISTER_OP("_MklNativeQuantizedAvgPool")
+    .Input("input:           T")
+    .Input("min_input:       float")
+    .Input("max_input:       float")
+    .Output("output:         T")
+    .Output("min_output:     float")
+    .Output("max_output:     float")
+    .Attr("T: quantizedtype")
+    .Attr("ksize: list(int) >= 4")
+    .Attr("strides: list(int) >= 4")
+    .Attr(GetPaddingAttrString())
+    .SetShapeFn(shape_inference::QuantizedAvgPoolShape);
 
 }  // namespace tensorflow
 

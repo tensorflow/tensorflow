@@ -18,6 +18,7 @@ limitations under the License.
 #ifdef INTEL_MKL
 
 #include "absl/base/call_once.h"
+#include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
@@ -144,9 +145,27 @@ static const char* const kMklEagerOpPrefix = "_MklEager";
 // _MklEager prefix.
 static const char* const kMklNativeOpPrefix = "_MklNative";
 
+// Check if op name has to be prefixed with one of _Mkl* prefixes.
+inline bool IsMklPrefixNeeded(const string& name) {
+  bool mkl_owned_quant_op = (0 == name.rfind("Quantized", 0) &&
+                             0 != name.compare("QuantizedConv2D") &&
+                             0 != name.compare("QuantizedAvgPool") &&
+                             0 != name.compare("QuantizedMaxPool"));
+  return !mkl_owned_quant_op;
+}
+
 // Get the name of Mkl Native (does not depend on layout propagation) op
 // from original TensorFlow op.
 inline string GetMklNativeOpName(const string& name) {
+  // For quantized ops in native format mode, we won't change the op name and
+  // will just reuse original name of the op if we own that name (the one
+  // witout _Mkl prefix). However, we may change the attributes for such ops.
+  // There are few quantized ops where we don't own original name. Those will
+  // be prfixed with _MklNative just like native ops.
+  if (!IsMklPrefixNeeded(name)) {
+    return name;
+  }
+
   // There are few operators that don't depend on layout propagation but are
   // prefixed with _Mkl instead of _MklNative.
   bool result =
@@ -232,12 +251,18 @@ static inline bool IsMklLayoutDependentOp(const string& op_name, DataType T) {
 // TODO(mdfaijul): QuantizedConv2D is registered with input: QUINT8
 // filter:QINT8 for mkldnn integration. First a dummy kernel is created
 // and then it is replaced by an actual kernel.
-static inline bool IsMklLayoutDependentOp(const string& op_name,
-                                          DataType Tinput, DataType Tfilter) {
+static inline bool IsMklQuantizedOp(const string& op_name, DataType Tinput,
+                                    DataType Tfilter) {
   string kernel = KernelsRegisteredForOp(op_name);
 
   // Restrict quantized ops to QUINT8 and QINT8 for now
   if (kernel.find(kMklQuantizedOpLabelPattern) != string::npos) {
+    return (Tfilter == DT_QINT8);
+  }
+  // Quantized ops in native format mode does not have the quantized label. So
+  // we just check if kernel is registered.
+  if (NativeFormatEnabled() &&
+      GetRegisteredKernelsForOp(op_name).kernel_size() != 0) {
     return (Tfilter == DT_QINT8);
   }
   return false;
