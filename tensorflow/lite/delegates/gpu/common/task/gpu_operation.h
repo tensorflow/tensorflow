@@ -13,13 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_GPU_OPERATION_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_GPU_OPERATION_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_GPU_OPERATION_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_GPU_OPERATION_H_
 
 #include <string>
 #include <vector>
 
-#include "tensorflow/lite/delegates/gpu/cl/serialization_generated.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/kernel_info.h"
@@ -29,6 +28,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/task/buffer_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/compiler_options.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_tensor.h"
+#include "tensorflow/lite/delegates/gpu/common/task/serialization_base_generated.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tuning_type.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
@@ -36,6 +36,8 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace cl {
+class ClOperation;
+}
 
 // kCustom: default value
 //   GPUOperation::GetGridSize must be overloaded
@@ -142,10 +144,11 @@ class GPUOperation {
   bool check_src_channels_size_ = false;
 
  protected:
-  friend class ClOperation;
-  friend flatbuffers::Offset<data::GPUOperation> Encode(
+  friend class cl::ClOperation;
+  friend flatbuffers::Offset<tflite::gpu::data::GPUOperation> Encode(
       const GPUOperation& op, flatbuffers::FlatBufferBuilder* builder);
-  friend absl::Status Decode(const data::GPUOperation* fb_op, GPUOperation* op);
+  friend absl::Status Decode(const tflite::gpu::data::GPUOperation* fb_op,
+                             GPUOperation* op);
 
   virtual absl::Status BindArguments(ArgumentsBinder* args) {
     return absl::OkStatus();
@@ -168,8 +171,7 @@ class GPUOperation {
   std::string elementwise_code_;  // temporary, used during op construction
 };
 
-}  // namespace cl
 }  // namespace gpu
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_GPU_OPERATION_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_GPU_OPERATION_H_

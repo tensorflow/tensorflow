@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
+#include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/common/access_type.h"
@@ -21,7 +21,6 @@ limitations under the License.
 
 namespace tflite {
 namespace gpu {
-namespace cl {
 namespace {
 std::string GetCommonDefines(CalculationsPrecision precision) {
   std::string result;
@@ -288,6 +287,5 @@ void GPUOperation::AddUniquePostfix(const std::string& unique_postfix) {
   }
 }
 
-}  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

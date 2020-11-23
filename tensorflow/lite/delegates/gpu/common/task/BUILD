@@ -51,6 +51,30 @@ cc_library(
 )
 
 cc_library(
+    name = "gpu_operation",
+    srcs = ["gpu_operation.cc"],
+    hdrs = ["gpu_operation.h"],
+    deps = [
+        ":serialization_base_cc_fbs",
+        "//tensorflow/lite/delegates/gpu/common:access_type",
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:gpu_info",
+        "//tensorflow/lite/delegates/gpu/common:kernel_info",
+        "//tensorflow/lite/delegates/gpu/common:precision",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common/task:arguments",
+        "//tensorflow/lite/delegates/gpu/common/task:buffer_desc",
+        "//tensorflow/lite/delegates/gpu/common/task:compiler_options",
+        "//tensorflow/lite/delegates/gpu/common/task:gpu_tensor",
+        "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
+        "//tensorflow/lite/delegates/gpu/common/task:tuning_type",
+        "//tensorflow/lite/delegates/gpu/common/task:work_group_picking",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "gpu_tensor",
     hdrs = ["gpu_tensor.h"],
 )
