@@ -771,7 +771,7 @@ Status BiasAddTransposer::TransposeNode(
     TransposeContext* context, utils::MutableNodeView* node) {
   // This TransposeNode allows for BiasAdd but not BiasAddV1, since BiasAdd
   // supports different data format.
-  DCHECK(node->GetOp() == "BiasAdd");
+  DCHECK(IsBiasAddV2(*node->node()));
   const int rank = GetFanoutPortRank(*node, 0);
   if (rank != 4 && rank != 5) {
     return Status::OK();
@@ -1969,7 +1969,7 @@ bool IsDefaultLayoutSensitiveOp(const NodeDef& node) {
 
 bool IsLayoutSensitiveOp(const NodeDef& node) {
   return IsDefaultLayoutSensitiveOp(node) || IsAvgPoolGrad(node) ||
-         IsBiasAdd(node) || IsBiasAddGrad(node) ||
+         IsBiasAddV2(node) || IsBiasAddGrad(node) ||
          IsConv2DBackpropFilter(node) || IsConv2DBackpropInput(node) ||
          IsDepthwiseConv2dNativeBackpropFilter(node) ||
          IsDepthwiseConv2dNativeBackpropInput(node) ||
