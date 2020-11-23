@@ -40,7 +40,7 @@ namespace {
 tflite_api_dispatcher::Interpreter* convertLongToInterpreter(JNIEnv* env,
                                                              jlong handle) {
   if (handle == 0) {
-    ThrowException(env, kIllegalArgumentException,
+    ThrowException(env, tflite::jni::kIllegalArgumentException,
                    "Internal error: Invalid handle to Interpreter.");
     return nullptr;
   }
@@ -50,7 +50,7 @@ tflite_api_dispatcher::Interpreter* convertLongToInterpreter(JNIEnv* env,
 tflite_api_dispatcher::TfLiteModel* convertLongToModel(JNIEnv* env,
                                                        jlong handle) {
   if (handle == 0) {
-    ThrowException(env, kIllegalArgumentException,
+    ThrowException(env, tflite::jni::kIllegalArgumentException,
                    "Internal error: Invalid handle to model.");
     return nullptr;
   }
@@ -59,7 +59,7 @@ tflite_api_dispatcher::TfLiteModel* convertLongToModel(JNIEnv* env,
 
 BufferErrorReporter* convertLongToErrorReporter(JNIEnv* env, jlong handle) {
   if (handle == 0) {
-    ThrowException(env, kIllegalArgumentException,
+    ThrowException(env, tflite::jni::kIllegalArgumentException,
                    "Internal error: Invalid handle to ErrorReporter.");
     return nullptr;
   }
@@ -68,7 +68,7 @@ BufferErrorReporter* convertLongToErrorReporter(JNIEnv* env, jlong handle) {
 
 TfLiteDelegate* convertLongToDelegate(JNIEnv* env, jlong handle) {
   if (handle == 0) {
-    ThrowException(env, kIllegalArgumentException,
+    ThrowException(env, tflite::jni::kIllegalArgumentException,
                    "Internal error: Invalid handle to delegate.");
     return nullptr;
   }
@@ -80,7 +80,7 @@ std::vector<int> convertJIntArrayToVector(JNIEnv* env, jintArray inputs) {
   std::vector<int> outputs(size, 0);
   jint* ptr = env->GetIntArrayElements(inputs, nullptr);
   if (ptr == nullptr) {
-    ThrowException(env, kIllegalArgumentException,
+    ThrowException(env, tflite::jni::kIllegalArgumentException,
                    "Array has empty dimensions.");
     return {};
   }
@@ -130,7 +130,7 @@ bool AreDimsDifferent(JNIEnv* env, TfLiteTensor* tensor, jintArray dims) {
   int num_dims = static_cast<int>(env->GetArrayLength(dims));
   jint* ptr = env->GetIntArrayElements(dims, nullptr);
   if (ptr == nullptr) {
-    ThrowException(env, kIllegalArgumentException,
+    ThrowException(env, tflite::jni::kIllegalArgumentException,
                    "Empty dimensions of input array.");
     return true;
   }
@@ -170,7 +170,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getInputNames(JNIEnv* env,
   if (interpreter == nullptr) return nullptr;
   jclass string_class = env->FindClass("java/lang/String");
   if (string_class == nullptr) {
-    ThrowException(env, kUnsupportedOperationException,
+    ThrowException(env, tflite::jni::kUnsupportedOperationException,
                    "Internal error: Can not find java/lang/String class to get "
                    "input names.");
     return nullptr;
@@ -197,7 +197,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_allocateTensors(
 
   if (interpreter->AllocateTensors() != kTfLiteOk) {
     ThrowException(
-        env, kIllegalStateException,
+        env, tflite::jni::kIllegalStateException,
         "Internal error: Unexpected failure when preparing tensor allocations:"
         " %s",
         error_reporter->CachedErrorMessage());
@@ -284,7 +284,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputNames(JNIEnv* env,
   if (interpreter == nullptr) return nullptr;
   jclass string_class = env->FindClass("java/lang/String");
   if (string_class == nullptr) {
-    ThrowException(env, kUnsupportedOperationException,
+    ThrowException(env, tflite::jni::kUnsupportedOperationException,
                    "Internal error: Can not find java/lang/String class to get "
                    "output names.");
     return nullptr;
@@ -365,12 +365,12 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_useXNNPACK(
     // TODO(b/166483905): Add support for multiple delegates when model allows.
     if (delegation_status != kTfLiteOk &&
         delegation_status != kTfLiteApplicationError) {
-      ThrowException(env, kIllegalArgumentException,
+      ThrowException(env, tflite::jni::kIllegalArgumentException,
                      "Internal error: Failed to apply XNNPACK delegate: %s",
                      error_reporter->CachedErrorMessage());
     }
   } else {
-    ThrowException(env, kIllegalArgumentException,
+    ThrowException(env, tflite::jni::kIllegalArgumentException,
                    "Failed to load XNNPACK delegate from current runtime. "
                    "Have you added the necessary dependencies?");
   }
@@ -422,7 +422,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createModel(
   auto model = tflite_api_dispatcher::TfLiteModel::VerifyAndBuildFromFile(
       path, verifier.get(), error_reporter);
   if (!model) {
-    ThrowException(env, kIllegalArgumentException,
+    ThrowException(env, tflite::jni::kIllegalArgumentException,
                    "Contents of %s does not encode a valid "
                    "TensorFlow Lite model: %s",
                    path, error_reporter->CachedErrorMessage());
@@ -443,7 +443,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createModelWithBuffer(
       static_cast<char*>(env->GetDirectBufferAddress(model_buffer));
   jlong capacity = env->GetDirectBufferCapacity(model_buffer);
   if (!VerifyModel(buf, capacity)) {
-    ThrowException(env, kIllegalArgumentException,
+    ThrowException(env, tflite::jni::kIllegalArgumentException,
                    "ByteBuffer is not a valid flatbuffer model");
     return 0;
   }
@@ -451,7 +451,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createModelWithBuffer(
   auto model = tflite_api_dispatcher::TfLiteModel::BuildFromBuffer(
       buf, static_cast<size_t>(capacity), error_reporter);
   if (!model) {
-    ThrowException(env, kIllegalArgumentException,
+    ThrowException(env, tflite::jni::kIllegalArgumentException,
                    "ByteBuffer does not encode a valid model: %s",
                    error_reporter->CachedErrorMessage());
     return 0;
@@ -474,7 +474,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createInterpreter(
   TfLiteStatus status = tflite_api_dispatcher::InterpreterBuilder(
       *model, *(resolver.get()))(&interpreter, static_cast<int>(num_threads));
   if (status != kTfLiteOk) {
-    ThrowException(env, kIllegalArgumentException,
+    ThrowException(env, tflite::jni::kIllegalArgumentException,
                    "Internal error: Cannot create interpreter: %s",
                    error_reporter->CachedErrorMessage());
     return 0;
@@ -496,7 +496,7 @@ JNIEXPORT void JNICALL Java_org_tensorflow_lite_NativeInterpreterWrapper_run(
 
   if (interpreter->Invoke() != kTfLiteOk) {
     // TODO(b/168266570): Return InterruptedException.
-    ThrowException(env, kIllegalArgumentException,
+    ThrowException(env, tflite::jni::kIllegalArgumentException,
                    "Internal error: Failed to run on the given Interpreter: %s",
                    error_reporter->CachedErrorMessage());
     return;
@@ -511,7 +511,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputDataType(
   if (interpreter == nullptr) return -1;
   const int idx = static_cast<int>(output_idx);
   if (output_idx < 0 || output_idx >= interpreter->outputs().size()) {
-    ThrowException(env, kIllegalArgumentException,
+    ThrowException(env, tflite::jni::kIllegalArgumentException,
                    "Failed to get %d-th output out of %d outputs", output_idx,
                    interpreter->outputs().size());
     return -1;
@@ -532,7 +532,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_resizeInput(
       convertLongToInterpreter(env, interpreter_handle);
   if (interpreter == nullptr) return JNI_FALSE;
   if (input_idx < 0 || input_idx >= interpreter->inputs().size()) {
-    ThrowException(env, kIllegalArgumentException,
+    ThrowException(env, tflite::jni::kIllegalArgumentException,
                    "Input error: Can not resize %d-th input for a model having "
                    "%d inputs.",
                    input_idx, interpreter->inputs().size());
@@ -552,7 +552,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_resizeInput(
           tensor_idx, convertJIntArrayToVector(env, dims));
     }
     if (status != kTfLiteOk) {
-      ThrowException(env, kIllegalArgumentException,
+      ThrowException(env, tflite::jni::kIllegalArgumentException,
                      "Internal error: Failed to resize %d-th input: %s",
                      input_idx, error_reporter->CachedErrorMessage());
       return JNI_FALSE;
@@ -578,7 +578,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_applyDelegate(
 
   TfLiteStatus status = interpreter->ModifyGraphWithDelegate(delegate);
   if (status != kTfLiteOk) {
-    ThrowException(env, kIllegalArgumentException,
+    ThrowException(env, tflite::jni::kIllegalArgumentException,
                    "Internal error: Failed to apply delegate: %s",
                    error_reporter->CachedErrorMessage());
   }
@@ -597,7 +597,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_resetVariableTensors(
 
   TfLiteStatus status = interpreter->ResetVariableTensors();
   if (status != kTfLiteOk) {
-    ThrowException(env, kIllegalArgumentException,
+    ThrowException(env, tflite::jni::kIllegalArgumentException,
                    "Internal error: Failed to reset variable tensors: %s",
                    error_reporter->CachedErrorMessage());
   }
@@ -609,7 +609,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createCancellationFlag(
   tflite_api_dispatcher::Interpreter* interpreter =
       convertLongToInterpreter(env, interpreter_handle);
   if (interpreter == nullptr) {
-    ThrowException(env, kIllegalArgumentException,
+    ThrowException(env, tflite::jni::kIllegalArgumentException,
                    "Internal error: Invalid handle to interpreter.");
   }
   std::atomic_bool* cancellation_flag = new std::atomic_bool(false);

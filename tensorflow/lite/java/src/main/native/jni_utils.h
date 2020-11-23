@@ -20,14 +20,13 @@ limitations under the License.
 
 #include "tensorflow/lite/error_reporter.h"
 
+namespace tflite {
+namespace jni {
+
 extern const char kIllegalArgumentException[];
 extern const char kIllegalStateException[];
 extern const char kNullPointerException[];
-extern const char kIndexOutOfBoundsException[];
 extern const char kUnsupportedOperationException[];
-
-namespace tflite {
-namespace jni {
 
 void ThrowException(JNIEnv* env, const char* clazz, const char* fmt, ...);
 
