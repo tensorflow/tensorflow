@@ -1087,8 +1087,7 @@ class BinaryOpsTest(xla_test.XLATestCase):
           expected=np.array([], dtype=dtype).reshape(0, 2, 3))
 
       # Regression test for b/31472796.
-      # numpy 1.14.5 fails here with 'invalid data type for einsum' for some types
-      if dtype != np.float16 and hasattr(np, "matmul") and np.__version__ != "1.14.5":
+      if dtype != np.float16 and hasattr(np, "matmul"):
         x = np.arange(0, 3 * 5 * 2 * 7, dtype=dtype).reshape((3, 5, 2, 7))
         self._testBinary(
             lambda x, y: math_ops.matmul(x, y, adjoint_b=True),

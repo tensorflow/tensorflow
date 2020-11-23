@@ -81,7 +81,6 @@ tf_py_test(
 tf_py_test(
     name = "batch_scatter_ops_test",
     srcs = ["batch_scatter_ops_test.py"],
-    tags = ["no_rocm"],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -140,7 +139,6 @@ tf_py_test(
     srcs = ["map_ops_test.py"],
     grpc_enabled = True,
     tags = [
-        "no_rocm",
         "noasan",  # TODO(b/164696004)
         "notsan",  # TODO(b/164696004)
     ],
@@ -279,7 +277,6 @@ cuda_py_test(
     srcs = ["collective_ops_test.py"],
     tags = [
         "multi_and_single_gpu",
-        "no_rocm",
     ],
     deps = [
         "//tensorflow/python:array_ops",
@@ -2852,7 +2849,7 @@ cuda_py_test(
     srcs = ["transpose_op_test.py"],
     shard_count = 10,
     tags = [
-        "no_cuda",
+        "no_gpu",
         "no_oss",
         "notap",  # flaky timeout/segfault, b/136498892
         "optonly",  # times out
@@ -3601,7 +3598,6 @@ cuda_py_test(
     srcs = ["tensordot_op_test.py"],
     shard_count = 20,
     xla_enable_strict_auto_jit = False,  # b/161856380
-    tags = ["no_rocm"],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

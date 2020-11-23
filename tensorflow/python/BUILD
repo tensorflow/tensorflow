@@ -2779,10 +2779,7 @@ tf_py_test(
     srcs = ["framework/ops_test.py"],
     main = "framework/ops_test.py",
     python_version = "PY3",
-    tags = [
-        "no_pip", # test_ops_2 is not available in pip.
-        "no_rocm",
-    ],
+    tags = ["no_pip"],  # test_ops_2 is not available in pip.
     deps = [
         ":cond_v2",
         ":control_flow_ops",
@@ -7467,7 +7464,6 @@ tf_py_test(
         "no_cuda_on_cpu_tap",
         "no_mac",
         "no_pip",
-        "no_rocm",
         "no_windows",  # TODO(b/151942037)
     ],
     deps = [
