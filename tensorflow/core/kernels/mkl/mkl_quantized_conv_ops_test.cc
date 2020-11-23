@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/graph/mkl_graph_util.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/kernels/quantization_utils.h"
@@ -69,29 +70,33 @@ class ConvMklToTF : public OpsTestBase {
 class QuantizedConv2DTest : public OpsTestBase {
  protected:
   void ConfigureQuantizedConv2D(const int& stride = 1) {
-    TF_ASSERT_OK(NodeDefBuilder("quantized_conv_op", "_MklQuantizedConv2D")
-                     .Input(FakeInput(DT_QUINT8))  // Input
-                     .Input(FakeInput(DT_QINT8))   // Filter
-                     .Input(FakeInput(DT_FLOAT))   // Min input
-                     .Input(FakeInput(DT_FLOAT))   // Max input
-                     .Input(FakeInput(DT_FLOAT))   // Min filter
-                     .Input(FakeInput(DT_FLOAT))   // Max filter
-                     //  MKL metadata tensors //
-                     .Input(FakeInput(DT_UINT8))
-                     .Input(FakeInput(DT_UINT8))
-                     .Input(FakeInput(DT_UINT8))
-                     .Input(FakeInput(DT_UINT8))
-                     .Input(FakeInput(DT_UINT8))
-                     .Input(FakeInput(DT_UINT8))
-                     ///////////////////////////
-                     .Attr("Tinput", DataTypeToEnum<quint8>::v())
-                     .Attr("Tfilter", DataTypeToEnum<qint8>::v())
-                     .Attr("T", DataTypeToEnum<quint8>::v())
-                     .Attr("out_type", DataTypeToEnum<qint32>::v())
-                     .Attr("strides", {1, stride, stride, 1})
-                     .Attr("padding", "SAME")
-                     .Attr("_kernel", "QuantizedMklOp")
-                     .Finalize(node_def()));
+    NodeDefBuilder builder =
+        NodeDefBuilder("quantized_conv_op", NativeFormatEnabled()
+                                                ? "_MklNativeQuantizedConv2D"
+                                                : "_MklQuantizedConv2D")
+            .Input(FakeInput(DT_QUINT8))  // Input
+            .Input(FakeInput(DT_QINT8))   // Filter
+            .Input(FakeInput(DT_FLOAT))   // Min input
+            .Input(FakeInput(DT_FLOAT))   // Max input
+            .Input(FakeInput(DT_FLOAT))   // Min filter
+            .Input(FakeInput(DT_FLOAT))   // Max filter
+            .Attr("Tinput", DataTypeToEnum<quint8>::v())
+            .Attr("Tfilter", DataTypeToEnum<qint8>::v())
+            .Attr("T", DataTypeToEnum<quint8>::v())
+            .Attr("out_type", DataTypeToEnum<qint32>::v())
+            .Attr("strides", {1, stride, stride, 1})
+            .Attr("padding", "SAME")
+            .Attr("_kernel", "QuantizedMklOp");
+    if (!NativeFormatEnabled()) {
+      // Add MKL metadata tensors
+      builder.Input(FakeInput(DT_UINT8))
+          .Input(FakeInput(DT_UINT8))
+          .Input(FakeInput(DT_UINT8))
+          .Input(FakeInput(DT_UINT8))
+          .Input(FakeInput(DT_UINT8))
+          .Input(FakeInput(DT_UINT8));
+    }
+    TF_ASSERT_OK(builder.Finalize(node_def()));
     TF_ASSERT_OK(InitOp());
   }
 
@@ -131,16 +136,18 @@ class QuantizedConv2DTest : public OpsTestBase {
     AddInputFromArray<float>(TensorShape({1}), {-127.0f});
     AddInputFromArray<float>(TensorShape({1}), {127.0f});
 
-    if (bias_enabled) {
+    if (bias_enabled && !NativeFormatEnabled()) {
       AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
     }
 
-    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    if (!NativeFormatEnabled()) {
+      AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+      AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+      AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+      AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+      AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+      AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    }
 
     TF_ASSERT_OK(RunOpKernel());
 
@@ -169,14 +176,18 @@ class QuantizedConv2DTest : public OpsTestBase {
     }
 
     const Tensor& output = *GetOutput(0);
-    const Tensor& output_mkl_metadata = *GetOutput(3);
+    if (!NativeFormatEnabled()) {
+      const Tensor& output_mkl_metadata = *GetOutput(3);
 
-    ConvMklToTF conv_comp;
-    Tensor output_quantized;
-    conv_comp.ConvertMklToTF<qint32>(DT_QINT32, output, output_mkl_metadata,
-                                     output_quantized);
+      ConvMklToTF conv_comp;
+      Tensor output_quantized;
+      conv_comp.ConvertMklToTF<qint32>(DT_QINT32, output, output_mkl_metadata,
+                                       output_quantized);
 
-    test::ExpectTensorEqual<qint32>(expected, output_quantized);
+      test::ExpectTensorEqual<qint32>(expected, output_quantized);
+    } else {
+      test::ExpectTensorEqual<qint32>(expected, output);
+    }
   }
 };
 
@@ -231,12 +242,14 @@ TEST_F(QuantizedConv2DTest, Small) {
   AddInputFromArray<float>(TensorShape({1}), {filter_min});
   AddInputFromArray<float>(TensorShape({1}), {filter_max});
 
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  if (!NativeFormatEnabled()) {
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  }
 
   TF_ASSERT_OK(RunOpKernel());
 
@@ -270,18 +283,18 @@ TEST_F(QuantizedConv2DTest, Small) {
                                             178, 187, 234, 261, 121});
 
   const Tensor& output = *GetOutput(0);
-  const Tensor& output_mkl_metadata = *GetOutput(3);
-
-  ConvMklToTF conv_comp;
-  Tensor output_quantized;
-  conv_comp.ConvertMklToTF<qint32>(DT_QINT32, output, output_mkl_metadata,
-                                   output_quantized);
-
   const float output_min = GetOutput(1)->flat<float>()(0);
   const float output_max = GetOutput(2)->flat<float>()(0);
-  Tensor output_float =
-      QuantizedTensorToFloat<qint32>(output_quantized, output_min, output_max);
-
+  Tensor output_quantized;
+  if (!NativeFormatEnabled()) {
+    const Tensor& output_mkl_metadata = *GetOutput(3);
+    ConvMklToTF conv_comp;
+    conv_comp.ConvertMklToTF<qint32>(DT_QINT32, output, output_mkl_metadata,
+                                     output_quantized);
+  }
+  Tensor output_float = QuantizedTensorToFloat<qint32>(
+      NativeFormatEnabled() ? output : output_quantized, output_min,
+      output_max);
   test::ExpectTensorNear<float>(expected_float, output_float, 1.0);
 }
 
@@ -296,29 +309,33 @@ TEST_F(QuantizedConv2DTest, SmallS8) {
   const float image_min = -127.0f;
   const float image_max = 127.0f;
 
-  TF_ASSERT_OK(NodeDefBuilder("quantized_conv_op", "_MklQuantizedConv2D")
-                   .Input(FakeInput(DT_QINT8))  // Input
-                   .Input(FakeInput(DT_QINT8))  // Filter
-                   .Input(FakeInput(DT_FLOAT))  // Min input
-                   .Input(FakeInput(DT_FLOAT))  // Max input
-                   .Input(FakeInput(DT_FLOAT))  // Min filter
-                   .Input(FakeInput(DT_FLOAT))  // Max filter
-                   //  MKL metadata tensors //
-                   .Input(FakeInput(DT_UINT8))
-                   .Input(FakeInput(DT_UINT8))
-                   .Input(FakeInput(DT_UINT8))
-                   .Input(FakeInput(DT_UINT8))
-                   .Input(FakeInput(DT_UINT8))
-                   .Input(FakeInput(DT_UINT8))
-                   ///////////////////////////
-                   .Attr("Tinput", DataTypeToEnum<qint8>::v())
-                   .Attr("Tfilter", DataTypeToEnum<qint8>::v())
-                   .Attr("T", DataTypeToEnum<quint8>::v())
-                   .Attr("padding", "VALID")
-                   .Attr("out_type", DataTypeToEnum<qint32>::v())
-                   .Attr("strides", {1, stride, stride, 1})
-                   .Attr("_kernel", "QuantizedMklOp")
-                   .Finalize(node_def()));
+  NodeDefBuilder builder =
+      NodeDefBuilder("quantized_conv_op", NativeFormatEnabled()
+                                              ? "_MklNativeQuantizedConv2D"
+                                              : "_MklQuantizedConv2D")
+          .Input(FakeInput(DT_QINT8))  // Input
+          .Input(FakeInput(DT_QINT8))  // Filter
+          .Input(FakeInput(DT_FLOAT))  // Min input
+          .Input(FakeInput(DT_FLOAT))  // Max input
+          .Input(FakeInput(DT_FLOAT))  // Min filter
+          .Input(FakeInput(DT_FLOAT))  // Max filter
+          .Attr("Tinput", DataTypeToEnum<qint8>::v())
+          .Attr("Tfilter", DataTypeToEnum<qint8>::v())
+          .Attr("T", DataTypeToEnum<quint8>::v())
+          .Attr("padding", "VALID")
+          .Attr("out_type", DataTypeToEnum<qint32>::v())
+          .Attr("strides", {1, stride, stride, 1})
+          .Attr("_kernel", "QuantizedMklOp");
+  if (!NativeFormatEnabled()) {
+    // Add MKL metadata tensors
+    builder.Input(FakeInput(DT_UINT8))
+        .Input(FakeInput(DT_UINT8))
+        .Input(FakeInput(DT_UINT8))
+        .Input(FakeInput(DT_UINT8))
+        .Input(FakeInput(DT_UINT8))
+        .Input(FakeInput(DT_UINT8));
+  }
+  TF_ASSERT_OK(builder.Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
   // The image matrix is:
   // | 2 |  3 |  4 |
@@ -356,12 +373,14 @@ TEST_F(QuantizedConv2DTest, SmallS8) {
   AddInputFromArray<float>(TensorShape({1}), {filter_min});
   AddInputFromArray<float>(TensorShape({1}), {filter_max});
 
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  if (!NativeFormatEnabled()) {
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  }
 
   TF_ASSERT_OK(RunOpKernel());
 
@@ -374,17 +393,19 @@ TEST_F(QuantizedConv2DTest, SmallS8) {
   test::FillValues<float>(&expected_float, {1});
 
   const Tensor& output = *GetOutput(0);
-  const Tensor& output_mkl_metadata = *GetOutput(3);
-
-  ConvMklToTF conv_comp;
   Tensor output_quantized;
-  conv_comp.ConvertMklToTF<qint32>(DT_QINT32, output, output_mkl_metadata,
-                                   output_quantized);
+  if (!NativeFormatEnabled()) {
+    const Tensor& output_mkl_metadata = *GetOutput(3);
 
+    ConvMklToTF conv_comp;
+    conv_comp.ConvertMklToTF<qint32>(DT_QINT32, output, output_mkl_metadata,
+                                     output_quantized);
+  }
   const float output_min = GetOutput(1)->flat<float>()(0);
   const float output_max = GetOutput(2)->flat<float>()(0);
-  Tensor output_float =
-      QuantizedTensorToFloat<qint32>(output_quantized, output_min, output_max);
+  Tensor output_float = QuantizedTensorToFloat<qint32>(
+      NativeFormatEnabled() ? output : output_quantized, output_min,
+      output_max);
 
   test::ExpectTensorNear<float>(expected_float, output_float, 1.0);
 }
@@ -417,12 +438,14 @@ TEST_F(QuantizedConv2DTest, Small32Bit) {
   AddInputFromArray<float>(TensorShape({1}), {-127.0f});
   AddInputFromArray<float>(TensorShape({1}), {127.0f});
 
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  if (!NativeFormatEnabled()) {
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  }
 
   TF_ASSERT_OK(RunOpKernel());
 
@@ -436,43 +459,50 @@ TEST_F(QuantizedConv2DTest, Small32Bit) {
                   23400, 26100, 12100});
 
   const Tensor& output = *GetOutput(0);
-  const Tensor& output_mkl_metadata = *GetOutput(3);
+  if (!NativeFormatEnabled()) {
+    const Tensor& output_mkl_metadata = *GetOutput(3);
 
-  ConvMklToTF conv_comp;
-  Tensor output_quantized;
-  conv_comp.ConvertMklToTF<qint32>(DT_QINT32, output, output_mkl_metadata,
-                                   output_quantized);
-
-  test::ExpectTensorEqual<qint32>(expected, output_quantized);
+    ConvMklToTF conv_comp;
+    Tensor output_quantized;
+    conv_comp.ConvertMklToTF<qint32>(DT_QINT32, output, output_mkl_metadata,
+                                     output_quantized);
+    test::ExpectTensorEqual<qint32>(expected, output_quantized);
+  } else {
+    test::ExpectTensorEqual<qint32>(expected, output);
+  }
 }
 
 // Output -> qint32
 TEST_F(QuantizedConv2DTest, Small32BitWithPadding) {
   const int stride = 1;
-  TF_ASSERT_OK(NodeDefBuilder("quantized_conv_op", "_MklQuantizedConv2D")
-                   .Input(FakeInput(DT_QUINT8))  // Input
-                   .Input(FakeInput(DT_QINT8))   // Filter
-                   .Input(FakeInput(DT_FLOAT))   // Min input
-                   .Input(FakeInput(DT_FLOAT))   // Max input
-                   .Input(FakeInput(DT_FLOAT))   // Min filter
-                   .Input(FakeInput(DT_FLOAT))   // Max filter
-                   //  MKL metadata tensors //
-                   .Input(FakeInput(DT_UINT8))
-                   .Input(FakeInput(DT_UINT8))
-                   .Input(FakeInput(DT_UINT8))
-                   .Input(FakeInput(DT_UINT8))
-                   .Input(FakeInput(DT_UINT8))
-                   .Input(FakeInput(DT_UINT8))
-                   ///////////////////////////
-                   .Attr("Tinput", DataTypeToEnum<quint8>::v())
-                   .Attr("Tfilter", DataTypeToEnum<qint8>::v())
-                   .Attr("T", DataTypeToEnum<quint8>::v())
-                   .Attr("out_type", DataTypeToEnum<qint32>::v())
-                   .Attr("strides", {1, stride, stride, 1})
-                   .Attr("padding", "SAME")
-                   .Attr("padding_list", {0, 0, 1, 1, 1, 1, 0, 0})
-                   .Attr("_kernel", "QuantizedMklOp")
-                   .Finalize(node_def()));
+  NodeDefBuilder builder =
+      NodeDefBuilder("quantized_conv_op", NativeFormatEnabled()
+                                              ? "_MklNativeQuantizedConv2D"
+                                              : "_MklQuantizedConv2D")
+          .Input(FakeInput(DT_QUINT8))  // Input
+          .Input(FakeInput(DT_QINT8))   // Filter
+          .Input(FakeInput(DT_FLOAT))   // Min input
+          .Input(FakeInput(DT_FLOAT))   // Max input
+          .Input(FakeInput(DT_FLOAT))   // Min filter
+          .Input(FakeInput(DT_FLOAT))   // Max filter
+          .Attr("Tinput", DataTypeToEnum<quint8>::v())
+          .Attr("Tfilter", DataTypeToEnum<qint8>::v())
+          .Attr("T", DataTypeToEnum<quint8>::v())
+          .Attr("out_type", DataTypeToEnum<qint32>::v())
+          .Attr("strides", {1, stride, stride, 1})
+          .Attr("padding", "SAME")
+          .Attr("padding_list", {0, 0, 1, 1, 1, 1, 0, 0})
+          .Attr("_kernel", "QuantizedMklOp");
+  if (!NativeFormatEnabled()) {
+    // Add MKL metadata tensors
+    builder.Input(FakeInput(DT_UINT8))
+        .Input(FakeInput(DT_UINT8))
+        .Input(FakeInput(DT_UINT8))
+        .Input(FakeInput(DT_UINT8))
+        .Input(FakeInput(DT_UINT8))
+        .Input(FakeInput(DT_UINT8));
+  }
+  TF_ASSERT_OK(builder.Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
 
   // The illustrations and details regarding inputs and outputs
@@ -499,12 +529,14 @@ TEST_F(QuantizedConv2DTest, Small32BitWithPadding) {
   AddInputFromArray<float>(TensorShape({1}), {-127.0f});
   AddInputFromArray<float>(TensorShape({1}), {127.0f});
 
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  if (!NativeFormatEnabled()) {
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  }
 
   TF_ASSERT_OK(RunOpKernel());
 
@@ -518,14 +550,18 @@ TEST_F(QuantizedConv2DTest, Small32BitWithPadding) {
                   23400, 26100, 12100});
 
   const Tensor& output = *GetOutput(0);
-  const Tensor& output_mkl_metadata = *GetOutput(3);
+  if (!NativeFormatEnabled()) {
+    const Tensor& output_mkl_metadata = *GetOutput(3);
 
-  ConvMklToTF conv_comp;
-  Tensor output_quantized;
-  conv_comp.ConvertMklToTF<qint32>(DT_QINT32, output, output_mkl_metadata,
-                                   output_quantized);
+    ConvMklToTF conv_comp;
+    Tensor output_quantized;
+    conv_comp.ConvertMklToTF<qint32>(DT_QINT32, output, output_mkl_metadata,
+                                     output_quantized);
 
-  test::ExpectTensorEqual<qint32>(expected, output_quantized);
+    test::ExpectTensorEqual<qint32>(expected, output_quantized);
+  } else {
+    test::ExpectTensorEqual<qint32>(expected, output);
+  }
 }
 
 // Output -> qint32
@@ -555,12 +591,14 @@ TEST_F(QuantizedConv2DTest, OddPadding) {
   AddInputFromArray<float>(TensorShape({1}), {-127.0f});
   AddInputFromArray<float>(TensorShape({1}), {127.0f});
 
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  if (!NativeFormatEnabled()) {
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  }
 
   TF_ASSERT_OK(RunOpKernel());
 
@@ -572,14 +610,17 @@ TEST_F(QuantizedConv2DTest, OddPadding) {
   test::FillValues<qint32>(&expected, {348, 252, 274, 175});
 
   const Tensor& output = *GetOutput(0);
-  const Tensor& output_mkl_metadata = *GetOutput(3);
+  if (!NativeFormatEnabled()) {
+    const Tensor& output_mkl_metadata = *GetOutput(3);
 
-  ConvMklToTF conv_comp;
-  Tensor output_quantized;
-  conv_comp.ConvertMklToTF<qint32>(DT_QINT32, output, output_mkl_metadata,
-                                   output_quantized);
-
-  test::ExpectTensorEqual<qint32>(expected, output_quantized);
+    ConvMklToTF conv_comp;
+    Tensor output_quantized;
+    conv_comp.ConvertMklToTF<qint32>(DT_QINT32, output, output_mkl_metadata,
+                                     output_quantized);
+    test::ExpectTensorEqual<qint32>(expected, output_quantized);
+  } else {
+    test::ExpectTensorEqual<qint32>(expected, output);
+  }
 }
 
 // Output -> qint32
@@ -611,12 +652,14 @@ TEST_F(QuantizedConv2DTest, OddPaddingBatch) {
   AddInputFromArray<float>(TensorShape({1}), {-127.0f});
   AddInputFromArray<float>(TensorShape({1}), {127.0f});
 
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  if (!NativeFormatEnabled()) {
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  }
 
   TF_ASSERT_OK(RunOpKernel());
 
@@ -629,106 +672,121 @@ TEST_F(QuantizedConv2DTest, OddPaddingBatch) {
       &expected, {348, 252, 274, 175, 348, 252, 274, 175, 348, 252, 274, 175});
 
   const Tensor& output = *GetOutput(0);
-  const Tensor& output_mkl_metadata = *GetOutput(3);
+  if (!NativeFormatEnabled()) {
+    const Tensor& output_mkl_metadata = *GetOutput(3);
 
-  ConvMklToTF conv_comp;
-  Tensor output_quantized;
-  conv_comp.ConvertMklToTF<qint32>(DT_QINT32, output, output_mkl_metadata,
-                                   output_quantized);
-
-  test::ExpectTensorEqual<qint32>(expected, output_quantized);
+    ConvMklToTF conv_comp;
+    Tensor output_quantized;
+    conv_comp.ConvertMklToTF<qint32>(DT_QINT32, output, output_mkl_metadata,
+                                     output_quantized);
+    test::ExpectTensorEqual<qint32>(expected, output_quantized);
+  } else {
+    test::ExpectTensorEqual<qint32>(expected, output);
+  }
 }
 
 TEST_F(QuantizedConv2DTest, DepthwiseConv2D) {
   const int stride = 1;
-  TF_ASSERT_OK(NodeDefBuilder("quantized_depthwise_conv_op",
-                              "_MklQuantizedDepthwiseConv2D")
-                   .Input(FakeInput(DT_QUINT8))  // Input
-                   .Input(FakeInput(DT_QINT8))   // Filter
-                   .Input(FakeInput(DT_FLOAT))   // Min input
-                   .Input(FakeInput(DT_FLOAT))   // Max input
-                   .Input(FakeInput(DT_FLOAT))   // Min filter
-                   .Input(FakeInput(DT_FLOAT))   // Max filter
-                   //  MKL metadata tensors //
-                   .Input(FakeInput(DT_UINT8))
-                   .Input(FakeInput(DT_UINT8))
-                   .Input(FakeInput(DT_UINT8))
-                   .Input(FakeInput(DT_UINT8))
-                   .Input(FakeInput(DT_UINT8))
-                   .Input(FakeInput(DT_UINT8))
-                   ///////////////////////////
-                   .Attr("Tinput", DataTypeToEnum<quint8>::v())
-                   .Attr("Tfilter", DataTypeToEnum<qint8>::v())
-                   .Attr("T", DataTypeToEnum<quint8>::v())
-                   .Attr("out_type", DataTypeToEnum<qint32>::v())
-                   .Attr("strides", {1, stride, stride, 1})
-                   .Attr("padding", "SAME")
-                   .Attr("_kernel", "QuantizedMklOp")
-                   .Finalize(node_def()));
+  NodeDefBuilder builder =
+      NodeDefBuilder("quantized_depthwise_conv_op",
+                     NativeFormatEnabled() ? "QuantizedDepthwiseConv2D"
+                                           : "_MklQuantizedDepthwiseConv2D")
+          .Input(FakeInput(DT_QUINT8))  // Input
+          .Input(FakeInput(DT_QINT8))   // Filter
+          .Input(FakeInput(DT_FLOAT))   // Min input
+          .Input(FakeInput(DT_FLOAT))   // Max input
+          .Input(FakeInput(DT_FLOAT))   // Min filter
+          .Input(FakeInput(DT_FLOAT))   // Max filter
+          .Attr("Tinput", DataTypeToEnum<quint8>::v())
+          .Attr("Tfilter", DataTypeToEnum<qint8>::v())
+          .Attr("out_type", DataTypeToEnum<qint32>::v())
+          .Attr("strides", {1, stride, stride, 1})
+          .Attr("padding", "SAME");
+
+  if (!NativeFormatEnabled()) {
+    // Add MKL metadata tensors
+    builder.Input(FakeInput(DT_UINT8))
+        .Input(FakeInput(DT_UINT8))
+        .Input(FakeInput(DT_UINT8))
+        .Input(FakeInput(DT_UINT8))
+        .Input(FakeInput(DT_UINT8))
+        .Input(FakeInput(DT_UINT8))
+        .Attr("T", DataTypeToEnum<quint8>::v())
+        .Attr("_kernel", "QuantizedMklOp");
+  }
+  TF_ASSERT_OK(builder.Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
   RunQuantizedDepthwiseConv2DOp(false);
 }
 
 TEST_F(QuantizedConv2DTest, DepthwiseConv2DWithBias) {
   const int stride = 1;
-  TF_ASSERT_OK(NodeDefBuilder("quantized_depthwise_conv_op",
-                              "_MklQuantizedDepthwiseConv2DWithBias")
-                   .Input(FakeInput(DT_QUINT8))  // Input
-                   .Input(FakeInput(DT_QINT8))   // Filter
-                   .Input(FakeInput(DT_FLOAT))   // Bias
-                   .Input(FakeInput(DT_FLOAT))   // Min input
-                   .Input(FakeInput(DT_FLOAT))   // Max input
-                   .Input(FakeInput(DT_FLOAT))   // Min filter
-                   .Input(FakeInput(DT_FLOAT))   // Max filter
-                   //  MKL metadata tensors //
-                   .Input(FakeInput(DT_UINT8))
-                   .Input(FakeInput(DT_UINT8))
-                   .Input(FakeInput(DT_UINT8))
-                   .Input(FakeInput(DT_UINT8))
-                   .Input(FakeInput(DT_UINT8))
-                   .Input(FakeInput(DT_UINT8))
-                   .Input(FakeInput(DT_UINT8))
-                   ///////////////////////////
-                   .Attr("Tinput", DataTypeToEnum<quint8>::v())
-                   .Attr("Tfilter", DataTypeToEnum<qint8>::v())
-                   .Attr("T", DataTypeToEnum<quint8>::v())
-                   .Attr("out_type", DataTypeToEnum<qint32>::v())
-                   .Attr("strides", {1, stride, stride, 1})
-                   .Attr("padding", "SAME")
-                   .Attr("_kernel", "QuantizedMklOp")
-                   .Finalize(node_def()));
+  NodeDefBuilder builder =
+      NodeDefBuilder("quantized_depthwise_conv_op",
+                     NativeFormatEnabled()
+                         ? "QuantizedDepthwiseConv2DWithBias"
+                         : "_MklQuantizedDepthwiseConv2DWithBias")
+          .Input(FakeInput(DT_QUINT8))  // Input
+          .Input(FakeInput(DT_QINT8))   // Filter
+          .Input(FakeInput(DT_FLOAT))   // Bias
+          .Input(FakeInput(DT_FLOAT))   // Min input
+          .Input(FakeInput(DT_FLOAT))   // Max input
+          .Input(FakeInput(DT_FLOAT))   // Min filter
+          .Input(FakeInput(DT_FLOAT))   // Max filter
+          .Attr("Tinput", DataTypeToEnum<quint8>::v())
+          .Attr("Tfilter", DataTypeToEnum<qint8>::v())
+          .Attr("out_type", DataTypeToEnum<qint32>::v())
+          .Attr("strides", {1, stride, stride, 1})
+          .Attr("padding", "SAME");
+  if (!NativeFormatEnabled()) {
+    // Add MKL metadata tensors
+    builder.Input(FakeInput(DT_UINT8))
+        .Input(FakeInput(DT_UINT8))
+        .Input(FakeInput(DT_UINT8))
+        .Input(FakeInput(DT_UINT8))
+        .Input(FakeInput(DT_UINT8))
+        .Input(FakeInput(DT_UINT8))
+        .Input(FakeInput(DT_UINT8))
+        .Attr("T", DataTypeToEnum<quint8>::v())
+        .Attr("_kernel", "QuantizedMklOp");
+  }
+  TF_ASSERT_OK(builder.Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
   RunQuantizedDepthwiseConv2DOp(true);
 }
 
 TEST_F(QuantizedConv2DTest, DepthwiseConv2DWithBiasAndRelu) {
   const int stride = 1;
-  TF_ASSERT_OK(NodeDefBuilder("quantized_depthwise_conv_op",
-                              "_MklQuantizedDepthwiseConv2DWithBiasAndRelu")
-                   .Input(FakeInput(DT_QUINT8))  // Input
-                   .Input(FakeInput(DT_QINT8))   // Filter
-                   .Input(FakeInput(DT_FLOAT))   // Bias
-                   .Input(FakeInput(DT_FLOAT))   // Min input
-                   .Input(FakeInput(DT_FLOAT))   // Max input
-                   .Input(FakeInput(DT_FLOAT))   // Min filter
-                   .Input(FakeInput(DT_FLOAT))   // Max filter
-                   //  MKL metadata tensors //
-                   .Input(FakeInput(DT_UINT8))
-                   .Input(FakeInput(DT_UINT8))
-                   .Input(FakeInput(DT_UINT8))
-                   .Input(FakeInput(DT_UINT8))
-                   .Input(FakeInput(DT_UINT8))
-                   .Input(FakeInput(DT_UINT8))
-                   .Input(FakeInput(DT_UINT8))
-                   ///////////////////////////
-                   .Attr("Tinput", DataTypeToEnum<quint8>::v())
-                   .Attr("Tfilter", DataTypeToEnum<qint8>::v())
-                   .Attr("T", DataTypeToEnum<quint8>::v())
-                   .Attr("out_type", DataTypeToEnum<qint32>::v())
-                   .Attr("strides", {1, stride, stride, 1})
-                   .Attr("padding", "SAME")
-                   .Attr("_kernel", "QuantizedMklOp")
-                   .Finalize(node_def()));
+  NodeDefBuilder builder =
+      NodeDefBuilder("quantized_depthwise_conv_op",
+                     NativeFormatEnabled()
+                         ? "QuantizedDepthwiseConv2DWithBiasAndRelu"
+                         : "_MklQuantizedDepthwiseConv2DWithBiasAndRelu")
+          .Input(FakeInput(DT_QUINT8))  // Input
+          .Input(FakeInput(DT_QINT8))   // Filter
+          .Input(FakeInput(DT_FLOAT))   // Bias
+          .Input(FakeInput(DT_FLOAT))   // Min input
+          .Input(FakeInput(DT_FLOAT))   // Max input
+          .Input(FakeInput(DT_FLOAT))   // Min filter
+          .Input(FakeInput(DT_FLOAT))   // Max filter
+          .Attr("Tinput", DataTypeToEnum<quint8>::v())
+          .Attr("Tfilter", DataTypeToEnum<qint8>::v())
+          .Attr("out_type", DataTypeToEnum<qint32>::v())
+          .Attr("strides", {1, stride, stride, 1})
+          .Attr("padding", "SAME");
+  if (!NativeFormatEnabled()) {
+    // Add MKL metadata tensors
+    builder.Input(FakeInput(DT_UINT8))
+        .Input(FakeInput(DT_UINT8))
+        .Input(FakeInput(DT_UINT8))
+        .Input(FakeInput(DT_UINT8))
+        .Input(FakeInput(DT_UINT8))
+        .Input(FakeInput(DT_UINT8))
+        .Input(FakeInput(DT_UINT8))
+        .Attr("T", DataTypeToEnum<quint8>::v())
+        .Attr("_kernel", "QuantizedMklOp");
+  }
+  TF_ASSERT_OK(builder.Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
   RunQuantizedDepthwiseConv2DOp(true);
 }

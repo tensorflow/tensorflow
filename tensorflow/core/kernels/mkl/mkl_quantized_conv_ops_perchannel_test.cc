@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/graph/mkl_graph_util.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/kernels/quantization_utils.h"
@@ -69,32 +70,35 @@ class QuantizedConv2DPerchannelTest : public OpsTestBase {};
 
 TEST_F(QuantizedConv2DPerchannelTest, Small) {
   const int stride = 1;
-  TF_ASSERT_OK(NodeDefBuilder("quantized_conv_perchannel_op",
-                              "_MklQuantizedConv2DPerChannel")
-                   .Input(FakeInput(DT_QUINT8))
-                   .Input(FakeInput(DT_QINT8))
-                   .Input(FakeInput(DT_FLOAT))
-                   .Input(FakeInput(DT_FLOAT))
-                   .Input(FakeInput(DT_FLOAT))
-                   .Input(FakeInput(DT_FLOAT))
-                   // MKL metadata tensors
-                   .Input(FakeInput(DT_UINT8))
-                   .Input(FakeInput(DT_UINT8))
-                   .Input(FakeInput(DT_UINT8))
-                   .Input(FakeInput(DT_UINT8))
-                   .Input(FakeInput(DT_UINT8))
-                   .Input(FakeInput(DT_UINT8))
-                   // Attributes
-                   .Attr("Tinput", DataTypeToEnum<quint8>::v())
-                   .Attr("Tfilter", DataTypeToEnum<qint8>::v())
-                   .Attr("T", DataTypeToEnum<quint8>::v())
-                   .Attr("out_type", DataTypeToEnum<qint32>::v())
-                   .Attr("strides", {1, stride, stride, 1})
-                   .Attr("is_filter_const", true)
-                   .Attr("padding", "SAME")
-                   .Attr("_kernel", "QuantizedMklOp")
-                   .Finalize(node_def()));
-
+  NodeDefBuilder builder =
+      NodeDefBuilder("quantized_conv_perchannel_op",
+                     NativeFormatEnabled() ? "QuantizedConv2DPerChannel"
+                                           : "_MklQuantizedConv2DPerChannel")
+          .Input(FakeInput(DT_QUINT8))
+          .Input(FakeInput(DT_QINT8))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          // Attributes
+          .Attr("Tinput", DataTypeToEnum<quint8>::v())
+          .Attr("Tfilter", DataTypeToEnum<qint8>::v())
+          .Attr("out_type", DataTypeToEnum<qint32>::v())
+          .Attr("strides", {1, stride, stride, 1})
+          .Attr("is_filter_const", true)
+          .Attr("padding", "SAME");
+  if (!NativeFormatEnabled()) {
+    // Add MKL metadata tensors
+    builder.Input(FakeInput(DT_UINT8))
+        .Input(FakeInput(DT_UINT8))
+        .Input(FakeInput(DT_UINT8))
+        .Input(FakeInput(DT_UINT8))
+        .Input(FakeInput(DT_UINT8))
+        .Input(FakeInput(DT_UINT8))
+        .Attr("T", DataTypeToEnum<quint8>::v())
+        .Attr("_kernel", "QuantizedMklOp");
+  }
+  TF_ASSERT_OK(builder.Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
 
   // Image shape
@@ -151,30 +155,35 @@ TEST_F(QuantizedConv2DPerchannelTest, Small) {
   AddInputFromArray<float>(TensorShape({1}), {image_max});
   AddInputFromArray<float>(TensorShape({2}), {filter_min, filter_min});
   AddInputFromArray<float>(TensorShape({2}), {filter_max, filter_max});
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  if (!NativeFormatEnabled()) {
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  }
 
   // Run the op Kernel.
   TF_ASSERT_OK(RunOpKernel());
 
   // Get the output
   const Tensor& output = *GetOutput(0);
-  const Tensor& output_mkl_metadata = *GetOutput(3);
-
-  // Convert the output tensor in MKL to TF format.
-  ConvMklToTF conv_comp;
-  Tensor output_quantized;
-  conv_comp.ConvertMKL2TF<qint32>(DT_QINT32, output, output_mkl_metadata,
-                                  output_quantized);
-
   const float output_min = GetOutput(1)->flat<float>()(0);
   const float output_max = GetOutput(2)->flat<float>()(0);
-  Tensor output_float =
-      QuantizedTensorToFloat<qint32>(output_quantized, output_min, output_max);
+  Tensor output_quantized;
+  if (!NativeFormatEnabled()) {
+    const Tensor& output_mkl_metadata = *GetOutput(3);
+
+    // Convert the output tensor in MKL to TF format.
+    ConvMklToTF conv_comp;
+    conv_comp.ConvertMKL2TF<qint32>(DT_QINT32, output, output_mkl_metadata,
+                                    output_quantized);
+  }
+
+  Tensor output_float = QuantizedTensorToFloat<qint32>(
+      NativeFormatEnabled() ? output : output_quantized, output_min,
+      output_max);
 
   // Get the Expected Output tensor.
   // We're sliding the 3x3 filter across the 3x4 image, with accesses outside
