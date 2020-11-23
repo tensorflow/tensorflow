@@ -490,13 +490,13 @@ quant::QuantizedType GetUniformQuantizedTypeForBias(
 // and the propagation results are materialized by inserting pairs of quantize
 // and dequantize ops to this function. Set `disable_per_channel` to true to not
 // use per channel quantization even the op supports it.
-// Setting `enforce_fixed_output_range` to true, to infer quantization
-// parameters from the fixed output range ops. This is only used for
-// post-training quantization.
+// Setting `infer_tensor_range` to true, to infer quantization parameters from
+// the activation ops and weight constants. This is only used for post-training
+// quantization.
 void ApplyQuantizationParamsPropagation(mlir::FuncOp func, bool is_signed,
                                         bool disable_per_channel,
                                         OpQuantSpecGetter op_quant_spec_getter,
-                                        bool enforce_fixed_output_range);
+                                        bool infer_tensor_ranges);
 
 // The function might contain more stats ops than required, and it will
 // introduce requantize if the calibration stats have conflicts. This method
