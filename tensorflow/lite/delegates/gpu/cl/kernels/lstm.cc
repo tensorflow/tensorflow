@@ -25,7 +25,7 @@ namespace gpu {
 namespace cl {
 namespace {
 std::string GetLSTMCode(const OperationDef& op_def, const GpuInfo& gpu_info) {
-  std::string c = GetCommonDefines(op_def.precision);
+  std::string c;
   c += "__kernel void main_function(\n";
   c += "$0) {\n";
   c += "  int B = get_global_id(0);\n";

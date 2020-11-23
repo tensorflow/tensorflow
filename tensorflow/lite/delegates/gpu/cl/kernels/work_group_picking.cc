@@ -290,6 +290,16 @@ void GetPossibleWorkGroupsConv(TuningType tuning_type, const GpuInfo& gpu_info,
   }
 }
 
+int3 GetFirstSuitableWorkGroup(const std::vector<int3>& wgs, int max_wg_size) {
+  for (const auto& wg : wgs) {
+    const int wg_size = wg.x * wg.y * wg.z;
+    if (wg_size <= max_wg_size) {
+      return wg;
+    }
+  }
+  return {1, 1, 1};
+}
+
 }  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

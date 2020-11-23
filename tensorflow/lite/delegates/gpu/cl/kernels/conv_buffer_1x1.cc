@@ -194,7 +194,7 @@ std::string ConvBuffer1x1::GenerateConvBuffer1x1(
   }
   AddDstTensor("dst_tensor", dst_desc);
 
-  std::string c = GetCommonDefines(op_def.precision);
+  std::string c;
   switch (op_def.precision) {
     case CalculationsPrecision::F32:
       c += "#define FLT8 float8\n";

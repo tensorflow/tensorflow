@@ -44,7 +44,7 @@ std::string GetMaxUnpoolingKernelCode(const OperationDef& op_def,
   }
   op->AddDstTensor("dst_tensor", dst_desc);
 
-  std::string c = GetCommonDefines(op_def.precision);
+  std::string c;
   c += "__kernel void main_function(\n";
   c += "$0) {\n";
   c += "  int X = get_global_id(0);\n";

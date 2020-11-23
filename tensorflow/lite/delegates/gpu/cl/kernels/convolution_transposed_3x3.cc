@@ -103,7 +103,7 @@ std::string ConvolutionTransposed3x3::GenerateConvolutionTransposedCode(
       weights_upload_type ==
           ConvolutionTransposed3x3::WeightsUploadType::LOCAL_MEM_ASYNC;
 
-  std::string c = GetCommonDefines(op_def.precision);
+  std::string c;
   switch (op_def.precision) {
     case CalculationsPrecision::F32:
     case CalculationsPrecision::F16:

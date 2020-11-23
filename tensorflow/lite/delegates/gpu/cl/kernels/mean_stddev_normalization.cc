@@ -146,7 +146,7 @@ std::string MeanStdDevNormalization::GetNormalizationCode() {
   AddSrcTensor("src_tensor", definition_.src_tensors[0]);
   AddDstTensor("dst_tensor", definition_.dst_tensors[0]);
 
-  std::string c = GetCommonDefines(definition_.precision);
+  std::string c;
   c += GetVectorReduceCode();
   c += GetReduceCode();
   c += GetFilterCode();

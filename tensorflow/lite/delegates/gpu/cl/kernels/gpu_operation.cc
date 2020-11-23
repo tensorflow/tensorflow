@@ -24,11 +24,52 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 namespace {
+std::string GetCommonDefines(CalculationsPrecision precision) {
+  std::string result;
+
+  switch (precision) {
+    case CalculationsPrecision::F32:
+      result += "#pragma OPENCL EXTENSION cl_khr_3d_image_writes : enable\n";
+      result += "#define ACCUM_FLT4 float4\n";
+      result += "#define FLT float\n";
+      result += "#define FLT2 float2\n";
+      result += "#define FLT3 float3\n";
+      result += "#define FLT4 float4\n";
+      result += "#define TO_FLT4 convert_float4\n";
+      result += "#define TO_ACCUM_TYPE convert_float4\n";
+      result += "#define TO_ACCUM_FLT convert_float\n";
+      break;
+    case CalculationsPrecision::F16:
+      result += "#pragma OPENCL EXTENSION cl_khr_3d_image_writes : enable\n";
+      result += "#pragma OPENCL EXTENSION cl_khr_fp16 : enable\n";
+      result += "#define ACCUM_FLT4 half4\n";
+      result += "#define FLT half\n";
+      result += "#define FLT2 half2\n";
+      result += "#define FLT3 half3\n";
+      result += "#define FLT4 half4\n";
+      result += "#define TO_FLT4 convert_half4\n";
+      result += "#define TO_ACCUM_TYPE convert_half4\n";
+      result += "#define TO_ACCUM_FLT convert_half\n";
+      break;
+    case CalculationsPrecision::F32_F16:
+      result += "#pragma OPENCL EXTENSION cl_khr_3d_image_writes : enable\n";
+      result += "#pragma OPENCL EXTENSION cl_khr_fp16 : enable\n";
+      result += "#define ACCUM_FLT4 float4\n";
+      result += "#define FLT half\n";
+      result += "#define FLT2 half2\n";
+      result += "#define FLT3 half3\n";
+      result += "#define FLT4 half4\n";
+      result += "#define TO_FLT4 convert_half4\n";
+      result += "#define TO_ACCUM_TYPE convert_float4\n";
+      result += "#define TO_ACCUM_FLT convert_float\n";
+      break;
+  }
+  return result;
+}
 
 std::string GetElementWiseCode(const OperationDef& op_def,
                                bool check_src_slices) {
-  std::string c = GetCommonDefines(op_def.precision);
-
+  std::string c;
   c += "__kernel void main_function(\n";
   c += "$0) {\n";
   c += "  int X = get_global_id(0);\n";
@@ -201,6 +242,7 @@ void GPUOperation::AssembleCode(const GpuInfo& gpu_info) {
     elementwise_code_ = "{\n" + code_ + "\n}\n" + elementwise_code_;
     code_ = GetElementWiseCode(definition_, check_src_channels_size_);
   }
+  code_ = GetCommonDefines(definition_.precision) + code_;
 }
 
 void GPUOperation::GetPossibleKernelWorkGroups(

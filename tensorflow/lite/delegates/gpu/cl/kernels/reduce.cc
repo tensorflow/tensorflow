@@ -196,7 +196,7 @@ std::string Reduce::GetReduceKernelCode(const OperationDef& op_def,
     }
   };
 
-  std::string c = GetCommonDefines(op_def.precision);
+  std::string c;
   const std::string wg_x = std::to_string(work_group_size.x);
   const std::string wg_y = std::to_string(work_group_size.y);
   const std::string wg_z = std::to_string(work_group_size.z);

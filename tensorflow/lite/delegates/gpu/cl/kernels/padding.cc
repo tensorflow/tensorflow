@@ -36,7 +36,7 @@ std::string GetPaddingCode(const OperationDef& op_def,
 
   const std::string dst_batch =
       op_def.dst_tensors[0].HasAxis(Axis::BATCH) ? "B" : "0";
-  std::string c = GetCommonDefines(op_def.precision);
+  std::string c;
   const std::string channels[] = {".x", ".y", ".z", ".w"};
 
   if (attr.type == PaddingContentType::REFLECT) {

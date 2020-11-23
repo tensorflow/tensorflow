@@ -32,8 +32,6 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-std::string GetCommonDefines(CalculationsPrecision precision);
-
 // Calculates correct X coordinate when stride != 1 and batch != 1 for layouts
 // with B after W (for example HWBC4) and WB stored in one axis of GPU
 // resources.
@@ -56,10 +54,6 @@ std::string GetXStrideCorrectedV2(const std::string& src_x,
 // but 8s-channel will be empty, then last plane (batch of 4 channels) will
 // have this mask (1, 1, 1, 0).
 float4 GetMaskForLastPlane(int channels);
-
-// returns first work group from wgs that has size not bigger than max_wg_size
-// if no suitable groups among wgs, returns {1, 1, 1}
-int3 GetFirstSuitableWorkGroup(const std::vector<int3>& wgs, int max_wg_size);
 
 // task_size as amount of FLT4 processed elements.
 int GetRecommendedBlockSizeForConv(const GpuInfo& gpu_info,

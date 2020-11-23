@@ -108,7 +108,7 @@ std::string StridedSlice::GetStridedSliceCode(const OperationDef& op_def,
 
   const std::string batch_id =
       op_def.dst_tensors[0].HasAxis(Axis::BATCH) ? "B" : "0";
-  std::string c = GetCommonDefines(op_def.precision);
+  std::string c;
   c += "__kernel void main_function(\n";
   c += "$0) {\n";
   if (op_def.dst_tensors[0].HasAxis(Axis::BATCH)) {

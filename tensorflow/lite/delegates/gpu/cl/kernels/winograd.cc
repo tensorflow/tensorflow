@@ -59,7 +59,7 @@ Winograd4x4To36& Winograd4x4To36::operator=(Winograd4x4To36&& operation) {
 
 std::string Winograd4x4To36::GetWinograd4x4To36Code(
     const OperationDef& op_def) {
-  std::string c = GetCommonDefines(op_def.precision);
+  std::string c;
 
   const auto src_tensor_type = op_def.src_tensors[0].storage_type;
   const bool is_image_buffer =
@@ -327,7 +327,7 @@ Winograd36To4x4& Winograd36To4x4::operator=(Winograd36To4x4&& operation) {
 
 std::string Winograd36To4x4::GetWinograd36To4x4Code(
     const OperationDef& op_def) {
-  std::string c = GetCommonDefines(op_def.precision);
+  std::string c;
 
   switch (op_def.precision) {
     case CalculationsPrecision::F32:

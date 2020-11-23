@@ -29,49 +29,6 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-std::string GetCommonDefines(CalculationsPrecision precision) {
-  std::string result;
-
-  switch (precision) {
-    case CalculationsPrecision::F32:
-      result += "#pragma OPENCL EXTENSION cl_khr_3d_image_writes : enable\n";
-      result += "#define ACCUM_FLT4 float4\n";
-      result += "#define FLT float\n";
-      result += "#define FLT2 float2\n";
-      result += "#define FLT3 float3\n";
-      result += "#define FLT4 float4\n";
-      result += "#define TO_FLT4 convert_float4\n";
-      result += "#define TO_ACCUM_TYPE convert_float4\n";
-      result += "#define TO_ACCUM_FLT convert_float\n";
-      break;
-    case CalculationsPrecision::F16:
-      result += "#pragma OPENCL EXTENSION cl_khr_3d_image_writes : enable\n";
-      result += "#pragma OPENCL EXTENSION cl_khr_fp16 : enable\n";
-      result += "#define ACCUM_FLT4 half4\n";
-      result += "#define FLT half\n";
-      result += "#define FLT2 half2\n";
-      result += "#define FLT3 half3\n";
-      result += "#define FLT4 half4\n";
-      result += "#define TO_FLT4 convert_half4\n";
-      result += "#define TO_ACCUM_TYPE convert_half4\n";
-      result += "#define TO_ACCUM_FLT convert_half\n";
-      break;
-    case CalculationsPrecision::F32_F16:
-      result += "#pragma OPENCL EXTENSION cl_khr_3d_image_writes : enable\n";
-      result += "#pragma OPENCL EXTENSION cl_khr_fp16 : enable\n";
-      result += "#define ACCUM_FLT4 float4\n";
-      result += "#define FLT half\n";
-      result += "#define FLT2 half2\n";
-      result += "#define FLT3 half3\n";
-      result += "#define FLT4 half4\n";
-      result += "#define TO_FLT4 convert_half4\n";
-      result += "#define TO_ACCUM_TYPE convert_float4\n";
-      result += "#define TO_ACCUM_FLT convert_float\n";
-      break;
-  }
-  return result;
-}
-
 std::string GetXStrideCorrected(const std::string& src_x,
                                 const std::string& batch_size,
                                 const std::string& stride_x,
@@ -102,16 +59,6 @@ float4 GetMaskForLastPlane(int channels) {
     mask[i] = 1.0f;
   }
   return mask;
-}
-
-int3 GetFirstSuitableWorkGroup(const std::vector<int3>& wgs, int max_wg_size) {
-  for (const auto& wg : wgs) {
-    const int wg_size = wg.x * wg.y * wg.z;
-    if (wg_size <= max_wg_size) {
-      return wg;
-    }
-  }
-  return {1, 1, 1};
 }
 
 int GetRecommendedBlockSizeForConv(const GpuInfo& gpu_info,

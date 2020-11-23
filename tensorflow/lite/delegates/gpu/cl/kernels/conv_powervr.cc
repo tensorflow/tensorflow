@@ -443,7 +443,7 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
   const std::string weights_global_ptr =
       weights_space + " " + weights_data_type + "*";
 
-  std::string c = GetCommonDefines(op_def.precision);
+  std::string c;
   if (use_simd_broadcast) {
     if (gpu_info.opencl_info.cl_version == OpenClVersion::kCl2_0) {
       c += "#pragma OPENCL EXTENSION cl_khr_subgroups : enable\n";

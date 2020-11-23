@@ -82,7 +82,7 @@ std::string FullyConnected::GetFullyConnectedKernelCode(
 
   const bool weights_are_buffer = UseBufferForWeights(gpu_info);
 
-  std::string c = GetCommonDefines(op_def.precision);
+  std::string c;
   switch (op_def.precision) {
     case CalculationsPrecision::F32:
       c += "#define FLT16 float16\n";

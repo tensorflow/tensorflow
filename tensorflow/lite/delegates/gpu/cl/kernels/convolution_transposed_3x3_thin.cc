@@ -64,7 +64,7 @@ std::string ConvolutionTransposed3x3Thin::GenerateConvolutionTransposedCode(
 
   const auto src_tensor_type = op_def.src_tensors[0].storage_type;
 
-  std::string c = GetCommonDefines(op_def.precision);
+  std::string c;
 
   switch (op_def.precision) {
     case CalculationsPrecision::F32:

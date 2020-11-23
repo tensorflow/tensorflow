@@ -25,7 +25,7 @@ namespace gpu {
 namespace cl {
 namespace {
 std::string GetReshapeCode(const OperationDef& op_def) {
-  std::string c = GetCommonDefines(op_def.precision);
+  std::string c;
   c += "__kernel void main_function(\n";
   c += "$0) {\n";
   if (op_def.dst_tensors[0].HasAxis(Axis::BATCH)) {

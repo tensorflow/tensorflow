@@ -43,7 +43,7 @@ std::string GetConcatKernelCode(const OperationDef& op_def,
     tensor_names[i] = "src_tensor_" + std::to_string(i);
   }
 
-  std::string c = GetCommonDefines(op_def.precision);
+  std::string c;
   c += "__kernel void main_function(\n";
   c += "$0) {\n";
   c += "  int X = get_global_id(0);\n";

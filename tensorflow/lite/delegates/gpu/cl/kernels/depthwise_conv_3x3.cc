@@ -66,7 +66,7 @@ std::string DepthwiseConv3x3::GenerateDepthwiseConvCode(
   const bool manual_clamp = src_tensor_type == TensorStorageType::BUFFER ||
                             src_tensor_type == TensorStorageType::IMAGE_BUFFER;
 
-  std::string c = GetCommonDefines(op_def.precision);
+  std::string c;
   if (local_mem_uploads) {
     c += "__attribute__((reqd_work_group_size(8, 4, 1)))\n";
   }
