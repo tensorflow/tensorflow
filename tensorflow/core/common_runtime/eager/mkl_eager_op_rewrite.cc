@@ -108,6 +108,7 @@ MklEagerOpRewrite::MklEagerOpRewrite(string name, string file, string line)
                      CreateGenericMklOp});
   InsertMKLEagerOps({"DepthwiseConv2dNativeBackpropInput", RewriteConv2D,
                      CreateGenericMklOp});
+  InsertMKLEagerOps({"Einsum", AlwaysRewrite, CreateGenericMklOp});
   InsertMKLEagerOps({"FusedBatchNorm", AlwaysRewrite, CreateGenericMklOp});
   InsertMKLEagerOps({"FusedBatchNormGrad", AlwaysRewrite, CreateGenericMklOp});
   InsertMKLEagerOps(

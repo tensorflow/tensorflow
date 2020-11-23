@@ -663,4 +663,15 @@ REGISTER_OP("BatchSvd")
     .Deprecated(13, "Use Svd instead.")
     .SetShapeFn(shape_inference::UnknownShape);
 
+#ifdef INTEL_MKL
+
+REGISTER_OP("_MklEinsum")
+    .Input("inputs: N * T")
+    .Output("output: T")
+    .Attr("equation: string")
+    .Attr("N: int >= 1")
+    .Attr("T: {bfloat16, float}")
+    .SetShapeFn(shape_inference::EinsumShape);
+
+#endif  // INTEL_MKL
 }  // namespace tensorflow
