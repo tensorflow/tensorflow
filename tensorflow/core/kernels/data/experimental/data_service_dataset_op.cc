@@ -221,29 +221,22 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       dispatcher_ = absl::make_unique<DataServiceDispatcherClient>(
           dataset()->address_, dataset()->protocol_);
       int64 deadline_micros = kint64max;
-      if (dataset()->job_name_.empty()) {
-        TF_RETURN_IF_ERROR(grpc_util::Retry(
-            [&]() {
-              return dispatcher_->CreateJob(dataset()->dataset_id_,
-                                            dataset()->processing_mode_,
-                                            job_client_id_);
-            },
-            /*description=*/
-            strings::StrCat("create job with dispatcher at ",
-                            dataset()->address_),
-            deadline_micros));
-      } else {
-        TF_RETURN_IF_ERROR(grpc_util::Retry(
-            [&]() {
-              return dispatcher_->GetOrCreateJob(
-                  dataset()->dataset_id_, dataset()->processing_mode_,
-                  dataset()->job_name_, iterator_index_, job_client_id_);
-            },
-            /*description=*/
-            strings::StrCat("get or create job with dispatcher at ",
-                            dataset()->address_),
-            deadline_micros));
+      absl::optional<JobKey> key;
+      if (!dataset()->job_name_.empty()) {
+        key.emplace();
+        key.value().set_job_name(std::string(dataset()->job_name_));
+        key.value().set_job_name_index(iterator_index_);
       }
+      TF_RETURN_IF_ERROR(grpc_util::Retry(
+          [&]() {
+            return dispatcher_->GetOrCreateJob(dataset()->dataset_id_,
+                                               dataset()->processing_mode_, key,
+                                               job_client_id_);
+          },
+          /*description=*/
+          strings::StrCat("get or create job with dispatcher at ",
+                          dataset()->address_),
+          deadline_micros));
       initialized_ = true;
       VLOG(1) << "Created data service job with id " << job_client_id_;
       return Status::OK();
