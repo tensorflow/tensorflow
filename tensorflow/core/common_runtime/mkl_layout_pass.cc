@@ -266,6 +266,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.depthwise_conv2d_grad_filter =
         "DepthwiseConv2dNativeBackpropFilter";
     csinfo_.dequantize = "Dequantize";
+    csinfo_.einsum = "Einsum";
     csinfo_.fused_batch_norm = "FusedBatchNorm";
     csinfo_.fused_batch_norm_grad = "FusedBatchNormGrad";
     csinfo_.fused_batch_norm_ex = "_FusedBatchNormEx";
@@ -399,6 +400,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                       CopyAttrsAll, AlwaysRewrite, GetRewriteCause()});
     rinfo_.push_back({csinfo_.batch_matmul,
                       mkl_op_registry::GetMklOpName(csinfo_.batch_matmul),
+                      CopyAttrsAll, MatMulRewrite, kRewriteForOpNameChange});
+    rinfo_.push_back({csinfo_.einsum,
+                      mkl_op_registry::GetMklOpName(csinfo_.einsum),
                       CopyAttrsAll, MatMulRewrite, kRewriteForOpNameChange});
     rinfo_.push_back({csinfo_.batch_matmul_v2,
                       mkl_op_registry::GetMklOpName(csinfo_.batch_matmul_v2),
@@ -929,6 +933,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string depthwise_conv2d_grad_input;
     string depthwise_conv2d_grad_filter;
     string dequantize;
+    string einsum;
     string fused_batch_norm;
     string fused_batch_norm_grad;
     string fused_batch_norm_ex;
