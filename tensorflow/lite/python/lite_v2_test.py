@@ -68,7 +68,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     converter.experimental_new_converter = enable_mlir_converter
     tflite_model = converter.convert()
 
-    # Check values from converted model.
+    # Check output value from converted model.
     expected_value = root.f(input_data)
     actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])
     self.assertEqual(expected_value.numpy(), actual_value)
@@ -994,6 +994,44 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     ]
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
+
+  def _createUnknownInputShapeModel(self):
+    """Create a simple SavedModel with unknown input."""
+    saved_model_dir = os.path.join(self.get_temp_dir(), 'unknown_input_shape')
+    with tf.Graph().as_default():
+      with tf.compat.v1.Session() as sess:
+        unknown_shape = tf.TensorShape(None)
+        in_tensor = tf.compat.v1.placeholder(
+            shape=unknown_shape, dtype=tf.float32, name='input')
+        out_tensor = in_tensor + in_tensor
+        inputs = {'input': in_tensor}
+        outputs = {'output': out_tensor}
+        saved_model.simple_save(sess, saved_model_dir, inputs, outputs)
+    return saved_model_dir
+
+  @test_util.run_v2_only
+  def testUnknownInputShapeModel(self):
+    """Test a SavedModel with an unknown input shape."""
+    saved_model_dir = self._createUnknownInputShapeModel()
+
+    converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+
+    input_data = np.array([1., 2., 3.], dtype=np.float32)
+    interpreter.resize_tensor_input(
+        input_details[0]['index'], [3], strict=False)
+    interpreter.allocate_tensors()
+
+    interpreter.set_tensor(input_details[0]['index'], input_data)
+    interpreter.invoke()
+    actual_value = interpreter.get_tensor(output_details[0]['index'])
+    self.assertEqual([2., 4., 6.], list(actual_value))
 
 
 class FromKerasModelTest(lite_v2_test_util.ModelTest):

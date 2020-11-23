@@ -81,7 +81,7 @@ absl::Status SingleOpModel::Invoke() {
   id<MTLDevice> device = MTLCreateSystemDefaultDevice();
   std::string device_name = std::string([[device name] UTF8String]);
   GpuInfo gpu_info;
-  GetGpuInfoFromDeviceDescription(device_name, &gpu_info);
+  GetGpuInfoFromDeviceDescription(device_name, GpuApi::kMetal, &gpu_info);
   RuntimeOptions options;
   options.storage_precision = RuntimeOptions::Precision::FP32;
   options.accumulator_precision = RuntimeOptions::Precision::FP32;

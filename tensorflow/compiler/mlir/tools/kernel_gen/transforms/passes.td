@@ -39,7 +39,12 @@ def ShapeToDescriptorsPass : Pass<"shape-to-descriptors", "ModuleOp"> {
 }
 
 def BufferizePass : Pass<"bufferize", "ModuleOp"> {
-  let summary = "Pass to transform operations on values to buffer based ones";
+  let summary = "Pass to transform operations on values to buffer-based ones.";
+  let options = [
+    Option<"allow_partial_bufferization_", "allow-partial-bufferization",
+           "bool", /*default=*/"false", "Allow partial bufferization. "
+           "Value-based operations may remain, e.g. for shape operations.">,
+  ];
   let constructor = "transforms::CreateBufferizePass()";
 }
 

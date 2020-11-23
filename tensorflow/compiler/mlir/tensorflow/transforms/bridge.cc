@@ -104,6 +104,7 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   pm.addPass(mlir::createInlinerPass());
   pm.addPass(CreateTPUClusterCleanupAttributesPass());
   pm.addPass(TFDevice::CreateResourceOpLiftingPass());
+  pm.addNestedPass<FuncOp>(createCSEPass());
   pm.addPass(TFDevice::CreateMarkOpsForOutsideCompilationPass());
   pm.addPass(CreateTPUExtractHeadTailOutsideCompilationPass());
   pm.addPass(CreateTPUOutsideCompilationClusterPass());

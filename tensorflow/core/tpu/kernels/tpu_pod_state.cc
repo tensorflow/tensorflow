@@ -78,9 +78,16 @@ Status GetServerAddressAndPort(std::string* server_address, int* serving_port) {
   });
   size_t server_address_output_size;
   *serving_port = -1;
-  tpu::OpsApiFn()->TpuConfigurationApi_GetServerAddressAndPortFn(
-      &server_address_output_size, &server_address_output, serving_port,
-      status);
+
+  TpuConfigurationApi_GetServerAddressAndPort_Params params;
+  params.struct_size = TpuConfigurationApi_GetServerAddressAndPort_Params_SIZE;
+  params.priv = nullptr;
+  params.server_address_output_size = &server_address_output_size;
+  params.server_address_output = &server_address_output;
+  params.port_output = serving_port;
+  params.status = status;
+
+  tpu::OpsApiFn()->TpuConfigurationApi_GetServerAddressAndPortFn(&params);
   TF_RETURN_IF_ERROR(StatusFromTF_Status(status));
   *server_address =
       std::string(server_address_output, server_address_output_size);

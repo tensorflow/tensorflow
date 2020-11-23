@@ -778,7 +778,8 @@ struct ScalarizeSplatConstantForBroadcastableOps
     // cannot scalarize the splat constant because the result shape relies on
     // the splat constant op's shape for broadcasting.
     if (!non_splat_operand_type.hasStaticShape() ||
-        non_splat_operand_type.getShape() != result_type.getShape()) {
+        non_splat_operand_type.getShape() != result_type.getShape() ||
+        non_splat_operand_type.getRank() > 4) {
       return failure();
     }
 

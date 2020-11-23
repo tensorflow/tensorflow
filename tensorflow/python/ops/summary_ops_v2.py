@@ -451,7 +451,7 @@ def initialize(
   if graph is not None:
     data = _serialize_graph(graph)
     x = array_ops.placeholder(dtypes.string)
-    session.run(_graph(x, 0), feed_dict={x: data})
+    session.run(graph_v1(x, 0), feed_dict={x: data})
 
 
 @tf_export("summary.create_file_writer", v1=[])
@@ -966,8 +966,7 @@ def audio(name, tensor, sample_rate, max_outputs, family=None, step=None):
   return summary_writer_function(name, tensor, function, family=family)
 
 
-# TODO(b/171925996): rename this to `graph_v1` after changing all callsites.
-def graph(param, step=None, name=None):
+def graph_v1(param, step=None, name=None):
   """Writes a TensorFlow graph to the summary interface.
 
   The graph summary is, strictly speaking, not a summary. Conditions
@@ -1012,13 +1011,8 @@ def graph(param, step=None, name=None):
         writer._resource, _choose_step(step), tensor, name=name)  # pylint: disable=protected-access
 
 
-_graph = graph  # for functions with a graph parameter
-
-
-# TODO(b/171925996): rename this to `graph` for consistency when graph_v1 is
-# renamed.
 @tf_export("summary.graph", v1=[])
-def graph_v2(graph_data):
+def graph(graph_data):
   """Writes a TensorFlow graph summary.
 
   Write an instance of `tf.Graph` or `tf.compat.v1.GraphDef` as summary only
@@ -1391,4 +1385,7 @@ def trace_off():
     context.context().disable_run_metadata()
 
   if profiler:
-    _profiler.stop()
+    try:
+      _profiler.stop()
+    except _profiler.ProfilerNotRunningError:
+      pass

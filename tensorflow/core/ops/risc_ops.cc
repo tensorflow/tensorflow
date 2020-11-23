@@ -39,6 +39,15 @@ REGISTER_OP("RiscBroadcast")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .SetShapeFn(shape_inference::UnknownShape);
 
+REGISTER_OP("RiscConcat")
+    .Input("values: N * T")
+    .Input("axis: Tidx")
+    .Output("output: T")
+    .Attr("N: int >= 2")
+    .Attr("T: type")
+    .Attr("Tidx: {int32, int64} = DT_INT32")
+    .SetShapeFn(shape_inference::ConcatV2Shape);
+
 // TODO(b/171294012): change shape function.
 REGISTER_OP("RiscConv")
     .Input("input: T")

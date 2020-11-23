@@ -144,13 +144,13 @@ GPUOperation CreateConcatZ(const OperationDef& definition,
       definition.precision == CalculationsPrecision::F32 &&
       !IsAllChannelsX4(channels)) {
     // BUG, some PowerVRs (GE8320) produce incorrect result without it
-    op.compiler_options_.push_back(CompilerOptions::CL_OPT_DISABLE);
+    op.compiler_options_.push_back(CompilerOptions::kClDisableOptimizations);
   }
   if (gpu_info.IsAMD() && definition.precision != CalculationsPrecision::F32 &&
       definition.src_tensors[0].storage_type != TensorStorageType::BUFFER &&
       !IsAllChannelsX4(channels)) {
     // BUG, some AMD gpus crash without it
-    op.compiler_options_.push_back(CompilerOptions::CL_OPT_DISABLE);
+    op.compiler_options_.push_back(CompilerOptions::kClDisableOptimizations);
   }
   op.tensor_to_grid_ = TensorToGrid::kWBToX_HToY_DToZ;
   return op;

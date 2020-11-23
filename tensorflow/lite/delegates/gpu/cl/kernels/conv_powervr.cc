@@ -228,10 +228,10 @@ void ConvPowerVR::GenerateCode(const GpuInfo& gpu_info) {
   code_ = GenerateConv(gpu_info, definition_, stride_correction, conv_params_);
   if (definition_.precision == CalculationsPrecision::F16 &&
       gpu_info.IsPowerVR()) {
-    compiler_options_.push_back(CompilerOptions::POWERVR_FP16);
+    compiler_options_.push_back(CompilerOptions::kClPowervrFp16);
   }
   if (conv_params_.IsPrivateMemBroadcast() && gpu_info.IsCL20OrHigher()) {
-    compiler_options_.push_back(CompilerOptions::CL_2_0);
+    compiler_options_.push_back(CompilerOptions::kCl20);
   }
   bool kernel_is_trivial =
       conv_params_.x_kernel_is_1 && conv_params_.y_kernel_is_1;
@@ -241,7 +241,7 @@ void ConvPowerVR::GenerateCode(const GpuInfo& gpu_info) {
   if (gpu_info.IsAdreno() && gpu_info.adreno_info.IsAdreno3xx() &&
       definition_.precision == CalculationsPrecision::F16 &&
       kernel_is_trivial) {
-    compiler_options_.push_back(CompilerOptions::ADRENO_FULL_SIMD_LINE);
+    compiler_options_.push_back(CompilerOptions::kAdrenoFullSimd);
   }
 }
 
@@ -445,7 +445,7 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
 
   std::string c = GetCommonDefines(op_def.precision);
   if (use_simd_broadcast) {
-    if (gpu_info.cl_version == OpenCLVersion::CL_2_0) {
+    if (gpu_info.opencl_info.cl_version == OpenClVersion::kCl2_0) {
       c += "#pragma OPENCL EXTENSION cl_khr_subgroups : enable\n";
     } else if (gpu_info.SupportsExtension("cl_intel_subgroups")) {
       c += "#pragma OPENCL EXTENSION cl_intel_subgroups : enable\n";
@@ -1045,7 +1045,7 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
     if (dst_shape) {
       int task_size = dst_shape->w * dst_shape->b * dst_shape->h * dst_depth;
       float task_size_per_cu =
-          static_cast<float>(task_size) / gpu_info.compute_units_count;
+          static_cast<float>(task_size) / gpu_info.GetComputeUnitsCount();
       int block_size = conv_params.block_size.x * conv_params.block_size.y *
                        conv_params.block_size.w;
       float threads_per_cu = task_size_per_cu / block_size;

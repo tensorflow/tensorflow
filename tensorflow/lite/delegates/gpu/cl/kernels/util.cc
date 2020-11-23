@@ -118,7 +118,7 @@ int GetRecommendedBlockSizeForConv(const GpuInfo& gpu_info,
                                    CalculationsPrecision precision,
                                    int task_size) {
   const float task_size_per_cu =
-      task_size / static_cast<float>(gpu_info.compute_units_count);
+      task_size / static_cast<float>(gpu_info.GetComputeUnitsCount());
   int block_size = 1;
   float threshold_1 = FLT_MAX;
   float threshold_2 = FLT_MAX;

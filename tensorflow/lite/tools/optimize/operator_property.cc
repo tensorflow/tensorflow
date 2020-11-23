@@ -67,6 +67,9 @@ const OpVariant GetOperatorVariant(const ModelT* model, int subgraph_index,
 }
 }  // namespace
 
+// Update operation defintions in TensorFlow Lite dialect accordingly when there
+// are any needs on updating the kernel support level.
+// LINT.IfChange
 OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
                                      int op_index) {
   OpVariant op_variant = GetOperatorVariant(model, subgraph_index, op_index);
@@ -933,7 +936,6 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
       property.version = 2;
-      property.quantizable_int16 = false;
       break;
     case BuiltinOperator_TANH: {
       property.inputs = {{0, {}}};
@@ -1002,7 +1004,8 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.quantizable_int16 = false;
   }
   return property;
-}
+}  // NOLINT(readability/fn_size)
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/ir/tfl_ops.td)
 
 }  // namespace operator_property
 }  // namespace optimize

@@ -64,6 +64,7 @@ limitations under the License.
 #include "mlir/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -149,7 +150,7 @@ StatusOr<QuantizedType> GetQuantizedType(const TensorT& tensor, Builder builder,
 
   int64_t storage_min = QuantizedType::getDefaultMinimumForInteger(
                             is_signed, storage_type.getWidth()) +
-                        is_weight_buffer;
+                        static_cast<int>(is_weight_buffer);
   int64_t storage_max = QuantizedType::getDefaultMaximumForInteger(
       is_signed, storage_type.getWidth());
   uint32_t flags =
@@ -177,18 +178,38 @@ StatusOr<QuantizedType> GetQuantizedType(const TensorT& tensor, Builder builder,
       quant_params.zero_point.at(0), storage_min, storage_max);
 }
 
+// import float tensor with calibration value into calibrated quantized type.
+StatusOr<QuantizedType> GetCalibratedQuantizedType(const TensorT& tensor,
+                                                   Builder builder) {
+  if (tensor.quantization == nullptr) {
+    return errors::InvalidArgument("The tensor is not quantized.");
+  }
+  auto raw_elem_type = ConvertElementType(tensor.type, builder);
+  float min = tensor.quantization->min[0];
+  float max = tensor.quantization->max[0];
+  return mlir::quant::CalibratedQuantizedType::get(raw_elem_type, min, max);
+}
+
 // TODO(b/138222071) Remove shapeless_are_scalars once we can reliably
 // make that distinction and don't have to rely on context
 // (input to main and constants must have static shape)
 StatusOr<mlir::TensorType> GetTensorType(const TensorT& tensor, Builder builder,
                                          bool shapeless_are_scalars = false,
-                                         bool is_constant = false) {
+                                         bool is_constant = false,
+                                         bool is_intermediate = false) {
   mlir::Type elem_type = ConvertElementType(tensor.type, builder);
   // TODO(b/139554398) Store min/max (even for non-quantized tensors) somewhere
   // if it's set
   if (IsQuantized(tensor)) {
     TF_ASSIGN_OR_RETURN(elem_type,
                         GetQuantizedType(tensor, builder, is_constant));
+  }
+
+  // Intermediate tensors with calibration value (but not scale and zero points)
+  // should return calibrated quantized type.
+  if (is_intermediate && tensor.quantization != nullptr &&
+      !IsQuantized(tensor)) {
+    TF_ASSIGN_OR_RETURN(elem_type, GetCalibratedQuantizedType(tensor, builder));
   }
 
   if (IsScalar(tensor) || (shapeless_are_scalars && tensor.shape.empty())) {
@@ -1033,7 +1054,7 @@ StatusOr<FuncOp> ConvertSubgraph(
       }
     }
 
-    // Intermediate tensors for tfl.lstm are used to carry quantization range
+    // Intermediate tensors for LSTMs are used to carry quantization range
     // in their types, so we only need and extract their types.
     std::vector<mlir::TensorType> intermediate_types;
     intermediate_types.reserve(5);
@@ -1041,7 +1062,8 @@ StatusOr<FuncOp> ConvertSubgraph(
       TF_ASSIGN_OR_RETURN(
           auto type, GetTensorType(*subgraph.tensors[intermediate], builder,
                                    /*shapeless_are_scalars=*/true,
-                                   /*is_constant=*/true));
+                                   /*is_constant=*/false,
+                                   /*is_intermediate=*/true));
       intermediate_types.emplace_back(type);
     }
 
@@ -1134,7 +1156,6 @@ OwningModuleRef tflite::FlatBufferToMlir(
   std::unique_ptr<ModelT> model(model_ptr->GetModel()->UnPack());
 
   auto builder = Builder(context);
-
 
   std::vector<std::string> func_names;
   for (auto& subgraph : model->subgraphs) {

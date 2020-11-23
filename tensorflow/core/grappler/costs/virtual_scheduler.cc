@@ -109,6 +109,21 @@ void UpdateDeviceAnnotationState(const NodeDef* node,
       (execution_count > 1 && node->attr().count(kOutputSame) == 0) ? 1 : 0;
 }
 
+bool IsStreamingNode(const NodeDef& node) {
+  return node.attr().contains("_streaming");
+}
+
+bool IsStreamingPort(const NodeDef& node, const int port) {
+  if (!IsStreamingNode(node)) return false;
+
+  auto& attr_list = node.attr().at("_streaming").list();
+  bool is_streaming_port = false;
+  if (port >= 0 && port < attr_list.b().size()) {
+    is_streaming_port = attr_list.b(port);
+  }
+  return is_streaming_port;
+}
+
 }  // namespace
 
 void LIFOManager::AddNode(const NodeDef* node) {
@@ -680,6 +695,10 @@ std::pair<const NodeDef*, const NodeDef*> SchedulerState::CreateSendRecv(
   recv->add_input(send->name());
   recv->set_device(DeviceName(to));
   auto& recv_attr = *(recv->mutable_attr());
+  if (from->attr().contains("_streaming")) {
+    *(recv_attr["_streaming"].mutable_list()) =
+        from->attr().at("_streaming").list();
+  }
   recv_attr[kAttrInputSrc].set_s(input_name);
   if (input_node->attr().count(kAttrTensorName)) {
     recv_attr[kAttrTensorName].set_s(
@@ -888,13 +907,18 @@ std::vector<const NodeDef*> SchedulerState::MarkNodeExecuted(
   if (!IsPersistent(*node)) {
     for (const auto& port_num_output_pair : node_state.outputs) {
       int port_num = port_num_output_pair.first;
+
       // There's a chance that a specific output is not used at all.
       if (node_state.outputs[port_num].empty()) {
         node_state.time_no_references[port_num] = curr_time;
       } else {
-        device.memory_usage +=
-            CalculateOutputSize(node_state.output_properties, port_num) *
-            node_state.execution_count;
+        // Streaming outputs do not allocate memory, they are directly consumed
+        // by the target node.
+        if (!IsStreamingPort(*node, port_num)) {
+          device.memory_usage +=
+              CalculateOutputSize(node_state.output_properties, port_num) *
+              node_state.execution_count;
+        }
         device.nodes_in_memory.insert(std::make_pair(node, port_num));
       }
     }
@@ -921,10 +945,23 @@ std::vector<const NodeDef*> SchedulerState::MarkNodeExecuted(
     GetOutputNodes(node, curr_time, &new_nodes);
   }
 
+  // When op is scheduled, both input and output tensors must be allocated in
+  // memory. Now that output memory is added, check max memory usage.
+  if (!IsPersistent(*node)) {
+    if (device.memory_usage > device.max_memory_usage) {
+      device.max_memory_usage = device.memory_usage;
+
+      if (track_mem_usage_snapshot_) {
+        device.mem_usage_snapshot_at_peak = device.nodes_in_memory;
+      }
+    }
+  }
+
   // Increment num_outputs_executed of the input nodes and maybe update memory.
   for (const auto& input_port : node_state.inputs) {
     auto* input = input_port.first;
     auto port = input_port.second;
+
     auto& input_state = node_map_[input];
     input_state.num_outputs_executed[port]++;
     int input_state_outputs_size_ = input_state.outputs[port].size();
@@ -934,25 +971,19 @@ std::vector<const NodeDef*> SchedulerState::MarkNodeExecuted(
       // input node.
       input_state.time_no_references[port] = curr_time;
       auto& input_device = device_[input_state.device_name];
-      input_device.memory_usage -=
-          CalculateOutputSize(input_state.output_properties, port) *
-          node_state.execution_count;
+      // If the node input is marked as streaming, then it wasn't allocated
+      // in memory. A streaming input is still reference counted, but it doesn't
+      // de-allocate memory.
+      if (!IsStreamingPort(*input, port)) {
+        input_device.memory_usage -=
+            CalculateOutputSize(input_state.output_properties, port) *
+            node_state.execution_count;
+      }
 
       input_device.nodes_in_memory.erase(std::make_pair(input, port));
     }
   }
 
-  if (!IsPersistent(*node)) {
-    // Now that output memory is added and used up nodes are deallocated,
-    // check max memory usage.
-    if (device.memory_usage > device.max_memory_usage) {
-      device.max_memory_usage = device.memory_usage;
-
-      if (track_mem_usage_snapshot_) {
-        device.mem_usage_snapshot_at_peak = device.nodes_in_memory;
-      }
-    }
-  }
   return new_nodes;
 }
 

@@ -47,9 +47,10 @@ std::unique_ptr<OperationPass<ModuleOp> > CreateTFKernelToLLVMPass();
 // using memref descriptors.
 std::unique_ptr<OperationPass<ModuleOp> > CreateShapeToDescriptorsPass();
 
-// Pass to tranform computations on values to their corresponding parts on
+// Pass to tranform operations on values to their corresponding parts on
 // buffers.
-std::unique_ptr<OperationPass<ModuleOp> > CreateBufferizePass();
+std::unique_ptr<OperationPass<ModuleOp>> CreateBufferizePass(
+    bool allow_partial_bufferization = false);
 
 // Pass to materialize broadcasts.
 std::unique_ptr<FunctionPass> CreateMaterializeBroadcastsPass();

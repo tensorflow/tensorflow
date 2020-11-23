@@ -110,15 +110,17 @@ class CombinedNmsExecuteNativeSegmentTest(CombinedNmsTest):
     super().tearDown()
     os.environ['TF_TRT_ALLOW_ENGINE_NATIVE_SEGMENT_EXECUTION'] = 'False'
 
-  def GetConversionParams(self, run_params):
-    conversion_param = super().GetConversionParams(run_params)
+  def GetMaxBatchSize(self, run_params):
+    """Returns the max_batch_size that the converter should use for tests."""
+    if run_params.dynamic_engine:
+      return None
+
     # Build the engine with the allowed max_batch_size less than the actual
     # max_batch_size, to fore the runtime to execute the native segment. This
     # is to test that combined_non_max_suppression, which doesn't have a TF GPU
     # implementation, can be executed natively even though the it is in the
     # the graph for the TRTEngineOp with a GPU as a default device.
-    return conversion_param._replace(
-        max_batch_size=conversion_param.max_batch_size - 1)
+    return super().GetMaxBatchSize(run_params) - 1
 
   def ShouldRunTest(self, run_params):
     should_run, reason = super().ShouldRunTest(run_params)

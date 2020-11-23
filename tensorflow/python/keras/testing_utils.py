@@ -100,7 +100,8 @@ def layer_test(layer_cls,
                validate_training=True,
                adapt_data=None,
                custom_objects=None,
-               test_harness=None):
+               test_harness=None,
+               supports_masking=None):
   """Test routine for a layer with a single input and single output.
 
   Arguments:
@@ -122,6 +123,8 @@ def layer_test(layer_cls,
       in the layer class. This is helpful for testing custom layers.
     test_harness: The Tensorflow test, if any, that this function is being
       called in.
+    supports_masking: Optional boolean to check the `supports_masking` property
+      of the layer. If None, the check will not be performed.
 
   Returns:
     The output data (Numpy array) returned by the layer, for additional
@@ -164,6 +167,13 @@ def layer_test(layer_cls,
   # instantiation
   kwargs = kwargs or {}
   layer = layer_cls(**kwargs)
+
+  if (supports_masking is not None
+      and layer.supports_masking != supports_masking):
+    raise AssertionError(
+        'When testing layer %s, the `supports_masking` property is %r'
+        'but expected to be %r.\nFull kwargs: %s' %
+        (layer_cls.__name__, layer.supports_masking, supports_masking, kwargs))
 
   # Test adapt, if data was passed.
   if adapt_data is not None:

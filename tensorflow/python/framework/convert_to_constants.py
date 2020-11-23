@@ -28,6 +28,7 @@ from tensorflow.core.framework import variable_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import ops
@@ -998,6 +999,12 @@ def _construct_concrete_function(func, output_graph_def,
 
   new_input_names = [tensor.name for tensor in not_converted_inputs]
   new_output_names = [tensor.name for tensor in func.outputs]
+
+  # Remove old functions to use updated functions from graph def.
+  for f in output_graph_def.library.function:
+    if context.context().has_function(f.signature.name):
+      context.context().remove_function(f.signature.name)
+
   new_func = wrap_function.function_from_graph_def(output_graph_def,
                                                    new_input_names,
                                                    new_output_names)

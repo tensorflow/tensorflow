@@ -42,7 +42,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/path.h"
-#include "tensorflow/core/protobuf/data/experimental/service_config.pb.h"
+#include "tensorflow/core/protobuf/service_config.pb.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
@@ -186,7 +186,7 @@ Status DataServiceDispatcherImpl::Start() {
 
 Status DataServiceDispatcherImpl::RestoreSplitProvider(
     const Job& job, std::unique_ptr<SplitProvider>& restored)
-    EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   int64 index = job.distributed_epoch_state.value().split_provider_index;
   VLOG(1) << "Restoring split provider for job " << job.job_id << " to index "
           << index;
@@ -341,7 +341,7 @@ Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
 
 Status DataServiceDispatcherImpl::MakeSplitProvider(
     int64 dataset_id, std::unique_ptr<SplitProvider>& split_provider)
-    EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::shared_ptr<const Dataset> dataset;
   TF_RETURN_IF_ERROR(state_.DatasetFromId(dataset_id, dataset));
   std::shared_ptr<const DatasetDef> dataset_def;
@@ -393,7 +393,7 @@ Status DataServiceDispatcherImpl::GetOrRegisterDataset(
 Status DataServiceDispatcherImpl::RegisterDataset(uint64 fingerprint,
                                                   const DatasetDef& dataset,
                                                   int64& dataset_id)
-    EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   dataset_id = state_.NextAvailableDatasetId();
   Update update;
   RegisterDatasetUpdate* register_dataset = update.mutable_register_dataset();
@@ -487,7 +487,7 @@ Status DataServiceDispatcherImpl::ReleaseJobClient(
 // Validates that the job matches the given processing_mode and dataset_id.
 Status DataServiceDispatcherImpl::ValidateMatchingJob(
     std::shared_ptr<const Job> job, ProcessingMode processing_mode,
-    int64 dataset_id) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    int64 dataset_id) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   DCHECK(job->named_job_key.has_value());
   std::string job_name = job->named_job_key->name;
   if (job->processing_mode != processing_mode) {
@@ -506,7 +506,7 @@ Status DataServiceDispatcherImpl::ValidateMatchingJob(
 Status DataServiceDispatcherImpl::CreateJob(
     int64 dataset_id, ProcessingMode processing_mode,
     absl::optional<NamedJobKey> named_job_key, std::shared_ptr<const Job>& job)
-    EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   switch (processing_mode) {
     case ProcessingMode::PARALLEL_EPOCHS:
     case ProcessingMode::DISTRIBUTED_EPOCH:
@@ -535,7 +535,7 @@ Status DataServiceDispatcherImpl::CreateJob(
 }
 
 Status DataServiceDispatcherImpl::CreateTasksForWorker(
-    const std::string& worker_address) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    const std::string& worker_address) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::vector<std::shared_ptr<const Job>> jobs = state_.ListJobs();
   for (const auto& job : jobs) {
     if (job->finished) {
@@ -549,7 +549,7 @@ Status DataServiceDispatcherImpl::CreateTasksForWorker(
 
 Status DataServiceDispatcherImpl::AcquireJobClientId(
     const std::shared_ptr<const Job>& job, int64& job_client_id)
-    EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   job_client_id = state_.NextAvailableJobClientId();
   Update update;
   AcquireJobClientUpdate* acquire_job_client =
@@ -563,7 +563,7 @@ Status DataServiceDispatcherImpl::AcquireJobClientId(
 Status DataServiceDispatcherImpl::CreateTasksForJob(
     std::shared_ptr<const Job> job,
     std::vector<std::shared_ptr<const Task>>& tasks)
-    EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::vector<std::shared_ptr<const Worker>> workers = state_.ListWorkers();
   tasks.clear();
   tasks.reserve(workers.size());
@@ -578,7 +578,7 @@ Status DataServiceDispatcherImpl::CreateTasksForJob(
 Status DataServiceDispatcherImpl::CreateTask(std::shared_ptr<const Job> job,
                                              const std::string& worker_address,
                                              std::shared_ptr<const Task>& task)
-    EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   int64 task_id = state_.NextAvailableTaskId();
   Update update;
   CreateTaskUpdate* create_task = update.mutable_create_task();
@@ -593,7 +593,7 @@ Status DataServiceDispatcherImpl::CreateTask(std::shared_ptr<const Job> job,
 }
 
 Status DataServiceDispatcherImpl::AssignTasks(
-    std::vector<std::shared_ptr<const Task>> tasks) LOCKS_EXCLUDED(mu_) {
+    std::vector<std::shared_ptr<const Task>> tasks) TF_LOCKS_EXCLUDED(mu_) {
   for (const auto& task : tasks) {
     TF_RETURN_IF_ERROR(AssignTask(task));
   }
@@ -602,7 +602,7 @@ Status DataServiceDispatcherImpl::AssignTasks(
 
 Status DataServiceDispatcherImpl::GetOrCreateWorkerStub(
     const std::string& worker_address, WorkerService::Stub*& out_stub)
-    LOCKS_EXCLUDED(mu_) {
+    TF_LOCKS_EXCLUDED(mu_) {
   {
     mutex_lock l(mu_);
     auto it = worker_stubs_.find(worker_address);
@@ -627,7 +627,7 @@ Status DataServiceDispatcherImpl::GetOrCreateWorkerStub(
 }
 
 Status DataServiceDispatcherImpl::AssignTask(std::shared_ptr<const Task> task)
-    LOCKS_EXCLUDED(mu_) {
+    TF_LOCKS_EXCLUDED(mu_) {
   VLOG(2) << "Started assigning task " << task->task_id << " to worker "
           << task->worker_address;
   grpc::ClientContext client_ctx;
@@ -710,7 +710,7 @@ Status DataServiceDispatcherImpl::GetWorkers(const GetWorkersRequest* request,
   return Status::OK();
 }
 
-Status DataServiceDispatcherImpl::CheckStarted() LOCKS_EXCLUDED(mu_) {
+Status DataServiceDispatcherImpl::CheckStarted() TF_LOCKS_EXCLUDED(mu_) {
   mutex_lock l(mu_);
   if (!started_) {
     return errors::Unavailable("Dispatcher has not started yet.");
@@ -721,7 +721,7 @@ Status DataServiceDispatcherImpl::CheckStarted() LOCKS_EXCLUDED(mu_) {
 Status DataServiceDispatcherImpl::RecordSplitProduced(int64 job_id,
                                                       int64 repetition,
                                                       bool finished)
-    EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   Update update;
   ProduceSplitUpdate* produce_split = update.mutable_produce_split();
   produce_split->set_job_id(job_id);
@@ -731,12 +731,12 @@ Status DataServiceDispatcherImpl::RecordSplitProduced(int64 job_id,
 }
 
 Status DataServiceDispatcherImpl::ApplyWithoutJournaling(const Update& update)
-    EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   return state_.Apply(update);
 }
 
 Status DataServiceDispatcherImpl::Apply(const Update& update)
-    EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   if (journal_writer_.has_value()) {
     TF_RETURN_IF_ERROR(journal_writer_.value()->Write(update));
   }
@@ -764,7 +764,7 @@ void DataServiceDispatcherImpl::JobGcThread() {
   }
 }
 
-Status DataServiceDispatcherImpl::GcOldJobs() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+Status DataServiceDispatcherImpl::GcOldJobs() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::vector<std::shared_ptr<const Job>> jobs = state_.ListJobs();
   int64 now = env_->NowMicros();
   for (const auto& job : jobs) {
@@ -791,7 +791,7 @@ Status DataServiceDispatcherImpl::GcOldJobs() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
 
 Status DataServiceDispatcherImpl::GetDatasetDef(
     int64 dataset_id, std::shared_ptr<const DatasetDef>& dataset_def)
-    EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::shared_ptr<const Dataset> dataset;
   TF_RETURN_IF_ERROR(state_.DatasetFromId(dataset_id, dataset));
   return GetDatasetDef(*dataset, dataset_def);
@@ -799,7 +799,7 @@ Status DataServiceDispatcherImpl::GetDatasetDef(
 
 Status DataServiceDispatcherImpl::GetDatasetDef(
     const Dataset& dataset, std::shared_ptr<const DatasetDef>& dataset_def)
-    EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::string key = DatasetKey(dataset.dataset_id, dataset.fingerprint);
   return dataset_store_->Get(key, dataset_def);
 }

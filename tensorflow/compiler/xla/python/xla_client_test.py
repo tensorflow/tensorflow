@@ -14,12 +14,9 @@
 # ==============================================================================
 """Backend-dependent tests for the Python XLA client."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 import itertools
+import re
 import threading
 import unittest
 
@@ -444,10 +441,10 @@ def TestFactory(xla_backend, cloud_tpu=False):
       with self.assertRaises(RuntimeError):
         compiled_c.execute([arg_buffer])
 
-    def testShape(self):
+    def testXlaShape(self):
       pyval = np.array([[1., 2.]], np.float32)
       local_buffer = self.backend.buffer_from_pyval(pyval)
-      xla_shape = local_buffer.shape()
+      xla_shape = local_buffer.xla_shape()
       self.assertEqual(xla_shape.dimensions(), (1, 2))
       self.assertEqual(np.dtype(xla_shape.element_type()), np.dtype(np.float32))
 
@@ -457,6 +454,37 @@ def TestFactory(xla_backend, cloud_tpu=False):
       arg_buffer.block_host_until_ready()
       # This test merely checks that nothing goes awry when we call
       # block_host_until_ready(); it's difficult to test anything else.
+
+    def testBlockHostUntilReadyRaisesOnDeletedBuffer(self):
+      arg = np.array([[1., 2.]], np.float32)
+      buffer = self.backend.buffer_from_pyval(arg)
+      buffer.delete()
+      with self.assertRaisesRegex(
+          RuntimeError,
+          re.escape(
+              "BlockHostUntilReady() called on deleted or donated buffer")):
+        buffer.block_host_until_ready()
+
+    def testDeviceArrayBaseSignatures(self):
+      # When extending `DeviceArrayBase`, the object behaves as a `DeviceArray`
+      # and thus needs to correctly implement the following methods.
+      arg = np.array([[1., 2., 3.]], np.float32)
+      buffer = self.backend.buffer_from_pyval(arg)
+      if not isinstance(buffer, xla_client.DeviceArrayBase):
+        raise unittest.SkipTest(
+            "The objectof type {} do not extend DeviceArrayBase".format(
+                type(buffer)))
+
+      self.assertEqual(buffer.__array_priority__, 100)
+      self.assertEqual(buffer.shape, (1, 3))
+      self.assertEqual(buffer.dtype, np.float32)
+      self.assertEqual(buffer.size, 3)
+      self.assertEqual(buffer.ndim, 2)
+
+      self.assertIs(buffer, buffer.block_until_ready())
+      buffer.delete()
+      with self.assertRaises(RuntimeError):
+        buffer.block_until_ready()
 
     def testCopyToHost(self):
       arg0 = np.array([[1., 2.]], np.float32)

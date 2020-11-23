@@ -30,6 +30,7 @@ tensorflow::Status SetTpuOpsStructFns(void* library_handle) {
   TFTPU_SET_FN(ops_api_fn, TpuMeshState_MeshCommonState);
 
   TFTPU_SET_FN(ops_api_fn, TpuCompile_CompileAndBuild);
+  TFTPU_SET_FN(ops_api_fn, TpuCompile_XrtCompileAndBuild);
 
   TFTPU_SET_FN(ops_api_fn, TpuExecutable_LoadProgramAndEnqueueToStream);
   TFTPU_SET_FN(ops_api_fn, HardwareLayout_HostShapeToDeviceShape);

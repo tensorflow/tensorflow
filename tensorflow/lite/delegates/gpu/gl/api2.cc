@@ -636,7 +636,7 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
     RETURN_IF_ERROR(EglEnvironment::NewEglEnvironment(&egl_env_));
 
     RETURN_IF_ERROR(RequestGpuInfo(&gpu_info_));
-    properties_.is_opengl_available = IsOpenGl31OrAbove(gpu_info_);
+    properties_.is_opengl_available = gpu_info_.IsApiOpenGl31OrAbove();
     if (!properties_.is_opengl_available) {
       return absl::InternalError(
           "OpenGL ES 3.1 or above is required to use OpenGL inference.");

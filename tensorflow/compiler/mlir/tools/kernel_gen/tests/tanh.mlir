@@ -7,7 +7,7 @@
 // TODO: Expand this pattern once things have stabilized.
 // CHECK-LABEL: @tanh
 func @tanh(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  // CHECK: alloca
+  // CHECK: alloc
   // CHECK: scf.parallel
   // CHECK-NOT: tensor_load
   // CHECK: scf.for

@@ -40,6 +40,7 @@ from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import tpu_strategy
+from tensorflow.python.distribute import values as ds_values_lib
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -2676,6 +2677,43 @@ class TestModelCapturesStrategy(test.TestCase, parameterized.TestCase):
             optimizer=keras.optimizers.adam_v2.Adam(1e-4),
             loss=keras.losses.MeanSquaredError(),
             metrics=[keras.metrics.BinaryAccuracy()])
+
+  @ds_combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.mirrored_strategy_with_one_cpu,
+          mode=['eager']))
+  def test_optimizer(self, distribution):
+    temp_dir = os.path.join(self.get_temp_dir(), 'ckpt')
+
+    def create_model():
+      model = keras.models.Sequential([
+          keras.layers.Dense(1),
+      ])
+      model.compile(optimizer='adam', loss='mse')
+      model.build([None, 1])  # create weights.
+      self.assertEmpty(model.optimizer.weights)
+      return model
+
+    model = create_model()
+    x = y = array_ops.ones(shape=(1, 1))
+    model.fit(x=x, y=y, batch_size=1)
+    model.save_weights(temp_dir)
+
+    with distribution.scope():
+      model = create_model()
+      model.load_weights(temp_dir)
+      self.assertNotEmpty(model.optimizer.weights)
+      self.assertIsInstance(model.optimizer.weights[0],
+                            ds_values_lib.DistributedVariable)
+
+    with distribution.scope():
+      model = create_model()
+    # create/restore slot variables outside of scope is fine.
+    model.load_weights(temp_dir)
+    self.assertNotEmpty(model.optimizer.weights)
+    self.assertIsInstance(model.optimizer.weights[0],
+                          ds_values_lib.DistributedVariable)
+
 
 if __name__ == '__main__':
   base_layer_utils.enable_v2_dtype_behavior()
