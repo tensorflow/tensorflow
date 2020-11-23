@@ -43,25 +43,27 @@ namespace gl {
 namespace {
 
 struct ExceedSizeChecker {
-  bool operator()(uint32_t v) const { return v > max_size; }
+  bool operator()(uint32_t v) const { return v > max_size.x; }
 
   bool operator()(const uint2& v) const {
-    return v.x > max_size || v.y > max_size;
+    return v.x > max_size.x || v.y > max_size.y;
   }
 
   bool operator()(const uint3& v) const {
-    return v.x > max_size || v.y > max_size || v.z > max_z_size;
+    return v.x > max_size.x || v.y > max_size.y || v.z > max_z_size;
   }
 
-  int max_size;
+  int2 max_size;
   int max_z_size;
 };
 
 // Returns true if any size variable exceeds the given limit
 bool ExceedsMaxSize(const Object& object, const GpuInfo& gpu_info) {
-  return absl::visit(ExceedSizeChecker{gpu_info.max_texture_size,
-                                       gpu_info.max_array_texture_layers},
-                     object.size);
+  ExceedSizeChecker size_checker;
+  size_checker.max_size =
+      int2(gpu_info.GetMaxImage2DWidth(), gpu_info.GetMaxImage2DHeight());
+  size_checker.max_z_size = gpu_info.GetMaxImage2DArrayLayers();
+  return absl::visit(size_checker, object.size);
 }
 
 ObjectType ChooseFastestObjectType(const GpuInfo& gpu_info) {
@@ -201,7 +203,7 @@ class CompilerImpl : public Compiler {
           return;
         }
         bool is_ref = IsRef(*object);
-        if (num_textures < gpu_info_.max_image_units &&
+        if (num_textures < gpu_info_.GetMaxImageArguments() &&
             !ExceedsMaxSize(*object, gpu_info_) &&
             (object->object_type == ObjectType::TEXTURE ||
              (is_ref && options_.ref_obj_type == ObjectType::TEXTURE) ||
@@ -251,8 +253,7 @@ class CompilerImpl : public Compiler {
         attr.outputs.push_back(object);
       }
 
-      // Allocate bindings. Textures must be bound first. max_image_units also
-      // defines max binding number for a texture.
+      // Allocate bindings. Textures must be bound first.
       uint32_t binding = 0;
       auto set_binding = [&](ObjectType type, Object& object) {
         if (object.object_type == type) {

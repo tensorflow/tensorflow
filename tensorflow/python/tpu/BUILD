@@ -12,6 +12,7 @@ package(
     default_visibility = [
         "//learning/brain:__subpackages__",
         "//learning/deepmind:__subpackages__",
+        "//learning/serving:__subpackages__",
         "//research/graph:__subpackages__",
         "//tensorflow:__subpackages__",
     ],

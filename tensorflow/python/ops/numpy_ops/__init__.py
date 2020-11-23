@@ -38,7 +38,7 @@ print(tnp.ones([2,1]) + np.ones([1, 2]))
 
 The module provides an `ndarray` class which wraps an immutable `tf.Tensor`.
 Additional functions are provided which accept array-like objects. Here
-array-like objects includes `ndarrays` as defined by this module, as well as
+array-like objects include `ndarrays` as defined by this module, as well as
 `tf.Tensor`, in addition to types accepted by NumPy.
 
 A subset of NumPy dtypes are supported. Type promotion follows NumPy
@@ -75,7 +75,7 @@ tnp.sum(tnp.ones([1, 2]) + tf.ones([2, 1]))
 Note that the `__array_priority__` is currently chosen to be lower than
 `tf.Tensor`. Hence the `+` operator above returns a `tf.Tensor`.
 
-Additional examples of interopability include:
+Additional examples of interoperability include:
 
 *  using `with tf.GradientTape()` scope to compute gradients through the
   TF-NumPy API calls.
@@ -156,8 +156,8 @@ Here is a non-exhaustive list of differences:
     values may not be supported. These differences are generally provided in the
     function comments. Full `ufunc` support is also not provided.
 *   Buffer mutation is currently not supported. `ndarrays` wrap immutable
-    tensors. This means that output buffer arguments (e..g `out` in ufuncs) are
-    not supported
+    tensors. This means that output buffer arguments (e.g. `out` in ufuncs) are
+    not supported.
 *   NumPy C API is not supported. NumPy's Cython and Swig integration are not
     supported.
 """

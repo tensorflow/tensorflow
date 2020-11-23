@@ -376,13 +376,17 @@ multiclass FuseTileBroadcastIntoFollowingBinary<dag BinaryOp> {
     (BinaryOp:$result (TFL_TileOp $input, (ConstantOp $tile)),
      $operand, $act_func),
     (BinaryOp $input, $operand, $act_func),
-  [(OperandsBroadcastToOutputType $input, $operand, $result)]>;
+  [(OperandsBroadcastToOutputType $input, $operand, $result),
+   (HasRankAtMost<4> $input),
+   (HasRankAtMost<4> $operand)]>;
 
   def FuseTileBroadcastToBinaryOp2#BinaryOp : Pat<
     (BinaryOp:$result $operand,
       (TFL_TileOp $input, (ConstantOp $tile)), $act_func),
     (BinaryOp $operand, $input, $act_func),
-  [(OperandsBroadcastToOutputType $operand, $input, $result)]>;
+  [(OperandsBroadcastToOutputType $operand, $input, $result),
+   (HasRankAtMost<4> $operand),
+   (HasRankAtMost<4> $input)]>;
 }
 
 // Multi-pattern consisting of matching stand-alone op or op followed by relu.
@@ -427,8 +431,9 @@ foreach BinaryOp = [TFL_AddOp, TFL_SubOp, TFL_DivOp, TFL_MulOp] in {
      // `input`. In other words, the shape of the `Reshape` op are not
      // changed after the transformation.
      (IsTailOfShape $rhs, $input),
-     (HasRankAtMost<5> $input),
-     (HasRankAtMost<5> $rhs)]>;
+     (HasRankAtMost<4> $input),
+     (HasRankAtMost<4> $lhs),
+     (HasRankAtMost<4> $rhs)]>;
 }
 
 foreach BinaryOp = [TFL_FloorDivOp, TFL_FloorModOp, TFL_MinimumOp,
@@ -457,7 +462,10 @@ foreach BinaryOp = [TFL_FloorDivOp, TFL_FloorModOp, TFL_MinimumOp,
      // The result of the new "BinaryOp" will have the same shape as
      // `input`. In other words, the shape of the `Reshape` op are not
      // changed after the transformation.
-     (IsTailOfShape $rhs, $input)]>;
+     (IsTailOfShape $rhs, $input),
+     (HasRankAtMost<4> $input),
+     (HasRankAtMost<4> $lhs),
+     (HasRankAtMost<4> $rhs)]>;
 }
 
 // Reorder the element-wise value operations and the element move operations,
@@ -568,7 +576,10 @@ foreach ActFun = [TFL_AF_Relu, TFL_AF_Relu6, TFL_AF_Relu1, TFL_AF_None] in {
     (TFL_AddOp $input,
      (TFL_AddOp (ConstantOp $a), (ConstantOp $b), TFL_AF_None),
      ActFun),
-    [(HasOneUse $first_output)]>;
+    [(HasOneUse $first_output),
+     (HasRankAtMost<4> $input),
+     (HasRankAtMost<4> $a),
+     (HasRankAtMost<4> $b)]>;
 }
 
 // We can eliminate Relu from Relu(SquaredDifference(x, y)),

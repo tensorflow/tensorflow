@@ -47,7 +47,6 @@ py_library(
         ":input_spec",
         ":keras_tensor",
         ":node",
-        "//tensorflow/python:composite_tensor_utils",
         "//tensorflow/python:py_checkpoint_reader",
         "//tensorflow/python/data",
         "//tensorflow/python/distribute:distribute_coordinator",
@@ -221,7 +220,6 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":base_layer",
-        "//tensorflow/python:composite_tensor_utils",
         "//tensorflow/python/data",
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/keras:backend",
@@ -603,6 +601,7 @@ tf_py_test(
     python_version = "PY3",
     shard_count = 8,
     tags = [
+        "no_rocm",
         "no-internal-py3",
         "nomac",  # TODO(mihaimaruseac): b/127695564
     ],

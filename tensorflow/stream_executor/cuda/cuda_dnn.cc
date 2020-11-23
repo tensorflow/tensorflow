@@ -329,16 +329,6 @@ port::Status CudnnSupport::Init() {
       return port::Status(port::error::INTERNAL, error);
     }
 
-    // Preload sub libs for cudnn 8.0.4+
-#if CUDNN_MAJOR >= 8 && (CUDNN_MINOR > 0 || CUDNN_PATCHLEVEL >= 4)
-    PreloadCudnnLibrary(cudnnOpsInferVersionCheck, "cudnn_ops_infer");
-    PreloadCudnnLibrary(cudnnOpsTrainVersionCheck, "cudnn_ops_train");
-    PreloadCudnnLibrary(cudnnCnnInferVersionCheck, "cudnn_cnn_infer");
-    PreloadCudnnLibrary(cudnnCnnTrainVersionCheck, "cudnn_cnn_train");
-    PreloadCudnnLibrary(cudnnAdvInferVersionCheck, "cudnn_adv_infer");
-    PreloadCudnnLibrary(cudnnAdvTrainVersionCheck, "cudnn_adv_train");
-#endif
-
     cudnn_.reset(new CudnnAccess(cudnn_handle));
 
     LOG(INFO) << "Loaded cuDNN version " << cudnnGetVersion();
@@ -3294,6 +3284,11 @@ port::Status CudnnSupport::DoFusedConvolveImpl(
 bool CudnnSupport::GetConvolveAlgorithms(
     bool with_winograd_nonfused, int cc_major, int cc_minor,
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
+  // Preload sub libs for cudnn 8.0.4+
+#if CUDNN_MAJOR >= 8 && (CUDNN_MINOR > 0 || CUDNN_PATCHLEVEL >= 4)
+  cudnnOpsInferVersionCheck();
+  cudnnCnnInferVersionCheck();
+#endif
   bool tensor_op_math_available = TensorOpMathAvailable(cc_major);
   out_algorithms->clear();
 
@@ -3333,6 +3328,13 @@ bool CudnnSupport::GetConvolveAlgorithms(
 
 bool CudnnSupport::GetRnnAlgorithms(
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
+  // Preload sub libs for cudnn 8.0.4+
+#if CUDNN_MAJOR >= 8 && (CUDNN_MINOR > 0 || CUDNN_PATCHLEVEL >= 4)
+  cudnnOpsInferVersionCheck();
+  cudnnOpsTrainVersionCheck();
+  cudnnAdvInferVersionCheck();
+  cudnnAdvTrainVersionCheck();
+#endif
   std::vector<dnn::AlgorithmDesc::Index> algo_types = {
       // clang-format off
     CUDNN_RNN_ALGO_STANDARD,
@@ -3352,6 +3354,13 @@ bool CudnnSupport::GetRnnAlgorithms(
 bool CudnnSupport::GetConvolveBackwardDataAlgorithms(
     bool with_winograd_nonfused, int cc_major, int cc_minor,
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
+  // Preload sub libs for cudnn 8.0.4+
+#if CUDNN_MAJOR >= 8 && (CUDNN_MINOR > 0 || CUDNN_PATCHLEVEL >= 4)
+  cudnnOpsInferVersionCheck();
+  cudnnOpsTrainVersionCheck();
+  cudnnCnnInferVersionCheck();
+  cudnnCnnTrainVersionCheck();
+#endif
   bool tensor_op_math_available = TensorOpMathAvailable(cc_major);
   out_algorithms->clear();
 
@@ -3384,6 +3393,13 @@ bool CudnnSupport::GetConvolveBackwardDataAlgorithms(
 bool CudnnSupport::GetConvolveBackwardFilterAlgorithms(
     bool with_winograd_nonfused, int cc_major, int cc_minor,
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
+  // Preload sub libs for cudnn 8.0.4+
+#if CUDNN_MAJOR >= 8 && (CUDNN_MINOR > 0 || CUDNN_PATCHLEVEL >= 4)
+  cudnnOpsInferVersionCheck();
+  cudnnOpsTrainVersionCheck();
+  cudnnCnnInferVersionCheck();
+  cudnnCnnTrainVersionCheck();
+#endif
   bool tensor_op_math_available = TensorOpMathAvailable(cc_major);
   out_algorithms->clear();
 

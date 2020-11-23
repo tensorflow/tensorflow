@@ -31,12 +31,10 @@ cc_library(
     deps = [
         "//tensorflow/lite/delegates/gpu/cl:buffer",
         "//tensorflow/lite/delegates/gpu/cl:cl_kernel",
-        "//tensorflow/lite/delegates/gpu/cl:device_info",
         "//tensorflow/lite/delegates/gpu/cl:linear_storage",
         "//tensorflow/lite/delegates/gpu/cl:tensor",
         "//tensorflow/lite/delegates/gpu/cl:texture2d",
         "//tensorflow/lite/delegates/gpu/cl/kernels:gpu_operation",
-        "//tensorflow/lite/delegates/gpu/cl/kernels:tuning_parameters",
         "//tensorflow/lite/delegates/gpu/cl/kernels:util",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:operations",

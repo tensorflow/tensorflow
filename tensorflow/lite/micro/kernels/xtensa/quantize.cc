@@ -19,10 +19,12 @@ limitations under the License.
 
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/kernels/internal/reference/requantize.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
-#include "tensorflow/lite/micro/kernels/xtensa_hifimini/fixedpoint_utils.h"
+#include "tensorflow/lite/micro/kernels/xtensa/fixedpoint_utils.h"
+#include "tensorflow/lite/micro/micro_utils.h"
 
 namespace tflite {
 namespace {
@@ -30,6 +32,12 @@ namespace {
 struct OpData {
   int32_t zero_point = 0;
   int scale_multiplier = 0;
+
+  // Use 32-bit multiplier and scale for requantize version of this operator
+  // to preserve compatibility with reference op.
+  int32_t requantize_output_multiplier;
+  int requantize_output_shift;
+  int32_t input_zero_point = 0;
 };
 
 void AffineQuantize(int scale_multiplier, const int32_t zero_point,
@@ -116,6 +124,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       CreateQConstantForInt24(0, input->params.scale / output->params.scale);
 
   op_data->zero_point = output->params.zero_point;
+  op_data->input_zero_point = input->params.zero_point;
+
+  double effective_scale = static_cast<double>(input->params.scale) /
+                           static_cast<double>(output->params.scale);
+  QuantizeMultiplier(effective_scale, &op_data->requantize_output_multiplier,
+                     &op_data->requantize_output_shift);
 
   return kTfLiteOk;
 }
@@ -127,21 +141,25 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteEvalTensor* input = tflite::micro::GetEvalInput(context, node, 0);
   TfLiteEvalTensor* output = tflite::micro::GetEvalOutput(context, node, 0);
 
-  tflite::QuantizationParams op_params;
-  op_params.zero_point = op_data->zero_point;
-
-  if (input->type != kTfLiteInt16 && output->type != kTfLiteInt8) {
+  if (output->type == kTfLiteInt8 && input->type == kTfLiteInt16) {
+    AffineQuantize(op_data->scale_multiplier, op_data->zero_point,
+                   tflite::micro::GetTensorShape(input),
+                   tflite::micro::GetTensorData<int16_t>(input),
+                   tflite::micro::GetTensorShape(output),
+                   tflite::micro::GetTensorData<int8_t>(output));
+  } else if (output->type == kTfLiteInt32 && input->type == kTfLiteInt16) {
+    int size = ElementCount(*input->dims);
+    reference_ops::Requantize(tflite::micro::GetTensorData<int16_t>(input),
+                              size, op_data->requantize_output_multiplier,
+                              op_data->requantize_output_shift,
+                              op_data->input_zero_point, op_data->zero_point,
+                              tflite::micro::GetTensorData<int32_t>(output));
+  } else {
     TF_LITE_KERNEL_LOG(context, "Input %s, output %s not supported.",
                        TfLiteTypeGetName(input->type),
                        TfLiteTypeGetName(output->type));
     return kTfLiteError;
   }
-
-  AffineQuantize(op_data->scale_multiplier, op_data->zero_point,
-                 tflite::micro::GetTensorShape(input),
-                 tflite::micro::GetTensorData<int16_t>(input),
-                 tflite::micro::GetTensorShape(output),
-                 tflite::micro::GetTensorData<int8_t>(output));
   return kTfLiteOk;
 }
 

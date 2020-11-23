@@ -90,6 +90,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_proto_util.h"
 #include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
+#include "tensorflow/compiler/xla/service/integral_upcaster.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/logistic_expander.h"
 #include "tensorflow/compiler/xla/service/loop_schedule_linearizer.h"
@@ -141,6 +142,8 @@ Status GpuCompiler::OptimizeHloModule(
     HloPassPipeline pipeline("optimization");
     pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                               /*allow_mixed_precision=*/false);
+
+    pipeline.AddPass<IntegralUpcaster>();
 
     // Expand random number generation.
     pipeline.AddPass<RngExpander>();
@@ -308,10 +311,7 @@ Status GpuCompiler::OptimizeHloModule(
 
     HloPassPipeline horizontal_fusion("horizontal_fusion");
     horizontal_fusion.AddPass<GpuHorizontalLoopFusion>();
-    // The code generated for fusions created by GpuHorizontalInputFusion has
-    // been observed to fail with CUDA_ERROR_ILLEGAL_ADDRESS errors.
-    // TODO(b/171227713): Re-enable once the emitters are fixed.
-    // horizontal_fusion.AddPass<GpuHorizontalInputFusion>();
+    horizontal_fusion.AddPass<GpuHorizontalInputFusion>();
     horizontal_fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
                                       /*only_fusion_computations=*/true);
     horizontal_fusion.AddPass<HloDCE>();

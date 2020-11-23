@@ -122,6 +122,12 @@ def tf_portable_full_lite_protos(full, lite):
         "//conditions:default": full,
     })
 
+def if_no_default_logger(a):
+    return select({
+        clean_dep("//tensorflow:no_default_logger"): a,
+        "//conditions:default": [],
+    })
+
 def if_android_x86(a):
     return select({
         clean_dep("//tensorflow:android_x86"): a,
@@ -336,6 +342,7 @@ def tf_copts(
         if_android_arm(["-mfpu=neon"]) +
         if_linux_x86_64(["-msse3"]) +
         if_ios_x86_64(["-msse4.1"]) +
+        if_no_default_logger(["-DNO_DEFAULT_LOGGER"]) +
         select({
             clean_dep("//tensorflow:framework_shared_object"): [],
             "//conditions:default": ["-DTENSORFLOW_MONOLITHIC_BUILD"],

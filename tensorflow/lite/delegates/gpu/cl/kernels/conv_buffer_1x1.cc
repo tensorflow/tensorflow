@@ -139,7 +139,7 @@ ConvBuffer1x1::ConvParams GetBestParams(const GpuInfo& gpu_info,
   conv_params.element_size = 4;
   conv_params.block_size = int3(1, 1, 1);
   if (gpu_info.IsMali() && definition.precision == CalculationsPrecision::F16 &&
-      gpu_info.compute_units_count <= 4) {
+      gpu_info.GetComputeUnitsCount() <= 4) {
     conv_params.block_size.x *= 2;
   }
   return conv_params;

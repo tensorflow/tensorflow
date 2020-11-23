@@ -57,6 +57,8 @@ mlir::Type ConvertElementType(tflite::TensorType type, mlir::Builder builder) {
       return mlir::ComplexType::get(builder.getF64Type());
     case tflite::TensorType_INT8:
       return builder.getIntegerType(8);
+    case tflite::TensorType_UINT64:
+      return builder.getIntegerType(64, /*isSigned=*/false);
   }
 }
 
@@ -86,6 +88,8 @@ tensorflow::DataType TflTypeToTfType(tflite::TensorType type) {
       return tensorflow::DT_STRING;
     case tflite::TensorType_UINT8:
       return tensorflow::DT_UINT8;
+    case tflite::TensorType_UINT64:
+      return tensorflow::DT_UINT64;
   }
 }
 

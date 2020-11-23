@@ -398,8 +398,8 @@ LogicalResult RegionControlFlowToFunctional::ConvertWhileOp(
   OpBuilder builder(while_region);
   auto while_op = builder.create<WhileOp>(
       while_region.getLoc(), new_result_types, new_inputs, cond_name, body_name,
-      while_region.output_shapes(), while_region.parallel_iterations(),
-      while_region.is_stateless());
+      while_region.parallel_iterations(), while_region.is_stateless(),
+      while_region.shape_invariant());
   CopyDeviceAndUnderscoredAttributes(while_region, while_op);
 
   // Redirect old results to new results.

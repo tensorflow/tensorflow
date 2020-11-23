@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_context.h"
+#include "tensorflow/c/eager/immediate_execution_distributed_manager.h"
 #include "tensorflow/c/eager/immediate_execution_operation.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/c/tensor_interface.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/protobuf/config.pb.h"
@@ -173,6 +175,18 @@ class ImmediateExecutionContext : public AbstractContext {
   // Convert a TFRT TensorHandle to tensorflow::TensorHandle.
   virtual ImmediateExecutionTensorHandle* TFTensorHandleFromInterface(
       ImmediateExecutionTensorHandle* handle) = 0;
+
+  //===--------------------------------------------------------------------===//
+  // Distributed runtime related functions.
+  //===--------------------------------------------------------------------===//
+#if !defined(IS_MOBILE_PLATFORM)
+  // Set a distributed manager that helps set up, update, and check liveness
+  // of member tasks in the cluster.
+  virtual void SetDistributedManager(
+      std::unique_ptr<ImmediateExecutionDistributedManager> distributed) = 0;
+
+  virtual ImmediateExecutionDistributedManager* GetDistributedManager() = 0;
+#endif  // !IS_MOBILE_PLATFORM
 
  protected:
   explicit ImmediateExecutionContext(AbstractContextKind kind)

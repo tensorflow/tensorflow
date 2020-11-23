@@ -178,6 +178,7 @@ def tf_to_tflite(name, src, options, out):
 
     toco_cmdline = " ".join([
         "$(location //tensorflow/lite/python:tflite_convert)",
+        "--enable_v1_converter",
         "--experimental_new_converter",
         ("--graph_def_file=$(location %s)" % src),
         ("--output_file=$(location %s)" % out),
@@ -674,8 +675,7 @@ def gen_zipped_test_file(name, file, toco, flags):
         cmd = (("$(locations :generate_examples) --toco $(locations {0}) " +
                 " --zip_to_output {1} {2} $(@D)").format(toco, file, flags)),
         outs = [file],
-        # `exec_tools` is required for PY3 compatibility in place of `tools`.
-        exec_tools = [
+        tools = [
             ":generate_examples",
             toco,
         ],

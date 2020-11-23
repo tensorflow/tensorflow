@@ -16,16 +16,53 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_REDUCE_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_REDUCE_H_
 
+#include <map>
+#include <set>
+
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
+#include "tensorflow/lite/delegates/gpu/common/kernel_info.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
+#include "tensorflow/lite/delegates/gpu/common/types.h"
 
 namespace tflite {
 namespace gpu {
 namespace cl {
 
-GPUOperation CreateReduce(const OperationDef& definition,
-                          const ReduceAttributes& attr,
-                          const OperationType& op_type);
+class Reduce : public GPUOperation {
+ public:
+  Reduce() = default;
+  Reduce(const std::map<Axis, int>& axis_to_reduce, OperationType op_type,
+         const OperationDef& definition, const GpuInfo& gpu_info);
+
+  void GetPossibleKernelWorkGroups(
+      TuningType tuning_type, const GpuInfo& gpu_info,
+      const KernelInfo& kernel_info,
+      std::vector<int3>* work_groups) const override;
+  absl::Status BindArguments(ArgumentsBinder* args) override;
+  int3 GetGridSize() const override;
+
+  // Move only
+  Reduce(Reduce&& operation);
+  Reduce& operator=(Reduce&& operation);
+  Reduce(const Reduce&) = delete;
+  Reduce& operator=(const Reduce&) = delete;
+
+ private:
+  std::string GetReduceKernelCode(const OperationDef& op_def,
+                                  const int3& work_group_size,
+                                  const std::vector<Axis>& axis_to_reduce,
+                                  OperationType op_type);
+
+  bool use_wg_reduction_;
+};
+
+Reduce CreateReduce(const std::set<Axis>& axis_to_reduce, const BHWC& src_shape,
+                    OperationType op_type, const OperationDef& definition,
+                    const GpuInfo& gpu_info);
+
+Reduce CreateReduce(const std::set<Axis>& axis_to_reduce,
+                    const BHWDC& src_shape, OperationType op_type,
+                    const OperationDef& definition, const GpuInfo& gpu_info);
 
 }  // namespace cl
 }  // namespace gpu

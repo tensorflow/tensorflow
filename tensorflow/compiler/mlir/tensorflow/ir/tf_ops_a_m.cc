@@ -2429,6 +2429,24 @@ static LogicalResult Verify(MatrixBandPartOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// MatrixSetDiagOp
+//===----------------------------------------------------------------------===//
+//
+void MatrixSetDiagOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<MatrixSetDiagToV3>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// MatrixSetDiagV2Op
+//===----------------------------------------------------------------------===//
+
+void MatrixSetDiagV2Op::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<MatrixSetDiagV2ToV3>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // MaxOp
 //===----------------------------------------------------------------------===//
 
@@ -2447,6 +2465,33 @@ LogicalResult MaxPoolOp::FoldOperandsPermutation(
     ArrayRef<int64_t> permutation) {
   return ::mlir::TF::FoldOperandsPermutation(
       permutation, this, {{"strides", strides()}, {"ksize", ksize()}});
+}
+
+LogicalResult MaxPoolOp::UpdateDataFormat(StringRef new_data_format) {
+  StringRef src_data_format = data_format();
+
+  auto perm = GetDataFormatPermutation(src_data_format, new_data_format);
+  if (perm.empty()) return failure();
+
+  // Update data_format attribute and result types.
+  if (failed(::mlir::TF::UpdateDataFormat(new_data_format, this)))
+    return failure();
+
+  stridesAttr(ShuffleArrayAttr(strides(), perm));
+  explicit_paddingsAttr(ShuffleArrayAttr(explicit_paddings(), perm, 2));
+  ksizeAttr(ShuffleArrayAttr(ksize(), perm));
+
+  return success();
+}
+
+StringRef MaxPoolOp::GetOptimalLayout(const RuntimeDevices &devices) {
+  // Keep current data format if no GPUs are available or if explicit placement
+  // does not allow to use GPU for this operation.
+  if (!CanUseGpuDevice(devices) || !CanUseGpuDevice(getOperation()))
+    return data_format();
+
+  // Defaults to NCHW.
+  return "NCHW";
 }
 
 //===----------------------------------------------------------------------===//

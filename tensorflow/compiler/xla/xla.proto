@@ -268,7 +268,9 @@ message DebugOptions {
   // END flags controlling dumping HLO modules.
   //
 
+  // Overrides for XLA GPU's convolution layout heuristic.
   bool xla_gpu_force_conv_nchw = 125;
+  bool xla_gpu_force_conv_nhwc = 146;
 
   // Paths to files with ptx code.
   repeated string xla_gpu_ptx_file = 127;
@@ -300,7 +302,7 @@ message DebugOptions {
   // Enable detailed logging into vlog.
   bool xla_detailed_logging = 143;
 
-  // Next id: 145
+  // Next id: 146
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

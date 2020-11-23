@@ -540,7 +540,12 @@ static void AllocateFlags() {
       "xla_gpu_force_conv_nchw",
       bool_setter_for(&DebugOptions::set_xla_gpu_force_conv_nchw),
       flag_values->xla_gpu_force_conv_nchw(),
-      "For cuDNN convolutions, always NCHW layouts."));
+      "For cuDNN convolutions, always use NCHW layouts."));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_gpu_force_conv_nhwc",
+      bool_setter_for(&DebugOptions::set_xla_gpu_force_conv_nhwc),
+      flag_values->xla_gpu_force_conv_nhwc(),
+      "For cuDNN convolutions, always use NHWC layouts."));
   flag_objects->push_back(tensorflow::Flag(
       "xla_gpu_algorithm_denylist_path",
       string_setter_for(&DebugOptions::set_xla_gpu_algorithm_denylist_path),

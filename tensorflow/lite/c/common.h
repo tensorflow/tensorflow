@@ -300,6 +300,7 @@ typedef enum {
   kTfLiteFloat16 = 10,
   kTfLiteFloat64 = 11,
   kTfLiteComplex128 = 12,
+  kTfLiteUInt64 = 13,
 } TfLiteType;
 
 // Return the name of a given type, for error reporting purposes.
@@ -354,6 +355,7 @@ typedef union TfLitePtrUnion {
    * members are deprecated. */
   int32_t* i32;
   int64_t* i64;
+  uint64_t* u64;
   float* f;
   TfLiteFloat16* f16;
   double* f64;

@@ -289,8 +289,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       theoretical, numerical = gradient_checker_v2.compute_gradient(
           target_function, [x])
       self.assertAllClose(numerical, theoretical, rtol=3e-3)
-      self.assertAllClose(array_ops.reshape(numerical, []),
-                          dx, rtol=3e-3)
+      self.assertAllClose(array_ops.reshape(numerical, []), dx, rtol=3e-3)
 
   def testDeviceLabelsInherited(self):
     def _LoopBody(i, y):

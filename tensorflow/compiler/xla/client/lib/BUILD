@@ -59,7 +59,6 @@ cc_library(
     srcs = ["comparators.cc"],
     hdrs = [
         "comparators.h",
-        "//tensorflow/compiler/xla:literal_util",
     ],
     deps = [
         ":constants",

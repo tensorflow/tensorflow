@@ -17,8 +17,11 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_PYTHON_PY_BUFFER_H_
 
 #include <memory>
+#include <stdexcept>
 #include <vector>
 
+#include "absl/types/optional.h"
+#include "pybind11/pybind11.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
 #include "tensorflow/compiler/xla/python/traceback.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -41,6 +44,9 @@ class DeviceArrayBase {
 // Python wrapper around PjRtBuffer. We use a wrapper class:
 // a) to keep the PjRtClient alive via a std::shared_ptr<>
 // b) to add Python-specific functionality.
+//
+// A `PyBuffer` can be used from Python without being wrapped in a Python
+// `DeviceArray` object, at the condition there is no associated LazyExpr.
 class PyBuffer : public DeviceArrayBase {
  public:
   PyBuffer(std::shared_ptr<PyClient> client, std::unique_ptr<PjRtBuffer> buffer,
@@ -57,8 +63,12 @@ class PyBuffer : public DeviceArrayBase {
   StatusOr<std::unique_ptr<PyBuffer>> CopyToDevice(
       const ClientAndPtr<PjRtDevice>& dst_device) const;
 
-  void Delete() { return buffer_->Delete(); }
+  void Delete() {
+    buffer_->Delete();
+    npy_value_ = pybind11::none();
+  }
 
+  // Returns xla::InvalidArgument if the buffer has been deleted.
   Status BlockHostUntilReady();
   Status CopyToHostAsync() { return buffer_->CopyToHostAsync(); }
 
@@ -75,13 +85,33 @@ class PyBuffer : public DeviceArrayBase {
 
   Traceback* traceback() { return traceback_.get(); }
 
+  // Returns the size (i.e. number of elements) of the (host) numpy array.
+  int64 size() { return ShapeUtil::ElementsIn(buffer()->on_host_shape()); }
+
+  // Returns the number of dimensions of the (host) numpy array.
+  int ndim() const { return buffer()->on_host_shape().dimensions_size(); }
+
+  void SetStickyDevice(pybind11::object sticky_device);
+  pybind11::object GetStickyDevice() const { return sticky_device_.value(); }
+
+  void SetNpyValue(pybind11::object npy_value) { npy_value_ = npy_value; }
+  pybind11::object GetNpyValue() const { return npy_value_; }
+
+  void SetAval(pybind11::object aval);
+  pybind11::object GetAval() const { return aval_.value(); }
+
  private:
   friend class PyClient;
 
   std::shared_ptr<PyClient> client_;
   std::unique_ptr<PjRtBuffer> buffer_;
   std::shared_ptr<Traceback> traceback_;
-
+  // The host numpy array caching the value when it has been copied to the host.
+  pybind11::object npy_value_ = pybind11::none();
+  absl::optional<pybind11::object> sticky_device_ = absl::nullopt;
+  // TODO(jblespiau): It's currently there for convenience but maybe we can do
+  // without it (adding `weak_type` instead).
+  absl::optional<pybind11::object> aval_ = absl::nullopt;
   // Doubly-linked list of all buffers known to the client. Protected by the
   // GIL.
   PyBuffer* next_;

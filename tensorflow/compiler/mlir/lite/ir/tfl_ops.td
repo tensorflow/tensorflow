@@ -483,9 +483,9 @@ value of each element in `x`. For example, if x is an input element and y is
 an output element, this operation computes \\(y = |x|\\).
   }];
 
-  let arguments = (ins TFL_FpTensor:$x);
+  let arguments = (ins TFL_TensorOf<[F32, QI8, QI16]>:$x);
 
-  let results = (outs TFL_FpTensor:$y);
+  let results = (outs TFL_TensorOf<[F32, QI8, QI16]>:$y);
 
   let hasFolder = 1;
 }
@@ -587,15 +587,15 @@ def TFL_TransposeConvOp: TFL_Op<"transpose_conv", [
 
   let arguments = (ins
     TFL_I32Tensor:$output_shape,
-    TFL_TensorOf<[F32, QI8, QUI8]>:$weights,
-    TFL_TensorOf<[F32, QI8, QUI8]>:$input,
-    TFL_TensorOfOrNone<[F32, QI32]>:$bias,
+    TFL_TensorOf<[F32, QI8, QUI8, QI16]>:$weights,
+    TFL_TensorOf<[F32, QI8, QUI8, QI16]>:$input,
+    TFL_TensorOfOrNone<[F32, QI32, I64]>:$bias,
     TFL_PaddingAttr:$padding,
     Confined<I32Attr, [IntPositive]>:$stride_h,
     Confined<I32Attr, [IntPositive]>:$stride_w
   );
 
-  let results = (outs TFL_TensorOf<[F32, QI8, QUI8]>:$output);
+  let results = (outs TFL_TensorOf<[F32, QI8, QUI8, QI16]>:$output);
 
   let hasOptions = 1;
 
@@ -624,7 +624,7 @@ def TFL_AveragePool2DOp:
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, QI8, QUI8]>:$input,
+    ins TFL_TensorOf<[F32, QI8, QUI8, QI16]>:$input,
     I32Attr:$filter_height,
     I32Attr:$filter_width,
     TFL_PaddingAttr:$padding,
@@ -633,7 +633,7 @@ def TFL_AveragePool2DOp:
     TFL_AFAttr:$fused_activation_function
   );
 
-  let results = (outs TFL_TensorOf<[F32, QI8, QUI8]>:$output);
+  let results = (outs TFL_TensorOf<[F32, QI8, QUI8, QI16]>:$output);
 
   let hasOptions = 1;
   let customOption = "Pool2DOptions";
@@ -947,7 +947,7 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
 
   let arguments = (ins
     TFL_TensorOf<[F32, QI8, QUI8, QI16, QUI16]>:$input,
-    TFL_TensorOf<[F32, QI8, QUI8, QI16, QUI16]>:$filter,
+    TFL_TensorOf<[F32, QI8, QUI8, QI16]>:$filter,
     TFL_TensorOfOrNone<[F32, QI32, QUI32]>:$bias,
 
     TFL_AFAttr:$fused_activation_function,
@@ -999,14 +999,14 @@ in the batch dimensions and broadcasting.
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, QI8]>:$x,
-    TFL_TensorOf<[F32, QI8]>:$y,
+    TFL_TensorOf<[F32, QI8, QI16]>:$x,
+    TFL_TensorOf<[F32, QI8, QI16]>:$y,
     DefaultValuedAttr<BoolAttr, "false">:$adj_x,
     DefaultValuedAttr<BoolAttr, "false">:$adj_y
   );
 
    let results = (outs
-    TFL_TensorOf<[F32, QI8]>:$output
+    TFL_TensorOf<[F32, QI8, QI16]>:$output
   );
 
   let hasOptions = 1;
@@ -1026,7 +1026,7 @@ def TFL_GatherOp : TFL_Op<"gather", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I1, I8, I32, I64, TFL_Str, UI8, QI8, QUI8]>:$params,
+    TFL_TensorOf<[F32, I1, I8, I32, I64, TFL_Str, UI8, QI8, QUI8, QI16]>:$params,
     TFL_TensorOf<[I32, I64]>:$indices,
     I32Attr:$axis
   );
@@ -1038,7 +1038,7 @@ def TFL_GatherOp : TFL_Op<"gather", [
   ];
 
   let results = (outs
-    TFL_TensorOf<[F32, I1, I8, I32, I64, TFL_Str, UI8, QI8, QUI8]>:$output
+    TFL_TensorOf<[F32, I1, I8, I32, I64, TFL_Str, UI8, QI8, QUI8, QI16]>:$output
   );
 
   let hasOptions = 1;
@@ -1750,12 +1750,12 @@ def TFL_LeakyReluOp: TFL_Op<"leaky_relu", [
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, QUI8, QI8, TFL_Quint8]>:$input,
+    ins TFL_TensorOf<[F32, QUI8, QI8, TFL_Quint8, QI16]>:$input,
     // Slope of the activation function at x < 0.
     F32Attr:$alpha
   );
 
-  let results = (outs TFL_TensorOf<[F32, QUI8, QI8, TFL_Quint8]>:$output);
+  let results = (outs TFL_TensorOf<[F32, QUI8, QI8, TFL_Quint8, QI16]>:$output);
 
   let hasOptions = 0b1;
 }
@@ -1977,12 +1977,12 @@ def TFL_MaximumOp : TFL_Op<"maximum", [
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, TFL_Int32Or64, QI8, QUI8]>:$lhs,
-    TFL_TensorOf<[F32, TFL_Int32Or64, QI8, QUI8]>:$rhs
+    ins TFL_TensorOf<[F32, TFL_Int32Or64, QI8, QUI8, QI16]>:$lhs,
+    TFL_TensorOf<[F32, TFL_Int32Or64, QI8, QUI8, QI16]>:$rhs
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, TFL_Int32Or64, QI8, QUI8]>:$max
+    TFL_TensorOf<[F32, TFL_Int32Or64, QI8, QUI8, QI16]>:$max
   );
 
   let builders = [TFL_BroadcastableBinaryBuilder];
@@ -2005,13 +2005,13 @@ def TFL_MeanOp : TFL_Op<"mean", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, UI8]>:$input,
+    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, UI8, QI16]>:$input,
     TFL_TensorOf<[I32, I64]>:$axis,
     BoolAttr:$keep_dims
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, UI8]>:$output);
+    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, UI8, QI16]>:$output);
 
   let hasOptions = 1;
   let customOption = "ReducerOptions";
@@ -2090,13 +2090,13 @@ equivalent to setting:
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I32, I64, I8, UI8, I1, TFL_Str, QI8, QUI8, TFL_Quint8]>:$input,
+    TFL_TensorOf<[F32, I32, I64, I8, UI8, I1, TFL_Str, QI8, QUI8, TFL_Quint8, QI16]>:$input,
     TFL_I32OrI64Tensor:$begin,
     TFL_I32OrI64Tensor:$size
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I32, I64, I8, UI8, I1, TFL_Str, QI8, QUI8, TFL_Quint8]>:$output
+    TFL_TensorOf<[F32, I32, I64, I8, UI8, I1, TFL_Str, QI8, QUI8, TFL_Quint8, QI16]>:$output
   );
 
   let verifier = [{ return Verify(*this); }];
@@ -2116,12 +2116,12 @@ def TFL_SumOp: TFL_Op<"sum", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8]>:$input,
+    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8, QI16]>:$input,
     TFL_I32Tensor:$axes,
     BoolAttr:$keep_dims
   );
 
-  let results = (outs TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8]>:$output);
+  let results = (outs TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8, QI16]>:$output);
 
   let hasOptions = 1;
   let customOption = "ReducerOptions";
@@ -2139,13 +2139,13 @@ def TFL_ReduceMinOp: TFL_Op<"reduce_min", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8]>:$input,
+    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8, QI16]>:$input,
     TFL_I32Tensor:$axes,
     BoolAttr:$keep_dims
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8]>:$output);
+    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8, QI16]>:$output);
 
   let hasOptions = 1;
   let customOption = "ReducerOptions";
@@ -2163,13 +2163,13 @@ def TFL_ReduceMaxOp: TFL_Op<"reduce_max", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8]>:$input,
+    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8, QI16]>:$input,
     TFL_I32Tensor:$axes,
     BoolAttr:$keep_dims
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8]>:$output);
+    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8, QI16]>:$output);
 
   let hasOptions = 1;
   let customOption = "ReducerOptions";
@@ -2186,13 +2186,13 @@ def TFL_ReduceProdOp: TFL_Op<"reduce_prod", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8]>:$input,
+    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8, QI16]>:$input,
     TFL_I32Tensor:$axes,
     BoolAttr:$keep_dims
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8]>:$output);
+    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8, QI16]>:$output);
 
   let hasOptions = 1;
   let customOption = "ReducerOptions";
@@ -2210,12 +2210,12 @@ def TFL_MinimumOp : TFL_Op<"minimum", [
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, TFL_Int32Or64, QI8, QUI8]>:$lhs,
-    TFL_TensorOf<[F32, TFL_Int32Or64, QI8, QUI8]>:$rhs
+    ins TFL_TensorOf<[F32, TFL_Int32Or64, QI8, QUI8, QI16]>:$lhs,
+    TFL_TensorOf<[F32, TFL_Int32Or64, QI8, QUI8, QI16]>:$rhs
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, TFL_Int32Or64, QI8, QUI8]>:$min
+    TFL_TensorOf<[F32, TFL_Int32Or64, QI8, QUI8, QI16]>:$min
   );
 
   let builders = [TFL_BroadcastableBinaryBuilder];
@@ -2364,10 +2364,10 @@ def TFL_PadOp : TFL_Op<"pad", [
     ```
   }];
 
-  let arguments = (ins TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8]>:$input,
+  let arguments = (ins TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8, QI16]>:$input,
     TFL_I32OrI64Tensor:$padding);
 
-  let results = (outs TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8]>:$output);
+  let results = (outs TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8, QI16]>:$output);
 
   let hasOptions = 1;
 }
@@ -2500,9 +2500,9 @@ def TFL_ReluOp: TFL_Op<"relu", [
       x -> max(0, x)
   }];
 
-  let arguments = (ins TFL_TensorOf<[F32, QUI8, QI8]>:$x);
+  let arguments = (ins TFL_TensorOf<[F32, QUI8, QI8, QI16]>:$x);
 
-  let results = (outs TFL_TensorOf<[F32, QUI8, QI8]>:$y);
+  let results = (outs TFL_TensorOf<[F32, QUI8, QI8, QI16]>:$y);
 
   // This builder doesn't work with quantized type, so it can only be used by
   // non-quantization tablegen patterns. Currently, it is used by the
@@ -2828,11 +2828,11 @@ def TFL_SoftmaxOp : TFL_Op<"softmax", [
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, QI8, QUI8, TFL_Quint8]>:$input,
+    ins TFL_TensorOf<[F32, QI8, QUI8, TFL_Quint8, QI16]>:$input,
     F32Attr:$beta
   );
 
-  let results = (outs TFL_TensorOf<[F32, QI8, QUI8, TFL_Quint8]>:$output);
+  let results = (outs TFL_TensorOf<[F32, QI8, QUI8, TFL_Quint8, QI16]>:$output);
 
   let hasOptions = 1;
 
@@ -3058,12 +3058,12 @@ def TFL_TransposeOp : TFL_Op<"transpose", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[I32, F32, I8, UI8, QI8, QUI8, TFL_Quint8, I1, I64]>:$input,
+    TFL_TensorOf<[I32, F32, I8, UI8, QI8, QUI8, TFL_Quint8, I1, I64, QI16]>:$input,
     TFL_TensorOf<[I32]>:$perm
   );
 
   let results = (outs
-    TFL_TensorOf<[I32, F32, I8, UI8, QI8, QUI8, TFL_Quint8, I1, I64]>:$output
+    TFL_TensorOf<[I32, F32, I8, UI8, QI8, QUI8, TFL_Quint8, I1, I64, QI16]>:$output
   );
 
   let verifier = [{ return Verify(*this); }];
@@ -3330,14 +3330,14 @@ def TFL_ResizeNearestNeighborOp : TFL_Op<"resize_nearest_neighbor", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, TFL_Quint8, QUI8, QI8]>:$input,
+    TFL_TensorOf<[F32, TFL_Quint8, QUI8, QI8, QI16]>:$input,
     TFL_I32Tensor:$size,
     BoolAttr:$align_corners,
     DefaultValuedAttr<BoolAttr, "false">:$half_pixel_centers
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, TFL_Quint8, QUI8, QI8]>:$output
+    TFL_TensorOf<[F32, TFL_Quint8, QUI8, QI8, QI16]>:$output
   );
 
   let hasOptions = 1;
@@ -3830,6 +3830,9 @@ Ba et al. 'Layer Normalization'
 
     // Types of the optional intermediate tensors, which exist for fully
     // quantized LSTM op and hold the ranges of the intermediate tensors.
+    // The type for intermediate tenssors are be quant.calibrated when imported
+    // to only store calibrated min, max values. The proper quantization spec is
+    // determined while going through quantization passes.
     OptionalAttr<TypeAttr>:$input_to_input_intermediate,
     OptionalAttr<TypeAttr>:$input_to_forget_intermediate,
     OptionalAttr<TypeAttr>:$input_to_cell_intermediate,
@@ -3945,6 +3948,9 @@ def TFL_UnidirectionalSequenceLSTMOp :
 
     // Types of the optional intermediate tensors, which exist for fully
     // quantized op and hold the ranges of the intermediate tensors.
+    // The type for intermediate tenssors are be quant.calibrated when imported
+    // to only store calibrated min, max values. The proper quantization spec is
+    // determined while going through quantization passes.
     OptionalAttr<TypeAttr>:$input_to_input_intermediate,
     OptionalAttr<TypeAttr>:$input_to_forget_intermediate,
     OptionalAttr<TypeAttr>:$input_to_cell_intermediate,

@@ -28,11 +28,11 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/cl_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/environment.h"
 #include "tensorflow/lite/delegates/gpu/cl/gpu_object.h"
-#include "tensorflow/lite/delegates/gpu/cl/model_hints.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
 #include "tensorflow/lite/delegates/gpu/cl/serialization_generated.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
+#include "tensorflow/lite/delegates/gpu/common/model_hints.h"
 #include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
@@ -102,7 +102,7 @@ class InferenceContext {
       const absl::Span<const uint8_t> serialized_model, Environment* env);
 
  private:
-  enum TensorMemoryType { STRONG_SHAPE = 0, BUFFER = 1, VARIABLE = 2 };
+  enum class TensorMemoryType { kStrongShape, kBuffer, kVariable, kConst };
 
   friend flatbuffers::Offset<data::InferenceContext> Encode(
       const InferenceContext& inference,
@@ -119,6 +119,8 @@ class InferenceContext {
   absl::Status Merge();
   absl::Status AllocateMemory(CLContext* context);
 
+  absl::Status AllocateMemoryForConstTensors(CLContext* context);
+
   absl::Status AllocateMemoryForVariableTensors(CLContext* context);
 
   absl::Status AllocateMemoryForBuffers(CLContext* context);
@@ -133,8 +135,11 @@ class InferenceContext {
 
   void BindMemoryToOperations();
   absl::Status Compile(const CreationContext& creation_context);
-  absl::Status Tune(const TuningParameters& tuning_parameters);
+  absl::Status Tune(TuningType tuning_type, const GpuInfo& gpu_info,
+                    ProfilingCommandQueue* profiling_queue);
   absl::Status UpdateParams();
+
+  void ReleaseCPURepresentation();
 
   // performance hacks
   bool need_flush_ = false;
@@ -211,6 +216,9 @@ class InferenceContext {
     ValueId next_;
   };
   TensorReserver tensor_reserver_;
+
+  absl::flat_hash_map<ValueId, TensorDescriptor> const_tensors_descs_;
+  std::map<ValueId, Tensor> const_tensors_;
 
   std::map<ValueId, Tensor> variable_tensors_;
   std::vector<Buffer> shared_buffers_;

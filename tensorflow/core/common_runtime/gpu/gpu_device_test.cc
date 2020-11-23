@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/gpu_device.h"
 
-#include "tensorflow/core/common_runtime/gpu/gpu_id_utils.h"
+#include "tensorflow/core/common_runtime/device/device_id_utils.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -32,7 +32,7 @@ const char* kDeviceNamePrefix = "/job:localhost/replica:0/task:0";
 
 int64 GetTotalGPUMemory(PlatformGpuId gpu_id) {
   se::StreamExecutor* se =
-      GpuIdUtil::ExecutorForPlatformGpuId(GPUMachineManager(), gpu_id)
+      DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(), gpu_id)
           .ValueOrDie();
 
   int64 total_memory, available_memory;
@@ -43,7 +43,7 @@ int64 GetTotalGPUMemory(PlatformGpuId gpu_id) {
 Status GetComputeCapability(PlatformGpuId gpu_id, int* cc_major,
                             int* cc_minor) {
   se::StreamExecutor* se =
-      GpuIdUtil::ExecutorForPlatformGpuId(GPUMachineManager(), gpu_id)
+      DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(), gpu_id)
           .ValueOrDie();
   if (!se->GetDeviceDescription().cuda_compute_capability(cc_major, cc_minor)) {
     *cc_major = 0;

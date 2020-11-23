@@ -460,6 +460,9 @@ int TfLiteTypeGetSize(TfLiteType type) {
     case kTfLiteInt64:
       TF_LITE_ASSERT_EQ(sizeof(int64_t), 8);
       return 8;
+    case kTfLiteUInt64:
+      TF_LITE_ASSERT_EQ(sizeof(uint64_t), 8);
+      return 8;
     case kTfLiteFloat64:
       TF_LITE_ASSERT_EQ(sizeof(double), 8);
       return 8;

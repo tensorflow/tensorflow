@@ -422,7 +422,7 @@ class ReduceTransposer : public LayoutAgnosticOpTransposer {
   bool KeepDims(const utils::MutableNodeView& node);
   bool IsAlongAxis(const Tensor& tensor, absl::Span<const int> axis, int rank);
   bool IsReduceAxisSupported(const TransposeContext& context,
-                             const utils::MutableNodeView& node);
+                             const utils::MutableNodeView& node, int rank);
 };
 
 class ReverseV2Transposer : public LayoutAgnosticOpTransposer {

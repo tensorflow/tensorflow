@@ -1483,3 +1483,21 @@ func @pad_fold() -> tensor<4x5xi32> {
   // CHECK-SAME: [1, 1, 1, 1, 1], [2, 1, 3, 1, 1], [4, 1, 5, 1, 1], [1, 1, 1, 1, 1]
   // CHECK-SAME: ]> : tensor<4x5xi32>
 }
+
+// CHECK-LABEL: @identity_broadcast_reshape
+func @identity_broadcast_reshape(%arg0: tensor<128xf32>) -> tensor<128xf32> {
+  %0 = "mhlo.broadcast"(%arg0) {
+    broadcast_sizes = dense<[1]> : tensor<1xi64>} : (tensor<128xf32>) -> tensor<1x128xf32>
+  %1 = "mhlo.reshape"(%0) : (tensor<1x128xf32>) -> tensor<128xf32>
+  return %1 : tensor<128xf32>
+  // CHECK: return %arg0 : tensor<128xf32>
+}
+
+// CHECK-LABEL: @identity_broadcast_in_dim_reshape
+func @identity_broadcast_in_dim_reshape(%arg0: tensor<128xf32>) -> tensor<128xf32> {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) {
+    broadcast_dimensions = dense<[1]> : tensor<1xi64> } : (tensor<128xf32>) -> tensor<1x128xf32>
+  %1 = "mhlo.reshape"(%0) : (tensor<1x128xf32>) -> tensor<128xf32>
+  return %1 : tensor<128xf32>
+  // CHECK: return %arg0 : tensor<128xf32>
+}

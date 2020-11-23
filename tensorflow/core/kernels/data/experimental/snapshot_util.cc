@@ -38,7 +38,7 @@ limitations under the License.
 #include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/core/protobuf/data/experimental/snapshot.pb.h"
+#include "tensorflow/core/protobuf/snapshot.pb.h"
 
 namespace tensorflow {
 namespace data {

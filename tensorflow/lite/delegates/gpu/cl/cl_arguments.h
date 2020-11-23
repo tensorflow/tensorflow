@@ -21,8 +21,8 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/cl/cl_context.h"
-#include "tensorflow/lite/delegates/gpu/cl/device_info.h"
 #include "tensorflow/lite/delegates/gpu/cl/gpu_object.h"
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/arguments.h"
 
