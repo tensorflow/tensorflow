@@ -20,7 +20,7 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/experimental/tflite_api_dispatcher/tflite_api_dispatcher.h"
+#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/java/src/main/native/jni_utils.h"
 #include "tensorflow/lite/string_util.h"
 
@@ -39,15 +39,14 @@ static const char* kStringClassPath = "java/lang/String";
 // invalidate all TfLiteTensor* handles during inference or allocation.
 class TensorHandle {
  public:
-  TensorHandle(tflite_api_dispatcher::Interpreter* interpreter,
-               int tensor_index)
+  TensorHandle(tflite::Interpreter* interpreter, int tensor_index)
       : interpreter_(interpreter), tensor_index_(tensor_index) {}
 
   TfLiteTensor* tensor() const { return interpreter_->tensor(tensor_index_); }
   int index() const { return tensor_index_; }
 
  private:
-  tflite_api_dispatcher::Interpreter* const interpreter_;
+  tflite::Interpreter* const interpreter_;
   const int tensor_index_;
 };
 
@@ -399,8 +398,8 @@ extern "C" {
 
 JNIEXPORT jlong JNICALL Java_org_tensorflow_lite_Tensor_create(
     JNIEnv* env, jclass clazz, jlong interpreter_handle, jint tensor_index) {
-  tflite_api_dispatcher::Interpreter* interpreter =
-      reinterpret_cast<tflite_api_dispatcher::Interpreter*>(interpreter_handle);
+  tflite::Interpreter* interpreter =
+      reinterpret_cast<tflite::Interpreter*>(interpreter_handle);
   return reinterpret_cast<jlong>(new TensorHandle(interpreter, tensor_index));
 }
 
