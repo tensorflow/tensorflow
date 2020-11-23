@@ -94,6 +94,7 @@ struct ApplyAdagradDA {
 
 template <typename Device, typename T, typename Tindex, bool has_epsilon>
 struct SparseApplyAdagrad {
+  // Note that epsilon is ignored if has_epsilon is false.
   Status operator()(const Device& d, typename TTypes<T>::Matrix var,
                     typename TTypes<T>::Matrix accum,
                     typename TTypes<T>::ConstScalar lr,
