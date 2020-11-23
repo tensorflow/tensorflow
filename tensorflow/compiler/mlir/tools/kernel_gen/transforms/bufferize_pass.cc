@@ -48,40 +48,6 @@ namespace kernel_gen {
 namespace transforms {
 namespace {
 
-#define GEN_PASS_CLASSES
-#include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
-
-struct HloBufferizePass : public HloBufferizePassBase<HloBufferizePass> {
-  // TODO(b/173201243): Move to tablegen.
-  void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<lmhlo::LmhloDialect>();
-  }
-
- public:
-  void runOnOperation() override {
-    OwningRewritePatternList patterns;
-    auto& context = getContext();
-    ConversionTarget target(context);
-    target.addLegalDialect<lmhlo::LmhloDialect>();
-    target.addLegalDialect<StandardOpsDialect>();
-    target.addIllegalDialect<mhlo::MhloDialect>();
-
-    BufferizeTypeConverter converter;
-    // Configure bufferize pattern for functions and lhlo.
-    mhlo::populateHLOToLHLOConversionPattern(&context, &converter, &patterns);
-
-    // Configure legality and structural patterns.
-    populateBufferizeMaterializationLegality(target);
-    populateShapeStructuralTypeConversionsAndLegality(&context, converter,
-                                                      patterns, target);
-    scf::populateSCFStructuralTypeConversionsAndLegality(&context, converter,
-                                                         patterns, target);
-    if (failed(applyPartialConversion(getOperation(), target,
-                                      std::move(patterns))))
-      signalPassFailure();
-  }
-};
-
 // TODO(herhut) : This could become a real pattern in bufferize pass. What we
 // would need to do is insert a copy to model the semantics correctly. The same
 // is true for the TensorLoad pattern that is already in there.  Then buffer
@@ -104,11 +70,34 @@ class UnrankedTensorStoreTestOnlyPattern
   }
 };
 
-struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
+// TODO(frgossen): Move this upstream to `populateFuncOpTypeConversionPattern`
+// This pattern is merely needed to materialize type casts for return values so
+// that they match the function signature conversion.
+class ReturnOpTypeConversionPattern
+    : public OpConversionPattern<mlir::ReturnOp> {
+ public:
+  using OpConversionPattern<mlir::ReturnOp>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      ReturnOp op, ArrayRef<Value> operands,
+      ConversionPatternRewriter& rewriter) const final {
+    rewriter.replaceOpWithNewOp<ReturnOp>(op, operands);
+    return success();
+  }
+};
+
+#define GEN_PASS_CLASSES
+#include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
+
+struct BufferizePass : public BufferizePassBase<BufferizePass> {
+  explicit BufferizePass(bool allow_partial_bufferization) {
+    allow_partial_bufferization_ = allow_partial_bufferization;
+  }
+
   // TODO(b/173201243): Move to tablegen.
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<AffineDialect, scf::SCFDialect, shape::ShapeDialect,
-                    tf_framework::TFFrameworkDialect>();
+                    tf_framework::TFFrameworkDialect, lmhlo::LmhloDialect>();
   }
 
  public:
@@ -117,12 +106,17 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
     ConversionTarget target(context);
     target.addLegalDialect<scf::SCFDialect, StandardOpsDialect,
                            tf_framework::TFFrameworkDialect, AffineDialect,
-                           shape::ShapeDialect>();
+                           shape::ShapeDialect, lmhlo::LmhloDialect>();
     target.addLegalOp<ModuleOp, ModuleTerminatorOp>();
+
     target.addIllegalDialect<mhlo::MhloDialect>();
     target.addIllegalOp<DynamicTensorFromElementsOp, ExtractElementOp,
-                        TensorFromElementsOp, TensorCastOp, TensorLoadOp,
-                        TensorToMemrefOp>();
+                        TensorFromElementsOp, TensorCastOp>();
+
+    if (!allow_partial_bufferization_) {
+      target.addIllegalOp<TensorLoadOp, TensorToMemrefOp>();
+    }
+
     // Certain operations are no longer legal on tensors but otherwise are.
     target.addDynamicallyLegalOp<ConstantOp, SelectOp>([&](Operation* op) {
       return llvm::none_of(op->getResultTypes(),
@@ -144,8 +138,8 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
       return converter.isLegal(inputs) && converter.isLegal(results) &&
              converter.isLegal(&op.getBody());
     });
-    target.addDynamicallyLegalOp<CallOp, ConstantOp, DimOp, RankOp, SelectOp>(
-        typesAreLegal);
+    target.addDynamicallyLegalOp<CallOp, ConstantOp, DimOp, RankOp, SelectOp,
+                                 ReturnOp>(typesAreLegal);
 
     OwningRewritePatternList patterns;
     mhlo::populateHLOToLHLOConversionPattern(&context, &converter, &patterns);
@@ -160,22 +154,27 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
     scf::populateSCFStructuralTypeConversionsAndLegality(&context, converter,
                                                          patterns, target);
     patterns.insert<UnrankedTensorStoreTestOnlyPattern>(&context);
+    patterns.insert<ReturnOpTypeConversionPattern>(converter, &context);
 
     auto module = getOperation();
-    if (failed(applyFullConversion(module, target, std::move(patterns)))) {
-      signalPassFailure();
+    if (allow_partial_bufferization_) {
+      if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
+        signalPassFailure();
+      }
+    } else {
+      if (failed(
+              mlir::applyFullConversion(module, target, std::move(patterns)))) {
+        signalPassFailure();
+      }
     }
   }
 };
 
 }  // namespace
 
-std::unique_ptr<OperationPass<ModuleOp> > CreateHloBufferizePass() {
-  return std::make_unique<HloBufferizePass>();
-}
-
-std::unique_ptr<OperationPass<ModuleOp> > CreateFinalBufferizePass() {
-  return std::make_unique<FinalBufferizePass>();
+std::unique_ptr<OperationPass<ModuleOp> > CreateBufferizePass(
+    bool allow_partial_bufferization) {
+  return std::make_unique<BufferizePass>(allow_partial_bufferization);
 }
 
 }  // namespace transforms
