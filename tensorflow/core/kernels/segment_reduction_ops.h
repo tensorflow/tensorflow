@@ -101,6 +101,18 @@ struct MinOpGpu {
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+template <typename T, typename Index>
+struct SparseSegmentSumFunctor {
+  void operator()(OpKernelContext* ctx, const GPUDevice& d,
+                  const Index output_rows, const TensorShape& segment_ids_shape,
+                  typename TTypes<Index>::ConstFlat indices,
+                  typename TTypes<Index>::ConstFlat segment_ids,
+                  const Index data_size, const T* data,
+                  typename TTypes<T, 2>::Tensor output);
+};
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 // initial value functors
 template <typename T>
 struct Zero {

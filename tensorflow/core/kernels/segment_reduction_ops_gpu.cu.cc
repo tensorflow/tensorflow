@@ -124,6 +124,50 @@ __global__ void UnsortedSegmentCustomKernel(
   }
 }
 
+template <typename T, typename Index, int OuterDimTileSize>
+__global__ void SortedSparseSegmentSumCustomKernel(
+    const Index input_outer_dim_size, const Index inner_dim_size,
+    const Index output_outer_dim_size, const Index* indices,
+    const Index* segment_ids, const T* input, T* output,
+    const Index total_stripe_count) {
+  for (int stripe_index : GpuGridRangeX(total_stripe_count)) {
+    const Index segment_offset = stripe_index % inner_dim_size;
+    const Index input_outer_dim_index_base =
+        stripe_index / inner_dim_size * Index(OuterDimTileSize);
+
+    T sum = T(0);
+    Index first_segment_id = segment_ids[input_outer_dim_index_base];
+    Index last_output_segment_id = output_outer_dim_size;
+
+    const Index actual_stripe_height =
+        min(Index(OuterDimTileSize),
+            input_outer_dim_size - input_outer_dim_index_base);
+    for (Index j = 0; j < actual_stripe_height; j++) {
+      Index current_output_segment_id =
+          segment_ids[input_outer_dim_index_base + j];
+      Index current_input_index_id = indices[input_outer_dim_index_base + j];
+
+      if (current_output_segment_id > last_output_segment_id) {
+        const Index output_index =
+            last_output_segment_id * inner_dim_size + segment_offset;
+        if (last_output_segment_id == first_segment_id) {
+          GpuAtomicAdd(output + output_index, sum);
+        } else {
+          *(output + output_index) = sum;
+        }
+        sum = T(0);
+      }
+      sum +=
+          ldg(input + current_input_index_id * inner_dim_size + segment_offset);
+      last_output_segment_id = current_output_segment_id;
+    }
+
+    const Index output_index =
+        last_output_segment_id * inner_dim_size + segment_offset;
+    GpuAtomicAdd(output + output_index, sum);
+  }
+}
+
 namespace functor {
 
 template <typename T, typename Index>
@@ -207,6 +251,47 @@ struct UnsortedSegmentFunctor<GPUDevice, T, Index, InitialValueF, ReductionF> {
   }
 };
 
+// TODO(Lifann): enable indices validation on GPU.
+// Right now checking for indicies out of bound in the kernel would
+// require copying code between GPU/CPU, and thus slow.
+template <typename T, typename Index>
+void SparseSegmentSumFunctor<T, Index>::operator()(
+    OpKernelContext* ctx, const GPUDevice& d, const Index output_rows,
+    const TensorShape& segment_ids_shape,
+    typename TTypes<Index>::ConstFlat indices,
+    typename TTypes<Index>::ConstFlat segment_ids, const Index data_size,
+    const T* data, typename TTypes<T, 2>::Tensor output) {
+  if (output.size() == 0) {
+    return;
+  }
+  GpuLaunchConfig config = GetGpuLaunchConfig(output.size(), d);
+  TF_CHECK_OK(GpuLaunchKernel(SetZero<T>, config.block_count,
+                              config.thread_per_block, 0, d.stream(),
+                              output.size(), output.data()));
+  if (data_size == 0 || segment_ids_shape.num_elements() == 0) {
+    return;
+  }
+
+  const Index input_total_size = data_size;
+  const Index input_outer_dim_size = segment_ids.dimension(0);
+  const Index input_inner_dim_size = input_total_size / input_outer_dim_size;
+  const int OuterDimTileSize = 8;
+
+  const Index input_outer_dim_num_stripe =
+      Eigen::divup(input_outer_dim_size, Index(OuterDimTileSize));
+
+  const Index total_stripe_count =
+      input_inner_dim_size * input_outer_dim_num_stripe;
+
+  if (total_stripe_count <= 0) return;
+  config = GetGpuLaunchConfig(total_stripe_count, d);
+  TF_CHECK_OK(GpuLaunchKernel(
+      SortedSparseSegmentSumCustomKernel<T, Index, OuterDimTileSize>,
+      config.block_count, config.thread_per_block, 0, d.stream(),
+      input_outer_dim_size, input_inner_dim_size, output_rows, indices.data(),
+      segment_ids.data(), data, output.data(), total_stripe_count));
+}
+
 #define DEFINE_SORTED_GPU_SPECS_INDEX(T, Index) \
   template struct SegmentSumFunctor<T, Index>
 
@@ -246,6 +331,15 @@ TF_CALL_int32(DEFINE_SUM_GPU_SPECS);
 #if GOOGLE_CUDA
 TF_CALL_COMPLEX_TYPES(DEFINE_SUM_GPU_SPECS);
 #endif
+
+#define DEFINE_SPARSE_SEGMENT_SUM_GPU_SPECS_INDEX(T, Index) \
+  template struct SparseSegmentSumFunctor<T, Index>
+
+#define DEFINE_SPARSE_SEGMENT_SUM_GPU_SPECS(T)         \
+  DEFINE_SPARSE_SEGMENT_SUM_GPU_SPECS_INDEX(T, int32); \
+  DEFINE_SPARSE_SEGMENT_SUM_GPU_SPECS_INDEX(T, int64);
+
+TF_CALL_GPU_NUMBER_TYPES(DEFINE_SPARSE_SEGMENT_SUM_GPU_SPECS);
 
 #undef DEFINE_SORTED_GPU_SPECS_INDEX
 #undef DEFINE_SORTED_GPU_SPECS

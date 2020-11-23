@@ -947,6 +947,165 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
           self.evaluate(s)
 
 
+class SparseSegmentReductionGpuOpTest(SparseSegmentReductionHelper):
+
+  def testValues(self):
+    dtypes = [
+        dtypes_lib.float32, dtypes_lib.float64, dtypes_lib.int64,
+        dtypes_lib.int32
+    ]
+
+    index_dtypes = [dtypes_lib.int32]
+    segment_ids_dtypes = [dtypes_lib.int32]
+
+    # Each item is np_op1, np_op2, tf_op
+    ops_list = [(np.add, None, math_ops.sparse_segment_sum)]
+
+    n = 400
+    shape = [n, 2]
+    segment_indices = []
+    for i in range(20):
+      for _ in range(i + 1):
+        segment_indices.append(i)
+    num_indices = len(segment_indices)
+    for dtype in dtypes:
+      for index_dtype in index_dtypes:
+        for segment_ids_dtype in segment_ids_dtypes:
+          with self.cached_session(use_gpu=test_util.is_gpu_available()):
+            tf_indices, np_indices, tf_x, np_x = self._sparse_input(
+                shape, num_indices, dtype=dtype)
+            for np_op1, np_op2, tf_op in ops_list:
+              np_ans = self._sparseSegmentReduce(np_x, np_indices,
+                                                 segment_indices, np_op1,
+                                                 np_op2)
+              s = tf_op(
+                  data=tf_x,
+                  indices=math_ops.cast(tf_indices, index_dtype),
+                  segment_ids=math_ops.cast(segment_indices, segment_ids_dtype))
+              tf_ans = self.evaluate(s)
+              self.assertAllClose(np_ans, tf_ans)
+              self.assertAllEqual(np_ans.shape[1:], tf_ans.shape[1:])
+
+  def testSegmentIdsHole(self):
+    tf_x, np_x = self._input([10, 4], dtype=dtypes_lib.float32)
+    ops_list = [(np.add, None, math_ops.sparse_segment_sum)]
+    segment_indices = [0, 2, 2, 2]
+    tf_indices = [8, 3, 0, 9]
+    with self.session(use_gpu=test_util.is_gpu_available()):
+      for np_op1, np_op2, tf_op in ops_list:
+        np_ans = self._sparseSegmentReduce(np_x, tf_indices, segment_indices,
+                                           np_op1, np_op2)
+        s = tf_op(data=tf_x, indices=tf_indices, segment_ids=segment_indices)
+        tf_ans = self.evaluate(s)
+        self.assertAllClose(np_ans, tf_ans)
+
+  def testWithNumSegments(self):
+    tf_x, np_x = self._input([10, 4], dtype=dtypes_lib.float32)
+    ops_list = [(np.add, None, math_ops.sparse_segment_sum_with_num_segments)]
+    segment_indices = [0, 2, 2, 2]
+    tf_indices = [8, 3, 0, 9]
+    num_segments = 5
+    with self.session(use_gpu=test_util.is_gpu_available()):
+      for np_op1, np_op2, tf_op in ops_list:
+        np_ans = self._sparseSegmentReduce(
+            np_x,
+            tf_indices,
+            segment_indices,
+            np_op1,
+            np_op2,
+            num_segments=num_segments)
+        s = tf_op(
+            data=tf_x,
+            indices=tf_indices,
+            segment_ids=segment_indices,
+            num_segments=num_segments)
+        tf_ans = self.evaluate(s)
+        self.assertAllClose(np_ans, tf_ans)
+
+  def testWithEmptySegments(self):
+    tf_x = constant_op.constant([], shape=[0, 4], dtype=dtypes_lib.float32)
+    ops_list = [math_ops.sparse_segment_sum_with_num_segments]
+    segment_indices = []
+    tf_indices = []
+    num_segments = 5
+    with self.session(use_gpu=test_util.is_gpu_available()):
+      for tf_op in ops_list:
+        s = tf_op(
+            data=tf_x,
+            indices=tf_indices,
+            segment_ids=segment_indices,
+            num_segments=num_segments)
+        tf_ans = self.evaluate(s)
+        self.assertAllClose(np.zeros([5, 4]), tf_ans)
+
+  def testSegmentIdsGreaterThanZero(self):
+    tf_x, np_x = self._input([10, 4], dtype=dtypes_lib.float32)
+    ops_list = [(np.add, None, math_ops.sparse_segment_sum)]
+    segment_indices = [1, 2, 2, 2]
+    tf_indices = [8, 3, 0, 9]
+    with self.session(use_gpu=test_util.is_gpu_available()):
+      for np_op1, np_op2, tf_op in ops_list:
+        np_ans = self._sparseSegmentReduce(np_x, tf_indices, segment_indices,
+                                           np_op1, np_op2)
+        s = tf_op(data=tf_x, indices=tf_indices, segment_ids=segment_indices)
+        tf_ans = self.evaluate(s)
+        self.assertAllClose(np_ans, tf_ans)
+
+  def testValid(self):
+    # Baseline for the test*Invalid* methods below.
+    tf_x, _ = self._input([10, 4], dtype=dtypes_lib.float32)
+    ops_list = [math_ops.sparse_segment_sum]
+    segment_indices = [0, 1, 2, 2]
+    tf_indices = [8, 3, 0, 9]
+    with self.session(use_gpu=test_util.is_gpu_available()):
+      for tf_op in ops_list:
+        s = tf_op(data=tf_x, indices=tf_indices, segment_ids=segment_indices)
+        self.evaluate(s)
+
+  @test_util.run_deprecated_v1
+  def testGradient(self):
+    shape = [10, 4]
+
+    segment_indices = [0, 1, 2, 2]
+    num_indices = len(segment_indices)
+    for tf_op in [math_ops.sparse_segment_sum]:
+      with self.cached_session(use_gpu=test_util.is_gpu_available()):
+        tf_indices, _, tf_x, np_x = self._sparse_input(
+            shape, num_indices, dtype=dtypes_lib.float64)
+        s = tf_op(data=tf_x, indices=tf_indices, segment_ids=segment_indices)
+        jacob_t, jacob_n = gradient_checker.compute_gradient(
+            tf_x,
+            shape,
+            s, [3, 4],
+            x_init_value=np_x.astype(np.double),
+            delta=1)
+      self.assertAllClose(jacob_t, jacob_n)
+
+  @test_util.run_deprecated_v1
+  def testGradientWithEmptySegmentsAtEnd(self):
+    shape = [10, 4]
+
+    num_segments = 5
+    segment_indices = [0, 1, 2, 2]
+    num_indices = len(segment_indices)
+    for tf_op in [math_ops.sparse_segment_sum_with_num_segments]:
+      with self.cached_session(use_gpu=test_util.is_gpu_available()):
+        tf_indices, _, tf_x, np_x = self._sparse_input(
+            shape, num_indices, dtype=dtypes_lib.float64)
+        s = tf_op(
+            data=tf_x,
+            indices=tf_indices,
+            segment_ids=segment_indices,
+            num_segments=num_segments)
+        jacob_t, jacob_n = gradient_checker.compute_gradient(
+            tf_x,
+            shape,
+            s, [5, 4],
+            x_init_value=np_x.astype(np.double),
+            delta=1)
+      self.assertAllClose(jacob_t, jacob_n)
+
+
 class SegmentReductionOpBenchmark(test.Benchmark):
   outer_dim_options = [2**x for x in range(9, 14, 2)]
   ratio_options = [2**x for x in range(1, 6, 2)]
