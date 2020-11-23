@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/experimental/writer/writer_lib.h"
+#include "tensorflow/lite/tools/serialization/writer_lib.h"
 
 #include <cstdlib>
 #include <cstring>
@@ -23,9 +23,9 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/core/subgraph.h"
-#include "tensorflow/lite/experimental/writer/enum_mapping.h"
 #include "tensorflow/lite/schema/reflection/schema_generated.h"
 #include "tensorflow/lite/schema/schema_utils.h"
+#include "tensorflow/lite/tools/serialization/enum_mapping.h"
 #include "tensorflow/lite/version.h"
 
 namespace tflite {
@@ -34,7 +34,7 @@ std::pair<BuiltinOptions, flatbuffers::Offset<void>> CreateBuiltinUnion(
     flatbuffers::FlatBufferBuilder* fbb, enum BuiltinOperator op,
     void* builtin_op_data, const TfLiteNode& node) {
   switch (op) {
-#include "tensorflow/lite/experimental/writer/option_writer_generated.h"
+#include "tensorflow/lite/tools/serialization/option_writer_generated.h"
   }
   return std::make_pair(BuiltinOptions_NONE, flatbuffers::Offset<void>());
 }

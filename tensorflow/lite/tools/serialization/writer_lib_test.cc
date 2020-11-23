@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/experimental/writer/writer_lib.h"
+#include "tensorflow/lite/tools/serialization/writer_lib.h"
 
 #include <numeric>
 #include <sstream>

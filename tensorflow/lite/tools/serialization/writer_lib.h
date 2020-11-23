@@ -24,8 +24,8 @@ limitations under the License.
 //   // Build Interpreter however
 //   // ... <omitted>
 //   SubgraphWriter(&interpreter->primary_subgraph()).Write("output.tflite");
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_WRITER_WRITER_LIB_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_WRITER_WRITER_LIB_H_
+#ifndef TENSORFLOW_LITE_TOOLS_SERIALIZATION_WRITER_LIB_H_
+#define TENSORFLOW_LITE_TOOLS_SERIALIZATION_WRITER_LIB_H_
 #include <iostream>
 #include <unordered_map>
 
@@ -33,8 +33,8 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/core/subgraph.h"
-#include "tensorflow/lite/experimental/writer/enum_mapping.h"
 #include "tensorflow/lite/schema/reflection/schema_generated.h"
+#include "tensorflow/lite/tools/serialization/enum_mapping.h"
 #include "tensorflow/lite/version.h"
 
 namespace tflite {
@@ -149,4 +149,4 @@ class SubgraphWriter {
 
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_WRITER_WRITER_LIB_H_
+#endif  // TENSORFLOW_LITE_TOOLS_SERIALIZATION_WRITER_LIB_H_

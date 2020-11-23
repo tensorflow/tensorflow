@@ -12,22 +12,21 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-// Loads the input tflite file into interpreter, serializes it back to a tflite
-// buffer, and then verifies that the generated output can be loaded back into
-// an interpreter and the model prepared (i.e., AllocateTensors returns ok).
+// Just does a read/write loop of tflite file format using the interpreter as
+// an intermediate.
 //
 // Usage:
-//   writer_test <input tflite>
+//   writer <input tflite> <output tflite>
 
 #include <iostream>
 
-#include "tensorflow/lite/experimental/writer/writer_lib.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
+#include "tensorflow/lite/tools/serialization/writer_lib.h"
 
 int main(int argc, char* argv[]) {
-  if (argc != 2) {
-    fprintf(stderr, "Usage: %s input_file\n", argv[0]);
+  if (argc != 3) {
+    fprintf(stderr, "Usage: %s input_file output_file\n", argv[0]);
     return 1;
   }
   std::unique_ptr<tflite::FlatBufferModel> model =
@@ -36,18 +35,7 @@ int main(int argc, char* argv[]) {
   tflite::ops::builtin::BuiltinOpResolver builtin_op_resolver;
   tflite::InterpreterBuilder(*model, builtin_op_resolver)(&interpreter);
   tflite::SubgraphWriter writer(&interpreter->primary_subgraph());
-  std::unique_ptr<uint8_t[]> output_buffer;
-  size_t output_buffer_size;
-  writer.GetBuffer(&output_buffer, &output_buffer_size);
+  writer.Write(argv[2]);
 
-  // Verify the generated model.
-  std::unique_ptr<tflite::Interpreter> new_interpreter;
-  model = tflite::FlatBufferModel::BuildFromBuffer(
-      reinterpret_cast<char*>(output_buffer.get()), output_buffer_size);
-  tflite::InterpreterBuilder(*model, builtin_op_resolver)(&new_interpreter);
-  if (new_interpreter->AllocateTensors() != kTfLiteOk) {
-    fprintf(stderr, "AllocateTensors failed on the round-tripped model.\n");
-    return 1;
-  }
   return 0;
 }

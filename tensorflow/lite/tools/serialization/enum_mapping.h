@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_WRITER_ENUM_MAPPING_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_WRITER_ENUM_MAPPING_H_
+#ifndef TENSORFLOW_LITE_TOOLS_SERIALIZATION_ENUM_MAPPING_H_
+#define TENSORFLOW_LITE_TOOLS_SERIALIZATION_ENUM_MAPPING_H_
 
 #include "tensorflow/lite/builtin_op_data.h"
 #include "tensorflow/lite/schema/reflection/schema_generated.h"
@@ -147,4 +147,4 @@ inline CombinerType CombinerTypeToSchema(TfLiteCombinerType type) {
 // int
 
 }  // namespace tflite
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_WRITER_ENUM_MAPPING_H_
+#endif  // TENSORFLOW_LITE_TOOLS_SERIALIZATION_ENUM_MAPPING_H_
