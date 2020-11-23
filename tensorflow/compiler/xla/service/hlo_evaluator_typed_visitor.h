@@ -1770,6 +1770,10 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
         TF_ASSIGN_OR_RETURN(parent_->evaluated_[map], MapImpl<uint8>(map));
         break;
       }
+      case U16: {
+        TF_ASSIGN_OR_RETURN(parent_->evaluated_[map], MapImpl<uint16>(map));
+        break;
+      }
       case U32: {
         TF_ASSIGN_OR_RETURN(parent_->evaluated_[map], MapImpl<uint32>(map));
         break;
@@ -1780,6 +1784,10 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       }
       case S8: {
         TF_ASSIGN_OR_RETURN(parent_->evaluated_[map], MapImpl<int8>(map));
+        break;
+      }
+      case S16: {
+        TF_ASSIGN_OR_RETURN(parent_->evaluated_[map], MapImpl<int16>(map));
         break;
       }
       case S32: {
