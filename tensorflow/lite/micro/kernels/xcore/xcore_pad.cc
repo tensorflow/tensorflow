@@ -49,10 +49,9 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
   x.width = (uint32_t)input->dims->data[2];
   x.channels = (uint32_t)input->dims->data[3];
 
-  auto *paddings = GetInput(context, node, 1);
   auto *op_data = reinterpret_cast<PadOpData *>(node->user_data);
 
-  // TODO: change paddings tensor type to int16
+  auto *paddings = GetInput(context, node, 1);
   auto *pad_sizes = paddings->data.i32;
   op_data->pv.top = pad_sizes[2];
   op_data->pv.bottom = pad_sizes[3];
