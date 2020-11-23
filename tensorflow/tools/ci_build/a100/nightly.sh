@@ -20,8 +20,10 @@ cd tensorflow/tools/ci_build
 docker build -t gpu_test_container:latest -f \
    Dockerfile.rbe.cuda11.0-cudnn8-ubuntu18.04-manylinux2010-multipython .
 
+DEFAULT_BAZEL_TARGETS="//tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/mlir/tosa/... -//tensorflow/compiler/xrt/... //tensorflow/compiler/mlir/lite/... -//tensorflow/lite/micro/examples/... -//tensorflow/core/tpu/..."
+
 docker run --rm \
   --gpus all \
   --shm-size=2g --ulimit memlock=-1 --ulimit stack=67108864 \
-  gpu_test_container:latest bash -c "python3.7 -m pytest"
+  gpu_test_container:latest bash -c "bazel test --config=rbe_linux_cuda11.0_nvcc_py3.6 --config=tensorflow_testing_rbe_linux --test_tag_filters=gpu,-no_gpu,-nogpu,-benchmark-test,-no_oss,-oss_serial,-v1only,-no_gpu_presubmit,-no_cuda11 -- ${DEFAULT_BAZEL_TARGETS} -//tensorflow/lite/..."
 
