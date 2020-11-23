@@ -93,7 +93,7 @@ func @gemm_bias(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>,
 func @cholesky(%arg : memref<10x10xf32>, %out: memref<10x10xf32>) {
   %scratch = alloc() : memref<32xi8>
   %info = alloc() : memref<32xi32>
-  "lmhlo_gpu.cholesky"(%arg, %out, %scratch, %info) { is_upper = true }
+  "lmhlo_gpu.cholesky"(%arg, %out, %scratch, %info) { is_lower = true }
       : (memref<10x10xf32>, memref<10x10xf32>, memref<32xi8>, memref<32xi32>) -> ()
   return
 }
