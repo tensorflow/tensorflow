@@ -282,22 +282,18 @@ TEST_F(GpuUnaryOpTest, FloorHalf) {
 /// Test `tf.Imag`.
 
 TEST_F(GpuUnaryOpTest, ImagFloat) {
-  Run<std::complex<float>, std::complex<float>, float, float>(
+  Run<std::complex<float>, const std::complex<float>&, float, float>(
       DefaultInputShape(), DefaultComplexInput<float>(),
       /*op_name=*/"Imag",
-      // We cannot directly use std::imag here, because its signature has a
-      // const reference parameter.
-      /*expected_callback=*/[](std::complex<float> v) { return std::imag(v); },
+      /*expected_callback=*/std::imag,
       /*expect_equal=*/false);
 }
 
 TEST_F(GpuUnaryOpTest, ImagDouble) {
-  Run<std::complex<double>, std::complex<double>, double, double>(
+  Run<std::complex<double>, const std::complex<double>&, double, double>(
       DefaultInputShape(), DefaultComplexInput<double>(),
       /*op_name=*/"Imag",
-      // We cannot directly use std::imag here, because its signature has a
-      // const reference parameter.
-      /*expected_callback=*/[](std::complex<double> v) { return std::imag(v); },
+      /*expected_callback=*/std::imag,
       /*expect_equal=*/false);
 }
 
@@ -359,22 +355,18 @@ TEST_F(GpuUnaryOpTest, NegHalf) {
 /// Test `tf.Real`.
 
 TEST_F(GpuUnaryOpTest, RealFloat) {
-  Run<std::complex<float>, std::complex<float>, float, float>(
+  Run<std::complex<float>, const std::complex<float>&, float, float>(
       DefaultInputShape(), DefaultComplexInput<float>(),
       /*op_name=*/"Real",
-      // We cannot directly use std::real here, because its signature has a
-      // const reference parameter.
-      /*expected_callback=*/[](std::complex<float> v) { return std::real(v); },
+      /*expected_callback=*/std::real,
       /*expect_equal=*/false);
 }
 
 TEST_F(GpuUnaryOpTest, RealDouble) {
-  Run<std::complex<double>, std::complex<double>, double, double>(
+  Run<std::complex<double>, const std::complex<double>&, double, double>(
       DefaultInputShape(), DefaultComplexInput<double>(),
       /*op_name=*/"Real",
-      // We cannot directly use std::real here, because its signature has a
-      // const reference parameter.
-      /*expected_callback=*/[](std::complex<double> v) { return std::real(v); },
+      /*expected_callback=*/std::real,
       /*expect_equal=*/false);
 }
 
