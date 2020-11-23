@@ -26,7 +26,6 @@ limitations under the License.
 #include <memory>
 
 #include "absl/synchronization/mutex.h"
-#include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/blas.h"
