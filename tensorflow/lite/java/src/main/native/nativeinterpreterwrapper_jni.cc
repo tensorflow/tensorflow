@@ -319,10 +319,10 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_allowBufferHandleOutput(
 
 JNIEXPORT void JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_useXNNPACK(
-    JNIEnv* env, jclass clazz, jlong handle, jlong error_handle, jboolean state,
+    JNIEnv* env, jclass clazz, jlong handle, jlong error_handle, jint state,
     jint num_threads) {
   // If not using xnnpack, simply don't apply the delegate.
-  if (!state) {
+  if (state == 0) {
     return;
   }
 
@@ -369,6 +369,13 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_useXNNPACK(
                      "Internal error: Failed to apply XNNPACK delegate: %s",
                      error_reporter->CachedErrorMessage());
     }
+  } else if (state == -1) {
+    // Instead of throwing an exception, we tolerate the missing of such
+    // dependencies because we try to apply XNNPACK delegate by default.
+    TF_LITE_REPORT_ERROR(
+        error_reporter,
+        "WARNING: Missing necessary XNNPACK delegate dependencies to apply it "
+        "by default.\n");
   } else {
     ThrowException(env, tflite::jni::kIllegalArgumentException,
                    "Failed to load XNNPACK delegate from current runtime. "

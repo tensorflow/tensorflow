@@ -33,9 +33,10 @@ void ThrowException(JNIEnv* env, const char* clazz, const char* fmt, ...);
 class BufferErrorReporter : public ErrorReporter {
  public:
   BufferErrorReporter(JNIEnv* env, int limit);
-  virtual ~BufferErrorReporter();
+  ~BufferErrorReporter() override;
   int Report(const char* format, va_list args) override;
   const char* CachedErrorMessage();
+  using ErrorReporter::Report;
 
  private:
   char* buffer_;
