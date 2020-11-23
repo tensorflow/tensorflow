@@ -466,7 +466,6 @@ const float golden_output_16x1x1[] = {
     -0.603093, 0.970736,  -3.567897, 0.035085,  -0.201711, -0.550400, 1.545573,
     -1.805005};
 
-#if !defined(XTENSA)  // Needed to avoid build errors from unsused variables.
 // One output with shape {1, 64}
 const float golden_output_relu_16x1x1[] = {
     0.000000, 1.145864, 0.000000, 0.000000, 0.000000, 0.205252, 0.289119,
@@ -479,7 +478,6 @@ const float golden_output_relu_16x1x1[] = {
     0.000000, 0.000000, 1.072254, 0.528985, 0.000000, 0.000000, 2.338702,
     0.000000, 0.970736, 0.000000, 0.035085, 0.000000, 0.000000, 1.545573,
     0.000000};
-#endif
 
 template <typename T>
 void ValidateSVDFGoldens(const int batch_size, const int num_units,
@@ -908,7 +906,7 @@ TF_LITE_MICRO_TEST(SvdfQuantized1x16Input64x1OutputReluShouldMatchGolden) {
   int16_t activation_state_quantized[activation_state_dims_count];
   int32_t
       bias_quantized[sizeof(tflite::testing::bias_data_16x1x1) / sizeof(float)];
-  int8_t golden_quantized[sizeof(tflite::testing::golden_output_16x1x1) /
+  int8_t golden_quantized[sizeof(tflite::testing::golden_output_relu_16x1x1) /
                           sizeof(float)];
 
   tflite::testing::TestIntegerSVDF(
@@ -923,8 +921,8 @@ TF_LITE_MICRO_TEST(SvdfQuantized1x16Input64x1OutputReluShouldMatchGolden) {
       output_scale, output_zero_point, tflite::testing::input_data_16x1x1,
       input_sequences_quantized,
       sizeof(tflite::testing::input_data_16x1x1) / sizeof(float),
-      tflite::testing::golden_output_16x1x1, golden_quantized,
-      sizeof(tflite::testing::golden_output_16x1x1) / sizeof(float));
+      tflite::testing::golden_output_relu_16x1x1, golden_quantized,
+      sizeof(tflite::testing::golden_output_relu_16x1x1) / sizeof(float));
 }
 
 TF_LITE_MICRO_TESTS_END
