@@ -80,7 +80,7 @@ struct AtomicSumOpGpu {
 
 #if TENSORFLOW_USE_ROCM
 template <typename T>
-struct SumOpGpu<std::complex<T> > {
+struct AtomicSumOpGpu<std::complex<T> > {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void operator()(std::complex<T>* dest,
                                                         const std::complex<T>& value) {
     T* p = reinterpret_cast<T*>(dest);
