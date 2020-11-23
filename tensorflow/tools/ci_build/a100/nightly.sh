@@ -25,5 +25,5 @@ DEFAULT_BAZEL_TARGETS="//tensorflow/... -//tensorflow/python/integration_testing
 docker run --rm \
   --gpus all \
   --shm-size=2g --ulimit memlock=-1 --ulimit stack=67108864 \
-  gpu_test_container:latest bash -c "bazel test --config=rbe_linux_cuda11.0_nvcc_py3.6 --config=tensorflow_testing_rbe_linux --test_tag_filters=gpu,-no_gpu,-nogpu,-benchmark-test,-no_oss,-oss_serial,-v1only,-no_gpu_presubmit,-no_cuda11 -- ${DEFAULT_BAZEL_TARGETS} -//tensorflow/lite/..."
+  gpu_test_container:latest bash -c "cd tensorflow_src; bazel test --config=rbe_linux_cuda11.0_nvcc_py3.6 --config=tensorflow_testing_rbe_linux --test_tag_filters=gpu,-no_gpu,-nogpu,-benchmark-test,-no_oss,-oss_serial,-v1only,-no_gpu_presubmit,-no_cuda11 -- ${DEFAULT_BAZEL_TARGETS} -//tensorflow/lite/..."
 
