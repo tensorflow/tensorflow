@@ -101,7 +101,11 @@ class MlirUnrankedOp : public OpKernel {
     for (int i = 0, end = ctx->num_inputs(); i < end; ++i) {
       const Tensor& input = ctx->input(i);
       if (input.data() == result_data_ptr) {
-        ctx->set_output(0, input);
+        // Run a bitcast in case the output type is different.
+        Tensor output;
+        OP_REQUIRES_OK(ctx,
+                       output.BitcastFrom(input, TfDataType, input.shape()));
+        ctx->set_output(0, output);
         free(result_desc.descriptor);
         return;
       }
