@@ -197,10 +197,6 @@ Status LowerTFtoGPU(mlir::ModuleOp module, bool gpu_binary_only,
   pm.addPass(::mlir::createLowerAffinePass());
   // Constraints are removed as late as possible and before lowering to CFG.
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createConvertShapeConstraintsPass());
-  if (embed_memref_prints) {
-    pm.addNestedPass<::mlir::FuncOp>(
-        mlir::kernel_gen::transforms::CreateEmbedMemRefPrintsPass());
-  }
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
   // TODO(herhut): Remove this pass once the LowerToCFG pass can handle it.
   pm.addNestedPass<mlir::FuncOp>(
@@ -208,6 +204,10 @@ Status LowerTFtoGPU(mlir::ModuleOp module, bool gpu_binary_only,
   pm.addPass(::mlir::createLowerToCFGPass());
   // Map allocs, asserts, etc. to the tensorflow framework.
   pm.addPass(mlir::kernel_gen::tf_framework::CreateEmbedTFFrameworkPass());
+  if (embed_memref_prints) {
+    pm.addNestedPass<::mlir::FuncOp>(
+        mlir::kernel_gen::transforms::CreateEmbedMemRefPrintsPass());
+  }
   if (failed(pm.run(module))) {
     return InternalError("Lowering to GPU kernels failed.");
   }
