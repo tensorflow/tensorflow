@@ -544,6 +544,21 @@ ARDUINO_PROJECT_TARGETS := $(foreach TARGET,$(ALL_PROJECT_TARGETS),$(if $(findst
 generate_arduino_zip: $(ARDUINO_PROJECT_TARGETS) $(ARDUINO_LIBRARY_ZIPS)
 	python tensorflow/lite/micro/tools/make/merge_arduino_zips.py $(PRJDIR)/tensorflow_lite.zip $(ARDUINO_LIBRARY_ZIPS)
 
+# API for external project generation scripts to retrieve lists of files needed
+# for particular platforms. For more details see:
+# https://docs.google.com/document/d/1gfbpBtiivYMenCDIvJb-m5RIV4rKAR5dvdAJC5LLv8o
+list_library_source_files:
+	@echo $(MICROLITE_CC_SRCS)
+
+list_library_header_files:
+	@echo $(MICROLITE_CC_HDRS)
+
+list_third_party_source_files:
+	@echo $(THIRD_PARTY_CC_SRCS)
+
+list_third_party_header_files:
+	@echo $(THIRD_PARTY_CC_HDRS)
+
 # Gets rid of all generated files.
 clean:
 	rm -rf $(MAKEFILE_DIR)/gen
