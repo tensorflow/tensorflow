@@ -1678,14 +1678,13 @@ def zeros_like(x, dtype=None, name=None):
 
   Example:
 
-
+  ```python
   from tensorflow.keras import backend as K
   kvar = K.variable(np.random.random((2,3)))
   kvar_zeros = K.zeros_like(kvar)
   K.eval(kvar_zeros)
   # array([[ 0.,  0.,  0.], [ 0.,  0.,  0.]], dtype=float32)
-
-
+  ```
   """
   return array_ops.zeros_like(x, dtype=dtype, name=name)
 
