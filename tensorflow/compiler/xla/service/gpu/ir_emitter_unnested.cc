@@ -42,6 +42,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/utils/name_utils.h"
 #include "tensorflow/compiler/mlir/xla/hlo_function_importer.h"
@@ -102,6 +103,10 @@ limitations under the License.
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
+
+#if GOOGLE_CUDA
+#include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
+#endif  // GOOGLE_CUDA
 
 namespace xla {
 namespace gpu {
@@ -649,11 +654,6 @@ Status IrEmitterUnnested::HandleConvolution(HloInstruction* convolution) {
 
 // Input = {dynamic array(with dynamic dimension meta data at the end)}
 // Output = {static array, dynamic_dim0, dynamic_dim1}
-Status IrEmitterUnnested::HandlePadToStatic(HloInstruction* pad_to_static) {
-  TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(pad_to_static));
-  return EmitPadToStaticFromMlir(input);
-}
-
 Status IrEmitterUnnested::EmitPadToStaticFromMlir(MlirEmitterInput mlir_input) {
   // TODO(jurahul): Create an op to represent PadToStatic.
   auto pad_to_static = ::mlir::cast<::mlir::lmhlo::CustomCallOp>(mlir_input.op);
@@ -782,12 +782,6 @@ Status IrEmitterUnnested::EmitPadToStaticFromMlir(MlirEmitterInput mlir_input) {
 
 // Input = {dynamic array(with dynamic dimension meta data at the end)}
 // Output = {static array, dynamic_dim0, dynamic_dim1}
-Status IrEmitterUnnested::HandleSliceToDynamic(
-    HloInstruction* slice_to_dynamic) {
-  TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(slice_to_dynamic));
-  return EmitSliceToDynamicFromMlir(input);
-}
-
 Status IrEmitterUnnested::EmitSliceToDynamicFromMlir(
     MlirEmitterInput mlir_input) {
   // TODO(jurahul): Create an op to represent SliceToDynamic.
@@ -914,14 +908,82 @@ Status IrEmitterUnnested::EmitSliceToDynamicFromMlir(
 }
 
 Status IrEmitterUnnested::HandleCustomCall(HloInstruction* custom_call) {
-  if (custom_call->custom_call_target() == "PadToStatic") {
-    return HandlePadToStatic(custom_call);
+  TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(custom_call));
+
+  if (auto call = mlir::dyn_cast<mlir::lmhlo::CustomCallOp>(input.op)) {
+    if (call.call_target_name() == "PadToStatic") {
+      return EmitPadToStaticFromMlir(input);
+    }
+    if (call.call_target_name() == "SliceToDynamic") {
+      return EmitSliceToDynamicFromMlir(input);
+    }
+    return ThunkEmitter(this).HandleCustomCall(custom_call);
   }
-  if (custom_call->custom_call_target() == "SliceToDynamic") {
-    return HandleSliceToDynamic(custom_call);
+
+#if GOOGLE_CUDA
+  if (mlir::isa<mlir::lmhlo_gpu::CholeskyOp>(input.op)) {
+    return EmitCholeskyThunkFromMlir(input);
   }
-  return ThunkEmitter(this).HandleCustomCall(custom_call);
+#endif  // GOOGLE_CUDA
+
+  return Unimplemented("No registered implementation for custom call to \"%s\"",
+                       custom_call->custom_call_target());
 }
+
+#if GOOGLE_CUDA
+Status IrEmitterUnnested::EmitCholeskyThunkFromMlir(MlirEmitterInput input) {
+  auto cholesky_op = ::mlir::cast<mlir::lmhlo_gpu::CholeskyOp>(input.op);
+
+  const Shape shape = TypeToShape(cholesky_op.input().getType());
+  int ndim = shape.dimensions_size();
+  CHECK_GE(ndim, 2);
+  int64 n = shape.dimensions(ndim - 1);
+
+  const auto& dims = shape.dimensions();
+  int64 batch_size = std::accumulate(dims.begin(), dims.end() - 2, int64{1},
+                                     [](int64 a, int64 b) { return a * b; });
+
+  absl::Span<const BufferAllocation> allocations(
+      ir_emitter_context_->buffer_assignment().Allocations());
+
+  TF_ASSIGN_OR_RETURN(
+      auto operand_buffer,
+      GetAllocationSliceForMlir(cholesky_op.input(), allocations));
+  TF_ASSIGN_OR_RETURN(auto a_buffer, GetAllocationSliceForMlir(
+                                         cholesky_op.output(), allocations));
+  TF_ASSIGN_OR_RETURN(
+      auto workspace_buffer,
+      GetAllocationSliceForMlir(cholesky_op.scratch(), allocations));
+  TF_ASSIGN_OR_RETURN(auto info_buffer, GetAllocationSliceForMlir(
+                                            cholesky_op.info(), allocations));
+
+  std::vector<std::unique_ptr<Thunk>> thunks;
+
+  if (operand_buffer != a_buffer) {
+    thunks.push_back(absl::make_unique<DeviceToDeviceCopyThunk>(
+        input.thunk_info,
+        /*source_address=*/operand_buffer,
+        /*destination_buffer=*/a_buffer,
+        /*mem_size=*/ShapeUtil::ByteSizeOf(shape)));
+  }
+
+  CholeskyOptions options;
+  options.set_lower(cholesky_op.is_lower());
+  thunks.push_back(absl::make_unique<CholeskyThunk>(
+      input.thunk_info, options, a_buffer, workspace_buffer, info_buffer,
+      shape.element_type(), batch_size, n));
+
+  // Elide the sequential thunk if there's no copy.
+  if (thunks.size() == 1) {
+    AddThunkToThunkSequence(std::move(thunks[0]));
+  } else {
+    AddThunkToThunkSequence(absl::make_unique<SequentialThunk>(
+        input.thunk_info, std::move(thunks)));
+  }
+
+  return Status::OK();
+}
+#endif  // GOOGLE_CUDA
 
 Status IrEmitterUnnested::HandleFft(HloInstruction* fft) {
   return ThunkEmitter(this).HandleFft(fft);
