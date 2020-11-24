@@ -2,7 +2,7 @@ path: "tensorflow.graph_util"
 tf_module {
   member_method {
     name: "convert_variables_to_constants"
-    argspec: "args=[\'sess\', \'input_graph_def\', \'output_node_names\', \'variable_names_whitelist\', \'variable_names_blacklist\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'sess\', \'input_graph_def\', \'output_node_names\', \'variable_names_whitelist\', \'variable_names_blacklist\', \'check_and_revert_if_type_mismatch\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\'], "
   }
   member_method {
     name: "extract_sub_graph"
