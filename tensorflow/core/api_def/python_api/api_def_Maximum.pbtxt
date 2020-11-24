@@ -14,7 +14,5 @@ Example:
 >>> tf.math.maximum(x, y)
 <tf.Tensor: shape=(4,), dtype=float32, numpy=array([0., 0., 2., 5.], dtype=float32)>
 
-The reduction version of this elementwise operation is `tf.math.reduce_max`
-
 END
 }
