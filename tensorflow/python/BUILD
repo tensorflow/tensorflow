@@ -6841,7 +6841,10 @@ tf_py_test(
     size = "small",
     srcs = ["ops/dequantize_op_test.py"],
     python_version = "PY3",
-    tags = ["no_windows"],
+    tags = [
+        "no_tfrt",  # TODO(b/169901260)
+        "no_windows",
+    ],
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -6855,7 +6858,10 @@ tf_py_test(
     size = "small",
     srcs = ["ops/quantized_ops_test.py"],
     python_version = "PY3",
-    tags = ["no_windows"],
+    tags = [
+        "no_tfrt",  # TODO(b/169901260)
+        "no_windows",
+    ],
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -6869,7 +6875,10 @@ tf_py_test(
     size = "small",
     srcs = ["ops/quantized_conv_ops_test.py"],
     python_version = "PY3",
-    tags = ["no_windows"],
+    tags = [
+        "no_tfrt",  # TODO(b/169901260)
+        "no_windows",
+    ],
     deps = [
         ":client_testlib",
         ":framework_for_generated_wrappers",
