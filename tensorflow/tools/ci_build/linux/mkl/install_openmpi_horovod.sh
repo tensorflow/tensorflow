@@ -25,6 +25,7 @@ OPENMPI_DOWNLOAD_URL=${OPENMPI_DOWNLOAD_URL:-https://www.open-mpi.org/software/o
 INSTALL_HOROVOD_FROM_COMMIT=${INSTALL_HOROVOD_FROM_COMMIT:-no}
 BUILD_SSH=${BUILD_SSH:-no}
 HOROVOD_VERSION=${HOROVOD_VERSION:-0.19.1}
+SSH_CONFIG_PATH=/etc/ssh/ssh_config
 
 # Install Open MPI
 echo "Installing OpenMPI version ${OPENMPI_VERSION} ..."
@@ -69,11 +70,8 @@ if [[ ${BUILD_SSH} == "yes" ]]; then
 		make install
 	apt-get clean && apt-get update && \
 	    apt-get install -y --no-install-recommends --fix-missing \
-	        libnuma-dev cmake 
-	grep -v StrictHostKeyChecking /usr/local/etc/ssh_config > /usr/local/etc/ssh_config.new
-        # Allow OpenSSH to talk to containers without asking for confirmation
-        echo " StrictHostKeyChecking no" >> /usr/local/etc/ssh_config.new
-        mv /usr/local/etc/ssh_config.new /usr/local/etc/ssh_config
+	        libnuma-dev cmake
+        SSH_CONFIG_PATH=/usr/loca/etc/ssh_config
 else
 	apt-get clean && apt-get update && \
 	    apt-get install -y --no-install-recommends --fix-missing \
@@ -90,12 +88,12 @@ else
 	        echo "Unsupported Linux distribution. Aborting!" && exit 1
 	    fi
 	fi
-	grep -v StrictHostKeyChecking /etc/ssh/ssh_config > /etc/ssh/ssh_config.new
-        # Allow OpenSSH to talk to containers without asking for confirmation
-        echo " StrictHostKeyChecking no" >> /etc/ssh/ssh_config.new
-        mv /etc/ssh/ssh_config.new /etc/ssh/ssh_config
 fi
 mkdir -p /var/run/sshd
+grep -v StrictHostKeyChecking ${SSH_CONFIG_PATH} > /etc/ssh/ssh_config.new
+# Allow OpenSSH to talk to containers without asking for confirmation
+echo " StrictHostKeyChecking no" >> /etc/ssh/ssh_config.new
+mv /etc/ssh/ssh_config.new ${SSH_CONFIG_PATH}
 
 # Install Horovod
 if [[ ${INSTALL_HOROVOD_FROM_COMMIT} == "yes" ]]; then

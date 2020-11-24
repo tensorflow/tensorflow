@@ -84,7 +84,7 @@ RUN if [ "${ENABLE_HOROVOD}" = "yes" ]; then \
         rm -rf install_openmpi_horovod.sh; \
     fi
 
-# Remove crypto python packages due to SWLC
+# Remove crypto python packages for software compliance check.
 RUN if [ "${RELEASE_CONTAINER}" = "yes" ]; then \
     ${PIP} uninstall --yes cryptography && \
     rm -rf /usr/lib/python3/dist-packages/pycrypto-2.6.1.egg-info; \

@@ -169,13 +169,9 @@ function build_container()
   fi
 
   # Add build arg GCC8 install
-  if [[ ${ENABLE_GCC8} == "yes" ]]; then
-    TF_DOCKER_BUILD_ARGS+=("--build-arg ENABLE_GCC8=${ENABLE_GCC8}")
-  fi
+  TF_DOCKER_BUILD_ARGS+=("--build-arg ENABLE_GCC8=${ENABLE_GCC8}")
 
-  if [[ ${RELEASE_CONTAINER} == "yes" ]]; then
-    TF_DOCKER_BUILD_ARGS+=("--build-arg RELEASE_CONTAINER=${RELEASE_CONTAINER}")
-  fi
+  TF_DOCKER_BUILD_ARGS+=("--build-arg RELEASE_CONTAINER=${RELEASE_CONTAINER}")
 
   # Perform docker build
   debug "Building docker image with image name and tag: ${TEMP_IMAGE_NAME}"
