@@ -1030,6 +1030,7 @@ cuda_py_test(
     name = "cross_device_ops_test",
     srcs = ["cross_device_ops_test.py"],
     python_version = "PY3",
+    shard_count = 2,
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
