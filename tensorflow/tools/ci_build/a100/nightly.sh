@@ -15,8 +15,7 @@
 # ==============================================================================
 set -e
 
-DEFAULT_BAZEL_TARGETS="//tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/mlir/tosa/... -//tensorflow/compiler/xrt/... //tensorflow/compiler/mlir/lite/... -//tensorflow/lite/micro/examples/... -//tensorflow/core/tpu/..."
 
 docker pull tensorflow/tensorflow:devel-gpu
 docker run --gpus all -w /tensorflow_src -v $PWD:/mnt -e HOST_PERMS="$(id -u):$(id -g)" \
-    tensorflow/tensorflow:devel-gpu bash -c "git pull; bazel test --config=cuda -c opt --test_tag_filters=gpu,-no_gpu,-nogpu,-benchmark-test,-no_oss,-oss_serial,-v1only,-no_gpu_presubmit,-no_cuda11 -- ${DEFAULT_BAZEL_TARGETS} -//tensorflow/lite/..."
+    tensorflow/tensorflow:devel-gpu bash -c "git pull; bazel test --config=cuda -c opt --test_tag_filters=gpu,-no_gpu,-nogpu,-benchmark-test,-no_oss,-oss_serial,-v1only,-no_gpu_presubmit,-no_cuda11 -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/mlir/tosa/... -//tensorflow/compiler/xrt/... //tensorflow/compiler/mlir/lite/... -//tensorflow/lite/micro/examples/... -//tensorflow/core/tpu/... -//tensorflow/lite/..."
