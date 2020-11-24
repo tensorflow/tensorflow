@@ -174,12 +174,12 @@ provide the list of target architectures excluding `i386`.
 
 ```sh
 bazel build -c opt --config=ios --ios_multi_cpus=armv7,arm64,x86_64 \
-  //tensorflow/lite/experimental/ios:TensorFlowLiteSelectTfOps_framework
+  //tensorflow/lite/ios:TensorFlowLiteSelectTfOps_framework
 ```
 
-This will generate the framework under
-`bazel-bin/tensorflow/lite/experimental/ios/` directory. You can add this new
-framework to your Xcode project by following similar steps described under the
+This will generate the framework under `bazel-bin/tensorflow/lite/ios/`
+directory. You can add this new framework to your Xcode project by following
+similar steps described under the
 [Xcode project settings](./build_ios.md#modify_xcode_project_settings_directly)
 section in the iOS build guide.
 

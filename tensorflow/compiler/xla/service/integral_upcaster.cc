@@ -26,12 +26,14 @@ StatusOr<absl::optional<Shape>> MaybeInferShape(
     case HloOpcode::kDot:
       return ShapeInference::InferDotOpShape(
           instruction->operand(0)->shape(), instruction->operand(1)->shape(),
-          instruction->dot_dimension_numbers());
+          instruction->dot_dimension_numbers(),
+          /*preferred_element_type=*/absl::nullopt);
     case HloOpcode::kConvolution:
       return ShapeInference::InferConvolveShape(
           instruction->operand(0)->shape(), instruction->operand(1)->shape(),
           instruction->feature_group_count(), instruction->batch_group_count(),
-          instruction->window(), instruction->convolution_dimension_numbers());
+          instruction->window(), instruction->convolution_dimension_numbers(),
+          /*preferred_element_type=*/absl::nullopt);
     default:
       return absl::make_optional<Shape>();
   }

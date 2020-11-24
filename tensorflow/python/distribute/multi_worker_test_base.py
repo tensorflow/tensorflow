@@ -166,8 +166,8 @@ def create_in_process_cluster(num_workers,
 
   # The cluster may hang if workers don't have enough inter_op threads. See
   # b/172296720 for more details.
-  if multiprocessing.cpu_count() < num_workers + 1:
-    worker_config.inter_op_parallelism_threads = num_workers + 1
+  if multiprocessing.cpu_count() < 4:
+    worker_config.inter_op_parallelism_threads = 4
 
   # Enable collective ops which has no impact on non-collective ops.
   # TODO(yuefengz, tucker): removing this after we move the initialization of

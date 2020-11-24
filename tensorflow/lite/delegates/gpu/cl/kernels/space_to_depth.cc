@@ -19,15 +19,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
+#include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
 
 namespace tflite {
 namespace gpu {
 namespace cl {
 namespace {
 std::string GetSpaceToDepthCode(const OperationDef& op_def) {
-  std::string c = GetCommonDefines(op_def.precision);
+  std::string c;
   c += "__kernel void main_function(\n";
   c += "$0) {\n";
   if (op_def.IsBatchSupported()) {

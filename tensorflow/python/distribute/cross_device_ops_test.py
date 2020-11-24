@@ -107,7 +107,6 @@ def enable_collective_ops():
       protocol=cluster_resolver.rpc_layer)
   context.context().enable_collective_ops(server_def)
   # Recover default flag values.
-  cross_device_ops_lib.CollectiveAllReduce._limited_nccl = True
   cross_device_utils.CollectiveReplicaLauncher._prefer_scoped_allocator = True
   cross_device_utils.CollectiveReplicaLauncher._prefer_collective_v2 = True
   cross_device_utils.CollectiveReplicaLauncher._prefer_ordering_token = False
@@ -875,7 +874,6 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
   def testNcclOrdering(self, num_processes, required_gpus):
 
     def replica_fn():
-      cross_device_ops_lib.CollectiveAllReduce._limited_nccl = False
       cross_device_utils.CollectiveReplicaLauncher._prefer_collective_v2 = True
       cross_device_utils.CollectiveReplicaLauncher._prefer_ordering_token = True
       collective, devices, _ = self.make_collective(num_processes,

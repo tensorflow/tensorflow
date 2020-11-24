@@ -20,8 +20,8 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/kernels/conv_constants.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/conv_powervr.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/conv_weights_converter.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
+#include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 
 namespace tflite {
@@ -55,10 +55,10 @@ std::unique_ptr<GPUOperation> SelectConvolutionDynamicWeightsAdreno(
     const Convolution2DAttributes& attr, const BHWC& weights_shape,
     const BHWC& dst_shape, const GpuInfo& gpu_info,
     const OperationDef& op_def, ModelHints hints,
-    ConvWeightsDescription* weights_desc) {
+    WeightsDescription* weights_desc) {
   ConvPowerVR conv = CreateConvPowerVRDynamicWeights(
       gpu_info, op_def, attr, weights_shape, &dst_shape);
-  *weights_desc = conv.GetConvWeightsDescription();
+  *weights_desc = conv.GetWeightsDescription();
   return absl::make_unique<ConvPowerVR>(std::move(conv));
 }
 
@@ -113,17 +113,17 @@ std::unique_ptr<GPUOperation> SelectConvolutionDynamicWeightsMali(
     const Convolution2DAttributes& attr, const BHWC& weights_shape,
     const BHWC& dst_shape, const GpuInfo& gpu_info,
     const OperationDef& op_def, ModelHints hints,
-    ConvWeightsDescription* weights_desc) {
+    WeightsDescription* weights_desc) {
   if (op_def.src_tensors[0].storage_type == TensorStorageType::BUFFER &&
       IsConvBuffer1x1Supported(op_def, weights_shape, attr)) {
     ConvBuffer1x1 conv = CreateConvBuffer1x1DynamicWeights(
         gpu_info, op_def, attr, weights_shape, &dst_shape);
-    *weights_desc = conv.GetConvWeightsDescription();
+    *weights_desc = conv.GetWeightsDescription();
     return absl::make_unique<ConvBuffer1x1>(std::move(conv));
   } else {
     ConvPowerVR conv = CreateConvPowerVRDynamicWeights(
         gpu_info, op_def, attr, weights_shape, &dst_shape);
-    *weights_desc = conv.GetConvWeightsDescription();
+    *weights_desc = conv.GetWeightsDescription();
     return absl::make_unique<ConvPowerVR>(std::move(conv));
   }
 }
@@ -172,7 +172,7 @@ std::unique_ptr<GPUOperation> SelectConvolutionWithDynamicWeights(
     const Convolution2DAttributes& attr, const BHWC& weights_shape,
     const BHWC& dst_shape, const GpuInfo& gpu_info,
     const OperationDef& op_def, ModelHints hints,
-    ConvWeightsDescription* weights_desc) {
+    WeightsDescription* weights_desc) {
   if (gpu_info.IsAdreno()) {
     return SelectConvolutionDynamicWeightsAdreno(attr, weights_shape, dst_shape,
                                                  gpu_info, op_def, hints,
@@ -184,13 +184,13 @@ std::unique_ptr<GPUOperation> SelectConvolutionWithDynamicWeights(
   } else {
     ConvPowerVR conv = CreateConvPowerVRDynamicWeights(
         gpu_info, op_def, attr, weights_shape, &dst_shape);
-    *weights_desc = conv.GetConvWeightsDescription();
+    *weights_desc = conv.GetWeightsDescription();
     return absl::make_unique<ConvPowerVR>(std::move(conv));
   }
 }
 
 std::unique_ptr<GPUOperation> SelectConverterToConvWeights(
-    const ConvWeightsDescription& weights_desc, const OperationDef& op_def,
+    const WeightsDescription& weights_desc, const OperationDef& op_def,
     ModelHints hints) {
   ConverterToConvWeights converter =
       ConverterToConvWeights(op_def, weights_desc);

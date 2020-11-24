@@ -43,25 +43,27 @@ namespace gl {
 namespace {
 
 struct ExceedSizeChecker {
-  bool operator()(uint32_t v) const { return v > max_size; }
+  bool operator()(uint32_t v) const { return v > max_size.x; }
 
   bool operator()(const uint2& v) const {
-    return v.x > max_size || v.y > max_size;
+    return v.x > max_size.x || v.y > max_size.y;
   }
 
   bool operator()(const uint3& v) const {
-    return v.x > max_size || v.y > max_size || v.z > max_z_size;
+    return v.x > max_size.x || v.y > max_size.y || v.z > max_z_size;
   }
 
-  int max_size;
+  int2 max_size;
   int max_z_size;
 };
 
 // Returns true if any size variable exceeds the given limit
 bool ExceedsMaxSize(const Object& object, const GpuInfo& gpu_info) {
-  return absl::visit(ExceedSizeChecker{gpu_info.max_texture_size,
-                                       gpu_info.max_array_texture_layers},
-                     object.size);
+  ExceedSizeChecker size_checker;
+  size_checker.max_size =
+      int2(gpu_info.GetMaxImage2DWidth(), gpu_info.GetMaxImage2DHeight());
+  size_checker.max_z_size = gpu_info.GetMaxImage2DArrayLayers();
+  return absl::visit(size_checker, object.size);
 }
 
 ObjectType ChooseFastestObjectType(const GpuInfo& gpu_info) {

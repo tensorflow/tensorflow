@@ -262,6 +262,13 @@ func @equal_unranked(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>) -> tensor<*xi1>
   return %0: tensor<*xi1>
 }
 
+// CHECK-LABEL: func @equal_unsupported_type
+func @equal_unsupported_type(%arg0: tensor<*x!tf.string>, %arg1: tensor<*x!tf.string>) -> tensor<*xi1> {
+  // CHECK: "tf.Equal"
+  %0 = "tf.Equal"(%arg0, %arg1) { incompatible_shape_error = false } : (tensor<*x!tf.string>, tensor<*x!tf.string>) -> tensor<*xi1>
+  return %0: tensor<*xi1>
+}
+
 // CHECK-LABEL: func @notequal
 func @notequal(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
   // CHECK-NEXT:  "mhlo.compare"(%arg0, %arg1) {comparison_direction = "NE"}

@@ -18,9 +18,8 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
 
 namespace tflite {
 namespace gpu {
@@ -66,7 +65,7 @@ std::string DepthwiseConv3x3::GenerateDepthwiseConvCode(
   const bool manual_clamp = src_tensor_type == TensorStorageType::BUFFER ||
                             src_tensor_type == TensorStorageType::IMAGE_BUFFER;
 
-  std::string c = GetCommonDefines(op_def.precision);
+  std::string c;
   if (local_mem_uploads) {
     c += "__attribute__((reqd_work_group_size(8, 4, 1)))\n";
   }

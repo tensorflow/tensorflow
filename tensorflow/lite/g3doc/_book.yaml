@@ -42,7 +42,7 @@ upper_tabs:
       - heading: "Text"
       - title: "Text classification with Model Maker"
         path: /lite/tutorials/model_maker_text_classification
-      - title: "Question Answer with Model Maker"
+      - title: "BERT Question Answer with Model Maker"
         path: /lite/tutorials/model_maker_question_answer
 
       - heading: "Microcontrollers"
@@ -215,7 +215,7 @@ upper_tabs:
       - title: "Style transfer"
         path: /lite/models/style_transfer/overview
       - heading: "Text"
-      - title: "Question and answer"
+      - title: "BERT Question Answer"
         path: /lite/models/bert_qa/overview
       - title: "Smart reply"
         path: /lite/models/smart_reply/overview

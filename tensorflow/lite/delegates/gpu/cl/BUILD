@@ -99,13 +99,13 @@ cc_library(
     deps = [
         ":buffer",
         ":cl_context",
-        ":device_info",
         ":gpu_object",
         ":linear_storage",
         ":tensor",
         ":texture2d",
         "//tensorflow/lite/delegates/gpu/common:access_type",
         "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:gpu_info",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
@@ -126,8 +126,8 @@ cc_test(
     deps = [
         ":buffer",
         ":cl_arguments",
-        ":device_info",
         ":gpu_object",
+        "//tensorflow/lite/delegates/gpu/common:gpu_info",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
@@ -171,9 +171,9 @@ cc_library(
     srcs = ["cl_device.cc"],
     hdrs = ["cl_device.h"],
     deps = [
-        ":device_info",
         ":opencl_wrapper",
         ":util",
+        "//tensorflow/lite/delegates/gpu/common:gpu_info",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
         "@com_google_absl//absl/strings",
@@ -247,8 +247,8 @@ cc_library(
         ":cl_kernel",
         ":program_cache",
         ":tensor",
-        "//tensorflow/lite/delegates/gpu/cl/kernels:gpu_operation",
         "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
     ],
 )
 
@@ -277,16 +277,6 @@ flatbuffer_cc_library(
 )
 
 cc_library(
-    name = "device_info",
-    srcs = ["device_info.cc"],
-    hdrs = ["device_info.h"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu/common:data_type",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
     name = "egl_sync",
     srcs = ["egl_sync.cc"],
     hdrs = ["egl_sync.h"],
@@ -307,11 +297,11 @@ cc_library(
         ":cl_command_queue",
         ":cl_context",
         ":cl_device",
-        ":device_info",
         ":program_cache",
         ":tensor",
         ":util",
         "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:gpu_info",
         "//tensorflow/lite/delegates/gpu/common:precision",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:status",
@@ -406,7 +396,6 @@ cc_library(
         ":serialization_cc_fbs",
         ":storage_type_util",
         ":tensor",
-        "//tensorflow/lite/delegates/gpu/cl/kernels:gpu_operation",
         "//tensorflow/lite/delegates/gpu/cl/selectors:operation_selector",
         "//tensorflow/lite/delegates/gpu/cl/selectors:special_selector",
         "//tensorflow/lite/delegates/gpu/common:data_type",
@@ -424,6 +413,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/task:arguments",
         "//tensorflow/lite/delegates/gpu/common/task:buffer_desc",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_object_desc",
+        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
         "//tensorflow/lite/delegates/gpu/common/task:tensor_linear_desc",
         "//tensorflow/lite/delegates/gpu/common/task:texture2d_desc",
@@ -509,8 +499,8 @@ cc_library(
     srcs = ["storage_type_util.cc"],
     hdrs = ["storage_type_util.h"],
     deps = [
-        ":device_info",
         "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:gpu_info",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",

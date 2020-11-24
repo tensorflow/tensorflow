@@ -61,6 +61,7 @@ limitations under the License.
 // PLATFORM_GOOGLE, IS_MOBILE_PLATFORM, etc.
 #if defined(PLATFORM_GOOGLE) && !defined(LIBTPU_ON_GCE)
 #include "tensorflow/core/tfrt/eager/c_api_tfrt.h"
+#include "tensorflow/core/tfrt/eager/c_api_tfrt_distributed.h"
 #endif  // PLATFORM_GOOGLE && !LIBTPU_ON_GCE
 
 #if !defined(IS_MOBILE_PLATFORM)
@@ -101,7 +102,14 @@ void TFE_DeleteContextOptions(TFE_ContextOptions* options) { delete options; }
 TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
   if (opts->use_tfrt) {
 #if defined(PLATFORM_GOOGLE) && !defined(LIBTPU_ON_GCE)
-    return tensorflow::wrap(new tfrt::tf::ContextInterface(opts->async));
+    tfrt::tf::ContextInterface* tfrt_context =
+        new tfrt::tf::ContextInterface(opts->async);
+#if !defined(IS_MOBILE_PLATFORM)
+    tfrt_context->SetDistributedManager(
+        std::make_unique<tfrt::tf::DistributedManagerContextInterface>(
+            tfrt_context->GetCoreRuntime()->GetHostContext()));
+#endif  // !IS_MOBILE_PLATFORM
+    return tensorflow::wrap(tfrt_context);
 #else
     status->status = tensorflow::errors::Unimplemented("TFRT is not supported");
     return nullptr;

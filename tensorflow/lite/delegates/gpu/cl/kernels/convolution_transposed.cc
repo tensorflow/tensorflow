@@ -20,10 +20,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/substitute.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
 
 namespace tflite {
 namespace gpu {
@@ -132,7 +131,7 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
 
   const auto& src_def = op_def.src_tensors[0];
 
-  std::string c = GetCommonDefines(op_def.precision);
+  std::string c;
 
   for (int s = 0; s < block_size.w; ++s) {
     const std::string f0 =

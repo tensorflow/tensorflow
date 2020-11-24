@@ -224,7 +224,7 @@ class EqualityPat<Op FromOp, StrEnumAttrCase direction>
         (HLOClient_BroadcastCompareOp
          $l, $r, (BinBroadcastDimensions $l, $r), direction,
          (HLO_DEFAULT_COMPARISON_TYPE)),
-        [(AreBroadcastCompatible $l, $r)]>;
+        [(AreBroadcastCompatible $l, $r), (HLO_Tensor $l)]>;
 
 def : EqualityPat<TF_EqualOp, HLO_COMPARISON_DIRECTION_EQ>;
 def : EqualityPat<TF_NotEqualOp, HLO_COMPARISON_DIRECTION_NE>;

@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/util.h"
 
 namespace tflite {
 namespace gpu {
@@ -48,7 +48,7 @@ std::string Softmax1x1::GetSoftmaxKernelCode(const OperationDef& op_def) {
   args_.AddFloat("mask_w");
   args_.AddInt("slices_x32");
 
-  std::string c = GetCommonDefines(op_def.precision);
+  std::string c;
   c += "__kernel void main_function(\n";
   c += "$0) {\n";
   if (op_def.IsBatchSupported()) {

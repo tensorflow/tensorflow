@@ -55,8 +55,10 @@ filegroup(
             "unranked_op_gpu_imag.cc",
             "unranked_op_gpu_log.cc",
             "unranked_op_gpu_logical_not.cc",
+            "unranked_op_gpu_real.cc",
             "unranked_op_gpu_rsqrt.cc",
             "unranked_op_gpu_sign.cc",
+            "unranked_op_gpu_sin.cc",
             "unranked_op_gpu_sqrt.cc",
             "unranked_op_gpu_tanh.cc",
         ],
@@ -108,8 +110,10 @@ tf_kernel_library(
             ":imag_unranked_kernels",
             ":log_unranked_kernels",
             ":logical_not_unranked_kernels",
+            ":real_unranked_kernels",
             ":rsqrt_unranked_kernels",
             ":sign_unranked_kernels",
+            ":sin_unranked_kernels",
             ":sqrt_unranked_kernels",
             ":tanh_unranked_kernels",
             ":unranked_op_gpu_base",
@@ -270,6 +274,7 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "real",
+    generate_unranked = True,
     tile_size = "256",
     types = [
         "f32",
@@ -297,7 +302,7 @@ gen_kernel_library(
     name = "add_v2",
     generate_ranked = False,
     generate_unranked = True,
-    tile_size = "256",
+    tile_size = "256,1,1",
     types = [
         "f16",
         "f32",

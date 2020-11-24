@@ -33,11 +33,11 @@ bool CanCreateTensorWithShape(const GpuInfo& gpu_info, const BHWDC& shape,
           4 * (descriptor.data_type == DataType::FLOAT32 ? 4 : 2);
       const int buffer_size =
           shape.b * shape.w * shape.h * shape.d * slices * flt4_size;
-      return buffer_size <= gpu_info.buffer_max_size;
+      return buffer_size <= gpu_info.GetMaxBufferSize();
     }
     case TensorStorageType::IMAGE_BUFFER:
       return shape.b * shape.w * shape.h * shape.d * slices <=
-             gpu_info.image_buffer_max_size;
+             gpu_info.GetMaxImageBufferWidth();
     case TensorStorageType::TEXTURE_3D:
       if (gpu_info.opencl_info.cl_version < OpenClVersion::kCl1_2 &&
           slices == 1) {
@@ -45,26 +45,26 @@ bool CanCreateTensorWithShape(const GpuInfo& gpu_info, const BHWDC& shape,
         // depth = 1 by specification;
         return false;
       }
-      return shape.w * shape.b <= gpu_info.image3d_max_width &&
-             shape.h <= gpu_info.image3d_max_height &&
-             slices * shape.d <= gpu_info.image3d_max_depth;
+      return shape.w * shape.b <= gpu_info.GetMaxImage3DWidth() &&
+             shape.h <= gpu_info.GetMaxImage3DHeight() &&
+             slices * shape.d <= gpu_info.GetMaxImage3DDepth();
     case TensorStorageType::TEXTURE_ARRAY:
       // Bug on some Adreno. b/131099086
       if (slices == 1 && gpu_info.IsAdreno() &&
           !gpu_info.adreno_info.support_one_layer_texture_array) {
         return false;
       }
-      return shape.w * shape.b <= gpu_info.image2d_max_width &&
-             shape.h <= gpu_info.image2d_max_height &&
-             slices * shape.d <= gpu_info.image_array_max_layers;
+      return shape.w * shape.b <= gpu_info.GetMaxImage2DWidth() &&
+             shape.h <= gpu_info.GetMaxImage2DHeight() &&
+             slices * shape.d <= gpu_info.GetMaxImage2DArrayLayers();
     case TensorStorageType::TEXTURE_2D:
-      return shape.w * shape.b * shape.d <= gpu_info.image2d_max_width &&
-             shape.h * slices <= gpu_info.image2d_max_height;
+      return shape.w * shape.b * shape.d <= gpu_info.GetMaxImage2DWidth() &&
+             shape.h * slices <= gpu_info.GetMaxImage2DHeight();
     case TensorStorageType::SINGLE_TEXTURE_2D:
       return shape.c <= 4 &&
              gpu_info.SupportsFloatImage2D(descriptor.data_type, shape.c) &&
-             shape.w * shape.b * shape.d <= gpu_info.image2d_max_width &&
-             shape.h <= gpu_info.image2d_max_height;
+             shape.w * shape.b * shape.d <= gpu_info.GetMaxImage2DWidth() &&
+             shape.h <= gpu_info.GetMaxImage2DHeight();
     default:
       return false;
   }

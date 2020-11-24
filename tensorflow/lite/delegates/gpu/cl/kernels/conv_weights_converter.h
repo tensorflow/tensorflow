@@ -18,9 +18,9 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_kernel.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/conv_common.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
+#include "tensorflow/lite/delegates/gpu/common/task/weights_layout.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 
 namespace tflite {
@@ -30,7 +30,7 @@ namespace cl {
 class ConverterToConvWeights : public GPUOperation {
  public:
   ConverterToConvWeights(const OperationDef& definition,
-                         const ConvWeightsDescription& conv_weights_desc);
+                         const WeightsDescription& weights_desc);
   absl::Status BindArguments(ArgumentsBinder* args) override;
   int3 GetGridSize() const override;
 
@@ -42,10 +42,9 @@ class ConverterToConvWeights : public GPUOperation {
 
  private:
   std::string GetConverterToConvWeightsCode(
-      const OperationDef& op_def,
-      const ConvWeightsDescription& conv_weights_desc);
+      const OperationDef& op_def, const WeightsDescription& weights_desc);
 
-  ConvWeightsDescription conv_weights_desc_;
+  WeightsDescription weights_desc_;
 };
 
 // We expect src BHWC tensor and we assume that B is O, H = H, W = W, C is I
@@ -53,8 +52,7 @@ class ConverterToConvWeights : public GPUOperation {
 // dst.b * dst.h * dst.w * dst.c = AlignByN(src.b, 4) * src.h * src.w
 // AlignByN(src.c, 4)
 ConverterToConvWeights CreateConverterToConvWeights(
-    const OperationDef& definition,
-    const ConvWeightsDescription& conv_weights_desc);
+    const OperationDef& definition, const WeightsDescription& weights_desc);
 
 }  // namespace cl
 }  // namespace gpu
