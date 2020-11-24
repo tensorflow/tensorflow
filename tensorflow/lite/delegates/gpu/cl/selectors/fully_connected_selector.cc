@@ -16,11 +16,11 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/selectors/fully_connected_selector.h"
 
 #include "absl/memory/memory.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/conv_buffer_1x1.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/conv_powervr.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/fully_connected.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/conv_buffer_1x1.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/conv_powervr.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/fully_connected.h"
 
 namespace tflite {
 namespace gpu {

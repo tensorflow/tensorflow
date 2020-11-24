@@ -16,12 +16,12 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/selectors/convolution_transposed_selector.h"
 
 #include "absl/memory/memory.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/convolution_transposed.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/convolution_transposed_3x3.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/convolution_transposed_3x3_thin.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/convolution_transposed_4x4.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/convolution_transposed_thin.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/convolution_transposed.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/convolution_transposed_3x3.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/convolution_transposed_3x3_thin.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/convolution_transposed_4x4.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/convolution_transposed_thin.h"
 
 namespace tflite {
 namespace gpu {
