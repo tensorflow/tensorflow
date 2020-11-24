@@ -99,10 +99,49 @@ std::unique_ptr<GPUOperation> SelectConvolutionTransposed(
 std::unique_ptr<GPUOperation> SelectConvolutionTransposedWithDynamicWeights(
     const ConvolutionTransposedAttributes& attr, const GpuInfo& gpu_info,
     const OperationDef& op_def, WeightsDescription* weights_desc) {
-  ConvolutionTransposed conv =
-      CreateConvolutionTransposedDynamicWeights(gpu_info, op_def, attr);
-  *weights_desc = conv.GetWeightsDescription();
-  return absl::make_unique<ConvolutionTransposed>(std::move(conv));
+  if (gpu_info.IsAdreno()) {
+    if (IsConvolutionTransposed3x3ThinSupported(attr)) {
+      ConvolutionTransposed3x3Thin conv =
+          CreateConvolutionTransposed3x3ThinDynamicWeights(gpu_info, op_def,
+                                                           attr);
+      *weights_desc = conv.GetWeightsDescription();
+      return absl::make_unique<ConvolutionTransposed3x3Thin>(std::move(conv));
+    } else {
+      ConvolutionTransposed conv =
+          CreateConvolutionTransposedDynamicWeights(gpu_info, op_def, attr);
+      *weights_desc = conv.GetWeightsDescription();
+      return absl::make_unique<ConvolutionTransposed>(std::move(conv));
+    }
+  } else if (gpu_info.IsPowerVR() || gpu_info.IsAMD() || gpu_info.IsNvidia() ||
+             gpu_info.IsIntel()) {
+    if (IsConvolutionTransposed4x4Supported(op_def, attr)) {
+      ConvolutionTransposed4x4 conv =
+          CreateConvolutionTransposed4x4DynamicWeights(gpu_info, op_def, attr);
+      *weights_desc = conv.GetWeightsDescription();
+      return absl::make_unique<ConvolutionTransposed4x4>(std::move(conv));
+    } else if (IsConvolutionTransposed3x3ThinSupported(attr)) {
+      ConvolutionTransposed3x3Thin conv =
+          CreateConvolutionTransposed3x3ThinDynamicWeights(gpu_info, op_def,
+                                                           attr);
+      *weights_desc = conv.GetWeightsDescription();
+      return absl::make_unique<ConvolutionTransposed3x3Thin>(std::move(conv));
+    } else if (IsConvolutionTransposed3x3Supported(op_def, attr)) {
+      ConvolutionTransposed3x3 conv =
+          CreateConvolutionTransposed3x3DynamicWeights(gpu_info, op_def, attr);
+      *weights_desc = conv.GetWeightsDescription();
+      return absl::make_unique<ConvolutionTransposed3x3>(std::move(conv));
+    } else {
+      ConvolutionTransposed conv =
+          CreateConvolutionTransposedDynamicWeights(gpu_info, op_def, attr);
+      *weights_desc = conv.GetWeightsDescription();
+      return absl::make_unique<ConvolutionTransposed>(std::move(conv));
+    }
+  } else {
+    ConvolutionTransposed conv =
+        CreateConvolutionTransposedDynamicWeights(gpu_info, op_def, attr);
+    *weights_desc = conv.GetWeightsDescription();
+    return absl::make_unique<ConvolutionTransposed>(std::move(conv));
+  }
 }
 
 }  // namespace cl
