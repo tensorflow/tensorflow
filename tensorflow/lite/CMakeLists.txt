@@ -342,6 +342,12 @@ populate_tflite_source_vars("kernels/internal/reference/integer_ops"
 populate_tflite_source_vars("kernels/internal/reference/sparse_ops"
   TFLITE_KERNEL_INTERNAL_REF_SPARSE_OPS_SRCS
 )
+set(TFLITE_PROFILER_SRCS ${TFLITE_SOURCE_DIR}/profiling/platform_profiler.cc)
+if(CMAKE_SYSTEM_NAME MATCHES "Android")
+  list(APPEND TFLITE_PROFILER_SRCS
+    ${TFLITE_SOURCE_DIR}/profiling/atrace_profiler.cc
+  )
+endif()
 
 # Common include directories
 set(TFLITE_INCLUDE_DIRS
@@ -376,7 +382,7 @@ add_library(tensorflow-lite
   ${TFLITE_KERNEL_SRCS}
   ${TFLITE_NNAPI_SRCS}
   ${TFLITE_SRCS}
-  ${TFLITE_SOURCE_DIR}/profiling/platform_profiler.cc
+  ${TFLITE_PROFILER_SRCS}
   ${TFLITE_SOURCE_DIR}/schema/schema_utils.cc
   ${TFLITE_SOURCE_DIR}/tools/optimize/sparsity/format_converter.cc
 )
@@ -415,7 +421,6 @@ populate_source_vars("${TFLITE_SOURCE_DIR}/tools/benchmark"
 list(APPEND TFLITE_BENCHMARK_SRCS
   ${TF_SOURCE_DIR}/core/util/stats_calculator.cc
   ${TFLITE_SOURCE_DIR}/profiling/memory_info.cc
-  ${TFLITE_SOURCE_DIR}/profiling/platform_profiler.cc
   ${TFLITE_SOURCE_DIR}/profiling/profile_summarizer.cc
   ${TFLITE_SOURCE_DIR}/profiling/profile_summary_formatter.cc
   ${TFLITE_SOURCE_DIR}/profiling/time.cc
@@ -447,9 +452,6 @@ else()
 endif()  # TFLITE_ENABLE_XNNPACK
 
 if(CMAKE_SYSTEM_NAME MATCHES "Android")
-  list(APPEND TFLITE_BENCHMARK_SRCS
-    ${TFLITE_SOURCE_DIR}/profiling/atrace_profiler.cc
-  )
   if(_TFLITE_ENABLE_NNAPI)
     list(APPEND TFLITE_BENCHMARK_SRCS
       ${TFLITE_SOURCE_DIR}/tools/delegates/nnapi_delegate_provider.cc
