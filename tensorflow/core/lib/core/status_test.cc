@@ -175,33 +175,6 @@ TEST(StatusGroup, AggregateWithMultipleErrorStatus) {
                                 aborted.error_message()));
 }
 
-TEST(Status, InvalidPayloadGetsIgnored) {
-  Status s = Status();
-  s.SetPayload("Invalid", "Invalid Val");
-  ASSERT_EQ(s.GetPayload("Invalid"), tensorflow::StringPiece());
-  bool is_err_erased = s.ErasePayload("Invalid");
-  ASSERT_EQ(is_err_erased, false);
-}
-
-TEST(Status, SetPayloadSetsOrUpdatesIt) {
-  Status s(error::INTERNAL, "Error message");
-  s.SetPayload("Error key", "Original");
-  ASSERT_EQ(s.GetPayload("Error key"), tensorflow::StringPiece("Original"));
-  s.SetPayload("Error key", "Updated");
-  ASSERT_EQ(s.GetPayload("Error key"), tensorflow::StringPiece("Updated"));
-}
-
-TEST(Status, ErasePayloadRemovesIt) {
-  Status s(error::INTERNAL, "Error message");
-  s.SetPayload("Error key", "Original");
-
-  bool is_err_erased = s.ErasePayload("Error key");
-  ASSERT_EQ(is_err_erased, true);
-  is_err_erased = s.ErasePayload("Error key");
-  ASSERT_EQ(is_err_erased, false);
-  ASSERT_EQ(s.GetPayload("Error key"), tensorflow::StringPiece());
-}
-
 static void BM_TF_CHECK_OK(int iters) {
   tensorflow::Status s =
       (iters < 0) ? errors::InvalidArgument("Invalid") : Status::OK();

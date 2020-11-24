@@ -20,7 +20,6 @@ limitations under the License.
 #include <iosfwd>
 #include <memory>
 #include <string>
-#include <unordered_map>
 
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -116,24 +115,6 @@ class Status {
   // the floor.
   void IgnoreError() const;
 
-  // The Payload-related APIs are cloned from absl::Status.
-  //
-  // Returns the payload of a status given its unique `type_url` key, if
-  // present. Returns an empty StringPiece if the status is ok, or if the key is
-  // not present.
-  tensorflow::StringPiece GetPayload(tensorflow::StringPiece type_url) const;
-
-  // Sets the payload for a non-ok status using a `type_url` key, overwriting
-  // any existing payload for that `type_url`.
-  //
-  // NOTE: This function does nothing if the Status is ok.
-  void SetPayload(tensorflow::StringPiece type_url,
-                  tensorflow::StringPiece payload);
-
-  // Erases the payload corresponding to the `type_url` key.  Returns `true` if
-  // the payload was present.
-  bool ErasePayload(tensorflow::StringPiece type_url);
-
  private:
   static const std::string& empty_string();
   static const std::vector<StackFrame>& empty_stack_trace();
@@ -141,9 +122,7 @@ class Status {
     tensorflow::error::Code code;
     std::string msg;
     std::vector<StackFrame> stack_trace;
-    std::unordered_map<std::string, std::string> payloads;
   };
-
   // OK status has a `NULL` state_.  Otherwise, `state_` points to
   // a `State` structure containing the error code and message(s)
   std::unique_ptr<State> state_;
