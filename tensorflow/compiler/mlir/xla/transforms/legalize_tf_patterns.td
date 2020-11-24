@@ -586,6 +586,8 @@ foreach Mapping = [
                    [TF_ComplexAbsOp, HLO_AbsOp],
                    [TF_CosOp, HLO_CosOp],
                    [TF_ExpOp, HLO_ExpOp],
+                   [TF_ErfOp, HLOClient_ErfOp],
+                   [TF_ErfcOp, HLOClient_ErfcOp],
                    [TF_FloorOp, HLO_FloorOp],
                    [TF_ImagOp, HLO_ImagOp],
                    [TF_InvertOp, HLO_NotOp],
