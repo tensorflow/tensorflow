@@ -2722,18 +2722,11 @@ std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunkForMlirImpl(
 static void GetFusionOperandsAndOutputs(mlir::lmhlo::FusionOp fusion,
                                         std::vector<mlir::Value>* operands,
                                         std::vector<mlir::Value>* outputs) {
-  fusion.region().walk([&](mlir::TensorLoadOp load) {
-    CHECK(load.memref().getParentRegion() != &fusion.region())
-        << "TensorLoadOp shows should be only expected for accessing captured "
-           "memrefs.";
-    operands->push_back(load.memref());
-  });
-  fusion.region().walk([&](mlir::TensorStoreOp store) {
-    CHECK(store.memref().getParentRegion() != &fusion.region())
-        << "TensorStoreOp shows should be only expected for accessing captured "
-           "memrefs.";
-    outputs->push_back(store.memref());
-  });
+  auto input_buffers = fusion.getInputBuffers();
+  auto output_buffers = fusion.getOutputBuffers();
+
+  operands->assign(input_buffers.begin(), input_buffers.end());
+  outputs->assign(output_buffers.begin(), output_buffers.end());
 }
 
 StatusOr<std::unique_ptr<KernelThunk>>
@@ -4383,13 +4376,7 @@ bool IsInstructionSafeForShmemTranspose(mlir::Operation* op) {
 // that can make preloading the input tile unsafe.
 std::vector<int64> FilterInputsForShmemTranspose(mlir::lmhlo::FusionOp fusion,
                                                  std::vector<int64> input_ids) {
-  std::vector<mlir::Value> params;
-  fusion.region().walk([&](mlir::TensorLoadOp load) {
-    CHECK(load.memref().getParentRegion() != &fusion.region())
-        << "TensorLoadOp shows should be only expected for accessing captured "
-           "memrefs.";
-    params.push_back(load);
-  });
+  std::vector<mlir::Value> params = ToStdVector(fusion.getFusionParameters());
 
   std::vector<int64> filtered_input_ids;
   for (int64 input_id : input_ids) {
