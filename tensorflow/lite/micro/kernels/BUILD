@@ -108,6 +108,7 @@ cc_library(
         "shape.cc",
         "split.cc",
         "split_v.cc",
+        "squeeze.cc",
         "strided_slice.cc",
         "sub.cc",
         "tanh.cc",
@@ -727,6 +728,18 @@ tflite_micro_cc_test(
 cc_test(
     name = "shape_test",
     srcs = ["shape_test.cc"],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "squeeze_test",
+    srcs = ["squeeze_test.cc"],
     deps = [
         ":kernel_runner",
         "//tensorflow/lite/c:common",
