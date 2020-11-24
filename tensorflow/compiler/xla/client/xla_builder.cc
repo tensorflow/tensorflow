@@ -3324,6 +3324,14 @@ StatusOr<XlaComputation> XlaBuilder::BuildDynamicInferenceGraph(XlaOp root_op) {
       ShapeUtil::ChangeElementType(Shape(root->shape()), PRED).ToProto();
 
   std::vector<HloComputationProto> called_computatons;
+  auto operand_is_constant = [&](const HloInstructionProto* instr_proto,
+                                 int64 operand_index) -> StatusOr<bool> {
+    int64 operand_id = instr_proto->operand_ids(operand_index);
+    bool is_constant = true;
+    absl::flat_hash_set<int64> visited;
+    IsConstantVisitor(operand_id, &visited, &is_constant);
+    return is_constant;
+  };
   // Process instruction and copy it into the new graph. The new node in the new
   // graph with have id set to `id`.
   auto process_instruction = [&](const HloInstructionProto* instr_proto,
@@ -3352,11 +3360,6 @@ StatusOr<XlaComputation> XlaBuilder::BuildDynamicInferenceGraph(XlaOp root_op) {
     }
 
     if (!need_rewrite) {
-      if (opcode == HloOpcode::kCompare) {
-        CHECK(!instr_proto->comparison_type().empty());
-        new_instr->set_comparison_type(
-            ComparisonTypeToString(Comparison::DefaultComparisonType(PRED)));
-      }
       *new_instr->mutable_name() =
           GetFullName(instr_proto->opcode(), kNameSeparator, id);
       return Status::OK();
@@ -3413,10 +3416,26 @@ StatusOr<XlaComputation> XlaBuilder::BuildDynamicInferenceGraph(XlaOp root_op) {
         CHECK_EQ(instr_proto->operand_ids_size(), 2);
         *new_instr->mutable_opcode() = HloOpcodeString(HloOpcode::kOr);
         break;
-      case HloOpcode::kSelect:
+      case HloOpcode::kSelect: {
+        TF_ASSIGN_OR_RETURN(bool constant_predicate,
+                            operand_is_constant(instr_proto, 0));
+        if (!constant_predicate) {
+          // If the predicate operand is not constant, conservatively assume the
+          // entire result values are dynamic.
+          SetInstructionAsConstant(new_instr, id, new_shape, true);
+        }
         break;
-      case HloOpcode::kGather:
+      }
+      case HloOpcode::kGather: {
+        TF_ASSIGN_OR_RETURN(bool constant_indices,
+                            operand_is_constant(instr_proto, 1));
+        if (!constant_indices) {
+          // If the indices operand is not constant, conservatively assume the
+          // entire result values are dynamic.
+          SetInstructionAsConstant(new_instr, id, new_shape, true);
+        }
         break;
+      }
       case HloOpcode::kReduce: {
         int64 reducer_id = new_instr->called_computation_ids(0);
         called_computatons.push_back(
@@ -3517,9 +3536,29 @@ StatusOr<XlaComputation> XlaBuilder::BuildDynamicInferenceGraph(XlaOp root_op) {
     }
     TF_ASSIGN_OR_RETURN(HloOpcode opcode,
                         StringToHloOpcode(instr_proto->opcode()));
+    bool should_visit_operand = true;
+    if (opcode == HloOpcode::kGetDimensionSize) {
+      // We rewrite gte instructions into constants based on its operand shape
+      // so no need to visit their operands.
+      should_visit_operand = false;
+    }
+
+    if (opcode == HloOpcode::kSelect) {
+      TF_ASSIGN_OR_RETURN(bool constant_predicate,
+                          operand_is_constant(instr_proto, 0));
+      // If the predicate operand (first operand) is non-constant, we don't
+      // visit operands and we say the all result values are dynamic.
+      should_visit_operand = constant_predicate;
+    }
+    if (opcode == HloOpcode::kGather) {
+      TF_ASSIGN_OR_RETURN(bool constant_indices,
+                          operand_is_constant(instr_proto, 1));
+      // If the indices operand (second operand) is non-constant, we don't
+      // visit operands and we say the all result values are dynamic.
+      should_visit_operand = constant_indices;
+    }
     if (next_operand >= instr_proto->operand_ids_size() ||
-        opcode == HloOpcode::kGetDimensionSize ||
-        InstrIsSetBound(instr_proto)) {
+        !should_visit_operand || InstrIsSetBound(instr_proto)) {
       // No more operands to process, process self.
       int64 new_id = ++global_id;
       VLOG(3) << "new_id: " << new_id << "instr: " << instr_proto->name();
@@ -3528,18 +3567,18 @@ StatusOr<XlaComputation> XlaBuilder::BuildDynamicInferenceGraph(XlaOp root_op) {
       stacktop_id = new_id;
       seen[item_key] = stacktop_id;
       worklist.pop_back();
-      continue;
+    } else {
+      // Visit and process operand.
+      WorkItem next_item(instr_proto->operand_ids(next_operand), true);
+      if (opcode == HloOpcode::kSelect && next_operand == 0) {
+        next_item.need_rewrite = false;
+      }
+      if (opcode == HloOpcode::kGather && next_operand == 1) {
+        next_item.need_rewrite = false;
+      }
+      // Push next operand into worklist.
+      worklist.push_back(next_item);
     }
-
-    WorkItem next_item(instr_proto->operand_ids(next_operand), true);
-    if (opcode == HloOpcode::kSelect && next_operand == 0) {
-      next_item.need_rewrite = false;
-    }
-    if (opcode == HloOpcode::kGather && next_operand == 1) {
-      next_item.need_rewrite = false;
-    }
-    // Push next operand into worklist.
-    worklist.push_back(next_item);
   }
   TF_RET_CHECK(stacktop_id != -1);
   entry.set_root_id(stacktop_id);
