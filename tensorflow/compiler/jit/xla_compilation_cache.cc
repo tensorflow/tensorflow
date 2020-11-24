@@ -387,7 +387,7 @@ Status XlaCompilationCache::CompileAsynchronous(
     const std::function<Status(XlaCompiler* compiler,
                                const std::vector<XlaCompiler::Argument>& args,
                                XlaCompiler::CompilationResult*)>& compile_fn) {
-  entry->compile_state = CompileState::kCompiling; // still under caller's lock.
+  entry->compile_state = CompileState::kCompiling; // Still under caller's lock.
   {
     mutex_lock lock(async_compilation_.async_compilation_mu_);
     async_compilation_.num_ongoing_compilations++;
