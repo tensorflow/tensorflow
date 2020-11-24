@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
-#include "tensorflow/lite/micro/tools/make/downloads/flatbuffers/include/flatbuffers/flexbuffers.h"
+#include "flatbuffers/flexbuffers.h"
 
 namespace tflite {
 namespace ops {
@@ -97,7 +97,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   for (i = 1; i < node->inputs->size; ++i) {
     tensor = context->GetEvalTensor(context, node->inputs->data[i]);
     base_addrs[num_tensors] = reinterpret_cast<uint64_t>(tensor->data.uint8);
-    base_addrs_size[num_tensors] = tensor->dims->size;
+    size_t byte_size = 1;
+    for (int k = 0; k < tensor->dims->size; k++) {
+      byte_size = byte_size * tensor->dims->data[k];
+    }
+    base_addrs_size[num_tensors] = byte_size;
     num_tensors++;
   }
 
@@ -105,7 +109,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   for (i = 0; i < node->outputs->size; ++i) {
     tensor = context->GetEvalTensor(context, node->outputs->data[i]);
     base_addrs[num_tensors] = reinterpret_cast<uint64_t>(tensor->data.uint8);
-    base_addrs_size[num_tensors] = tensor->dims->size;
+    size_t byte_size = 1;
+    for (int k = 0; k < tensor->dims->size; k++) {
+      byte_size = byte_size * tensor->dims->data[k];
+    }
+    base_addrs_size[num_tensors] = byte_size;
     num_tensors++;
   }
 
