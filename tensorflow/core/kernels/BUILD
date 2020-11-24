@@ -83,7 +83,6 @@ package_group(
     packages = [
         "//tensorflow/...",
         "//tensorflow_text/...",
-        "//third_party/google_research/google_research/tf3d/...",
     ],
 )
 
