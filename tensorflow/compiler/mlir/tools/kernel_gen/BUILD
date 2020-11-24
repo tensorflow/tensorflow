@@ -72,6 +72,7 @@ cc_library(
         "@llvm-project//mlir:ShapeToStandard",
         "@llvm-project//mlir:ShapeTransforms",
         "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:StandardOpsTransforms",
         "@llvm-project//mlir:Transforms",
     ],
 )
