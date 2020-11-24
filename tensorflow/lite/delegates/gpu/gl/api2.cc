@@ -137,6 +137,11 @@ class DefaultTensorTie : public TensorTie {
       return absl::InvalidArgumentError("Given object is not valid");
     }
     external_obj_ = obj;
+    if (IsSameDef()) {
+      // Def matches the object, and internal / external defs match. This is a no-copy tie.
+      // Make the object manager aware of the external buffer
+      return MaybeAllocateNoCopyObject();
+    }
     return absl::OkStatus();
   }
 
@@ -172,7 +177,10 @@ class DefaultTensorTie : public TensorTie {
 
     if (external_def.user_provided) {
       if (is_same_def) {
-        return absl::OkStatus();
+        // Object WILL be provided by a user, and it matches the definition expected by
+        // runtime. Conversion is not needed, but we need to register a placeholder object
+        // for proper runtime initialization.
+        return MaybeAllocateNoCopyObject();
       }
       // Object is provided by a user, but runtime expects different object
       // type. Therefore, we have to allocate internal object and convert.
@@ -227,6 +235,38 @@ class DefaultTensorTie : public TensorTie {
         external_obj_ = OpenGlBuffer{external_ssbo_.id()};
         GlBuffer bbb;
         RETURN_IF_ERROR(WrapSSBO(OpenGlBuffer{external_ssbo_.id()}, &bbb));
+        break;
+      }
+      default:
+        return absl::InternalError("Unexpected object type");
+    }
+    return absl::OkStatus();
+  }
+
+
+  absl::Status MaybeAllocateNoCopyObject() {
+    if (!IsSameDef()) {
+      return absl::InvalidArgumentError("Trying to allocate no-copy object but defs don't match.");
+    }
+    const TensorObjectDef& d = def().external_def;
+    switch (d.object_def.object_type) {
+      case gpu::ObjectType::OPENGL_SSBO: {
+        auto ssbo = absl::get_if<OpenGlBuffer>(&external_obj_);
+        if (!ssbo) {
+          // Register a placeholder, external object was not set.
+          GlBuffer buffer = GlBuffer(GL_SHADER_STORAGE_BUFFER, 0, 0, 0, false);
+          RETURN_IF_ERROR(objects_->RegisterBuffer(def().id, std::move(buffer)));
+        } else {
+          auto old_obj = objects_->FindBuffer(def().id);
+          if (old_obj && old_obj->id() == ssbo->id) {
+            // Already registered
+          } else {
+            GlBuffer buffer;
+            RETURN_IF_ERROR(WrapSSBO(*ssbo, &buffer));
+            RETURN_IF_ERROR(objects_->RegisterBuffer(def().id, std::move(buffer)));
+            internal_obj_ = external_obj_;
+          }
+        }
         break;
       }
       default:

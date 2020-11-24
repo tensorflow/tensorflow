@@ -181,6 +181,37 @@ absl::Status MakeBindingFunc(const Object& object, uint32_t id,
   return absl::OkStatus();
 }
 
+// Like MakeBindingFunc, but defers the object lookup (and validation) to binding time.
+// This is needed for external objects, because the user-defined obj can change at any time through
+// InferenceRunner setters (e.g. SetInputObject). This is especially important when the tensor tie
+// does no conversion and we expect the tensor object to be provided by the user.
+absl::Status MakeDeferredBindingFunc(const Object& object, uint32_t id,
+                                     const ObjectManager& objects,
+                                     std::function<absl::Status()>* binding_func) {
+  switch (object.object_type) {
+    case ObjectType::BUFFER: {
+      if (!objects.FindBuffer(id)) {
+        return absl::NotFoundError(absl::StrCat("Buffer ", id, " is not found"));
+      }
+      break;
+    }
+    case ObjectType::TEXTURE: {
+      if (!objects.FindTexture(id)) {
+        return absl::NotFoundError(absl::StrCat("Texture ", id, " is not found"));
+      }
+      break;
+    }
+    case ObjectType::UNKNOWN:
+      return absl::InvalidArgumentError("Unknown object type");
+  }
+  *binding_func = [object, id, &objects]() {
+    std::function<absl::Status()> actual_binding_func;
+    RETURN_IF_ERROR(MakeBindingFunc(object, id, objects, &actual_binding_func));
+    return actual_binding_func();
+  };
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 Runtime::Runtime(const RuntimeOptions& options, const GpuInfo& gpu_info,
@@ -219,8 +250,8 @@ absl::Status Runtime::AddProgram(const GlShader& shader,
       // Reference object could be provided externally as a model input/output
       // but also for debugging purposes. Otherwise all references are collected
       // and allocated later.
-      absl::Status status = MakeBindingFunc(object, GetRef(object),
-                                            *external_objects_, &binding_func);
+      absl::Status status = MakeDeferredBindingFunc(object, GetRef(object),
+                                                    *external_objects_, &binding_func);
       if (!status.ok()) {
         if (absl::IsNotFound(status)) {
           program.refs.push_back(object);
