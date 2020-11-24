@@ -2894,6 +2894,9 @@ class MeanTensor(Metric):
   Args:
     name: (Optional) string name of the metric instance.
     dtype: (Optional) data type of the metric result.
+    shape: (Optional) A list of integers, a tuple of integers, or a 1-D Tensor
+      of type int32. If not specified, the shape is inferred from the values at
+      the first call of update_state.
 
   Standalone usage:
 
@@ -2906,14 +2909,24 @@ class MeanTensor(Metric):
   >>> m.update_state([12, 10, 8, 6], sample_weight= [0, 0.2, 0.5, 1])
   >>> m.result().numpy()
   array([2.       , 3.6363635, 4.8      , 5.3333335], dtype=float32)
+
+  >>> m = tf.keras.metrics.MeanTensor(dtype=tf.float64, shape=(1, 4))
+  >>> m.result().numpy()
+  array([[0., 0., 0., 0.]])
+  >>> m.update_state([[0, 1, 2, 3]])
+  >>> m.update_state([[4, 5, 6, 7]])
+  >>> m.result().numpy()
+  array([[2., 3., 4., 5.]])
   """
 
-  def __init__(self, name='mean_tensor', dtype=None):
+  def __init__(self, name='mean_tensor', dtype=None, shape=None):
     super(MeanTensor, self).__init__(name=name, dtype=dtype)
     self._shape = None
     self._total = None
     self._count = None
     self._built = False
+    if shape is not None:
+      self._build(shape)
 
   def _build(self, shape):
     self._shape = tensor_shape.TensorShape(shape)
