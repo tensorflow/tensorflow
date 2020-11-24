@@ -96,6 +96,26 @@ cc_library(
 )
 
 cc_library(
+    name = "ethosu",
+    srcs = select({
+        "//conditions:default": [
+            "ethosu.cc",
+        ],
+    }),
+    hdrs = ["ethosu.h"],
+    copts = micro_copts(),
+    visibility = [
+        # Kernel variants need to be visible to the examples and benchmarks.
+        ":micro",
+    ],
+    deps = [
+        "//tensorflow/lite/c:common",
+    ] + select({
+        "//conditions:default": [],
+    }),
+)
+
+cc_library(
     name = "micro_ops",
     srcs = [
         "activations.cc",
