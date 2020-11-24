@@ -60,7 +60,7 @@ class GpuUnaryOpTest : public OpsTestBase {
     NodeDefBuilder builder("some_name", op_name);
     builder.Input(FakeInput(DataTypeToEnum<T>::v()))
         .Attr("T", DataTypeToEnum<T>::v());
-    if (!std::is_same_v<OutT, T>) {
+    if (!std::is_same<OutT, T>::value) {
       builder.Attr("Tout", DataTypeToEnum<OutT>::v());
     }
     TF_ASSERT_OK(builder.Finalize(node_def()));
