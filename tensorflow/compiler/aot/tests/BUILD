@@ -115,8 +115,8 @@ genrule(
     # have control of the full GPU.
     cmd = "CUDA_VISIBLE_DEVICES='' " +
           "$(location :make_test_graphs) --out_dir $(@D)",
-    exec_tools = [":make_test_graphs"],
     tags = ["manual"],
+    tools = [":make_test_graphs"],
 )
 
 tf_library(
