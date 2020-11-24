@@ -189,7 +189,7 @@ inline int32_t MultiplyByQuantizedMultiplier(int64_t x,
 #ifdef USE_NEON
 // Round uses ARM's rounding shift right.
 inline int32x4x4_t MultiplyByQuantizedMultiplier4Rows(
-    int32x4x4_t input_val, int32 quantized_multiplier, int shift) {
+    int32x4x4_t input_val, int32_t quantized_multiplier, int shift) {
   const int left_shift = std::max(shift, 0);
   const int right_shift = std::min(shift, 0);
   int32x4x4_t result;
