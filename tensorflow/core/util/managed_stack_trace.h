@@ -24,9 +24,9 @@ namespace tensorflow {
 
 // Language agnostic stack trace class. It only saves an id, and language
 // clients are responsible for managing the actual stack trace objects.
-class AbstractStackTrace {
+class ManagedStackTrace {
  public:
-  AbstractStackTrace(int id, std::vector<StackFrame> (*to_stack_frames)(int))
+  ManagedStackTrace(int id, std::vector<StackFrame> (*to_stack_frames)(int))
       : id_(id), to_stack_frames_(to_stack_frames) {}
 
   // Returns stack trace as a vector of `StackFrame`s.
