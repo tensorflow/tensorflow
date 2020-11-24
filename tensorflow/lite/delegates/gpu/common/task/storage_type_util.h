@@ -13,17 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_STORAGE_TYPE_UTIL_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_CL_STORAGE_TYPE_UTIL_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_STORAGE_TYPE_UTIL_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_STORAGE_TYPE_UTIL_H_
 
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
+#include "tensorflow/lite/delegates/gpu/common/task/tensor_linear_desc.h"
 
 namespace tflite {
 namespace gpu {
-namespace cl {
 
 bool CanCreateTensorWithShape(const GpuInfo& gpu_info, const BHWDC& shape,
                               const TensorDescriptor& descriptor);
@@ -37,8 +37,10 @@ TensorStorageType SelectBestStorageType(const GpuInfo& gpu_info,
                                         const DataType& data_type,
                                         const Layout& layout);
 
-}  // namespace cl
+LinearStorageType DeduceLinearStorageType(
+    TensorStorageType tensor_storage_type);
+
 }  // namespace gpu
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_CL_STORAGE_TYPE_UTIL_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_STORAGE_TYPE_UTIL_H_

@@ -88,6 +88,20 @@ flatbuffer_cc_library(
 )
 
 cc_library(
+    name = "storage_type_util",
+    srcs = ["storage_type_util.cc"],
+    hdrs = ["storage_type_util.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:gpu_info",
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:util",
+        "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
+        "//tensorflow/lite/delegates/gpu/common/task:tensor_linear_desc",
+    ],
+)
+
+cc_library(
     name = "tensor_desc",
     srcs = ["tensor_desc.cc"],
     hdrs = ["tensor_desc.h"],

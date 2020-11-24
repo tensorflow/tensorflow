@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/cl/storage_type_util.h"
+#include "tensorflow/lite/delegates/gpu/common/task/storage_type_util.h"
 
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
@@ -22,7 +22,6 @@ limitations under the License.
 
 namespace tflite {
 namespace gpu {
-namespace cl {
 
 bool CanCreateTensorWithShape(const GpuInfo& gpu_info, const BHWDC& shape,
                               const TensorDescriptor& descriptor) {
@@ -133,6 +132,14 @@ TensorStorageType SelectBestStorageType(const GpuInfo& gpu_info,
   }
 }
 
-}  // namespace cl
+LinearStorageType DeduceLinearStorageType(
+    TensorStorageType tensor_storage_type) {
+  if (tensor_storage_type == TensorStorageType::BUFFER) {
+    return LinearStorageType::BUFFER;
+  } else {
+    return LinearStorageType::TEXTURE_2D;
+  }
+}
+
 }  // namespace gpu
 }  // namespace tflite
