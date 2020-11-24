@@ -213,6 +213,10 @@ typedef struct {
 typedef struct {
   bool adj_x;
   bool adj_y;
+  // Parameters for BatchMatMul version 4 or above.
+  // If set to true and the weights are quantized, then non constant inputs
+  // are quantized at evaluation time with asymmetric quantization.
+  bool asymmetric_quantize_inputs;
 } TfLiteBatchMatMulParams;
 
 typedef struct {
