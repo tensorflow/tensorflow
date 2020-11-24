@@ -31,5 +31,7 @@ If inputs are not tensors, they will be converted to tensors.  See
 >>> tf.math.minimum([-5], x)
 <tf.Tensor: shape=(1,), dtype=float32, numpy=array([-5.], dtype=float32)>
 
+The reduction version of this elementwise operation is `tf.math.reduce_min`
+
 END
 }

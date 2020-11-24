@@ -6,4 +6,22 @@ op {
   endpoint {
     name: "add"
   }
+  description: <<END
+Given two input tensors, the `tf.math.add` operation computes the sum for every element in the tensor.
+
+Both input and output have a range `(-inf, inf)`.
+
+Example:
+
+>>> x = tf.constant([0., 0., 0., 0.])
+>>> y = tf.constant([-2., 0., 2., 5.])
+>>> tf.math.add(x, y)
+<tf.Tensor: shape=(4,), dtype=float32, numpy=array([-2., 0., 2., 5.], dtype=float32)>
+
+The reduction version of this elementwise operation is `tf.math.reduce_sum`
+
+*NOTE*: `Add` supports broadcasting. `AddN` does not. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
+END
 }
