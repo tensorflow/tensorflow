@@ -24,6 +24,7 @@ import numpy as np
 from tensorflow import keras
 
 from tensorflow.core.framework import graph_pb2
+from tensorflow.lite.python import test_util as tflite_test_util
 from tensorflow.lite.python import tflite_convert
 from tensorflow.lite.python.convert import register_custom_opdefs
 from tensorflow.python import tf2
@@ -50,7 +51,10 @@ class TestModels(test_util.TensorFlowTestCase):
   def _getFilepath(self, filename):
     return os.path.join(self.get_temp_dir(), filename)
 
-  def _run(self, flags_str, should_succeed):
+  def _run(self,
+           flags_str,
+           should_succeed,
+           expected_ops_in_converted_model=None):
     output_file = os.path.join(self.get_temp_dir(), 'model.tflite')
     tflite_bin = resource_loader.get_path_to_datafile('tflite_convert')
     cmdline = '{0} --output_file={1} {2}'.format(tflite_bin, output_file,
@@ -61,6 +65,10 @@ class TestModels(test_util.TensorFlowTestCase):
       with gfile.Open(output_file, 'rb') as model_file:
         content = model_file.read()
       self.assertEqual(content is not None, should_succeed)
+      if expected_ops_in_converted_model:
+        op_set = tflite_test_util.get_ops_list(content)
+        for opname in expected_ops_in_converted_model:
+          self.assertIn(opname, op_set)
       os.remove(output_file)
     else:
       self.assertFalse(should_succeed)
@@ -83,10 +91,14 @@ class TestModels(test_util.TensorFlowTestCase):
 
 class TfLiteConvertV1Test(TestModels):
 
-  def _run(self, flags_str, should_succeed):
+  def _run(self,
+           flags_str,
+           should_succeed,
+           expected_ops_in_converted_model=None):
     if tf2.enabled():
       flags_str += ' --enable_v1_converter'
-    super(TfLiteConvertV1Test, self)._run(flags_str, should_succeed)
+    super(TfLiteConvertV1Test, self)._run(flags_str, should_succeed,
+                                          expected_ops_in_converted_model)
 
   def testFrozenGraphDef(self):
     with ops.Graph().as_default():
@@ -186,8 +198,8 @@ class TfLiteConvertV1Test(TestModels):
     # Define converter flags
     flags_str = ('--std_dev_values=128,128 --mean_values=128,128 '
                  '--graph_def_file={0} --input_arrays={1} '
-                 '--output_arrays={2}'.format(
-                     graph_def_file, 'inputA,inputB', 'output'))
+                 '--output_arrays={2}'.format(graph_def_file, 'inputA,inputB',
+                                              'output'))
 
     # Set inference_type UINT8 and (default) inference_input_type UINT8
     flags_str_1 = flags_str + ' --inference_type=UINT8'
@@ -213,9 +225,9 @@ class TfLiteConvertV1Test(TestModels):
     flags_str = '--saved_model_dir={}'.format(saved_model_dir)
     self._run(flags_str, should_succeed=True)
 
-  def _createSavedModelWithCustomOp(self):
+  def _createSavedModelWithCustomOp(self, opname='CustomAdd'):
     custom_opdefs_str = (
-        'name: \'CustomAdd\' input_arg: {name: \'Input1\' type: DT_FLOAT} '
+        'name: \'' + opname + '\' input_arg: {name: \'Input1\' type: DT_FLOAT} '
         'input_arg: {name: \'Input2\' type: DT_FLOAT} output_arg: {name: '
         '\'Output\' type: DT_FLOAT}')
 
@@ -231,10 +243,10 @@ class TfLiteConvertV1Test(TestModels):
 
         new_graph.CopyFrom(sess.graph_def)
 
-    # Rename Add op name to CustomAdd.
+    # Rename Add op name to opname.
     for node in new_graph.node:
       if node.op.startswith('Add'):
-        node.op = 'CustomAdd'
+        node.op = opname
         del node.attr['T']
 
     # Register custom op defs to import modified graph def.
@@ -264,7 +276,26 @@ class TfLiteConvertV1Test(TestModels):
         '--saved_model_dir={0} --custom_opdefs="{1}" --allow_custom_ops '
         '--experimental_new_converter'.format(saved_model_dir,
                                               custom_opdefs_str))
-    self._run(flags_str, should_succeed=True)
+    self._run(
+        flags_str,
+        should_succeed=True,
+        expected_ops_in_converted_model=['CustomAdd'])
+
+  def testSavedModelWithFlex(self):
+    saved_model_dir, custom_opdefs_str = self._createSavedModelWithCustomOp(
+        opname='CustomAdd2')
+
+    # Valid conversion. OpDef already registered.
+    flags_str = ('--saved_model_dir={0} --allow_custom_ops '
+                 '--custom_opdefs="{1}" '
+                 '--experimental_new_converter '
+                 '--experimental_select_user_tf_ops=CustomAdd2 '
+                 '--target_ops=TFLITE_BUILTINS,SELECT_TF_OPS'.format(
+                     saved_model_dir, custom_opdefs_str))
+    self._run(
+        flags_str,
+        should_succeed=True,
+        expected_ops_in_converted_model=['FlexCustomAdd2'])
 
   def testSavedModelWithInvalidCustomOpdefsFlag(self):
     saved_model_dir, _ = self._createSavedModelWithCustomOp()
@@ -393,7 +424,30 @@ class TfLiteConvertV1Test(TestModels):
     # Valid conversion.
     flags_str_final = ('{} --allow_custom_ops '
                        '--experimental_new_converter').format(flags_str)
-    self._run(flags_str_final, should_succeed=True)
+    self._run(
+        flags_str_final,
+        should_succeed=True,
+        expected_ops_in_converted_model=['TFLite_Detection_PostProcess'])
+
+  def testObjectDetectionMLIRWithFlex(self):
+    """Tests object detection model through MLIR converter."""
+    self._initObjectDetectionArgs()
+
+    flags_str = ('--graph_def_file={0} --input_arrays={1} '
+                 '--output_arrays={2} --input_shapes={3}'.format(
+                     self._graph_def_file, self._input_arrays,
+                     self._output_arrays, self._input_shapes))
+
+    # Valid conversion.
+    flags_str_final = (
+        '{} --allow_custom_ops '
+        '--experimental_new_converter '
+        '--experimental_select_user_tf_ops=TFLite_Detection_PostProcess '
+        '--target_ops=TFLITE_BUILTINS,SELECT_TF_OPS').format(flags_str)
+    self._run(
+        flags_str_final,
+        should_succeed=True,
+        expected_ops_in_converted_model=['FlexTFLite_Detection_PostProcess'])
 
 
 class TfLiteConvertV2Test(TestModels):

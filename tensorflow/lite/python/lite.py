@@ -165,15 +165,29 @@ class TargetSpec(object):
     supported_types: List of types for constant values on the target device.
       Frequently, an optimization choice is driven by the most compact
       (i.e. smallest) type in this list (default [tf.float32])
+    experimental_select_user_tf_ops: Experimental flag, subject to change. Set
+      of user's TensorFlow operators' names that are required in the TensorFlow
+      Lite runtime. These ops will be exported as select TensorFlow ops in the
+      model (in conjunction with the OpsSet.SELECT_TF_OPS flag). This is an
+      advanced feature that should only be used if the client is using TF ops
+      that may not be linked in by default with the TF ops that are provided
+      when using the SELECT_TF_OPS path. The client is responsible for linking
+      these ops into the target runtime.
+
   """
 
-  def __init__(self, supported_ops=None, supported_types=None):
+  def __init__(self,
+               supported_ops=None,
+               supported_types=None,
+               experimental_select_user_tf_ops=None):
     if supported_ops is None:
       supported_ops = set([OpsSet.TFLITE_BUILTINS])
     self.supported_ops = supported_ops
     if supported_types is None:
       supported_types = []
     self.supported_types = supported_types
+    if experimental_select_user_tf_ops is None:
+      self.experimental_select_user_tf_ops = []
 
 
 class QuantizationMode(object):
@@ -482,6 +496,7 @@ class TFLiteConverterBase(object):
         "debug_info": self._debug_info,
         "target_ops": self.target_spec.supported_ops,
         "enable_mlir_converter": self.experimental_new_converter,
+        "select_user_tf_ops": self.target_spec.experimental_select_user_tf_ops,
     }
 
     if self.saved_model_dir:
@@ -722,8 +737,7 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
       # TODO(b/162537905): Clean these indirect dependencies.
       self.saved_model_dir = None
       return super(TFLiteSavedModelConverterV2,
-                   self).convert(graph_def, input_tensors,
-                                 output_tensors)
+                   self).convert(graph_def, input_tensors, output_tensors)
 
     if self._trackable_obj is None:
       self._debug_info = _get_debug_info(
@@ -966,8 +980,9 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
       dataset to evaluate different optimizations. Note that this is an optional
       attribute but it is necessary if INT8 is the only support builtin ops in
       target ops.
-    target_spec: Experimental flag, subject to change. Specification of target
-      device.
+    target_spec: Experimental flag, subject to change. Specifications of target
+      device, including supported ops set, supported types and a set of user's
+      defined TensorFlow operators required in the TensorFlow Lite runtime.
     inference_input_type: Data type of the input layer. Note that integer types
       (tf.int8 and tf.uint8) are currently only supported for post training
       integer quantization and quantization aware training. (default tf.float32,
@@ -1686,8 +1701,9 @@ class TFLiteConverter(TFLiteFrozenGraphConverter):
     target_ops: Deprecated. Please specify `target_spec.supported_ops` instead.
       Set of OpsSet options indicating which converter to use. (default
       set([OpsSet.TFLITE_BUILTINS]))
-    target_spec: Experimental flag, subject to change. Specification of target
-      device.
+    target_spec: Experimental flag, subject to change. Specifications of target
+      device, including supported ops set, supported types and a set of user's
+      defined TensorFlow operators required in the TensorFlow Lite runtime.
     optimizations: Experimental flag, subject to change. A list of optimizations
       to apply when converting the model. E.g. `[Optimize.DEFAULT]`
     representative_dataset: A representative dataset that can be used to
