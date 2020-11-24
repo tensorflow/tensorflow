@@ -23,7 +23,7 @@ import time
 import numpy as np
 
 from tensorflow.core.framework import types_pb2
-from tensorflow.python.distribute import all_reduce as ar
+from tensorflow.python.distribute.v1 import all_reduce as ar
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
