@@ -15,9 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/kernels/resize.h"
 
-#include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
+#include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
 
 namespace tflite {
 namespace gpu {
@@ -56,7 +55,7 @@ std::string Resize::GetResizeCode(const OperationDef& op_def,
   args_.AddFloat("scale_factor_x");
   args_.AddFloat("scale_factor_y");
 
-  std::string c = GetCommonDefines(op_def.precision);
+  std::string c;
   c += "__kernel void main_function(\n";
   c += "$0) {\n";
   c += "  int Y = get_global_id(1);\n";
@@ -191,7 +190,7 @@ std::string Resize3D::GetResize3DCode(const OperationDef& op_def,
   args_.AddFloat("scale_factor_y");
   args_.AddFloat("scale_factor_z");
 
-  std::string c = GetCommonDefines(op_def.precision);
+  std::string c;
   c += "__kernel void main_function(\n";
   c += "$0) {\n";
   c += "  int Y = get_global_id(1);\n";

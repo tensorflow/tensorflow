@@ -18,9 +18,9 @@ limitations under the License.
 #include <set>
 #include <string>
 
-#include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/util.h"
+#include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 
 namespace tflite {
@@ -196,7 +196,7 @@ std::string Reduce::GetReduceKernelCode(const OperationDef& op_def,
     }
   };
 
-  std::string c = GetCommonDefines(op_def.precision);
+  std::string c;
   const std::string wg_x = std::to_string(work_group_size.x);
   const std::string wg_y = std::to_string(work_group_size.y);
   const std::string wg_z = std::to_string(work_group_size.z);

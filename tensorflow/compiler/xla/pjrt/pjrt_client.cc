@@ -188,7 +188,7 @@ PjRtClient::PjRtClient(
     std::unique_ptr<se::DeviceMemoryAllocator> allocator,
     std::unique_ptr<tensorflow::Allocator> host_memory_allocator,
     bool should_stage_host_to_device_transfers,
-    std::unique_ptr<GpuExecutableRunOptions> gpu_run_options)
+    std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options)
     : platform_id_(tensorflow::Fingerprint64(platform_name)),
       platform_name_(std::move(platform_name)),
       client_(client),

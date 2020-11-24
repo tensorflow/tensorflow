@@ -18,8 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/lite/delegates/gpu/cl/cl_program.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
+#include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
 
 namespace tflite {
 namespace gpu {
@@ -146,7 +145,7 @@ std::string MeanStdDevNormalization::GetNormalizationCode() {
   AddSrcTensor("src_tensor", definition_.src_tensors[0]);
   AddDstTensor("dst_tensor", definition_.dst_tensors[0]);
 
-  std::string c = GetCommonDefines(definition_.precision);
+  std::string c;
   c += GetVectorReduceCode();
   c += GetReduceCode();
   c += GetFilterCode();

@@ -342,8 +342,11 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
         conv_op.operation = SelectConvolutionTransposedWithDynamicWeights(
             attr, gpu_info, conv_def, &conv_weights_desc);
 
-        int aligned_output =
-            AlignByN(weights_shape.b, conv_weights_desc.output_group_size * 4);
+        const int out_group_size =
+            conv_weights_desc.layout == WeightsLayout::kOHWIOGroupI4O4
+                ? conv_weights_desc.output_group_size
+                : 1;
+        int aligned_output = AlignByN(weights_shape.b, out_group_size * 4);
         int aligned_input = AlignByN(weights_shape.c, 4);
         gpu_subgraph->new_tensors = {
             {BHWC(1, 1, 1,

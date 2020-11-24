@@ -68,7 +68,6 @@ typedef enum {
   kTfLiteActNone = 0,
   kTfLiteActRelu,
   kTfLiteActReluN1To1,                    // min(max(-1, x), 1)
-  kTfLiteActRelu1 = kTfLiteActReluN1To1,  // kTfLiteActRelu1 will be deprecated.
   kTfLiteActRelu6,                        // min(max(0, x), 6)
   kTfLiteActTanh,
   kTfLiteActSignBit,

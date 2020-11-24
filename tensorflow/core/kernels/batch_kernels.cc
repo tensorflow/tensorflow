@@ -14,8 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "absl/strings/str_cat.h"
-#include "tensorflow/core/common_runtime/device_mgr.h"
-#include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -189,7 +187,12 @@ class BatchFunctionKernel : public AsyncOpKernel {
                    c->GetAttr("max_enqueued_batches", &max_enqueued_batches_));
     OP_REQUIRES_OK(c, c->GetAttr("allowed_batch_sizes", &allowed_batch_sizes_));
 
-    OP_REQUIRES_OK(c, c->GetAttr("f", &func_));
+    auto lib = c->function_library();
+    OP_REQUIRES(c, lib != nullptr, errors::Internal("No function library"));
+    NameAttrList func;
+    OP_REQUIRES_OK(c, c->GetAttr("f", &func));
+    OP_REQUIRES_OK(
+        c, lib->Instantiate(func.name(), AttrSlice(&func.attr()), &fhandle_));
     if (num_batch_threads_ <= 0) {
       adaptive_batch_scheduler_options_ =
           absl::make_optional(AdaptiveBatchSchedulerOptions{
@@ -239,11 +242,8 @@ class BatchFunctionKernel : public AsyncOpKernel {
 
     std::function<Status(BatchResource**)> creator;
 
-    FunctionLibraryRuntime::Handle handle;
-    OP_REQUIRES_OK_ASYNC(c, GetOrCreateFunctionHandle(c, &handle), done);
-
     if (adaptive_batch_scheduler_options_ != absl::nullopt) {
-      creator = [this, handle](BatchResource** r) {
+      creator = [this](BatchResource** r) {
         serving::AdaptiveSharedBatchScheduler<
             serving::BatchResourceBase::BatchTask>::Options
             adaptive_shared_batch_scheduler_options;
@@ -274,16 +274,16 @@ class BatchFunctionKernel : public AsyncOpKernel {
         TF_RETURN_IF_ERROR(BatchResource::Create(
             adaptive_shared_batch_scheduler_options, max_batch_size_,
             batch_timeout_micros_, max_enqueued_batches_, allowed_batch_sizes_,
-            handle, &new_resource));
+            fhandle_, &new_resource));
         *r = new_resource.release();
         return Status::OK();
       };
     } else {
-      creator = [this, handle](BatchResource** r) {
+      creator = [this](BatchResource** r) {
         std::unique_ptr<BatchResource> new_resource;
         TF_RETURN_IF_ERROR(BatchResource::Create(
             num_batch_threads_, max_batch_size_, batch_timeout_micros_,
-            max_enqueued_batches_, allowed_batch_sizes_, handle,
+            max_enqueued_batches_, allowed_batch_sizes_, fhandle_,
             enable_large_batch_splitting_, &new_resource));
         *r = new_resource.release();
         return Status::OK();
@@ -300,75 +300,6 @@ class BatchFunctionKernel : public AsyncOpKernel {
     br->Unref();
     OP_REQUIRES_OK_ASYNC(c, status, done);
     // Assume br calls done, so nothing to do here.
-  }
-
-  Status InstantiateFunction(OpKernelContext* c,
-                             FunctionLibraryRuntime::Handle* handle) const {
-    // TODO(b/173748062): Merge this instantiation logic with PartitionedCall.
-    FunctionLibraryRuntime* lib = c->function_library();
-    if (!lib) {
-      return errors::Internal("No function library");
-    }
-
-    FunctionLibraryRuntime::InstantiateOptions opts;
-    opts.target = lib->device() == nullptr ? "" : lib->device()->name();
-    opts.is_multi_device_function = true;
-
-    Device* cpu_device;
-    TF_RETURN_IF_ERROR(lib->device_mgr()->LookupDevice("CPU:0", &cpu_device));
-
-    const FunctionDef* fdef =
-        lib->GetFunctionLibraryDefinition()->Find(func_.name());
-    if (!fdef) {
-      return errors::NotFound("Failed to find definition for function \"",
-                              func_.name(), "\"");
-    }
-    OpInputList in_tensors;
-    TF_RETURN_IF_ERROR(c->input_list("in_tensors", &in_tensors));
-    for (int i = 0; i < in_tensors.size(); i++) {
-      if (in_tensors[i].dtype() == DT_RESOURCE) {
-        return errors::InvalidArgument(
-            "BatchFunction cannot take resource inputs but input ", i,
-            " is a resource.");
-      } else {
-        // Currently, inputs are on CPU since they are concatenated on CPU
-        opts.input_devices.push_back(cpu_device->name());
-      }
-    }
-    OpInputList captured_tensors;
-    TF_RETURN_IF_ERROR(c->input_list("captured_tensors", &captured_tensors));
-    for (const Tensor& t : captured_tensors) {
-      if (t.dtype() == DT_RESOURCE) {
-        const ResourceHandle& rhandle = t.flat<ResourceHandle>()(0);
-        opts.input_devices.push_back(rhandle.device());
-      } else {
-        opts.input_devices.push_back(cpu_device->name());
-      }
-    }
-    const OpDef& signature = fdef->signature();
-    for (int i = 0; i < signature.output_arg_size(); i++) {
-      // Currently, outputs must be on CPU since they are split on CPU.
-      opts.output_devices.push_back(cpu_device->name());
-    }
-    if (opts.input_devices.size() != signature.input_arg_size()) {
-      return errors::InvalidArgument(
-          "Function takes ", signature.input_arg_size(), " argument(s) but ",
-          opts.input_devices.size(), " argument(s) were passed");
-    }
-    return lib->Instantiate(func_.name(), AttrSlice(&func_.attr()), opts,
-                            handle);
-  }
-
-  Status GetOrCreateFunctionHandle(OpKernelContext* c,
-                                   FunctionLibraryRuntime::Handle* handle) {
-    mutex_lock ml(mu_);
-    if (!fhandle_) {
-      TF_RETURN_IF_ERROR(InstantiateFunction(c, handle));
-      fhandle_ = *handle;
-    } else {
-      *handle = fhandle_.value();
-    }
-    return Status::OK();
   }
 
   // Validates 'allowed_batch_sizes_'. The entries must increase monotonically,
@@ -406,11 +337,9 @@ class BatchFunctionKernel : public AsyncOpKernel {
   int32 batch_timeout_micros_;
   int32 max_enqueued_batches_;
   std::vector<int32> allowed_batch_sizes_;
-  NameAttrList func_;
-  absl::optional<FunctionLibraryRuntime::Handle> fhandle_ TF_GUARDED_BY(mu_);
+  FunctionLibraryRuntime::Handle fhandle_;
   bool enable_large_batch_splitting_;
   bool has_attribute_enable_large_batch_splitting_;
-  mutex mu_;
 
   // Parameters for adaptive batch scheduler only.
   // Note 'num_batch_threads_' above is shared by two implementations of batch
@@ -425,14 +354,6 @@ class BatchFunctionKernel : public AsyncOpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(Name("BatchFunction").Device(DEVICE_CPU),
-                        BatchFunctionKernel);
-// Currently all inputs and outputs are on the host.
-// TODO(b/173748277): Accept inputs/outputs on the device.
-REGISTER_KERNEL_BUILDER(Name("BatchFunction")
-                            .Device(DEVICE_GPU)
-                            .HostMemory("in_tensors")
-                            .HostMemory("captured_tensors")
-                            .HostMemory("out_tensors"),
                         BatchFunctionKernel);
 
 class BatchKernel : public AsyncOpKernel {

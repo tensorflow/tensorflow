@@ -1,5 +1,6 @@
 load("//tensorflow/lite:build_def.bzl", "tf_to_tflite")
-load("//tensorflow:tensorflow.bzl", "pybind_extension")
+load("//tensorflow:tensorflow.bzl", "pybind_extension", "tf_custom_op_py_library")
+load("//tensorflow:tensorflow.bzl", "tf_custom_op_library", "tf_gen_op_wrapper_py")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -83,6 +84,39 @@ cc_binary(
     linkstatic = 1,
     deps = [
         ":test_delegate",
+    ],
+)
+
+cc_library(
+    name = "double_op_and_kernels",
+    srcs = ["double_op.cc"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+    alwayslink = 1,
+)
+
+tf_custom_op_library(
+    name = "_double_op.so",
+    srcs = ["double_op.cc"],
+)
+
+tf_gen_op_wrapper_py(
+    name = "gen_double_op_wrapper",
+    out = "double_op_wrapper.py",
+    deps = [":double_op_and_kernels"],
+)
+
+tf_custom_op_py_library(
+    name = "double_op",
+    srcs = ["double_op.py"],
+    dso = [":_double_op.so"],
+    kernels = [":double_op_and_kernels"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":gen_double_op_wrapper",
+        "//tensorflow/python:framework_for_generated_wrappers",
     ],
 )
 

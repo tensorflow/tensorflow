@@ -19,8 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
+#include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
 
 namespace tflite {
 namespace gpu {
@@ -64,7 +63,7 @@ std::string ConvolutionTransposed3x3Thin::GenerateConvolutionTransposedCode(
 
   const auto src_tensor_type = op_def.src_tensors[0].storage_type;
 
-  std::string c = GetCommonDefines(op_def.precision);
+  std::string c;
 
   switch (op_def.precision) {
     case CalculationsPrecision::F32:

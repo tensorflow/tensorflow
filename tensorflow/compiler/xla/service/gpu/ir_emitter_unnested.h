@@ -168,6 +168,9 @@ class IrEmitterUnnested : public IrEmitter,
   Status HandleConditional(HloInstruction* conditional) override;
   Status HandleConvolution(HloInstruction* convolution) override;
   Status HandleCustomCall(HloInstruction* custom_call) override;
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
+  Status EmitCholeskyThunkFromMlir(MlirEmitterInput input);
+#endif  // (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
   Status HandleFft(HloInstruction* fft) override;
   Status HandleFusion(HloInstruction* fusion) override;
   Status EmitLoopFusionFromMlir(MlirEmitterInput input,
@@ -260,7 +263,6 @@ class IrEmitterUnnested : public IrEmitter,
   //   return;
   // }
   //   ```
-  Status HandlePadToStatic(HloInstruction* pad_to_static);
   Status EmitPadToStaticFromMlir(MlirEmitterInput mlir_input);
 
   // Input = {dynamic array(with dynamic dimension meta data at the end)}
@@ -307,7 +309,6 @@ class IrEmitterUnnested : public IrEmitter,
   //   return;
   // }
   //   ```
-  Status HandleSliceToDynamic(HloInstruction* slice_to_dynamic);
   Status EmitSliceToDynamicFromMlir(MlirEmitterInput mlir_input);
 
   // A convenient helper for calling BufferAssignment::GetUniqueSlice.

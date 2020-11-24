@@ -40,10 +40,17 @@ inline void DCheckPyGilStateForStackTrace() {
 #endif
 }
 
+// Maps filename/line_no combination into a stack frame.
+using StackTraceMapper =
+    std::function<absl::optional<StackFrame>(std::string, int)>;
+
+// Returns "true" for filenames which should be skipped.
+using StackTraceFilter = std::function<bool(std::string)>;
+
 // A class for capturing Python stack trace.
 class StackTrace final {
  public:
-  static constexpr int kDefaultStackTraceInitialSize = 10;
+  static constexpr int kStackTraceInitialSize = 10;
 
   StackTrace() {}
 
@@ -93,11 +100,16 @@ class StackTrace final {
   }
 
   // Returns a structured representation of the captured stack trace.
-  std::vector<StackFrame> ToStackFrames() const;
+  // `mapper` provides a custom mapping for translating stack frames, `filter`
+  // returns `true` for the stack frames which should be omitted, and if
+  // `drop_last` is set, the last stack frame is dropped.
+  std::vector<StackFrame> ToStackFrames(
+      const StackTraceMapper& mapper = {},
+      const StackTraceFilter& filtered = {}) const;
 
  private:
-  absl::InlinedVector<PyCodeObject*, kDefaultStackTraceInitialSize> code_objs_;
-  absl::InlinedVector<int, kDefaultStackTraceInitialSize> last_instructions_;
+  absl::InlinedVector<PyCodeObject*, kStackTraceInitialSize> code_objs_;
+  absl::InlinedVector<int, kStackTraceInitialSize> last_instructions_;
 
   // Python GIL must be acquired beforehand.
   ABSL_ATTRIBUTE_HOT

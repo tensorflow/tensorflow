@@ -41,6 +41,7 @@ const char kAttrSrcDevice[] = "send_device";
 const char kAttrDstDevice[] = "recv_device";
 const char kAttrTensorName[] = "tensor_name";
 const char kChannelDevice[] = "Channel";
+const char kStreaming[] = "_streaming";
 
 namespace {
 
@@ -109,14 +110,10 @@ void UpdateDeviceAnnotationState(const NodeDef* node,
       (execution_count > 1 && node->attr().count(kOutputSame) == 0) ? 1 : 0;
 }
 
-bool IsStreamingNode(const NodeDef& node) {
-  return node.attr().contains("_streaming");
-}
-
 bool IsStreamingPort(const NodeDef& node, const int port) {
-  if (!IsStreamingNode(node)) return false;
+  if (!node.attr().contains(kStreaming)) return false;
 
-  auto& attr_list = node.attr().at("_streaming").list();
+  auto& attr_list = node.attr().at(kStreaming).list();
   bool is_streaming_port = false;
   if (port >= 0 && port < attr_list.b().size()) {
     is_streaming_port = attr_list.b(port);
@@ -662,10 +659,12 @@ std::pair<const NodeDef*, const NodeDef*> SchedulerState::CreateSendRecv(
 
   auto input_node_port_num = NodePosition(input_name);
   string src_name;
+  bool control_input = false;
   if (input_node_port_num >= 0) {
     src_name = absl::StrCat(from->name(), "_", input_node_port_num);
   } else {
     src_name = absl::StrCat(from->name(), "_minus1");
+    control_input = true;
   }
 
   // _Send op.
@@ -695,14 +694,22 @@ std::pair<const NodeDef*, const NodeDef*> SchedulerState::CreateSendRecv(
   recv->add_input(send->name());
   recv->set_device(DeviceName(to));
   auto& recv_attr = *(recv->mutable_attr());
-  if (from->attr().contains("_streaming")) {
-    *(recv_attr["_streaming"].mutable_list()) =
-        from->attr().at("_streaming").list();
-  }
   recv_attr[kAttrInputSrc].set_s(input_name);
   if (input_node->attr().count(kAttrTensorName)) {
     recv_attr[kAttrTensorName].set_s(
         input_node->attr().at(kAttrTensorName).s());
+  }
+
+  // Propagate the streaming attribute to the send/recv nodes.
+  if (from->attr().contains(kStreaming) && !control_input) {
+    if (input_node_port_num >= from->attr().at(kStreaming).list().b_size()) {
+      LOG(ERROR)
+          << from->name()
+          << " port index larger than length of _streaming attribute list.";
+    } else if (from->attr().at(kStreaming).list().b(input_node_port_num)) {
+      send_attr[kStreaming].mutable_list()->add_b(true);
+      recv_attr[kStreaming].mutable_list()->add_b(true);
+    }
   }
 
   // NodeState for _Send op.

@@ -20,11 +20,11 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/substitute.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/util.h"
+#include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
 
 namespace tflite {
 namespace gpu {
@@ -443,7 +443,7 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
   const std::string weights_global_ptr =
       weights_space + " " + weights_data_type + "*";
 
-  std::string c = GetCommonDefines(op_def.precision);
+  std::string c;
   if (use_simd_broadcast) {
     if (gpu_info.opencl_info.cl_version == OpenClVersion::kCl2_0) {
       c += "#pragma OPENCL EXTENSION cl_khr_subgroups : enable\n";

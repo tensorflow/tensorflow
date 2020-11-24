@@ -376,14 +376,17 @@ void PrepareQuantizePass::runOnFunction() {
   OwningRewritePatternList patterns;
   bool is_signed = quant_specs_.IsSignedInferenceType();
   int bit_width = quant_specs_.GetQuantizationTypeWidth();
-  bool quantization_aware_training_mode = ContainsQuantizeOps(func);
-  // Enforce fixed output range for post-training quantization and
-  // when the model has quantization emulation ops, unless it was disabled
-  // explicitly by the flag.
-  bool enforced_output_range =
-      (quant_specs_.post_training_quantization ||
-       quantization_aware_training_mode) &&
-      !quant_specs_.disable_enforced_fixed_output_range;
+  // When this is true, the quantizer will try its best to extract the
+  // quantization parameters from the op quantization property and constant
+  // content. This is also set to true when the `quantize_allowlist` and
+  // `quantize_signed` test flags are enabled.
+  bool eager_quantize = ContainsQuantizeOps(func) ||
+                        (!quantize_allowlist.empty() || quantize_signed);
+  // Infer the tensor range for the activation ops and weight constants unless
+  // it is disabled explicitly.
+  bool infer_tensor_range =
+      (quant_specs_.post_training_quantization || eager_quantize) &&
+      !quant_specs_.disable_infer_tensor_range;
   if (is_signed) {
     patterns.insert<quant::ConvertUnsignedToSigned<quant::QuantizeCastOp>>(ctx);
     // Convert quant stats to int8 quantization parameters.
@@ -403,7 +406,7 @@ void PrepareQuantizePass::runOnFunction() {
   // values (tensors).
   ApplyQuantizationParamsPropagation(
       func, is_signed, disable_per_channel || quant_specs_.disable_per_channel,
-      GetOpQuantSpec, enforced_output_range);
+      GetOpQuantSpec, infer_tensor_range);
 
   ConvertMlirQuantOpsToTFLQuantOps(func);
 }

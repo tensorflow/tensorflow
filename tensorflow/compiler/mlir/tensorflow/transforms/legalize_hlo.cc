@@ -31,6 +31,7 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -913,6 +914,25 @@ Value ConvertDotOp(PatternRewriter &rewriter, Operation *old_op) {
   auto reshape =
       rewriter.create<mhlo::ReshapeOp>(loc, output_type, matmul.product());
   return reshape.getResult();
+}
+
+// Converts mhlo.pad to tf.PadV2
+Value ConvertPadOp(PatternRewriter &rewriter, Operation *old_op) {
+  auto pad_op = cast<mhlo::PadOp>(old_op);
+  mlir::Location loc = pad_op.getLoc();
+
+  llvm::SmallVector<APInt, 8> padding;
+  for (auto p : llvm::zip(pad_op.edge_padding_low().getValues<APInt>(),
+                          pad_op.edge_padding_high().getValues<APInt>())) {
+    padding.push_back(std::get<0>(p));
+    padding.push_back(std::get<1>(p));
+  }
+  auto attr_type = RankedTensorType::get({pad_op.edge_padding_low().size(), 2},
+                                         rewriter.getI64Type());
+  auto padding_attr = DenseIntElementsAttr::get(attr_type, padding);
+  auto padding_op = rewriter.create<ConstantOp>(loc, attr_type, padding_attr);
+  return rewriter.create<PadV2Op>(loc, pad_op.getType(), pad_op.operand(),
+                                  padding_op, pad_op.padding_value());
 }
 
 // Returns true if broadcast_dimensions obey Tensorflow convention, as in new
