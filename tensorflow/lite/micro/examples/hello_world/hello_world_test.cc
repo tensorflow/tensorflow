@@ -52,7 +52,7 @@ TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
   // you can retrieve this value by invoking interpreter.arena_used_bytes().
   const int model_arena_size = 754;
   /* Extra headroom for model + alignment + future interpreter changes */
-  const int extra_arena_size = 554 + 16 + 100;
+  const int extra_arena_size = 554 + 16 + 164;
   const int tensor_arena_size = model_arena_size + extra_arena_size;
   uint8_t tensor_arena[tensor_arena_size];
 
