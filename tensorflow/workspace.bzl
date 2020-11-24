@@ -631,12 +631,12 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "pcre",
         build_file = clean_dep("//third_party:pcre.BUILD"),
-        sha256 = "69acbc2fbdefb955d42a4c606dfde800c2885711d2979e356c0636efde9ec3b5",
-        strip_prefix = "pcre-8.42",
+        sha256 = "aecafd4af3bd0f3935721af77b889d9024b2e01d96b58471bd91a3063fb47728",
+        strip_prefix = "pcre-8.44",
         system_build_file = clean_dep("//third_party/systemlibs:pcre.BUILD"),
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/ftp.exim.org/pub/pcre/pcre-8.42.tar.gz",
-            "https://ftp.exim.org/pub/pcre/pcre-8.42.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/ftp.exim.org/pub/pcre/pcre-8.44.tar.gz",
+            "https://ftp.exim.org/pub/pcre/pcre-8.44.tar.gz",
         ],
     )
 
