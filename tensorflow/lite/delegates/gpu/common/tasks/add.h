@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_ADD_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_ADD_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_ADD_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_ADD_H_
 
 #include <string>
 #include <vector>
@@ -25,15 +25,13 @@ limitations under the License.
 
 namespace tflite {
 namespace gpu {
-namespace cl {
 
 // Add operation supports not equal tensors on input (for possibility to
 // remove Padding operation with zeroes in channels dimension)
 GPUOperation CreateAdd(const OperationDef& definition,
                        const std::vector<int>& channels, int dst_channels);
 
-}  // namespace cl
 }  // namespace gpu
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_ADD_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_ADD_H_

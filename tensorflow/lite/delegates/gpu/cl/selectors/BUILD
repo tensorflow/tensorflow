@@ -125,7 +125,6 @@ cc_library(
     hdrs = ["simple_selectors.h"],
     deps = [
         "//tensorflow/lite/delegates/gpu/cl:cl_device",
-        "//tensorflow/lite/delegates/gpu/cl/kernels:add",
         "//tensorflow/lite/delegates/gpu/cl/kernels:concat_xy",
         "//tensorflow/lite/delegates/gpu/cl/kernels:concat_z",
         "//tensorflow/lite/delegates/gpu/cl/kernels:depthwise_conv",
@@ -150,6 +149,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
+        "//tensorflow/lite/delegates/gpu/common/tasks:add",
         "@com_google_absl//absl/memory",
     ],
 )

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/cl/kernels/add.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/add.h"
 
 #include <string>
 
@@ -22,7 +22,6 @@ limitations under the License.
 
 namespace tflite {
 namespace gpu {
-namespace cl {
 
 GPUOperation CreateAdd(const OperationDef& definition,
                        const std::vector<int>& channels, int dst_channels) {
@@ -49,6 +48,5 @@ GPUOperation CreateAdd(const OperationDef& definition,
   return add;
 }
 
-}  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

@@ -8,19 +8,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-cc_library(
-    name = "add",
-    srcs = ["add.cc"],
-    hdrs = ["add.h"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common:util",
-        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
 cc_test(
     name = "add_test",
     srcs = ["add_test.cc"],
@@ -30,10 +17,10 @@ cc_test(
         "local",
     ],
     deps = [
-        ":add",
         ":cl_test",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/tasks:add",
         "@com_google_googletest//:gtest_main",
     ],
 )
