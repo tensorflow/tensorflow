@@ -179,7 +179,7 @@ inline void Elu(const RuntimeShape& input_shape, const float* input_data,
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
     const float val = input_data[i];
-    output_data[i] = val < 0.0 ? std::exp(val) - 1 : val;
+    output_data[i] = val < 0.0f ? std::expm1(val) : val;
   }
 }
 
@@ -319,10 +319,6 @@ inline void AddN(const RuntimeShape& input_shape, const size_t num_inputs,
 // dimensionality if the runtime code does a single loop over one dimension
 // that handles broadcasting as the base case. The code generator would then
 // generate max(D1, D2) nested for loops.
-// TODO(benoitjacob): BroadcastMul is intentionally duplicated from
-// reference_ops.h. Once an optimized version is implemented and NdArrayDesc<T>
-// is no longer referenced in this file, move NdArrayDesc<T> from types.h to
-// reference_ops.h.
 inline void BroadcastMulFivefold(const ArithmeticParams& unswitched_params,
                                  const RuntimeShape& unswitched_input1_shape,
                                  const uint8* unswitched_input1_data,

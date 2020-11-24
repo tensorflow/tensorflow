@@ -72,6 +72,14 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# Config setting that disables the default logger, only logging
+# to registered TFLogSinks
+config_setting(
+    name = "no_default_logger",
+    define_values = {"no_default_logger": "true"},
+    visibility = ["//visibility:public"],
+)
+
 # Config setting for determining if we are building for Android.
 config_setting(
     name = "android",
@@ -732,6 +740,7 @@ tf_cc_shared_object(
         "//tensorflow/c/experimental/filesystem:filesystem_interface",
         "//tensorflow/c/experimental/stream_executor:stream_executor_hdrs",
         "//tensorflow/c:kernels_hdrs",
+        "//tensorflow/c:logging",
         "//tensorflow/c:ops_hdrs",
         "//tensorflow/cc/saved_model:loader_lite_impl",
         "//tensorflow/core/common_runtime:core_cpu_impl",

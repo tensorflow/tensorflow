@@ -167,18 +167,28 @@ int64_t GetAllocationIndex(mlir::BlockArgument func_arg) {
       .getSExtValue();
 }
 
+static int64_t GetMemRefSizeInBytes(mlir::MemRefType type) {
+  // For i1 memrefs, the underlying allocation is 8 bits.
+  if (type.getElementType().isInteger(/*width=*/1)) {
+    return type.getNumElements();
+  } else {
+    return type.getSizeInBits() / CHAR_BIT;
+  }
+}
+
 StatusOr<BufferAllocation::Slice> GetAllocationSliceForMlir(
     mlir::Value v, absl::Span<const BufferAllocation> allocations) {
-  int64 size = v.getType().cast<mlir::MemRefType>().getSizeInBits() / 8;
+  int64 size = GetMemRefSizeInBytes(v.getType().cast<mlir::MemRefType>());
 
   if (auto arg = v.dyn_cast<mlir::BlockArgument>()) {
     return BufferAllocation::Slice(&allocations[GetAllocationIndex(arg)], 0,
                                    size);
   }
 
-  // We match two patterns here:
-  // * v = ViewOp(arg);
-  // * v = MemRefReinterpretCastOp(ViewOp(arg));
+  // We match the following patterns here:
+  //  base := ViewOp(arg) | get_global_memref (global_memref)
+  //  root := base | MemRefReinterpretCastOp(base)
+
   if (mlir::Operation* op = v.getDefiningOp()) {
     if (auto cast = mlir::dyn_cast<mlir::MemRefReinterpretCastOp>(op)) {
       mlir::Value source = cast.getViewSource();
@@ -197,6 +207,14 @@ StatusOr<BufferAllocation::Slice> GetAllocationSliceForMlir(
               .getValue()
               .getSExtValue(),
           size);
+    } else if (mlir::isa<mlir::GetGlobalMemrefOp>(op)) {
+      int64_t index =
+          op->getAttrOfType<mlir::IntegerAttr>("lmhlo.alloc").getInt();
+      int64_t offset =
+          op->getAttrOfType<mlir::IntegerAttr>("lmhlo.slice_offset").getInt();
+      int64_t size =
+          op->getAttrOfType<mlir::IntegerAttr>("lmhlo.slice_size").getInt();
+      return BufferAllocation::Slice(&allocations[index], offset, size);
     }
     return Unimplemented("MemRefReinterpretCastOp has to wrap a ViewOp");
   }
@@ -554,13 +572,24 @@ Status IrEmitterUnnested::DefaultActionForMlir(MlirEmitterInput input) {
   // because we don't have a fully functioning LMHLO graph yet.
 
   mlir::Location loc = input.op->getLoc();
-  mlir::lmhlo::FusionOp fusion = nullptr;
+  mlir::lmhlo::FusionOp fusion =
+      mlir::OpBuilder(input.op).create<mlir::lmhlo::FusionOp>(
+          loc, llvm::ArrayRef<mlir::NamedAttribute>());
   Shape output_shape;
+  mlir::OpBuilder b(&fusion.region());
+
+  const auto load_memrefs = [loc, &b](mlir::ValueRange range) {
+    std::vector<mlir::Value> operands;
+    for (mlir::Value memref : range) {
+      auto load = b.create<mlir::TensorLoadOp>(loc, memref);
+      HloFunctionImporter::SetLayoutForMlir(load,
+                                            TypeToShape(memref.getType()));
+      operands.push_back(load);
+    }
+    return operands;
+  };
+
   if (auto copy = mlir::dyn_cast<mlir::lmhlo::CopyOp>(input.op)) {
-    fusion = mlir::OpBuilder(copy).create<mlir::lmhlo::FusionOp>(
-        loc, llvm::ArrayRef<mlir::NamedAttribute>());
-    copy.getOperation()->moveBefore(&fusion.region().front().back());
-    mlir::OpBuilder b(copy);
     auto operand = b.create<mlir::TensorLoadOp>(loc, copy.operand());
     HloFunctionImporter::SetLayoutForMlir(
         operand, TypeToShape(copy.operand().getType()));
@@ -568,15 +597,41 @@ Status IrEmitterUnnested::DefaultActionForMlir(MlirEmitterInput input) {
     output_shape = TypeToShape(copy.output().getType());
     HloFunctionImporter::SetLayoutForMlir(fused_copy, output_shape);
     b.create<mlir::TensorStoreOp>(loc, fused_copy, copy.output());
-    copy.getOperation()->erase();
+  } else if (auto reduce = mlir::dyn_cast<mlir::lmhlo::ReduceOp>(input.op)) {
+    std::vector<mlir::Value> operands = load_memrefs(reduce.operands());
+    std::vector<mlir::Value> init_values = load_memrefs(reduce.init_values());
+    auto fused_reduce = b.create<mlir::mhlo::ReduceOp>(
+        loc, operands, init_values, reduce.dimensions());
+    fused_reduce.body().takeBody(reduce.body());
+    CHECK_EQ(fused_reduce.getNumResults(), reduce.out().size());
+    std::vector<Shape> output_shapes;
+    for (int i = 0; i < reduce.out().size(); i++) {
+      b.create<mlir::TensorStoreOp>(loc, fused_reduce.getResult(i),
+                                    reduce.out()[i]);
+      auto shape = TypeToShape(reduce.out()[i].getType());
+      if (i == 0) {
+        HloFunctionImporter::SetLayoutForMlir(fused_reduce, shape);
+      }
+      output_shapes.push_back(shape);
+    }
+    if (output_shapes.size() == 1) {
+      output_shape = output_shapes[0];
+    } else {
+      output_shape = ShapeUtil::MakeTupleShape(output_shapes);
+    }
   } else {
     input.op->dump();
     LOG(FATAL) << "Unimplemented default action for mlir op";
   }
+  input.op->erase();
   input.op = fusion;
-  auto ret = EmitLoopFusionFromMlir(
-      input, output_shape,
-      ComputeMaxUnrollFactor(output_shape, hlo_module_config_));
+  int unroll_factor = 1;
+  // TODO(timshen): Port MayPreventVectorization as we add more ops into this
+  // function.
+  if (output_shape.IsArray()) {
+    unroll_factor = ComputeMaxUnrollFactor(output_shape, hlo_module_config_);
+  }
+  auto ret = EmitLoopFusionFromMlir(input, output_shape, unroll_factor);
   return ret;
 }
 
@@ -893,7 +948,8 @@ Status IrEmitterUnnested::HandleTriangularSolve(HloInstruction* hlo) {
 // This function won't be needed once ElementalIrEmitter migrates to take MHLO
 // instead.
 static Status ProcessFusionForConversion(mlir::Region* region,
-                                         std::vector<Shape>* operand_shapes) {
+                                         std::vector<Shape>* operand_shapes,
+                                         std::vector<Shape>* output_shapes) {
   std::vector<mlir::TensorLoadOp> loads;
   std::vector<mlir::TensorStoreOp> stores;
 
@@ -913,8 +969,7 @@ static Status ProcessFusionForConversion(mlir::Region* region,
     auto arg = region->addArgument(load.getType());
     load.replaceAllUsesWith(arg);
     Shape shape = TypeToShape(load.getType());
-    auto attr = mlir::GetLayoutFromMlirHlo(load);
-    if (attr) {
+    if (auto attr = mlir::GetLayoutFromMlirHlo(load)) {
       std::vector<int64> minor_to_major;
       absl::c_transform(
           attr, std::back_inserter(minor_to_major),
@@ -930,6 +985,16 @@ static Status ProcessFusionForConversion(mlir::Region* region,
 
   std::vector<mlir::Value> returned_values;
   for (auto store : stores) {
+    Shape shape = TypeToShape(store.memref().getType());
+    if (auto attr = mlir::GetLayoutFromMlirHlo(store)) {
+      std::vector<int64> minor_to_major;
+      absl::c_transform(
+          attr, std::back_inserter(minor_to_major),
+          std::function<int64(const llvm::APInt&)>(&llvm::APInt::getZExtValue));
+      *shape.mutable_layout() = LayoutUtil::MakeLayout(minor_to_major);
+    }
+    output_shapes->push_back(shape);
+
     returned_values.push_back(store.tensor());
     store.erase();
   }
@@ -1254,12 +1319,14 @@ Status IrEmitterUnnested::EmitExtraOutputsForReduce(
 }
 
 Status IrEmitterUnnested::HandleReduce(HloInstruction* reduce) {
+  TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(reduce));
+
   if (IsReductionFromOrToContiguousDimensions(*reduce) &&
       reduce->shape().IsArray()) {
     return EmitReductionFromOrToContiguousDimensions(reduce, {reduce});
   }
 
-  return IrEmitter::HandleReduce(reduce);
+  return DefaultActionForMlir(input);
 }
 
 Status IrEmitterUnnested::HandleTuple(HloInstruction* tuple) {
@@ -1325,23 +1392,23 @@ Status IrEmitterUnnested::HandleSelectAndScatter(
         "Dilation for SelectAndScatter not implemented on GPU.");
   }
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> initializer_thunk,
-                      BuildInitializerThunk(select_and_scatter));
-
   TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(select_and_scatter));
-  return EmitSelectAndScatterFromMlir(input, std::move(initializer_thunk));
+  return EmitSelectAndScatterFromMlir(input);
 }
 
 Status IrEmitterUnnested::EmitSelectAndScatterFromMlir(
-    MlirEmitterInput mlir_input, std::unique_ptr<Thunk>&& initializer_thunk) {
+    MlirEmitterInput mlir_input) {
   auto select_and_scatter_op =
       ::mlir::cast<::mlir::lmhlo::SelectAndScatterOp>(mlir_input.op);
 
   std::string name = mlir::GetNameFromLoc(select_and_scatter_op.getLoc());
 
   std::vector<std::unique_ptr<Thunk>> thunks;
-  thunks.push_back(std::move(initializer_thunk));
-
+  thunks.emplace_back();
+  TF_ASSIGN_OR_RETURN(thunks.back(),
+                      BuildInitializerThunkForMlir(
+                          mlir_input.op, select_and_scatter_op.init_value(),
+                          select_and_scatter_op.out()));
   absl::Span<const BufferAllocation> allocations(
       ir_emitter_context_->buffer_assignment().Allocations());
 
@@ -1862,9 +1929,10 @@ IrEmitterUnnested::GetOrCreateSubComputationFromRegion(mlir::Region* region,
                                                        bool is_fusion) {
   std::unique_ptr<HloModule>& module = scratch_nested_computations_[region];
   if (module == nullptr) {
-    std::vector<Shape> operand_shapes;
+    std::vector<Shape> operand_shapes, output_shapes;
     if (is_fusion) {
-      TF_RETURN_IF_ERROR(ProcessFusionForConversion(region, &operand_shapes));
+      TF_RETURN_IF_ERROR(
+          ProcessFusionForConversion(region, &operand_shapes, &output_shapes));
     }
 
     xla::XlaComputation xla_computation;
@@ -1878,6 +1946,62 @@ IrEmitterUnnested::GetOrCreateSubComputationFromRegion(mlir::Region* region,
         module, HloModule::CreateFromProto(xla_computation.proto(),
                                            HloModuleConfig(program_shape)));
 
+    if (is_fusion) {
+      HloComputation* fused_computation = module->entry_computation();
+      CHECK_EQ(operand_shapes.size(), fused_computation->num_parameters());
+      for (int i = 0; i < fused_computation->num_parameters(); i++) {
+        *fused_computation->parameter_instruction(i)
+             ->mutable_shape()
+             ->mutable_layout() = operand_shapes[i].layout();
+      }
+      HloInstruction* root = fused_computation->root_instruction();
+      // Manually fold Tuple(GTE(a, 0), GTE(a, 1), GTE(a, 2), ...) to a.
+      // FusedIrEmitter doesn't take GTE ops because we aim to elimiate tuples
+      // as much as possible.
+      if (root->opcode() == HloOpcode::kTuple) {
+        [&] {
+          HloInstruction* real_root = nullptr;
+          int expected_tuple_index = 0;
+          for (HloInstruction* operand : root->operands()) {
+            if (operand->opcode() != HloOpcode::kGetTupleElement) {
+              return;
+            }
+            if (real_root == nullptr) {
+              real_root = operand->mutable_operand(0);
+            } else if (real_root != operand->operand(0)) {
+              return;
+            }
+            if (expected_tuple_index != operand->tuple_index()) {
+              return;
+            }
+            expected_tuple_index++;
+          }
+          fused_computation->set_root_instruction(real_root);
+          std::vector<HloInstruction*> to_be_removed;
+          to_be_removed.push_back(root);
+          for (HloInstruction* operand : root->operands()) {
+            to_be_removed.push_back(operand);
+          }
+          for (auto instr : to_be_removed) {
+            TF_CHECK_OK(fused_computation->RemoveInstruction(instr));
+          }
+
+          root = real_root;
+        }();
+      }
+
+      if (output_shapes.size() > 1) {
+        CHECK(root->shape().IsTuple());
+        CHECK_EQ(root->shape().tuple_shapes_size(), output_shapes.size());
+
+        for (int i = 0; i < output_shapes.size(); i++) {
+          *root->mutable_shape()->mutable_tuple_shapes(i) = output_shapes.at(i);
+        }
+      } else {
+        CHECK_EQ(1, output_shapes.size());
+        *root->mutable_shape() = output_shapes[0];
+      }
+    }
     // Post-process the generated computation:
     // * Sanitize constant names, so that they can be used as LLVM global
     // symbols.
@@ -1887,20 +2011,11 @@ IrEmitterUnnested::GetOrCreateSubComputationFromRegion(mlir::Region* region,
         if (instr->opcode() == HloOpcode::kConstant) {
           instr->SetAndSanitizeName(llvm_ir::SanitizeConstantName(*instr));
         }
-        if (instr->shape().IsTuple()) {
-          TF_ASSIGN_OR_RETURN(*instr->mutable_shape(),
-                              ShapeInference::InferVariadicOpShape(
-                                  instr->opcode(), instr->operands()));
+        if (instr->shape().IsTuple() &&
+            computation == module->entry_computation() &&
+            instr != computation->root_instruction()) {
+          return InternalError("Non-root tuple types are not handled.");
         }
-      }
-    }
-    if (is_fusion) {
-      HloComputation* fused_computation = module->entry_computation();
-      CHECK_EQ(operand_shapes.size(), fused_computation->num_parameters());
-      for (int i = 0; i < fused_computation->num_parameters(); i++) {
-        *fused_computation->parameter_instruction(i)
-             ->mutable_shape()
-             ->mutable_layout() = operand_shapes[i].layout();
       }
     }
   }
@@ -2620,6 +2735,45 @@ IrEmitterUnnested::BuildKernelThunkForMlir(
                                  ir_arrays);
 }
 
+std::unique_ptr<Thunk> IrEmitterUnnested::BuildConstantInitializerThunk(
+    absl::Span<const uint8> init_value, const BufferAllocation::Slice& dest,
+    const Shape& output_shape) {
+  int64 num_bytes = init_value.size();
+  if (absl::c_all_of(init_value, [](uint8 byte) { return byte == 0; })) {
+    return absl::make_unique<MemzeroThunk>(Thunk::ThunkInfo(), dest);
+  }
+
+  // If the literal is 8 or 16 bits wide, we can emit a 32-bit memset by
+  // repeating the literal 4 or 2 times, so long as the destination buffer is
+  // an even multiple of 32 bits long.
+  if ((num_bytes == 1 || num_bytes == 2) &&
+      ShapeUtil::ByteSizeOf(output_shape) % 4 == 0) {
+    uint16 pattern16;
+    if (num_bytes == 1) {
+      uint8 b = init_value.front();
+      pattern16 = uint16{b} | (uint16{b} << 8);
+    } else {
+      memcpy(&pattern16, init_value.data(), sizeof(pattern16));
+    }
+    uint32 pattern32 = uint32{pattern16} | (uint32{pattern16} << 16);
+    return absl::make_unique<Memset32BitValueThunk>(Thunk::ThunkInfo(),
+                                                    pattern32, dest);
+  }
+
+  // If the literal is an even multiple of 32 bits wide, we can emit a 32-bit
+  // memset so long as all 32-bit words of the scalar are equal to each other.
+  if (num_bytes >= 4 && num_bytes % 4 == 0 &&
+      memcmp(init_value.data(), init_value.data() + 4, init_value.size() - 4) ==
+          0) {
+    uint32 word;
+    memcpy(&word, init_value.data(), sizeof(word));
+    return absl::make_unique<Memset32BitValueThunk>(Thunk::ThunkInfo(), word,
+                                                    dest);
+  }
+
+  return nullptr;
+}
+
 StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildInitializerThunk(
     HloInstruction* hlo, const ShapeIndex& index) {
   bool fused = HloOpcode::kFusion == hlo->opcode();
@@ -2661,43 +2815,14 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildInitializerThunk(
     CHECK(ShapeUtil::IsScalar(init_value->shape()));
     int64 num_bytes = ShapeUtil::ByteSizeOfElements(init_value->shape());
     const auto& literal = init_value->literal();
-
-    // Are all the bytes of this scalar equal to 0?  If so, we can create a
-    // MemzeroThunk.
     absl::Span<const uint8> literal_bytes(
         reinterpret_cast<const uint8*>(literal.untyped_data()), num_bytes);
-    if (absl::c_all_of(literal_bytes, [](uint8 byte) { return byte == 0; })) {
-      return {absl::make_unique<MemzeroThunk>(Thunk::ThunkInfo(),
-                                              GetAllocationSlice(*hlo, index))};
-    }
-
-    // If the literal is 8 or 16 bits wide, we can emit a 32-bit memset by
-    // repeating the literal 4 or 2 times, so long as the destination buffer is
-    // an even multiple of 32 bits long.
     const Shape& output_shape = ShapeUtil::GetSubshape(hlo->shape(), index);
-    if ((num_bytes == 1 || num_bytes == 2) &&
-        ShapeUtil::ByteSizeOf(output_shape) % 4 == 0) {
-      uint16 pattern16;
-      if (num_bytes == 1) {
-        uint8 b = literal_bytes.front();
-        pattern16 = uint16{b} | (uint16{b} << 8);
-      } else {
-        memcpy(&pattern16, literal_bytes.data(), sizeof(pattern16));
-      }
-      uint32 pattern32 = uint32{pattern16} | (uint32{pattern16} << 16);
-      return {absl::make_unique<Memset32BitValueThunk>(
-          Thunk::ThunkInfo(), pattern32, GetAllocationSlice(*hlo, index))};
-    }
 
-    // If the literal is an even multiple of 32 bits wide, we can emit a 32-bit
-    // memset so long as all 32-bit words of the scalar are equal to each other.
-    if (num_bytes >= 4 && num_bytes % 4 == 0 &&
-        memcmp(literal_bytes.data(), literal_bytes.data() + 4,
-               literal_bytes.size() - 4) == 0) {
-      uint32 word;
-      memcpy(&word, literal_bytes.data(), sizeof(word));
-      return {absl::make_unique<Memset32BitValueThunk>(
-          Thunk::ThunkInfo(), word, GetAllocationSlice(*hlo, index))};
+    auto thunk = BuildConstantInitializerThunk(
+        literal_bytes, GetAllocationSlice(*hlo, index), output_shape);
+    if (thunk) {
+      return thunk;
     }
   }
 
@@ -2739,6 +2864,83 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildInitializerThunk(
   // Clean up state left behind by emitting the loop above.  (This is normally
   // done in IrEmitterUnnested::Postprocess().)
   bindings_.UnbindAllLocalIrValues();
+
+  // Convert unique_ptr<KernelThunk> to StatusOr<unique_ptr<Thunk>>.
+  return {std::move(kernel_thunk)};
+}
+
+StatusOr<std::unique_ptr<Thunk>>
+IrEmitterUnnested::BuildInitializerThunkForMlir(mlir::Operation* op,
+                                                mlir::Value init_value,
+                                                mlir::Value dest) {
+  // initial value must be a scalar memref.
+  auto init_type = init_value.getType().dyn_cast<mlir::MemRefType>();
+  TF_RET_CHECK(init_type.getRank() == 0);
+
+  const Shape dest_shape = TypeToShape(dest.getType());
+  if (auto get_global_memref = mlir::dyn_cast_or_null<mlir::GetGlobalMemrefOp>(
+          init_value.getDefiningOp())) {
+    auto global_memref =
+        mlir::SymbolTable::lookupNearestSymbolFrom<mlir::GlobalMemrefOp>(
+            get_global_memref, get_global_memref.name());
+    if (global_memref.constant() && global_memref.initial_value()) {
+      // If the initial value happens to be a constant, generate a specialized
+      // thunk.
+      auto const_init = global_memref.initial_value()
+                            .getValue()
+                            .cast<mlir::DenseElementsAttr>();
+
+      Shape init_shape = TypeToShape(init_value.getType());
+      CHECK(ShapeUtil::IsScalar(init_shape));
+      int64 num_bytes = ShapeUtil::ByteSizeOfElements(init_shape);
+      bool bool_init;
+      absl::Span<const uint8> literal_bytes(
+          reinterpret_cast<const uint8*>(const_init.getRawData().data()),
+          num_bytes);
+      if (init_type.getElementTypeBitWidth() == 1) {
+        TF_RET_CHECK(num_bytes == 1);
+        bool_init = *const_init.getBoolValues().begin();
+        literal_bytes =
+            absl::MakeSpan(reinterpret_cast<const uint8_t*>(&bool_init), 1);
+      }
+
+      absl::Span<const BufferAllocation> allocations(
+          ir_emitter_context_->buffer_assignment().Allocations());
+      TF_ASSIGN_OR_RETURN(auto dest_slice,
+                          GetAllocationSliceForMlir(dest, allocations));
+
+      auto thunk =
+          BuildConstantInitializerThunk(literal_bytes, dest_slice, dest_shape);
+      if (thunk) {
+        return {std::move(thunk)};
+      }
+    }
+  }
+
+  // Otherwise fall back to our slow initializer code. The thunk in this case
+  // will just need the IR arrays for the initial value and the destination.
+  std::vector<llvm_ir::IrArray> ir_arrays;
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<KernelThunk> kernel_thunk,
+      BuildKernelThunkForMlir(op, {init_value, dest}, Thunk::ThunkInfo(), {},
+                              &ir_arrays));
+  const llvm_ir::IrArray init_array = ir_arrays[0];
+  const llvm_ir::IrArray dest_array = ir_arrays[1];
+
+  LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
+      dest_shape, ir_emitter_context_->gpu_device_info());
+  UpdateLaunchDimensions(launch_dimensions, kernel_thunk.get(),
+                         ir_emitter_context_->llvm_module());
+
+  // TODO(jurahul): Handled fused cases.
+  // In the unfused case the element is already there, just read from it.
+  std::string name = mlir::GetNameFromLoc(op->getLoc());
+  TF_RETURN_IF_ERROR(ParallelLoopEmitter(
+                         [=](const IrArray::Index& index) {
+                           return init_array.EmitReadArrayElement(index, &b_);
+                         },
+                         dest_array, launch_dimensions, &b_)
+                         .EmitLoop(mlir::GetNameFromLoc(op->getLoc())));
 
   // Convert unique_ptr<KernelThunk> to StatusOr<unique_ptr<Thunk>>.
   return {std::move(kernel_thunk)};

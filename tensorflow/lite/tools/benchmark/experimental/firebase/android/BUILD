@@ -23,6 +23,10 @@ android_binary(
     # can't be built. We need to prevent the build system from trying to
     # use the target in that case.
     tags = ["manual"],
+    deps = [
+        ":hexagon_libs",
+        ":tensorflowlite_benchmark_firebase_native",
+    ],
 )
 
 tflite_jni_binary(

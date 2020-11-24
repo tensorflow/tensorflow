@@ -18,9 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/lite/delegates/gpu/cl/cl_program.h"
-#include "tensorflow/lite/delegates/gpu/cl/device_info.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
+#include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
 
 namespace tflite {
 namespace gpu {
@@ -95,7 +93,7 @@ MeanStdDevNormalization::MeanStdDevNormalization(const OperationDef& definition,
   // For now, fix workgroup size to the biggest supported by the device, but not
   // larger than the number of tensor slices.
   int desired_work_group_size =
-      std::min(tensor_slices, gpu_info.max_work_group_size_x);
+      std::min(tensor_slices, gpu_info.GetMaxWorkGroupSizeForX());
   if (gpu_info.IsMali()) {
     // Don't use more than 64 work items per work group on ARM Mali. They
     // implement local memory using the global memory, larger workgroups have
@@ -136,9 +134,9 @@ MeanStdDevNormalization::MeanStdDevNormalization(const OperationDef& definition,
   work_group_size_.y = 1;  // Required
   work_group_size_.z = 1;  // Required
   code_ = GetNormalizationCode();
-  if (gpu_info.cl_version >= OpenCLVersion::CL_3_0) {
+  if (gpu_info.IsCL30OrHigher()) {
     compiler_options_.push_back(CompilerOptions::kCl30);
-  } else if (gpu_info.cl_version >= OpenCLVersion::CL_2_0) {
+  } else if (gpu_info.IsCL20OrHigher()) {
     compiler_options_.push_back(CompilerOptions::kCl20);
   }
 }
@@ -147,7 +145,7 @@ std::string MeanStdDevNormalization::GetNormalizationCode() {
   AddSrcTensor("src_tensor", definition_.src_tensors[0]);
   AddDstTensor("dst_tensor", definition_.dst_tensors[0]);
 
-  std::string c = GetCommonDefines(definition_.precision);
+  std::string c;
   c += GetVectorReduceCode();
   c += GetReduceCode();
   c += GetFilterCode();

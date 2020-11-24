@@ -858,7 +858,7 @@ class FullyConnectedOperationParser : public TFLiteOperationParser {
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 4));
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 9));
     const TfLiteFullyConnectedParams* tf_options;
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
     if (tf_options->weights_format !=
@@ -869,6 +869,15 @@ class FullyConnectedOperationParser : public TFLiteOperationParser {
     if (GetNumberOfRuntimeInputsForNode(context, tflite_node) > 2) {
       return absl::UnimplementedError(
           "FullyConnected doesn't support more than 2 runtime inputs.");
+    }
+    if (tf_options->keep_num_dims == true) {
+      const auto* input = context->tensors + tflite_node->inputs->data[0];
+      const auto* output = context->tensors + tflite_node->outputs->data[0];
+      if (input->dims->size != output->dims->size) {
+        return absl::UnimplementedError(
+            "Input and output dimensions different and FullyConnected doesn't "
+            "support keep_num_dims.");
+      }
     }
     // TODO(eignasheva): check input shape
     return absl::OkStatus();
@@ -1508,10 +1517,6 @@ class ReduceOperationParser : public TFLiteOperationParser {
       return absl::UnimplementedError(
           "Reduce has unsupported tensor for axes.");
     }
-    if (tflite::NumElements(axes) != 1) {
-      return absl::UnimplementedError(
-          "Supported reduce in single dimensions only.");
-    }
     return absl::OkStatus();
   }
 
@@ -1526,13 +1531,15 @@ class ReduceOperationParser : public TFLiteOperationParser {
     const TfLiteReducerParams* tf_options;
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
 
-    Tensor<Scalar, DataType::INT32> axes;
-    RETURN_IF_ERROR(reader->ReadTensor(1, &axes));
-    const TfLiteTensor* input = reader->GetInputTensor(0);
     ReduceAttributes attr;
-    Axis axis;
-    RETURN_IF_ERROR(ExtractAxisFromIndex(*input, axes.data[0], &axis));
-    attr.dims = {axis};
+    Tensor<Linear, DataType::INT32> axes;
+    RETURN_IF_ERROR(reader->ReadTensor(1, &axes));
+    const TfLiteTensor* output = reader->GetOutputTensor(0);
+    for (int i = 0; i < axes.data.size(); i++) {
+      Axis axis;
+      RETURN_IF_ERROR(ExtractAxisFromIndex(*output, axes.data[i], &axis));
+      attr.dims.insert(axis);
+    }
     node->operation.attributes = attr;
     return absl::OkStatus();
   }
@@ -1652,7 +1659,6 @@ class Resize2DOperationParser : public TFLiteOperationParser {
     RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
                                        /*runtime_inputs=*/1, /*outputs=*/1));
 
-    RETURN_IF_ERROR(CheckOnlyUpsamplingIsSupported(context, tflite_node));
     bool align_corners;
     RETURN_IF_ERROR(GetAlignCornersValue(tflite_node, &align_corners));
     bool half_pixel_centers;
@@ -1720,27 +1726,6 @@ class Resize2DOperationParser : public TFLiteOperationParser {
       const TfLiteResizeNearestNeighborParams* tf_options;
       RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
       *half_pixel_centers = tf_options->half_pixel_centers;
-    }
-    return absl::OkStatus();
-  }
-
-  absl::Status CheckOnlyUpsamplingIsSupported(const TfLiteContext* context,
-                                              const TfLiteNode* tflite_node) {
-    const auto* input = context->tensors + tflite_node->inputs->data[0];
-    const auto* output = context->tensors + tflite_node->outputs->data[0];
-
-    if (!input->dims || input->dims->size != 4) {
-      return absl::InvalidArgumentError("input.dims.size != 4");
-    }
-    if (!output->dims || output->dims->size != 4) {
-      return absl::InvalidArgumentError("output.dims.size != 4");
-    }
-    if (output->dims->data[1] < input->dims->data[1] ||
-        output->dims->data[2] < input->dims->data[2]) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Only upsampling is supported, received output h,w = ",
-          output->dims->data[1], ",", output->dims->data[2],
-          " input h,w = ", input->dims->data[1], ",", input->dims->data[2]));
     }
     return absl::OkStatus();
   }
@@ -2612,17 +2597,9 @@ class MeanOperationParser : public TFLiteOperationParser {
                                        /*runtime_inputs=*/1,
                                        /*outputs=*/1));
 
-    // Simple mechanism to check if MEAN is to be performed only on HW plane.
     auto* axes = &context->tensors[tflite_node->inputs->data[1]];
     if (axes->allocation_type != kTfLiteMmapRo || axes->type != kTfLiteInt32) {
       return absl::UnimplementedError("Mean has unsupported tensor for axes");
-    }
-    auto* axes_data = axes->data.i32;
-    const bool is_hw_mean = tflite::NumElements(axes) == 2 &&
-                            ((axes_data[0] == 1 && axes_data[1] == 2) ||
-                             (axes_data[0] == 2 && axes_data[1] == 1));
-    if (!is_hw_mean) {
-      return absl::UnimplementedError("Mean operation supports only HW plane");
     }
     return absl::OkStatus();
   }
@@ -2636,27 +2613,13 @@ class MeanOperationParser : public TFLiteOperationParser {
     RETURN_IF_ERROR(reader->AddOutputs(node));
 
     MeanAttributes attr;
-    Tensor<Linear, DataType::INT32> channel;
-    RETURN_IF_ERROR(reader->ReadTensor(1, &channel));
-    for (int i = 0; i < channel.data.size(); i++) {
-      std::string unsupported;
-      switch (channel.data[i]) {
-        case 1:
-          attr.dims.insert(Axis::HEIGHT);
-          break;
-        case 2:
-          attr.dims.insert(Axis::WIDTH);
-          break;
-        case 0:
-          unsupported = unsupported.empty() ? "batch" : unsupported;
-          ABSL_FALLTHROUGH_INTENDED;
-        case 3:
-          unsupported = unsupported.empty() ? "channels" : unsupported;
-          ABSL_FALLTHROUGH_INTENDED;
-        default:
-          return absl::UnimplementedError(
-              absl::StrCat("Unsupported mean dimension: ", unsupported));
-      }
+    Tensor<Linear, DataType::INT32> axes;
+    RETURN_IF_ERROR(reader->ReadTensor(1, &axes));
+    const TfLiteTensor* output = reader->GetOutputTensor(0);
+    for (int i = 0; i < axes.data.size(); i++) {
+      Axis axis;
+      RETURN_IF_ERROR(ExtractAxisFromIndex(*output, axes.data[i], &axis));
+      attr.dims.insert(axis);
     }
     node->operation.attributes = attr;
     return absl::OkStatus();

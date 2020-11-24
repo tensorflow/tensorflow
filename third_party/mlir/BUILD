@@ -675,6 +675,7 @@ cc_library(
     hdrs = ["include/mlir/Dialect/Async/Passes.h"],
     includes = ["include"],
     deps = [
+        ":Analysis",
         ":Async",
         ":AsyncPassIncGen",
         ":IR",
@@ -3451,6 +3452,7 @@ cc_library(
         "include/mlir/ExecutionEngine/AsyncRuntime.h",
     ],
     includes = ["include"],
+    deps = ["@llvm-project//llvm:Support"],
 )
 
 cc_library(

@@ -258,7 +258,7 @@ cc_library(
     srcs = ["command_line_flags.cc"],
     hdrs = ["command_line_flags.h"],
     copts = tflite_copts(),
-    deps = [":logging"],
+    deps = ["//tensorflow/lite/tools:logging"],
 )
 
 cc_test(
@@ -296,8 +296,8 @@ tf_cc_binary(
     srcs = ["list_flex_ops_main.cc"],
     visibility = ["//visibility:public"],
     deps = [
-        ":command_line_flags",
         ":list_flex_ops",
+        "//tensorflow/lite/tools:command_line_flags",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -307,8 +307,8 @@ cc_library(
     srcs = ["list_flex_ops_main.cc"],
     visibility = ["//visibility:public"],
     deps = [
-        ":command_line_flags",
         ":list_flex_ops",
+        "//tensorflow/lite/tools:command_line_flags",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -329,8 +329,8 @@ tf_cc_binary(
     srcs = ["list_flex_ops_main.cc"],
     visibility = ["//visibility:public"],
     deps = [
-        ":command_line_flags",
         ":list_flex_ops_no_kernel",
+        "//tensorflow/lite/tools:command_line_flags",
         "@com_google_absl//absl/strings",
     ],
 )

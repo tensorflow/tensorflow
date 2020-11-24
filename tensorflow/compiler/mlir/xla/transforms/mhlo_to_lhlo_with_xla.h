@@ -16,13 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_MHLO_TO_LHLO_WITH_XLA_H_
 #define TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_MHLO_TO_LHLO_WITH_XLA_H_
 
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 
 namespace mlir {
@@ -55,8 +57,18 @@ class LhloDialectEmitter : public ::xla::DfsHloVisitorWithDefault {
   ::xla::StatusOr<lmhlo::ScatterOp> EmitScatterOp(::xla::HloInstruction* instr);
   ::xla::StatusOr<lmhlo::SelectAndScatterOp> EmitSelectAndScatterOp(
       ::xla::HloInstruction* instr);
-  ::xla::StatusOr<lmhlo::CustomCallOp> EmitCustomCallOp(
-      ::xla::HloInstruction* instr);
+
+  ::xla::StatusOr<Operation*> EmitCustomCallOp(::xla::HloInstruction* instr);
+  ::xla::StatusOr<lmhlo_gpu::CholeskyOp> EmitCholesky(
+      ::xla::HloCustomCallInstruction* custom_call);
+
+  ::xla::StatusOr<lmhlo::ReduceOp> EmitReduceOp(::xla::HloInstruction* instr);
+  ::xla::StatusOr<GetGlobalMemrefOp> EmitConstant(
+      ::xla::HloInstruction* instr) {
+    return EmitConstant(static_cast<const ::xla::HloInstruction*>(instr));
+  }
+  ::xla::StatusOr<GetGlobalMemrefOp> EmitConstant(
+      const ::xla::HloInstruction* instr);
 
   ::xla::Status CreateOperands(::xla::HloInstruction* instr,
                                SmallVectorImpl<Value>& operands,
@@ -122,7 +134,7 @@ class LhloDialectEmitter : public ::xla::DfsHloVisitorWithDefault {
                                               OpBuilder* b, Location loc);
 
   // Return an MLIR location for an HLO instruction.
-  Location getLocation(::xla::HloInstruction* inst) {
+  Location getLocation(const ::xla::HloInstruction* inst) {
     return NameLoc::get(builder_.getIdentifier(inst->name()),
                         builder_.getContext());
   }
@@ -180,7 +192,7 @@ tensorflow::Status HloToLhloModule(const ::xla::BufferAssignment& assignment,
                                    ModuleOp module);
 
 OwningModuleRef HloTextToLhloTranslateFunction(llvm::StringRef input,
-                                               mlir::MLIRContext* context);
+                                               MLIRContext* context);
 
 }  // namespace mlir
 

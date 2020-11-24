@@ -328,23 +328,28 @@ def LegalizeMean : Pat<(TF_MeanOp $arg0, $arg1, BoolAttr:$arg2),
                        (TFL_MeanOp $arg0, $arg1, $arg2)>;
 
 def LegalizeSum : Pat<(TF_SumOp $arg, $axes, BoolAttr:$arg2),
-                      (TFL_SumOp $arg, $axes, $arg2)>;
+                      (TFL_SumOp $arg, (CreateTFCastToInt32Op $axes), $arg2)>;
 
 // TopK in TFL is always sorted so we ignore that attribute here.
 def LegalizeTopKV2 : Pat<(TF_TopKV2Op $input, $k, $ignored_sorted),
                          (TFL_TopKV2Op $input, $k)>;
 
-def LegalizeMin : Pat<(TF_MinOp $arg0, $arg1, BoolAttr:$arg2),
-                      (TFL_ReduceMinOp $arg0, $arg1, $arg2)>;
+def LegalizeMin : Pat<
+  (TF_MinOp $arg0, $axes, BoolAttr:$arg2),
+  (TFL_ReduceMinOp $arg0, (CreateTFCastToInt32Op $axes), $arg2)>;
 
-def LegalizeMax : Pat<(TF_MaxOp $arg0, $arg1, BoolAttr:$arg2),
-                      (TFL_ReduceMaxOp $arg0, $arg1, $arg2)>;
+def LegalizeMax : Pat<
+  (TF_MaxOp $arg0, $axes, BoolAttr:$arg2),
+  (TFL_ReduceMaxOp $arg0, (CreateTFCastToInt32Op $axes), $arg2)>;
 
-def LegalizeProd : Pat<(TF_ProdOp $arg0, $arg1, BoolAttr:$arg2),
-                       (TFL_ReduceProdOp $arg0, $arg1, $arg2)>;
+def LegalizeProd : Pat<
+  (TF_ProdOp $arg0, $axes, BoolAttr:$arg2),
+  (TFL_ReduceProdOp $arg0, (CreateTFCastToInt32Op $axes), $arg2)>;
 
-def LegalizeAny : Pat<(TF_AnyOp $input, $reduction_indices, $keep_dims),
-                      (TFL_ReduceAnyOp $input, $reduction_indices, $keep_dims)>;
+def LegalizeAny : Pat<
+  (TF_AnyOp $input, $reduction_indices, $keep_dims),
+  (TFL_ReduceAnyOp $input, (CreateTFCastToInt32Op $reduction_indices),
+                   $keep_dims)>;
 
 def LegalizeCast : Pat<(TF_CastOp $arg0, BoolAttr:$arg1), (TFL_CastOp $arg0)>;
 
@@ -471,3 +476,14 @@ def LegalizeCumsum : Pat<
 def LegalizeReshape : Pat<
   (TF_ReshapeOp $input, $shape),
   (TFL_ReshapeOp $input, (CreateTFCastToInt32Op $shape))>;
+
+def LegalizeStridedSlice : Pat<
+  (TF_StridedSliceOp
+    $input, $begin, $end, $strides, $begin_mask, $end_mask, $ellipsis_mask,
+    $new_axis_mask, $shrink_axis_mask),
+  (TFL_StridedSliceOp $input,
+    (CreateTFCastToInt32Op $begin), (CreateTFCastToInt32Op $end),
+    (CreateTFCastToInt32Op $strides), (convertIntAttrTo32Bit $begin_mask),
+    (convertIntAttrTo32Bit $end_mask), (convertIntAttrTo32Bit $ellipsis_mask),
+    (convertIntAttrTo32Bit $new_axis_mask),
+    (convertIntAttrTo32Bit $shrink_axis_mask))>;

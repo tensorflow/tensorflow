@@ -34,28 +34,34 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
+#include "tensorflow/lite/delegates/gpu/common/winograd_util.h"
 
 namespace tflite {
 namespace gpu {
 namespace cl {
 namespace {
-bool IsSuitableForWinograd4x4To6x6(const Convolution2DAttributes& attr,
-                                   const GpuInfo& gpu_info,
-                                   const BHWC& dst_shape) {
+bool IsRecommendedForWinograd4x4To6x6(const Convolution2DAttributes& attr,
+                                      const GpuInfo& gpu_info,
+                                      const BHWC& dst_shape) {
   const int tiles_x = DivideRoundUp(dst_shape.w, 4);
   const int tiles_y = DivideRoundUp(dst_shape.h, 4);
+  const int total_tiles = tiles_x * tiles_y;
   const int src_depth = DivideRoundUp(attr.weights.shape.i, 4);
   const int dst_depth = DivideRoundUp(attr.weights.shape.o, 4);
-  const bool suitable_attributes =
-      attr.weights.shape.w == 3 && attr.weights.shape.h == 3 &&
-      attr.dilations == HW(1, 1) && attr.strides == HW(1, 1);
   // Mali among other devices has smaller SIMD line size
-  const int min_depth = gpu_info.IsMali() ? 16 : 32;
-  const int min_hw = gpu_info.IsMali() ? 32 : 128;
+  int min_depth = gpu_info.IsMali() ? 16 : 32;
+  const int min_tiles = gpu_info.IsMali() ? 32 : 128;
+  if (total_tiles >= min_tiles * 8) {
+    min_depth /= 4;
+    min_depth = std::max(min_depth, 8);
+  } else if (total_tiles >= min_tiles * 4) {
+    min_depth /= 2;
+    min_depth = std::max(min_depth, 8);
+  }
   const bool recommended_channels =
       dst_depth % 4 == 0 && src_depth >= min_depth && dst_depth >= min_depth;
-  const bool recommended_hw = tiles_x * tiles_y >= min_hw;
-  return suitable_attributes && recommended_channels && recommended_hw;
+  const bool recommended_hw = total_tiles >= min_tiles;
+  return recommended_channels && recommended_hw;
 }
 
 absl::Status WinogradFromNode(const GpuInfo& gpu_info,
@@ -65,8 +71,11 @@ absl::Status WinogradFromNode(const GpuInfo& gpu_info,
                               const BHWC& input_shape, const BHWC& output_shape,
                               const Convolution2DAttributes& attr,
                               GPUOperationsSubgraph* gpu_subgraph) {
-  if (!IsSuitableForWinograd4x4To6x6(attr, gpu_info, output_shape)) {
+  if (!IsSuitableForWinograd4x4To6x6(attr)) {
     return absl::UnimplementedError("No implementation for this case.");
+  }
+  if (!IsRecommendedForWinograd4x4To6x6(attr, gpu_info, output_shape)) {
+    return absl::UnimplementedError("Not recommended for this case.");
   }
 
   const int tiles_x = DivideRoundUp(output_shape.w, 4);
@@ -203,7 +212,7 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
       conv_op.output_ids = {static_cast<int>(outputs[0]->id)};
       OperationDef conv_def = op_def;
       conv_def.src_tensors[1] = weights_desc;
-      ConvWeightsDescription conv_weights_desc;
+      WeightsDescription conv_weights_desc;
       conv_op.operation = SelectConvolutionWithDynamicWeights(
           attr, weights_shape, dst_shape, gpu_info, conv_def, hints,
           &conv_weights_desc);
@@ -280,7 +289,7 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
         conv_op.output_ids = {static_cast<int>(outputs[0]->id)};
         OperationDef conv_def = op_def;
         conv_def.src_tensors[1] = weights_desc;
-        ConvWeightsDescription conv_weights_desc;
+        WeightsDescription conv_weights_desc;
         conv_op.operation = SelectConvolutionWithDynamicWeights(
             attr, weights_shape, output_shape, gpu_info, conv_def, hints,
             &conv_weights_desc);
@@ -329,7 +338,7 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
         conv_op.output_ids = {static_cast<int>(outputs[0]->id)};
         OperationDef conv_def = op_def;
         conv_def.src_tensors[1] = weights_desc;
-        ConvWeightsDescription conv_weights_desc;
+        WeightsDescription conv_weights_desc;
         conv_op.operation = SelectConvolutionTransposedWithDynamicWeights(
             attr, gpu_info, conv_def, &conv_weights_desc);
 

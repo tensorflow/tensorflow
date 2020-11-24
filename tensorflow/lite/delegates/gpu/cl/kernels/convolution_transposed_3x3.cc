@@ -19,8 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
+#include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
 
 namespace tflite {
 namespace gpu {
@@ -80,6 +79,19 @@ std::string ConvolutionTransposed3x3::GenerateConvolutionTransposedCode(
   }
   AddDstTensor("dst_tensor", dst_desc);
 
+  if (op_def.src_tensors.size() == 2) {
+    // dynamic weights
+    BufferDescriptor desc;
+    desc.element_type = op_def.src_tensors[1].data_type;
+    desc.element_size = 4;
+    desc.memory_type =
+        weights_upload_type ==
+                ConvolutionTransposed3x3::WeightsUploadType::CONSTANT_MEM
+            ? MemoryType::CONSTANT
+            : MemoryType::GLOBAL;
+    AddSrcBuffer("weights", desc);
+  }
+
   args_.AddInt("filter_offset");
   args_.AddInt("padding_x");
   args_.AddInt("padding_y");
@@ -90,7 +102,7 @@ std::string ConvolutionTransposed3x3::GenerateConvolutionTransposedCode(
       weights_upload_type ==
           ConvolutionTransposed3x3::WeightsUploadType::LOCAL_MEM_ASYNC;
 
-  std::string c = GetCommonDefines(op_def.precision);
+  std::string c;
   switch (op_def.precision) {
     case CalculationsPrecision::F32:
     case CalculationsPrecision::F16:
@@ -350,6 +362,22 @@ int3 ConvolutionTransposed3x3::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
+std::vector<int> ConvolutionTransposed3x3::GetSpatialWeightsRemap() const {
+  const int padding_x_rem = abs(padding_.x) % 2;
+  const int padding_y_rem = abs(padding_.y) % 2;
+
+  std::vector<int> remap;
+  if (padding_x_rem == 1 && padding_y_rem == 1) {
+    return std::vector<int>{4, 5, 3, 7, 1, 8, 6, 2, 0};
+  } else if (padding_x_rem == 0 && padding_y_rem == 1) {
+    return std::vector<int>{5, 3, 4, 8, 6, 2, 0, 7, 1};
+  } else if (padding_x_rem == 1 && padding_y_rem == 0) {
+    return std::vector<int>{7, 1, 8, 6, 2, 0, 4, 5, 3};
+  } else {  // padding_x_rem == 0 && padding_y_rem == 0
+    return std::vector<int>{8, 6, 2, 0, 7, 1, 5, 3, 4};
+  }
+}
+
 bool IsConvolutionTransposed3x3Supported(
     const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr) {
@@ -363,6 +391,21 @@ ConvolutionTransposed3x3 CreateConvolutionTransposed3x3(
   const int2 padding = int2(attr.padding.prepended.w, attr.padding.prepended.h);
   ConvolutionTransposed3x3 result(definition, gpu_info, padding);
   result.UploadWeights(attr.weights);
+
+  TensorLinearDescriptor desc;
+  desc.storage_type = LinearStorageType::TEXTURE_2D;
+  desc.element_type = definition.GetDataType();
+  desc.UploadLinearData(attr.bias);
+  result.args_.AddObject(
+      "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+  return result;
+}
+
+ConvolutionTransposed3x3 CreateConvolutionTransposed3x3DynamicWeights(
+    const GpuInfo& gpu_info, const OperationDef& definition,
+    const ConvolutionTransposedAttributes& attr) {
+  const int2 padding = int2(attr.padding.prepended.w, attr.padding.prepended.h);
+  ConvolutionTransposed3x3 result(definition, gpu_info, padding);
 
   TensorLinearDescriptor desc;
   desc.storage_type = LinearStorageType::TEXTURE_2D;

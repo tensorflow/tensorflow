@@ -223,7 +223,7 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     if not reset_state:
       raise ValueError("IndexLookup does not support streaming adapts.")
     super(IndexLookup, self).adapt(data, reset_state)
-    self.max_tokens = self._table_handler.vocab_size()
+    self.max_tokens = int(self._table_handler.vocab_size())
 
   def get_vocabulary(self):
     if self._table_handler.vocab_size() == 0:
@@ -239,7 +239,7 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
       return [x for _, x in sorted(zip(values, keys))]
 
   def vocab_size(self):
-    return self._table_handler.vocab_size()
+    return int(self._table_handler.vocab_size())
 
   def get_config(self):
     config = {
@@ -402,7 +402,7 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
       self._set_inverse_vocabulary(vocab)
     else:
       self._set_forward_vocabulary(vocab)
-    self.max_tokens = self._table_handler.vocab_size()
+    self.max_tokens = int(self._table_handler.vocab_size())
 
   def _set_state_variables(self, updates):
     if not self.built:

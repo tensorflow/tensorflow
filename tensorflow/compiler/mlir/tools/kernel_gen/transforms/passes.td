@@ -38,16 +38,14 @@ def ShapeToDescriptorsPass : Pass<"shape-to-descriptors", "ModuleOp"> {
   let constructor = "transforms::CreateShapeToDescriptorsPass()";
 }
 
-def HloBufferizePass : Pass<"hlo-bufferize", "ModuleOp"> {
-  let summary = "Pass to transform hlo operations on values to buffer based "
-                "ones.";
-  let constructor = "transforms::CreateHloBufferizePass()";
-}
-
-def FinalBufferizePass : Pass<"final-bufferize", "ModuleOp"> {
-  let summary = "Pass to transform operations from all non-hlo dialects on "
-                "values to buffer-based ones.";
-  let constructor = "transforms::CreateFinalBufferizePass()";
+def BufferizePass : Pass<"bufferize", "ModuleOp"> {
+  let summary = "Pass to transform operations on values to buffer-based ones.";
+  let options = [
+    Option<"allow_partial_bufferization_", "allow-partial-bufferization",
+           "bool", /*default=*/"false", "Allow partial bufferization. "
+           "Value-based operations may remain, e.g. for shape operations.">,
+  ];
+  let constructor = "transforms::CreateBufferizePass()";
 }
 
 def MaterializeBroadcastsPass : FunctionPass<"materialize-broadcast"> {

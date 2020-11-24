@@ -393,7 +393,7 @@ cc_library(
     hdrs = [
         "test_util.h",
     ],
-    data = glob(["testdata/*.pbtxt"]),
+    data = ["//tensorflow/core/data/service/testdata"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

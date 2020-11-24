@@ -1,4 +1,4 @@
-// RUN: kernel-gen-opt %s --final-bufferize | FileCheck %s
+// RUN: kernel-gen-opt %s --bufferize | FileCheck %s
 
 // CHECK-LABEL: @extract_element
 // CHECK-SAME: (%[[ARG:.*]]: memref<?xf32>) -> f32

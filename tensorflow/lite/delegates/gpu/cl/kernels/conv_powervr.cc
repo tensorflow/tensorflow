@@ -20,11 +20,11 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/substitute.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/util.h"
+#include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
 
 namespace tflite {
 namespace gpu {
@@ -443,9 +443,9 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
   const std::string weights_global_ptr =
       weights_space + " " + weights_data_type + "*";
 
-  std::string c = GetCommonDefines(op_def.precision);
+  std::string c;
   if (use_simd_broadcast) {
-    if (gpu_info.cl_version == OpenCLVersion::CL_2_0) {
+    if (gpu_info.opencl_info.cl_version == OpenClVersion::kCl2_0) {
       c += "#pragma OPENCL EXTENSION cl_khr_subgroups : enable\n";
     } else if (gpu_info.SupportsExtension("cl_intel_subgroups")) {
       c += "#pragma OPENCL EXTENSION cl_intel_subgroups : enable\n";
@@ -1045,7 +1045,7 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
     if (dst_shape) {
       int task_size = dst_shape->w * dst_shape->b * dst_shape->h * dst_depth;
       float task_size_per_cu =
-          static_cast<float>(task_size) / gpu_info.compute_units_count;
+          static_cast<float>(task_size) / gpu_info.GetComputeUnitsCount();
       int block_size = conv_params.block_size.x * conv_params.block_size.y *
                        conv_params.block_size.w;
       float threads_per_cu = task_size_per_cu / block_size;

@@ -17,9 +17,8 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
+#include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
 
 namespace tflite {
 namespace gpu {
@@ -36,7 +35,7 @@ std::string GetPaddingCode(const OperationDef& op_def,
 
   const std::string dst_batch =
       op_def.dst_tensors[0].HasAxis(Axis::BATCH) ? "B" : "0";
-  std::string c = GetCommonDefines(op_def.precision);
+  std::string c;
   const std::string channels[] = {".x", ".y", ".z", ".w"};
 
   if (attr.type == PaddingContentType::REFLECT) {

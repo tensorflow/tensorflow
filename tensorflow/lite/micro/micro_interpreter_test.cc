@@ -494,4 +494,68 @@ TF_LITE_MICRO_TEST(TestInterpreterDoesNotAllocateUntilInvoke) {
       static_cast<size_t>(0));
 }
 
+TF_LITE_MICRO_TEST(TestInterpreterMultipleInputs) {
+  const tflite::Model* model = tflite::testing::GetSimpleMultipleInputsModel();
+  TF_LITE_MICRO_EXPECT_NE(nullptr, model);
+
+  tflite::AllOpsResolver op_resolver = tflite::testing::GetOpResolver();
+
+  constexpr size_t allocator_buffer_size = 2000;
+  uint8_t allocator_buffer[allocator_buffer_size];
+
+  // Create a new scope so that we can test the destructor.
+  {
+    tflite::MicroInterpreter interpreter(model, op_resolver, allocator_buffer,
+                                         allocator_buffer_size,
+                                         micro_test::reporter);
+
+    TF_LITE_MICRO_EXPECT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+    TF_LITE_MICRO_EXPECT_LE(interpreter.arena_used_bytes(), 928 + 100);
+
+    TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(3), interpreter.inputs_size());
+    TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(1), interpreter.outputs_size());
+    TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(4), interpreter.tensors_size());
+
+    TfLiteTensor* input = interpreter.input(0);
+    TF_LITE_MICRO_EXPECT_NE(nullptr, input);
+    TF_LITE_MICRO_EXPECT_EQ(kTfLiteInt32, input->type);
+    TF_LITE_MICRO_EXPECT_EQ(1, input->dims->size);
+    TF_LITE_MICRO_EXPECT_EQ(1, input->dims->data[0]);
+    TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(4), input->bytes);
+    TF_LITE_MICRO_EXPECT_NE(nullptr, input->data.i32);
+    input->data.i32[0] = 21;
+
+    TfLiteTensor* input1 = interpreter.input(1);
+    TF_LITE_MICRO_EXPECT_NE(nullptr, input1);
+    TF_LITE_MICRO_EXPECT_EQ(kTfLiteInt8, input1->type);
+    TF_LITE_MICRO_EXPECT_EQ(1, input1->dims->size);
+    TF_LITE_MICRO_EXPECT_EQ(1, input1->dims->data[0]);
+    TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(1), input1->bytes);
+    TF_LITE_MICRO_EXPECT_NE(nullptr, input1->data.i32);
+    input1->data.i32[0] = 21;
+
+    TfLiteTensor* input2 = interpreter.input(2);
+    TF_LITE_MICRO_EXPECT_NE(nullptr, input2);
+    TF_LITE_MICRO_EXPECT_EQ(kTfLiteInt32, input2->type);
+    TF_LITE_MICRO_EXPECT_EQ(1, input2->dims->size);
+    TF_LITE_MICRO_EXPECT_EQ(1, input2->dims->data[0]);
+    TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(4), input2->bytes);
+    TF_LITE_MICRO_EXPECT_NE(nullptr, input2->data.i32);
+    input2->data.i32[0] = 24;
+
+    TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, interpreter.Invoke());
+
+    TfLiteTensor* output = interpreter.output(0);
+    TF_LITE_MICRO_EXPECT_NE(nullptr, output);
+    TF_LITE_MICRO_EXPECT_EQ(kTfLiteInt32, output->type);
+    TF_LITE_MICRO_EXPECT_EQ(1, output->dims->size);
+    TF_LITE_MICRO_EXPECT_EQ(1, output->dims->data[0]);
+    TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(4), output->bytes);
+    TF_LITE_MICRO_EXPECT_NE(nullptr, output->data.i32);
+    TF_LITE_MICRO_EXPECT_EQ(66, output->data.i32[0]);
+  }
+
+  TF_LITE_MICRO_EXPECT_EQ(tflite::testing::MultipleInputs::freed_, true);
+}
+
 TF_LITE_MICRO_TESTS_END

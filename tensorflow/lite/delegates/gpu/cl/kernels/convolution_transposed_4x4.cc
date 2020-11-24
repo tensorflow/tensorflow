@@ -19,30 +19,40 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
+#include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
 
 namespace tflite {
 namespace gpu {
 namespace cl {
+namespace {
+ConvolutionTransposed4x4::WeightsUploadType GetBestWeightsUploadType(
+    const GpuInfo& gpu_info) {
+  ConvolutionTransposed4x4::WeightsUploadType weights_upload_type =
+      ConvolutionTransposed4x4::WeightsUploadType::GLOBAL_MEM;
+  if (gpu_info.IsPowerVR()) {
+    weights_upload_type =
+        ConvolutionTransposed4x4::WeightsUploadType::LOCAL_MEM_ASYNC;
+  } else if (gpu_info.IsNvidia() || gpu_info.IsIntel()) {
+    weights_upload_type =
+        ConvolutionTransposed4x4::WeightsUploadType::LOCAL_MEM_BY_THREADS;
+  } else if (gpu_info.IsAMD()) {
+    weights_upload_type =
+        ConvolutionTransposed4x4::WeightsUploadType::CONSTANT_MEM;
+  } else {
+    weights_upload_type =
+        ConvolutionTransposed4x4::WeightsUploadType::GLOBAL_MEM;
+  }
+  return weights_upload_type;
+}
+}  // namespace
+
 ConvolutionTransposed4x4::ConvolutionTransposed4x4(
-    const OperationDef& definition, const GpuInfo& gpu_info,
-    const ConvolutionTransposedAttributes& attr)
+    const OperationDef& definition, const GpuInfo& gpu_info)
     : GPUOperation(definition) {
   work_group_size_ = int3(8, 4, 1);
-  WeightsUploadType weights_upload_type = WeightsUploadType::GLOBAL_MEM;
-  if (gpu_info.IsPowerVR()) {
-    weights_upload_type = WeightsUploadType::LOCAL_MEM_ASYNC;
-  } else if (gpu_info.IsNvidia() || gpu_info.IsIntel()) {
-    weights_upload_type = WeightsUploadType::LOCAL_MEM_BY_THREADS;
-  } else if (gpu_info.IsAMD()) {
-    weights_upload_type = WeightsUploadType::CONSTANT_MEM;
-  } else {
-    weights_upload_type = WeightsUploadType::GLOBAL_MEM;
-  }
 
-  code_ = GenerateConvolutionTransposedCode(definition_, weights_upload_type);
-  UploadWeights(attr.weights, weights_upload_type);
+  code_ = GenerateConvolutionTransposedCode(definition_,
+                                            GetBestWeightsUploadType(gpu_info));
   if (definition_.precision == CalculationsPrecision::F16 &&
       gpu_info.IsPowerVR()) {
     compiler_options_.push_back(CompilerOptions::kClPowervrFp16);
@@ -76,6 +86,19 @@ std::string ConvolutionTransposed4x4::GenerateConvolutionTransposedCode(
   }
   AddDstTensor("dst_tensor", dst_desc);
 
+  if (op_def.src_tensors.size() == 2) {
+    // dynamic weights
+    BufferDescriptor desc;
+    desc.element_type = op_def.src_tensors[1].data_type;
+    desc.element_size = 4;
+    desc.memory_type =
+        weights_upload_type ==
+                ConvolutionTransposed4x4::WeightsUploadType::CONSTANT_MEM
+            ? MemoryType::CONSTANT
+            : MemoryType::GLOBAL;
+    AddSrcBuffer("weights", desc);
+  }
+
   args_.AddInt("filter_offset");
 
   const bool need_local_mem =
@@ -84,7 +107,7 @@ std::string ConvolutionTransposed4x4::GenerateConvolutionTransposedCode(
       weights_upload_type ==
           ConvolutionTransposed4x4::WeightsUploadType::LOCAL_MEM_ASYNC;
 
-  std::string c = GetCommonDefines(op_def.precision);
+  std::string c;
   switch (op_def.precision) {
     case CalculationsPrecision::F32:
     case CalculationsPrecision::F16:
@@ -323,6 +346,10 @@ int3 ConvolutionTransposed4x4::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
+std::vector<int> ConvolutionTransposed4x4::GetSpatialWeightsRemap() const {
+  return std::vector<int>{10, 11, 14, 15, 8, 9, 12, 13, 2, 3, 6, 7, 0, 1, 4, 5};
+}
+
 bool IsConvolutionTransposed4x4Supported(
     const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr) {
@@ -334,7 +361,22 @@ bool IsConvolutionTransposed4x4Supported(
 ConvolutionTransposed4x4 CreateConvolutionTransposed4x4(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr) {
-  ConvolutionTransposed4x4 result(definition, gpu_info, attr);
+  ConvolutionTransposed4x4 result(definition, gpu_info);
+  result.UploadWeights(attr.weights, GetBestWeightsUploadType(gpu_info));
+
+  TensorLinearDescriptor desc;
+  desc.storage_type = LinearStorageType::TEXTURE_2D;
+  desc.element_type = definition.GetDataType();
+  desc.UploadLinearData(attr.bias);
+  result.args_.AddObject(
+      "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+  return result;
+}
+
+ConvolutionTransposed4x4 CreateConvolutionTransposed4x4DynamicWeights(
+    const GpuInfo& gpu_info, const OperationDef& definition,
+    const ConvolutionTransposedAttributes& attr) {
+  ConvolutionTransposed4x4 result(definition, gpu_info);
 
   TensorLinearDescriptor desc;
   desc.storage_type = LinearStorageType::TEXTURE_2D;

@@ -338,10 +338,11 @@ class MaxPooling2D(Pooling2D):
   window defined by `pool_size` for each dimension along the features axis.
   The window is shifted by `strides` in each dimension.  The resulting output
   when using "valid" padding option has a shape(number of rows or columns) of:
-  `output_shape = (input_shape - pool_size + 1) / strides)`
+  `output_shape = math.floor((input_shape - pool_size) / strides) + 1`
+  (when input_shape >= pool_size)
 
   The resulting output shape when using the "same" padding option is:
-  `output_shape = input_shape / strides`
+  `output_shape = math.floor((input_shape - 1) / strides) + 1`
 
   For example, for stride=(1,1) and padding="valid":
 

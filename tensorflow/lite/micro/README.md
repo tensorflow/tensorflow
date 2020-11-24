@@ -24,7 +24,7 @@ kilobytes of memory.
 To learn how to use the framework, visit the developer documentation at
 [tensorflow.org/lite/microcontrollers](https://www.tensorflow.org/lite/microcontrollers).
 
-# Continuous Buils Status
+# Continuous Build Status
 
 Build Type | Status                                                                                                                                                                       | Artifacts
 ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------

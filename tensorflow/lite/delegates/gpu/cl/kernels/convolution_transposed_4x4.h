@@ -19,7 +19,6 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/cl/buffer.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/linear_storage.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor.h"
 #include "tensorflow/lite/delegates/gpu/cl/util.h"
@@ -27,6 +26,9 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
+#include "tensorflow/lite/delegates/gpu/common/task/weights_conversion.h"
+#include "tensorflow/lite/delegates/gpu/common/task/weights_layout.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 
@@ -52,6 +54,13 @@ class ConvolutionTransposed4x4 : public GPUOperation {
   ConvolutionTransposed4x4(const ConvolutionTransposed4x4&) = delete;
   ConvolutionTransposed4x4& operator=(const ConvolutionTransposed4x4&) = delete;
 
+  WeightsDescription GetWeightsDescription() const {
+    WeightsDescription desc;
+    desc.layout = WeightsLayout::kOICustomSSpatialI4O4;
+    desc.spatial_remap = GetSpatialWeightsRemap();
+    return desc;
+  }
+
   enum class WeightsUploadType {
     LOCAL_MEM_ASYNC,
     LOCAL_MEM_BY_THREADS,
@@ -61,18 +70,20 @@ class ConvolutionTransposed4x4 : public GPUOperation {
 
  private:
   ConvolutionTransposed4x4(const OperationDef& definition,
-                           const GpuInfo& gpu_info,
-                           const ConvolutionTransposedAttributes& attr);
+                           const GpuInfo& gpu_info);
+
   friend ConvolutionTransposed4x4 CreateConvolutionTransposed4x4(
       const GpuInfo& gpu_info, const OperationDef& definition,
       const ConvolutionTransposedAttributes& attr);
+  friend ConvolutionTransposed4x4 CreateConvolutionTransposed4x4DynamicWeights(
+      const GpuInfo& gpu_info, const OperationDef& definition,
+      const ConvolutionTransposedAttributes& attr);
+
   template <DataType T>
   void UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
                      WeightsUploadType weights_upload_type);
 
-  template <DataType S, typename T>
-  void RearrangeWeightsData(const tflite::gpu::Tensor<OHWI, S>& weights,
-                            absl::Span<T> dst);
+  std::vector<int> GetSpatialWeightsRemap() const;
 
   std::string GenerateConvolutionTransposedCode(
       const OperationDef& op_def, WeightsUploadType weights_upload_type);
@@ -104,56 +115,16 @@ void ConvolutionTransposed4x4::UploadWeights(
 
   if (f32_weights) {
     float4* ptr = reinterpret_cast<float4*>(desc.data.data());
-    RearrangeWeightsData(weights, absl::MakeSpan(ptr, flt4_count));
+    RearrangeWeightsToOICustomSpatialI4O4(weights, GetSpatialWeightsRemap(),
+                                          absl::MakeSpan(ptr, flt4_count));
   } else {
     half4* ptr = reinterpret_cast<half4*>(desc.data.data());
-    RearrangeWeightsData(weights, absl::MakeSpan(ptr, flt4_count));
+    RearrangeWeightsToOICustomSpatialI4O4(weights, GetSpatialWeightsRemap(),
+                                          absl::MakeSpan(ptr, flt4_count));
   }
 
   args_.AddObject("weights",
                   absl::make_unique<BufferDescriptor>(std::move(desc)));
-}
-
-template <DataType S, typename T>
-void ConvolutionTransposed4x4::RearrangeWeightsData(
-    const tflite::gpu::Tensor<OHWI, S>& weights, absl::Span<T> dst) {
-  const int src_depth = DivideRoundUp(weights.shape.i, 4);
-  const int dst_depth = DivideRoundUp(weights.shape.o, 4);
-  const int kernel_x = 4;
-  const int kernel_y = 4;
-
-  const int remap[16] = {10, 11, 14, 15, 8, 9, 12, 13, 2, 3, 6, 7, 0, 1, 4, 5};
-
-  int counter = 0;
-  for (int d = 0; d < dst_depth; ++d) {
-    for (int s = 0; s < src_depth; ++s) {
-      for (int y = 0; y < kernel_y; ++y) {
-        for (int x = 0; x < kernel_x; ++x) {
-          const int kernel_index = remap[y * kernel_x + x];
-          const int kernel_index_x = kernel_index % kernel_x;
-          const int kernel_index_y = kernel_index / kernel_x;
-          T filters[4];
-          for (int j = 0; j < 4; ++j) {
-            for (int i = 0; i < 4; ++i) {
-              const int s_ch = s * 4 + i;
-              const int d_ch = d * 4 + j;
-              if (s_ch < weights.shape.i && d_ch < weights.shape.o) {
-                const int f_index = weights.shape.LinearIndex(
-                    {d_ch, kernel_index_y, kernel_index_x, s_ch});
-                filters[i][j] = weights.data[f_index];
-              } else {
-                filters[i][j] = 0.0f;
-              }
-            }
-          }
-          dst[counter++] = filters[0];
-          dst[counter++] = filters[1];
-          dst[counter++] = filters[2];
-          dst[counter++] = filters[3];
-        }
-      }
-    }
-  }
 }
 
 bool IsConvolutionTransposed4x4Supported(
@@ -161,6 +132,10 @@ bool IsConvolutionTransposed4x4Supported(
     const ConvolutionTransposedAttributes& attr);
 
 ConvolutionTransposed4x4 CreateConvolutionTransposed4x4(
+    const GpuInfo& gpu_info, const OperationDef& definition,
+    const ConvolutionTransposedAttributes& attr);
+
+ConvolutionTransposed4x4 CreateConvolutionTransposed4x4DynamicWeights(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr);
 

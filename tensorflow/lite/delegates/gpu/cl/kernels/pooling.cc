@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
+#include "tensorflow/lite/delegates/gpu/common/task/util.h"
+#include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
 
 namespace tflite {
 namespace gpu {
@@ -72,7 +72,7 @@ std::string GetAveragePoolingKernelCode(const OperationDef& op_def,
       op_def.src_tensors[0].storage_type == TensorStorageType::BUFFER ||
       op_def.src_tensors[0].storage_type == TensorStorageType::IMAGE_BUFFER;
 
-  std::string c = GetCommonDefines(op_def.precision);
+  std::string c;
   c += "__kernel void main_function(\n";
   c += "$0) {\n";
   c += "  int X = get_global_id(0);\n";
@@ -193,7 +193,7 @@ std::string GetMaxPoolingKernelCode(const OperationDef& op_def,
     dst_coord += ", " + dst_coords[i];
   }
 
-  std::string c = GetCommonDefines(op_def.precision);
+  std::string c;
   c += "__kernel void main_function(\n";
   c += "$0) {\n";
   c += "  int X = get_global_id(0);\n";
