@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,23 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cmath>
-#include <cstdlib>
-#include <vector>
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_LSTM_TEST_UTIL_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_LSTM_TEST_UTIL_H_
 
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
-#include "tensorflow/lite/delegates/gpu/cl/kernels/cl_test.h"
-#include "tensorflow/lite/delegates/gpu/common/operations.h"
-#include "tensorflow/lite/delegates/gpu/common/status.h"
-#include "tensorflow/lite/delegates/gpu/common/tasks/lstm_test_util.h"
+#include "tensorflow/lite/delegates/gpu/common/task/testing_util.h"
 
 namespace tflite {
 namespace gpu {
-namespace cl {
 
-TEST_F(OpenCLOperationTest, LSTM) { LstmTest(&exec_env_); }
+void LstmTest(TestExecutionEnvironment* env);
 
-}  // namespace cl
 }  // namespace gpu
 }  // namespace tflite
+
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_LSTM_TEST_UTIL_H_

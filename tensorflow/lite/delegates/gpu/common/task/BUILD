@@ -131,6 +131,19 @@ cc_library(
 )
 
 cc_library(
+    name = "testing_util",
+    hdrs = ["testing_util.h"],
+    deps = [
+        ":gpu_operation",
+        ":tensor_desc",
+        "//tensorflow/lite/delegates/gpu/common:gpu_info",
+        "//tensorflow/lite/delegates/gpu/common:precision",
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:tensor",
+    ],
+)
+
+cc_library(
     name = "texture2d_desc",
     srcs = ["texture2d_desc.cc"],
     hdrs = ["texture2d_desc.h"],
