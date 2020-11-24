@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_JAVA_SRC_MAIN_NATIVE_JNI_UTILS_H_
 
 #include <jni.h>
+#include <stdarg.h>
 
 #include "tensorflow/lite/error_reporter.h"
 
