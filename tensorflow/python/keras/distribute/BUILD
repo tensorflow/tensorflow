@@ -244,7 +244,7 @@ distribute_py_test(
     disable_mlir_bridge = False,
     main = "custom_training_loop_metrics_test.py",
     tags = [
-        "no_rocm",
+        "no_rocm",  # Intermitently times out on ROCm
         "multi_and_single_gpu",
     ],
     deps = [
@@ -267,6 +267,7 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
+        "no_rocm",  # Intermitently times out on ROCm
         "notsan",  # TODO(b/170954243)
     ],
     tpu_tags = [
