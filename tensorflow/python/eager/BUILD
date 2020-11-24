@@ -375,6 +375,7 @@ cuda_py_test(
     srcs = ["backprop_test.py"],
     python_version = "PY3",
     tags = [
+        "no_cuda_asan",  # b/173825938
         "no_windows",  #TODO(b/139745667)
         "notsan",  #TODO(b/139745667)
     ],
@@ -1046,6 +1047,7 @@ cuda_py_test(
     shard_count = 8,
     tags = [
         "no_oss",  # This test launches local server
+        "no_tfrt",  # TODO(b/171765113)
     ],
     deps = [
         "//tensorflow/python:array_ops",
@@ -1066,6 +1068,7 @@ cuda_py_test(
     shard_count = 8,
     tags = [
         "no_oss",  # This test launches local server
+        "no_tfrt",  # TODO(b/171765113)
         "notsan",  # TODO(b/170783249)
     ],
     deps = [

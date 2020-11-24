@@ -105,3 +105,19 @@ ENTRY main {
                                       custom_call_target="SliceToDynamic",
                                       backend_config=""
 }
+
+// -----
+
+
+HloModule Cholesky
+
+// CHECK-LABEL: func @main
+// CHECK: "lmhlo_gpu.cholesky"
+// CHECK-SAME: is_lower = true
+ENTRY main {
+  %param = f32[3,3] parameter(0)
+  ROOT %custom-call = (f32[3,3], f32[3], s32[]) custom-call(f32[3,3] %param),
+                                custom_call_target="__cusolver$cholesky",
+                                operand_layout_constraints={f32[3,3]},
+                                backend_config="{\"lower\":true}"
+}

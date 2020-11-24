@@ -68,7 +68,6 @@ typedef enum {
   kTfLiteActNone = 0,
   kTfLiteActRelu,
   kTfLiteActReluN1To1,                    // min(max(-1, x), 1)
-  kTfLiteActRelu1 = kTfLiteActReluN1To1,  // kTfLiteActRelu1 will be deprecated.
   kTfLiteActRelu6,                        // min(max(0, x), 6)
   kTfLiteActTanh,
   kTfLiteActSignBit,
@@ -214,6 +213,10 @@ typedef struct {
 typedef struct {
   bool adj_x;
   bool adj_y;
+  // Parameters for BatchMatMul version 4 or above.
+  // If set to true and the weights are quantized, then non constant inputs
+  // are quantized at evaluation time with asymmetric quantization.
+  bool asymmetric_quantize_inputs;
 } TfLiteBatchMatMulParams;
 
 typedef struct {

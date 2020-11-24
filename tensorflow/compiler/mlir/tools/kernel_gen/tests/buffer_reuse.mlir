@@ -406,3 +406,41 @@ func @index_element_type(%arg : memref<2x3xindex>) -> memref<2x3xindex>
   %result = alloc() : memref<2x3xindex>
   return %result : memref<2x3xindex>
 }
+
+// Example as it occurs in the `tf.Abs` kernel for `f32`.
+// CHECK-LABEL: @abs_f32
+func @abs_f32(%arg0: memref<*xf32>) -> memref<*xf32>
+    attributes {llvm.emit_c_interface, tf_entry} {
+  %c0 = constant 0 : index
+  %0 = shape.shape_of %arg0 : memref<*xf32> -> tensor<?xindex>
+  %1 = shape.num_elements %0 : tensor<?xindex> -> index
+  // CHECK-LABEL: alloc
+  // CHECK-SAME: reuse_input_candidates = []
+  %2 = alloc() : memref<1xindex>
+  store %1, %2[%c0] : memref<1xindex>
+  %3 = memref_reshape %arg0(%2)
+      : (memref<*xf32>, memref<1xindex>) -> memref<?xf32>
+  %4 = dim %3, %c0 : memref<?xf32>
+  %5 = index_cast %4 : index to i64
+  // CHECK-LABEL: alloc
+  // CHECK-SAME: reuse_input_candidates = []
+  %6 = alloc() : memref<1xi64>
+  store %5, %6[%c0] : memref<1xi64>
+  %7 = load %6[%c0] : memref<1xi64>
+  %8 = index_cast %7 : i64 to index
+  // CHECK-LABEL: alloc
+  // CHECK-SAME: reuse_input_candidates = [0 : index]
+  %9 = alloc(%8) : memref<?xf32>
+  linalg.generic {
+    indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>],
+    iterator_types = ["parallel"]
+  } ins(%3 : memref<?xf32>) outs(%9 : memref<?xf32>) {
+  ^bb0(%arg1: f32, %arg2: f32):  // no predecessors
+    %12 = absf %arg1 : f32
+    linalg.yield %12 : f32
+  }
+  %10 = tensor_to_memref %0 : memref<?xindex>
+  %11 = memref_reshape %9(%10)
+      : (memref<?xf32>, memref<?xindex>) -> memref<*xf32>
+  return %11 : memref<*xf32>
+}

@@ -30,9 +30,8 @@ Status ReplicaIdThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
                       params.GetGlobalDeviceId());
-  TF_ASSIGN_OR_RETURN(
-      int replica_id,
-      params.device_assn->ReplicaIdForDeviceOrdinal(global_device_id.value()));
+  TF_ASSIGN_OR_RETURN(int replica_id,
+                      params.device_assn->ReplicaIdForDevice(global_device_id));
   params.stream->ThenMemset32(&dest_addr, replica_id, /*size=*/4);
   return Status::OK();
 }

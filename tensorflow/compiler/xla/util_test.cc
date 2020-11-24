@@ -126,5 +126,13 @@ TEST(UtilTest, RoundTripFpToString) {
             "-nan");
 }
 
+TEST(UtilTest, SplitF64ToF32) {
+  // Overflowing the F32 exponent in SplitF64ToF32 should result in a pair of
+  // [∞,0].
+  EXPECT_EQ(SplitF64ToF32(std::numeric_limits<double>::max()).first,
+            std::numeric_limits<float>::infinity());
+  EXPECT_EQ(SplitF64ToF32(std::numeric_limits<double>::max()).second, 0.0f);
+}
+
 }  // namespace
 }  // namespace xla

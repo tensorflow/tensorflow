@@ -16,12 +16,12 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/selectors/convolution_transposed_selector.h"
 
 #include "absl/memory/memory.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/convolution_transposed.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/convolution_transposed_3x3.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/convolution_transposed_3x3_thin.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/convolution_transposed_4x4.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/convolution_transposed_thin.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/convolution_transposed.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/convolution_transposed_3x3.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/convolution_transposed_3x3_thin.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/convolution_transposed_4x4.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/convolution_transposed_thin.h"
 
 namespace tflite {
 namespace gpu {
@@ -98,11 +98,50 @@ std::unique_ptr<GPUOperation> SelectConvolutionTransposed(
 
 std::unique_ptr<GPUOperation> SelectConvolutionTransposedWithDynamicWeights(
     const ConvolutionTransposedAttributes& attr, const GpuInfo& gpu_info,
-    const OperationDef& op_def, ConvWeightsDescription* weights_desc) {
-  ConvolutionTransposed conv =
-      CreateConvolutionTransposedDynamicWeights(gpu_info, op_def, attr);
-  *weights_desc = conv.GetConvWeightsDescription();
-  return absl::make_unique<ConvolutionTransposed>(std::move(conv));
+    const OperationDef& op_def, WeightsDescription* weights_desc) {
+  if (gpu_info.IsAdreno()) {
+    if (IsConvolutionTransposed3x3ThinSupported(attr)) {
+      ConvolutionTransposed3x3Thin conv =
+          CreateConvolutionTransposed3x3ThinDynamicWeights(gpu_info, op_def,
+                                                           attr);
+      *weights_desc = conv.GetWeightsDescription();
+      return absl::make_unique<ConvolutionTransposed3x3Thin>(std::move(conv));
+    } else {
+      ConvolutionTransposed conv =
+          CreateConvolutionTransposedDynamicWeights(gpu_info, op_def, attr);
+      *weights_desc = conv.GetWeightsDescription();
+      return absl::make_unique<ConvolutionTransposed>(std::move(conv));
+    }
+  } else if (gpu_info.IsPowerVR() || gpu_info.IsAMD() || gpu_info.IsNvidia() ||
+             gpu_info.IsIntel()) {
+    if (IsConvolutionTransposed4x4Supported(op_def, attr)) {
+      ConvolutionTransposed4x4 conv =
+          CreateConvolutionTransposed4x4DynamicWeights(gpu_info, op_def, attr);
+      *weights_desc = conv.GetWeightsDescription();
+      return absl::make_unique<ConvolutionTransposed4x4>(std::move(conv));
+    } else if (IsConvolutionTransposed3x3ThinSupported(attr)) {
+      ConvolutionTransposed3x3Thin conv =
+          CreateConvolutionTransposed3x3ThinDynamicWeights(gpu_info, op_def,
+                                                           attr);
+      *weights_desc = conv.GetWeightsDescription();
+      return absl::make_unique<ConvolutionTransposed3x3Thin>(std::move(conv));
+    } else if (IsConvolutionTransposed3x3Supported(op_def, attr)) {
+      ConvolutionTransposed3x3 conv =
+          CreateConvolutionTransposed3x3DynamicWeights(gpu_info, op_def, attr);
+      *weights_desc = conv.GetWeightsDescription();
+      return absl::make_unique<ConvolutionTransposed3x3>(std::move(conv));
+    } else {
+      ConvolutionTransposed conv =
+          CreateConvolutionTransposedDynamicWeights(gpu_info, op_def, attr);
+      *weights_desc = conv.GetWeightsDescription();
+      return absl::make_unique<ConvolutionTransposed>(std::move(conv));
+    }
+  } else {
+    ConvolutionTransposed conv =
+        CreateConvolutionTransposedDynamicWeights(gpu_info, op_def, attr);
+    *weights_desc = conv.GetWeightsDescription();
+    return absl::make_unique<ConvolutionTransposed>(std::move(conv));
+  }
 }
 
 }  // namespace cl

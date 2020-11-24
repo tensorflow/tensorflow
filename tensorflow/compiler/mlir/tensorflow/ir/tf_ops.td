@@ -684,12 +684,23 @@ body: A function that takes a list of tensors and returns another
 
     FlatSymbolRefAttr:$cond,
     FlatSymbolRefAttr:$body,
-    DefaultValuedAttr<TF_ShapeAttrArray, "{}">:$output_shapes,
     DefaultValuedAttr<I64Attr, "10">:$parallel_iterations,
 
     // Used to map StatelessWhile and While op defined in TensorFlow to a common
     // op.
-    BoolAttr:$is_stateless
+    BoolAttr:$is_stateless,
+
+    // In TensorFlow, While has a special behavior where if `output_shapes`
+    // attribute is not empty, those shapes are used in its shape function
+    // as result shapes instead of propagating operand shapes as result shapes.
+    // This allows for different result shapes from operand shapes. While these
+    // shapes are imported and set as a part of the result type, there is no
+    // indicator differentiating between having no output shapes compared to
+    // having all unranked shapes. Thus this attribute is set to determine
+    // which shape function behavior to use for this op, specifically
+    // propagating operand shapes as result shapes when this attribute is not
+    // set, or preserving result shapes as is when this attribute is set.
+    UnitAttr:$shape_invariant
   );
 
   let results = (outs
@@ -697,6 +708,7 @@ body: A function that takes a list of tensors and returns another
   );
 
   TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
+  TF_DerivedResultShapeListAttr output_shapes = TF_DerivedResultShapeListAttr<0>;
 
   let verifier = [{
     return Verify(*this);
@@ -752,12 +764,23 @@ def TF_WhileRegionOp : TF_Op<"WhileRegion",
   let arguments = (ins
     Variadic<AnyTensor>:$input,
 
-    DefaultValuedAttr<TF_ShapeAttrArray, "{}">:$output_shapes,
     DefaultValuedAttr<I64Attr, "10">:$parallel_iterations,
 
     // Used to map StatelessWhile and While op defined in TensorFlow to a common
     // op.
-    BoolAttr:$is_stateless
+    BoolAttr:$is_stateless,
+
+    // In TensorFlow, While has a special behavior where if `output_shapes`
+    // attribute is not empty, those shapes are used in its shape function
+    // as result shapes instead of propagating operand shapes as result shapes.
+    // This allows for different result shapes from operand shapes. While these
+    // shapes are imported and set as a part of the result type, there is no
+    // indicator differentiating between having no output shapes compared to
+    // having all unranked shapes. Thus this attribute is set to determine
+    // which shape function behavior to use for this op, specifically
+    // propagating operand shapes as result shapes when this attribute is not
+    // set, or preserving result shapes as is when this attribute is set.
+    UnitAttr:$shape_invariant
   );
   let results = (outs Variadic<AnyTensor>:$output);
 

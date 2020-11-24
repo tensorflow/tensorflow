@@ -18,21 +18,21 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/types/any.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/elementwise.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/mean_stddev_normalization.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/transpose.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/convolution_selector.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/convolution_transposed_selector.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/default_selector.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/dw_convolution_selector.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/fully_connected_selector.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/simple_selectors.h"
-#include "tensorflow/lite/delegates/gpu/cl/storage_type_util.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/storage_type_util.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/elementwise.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/mean_stddev_normalization.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/transpose.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/winograd_util.h"
 
@@ -212,7 +212,7 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
       conv_op.output_ids = {static_cast<int>(outputs[0]->id)};
       OperationDef conv_def = op_def;
       conv_def.src_tensors[1] = weights_desc;
-      ConvWeightsDescription conv_weights_desc;
+      WeightsDescription conv_weights_desc;
       conv_op.operation = SelectConvolutionWithDynamicWeights(
           attr, weights_shape, dst_shape, gpu_info, conv_def, hints,
           &conv_weights_desc);
@@ -289,7 +289,7 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
         conv_op.output_ids = {static_cast<int>(outputs[0]->id)};
         OperationDef conv_def = op_def;
         conv_def.src_tensors[1] = weights_desc;
-        ConvWeightsDescription conv_weights_desc;
+        WeightsDescription conv_weights_desc;
         conv_op.operation = SelectConvolutionWithDynamicWeights(
             attr, weights_shape, output_shape, gpu_info, conv_def, hints,
             &conv_weights_desc);
@@ -338,12 +338,15 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
         conv_op.output_ids = {static_cast<int>(outputs[0]->id)};
         OperationDef conv_def = op_def;
         conv_def.src_tensors[1] = weights_desc;
-        ConvWeightsDescription conv_weights_desc;
+        WeightsDescription conv_weights_desc;
         conv_op.operation = SelectConvolutionTransposedWithDynamicWeights(
             attr, gpu_info, conv_def, &conv_weights_desc);
 
-        int aligned_output =
-            AlignByN(weights_shape.b, conv_weights_desc.output_group_size * 4);
+        const int out_group_size =
+            conv_weights_desc.layout == WeightsLayout::kOHWIOGroupI4O4
+                ? conv_weights_desc.output_group_size
+                : 1;
+        int aligned_output = AlignByN(weights_shape.b, out_group_size * 4);
         int aligned_input = AlignByN(weights_shape.c, 4);
         gpu_subgraph->new_tensors = {
             {BHWC(1, 1, 1,

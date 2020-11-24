@@ -294,10 +294,14 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
           node_id, inputs[0], inputs[1], outputs[0],
           absl::any_cast<MaxUnpooling2DAttributes>(node->operation.attributes));
       break;
-    case OperationType::MEAN:
-      *tasks = Mean(node_id, inputs[0], outputs[0],
-                    absl::any_cast<MeanAttributes>(node->operation.attributes));
+    case OperationType::MEAN: {
+      auto attr = absl::any_cast<MeanAttributes>(node->operation.attributes);
+      if (attr.dims != std::set<Axis>({Axis::HEIGHT, Axis::WIDTH})) {
+        return absl::UnimplementedError("Mean supports HW axis only in Metal");
+      }
+      *tasks = Mean(node_id, inputs[0], outputs[0], attr);
       break;
+    }
     case OperationType::MUL:
       if (inputs.size() == 1) {
         if (node->operation.attributes.has_value()) {

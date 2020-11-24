@@ -203,11 +203,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         name = "eigen_archive",
         build_file = clean_dep("//third_party:eigen.BUILD"),
         patch_file = clean_dep("//third_party/eigen3:gpu_packet_math.patch"),
-        sha256 = "cce3143f6ed22dadff4ef0b43ce31c9632ace8e75bf41e401b6ec4668968d4c9",  # SHARED_EIGEN_SHA
-        strip_prefix = "eigen-41d5d5334b8a4e364dfd88dcd91f6cd38834b8ed",
+        sha256 = "306f15c04fbd514b4adc3a327a2c6f63521ea6805cab75691fa30c30fea55193",  # SHARED_EIGEN_SHA
+        strip_prefix = "eigen-fd1dcb6b45a2c797ad4c4d6cc7678ee70763b4ed",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/gitlab.com/libeigen/eigen/-/archive/41d5d5334b8a4e364dfd88dcd91f6cd38834b8ed/eigen-41d5d5334b8a4e364dfd88dcd91f6cd38834b8ed.tar.gz",
-            "https://gitlab.com/libeigen/eigen/-/archive/41d5d5334b8a4e364dfd88dcd91f6cd38834b8ed/eigen-41d5d5334b8a4e364dfd88dcd91f6cd38834b8ed.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/gitlab.com/libeigen/eigen/-/archive/fd1dcb6b45a2c797ad4c4d6cc7678ee70763b4ed/eigen-fd1dcb6b45a2c797ad4c4d6cc7678ee70763b4ed.tar.gz",
+            "https://gitlab.com/libeigen/eigen/-/archive/fd1dcb6b45a2c797ad4c4d6cc7678ee70763b4ed/eigen-fd1dcb6b45a2c797ad4c4d6cc7678ee70763b4ed.tar.gz",
         ],
     )
 
@@ -631,12 +631,12 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "pcre",
         build_file = clean_dep("//third_party:pcre.BUILD"),
-        sha256 = "69acbc2fbdefb955d42a4c606dfde800c2885711d2979e356c0636efde9ec3b5",
-        strip_prefix = "pcre-8.42",
+        sha256 = "aecafd4af3bd0f3935721af77b889d9024b2e01d96b58471bd91a3063fb47728",
+        strip_prefix = "pcre-8.44",
         system_build_file = clean_dep("//third_party/systemlibs:pcre.BUILD"),
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/ftp.exim.org/pub/pcre/pcre-8.42.tar.gz",
-            "https://ftp.exim.org/pub/pcre/pcre-8.42.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/ftp.exim.org/pub/pcre/pcre-8.44.tar.gz",
+            "https://ftp.exim.org/pub/pcre/pcre-8.44.tar.gz",
         ],
     )
 
@@ -686,8 +686,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     # Check out LLVM and MLIR from llvm-project.
-    LLVM_COMMIT = "620adacf87a376ec536ccc66af59df5bb4dc3b38"
-    LLVM_SHA256 = "9a6ec97fcceb5abe16c8cf04fc1988c142c3fe8ce62753d629bf78dd13d8317c"
+    LLVM_COMMIT = "5ce85e66358a69e786093756c77fae2e140947c1"
+    LLVM_SHA256 = "4813c092765c64de5f310389a2104bcf3f7334048aa9a184cb8a8bf7ba79faa9"
     LLVM_URLS = [
         "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
         "https://github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),

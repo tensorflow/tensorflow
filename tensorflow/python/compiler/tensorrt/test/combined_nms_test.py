@@ -91,13 +91,10 @@ class CombinedNmsTest(trt_test.TfTrtIntegrationTestBase):
     }
 
   def ShouldRunTest(self, run_params):
-    # There is no CombinedNonMaxSuppression op for GPU at the moment, so
-    # calibration will fail.
-    # TODO(laigd): fix this.
+    should_run, reason = super().ShouldRunTest(run_params)
     # Only run for TRT 5.1 and above.
-    return trt_test.IsTensorRTVersionGreaterEqual(
-        5, 1) and not trt_test.IsQuantizationMode(
-            run_params.precision_mode), 'test >=TRT5.1 and non-INT8'
+    return should_run and trt_test.IsTensorRTVersionGreaterEqual(
+        5, 1), reason + ' and >=TRT5.1'
 
 
 class CombinedNmsExecuteNativeSegmentTest(CombinedNmsTest):

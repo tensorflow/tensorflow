@@ -740,6 +740,7 @@ tf_cc_shared_object(
         "//tensorflow/c/experimental/filesystem:filesystem_interface",
         "//tensorflow/c/experimental/stream_executor:stream_executor_hdrs",
         "//tensorflow/c:kernels_hdrs",
+        "//tensorflow/c:logging",
         "//tensorflow/c:ops_hdrs",
         "//tensorflow/cc/saved_model:loader_lite_impl",
         "//tensorflow/core/common_runtime:core_cpu_impl",

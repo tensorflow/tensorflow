@@ -69,6 +69,11 @@ FRAMEWORK_LIB_HDRS = [
     "stderr_reporter.h",
 ]
 
+exports_files(
+    FRAMEWORK_LIB_HDRS,
+    visibility = ["//tensorflow/lite/core/shims:__subpackages__"],
+)
+
 cc_library(
     name = "version",
     hdrs = ["version.h"],
@@ -164,9 +169,7 @@ cc_library(
 
 cc_library(
     name = "builtin_op_data",
-    hdrs = [
-        "builtin_op_data.h",
-    ],
+    hdrs = ["builtin_op_data.h"],
     deps = ["//tensorflow/lite/c:common"],
 )
 
@@ -225,16 +228,10 @@ cc_library(
     ],
 )
 
+# The library that implements the full C++ API.
+# See also 'framework' below, which is the corresponding public target.
 cc_library(
     name = "framework_lib",
-    srcs = [
-        "core/subgraph.cc",
-        "graph_info.cc",
-        "interpreter.cc",
-        "interpreter_builder.cc",
-        "model_builder.cc",
-        "optional_debug_tools.cc",
-    ],
     hdrs = FRAMEWORK_LIB_HDRS,
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + TFLITE_DEFAULT_COPTS,
@@ -244,9 +241,99 @@ cc_library(
     deps = [
         ":allocation",
         ":arena_planner",
+        ":cc_api",
         ":external_cpu_backend_context",
         ":graph_info",
         ":kernel_api",
+        ":macros",
+        ":memory_planner",
+        ":minimal_logging",
+        ":mutable_op_resolver",
+        ":optional_debug_tools",
+        ":shared_library",
+        ":simple_memory_arena",
+        ":stderr_reporter",
+        ":string",
+        ":type_to_tflitetype",
+        ":util",
+        ":version",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/api:verifier",
+        "//tensorflow/lite/delegates:status",
+        "//tensorflow/lite/experimental/resource",
+        "//tensorflow/lite/kernels/internal:compatibility",
+        "//tensorflow/lite/profiling:platform_profiler",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/schema:schema_utils",
+    ],
+    alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
+)
+
+# The public target for the full C++ API.
+# The deps listed here, other than ":framework_lib", are the interface dependencies
+# (dependencies required by the header files).
+# TODO(ahentz): investigate dependency on gemm_support requiring usage of tf_copts.
+cc_library(
+    name = "framework",
+    srcs = [],
+    hdrs = FRAMEWORK_LIB_HDRS,
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts() + TFLITE_DEFAULT_COPTS,
+    deps = [
+        ":allocation",
+        ":arena_planner",
+        ":cc_api",
+        ":external_cpu_backend_context",
+        ":framework_lib",
+        ":graph_info",
+        ":memory_planner",
+        ":minimal_logging",
+        ":simple_memory_arena",
+        ":string",
+        ":type_to_tflitetype",
+        ":util",
+        ":version",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/api:verifier",
+        "//tensorflow/lite/experimental/resource",
+        "//tensorflow/lite/schema:schema_fbs",
+    ],
+)
+
+# The key parts of the C++ API.  This target defines the TF Lite classes for
+# loading models and interpreting them.
+cc_library(
+    name = "cc_api",
+    srcs = [
+        "core/subgraph.cc",
+        "graph_info.cc",
+        "interpreter.cc",
+        "interpreter_builder.cc",
+        "model_builder.cc",
+    ],
+    hdrs = [
+        "core/subgraph.h",
+        "graph_info.h",
+        "interpreter.h",
+        "interpreter_builder.h",
+        "model.h",
+        "model_builder.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts() + TFLITE_DEFAULT_COPTS,
+    visibility = [
+        "//tensorflow/lite/core/shims:__subpackages__",
+        "//tensorflow/lite/kernels:__subpackages__",
+    ],
+    deps = [
+        ":allocation",
+        ":arena_planner",
+        ":external_cpu_backend_context",
+        ":graph_info",
+        ":kernel_api",
+        ":macros",
         ":memory_planner",
         ":minimal_logging",
         ":mutable_op_resolver",
@@ -267,34 +354,24 @@ cc_library(
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
     ],
-    alwayslink = 1,
+    alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
 
-# TODO(ahentz): investigate dependency on gemm_support requiring usage of tf_copts.
 cc_library(
-    name = "framework",
+    name = "optional_debug_tools",
     srcs = [
+        "optional_debug_tools.cc",
     ],
-    hdrs = FRAMEWORK_LIB_HDRS,
+    hdrs = ["optional_debug_tools.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + TFLITE_DEFAULT_COPTS,
+    visibility = [
+        "//visibility:public",
+    ],
     deps = [
-        ":allocation",
-        ":arena_planner",
-        ":external_cpu_backend_context",
-        ":framework_lib",
-        ":graph_info",
-        ":memory_planner",
-        ":minimal_logging",
-        ":simple_memory_arena",
-        ":string",
-        ":type_to_tflitetype",
-        ":util",
-        ":version",
+        ":macros",
+        "//tensorflow/lite:cc_api",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/core/api",
-        "//tensorflow/lite/core/api:verifier",
-        "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )
@@ -720,6 +797,7 @@ cc_library(
 cc_library(
     name = "macros",
     hdrs = ["core/macros.h"],
+    compatible_with = get_compatible_with_portable(),
 )
 
 cc_library(
