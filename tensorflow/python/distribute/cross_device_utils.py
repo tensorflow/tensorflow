@@ -345,6 +345,10 @@ class CollectiveReplicaLauncher(object):
       return self._ordering_token.handle
     return None
 
+  def can_order_nccl(self):
+    """Whether this launcher can order NCCL operations."""
+    return self._use_ordering_token()
+
   def all_reduce(self,
                  input_tensor,
                  control_input=None,
