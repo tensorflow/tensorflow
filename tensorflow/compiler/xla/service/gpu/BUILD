@@ -74,11 +74,9 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
-        "//tensorflow/core:lib_internal",
+        "//tensorflow/compiler/xla/service:global_device_id",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
-        "@com_google_absl//absl/types:span",
     ],
 )
 

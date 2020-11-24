@@ -179,7 +179,7 @@ class NcclIdStore {
         client_(std::move(client)),
         device_to_node_(std::move(device_to_node)) {}
 
-  StatusOr<std::string> GetNcclUniqueId(const NcclCliqueKey& key);
+  StatusOr<std::string> GetNcclUniqueId(const gpu::NcclCliqueKey& key);
 
  private:
   const int node_id_;
@@ -187,10 +187,12 @@ class NcclIdStore {
   const absl::flat_hash_map<GlobalDeviceId, int> device_to_node_;
 
   absl::Mutex mu_;
-  absl::flat_hash_map<NcclCliqueKey, std::string> cache_ ABSL_GUARDED_BY(mu_);
+  absl::flat_hash_map<gpu::NcclCliqueKey, std::string> cache_
+      ABSL_GUARDED_BY(mu_);
 };
 
-StatusOr<std::string> NcclIdStore::GetNcclUniqueId(const NcclCliqueKey& key) {
+StatusOr<std::string> NcclIdStore::GetNcclUniqueId(
+    const gpu::NcclCliqueKey& key) {
   // The caller must ensure that threads calling this method concurrently have
   // unique keys, otherwise the global key-value store may hold the wrong value.
   {
@@ -241,7 +243,7 @@ Status BuildDistributedDevices(
     std::vector<std::unique_ptr<LocalDeviceState>> local_device_states,
     std::shared_ptr<DistributedRuntimeClient> distributed_client, int node_id,
     std::vector<std::unique_ptr<PjRtDevice>>* devices,
-    GpuExecutableRunOptions* gpu_executable_run_options) {
+    gpu::GpuExecutableRunOptions* gpu_executable_run_options) {
   LocalTopologyProto local_topology;
   local_topology.set_node_id(node_id);
   for (const auto& local_device : local_device_states) {
@@ -292,7 +294,7 @@ Status BuildDistributedDevices(
   auto nccl_id_store = std::make_shared<NcclIdStore>(
       node_id, distributed_client, device_to_node);
   gpu_executable_run_options->set_nccl_unique_id_callback(
-      [nccl_id_store](const NcclCliqueKey& key) {
+      [nccl_id_store](const gpu::NcclCliqueKey& key) {
         return nccl_id_store->GetNcclUniqueId(key);
       });
   return Status::OK();
@@ -320,7 +322,7 @@ StatusOr<std::unique_ptr<PjRtClient>> GetNvidiaGpuClient(
       GetGpuHostAllocator(local_device_states.front()->executor());
 
   std::vector<std::unique_ptr<PjRtDevice>> devices;
-  auto gpu_run_options = absl::make_unique<GpuExecutableRunOptions>();
+  auto gpu_run_options = absl::make_unique<gpu::GpuExecutableRunOptions>();
   if (distributed_client) {
     TF_RETURN_IF_ERROR(BuildDistributedDevices(
         std::move(local_device_states), std::move(distributed_client), node_id,

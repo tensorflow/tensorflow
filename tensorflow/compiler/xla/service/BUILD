@@ -5250,3 +5250,15 @@ tf_cc_test(
         "@com_google_absl//absl/strings",
     ],
 )
+
+cc_library(
+    name = "global_device_id",
+    srcs = ["global_device_id.cc"],
+    hdrs = ["global_device_id.h"],
+    deps = [
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)

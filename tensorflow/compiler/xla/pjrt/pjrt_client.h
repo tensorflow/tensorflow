@@ -185,7 +185,7 @@ class PjRtClient {
       std::unique_ptr<se::DeviceMemoryAllocator> allocator,
       std::unique_ptr<tensorflow::Allocator> host_memory_allocator,
       bool should_stage_host_to_device_transfers,
-      std::unique_ptr<GpuExecutableRunOptions> gpu_run_options);
+      std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options);
   virtual ~PjRtClient() = default;
 
   virtual StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
@@ -222,7 +222,7 @@ class PjRtClient {
     return should_stage_host_to_device_transfers_;
   }
 
-  GpuExecutableRunOptions* gpu_run_options() const {
+  gpu::GpuExecutableRunOptions* gpu_run_options() const {
     return gpu_run_options_.get();
   }
 
@@ -358,7 +358,7 @@ class PjRtClient {
   // transfer via pinned memory.
   bool should_stage_host_to_device_transfers_;
 
-  std::unique_ptr<GpuExecutableRunOptions> gpu_run_options_;
+  std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options_;
 
   tensorflow::thread::ThreadPool h2d_transfer_pool_;
 };
