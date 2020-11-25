@@ -52,8 +52,9 @@ py_binary(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:image_ops",
         "//tensorflow/python:io_ops",
-        "//tensorflow/python:platform",
         "//tensorflow/python:session",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
     ],
 )
 
