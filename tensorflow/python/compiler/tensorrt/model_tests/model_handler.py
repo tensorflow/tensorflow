@@ -17,6 +17,7 @@
 import abc
 import collections
 import functools
+import itertools
 import tempfile
 import time
 from typing import Callable, Iterable, List, Mapping, Optional, Sequence, Union
@@ -72,11 +73,15 @@ def _generate_random_tensor_ops(shape: Sequence[int], dtype: tf_dtypes.DType,
   # Need to generate a random tensor in float32/int32 and cast to a different
   # datatype as random_ops doesn't suppprt all the datatypes.
   random_dtype = tf_dtypes.float32 if dtype.is_floating else tf_dtypes.int32
+  # tf.bool doesn't have `max` attribute
+  dtype_max = 1 if dtype == tf_dtypes.bool else dtype.max
   return math_ops.cast(
       random_ops.random_uniform(
           shape=shape,
           dtype=random_dtype,
-          maxval=min(dtype.max, random_dtype.max)),
+          # Limits maximum value as 255 to simulate pixel values, avoid
+          # generating large numbers and casuing overflows.
+          maxval=min(dtype_max, random_dtype.max, 255)),
       dtype=dtype,
       name=name)
 
@@ -139,18 +144,6 @@ def load_graph_func(saved_model_dir: str, saved_model_tags: str,
 
 
 ### Test Classes
-class TestResult(
-    collections.namedtuple("TestResult",
-                           ["outputs", "latency", "trt_convert_params"])):
-
-  def __new__(cls,
-              outputs: Mapping[str, np.ndarray],
-              latency: List[float],
-              trt_convert_params: trt.TrtConversionParams = None):
-    return super(TestResult, cls).__new__(cls, outputs, latency,
-                                          trt_convert_params)
-
-
 class ModelConfig(
     collections.namedtuple("ModelConfig", [
         "saved_model_dir", "saved_model_tags", "saved_model_signature_key",
@@ -169,12 +162,46 @@ class ModelConfig(
                               saved_model_signature_key, default_batch_size)
 
 
-class TestResultCollection(
-    collections.namedtuple("TestResultCollection", ["results", "config"])):
+class TestResult(
+    collections.namedtuple("TestResult", [
+        "model_config", "enable_gpu", "output_names", "output_tensors",
+        "model_latency", "trt_convert_params"
+    ])):
+  """Configuration and results for a single model testing."""
 
-  def __new__(cls, config: ModelConfig,
-              results: Sequence[TestResult] = tuple()):
-    return super(TestResultCollection, cls).__new__(cls, config, results)
+  def __new__(cls,
+              model_config: ModelConfig,
+              enable_gpu: bool,
+              output_names: Sequence[str],
+              output_tensors: Sequence[np.ndarray],
+              model_latency: List[float],
+              trt_convert_params: trt.TrtConversionParams = None):
+    return super(TestResult,
+                 cls).__new__(cls, model_config, enable_gpu, output_names,
+                              output_tensors, model_latency, trt_convert_params)
+
+
+class TestResultCollection(
+    collections.namedtuple("TestResultCollection", [
+        "test_name", "model_config", "cpu_base_result", "gpu_base_result",
+        "trt_results"
+    ])):
+  """Configuration and results for a series of model testing."""
+
+  def __new__(cls,
+              test_name: str,
+              model_config: ModelConfig,
+              cpu_base_result: TestResult,
+              gpu_base_result: TestResult,
+              trt_results: Sequence[TestResult] = tuple()):
+    return super(TestResultCollection,
+                 cls).__new__(cls, test_name, model_config, cpu_base_result,
+                              gpu_base_result, trt_results)
+
+  @property
+  def results(self) -> Iterable[TestResult]:
+    return itertools.chain([self.cpu_base_result, self.gpu_base_result],
+                           self.trt_results)
 
 
 class _ModelHandlerBase(metaclass=abc.ABCMeta):
@@ -213,7 +240,7 @@ class _ModelHandlerBase(metaclass=abc.ABCMeta):
           inputs=None,
           warmup_iterations: int = 10,
           benchmark_iterations: int = 100,
-          allow_to_use_gpu: bool = True) -> TestResult:
+          enable_gpu: bool = True) -> TestResult:
     """Runs the model with provided or randomly generated input tensors.
 
     Args:
@@ -222,10 +249,10 @@ class _ModelHandlerBase(metaclass=abc.ABCMeta):
         instead.
       warmup_iterations: Number of inferences to warm up the runtime.
       benchmark_iterations: Number of inferences to measure the latency.
-      allow_to_use_gpu: Whether it is allowed to use GPU or not.
+      enable_gpu: Whether it is allowed to use GPU or not.
 
     Returns:
-      `TestResult` summarizing timing and numerics information.
+      `TestResult` summarizing latency and numerics information.
     """
 
 
@@ -270,10 +297,10 @@ class ModelHandlerV1(_ModelHandlerBase):
           inputs: Optional[Mapping[str, np.ndarray]] = None,
           warmup_iterations=10,
           benchmark_iterations=100,
-          allow_to_use_gpu=True) -> TestResult:
+          enable_gpu=True) -> TestResult:
     inputs = inputs or self.generate_random_inputs()
     config_proto = None
-    if not allow_to_use_gpu:
+    if not enable_gpu:
       config_proto = config_pb2.ConfigProto(device_count={"CPU": 1, "GPU": 0})
     logging.info("Running model inference!")
     with framework_ops.Graph().as_default():
@@ -291,8 +318,12 @@ class ModelHandlerV1(_ModelHandlerBase):
         except Exception as exc:
           raise RuntimeError("Failed to run model inference! "
                              "Model information: {}".format(str(self))) from exc
-        outputs = dict(zip(self.output_tensor_names, outputs))
-    return TestResult(latency=latency, outputs=outputs if inputs else None)
+    return TestResult(
+        model_config=self.model_config,
+        enable_gpu=enable_gpu,
+        model_latency=latency,
+        output_names=self.output_tensor_names,
+        output_tensors=outputs)
 
 
 class ModelHandlerV2(_ModelHandlerBase):
@@ -327,10 +358,10 @@ class ModelHandlerV2(_ModelHandlerBase):
           inputs: Optional[Sequence[framework_ops.Tensor]] = None,
           warmup_iterations=10,
           benchmark_iterations=100,
-          allow_to_use_gpu=True) -> TestResult:
+          enable_gpu=True) -> TestResult:
     inputs = inputs or self.generate_random_inputs()
     try:
-      device = "/device:gpu:0" if allow_to_use_gpu else "/device:cpu:0"
+      device = "/device:gpu:0" if enable_gpu else "/device:cpu:0"
       with framework_ops.device(device):
         for _ in range(warmup_iterations):
           self.graph_func(*inputs)
@@ -342,8 +373,12 @@ class ModelHandlerV2(_ModelHandlerBase):
     except Exception as exc:
       raise RuntimeError("Failed to run model inference! "
                          "Model information: {}".format(str(self))) from exc
-    outputs = dict(zip(self.output_tensor_names, outputs))
-    return TestResult(latency=latency, outputs=outputs if inputs else None)
+    return TestResult(
+        model_config=self.model_config,
+        enable_gpu=enable_gpu,
+        model_latency=latency,
+        output_names=self.output_tensor_names,
+        output_tensors=outputs)
 
 
 class _TrtModelHandlerBase(_ModelHandlerBase):
@@ -419,13 +454,13 @@ class TrtModelHandlerV1(_TrtModelHandlerBase, ModelHandlerV1):
         input_saved_model_signature_key=(
             self.model_config.saved_model_signature_key),
         nodes_denylist=conversion_nodes_denylist,
-        max_batch_size=trt_convert_params.max_batch_size,
         max_workspace_size_bytes=trt_convert_params.max_workspace_size_bytes,
         precision_mode=trt_convert_params.precision_mode,
         minimum_segment_size=trt_convert_params.minimum_segment_size,
-        is_dynamic_op=trt_convert_params.is_dynamic_op,
         maximum_cached_engines=trt_convert_params.maximum_cached_engines,
         use_calibration=trt_convert_params.use_calibration,
+        max_batch_size=self.model_config.default_batch_size,
+        is_dynamic_op=False,
     )
 
   _check_conversion = _TrtModelHandlerBase._check_contains_trt_engine
@@ -459,11 +494,7 @@ class TrtModelHandlerV1(_TrtModelHandlerBase, ModelHandlerV1):
     self._check_conversion(self.meta_graph.graph_def)
     logging.info("Running with TensorRT!")
     test_result = ModelHandlerV1.run(
-        self,
-        inputs,
-        warmup_iterations,
-        benchmark_iterations,
-        allow_to_use_gpu=True)
+        self, inputs, warmup_iterations, benchmark_iterations, enable_gpu=True)
     return test_result._replace(trt_convert_params=self._trt_convert_params)
 
 
@@ -512,11 +543,7 @@ class TrtModelHandlerV2(_TrtModelHandlerBase, ModelHandlerV2):
     self._check_conversion(self.graph_func)
     logging.info("Running with TensorRT!")
     test_result = ModelHandlerV2.run(
-        self,
-        inputs,
-        warmup_iterations,
-        benchmark_iterations,
-        allow_to_use_gpu=True)
+        self, inputs, warmup_iterations, benchmark_iterations, enable_gpu=True)
     return test_result._replace(trt_convert_params=self._trt_convert_params)
 
 
@@ -524,7 +551,7 @@ class _ModelHandlerManagerBase(metaclass=abc.ABCMeta):
   """Manages a series of ModelHandlers for aggregrated testing/benchmarking."""
 
   def __init__(
-      self, model_config: ModelConfig,
+      self, name: str, model_config: ModelConfig,
       default_trt_convert_params: trt.TrtConversionParams,
       trt_convert_params_updater: Callable[[trt.TrtConversionParams],
                                            Iterable[trt.TrtConversionParams]]):
@@ -536,8 +563,8 @@ class _ModelHandlerManagerBase(metaclass=abc.ABCMeta):
           model_config, trt_convert_params=trt_convert_params)
       self._trt_models.append(trt_model)
 
-    self._result_collection = TestResultCollection(
-        results=[], config=model_config)
+    self._name = name
+    self._result_collection = None
 
   def __str__(self) -> str:
     return "Input Model: {}".format(str(self._ori_model))
@@ -558,7 +585,11 @@ class _ModelHandlerManagerBase(metaclass=abc.ABCMeta):
     """The TensorRTmodle handler class. TrtModelHandleV1/TrtModelHandlerV2."""
 
   @property
-  def model_config(self):
+  def name(self) -> str:
+    return self._name
+
+  @property
+  def model_config(self) -> ModelConfig:
     return self._ori_model.model_config
 
   def generate_random_inputs(self, batch_size: Optional[int] = None):
@@ -589,15 +620,25 @@ class _ModelHandlerManagerBase(metaclass=abc.ABCMeta):
       benchmark_iterations: Number of inferences to measure the latency.
 
     Returns:
-      `TestResultCollection` summarizing timing and numerics information for
+      `TestResultCollection` summarizing latency and numerics information for
       different TensorRT conversion settings.
     """
     inputs = inputs or self.generate_random_inputs()
-    results = [
-        model.run(inputs, warmup_iterations, benchmark_iterations)
-        for model in [self._ori_model] + self._trt_models
-    ]
-    return self._result_collection._replace(results=results)
+
+    def run_model(model, **kwargs):
+      return model.run(inputs, warmup_iterations, benchmark_iterations,
+                       **kwargs)
+
+    cpu_base_result = run_model(self._ori_model, enable_gpu=False)
+    gpu_base_result = run_model(self._ori_model, enable_gpu=True)
+    trt_results = list(map(run_model, self._trt_models))
+
+    return TestResultCollection(
+        test_name=self._name,
+        model_config=self.model_config,
+        cpu_base_result=cpu_base_result,
+        gpu_base_result=gpu_base_result,
+        trt_results=trt_results)
 
 
 class ModelHandlerManagerV1(_ModelHandlerManagerBase):
