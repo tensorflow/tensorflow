@@ -3568,8 +3568,11 @@ StatusOr<XlaComputation> XlaBuilder::BuildDynamicInferenceGraph(XlaOp root_op) {
       seen[item_key] = stacktop_id;
       worklist.pop_back();
     } else {
-      // Visit and process operand.
-      WorkItem next_item(instr_proto->operand_ids(next_operand), true);
+      // Visit and process operand.  If an operand doesn't need rewrite
+      // (predicate of kSelect, or indices of kGather), we also don't rewrite
+      // its ancestors.
+      WorkItem next_item(instr_proto->operand_ids(next_operand),
+                         item.need_rewrite);
       if (opcode == HloOpcode::kSelect && next_operand == 0) {
         next_item.need_rewrite = false;
       }
