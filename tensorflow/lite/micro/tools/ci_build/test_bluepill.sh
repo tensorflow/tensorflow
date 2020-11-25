@@ -41,7 +41,4 @@ readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile TARGET=${TARG
 readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
 readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile TARGET=${TARGET} build
 
-# TODO(b/172939049): Using renode to run the tests is not currently integrated
-# with the Makefile.  So, we manually run the test script with the correct path
-# to the bluepill generated files.
-tensorflow/lite/micro/testing/test_bluepill_binary.sh tensorflow/lite/micro/tools/make/gen/bluepill_cortex-m3/bin/
+readable_run make -f tensorflow/lite/micro/tools/make/Makefile TARGET=${TARGET} test
