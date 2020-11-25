@@ -37,6 +37,7 @@ ABSL_CONST_INIT extern const char kAttrSrcDevice[];
 ABSL_CONST_INIT extern const char kAttrDstDevice[];
 ABSL_CONST_INIT extern const char kAttrTensorName[];
 ABSL_CONST_INIT extern const char kChannelDevice[];
+ABSL_CONST_INIT extern const char kStreaming[];
 
 struct NodeState {
   // A node (i.e., an op) takes a set of input:port pairs and produces
@@ -438,7 +439,7 @@ class SchedulerState {
   // Auxiliary data structures for constructing NodeState and DeviceState.
   std::unique_ptr<GraphProperties> graph_properties_;  // Initialized in Init().
   Cluster* cluster_;                                   // Not owned.
-  const GrapplerItem* grappler_item_;  // Not owned.
+  const GrapplerItem* grappler_item_;                  // Not owned.
   bool use_static_shapes_;
   bool initialized_;
   bool track_mem_usage_snapshot_;

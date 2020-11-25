@@ -5137,6 +5137,7 @@ def non_max_suppression_padded(boxes,
     selected_indices = tf.slice(
         selected_indices_padded, tf.constant([0]), num_valid)
     selected_boxes = tf.gather(boxes, selected_indices)
+    ```
 
   Args:
     boxes: a tensor of rank 2 or higher with a shape of [..., num_boxes, 4].

@@ -792,6 +792,11 @@ class ShapeUtil {
   static bool CanUpcastIntegral(const Shape& from, const Shape& to);
 
  private:
+  // Fills *shape. Returns true on success.
+  // REQUIRES: *shape is empty.
+  static bool FillNewShape(PrimitiveType element_type,
+                           absl::Span<const int64> dimensions, Shape* shape);
+
   // Validates the shape size is sane. This makes sure it's safe to do
   // calculations in int64 without overflowing.
   static Status ValidateShapeSize(const Shape& shape);

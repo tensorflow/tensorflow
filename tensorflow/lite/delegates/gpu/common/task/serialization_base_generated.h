@@ -78,6 +78,15 @@ struct TensorDescriptorMapValueBuilder;
 struct Arguments;
 struct ArgumentsBuilder;
 
+struct OperationDef;
+struct OperationDefBuilder;
+
+struct CompilerOption;
+struct CompilerOptionBuilder;
+
+struct GPUOperation;
+struct GPUOperationBuilder;
+
 enum class AccessType : int8_t {
   READ = 0,
   WRITE = 1,
@@ -289,6 +298,111 @@ inline const char *EnumNameLayout(Layout e) {
   if (flatbuffers::IsOutRange(e, Layout::UNKNOWN, Layout::BHWDC)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesLayout()[index];
+}
+
+enum class CalculationsPrecision : int8_t {
+  F32 = 0,
+  F32_F16 = 1,
+  F16 = 2,
+  MIN = F32,
+  MAX = F16
+};
+
+inline const CalculationsPrecision (&EnumValuesCalculationsPrecision())[3] {
+  static const CalculationsPrecision values[] = {CalculationsPrecision::F32,
+                                                 CalculationsPrecision::F32_F16,
+                                                 CalculationsPrecision::F16};
+  return values;
+}
+
+inline const char *const *EnumNamesCalculationsPrecision() {
+  static const char *const names[4] = {"F32", "F32_F16", "F16", nullptr};
+  return names;
+}
+
+inline const char *EnumNameCalculationsPrecision(CalculationsPrecision e) {
+  if (flatbuffers::IsOutRange(e, CalculationsPrecision::F32,
+                              CalculationsPrecision::F16))
+    return "";
+  const size_t index = static_cast<size_t>(e);
+  return EnumNamesCalculationsPrecision()[index];
+}
+
+enum class TensorToGrid : int8_t {
+  CUSTOM = 0,
+  WB_TO_X_HD_TO_Y_S_TO_Z = 1,
+  WB_TO_X_HD_TO_Y_Z_IS_1 = 2,
+  WB_TO_X_H_TO_Y_D_TO_Z = 3,
+  B_TO_X_Y_IS_1_Z_IS_1 = 4,
+  MIN = CUSTOM,
+  MAX = B_TO_X_Y_IS_1_Z_IS_1
+};
+
+inline const TensorToGrid (&EnumValuesTensorToGrid())[5] {
+  static const TensorToGrid values[] = {
+      TensorToGrid::CUSTOM, TensorToGrid::WB_TO_X_HD_TO_Y_S_TO_Z,
+      TensorToGrid::WB_TO_X_HD_TO_Y_Z_IS_1, TensorToGrid::WB_TO_X_H_TO_Y_D_TO_Z,
+      TensorToGrid::B_TO_X_Y_IS_1_Z_IS_1};
+  return values;
+}
+
+inline const char *const *EnumNamesTensorToGrid() {
+  static const char *const names[6] = {"CUSTOM",
+                                       "WB_TO_X_HD_TO_Y_S_TO_Z",
+                                       "WB_TO_X_HD_TO_Y_Z_IS_1",
+                                       "WB_TO_X_H_TO_Y_D_TO_Z",
+                                       "B_TO_X_Y_IS_1_Z_IS_1",
+                                       nullptr};
+  return names;
+}
+
+inline const char *EnumNameTensorToGrid(TensorToGrid e) {
+  if (flatbuffers::IsOutRange(e, TensorToGrid::CUSTOM,
+                              TensorToGrid::B_TO_X_Y_IS_1_Z_IS_1))
+    return "";
+  const size_t index = static_cast<size_t>(e);
+  return EnumNamesTensorToGrid()[index];
+}
+
+enum class CompilerOptions : int8_t {
+  ADRENO_FULL_SIMD_LINE = 0,
+  ADRENO_MORE_WAVES = 1,
+  POWERVR_FP16 = 2,
+  CL_OPT_DISABLE = 3,
+  CL_2_0 = 4,
+  CL_3_0 = 5,
+  MIN = ADRENO_FULL_SIMD_LINE,
+  MAX = CL_3_0
+};
+
+inline const CompilerOptions (&EnumValuesCompilerOptions())[6] {
+  static const CompilerOptions values[] = {
+      CompilerOptions::ADRENO_FULL_SIMD_LINE,
+      CompilerOptions::ADRENO_MORE_WAVES,
+      CompilerOptions::POWERVR_FP16,
+      CompilerOptions::CL_OPT_DISABLE,
+      CompilerOptions::CL_2_0,
+      CompilerOptions::CL_3_0};
+  return values;
+}
+
+inline const char *const *EnumNamesCompilerOptions() {
+  static const char *const names[7] = {"ADRENO_FULL_SIMD_LINE",
+                                       "ADRENO_MORE_WAVES",
+                                       "POWERVR_FP16",
+                                       "CL_OPT_DISABLE",
+                                       "CL_2_0",
+                                       "CL_3_0",
+                                       nullptr};
+  return names;
+}
+
+inline const char *EnumNameCompilerOptions(CompilerOptions e) {
+  if (flatbuffers::IsOutRange(e, CompilerOptions::ADRENO_FULL_SIMD_LINE,
+                              CompilerOptions::CL_3_0))
+    return "";
+  const size_t index = static_cast<size_t>(e);
+  return EnumNamesCompilerOptions()[index];
 }
 
 struct Int4 FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
@@ -1830,6 +1944,454 @@ inline flatbuffers::Offset<Arguments> CreateArgumentsDirect(
       texture2d_objects__,
       tensor_linear_objects__,
       tensor_objects__);
+}
+
+struct OperationDef FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef OperationDefBuilder Builder;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_PRECISION = 4,
+    VT_SRC_TENSORS = 6,
+    VT_DST_TENSORS = 8
+  };
+  tflite::gpu::data::CalculationsPrecision precision() const {
+    return static_cast<tflite::gpu::data::CalculationsPrecision>(
+        GetField<int8_t>(VT_PRECISION, 0));
+  }
+  const flatbuffers::Vector<
+      flatbuffers::Offset<tflite::gpu::data::TensorDescriptor>>
+      *src_tensors() const {
+    return GetPointer<const flatbuffers::Vector<
+        flatbuffers::Offset<tflite::gpu::data::TensorDescriptor>> *>(
+        VT_SRC_TENSORS);
+  }
+  const flatbuffers::Vector<
+      flatbuffers::Offset<tflite::gpu::data::TensorDescriptor>>
+      *dst_tensors() const {
+    return GetPointer<const flatbuffers::Vector<
+        flatbuffers::Offset<tflite::gpu::data::TensorDescriptor>> *>(
+        VT_DST_TENSORS);
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<int8_t>(verifier, VT_PRECISION) &&
+           VerifyOffset(verifier, VT_SRC_TENSORS) &&
+           verifier.VerifyVector(src_tensors()) &&
+           verifier.VerifyVectorOfTables(src_tensors()) &&
+           VerifyOffset(verifier, VT_DST_TENSORS) &&
+           verifier.VerifyVector(dst_tensors()) &&
+           verifier.VerifyVectorOfTables(dst_tensors()) && verifier.EndTable();
+  }
+};
+
+struct OperationDefBuilder {
+  typedef OperationDef Table;
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_precision(tflite::gpu::data::CalculationsPrecision precision) {
+    fbb_.AddElement<int8_t>(OperationDef::VT_PRECISION,
+                            static_cast<int8_t>(precision), 0);
+  }
+  void add_src_tensors(
+      flatbuffers::Offset<flatbuffers::Vector<
+          flatbuffers::Offset<tflite::gpu::data::TensorDescriptor>>>
+          src_tensors) {
+    fbb_.AddOffset(OperationDef::VT_SRC_TENSORS, src_tensors);
+  }
+  void add_dst_tensors(
+      flatbuffers::Offset<flatbuffers::Vector<
+          flatbuffers::Offset<tflite::gpu::data::TensorDescriptor>>>
+          dst_tensors) {
+    fbb_.AddOffset(OperationDef::VT_DST_TENSORS, dst_tensors);
+  }
+  explicit OperationDefBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+      : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  flatbuffers::Offset<OperationDef> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<OperationDef>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<OperationDef> CreateOperationDef(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    tflite::gpu::data::CalculationsPrecision precision =
+        tflite::gpu::data::CalculationsPrecision::F32,
+    flatbuffers::Offset<flatbuffers::Vector<
+        flatbuffers::Offset<tflite::gpu::data::TensorDescriptor>>>
+        src_tensors = 0,
+    flatbuffers::Offset<flatbuffers::Vector<
+        flatbuffers::Offset<tflite::gpu::data::TensorDescriptor>>>
+        dst_tensors = 0) {
+  OperationDefBuilder builder_(_fbb);
+  builder_.add_dst_tensors(dst_tensors);
+  builder_.add_src_tensors(src_tensors);
+  builder_.add_precision(precision);
+  return builder_.Finish();
+}
+
+inline flatbuffers::Offset<OperationDef> CreateOperationDefDirect(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    tflite::gpu::data::CalculationsPrecision precision =
+        tflite::gpu::data::CalculationsPrecision::F32,
+    const std::vector<flatbuffers::Offset<tflite::gpu::data::TensorDescriptor>>
+        *src_tensors = nullptr,
+    const std::vector<flatbuffers::Offset<tflite::gpu::data::TensorDescriptor>>
+        *dst_tensors = nullptr) {
+  auto src_tensors__ =
+      src_tensors
+          ? _fbb.CreateVector<
+                flatbuffers::Offset<tflite::gpu::data::TensorDescriptor>>(
+                *src_tensors)
+          : 0;
+  auto dst_tensors__ =
+      dst_tensors
+          ? _fbb.CreateVector<
+                flatbuffers::Offset<tflite::gpu::data::TensorDescriptor>>(
+                *dst_tensors)
+          : 0;
+  return tflite::gpu::data::CreateOperationDef(_fbb, precision, src_tensors__,
+                                               dst_tensors__);
+}
+
+struct CompilerOption FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef CompilerOptionBuilder Builder;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_OPTION = 4
+  };
+  tflite::gpu::data::CompilerOptions option() const {
+    return static_cast<tflite::gpu::data::CompilerOptions>(
+        GetField<int8_t>(VT_OPTION, 0));
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<int8_t>(verifier, VT_OPTION) && verifier.EndTable();
+  }
+};
+
+struct CompilerOptionBuilder {
+  typedef CompilerOption Table;
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_option(tflite::gpu::data::CompilerOptions option) {
+    fbb_.AddElement<int8_t>(CompilerOption::VT_OPTION,
+                            static_cast<int8_t>(option), 0);
+  }
+  explicit CompilerOptionBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+      : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  flatbuffers::Offset<CompilerOption> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<CompilerOption>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<CompilerOption> CreateCompilerOption(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    tflite::gpu::data::CompilerOptions option =
+        tflite::gpu::data::CompilerOptions::ADRENO_FULL_SIMD_LINE) {
+  CompilerOptionBuilder builder_(_fbb);
+  builder_.add_option(option);
+  return builder_.Finish();
+}
+
+struct GPUOperation FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef GPUOperationBuilder Builder;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_ARGUMENTS = 4,
+    VT_CODE = 6,
+    VT_WORK_GROUP_SIZE = 8,
+    VT_COMPILER_OPTIONS = 10,
+    VT_TENSOR_TO_GRID = 12,
+    VT_ELEMENTWISE = 14,
+    VT_LINKABLE = 16,
+    VT_CHECK_SRC_CHANNELS_SIZE = 18,
+    VT_DEFINITION = 20,
+    VT_GRID_DIMENSION = 22,
+    VT_WORK_GROUP_LAUNCH_ORDER = 24,
+    VT_GRID_SIZE = 26,
+    VT_SRC_TENSORS_NAMES = 28,
+    VT_DST_TENSORS_NAMES = 30,
+    VT_WORK_GROUPS_COUNT = 32,
+    VT_LINKABLE_COUNT = 34,
+    VT_ELEMENTWISE_CODE = 36
+  };
+  const tflite::gpu::data::Arguments *arguments() const {
+    return GetPointer<const tflite::gpu::data::Arguments *>(VT_ARGUMENTS);
+  }
+  const flatbuffers::String *code() const {
+    return GetPointer<const flatbuffers::String *>(VT_CODE);
+  }
+  const tflite::gpu::data::Int3 *work_group_size() const {
+    return GetPointer<const tflite::gpu::data::Int3 *>(VT_WORK_GROUP_SIZE);
+  }
+  const flatbuffers::Vector<
+      flatbuffers::Offset<tflite::gpu::data::CompilerOption>>
+      *compiler_options() const {
+    return GetPointer<const flatbuffers::Vector<
+        flatbuffers::Offset<tflite::gpu::data::CompilerOption>> *>(
+        VT_COMPILER_OPTIONS);
+  }
+  tflite::gpu::data::TensorToGrid tensor_to_grid() const {
+    return static_cast<tflite::gpu::data::TensorToGrid>(
+        GetField<int8_t>(VT_TENSOR_TO_GRID, 0));
+  }
+  bool elementwise() const { return GetField<uint8_t>(VT_ELEMENTWISE, 0) != 0; }
+  bool linkable() const { return GetField<uint8_t>(VT_LINKABLE, 0) != 0; }
+  bool check_src_channels_size() const {
+    return GetField<uint8_t>(VT_CHECK_SRC_CHANNELS_SIZE, 0) != 0;
+  }
+  const tflite::gpu::data::OperationDef *definition() const {
+    return GetPointer<const tflite::gpu::data::OperationDef *>(VT_DEFINITION);
+  }
+  int32_t grid_dimension() const {
+    return GetField<int32_t>(VT_GRID_DIMENSION, 0);
+  }
+  const tflite::gpu::data::Int3 *work_group_launch_order() const {
+    return GetPointer<const tflite::gpu::data::Int3 *>(
+        VT_WORK_GROUP_LAUNCH_ORDER);
+  }
+  const tflite::gpu::data::Int3 *grid_size() const {
+    return GetPointer<const tflite::gpu::data::Int3 *>(VT_GRID_SIZE);
+  }
+  const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>
+      *src_tensors_names() const {
+    return GetPointer<
+        const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> *>(
+        VT_SRC_TENSORS_NAMES);
+  }
+  const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>
+      *dst_tensors_names() const {
+    return GetPointer<
+        const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> *>(
+        VT_DST_TENSORS_NAMES);
+  }
+  const tflite::gpu::data::Int3 *work_groups_count() const {
+    return GetPointer<const tflite::gpu::data::Int3 *>(VT_WORK_GROUPS_COUNT);
+  }
+  int32_t linkable_count() const {
+    return GetField<int32_t>(VT_LINKABLE_COUNT, 0);
+  }
+  const flatbuffers::String *elementwise_code() const {
+    return GetPointer<const flatbuffers::String *>(VT_ELEMENTWISE_CODE);
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) && VerifyOffset(verifier, VT_ARGUMENTS) &&
+           verifier.VerifyTable(arguments()) &&
+           VerifyOffset(verifier, VT_CODE) && verifier.VerifyString(code()) &&
+           VerifyOffset(verifier, VT_WORK_GROUP_SIZE) &&
+           verifier.VerifyTable(work_group_size()) &&
+           VerifyOffset(verifier, VT_COMPILER_OPTIONS) &&
+           verifier.VerifyVector(compiler_options()) &&
+           verifier.VerifyVectorOfTables(compiler_options()) &&
+           VerifyField<int8_t>(verifier, VT_TENSOR_TO_GRID) &&
+           VerifyField<uint8_t>(verifier, VT_ELEMENTWISE) &&
+           VerifyField<uint8_t>(verifier, VT_LINKABLE) &&
+           VerifyField<uint8_t>(verifier, VT_CHECK_SRC_CHANNELS_SIZE) &&
+           VerifyOffset(verifier, VT_DEFINITION) &&
+           verifier.VerifyTable(definition()) &&
+           VerifyField<int32_t>(verifier, VT_GRID_DIMENSION) &&
+           VerifyOffset(verifier, VT_WORK_GROUP_LAUNCH_ORDER) &&
+           verifier.VerifyTable(work_group_launch_order()) &&
+           VerifyOffset(verifier, VT_GRID_SIZE) &&
+           verifier.VerifyTable(grid_size()) &&
+           VerifyOffset(verifier, VT_SRC_TENSORS_NAMES) &&
+           verifier.VerifyVector(src_tensors_names()) &&
+           verifier.VerifyVectorOfStrings(src_tensors_names()) &&
+           VerifyOffset(verifier, VT_DST_TENSORS_NAMES) &&
+           verifier.VerifyVector(dst_tensors_names()) &&
+           verifier.VerifyVectorOfStrings(dst_tensors_names()) &&
+           VerifyOffset(verifier, VT_WORK_GROUPS_COUNT) &&
+           verifier.VerifyTable(work_groups_count()) &&
+           VerifyField<int32_t>(verifier, VT_LINKABLE_COUNT) &&
+           VerifyOffset(verifier, VT_ELEMENTWISE_CODE) &&
+           verifier.VerifyString(elementwise_code()) && verifier.EndTable();
+  }
+};
+
+struct GPUOperationBuilder {
+  typedef GPUOperation Table;
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_arguments(
+      flatbuffers::Offset<tflite::gpu::data::Arguments> arguments) {
+    fbb_.AddOffset(GPUOperation::VT_ARGUMENTS, arguments);
+  }
+  void add_code(flatbuffers::Offset<flatbuffers::String> code) {
+    fbb_.AddOffset(GPUOperation::VT_CODE, code);
+  }
+  void add_work_group_size(
+      flatbuffers::Offset<tflite::gpu::data::Int3> work_group_size) {
+    fbb_.AddOffset(GPUOperation::VT_WORK_GROUP_SIZE, work_group_size);
+  }
+  void add_compiler_options(
+      flatbuffers::Offset<flatbuffers::Vector<
+          flatbuffers::Offset<tflite::gpu::data::CompilerOption>>>
+          compiler_options) {
+    fbb_.AddOffset(GPUOperation::VT_COMPILER_OPTIONS, compiler_options);
+  }
+  void add_tensor_to_grid(tflite::gpu::data::TensorToGrid tensor_to_grid) {
+    fbb_.AddElement<int8_t>(GPUOperation::VT_TENSOR_TO_GRID,
+                            static_cast<int8_t>(tensor_to_grid), 0);
+  }
+  void add_elementwise(bool elementwise) {
+    fbb_.AddElement<uint8_t>(GPUOperation::VT_ELEMENTWISE,
+                             static_cast<uint8_t>(elementwise), 0);
+  }
+  void add_linkable(bool linkable) {
+    fbb_.AddElement<uint8_t>(GPUOperation::VT_LINKABLE,
+                             static_cast<uint8_t>(linkable), 0);
+  }
+  void add_check_src_channels_size(bool check_src_channels_size) {
+    fbb_.AddElement<uint8_t>(GPUOperation::VT_CHECK_SRC_CHANNELS_SIZE,
+                             static_cast<uint8_t>(check_src_channels_size), 0);
+  }
+  void add_definition(
+      flatbuffers::Offset<tflite::gpu::data::OperationDef> definition) {
+    fbb_.AddOffset(GPUOperation::VT_DEFINITION, definition);
+  }
+  void add_grid_dimension(int32_t grid_dimension) {
+    fbb_.AddElement<int32_t>(GPUOperation::VT_GRID_DIMENSION, grid_dimension,
+                             0);
+  }
+  void add_work_group_launch_order(
+      flatbuffers::Offset<tflite::gpu::data::Int3> work_group_launch_order) {
+    fbb_.AddOffset(GPUOperation::VT_WORK_GROUP_LAUNCH_ORDER,
+                   work_group_launch_order);
+  }
+  void add_grid_size(flatbuffers::Offset<tflite::gpu::data::Int3> grid_size) {
+    fbb_.AddOffset(GPUOperation::VT_GRID_SIZE, grid_size);
+  }
+  void add_src_tensors_names(
+      flatbuffers::Offset<
+          flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
+          src_tensors_names) {
+    fbb_.AddOffset(GPUOperation::VT_SRC_TENSORS_NAMES, src_tensors_names);
+  }
+  void add_dst_tensors_names(
+      flatbuffers::Offset<
+          flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
+          dst_tensors_names) {
+    fbb_.AddOffset(GPUOperation::VT_DST_TENSORS_NAMES, dst_tensors_names);
+  }
+  void add_work_groups_count(
+      flatbuffers::Offset<tflite::gpu::data::Int3> work_groups_count) {
+    fbb_.AddOffset(GPUOperation::VT_WORK_GROUPS_COUNT, work_groups_count);
+  }
+  void add_linkable_count(int32_t linkable_count) {
+    fbb_.AddElement<int32_t>(GPUOperation::VT_LINKABLE_COUNT, linkable_count,
+                             0);
+  }
+  void add_elementwise_code(
+      flatbuffers::Offset<flatbuffers::String> elementwise_code) {
+    fbb_.AddOffset(GPUOperation::VT_ELEMENTWISE_CODE, elementwise_code);
+  }
+  explicit GPUOperationBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+      : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  flatbuffers::Offset<GPUOperation> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<GPUOperation>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<GPUOperation> CreateGPUOperation(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    flatbuffers::Offset<tflite::gpu::data::Arguments> arguments = 0,
+    flatbuffers::Offset<flatbuffers::String> code = 0,
+    flatbuffers::Offset<tflite::gpu::data::Int3> work_group_size = 0,
+    flatbuffers::Offset<flatbuffers::Vector<
+        flatbuffers::Offset<tflite::gpu::data::CompilerOption>>>
+        compiler_options = 0,
+    tflite::gpu::data::TensorToGrid tensor_to_grid =
+        tflite::gpu::data::TensorToGrid::CUSTOM,
+    bool elementwise = false, bool linkable = false,
+    bool check_src_channels_size = false,
+    flatbuffers::Offset<tflite::gpu::data::OperationDef> definition = 0,
+    int32_t grid_dimension = 0,
+    flatbuffers::Offset<tflite::gpu::data::Int3> work_group_launch_order = 0,
+    flatbuffers::Offset<tflite::gpu::data::Int3> grid_size = 0,
+    flatbuffers::Offset<
+        flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
+        src_tensors_names = 0,
+    flatbuffers::Offset<
+        flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
+        dst_tensors_names = 0,
+    flatbuffers::Offset<tflite::gpu::data::Int3> work_groups_count = 0,
+    int32_t linkable_count = 0,
+    flatbuffers::Offset<flatbuffers::String> elementwise_code = 0) {
+  GPUOperationBuilder builder_(_fbb);
+  builder_.add_elementwise_code(elementwise_code);
+  builder_.add_linkable_count(linkable_count);
+  builder_.add_work_groups_count(work_groups_count);
+  builder_.add_dst_tensors_names(dst_tensors_names);
+  builder_.add_src_tensors_names(src_tensors_names);
+  builder_.add_grid_size(grid_size);
+  builder_.add_work_group_launch_order(work_group_launch_order);
+  builder_.add_grid_dimension(grid_dimension);
+  builder_.add_definition(definition);
+  builder_.add_compiler_options(compiler_options);
+  builder_.add_work_group_size(work_group_size);
+  builder_.add_code(code);
+  builder_.add_arguments(arguments);
+  builder_.add_check_src_channels_size(check_src_channels_size);
+  builder_.add_linkable(linkable);
+  builder_.add_elementwise(elementwise);
+  builder_.add_tensor_to_grid(tensor_to_grid);
+  return builder_.Finish();
+}
+
+inline flatbuffers::Offset<GPUOperation> CreateGPUOperationDirect(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    flatbuffers::Offset<tflite::gpu::data::Arguments> arguments = 0,
+    const char *code = nullptr,
+    flatbuffers::Offset<tflite::gpu::data::Int3> work_group_size = 0,
+    const std::vector<flatbuffers::Offset<tflite::gpu::data::CompilerOption>>
+        *compiler_options = nullptr,
+    tflite::gpu::data::TensorToGrid tensor_to_grid =
+        tflite::gpu::data::TensorToGrid::CUSTOM,
+    bool elementwise = false, bool linkable = false,
+    bool check_src_channels_size = false,
+    flatbuffers::Offset<tflite::gpu::data::OperationDef> definition = 0,
+    int32_t grid_dimension = 0,
+    flatbuffers::Offset<tflite::gpu::data::Int3> work_group_launch_order = 0,
+    flatbuffers::Offset<tflite::gpu::data::Int3> grid_size = 0,
+    const std::vector<flatbuffers::Offset<flatbuffers::String>>
+        *src_tensors_names = nullptr,
+    const std::vector<flatbuffers::Offset<flatbuffers::String>>
+        *dst_tensors_names = nullptr,
+    flatbuffers::Offset<tflite::gpu::data::Int3> work_groups_count = 0,
+    int32_t linkable_count = 0, const char *elementwise_code = nullptr) {
+  auto code__ = code ? _fbb.CreateString(code) : 0;
+  auto compiler_options__ =
+      compiler_options
+          ? _fbb.CreateVector<
+                flatbuffers::Offset<tflite::gpu::data::CompilerOption>>(
+                *compiler_options)
+          : 0;
+  auto src_tensors_names__ =
+      src_tensors_names
+          ? _fbb.CreateVector<flatbuffers::Offset<flatbuffers::String>>(
+                *src_tensors_names)
+          : 0;
+  auto dst_tensors_names__ =
+      dst_tensors_names
+          ? _fbb.CreateVector<flatbuffers::Offset<flatbuffers::String>>(
+                *dst_tensors_names)
+          : 0;
+  auto elementwise_code__ =
+      elementwise_code ? _fbb.CreateString(elementwise_code) : 0;
+  return tflite::gpu::data::CreateGPUOperation(
+      _fbb, arguments, code__, work_group_size, compiler_options__,
+      tensor_to_grid, elementwise, linkable, check_src_channels_size,
+      definition, grid_dimension, work_group_launch_order, grid_size,
+      src_tensors_names__, dst_tensors_names__, work_groups_count,
+      linkable_count, elementwise_code__);
 }
 
 }  // namespace data

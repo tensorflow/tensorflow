@@ -1381,6 +1381,7 @@ py_library(
         ":_pywrap_util_port",
         ":_pywrap_utils",
         ":composite_tensor",
+        ":config",
         ":convert_to_constants",
         ":cpp_shape_inference_proto_py",
         ":errors",
@@ -3246,7 +3247,7 @@ py_library(
     ],
 )
 
-cuda_py_test(
+py_test(
     name = "batch_ops_test",
     size = "small",
     srcs = ["ops/batch_ops_test.py"],
@@ -5690,7 +5691,12 @@ pybind_extension(
     # TODO(b/138203821): change to "util._tf_stack" once the bug is fixed.
     module_name = "_tf_stack",
     deps = [
+        ":stack_trace",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@pybind11",
     ],
 )
@@ -6841,7 +6847,10 @@ tf_py_test(
     size = "small",
     srcs = ["ops/dequantize_op_test.py"],
     python_version = "PY3",
-    tags = ["no_windows"],
+    tags = [
+        "no_tfrt",  # TODO(b/169901260)
+        "no_windows",
+    ],
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -6855,7 +6864,10 @@ tf_py_test(
     size = "small",
     srcs = ["ops/quantized_ops_test.py"],
     python_version = "PY3",
-    tags = ["no_windows"],
+    tags = [
+        "no_tfrt",  # TODO(b/169901260)
+        "no_windows",
+    ],
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -6869,7 +6881,10 @@ tf_py_test(
     size = "small",
     srcs = ["ops/quantized_conv_ops_test.py"],
     python_version = "PY3",
-    tags = ["no_windows"],
+    tags = [
+        "no_tfrt",  # TODO(b/169901260)
+        "no_windows",
+    ],
     deps = [
         ":client_testlib",
         ":framework_for_generated_wrappers",

@@ -83,6 +83,7 @@ LogicalResult ConvertResultsBroadcastableShapeOp::RewriteOp(
       op->getResultTypes().front().dyn_cast_or_null<RankedTensorType>();
   if (!result_type || !result_type.hasStaticShape()) return failure();
 
+  bool changed = false;
   for (uint64_t i = 0, e = op->getNumOperands(); i < e; ++i) {
     // Check that the i'th operand is a broadcast.
     auto broadcast = llvm::dyn_cast_or_null<TF::BroadcastToOp>(
@@ -116,10 +117,9 @@ LogicalResult ConvertResultsBroadcastableShapeOp::RewriteOp(
     // Update the operand of the op to be the operand of the broadcast.
     rewriter.updateRootInPlace(
         op, [&]() { op->getOpOperand(i).set(broadcast.input()); });
-    return success();
+    changed = true;
   }
-
-  return failure();
+  return success(changed);
 }
 
 void BroadcastFoldPass::runOnFunction() {

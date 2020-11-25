@@ -289,12 +289,12 @@ TEST(ResizeBilinear, TestResizeBilinearHalfPixelCenters_2x2to4x4) {
   }
 }
 
-TEST(ResizeBilinear, TestResizeBilinearHalfPixelCenters_2x2to4x6_Int8) {
+template <typename T>
+void TestResizeBilinearHalfPixelCenters_2x2to4x6() {
   // Input: 2x2
   RuntimeShape input_dims_inference({1, 2, 2, 1});
   // clang-format off
-  std::vector<int8> input_data = {127, -128,
-                                  64, 0};
+  std::vector<T> input_data = {127, -128, 64, 0};
   // clang-format on
 
   // Output: 4x6
@@ -302,7 +302,7 @@ TEST(ResizeBilinear, TestResizeBilinearHalfPixelCenters_2x2to4x6_Int8) {
   // Initialize the output data with something other than zero, so we can catch
   // issue with kernels failing to initialize the output.
   const int output_buffer_size = output_dims_inference.FlatSize();
-  std::vector<int8> output_data(output_buffer_size, 3);
+  std::vector<T> output_data(output_buffer_size, 3);
 
   RuntimeShape output_size_dims({1, 1, 1, 2});
   std::vector<int32> output_size_data = {4, 6};
@@ -312,11 +312,11 @@ TEST(ResizeBilinear, TestResizeBilinearHalfPixelCenters_2x2to4x6_Int8) {
   op_params.half_pixel_centers = false;
 
   // Test with half_pixel_centers = false.
-  reference_ops::ResizeBilinear(
+  reference_ops::ResizeBilinearInteger(
       op_params, input_dims_inference, input_data.data(), output_size_dims,
       output_size_data.data(), output_dims_inference, output_data.data());
   // clang-format off
-  std::vector<int8> reference_half_pixel_centers_false =
+  std::vector<T> reference_half_pixel_centers_false =
       {  127,   42,  -43, -128,  -128, -128,
           96,   42,  -11,  -64,   -64,  -64,
           64,   43,   21,    0,     0,    0,
@@ -329,17 +329,17 @@ TEST(ResizeBilinear, TestResizeBilinearHalfPixelCenters_2x2to4x6_Int8) {
 
   // clang-format on
   for (int i = 0; i < output_buffer_size; i++) {
-    EXPECT_EQ(static_cast<int8>(output_data[i]),
-              static_cast<int8>(reference_half_pixel_centers_false[i]));
+    EXPECT_EQ(static_cast<T>(output_data[i]),
+              static_cast<T>(reference_half_pixel_centers_false[i]));
   }
 
   // Test with half_pixel_centers = true.
   op_params.half_pixel_centers = true;
-  reference_ops::ResizeBilinear(
+  reference_ops::ResizeBilinearInteger(
       op_params, input_dims_inference, input_data.data(), output_size_dims,
       output_size_data.data(), output_dims_inference, output_data.data());
   // clang-format off
-  std::vector<int8> reference_half_pixel_centers_true =
+  std::vector<T> reference_half_pixel_centers_true =
       {  127,  127,   42,  -43, -128, -128,
          111,  111,   42,  -27,  -96,  -96,
           80,   80,   43,    5,  -32,  -32,
@@ -352,9 +352,17 @@ TEST(ResizeBilinear, TestResizeBilinearHalfPixelCenters_2x2to4x6_Int8) {
 
   // clang-format on
   for (int i = 0; i < output_buffer_size; i++) {
-    EXPECT_EQ(static_cast<int8>(output_data[i]),
-              static_cast<int8>(reference_half_pixel_centers_true[i]));
+    EXPECT_EQ(static_cast<T>(output_data[i]),
+              static_cast<T>(reference_half_pixel_centers_true[i]));
   }
+}
+
+TEST(ResizeBilinear, TestResizeBilinearHalfPixelCenters_2x2to4x6_Int8) {
+  TestResizeBilinearHalfPixelCenters_2x2to4x6<int8_t>();
+}
+
+TEST(ResizeBilinear, TestResizeBilinearHalfPixelCenters_2x2to4x6_Int16) {
+  TestResizeBilinearHalfPixelCenters_2x2to4x6<int16_t>();
 }
 
 }  // namespace

@@ -9401,9 +9401,11 @@ struct BatchMatMulOptionsT : public flatbuffers::NativeTable {
   typedef BatchMatMulOptions TableType;
   bool adj_x;
   bool adj_y;
+  bool asymmetric_quantize_inputs;
   BatchMatMulOptionsT()
       : adj_x(false),
-        adj_y(false) {
+        adj_y(false),
+        asymmetric_quantize_inputs(false) {
   }
 };
 
@@ -9411,7 +9413,8 @@ struct BatchMatMulOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef BatchMatMulOptionsT NativeTableType;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_ADJ_X = 4,
-    VT_ADJ_Y = 6
+    VT_ADJ_Y = 6,
+    VT_ASYMMETRIC_QUANTIZE_INPUTS = 8
   };
   bool adj_x() const {
     return GetField<uint8_t>(VT_ADJ_X, 0) != 0;
@@ -9419,10 +9422,14 @@ struct BatchMatMulOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   bool adj_y() const {
     return GetField<uint8_t>(VT_ADJ_Y, 0) != 0;
   }
+  bool asymmetric_quantize_inputs() const {
+    return GetField<uint8_t>(VT_ASYMMETRIC_QUANTIZE_INPUTS, 0) != 0;
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint8_t>(verifier, VT_ADJ_X) &&
            VerifyField<uint8_t>(verifier, VT_ADJ_Y) &&
+           VerifyField<uint8_t>(verifier, VT_ASYMMETRIC_QUANTIZE_INPUTS) &&
            verifier.EndTable();
   }
   BatchMatMulOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -9439,6 +9446,9 @@ struct BatchMatMulOptionsBuilder {
   void add_adj_y(bool adj_y) {
     fbb_.AddElement<uint8_t>(BatchMatMulOptions::VT_ADJ_Y, static_cast<uint8_t>(adj_y), 0);
   }
+  void add_asymmetric_quantize_inputs(bool asymmetric_quantize_inputs) {
+    fbb_.AddElement<uint8_t>(BatchMatMulOptions::VT_ASYMMETRIC_QUANTIZE_INPUTS, static_cast<uint8_t>(asymmetric_quantize_inputs), 0);
+  }
   explicit BatchMatMulOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -9454,8 +9464,10 @@ struct BatchMatMulOptionsBuilder {
 inline flatbuffers::Offset<BatchMatMulOptions> CreateBatchMatMulOptions(
     flatbuffers::FlatBufferBuilder &_fbb,
     bool adj_x = false,
-    bool adj_y = false) {
+    bool adj_y = false,
+    bool asymmetric_quantize_inputs = false) {
   BatchMatMulOptionsBuilder builder_(_fbb);
+  builder_.add_asymmetric_quantize_inputs(asymmetric_quantize_inputs);
   builder_.add_adj_y(adj_y);
   builder_.add_adj_x(adj_x);
   return builder_.Finish();
@@ -14167,6 +14179,7 @@ inline void BatchMatMulOptions::UnPackTo(BatchMatMulOptionsT *_o, const flatbuff
   (void)_resolver;
   { auto _e = adj_x(); _o->adj_x = _e; }
   { auto _e = adj_y(); _o->adj_y = _e; }
+  { auto _e = asymmetric_quantize_inputs(); _o->asymmetric_quantize_inputs = _e; }
 }
 
 inline flatbuffers::Offset<BatchMatMulOptions> BatchMatMulOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const BatchMatMulOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -14179,10 +14192,12 @@ inline flatbuffers::Offset<BatchMatMulOptions> CreateBatchMatMulOptions(flatbuff
   struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const BatchMatMulOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   auto _adj_x = _o->adj_x;
   auto _adj_y = _o->adj_y;
+  auto _asymmetric_quantize_inputs = _o->asymmetric_quantize_inputs;
   return tflite::CreateBatchMatMulOptions(
       _fbb,
       _adj_x,
-      _adj_y);
+      _adj_y,
+      _asymmetric_quantize_inputs);
 }
 
 inline CumsumOptionsT *CumsumOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {

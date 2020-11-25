@@ -178,6 +178,11 @@ public final class Interpreter implements AutoCloseable {
     Boolean allowFp16PrecisionForFp32;
     Boolean allowBufferHandleOutput;
     Boolean allowCancellation;
+
+    // TODO(b/171856982): update the comment when applying XNNPACK delegate by default is
+    // enabled for C++ TfLite library on Android platform.
+    // Note: the initial "null" value indicates default behavior which may mean XNNPACK
+    // delegate will be applied by default.
     Boolean useXNNPACK;
     final List<Delegate> delegates = new ArrayList<>();
   }

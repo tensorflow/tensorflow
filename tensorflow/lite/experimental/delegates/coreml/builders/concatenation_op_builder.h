@@ -26,10 +26,9 @@ class ConcatenationOpBuilder : public OpBuilder {
   explicit ConcatenationOpBuilder(GraphBuilder* graph_builder)
       : OpBuilder(graph_builder) {}
 
-  const char* DebugName() override {
-    if (!str_debug_name_[0])
-      GetDebugName("ConcatOpBuilder", node_id_, str_debug_name_);
-    return str_debug_name_;
+  const std::string& DebugName() override {
+    if (debug_name_.empty()) SetDebugName("ConcatOpBuilder", node_id_);
+    return debug_name_;
   }
 
   CoreML::Specification::NeuralNetworkLayer* Build() override;

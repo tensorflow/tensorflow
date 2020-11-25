@@ -3452,6 +3452,7 @@ cc_library(
         "include/mlir/ExecutionEngine/AsyncRuntime.h",
     ],
     includes = ["include"],
+    deps = ["@llvm-project//llvm:Support"],
 )
 
 cc_library(
@@ -4422,6 +4423,7 @@ filegroup(
 
 exports_files(
     [
+        "include/mlir/Bindings/Python/Attributes.td",
         "include/mlir/Interfaces/CallInterfaces.h",
         "include/mlir/Interfaces/CallInterfaces.td",
         "include/mlir/Interfaces/ControlFlowInterfaces.h",
@@ -4442,7 +4444,6 @@ exports_files(
         "include/mlir/Transforms/InliningUtils.h",
         "include/mlir/Interfaces/InferTypeOpInterface.td",
         "include/mlir/Interfaces/LoopLikeInterface.td",
-        "lib/Bindings/Python/Attributes.td",
     ],
     visibility = [":friends"],
 )

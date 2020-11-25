@@ -49,6 +49,7 @@
         *   Added int16x8 support for ABS, REDUCE_MAX and REDUCE_MIN operators.
     *   Added support for saved model's session initializer through
          `TFLiteConverter.from_saved_model`.
+    *   Added dynamic range quantization support for the BatchMatMul op.
 
 *   TF Core:
     *   Corrected higher-order gradients of control flow constructs (`tf.cond`,

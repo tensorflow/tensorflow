@@ -100,13 +100,13 @@ class QuantizationDriver {
   explicit QuantizationDriver(FuncOp fn, bool is_signed,
                               bool disable_per_channel,
                               OpQuantSpecGetter op_quant_spec_getter,
-                              bool enforce_fixed_output_range)
+                              bool infer_tensor_range)
       : fn_(fn),
         builder_(fn.getBody()),
         is_signed_(is_signed),
         disable_per_channel_(disable_per_channel),
         op_quant_spec_getter_(op_quant_spec_getter),
-        enforce_fixed_output_range_(enforce_fixed_output_range) {}
+        infer_tensor_range_(infer_tensor_range) {}
 
   // The entry point of the quantization parameters propagation.
   void Run();
@@ -384,7 +384,9 @@ class QuantizationDriver {
 
   OpQuantSpecGetter op_quant_spec_getter_;
 
-  bool enforce_fixed_output_range_;
+  // Infer output ranges for activation ops and constants. This is usually
+  // required for post-training quantization.
+  bool infer_tensor_range_;
 };
 }  // namespace
 
@@ -796,12 +798,14 @@ bool QuantizationDriver::PropagateParams() {
     quantized_.insert(op);
 
     if (auto cst = llvm::dyn_cast<ConstantOp>(op)) {
-      // If it isn't a weight or has been quantized, skip.
-      if (!IsWeight(cst) || IsQuantized(op)) continue;
-
-      // The quantization parameters are determined by the content of the
-      // constant.
-      changed |= SetConstantResultParams(op);
+      // If the workflow requires inferring ranges from the content
+      // (post-training quantization) and it is weight (filter) and hasn't
+      // been quantized, we infer the quantization parameters from the content.
+      if (infer_tensor_range_ && IsWeight(cst) && !IsQuantized(op)) {
+        // The quantization parameters are determined by the content of the
+        // constant.
+        changed |= SetConstantResultParams(op);
+      }
       continue;
     }
 
@@ -836,7 +840,9 @@ bool QuantizationDriver::PropagateParams() {
 
     // TODO(fengliuai): make the bit width configurable.
     auto restricted = llvm::dyn_cast<FixedOutputRangeInterface>(op);
-    if (restricted && enforce_fixed_output_range_) {
+    if (restricted && infer_tensor_range_) {
+      // Infer ranges from the activation ops. This is usually required for
+      // the post-training quantization workflow.
       // TODO(fengliuai): different result can have different fixed range.
       auto params = restricted.GetFixedOutputRange(is_signed_, /*bit_width=*/8);
       for (auto i = 0; i < op->getNumResults(); ++i) {
@@ -913,9 +919,9 @@ void QuantizationDriver::Run() {
 void ApplyQuantizationParamsPropagation(mlir::FuncOp func, bool is_signed,
                                         bool disable_per_channel,
                                         OpQuantSpecGetter op_quant_spec_getter,
-                                        bool post_training_quantization) {
+                                        bool infer_tensor_ranges) {
   QuantizationDriver(func, is_signed, disable_per_channel, op_quant_spec_getter,
-                     post_training_quantization)
+                     infer_tensor_ranges)
       .Run();
 }
 

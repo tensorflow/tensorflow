@@ -52,6 +52,14 @@ bool MlirToFlatBufferTranslateFunction(
     bool emit_builtin_tflite_ops, bool emit_select_tf_ops, bool emit_custom_ops,
     const std::unordered_set<std::string>& saved_model_tags,
     tensorflow::OpOrArgNameMapper* op_or_arg_name_mapper);
+
+// Same as the above but with a list of allowed user's defined ops.
+bool MlirToFlatBufferTranslateFunction(
+    mlir::ModuleOp module, std::string* serialized_flatbuffer,
+    bool emit_builtin_tflite_ops, bool emit_select_tf_ops, bool emit_custom_ops,
+    const std::unordered_set<std::string>& select_user_tf_ops,
+    const std::unordered_set<std::string>& saved_model_tags,
+    tensorflow::OpOrArgNameMapper* op_or_arg_name_mapper);
 }  // namespace tflite
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_FLATBUFFER_EXPORT_H_
