@@ -279,6 +279,16 @@ class ShapeInference {
     results_[value_port] = value;
   }
 
+  // Infers shape of tf.While/tf.WhileRegion. If `shape_invariant` attribute is
+  // set, operand types are set as result types if associated body result types
+  // match the operand type (does not change per loop iteration). If operand and
+  // body result types are not the same, only handle types are propagated to
+  // result types. This is necessary to not incorrectly change result shapes
+  // when the While op will have a different result shape. Otherwise operand
+  // shapes are propagated to result shapes.
+  template <typename WhileOpTy>
+  bool InferShapeForWhile(WhileOpTy op, TypeRange body_result_types);
+
   // Performs shape inference on the provided op and return true if the type of
   // at least one result has been changed.
   // A tf.Cast() is inserted for any uses that isn't in the TensorFlow dialect.
@@ -298,16 +308,17 @@ class ShapeInference {
   //   1) They are never reused, ie. having a single use in module.
   //   2) Their input types match those of their parent ops (excluding inputs
   //      like predicate).
-  LogicalResult PropagateShapeToFunctions(
-      ModuleOp module, Operation::operand_type_range input_types,
-      ArrayRef<FuncOp> functions, int64_t max_iteration);
+  LogicalResult PropagateShapeToFunctions(ModuleOp module,
+                                          TypeRange input_types,
+                                          ArrayRef<FuncOp> functions,
+                                          int64_t max_iteration);
 
   // Propagates shapes to regions given the shapes of the inputs of the regions.
   // All regions provided in `regions` are assumed to have inputs of type
   // `input_types`.
-  LogicalResult PropagateShapeToRegions(
-      Operation::operand_type_range input_types, ArrayRef<Region*> regions,
-      int64_t max_iteration);
+  LogicalResult PropagateShapeToRegions(TypeRange input_types,
+                                        ArrayRef<Region*> regions,
+                                        int64_t max_iteration);
 
   // Shape propagation for call/control flow ops.
   LogicalResult PropagateShapeIntoAttachedFunctions(Operation* op,
@@ -757,6 +768,50 @@ bool ShapeInference::InferShapeForNonTFDialectOperation(Operation* op) {
   return false;
 }
 
+// Finds element type to be used for result from operand, with special handling
+// for handle types.
+Type GetElementTypeFromOperand(TensorType operand_type,
+                               TensorType result_type) {
+  auto operand_handle_type =
+      operand_type.getElementType().dyn_cast<TensorFlowTypeWithSubtype>();
+  if (!operand_handle_type) return result_type.getElementType();
+  auto result_handle_type =
+      result_type.getElementType().cast<TensorFlowTypeWithSubtype>();
+  if (operand_handle_type.GetSubtypes().empty() ||
+      !result_handle_type.GetSubtypes().empty())
+    return result_type.getElementType();
+  return operand_handle_type;
+}
+
+template <typename WhileOpTy>
+bool ShapeInference::InferShapeForWhile(WhileOpTy op,
+                                        TypeRange body_result_types) {
+  if (!op.shape_invariant())
+    return RefineTypeForPassThroughOperands(op, op.input(), op.output());
+
+  bool changed = false;
+  for (auto entry :
+       zip(op.input().getTypes(), op.output(), body_result_types)) {
+    auto operand_type = std::get<0>(entry).template cast<TensorType>();
+    Value result = std::get<1>(entry);
+    auto body_result_type = std::get<2>(entry).template cast<TensorType>();
+    if (operand_type == body_result_type) {
+      changed |= RefineResultType(op, result, operand_type);
+      continue;
+    }
+    auto result_type = result.getType().cast<TensorType>();
+    Type element_type = GetElementTypeFromOperand(operand_type, result_type);
+    Type potential_refined_type;
+    if (result_type.hasRank())
+      potential_refined_type =
+          RankedTensorType::get(result_type.getShape(), element_type);
+    else
+      potential_refined_type = UnrankedTensorType::get(element_type);
+    changed |= RefineResultType(op, result, potential_refined_type);
+  }
+  return changed;
+}
+
 bool ShapeInference::InferShapeForSingleOperation(Operation* op) {
   LLVM_DEBUG(op->print(llvm::dbgs() << "InferShapeForSingleOperation for ");
              llvm::dbgs() << "\n");
@@ -764,8 +819,7 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op) {
   // The shape function of these ops sometimes does not propagate subtypes
   // (handle shapes) for resource and variant types. We use a simple passthrough
   // to make sure they are preserved in the output.
-  if (isa<TF::IdentityOp, TF::IdentityNOp, TF::ZerosLikeOp, TF::WhileOp,
-          TF::WhileRegionOp>(op)) {
+  if (isa<TF::IdentityOp, TF::IdentityNOp, TF::ZerosLikeOp>(op)) {
     return RefineTypeForPassThroughOperands(op, op->getOperands(),
                                             op->getResults());
   }
@@ -798,6 +852,15 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op) {
   // branches.
   if (auto if_region = dyn_cast<IfRegionOp>(op))
     return InferShapeForIfRegion(if_region);
+
+  if (auto while_op = dyn_cast<WhileOp>(op))
+    return InferShapeForWhile(while_op,
+                              while_op.body_function().getType().getResults());
+
+  if (auto while_region = dyn_cast<WhileRegionOp>(op))
+    return InferShapeForWhile(
+        while_region,
+        while_region.body().front().getTerminator()->getOperandTypes());
 
   // Return operand as a constant attribute.
   auto operand_as_constant_fn = [&](Value operand) {
@@ -851,8 +914,8 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op) {
 }
 
 LogicalResult ShapeInference::PropagateShapeToFunctions(
-    ModuleOp module, Operation::operand_type_range input_types,
-    ArrayRef<FuncOp> functions, int64_t max_iteration) {
+    ModuleOp module, TypeRange input_types, ArrayRef<FuncOp> functions,
+    int64_t max_iteration) {
   bool all_succeeded = true;
   // If shape propagation fails for one function, return failure, but do not
   // early exit and attempt to propagate shapes for all provided functions to
@@ -885,9 +948,9 @@ LogicalResult ShapeInference::PropagateShapeToFunctions(
   return success(all_succeeded);
 }
 
-LogicalResult ShapeInference::PropagateShapeToRegions(
-    Operation::operand_type_range input_types, ArrayRef<Region*> regions,
-    int64_t max_iteration) {
+LogicalResult ShapeInference::PropagateShapeToRegions(TypeRange input_types,
+                                                      ArrayRef<Region*> regions,
+                                                      int64_t max_iteration) {
   DCOMMENT("\tPropagating shapes to regions");
   bool all_succeeded = true;
   // If shape propagation fails for one region, return failure, but do not
@@ -965,23 +1028,68 @@ void ShapeInference::PropagateConstantFromCallee(CallOpInterface call_op,
   }
 }
 
+// Finds compatible types to propagate into functions/regions of a shape variant
+// tf.While/tf.WhileRegion. If operand and result types are the same, that type
+// is returned. Otherwise functions/regions arguments are returned but with the
+// handle type from the operand type.
+// TODO(b/174145518): Support more granular shape refining of different shaped
+// operands and results (e.g. if rank does not change or only some dimensions
+// change).
+llvm::SmallVector<Type, 4> GetWhileCompatibleTypes(
+    TypeRange operand_types, TypeRange result_types,
+    TypeRange region_argument_types) {
+  llvm::SmallVector<Type, 4> types;
+  types.reserve(operand_types.size());
+  for (auto entry :
+       llvm::zip(operand_types, result_types, region_argument_types)) {
+    Type operand_type = std::get<0>(entry);
+    Type result_type = std::get<1>(entry);
+    if (operand_type == result_type) {
+      types.push_back(operand_type);
+    } else {
+      auto region_argument_type = std::get<2>(entry).cast<TensorType>();
+      Type element_type = GetElementTypeFromOperand(
+          operand_type.cast<TensorType>(), region_argument_type);
+      Type potential_refined_type;
+      if (region_argument_type.hasRank())
+        potential_refined_type = RankedTensorType::get(
+            region_argument_type.getShape(), element_type);
+      else
+        potential_refined_type = UnrankedTensorType::get(element_type);
+      types.push_back(potential_refined_type);
+    }
+  }
+  return types;
+}
+
 LogicalResult ShapeInference::PropagateShapeIntoAttachedFunctions(
     Operation* op, int64_t max_iteration) {
   ModuleOp module = op->getParentOfType<ModuleOp>();
   if (auto if_op = dyn_cast<TF::IfOp>(op)) {
     DCOMMENT("Propagating shapes into If");
     return PropagateShapeToFunctions(
-        module, drop_begin(if_op.getOperandTypes(), 1),
+        module, if_op.input().getTypes(),
         {if_op.then_function(), if_op.else_function()}, max_iteration);
   } else if (auto case_op = dyn_cast<TF::CaseOp>(op)) {
     SmallVector<FuncOp, 4> branches;
     case_op.get_branch_functions(branches);
-    return PropagateShapeToFunctions(module,
-                                     drop_begin(case_op.getOperandTypes(), 1),
+    return PropagateShapeToFunctions(module, case_op.input().getTypes(),
                                      branches, max_iteration);
   } else if (auto while_op = dyn_cast<TF::WhileOp>(op)) {
+    // If `shape_invariant` is set, operand shapes cannot be simply propagated
+    // to result shapes as the op may have different intermediate shapes (such
+    // While ops can have different result shapes from operand shapes).
+    // Compatible shapes must be determined before propagating them.
+    if (while_op.shape_invariant()) {
+      auto compatible_types = GetWhileCompatibleTypes(
+          while_op.input().getTypes(), while_op.output().getTypes(),
+          while_op.body_function().getType().getInputs());
+      return PropagateShapeToFunctions(
+          module, compatible_types,
+          {while_op.cond_function(), while_op.body_function()}, max_iteration);
+    }
     return PropagateShapeToFunctions(
-        module, while_op.getOperandTypes(),
+        module, while_op.input().getTypes(),
         {while_op.cond_function(), while_op.body_function()}, max_iteration);
   } else if (auto call_op = dyn_cast<CallOpInterface>(op)) {
     if (auto func = dyn_cast<FuncOp>(call_op.resolveCallable())) {
@@ -1004,7 +1112,19 @@ LogicalResult ShapeInference::PropagateShapeIntoAttachedFunctions(
 LogicalResult ShapeInference::PropagateShapeIntoAttachedRegions(
     Operation* op, int64_t max_iteration) {
   if (auto while_op = dyn_cast<TF::WhileRegionOp>(op)) {
-    return PropagateShapeToRegions(while_op.getOperandTypes(),
+    // If `shape_invariant` is set, operand shapes cannot be simply propagated
+    // to result shapes as the op may have different intermediate shapes (such
+    // While ops can have different result shapes from operand shapes).
+    // Compatible shapes must be determined before propagating them.
+    if (while_op.shape_invariant()) {
+      auto compatible_types = GetWhileCompatibleTypes(
+          while_op.input().getTypes(), while_op.output().getTypes(),
+          while_op.body().getArgumentTypes());
+      return PropagateShapeToRegions(compatible_types,
+                                     {&while_op.cond(), &while_op.body()},
+                                     max_iteration);
+    }
+    return PropagateShapeToRegions(while_op.input().getTypes(),
                                    {&while_op.cond(), &while_op.body()},
                                    max_iteration);
   }
