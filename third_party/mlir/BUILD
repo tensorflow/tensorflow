@@ -788,6 +788,7 @@ cc_library(
         ":OpenMPToLLVM",
         ":PDLToPDLInterp",
         ":SCFToGPUPass",
+        ":SCFToOpenMP",
         ":SCFToStandard",
         ":SPIRVToLLVM",
         ":ShapeToStandard",
@@ -2793,6 +2794,27 @@ cc_library(
         ":TransformUtils",
         ":Transforms",
         "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "SCFToOpenMP",
+    srcs = [
+        "lib/Conversion/PassDetail.h",
+        "lib/Conversion/SCFToOpenMP/SCFToOpenMP.cpp",
+    ],
+    hdrs = [
+        "include/mlir/Conversion/SCFToOpenMP/SCFToOpenMP.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":ConversionPassIncGen",
+        ":IR",
+        ":OpenMPDialect",
+        ":Pass",
+        ":SCFDialect",
+        ":Support",
+        ":Transforms",
     ],
 )
 
