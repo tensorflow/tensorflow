@@ -295,27 +295,5 @@ TEST_F(DynamismInferenceTest, GatherWithConstantParent) {
   }
 }
 
-TEST_F(DynamismInferenceTest, GatherWithSharedConstantParent) {
-  for (ClientType client_type : client_types) {
-    Client* client = ClientOrDie(platform_, client_type);
-    XlaBuilder b(TestName());
-    // Test the analysis on a gather.
-    Shape indices_shape = ShapeUtil::MakeShape(S32, {2});
-    auto operand1 = ConstantR1<int32>(&b, {1, 2});
-    auto operand2 = ConstantR1<int32>(&b, {1, 2});
-    auto indices = Sub(operand1, operand2);
-    GatherDimensionNumbers dim_numbers;
-    dim_numbers.add_offset_dims(1);
-    dim_numbers.add_start_index_map(0);
-    dim_numbers.set_index_vector_dim(1);
-    auto gather = Gather(operand1, indices, dim_numbers, {1});
-    ASSERT_TRUE(b.first_error().ok()) << b.first_error().error_message();
-    // Everything is constant, result is also contant.
-    EXPECT_FALSE(ComputeDynamismLiteral(client, gather, &b)
-                     .ValueOrDie()
-                     .Get<bool>({0, 0}));
-  }
-}
-
 }  // namespace
 }  // namespace xla
