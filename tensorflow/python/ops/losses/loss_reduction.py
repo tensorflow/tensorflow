@@ -49,7 +49,7 @@ class ReductionV2(object):
      ```
 
   Please see the [custom training guide](
-    https://www.tensorflow.org/tutorials/distribute/custom_training) for more
+  https://www.tensorflow.org/tutorials/distribute/custom_training) for more
   details on this.
   """
 
