@@ -274,7 +274,9 @@ class RNN(Layer):
   Call arguments:
     inputs: Input tensor.
     mask: Binary tensor of shape `[batch_size, timesteps]` indicating whether
-      a given timestep should be masked.
+      a given timestep should be masked. An individual `True` entry indicates
+      that the corresponding timestep should be utilized, while a `False`
+      entry indicates that the corresponding timestep should be ignored.
     training: Python boolean indicating whether the layer should behave in
       training mode or in inference mode. This argument is passed to the cell
       when calling it. This is for use with cells that use dropout.
@@ -1491,7 +1493,9 @@ class SimpleRNN(RNN):
   Call arguments:
     inputs: A 3D tensor, with shape `[batch, timesteps, feature]`.
     mask: Binary tensor of shape `[batch, timesteps]` indicating whether
-      a given timestep should be masked.
+      a given timestep should be masked. An individual `True` entry indicates
+      that the corresponding timestep should be utilized, while a `False` entry
+      indicates that the corresponding timestep should be ignored.
     training: Python boolean indicating whether the layer should behave in
       training mode or in inference mode. This argument is passed to the cell
       when calling it. This is only relevant if `dropout` or
@@ -2036,7 +2040,9 @@ class GRU(RNN):
   Call arguments:
     inputs: A 3D tensor.
     mask: Binary tensor of shape `(samples, timesteps)` indicating whether
-      a given timestep should be masked.
+      a given timestep should be masked. An individual `True` entry indicates
+      that the corresponding timestep should be utilized, while a `False`
+      entry indicates that the corresponding timestep should be ignored.
     training: Python boolean indicating whether the layer should behave in
       training mode or in inference mode. This argument is passed to the cell
       when calling it. This is only relevant if `dropout` or
@@ -2710,7 +2716,9 @@ class LSTM(RNN):
   Call arguments:
     inputs: A 3D tensor.
     mask: Binary tensor of shape `(samples, timesteps)` indicating whether
-      a given timestep should be masked.
+      a given timestep should be masked. An individual `True` entry indicates
+      that the corresponding timestep should be utilized, while a `False`
+      entry indicates that the corresponding timestep should be ignored.
     training: Python boolean indicating whether the layer should behave in
       training mode or in inference mode. This argument is passed to the cell
       when calling it. This is only relevant if `dropout` or
