@@ -144,3 +144,193 @@ func @testTripleLogicalNot(%arg0: tensor<i1>) -> tensor<i1> {
   // CHECK: return [[LNOT]]
   return %2: tensor<i1>
 }
+
+// CHECK-LABEL: func @testSingleAbs
+// CHECK-SAME:  ([[ARG0:%.+]]: tensor<i8>)
+func @testSingleAbs(%arg0: tensor<i8>) -> tensor<i8> {
+  // CHECK: [[ABS:%.+]] = "tf.Abs"([[ARG0]])
+  %0 = "tf.Abs"(%arg0) : (tensor<i8>) -> tensor<i8>
+  // CHECK: return [[ABS]]
+  return %0: tensor<i8>
+}
+
+// CHECK-LABEL: func @testDoubleAbs
+// CHECK-SAME:  ([[ARG0:%.+]]: tensor<i8>)
+func @testDoubleAbs(%arg0: tensor<i8>) -> tensor<i8> {
+  // CHECK: [[ABS:%.+]] = "tf.Abs"([[ARG0]])
+  %0 = "tf.Abs"(%arg0) : (tensor<i8>) -> tensor<i8>
+  %1 = "tf.Abs"(%0) : (tensor<i8>) -> tensor<i8>
+  // CHECK: return [[ABS]]
+  return %1: tensor<i8>
+}
+
+// CHECK-LABEL: func @testSingleCeil
+// CHECK-SAME:  ([[ARG0:%.+]]: tensor<f1>)
+func @testSingleCeil(%arg0: tensor<f1>) -> tensor<f1> {
+  // CHECK: [[CEIL:%.+]] = "tf.Ceil"([[ARG0]])
+  %0 = "tf.Ceil"(%arg0) : (tensor<f1>) -> tensor<f1>
+  // CHECK: return [[CEIL]]
+  return %0: tensor<f1>
+}
+
+// CHECK-LABEL: func @testDoubleCeil
+// CHECK-SAME:  ([[ARG0:%.+]]: tensor<f1>)
+func @testDoubleCeil(%arg0: tensor<f1>) -> tensor<f1> {
+  // CHECK: [[CEIL:%.+]] = "tf.Ceil"([[ARG0]])
+  %0 = "tf.Ceil"(%arg0) : (tensor<f1>) -> tensor<f1>
+  %1 = "tf.Ceil"(%0) : (tensor<f1>) -> tensor<f1>
+  // CHECK: return [[CEIL]]
+  return %1: tensor<f1>
+}
+
+// CHECK-LABEL: func @testSingleFloor
+// CHECK-SAME:  ([[ARG0:%.+]]: tensor<f1>)
+func @testSingleFloor(%arg0: tensor<f1>) -> tensor<f1> {
+  // CHECK: [[FLOOR:%.+]] = "tf.Floor"([[ARG0]])
+  %0 = "tf.Floor"(%arg0) : (tensor<f1>) -> tensor<f1>
+  // CHECK: return [[FLOOR]]
+  return %0: tensor<f1>
+}
+
+// CHECK-LABEL: func @testDoubleFloor
+// CHECK-SAME:  ([[ARG0:%.+]]: tensor<f1>)
+func @testDoubleFloor(%arg0: tensor<f1>) -> tensor<f1> {
+  // CHECK: [[FLOOR:%.+]] = "tf.Floor"([[ARG0]])
+  %0 = "tf.Floor"(%arg0) : (tensor<f1>) -> tensor<f1>
+  %1 = "tf.Floor"(%0) : (tensor<f1>) -> tensor<f1>
+  // CHECK: return [[FLOOR]]
+  return %1: tensor<f1>
+}
+
+// CHECK-LABEL: func @testSingleOnesLike
+// CHECK-SAME:  ([[ARG0:%.+]]: tensor<i8>)
+func @testSingleOnesLike(%arg0: tensor<i8>) -> tensor<i8> {
+  // CHECK: [[ONESLIKE:%.+]] = "tf.OnesLike"([[ARG0]])
+  %0 = "tf.OnesLike"(%arg0) : (tensor<i8>) -> tensor<i8>
+  // CHECK: return [[ONESLIKE]]
+  return %0: tensor<i8>
+}
+
+// CHECK-LABEL: func @testDoubleOnesLike
+// CHECK-SAME:  ([[ARG0:%.+]]: tensor<i8>)
+func @testDoubleOnesLike(%arg0: tensor<i8>) -> tensor<i8> {
+  // CHECK: [[ONESLIKE:%.+]] = "tf.OnesLike"([[ARG0]])
+  %0 = "tf.OnesLike"(%arg0) : (tensor<i8>) -> tensor<i8>
+  %1 = "tf.OnesLike"(%0) : (tensor<i8>) -> tensor<i8>
+  // CHECK: return [[ONESLIKE]]
+  return %1: tensor<i8>
+}
+
+// CHECK-LABEL: func @testSingleRelu
+// CHECK-SAME:  ([[ARG0:%.+]]: tensor<i8>)
+func @testSingleRelu(%arg0: tensor<i8>) -> tensor<i8> {
+  // CHECK: [[RELU:%.+]] = "tf.Relu"([[ARG0]])
+  %0 = "tf.Relu"(%arg0) : (tensor<i8>) -> tensor<i8>
+  // CHECK: return [[RELU]]
+  return %0: tensor<i8>
+}
+
+// CHECK-LABEL: func @testDoubleRelu
+// CHECK-SAME:  ([[ARG0:%.+]]: tensor<i8>)
+func @testDoubleRelu(%arg0: tensor<i8>) -> tensor<i8> {
+  // CHECK: [[RELU:%.+]] = "tf.Relu"([[ARG0]])
+  %0 = "tf.Relu"(%arg0) : (tensor<i8>) -> tensor<i8>
+  %1 = "tf.Relu"(%0) : (tensor<i8>) -> tensor<i8>
+  // CHECK: return [[RELU]]
+  return %1: tensor<i8>
+}
+
+// CHECK-LABEL: func @testSingleRelu6
+// CHECK-SAME:  ([[ARG0:%.+]]: tensor<i1>)
+func @testSingleRelu6(%arg0: tensor<i1>) -> tensor<i1> {
+  // CHECK: [[RELU6:%.+]] = "tf.Relu6"([[ARG0]])
+  %0 = "tf.Relu6"(%arg0) : (tensor<i1>) -> tensor<i1>
+  // CHECK: return [[RELU6]]
+  return %0: tensor<i1>
+}
+
+// CHECK-LABEL: func @testDoubleRelu6
+// CHECK-SAME:  ([[ARG0:%.+]]: tensor<i1>)
+func @testDoubleRelu6(%arg0: tensor<i1>) -> tensor<i1> {
+  // CHECK: [[RELU6:%.+]] = "tf.Relu6"([[ARG0]])
+  %0 = "tf.Relu6"(%arg0) : (tensor<i1>) -> tensor<i1>
+  %1 = "tf.Relu6"(%0) : (tensor<i1>) -> tensor<i1>
+  // CHECK: return [[RELU6]]
+  return %1: tensor<i1>
+}
+
+// CHECK-LABEL: func @testSingleRint
+// CHECK-SAME:  ([[ARG0:%.+]]: tensor<f1>)
+func @testSingleRint(%arg0: tensor<f1>) -> tensor<f1> {
+  // CHECK: [[RINT:%.+]] = "tf.Rint"([[ARG0]])
+  %0 = "tf.Rint"(%arg0) : (tensor<f1>) -> tensor<f1>
+  // CHECK: return [[RINT]]
+  return %0: tensor<f1>
+}
+
+// CHECK-LABEL: func @testDoubleRint
+// CHECK-SAME:  ([[ARG0:%.+]]: tensor<f1>)
+func @testDoubleRint(%arg0: tensor<f1>) -> tensor<f1> {
+  // CHECK: [[RINT:%.+]] = "tf.Rint"([[ARG0]])
+  %0 = "tf.Rint"(%arg0) : (tensor<f1>) -> tensor<f1>
+  %1 = "tf.Rint"(%0) : (tensor<f1>) -> tensor<f1>
+  // CHECK: return [[RINT]]
+  return %1: tensor<f1>
+}
+
+// CHECK-LABEL: func @testSingleRound
+// CHECK-SAME:  ([[ARG0:%.+]]: tensor<i8>)
+func @testSingleRound(%arg0: tensor<i8>) -> tensor<i8> {
+  // CHECK: [[ROUND:%.+]] = "tf.Round"([[ARG0]])
+  %0 = "tf.Round"(%arg0) : (tensor<i8>) -> tensor<i8>
+  // CHECK: return [[ROUND]]
+  return %0: tensor<i8>
+}
+
+// CHECK-LABEL: func @testDoubleRound
+// CHECK-SAME:  ([[ARG0:%.+]]: tensor<i8>)
+func @testDoubleRound(%arg0: tensor<i8>) -> tensor<i8> {
+  // CHECK: [[ROUND:%.+]] = "tf.Round"([[ARG0]])
+  %0 = "tf.Round"(%arg0) : (tensor<i8>) -> tensor<i8>
+  %1 = "tf.Round"(%0) : (tensor<i8>) -> tensor<i8>
+  // CHECK: return [[ROUND]]
+  return %1: tensor<i8>
+}
+
+// CHECK-LABEL: func @testSingleSign
+// CHECK-SAME:  ([[ARG0:%.+]]: tensor<i32>)
+func @testSingleSign(%arg0: tensor<i32>) -> tensor<i32> {
+  // CHECK: [[SIGN:%.+]] = "tf.Sign"([[ARG0]])
+  %0 = "tf.Sign"(%arg0) : (tensor<i32>) -> tensor<i32>
+  // CHECK: return [[SIGN]]
+  return %0: tensor<i32>
+}
+
+// CHECK-LABEL: func @testDoubleSign
+// CHECK-SAME:  ([[ARG0:%.+]]: tensor<i32>)
+func @testDoubleSign(%arg0: tensor<i32>) -> tensor<i32> {
+  // CHECK: [[SIGN:%.+]] = "tf.Sign"([[ARG0]])
+  %0 = "tf.Sign"(%arg0) : (tensor<i32>) -> tensor<i32>
+  %1 = "tf.Sign"(%0) : (tensor<i32>) -> tensor<i32>
+  // CHECK: return [[SIGN]]
+  return %1: tensor<i32>
+}
+
+// CHECK-LABEL: func @testSingleZerosLike
+// CHECK-SAME:  ([[ARG0:%.+]]: tensor<i1>)
+func @testSingleZerosLike(%arg0: tensor<i1>) -> tensor<i1> {
+  // CHECK: [[ZEROSLIKE:%.+]] = "tf.ZerosLike"([[ARG0]])
+  %0 = "tf.ZerosLike"(%arg0) : (tensor<i1>) -> tensor<i1>
+  // CHECK: return [[ZEROSLIKE]]
+  return %0: tensor<i1>
+}
+
+// CHECK-LABEL: func @testDoubleZerosLike
+// CHECK-SAME:  ([[ARG0:%.+]]: tensor<i1>)
+func @testDoubleZerosLike(%arg0: tensor<i1>) -> tensor<i1> {
+  // CHECK: [[ZEROSLIKE:%.+]] = "tf.ZerosLike"([[ARG0]])
+  %0 = "tf.ZerosLike"(%arg0) : (tensor<i1>) -> tensor<i1>
+  %1 = "tf.ZerosLike"(%0) : (tensor<i1>) -> tensor<i1>
+  // CHECK: return [[ZEROSLIKE]]
+  return %1: tensor<i1>
+}
