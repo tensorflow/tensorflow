@@ -147,11 +147,13 @@ class BatchNormalizationBase(Layer):
       - `training=False`: The layer will normalize its inputs using the mean and
         variance of its moving statistics, learned during training.
 
-  Input shape: Arbitrary. Use the keyword argument `input_shape` (tuple of
+  Input shape:
+    Arbitrary. Use the keyword argument `input_shape` (tuple of
     integers, does not include the samples axis) when using this layer as the
     first layer in a model.
 
-  Output shape: Same shape as input.
+  Output shape:
+    Same shape as input.
 
   Reference:
     - [Ioffe and Szegedy, 2015](https://arxiv.org/abs/1502.03167).
@@ -1081,11 +1083,13 @@ class LayerNormalization(Layer):
     beta_constraint: Optional constraint for the beta weight. None by default.
     gamma_constraint: Optional constraint for the gamma weight. None by default.
 
-  Input shape: Arbitrary. Use the keyword argument `input_shape` (tuple of
+  Input shape:
+    Arbitrary. Use the keyword argument `input_shape` (tuple of
     integers, does not include the samples axis) when using this layer as the
     first layer in a model.
 
-  Output shape: Same shape as input.
+  Output shape:
+    Same shape as input.
 
   Reference:
     - [Lei Ba et al., 2016](https://arxiv.org/abs/1607.06450).
