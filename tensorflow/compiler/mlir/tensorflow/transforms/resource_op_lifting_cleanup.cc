@@ -35,7 +35,7 @@ bool IsResource(Value value) {
 bool IsCastOfResource(Operation &op) {
   auto cast = dyn_cast<TF::CastOp>(op);
   if (!cast) return false;
-  return IsResource(cast.x()) && cast.x().getType() == cast.y().getType();
+  return IsResource(cast.x());
 }
 
 // Removes passthrough ops in the block. The device computation does not need

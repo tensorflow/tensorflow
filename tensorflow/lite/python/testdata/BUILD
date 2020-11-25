@@ -89,6 +89,7 @@ cc_binary(
 
 cc_library(
     name = "double_op_and_kernels",
+    testonly = 1,
     srcs = ["double_op.cc"],
     deps = [
         "//tensorflow/core:framework",
@@ -99,17 +100,20 @@ cc_library(
 
 tf_custom_op_library(
     name = "_double_op.so",
+    testonly = 1,
     srcs = ["double_op.cc"],
 )
 
 tf_gen_op_wrapper_py(
     name = "gen_double_op_wrapper",
+    testonly = 1,
     out = "double_op_wrapper.py",
     deps = [":double_op_and_kernels"],
 )
 
 tf_custom_op_py_library(
     name = "double_op",
+    testonly = 1,
     srcs = ["double_op.py"],
     dso = [":_double_op.so"],
     kernels = [":double_op_and_kernels"],

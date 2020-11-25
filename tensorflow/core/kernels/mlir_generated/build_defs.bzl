@@ -192,7 +192,17 @@ def _gen_kernel_image_hdr(name, mlir_op, gpu_archs, tile_size, unroll_factors = 
         symbol = "k%s" % name.replace("_", " ").title().replace(" ", ""),
     )
 
+type_to_mlir = {
+    "c64": "complex<f32>",
+    "c128": "complex<f64>",
+}
+
 def _gen_mlir_op_impl(ctx):
+    # Map attr.type to MLIR type.
+    mlir_type = ctx.attr.type
+    if mlir_type in type_to_mlir:
+        mlir_type = type_to_mlir[mlir_type]
+
     # In order to generate a ranked kernel we change *xelem_type to ?xelem_type
     # and remove element type from the entry function name.
     convert_to_ranked = ""
@@ -202,11 +212,11 @@ def _gen_mlir_op_impl(ctx):
         inputs = [ctx.file.template],
         outputs = [ctx.outputs.out],
         command = (
-            ("cat %s | %s sed s/elem_type/%s/g | sed 's/c64/complex<f32>/g'" +
-             " | sed 's/c128/complex<f64>/g' > %s") % (
+            ("cat %s | %s sed 's/_elem_type/_%s/g' | sed 's/elem_type/%s/g' > %s") % (
                 ctx.file.template.path,
                 convert_to_ranked,
                 ctx.attr.type,
+                mlir_type,
                 ctx.outputs.out.path,
             )
         ),

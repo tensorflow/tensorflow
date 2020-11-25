@@ -316,6 +316,20 @@ cc_library(
 )
 
 cc_library(
+    name = "lstm_test_util",
+    testonly = 1,
+    srcs = ["lstm_test_util.cc"],
+    hdrs = ["lstm_test_util.h"],
+    deps = [
+        ":lstm",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
     name = "max_unpooling",
     srcs = ["max_unpooling.cc"],
     hdrs = ["max_unpooling.h"],
@@ -426,6 +440,20 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "relu_test_util",
+    testonly = 1,
+    srcs = ["relu_test_util.cc"],
+    hdrs = ["relu_test_util.h"],
+    deps = [
+        ":relu",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
+        "@com_google_googletest//:gtest",
     ],
 )
 

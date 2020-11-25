@@ -210,6 +210,24 @@ TEST_F(GpuUnaryOpTest, CeilHalf) {
                           /*expect_equal=*/true);
 }
 
+/// Test `tf.Conj`.
+
+TEST_F(GpuUnaryOpTest, ConjFloat) {
+  Run<std::complex<float>, const std::complex<float>&, std::complex<float>,
+      std::complex<float>>(DefaultInputShape(), DefaultComplexInput<float>(),
+                           /*op_name=*/"Conj",
+                           /*expected_callback=*/std::conj,
+                           /*expect_equal=*/false);
+}
+
+TEST_F(GpuUnaryOpTest, ConjDouble) {
+  Run<std::complex<double>, const std::complex<double>&, std::complex<double>,
+      std::complex<double>>(DefaultInputShape(), DefaultComplexInput<double>(),
+                            /*op_name=*/"Conj",
+                            /*expected_callback=*/std::conj,
+                            /*expect_equal=*/false);
+}
+
 /// Test `tf.Cos`.
 
 TEST_F(GpuUnaryOpTest, CosFloat) {
