@@ -166,6 +166,12 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
     attrs.push_back(
         NamedAttribute(Identifier::get("epsilon", context), epsilon));
 
+    // Insert fused operation right before the BiasAdd operation to guarantee
+    // that bias value dominates the fused operation. We already verified that
+    // original operation has a single use, so this is safe to do.
+    auto *bias_add_op = bias_add.getOperation();
+    if (bias_add_op) rewriter.setInsertionPoint(bias_add_op);
+
     Value fused_op = rewriter.create<FusedOpT>(fused_loc, result_type,
                                                ValueRange(operands), attrs);
     auto op_to_replace = fuse_activation ? activation : bias_add;
@@ -207,6 +213,7 @@ class FuseMatMulBiasAdd
 
   bool AreFuseCompatible(MatMulOp matmul, BiasAddOp bias_add,
                          PatternRewriter &rewriter) const override {
+    // FusedMatMul kernel supports limited set of data types.
     return matmul.T().isF32() || matmul.T().isBF16();
   }
 };
