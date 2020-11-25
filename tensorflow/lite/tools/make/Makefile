@@ -111,7 +111,9 @@ MINIMAL_SRCS := \
 LABEL_IMAGE_SRCS := \
 	tensorflow/lite/examples/label_image/bitmap_helpers.cc \
 	tensorflow/lite/examples/label_image/label_image.cc \
-	tensorflow/lite/tools/evaluation/utils.cc
+	tensorflow/lite/tools/evaluation/utils.cc \
+	tensorflow/lite/tools/command_line_flags.cc \
+	tensorflow/lite/tools/tool_params.cc
 
 # What sources we want to compile, must be kept in sync with the main Bazel
 # build files.
