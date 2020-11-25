@@ -367,6 +367,7 @@ xla_test(
         "conv_depthwise_test.cc",
     ],
     shard_count = 50,
+    tags = ["no_rocm"],  # ROCm 3.9 regression
     deps = [
         ":conv_depthwise_common",
         ":test_macros_header",
@@ -388,6 +389,7 @@ xla_test(
     timeout = "long",
     srcs = ["conv_depthwise_backprop_filter_test.cc"],
     shard_count = 40,
+    tags = ["no_rocm"],  # ROCm 3.9 regression
     deps = [
         ":test_macros_header",
         "//tensorflow/compiler/xla:execution_options_util",
@@ -412,6 +414,7 @@ xla_test(
         "cpu",
     ],
     shard_count = 50,
+    tags = ["no_rocm"],  # ROCm 3.9 regression
     deps = [
         ":client_library_test_base",
         ":hlo_test_base",
@@ -921,7 +924,7 @@ xla_test(
     srcs = ["dot_operation_test.cc"],
     shard_count = 20,
     tags = [
-        "no_rocm",
+        "no_rocm",  # ROCm 3.9 regression
         "optonly",
     ],
     deps = [
@@ -955,7 +958,7 @@ xla_test(
     backends = ["gpu"],
     shard_count = 20,
     tags = [
-        "no_rocm",
+        "no_rocm",  # ROCm 3.9 regression
         "optonly",
         # TODO(b/151340488): Timed out on 2020-03-12.
         "nozapfhahn",
@@ -1022,7 +1025,7 @@ xla_test(
     },
     shard_count = 20,
     tags = [
-        "no_rocm",
+        "no_rocm",  # ROCm 3.9 regression
         "optonly",
     ],
     deps = [
@@ -1250,6 +1253,7 @@ xla_test(
         "cpu": ["nomsan"],
     },
     shard_count = 30,
+    tags = ["no_rocm"],  # ROCm 3.9 regression
     deps = [
         ":test_macros_header",
         "//tensorflow/compiler/xla:array3d",
@@ -1274,6 +1278,7 @@ xla_test(
     timeout = "long",
     srcs = ["convolution_dimension_numbers_test.cc"],
     shard_count = 20,
+    tags = ["no_rocm"],  # ROCm 3.9 regression
     deps = [
         ":test_macros_header",
         "//tensorflow/compiler/xla:array4d",
@@ -2316,6 +2321,7 @@ xla_test(
     name = "multioutput_fusion_test",
     srcs = ["multioutput_fusion_test.cc"],
     backends = ["gpu"],
+    tags = ["no_rocm"],  # ROCm 3.9 regression
     deps = [
         ":test_macros_header",
         "//tensorflow/compiler/xla:literal",
