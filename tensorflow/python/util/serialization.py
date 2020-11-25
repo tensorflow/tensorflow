@@ -24,7 +24,7 @@ import wrapt
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.util.compat import collections_abc
-
+import tensorflow as tf
 
 def get_json_type(obj):
   """Serializes any object to a JSON-serializable structure.
@@ -42,6 +42,10 @@ def get_json_type(obj):
   # e.g. optimizer, layer
   if hasattr(obj, 'get_config'):
     return {'class_name': obj.__class__.__name__, 'config': obj.get_config()}
+  
+  # Serialize EagerTensors (fix for saving 1.x Keras Models)
+  if isinstance(obj, tf.python.framework.ops.EagerTensor):
+    obj = obj.numpy()
 
   # if obj is any numpy type
   if type(obj).__module__ == np.__name__:
