@@ -38,8 +38,9 @@ constexpr int kOutputTensor = 0;
 TfLiteStatus ResizeOutput(TfLiteContext* context, const TfLiteTensor* input,
                           const TfLiteTensor* axis, TfLiteTensor* output) {
   int axis_value;
+  // Retrive all 8 bytes when axis type is kTfLiteInt64 to avoid data loss.
   if (axis->type == kTfLiteInt64) {
-    axis_value = *GetTensorData<int64_t>(axis);
+    axis_value = static_cast<int>(*GetTensorData<int64_t>(axis));
   } else {
     axis_value = *GetTensorData<int>(axis);
   }
