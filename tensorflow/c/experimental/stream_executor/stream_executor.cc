@@ -321,14 +321,12 @@ SP_DeviceMemoryBase DeviceMemoryBaseToC(const DeviceMemoryBase* mem) {
   device_memory_base.opaque = const_cast<void*>(mem->opaque());
   device_memory_base.size = mem->size();
   device_memory_base.payload = mem->payload();
-  // TODO(annarev): Add `ext` field to DeviceMemoryBase and set it here.
   return device_memory_base;
 }
 
 DeviceMemoryBase DeviceMemoryBaseFromC(const SP_DeviceMemoryBase& mem) {
   DeviceMemoryBase base(mem.opaque, mem.size);
   base.SetPayload(mem.payload);
-  // TODO(annarev): Add `ext` field to DeviceMemoryBase and set it here.
   return base;
 }
 
@@ -426,7 +424,6 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
       LOG(ERROR) << status.error_message();
       return absl::nullopt;
     }
-    // TODO(annarev): validate SP_AllocatorStats.
     ::stream_executor::AllocatorStats stats;
     stats.num_allocs = c_stats.num_allocs;
     stats.bytes_in_use = c_stats.bytes_in_use;
