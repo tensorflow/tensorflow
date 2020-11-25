@@ -36,21 +36,15 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
-#include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace mlir {
 namespace TF {
 namespace collection_ops_util {
 
-Value CreateScalarConst(int value, OpBuilder builder, Location loc) {
-  tensorflow::Tensor scalar_tensor(tensorflow::DT_INT32, {});
-  scalar_tensor.scalar<tensorflow::int32>()() = value;
-  return builder.create<TF::ConstOp>(
-      loc, tensorflow::ConvertTensor(scalar_tensor, &builder).ValueOrDie());
+Value CreateScalarConst(int32_t value, OpBuilder builder, Location loc) {
+  auto attr = DenseIntElementsAttr::get(
+      RankedTensorType::get({}, builder.getI32Type()), value);
+  return builder.create<TF::ConstOp>(loc, attr);
 }
 
 Value GetR1Const(ArrayRef<int64_t> r1, OpBuilder builder, Location loc,

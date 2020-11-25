@@ -41,6 +41,13 @@ cd tflite_build
 cmake ../tensorflow_src/tensorflow/lite
 ```
 
+It generates release binary by default. If you need to produce debug builds, you
+need to provide '-DCMAKE_BUILD_TYPE=Debug' option.
+
+```sh
+cmake ../tensorflow_src/tensorflow/lite -DCMAKE_BUILD_TYPE=Debug
+```
+
 If you want to configure Android build with GPU delegate support,
 
 ```sh

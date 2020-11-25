@@ -869,6 +869,9 @@ filegroup(
     srcs = [
         # Sources for which we do not yet have granular targets.
         "//tensorflow/c/eager:srcs",
+        # StreamExecutor C API is currently not supported for mobile.
+        # Including just the header for SP_Stream reference in kernels C API.
+        "//tensorflow/c/experimental/stream_executor:headers",
         "//tensorflow/c:srcs",
         "//tensorflow/core/common_runtime:mobile_srcs_only_runtime",
         "//tensorflow/core/common_runtime/eager:srcs",
@@ -1118,12 +1121,11 @@ cc_library(
 
 # -----------------------------------------------------------------------------
 # Libraries with GPU facilities that are useful for writing kernels.
-cc_library(
+alias(
     name = "gpu_lib",
-    visibility = ["//visibility:public"],
-    deps = [
+    actual =
         "//tensorflow/core/common_runtime/gpu:gpu_lib",
-    ],
+    visibility = ["//visibility:public"],
 )
 
 alias(

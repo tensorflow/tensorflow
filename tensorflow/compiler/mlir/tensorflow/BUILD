@@ -42,10 +42,10 @@ filegroup(
         "ir/tf_ops.td",
         "ir/tfrt_ops.td",
         "@llvm-project//mlir:OpBaseTdFiles",
+        "@llvm-project//mlir:SideEffectTdFiles",
         "@llvm-project//mlir:include/mlir/Interfaces/CallInterfaces.td",
         "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
         "@llvm-project//mlir:include/mlir/Interfaces/LoopLikeInterface.td",
-        "@llvm-project//mlir:include/mlir/Interfaces/SideEffectInterfaces.td",
     ],
 )
 
@@ -337,6 +337,7 @@ cc_library(
         ":tensorflow",
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:Dialect",
@@ -824,6 +825,22 @@ cc_library(
     ],
 )
 
+gentbl(
+    name = "tf_pass_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [
+        (
+            "-gen-pass-decls -name TensorFlow",
+            "transforms/tf_passes.h.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "transforms/tf_passes.td",
+    td_srcs = [
+        "@llvm-project//mlir:PassBaseTdFiles",
+    ],
+)
+
 cc_library(
     name = "tensorflow_passes",
     srcs = [
@@ -859,6 +876,7 @@ cc_library(
         "transforms/mark_ops_for_outside_compilation.cc",
         "transforms/materialize_mlir_passthrough_op.cc",
         "transforms/optimize.cc",
+        "transforms/outside_compiled_to_host_launch.cc",
         "transforms/parallel_execute_to_islands.cc",
         "transforms/parallelize_embedding_params_ops_pass.cc",
         "transforms/promote_resources_to_args.cc",
@@ -918,6 +936,8 @@ cc_library(
     includes = ["include"],
     textual_hdrs = [
         "ir/tf_ops_helpers.inc",
+        "transforms/passes_detail.h",
+        "transforms/tf_passes.h.inc",
     ],
     deps = [
         ":attribute_utils",
@@ -940,6 +960,7 @@ cc_library(
         ":tensorflow_optimize_inc_gen",
         ":tensorflow_types",
         ":tf_data_optimization",
+        ":tf_pass_inc_gen",
         ":tpu_rewrite_device_util",
         ":translate_utils",
         ":unroll_batch_matmul_pass",
@@ -1043,6 +1064,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
+        "@llvm-project//llvm:Support",
     ],
 )
 

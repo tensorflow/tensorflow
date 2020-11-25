@@ -240,14 +240,42 @@ TFTPU_CAPI_EXPORT void TpuConfigurationApi_TpuMemoryLimit(int64_t* memory_limit,
                                                           TF_Status* status);
 TFTPU_CAPI_EXPORT void TpuConfigurationApi_RemoteCompilationCacheSizeInBytes(
     int64_t* cache_size_in_bytes);
+
+typedef struct TpuConfigurationApi_CompilationCacheServerAddrFromConfig_Params {
+  int32_t struct_size;
+  void* priv;
+
+  size_t tpu_host_config_size;
+  const char* tpu_host_config;
+
+  size_t* server_address_output_size;  // out
+  char** server_address_output;        // out
+  TF_Status* status;                   // out
+} TpuConfigurationApi_CompilationCacheServerAddressFromConfig_Params;
+
+#define TpuConfigurationApi_CompilationCacheServerAddrFromConfig_Params_SIZE \
+  (sizeof(                                                                   \
+      struct TpuConfigurationApi_CompilationCacheServerAddrFromConfig_Params))
+
 TFTPU_CAPI_EXPORT
 void TpuConfigurationApi_CompilationCacheServerAddressFromConfig(
-    size_t tpu_host_config_size, const char* tpu_host_config,
-    size_t* server_address_output_size, char** server_address_output,
-    TF_Status* status);
+    TpuConfigurationApi_CompilationCacheServerAddrFromConfig_Params* params);
+
+typedef struct TpuConfigurationApi_GetServerAddressAndPort_Params {
+  int32_t struct_size;
+  void* priv;
+
+  size_t* server_address_output_size;  // out
+  char** server_address_output;        // out
+  int* port_output;                    // out
+  TF_Status* status;                   // out
+} TpuConfigurationApi_GetServerAddressAndPort_Params;
+
+#define TpuConfigurationApi_GetServerAddressAndPort_Params_SIZE \
+  (sizeof(struct TpuConfigurationApi_GetServerAddressAndPort_Params))
+
 TFTPU_CAPI_EXPORT void TpuConfigurationApi_GetServerAddressAndPort(
-    size_t* server_address_output_size, char** server_address_output,
-    int* port_output, TF_Status* status);
+    TpuConfigurationApi_GetServerAddressAndPort_Params* params);
 
 // Creates a new TPU program.
 TFTPU_CAPI_EXPORT XLA_TpuProgram* TpuProgram_New();

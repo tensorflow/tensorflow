@@ -1899,7 +1899,10 @@ class AUC(Metric):
       case, when multilabel data is passed to AUC, each label-prediction pair
       is treated as an individual data point. Should be set to False for
       multi-class data.
-    label_weights: (optional) list, array, or tensor of non-negative weights
+    num_labels: (Optional) The number of labels, used when `multi_label' is
+      True. If `num_labels` is not specified, then state variables get created
+      on the first call to `update_state`.
+    label_weights: (Optional) list, array, or tensor of non-negative weights
       used to compute AUCs for multilabel data. When `multi_label` is True,
       the weights are applied to the individual label AUCs when they are
       averaged to produce the multi-label AUC. When it's False, they are used
@@ -1942,6 +1945,7 @@ class AUC(Metric):
                dtype=None,
                thresholds=None,
                multi_label=False,
+               num_labels=None,
                label_weights=None):
     # Validate configurations.
     if isinstance(curve, metrics_utils.AUCCurve) and curve not in list(
@@ -2004,8 +2008,13 @@ class AUC(Metric):
 
     self._built = False
     if self.multi_label:
-      self._num_labels = None
+      if num_labels:
+        shape = tensor_shape.TensorShape([None, num_labels])
+        self._build(shape)
     else:
+      if num_labels:
+        raise ValueError(
+            '`num_labels` is needed only when `multi_label` is True.')
       self._build(None)
 
   @property
@@ -2885,6 +2894,9 @@ class MeanTensor(Metric):
   Args:
     name: (Optional) string name of the metric instance.
     dtype: (Optional) data type of the metric result.
+    shape: (Optional) A list of integers, a tuple of integers, or a 1-D Tensor
+      of type int32. If not specified, the shape is inferred from the values at
+      the first call of update_state.
 
   Standalone usage:
 
@@ -2897,14 +2909,24 @@ class MeanTensor(Metric):
   >>> m.update_state([12, 10, 8, 6], sample_weight= [0, 0.2, 0.5, 1])
   >>> m.result().numpy()
   array([2.       , 3.6363635, 4.8      , 5.3333335], dtype=float32)
+
+  >>> m = tf.keras.metrics.MeanTensor(dtype=tf.float64, shape=(1, 4))
+  >>> m.result().numpy()
+  array([[0., 0., 0., 0.]])
+  >>> m.update_state([[0, 1, 2, 3]])
+  >>> m.update_state([[4, 5, 6, 7]])
+  >>> m.result().numpy()
+  array([[2., 3., 4., 5.]])
   """
 
-  def __init__(self, name='mean_tensor', dtype=None):
+  def __init__(self, name='mean_tensor', dtype=None, shape=None):
     super(MeanTensor, self).__init__(name=name, dtype=dtype)
     self._shape = None
     self._total = None
     self._count = None
     self._built = False
+    if shape is not None:
+      self._build(shape)
 
   def _build(self, shape):
     self._shape = tensor_shape.TensorShape(shape)

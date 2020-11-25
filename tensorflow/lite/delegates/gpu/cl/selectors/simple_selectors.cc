@@ -19,28 +19,28 @@ limitations under the License.
 #include <set>
 
 #include "absl/memory/memory.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/add.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/concat_xy.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/concat_z.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/depthwise_conv.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/lstm.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/max_unpooling.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/mean.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/padding.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/pooling.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/prelu.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/quantize_and_dequantize.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/relu.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/reshape.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/reshapex4.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/resize.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/softmax.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/softmax1x1.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/space_to_depth.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/strided_slice.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/transpose.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/winograd.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/add.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/concat_xy.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/concat_z.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/depthwise_conv.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/lstm.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/max_unpooling.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/padding.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/pooling.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/prelu.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/quantize_and_dequantize.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/reduce.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/relu.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/reshape.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/reshapex4.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/resize.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/softmax.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/softmax1x1.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/space_to_depth.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/strided_slice.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/transpose.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/winograd.h"
 
 namespace tflite {
 namespace gpu {
@@ -147,15 +147,13 @@ void SelectStridedSlice(const SliceAttributes& attr, const OperationDef& op_def,
   *ptr = absl::make_unique<StridedSlice>(std::move(operation));
 }
 
-absl::Status SelectMean(const MeanAttributes& attr, const OperationDef& op_def,
-                        const GpuInfo& gpu_info,
-                        std::unique_ptr<GPUOperation>* ptr) {
-  if (attr.dims != std::set<Axis>({Axis::HEIGHT, Axis::WIDTH})) {
-    return absl::UnimplementedError("Mean operation supports only HW plane");
-  }
-  Mean operation = CreateMean(op_def, gpu_info);
-  *ptr = absl::make_unique<Mean>(std::move(operation));
-  return absl::OkStatus();
+std::unique_ptr<GPUOperation> SelectReduce(const std::set<Axis>& axis_to_reduce,
+                                           const BHWC& src_shape,
+                                           OperationType op_type,
+                                           const OperationDef& op_def,
+                                           const GpuInfo& gpu_info) {
+  return absl::make_unique<Reduce>(
+      CreateReduce(axis_to_reduce, src_shape, op_type, op_def, gpu_info));
 }
 
 void SelectSoftmax(const BHWC& shape, const OperationDef& op_def,

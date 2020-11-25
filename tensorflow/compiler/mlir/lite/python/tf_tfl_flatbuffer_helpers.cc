@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/python/tf_tfl_flatbuffer_helpers.h"
 
 #include <ostream>
+#include <unordered_set>
 #include <utility>
 
 #include "llvm/Support/ToolOutputFile.h"
@@ -119,6 +120,8 @@ DataType ConvertIODataTypeToDataType(toco::IODataType dtype) {
       return DT_INT32;
     case toco::IODataType::INT64:
       return DT_INT64;
+    case toco::IODataType::UINT64:
+      return DT_UINT64;
     case toco::IODataType::STRING:
       return DT_STRING;
     case toco::IODataType::BOOL:
@@ -286,6 +289,10 @@ Status ConvertMLIRToTFLiteFlatBuffer(
   bool emit_select_tf_ops = toco_flags.enable_select_tf_ops();
   bool emit_custom_ops = toco_flags.allow_custom_ops();
 
+  const std::unordered_set<std::string> select_user_tf_ops(
+      toco_flags.select_user_tf_ops().begin(),
+      toco_flags.select_user_tf_ops().end());
+
   if (toco_flags.has_dump_graphviz_dir()) {
     TF_RETURN_IF_ERROR(DumpOpGraphToFile(
         module.get(),
@@ -305,8 +312,8 @@ Status ConvertMLIRToTFLiteFlatBuffer(
 
   auto status = ConvertTFExecutorToTFLOrFlatbuffer(
       module.get(), /*export_to_mlir=*/false, emit_builtin_tflite_ops,
-      emit_select_tf_ops, emit_custom_ops, pass_config.quant_specs,
-      saved_model_tags, result, &pm);
+      emit_select_tf_ops, emit_custom_ops, select_user_tf_ops,
+      pass_config.quant_specs, saved_model_tags, result, &pm);
   if (toco_flags.has_dump_graphviz_dir()) {
     TF_RETURN_IF_ERROR(DumpOpGraphToFile(
         // rename once we enable the new converter feature flag.

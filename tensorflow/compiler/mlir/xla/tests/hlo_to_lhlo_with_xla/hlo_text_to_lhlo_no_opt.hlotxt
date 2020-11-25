@@ -63,8 +63,11 @@ HloModule SelectAndScatter
   ROOT %add.11 = f32[] add(f32[] %lhs.9, f32[] %rhs.10)
 }
 
+// CHECK-LABEL: module
+// CHECK: global_memref "private" constant @[[$GLOBAL:.*]] : memref<f32> = dense<0.000000e+00>
 // CHECK-LABEL: func @main
-// CHECK: "lmhlo.select_and_scatter"
+// CHECK: %[[GLOBAL_MEMREF:.*]] = get_global_memref @[[$GLOBAL]] : memref<f32>
+// CHECK: "lmhlo.select_and_scatter"(%{{.*}}, %{{.*}}, %[[GLOBAL_MEMREF]], %{{.*}})
 // CHECK: ^bb0(%[[ARG0:.*]]: tensor<f32>, %[[ARG1:.*]]: tensor<f32>):
 // CHECK: %[[COMPARE:.*]] = "mhlo.compare"(%[[ARG0]], %[[ARG1]]) {comparison_direction = "GE"}
 // CHECK: "mhlo.return"(%[[COMPARE]]) : (tensor<i1>) -> ()
@@ -78,7 +81,7 @@ HloModule SelectAndScatter
 ENTRY main () -> f32[6] {
   %operand = f32[6]{0} parameter(0)
   %source = f32[2]{0} parameter(1)
-  %init = f32[] parameter(2)
+  %init = f32[] constant(0)
   ROOT %select-and-scatter.12 = f32[6]{0} select-and-scatter(f32[6]{0} %operand, f32[2]{0} %source, f32[] %init), window={size=3 stride=3}, select=%ge_F32, scatter=%add_F32
 }
 
@@ -101,4 +104,20 @@ ENTRY main {
                                                   s32[] %static),
                                       custom_call_target="SliceToDynamic",
                                       backend_config=""
+}
+
+// -----
+
+
+HloModule Cholesky
+
+// CHECK-LABEL: func @main
+// CHECK: "lmhlo_gpu.cholesky"
+// CHECK-SAME: is_lower = true
+ENTRY main {
+  %param = f32[3,3] parameter(0)
+  ROOT %custom-call = (f32[3,3], f32[3], s32[]) custom-call(f32[3,3] %param),
+                                custom_call_target="__cusolver$cholesky",
+                                operand_layout_constraints={f32[3,3]},
+                                backend_config="{\"lower\":true}"
 }

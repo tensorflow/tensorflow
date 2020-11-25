@@ -148,34 +148,16 @@ Status DataServiceDispatcherClient::RegisterDataset(GraphDef dataset,
   return Status::OK();
 }
 
-Status DataServiceDispatcherClient::CreateJob(int64 dataset_id,
-                                              ProcessingMode processing_mode,
-                                              int64& job_client_id) {
-  TF_RETURN_IF_ERROR(EnsureInitialized());
-  CreateJobRequest req;
-  req.set_dataset_id(dataset_id);
-  req.set_processing_mode(ProcessingModeDef(processing_mode));
-  CreateJobResponse resp;
-  grpc::ClientContext client_ctx;
-  grpc::Status status = stub_->CreateJob(&client_ctx, req, &resp);
-  if (!status.ok()) {
-    return grpc_util::WrapError(
-        absl::StrCat("Failed to create job for dataset with id ", dataset_id),
-        status);
-  }
-  job_client_id = resp.job_client_id();
-  return Status::OK();
-}
-
 Status DataServiceDispatcherClient::GetOrCreateJob(
     int64 dataset_id, ProcessingMode processing_mode,
-    const std::string& job_name, int job_name_index, int64& job_client_id) {
+    const absl::optional<JobKey>& job_key, int64& job_client_id) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetOrCreateJobRequest req;
   req.set_dataset_id(dataset_id);
   req.set_processing_mode(ProcessingModeDef(processing_mode));
-  req.set_job_name(job_name);
-  req.set_job_name_index(job_name_index);
+  if (job_key.has_value()) {
+    *req.mutable_job_key() = job_key.value();
+  }
   GetOrCreateJobResponse resp;
   grpc::ClientContext client_ctx;
   grpc::Status status = stub_->GetOrCreateJob(&client_ctx, req, &resp);

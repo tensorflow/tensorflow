@@ -407,7 +407,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
     case BuiltinOperator_RESIZE_BILINEAR:
-      if (op_sig.options.resize.half_pixel_centers) {
+      if (op_sig.input_types.at(0) == TensorType_INT16) {
+        return 4;
+      } else if (op_sig.options.resize.half_pixel_centers) {
         return 3;
       } else if (op_sig.input_types.at(0) == TensorType_INT8) {
         return 2;
@@ -568,6 +570,23 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_BATCH_MATMUL:
+      // In case of int16 inputs, the version is 3.
+      if (op_sig.input_types.at(0) == TensorType_INT16) {
+        return 3;
+      }
+      if (op_sig.input_types.at(0) == TensorType_INT8) {
+        return 2;
+      }
+      if (op_sig.input_types.at(0) == TensorType_FLOAT32 &&
+          op_sig.input_types.at(1) == TensorType_INT8 &&
+          op_sig.output_types.at(0) == TensorType_FLOAT32) {
+        if (op_sig.options.input_quantization.asymmetric_quantize_inputs) {
+          // This is to use the updated quantization scheme.
+          return 4;
+        }
+      }
+      return 1;
+
     case BuiltinOperator_SOFTMAX:
     case BuiltinOperator_MEAN:
     case BuiltinOperator_PAD:
@@ -807,6 +826,12 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
         op_sig.options.concatenation.fixed_point_scaling =
             concatenation_option->fixed_point_scaling();
       }
+    } break;
+
+    case BuiltinOperator_BATCH_MATMUL: {
+      auto batch_matmul_option = op->builtin_options_as_BatchMatMulOptions();
+      op_sig.options.input_quantization.asymmetric_quantize_inputs =
+          batch_matmul_option->asymmetric_quantize_inputs();
     } break;
 
     default:

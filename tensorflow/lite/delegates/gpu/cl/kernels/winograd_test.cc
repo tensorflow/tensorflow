@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/cl/kernels/winograd.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/winograd.h"
 
 #include <cmath>
 #include <cstdlib>
@@ -22,7 +22,6 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/delegates/gpu/cl/kernels/cl_test.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/winograd_util.h"
@@ -78,9 +77,13 @@ TEST_F(OpenCLOperationTest, Winograd4x4To36) {
     for (auto precision : env_.GetSupportedPrecisions()) {
       float eps;
       if (precision == CalculationsPrecision::F32) {
-        eps = 1e-5f * (env_.device().SupportsFP32RTN() ? 1.0f : 4.0f);
+        eps = 1e-5f * (env_.device().GetInfo().opencl_info.supports_fp32_rtn
+                           ? 1.0f
+                           : 4.0f);
       } else {
-        eps = 1e-2f * (env_.device().SupportsFP16RTN() ? 1.0f : 4.0f);
+        eps = 1e-2f * (env_.device().GetInfo().opencl_info.supports_fp16_rtn
+                           ? 1.0f
+                           : 4.0f);
       }
       OperationDef op_def;
       op_def.precision = precision;
@@ -151,9 +154,13 @@ TEST_F(OpenCLOperationTest, Winograd36To4x4) {
     for (auto precision : env_.GetSupportedPrecisions()) {
       float eps;
       if (precision == CalculationsPrecision::F32) {
-        eps = 1e-5f * (env_.device().SupportsFP32RTN() ? 1.0f : 4.0f);
+        eps = 1e-5f * (env_.device().GetInfo().opencl_info.supports_fp32_rtn
+                           ? 1.0f
+                           : 4.0f);
       } else {
-        eps = 1e-2f * (env_.device().SupportsFP16RTN() ? 1.0f : 4.0f);
+        eps = 1e-2f * (env_.device().GetInfo().opencl_info.supports_fp16_rtn
+                           ? 1.0f
+                           : 4.0f);
       }
       OperationDef op_def;
       op_def.precision = precision;

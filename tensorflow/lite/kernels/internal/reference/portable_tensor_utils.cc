@@ -428,7 +428,7 @@ void PortableApplyLayerNorm(const int16_t* input,
     }
     int32_t mean =
         static_cast<int32_t>(static_cast<int64_t>(sum) * 1024 / n_input);
-    // TODO(jianlijianli): Avoids overflow but only works for POT n_input.
+    // TODO(b/173994730): Avoids overflow but only works for POT n_input.
     int32_t temp = kTwoToPower20 / n_input;
     int64_t variance =
         sum_sq * temp - static_cast<int64_t>(mean) * static_cast<int64_t>(mean);

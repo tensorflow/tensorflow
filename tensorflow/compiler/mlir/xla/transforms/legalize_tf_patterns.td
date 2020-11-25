@@ -89,8 +89,7 @@ class DirectBinaryPat<Op FromOp, Op ToOp>
   : Pat<(FromOp AnyTensor:$l, AnyTensor:$r),
         (ToOp $l, $r, (BinBroadcastDimensions $l, $r))>;
 
-foreach fromToBinPair = [[TF_AddOp, HLOClient_BroadcastAddOp],
-                         [TF_AddV2Op, HLOClient_BroadcastAddOp],
+foreach fromToBinPair = [[TF_AddV2Op, HLOClient_BroadcastAddOp],
                          [TF_DivOp, HLOClient_BroadcastDivOp],
                          [TF_LeftShiftOp, HLOClient_BroadcastShiftLeftOp],
                          [TF_MaximumOp, HLOClient_BroadcastMaxOp],
@@ -225,7 +224,7 @@ class EqualityPat<Op FromOp, StrEnumAttrCase direction>
         (HLOClient_BroadcastCompareOp
          $l, $r, (BinBroadcastDimensions $l, $r), direction,
          (HLO_DEFAULT_COMPARISON_TYPE)),
-        [(AreBroadcastCompatible $l, $r)]>;
+        [(AreBroadcastCompatible $l, $r), (HLO_Tensor $l)]>;
 
 def : EqualityPat<TF_EqualOp, HLO_COMPARISON_DIRECTION_EQ>;
 def : EqualityPat<TF_NotEqualOp, HLO_COMPARISON_DIRECTION_NE>;
@@ -587,6 +586,8 @@ foreach Mapping = [
                    [TF_ComplexAbsOp, HLO_AbsOp],
                    [TF_CosOp, HLO_CosOp],
                    [TF_ExpOp, HLO_ExpOp],
+                   [TF_ErfOp, HLOClient_ErfOp],
+                   [TF_ErfcOp, HLOClient_ErfcOp],
                    [TF_FloorOp, HLO_FloorOp],
                    [TF_ImagOp, HLO_ImagOp],
                    [TF_InvertOp, HLO_NotOp],

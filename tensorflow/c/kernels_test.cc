@@ -378,6 +378,23 @@ template <typename T>
 void set_tensor_data(TF_Tensor* tensor, T* values, size_t tensor_size_bytes,
                      TF_OpKernelContext* ctx);
 
+REGISTER_OP("StreamOp").Output("output1: float");
+
+TEST_F(DeviceKernelOpTest, TestStream) {
+  auto my_compute_func = [](void* kernel, TF_OpKernelContext* ctx) {
+    TF_Status* s = TF_NewStatus();
+    SP_Stream stream = TF_GetStream(ctx, s);
+    // Stream is always null if device is not a pluggable device. More test
+    // cases will be added when pluggable device mechanism is supported.
+    EXPECT_EQ(stream, nullptr);
+    EXPECT_NE(TF_OK, TF_GetCode(s));
+    TF_DeleteStatus(s);
+  };
+
+  SetupOp("StreamOp", "StreamOp", my_compute_func);
+  TF_ASSERT_OK(RunOpKernel());
+}
+
 REGISTER_OP("AllocateOutputOp1").Output("output1: float");
 
 TEST_F(DeviceKernelOpTest, TestAllocateOutputSizeOne) {

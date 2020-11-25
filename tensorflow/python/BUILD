@@ -1381,6 +1381,7 @@ py_library(
         ":_pywrap_util_port",
         ":_pywrap_utils",
         ":composite_tensor",
+        ":config",
         ":convert_to_constants",
         ":cpp_shape_inference_proto_py",
         ":errors",
@@ -2180,22 +2181,6 @@ py_library(
     ],
 )
 
-py_library(
-    name = "composite_tensor_utils",
-    srcs = ["framework/composite_tensor_utils.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":array_ops",
-        ":composite_tensor",
-        ":sparse_ops",
-        ":sparse_tensor",
-        "//tensorflow/python/ops/ragged:ragged_concat_ops",
-        "//tensorflow/python/ops/ragged:ragged_tensor",
-        "//tensorflow/python/ops/ragged:ragged_tensor_value",
-        "//third_party/py/numpy",
-    ],
-)
-
 py_test(
     name = "framework_composite_tensor_test",
     srcs = ["framework/composite_tensor_test.py"],
@@ -2209,24 +2194,6 @@ py_test(
         ":framework_test_lib",
         ":platform_test",
         "//tensorflow/core:protos_all_py",
-    ],
-)
-
-tf_py_test(
-    name = "framework_composite_tensor_utils_test",
-    srcs = ["framework/composite_tensor_utils_test.py"],
-    main = "framework/composite_tensor_utils_test.py",
-    python_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":composite_tensor",
-        ":composite_tensor_utils",
-        ":framework_test_lib",
-        ":sparse_ops",
-        ":sparse_tensor",
-        "//tensorflow/python/ops/ragged:ragged_tensor",
-        "//tensorflow/python/ops/ragged:ragged_tensor_value",
-        "//third_party/py/numpy",
     ],
 )
 
@@ -5724,7 +5691,12 @@ pybind_extension(
     # TODO(b/138203821): change to "util._tf_stack" once the bug is fixed.
     module_name = "_tf_stack",
     deps = [
+        ":stack_trace",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@pybind11",
     ],
 )
@@ -6875,7 +6847,10 @@ tf_py_test(
     size = "small",
     srcs = ["ops/dequantize_op_test.py"],
     python_version = "PY3",
-    tags = ["no_windows"],
+    tags = [
+        "no_tfrt",  # TODO(b/169901260)
+        "no_windows",
+    ],
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -6889,7 +6864,10 @@ tf_py_test(
     size = "small",
     srcs = ["ops/quantized_ops_test.py"],
     python_version = "PY3",
-    tags = ["no_windows"],
+    tags = [
+        "no_tfrt",  # TODO(b/169901260)
+        "no_windows",
+    ],
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -6903,7 +6881,10 @@ tf_py_test(
     size = "small",
     srcs = ["ops/quantized_conv_ops_test.py"],
     python_version = "PY3",
-    tags = ["no_windows"],
+    tags = [
+        "no_tfrt",  # TODO(b/169901260)
+        "no_windows",
+    ],
     deps = [
         ":client_testlib",
         ":framework_for_generated_wrappers",
@@ -7281,6 +7262,7 @@ cuda_py_test(
     tags = [
         "grappler",
         "no_pip",  # tf_optimizer is not available in pip.
+        "no_windows",  # b/173520599
         "notap",  # TODO(b/135924227): Re-enable after fixing flakiness.
     ],
     # This test will not run on XLA because it primarily tests the TF Classic flow.

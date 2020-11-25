@@ -200,7 +200,16 @@ class FuseConv2DBiasAdd
 
 // Performs a fusion of the following pattern(s), if possible:
 //   MatMulOp + BiasAdd + <Activation> -> _FusedMatMulOp
-using FuseMatMulBiasAdd = FuseContractionWithBiasAdd<MatMulOp, _FusedMatMulOp>;
+class FuseMatMulBiasAdd
+    : public FuseContractionWithBiasAdd<MatMulOp, _FusedMatMulOp> {
+  using FuseContractionWithBiasAdd<MatMulOp,
+                                   _FusedMatMulOp>::FuseContractionWithBiasAdd;
+
+  bool AreFuseCompatible(MatMulOp matmul, BiasAddOp bias_add,
+                         PatternRewriter &rewriter) const override {
+    return matmul.T().isF32() || matmul.T().isBF16();
+  }
+};
 
 void FusedKernelMatcherPass::runOnFunction() {
   OwningRewritePatternList patterns;

@@ -25,10 +25,9 @@ limitations under the License.
 namespace tflite {
 namespace delegates {
 namespace coreml {
-const char* ConvolutionOpBuilder::DebugName() {
-  if (!str_debug_name_[0])
-    GetDebugName("ConvolutionOpBuilder", node_id_, str_debug_name_);
-  return str_debug_name_;
+const std::string& ConvolutionOpBuilder::DebugName() {
+  if (debug_name_.empty()) SetDebugName("ConvolutionOpBuilder", node_id_);
+  return debug_name_;
 }
 
 void ConvolutionOpBuilder::SetWeights(TfLiteTensor* weights) {

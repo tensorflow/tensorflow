@@ -16,12 +16,9 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-filegroup(
+alias(
     name = "graph_properties_testdata",
-    srcs = glob([
-        "graph_properties_testdata/*.pbtxt",
-        "graph_properties_testdata/*.pbtxt.html",
-    ]),
+    actual = "//tensorflow/core/grappler/costs/graph_properties_testdata:graph_properties_testdata",
     visibility = ["//visibility:public"],
 )
 

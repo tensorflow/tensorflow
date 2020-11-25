@@ -17,26 +17,27 @@ limitations under the License.
 #define TENSORFLOW_LITE_JAVA_SRC_MAIN_NATIVE_JNI_UTILS_H_
 
 #include <jni.h>
+#include <stdarg.h>
 
 #include "tensorflow/lite/error_reporter.h"
+
+namespace tflite {
+namespace jni {
 
 extern const char kIllegalArgumentException[];
 extern const char kIllegalStateException[];
 extern const char kNullPointerException[];
-extern const char kIndexOutOfBoundsException[];
 extern const char kUnsupportedOperationException[];
-
-namespace tflite {
-namespace jni {
 
 void ThrowException(JNIEnv* env, const char* clazz, const char* fmt, ...);
 
 class BufferErrorReporter : public ErrorReporter {
  public:
   BufferErrorReporter(JNIEnv* env, int limit);
-  virtual ~BufferErrorReporter();
+  ~BufferErrorReporter() override;
   int Report(const char* format, va_list args) override;
   const char* CachedErrorMessage();
+  using ErrorReporter::Report;
 
  private:
   char* buffer_;

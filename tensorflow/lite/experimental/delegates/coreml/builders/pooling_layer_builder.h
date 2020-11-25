@@ -28,7 +28,7 @@ class PoolingLayerBuilder : public OpBuilder {
                                TfLiteBuiltinOperator pooling_type)
       : OpBuilder(graph_builder), pooling_type_(pooling_type) {}
 
-  const char* DebugName() override;
+  const std::string& DebugName() override;
 
   CoreML::Specification::NeuralNetworkLayer* Build() override;
 

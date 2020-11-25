@@ -226,7 +226,7 @@ void TapeVSpace::DeleteGradient(AbstractTensorHandle* gradient) const {
 
 // Helper functions which delegate to `AbstractOperation`, update
 // the state of the ForwardOperation and call the tape as appropriate.
-// These APIs are mainly to faciliate testing and are subject to change.
+// These APIs are mainly to facilitate testing and are subject to change.
 namespace internal {
 Status Reset(AbstractOperation* op_, const char* op,
              const char* raw_device_name, ForwardOperation* forward_op_) {

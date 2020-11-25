@@ -108,7 +108,7 @@ llvm::Optional<llvm::SmallVector<int64_t, 8>> GetTensorArrayElementShape(
   auto element_shape = ta.element_shapeAttr().cast<mlir::TF::ShapeAttr>();
   if (element_shape.hasStaticShape()) {
     auto shape = element_shape.getShape();
-    // Convert int64 to int64_.
+    // Convert int64 to int64_t.
     llvm::SmallVector<int64_t, 8> dims(shape.begin(), shape.end());
     return dims;
   }
@@ -141,6 +141,20 @@ llvm::Optional<llvm::SmallVector<int64_t, 8>> GetTensorArrayElementShape(
           if (!t || t.getShape().empty()) return llvm::None;
           return RankedTensorType::get(t.getShape().drop_front(),
                                        t.getElementType());
+        } else if (auto gather =
+                       llvm::dyn_cast<TF::TensorArrayGatherV3Op>(user)) {
+          // Try to infer from result type of gather.
+          auto t = gather.value().getType().dyn_cast<RankedTensorType>();
+          if (t && !t.getShape().empty())
+            return RankedTensorType::get(t.getShape().drop_front(),
+                                         t.getElementType());
+          // Try to infer from `element_shape` attribute of gather.
+          auto element_shape = gather.element_shapeAttr()
+                                   .dyn_cast_or_null<mlir::TF::ShapeAttr>();
+          if (element_shape && element_shape.hasStaticShape()) {
+            return RankedTensorType::get(element_shape.getShape(),
+                                         gather.dtype());
+          }
         }
         return llvm::None;
       });

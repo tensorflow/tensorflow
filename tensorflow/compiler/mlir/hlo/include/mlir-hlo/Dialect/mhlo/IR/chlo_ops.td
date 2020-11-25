@@ -417,6 +417,32 @@ def HLOClient_ConstantLikeOp : HLOClient_Op<"constant_like",
   let hasCanonicalizer = 1;
 }
 
+def HLOClient_ErfOp : HLOClient_UnaryElementwiseOp<"erf",
+    [NoSideEffect, SameOperandsAndResultShape],
+    HLO_FpTensor> {
+  let summary = "Erfc operator";
+
+  let description = [{
+    Computes the Gauss error function of `x` element-wise.
+
+    erf(x) = erf_impl(x)            if |x| < 1
+           = 1 - erfc_impl(x)       otherwise
+  }];
+}
+
+def HLOClient_ErfcOp : HLOClient_UnaryElementwiseOp<"erfc",
+    [NoSideEffect, SameOperandsAndResultShape],
+    HLO_FpTensor> {
+  let summary = "Erfc operator";
+
+  let description = [{
+    Computes an approximation of the error function complement (1 - erf(x)).
+
+    erfc(x) = erfc_impl(x)           if |x| > 1
+            = 1 - erf_impl(x)        otherwise
+  }];
+}
+
 //===----------------------------------------------------------------------===//
 // Broadcasting compare op
 //===----------------------------------------------------------------------===//

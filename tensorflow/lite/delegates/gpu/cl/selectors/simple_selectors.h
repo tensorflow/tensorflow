@@ -19,10 +19,10 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 
 namespace tflite {
 namespace gpu {
@@ -70,9 +70,11 @@ void SelectPadding(const PadAttributes& attr, const OperationDef& op_def,
 void SelectStridedSlice(const SliceAttributes& attr, const OperationDef& op_def,
                         std::unique_ptr<GPUOperation>* ptr);
 
-absl::Status SelectMean(const MeanAttributes& attr, const OperationDef& op_def,
-                        const GpuInfo& gpu_info,
-                        std::unique_ptr<GPUOperation>* ptr);
+std::unique_ptr<GPUOperation> SelectReduce(const std::set<Axis>& axis_to_reduce,
+                                           const BHWC& src_shape,
+                                           OperationType op_type,
+                                           const OperationDef& op_def,
+                                           const GpuInfo& gpu_info);
 
 void SelectSoftmax(const BHWC& shape, const OperationDef& op_def,
                    std::unique_ptr<GPUOperation>* ptr);

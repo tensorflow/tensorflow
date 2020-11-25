@@ -35,6 +35,13 @@ def _RiscBroadcastGrad(_, grad):
   return None, None
 
 
+@ops.RegisterGradient("RiscConcat")
+def _RiscConcatGrad(_, grad):
+  # pylint: disable=unused-argument
+  # TODO(b/171294012): Implement gradient of RISC with RISC ops.
+  return None, None
+
+
 @ops.RegisterGradient("RiscConv")
 def _RiscConvGrad(_, grad):
   # pylint: disable=unused-argument

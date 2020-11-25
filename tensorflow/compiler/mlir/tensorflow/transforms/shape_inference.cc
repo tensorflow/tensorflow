@@ -289,8 +289,7 @@ class ShapeInference {
   // Infers shape on the provided region, including nested ones, iterate until
   // fix point with a limit of max_iteration. Returns success if fix point is
   // reached before max_iteration.
-  LogicalResult InferShapeUntilFixPoint(Region* region,
-                                        int64_t max_iteration = 10);
+  LogicalResult InferShapeUntilFixPoint(Region* region, int64_t max_iterations);
 
   // Updates input types and refine shapes inside body of functions that are
   // attached to ControlFlow ops (If/While). These functions include Then/Else
@@ -1188,9 +1187,9 @@ LogicalResult ShapeInference::InferShapeUntilFixPoint(Region* region,
   return success();
 }
 
-static LogicalResult InferShapeForFunction(ShapeInference& context,
-                                           FuncOp func) {
-  if (failed(context.InferShapeUntilFixPoint(&func.getBody())))
+static LogicalResult InferShapeForFunction(ShapeInference& context, FuncOp func,
+                                           int64_t max_iterations) {
+  if (failed(context.InferShapeUntilFixPoint(&func.getBody(), max_iterations)))
     return failure();
   // TODO(b/156276510): Verify that it is always fine to refine a function's
   // return type, as long as we do not change the argument shapes.
@@ -1201,10 +1200,13 @@ static LogicalResult InferShapeForFunction(ShapeInference& context,
 
 LogicalResult InferShapeForFunction(FuncOp func,
                                     ArrayRef<ArrayRef<int64_t>> arg_shapes,
-                                    int64_t graph_version) {
+                                    int64_t graph_version,
+                                    int64_t max_iterations) {
   ShapeInference context(graph_version, func.getContext(),
                          /*propagate_caller_callee_constants=*/true);
-  if (arg_shapes.empty()) return InferShapeForFunction(context, func);
+  if (arg_shapes.empty()) {
+    return InferShapeForFunction(context, func, max_iterations);
+  }
 
   FunctionType func_type = func.getType();
   bool needs_refinement = false;
@@ -1239,7 +1241,7 @@ LogicalResult InferShapeForFunction(FuncOp func,
 
   if (!needs_refinement) return success();
 
-  if (failed(context.InferShapeUntilFixPoint(&func.getBody())))
+  if (failed(context.InferShapeUntilFixPoint(&func.getBody(), max_iterations)))
     return failure();
 
   context.InferShapeForFunctionReturnType(func);
@@ -1249,7 +1251,7 @@ LogicalResult InferShapeForFunction(FuncOp func,
   return success();
 }
 
-LogicalResult InferModuleShape(ModuleOp module) {
+LogicalResult InferModuleShape(ModuleOp module, int64_t max_iterations) {
   auto producer_or = tensorflow::GetTfGraphProducerVersion(module);
   if (!producer_or.ok()) {
     // TODO(jpienaar): Keeping the existing behavior for now but this could
@@ -1269,7 +1271,7 @@ LogicalResult InferModuleShape(ModuleOp module) {
   auto max_iteration = context.QueueSize() * 4;
   while (!context.EmptyQueue()) {
     FuncOp func = context.front();
-    auto res = InferShapeForFunction(context, func);
+    auto res = InferShapeForFunction(context, func, max_iterations);
     if (failed(res)) return res;
     context.pop_front();
 
