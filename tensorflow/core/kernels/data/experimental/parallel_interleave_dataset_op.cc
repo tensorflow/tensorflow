@@ -590,7 +590,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       std::vector<Tensor> input;
       // The buffered output elements.
       std::deque<OutputElem> outputs;
-      // Set to true iff the worker thread expects to append more elements to
+      // Set to true if the worker thread expects to append more elements to
       // outputs. is_producing can be false despite !outputs.empty().
       // Concretely, all output elements will have been consumed only when:
       // is_producing == false && outputs.empty();
