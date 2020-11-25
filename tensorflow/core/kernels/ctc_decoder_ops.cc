@@ -224,7 +224,9 @@ class CTCGreedyDecoderOp : public OpKernel {
     int blank_index =
         (blank_index_ < 0) ? num_classes + blank_index_ : blank_index_;
     OP_REQUIRES(ctx, FastBoundsCheck(blank_index, num_classes),
-                errors::InvalidArgument("blank_index is out of bounds"));
+                errors::InvalidArgument("blank_index expected to be between ",
+                                        -num_classes, " and ", num_classes - 1,
+                                        " but was ", blank_index_));
 
     // Perform best path decoding
     std::vector<std::vector<std::vector<int> > > sequences(batch_size);

@@ -293,12 +293,12 @@ def ctc_greedy_decoder(inputs,
                        blank_index=None):
   """Performs greedy decoding on the logits given in input (best path).
 
-  Given a tensor as `logits`, the blank_index parameter defines the class
+  Given a tensor as `inputs`, the `blank_index` parameter defines the class
   index of the blank symbol.
 
   For example:
 
-  If blank_index is equal to 1:
+  If `blank_index` is equal to 1:
 
   >>> inf = float("inf")
   >>> logits = tf.constant([[[   0., -inf, -inf],
@@ -315,10 +315,10 @@ def ctc_greedy_decoder(inputs,
 
   Notes:
 
-  - Regardless of the value of merge_repeated, if an index of a
-    given time and batch corresponds to the blank_index, no new
+  - Regardless of the value of `merge_repeated`, if an index of a
+    given time and batch corresponds to the `blank_index`, no new
     element is emitted.
-  - Default blank_index is `(num_classes - 1)`, unless overriden by blank_index.
+  - Default `blank_index` is `(num_classes - 1)`, unless overriden.
 
   If `merge_repeated` is `True`, merge repeated classes in output.
   This means that if consecutive logits' maximum indices are the same,
@@ -334,7 +334,7 @@ def ctc_greedy_decoder(inputs,
     sequence_length: 1-D `int32` vector containing sequence lengths, having size
       `[batch_size]`.
     merge_repeated: Boolean.  Default: True.
-    blank_index: (Optional). Default: num_classes - 1. Define the class index to
+    blank_index: (Optional). Default: `num_classes - 1`. Define the class index to
       use for the blank label. Negative values will start from num_classes,
       ie, -1 will reproduce the ctc_greedy_decoder behavior of using
       num_classes - 1 for the blank symbol, which corresponds to the default.
