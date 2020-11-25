@@ -1372,6 +1372,7 @@ py_library(
         ":_pywrap_py_func",  # TODO(b/142001480): remove once the bug is fixed.
         ":_pywrap_python_api_dispatcher",
         ":_pywrap_python_api_info",
+        ":_pywrap_python_api_parameter_converter",
         ":_pywrap_python_op_gen",
         ":_pywrap_quantize_training",
         ":_pywrap_stacktrace_handler",
@@ -1740,6 +1741,88 @@ tf_py_test(
     srcs = ["framework/op_def_util_test.py"],
     python_version = "PY3",
     tags = ["no_pip"],
+)
+
+cc_library(
+    name = "python_api_parameter_converter",
+    srcs = ["framework/python_api_parameter_converter.cc"],
+    hdrs = ["framework/python_api_parameter_converter.h"],
+    deps = [
+        ":cpp_python_util",
+        ":op_def_util_cc",
+        ":python_api_info",
+        ":python_tensor_converter",
+        ":safe_pyobject_ptr",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/python/eager:pywrap_tfe_lib",
+        "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+# Note: this target is only used by python_api_parameter_converter_test.
+tf_python_pybind_extension(
+    name = "_pywrap_python_api_parameter_converter",
+    srcs = ["framework/python_api_parameter_converter_wrapper.cc"],
+    hdrs = [
+        "framework/op_def_util.h",
+        "framework/python_api_info.h",
+        "framework/python_api_parameter_converter.h",
+        "framework/python_tensor_converter.h",
+        "lib/core/numpy.h",
+        "//tensorflow/c:headers",
+        "//tensorflow/c/eager:pywrap_required_hdrs",
+        "//tensorflow/c/experimental/ops:pywrap_required_hdrs",
+        "//tensorflow/core/common_runtime/eager:pywrap_required_hdrs",
+        "//tensorflow/core/distributed_runtime:pywrap_required_hdrs",
+        "//tensorflow/core/distributed_runtime/eager:pywrap_required_hdrs",
+        "//tensorflow/python/eager:pywrap_required_hdrs",
+    ],
+    module_name = "_pywrap_python_api_parameter_converter",
+    deps = [
+        ":safe_pyobject_ptr_required_hdrs",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@pybind11",
+        "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/common_runtime:core_cpu_headers_lib",
+        "//tensorflow/core:lib_headers_for_pybind",
+        "//third_party/py/numpy:headers",
+        "//tensorflow/c:pywrap_required_hdrs",
+        "@com_google_absl//absl/types:span",
+    ] + if_static(
+        extra_deps = [
+            "//tensorflow/core/protobuf:eager_service_proto_cc",
+            "//tensorflow/core/protobuf:master_proto_cc",
+            "//tensorflow/core/protobuf:worker_proto_cc",
+        ],
+        otherwise = [
+            "//tensorflow/core/protobuf:eager_service_proto_cc_headers_only",
+            "//tensorflow/core/protobuf:master_proto_cc_headers_only",
+            "//tensorflow/core/protobuf:worker_proto_cc_headers_only",
+        ],
+    ),
+)
+
+tf_py_test(
+    name = "python_api_parameter_converter_test",
+    srcs = ["framework/python_api_parameter_converter_test.py"],
+    python_version = "PY3",
+    tags = ["no_pip"],
+    deps = [
+        ":_pywrap_python_api_parameter_converter",
+        ":_pywrap_python_tensor_converter",
+        ":client_testlib",
+    ],
 )
 
 cc_library(
@@ -6165,6 +6248,7 @@ pywrap_tensorflow_macro(
         ":pybind11_proto",
         ":python_api_dispatcher",
         ":python_api_info",
+        ":python_api_parameter_converter",
         ":python_op_gen",
         ":python_tensor_converter",
         ":safe_pyobject_ptr",
@@ -6238,6 +6322,7 @@ filegroup(
         ":py_func_lib",  # py_func
         ":python_api_dispatcher",  # python_api_dispatcher
         ":python_api_info",  # python_api_info
+        ":python_api_parameter_converter",  # python_api_parameter_converter
         ":python_tensor_converter",  # python_tensor_converter
         ":python_op_gen",  # python_op_gen
         ":safe_ptr",  # checkpoint_reader
