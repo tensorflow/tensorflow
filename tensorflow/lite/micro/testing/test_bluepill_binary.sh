@@ -78,11 +78,17 @@ echo -e "*** Settings ***\n" \
         "Should Create Platform\n" \
         "    Create Platform\n" > $ROBOT_SCRIPT
 
-BIN_DIR=$1
-for binary in `ls $BIN_DIR/*_test`;
+# Prepare test binaries list using binaries directory path or single binary path
+if [[ -d $1 ]]; then
+    FILES=`ls $1/*_test`;
+else
+    FILES="$1";
+fi
+
+for binary in $FILES;
 do
     echo -e "Should Run $(basename ${binary})\n"\
-    	    "    Test Binary    @$(realpath ${binary})\n" >> $ROBOT_SCRIPT
+            "    Test Binary    @$(realpath ${binary})\n" >> $ROBOT_SCRIPT
 done
 
 ROBOT_COMMAND="${RENODE_TEST_SCRIPT} ${ROBOT_SCRIPT} \
