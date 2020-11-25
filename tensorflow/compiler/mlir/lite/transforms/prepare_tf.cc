@@ -519,9 +519,10 @@ struct ConvertTFStridedSlice : public RewritePattern {
   explicit ConvertTFStridedSlice(MLIRContext *context)
       : RewritePattern(TF::StridedSliceOp::getOperationName(), 2, context) {}
 
-  LogicalResult RewriteNewAxisMask(Operation *op, uint64_t new_axis_mask,
+  LogicalResult RewriteNewAxisMask(Operation *op,
                                    PatternRewriter &rewriter) const {
     TF::StridedSliceOp strided_slice_op = llvm::cast<TF::StridedSliceOp>(op);
+    uint64_t new_axis_mask = strided_slice_op.new_axis_mask();
 
     // Insert a new reshape op.
     Value original_input = strided_slice_op.input();
@@ -529,51 +530,51 @@ struct ConvertTFStridedSlice : public RewritePattern {
         original_input.getType().cast<RankedTensorType>();
     const ArrayRef<int64_t> &original_input_shape =
         original_input_type.getShape();
-    SmallVector<int64_t, 4> new_shape;
+    SmallVector<int64_t, 4> revised_shape;
     int index = 0;
     const int original_input_rank = original_input_shape.size();
     while (index < original_input_rank || new_axis_mask) {
       if (new_axis_mask & 1) {
-        new_shape.emplace_back(1);
+        revised_shape.emplace_back(1);
       } else {
-        new_shape.emplace_back(original_input_shape[index++]);
+        revised_shape.emplace_back(original_input_shape[index++]);
       }
       new_axis_mask >>= 1;
     }
 
-    if (failed(TF::VerifyShapeOfReshapeOp(new_shape))) return failure();
+    if (failed(TF::VerifyShapeOfReshapeOp(revised_shape))) return failure();
 
-    const int dim_size = new_shape.size();
+    const int dim_size = revised_shape.size();
     Location loc = strided_slice_op.getLoc();
     auto shape_type =
         RankedTensorType::get({dim_size}, rewriter.getIntegerType(32));
     SmallVector<Attribute, 4> result_shape_data(dim_size);
     for (int i = 0; i < dim_size; ++i) {
       result_shape_data[i] =
-          rewriter.getI32IntegerAttr(static_cast<int32_t>(new_shape[i]));
+          rewriter.getI32IntegerAttr(static_cast<int32_t>(revised_shape[i]));
     }
 
     auto shape_attr = DenseElementsAttr::get(shape_type, result_shape_data);
     auto shape = rewriter.create<ConstantOp>(loc, shape_type, shape_attr);
-    auto new_output_type =
-        RankedTensorType::get(new_shape, original_input_type.getElementType());
+    auto revised_output_type = RankedTensorType::get(
+        revised_shape, original_input_type.getElementType());
     TF::ReshapeOp reshape = rewriter.create<TF::ReshapeOp>(
-        loc, new_output_type, original_input, shape);
+        loc, revised_output_type, original_input, shape);
 
     // Replace the original strided_slice.
-    uint64_t new_begin_mask = strided_slice_op.begin_mask();
-    uint64_t new_end_mask = strided_slice_op.end_mask();
+    uint64_t revised_begin_mask = strided_slice_op.begin_mask();
+    uint64_t revised_end_mask = strided_slice_op.end_mask();
     // Since we expand the dims, we need to apply them to the begin_mask &
     // end_mask.
-    new_begin_mask |= strided_slice_op.new_axis_mask();
-    new_end_mask |= strided_slice_op.new_axis_mask();
+    revised_begin_mask |= strided_slice_op.new_axis_mask();
+    revised_end_mask |= strided_slice_op.new_axis_mask();
 
     auto attribute_type = rewriter.getIntegerType(64);
     rewriter.replaceOpWithNewOp<TF::StridedSliceOp>(
         op, strided_slice_op.getType(), reshape, strided_slice_op.begin(),
         strided_slice_op.end(), strided_slice_op.strides(),
-        rewriter.getIntegerAttr(attribute_type, new_begin_mask),
-        rewriter.getIntegerAttr(attribute_type, new_end_mask),
+        rewriter.getIntegerAttr(attribute_type, revised_begin_mask),
+        rewriter.getIntegerAttr(attribute_type, revised_end_mask),
         rewriter.getIntegerAttr(attribute_type,
                                 strided_slice_op.ellipsis_mask()),
         rewriter.getI64IntegerAttr(0),
@@ -582,10 +583,11 @@ struct ConvertTFStridedSlice : public RewritePattern {
     return success();
   }
 
-  LogicalResult RewriteEllipsisMask(Operation *op, uint64_t ellipsis_mask,
+  LogicalResult RewriteEllipsisMask(Operation *op,
                                     PatternRewriter &rewriter) const {
     TF::StridedSliceOp strided_slice_op = llvm::cast<TF::StridedSliceOp>(op);
 
+    uint64_t ellipsis_mask = strided_slice_op.ellipsis_mask();
     uint64_t shrink_axis_mask = strided_slice_op.shrink_axis_mask();
 
     // Enforce operator precedence.
@@ -632,8 +634,8 @@ struct ConvertTFStridedSlice : public RewritePattern {
 
     int64_t begin_mask = strided_slice_op.begin_mask();
     int64_t end_mask = strided_slice_op.end_mask();
-    int64_t new_begin_mask = 0;
-    int64_t new_end_mask = 0;
+    int64_t revised_begin_mask = 0;
+    int64_t revised_end_mask = 0;
     int64_t revised_shrink_axis_mask = 0;
 
     SmallVector<int32_t, 4> padded_begin;
@@ -647,8 +649,8 @@ struct ConvertTFStridedSlice : public RewritePattern {
       padded_begin.push_back(begin_dense_elem_attr.getValue<int32_t>(index));
       padded_end.push_back(end_dense_elem_attr.getValue<int32_t>(index));
       padded_stride.push_back(stride_dense_elem_attr.getValue<int32_t>(index));
-      if ((begin_mask >> index) & 1) new_begin_mask |= (1 << new_index);
-      if ((end_mask >> index) & 1) new_end_mask |= (1 << new_index);
+      if ((begin_mask >> index) & 1) revised_begin_mask |= (1 << new_index);
+      if ((end_mask >> index) & 1) revised_end_mask |= (1 << new_index);
       if ((shrink_axis_mask >> index) & 1)
         revised_shrink_axis_mask |= (1 << new_index);
       ++index;
@@ -657,8 +659,8 @@ struct ConvertTFStridedSlice : public RewritePattern {
 
     // Ellipsis.
     for (; new_index < index + ellipsis_filled_dim_size; ++new_index) {
-      new_begin_mask |= (1 << new_index);
-      new_end_mask |= (1 << new_index);
+      revised_begin_mask |= (1 << new_index);
+      revised_end_mask |= (1 << new_index);
 
       // Mimic the begin/end/strides mask behavior.
       padded_begin.push_back(0);
@@ -675,8 +677,8 @@ struct ConvertTFStridedSlice : public RewritePattern {
       padded_end.push_back(end_dense_elem_attr.getValue<int32_t>(index));
       padded_stride.push_back(stride_dense_elem_attr.getValue<int32_t>(index));
 
-      if ((begin_mask >> index) & 1) new_begin_mask |= (1 << new_index);
-      if ((end_mask >> index) & 1) new_end_mask |= (1 << new_index);
+      if ((begin_mask >> index) & 1) revised_begin_mask |= (1 << new_index);
+      if ((end_mask >> index) & 1) revised_end_mask |= (1 << new_index);
       if ((shrink_axis_mask >> index) & 1)
         revised_shrink_axis_mask |= (1 << new_index);
 
@@ -701,13 +703,30 @@ struct ConvertTFStridedSlice : public RewritePattern {
     rewriter.replaceOpWithNewOp<TF::StridedSliceOp>(
         op, strided_slice_op.getType(), input, begin_op.getResult(),
         end_op.getResult(), stride_op.getResult(),
-        rewriter.getIntegerAttr(attribute_type, new_begin_mask),
-        rewriter.getIntegerAttr(attribute_type, new_end_mask),
-        /*ellipsis_maks=*/rewriter.getI64IntegerAttr(0),
+        rewriter.getIntegerAttr(attribute_type, revised_begin_mask),
+        rewriter.getIntegerAttr(attribute_type, revised_end_mask),
+        /*ellipsis_mask=*/rewriter.getI64IntegerAttr(0),
         rewriter.getIntegerAttr(attribute_type,
                                 strided_slice_op.new_axis_mask()),
         rewriter.getIntegerAttr(attribute_type, revised_shrink_axis_mask));
     return success();
+  }
+
+  void PadStridedSliceAttributeArray(DenseIntElementsAttr dense_elem_attr,
+                                     SmallVectorImpl<int32_t> &val,
+                                     SmallVectorImpl<int32_t> &padded_val,
+                                     ArrayRef<int32_t> padding_val,
+                                     int *mask) const {
+    for (const auto &idx : dense_elem_attr.getIntValues()) {
+      val.push_back(idx.getSExtValue());
+      padded_val.push_back(idx.getSExtValue());
+    }
+    int attr_dim_count = val.size();
+    int full_dim_count = padding_val.size();
+    for (int i = attr_dim_count; i < full_dim_count; ++i) {
+      padded_val.push_back(padding_val[i]);
+      if (mask) *mask |= 1 << i;
+    }
   }
 
   LogicalResult matchAndRewrite(Operation *op,
@@ -715,21 +734,104 @@ struct ConvertTFStridedSlice : public RewritePattern {
     TF::StridedSliceOp strided_slice_op = llvm::cast<TF::StridedSliceOp>(op);
 
     // Handle new axis mask.
-    uint64_t new_axis_mask = strided_slice_op.new_axis_mask();
-    if (new_axis_mask != 0) {
+    if (strided_slice_op.new_axis_mask() != 0) {
       // We currently don't handle simultaneous shrink_ and new_axis masks.
-      if (strided_slice_op.shrink_axis_mask()) {
-        return failure();
+      if (!strided_slice_op.shrink_axis_mask()) {
+        return RewriteNewAxisMask(strided_slice_op, rewriter);
       }
-      return RewriteNewAxisMask(strided_slice_op, new_axis_mask, rewriter);
     }
 
     // Handle ellipsis mask.
-    uint64_t ellipsis_mask = strided_slice_op.ellipsis_mask();
-    if (ellipsis_mask != 0) {
-      return RewriteEllipsisMask(strided_slice_op, ellipsis_mask, rewriter);
+    if (strided_slice_op.ellipsis_mask() != 0) {
+      return RewriteEllipsisMask(strided_slice_op, rewriter);
     }
-    return failure();
+
+    auto ranked_input_type =
+        strided_slice_op.input().getType().dyn_cast<RankedTensorType>();
+    if (!ranked_input_type) {
+      return failure();
+    }
+
+    auto begin_attr = strided_slice_op.begin();
+    auto end_attr = strided_slice_op.end();
+    auto strides_attr = strided_slice_op.strides();
+
+    auto begin_attr_type = begin_attr.getType().dyn_cast<RankedTensorType>();
+    auto end_attr_type = end_attr.getType().dyn_cast<RankedTensorType>();
+    auto strides_attr_type =
+        strides_attr.getType().dyn_cast<RankedTensorType>();
+
+    DenseIntElementsAttr begin_elem_attr;
+    DenseIntElementsAttr end_elem_attr;
+    DenseIntElementsAttr strides_elem_attr;
+
+    if (!begin_attr_type ||
+        !matchPattern(begin_attr, m_Constant(&begin_elem_attr))) {
+      return failure();
+    }
+    if (!end_attr_type || !matchPattern(end_attr, m_Constant(&end_elem_attr))) {
+      return failure();
+    }
+    if (!strides_attr_type ||
+        !matchPattern(strides_attr, m_Constant(&strides_elem_attr))) {
+      return failure();
+    }
+
+    SmallVector<int32_t, 4> begin, end, strides;
+    SmallVector<int32_t, 4> padded_begin, padded_end, padded_strides;
+
+    int num_input_dims = ranked_input_type.getRank();
+    SmallVector<int32_t, 4> padding_begin(num_input_dims, 0);
+    auto input_shape = ranked_input_type.getShape();
+    SmallVector<int32_t, 4> padding_end(input_shape.begin(), input_shape.end());
+    SmallVector<int32_t, 4> padding_strides(num_input_dims, 1);
+
+    int begin_mask = strided_slice_op.begin_mask();
+    int end_mask = strided_slice_op.end_mask();
+
+    PadStridedSliceAttributeArray(begin_elem_attr, begin, padded_begin,
+                                  padding_begin, &begin_mask);
+    PadStridedSliceAttributeArray(end_elem_attr, end, padded_end, padding_end,
+                                  &end_mask);
+    PadStridedSliceAttributeArray(strides_elem_attr, strides, padded_strides,
+                                  padding_strides, nullptr);
+
+    if (begin == padded_begin && end == padded_end &&
+        strides == padded_strides &&
+        begin_mask == strided_slice_op.begin_mask() &&
+        end_mask == strided_slice_op.end_mask()) {
+      return failure();
+    }
+
+    auto begin_end_type =
+        RankedTensorType::get({num_input_dims}, rewriter.getIntegerType(32));
+    auto new_begin_attr = rewriter.create<ConstantOp>(
+        op->getLoc(), begin_end_type,
+        DenseElementsAttr::get<int32_t>(begin_end_type, padded_begin));
+    auto new_end_attr = rewriter.create<ConstantOp>(
+        op->getLoc(), begin_end_type,
+        DenseElementsAttr::get<int32_t>(begin_end_type, padded_end));
+    auto strides_type =
+        RankedTensorType::get({static_cast<long>(padded_strides.size())},
+                              rewriter.getIntegerType(32));
+    auto new_strides_attr = rewriter.create<ConstantOp>(
+        op->getLoc(), strides_type,
+        DenseElementsAttr::get<int32_t>(strides_type, padded_strides));
+
+    auto attribute_type = rewriter.getIntegerType(64);
+    rewriter.replaceOpWithNewOp<TF::StridedSliceOp>(
+        op, strided_slice_op.output().getType(), strided_slice_op.input(),
+        new_begin_attr, new_end_attr, new_strides_attr,
+        rewriter.getIntegerAttr(attribute_type, begin_mask),
+        rewriter.getIntegerAttr(attribute_type, end_mask),
+        rewriter.getIntegerAttr(attribute_type,
+                                strided_slice_op.ellipsis_mask()),
+        rewriter.getIntegerAttr(attribute_type,
+                                strided_slice_op.new_axis_mask()),
+        rewriter.getIntegerAttr(attribute_type,
+                                strided_slice_op.shrink_axis_mask()));
+
+    return success();
   }
 };
 

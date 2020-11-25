@@ -185,7 +185,7 @@ class PjRtClient {
       std::unique_ptr<se::DeviceMemoryAllocator> allocator,
       std::unique_ptr<tensorflow::Allocator> host_memory_allocator,
       bool should_stage_host_to_device_transfers,
-      std::unique_ptr<GpuExecutableRunOptions> gpu_run_options);
+      std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options);
   virtual ~PjRtClient() = default;
 
   virtual StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
@@ -222,7 +222,7 @@ class PjRtClient {
     return should_stage_host_to_device_transfers_;
   }
 
-  GpuExecutableRunOptions* gpu_run_options() const {
+  gpu::GpuExecutableRunOptions* gpu_run_options() const {
     return gpu_run_options_.get();
   }
 
@@ -248,8 +248,17 @@ class PjRtClient {
   virtual StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options);
 
+  // Creates a buffer on the device without initializing or copying any data.
+  // An optional `definition_event` may be speficied that can be used to
+  // ensure the buffer isn't referenced until some external mechanism has
+  // initialized the data.
+  // NOTE: The sequencing mechanism is not guaranteed to be supported by all
+  // future backends and so callers should avoid wherever possible.
   virtual StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
       const Shape& shape, PjRtDevice* device);
+  virtual StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
+      const Shape& shape, PjRtDevice* device,
+      std::shared_ptr<BufferSequencingEvent> definition_event);
 
   // Describes the semantics the caller to BufferFromHostBuffer expects from the
   // runtime, in a total order from most restrictive to least restrictive.
@@ -316,6 +325,7 @@ class PjRtClient {
   friend class PjRtBuffer;
   virtual void EnqueueCrossHostReceive(
       std::vector<std::unique_ptr<PjRtBuffer>>&& buffers,
+      std::shared_ptr<BufferSequencingEvent> definition_event,
       PjRtCrossHostRecvNotifier&& notifier) const {
     notifier(Unimplemented("Cross host receives not implemented."));
   }
@@ -348,7 +358,7 @@ class PjRtClient {
   // transfer via pinned memory.
   bool should_stage_host_to_device_transfers_;
 
-  std::unique_ptr<GpuExecutableRunOptions> gpu_run_options_;
+  std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options_;
 
   tensorflow::thread::ThreadPool h2d_transfer_pool_;
 };

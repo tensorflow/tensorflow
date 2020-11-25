@@ -595,6 +595,7 @@ class OpCancellationTest(test.TestCase, parameterized.TestCase):
               mode='eager'), device_combination))
   def testOpErrorNotAbortWithCollective(self, collective_op, device,
                                         communication):
+    self.skipTest('b/173733368: currently it may timeout on guitar.')
     # Do not abort v2 collective ops even if there're active collective ops at
     # the time of an op error. We rely cancellation to terminate active
     # collective ops.

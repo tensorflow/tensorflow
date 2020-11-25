@@ -33,6 +33,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
@@ -1295,6 +1296,24 @@ class CondV2Test(test.TestCase):
 
     i = f(constant_op.constant(False))
     self.assertEqual(self.evaluate(i), 2.0)
+
+  def testGradientOfMixedOptionals(self):
+
+    @def_function.function
+    def f(c):
+      x = constant_op.constant(1., name="x")
+
+      def then_branch():
+        return x ** 2., gen_dataset_ops.optional_from_value(
+            [constant_op.constant(1)])
+
+      def else_branch():
+        return x ** 3., gen_dataset_ops.optional_from_value(
+            [constant_op.constant(1.)])
+
+      y, _ = cond_v2.cond_v2(c, then_branch, else_branch)
+      return gradients_impl.gradients(y, x)
+    self.assertAllClose([2.], f(constant_op.constant(True)))
 
 
 class CondV2CollectionTest(test.TestCase):

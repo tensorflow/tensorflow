@@ -193,8 +193,6 @@ std::unique_ptr<FunctionPass> CreateClusterTFOpsByHostPass();
 }  // namespace TF
 
 namespace tf_executor {
-class GraphOp;
-
 // Returns a pass that folds switch nodes with constant predicates.
 std::unique_ptr<OperationPass<FuncOp>> CreateSwitchFoldPass();
 
@@ -221,14 +219,10 @@ CreateTFExecutorTPUV1IslandInliningPass();
 // Creates a pass to prune tf_executor.graph from dead nodes.
 std::unique_ptr<OperationPass<FuncOp>> CreateTFExecutorGraphPruningPass();
 
-// Prunes unreachable operations of a tf_executor.graph operation.
-void PruneGraph(GraphOp graph);
-
 // Sink `tf.Const` operations in the LaunchOp region using them. This is
 // performed in order to limit the number of values implicitly captured in this
 // region before outlining.
 std::unique_ptr<OperationPass<FuncOp>> CreateTFExecutorConstantSinkingPass();
-
 }  // namespace tf_executor
 
 namespace TFDevice {
@@ -344,6 +338,11 @@ std::unique_ptr<OperationPass<FuncOp>> CreateTPUColocateCompositeResourceOps();
 // Creates a pass that adds ops which perform formatting on variables at
 // run-time according to compilation result.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUVariableReformattingPass();
+
+// Creates a pass that wraps ops with the same `_xla_outside_compilation`
+// attribute value in a tf_device.launch op with host device assignment.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateOutsideCompiledToHostLaunchPass();
 
 // Creates a pass that groups outside compiled operations (CPU ops inside TPU
 // cluster) into clusters that can be extracted and run on the CPU.

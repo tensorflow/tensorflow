@@ -80,9 +80,11 @@ class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
 
     // Get memref descriptor sizes.
     SmallVector<Value, 4> sizes;
+    SmallVector<Value, 4> strides;
+    Value sizeBytes;
     getMemRefDescriptorSizes(loc, memref_type,
                              llvm::to_vector<4>(transformed.dyn_sizes()),
-                             rewriter, sizes);
+                             rewriter, sizes, strides, sizeBytes);
     // Get number of elements.
     Value num_elements = getNumElements(loc, sizes, rewriter);
     // Get element size.

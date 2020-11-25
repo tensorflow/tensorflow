@@ -113,7 +113,7 @@ TEST_F(ConvolutionSpaceToBatchConverterTest, Batch1WithStrideAndPad) {
   EXPECT_GT(reshape->operand(0)->shape().dimensions(batch_dim), 4);
 }
 
-TEST_F(ConvolutionSpaceToBatchConverterTest, Batch1WithKernelDilation) {
+TEST_F(ConvolutionSpaceToBatchConverterTest, Batch1WithBaseDilation) {
   string hlo_string = R"(
   
   HloModule module
@@ -129,8 +129,22 @@ ENTRY computation {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
+  auto computation = module->entry_computation();
   ConvolutionSpaceToBatchConverter converter;
-  ASSERT_FALSE(converter.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(converter.Run(module.get()).ValueOrDie());
+
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_THAT(root, op::Transpose());
+  EXPECT_THAT(root->operand(0), op::Slice());
+  auto reshape = root->operand(0)->operand(0);
+  EXPECT_THAT(reshape, op::Reshape());
+  EXPECT_THAT(reshape->operand(0)->operand(1), op::Convolution());
+  const int64 batch_dim = reshape->operand(0)
+                              ->operand(1)
+                              ->convolution_dimension_numbers()
+                              .output_batch_dimension();
+
+  EXPECT_GT(reshape->operand(0)->shape().dimensions(batch_dim), 4);
 }
 
 }  // namespace

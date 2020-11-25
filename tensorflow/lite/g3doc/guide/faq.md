@@ -72,6 +72,14 @@ If Netron cannot open your TensorFlow Lite model, you can try the
 [visualize.py](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tools/visualize.py)
 script in our repository.
 
+If you're using TF 2.5 or a later version
+
+```shell
+python -m tensorflow.lite.tools.visualize model.tflite visualized_model.html
+```
+
+Otherwise, you can run this script with Bazel
+
 *   [Clone the TensorFlow repository](https://www.tensorflow.org/install/source)
 *   Run the `visualize.py` script with bazel:
 

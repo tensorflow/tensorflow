@@ -24,7 +24,7 @@ func @print_memrefs(
   return %output : memref<*xf16>
 }
 
-// CHECK:   func private @print_memref_index(memref<*xindex>)
+// CHECK:   func private @print_memref_i64(memref<*xi64>)
 
 // CHECK-LABEL: func @print_memrefs
 
@@ -33,12 +33,16 @@ func @print_memrefs(
 // CHECK: [[NUM_ELEM:%.*]] = alloca() : memref<1xindex>
 // CHECK: store {{%.*}}, [[NUM_ELEM]]
 
-// CHECK: [[UNRANKED_NUM_ELEM:%.*]] = memref_cast [[NUM_ELEM]]
-// CHECK-NEXT: call @print_memref_index([[UNRANKED_NUM_ELEM]])
+// CHECK: [[NUM_ELEM_I64:%.*]] = index_cast [[NUM_ELEM]]
+// CHECK-SAME: : memref<1xindex> to memref<1xi64>
+// CHECK-NEXT: [[UNRANKED_NUM_ELEM:%.*]] = memref_cast [[NUM_ELEM_I64]]
+// CHECK-NEXT: call @print_memref_i64([[UNRANKED_NUM_ELEM]])
 
 // CHECK: memref_reshape
 // CHECK: tf_framework.alloc
 
-// CHECK: [[UNRANKED_SHAPE:%.*]] = memref_cast [[SHAPE]]
-// CHECK-NEXT: call @print_memref_index([[UNRANKED_SHAPE]])
+// CHECK: [[SHAPE_I64:%.*]] = index_cast [[SHAPE]]
+// CHECK-SAME: : memref<?xindex> to memref<?xi64>
+// CHECK-NEXT: [[UNRANKED_SHAPE:%.*]] = memref_cast [[SHAPE_I64]]
+// CHECK-NEXT: call @print_memref_i64([[UNRANKED_SHAPE]])
 // CHECK: memref_reshape

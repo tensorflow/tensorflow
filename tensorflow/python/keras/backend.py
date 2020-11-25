@@ -1678,14 +1678,13 @@ def zeros_like(x, dtype=None, name=None):
 
   Example:
 
-
+  ```python
   from tensorflow.keras import backend as K
   kvar = K.variable(np.random.random((2,3)))
   kvar_zeros = K.zeros_like(kvar)
   K.eval(kvar_zeros)
   # array([[ 0.,  0.,  0.], [ 0.,  0.,  0.]], dtype=float32)
-
-
+  ```
   """
   return array_ops.zeros_like(x, dtype=dtype, name=name)
 
@@ -4944,6 +4943,11 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
   # activations cache logits on the `output` Tensor.
   if hasattr(output, '_keras_logits'):
     output = output._keras_logits  # pylint: disable=protected-access
+    if from_logits:
+      warnings.warn(
+          '"`categorical_crossentropy` received `from_logits=True`, but '
+          'the `output` argument was produced by a sigmoid or softmax '
+          'activation and thus does not represent logits. Was this intended?"')
     from_logits = True
 
   if from_logits:
@@ -4999,6 +5003,11 @@ def sparse_categorical_crossentropy(target, output, from_logits=False, axis=-1):
   # activations cache logits on the `output` Tensor.
   if hasattr(output, '_keras_logits'):
     output = output._keras_logits  # pylint: disable=protected-access
+    if from_logits:
+      warnings.warn(
+          '"`sparse_categorical_crossentropy` received `from_logits=True`, but '
+          'the `output` argument was produced by a sigmoid or softmax '
+          'activation and thus does not represent logits. Was this intended?"')
     from_logits = True
   elif (not from_logits and
         not isinstance(output, (ops.EagerTensor, variables_module.Variable)) and
@@ -5081,6 +5090,11 @@ def binary_crossentropy(target, output, from_logits=False):
   # activations cache logits on the `output` Tensor.
   if hasattr(output, '_keras_logits'):
     output = output._keras_logits  # pylint: disable=protected-access
+    if from_logits:
+      warnings.warn(
+          '"`binary_crossentropy` received `from_logits=True`, but the `output`'
+          ' argument was produced by a sigmoid or softmax activation and thus '
+          'does not represent logits. Was this intended?"')
     from_logits = True
 
   if from_logits:

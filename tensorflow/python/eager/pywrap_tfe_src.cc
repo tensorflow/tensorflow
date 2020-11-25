@@ -42,7 +42,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/core/util/abstract_stack_trace.h"
+#include "tensorflow/core/util/managed_stack_trace.h"
 #include "tensorflow/python/eager/pywrap_gradient_exclusions.h"
 #include "tensorflow/python/eager/pywrap_tensor.h"
 #include "tensorflow/python/eager/pywrap_tfe.h"
@@ -243,7 +243,7 @@ struct FastPathOpExecInfo {
 
 #if PY_MAJOR_VERSION >= 3
 PARSE_VALUE(ParseIntValue, int, PyLong_Check, PyLong_AsLong)
-PARSE_VALUE(ParseInt64Value, int64_t, PyLong_Check, PyLong_AsLong)
+PARSE_VALUE(ParseInt64Value, int64_t, PyLong_Check, PyLong_AsLongLong)
 #else
 PARSE_VALUE(ParseIntValue, int, PyInt_Check, PyInt_AsLong)
 #endif
@@ -866,7 +866,7 @@ void TFE_Py_ExecuteCancelable(TFE_Context* ctx, const char* device_name,
   if (!out_status->status.ok()) return;
 
   tensorflow::unwrap(op)->SetStackTrace(tensorflow::GetStackTrace(
-      tensorflow::StackTrace::kDefaultStackTraceInitialSize));
+      tensorflow::StackTrace::kStackTraceInitialSize));
 
   for (int i = 0; i < inputs->size() && out_status->status.ok(); ++i) {
     TFE_OpAddInput(op, inputs->at(i), out_status);
@@ -3631,7 +3631,7 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
   }
 
   tensorflow::unwrap(op)->SetStackTrace(tensorflow::GetStackTrace(
-      tensorflow::StackTrace::kDefaultStackTraceInitialSize));
+      tensorflow::StackTrace::kStackTraceInitialSize));
 
   const tensorflow::OpDef* op_def = tensorflow::unwrap(op)->OpDef();
   if (op_def == nullptr) return nullptr;

@@ -6538,6 +6538,35 @@ ENTRY entry {
                           op::Shape("c64[1,1,3]")));
 }
 
+TEST_F(SpmdPartitioningTest, DotInputsAreIdentical) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %parameter.1 = f32[4000,4000]{1,0} parameter(0),
+    sharding={devices=[2,4]0,1,2,3,4,5,6,7}
+  ROOT %convolution = f32[4000,4000]{1,0} convolution(
+    f32[4000,4000]{1,0} %parameter.1, f32[4000,4000]{1,0} %parameter.1),
+    dim_labels=bf_io->bf, sharding={devices=[2,4]0,1,2,3,4,5,6,7}
+}
+
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  auto root = module->entry_computation()->root_instruction();
+  auto param = AllOf(op::Parameter(), op::Shape("f32[2000, 1000]"));
+  auto resharded_lhs =
+      AllOf(op::AllReduce(op::DynamicUpdateSlice(_, param, _, _)),
+            op::Shape("f32[2000, 4000]"));
+  auto resharded_rhs =
+      AllOf(op::AllReduce(op::DynamicUpdateSlice(_, op::Copy(param), _, _)),
+            op::Shape("f32[4000, 1000]"));
+  EXPECT_THAT(root, AllOf(op::Convolution(resharded_lhs, resharded_rhs),
+                          op::Shape("f32[2000, 1000]")));
+}
+
 }  // namespace
 }  // namespace spmd
 }  // namespace xla

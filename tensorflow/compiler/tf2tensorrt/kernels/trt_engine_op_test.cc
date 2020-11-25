@@ -91,6 +91,13 @@ class TRTEngineOpTestBase : public OpsTestBase {
     OpsTestBase::SetDevice(DEVICE_GPU, std::move(device));
     NameAttrList function;
     function.set_name(StrCat(op_name, "_native_segment"));
+    // We disable allow_soft_placement when executing the native segment of the
+    // TRTEngineOp for the following reasons:
+    //    OpsTestBase only allow one device in the device manager.
+    //    We need to define the GPU device to test TRTEngineOp.
+    //    When allow_soft_placement is true, the TensorFlow runtime produces an
+    //      error if a CPU device is not defined
+    //      (see ProcessFunctionLibraryRuntime::InstantiateMultiDevice).
     TF_ASSERT_OK(NodeDefBuilder(op_name, "TRTEngineOp")
                      .Input(FakeInput(1, dtype))
                      .Attr("input_shapes", {shape})
@@ -105,6 +112,7 @@ class TRTEngineOpTestBase : public OpsTestBase {
                      .Attr("use_calibration", false)
                      .Attr("_use_implicit_batch", use_implicit_batch)
                      .Attr("_allow_build_at_runtime", allow_build_at_runtime)
+                     .Attr("_allow_soft_placement", false)
                      .Attr("OutT", {dtype})
                      .Finalize(OpsTestBase::node_def()));
     TF_ASSERT_OK(InitOpWithFunctionLibrary());

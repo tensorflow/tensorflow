@@ -243,6 +243,7 @@ cc_library(
     hdrs = ["nvidia_gpu_device.h"],
     deps = [
         ":pjrt_client",
+        "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:client_library",
@@ -250,7 +251,8 @@ cc_library(
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core/common_runtime:bfc_allocator",
-        "//tensorflow/core/common_runtime/gpu:gpu_mem_allocator",
+        "//tensorflow/core/common_runtime/device:device_mem_allocator",
+        "//tensorflow/core/common_runtime/device:device_id",
         "//tensorflow/core:lib_internal",
         "//tensorflow/stream_executor:tf_allocator_adapter",
     ] + if_nccl([":nccl_plugin"]),

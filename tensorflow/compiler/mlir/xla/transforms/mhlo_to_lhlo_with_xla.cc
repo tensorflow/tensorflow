@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/xla/transforms/mhlo_to_lhlo_with_xla.h"
 
+#include <climits>
 #include <memory>
 #include <tuple>
 
@@ -38,6 +39,7 @@ limitations under the License.
 #include "mlir/Pass/PassOptions.h"  // from @llvm-project
 #include "mlir/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/hlo_function_importer.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
@@ -46,18 +48,21 @@ limitations under the License.
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
+#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/buffer_assignment_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 
 using xla::BufferAllocation;
 using xla::BufferAssignment;
 using xla::HloComputation;
+using xla::HloCustomCallInstruction;
 using xla::HloInstruction;
 using xla::HloModule;
 using xla::HloModuleProto;
@@ -140,8 +145,9 @@ Status ConvertModule(std::unique_ptr<HloModule> hlo_module, ModuleOp module,
 class XlaHloToLhloPass
     : public PassWrapper<XlaHloToLhloPass, OperationPass<ModuleOp>> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<mlir::StandardOpsDialect, mlir::mhlo::MhloDialect,
-                    mlir::lmhlo::LmhloDialect>();
+    registry
+        .insert<mlir::StandardOpsDialect, mlir::mhlo::MhloDialect,
+                mlir::lmhlo::LmhloDialect, mlir::lmhlo_gpu::LmhloGpuDialect>();
   }
 
  public:
@@ -274,6 +280,10 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(HloInstruction* instr) {
       return EmitSelectAndScatterOp(instr);
     case HloOpcode::kCustomCall:
       return EmitCustomCallOp(instr);
+    case HloOpcode::kConstant:
+      return EmitConstant(instr);
+    case HloOpcode::kReduce:
+      return EmitReduceOp(instr);
     default:
       llvm::errs() << instr->ToString();
       return tensorflow::errors::Internal(
@@ -485,13 +495,18 @@ StatusOr<lmhlo::SelectAndScatterOp> LhloDialectEmitter::EmitSelectAndScatterOp(
   return select_and_scatter;
 }
 
-StatusOr<lmhlo::CustomCallOp> LhloDialectEmitter::EmitCustomCallOp(
+StatusOr<mlir::Operation*> LhloDialectEmitter::EmitCustomCallOp(
     HloInstruction* instr) {
+  auto* custom_call_instr = ::xla::Cast<::xla::HloCustomCallInstruction>(instr);
+
+  if (xla::gpu::IsCustomCallToCusolver(*instr)) {
+    return EmitCholesky(custom_call_instr);
+  }
+
   size_t num_arguments, num_results;
   TF_ASSIGN_OR_RETURN(auto custom_call,
                       CreateOpWithoutAttrs<lmhlo::CustomCallOp>(
                           instr, num_arguments, num_results));
-  auto* custom_call_instr = ::xla::Cast<::xla::HloCustomCallInstruction>(instr);
   custom_call.call_target_nameAttr(
       builder_.getStringAttr(custom_call_instr->custom_call_target()));
   custom_call.backend_configAttr(
@@ -500,12 +515,102 @@ StatusOr<lmhlo::CustomCallOp> LhloDialectEmitter::EmitCustomCallOp(
                                static_cast<int32_t>(num_results)};
   custom_call.setAttr(lmhlo::CustomCallOp::getOperandSegmentSizeAttr(),
                       builder_.getI32VectorAttr(segments));
-  return custom_call;
+  return custom_call.getOperation();
+}
+
+StatusOr<lmhlo_gpu::CholeskyOp> LhloDialectEmitter::EmitCholesky(
+    HloCustomCallInstruction* custom_call) {
+  TF_ASSIGN_OR_RETURN(auto cholesky_op,
+                      CreateOpWithoutAttrs<lmhlo_gpu::CholeskyOp>(custom_call));
+  TF_ASSIGN_OR_RETURN(xla::CholeskyOptions options,
+                      custom_call->backend_config<xla::CholeskyOptions>());
+  cholesky_op.is_lowerAttr(builder_.getBoolAttr(options.lower()));
+  return cholesky_op;
+}
+
+// Convert an XLA HLO constant to a global_memref + get_global_memref pair.
+StatusOr<mlir::GetGlobalMemrefOp> LhloDialectEmitter::EmitConstant(
+    const HloInstruction* instr) {
+  // Insert a global_memref in the module.
+  Location loc = getLocation(instr);
+
+  auto const_instr = ::xla::Cast<::xla::HloConstantInstruction>(instr);
+  TF_RET_CHECK(const_instr->shape().IsArray() &&
+               const_instr->shape().is_static());
+  TF_ASSIGN_OR_RETURN(Type type, ::xla::ConvertShapeToType<MemRefType>(
+                                     const_instr->shape(), builder_));
+  auto memref_type = type.dyn_cast<MemRefType>();
+  TF_RET_CHECK(memref_type != nullptr);
+
+  TF_ASSIGN_OR_RETURN(
+      DenseElementsAttr initial_value,
+      CreateDenseElementsAttrFromLiteral(const_instr->literal(), builder_));
+
+  std::string constant_name = ::xla::llvm_ir::ConstantHloToGlobalName(*instr);
+
+  // Insert the global memref at the top level.
+  {
+    OpBuilder::InsertionGuard guard(builder_);
+    builder_.clearInsertionPoint();
+    auto global_var = builder_.create<GlobalMemrefOp>(
+        loc, constant_name, builder_.getStringAttr("private"),
+        TypeAttr::get(memref_type), initial_value, true);
+    SymbolTable(module_).insert(global_var);
+    global_var.getOperation()->moveBefore(&module_.front());
+  }
+
+  auto get_global_memref =
+      builder_.create<GetGlobalMemrefOp>(loc, memref_type, constant_name);
+
+  // For operations that do not fold this constant value in their codegen, we
+  // still need to materialize it into a buffer. Since buffer allocation is
+  // already done, annotate the get_global_memref with the information to get to
+  // the allocated buffer slice for this constant if need be.
+
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+                      assignment_.GetUniqueTopLevelSlice(instr));
+  get_global_memref.setAttr("lmhlo.alloc",
+                            builder_.getIndexAttr(slice.index()));
+  get_global_memref.setAttr("lmhlo.slice_offset",
+                            builder_.getI64IntegerAttr(slice.offset()));
+  get_global_memref.setAttr("lmhlo.slice_size",
+                            builder_.getI64IntegerAttr(slice.size()));
+
+  // Update the cache to remember this value.
+  auto& cached_value = slices_[std::make_pair(instr, ::xla::ShapeIndex())];
+  TF_RET_CHECK(cached_value == nullptr);
+  cached_value = get_global_memref;
+  return get_global_memref;
+}
+
+StatusOr<lmhlo::ReduceOp> LhloDialectEmitter::EmitReduceOp(
+    HloInstruction* instr) {
+  TF_ASSIGN_OR_RETURN(auto reduce_op,
+                      CreateOpWithoutAttrs<lmhlo::ReduceOp>(instr));
+  auto* reduce = ::xla::Cast<::xla::HloReduceInstruction>(instr);
+  std::vector<int64_t> dimensions(reduce->dimensions().begin(),
+                                  reduce->dimensions().end());
+  reduce_op.dimensionsAttr(GetI64DenseElementsAttr(dimensions));
+  TF_RETURN_IF_ERROR(::xla::HloFunctionImporter::ImportAsRegion(
+      *instr->called_computations()[0], &reduce_op.body(), &builder_));
+  return reduce_op;
 }
 
 StatusOr<Value> LhloDialectEmitter::GetOrCreateArrayView(
     const ::xla::HloInstruction* instr, const ::xla::Shape& current_shape,
     const ::xla::ShapeIndex& shape_index) {
+  // Cache generated ViewOp and StaticMemRefCastOp by (instruction,
+  // shape_index).
+  auto& cached_value = slices_[std::make_pair(instr, shape_index)];
+  if (cached_value) {
+    return cached_value;
+  }
+
+  if (instr->IsConstant() && shape_index.empty()) {
+    TF_ASSIGN_OR_RETURN(Value constant_memref, EmitConstant(instr));
+    return cached_value = constant_memref;
+  }
+
   // If the shape happens to have dynamic dimensions, create the memref using
   // the underlying static shape.
   // TODO(jurahul): Revisit this when we can model memrefs with dynamic shape
@@ -518,7 +623,7 @@ StatusOr<Value> LhloDialectEmitter::GetOrCreateArrayView(
                       assignment_.GetUniqueSlice(instr, shape_index));
   Value alloc = allocations_[slice.allocation()];
   if (alloc.getType() == out_type && slice.offset() == 0) {
-    return alloc;
+    return cached_value = alloc;
   }
 
   auto out_memref_type = out_type.dyn_cast<MemRefType>();
@@ -526,13 +631,6 @@ StatusOr<Value> LhloDialectEmitter::GetOrCreateArrayView(
     return tensorflow::errors::Internal(
         "Expected memref type when creating a view for leaf type of a "
         "tuple.");
-
-  // Cache generated ViewOp and StaticMemRefCastOp by (instruction,
-  // shape_index).
-  auto& cached_value = slices_[std::make_pair(instr, shape_index)];
-  if (cached_value) {
-    return cached_value;
-  }
 
   Value byte_shift =
       builder_.create<ConstantIndexOp>(alloc.getLoc(), slice.offset());
@@ -695,8 +793,8 @@ std::unique_ptr<OperationPass<ModuleOp>> createXlaHloToLhloWithXlaPass() {
 Status HloToLhloModule(const BufferAssignment& assignment,
                        const HloModule& hlo_module, ModuleOp module) {
   module.getContext()
-      ->loadDialect<StandardOpsDialect, mhlo::MhloDialect,
-                    lmhlo::LmhloDialect>();
+      ->loadDialect<StandardOpsDialect, mhlo::MhloDialect, lmhlo::LmhloDialect,
+                    lmhlo_gpu::LmhloGpuDialect>();
   HloComputation* computation = hlo_module.entry_computation();
 
   LhloDialectEmitter emitter(assignment, *computation, module);

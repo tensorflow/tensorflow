@@ -30,6 +30,23 @@ def _get_benchmark_name(name):
   return name.split("__")[-1].split("_")
 
 
+def _get_metadata(name):
+  return {
+      "model_name": "ideal_layers",
+      "parameters": name[1] + "_shape",
+  }
+
+
+def _generate_benchmark_params(*params_list):
+  benchmark_params = []
+  for params in params_list:
+    benchmark_params.extend(
+        [((param[0] + "_CPU",) + param[1:]) for param in params])
+    benchmark_params.extend(
+        [((param[0] + "_GPU",) + param[1:]) for param in params])
+  return benchmark_params
+
+
 def _layer_call_backward(layer, x):
   with tf.GradientTape() as tape:
     y = layer(x)
@@ -46,7 +63,7 @@ class KerasLayerBenchmarks(six.with_metaclass(
   # the benchmark name. It must follow the convention of
   # "{layer_name}_{small|normal|large}_shape" to make it compatible with
   # `self.report_benchmark()` method.
-  _benchmark_parameters = [
+  _benchmark_parameters = _generate_benchmark_params([
       ("Conv2D_small_shape", tf.keras.layers.Conv2D,
        {"filters": 1, "kernel_size": 1, "activation": "relu"},
        (1, 1, 1, 1), 10000),
@@ -57,7 +74,7 @@ class KerasLayerBenchmarks(six.with_metaclass(
        {"units": 1}, (1, 1, 1), 10000),
       ("LSTM_normal_shape", tf.keras.layers.LSTM,
        {"units": 4}, (32, 10, 8), 10000),
-  ]
+  ])
 
   def benchmark_layer_call(self, layer_cls, layer_args, input_shape, num_iters):
     layer = layer_cls(**layer_args)
@@ -65,11 +82,8 @@ class KerasLayerBenchmarks(six.with_metaclass(
 
     fn = functools.partial(layer, x)
     name = _get_benchmark_name(self._get_name())
-    metadata = {
-        "model_name": "ideal_layers",
-        "implementation": name[0] + ".layer.call",
-        "parameters": name[1] + "_shape"
-    }
+    metadata = {"implementation": name[0] + ".layer.call"}
+    metadata.update(_get_metadata(name))
     self.run_report(fn, num_iters, metadata)
 
   def benchmark_layer_call_with_function(
@@ -80,11 +94,8 @@ class KerasLayerBenchmarks(six.with_metaclass(
 
     fn = functools.partial(layer, x)
     name = _get_benchmark_name(self._get_name())
-    metadata = {
-        "model_name": "ideal_layers",
-        "implementation": name[0] + ".layer.call.function",
-        "parameters": name[1] + "_shape"
-    }
+    metadata = {"implementation": name[0] + ".layer.call.function"}
+    metadata.update(_get_metadata(name))
     self.run_report(fn, num_iters, metadata)
 
   def benchmark_layer_call_with_xla(
@@ -96,11 +107,8 @@ class KerasLayerBenchmarks(six.with_metaclass(
 
     fn = functools.partial(layer, x)
     name = _get_benchmark_name(self._get_name())
-    metadata = {
-        "model_name": "ideal_layers",
-        "implementation": name[0] + ".layer.call.xla",
-        "parameters": name[1] + "_shape"
-    }
+    metadata = {"implementation": name[0] + ".layer.call.xla"}
+    metadata.update(_get_metadata(name))
     self.run_report(fn, num_iters, metadata)
 
   def benchmark_layer_call_backward(
@@ -110,11 +118,8 @@ class KerasLayerBenchmarks(six.with_metaclass(
 
     fn = functools.partial(_layer_call_backward, layer, x)
     name = _get_benchmark_name(self._get_name())
-    metadata = {
-        "model_name": "ideal_layers",
-        "implementation": name[0] + ".layer.call.backward",
-        "parameters": name[1] + "_shape"
-    }
+    metadata = {"implementation": name[0] + ".layer.call.backward"}
+    metadata.update(_get_metadata(name))
     self.run_report(fn, num_iters, metadata)
 
   def benchmark_layer_call_backward_with_function(
@@ -125,11 +130,8 @@ class KerasLayerBenchmarks(six.with_metaclass(
 
     fn = functools.partial(_layer_call_backward, layer, x)
     name = _get_benchmark_name(self._get_name())
-    metadata = {
-        "model_name": "ideal_layers",
-        "implementation": name[0] + ".layer.call.backward.function",
-        "parameters": name[1] + "_shape"
-    }
+    metadata = {"implementation": name[0] + ".layer.call.backward.function"}
+    metadata.update(_get_metadata(name))
     self.run_report(fn, num_iters, metadata)
 
 
@@ -137,7 +139,7 @@ class KerasLayerBenchmarksBackwardXLA(six.with_metaclass(
     benchmark.ParameterizedBenchmark,
     layer_benchmarks_test_base.LayerBenchmarksBase)):
 
-  _benchmark_parameters = [
+  _benchmark_parameters = _generate_benchmark_params([
       ("Conv2D_small_shape", tf.keras.layers.Conv2D,
        {"filters": 1, "kernel_size": 1, "activation": "relu"},
        (1, 1, 1, 1), 10000),
@@ -149,7 +151,7 @@ class KerasLayerBenchmarksBackwardXLA(six.with_metaclass(
       #  {"units": 1}, (1, 1, 1), 10000),
       # ("LSTM_normal_shape", tf.keras.layers.LSTM,
       #  {"units": 4}, (32, 10, 8), 10000),
-  ]
+  ])
 
   def benchmark_layer_call_backward_with_xla(
       self, layer_cls, layer_args, input_shape, num_iters):
@@ -160,11 +162,8 @@ class KerasLayerBenchmarksBackwardXLA(six.with_metaclass(
 
     fn = functools.partial(_layer_call_backward, layer, x)
     name = _get_benchmark_name(self._get_name())
-    metadata = {
-        "model_name": "ideal_layers",
-        "implementation": name[0] + ".layer.call.backward.xla",
-        "parameters": name[1] + "_shape"
-    }
+    metadata = {"implementation": name[0] + ".layer.call.backward.xla"}
+    metadata.update(_get_metadata(name))
     self.run_report(fn, num_iters, metadata)
 
 

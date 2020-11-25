@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/cl/kernels/reshape.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/reshape.h"
 
 #include <vector>
 

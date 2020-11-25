@@ -522,6 +522,7 @@ cc_library(
         ":tf_datatype",
         ":tf_status",
         ":tf_tensor",
+        "//tensorflow/c/experimental/stream_executor:stream_executor_hdrs",
     ],
 )
 
@@ -542,13 +543,17 @@ tf_cuda_library(
     ] + select({
         "//tensorflow:android": [
             ":c_api_internal",
+            "//tensorflow/c/experimental/stream_executor:stream_executor_hdrs",
             "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
             ":c_api_internal",
             ":tf_tensor",
+            "//tensorflow/stream_executor:stream",
             "//tensorflow/core:framework",
             "//tensorflow/core:framework_lite",
+            "//tensorflow/c/experimental/stream_executor:stream_executor",
+            "//tensorflow/c/experimental/stream_executor:stream_executor_internal",
         ],
     }),
 )

@@ -42,7 +42,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/path.h"
-#include "tensorflow/core/protobuf/data/experimental/service_config.pb.h"
+#include "tensorflow/core/protobuf/service_config.pb.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
@@ -404,55 +404,36 @@ Status DataServiceDispatcherImpl::RegisterDataset(uint64 fingerprint,
   return Apply(update);
 }
 
-Status DataServiceDispatcherImpl::CreateJob(const CreateJobRequest* request,
-                                            CreateJobResponse* response) {
-  TF_RETURN_IF_ERROR(CheckStarted());
-  VLOG(3) << "Received create job request for dataset id "
-          << request->dataset_id();
-  ProcessingMode processing_mode = ProcessingMode(request->processing_mode());
-  std::shared_ptr<const Job> job;
-  std::vector<std::shared_ptr<const Task>> tasks;
-  {
-    mutex_lock l(mu_);
-    TF_RETURN_IF_ERROR(CreateJob(request->dataset_id(), processing_mode,
-                                 absl::optional<NamedJobKey>(), job));
-    int64 job_client_id;
-    TF_RETURN_IF_ERROR(AcquireJobClientId(job, job_client_id));
-    response->set_job_client_id(job_client_id);
-    TF_RETURN_IF_ERROR(CreateTasksForJob(job, tasks));
-  }
-  TF_RETURN_IF_ERROR(AssignTasks(tasks));
-
-  VLOG(3) << "Creating job " << job->job_id << " for dataset "
-          << request->dataset_id();
-  return Status::OK();
-}
-
 Status DataServiceDispatcherImpl::GetOrCreateJob(
     const GetOrCreateJobRequest* request, GetOrCreateJobResponse* response) {
   TF_RETURN_IF_ERROR(CheckStarted());
-  VLOG(3) << "Received get or create job request for dataset id "
-          << request->dataset_id() << " with name " << request->job_name()
-          << " and index " << request->job_name_index();
-  NamedJobKey key(request->job_name(), request->job_name_index());
+  VLOG(3) << "GetOrCreateJob(" << request->DebugString() << ")";
+  absl::optional<NamedJobKey> key;
+  if (request->has_job_key()) {
+    key.emplace(request->job_key().job_name(),
+                request->job_key().job_name_index());
+  }
   ProcessingMode requested_processing_mode =
       ProcessingMode(request->processing_mode());
   std::shared_ptr<const Job> job;
   std::vector<std::shared_ptr<const Task>> tasks;
   {
     mutex_lock l(mu_);
-    Status s = state_.NamedJobByKey(key, job);
-    if (s.ok()) {
-      TF_RETURN_IF_ERROR(ValidateMatchingJob(job, requested_processing_mode,
-                                             request->dataset_id()));
-      int64 job_client_id;
-      TF_RETURN_IF_ERROR(AcquireJobClientId(job, job_client_id));
-      response->set_job_client_id(job_client_id);
-      VLOG(3) << "Found existing job for name=" << key.name
-              << ", index=" << key.index << ". job_id: " << job->job_id;
-      return Status::OK();
-    } else if (!errors::IsNotFound(s)) {
-      return s;
+    if (key.has_value()) {
+      Status s = state_.NamedJobByKey(key.value(), job);
+      if (s.ok()) {
+        TF_RETURN_IF_ERROR(ValidateMatchingJob(job, requested_processing_mode,
+                                               request->dataset_id()));
+        int64 job_client_id;
+        TF_RETURN_IF_ERROR(AcquireJobClientId(job, job_client_id));
+        response->set_job_client_id(job_client_id);
+        VLOG(3) << "Found existing job for name=" << key.value().name
+                << ", index=" << key.value().index
+                << ". job_id: " << job->job_id;
+        return Status::OK();
+      } else if (!errors::IsNotFound(s)) {
+        return s;
+      }
     }
     TF_RETURN_IF_ERROR(
         CreateJob(request->dataset_id(), requested_processing_mode, key, job));
@@ -462,8 +443,8 @@ Status DataServiceDispatcherImpl::GetOrCreateJob(
     TF_RETURN_IF_ERROR(CreateTasksForJob(job, tasks));
   }
   TF_RETURN_IF_ERROR(AssignTasks(tasks));
-  VLOG(3) << "Created job " << job->job_id << " for dataset "
-          << request->dataset_id() << " and name " << request->job_name();
+  VLOG(3) << "Created job " << job->job_id << " for CreateJob("
+          << request->DebugString() << ")";
   return Status::OK();
 }
 

@@ -28,18 +28,17 @@ namespace mlir {
 namespace TF {
 
 // Refines all the shapes in a module.
-LogicalResult InferModuleShape(ModuleOp module);
+LogicalResult InferModuleShape(ModuleOp module, int64_t max_iterations = 10);
 
 // Given a list of refined shapes matching the function arguments of func, runs
 // shape inference over the function to propagate this updated information.
 // If arg_shapes are empty, then argument shapes will be left unchanged.
 // Note: This affects the entire module, and changes are not just scoped to the
 // function being inferred.
-// TODO(b/154065712): Remove propagate_caller_callee_constants once using
-// SCCP pass instead.
 LogicalResult InferShapeForFunction(FuncOp func,
                                     ArrayRef<ArrayRef<int64_t>> arg_shapes,
-                                    int64_t graph_version);
+                                    int64_t graph_version,
+                                    int64_t max_iterations = 10);
 
 }  // namespace TF
 

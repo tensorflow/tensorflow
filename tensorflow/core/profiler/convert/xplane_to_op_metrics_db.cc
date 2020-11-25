@@ -210,12 +210,9 @@ OpMetricsDb ConvertHostThreadsXPlaneToOpMetricsDb(const XPlane& host_trace) {
   return result;
 }
 
-OpMetricsDb ConvertDeviceTraceXPlaneToOpMetricsDb(
-    const XPlane& device_trace, double peak_tera_flops_per_second,
-    double peak_hbm_bw_giga_bytes_per_second) {
+OpMetricsDb ConvertDeviceTraceXPlaneToOpMetricsDb(const XPlane& device_trace) {
   OpMetricsDb result;
-  DeviceOpMetricsDbBuilder device_op_metrics_db_builder(
-      &result, peak_tera_flops_per_second, peak_hbm_bw_giga_bytes_per_second);
+  DeviceOpMetricsDbBuilder device_op_metrics_db_builder(&result);
 
   int64 first_op_offset_ps = kint64max;
   int64 last_op_offset_ps = 0;

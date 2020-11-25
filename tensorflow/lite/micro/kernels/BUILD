@@ -14,11 +14,6 @@ config_setting(
     define_values = {"tflm_build": "xtensa_hifimini"},
 )
 
-config_setting(
-    name = "xtensa_hifimini_staging",
-    define_values = {"tflm_build": "xtensa_hifimini_staging"},
-)
-
 package_group(
     name = "micro",
     packages = ["//tensorflow/lite/micro/..."],
@@ -35,10 +30,7 @@ cc_library(
         "//conditions:default": [
         ],
         ":xtensa_hifimini": [
-            "xtensa_hifimini/fixedpoint_utils.h",
-        ],
-        ":xtensa_hifimini_staging": [
-            "xtensa_hifimini/fixedpoint_utils.h",
+            "xtensa/fixedpoint_utils.h",
         ],
     }),
     copts = micro_copts(),
@@ -58,10 +50,7 @@ cc_library(
             "fully_connected.cc",
         ],
         ":xtensa_hifimini": [
-            "xtensa_hifimini/fully_connected.cc",
-        ],
-        ":xtensa_hifimini_staging": [
-            "xtensa_hifimini_staging/fully_connected.cc",
+            "xtensa/fully_connected.cc",
         ],
     }),
     hdrs = ["fully_connected.h"],
@@ -71,22 +60,14 @@ cc_library(
         ":micro",
     ],
     deps = [
-        ":activation_utils",
         ":fixedpoint_utils",
         ":kernel_util",
-        ":micro_utils",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:kernel_util",
-        "//tensorflow/lite/kernels:op_macros",
-        "//tensorflow/lite/kernels:padding",
         "//tensorflow/lite/kernels/internal:common",
-        "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:quantization_util",
         "//tensorflow/lite/kernels/internal:reference_base",
         "//tensorflow/lite/kernels/internal:tensor",
-        "//tensorflow/lite/kernels/internal:types",
-        "//tensorflow/lite/micro:memory_helpers",
-        "//tensorflow/lite/micro:micro_utils",
     ] + select({
         "//conditions:default": [],
         ":xtensa_hifimini": [
@@ -160,23 +141,11 @@ cc_library(
             "svdf.cc",
         ],
         ":xtensa_hifimini": [
-            "xtensa_hifimini/conv.cc",
-            "xtensa_hifimini/depthwise_conv.cc",
-            "xtensa_hifimini/quantize.cc",
-            "xtensa_hifimini/softmax.cc",
-            "xtensa_hifimini/svdf.cc",
-        ],
-        ":xtensa_hifimini_staging": [
-            # TODO(b/144176795): finer granularity would help reduce the
-            # duplication of srcs in the BUILD rules (in this case conv.cc and
-            # depthwise_conv.cc). We are falling back to reference kernels in
-            # case the optimized kernels are not implemented to match the
-            # behavior that we get with the Makefiles.
-            "conv.cc",
-            "depthwise_conv.cc",
-            "xtensa_hifimini_staging/quantize.cc",
-            "xtensa_hifimini_staging/softmax.cc",
-            "xtensa_hifimini_staging/svdf.cc",
+            "xtensa/conv.cc",
+            "xtensa/depthwise_conv.cc",
+            "xtensa/quantize.cc",
+            "xtensa/softmax.cc",
+            "xtensa/svdf.cc",
         ],
     }),
     hdrs = ["micro_ops.h"],

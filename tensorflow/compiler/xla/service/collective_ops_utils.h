@@ -165,7 +165,7 @@ struct AllReduceParticipantData : ParticipantData {
     PrimitiveType primitive_type;
   };
   std::vector<Buffer> buffers;
-  const NcclUniqueIdCallback* nccl_unique_id_callback = nullptr;
+  const gpu::NcclUniqueIdCallback* nccl_unique_id_callback = nullptr;
 
   ReductionKind reduction_kind;
 

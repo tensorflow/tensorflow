@@ -60,6 +60,9 @@ cuda_py_test(
     name = "beta_test",
     size = "small",
     srcs = ["beta_test.py"],
+    tags = [
+        "notsan",  # b/173653918
+    ],
     xla_tags = [
         "no_cuda_asan",  # times out
     ],

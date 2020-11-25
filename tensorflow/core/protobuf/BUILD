@@ -138,9 +138,10 @@ exports_files(
         "control_flow.proto",
         # TODO(ebrevdo): Re-enable once CriticalSection is in core.
         # "critical_section.proto",
-        "data/experimental/snapshot.proto",
-        "data/experimental/service_config.proto",
+        "snapshot.proto",
+        "service_config.proto",
         "debug_event.proto",
+        "extension_type_variant.proto",
         "meta_graph.proto",
         "named_tensor.proto",
         "remote_tensor_handle.proto",
@@ -164,9 +165,13 @@ tf_proto_library(
         "control_flow.proto",
         # TODO(ebrevdo): Re-enable once CriticalSection is in core.
         # "critical_section.proto",
-        "data/experimental/snapshot.proto",
-        "data/experimental/service_config.proto",
+        # TODO: Move snapshot.proto and service_config.proto to a separate package.
+        # NOTE: Creating an alias and adding the files does not work in OSS.
+        # NOTE: tf_proto_library requires files to be in the same package.
+        "snapshot.proto",
+        "service_config.proto",
         "debug_event.proto",
+        "extension_type_variant.proto",
         "meta_graph.proto",
         "named_tensor.proto",
         "remote_tensor_handle.proto",

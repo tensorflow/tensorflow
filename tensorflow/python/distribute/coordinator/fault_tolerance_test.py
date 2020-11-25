@@ -375,6 +375,22 @@ class FaultToleranceTest(test.TestCase):  # pylint: disable=missing-docstring
     model.join_training_functions()
     self.assertGreaterEqual(model.iterations.numpy(), 10)
 
+  def testNumpyFetchedAfterWorkerFaiulre(self):
+
+    with self.strategy.scope():
+      v = variables.Variable(initial_value=0, dtype=dtypes.int32)
+
+    @def_function.function
+    def worker_fn():
+      return v + 1, v - 1
+
+    remote_value = self.cluster_coord.schedule(worker_fn)
+    # Attempt to fetch before killing worker task should succeed.
+    self.assertEqual((1, -1), remote_value.fetch())
+    self._cluster.kill_task("worker", 0)
+    # So should attempt to fetch after killing worker task.
+    self.assertEqual((1, -1), remote_value.fetch())
+
   def testClusterStateNotDisrupted(self):
     # This test has side effects and can disrupt other tests, even if the
     # resource created by it will not be used in following tests.

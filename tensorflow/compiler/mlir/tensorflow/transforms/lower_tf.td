@@ -237,7 +237,7 @@ def : Pat<(TF_RoundOp:$res TF_FloatTensor:$input),
             (TF_SubOp $input, (TF_FloorOp:$floor $input)),
             (TF_ConstOp (GetScalarOfFloatType<"0.5"> $input))),
            $floor,
-           (TF_AddOp
+           (TF_AddV2Op
             (TF_ConstOp (GetScalarOfType<1> $input)), $floor))>;
 
 

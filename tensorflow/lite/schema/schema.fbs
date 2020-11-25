@@ -44,6 +44,7 @@ enum TensorType : byte {
   INT8 = 9,
   FLOAT64 = 10,
   COMPLEX128 = 11,
+  UINT64 = 12,
 }
 
 // Custom quantization parameters for experimenting with new quantization
@@ -989,6 +990,10 @@ table SegmentSumOptions {
 table BatchMatMulOptions {
   adj_x:bool;
   adj_y:bool;
+  // Parameters for BatchMatMul version 4 or above.
+  // If set to true, then weights-only op will use asymmetric quantization for
+  // inputs.
+  asymmetric_quantize_inputs: bool;
 }
 
 table CumsumOptions {

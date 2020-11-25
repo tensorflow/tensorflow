@@ -65,6 +65,36 @@ class GpuAddTest : public OpsTestBase {
   }
 
   template <typename T, typename BaselineType = T>
+  void TestBroadcastingExpandAddOp() {
+    auto input_1 = {static_cast<T>(10)};
+    auto input_2 = {static_cast<T>(1), static_cast<T>(2), static_cast<T>(3),
+                    static_cast<T>(4), static_cast<T>(5), static_cast<T>(6)};
+    std::vector<T> expected{
+        static_cast<T>(11), static_cast<T>(12), static_cast<T>(13),
+        static_cast<T>(14), static_cast<T>(15), static_cast<T>(16),
+    };
+    auto expected_shape = TensorShape({6});
+    RunAndCompareAddOp<T, BaselineType>(input_1, TensorShape({1}), input_2,
+                                        TensorShape({6}), expected,
+                                        expected_shape);
+  }
+
+  template <typename T, typename BaselineType = T>
+  void TestBroadcastingInDimAddOp() {
+    auto input_1 = {static_cast<T>(10), static_cast<T>(20), static_cast<T>(30)};
+    auto input_2 = {static_cast<T>(1), static_cast<T>(2), static_cast<T>(3),
+                    static_cast<T>(4), static_cast<T>(5), static_cast<T>(6)};
+    std::vector<T> expected{
+        static_cast<T>(11), static_cast<T>(22), static_cast<T>(33),
+        static_cast<T>(14), static_cast<T>(25), static_cast<T>(36),
+    };
+    auto expected_shape = TensorShape({2, 3});
+    RunAndCompareAddOp<T, BaselineType>(input_1, TensorShape({3}), input_2,
+                                        TensorShape({2, 3}), expected,
+                                        expected_shape);
+  }
+
+  template <typename T, typename BaselineType = T>
   void TestBroadcastingAddOp() {
     auto input_1 = {static_cast<T>(10), static_cast<T>(20)};
     auto input_2 = {static_cast<T>(1), static_cast<T>(2), static_cast<T>(3)};
@@ -104,6 +134,52 @@ class GpuAddTest : public OpsTestBase {
                                         TensorShape{2, 3});
   }
 
+  template <typename T, typename BaselineType = T>
+  void TestEqualShapesAddOp() {
+    auto input_1 = {
+        static_cast<T>(-std::numeric_limits<BaselineType>::infinity()),
+        static_cast<T>(-0.1),
+        static_cast<T>(-0.0),
+        static_cast<T>(0.0),
+        static_cast<T>(0.1),
+        static_cast<T>(std::numeric_limits<BaselineType>::infinity())};
+    auto input_2 = {
+        static_cast<T>(-std::numeric_limits<BaselineType>::infinity()),
+        static_cast<T>(-0.1),
+        static_cast<T>(-0.0),
+        static_cast<T>(0.0),
+        static_cast<T>(0.1),
+        static_cast<T>(std::numeric_limits<BaselineType>::infinity())};
+    std::vector<T> expected;
+    for (const T& inp : input_2) {
+      expected.push_back(static_cast<T>(static_cast<BaselineType>(inp) +
+                                        static_cast<BaselineType>(inp)));
+    }
+    RunAndCompareAddOp<T, BaselineType>(input_1, TensorShape{2, 3}, input_2,
+                                        TensorShape{2, 3}, expected,
+                                        TensorShape{2, 3});
+  }
+
+  template <typename T, typename BaselineType = T>
+  void TestOneIsScalarAddOp() {
+    auto input_1 = static_cast<T>(42);
+    auto input_2 = {
+        static_cast<T>(-std::numeric_limits<BaselineType>::infinity()),
+        static_cast<T>(-0.1),
+        static_cast<T>(-0.0),
+        static_cast<T>(0.0),
+        static_cast<T>(0.1),
+        static_cast<T>(std::numeric_limits<BaselineType>::infinity())};
+    std::vector<T> expected;
+    for (const T& inp : input_2) {
+      expected.push_back(static_cast<T>(static_cast<BaselineType>(input_1) +
+                                        static_cast<BaselineType>(inp)));
+    }
+    RunAndCompareAddOp<T, BaselineType>({input_1}, TensorShape{}, input_2,
+                                        TensorShape{2, 3}, expected,
+                                        TensorShape{2, 3});
+  }
+
   template <typename T, typename RT = T>
   void TestIncompatibleShapes() {
     auto input_1 = {static_cast<T>(-0.1), static_cast<T>(-0.0),
@@ -120,12 +196,51 @@ class GpuAddTest : public OpsTestBase {
 TEST_F(GpuAddTest, AddFloat) { RunAddOp<float>(); }
 TEST_F(GpuAddTest, AddDouble) { RunAddOp<double>(); }
 TEST_F(GpuAddTest, AddHalf) { RunAddOp<Eigen::half, float>(); }
+TEST_F(GpuAddTest, AddInt64) { RunAddOp<int64, int64>(); }
+
+TEST_F(GpuAddTest, AddEqShapesFloat) { TestEqualShapesAddOp<float>(); }
+TEST_F(GpuAddTest, AddEqShapesDouble) { TestEqualShapesAddOp<double>(); }
+TEST_F(GpuAddTest, AddEqShapesHalf) {
+  TestEqualShapesAddOp<Eigen::half, float>();
+}
+TEST_F(GpuAddTest, AddEqShapesInt64) { TestEqualShapesAddOp<int64>(); }
+
+TEST_F(GpuAddTest, AddScalarFloat) { TestOneIsScalarAddOp<float>(); }
+TEST_F(GpuAddTest, AddScalarDouble) { TestOneIsScalarAddOp<double>(); }
+TEST_F(GpuAddTest, AddScalarHalf) {
+  TestOneIsScalarAddOp<Eigen::half, float>();
+}
+TEST_F(GpuAddTest, AddScalarInt64) { TestOneIsScalarAddOp<int64>(); }
+
+TEST_F(GpuAddTest, BCastExpandAddFloat) {
+  TestBroadcastingExpandAddOp<float>();
+}
+TEST_F(GpuAddTest, BCastExpandAddDouble) {
+  TestBroadcastingExpandAddOp<double>();
+}
+TEST_F(GpuAddTest, BCastExpandAddHalf) {
+  TestBroadcastingExpandAddOp<Eigen::half, float>();
+}
+TEST_F(GpuAddTest, BCastExpandAddInt64) {
+  TestBroadcastingExpandAddOp<int64>();
+}
+
+TEST_F(GpuAddTest, BCastInDimAddFloat) { TestBroadcastingInDimAddOp<float>(); }
+TEST_F(GpuAddTest, BCastInDimAddDouble) {
+  TestBroadcastingInDimAddOp<double>();
+}
+TEST_F(GpuAddTest, BCastInDimAddHalf) {
+  TestBroadcastingInDimAddOp<Eigen::half, float>();
+}
+TEST_F(GpuAddTest, BCastInDimAddInt64) { TestBroadcastingInDimAddOp<int64>(); }
+
 TEST_F(GpuAddTest, BCastAddFloat) { TestBroadcastingAddOp<float>(); }
 TEST_F(GpuAddTest, BCastAddDouble) { TestBroadcastingAddOp<double>(); }
 TEST_F(GpuAddTest, BCastAddHalf) {
   TestBroadcastingAddOp<Eigen::half, float>();
 }
 TEST_F(GpuAddTest, BCastAddInt64) { TestBroadcastingAddOp<int64>(); }
+
 TEST_F(GpuAddTest, IncompatibleShapes) { TestIncompatibleShapes<float>(); }
 
 // TEST_F(GpuAddTest, AddV2Half) { RunAddOp<Eigen::half, float>(); }

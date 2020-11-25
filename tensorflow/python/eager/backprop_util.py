@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.core.framework import types_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -38,8 +39,12 @@ def _DTypeFromTensor(tensor):
         and handle_data.is_set
         and handle_data.shape_and_type):
       first_type = handle_data.shape_and_type[0].dtype
-      if all(shape_and_type.dtype == first_type
-             for shape_and_type in handle_data.shape_and_type):
+      # Some variants have statically unknown dtypes; we can't make inferences
+      # about trainability, so we conservatively assume they're trainable
+      # (which may waste memory passing zeros around, but will be correct).
+      if (first_type != types_pb2.DT_INVALID
+          and all(shape_and_type.dtype == first_type
+                  for shape_and_type in handle_data.shape_and_type)):
         return first_type
   return dtype
 

@@ -111,6 +111,15 @@ def from_dense(tensor, name=None):
   Only elements not equal to zero will be present in the result. The resulting
   `SparseTensor` has the same dtype and shape as the input.
 
+  >>> sp = tf.sparse.from_dense([0, 0, 3, 0, 1])
+  >>> sp.shape.as_list()
+  [5]
+  >>> sp.values.numpy()
+  array([3, 1], dtype=int32)
+  >>> sp.indices.numpy()
+  array([[2],
+         [4]])
+
   Args:
     tensor: A dense `Tensor` to be converted to a `SparseTensor`.
     name: Optional name for the op.
@@ -1602,23 +1611,24 @@ def sparse_tensor_to_dense(sp_input,
                            name=None):
   """Converts a `SparseTensor` into a dense tensor.
 
-  This op is a convenience wrapper around `sparse_to_dense` for `SparseTensor`s.
+  For this sparse tensor with three non-empty values:
 
-  For example, if `sp_input` has shape `[3, 5]` and non-empty string values:
+  >>> sp_input = tf.SparseTensor(
+  ...   dense_shape=[3, 5],
+  ...   values=[7, 8, 9],
+  ...   indices =[[0, 1],
+  ...             [0, 3],
+  ...             [2, 0]])
 
-      [0, 1]: a
-      [0, 3]: b
-      [2, 0]: c
+  The output will be a dense `[3, 5]` tensor with values:
 
-  and `default_value` is `x`, then the output will be a dense `[3, 5]`
-  string tensor with values:
+  >>> tf.sparse.to_dense(sp_input).numpy()
+  array([[0, 7, 0, 8, 0],
+         [0, 0, 0, 0, 0],
+         [9, 0, 0, 0, 0]], dtype=int32)
 
-      [[x a x b x]
-       [x x x x x]
-       [c x x x x]]
-
-  Indices must be without repeats.  This is only
-  tested if `validate_indices` is `True`.
+  Note: Indices must be without repeats.  This is only tested if
+  `validate_indices` is `True`.
 
   Args:
     sp_input: The input `SparseTensor`.

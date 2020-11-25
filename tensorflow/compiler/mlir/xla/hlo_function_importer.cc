@@ -78,6 +78,30 @@ bool DotIsDefault(const HloInstruction* instruction) {
   default_dimension_numbers.add_rhs_contracting_dimensions(0);
   return xla::protobuf_util::ProtobufEquals(dnums, default_dimension_numbers);
 }
+
+// Returns an MLIR Location generated from HLO Instruction. Uses instruction
+// metadata if present or instruction name.
+mlir::Location GenerateInstructionLocation(HloInstruction* instruction,
+                                           mlir::OpBuilder* func_builder) {
+  const std::string& op_name = instruction->metadata().op_name();
+  if (op_name.empty()) {
+    return mlir::NameLoc::get(func_builder->getIdentifier(instruction->name()),
+                              func_builder->getContext());
+  }
+
+  mlir::Location op_name_loc = mlir::NameLoc::get(
+      func_builder->getIdentifier(op_name), func_builder->getContext());
+  const std::string& source_file = instruction->metadata().source_file();
+  if (source_file.empty()) {
+    return op_name_loc;
+  }
+
+  return mlir::FusedLoc::get(
+      {op_name_loc, mlir::FileLineColLoc::get(
+                        source_file, instruction->metadata().source_line(), 0,
+                        func_builder->getContext())},
+      func_builder->getContext());
+}
 }  // namespace
 
 Status HloFunctionImporter::ImportAsFunc(
@@ -204,9 +228,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
   TF_ASSIGN_OR_RETURN(auto operands, GetOperands(instruction));
   TF_ASSIGN_OR_RETURN(auto result_type, ConvertShapeToType<RankedTensorType>(
                                             instruction->shape(), *builder_));
-  mlir::Location loc =
-      mlir::NameLoc::get(func_builder->getIdentifier(instruction->name()),
-                         func_builder->getContext());
+  mlir::Location loc = GenerateInstructionLocation(instruction, func_builder);
 
   llvm::SmallVector<NamedAttribute, 10> attributes;
   switch (instruction->opcode()) {

@@ -43,6 +43,7 @@ The following development boards are supported:
 *   [Espressif ESP-EYE](https://www.espressif.com/en/products/hardware/esp-eye/overview)
 *   [Wio Terminal: ATSAMD51](https://www.seeedstudio.com/Wio-Terminal-p-4509.html)
 *   [Himax WE-I Plus EVB Endpoint AI Development Board](https://www.sparkfun.com/products/17256)
+*   [Synopsys DesignWare ARC EM Software Development Platform](https://www.synopsys.com/dw/ipdir.php?ds=arc-em-software-development-platform)
 
 ## Explore the examples
 

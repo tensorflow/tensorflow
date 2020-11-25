@@ -450,6 +450,7 @@ cc_library(
         ":strcat",
         ":stringpiece",
         ":types",
+        "@com_google_absl//absl/algorithm:container",
     ],
     alwayslink = True,
 )

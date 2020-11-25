@@ -12,9 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Runs sample models with TensorRT and analyzes numerics and timing information."""
+"""Runs sample models with TensorRT and analyzes latency and numerics information."""
 
+import functools
 import os
+import tempfile
 from typing import Callable, Iterable, Sequence
 
 from absl import app
@@ -23,7 +25,9 @@ from absl import logging
 
 from tensorflow.python.compiler.tensorrt import trt_convert as trt
 from tensorflow.python.compiler.tensorrt.model_tests import model_handler
+from tensorflow.python.compiler.tensorrt.model_tests import result_analyzer
 from tensorflow.python.framework import ops as framework_ops
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test as platform_test
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
@@ -48,22 +52,42 @@ flags.DEFINE_integer("batch_size", 128,
 
 flags.DEFINE_boolean("use_tf2", True,
                      "Whether to test with TF2 behavior or not (TF1).")
+
+flags.DEFINE_enum("latency_baseline", "GPU", ["CPU", "GPU"],
+                  "The baseline version for latency improvement analysis.")
+
+flags.DEFINE_enum("numerics_baseline", "CPU", ["CPU", "GPU"],
+                  "The baseline version for numerical difference analysis.")
+
+flags.DEFINE_float(
+    "speedup_tolerance", 0.95,
+    "Log errors whenever mean TensorRT speedup is lower than the tolerance.")
+
+flags.DEFINE_float(
+    "diff_tolerance", 0.05,
+    "Log errors whenever mean TensorRT relative difference is larger than "
+    "the tolerance.")
+
+flags.DEFINE_string("output_dir", None, "Output directory of analysis results.")
+
+flags.DEFINE_enum("output_format", "CSV", ["CSV", "JSON"],
+                  "Output format of analysis results.")
+
 DEFAUL_TRT_CONVERT_PARAMS = trt.DEFAULT_TRT_CONVERSION_PARAMS
 
 
-def _get_mean_latency(result: model_handler.TestResult):
-  return (sum(result.latency) / len(result.latency)) * 1000.0
-
-
+# pylint: disable=bad-whitespace
 class SampleRunner(object):
   """The driver to run all sample models in all specified configurations."""
 
-  def __init__(self,
-               saved_model_dir: str,
-               saved_model_tags: Sequence[str],
-               saved_model_signature_key: str,
-               batch_size: int,
-               use_tf2=True):
+  def __init__(self, saved_model_dir: str, saved_model_tags: Sequence[str],
+               saved_model_signature_key: str, batch_size: int, output_dir: str,
+               output_format: str, use_tf2: bool,
+               analyzer: result_analyzer.ResultAnalyzer):
+    self._output_dir = output_dir or tempfile.mkdtemp(
+        prefix="tf2trt_model_tests")
+    logging.info("Use output directory as: %s", self._output_dir)
+    self._output_format = output_format
     # The model_configs contains (saved_model_dir, saved_model_signature_key,
     # batch_size) for each model
     self._configs = (model_handler.ModelConfig(
@@ -74,36 +98,51 @@ class SampleRunner(object):
     self._model_handler_manager_cls = (
         model_handler.ModelHandlerManagerV2
         if use_tf2 else model_handler.ModelHandlerManagerV1)
-    self._default_trt_convert_params = (
-        DEFAUL_TRT_CONVERT_PARAMS._replace(is_dynamic_op=True)
-        if use_tf2 else DEFAUL_TRT_CONVERT_PARAMS._replace(is_dynamic_op=False))
+    self._analyzer = analyzer
+
+  def _write_analysis_result(self, df: result_analyzer.DataFrame,
+                             path: str) -> None:
+    if self._output_format == "CSV":
+      df.to_csv(os.path.join(path, "result.csv"))
+    elif self._output_format == "JSON":
+      df.to_json(os.path.join(path, "result.json"))
+    else:
+      raise NotImplementedError("Unsupported output format: {}".format(
+          self._output_format))
 
   def _run_impl(
-      self,
+      self, test_name: str,
       default_trt_converter_params: trt.TrtConversionParams,
       trt_converter_params_updater: Callable[[trt.TrtConversionParams],
-                                             Iterable[trt.TrtConversionParams]],
-  ):
+                                             Iterable[trt.TrtConversionParams]]
+  ) -> None:
     """Runs all sample models based on a key varying parameter."""
     for model_config in self._configs:
-      trt_convert_params = default_trt_converter_params._replace(
-          max_batch_size=model_config.default_batch_size)
-      # Load, compile and runs the models.
+      # Loads, compiles, calibrates and runs models.
       manager = self._model_handler_manager_cls(
+          name=test_name,
           model_config=model_config,
-          default_trt_convert_params=trt_convert_params,
+          default_trt_convert_params=default_trt_converter_params,
           trt_convert_params_updater=trt_converter_params_updater)
       inputs = manager.generate_random_inputs()
       # As all the data are randomly generated, directly use inference data as
       # calibration data to produce reliable dynamic ranges.
       manager.convert(inputs)
-      result_collection = manager.run(inputs)
+      test_results = manager.run(inputs)
 
-      logging.info("Model information: %s", repr(manager))
-      for result in result_collection.results:
-        logging.info("TensorRT parameters: %s", result.trt_convert_params or
-                     "Not a TensorRT Model")
-        logging.info("Mean latency: %f ms", _get_mean_latency(result))
+      # Analyzes the latency and numerical results.
+      analysis_result_df, _ = self._analyzer.analysis(test_results)
+
+      # Outputs the analysis results
+      model_name = os.path.split(manager.model_config.saved_model_dir)[-1]
+      model_dir = os.path.join(self._output_dir, model_name)
+      gfile.MkDir(model_dir)
+      test_dir = os.path.join(model_dir, test_name)
+      gfile.MkDir(test_dir)
+      with gfile.Open(
+          os.path.join(test_dir, "default_tensorrt_params.txt"), "w") as f:
+        f.write(repr(default_trt_converter_params))
+      self._write_analysis_result(analysis_result_df, test_dir)
 
   def run_trt_precision_tests(self) -> None:
     """Runs tests for all TensorRT precisions."""
@@ -118,12 +157,14 @@ class SampleRunner(object):
             use_calibration=(precision_mode == trt.TrtPrecisionMode.INT8))
 
     self._run_impl(
-        default_trt_converter_params=self._default_trt_convert_params,
+        test_name="precision_mode_test",
+        default_trt_converter_params=DEFAUL_TRT_CONVERT_PARAMS,
         trt_converter_params_updater=trt_converter_params_updater)
 
   def run_all_tests(self) -> None:
     """Runs all tests available."""
     self.run_trt_precision_tests()
+    logging.info("Check analysis result at: %s", self._output_dir)
 
 
 def main(argv):
@@ -139,12 +180,30 @@ def main(argv):
     logging.info("Running in TF1 mode. Eager execution is disabled.")
     framework_ops.disable_eager_execution()
 
-  SampleRunner(
+  analyzer = result_analyzer.ResultAnalyzer(
+      use_cpu_latency_baseline=FLAGS.latency_baseline == "CPU",
+      use_cpu_numerics_baseline=FLAGS.numerics_baseline == "CPU",
+      checkers=[
+          functools.partial(
+              result_analyzer.check_column,
+              name="speedup",
+              fn=lambda x: x > FLAGS.speedup_tolerance),
+          functools.partial(
+              result_analyzer.check_column,
+              name="rel_diff_mean",
+              fn=lambda x: all(v < FLAGS.diff_tolerance for v in x.values()))
+      ])
+  runner = SampleRunner(
       saved_model_dir=FLAGS.saved_model_dir,
       saved_model_tags=FLAGS.saved_model_tags,
       saved_model_signature_key=FLAGS.saved_model_signature_key,
       batch_size=FLAGS.batch_size,
-      use_tf2=FLAGS.use_tf2).run_all_tests()
+      output_dir=FLAGS.output_dir,
+      output_format=FLAGS.output_format,
+      use_tf2=FLAGS.use_tf2,
+      analyzer=analyzer)
+
+  runner.run_all_tests()
 
 
 if __name__ == "__main__":
