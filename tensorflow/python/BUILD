@@ -1381,6 +1381,7 @@ py_library(
         ":_pywrap_util_port",
         ":_pywrap_utils",
         ":composite_tensor",
+        ":config",
         ":convert_to_constants",
         ":cpp_shape_inference_proto_py",
         ":errors",
