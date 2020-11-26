@@ -799,7 +799,7 @@ struct SparseApplyKerasMomentum<GPUDevice, T, Tindex> {
 };
 
 template <typename T, typename Tindex>
-__global__ __launch_bounds__(1024) void ResourceSparseApplyAdadeltaKernel(
+__global__ __launch_bounds__(1024) void SparseApplyAdadeltaKernel(
     T* var, T* accum, T* accum_update, const T* lr, const T* rho,
     const T* epsilon, const T* grad, const Tindex* indices, Tindex param_rows,
     Tindex updates_size, Tindex indices_size) {
@@ -840,8 +840,8 @@ __global__ __launch_bounds__(1024) void ResourceSparseApplyAdadeltaKernel(
 }
 
 template <typename T, typename Tindex>
-struct ResourceSparseApplyAdadelta<GPUDevice, T, Tindex> {
-  Tindex operator()(const GPUDevice& d, typename TTypes<T>::Matrix var,
+struct SparseApplyAdadelta<GPUDevice, T, Tindex> {
+  void operator()(const GPUDevice& d, typename TTypes<T>::Matrix var,
                     typename TTypes<T>::Matrix accum,
                     typename TTypes<T>::Matrix accum_update,
                     typename TTypes<T>::ConstScalar lr,
@@ -854,7 +854,7 @@ struct ResourceSparseApplyAdadelta<GPUDevice, T, Tindex> {
     const Tindex indices_size = indices.size();
     GpuLaunchConfig config = GetGpuLaunchConfig(grad_size, d);
     TF_CHECK_OK(GpuLaunchKernel(
-        ResourceSparseApplyAdadeltaKernel<T, Tindex>, config.block_count,
+        SparseApplyAdadeltaKernel<T, Tindex>, config.block_count,
         config.thread_per_block, 0, d.stream(), var.data(), accum.data(),
         accum_update.data(), lr.data(), rho.data(), epsilon.data(), grad.data(),
         indices.data(), first_dim_size, grad_size, indices_size));
@@ -1179,24 +1179,24 @@ template struct functor::SparseApplyKerasMomentum<GPUDevice, complex64, int64>;
 template struct functor::SparseApplyKerasMomentum<GPUDevice, complex128, int32>;
 template struct functor::SparseApplyKerasMomentum<GPUDevice, complex128, int64>;
 
-template struct functor::ResourceSparseApplyAdadelta<GPUDevice, Eigen::half,
+template struct functor::SparseApplyAdadelta<GPUDevice, Eigen::half,
                                                      int32>;
-template struct functor::ResourceSparseApplyAdadelta<GPUDevice, Eigen::half,
+template struct functor::SparseApplyAdadelta<GPUDevice, Eigen::half,
                                                      int64>;
-template struct functor::ResourceSparseApplyAdadelta<GPUDevice, float, int32>;
-template struct functor::ResourceSparseApplyAdadelta<GPUDevice, float, int64>;
-template struct functor::ResourceSparseApplyAdadelta<GPUDevice, double, int32>;
-template struct functor::ResourceSparseApplyAdadelta<GPUDevice, double, int64>;
+template struct functor::SparseApplyAdadelta<GPUDevice, float, int32>;
+template struct functor::SparseApplyAdadelta<GPUDevice, float, int64>;
+template struct functor::SparseApplyAdadelta<GPUDevice, double, int32>;
+template struct functor::SparseApplyAdadelta<GPUDevice, double, int64>;
 #if !defined(TENSORFLOW_USE_NVCC) && \
     !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
                                    // complex sqrt
-template struct functor::ResourceSparseApplyAdadelta<GPUDevice, complex64,
+template struct functor::SparseApplyAdadelta<GPUDevice, complex64,
                                                      int32>;
-template struct functor::ResourceSparseApplyAdadelta<GPUDevice, complex64,
+template struct functor::SparseApplyAdadelta<GPUDevice, complex64,
                                                      int64>;
-template struct functor::ResourceSparseApplyAdadelta<GPUDevice, complex128,
+template struct functor::SparseApplyAdadelta<GPUDevice, complex128,
                                                      int32>;
-template struct functor::ResourceSparseApplyAdadelta<GPUDevice, complex128,
+template struct functor::SparseApplyAdadelta<GPUDevice, complex128,
                                                      int64>;
 #endif
 

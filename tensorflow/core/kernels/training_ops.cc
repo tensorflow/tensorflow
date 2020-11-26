@@ -744,7 +744,7 @@ struct SparseApplyKerasMomentum<CPUDevice, T, Tindex> {
 };
 
 template <typename T, typename Tindex>
-struct ResourceSparseApplyAdadelta<CPUDevice, T, Tindex> {
+struct SparseApplyAdadelta<CPUDevice, T, Tindex> {
   Tindex operator()(const CPUDevice& d, typename TTypes<T>::Matrix var,
                     typename TTypes<T>::Matrix accum,
                     typename TTypes<T>::Matrix accum_update,
@@ -1268,9 +1268,18 @@ class SparseApplyAdadeltaOp : public OpKernel {
       const Tindex first_dim_size = var.dim_size(0);
       // Validate all the indices are in range
       auto indices_vec = indices.vec<Tindex>();
+      for (Tindex i = 0; i < N; i++) {
+        const Tindex index = indices_vec(i);
+        OP_REQUIRES(ctx, 
+                    (!std::is_same<Device, CPUDevice>::value ||
+                    (index >= 0 && index < first_dim_size)),
+                    errors::InvalidArgument(
+                        strings::StrCat("Index ", index, " at offset ", i,
+                                        " in indices is out of range")));
+      }
 
       const Device& device = ctx->template eigen_device<Device>();
-      functor::ResourceSparseApplyAdadelta<Device, T, Tindex>()(
+      functor::SparseApplyAdadelta<Device, T, Tindex>()(
           device, var.flat_outer_dims<T>(), accum_grad.flat_outer_dims<T>(),
           accum_update.flat_outer_dims<T>(), lr.scalar<T>(), rho.scalar<T>(),
           epsilon.scalar<T>(), grad.flat_outer_dims<T>(), indices_vec);
@@ -1308,7 +1317,7 @@ TF_CALL_COMPLEX_TYPES(REGISTER_CPU_KERNELS);
 namespace functor {
 #define DECLARE_GPU_SPEC(T, Tindex)                                            \
   template <>                                                                  \
-  Tindex ResourceSparseApplyAdadelta<GPUDevice, T, Tindex>::operator()(        \
+  void SparseApplyAdadelta<GPUDevice, T, Tindex>::operator()(        \
       const GPUDevice& d, typename TTypes<T>::Matrix var,                      \
       typename TTypes<T>::Matrix accum,                                        \
       typename TTypes<T>::Matrix accum_update,                                 \
@@ -1316,7 +1325,7 @@ namespace functor {
       typename TTypes<T>::ConstScalar epsilon,                                 \
       typename TTypes<T>::ConstMatrix grad,                                    \
       typename TTypes<Tindex>::ConstFlat indices);                             \
-  extern template struct ResourceSparseApplyAdadelta<GPUDevice, T, Tindex>;
+  extern template struct SparseApplyAdadelta<GPUDevice, T, Tindex>;
 DECLARE_GPU_SPEC(Eigen::half, int32);
 DECLARE_GPU_SPEC(Eigen::half, int64);
 DECLARE_GPU_SPEC(float, int32);
