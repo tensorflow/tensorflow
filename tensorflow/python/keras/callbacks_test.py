@@ -2041,9 +2041,11 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
         y,
         batch_size=2,
         epochs=2,
+        verbose=0,
         callbacks=[
             keras.callbacks.TensorBoard(
-                self.logdir, update_freq=1, write_steps_per_second=True)
+                self.logdir, update_freq=1, profile_batch=0,
+                write_steps_per_second=True)
         ])
 
     summary_file = list_summaries(self.logdir)
