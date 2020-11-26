@@ -527,11 +527,7 @@ struct ConvertTFStridedSlice : public RewritePattern {
     // Insert a new reshape op.
     Value original_input = strided_slice_op.input();
     RankedTensorType original_input_type =
-        original_input.getType().dyn_cast<RankedTensorType>();
-    if (!original_input_type) {
-      return failure();
-    }
-
+        original_input.getType().cast<RankedTensorType>();
     const ArrayRef<int64_t> &original_input_shape =
         original_input_type.getShape();
     SmallVector<int64_t, 4> revised_shape;
