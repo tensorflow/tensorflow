@@ -633,6 +633,25 @@ Status TensorHandle::CopyInferenceShape(TensorHandle* other) {
   return Status::OK();
 }
 
+Status TensorHandle::Shape(tensorflow::PartialTensorShape* shape) const {
+  DCHECK(shape != nullptr);
+  if (!IsReady() && !inference_shape_.unknown_rank()) {
+    *shape = inference_shape_;
+    return Status::OK();
+  } else {
+    auto result = absl::visit(
+        [](auto& data) {
+          TensorShape shape;
+          Status s = data.Shape(&shape);
+          return std::make_pair(shape, s);
+        },
+        data_);
+    TF_RETURN_IF_ERROR(result.second);
+    *shape = result.first;
+  }
+  return Status::OK();
+}
+
 Status TensorHandle::NumDims(int* num_dims) const {
   DCHECK(num_dims != nullptr);
   if (!IsReady() && !inference_shape_.unknown_rank()) {
@@ -1114,6 +1133,28 @@ const char* TensorHandle::BackingDeviceName(Status* status) const {
     return (d == nullptr) ? "/job:localhost/replica:0/task:0/device:CPU:0"
                           : d->name().c_str();
   }
+}
+
+const char* TensorHandle::DeviceType(Status* status) const {
+  if (VariantDeviceIsCustom(device())) {
+    status->Update(
+        tensorflow::errors::Unimplemented("Custom device unsupported"));
+    return nullptr;
+  }
+  status->Update(WaitUnknownDevice());
+  tensorflow::Device* d = op_device();
+  return (d == nullptr) ? "CPU" : d->parsed_name().type.c_str();
+}
+
+int TensorHandle::DeviceId(Status* status) const {
+  if (VariantDeviceIsCustom(device())) {
+    status->Update(
+        tensorflow::errors::Unimplemented("Custom device unsupported"));
+    return -1;
+  }
+  status->Update(WaitUnknownDevice());
+  tensorflow::Device* d = op_device();
+  return (d == nullptr) ? 0 : d->parsed_name().id;
 }
 
 tensorflow::ImmediateExecutionTensorHandle* TensorHandle::Copy() {

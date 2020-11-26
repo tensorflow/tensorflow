@@ -45,8 +45,9 @@ cc_library(
 )
 
 filegroup(
-    name = "single_threaded_runtime_srcs",
+    name = "runtime_srcs",
     srcs = [
+        # Single-threaded support.
         "runtime_fp16.cc",
         "runtime_key_value_sort.cc",
         "runtime_pow.cc",
@@ -54,13 +55,20 @@ filegroup(
         "runtime_single_threaded_fft.cc",
         "runtime_single_threaded_matmul.cc",
         "runtime_topk.cc",
+    ] + [
+        # Multi-threaded support.
+        "runtime_conv2d.cc",
+        "runtime_fft.cc",
+        "runtime_matmul.cc",
+        "runtime_fork_join.cc",
     ],
     visibility = [":friends"],
 )
 
 filegroup(
-    name = "single_threaded_runtime_hdrs",
+    name = "runtime_hdrs",
     srcs = [
+        # Single-threaded support.
         "runtime_conv2d_impl.h",
         "runtime_fft_impl.h",
         "runtime_fp16.h",
@@ -70,6 +78,13 @@ filegroup(
         "runtime_single_threaded_fft.h",
         "runtime_single_threaded_matmul.h",
         "runtime_topk.h",
+    ] + [
+        # Multi-threaded support.
+        "runtime_conv2d.h",
+        "runtime_fft.h",
+        "runtime_fork_join.h",
+        "runtime_lightweight_check.h",
+        "runtime_matmul.h",
     ],
     visibility = [":friends"],
 )
@@ -154,6 +169,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:comparison_expander",
         "//tensorflow/compiler/xla/service:slice_sinker",
         "//tensorflow/compiler/xla:cpu_function_runtime",
+        "//tensorflow/compiler/xla/service:integral_upcaster",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -487,7 +503,6 @@ cc_library(
         ":cpu_runtime",
         ":ir_emission_utils",
         ":mlir_emitter",
-        ":mlir_matmul_codegen_strategy",
         ":target_machine_features",
         ":tiled_dot_emitter",
         ":vector_support_library",
@@ -509,6 +524,7 @@ cc_library(
         "@llvm-project//mlir:EDSC",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LinalgOps",
+        "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:StandardOps",
     ],
 )
@@ -552,6 +568,7 @@ cc_library(
         "@llvm-project//llvm:IPO",
         "@llvm-project//llvm:MC",
         "@llvm-project//llvm:Object",
+        "@llvm-project//llvm:OrcJIT",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
     ],
@@ -1141,26 +1158,5 @@ cc_library(
         "@llvm-project//mlir:TargetLLVMIR",
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorToLLVM",
-    ],
-)
-
-cc_library(
-    name = "mlir_matmul_codegen_strategy",
-    srcs = ["mlir_matmul_codegen_strategy.cc"],
-    hdrs = ["mlir_matmul_codegen_strategy.h"],
-    deps = [
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:Affine",
-        "@llvm-project//mlir:Analysis",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LinalgOps",
-        "@llvm-project//mlir:LinalgTransforms",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:Transforms",
-        "@llvm-project//mlir:VectorOps",
-        "@llvm-project//mlir:VectorToSCF",
     ],
 )

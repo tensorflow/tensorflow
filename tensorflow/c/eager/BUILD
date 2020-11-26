@@ -11,6 +11,9 @@ load(
 )
 
 # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "filegroup")
 
 # buildifier: disable=same-origin-load
@@ -48,6 +51,7 @@ tf_cuda_library(
             ":immediate_execution_context",
             ":immediate_execution_operation",
             ":immediate_execution_tensor_handle",
+            ":immediate_execution_distributed_manager",
             ":abstract_tensor_handle",
             ":tfe_context_internal",
             ":tfe_cancellation_manager_internal",
@@ -67,6 +71,7 @@ tf_cuda_library(
             "//tensorflow/core:core_cpu",
             "//tensorflow/core/common_runtime/eager:attr_builder",
             "//tensorflow/core/common_runtime/eager:context",
+            "//tensorflow/core/common_runtime/eager:context_distributed_manager",
             "//tensorflow/core/common_runtime/eager:core",
             "//tensorflow/core/common_runtime/eager:eager_executor",
             "//tensorflow/core/common_runtime/eager:execute",
@@ -94,6 +99,7 @@ tf_cuda_library(
         "//tensorflow/core/distributed_runtime:remote_device",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/distributed_runtime:worker_env",
+        "//tensorflow/core/distributed_runtime:worker_interface",
         "//tensorflow/core:gpu_runtime",
     ] + internal_tfrt_deps(),
     alwayslink = 1,
@@ -106,6 +112,7 @@ filegroup(
         "abstract_function.h",
         "abstract_operation.h",
         "abstract_tensor_handle.h",
+        "c_api.h",
         "c_api_experimental.h",
         "c_api_internal.h",
         "c_api_unified_experimental.h",
@@ -114,6 +121,7 @@ filegroup(
         "gradients.h",
         "gradients_internal.h",
         "immediate_execution_context.h",
+        "immediate_execution_distributed_manager.h",
         "immediate_execution_operation.h",
         "immediate_execution_tensor_handle.h",
         "tape.h",
@@ -171,6 +179,7 @@ cc_library(
         "//tensorflow/c:c_api_internal",
         "//tensorflow/c:conversion_macros",
         "//tensorflow/c:tf_status",
+        "//tensorflow/core:framework",
         "//tensorflow/core/platform:casts",
         "//tensorflow/core/platform:types",
     ],
@@ -219,6 +228,34 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "unified_api_testutil",
+    testonly = 1,
+    srcs = [
+        "unified_api_testutil.cc",
+    ],
+    hdrs = [
+        "unified_api_testutil.h",
+    ],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        ":abstract_context",
+        ":abstract_tensor_handle",
+        ":c_api_experimental",
+        ":c_api_test_util",
+        ":c_api_unified_internal",
+        "//tensorflow/c:tf_status",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/lib/llvm_rtti",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
 tf_cuda_cc_test(
     name = "gradients_test",
     size = "small",
@@ -235,6 +272,7 @@ tf_cuda_cc_test(
         ":c_api_test_util",
         ":c_api_unified_internal",
         ":gradients_internal",
+        ":unified_api_testutil",
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_test_util",
         "//tensorflow/c:tf_status_helper",
@@ -252,6 +290,29 @@ tf_cuda_cc_test(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "unified_api_test",
+    size = "small",
+    srcs = [
+        "unified_api_test.cc",
+    ],
+    args = ["--heap_check=local"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags() + ["no_cuda_asan"],  # b/173654156
+    deps = [
+        ":c_api_experimental",
+        ":c_api_unified_internal",
+        ":unified_api_testutil",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/lib/llvm_rtti",
+        "//tensorflow/core/platform:errors",
     ],
 )
 
@@ -408,6 +469,7 @@ tf_cuda_cc_test(
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + [
         "nomac",
+        "no_cuda_asan",  # b/173825513
     ],
     deps = [
         ":abstract_tensor_handle",
@@ -444,8 +506,10 @@ cc_library(
         "//tensorflow:internal",
     ],
     deps = [
+        "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:refcount",
+        "//tensorflow/core/platform:status",
     ],
 )
 
@@ -525,6 +589,19 @@ cc_library(
 )
 
 cc_library(
+    name = "immediate_execution_distributed_manager",
+    hdrs = ["immediate_execution_distributed_manager.h"],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+cc_library(
     name = "immediate_execution_context",
     hdrs = ["immediate_execution_context.h"],
     visibility = [
@@ -532,12 +609,14 @@ cc_library(
     ],
     deps = [
         ":abstract_context",
+        ":immediate_execution_distributed_manager",
         ":immediate_execution_operation",
         ":immediate_execution_tensor_handle",
         "//tensorflow/c:tensor_interface",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],
@@ -635,6 +714,19 @@ cc_library(
     deps = [
         ":immediate_execution_tensor_handle",
         "//tensorflow/c:conversion_macros",
+    ],
+)
+
+cc_header_only_library(
+    name = "tfe_tensorhandle_internal_hdrs_only",
+    extra_deps = [
+        "@com_google_absl//absl/strings",
+    ],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        ":tfe_tensorhandle_internal",
     ],
 )
 

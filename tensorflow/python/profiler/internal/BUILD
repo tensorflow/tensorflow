@@ -65,7 +65,6 @@ cuda_py_test(
         "no_gpu",  # b/138442728
         "no_pip",
     ],
-    tfrt_enabled = True,
     xla_enable_strict_auto_jit = False,  # Node names are different with autojit
     deps = [
         ":model_analyzer_testlib",
@@ -120,6 +119,7 @@ tf_python_pybind_extension(
     ],
     deps = [
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core/profiler/convert:xplane_to_tools_data",
         "//tensorflow/core/profiler/convert:xplane_to_trace_events",
         "//tensorflow/core/profiler/lib:profiler_session_for_pybind",
@@ -146,6 +146,7 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler/utils:time_utils",
         "//tensorflow/core/profiler/utils:xplane_builder",
         "//tensorflow/core/profiler/utils:xplane_schema",
         "//tensorflow/core/profiler/utils:xplane_utils",

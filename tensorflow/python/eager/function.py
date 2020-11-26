@@ -67,7 +67,6 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import trace
 from tensorflow.python.saved_model import save_context
-from tensorflow.python.saved_model import save_options
 from tensorflow.python.util import compat
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import lazy_loader
@@ -76,6 +75,7 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.tf_export import tf_export
 
 # Loaded lazily due to a circular dependency (roughly
 # tf.function->autograph->->dataset->tf.function).
@@ -1388,6 +1388,7 @@ class _HigherOrderTapeGradientFunctions(_TapeGradientFunctions):
           gradients with respect to the inputs.
     """
     outputs = []
+    iteration_count = 0
     # First we need to figure out how many side outputs from the forward pass
     # will be required. We do this in a temporary graph to avoid actually
     # running multiple copies of the backward pass (one per _GradientsHelper
@@ -1402,28 +1403,48 @@ class _HigherOrderTapeGradientFunctions(_TapeGradientFunctions):
     # all of the forward op's outputs: symbolic gradients with tf.gradients
     # instead rely on regenerating backward functions when higher-order
     # gradients are requested.
-    while len(outputs) < len(self._func_graph.outputs):
+    while (len(outputs) < len(self._func_graph.outputs)
+           # It's possible for gradient generation to add new ops to the forward
+           # pass. If all of the new outputs are non-trainable, there's no
+           # reason to continue.
+           and any(backprop_util.IsTrainable(output)
+                   for output in self._func_graph.outputs[len(outputs):])):
+      iteration_count += 1
+      if iteration_count >= 20 and iteration_count % 5 == 0:
+        new_op_with_trainable_output = None
+        num_new_trainable_outputs = 0
+        for output in self._func_graph.outputs[len(outputs):]:
+          if backprop_util.IsTrainable(output):
+            num_new_trainable_outputs += 1
+            new_op_with_trainable_output = output.op
+        logging.warning(
+            ("Determining side outputs for the function '{}' is taking longer "
+             "than expected ({} iterations, typically this converges in 5 or "
+             "so). This could indicate that a gradient registration is adding "
+             "new ops to the forward pass every time gradients are generated. "
+             "{} new trainable output(s) were added this iteration, one from "
+             "the following op:\n {}\nThis may indicate a TensorFlow bug, or "
+             "an issue in a tf.custom_gradient.")
+            .format(
+                self._func_graph.name, iteration_count,
+                num_new_trainable_outputs, new_op_with_trainable_output))
       outputs = list(self._func_graph.outputs)
       self._build_functions_for_outputs(
           outputs, inference_args, input_tangents)
+
     (forward_function, forward_graph,
      backward_function, output_indices, num_output_tangents) = (
          self._build_functions_for_outputs(
              outputs, inference_args, input_tangents))
-    if len(self._func_graph.outputs) != len(outputs):
+    if (len(self._func_graph.outputs) > len(outputs)
+        and any(backprop_util.IsTrainable(output)
+                for output in self._func_graph.outputs[len(outputs):])):
       raise AssertionError(
           ("Unexpectedly added new outputs to the forward function when "
            "building the backward function: {}").format(
                self._func_graph.outputs[len(outputs):]))
     return (forward_function, forward_graph, backward_function, output_indices,
             num_output_tangents)
-
-
-# Represents the output of TFE_Py_TapeSetPossibleGradientTypes. Real enums are
-# unfortunately too slow to use here.
-_POSSIBLE_GRADIENT_TYPES_NONE = 0
-_POSSIBLE_GRADIENT_TYPES_FIRST_ORDER = 1
-_POSSIBLE_GRADIENT_TYPES_HIGHER_ORDER = 2
 
 
 class _ForwardBackwardCall(object):
@@ -1919,9 +1940,8 @@ class ConcreteFunction(object):
                          "on invocation of %s, the %d-th input (%s) was not a "
                          "Tensor." % (self._func_graph.name, i, str(arg)))
     args = tensor_inputs + captured_inputs
-    possible_gradient_type = (
-        pywrap_tfe.TFE_Py_TapeSetPossibleGradientTypes(args))
-    if (possible_gradient_type == _POSSIBLE_GRADIENT_TYPES_NONE
+    possible_gradient_type = gradients_util.PossibleTapeGradientTypes(args)
+    if (possible_gradient_type == gradients_util.POSSIBLE_GRADIENT_TYPES_NONE
         and executing_eagerly):
       # No tape is watching; skip to running the function.
       return self._build_call_outputs(self._inference_function.call(
@@ -2081,7 +2101,7 @@ class ConcreteFunction(object):
     Args:
       args: A flat list of Tensors with all of the inputs to the forward
         function (including user-specified and captured inputs).
-      possible_gradient_type: One of _POSSIBLE_GRADIENT_TYPES_*.
+      possible_gradient_type: One of gradients_util.POSSIBLE_GRADIENT_TYPES_*.
       executing_eagerly: Boolean, the value of context.executing_eagerly().
 
     Returns:
@@ -2099,7 +2119,8 @@ class ConcreteFunction(object):
     # Allows re-use of forward and backward function pairs depending on the
     # tapes and forward accumulators watching its inputs.
     cache_key = (need_gradients_for_jvps, input_tangents.indices)
-    if possible_gradient_type == _POSSIBLE_GRADIENT_TYPES_FIRST_ORDER:
+    if (possible_gradient_type
+        == gradients_util.POSSIBLE_GRADIENT_TYPES_FIRST_ORDER):
       if input_tangents.indices or executing_eagerly:
         # There is a single non-persistent tape active, so the user can only
         # request first-order gradients from a tape. We can spend less time
@@ -2130,7 +2151,8 @@ class ConcreteFunction(object):
         return _ForwardBackwardCall(
             self._delayed_rewrite_functions, args, input_tangents.tangents,
             tape_watching=True)
-    elif possible_gradient_type == _POSSIBLE_GRADIENT_TYPES_HIGHER_ORDER:
+    elif (possible_gradient_type
+          == gradients_util.POSSIBLE_GRADIENT_TYPES_HIGHER_ORDER):
       # Either there's a persistent tape watching, or there are multiple nested
       # tapes. Either way, the user may request higher-order gradients. We'll
       # spend a bit more time and make sure higher-order gradients are correct.
@@ -2145,7 +2167,7 @@ class ConcreteFunction(object):
         self._higher_order_tape_functions[cache_key] = functions
       return _ForwardBackwardCall(functions, args, input_tangents.tangents,
                                   tape_watching=True)
-    # else possible_gradient_type == _POSSIBLE_GRADIENT_TYPES_NONE, meaning no
+    # else possible_gradient_type == POSSIBLE_GRADIENT_TYPES_NONE, meaning no
     # tape is recording.
     return _ForwardBackwardCall(
         self._delayed_rewrite_functions, args, input_tangents.tangents,
@@ -2328,7 +2350,7 @@ class FunctionSpec(object):
                                   input_signature,
                                   is_pure=False,
                                   experimental_follow_type_hints=False,
-                                  experimental_compile=None):
+                                  jit_compile=None):
     """Create a FunctionSpec instance given a python function and signature.
 
     Args:
@@ -2337,7 +2359,7 @@ class FunctionSpec(object):
       is_pure: if True all input arguments (including variables and constants)
       will be converted to tensors and no variable changes allowed.
       experimental_follow_type_hints: see `tf.function`
-      experimental_compile: see `tf.function`
+      jit_compile: see `tf.function`
 
     Returns:
       instance of FunctionSpec
@@ -2419,7 +2441,7 @@ class FunctionSpec(object):
         is_method,
         input_signature,
         is_pure=is_pure,
-        experimental_compile=experimental_compile,
+        jit_compile=jit_compile,
         experimental_follow_type_hints=experimental_follow_type_hints,
         name=name)
 
@@ -2430,7 +2452,7 @@ class FunctionSpec(object):
                is_pure=False,
                experimental_follow_type_hints=False,
                name=None,
-               experimental_compile=None):
+               jit_compile=None):
     """Constructs a FunctionSpec describing a python function.
 
     Args:
@@ -2441,12 +2463,12 @@ class FunctionSpec(object):
         will be converted to tensors and no variable changes allowed.
       experimental_follow_type_hints: see `tf.function`.
       name: Name of the function
-      experimental_compile: see `tf.function`.
+      jit_compile: see `tf.function`.
     """
     self._fullargspec = fullargspec
     self._is_method = is_method
     self._is_pure = is_pure
-    self._experimental_compile = experimental_compile
+    self._jit_compile = jit_compile
     self._experimental_follow_type_hints = experimental_follow_type_hints
 
     # TODO(edloper): Include name when serializing for SavedModel?
@@ -2517,8 +2539,8 @@ class FunctionSpec(object):
     return self._is_pure
 
   @property
-  def experimental_compile(self):
-    return self._experimental_compile
+  def jit_compile(self):
+    return self._jit_compile
 
   @property
   def arg_names(self):
@@ -2883,7 +2905,7 @@ class Function(object):
                autograph_options=None,
                experimental_relax_shapes=False,
                capture_by_value=None,
-               experimental_compile=None,
+               jit_compile=None,
                experimental_follow_type_hints=False):
     """Initializes a `Function`.
 
@@ -2906,8 +2928,8 @@ class Function(object):
       capture_by_value: Experimental. Whether to capture resource variables by
         value or reference. If None, will inherit from a parent context or
         default to False.
-      experimental_compile: Force-compile the function with XLA, cf.
-        def_function.Function doc on experimental_compile.
+      jit_compile: Force-compile the function with XLA, cf.
+        def_function.Function doc on jit_compile.
       experimental_follow_type_hints: See the documentation for `tf.function`.
 
     Raises:
@@ -2938,7 +2960,7 @@ class Function(object):
     # `Function`, used to make sure defun-decorated methods create different
     # functions for each instance.
     self._descriptor_cache = weakref.WeakKeyDictionary()
-    self._experimental_compile = experimental_compile
+    self._jit_compile = jit_compile
     self._experimental_follow_type_hints = experimental_follow_type_hints
 
   def __call__(self, *args, **kwargs):
@@ -3177,10 +3199,7 @@ class Function(object):
       variable_policy = (
           save_context.get_save_options().experimental_variable_policy)
     else:
-      # With EXPAND_DISTRIBUTED_VARIABLES the variables have the same behavior
-      # in and out of saving. We use EXPAND_DISTRIBUTED_VARIABLES so that if the
-      # user saves with it, there's no need to retrace the functions.
-      variable_policy = save_options.VariablePolicy.EXPAND_DISTRIBUTED_VARIABLES
+      variable_policy = None
 
     return (parent_graph, device_functions, colocation_stack,
             in_cross_replica_context, variable_policy, xla_context_id)
@@ -3751,12 +3770,13 @@ def defun(func=None,
       experimental_relax_shapes=experimental_relax_shapes)
 
 
+@tf_export("__internal__.function.defun_with_attributes", v1=[])
 def defun_with_attributes(func=None,
                           input_signature=None,
                           attributes=None,
                           autograph=True,
                           experimental_autograph_options=None,
-                          experimental_compile=None,
+                          jit_compile=None,
                           experimental_relax_shapes=False,
                           experimental_follow_type_hints=False):
   """Compiles a Python function into a callable TensorFlow graph.
@@ -3778,7 +3798,7 @@ def defun_with_attributes(func=None,
     autograph: same as defun()'s autograph.
     experimental_autograph_options: same as defun()'s
       experimental_autograph_options.
-    experimental_compile: same as defun()'s experimental_compile.
+    jit_compile: same as defun()'s jit_compile.
     experimental_relax_shapes: same as defun()'s experimental_relax_shapes
     experimental_follow_type_hints: see `tf.function`.
 
@@ -3807,7 +3827,7 @@ def defun_with_attributes(func=None,
             attributes=attributes,
             autograph=autograph,
             autograph_options=experimental_autograph_options,
-            experimental_compile=experimental_compile,
+            jit_compile=jit_compile,
             experimental_relax_shapes=experimental_relax_shapes,
             experimental_follow_type_hints=experimental_follow_type_hints))
 
@@ -3907,7 +3927,7 @@ def class_method_to_instance_method(original_function, instance):
       autograph=original_function._autograph,
       input_signature=original_function.input_signature,
       experimental_relax_shapes=original_function._experimental_relax_shapes,
-      experimental_compile=original_function._experimental_compile)
+      jit_compile=original_function._jit_compile)
   # pylint: enable=protected-access
 
   # And we wrap the function with tf_decorator so inspection works correctly

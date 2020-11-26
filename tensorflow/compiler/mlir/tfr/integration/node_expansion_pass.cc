@@ -16,18 +16,38 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/mlir/tfr/integration/tfr_decompose_ctx.h"
+#include "tensorflow/core/lib/monitoring/counter.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
+namespace {
+
+auto* tf_core_op_expansion_node_counter =
+    monitoring::Counter<0>::New("/tensorflow/core/op_expansion/node_counter",
+                                "The number of nodes being op expanded.");
+}  // namespace
+
+namespace tfr {
 
 Status CompositeOpExpansion::Run(EagerOperation* orig_op,
                                  std::unique_ptr<EagerOperation>* out_op) {
   if (!IsEnabled()) return Status::OK();
+  // This can be the default cpu device.
   if (orig_op->Device() != kVariantDeviceNull) return Status::OK();
+  // TODO(fengliuai): We need a better condition to skip the rewrite. Currently,
+  // The rewrite is enabled for all the tf ops and it is a no-op if the tf op
+  // isn't a composite op. "VarHandleOp" is explicitly skipped here because its
+  // roundtrip fails due to some unknown reasons.
+  if (orig_op->is_function()) return Status::OK();
+  if (absl::StartsWith(orig_op->op_name(), "VarHandleOp")) return Status::OK();
 
-  VLOG(1) << "Run Node Expansion Passes";
+  tf_core_op_expansion_node_counter->GetCell()->IncrementBy(1);
+
+  LOG_FIRST_N(INFO, 1) << "Run Node Expansion Passes";
 
   // Get the FunctionDef and insert that into the context
   const NodeDef& ndef = orig_op->MutableAttrs()->BuildNodeDef();
@@ -40,7 +60,7 @@ Status CompositeOpExpansion::Run(EagerOperation* orig_op,
   std::string fname =
       absl::StrCat("_expanded_", ndef.name(), "_", std::to_string(x));
   if (!ctx.FindFunctionByName(fname)) {
-    TF_ASSIGN_OR_RETURN(auto func, TFRDecomposeContext::Expand(ndef, fname));
+    TF_ASSIGN_OR_RETURN(auto func, ExpandNode(ndef, fname));
     TF_RETURN_IF_ERROR(ctx.AddFunctionDef(func));
   }
 
@@ -55,11 +75,14 @@ Status CompositeOpExpansion::Run(EagerOperation* orig_op,
   new_op->MutableAttrs()->CopyAttributes(orig_op->Attrs());
   out_op->reset(new_op);
 
-  VLOG(1) << "Rewrite the op to call function: " << fname;
+  LOG_FIRST_N(INFO, 1)
+      << "Finish Node Expansion Passes. Rewrite the op to call function: "
+      << fname;
 
   return Status::OK();
 }
 
 REGISTER_REWRITE(EagerOpRewriteRegistry::POST_PLACEMENT, CompositeOpExpansion);
 
+}  // namespace tfr
 }  // namespace tensorflow

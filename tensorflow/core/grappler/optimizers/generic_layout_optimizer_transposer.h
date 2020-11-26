@@ -149,10 +149,12 @@ class Transposer {
                               utils::MutationNewNode* added_node);
 
  protected:
+  int GetFanoutPortRank(const utils::MutableNodeView& node, int port) const;
   bool IsFanoutPortRankN(const utils::MutableNodeView& node, int port,
                          int n) const;
   bool IsFanoutPortsRankN(const utils::MutableNodeView& node,
                           absl::Span<const int> ports, int n) const;
+  int GetFaninPortRank(const utils::MutableNodeView& node, int port) const;
   bool IsFaninPortRankN(const utils::MutableNodeView& node, int port,
                         int n) const;
 
@@ -203,6 +205,14 @@ class DefaultLayoutSensitiveOpTransposer : public LayoutSensitiveOpTransposer {
  public:
   explicit DefaultLayoutSensitiveOpTransposer()
       : LayoutSensitiveOpTransposer() {}
+
+  Status TransposeNode(TransposeContext* context,
+                       utils::MutableNodeView* node) override;
+};
+
+class BiasAddTransposer : public LayoutSensitiveOpTransposer {
+ public:
+  explicit BiasAddTransposer() : LayoutSensitiveOpTransposer() {}
 
   Status TransposeNode(TransposeContext* context,
                        utils::MutableNodeView* node) override;
@@ -317,9 +327,9 @@ class LayoutAgnosticOpTransposer : public Transposer {
   bool IsAfterDstToSrcTransform(const TransposeContext& context,
                                 const utils::MutableNodeView& node) const;
 
-  std::vector<int> GetVariadic4DFaninPorts(
-      const TransposeContext& context,
-      const utils::MutableNodeView& node) const;
+  std::vector<int> GetVariadicNDFaninPorts(const TransposeContext& context,
+                                           const utils::MutableNodeView& node,
+                                           int rank) const;
 };
 
 class DefaultLayoutAgnosticOpTransposer : public LayoutAgnosticOpTransposer {
@@ -420,7 +430,7 @@ class ReduceTransposer : public LayoutAgnosticOpTransposer {
   bool KeepDims(const utils::MutableNodeView& node);
   bool IsAlongAxis(const Tensor& tensor, absl::Span<const int> axis, int rank);
   bool IsReduceAxisSupported(const TransposeContext& context,
-                             const utils::MutableNodeView& node);
+                             const utils::MutableNodeView& node, int rank);
 };
 
 class ReverseV2Transposer : public LayoutAgnosticOpTransposer {

@@ -20,46 +20,41 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
-#include "tensorflow/lite/delegates/gpu/cl/arguments.h"
-#include "tensorflow/lite/delegates/gpu/cl/device_info.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/linear_storage.h"
-#include "tensorflow/lite/delegates/gpu/cl/precision.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor.h"
-#include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
+#include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 
 namespace tflite {
 namespace gpu {
 namespace cl {
 namespace {
-bool UseBufferForWeights(const DeviceInfo& device_info) {
-  return device_info.IsAdreno() || device_info.IsAMD() || device_info.IsMali();
+bool UseBufferForWeights(const GpuInfo& gpu_info) {
+  return gpu_info.IsAdreno() || gpu_info.IsAMD() || gpu_info.IsMali();
 }
 }  // namespace
 
-FCFCAdd::FCFCAdd(const OperationDef& definition, const DeviceInfo& device_info)
+FCFCAdd::FCFCAdd(const OperationDef& definition, const GpuInfo& gpu_info)
     : GPUOperation(definition) {
-  if (device_info.IsAdreno()) {
-    if (device_info.IsAdreno3xx()) {
+  if (gpu_info.IsAdreno()) {
+    if (gpu_info.adreno_info.IsAdreno3xx()) {
       work_group_size_ = int3(16, 4, 1);
-    } else if (device_info.IsAdreno4xx()) {
+    } else if (gpu_info.adreno_info.IsAdreno4xx()) {
       work_group_size_ = int3(32, 4, 1);
     } else {
       work_group_size_ = int3(32, 4, 1);
     }
-  } else if (device_info.IsIntel()) {
+  } else if (gpu_info.IsIntel()) {
     work_group_size_ = int3(8, 4, 1);
-  } else if (device_info.IsNvidia()) {
+  } else if (gpu_info.IsNvidia()) {
     work_group_size_ = int3(8, 4, 1);
-  } else if (device_info.IsPowerVR()) {
+  } else if (gpu_info.IsPowerVR()) {
     work_group_size_ = int3(8, 4, 1);
   } else {
     work_group_size_ = int3(16, 4, 1);
   }
-  code_ = GetFCFCAddKernelCode(definition_, device_info);
+  code_ = GetFCFCAddKernelCode(definition_, gpu_info);
 }
 
 FCFCAdd::FCFCAdd(FCFCAdd&& kernel) : GPUOperation(std::move(kernel)) {}
@@ -78,14 +73,14 @@ FCFCAdd& FCFCAdd::operator=(FCFCAdd&& kernel) {
 // optimized shaders
 
 std::string FCFCAdd::GetFCFCAddKernelCode(const OperationDef& op_def,
-                                          const DeviceInfo& device_info) {
+                                          const GpuInfo& gpu_info) {
   AddSrcTensor("src_tensor_0", op_def.src_tensors[0]);
   AddSrcTensor("src_tensor_1", op_def.src_tensors[1]);
   AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
 
-  const bool weights_are_buffer = UseBufferForWeights(device_info);
+  const bool weights_are_buffer = UseBufferForWeights(gpu_info);
 
-  std::string c = GetCommonDefines(op_def.precision);
+  std::string c;
   switch (op_def.precision) {
     case CalculationsPrecision::F32:
       c += "#define FLT16 float16\n";
@@ -175,15 +170,14 @@ std::string FCFCAdd::GetFCFCAddKernelCode(const OperationDef& op_def,
 
 int3 FCFCAdd::GetGridSize() const { return int3(dst_[0]->Slices(), 1, 1); }
 
-FCFCAdd CreateFCFCAdd(const DeviceInfo& device_info,
-                      const OperationDef& definition,
+FCFCAdd CreateFCFCAdd(const GpuInfo& gpu_info, const OperationDef& definition,
                       const FullyConnectedAttributes& attr0,
                       const FullyConnectedAttributes& attr1) {
-  FCFCAdd result(definition, device_info);
+  FCFCAdd result(definition, gpu_info);
   result.UploadWeights(attr0.weights, "weights0",
-                       UseBufferForWeights(device_info));
+                       UseBufferForWeights(gpu_info));
   result.UploadWeights(attr1.weights, "weights1",
-                       UseBufferForWeights(device_info));
+                       UseBufferForWeights(gpu_info));
 
   TensorLinearDescriptor desc0;
   desc0.storage_type = LinearStorageType::TEXTURE_2D;

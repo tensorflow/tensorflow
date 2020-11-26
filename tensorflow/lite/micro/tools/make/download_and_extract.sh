@@ -83,121 +83,6 @@ patch_kissfft() {
   echo "Finished patching kissfft"
 }
 
-# Fixes issues with CMSIS.
-patch_cmsis() {
-  # See the RFC at https://docs.google.com/document/d/14GRxeVEgSKgKBKAijO7oxnI49nLoTYBFQmPok-rG0cw
-  # for full details on the path qualification changes we have to make below to enable the CMSIS-NN
-  # library source files to compile in an environment like the Arduino IDE that doesn't suppport
-  # custom include paths.
-  # These include changes were found through trial and error while trying to get the Arduino
-  # library compiling with the CMSIS-NN kernels included.
-  find tensorflow/lite/micro/tools/make/downloads/cmsis \
-    -iname '*.c' -exec \
-    sed -i -E $'s@#include "arm_nnfunctions.h"@#include "cmsis/CMSIS/NN/Include/arm_nnfunctions.h"@g' {} \;
-
-  find tensorflow/lite/micro/tools/make/downloads/cmsis \
-    -iname '*.c' -exec \
-    sed -i -E $'s@#include "arm_nnsupportfunctions.h"@#include "cmsis/CMSIS/NN/Include/arm_nnsupportfunctions.h"@g' {} \; 
-
-  find tensorflow/lite/micro/tools/make/downloads/cmsis \
-    -iname '*.c' -exec \
-    sed -i -E $'s@#include "arm_nn_types.h"@#include "cmsis/CMSIS/NN/Include/arm_nn_types.h"@g' {} \;
-
-  find tensorflow/lite/micro/tools/make/downloads/cmsis \
-    -iname '*.*' -exec \
-    sed -i -E $'s@#include "arm_math.h"@#include "cmsis/CMSIS/DSP/Include/arm_math.h"@g' {} \;
-
-  find tensorflow/lite/micro/tools/make/downloads/cmsis \
-    -iname '*.*' -exec \
-    sed -i -E $'s@#include "arm_common_tables.h"@#include "cmsis/CMSIS/DSP/Include/arm_common_tables.h"@g' {} \;
-
-  find tensorflow/lite/micro/tools/make/downloads/cmsis \
-    -iname '*.*' -exec \
-    sed -i -E $'s@#include "arm_nn_tables.h"@#include "cmsis/CMSIS/NN/Include/arm_nn_tables.h"@g' {} \;
-
-  find tensorflow/lite/micro/tools/make/downloads/cmsis \
-    -iname '*.*' -exec \
-    sed -i -E $'s@#include "arm_math_types.h"@#include "cmsis/CMSIS/DSP/Include/arm_math_types.h"@g' {} \;
-
-  find tensorflow/lite/micro/tools/make/downloads/cmsis \
-    -iname '*.*' -exec \
-    sed -i -E $'s@#include "arm_math_memory.h"@#include "cmsis/CMSIS/DSP/Include/arm_math_memory.h"@g' {} \;
-
-  find tensorflow/lite/micro/tools/make/downloads/cmsis \
-    -iname '*.*' -exec \
-    sed -i -E $'s@#include "dsp/none.h"@#include "cmsis/CMSIS/DSP/Include/dsp/none.h"@g' {} \;
-
-  find tensorflow/lite/micro/tools/make/downloads/cmsis \
-    -iname '*.*' -exec \
-    sed -i -E $'s@#include "dsp/utils.h"@#include "cmsis/CMSIS/DSP/Include/dsp/utils.h"@g' {} \;
-
-  find tensorflow/lite/micro/tools/make/downloads/cmsis \
-    -iname '*.*' -exec \
-    sed -i -E $'s@#include "dsp/basic_math_functions.h"@#include "cmsis/CMSIS/DSP/Include/dsp/basic_math_functions.h"@g' {} \;
-  find tensorflow/lite/micro/tools/make/downloads/cmsis \
-    -iname '*.*' -exec \
-    sed -i -E $'s@#include "dsp/statistics_functions.h"@#include "cmsis/CMSIS/DSP/Include/dsp/statistics_functions.h"@g' {} \;
-
-  find tensorflow/lite/micro/tools/make/downloads/cmsis \
-    -iname '*.*' -exec \
-    sed -i -E $'s@#include "dsp/svm_defines.h"@#include "cmsis/CMSIS/DSP/Include/dsp/svm_defines.h"@g' {} \;
-
-  find tensorflow/lite/micro/tools/make/downloads/cmsis \
-    -iname '*.*' -exec \
-    sed -i -E $'s@#include "dsp/svm_functions.h"@#include "cmsis/CMSIS/DSP/Include/dsp/svm_functions.h"@g' {} \;
-
-  find tensorflow/lite/micro/tools/make/downloads/cmsis \
-    -iname '*.*' -exec \
-    sed -i -E $'s@#include "dsp/support_functions.h"@#include "cmsis/CMSIS/DSP/Include/dsp/support_functions.h"@g' {} \;
-
-  find tensorflow/lite/micro/tools/make/downloads/cmsis \
-    -iname '*.*' -exec \
-    sed -i -E $'s@#include "dsp/transform_functions.h"@#include "cmsis/CMSIS/DSP/Include/dsp/transform_functions.h"@g' {} \;
-
-  find tensorflow/lite/micro/tools/make/downloads/cmsis \
-    -iname '*.*' -exec \
-    sed -i -E $'s@#include "dsp/bayes_functions.h"@#include "cmsis/CMSIS/DSP/Include/dsp/bayes_functions.h"@g' {} \;
-
-  find tensorflow/lite/micro/tools/make/downloads/cmsis \
-    -iname '*.*' -exec \
-    sed -i -E $'s@#include "dsp/complex_math_functions.h"@#include "cmsis/CMSIS/DSP/Include/dsp/complex_math_functions.h"@g' {} \;
-
-  find tensorflow/lite/micro/tools/make/downloads/cmsis \
-    -iname '*.*' -exec \
-    sed -i -E $'s@#include "dsp/controller_functions.h"@#include "cmsis/CMSIS/DSP/Include/dsp/controller_functions.h"@g' {} \;
-
-  find tensorflow/lite/micro/tools/make/downloads/cmsis \
-    -iname '*.*' -exec \
-    sed -i -E $'s@#include "dsp/distance_functions.h"@#include "cmsis/CMSIS/DSP/Include/dsp/distance_functions.h"@g' {} \;
-
-  find tensorflow/lite/micro/tools/make/downloads/cmsis \
-    -iname '*.*' -exec \
-    sed -i -E $'s@#include "dsp/fast_math_functions.h"@#include "cmsis/CMSIS/DSP/Include/dsp/fast_math_functions.h"@g' {} \;
-
-  find tensorflow/lite/micro/tools/make/downloads/cmsis \
-    -iname '*.*' -exec \
-    sed -i -E $'s@#include "dsp/filtering_functions.h"@#include "cmsis/CMSIS/DSP/Include/dsp/filtering_functions.h"@g' {} \;
-
-  find tensorflow/lite/micro/tools/make/downloads/cmsis \
-    -iname '*.*' -exec \
-    sed -i -E $'s@#include "dsp/interpolation_functions.h"@#include "cmsis/CMSIS/DSP/Include/dsp/interpolation_functions.h"@g' {} \;
-
-  find tensorflow/lite/micro/tools/make/downloads/cmsis \
-    -iname '*.*' -exec \
-    sed -i -E $'s@#include "dsp/matrix_functions.h"@#include "cmsis/CMSIS/DSP/Include/dsp/matrix_functions.h"@g' {} \;
-
-  # Until the fix for https://github.com/ARMmbed/mbed-os/issues/12568 is
-  # rolled into Mbed version used on the Arduino IDE, we have to replace
-  # one intrinsic with a patched equivalent.
-  sed -i -E 's@__SXTB16_RORn@__patched_SXTB16_RORn@g' \
-    tensorflow/lite/micro/tools/make/downloads/cmsis/CMSIS/NN/Source/NNSupportFunctions/arm_nn_mat_mult_nt_t_s8.c
-
-  sed -i -E $'33 a \\\n\\\n// Work around for https://github.com/ARMmbed/mbed-os/issues/12568\\\n__STATIC_FORCEINLINE uint32_t __patched_SXTB16_RORn(uint32_t op1, uint32_t rotate) {\\\n  uint32_t result;\\\n  __ASM ("sxtb16 %0, %1, ROR %2" : "=r" (result) : "r" (op1), "i" (rotate) );\\\n  return result;\\\n}' \
-    tensorflow/lite/micro/tools/make/downloads/cmsis/CMSIS/NN/Source/NNSupportFunctions/arm_nn_mat_mult_nt_t_s8.c
-
-  echo "Finished patching CMSIS"
-}
-
 # Create a header file containing an array with the first 10 images from the
 # CIFAR10 test dataset.
 patch_cifar10_dataset() {
@@ -232,6 +117,11 @@ download_and_extract() {
   local tempdir2=$(mktemp -d)
   local tempfile=${tempdir}/temp_file
   local curl_retries=3
+
+  # Destionation already downloaded.
+  if [ -d ${dir} ]; then
+      exit 0
+  fi
 
   command -v curl >/dev/null 2>&1 || {
     echo >&2 "The required 'curl' tool isn't installed. Try 'apt-get install curl'."; exit 1;
@@ -295,6 +185,7 @@ download_and_extract() {
     fi
   else
     echo "Error unsupported archive type. Failed to extract tool after download."
+    exit 1
   fi
   rm -rf ${tempdir2} ${tempdir}
 
@@ -307,8 +198,6 @@ download_and_extract() {
     patch_kissfft ${dir}
   elif [[ ${action} == "patch_cifar10_dataset" ]]; then
     patch_cifar10_dataset ${dir}
-  elif [[ ${action} == "patch_cmsis" ]]; then
-    patch_cmsis ${dir}
   elif [[ ${action} == "build_embarc_mli" ]]; then
     if [[ "${action_param1}" == *.tcf ]]; then
       cp ${action_param1} ${dir}/hw/arc.tcf

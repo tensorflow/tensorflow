@@ -1261,7 +1261,10 @@ class _EagerTensorBase(Tensor):
 
 # This call creates an EagerTensor class, as a subclass of _EagerTensorBase, and
 # registers it with the current module.
-EagerTensor = pywrap_tfe.TFE_Py_InitEagerTensor(_EagerTensorBase)
+# It is exposed as an __internal__ api for now (b/171081052), though we
+# expect it to be eventually covered by tf Tensor types and typing.
+EagerTensor = tf_export("__internal__.EagerTensor", v1=[])(
+    pywrap_tfe.TFE_Py_InitEagerTensor(_EagerTensorBase))
 
 
 @tf_export(v1=["convert_to_tensor"])
@@ -1802,6 +1805,7 @@ _VALID_OP_NAME_REGEX = re.compile(r"^[A-Za-z0-9.][A-Za-z0-9_.\\/>-]*$")
 _VALID_SCOPE_NAME_REGEX = re.compile(r"^[A-Za-z0-9_.\\/>-]*$")
 
 
+@tf_export("__internal__.create_c_op", v1=[])
 def _create_c_op(graph, node_def, inputs, control_inputs, op_def=None):
   """Creates a TF_Operation.
 
@@ -4332,12 +4336,16 @@ class Graph(object):
   def _colocate_with_for_gradient(self, op, gradient_uid,
                                   ignore_existing=False):
     with self.colocate_with(op, ignore_existing):
-      if gradient_uid is not None and self._control_flow_context is not None:
-        self._control_flow_context.EnterGradientColocation(op, gradient_uid)
-        try:
+      if gradient_uid is not None:
+        ctx = _get_enclosing_context(self)
+        if ctx is not None:
+          ctx.EnterGradientColocation(op, gradient_uid)
+          try:
+            yield
+          finally:
+            ctx.ExitGradientColocation(op, gradient_uid)
+        else:
           yield
-        finally:
-          self._control_flow_context.ExitGradientColocation(op, gradient_uid)
       else:
         yield
 
@@ -6023,6 +6031,8 @@ def has_default_graph():
   return len(_default_graph_stack.stack) >= 1
 
 
+# Exported due to b/171079555
+@tf_export("__internal__.get_name_scope", v1=[])
 def get_name_scope():
   """Returns the current name scope in the default_graph.
 
@@ -6955,3 +6965,15 @@ def set_int_list_attr(op, attr_name, ints):
   """TF internal method used to set a list(int) attribute in the node_def."""
   ints_list = attr_value_pb2.AttrValue.ListValue(i=ints)
   op._set_attr(attr_name, attr_value_pb2.AttrValue(list=ints_list))  # pylint:disable=protected-access
+
+
+def _get_enclosing_context(graph):
+  # pylint: disable=protected-access
+  if graph is None:
+    return None
+
+  if graph._control_flow_context is not None:
+    return graph._control_flow_context
+
+  if graph.building_function and hasattr(graph, "outer_graph"):
+    return _get_enclosing_context(graph.outer_graph)

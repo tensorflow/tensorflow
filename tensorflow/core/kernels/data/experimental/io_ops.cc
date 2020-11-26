@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/stringprintf.h"
-#include "tensorflow/core/protobuf/data/experimental/snapshot.pb.h"
+#include "tensorflow/core/protobuf/snapshot.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -147,8 +147,8 @@ Status SaveDatasetOp::GetShardIndex(IteratorContext* ctx,
     return Status::OK();
   }
   std::vector<Tensor> output_tensors;
-  TF_RETURN_IF_ERROR(
-      function->RunWithBorrowedArgs(ctx, element, &output_tensors));
+  TF_RETURN_IF_ERROR(function->RunWithBorrowedArgs(
+      ctx, element, &output_tensors, /*node=*/nullptr));
 
   if (output_tensors.size() != 1 || output_tensors[0].dtype() != DT_INT64 ||
       output_tensors[0].NumElements() != 1) {
@@ -315,8 +315,9 @@ class LoadDatasetOp::Dataset : public DatasetBase {
       std::vector<Tensor> reader_output;
       reader_input.push_back(std::move(input_dataset_tensor));
 
+      // NOTE: We intentionally ignore resource modeling outside GetNext().
       TF_RETURN_IF_ERROR(instantiated_captured_func_->Run(
-          ctx, std::move(reader_input), &reader_output));
+          ctx, std::move(reader_input), &reader_output, /*node=*/nullptr));
       if (reader_output.size() != 1) {
         return errors::InvalidArgument(
             "reader_func returns more than one argument.");

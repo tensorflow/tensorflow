@@ -197,10 +197,11 @@ def LHLO_XorOp : LHLO_BinaryElementwiseOp<"xor", LHLO_PredOrIntBuffer>, BASE_HLO
 //===----------------------------------------------------------------------===//
 
 // TODO(b/139813999): specify required function signature in a type-safe way.
-def LHLO_ReduceOp: LHLO_Op<"reduce", [
-      SameVariadicOperandSize,
-      SingleBlockImplicitTerminator<"TerminatorOp">
-    ]>, BASE_HLO_ReduceOp {
+//
+// The region `body` may return lmhlo.TerminatorOp or mhlo.ReturnOp. We are
+// moving towards mhlo.ReturnOp, but some code that needs cleanup still assumes lmhlo.TerminatorOp.
+// TODO(timshen): cleanup lmhlo.TerminatorOp.
+def LHLO_ReduceOp: LHLO_Op<"reduce", [SameVariadicOperandSize]>, BASE_HLO_ReduceOp {
   let arguments = (ins
     Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$operands,
     Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$init_values,
@@ -264,10 +265,11 @@ def LHLO_WhileOp: LHLO_Op<"while", [SameVariadicOperandSize]>,
   let regions = (region SizedRegion<1>:$cond, SizedRegion<1>:$body);
 }
 
-def LHLO_CustomCallOp : LHLO_Op<"custom_call", []>, BASE_HLO_CustomCallOp {
+def LHLO_CustomCallOp : LHLO_Op<"custom_call", [AttrSizedOperandSegments]>,
+                        BASE_HLO_CustomCallOp {
   let arguments = (ins
     Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$args,
-    Arg<LHLO_Buffer, "", [MemWrite]>:$output,
+    Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$output,
     StrAttr:$call_target_name,
     DefaultValuedAttr<BoolAttr, "false">:$has_side_effect,
     DefaultValuedAttr<StrAttr, "">:$backend_config
@@ -284,7 +286,8 @@ def LHLO_CompareOp: LHLO_Op<"compare", []>, BASE_HLO_CompareOp {
     Arg<LHLO_Buffer, "", [MemRead]>:$rhs,
     Arg<LHLO_PredBuffer, "", [MemWrite]>:$out,
     OptionalAttr<BroadcastDimAttr>:$broadcast_dimensions,
-    HLO_ComparisonDirectionAttr:$comparison_direction
+    HLO_ComparisonDirectionAttr:$comparison_direction,
+    OptionalAttr<HLO_ComparisonTypeAttr>:$compare_type
   );
 }
 
@@ -312,167 +315,6 @@ def HLO_DynamicUpdateSliceOp: LHLO_Op<"dynamic-update-slice", []> {
     Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$start_indices
   );
 }
-
-//===----------------------------------------------------------------------===//
-// StaticMemRefCastOp
-//===----------------------------------------------------------------------===//
-
-def HLO_StaticMemRefCastOp: Op<LHLO_Dialect, "static_memref_cast",
-    [NoSideEffect, DeclareOpInterfaceMethods<ViewLikeOpInterface>]> {
-  let summary = [{
-    modifies the offset, sizes and strides of a statically shaped memref
-  }];
-  let description = [{
-    Casts the statically shaped memref operand to a memref with optionally
-    modified offsets, sizes and strides.
-
-    Example:
-    ```mlir
-    %buf_transformed =
-        lmhlo.static_memref_cast %buf
-        : memref<1x5xf32> -> memref<5xf32, offset: 2, strides: [1]>
-
-    // The result of the op is a rank-1 memref with `[5]` shape, stride 1 and
-    // offset 2.
-    ```
-  }];
-
-  let arguments = (ins Arg<LHLO_Buffer, "", []>:$operand);
-  let results = (outs Res<LHLO_Buffer, "", []>:$result);
-
-  let builders = [OpBuilder<"MemRefType resultType, Value operand",
-    [{
-      $_state.addOperands(operand);
-      $_state.types.push_back(resultType);
-    }]>];
-
-  let extraClassDeclaration = [{
-    MemRefType getType() { return getResult().getType().cast<MemRefType>(); }
-  }];
-
-  let verifier = [{ return Verify(*this); }];
-  let assemblyFormat = [{
-    $operand attr-dict `:` type($operand) `->` type($result)
-  }];
-}
-
-//===----------------------------------------------------------------------===//
-// DynamicMemRefCastOp
-//===----------------------------------------------------------------------===//
-
-def HLO_DynamicMemRefCastOp: Op<LHLO_Dialect, "dynamic_memref_cast",
-    [SameVariadicOperandSize, NoSideEffect,
-     DeclareOpInterfaceMethods<ViewLikeOpInterface>]> {
-  let summary = "dynamic memref cast operation";
-  let description = [{
-    Change sizes and strides of a memref using the values computed in runtime.
-
-    Example:
-    ```mlir
-    %buf_transformed =
-        lmhlo.dynamic_memref_cast %buf(%size_X, %size_Y)[%step_X, %step_Y]
-        : memref<?x?xf32> -> memref<?x?xf32, offset: 0, strides: [?, ?]>
-    // The result of the op is a type-erased memref with `[%size_X, %size_Y]`
-    // shape and `[%step_X, %step_Y]` strides. The offset will be inherited
-    // from the input.
-    ```
-  }];
-
-  let arguments = (ins
-    Arg<LHLO_Buffer, "", []>:$operand,
-    Variadic<Index>:$sizes,
-    Variadic<Index>:$strides
-  );
-  let results = (outs Res<LHLO_Buffer, "", []>:$result);
-
-  let builders = [
-    OpBuilder<"MemRefType resultType, Value operand, ValueRange sizes, "
-              "ValueRange strides", [{
-      $_state.addOperands(operand);
-      $_state.addOperands(sizes);
-      $_state.addOperands(strides);
-      $_state.types.push_back(resultType);
-     }]>];
-
-  let extraClassDeclaration = [{
-    MemRefType getType() { return getResult().getType().cast<MemRefType>(); }
-  }];
-
-  let verifier = [{ return Verify(*this); }];
-  let assemblyFormat = [{
-    $operand `(` $sizes `)` `[` $strides `]` attr-dict `:` type($operand) `->`
-    type($result)
-  }];
-}
-
-//===----------------------------------------------------------------------===//
-// ReshapeMemRefCastOp
-//===----------------------------------------------------------------------===//
-
-def ReshapeMemRefCastOp: Op<LHLO_Dialect, "reshape_memref_cast", [
-    DeclareOpInterfaceMethods<ViewLikeOpInterface>,
-    NoSideEffect]>  {
-  let summary = "reshape memref cast operation";
-  let description = [{
-    The `reshape_memref_cast` operation converts a memref from one type to an
-    equivalent type with a provided shape. The data is never copied or moved.
-    The source and destination types are compatible if both have the same
-    element type, address space and identity layout map. The following
-    combinations are possible:
-
-    a. Both are ranked memref types.
-
-    ```mlir
-    // Reshape statically-shaped memref.
-    %dst = reshape_memref_cast %src(%shape)
-             : (memref<4x1xf32>, memref<1xi32>) to memref<4xf32>
-    %dst0 = reshape_memref_cast %src(%shape0)
-             : (memref<4x1xf32>, memref<2xi32>) to memref<2x2xf32>
-    ```
-
-    b. Source type is ranked, destination type is unranked.
-
-    ```mlir
-    // Reshape dynamically-shaped 1D memref.
-    %dst = reshape_memref_cast %src(%shape)
-             : (memref<?xf32>, memref<?xi32>) to memref<*xf32>
-    ```
-
-    c. Source type is unranked, destination type is ranked.
-
-    ```mlir
-    // Flatten unranked memref.
-    %dst = reshape_memref_cast %src(%shape)
-             : (memref<*xf32>, memref<1xi32>) to memref<?xf32>
-    ```
-
-    d. Both are unranked memref types.
-
-    ```mlir
-    // Reshape unranked memref.
-    %dst = reshape_memref_cast %src(%shape)
-             : (memref<*xf32>, memref<?xi32>) to memref<*xf32>
-    ```
-  }];
-
-  let arguments = (ins
-    AnyRankedOrUnrankedMemRef:$operand,
-    LHLO_ExtentBuffer:$shape
-  );
-  let results = (outs AnyRankedOrUnrankedMemRef:$result);
-
-  let extraClassDeclaration = [{
-    BaseMemRefType getType() {
-        return getResult().getType().cast<BaseMemRefType>(); }
-  }];
-
-  let verifier = [{ return Verify(*this); }];
-  let assemblyFormat = [{
-    $operand `(` $shape `)` attr-dict `:` `(` type($operand) `,` type($shape)
-    `)` `->` type($result)
-  }];
-}
-
 
 //===----------------------------------------------------------------------===//
 // LMHLO Other op definitions.
@@ -592,6 +434,7 @@ def LHLO_DotOp: LHLO_Op<"dot", []>, BASE_HLO_DotOp {
   let arguments = (ins
     Arg<LHLO_Buffer, "", [MemRead]>:$lhs,
     Arg<LHLO_Buffer, "", [MemRead]>:$rhs,
+    DotDimensionNumbers:$dot_dimension_numbers,
     HLO_PrecisionConfigAttr:$precision_config,
     Arg<LHLO_Buffer, "", [MemWrite]>:$output
   );
@@ -601,11 +444,8 @@ def LHLO_GatherOp: LHLO_Op<"gather", []>, BASE_HLO_GatherOp {
   let arguments = (ins
     Arg<LHLO_Buffer, "", [MemRead]>:$operand,
     Arg<LHLO_IntBuffer, "", [MemRead]>:$start_indices,
-    I64Attr:$index_vector_dim,
-    I64ElementsAttr:$offset_dims,
+    GatherDimensionNumbers:$dimension_numbers,
     I64ElementsAttr:$slice_sizes,
-    I64ElementsAttr:$collapsed_slice_dims,
-    I64ElementsAttr:$start_index_map,
     Arg<LHLO_Buffer, "", [MemWrite]>:$output
   );
 }
@@ -623,7 +463,7 @@ def LHLO_ScatterOp: LHLO_Op<"scatter", []>, BASE_HLO_ScatterOp {
     Arg<LHLO_Buffer, "", [MemRead]>:$scatter_indices,
     Arg<LHLO_Buffer, "", [MemRead]>:$updates,
     Arg<LHLO_Buffer, "", [MemWrite]>:$output,
-    ScatterDimensionNumbers<LHLO_Dialect>:$scatter_dimension_numbers,
+    ScatterDimensionNumbers:$scatter_dimension_numbers,
     DefaultValuedAttr<BoolAttr, "false">:$indices_are_sorted,
     DefaultValuedAttr<BoolAttr, "false">:$unique_indices
   );
@@ -699,7 +539,7 @@ def LHLO_AllReduceOp : LHLO_Op<"all_reduce", [SameTypeOperands]>,
     Arg<LHLO_Buffer, "", [MemWrite]>:$output,
     I64ElementsAttr:$replica_groups,
     DefaultValuedAttr<BoolAttr, "false">:$constrain_layout,
-    OptionalAttr<ChannelHandle<LHLO_Dialect>>:$channel_id,
+    OptionalAttr<ChannelHandle>:$channel_id,
     DefaultValuedAttr<BoolAttr, "false">:$use_global_device_ids
   );
   let regions = (region SizedRegion<1>:$computation);
@@ -712,7 +552,7 @@ def LHLO_CollectivePermuteOp: LHLO_Op<"collective_permute", [SameTypeOperands]>,
     Arg<LHLO_Buffer, "", [MemRead]>:$operand,
     Arg<LHLO_Buffer, "", [MemWrite]>:$output,
     I64ElementsAttr:$source_target_pairs,
-    OptionalAttr<ChannelHandle<LHLO_Dialect>>:$channel_id
+    OptionalAttr<ChannelHandle>:$channel_id
   );
 }
 
@@ -814,8 +654,46 @@ def FusionOp : LHLO_Op<"fusion", [SingleBlockImplicitTerminator<"TerminatorOp">]
 
   let skipDefaultBuilders = 1;
   let builders = [
-     OpBuilder<"ArrayRef<NamedAttribute> attributes">
+     OpBuilderDAG<(ins "ArrayRef<NamedAttribute>":$attributes)>
   ];
+
+  let extraClassDeclaration = [{
+    SmallVector<Value, 4> getInputBuffers() {
+      SmallVector<Value, 4> buffers;
+      this->region().walk([&](TensorLoadOp load) {
+        if (load.memref().getParentRegion()->isProperAncestor(&region()))
+          buffers.push_back(load.memref());
+      });
+      return buffers;
+    }
+
+    SmallVector<Value, 4> getOutputBuffers() {
+      SmallVector<Value, 4> buffers;
+      this->region().walk([&](TensorStoreOp store) {
+        if (store.memref().getParentRegion()->isProperAncestor(&region()))
+          buffers.push_back(store.memref());
+      });
+      return buffers;
+    }
+
+    SmallVector<Value, 4> getFusionParameters() {
+      SmallVector<Value, 4> buffers;
+      this->region().walk([&](TensorLoadOp load) {
+        if (load.memref().getParentRegion()->isProperAncestor(&region()))
+          buffers.push_back(load);
+      });
+      return buffers;
+    }
+
+    SmallVector<Value, 4> getFusionResults() {
+      SmallVector<Value, 4> buffers;
+      this->region().walk([&](TensorStoreOp store) {
+        if (store.memref().getParentRegion()->isProperAncestor(&region()))
+          buffers.push_back(store.tensor());
+      });
+      return buffers;
+    }
+  }];
 }
 
 def TerminatorOp :
@@ -824,9 +702,9 @@ def TerminatorOp :
   let description = [{
     Terminator operation for the LHLO dialect.
   }];
-  let builders = [OpBuilder<"ValueRange operands",
-    [{ build($_builder, $_state, llvm::None, operands, llvm::None); }]
-  >];
+  let builders = [
+    OpBuilderDAG<(ins "ValueRange":$operands),
+    [{ build($_builder, $_state, llvm::None, operands, llvm::None); }]>];
 }
 
 #endif // LHLO_OPS

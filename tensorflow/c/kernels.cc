@@ -24,7 +24,13 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/types.h"
+// Required for IS_MOBILE_PLATFORM definition
+#include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/types.h"
+#if !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
+#include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
+#include "tensorflow/stream_executor/stream.h"
+#endif  // !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 
 using tensorflow::errors::InvalidArgument;
 // This file forms the basis of a stable ABI for third-party kernel
@@ -183,6 +189,35 @@ void TF_RegisterKernelBuilder(const char* name, TF_KernelBuilder* builder,
       absl::make_unique<tensorflow::KernelBuilderFactory>(builder));
 
   TF_SetStatus(status, TF_OK, "");
+}
+
+// This function is only for pluggable device.
+// It will return nullptr in all other cases.
+// This function is experimental and subject to change.
+SP_Stream TF_GetStream(TF_OpKernelContext* ctx, TF_Status* status) {
+#if defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)
+  status->status = tensorflow::errors::Unimplemented(
+      "Accessing device stream is not supported on mobile. File a bug at "
+      "https://github.com/tensorflow/tensorflow/issues if this feature is "
+      "important to you");
+  return nullptr;
+#else
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  if (cc_ctx->op_device_context() == nullptr) {  // CPU Device
+    status->status = tensorflow::errors::FailedPrecondition(
+        "Accessing device stream is not supported for a CPU device.");
+    return nullptr;
+  } else if (!cc_ctx->op_device_context()->IsPluggableDevice()) {
+    status->status = tensorflow::errors::FailedPrecondition(
+        "Accessing device stream is only supported for pluggable devices.");
+    return nullptr;
+  } else {  // Is a PluggableDevice
+    TF_SetStatus(status, TF_OK, "");
+    auto c_stream = static_cast<stream_executor::CStream*>(
+        cc_ctx->op_device_context()->stream()->implementation());
+    return c_stream->Handle();
+  }
+#endif  // defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)
 }
 
 int TF_NumInputs(TF_OpKernelContext* ctx) {

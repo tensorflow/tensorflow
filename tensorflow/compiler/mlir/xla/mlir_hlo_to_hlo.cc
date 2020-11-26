@@ -731,6 +731,28 @@ LogicalResult ExportXlaOp(CaseOp op, OpLoweringContext ctx) {
   return success();
 }
 
+// Specialize CompareOp export to set broadcast_dimensions argument.
+mlir::LogicalResult ExportXlaOp(mlir::mhlo::CompareOp op,
+                                OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaOp lhs, rhs;
+  if (failed(GetXlaOp(op.lhs(), value_map, &lhs, op))) return mlir::failure();
+  if (failed(GetXlaOp(op.rhs(), value_map, &rhs, op))) return mlir::failure();
+  auto dir = Convert_comparison_direction(op.comparison_direction());
+  auto type_attr = op.compare_typeAttr();
+
+  xla::XlaOp xla_result;
+  if (type_attr) {
+    auto type =
+        xla::StringToComparisonType(type_attr.getValue().str()).ValueOrDie();
+    xla_result = xla::Compare(lhs, rhs, /*broadcast_dimensions=*/{}, dir, type);
+  } else {
+    xla_result = xla::Compare(lhs, rhs, dir);
+  }
+  value_map[op] = xla_result;
+  return mlir::success();
+}
+
 LogicalResult ExportXlaOp(ConstOp op, OpLoweringContext ctx) {
   return failure();
 }
@@ -748,11 +770,12 @@ LogicalResult ExportXlaOp(ConvertOp op, OpLoweringContext ctx) {
 LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   // XLA client builder API does not support generating custom call instructions
   // with side effect.
-  if (op.has_side_effect()) return failure();
+  if (op.has_side_effect() || op.getNumResults() != 1) return failure();
+  Value result = op.getResult(0);
   auto& value_map = *ctx.values;
-  value_map[op] = xla::CustomCall(
+  value_map[result] = xla::CustomCall(
       ctx.builder, std::string(op.call_target_name()), GetTuple(op.args(), ctx),
-      xla::TypeToShape(op.getType()), std::string(op.backend_config()));
+      xla::TypeToShape(result.getType()), std::string(op.backend_config()));
   return success();
 }
 
@@ -1012,13 +1035,24 @@ LogicalResult ExportXlaOp(SortOp op, OpLoweringContext ctx) {
                                                      &comparator)))
     return failure();
 
-  auto tupled = xla::Sort(GetTuple(op.operands(), ctx), comparator,
+  auto sorted = xla::Sort(GetTuple(op.operands(), ctx), comparator,
                           op.dimension(), op.is_stable());
 
   auto& value_map = *ctx.values;
+  auto shape_or = sorted.builder()->GetShape(sorted);
+  if (!shape_or.ok()) {
+    return op.emitError(shape_or.status().ToString());
+  }
+
+  xla::Shape& shape = shape_or.ValueOrDie();
+  if (!shape.IsTuple()) {
+    value_map[op.getResult(0)] = sorted;
+    return success();
+  }
+
   // MLIR's sort supports multiple returns, untuple all the results of XLA's.
   for (auto it : llvm::enumerate(op.getResults())) {
-    value_map[it.value()] = xla::GetTupleElement(tupled, it.index());
+    value_map[it.value()] = xla::GetTupleElement(sorted, it.index());
   }
   return success();
 }
@@ -1129,38 +1163,8 @@ StatusOr<xla::Literal> CreateArrayLiteralFromAttr(ElementsAttr attr,
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::U64, uint64)
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::C64, std::complex<float>)
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::C128, std::complex<double>)
-    case xla::PrimitiveType::F16: {
-      llvm::SmallVector<xla::half, 16> values;
-      values.reserve(attr.getNumElements());
-      for (APFloat val : attr.getValues<APFloat>()) {
-        bool loses_info = false;
-        TF_RET_CHECK(val.convert(llvm::APFloat::IEEEsingle(),
-                                 llvm::APFloat::rmTowardZero,
-                                 &loses_info) == llvm::APFloat::opOK);
-        TF_RET_CHECK(!loses_info);
-        values.push_back(xla::half(val.convertToFloat()));
-      }
-      xla::Array<xla::half> source_data(shape.dimensions());
-      source_data.SetValues(values);
-      return xla::LiteralUtil::CreateFromArrayWithLayout(source_data, layout);
-    }
-    case xla::PrimitiveType::BF16: {
-      xla::Array<double> source_data(shape.dimensions());
-      auto attr_values = attr.getValues<APFloat>();
-      std::vector<double> values_double;
-      values_double.reserve(source_data.num_elements());
-      for (APFloat val : attr_values) {
-        bool loses_info = false;
-        TF_RET_CHECK(val.convert(llvm::APFloat::IEEEdouble(),
-                                 llvm::APFloat::rmTowardZero,
-                                 &loses_info) == llvm::APFloat::opOK);
-        TF_RET_CHECK(!loses_info);
-        values_double.push_back(val.convertToDouble());
-      }
-      source_data.SetValues(values_double);
-      return xla::LiteralUtil::ConvertF64ToBF16(
-          xla::LiteralUtil::CreateFromArrayWithLayout(source_data, layout));
-    }
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::F16, Eigen::half)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::BF16, Eigen::bfloat16)
     default:
       return tensorflow::errors::Internal(absl::StrCat(
           "Unsupported type: ", xla::PrimitiveType_Name(shape.element_type())));
@@ -1169,9 +1173,9 @@ StatusOr<xla::Literal> CreateArrayLiteralFromAttr(ElementsAttr attr,
 }
 
 xla::Layout ExtractLayout(mlir::Operation* op, int rank) {
-  if (auto attr =
-          op->getAttrOfType<mlir::DenseIntElementsAttr>("minor_to_major")) {
+  if (auto attr = GetLayoutFromMlirHlo(op)) {
     llvm::SmallVector<int64, 4> minor_to_major;
+    DCHECK_EQ(rank, attr.size());
     minor_to_major.reserve(attr.size());
     for (const llvm::APInt& i : attr) {
       minor_to_major.push_back(i.getZExtValue());
@@ -1724,6 +1728,210 @@ Status ConvertMlirHloToHlo(
     return diag_handler.ConsumeStatus();
 
   return Status::OK();
+}
+
+DenseIntElementsAttr GetLayoutFromMlirHlo(mlir::Operation* op) {
+  return op->getAttrOfType<mlir::DenseIntElementsAttr>("minor_to_major");
+}
+
+StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {
+  if (mlir::isa<mlir::mhlo::ConstOp>(op)) {
+    return xla::HloOpcode::kConstant;
+  } else if (mlir::isa<mlir::mhlo::IotaOp>(op)) {
+    return xla::HloOpcode::kIota;
+  } else if (mlir::isa<mlir::mhlo::ConvertOp>(op)) {
+    return xla::HloOpcode::kConvert;
+  } else if (mlir::isa<mlir::mhlo::AddOp>(op)) {
+    return xla::HloOpcode::kAdd;
+  } else if (mlir::isa<mlir::mhlo::Atan2Op>(op)) {
+    return xla::HloOpcode::kAtan2;
+  } else if (mlir::isa<mlir::mhlo::DivOp>(op)) {
+    return xla::HloOpcode::kDivide;
+  } else if (mlir::isa<mlir::mhlo::MaxOp>(op)) {
+    return xla::HloOpcode::kMaximum;
+  } else if (mlir::isa<mlir::mhlo::MinOp>(op)) {
+    return xla::HloOpcode::kMinimum;
+  } else if (mlir::isa<mlir::mhlo::MulOp>(op)) {
+    return xla::HloOpcode::kMultiply;
+  } else if (mlir::isa<mlir::mhlo::PowOp>(op)) {
+    return xla::HloOpcode::kPower;
+  } else if (mlir::isa<mlir::mhlo::RemOp>(op)) {
+    return xla::HloOpcode::kRemainder;
+  } else if (mlir::isa<mlir::mhlo::ShiftLeftOp>(op)) {
+    return xla::HloOpcode::kShiftLeft;
+  } else if (mlir::isa<mlir::mhlo::ShiftRightArithmeticOp>(op)) {
+    return xla::HloOpcode::kShiftRightArithmetic;
+  } else if (mlir::isa<mlir::mhlo::ShiftRightLogicalOp>(op)) {
+    return xla::HloOpcode::kShiftRightLogical;
+  } else if (mlir::isa<mlir::mhlo::SubOp>(op)) {
+    return xla::HloOpcode::kSubtract;
+  } else if (mlir::isa<mlir::mhlo::XorOp>(op)) {
+    return xla::HloOpcode::kXor;
+  } else if (mlir::isa<mlir::mhlo::InfeedOp>(op)) {
+    return xla::HloOpcode::kInfeed;
+  } else if (mlir::isa<mlir::mhlo::OutfeedOp>(op)) {
+    return xla::HloOpcode::kOutfeed;
+  } else if (mlir::isa<mlir::mhlo::SendOp>(op)) {
+    return xla::HloOpcode::kSend;
+  } else if (mlir::isa<mlir::mhlo::RecvOp>(op)) {
+    return xla::HloOpcode::kRecv;
+  } else if (mlir::isa<mlir::mhlo::ReplicaIdOp>(op)) {
+    return xla::HloOpcode::kReplicaId;
+  } else if (mlir::isa<mlir::mhlo::AfterAllOp>(op)) {
+    return xla::HloOpcode::kAfterAll;
+  } else if (mlir::isa<mlir::mhlo::AllReduceOp>(op)) {
+    return xla::HloOpcode::kAllReduce;
+  } else if (mlir::isa<mlir::mhlo::AllToAllOp>(op)) {
+    return xla::HloOpcode::kAllToAll;
+  } else if (mlir::isa<mlir::mhlo::TupleOp>(op)) {
+    return xla::HloOpcode::kTuple;
+  } else if (mlir::isa<mlir::mhlo::BatchNormGradOp>(op)) {
+    return xla::HloOpcode::kBatchNormGrad;
+  } else if (mlir::isa<mlir::mhlo::BatchNormInferenceOp>(op)) {
+    return xla::HloOpcode::kBatchNormInference;
+  } else if (mlir::isa<mlir::mhlo::BatchNormTrainingOp>(op)) {
+    return xla::HloOpcode::kBatchNormTraining;
+  } else if (mlir::isa<mlir::mhlo::BitcastConvertOp>(op)) {
+    return xla::HloOpcode::kBitcastConvert;
+  } else if (mlir::isa<mlir::mhlo::BroadcastOp>(op)) {
+    return xla::HloOpcode::kBroadcast;
+  } else if (mlir::isa<mlir::mhlo::CholeskyOp>(op)) {
+    return xla::HloOpcode::kCholesky;
+  } else if (mlir::isa<mlir::mhlo::ClampOp>(op)) {
+    return xla::HloOpcode::kClamp;
+  } else if (mlir::isa<mlir::mhlo::ConcatenateOp>(op)) {
+    return xla::HloOpcode::kConcatenate;
+  } else if (mlir::isa<mlir::mhlo::ConvOp>(op)) {
+    return xla::HloOpcode::kConvolution;
+  } else if (mlir::isa<mlir::mhlo::SortOp>(op)) {
+    return xla::HloOpcode::kSort;
+  } else if (mlir::isa<mlir::mhlo::RngBitGeneratorOp>(op)) {
+    return xla::HloOpcode::kRngBitGenerator;
+  } else if (mlir::isa<mlir::mhlo::FusionOp>(op)) {
+    return xla::HloOpcode::kFusion;
+  } else if (mlir::isa<mlir::mhlo::BitcastOp>(op)) {
+    return xla::HloOpcode::kBitcast;
+  } else if (mlir::isa<mlir::mhlo::AbsOp>(op)) {
+    return xla::HloOpcode::kAbs;
+  } else if (mlir::isa<mlir::mhlo::CbrtOp>(op)) {
+    return xla::HloOpcode::kCbrt;
+  } else if (mlir::isa<mlir::mhlo::CeilOp>(op)) {
+    return xla::HloOpcode::kCeil;
+  } else if (mlir::isa<mlir::mhlo::ClzOp>(op)) {
+    return xla::HloOpcode::kClz;
+  } else if (mlir::isa<mlir::mhlo::CosOp>(op)) {
+    return xla::HloOpcode::kCos;
+  } else if (mlir::isa<mlir::mhlo::ExpOp>(op)) {
+    return xla::HloOpcode::kExp;
+  } else if (mlir::isa<mlir::mhlo::Expm1Op>(op)) {
+    return xla::HloOpcode::kExpm1;
+  } else if (mlir::isa<mlir::mhlo::FloorOp>(op)) {
+    return xla::HloOpcode::kFloor;
+  } else if (mlir::isa<mlir::mhlo::ImagOp>(op)) {
+    return xla::HloOpcode::kImag;
+  } else if (mlir::isa<mlir::mhlo::IsFiniteOp>(op)) {
+    return xla::HloOpcode::kIsFinite;
+  } else if (mlir::isa<mlir::mhlo::LogOp>(op)) {
+    return xla::HloOpcode::kLog;
+  } else if (mlir::isa<mlir::mhlo::Log1pOp>(op)) {
+    return xla::HloOpcode::kLog1p;
+  } else if (mlir::isa<mlir::mhlo::LogisticOp>(op)) {
+    return xla::HloOpcode::kLogistic;
+  } else if (mlir::isa<mlir::mhlo::NotOp>(op)) {
+    return xla::HloOpcode::kNot;
+  } else if (mlir::isa<mlir::mhlo::NegOp>(op)) {
+    return xla::HloOpcode::kNegate;
+  } else if (mlir::isa<mlir::mhlo::PopulationCountOp>(op)) {
+    return xla::HloOpcode::kPopulationCount;
+  } else if (mlir::isa<mlir::mhlo::RealOp>(op)) {
+    return xla::HloOpcode::kReal;
+  } else if (mlir::isa<mlir::mhlo::RoundOp>(op)) {
+    return xla::HloOpcode::kRoundNearestAfz;
+  } else if (mlir::isa<mlir::mhlo::RsqrtOp>(op)) {
+    return xla::HloOpcode::kRsqrt;
+  } else if (mlir::isa<mlir::mhlo::SignOp>(op)) {
+    return xla::HloOpcode::kSign;
+  } else if (mlir::isa<mlir::mhlo::SinOp>(op)) {
+    return xla::HloOpcode::kSin;
+  } else if (mlir::isa<mlir::mhlo::SqrtOp>(op)) {
+    return xla::HloOpcode::kSqrt;
+  } else if (mlir::isa<mlir::mhlo::TanhOp>(op)) {
+    return xla::HloOpcode::kTanh;
+  } else if (mlir::isa<mlir::mhlo::ComplexOp>(op)) {
+    return xla::HloOpcode::kComplex;
+  } else if (mlir::isa<mlir::mhlo::AndOp>(op)) {
+    return xla::HloOpcode::kAnd;
+  } else if (mlir::isa<mlir::mhlo::OrOp>(op)) {
+    return xla::HloOpcode::kOr;
+  } else if (mlir::isa<mlir::mhlo::WhileOp>(op)) {
+    return xla::HloOpcode::kWhile;
+  } else if (mlir::isa<mlir::mhlo::ReduceOp>(op)) {
+    return xla::HloOpcode::kReduce;
+  } else if (mlir::isa<mlir::mhlo::GetTupleElementOp>(op)) {
+    return xla::HloOpcode::kGetTupleElement;
+  } else if (mlir::isa<mlir::mhlo::CompareOp>(op)) {
+    return xla::HloOpcode::kCompare;
+  } else if (mlir::isa<mlir::mhlo::SliceOp>(op)) {
+    return xla::HloOpcode::kSlice;
+  } else if (mlir::isa<mlir::mhlo::DynamicSliceOp>(op)) {
+    return xla::HloOpcode::kDynamicSlice;
+  } else if (mlir::isa<mlir::mhlo::DynamicUpdateSliceOp>(op)) {
+    return xla::HloOpcode::kDynamicUpdateSlice;
+  } else if (mlir::isa<mlir::mhlo::CollectivePermuteOp>(op)) {
+    return xla::HloOpcode::kCollectivePermute;
+  } else if (mlir::isa<mlir::mhlo::CopyOp>(op)) {
+    return xla::HloOpcode::kCopy;
+  } else if (mlir::isa<mlir::mhlo::CustomCallOp>(op)) {
+    return xla::HloOpcode::kCustomCall;
+  } else if (mlir::isa<mlir::mhlo::DotOp>(op)) {
+    return xla::HloOpcode::kDot;
+  } else if (mlir::isa<mlir::mhlo::FftOp>(op)) {
+    return xla::HloOpcode::kFft;
+  } else if (mlir::isa<mlir::mhlo::GatherOp>(op)) {
+    return xla::HloOpcode::kGather;
+  } else if (mlir::isa<mlir::mhlo::GetDimensionSizeOp>(op)) {
+    return xla::HloOpcode::kGetDimensionSize;
+  } else if (mlir::isa<mlir::mhlo::MapOp>(op)) {
+    return xla::HloOpcode::kMap;
+  } else if (mlir::isa<mlir::mhlo::ReshapeOp>(op)) {
+    return xla::HloOpcode::kReshape;
+  } else if (mlir::isa<mlir::mhlo::DynamicReshapeOp>(op)) {
+    return xla::HloOpcode::kDynamicReshape;
+  } else if (mlir::isa<mlir::mhlo::ScatterOp>(op)) {
+    return xla::HloOpcode::kScatter;
+  } else if (mlir::isa<mlir::mhlo::SelectOp>(op)) {
+    return xla::HloOpcode::kSelect;
+  } else if (mlir::isa<mlir::mhlo::SelectAndScatterOp>(op)) {
+    return xla::HloOpcode::kSelectAndScatter;
+  } else if (mlir::isa<mlir::mhlo::SetDimensionSizeOp>(op)) {
+    return xla::HloOpcode::kSetDimensionSize;
+  } else if (mlir::isa<mlir::mhlo::ReverseOp>(op)) {
+    return xla::HloOpcode::kReverse;
+  } else if (mlir::isa<mlir::mhlo::PadOp>(op)) {
+    return xla::HloOpcode::kPad;
+  } else if (mlir::isa<mlir::mhlo::TraceOp>(op)) {
+    return xla::HloOpcode::kTrace;
+  } else if (mlir::isa<mlir::mhlo::TransposeOp>(op)) {
+    return xla::HloOpcode::kTranspose;
+  } else if (mlir::isa<mlir::mhlo::TriangularSolveOp>(op)) {
+    return xla::HloOpcode::kTriangularSolve;
+  } else if (mlir::isa<mlir::mhlo::ReduceWindowOp>(op)) {
+    return xla::HloOpcode::kReduceWindow;
+  } else if (mlir::isa<mlir::mhlo::ReducePrecisionOp>(op)) {
+    return xla::HloOpcode::kReducePrecision;
+  } else if (mlir::isa<mlir::mhlo::DotGeneralOp>(op)) {
+    return xla::HloOpcode::kDot;
+  } else if (mlir::isa<mlir::mhlo::BroadcastInDimOp>(op)) {
+    return xla::HloOpcode::kBroadcast;
+  } else {
+    std::string s;
+    {
+      llvm::raw_string_ostream os(s);
+      op->print(os);
+    }
+    return tensorflow::errors::Unimplemented(
+        "Unimplemented MHLO -> HloOpcode: %s", s);
+  }
 }
 
 }  // namespace mlir

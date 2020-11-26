@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/protobuf/data/experimental/service_config.pb.h"
+#include "tensorflow/core/protobuf/service_config.pb.h"
 #include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
@@ -68,8 +68,6 @@ class DataServiceDispatcherImpl {
   /// Client-facing API.
   Status GetOrRegisterDataset(const GetOrRegisterDatasetRequest* request,
                               GetOrRegisterDatasetResponse* response);
-  Status CreateJob(const CreateJobRequest* request,
-                   CreateJobResponse* response);
   Status GetOrCreateJob(const GetOrCreateJobRequest* request,
                         GetOrCreateJobResponse* response);
   Status ReleaseJobClient(const ReleaseJobClientRequest* request,
@@ -79,60 +77,46 @@ class DataServiceDispatcherImpl {
                     GetWorkersResponse* response);
 
  private:
-  struct DistributedEpochJob {
-    // When the distributed epoch job is first created, we eagerly create the
-    // split provider to fail fast in case the dataset doesn't support
-    // splitting. Split providers for later repetitions are created on demand.
-    explicit DistributedEpochJob(int64 job_id, int64 dataset_id,
-                                 std::unique_ptr<SplitProvider> split_provider)
-        : job_id(job_id), dataset_id(dataset_id) {
-      split_providers[0] = std::move(split_provider);
-    }
-
-    const int64 job_id;
-    const int64 dataset_id;
-    // Map from repetition index to split provider.
-    absl::flat_hash_map<int64, std::unique_ptr<SplitProvider>> split_providers;
-  };
-
-  // Creates a new DistributedEpochJob in `distributed_epoch_jobs_`.
-  Status MakeDistributedEpochJob(int64 job_id, int64 dataset_id)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // Restores a `SplitProvider` from the state in `job` and stores it in
+  // `restored`.
+  Status RestoreSplitProvider(const DispatcherState::Job& job,
+                              std::unique_ptr<SplitProvider>& restored)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Makes a split provider for the specified `dataset_id`, and stores it in
   // `split_provider`.
   Status MakeSplitProvider(int64 dataset_id,
                            std::unique_ptr<SplitProvider>& split_provider)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Registers a dataset with the given fingerprint, storing the new dataset's
   // id in `dataset_id`.
   Status RegisterDataset(uint64 fingerprint, const DatasetDef& dataset,
-                         int64& dataset_id) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+                         int64& dataset_id) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Gets a worker's stub from `worker_stubs_`, or if none exists, creates a
   // stub and stores it in `worker_stubs_`. A borrowed pointer to the stub is
   // stored in `out_stub`.
   Status GetOrCreateWorkerStub(const std::string& worker_address,
                                WorkerService::Stub*& out_stub)
-      LOCKS_EXCLUDED(mu_);
+      TF_LOCKS_EXCLUDED(mu_);
   // Creates a job and stores it in `job`. This method updates the
   // dispatcher state with the new job, but does not assign tasks to workers.
   Status CreateJob(int64 dataset_id, ProcessingMode processing_mode,
                    absl::optional<DispatcherState::NamedJobKey> named_job_key,
                    std::shared_ptr<const DispatcherState::Job>& job)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Creates tasks for the specified worker, one task for every unfinished job.
   Status CreateTasksForWorker(const std::string& worker_address);
   // Acquires a job client id to read from the given job and sets
   // `job_client_id`.
   Status AcquireJobClientId(
       const std::shared_ptr<const DispatcherState::Job>& job,
-      int64& job_client_id) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      int64& job_client_id) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Creates one task for each worker, for the given job. The created tasks are
   // stored in `tasks`. This method only updates dispatcher metadata with the
   // new tasks, but doesn't assign the tasks to the workers.
   Status CreateTasksForJob(
       std::shared_ptr<const DispatcherState::Job> job,
       std::vector<std::shared_ptr<const DispatcherState::Task>>& tasks)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Creates a new task for a job, storing the created task in `task`.
   Status CreateTask(std::shared_ptr<const DispatcherState::Job> job,
@@ -142,37 +126,40 @@ class DataServiceDispatcherImpl {
   // `worker_address` fields.
   Status AssignTasks(
       std::vector<std::shared_ptr<const DispatcherState::Task>> tasks)
-      LOCKS_EXCLUDED(mu_);
+      TF_LOCKS_EXCLUDED(mu_);
   // Assigns a task to the worker indicated by its `worker_address` field.
   Status AssignTask(std::shared_ptr<const DispatcherState::Task> task)
-      LOCKS_EXCLUDED(mu_);
+      TF_LOCKS_EXCLUDED(mu_);
   // Validates that an existing job matches the given processing_mode and
   // dataset_id, returning an error status describing any difference.
   Status ValidateMatchingJob(std::shared_ptr<const DispatcherState::Job> job,
                              ProcessingMode processing_mode, int64 dataset_id)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Checks that the dispatcher has started, returning UNAVAILABLE if it hasn't.
-  Status CheckStarted() LOCKS_EXCLUDED(mu_);
+  Status CheckStarted() TF_LOCKS_EXCLUDED(mu_);
+  // Records that a split was produced by a call to `GetSplit`.
+  Status RecordSplitProduced(int64 job_id, int64 repetition, bool finished)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Applies a state update, updating both the journal and the in-memory state.
-  Status Apply(const Update& update) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  Status Apply(const Update& update) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Applies a state update, but doesn't update the journal. Only meant to be
   // used when recovering state when the dispatcher starts.
   Status ApplyWithoutJournaling(const Update& update)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // A thread which periodically checks for jobs to clean up.
   void JobGcThread();
   // Scans for old jobs and marks them as finished.
-  Status GcOldJobs() EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  Status GcOldJobs() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Gets a `DatasetDef` from `dataset_store_` for the given dataset id, and
   // stores it in `dataset_def`.
   Status GetDatasetDef(int64 dataset_id,
                        std::shared_ptr<const DatasetDef>& dataset_def)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Gets a `DatasetDef` from `dataset_store_` for the given dataset, and
   // stores it in `dataset_def`.
   Status GetDatasetDef(const DispatcherState::Dataset& dataset,
                        std::shared_ptr<const DatasetDef>& dataset_def)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   const experimental::DispatcherConfig& config_;
   Env* env_;
@@ -186,10 +173,10 @@ class DataServiceDispatcherImpl {
       worker_stubs_ TF_GUARDED_BY(mu_);
   // Store of dataset definitions.
   std::unique_ptr<DatasetStore> dataset_store_ TF_GUARDED_BY(mu_);
-  // Mapping from job id to `DistributedEpochJob` for jobs with processing mode
+  // Mapping from job id to `SplitProvider`s for jobs with processing mode
   // DISTRIBUTED_EPOCH.
-  absl::flat_hash_map<int64, std::unique_ptr<DistributedEpochJob>>
-      distributed_epoch_jobs_ TF_GUARDED_BY(mu_);
+  absl::flat_hash_map<int64, std::unique_ptr<SplitProvider>> split_providers_
+      TF_GUARDED_BY(mu_);
 
   absl::optional<std::unique_ptr<JournalWriter>> journal_writer_
       TF_GUARDED_BY(mu_);

@@ -1798,8 +1798,10 @@ StatusOr<bool> AlgebraicSimplifierVisitor::RemoveDegenerateDimensionFromDot(
                 ShapeUtil::DropDegenerateDimensions(rhs_shape),
                 dot->mutable_operand(1)))
           : dot->mutable_operand(1);
-  TF_ASSIGN_OR_RETURN(auto new_dot, MakeDotHlo(new_lhs, new_rhs, new_dnums,
-                                               dot->precision_config()));
+  TF_ASSIGN_OR_RETURN(
+      auto new_dot,
+      MakeDotHlo(new_lhs, new_rhs, new_dnums, dot->precision_config(),
+                 /*preferred_element_type=*/dot->shape().element_type()));
   if (ShapeUtil::Compatible(dot->shape(), new_dot->shape())) {
     TF_RETURN_IF_ERROR(ReplaceInstruction(dot, new_dot));
   } else {
@@ -3170,14 +3172,15 @@ Status AlgebraicSimplifierVisitor::HandleCompare(HloInstruction* compare) {
   CHECK(Match(compare, m::Compare(m::Op(&lhs), m::Op(&rhs))));
   {
     // compare(broadcast(a) + x, broadcast(b)) ==>
-    //   compare(x, broadcast(b-a))
+    //   compare(x, broadcast(b-a)), only enabled for integral types.
     HloInstruction *x, *a, *b;
     if (Match(compare,
               m::Compare(
                   m::AddAnyOrder(m::Op(&x), m::Broadcast(m::Op(&a).WithShape(
                                                 m::Shape().IsScalar()))),
                   m::Broadcast(m::Op(&b).WithShape(m::Shape().IsScalar()))))) {
-      if (ShapeUtil::ElementIsSigned(x->shape())) {
+      if (ShapeUtil::ElementIsSigned(x->shape()) &&
+          ShapeUtil::ElementIsIntegral(x->shape())) {
         HloInstruction* sub =
             computation_->AddInstruction(HloInstruction::CreateBinary(
                 b->shape(), HloOpcode::kSubtract, b, a));
@@ -4675,7 +4678,9 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
       }
     }
     TF_ASSIGN_OR_RETURN(
-        auto new_dot, MakeDotHlo(lhs, rhs, new_dnums, dot->precision_config()));
+        auto new_dot,
+        MakeDotHlo(lhs, rhs, new_dnums, dot->precision_config(),
+                   /*preferred_element_type=*/dot->shape().element_type()));
     dot->SetupDerivedInstruction(new_dot);
     if (reduce_dims.empty()) {
       return ReplaceInstruction(hlo, new_dot);
@@ -5219,13 +5224,31 @@ StatusOr<bool> AlgebraicSimplifierVisitor::SwapConvOperands(
   for (int64 spatial_dim = 0;
        spatial_dim < dnums.input_spatial_dimensions_size(); ++spatial_dim) {
     const int64 kernel_size = window_dims[spatial_dim].size();
-    const int64 dilated_kernel_size =
-        1 + (kernel_size - 1) * window_dims[spatial_dim].window_dilation();
-
+    const bool can_be_group_or_contraction =
+        !window_dims[spatial_dim].window_reversal() &&
+        window_dims[spatial_dim].padding_low() == 0 &&
+        window_dims[spatial_dim].padding_high() == 0 &&
+        window_dims[spatial_dim].window_dilation() == 1;
+    const bool is_group_dim =
+        can_be_group_or_contraction &&
+        window_dims[spatial_dim].base_dilation() == kernel_size &&
+        window_dims[spatial_dim].stride() == kernel_size - 1;
     const int64 input_size =
         input->shape().dimensions(dnums.input_spatial_dimensions(spatial_dim));
+    const bool is_pure_contraction_dim =
+        kernel_size == input_size && can_be_group_or_contraction &&
+        window_dims[spatial_dim].base_dilation() == 1 &&
+        window_dims[spatial_dim].stride() == 1;
+    if (is_group_dim || is_pure_contraction_dim) {
+      *(swapped_window.add_dimensions()) = window_dims[spatial_dim];
+      continue;
+    }
+
+    const int64 dilated_kernel_size =
+        1 + (kernel_size - 1) * window_dims[spatial_dim].window_dilation();
     const int64 dilated_input_size =
         1 + (input_size - 1) * window_dims[spatial_dim].base_dilation();
+
     // Don't decide to swap if the input size is one, since many convolution
     // implementations can easily hand that special case efficiently.
     kernel_product *= kernel_size;
@@ -5289,10 +5312,13 @@ StatusOr<bool> AlgebraicSimplifierVisitor::SwapConvOperands(
   if (!reverse_dimensions.empty()) {
     TF_ASSIGN_OR_RETURN(kernel, MakeReverseHlo(kernel, reverse_dimensions));
   }
-  TF_ASSIGN_OR_RETURN(HloInstruction * new_convolution,
-                      MakeConvolveHlo(kernel, input, /*feature_group_count=*/1,
-                                      /*batch_group_count=*/1, swapped_window,
-                                      swapped_dnums, precision_config));
+  TF_ASSIGN_OR_RETURN(
+      HloInstruction * new_convolution,
+      MakeConvolveHlo(
+          kernel, input, /*feature_group_count=*/1,
+          /*batch_group_count=*/1, swapped_window, swapped_dnums,
+          precision_config,
+          /*preferred_element_type=*/convolution->shape().element_type()));
 
   convolution->SetupDerivedInstruction(new_convolution);
   TF_RETURN_IF_ERROR(ReplaceInstruction(convolution, new_convolution));

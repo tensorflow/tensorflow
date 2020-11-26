@@ -52,7 +52,7 @@ load(
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
+load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "filegroup")
@@ -181,6 +181,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":platform",
+        "@com_google_absl//absl/strings:cord",
     ] + tf_platform_deps("cord"),
 )
 
@@ -702,11 +703,12 @@ cc_library(
 
 cc_library(
     name = "strong_hash",
-    hdrs = ["strong_hash.h"],
+    textual_hdrs = ["strong_hash.h"],
     deps = [
         ":platform",
         ":types",
-    ] + tf_platform_deps("strong_hash"),
+        "@highwayhash//:sip_hash",
+    ],
 )
 
 cc_library(
@@ -1286,7 +1288,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test_gpu(
+tf_cuda_cc_test(
     name = "rocm_rocdl_path_test",
     size = "small",
     srcs = ["rocm_rocdl_path_test.cc"],
@@ -1297,7 +1299,9 @@ tf_cc_test_gpu(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-    ],
+    ] + if_rocm_is_configured([
+        "@local_config_rocm//rocm:rocm_headers",
+    ]),
 )
 
 # --------------------------------------------------------------------------
@@ -1480,7 +1484,10 @@ filegroup(
     srcs = [
         "jpeg.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/lib/jpeg:__pkg__",
+    ],
 )
 
 filegroup(
@@ -1488,7 +1495,7 @@ filegroup(
     srcs = [
         "gif.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = ["//tensorflow/core/lib/gif:__pkg__"],
 )
 
 filegroup(
@@ -1503,7 +1510,10 @@ filegroup(
         "tstring.h",
         "types.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/lib/jpeg:__pkg__",
+    ],
 )
 
 filegroup(
@@ -1521,7 +1531,10 @@ filegroup(
         "tstring.h",
         "types.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/lib/jpeg:__pkg__",
+    ],
 )
 
 filegroup(
@@ -1538,7 +1551,10 @@ filegroup(
         "tstring.h",
         "types.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/lib/gif:__pkg__",
+    ],
 )
 
 # Export source files needed for mobile builds, which do not use granular targets.

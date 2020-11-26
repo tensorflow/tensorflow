@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -646,6 +647,7 @@ HloAllGatherInstruction::CloneWithNewOperandsImpl(
 HloInstructionProto HloAllGatherInstruction::ToProto() const {
   HloInstructionProto proto = HloCollectiveInstruction::ToProto();
   proto.add_dimensions(all_gather_dimension_);
+  proto.set_use_global_device_ids(use_global_device_ids_);
   return proto;
 }
 
@@ -2199,7 +2201,6 @@ std::vector<string> HloConvolutionInstruction::ExtraAttributesToStringImpl(
   if (!precision_config_string.empty()) {
     extra.push_back(precision_config_string);
   }
-
   return extra;
 }
 
@@ -2237,9 +2238,21 @@ HloConvolutionInstruction::CloneWithNewOperandsImpl(
 HloReduceWindowInstruction::HloReduceWindowInstruction(
     const Shape& shape, HloInstruction* operand, HloInstruction* init_value,
     const Window& window, HloComputation* reduce_computation)
+    : HloReduceWindowInstruction(shape, absl::MakeSpan(&operand, 1),
+                                 absl::MakeSpan(&init_value, 1), window,
+                                 reduce_computation) {}
+
+HloReduceWindowInstruction::HloReduceWindowInstruction(
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    absl::Span<HloInstruction* const> init_values, const Window& window,
+    HloComputation* reduce_computation)
     : HloInstruction(HloOpcode::kReduceWindow, shape), window_(window) {
-  AppendOperand(operand);
-  AppendOperand(init_value);
+  for (auto* operand : operands) {
+    AppendOperand(operand);
+  }
+  for (auto* init_value : init_values) {
+    AppendOperand(init_value);
+  }
   AppendComputation(reduce_computation);
 }
 
@@ -2334,6 +2347,7 @@ HloCustomCallInstruction::HloCustomCallInstruction(
       feature_group_count_(1),
       batch_group_count_(1),
       layout_constrained_(false),
+      padding_type_(PaddingType::PADDING_INVALID),
       custom_call_has_side_effect_(false) {
   set_raw_backend_config_string(std::move(opaque));
   for (auto operand : operands) {
@@ -2350,12 +2364,33 @@ HloCustomCallInstruction::HloCustomCallInstruction(
       feature_group_count_(1),
       batch_group_count_(1),
       layout_constrained_(false),
+      padding_type_(PaddingType::PADDING_INVALID),
       custom_call_has_side_effect_(false) {
   set_raw_backend_config_string(std::move(opaque));
   for (auto operand : operands) {
     AppendOperand(operand);
   }
   AppendComputation(to_apply);
+}
+
+HloCustomCallInstruction::HloCustomCallInstruction(
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    absl::Span<HloComputation* const> called_computations,
+    absl::string_view custom_call_target, string opaque)
+    : HloInstruction(HloOpcode::kCustomCall, shape),
+      custom_call_target_(custom_call_target.begin(), custom_call_target.end()),
+      feature_group_count_(1),
+      batch_group_count_(1),
+      layout_constrained_(false),
+      padding_type_(PaddingType::PADDING_INVALID),
+      custom_call_has_side_effect_(false) {
+  set_raw_backend_config_string(std::move(opaque));
+  for (auto operand : operands) {
+    AppendOperand(operand);
+  }
+  for (auto comp : called_computations) {
+    AppendComputation(comp);
+  }
 }
 
 HloCustomCallInstruction::HloCustomCallInstruction(
@@ -2367,6 +2402,7 @@ HloCustomCallInstruction::HloCustomCallInstruction(
       feature_group_count_(1),
       batch_group_count_(1),
       layout_constrained_(true),
+      padding_type_(PaddingType::PADDING_INVALID),
       operand_shapes_with_layout_(operand_shapes_with_layout.begin(),
                                   operand_shapes_with_layout.end()),
       custom_call_has_side_effect_(false) {
@@ -2388,6 +2424,8 @@ HloInstructionProto HloCustomCallInstruction::ToProto() const {
   proto.set_custom_call_target(custom_call_target_);
   proto.set_feature_group_count(feature_group_count_);
   proto.set_batch_group_count(batch_group_count_);
+  *proto.mutable_precision_config() = precision_config_;
+  proto.set_padding_type(padding_type_);
   if (layout_constrained()) {
     proto.set_constrain_layout(true);
     for (const Shape& shape : operand_shapes_with_layout_) {
@@ -2424,6 +2462,13 @@ std::vector<string> HloCustomCallInstruction::ExtraAttributesToStringImpl(
   }
   if (batch_group_count_ != 1) {
     extra.push_back(StrCat("batch_group_count=", batch_group_count_));
+  }
+  string precision_config_string = PrecisionConfigToString(precision_config_);
+  if (!precision_config_string.empty()) {
+    extra.push_back(precision_config_string);
+  }
+  if (padding_type_ != PaddingType::PADDING_INVALID) {
+    extra.push_back(StrCat("padding_type=", PaddingType_Name(padding_type())));
   }
   // By contract, we print the custom call target even if
   // options.print_subcomputation_mode() == kOff, because the call target is not
@@ -2480,6 +2525,11 @@ bool HloCustomCallInstruction::IdenticalSlowPath(
   if (batch_group_count_ != casted_other.batch_group_count_) {
     return false;
   }
+
+  if (padding_type_ != casted_other.padding_type()) {
+    return false;
+  }
+
   if (layout_constrained() != casted_other.layout_constrained()) {
     return false;
   }
@@ -2499,6 +2549,21 @@ bool HloCustomCallInstruction::IdenticalSlowPath(
       casted_other.output_to_operand_aliasing()) {
     return false;
   }
+  if (!protobuf_util::ProtobufEquals(precision_config(),
+                                     casted_other.precision_config())) {
+    return false;
+  }
+
+  if (called_computations().size() != other.called_computations().size()) {
+    return false;
+  }
+  for (int64 i = 0; i < called_computations().size(); ++i) {
+    if (!eq_computations(called_computations()[i],
+                         other.called_computations()[i])) {
+      return false;
+    }
+  }
+
   // Note: backend_config comparison is done in Identical, which is the
   // intended/exposed way to compare computations, and so not repeated here.
   return custom_call_target_ == casted_other.custom_call_target_;
@@ -2524,6 +2589,8 @@ HloCustomCallInstruction::CloneWithNewOperandsImpl(
   cloned->set_batch_group_count(batch_group_count_);
   cloned->set_custom_call_has_side_effect(custom_call_has_side_effect_);
   cloned->set_output_to_operand_aliasing(output_to_operand_aliasing_);
+  cloned->set_padding_type(padding_type_);
+  *cloned->mutable_precision_config() = precision_config();
   return std::move(cloned);
 }
 

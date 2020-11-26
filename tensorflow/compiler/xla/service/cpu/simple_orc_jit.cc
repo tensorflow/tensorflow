@@ -85,6 +85,8 @@ SimpleOrcJIT::InferTargetMachineForJIT(
 }
 
 SimpleOrcJIT::SimpleOrcJIT(
+    std::unique_ptr<llvm::orc::TargetProcessControl> target_process_control,
+    std::unique_ptr<llvm::orc::ExecutionSession> execution_session,
     const llvm::TargetOptions& target_options,
     llvm::CodeGenOpt::Level opt_level, bool optimize_for_size,
     bool disable_expensive_passes, llvm::FastMathFlags fast_math_flags,
@@ -93,48 +95,91 @@ SimpleOrcJIT::SimpleOrcJIT(
     std::function<void(const llvm::object::ObjectFile&)> post_codegen_hook)
     : target_machine_(InferTargetMachineForJIT(target_options, opt_level)),
       data_layout_(target_machine_->createDataLayout()),
-      symbol_resolver_(llvm::orc::createLegacyLookupResolver(
-          execution_session_,
-          [this](llvm::StringRef name) -> llvm::JITSymbol {
-            return this->ResolveRuntimeSymbol(std::string(name));
-          },
-          [](llvm::Error Err) {
-            cantFail(std::move(Err), "lookupFlags failed");
-          })),
-      object_layer_(
-          execution_session_,
-          [this](llvm::orc::VModuleKey) {
-            llvm::orc::LegacyRTDyldObjectLinkingLayer::Resources result;
-            result.MemMgr = std::make_shared<llvm::SectionMemoryManager>(
-                orc_jit_memory_mapper::GetInstance());
-            result.Resolver = symbol_resolver_;
-            return result;
-          },
-          /*NotifyLoaded=*/
-          llvm::orc::LegacyRTDyldObjectLinkingLayer::NotifyLoadedFtor(),
-          /*NotifyFinalized=*/
-          [this](VModuleKeyT, const llvm::object::ObjectFile& object,
-                 const llvm::RuntimeDyld::LoadedObjectInfo& object_info) {
-            this->NotifyObjectFinalized(object, object_info);
-          },
-          /*NotifyFreed=*/
-          [this](VModuleKeyT, const llvm::object::ObjectFile& object) {
-            this->NotifyObjectFreed(object);
-          }),
+      target_process_control_(std::move(target_process_control)),
+      execution_session_(std::move(execution_session)),
+      object_layer_(*execution_session_,
+                    []() {
+                      return std::make_unique<llvm::SectionMemoryManager>(
+                          orc_jit_memory_mapper::GetInstance());
+                    }),
       compile_layer_(
-          object_layer_,
-          CompilerFunctor(target_machine_.get(), opt_level, optimize_for_size,
-                          disable_expensive_passes, fast_math_flags,
-                          std::move(pre_optimization_hook),
-                          std::move(post_optimization_hook),
-                          std::move(post_codegen_hook))),
+          *execution_session_, object_layer_,
+          std::make_unique<CompilerFunctor>(
+              target_machine_.get(), opt_level, optimize_for_size,
+              disable_expensive_passes, fast_math_flags,
+              std::move(pre_optimization_hook),
+              std::move(post_optimization_hook), std::move(post_codegen_hook))),
+      main_jit_dylib_(&execution_session_->createBareJITDylib("<main>")),
       gdb_jit_event_listener_(
           llvm::JITEventListener::createGDBRegistrationListener()) {
   VLOG(1) << "CPU target: " << target_machine_->getTargetCPU().str()
           << " features: " << target_machine_->getTargetFeatureString().str();
+
+  // Materialize unknown symbols from the runtime symbol table.
+  class RuntimeSymbolGenerator : public llvm::orc::DefinitionGenerator {
+    SimpleOrcJIT& jit_;
+
+   public:
+    explicit RuntimeSymbolGenerator(SimpleOrcJIT& jit) : jit_(jit) {}
+    llvm::Error tryToGenerate(
+        llvm::orc::LookupState&, llvm::orc::LookupKind,
+        llvm::orc::JITDylib& jit_dylib, llvm::orc::JITDylibLookupFlags,
+        const llvm::orc::SymbolLookupSet& names) override {
+      llvm::orc::SymbolMap new_defs;
+
+      for (const auto& kv : names) {
+        const auto& name = kv.first;
+        if (llvm::JITEvaluatedSymbol symbol =
+                jit_.ResolveRuntimeSymbol(*name)) {
+          new_defs[name] = symbol;
+        }
+      }
+
+      cantFail(jit_dylib.define(absoluteSymbols(std::move(new_defs))));
+      return llvm::Error::success();
+    }
+  };
+  main_jit_dylib_->addGenerator(
+      std::make_unique<RuntimeSymbolGenerator>(*this));
+  object_layer_.registerJITEventListener(*this);
+
+  // Copied from LLJIT, required to find symbols on Windows.
+  if (target_machine_->getTargetTriple().isOSBinFormatCOFF()) {
+    object_layer_.setOverrideObjectFlagsWithResponsibilityFlags(true);
+    object_layer_.setAutoClaimResponsibilityForObjectSymbols(true);
+  }
 }
 
-llvm::JITSymbol SimpleOrcJIT::ResolveRuntimeSymbol(const std::string& name) {
+SimpleOrcJIT::~SimpleOrcJIT() {
+  if (auto err = execution_session_->endSession()) {
+    execution_session_->reportError(std::move(err));
+  }
+}
+
+llvm::Expected<std::unique_ptr<SimpleOrcJIT>> SimpleOrcJIT::Create(
+    const llvm::TargetOptions& target_options,
+    llvm::CodeGenOpt::Level opt_level, bool optimize_for_size,
+    bool disable_expensive_passes, llvm::FastMathFlags fast_math_flags,
+    LLVMCompiler::ModuleHook pre_optimization_hook,
+    LLVMCompiler::ModuleHook post_optimization_hook,
+    std::function<void(const llvm::object::ObjectFile&)> post_codegen_hook) {
+  auto SSP = std::make_shared<llvm::orc::SymbolStringPool>();
+  auto target_process_control =
+      llvm::orc::SelfTargetProcessControl::Create(std::move(SSP));
+  if (!target_process_control) {
+    return target_process_control.takeError();
+  }
+
+  auto execution_session = std::make_unique<llvm::orc::ExecutionSession>();
+  return std::make_unique<SimpleOrcJIT>(
+      std::move(*target_process_control), std::move(execution_session),
+      target_options, opt_level, optimize_for_size, disable_expensive_passes,
+      fast_math_flags, std::move(pre_optimization_hook),
+      std::move(post_optimization_hook), std::move(post_codegen_hook));
+}
+
+llvm::JITEvaluatedSymbol SimpleOrcJIT::ResolveRuntimeSymbol(
+    llvm::StringRef name) {
   void* func_addr = nullptr;
   if (name.size() > 1 && name.front() == data_layout_.getGlobalPrefix()) {
     // On Mac OS X, 'name' may have a leading underscore prefix, even though the
@@ -143,12 +188,13 @@ llvm::JITSymbol SimpleOrcJIT::ResolveRuntimeSymbol(const std::string& name) {
     func_addr =
         xla::CustomCallTargetRegistry::Global()->Lookup(stripped_name, "Host");
   } else {
-    func_addr = xla::CustomCallTargetRegistry::Global()->Lookup(name, "Host");
+    func_addr =
+        xla::CustomCallTargetRegistry::Global()->Lookup(name.str(), "Host");
   }
 
   if (func_addr == nullptr) {
     LOG(ERROR)
-        << "Unable to resolve runtime symbol: `" << name
+        << "Unable to resolve runtime symbol: `" << name.str()
         << "'.  Hint: if the symbol a custom call target, make sure you've "
            "registered it with the JIT using "
            "XLA_CPU_REGISTER_CUSTOM_CALL_TARGET.";
@@ -159,60 +205,25 @@ llvm::JITSymbol SimpleOrcJIT::ResolveRuntimeSymbol(const std::string& name) {
   return symbol_info;
 }
 
-void SimpleOrcJIT::NotifyObjectFinalized(
+void SimpleOrcJIT::notifyObjectLoaded(
+    llvm::JITEventListener::ObjectKey key,
     const llvm::object::ObjectFile& object,
     const llvm::RuntimeDyld::LoadedObjectInfo& object_info) {
-  uint64_t key = static_cast<uint64_t>(
-      reinterpret_cast<uintptr_t>(object.getData().data()));
   gdb_jit_event_listener_->notifyObjectLoaded(key, object, object_info);
   size_of_generated_code_in_bytes_ += object.getData().size();
 }
 
-void SimpleOrcJIT::NotifyObjectFreed(const llvm::object::ObjectFile& object) {
-  uint64_t key = static_cast<uint64_t>(
-      reinterpret_cast<uintptr_t>(object.getData().data()));
+void SimpleOrcJIT::notifyFreeingObject(llvm::JITEventListener::ObjectKey key) {
   gdb_jit_event_listener_->notifyFreeingObject(key);
 }
 
-SimpleOrcJIT::VModuleKeyT SimpleOrcJIT::AddModule(
-    std::unique_ptr<llvm::Module> module) {
-  auto key = execution_session_.allocateVModule();
-  cantFail(compile_layer_.addModule(key, std::move(module)));
-  module_keys_.push_back(key);
-  return key;
+llvm::Error SimpleOrcJIT::AddModule(llvm::orc::ThreadSafeModule module) {
+  return compile_layer_.add(*main_jit_dylib_, std::move(module));
 }
 
-void SimpleOrcJIT::RemoveModule(SimpleOrcJIT::VModuleKeyT key) {
-  module_keys_.erase(std::remove(module_keys_.begin(), module_keys_.end(), key),
-                     module_keys_.end());
-  cantFail(compile_layer_.removeModule(key));
-}
-
-llvm::JITSymbol SimpleOrcJIT::FindCompiledSymbol(const std::string& name) {
-#ifdef _WIN32
-  // The symbol lookup of ObjectLinkingLayer uses the SymbolRef::SF_Exported
-  // flag to decide whether a symbol will be visible or not, when we call
-  // IRCompileLayer::findSymbolIn with ExportedSymbolsOnly set to true.
-  //
-  // But for Windows COFF objects, this flag is currently never set.
-  // For a potential solution see: https://reviews.llvm.org/rL258665
-  // For now, we allow non-exported symbols on Windows as a workaround.
-  const bool exported_symbols_only = false;
-#else
-  const bool exported_symbols_only = true;
-#endif
-
-  // Resolve symbol from last module to first, allowing later redefinitions of
-  // symbols shadow earlier ones.
-  for (auto& key :
-       llvm::make_range(module_keys_.rbegin(), module_keys_.rend())) {
-    if (auto symbol =
-            compile_layer_.findSymbolIn(key, name, exported_symbols_only)) {
-      return symbol;
-    }
-  }
-
-  return nullptr;
+llvm::Expected<llvm::JITEvaluatedSymbol> SimpleOrcJIT::FindCompiledSymbol(
+    const std::string& name) {
+  return execution_session_->lookup({main_jit_dylib_}, name);
 }
 
 #if defined(PLATFORM_WINDOWS)

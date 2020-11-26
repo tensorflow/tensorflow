@@ -409,10 +409,9 @@ Status OutfeedReceiverImpl::SendShutdownOutfeedHeader(int device_idx) {
   compile_options.executable_build_options.set_device_assignment(
       device_assignment);
 
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<PjRtExecutable> executable,
-      PjRtExecutable::Compile(computation, devices_[device_idx]->client(),
-                              std::move(compile_options)));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
+                      devices_[device_idx]->client()->Compile(
+                          computation, std::move(compile_options)));
   ExecuteOptions execute_options;
   TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<PjRtBuffer>> output_buffers,
                       executable->Execute({}, execute_options));

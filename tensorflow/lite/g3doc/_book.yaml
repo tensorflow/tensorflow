@@ -42,7 +42,7 @@ upper_tabs:
       - heading: "Text"
       - title: "Text classification with Model Maker"
         path: /lite/tutorials/model_maker_text_classification
-      - title: "Question Answer with Model Maker"
+      - title: "BERT Question Answer with Model Maker"
         path: /lite/tutorials/model_maker_question_answer
 
       - heading: "Microcontrollers"
@@ -110,7 +110,7 @@ upper_tabs:
       - heading: "Run Inference with metadata"
       - title: "Overview"
         path: /lite/inference_with_metadata/overview
-      - title: "Generate model interfaces with codegen"
+      - title: "Generate model interfaces using metadata"
         path: /lite/inference_with_metadata/codegen
       - title: "Integrate models with Task Library"
         path: /lite/inference_with_metadata/task_library/overview
@@ -139,7 +139,6 @@ upper_tabs:
         path: /lite/performance/measurement
       - title: "Delegates"
         path: /lite/performance/delegates
-        status: experimental
       - title: "GPU delegate"
         path: /lite/performance/gpu
       - title: "Advanced GPU"
@@ -148,9 +147,11 @@ upper_tabs:
         path: /lite/performance/nnapi
       - title: "Hexagon delegate"
         path: /lite/performance/hexagon_delegate
-        status: experimental
       - title: "Core ML delegate"
         path: /lite/performance/coreml_delegate
+        status: experimental
+      - title: "Implementing a delegate"
+        path: /lite/performance/implementing_delegate
         status: experimental
 
       - heading: "Optimize a model"
@@ -214,7 +215,7 @@ upper_tabs:
       - title: "Style transfer"
         path: /lite/models/style_transfer/overview
       - heading: "Text"
-      - title: "Question and answer"
+      - title: "BERT Question Answer"
         path: /lite/models/bert_qa/overview
       - title: "Smart reply"
         path: /lite/models/smart_reply/overview

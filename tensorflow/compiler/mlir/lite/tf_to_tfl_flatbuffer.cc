@@ -137,8 +137,10 @@ StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
 Status ConvertTFExecutorToTFLOrFlatbuffer(
     mlir::ModuleOp module, bool export_to_mlir, bool emit_builtin_tflite_ops,
     bool emit_select_tf_ops, bool emit_custom_ops,
-    const mlir::TFL::QuantizationSpecs& quant_specs, std::string* result,
-    mlir::PassManager* pass_manager) {
+    const std::unordered_set<std::string>& select_user_tf_ops,
+    const mlir::TFL::QuantizationSpecs& quant_specs,
+    const std::unordered_set<std::string>& saved_model_tags,
+    std::string* result, mlir::PassManager* pass_manager) {
   // Explicitly disable dumping Op details on failures.
   module.getContext()->printOpOnDiagnostic(false);
 
@@ -168,10 +170,12 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
   }
 
   // Write MLIR TFLite dialect into FlatBuffer
+  OpOrArgLocNameMapper op_or_arg_name_mapper;
   if (!quant_specs.RunWeightQuantization()) {
     if (tflite::MlirToFlatBufferTranslateFunction(
             module, result, emit_builtin_tflite_ops, emit_select_tf_ops,
-            emit_custom_ops)) {
+            emit_custom_ops, select_user_tf_ops, saved_model_tags,
+            &op_or_arg_name_mapper)) {
       return statusHandler.ConsumeStatus();
     }
   } else {
@@ -180,7 +184,8 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
     std::string pre_quantized_result;
     if (tflite::MlirToFlatBufferTranslateFunction(
             module, &pre_quantized_result, emit_builtin_tflite_ops,
-            emit_select_tf_ops, emit_custom_ops)) {
+            emit_select_tf_ops, emit_custom_ops, select_user_tf_ops,
+            saved_model_tags, &op_or_arg_name_mapper)) {
       return statusHandler.ConsumeStatus();
     }
     flatbuffers::FlatBufferBuilder q_builder(/*initial_size=*/10240);

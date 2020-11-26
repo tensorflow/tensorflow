@@ -35,7 +35,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops_v2
 from tensorflow.python.ops import linalg_ops_impl
-from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import variables
 from tensorflow.python.training.server_lib import ClusterSpec
 from tensorflow.python.training.tracking import tracking
@@ -77,11 +76,13 @@ class ParameterServerStrategyV2Test(test.TestCase):
 
 class PartitionAwareIdentity(object):
 
-  def __call__(self, shape, dtype, shard_info):
+  def __call__(self, shape, dtype, **kwargs):
     value = linalg_ops_impl.eye(*shape, dtype=dtype)
-    if shard_info is not None:
-      value = array_ops.slice(value, shard_info.offset, shard_info.shape)
-    return value
+    if "partition_shape" in kwargs and "partition_offset" in kwargs:
+      return array_ops.slice(value, kwargs["partition_offset"],
+                             kwargs["partition_shape"])
+    raise AssertionError("PartitionAwareIdentity do not support "
+                         "non-partitioned initialization")
 
 
 class VariablePartitioningTest(test.TestCase, parameterized.TestCase):
@@ -108,7 +109,7 @@ class VariablePartitioningTest(test.TestCase, parameterized.TestCase):
 
   def testBasic(self):
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
-        self.cluster_resolver, partitioned_variables.fixed_size_partitioner(2))
+        self.cluster_resolver, sharded_variable.FixedShardsPartitioner(2))
     with strategy.scope():
       init1 = init_ops_v2.Constant([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
       v1 = variables.Variable(
@@ -138,7 +139,7 @@ class VariablePartitioningTest(test.TestCase, parameterized.TestCase):
 
   def testNonCallableInitialValue(self):
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
-        self.cluster_resolver, partitioned_variables.fixed_size_partitioner(4))
+        self.cluster_resolver, sharded_variable.FixedShardsPartitioner(4))
     with strategy.scope():
       v = variables.Variable([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
 
@@ -155,7 +156,7 @@ class VariablePartitioningTest(test.TestCase, parameterized.TestCase):
 
   def testNumPartitionsLargerThanSize(self):
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
-        self.cluster_resolver, partitioned_variables.fixed_size_partitioner(4))
+        self.cluster_resolver, sharded_variable.FixedShardsPartitioner(4))
     with strategy.scope():
       v = variables.Variable([0, 1, 2])
 
@@ -170,8 +171,8 @@ class VariablePartitioningTest(test.TestCase, parameterized.TestCase):
 
   def testPartitionToOne(self):
     # For small variables there is only one partition.
-    variable_partitioner = partitioned_variables.min_max_variable_partitioner(
-        max_partitions=2, min_slice_size=64 << 20)
+    variable_partitioner = sharded_variable.MinSizePartitioner(
+        min_shard_bytes=64 << 20, max_shards=2)
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
         self.cluster_resolver, variable_partitioner)
     with strategy.scope():
@@ -195,7 +196,7 @@ class VariablePartitioningTest(test.TestCase, parameterized.TestCase):
 
   def testColocateWith(self):
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
-        self.cluster_resolver, partitioned_variables.fixed_size_partitioner(2))
+        self.cluster_resolver, sharded_variable.FixedShardsPartitioner(2))
     with strategy.scope():
       v1 = variables.Variable([0, 1, 2, 3])
 
@@ -209,9 +210,9 @@ class VariablePartitioningTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(v2.device, v1.variables[0].device)
     self.assertAllEqual(v2, [4, 5])
 
-  def testPartitionAwareInitializer(self):
+  def testCustomPartitionAwareInitializer(self):
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
-        self.cluster_resolver, partitioned_variables.fixed_size_partitioner(2))
+        self.cluster_resolver, sharded_variable.FixedShardsPartitioner(2))
     with strategy.scope():
       initializer = PartitionAwareIdentity()
       initial_value = functools.partial(
@@ -228,7 +229,7 @@ class VariablePartitioningTest(test.TestCase, parameterized.TestCase):
 
   def testPartitionWhenLackOfInfo(self):
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
-        self.cluster_resolver, partitioned_variables.fixed_size_partitioner(2))
+        self.cluster_resolver, sharded_variable.FixedShardsPartitioner(2))
     with strategy.scope():
       initializer = init_ops_v2.Constant([0, 1, 2, 3])
       # Shape is not explicitly specified.
@@ -278,7 +279,7 @@ class VariablePartitioningTest(test.TestCase, parameterized.TestCase):
 
   def testCreateInsideTFFunction(self):
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
-        self.cluster_resolver, partitioned_variables.fixed_size_partitioner(2))
+        self.cluster_resolver, sharded_variable.FixedShardsPartitioner(2))
 
     collection = []
 
@@ -327,7 +328,7 @@ class VariablePartitioningTest(test.TestCase, parameterized.TestCase):
             getter=make_variable)
 
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
-        self.cluster_resolver, partitioned_variables.fixed_size_partitioner(2))
+        self.cluster_resolver, sharded_variable.FixedShardsPartitioner(2))
     ckpt_dir = os.path.join(self.get_temp_dir(), "checkpoint")
 
     with strategy.scope():
@@ -342,7 +343,7 @@ class VariablePartitioningTest(test.TestCase, parameterized.TestCase):
 
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
         self.cluster_resolver,
-        partitioned_variables.fixed_size_partitioner(restore_shards))
+        sharded_variable.FixedShardsPartitioner(restore_shards))
 
     with strategy.scope():
       model2 = Model()
@@ -363,6 +364,96 @@ class VariablePartitioningTest(test.TestCase, parameterized.TestCase):
         self.assertAllEqual(model2.w.variables[1], [2.])
         self.assertAllEqual(model2.w.variables[2], [3.])
         self.assertAllEqual(model2.w.variables[3], [4.])
+
+
+class ClusterTypeNameTest(test.TestCase):
+
+  def testArbitraryChiefName(self):
+    cluster_def = multi_worker_test_base._create_cluster(
+        num_workers=1,
+        num_ps=1,
+        has_chief=True,
+        chief_name="some_arbitrary_name")
+    cluster_def["chief"] = [
+        "localhost:%d" % multi_worker_test_base.pick_unused_port()
+    ]
+    cluster_resolver = SimpleClusterResolver(
+        ClusterSpec(cluster_def), rpc_layer="grpc")
+    with self.assertRaisesRegexp(ValueError, "Disallowed task type found in"):
+      parameter_server_strategy_v2.ParameterServerStrategyV2(cluster_resolver)
+
+  def testArbitraryWorkerName(self):
+    cluster_def = multi_worker_test_base._create_cluster(
+        num_workers=1, num_ps=1, worker_name="some_arbitrary_name")
+    cluster_def["chief"] = [
+        "localhost:%d" % multi_worker_test_base.pick_unused_port()
+    ]
+    cluster_resolver = SimpleClusterResolver(
+        ClusterSpec(cluster_def), rpc_layer="grpc")
+    with self.assertRaisesRegexp(ValueError, "Disallowed task type found in"):
+      parameter_server_strategy_v2.ParameterServerStrategyV2(cluster_resolver)
+
+  def testArbitraryPsName(self):
+    cluster_def = multi_worker_test_base._create_cluster(
+        num_workers=1, num_ps=1, ps_name="some_arbitrary_name")
+    cluster_def["chief"] = [
+        "localhost:%d" % multi_worker_test_base.pick_unused_port()
+    ]
+    cluster_resolver = SimpleClusterResolver(
+        ClusterSpec(cluster_def), rpc_layer="grpc")
+    with self.assertRaisesRegexp(ValueError, "Disallowed task type found in"):
+      parameter_server_strategy_v2.ParameterServerStrategyV2(cluster_resolver)
+
+  def testArbitraryCurrentTaskType(self):
+    cluster_def = multi_worker_test_base._create_cluster(
+        num_workers=1, num_ps=1)
+    cluster_def["chief"] = [
+        "localhost:%d" % multi_worker_test_base.pick_unused_port()
+    ]
+    cluster_resolver = SimpleClusterResolver(
+        ClusterSpec(cluster_def), rpc_layer="grpc", task_type="foobar")
+    with self.assertRaisesRegexp(ValueError, "Unrecognized task_type: foobar"):
+      parameter_server_strategy_v2.ParameterServerStrategyV2(cluster_resolver)
+
+  def testMoreThanOneChief(self):
+    cluster_def = multi_worker_test_base._create_cluster(
+        num_workers=1, num_ps=1)
+    chief_ports = [multi_worker_test_base.pick_unused_port() for _ in range(3)]
+    cluster_def["chief"] = ["localhost:%s" % port for port in chief_ports]
+    cluster_resolver = SimpleClusterResolver(
+        ClusterSpec(cluster_def),
+        rpc_layer="grpc",
+        task_type="chief",
+        task_id=1)
+    with self.assertRaisesRegexp(ValueError,
+                                 "There must be at most one 'chief' job."):
+      parameter_server_strategy_v2.ParameterServerStrategyV2(cluster_resolver)
+
+  def testLessThanOneWorker(self):
+    cluster_def = multi_worker_test_base._create_cluster(
+        num_workers=0, num_ps=1)
+    cluster_def["chief"] = [
+        "localhost:%d" % multi_worker_test_base.pick_unused_port()
+    ]
+    cluster_resolver = SimpleClusterResolver(
+        ClusterSpec(cluster_def), rpc_layer="grpc", task_type="ps", task_id=0)
+    with self.assertRaisesRegexp(ValueError,
+                                 "There must be at least one worker."):
+      parameter_server_strategy_v2.ParameterServerStrategyV2(cluster_resolver)
+
+  def testLessThanOnePs(self):
+    cluster_def = multi_worker_test_base._create_cluster(
+        num_workers=1, num_ps=0)
+    cluster_def["chief"] = [
+        "localhost:%d" % multi_worker_test_base.pick_unused_port()
+    ]
+    cluster_resolver = SimpleClusterResolver(
+        ClusterSpec(cluster_def),
+        rpc_layer="grpc",
+        task_type="worker",
+        task_id=0)
+    with self.assertRaisesRegexp(ValueError, "There must be at least one ps."):
+      parameter_server_strategy_v2.ParameterServerStrategyV2(cluster_resolver)
 
 
 if __name__ == "__main__":

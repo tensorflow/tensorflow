@@ -19,6 +19,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include "tensorflow/c/c_api.h"
+#include "tensorflow/c/experimental/stream_executor/stream_executor.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_tensor.h"
@@ -64,6 +65,11 @@ typedef struct TF_Tensor TF_Tensor;
 typedef struct TF_KernelBuilder TF_KernelBuilder;
 typedef struct TF_OpKernelConstruction TF_OpKernelConstruction;
 typedef struct TF_OpKernelContext TF_OpKernelContext;
+
+// TF_InitKernel to do op/kernel registration.
+// Plugin should implement TF_InitKernel to register kernels. This function
+// should register all kernels in a plugin.
+void TF_InitKernel();
 
 // Allocates a new kernel builder and returns a pointer to it.
 //
@@ -127,6 +133,16 @@ TF_CAPI_EXPORT extern void TF_DeleteKernelBuilder(TF_KernelBuilder* builder);
 
 // --------------------------------------------------------------------------
 // OpKernelContext routines
+
+// TF_GetStream returns the SP_Stream available in ctx.
+// This function returns a stream only for devices registered using the
+// StreamExecutor C API
+// (tensorflow/c/experimental/stream_executor/stream_executor.h). It will return
+// nullptr and set error status in all other cases.
+// Experimental: this function doesn't have compatibility guarantees and subject
+// to change at any time.
+TF_CAPI_EXPORT extern SP_Stream TF_GetStream(TF_OpKernelContext* ctx,
+                                             TF_Status* status);
 
 // TF_NumInputs returns the number of inputs available in ctx.
 TF_CAPI_EXPORT extern int TF_NumInputs(TF_OpKernelContext* ctx);

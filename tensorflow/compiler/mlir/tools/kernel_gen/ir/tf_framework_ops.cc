@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_status.cc.inc"
 
 namespace mlir {
 namespace kernel_gen {
@@ -61,10 +62,10 @@ LogicalResult Verify(OpTy op) {
 }
 
 //===----------------------------------------------------------------------===//
-// AllocRawOp
+// TFAllocOp
 //===----------------------------------------------------------------------===//
 template <>
-LogicalResult Verify<AllocRawOp>(AllocRawOp op) {
+LogicalResult Verify<TFAllocOp>(TFAllocOp op) {
   // Check that the total number of operands matches the number of dynamic
   // dimensions specified in the memref type.
   unsigned result_dyn_dims = op.getType().getNumDynamicDims();
@@ -75,6 +76,46 @@ LogicalResult Verify<AllocRawOp>(AllocRawOp op) {
            << " does not match dynamic dimensions count in the result type"
            << op.getType();
   return success();
+}
+
+::tensorflow::error::Code ConvertAttrToEnumValue(ErrorCode error_code) {
+  using ::tensorflow::error::Code;
+  switch (error_code) {
+    case ErrorCode::OK:
+      return Code::OK;
+    case ErrorCode::CANCELLED:
+      return Code::CANCELLED;
+    case ErrorCode::UNKNOWN:
+      return Code::UNKNOWN;
+    case ErrorCode::INVALID_ARGUMENT:
+      return Code::INVALID_ARGUMENT;
+    case ErrorCode::DEADLINE_EXCEEDED:
+      return Code::DEADLINE_EXCEEDED;
+    case ErrorCode::NOT_FOUND:
+      return Code::NOT_FOUND;
+    case ErrorCode::ALREADY_EXISTS:
+      return Code::ALREADY_EXISTS;
+    case ErrorCode::PERMISSION_DENIED:
+      return Code::PERMISSION_DENIED;
+    case ErrorCode::UNAUTHENTICATED:
+      return Code::UNAUTHENTICATED;
+    case ErrorCode::RESOURCE_EXHAUSTED:
+      return Code::RESOURCE_EXHAUSTED;
+    case ErrorCode::FAILED_PRECONDITION:
+      return Code::FAILED_PRECONDITION;
+    case ErrorCode::ABORTED:
+      return Code::ABORTED;
+    case ErrorCode::OUT_OF_RANGE:
+      return Code::OUT_OF_RANGE;
+    case ErrorCode::UNIMPLEMENTED:
+      return Code::UNIMPLEMENTED;
+    case ErrorCode::INTERNAL:
+      return Code::INTERNAL;
+    case ErrorCode::UNAVAILABLE:
+      return Code::UNAVAILABLE;
+    case ErrorCode::DATA_LOSS:
+      return Code::DATA_LOSS;
+  }
 }
 
 }  // namespace tf_framework

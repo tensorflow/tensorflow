@@ -290,7 +290,7 @@ class TestSaveModel(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_saving_model_with_custom_object(self):
-    with generic_utils.custom_object_scope():
+    with generic_utils.custom_object_scope(), self.cached_session():
 
       @generic_utils.register_keras_serializable()
       class CustomLoss(losses.MeanSquaredError):

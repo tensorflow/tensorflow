@@ -27,7 +27,6 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import combinations
@@ -459,16 +458,6 @@ class CheckpointingTests(keras_parameterized.TestCase):
           self.assertEqual(training_continuation + 1,
                            self.evaluate(root.save_counter))
   # pylint: enable=cell-var-from-loop
-
-  def _get_checkpoint_name(self, name):
-    root = module.Module()
-    trackable_utils.add_variable(
-        root, name=name, shape=[1, 2], dtype=dtypes.float64)
-    (named_variable,), _, _ = trackable_utils._serialize_object_graph(
-        root, saveables_cache=None)
-    with ops.name_scope_v2("root/" + named_variable.name):
-      pass  # Make sure we can use this as an op name if we prefix it.
-    return named_variable.name
 
   @combinations.generate(combinations.combine(mode=["eager"]))
   def testAnonymousVarsInInit(self):

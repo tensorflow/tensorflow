@@ -36,19 +36,32 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/tracked_device_buffer.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/platform/types.h"
 
 // API notes:
 // PjRt stands for "Pretty much Just another RunTime".
 
 namespace xla {
+
+using PjRtPlatformId = uint64;
+
+constexpr char kCpuName[] = "cpu";
+constexpr char kGpuName[] = "gpu";
+constexpr char kTpuName[] = "tpu";
+static const PjRtPlatformId kCpuId = tensorflow::Fingerprint64(kCpuName);
+static const PjRtPlatformId kGpuId = tensorflow::Fingerprint64(kGpuName);
+static const PjRtPlatformId kTpuId = tensorflow::Fingerprint64(kTpuName);
 
 class PjRtClient;
 
@@ -56,19 +69,29 @@ class PjRtDevice {
  public:
   explicit PjRtDevice(int id,
                       std::unique_ptr<LocalDeviceState> local_device_state,
-                      std::string platform_name, std::string device_kind,
-                      int host_id = 0)
+                      std::string device_kind, int host_id = 0)
       : id_(id),
+        local_device_id_(
+            local_device_state ? local_device_state->device_ordinal() : -1),
         local_device_state_(std::move(local_device_state)),
         host_id_(host_id),
-        platform_name_(std::move(platform_name)),
         device_kind_(std::move(device_kind)) {}
   virtual ~PjRtDevice() {}
+
+  // Must set client exactly once.
+  void SetClient(PjRtClient* client) {
+    CHECK(client_ == nullptr);
+    client_ = client;
+  }
 
   // The ID of this device. IDs are unique among devices of this type
   // (e.g. CPUs, GPUs). On multi-host platforms, this will be unique across all
   // hosts' devices.  This is the ID that should be used in a DeviceAssignment.
   int id() const { return id_; }
+
+  bool IsLocalDevice() const { return local_device_id_ != -1; }
+
+  int local_device_id() const { return local_device_id_; }
 
   // If this is a device local to this host, returns a LocalDeviceState object
   // that can be used to manipulate the device. Returns nullptr if the device is
@@ -85,7 +108,11 @@ class PjRtDevice {
   // The ID of this device's host. This is always 0 on single-host platforms.
   int host_id() const { return host_id_; }
 
-  const std::string& platform_name() const { return platform_name_; }
+  // Return `platform_id` from client.
+  PjRtPlatformId platform_id() const;
+
+  // Return `platform_name` from client.
+  const std::string& platform_name() const;
 
   // A vendor-dependent string that uniquely identifies the kind of device.
   const std::string& device_kind() const { return device_kind_; }
@@ -94,13 +121,18 @@ class PjRtDevice {
 
   PjRtClient* client() const { return client_; }
 
- private:
-  friend class PjRtClient;
+  // Transfer the given literal to the infeed queue of the given localdevice.
+  virtual Status TransferToInfeed(const LiteralSlice& literal) const;
 
+  // Transfer and return a value of the given shape from the outfeed of the
+  // given device.
+  virtual StatusOr<Literal> TransferFromOutfeed(const Shape& shape) const;
+
+ private:
   const int id_;
+  const int local_device_id_;  // -1 means not local.
   const std::unique_ptr<LocalDeviceState> local_device_state_;
   const int host_id_;
-  const std::string platform_name_;
   const std::string device_kind_;
   PjRtClient* client_ = nullptr;
 };
@@ -120,6 +152,24 @@ struct PjRtCrossHostRecvBuffer {
 using PjRtCrossHostRecvNotifier =
     std::function<void(StatusOr<std::vector<PjRtCrossHostRecvBuffer>>&&)>;
 
+struct CompileOptions {
+  // The layouts of the arguments that the computation should expect.
+  absl::optional<std::vector<Shape>> argument_layouts;
+
+  // If true, the supplied computation expects its arguments to be wrapped in a
+  // tuple and passed as a single parameter.
+  bool parameter_is_tupled_arguments = false;
+
+  // XLA's compilation time options.
+  ExecutableBuildOptions executable_build_options;
+
+  // If true, the executable can be run on any device. May only be true if
+  // !executable_build_options.has_device_assignment(), so only applies to
+  // single-device executables. Beware: on GPUs, sometimes an executable
+  // compiled for one device doesn't run on another.
+  bool compile_portable_executable = false;
+};
+
 class PjRtExecutable;
 
 // Encapsulates the state of Python session with XLA.
@@ -135,7 +185,7 @@ class PjRtClient {
       std::unique_ptr<se::DeviceMemoryAllocator> allocator,
       std::unique_ptr<tensorflow::Allocator> host_memory_allocator,
       bool should_stage_host_to_device_transfers,
-      std::unique_ptr<GpuExecutableRunOptions> gpu_run_options);
+      std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options);
   virtual ~PjRtClient() = default;
 
   virtual StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
@@ -153,11 +203,15 @@ class PjRtClient {
     return id_to_device_;
   }
   int host_id() const { return host_id_; }
+  PjRtPlatformId platform_id() const { return platform_id_; }
   const std::string& platform_name() const { return platform_name_; }
 
   LocalDeviceState& device_state(int device_ordinal) const {
     return *local_devices_.at(device_ordinal)->local_device_state();
   }
+
+  // Return a local PjRtDevice for a given `local_device_id`.
+  virtual StatusOr<PjRtDevice*> LookupLocalDevice(int local_device_id) const;
 
   LocalClient* client() const { return client_; }
   se::DeviceMemoryAllocator* allocator() const { return allocator_; }
@@ -168,7 +222,7 @@ class PjRtClient {
     return should_stage_host_to_device_transfers_;
   }
 
-  GpuExecutableRunOptions* gpu_run_options() const {
+  gpu::GpuExecutableRunOptions* gpu_run_options() const {
     return gpu_run_options_.get();
   }
 
@@ -181,13 +235,6 @@ class PjRtClient {
   // function specifies which one the platform expects.
   virtual bool EnqueueD2DTransfersOnSrcStream() const { return true; }
 
-  // Some platforms allow executables to donate buffers so that they can be
-  // aliased from inputs to outputs. This function returns the list of
-  // parameters that must be donated when executable is run. tuple_inputs
-  // reflects the option that executable was compiled with.
-  virtual StatusOr<absl::flat_hash_set<int>> GetParametersThatMustBeDonated(
-      const LocalExecutable& executable, bool tuple_inputs) const;
-
   // Generates a unique fingerprint for `executable`. See
   // PjRtExecutable::fingerprint_.
   virtual StatusOr<absl::optional<std::string>> ExecutableFingerprint(
@@ -198,10 +245,87 @@ class PjRtClient {
   // Returns a backend-specific HLO cost analysis visitor.
   virtual std::unique_ptr<HloCostAnalysis> GetHloCostAnalysis();
 
+  virtual StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+      const XlaComputation& computation, CompileOptions options);
+
+  // Creates a buffer on the device without initializing or copying any data.
+  // An optional `definition_event` may be speficied that can be used to
+  // ensure the buffer isn't referenced until some external mechanism has
+  // initialized the data.
+  // NOTE: The sequencing mechanism is not guaranteed to be supported by all
+  // future backends and so callers should avoid wherever possible.
+  virtual StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
+      const Shape& shape, PjRtDevice* device);
+  virtual StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
+      const Shape& shape, PjRtDevice* device,
+      std::shared_ptr<BufferSequencingEvent> definition_event);
+
+  // Describes the semantics the caller to BufferFromHostBuffer expects from the
+  // runtime, in a total order from most restrictive to least restrictive.
+  enum class HostBufferSemantics {
+    // The runtime may not hold references to `data` after the call to
+    // `BufferFromHostBuffer` completes. The caller promises that `data` is
+    // immutable and will not be freed only for the duration of the
+    // BufferFromHostBuffer call. `buffer_reference` will be freed by the time
+    // `BufferFromHostBuffer` returns.
+    kImmutableOnlyDuringCall,
+
+    // The runtime may hold onto `data` after the call to `BufferFromHostBuffer`
+    // returns while the runtime completes a transfer to the device. The caller
+    // promises not to mutate or free `data` until the transfer completes, at
+    // which point the runtime will release `buffer_reference`. It is also
+    // correct to wait on the host (directly or indirectly) for the buffer's
+    // definition event to complete.
+    kImmutableUntilTransferCompletes,
+
+    // The PjRtBuffer may alias `data` internally and the runtime may use the
+    // `data` contents as long as the buffer is alive. The caller promises to
+    // keep `data` alive and not to mutate its contents as long as the buffer is
+    // alive; to notify the caller that the buffer may be freed, the runtime
+    // will release its `buffer_reference` when the PjRtBuffer is freed. On
+    // non-CPU platforms this acts identically to
+    // kImmutableUntilTransferCompletes.
+    kZeroCopy,
+  };
+  virtual StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
+      const void* data, const Shape& shape,
+      HostBufferSemantics host_buffer_semantics,
+      std::shared_ptr<void> buffer_reference, PjRtDevice* device);
+
+  // Note that literal must remain in scope until the transfer has completed, so
+  // the caller should, for example, wait for BlockHostUntilReady() completes on
+  // the return value before letting literal go out of scope.
+  virtual StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
+      const LiteralSlice& literal, PjRtDevice* device);
+
+  // Asynchronously makes a vector of PjRtBuffers that can be used to receive
+  // cross host transfers using `client` on `device'. `shapes` must be the exact
+  // shapes, with identical layouts, corresponding to the buffers that will be
+  // sent. When resources for the transfer are available, notifier will be
+  // called with a vector of PjRtCrossHostRecvBuffer structs, one for each
+  // shape in `shapes`. Each struct contains a buffer that will contain the
+  // received value, and an opaque string that should be transmitted to the
+  // sending host and used in a call to CopyToRemoteDevice. None of the recv
+  // buffers will become ready until *all* of the sends have completed.
+  virtual void MakeCrossHostReceiveBuffers(
+      absl::Span<const Shape> shapes, PjRtDevice* device,
+      PjRtCrossHostRecvNotifier&& notifier);
+
+  virtual StatusOr<ChannelHandle> CreateChannelHandle() {
+    return client()->CreateChannelHandle();
+  }
+  virtual StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() {
+    return client()->CreateDeviceToHostChannelHandle();
+  }
+  virtual StatusOr<ChannelHandle> CreateHostToDeviceChannelHandle() {
+    return client()->CreateHostToDeviceChannelHandle();
+  }
+
  protected:
   friend class PjRtBuffer;
   virtual void EnqueueCrossHostReceive(
       std::vector<std::unique_ptr<PjRtBuffer>>&& buffers,
+      std::shared_ptr<BufferSequencingEvent> definition_event,
       PjRtCrossHostRecvNotifier&& notifier) const {
     notifier(Unimplemented("Cross host receives not implemented."));
   }
@@ -211,7 +335,8 @@ class PjRtClient {
     return Unimplemented("Cross host sends not implemented.");
   }
 
-  std::string platform_name_;
+  const PjRtPlatformId platform_id_;
+  const std::string platform_name_;
   LocalClient* client_;
 
   // Allocator to be used for staging memory transfers to devices.
@@ -233,7 +358,7 @@ class PjRtClient {
   // transfer via pinned memory.
   bool should_stage_host_to_device_transfers_;
 
-  std::unique_ptr<GpuExecutableRunOptions> gpu_run_options_;
+  std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options_;
 
   tensorflow::thread::ThreadPool h2d_transfer_pool_;
 };
@@ -385,6 +510,7 @@ class PjRtBuffer {
 
    private:
     friend class PjRtBuffer;
+    friend class PjRtClient;
 
     // Helper struct that makes it possible to move a ScopedHold through a
     // closure.
@@ -423,66 +549,10 @@ class PjRtBuffer {
     StatusOr<std::shared_ptr<TrackedDeviceBuffer>> buffer_or_;
   };
 
-  // Returns a buffer with uninitialized contents.
-  static StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitialized(
-      const Shape& shape, PjRtClient* client, PjRtDevice* device);
-
-  // Describes the semantics the caller to FromHostBuffer expects from the
-  // runtime, in a total order from most restrictive to least restrictive.
-  enum class HostBufferSemantics {
-    // The runtime may not hold references to `data` after the call to
-    // `FromHostBuffer` completes. The caller promises that `data` is immutable
-    // and will not be freed only for the duration of the FromHostBuffer call.
-    // `buffer_reference` will be freed by the time `FromHostBuffer` returns.
-    kImmutableOnlyDuringCall,
-
-    // The runtime may hold onto `data` after the call to `FromHostBuffer`
-    // returns while the runtime completes a transfer to the device. The caller
-    // promises not to mutate or free `data` until the transfer completes, at
-    // which point the runtime will release `buffer_reference`. It is also
-    // correct to wait on the host (directly or indirectly) for the buffer's
-    // definition event to complete.
-    kImmutableUntilTransferCompletes,
-
-    // The PjRtBuffer may alias `data` internally and the runtime may use the
-    // `data` contents as long as the buffer is alive.
-    // The caller promises to keep `data` alive and not to mutate its contents
-    // as long as the buffer is alive; to notify the caller that the buffer may
-    // be freed, the runtime will release its `buffer_reference` when the
-    // PjRtBuffer is freed. On non-CPU platforms this acts identically to
-    // kImmutableUntilTransferCompletes.
-    kZeroCopy,
-  };
-  static StatusOr<std::unique_ptr<PjRtBuffer>> FromHostBuffer(
-      const void* data, const Shape& shape,
-      HostBufferSemantics host_buffer_semantics,
-      std::shared_ptr<void> buffer_reference, PjRtClient* client,
-      PjRtDevice* device);
-
-  // Note that literal must remain in scope until the transfer has completed, so
-  // the caller should, for example, wait for BlockHostUntilReady() completes on
-  // the return value before letting literal go out of scope.
-  static StatusOr<std::unique_ptr<PjRtBuffer>> FromHostLiteral(
-      const LiteralSlice& literal, PjRtClient* client, PjRtDevice* device);
-
-  // Asynchronously makes a vector of PjRtBuffers that can be used to receive
-  // cross host transfers using `client` on `device'. `shapes` must be the exact
-  // shapes, with identical layouts, corresponding to the buffers that will be
-  // sent. When resources for the transfer are available, notifier will be
-  // called with a vector of PjRtCrossHostRecvBuffer structs, one for each
-  // shape in `shapes`. Each struct contains a buffer that will contain the
-  // received value, and an opaque string that should be transmitted to the
-  // sending host and used in a call to CopyToRemoteDevice. None of the recv
-  // buffers will become ready until *all* of the sends have completed.
-  static void MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
-                                          PjRtClient* client,
-                                          PjRtDevice* device,
-                                          PjRtCrossHostRecvNotifier&& notifier);
-
   PjRtBuffer(Shape on_host_shape, Shape on_device_shape,
              std::shared_ptr<TrackedDeviceBuffer> device_buffer,
              PjRtClient* client, PjRtDevice* device);
-  ~PjRtBuffer();
+  virtual ~PjRtBuffer();
 
   PjRtBuffer(const PjRtBuffer&) = delete;
   PjRtBuffer(PjRtBuffer&&) = delete;
@@ -492,6 +562,7 @@ class PjRtBuffer {
   const Shape& on_host_shape() const { return on_host_shape_; }
   const Shape& on_device_shape() const { return on_device_shape_; }
   PjRtDevice* device() const { return device_; }
+  PjRtPlatformId platform_id() const { return client_->platform_id(); }
   const std::string& platform_name() const { return client_->platform_name(); }
   PjRtClient* client() const { return client_; }
   bool IsEmptyTuple() const {
@@ -584,6 +655,9 @@ class PjRtBuffer {
   // immediate use on the device. Useful in particular for timing benchmarks.
   Status BlockHostUntilReady();
 
+  // Whether this buffer is on CPU and thus allows for certain optimizations.
+  bool IsOnCpu() const;
+
  private:
   friend class PjRtClient;
   // The cached value of the buffer on the host, produced either from a call to
@@ -661,24 +735,6 @@ class PjRtBuffer {
   Semaphore donation_semaphore_;
 };
 
-struct CompileOptions {
-  // The layouts of the arguments that the computation should expect.
-  absl::optional<std::vector<Shape>> argument_layouts;
-
-  // If true, the supplied computation expects its arguments to be wrapped in a
-  // tuple and passed as a single parameter.
-  bool parameter_is_tupled_arguments = false;
-
-  // XLA's compilation time options.
-  ExecutableBuildOptions executable_build_options;
-
-  // If true, the executable can be run on any device. May only be true if
-  // !executable_build_options.has_device_assignment(), so only applies to
-  // single-device executables. Beware: on GPUs, sometimes an executable
-  // compiled for one device doesn't run on another.
-  bool compile_portable_executable = false;
-};
-
 class ExecuteContext {
  public:
   virtual ~ExecuteContext() = default;
@@ -710,10 +766,6 @@ struct ExecuteOptions {
 // buffer will be donated when passed to the execution.
 class PjRtExecutable {
  public:
-  static StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
-      const XlaComputation& computation, PjRtClient* client,
-      CompileOptions options);
-
   PjRtExecutable(std::vector<std::unique_ptr<LocalExecutable>> executables,
                  bool parameter_is_tupled_arguments,
                  std::shared_ptr<DeviceAssignment> device_assignment,
@@ -777,15 +829,19 @@ class PjRtExecutable {
 
   const string& name() const;
 
+  // Return an HloModule per partition.
+  StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules();
+
  protected:
   bool parameter_is_tupled_arguments() const {
     return parameter_is_tupled_arguments_;
   }
 
  private:
+  friend class PjRtClient;
   // Initializes information about which arguments to which executables must be
   // donated due to aliases that were specified by the computation.
-  Status SetUpDonation(PjRtClient* client, bool tuple_inputs);
+  Status SetUpDonation(bool tuple_inputs);
 
   virtual bool MustDonateParameter(int executable_idx, int parameter) const;
 
@@ -843,6 +899,13 @@ class PjRtExecutable {
   // (see xla.cc).
   std::vector<PjRtDevice*> local_devices_;
 };
+
+// Executables can donate buffers so that buffers can be aliased from inputs
+// to outputs. This function returns the list of parameters that must be
+// donated when executable is run. tuple_inputs reflects the option that
+// executable was compiled with.
+StatusOr<absl::flat_hash_set<int>> GetParametersThatMustBeDonated(
+    const HloModule& hlo_module, bool tuple_inputs);
 
 }  // namespace xla
 

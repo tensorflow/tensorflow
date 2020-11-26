@@ -29,7 +29,6 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h.inc"
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.cc.inc"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
@@ -87,76 +86,6 @@ struct EraseConstOp : public OpRewritePattern<ConstOp> {
 void ConstOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
                                           MLIRContext* context) {
   results.insert<EraseConstOp>(context);
-}
-
-//===----------------------------------------------------------------------===//
-// StaticMemRefCastOp
-//===----------------------------------------------------------------------===//
-
-Value StaticMemRefCastOp::getViewSource() { return *getODSOperands(0).begin(); }
-
-static LogicalResult Verify(StaticMemRefCastOp op) {
-  if (!op.operand().getType().cast<ShapedType>().hasStaticShape())
-    return op.emitOpError("operand must have static shape");
-  if (!op.getType().hasStaticShape())
-    return op.emitOpError("result must have static shape");
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
-// DynamicMemRefCastOp
-//===----------------------------------------------------------------------===//
-
-Value DynamicMemRefCastOp::getViewSource() {
-  return *getODSOperands(0).begin();
-}
-
-static LogicalResult Verify(DynamicMemRefCastOp op) {
-  // Check if `sizes` and `strides` args are compatible with the result type.
-  if (op.sizes().size() != op.getType().getRank())
-    return op.emitOpError(
-        "`sizes` args count must be equal to the rank of the output memref");
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
-// ReshapeMemrefCastOp
-//===----------------------------------------------------------------------===//
-
-Value ReshapeMemRefCastOp::getViewSource() { return operand(); }
-
-static LogicalResult Verify(ReshapeMemRefCastOp op) {
-  Type operandType = op.operand().getType();
-  Type resultType = op.result().getType();
-
-  Type operandElementType = operandType.cast<ShapedType>().getElementType();
-  Type resultElementType = resultType.cast<ShapedType>().getElementType();
-  if (operandElementType != resultElementType)
-    return op.emitOpError(
-        "element types of source and destination memref "
-        "types should be the same");
-
-  if (auto operandMemRefType = operandType.dyn_cast<MemRefType>())
-    if (!operandMemRefType.getAffineMaps().empty())
-      return op.emitOpError(
-          "operand memref type should have identity affine map");
-
-  int64_t shapeSize = op.shape().getType().cast<MemRefType>().getDimSize(0);
-  auto resultMemRefType = resultType.dyn_cast<MemRefType>();
-  if (resultMemRefType) {
-    if (shapeSize == ShapedType::kDynamicSize)
-      return op.emitOpError(
-          "cannot use shape operand with dynamic length to "
-          "cast statically-ranked memref type");
-    if (shapeSize != resultMemRefType.getRank())
-      return op.emitOpError(
-          "length of shape operand differs from the result's memref rank");
-
-    if (!resultMemRefType.getAffineMaps().empty())
-      return op.emitOpError(
-          "result memref type should have identity affine map");
-  }
-  return success();
 }
 
 }  // namespace lmhlo

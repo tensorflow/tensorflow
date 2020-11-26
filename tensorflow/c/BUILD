@@ -199,9 +199,11 @@ tf_cuda_library(
             "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
+            ":logging",
             ":tf_status",
             ":tf_tensor",
             "@com_google_absl//absl/strings",
+            "//tensorflow/c/experimental/filesystem:modular_filesystem",
             "//tensorflow/cc/saved_model:loader_lite",
             "//tensorflow/cc:gradients",
             "//tensorflow/cc:ops",
@@ -511,6 +513,19 @@ tf_cuda_library(
     ],
 )
 
+cc_library(
+    name = "kernels_hdrs",
+    hdrs = ["kernels.h"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":c_api_internal",
+        ":tf_datatype",
+        ":tf_status",
+        ":tf_tensor",
+        "//tensorflow/c/experimental/stream_executor:stream_executor_hdrs",
+    ],
+)
+
 tf_cuda_library(
     name = "kernels",
     srcs = [
@@ -528,13 +543,17 @@ tf_cuda_library(
     ] + select({
         "//tensorflow:android": [
             ":c_api_internal",
+            "//tensorflow/c/experimental/stream_executor:stream_executor_hdrs",
             "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
             ":c_api_internal",
             ":tf_tensor",
+            "//tensorflow/stream_executor:stream",
             "//tensorflow/core:framework",
             "//tensorflow/core:framework_lite",
+            "//tensorflow/c/experimental/stream_executor:stream_executor",
+            "//tensorflow/c/experimental/stream_executor:stream_executor_internal",
         ],
     }),
 )
@@ -562,6 +581,16 @@ tf_cuda_library(
         ],
     }),
     alwayslink = 1,
+)
+
+cc_library(
+    name = "ops_hdrs",
+    hdrs = ["ops.h"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":tf_datatype",
+        ":tf_status",
+    ],
 )
 
 # -----------------------------------------------------------------------------

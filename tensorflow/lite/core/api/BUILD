@@ -49,8 +49,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + micro_copts(),
     visibility = [
-        "//tensorflow/lite:__subpackages__",
-        "//tensorflow_lite_support:__subpackages__",
+        "//visibility:public",
     ],
     deps = [
         ":error_reporter",
@@ -68,8 +67,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + micro_copts(),
     visibility = [
-        "//tensorflow/lite:__subpackages__",
-        "//tensorflow_lite_support:__subpackages__",
+        "//visibility:public",
     ],
     deps = [],
 )
@@ -99,7 +97,7 @@ cc_test(
     srcs = ["op_resolver_test.cc"],
     deps = [
         ":api",
-        "//tensorflow/lite/schema:schema_utils",
+        "//tensorflow/lite/schema:schema_conversion_utils",
         "@com_google_googletest//:gtest",
     ],
 )

@@ -40,6 +40,16 @@ def make_where_tests(options):
       },
   ]
 
+  # High dimension broadcasting support in MLIR converter.
+  if options.use_experimental_converter:
+    test_parameters = test_parameters + [
+        {
+            "input_dtype": [tf.float32, tf.int32],
+            "input_shape_set": [([8, 7, 6, 5, 4, 3, 2, 1], [4, 3, 2, 1]),],
+            "use_where_v2": [True],
+        },
+    ]
+
   def build_graph(parameters):
     """Build the where op testing graph."""
     input_value1 = tf.compat.v1.placeholder(

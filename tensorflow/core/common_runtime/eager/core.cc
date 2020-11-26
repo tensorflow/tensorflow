@@ -171,6 +171,24 @@ ImmediateExecutionTensorHandle* EagerContext::CreateLocalHandle(
                                          /*op_device=*/nullptr, this);
 }
 
+ImmediateExecutionTensorHandle* EagerContext::CreateLocalHandleFromTFTensor(
+    tensorflow::Tensor& t, const char* d_name) {
+  // If device name is not specified, create the TensorHandle on host cpu.
+  if (d_name == nullptr)
+    return TensorHandle::CreateLocalHandle(std::move(t), /*d=*/HostCPU(),
+                                           /*op_device=*/nullptr, this);
+  Device* d = nullptr;
+  auto status = FindDeviceFromName(d_name, &d);
+  if (!status.ok()) return nullptr;
+  return TensorHandle::CreateLocalHandle(std::move(t), /*d=*/d,
+                                         /*op_device=*/nullptr, this);
+}
+
+ImmediateExecutionTensorHandle* EagerContext::TFTensorHandleFromInterface(
+    ImmediateExecutionTensorHandle* handle) {
+  return handle;
+}
+
 // TODO(b/152902651): We have to keep this function here since EagerOperation
 // depends on EagerContext. Thus, the context build target can't depend on
 // EagerOperation.

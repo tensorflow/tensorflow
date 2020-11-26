@@ -63,7 +63,7 @@ DeviceCapabilities GetDeviceCapFromXPlane(const XPlane& device_plane) {
         cap.set_num_cores(stat.IntValue());
         break;
       case kDevCapMemoryBandwidth:
-        cap.set_memory_bandwidth(stat.IntValue());  // bytes/s
+        cap.set_memory_bandwidth(stat.UintValue());  // bytes/s
         break;
       case kDevCapMemorySize:
         cap.set_memory_size_in_bytes(stat.UintValue());
@@ -100,10 +100,15 @@ PerfEnv GetPerfEnvFromXPlane(const XPlane& device_plane) {
 
 namespace {
 
-void SetRunEnvironment(int32 accelerator_count, RunEnvironment* env) {
+void SetRunEnvironment(const XSpace& space, int32 accelerator_count,
+                       RunEnvironment* env) {
   // Currently, we only support profiling one host and one program.
   env->set_host_count(1);
   env->set_task_count(1);
+  for (const auto& hostname : space.hostnames()) {
+    std::vector<std::string> hostname_split = absl::StrSplit(hostname, ':');
+    (*env->mutable_hostnames())[hostname_split[0]] = true;
+  }
   env->set_device_type(accelerator_count > 0 ? "GPU" : "CPU");
   env->set_device_core_count(accelerator_count);
 }
@@ -155,7 +160,8 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
   // Convert device planes.
   OpMetricsDbCombiner op_metrics_db_combiner(
       op_stats.mutable_device_op_metrics_db());
-  SetRunEnvironment(device_planes.size(), op_stats.mutable_run_environment());
+  SetRunEnvironment(space, device_planes.size(),
+                    op_stats.mutable_run_environment());
 
   KernelReportMap reports;
   // TODO(b/161942993) parallelize XPlane processing per thread.
@@ -164,10 +170,8 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
       if (!op_stats.has_perf_env()) {
         *op_stats.mutable_perf_env() = GetPerfEnvFromXPlane(*device_trace);
       }
-      const PerfEnv& perf_env = op_stats.perf_env();
-      OpMetricsDb device_op_metrics_db = ConvertDeviceTraceXPlaneToOpMetricsDb(
-          *device_trace, perf_env.peak_tera_flops_per_second(),
-          perf_env.peak_hbm_bw_giga_bytes_per_second());
+      OpMetricsDb device_op_metrics_db =
+          ConvertDeviceTraceXPlaneToOpMetricsDb(*device_trace);
       op_metrics_db_combiner.Combine(device_op_metrics_db);
     }
     if (options.generate_step_db) {
@@ -201,6 +205,11 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
     *op_stats.mutable_device_op_metrics_db()->mutable_precision_stats() =
         ComputePrecisionStats(nonoverlapped_step_events);
   }
+
+  CoreDetails& details =
+      (*op_stats.mutable_core_id_to_details())[kDefaultGpuLocalCoreId];
+  details.set_hostname(space.hostnames().empty() ? "localhost"
+                                                 : space.hostnames(0));
   return op_stats;
 }
 

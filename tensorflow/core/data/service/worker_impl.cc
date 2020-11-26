@@ -103,7 +103,7 @@ Status DataServiceWorkerImpl::ProcessTask(const ProcessTaskRequest* request,
 }
 
 Status DataServiceWorkerImpl::ProcessTaskInternal(const TaskDef& task_def)
-    EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::unique_ptr<Task>& task = tasks_[task_def.task_id()];
   if (task) {
     VLOG(1) << "Received request to process already-processed task "
@@ -150,7 +150,7 @@ Status DataServiceWorkerImpl::EnsureTaskInitialized(
     case DISTRIBUTED_EPOCH: {
       auto split_provider = absl::make_unique<DataServiceSplitProvider>(
           config_.dispatcher_address(), config_.protocol(),
-          task.task_def.job_id());
+          task.task_def.job_id(), config_.dispatcher_timeout_ms());
       TF_RETURN_IF_ERROR(task.dataset->MakeIterator(std::move(split_provider),
                                                     &task.iterator));
       break;
@@ -182,7 +182,7 @@ Status DataServiceWorkerImpl::GetElement(const GetElementRequest* request,
           "Worker has not yet registered with dispatcher.");
     }
     auto it = tasks_.find(request->task_id());
-    if (it == tasks_.end()) {
+    if (it == tasks_.end() || it->second->finished) {
       response->set_end_of_sequence(true);
       return Status::OK();
     }
@@ -191,7 +191,7 @@ Status DataServiceWorkerImpl::GetElement(const GetElementRequest* request,
     TF_RETURN_IF_ERROR(task->iterator->GetNext(&outputs, &end_of_sequence));
     if (end_of_sequence) {
       VLOG(3) << "Reached end_of_sequence for task " << request->task_id();
-      tasks_.erase(request->task_id());
+      task->finished = true;
       pending_completed_tasks_.insert(request->task_id());
       task_completion_cv_.notify_one();
     }
@@ -245,7 +245,7 @@ Status DataServiceWorkerImpl::GetWorkerTasks(
   return Status::OK();
 }
 
-void DataServiceWorkerImpl::TaskCompletionThread() LOCKS_EXCLUDED(mu_) {
+void DataServiceWorkerImpl::TaskCompletionThread() TF_LOCKS_EXCLUDED(mu_) {
   while (true) {
     {
       mutex_lock l(mu_);
@@ -269,7 +269,7 @@ void DataServiceWorkerImpl::TaskCompletionThread() LOCKS_EXCLUDED(mu_) {
   }
 }
 
-Status DataServiceWorkerImpl::SendTaskUpdates() LOCKS_EXCLUDED(mu_) {
+Status DataServiceWorkerImpl::SendTaskUpdates() TF_LOCKS_EXCLUDED(mu_) {
   std::vector<TaskProgress> task_progress;
   {
     mutex_lock l(mu_);
@@ -292,7 +292,7 @@ Status DataServiceWorkerImpl::SendTaskUpdates() LOCKS_EXCLUDED(mu_) {
   return Status::OK();
 }
 
-void DataServiceWorkerImpl::HeartbeatThread() LOCKS_EXCLUDED(mu_) {
+void DataServiceWorkerImpl::HeartbeatThread() TF_LOCKS_EXCLUDED(mu_) {
   while (true) {
     int64 next_heartbeat_micros =
         Env::Default()->NowMicros() + (config_.heartbeat_interval_ms() * 1000);
@@ -321,7 +321,7 @@ void DataServiceWorkerImpl::HeartbeatThread() LOCKS_EXCLUDED(mu_) {
   }
 }
 
-Status DataServiceWorkerImpl::Heartbeat() LOCKS_EXCLUDED(mu_) {
+Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
   std::vector<int64> current_tasks;
   {
     mutex_lock l(mu_);

@@ -22,10 +22,12 @@ limitations under the License.
 #include <limits>
 
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite//kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/micro_utils.h"
+#include "tensorflow/lite/portable_type_to_tflitetype.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
@@ -74,6 +76,20 @@ class MockCustom {
   static bool freed_;
 };
 
+// A simple operator with the purpose of testing multiple inputs. It returns
+// the sum of the inputs.
+class MultipleInputs {
+ public:
+  static const TfLiteRegistration* getRegistration();
+  static TfLiteRegistration* GetMutableRegistration();
+  static void* Init(TfLiteContext* context, const char* buffer, size_t length);
+  static void Free(TfLiteContext* context, void* buffer);
+  static TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node);
+  static TfLiteStatus Invoke(TfLiteContext* context, TfLiteNode* node);
+
+  static bool freed_;
+};
+
 // Returns an Op Resolver that can be used in the testing code.
 AllOpsResolver GetOpResolver();
 
@@ -87,6 +103,10 @@ const Model* GetComplexMockModel();
 
 // Returns a simple flatbuffer model with two branches.
 const Model* GetSimpleModelWithBranch();
+
+// Returns a simple example flatbuffer TensorFlow Lite model. Contains 3 inputs,
+// 1 output Tensor, and 1 operator.
+const Model* GetSimpleMultipleInputsModel();
 
 // Returns a simple flatbuffer model with offline planned tensors
 // @param[in]       num_tensors           Number of tensors in the model.
@@ -140,35 +160,42 @@ TfLiteIntArray* IntArrayFromInts(const int* int_array);
 // supplied array must be the size of the array expressed as a float.
 TfLiteFloatArray* FloatArrayFromFloats(const float* floats);
 
-TfLiteTensor CreateFloatTensor(const float* data, TfLiteIntArray* dims,
-                               bool is_variable = false);
+template <typename T>
+TfLiteTensor CreateTensor(const T* data, TfLiteIntArray* dims,
+                          const bool is_variable = false) {
+  TfLiteTensor result;
+  result.dims = dims;
+  result.params = {};
+  result.quantization = {kTfLiteNoQuantization, nullptr};
+  result.is_variable = is_variable;
+  result.allocation_type = kTfLiteMemNone;
+  result.type = typeToTfLiteType<T>();
+  // Const cast is used to allow passing in const and non-const arrays within a
+  // single CreateTensor method. A Const array should be used for immutable
+  // input tensors and non-const array should be used for mutable and output
+  // tensors.
+  result.data.data = const_cast<T*>(data);
+  result.quantization = {kTfLiteAffineQuantization, nullptr};
+  result.bytes = ElementCount(*dims) * sizeof(T);
+  return result;
+}
 
-void PopulateFloatTensor(TfLiteTensor* tensor, float* begin, float* end);
-
-TfLiteTensor CreateBoolTensor(const bool* data, TfLiteIntArray* dims,
-                              bool is_variable = false);
-
-TfLiteTensor CreateInt32Tensor(const int32_t*, TfLiteIntArray* dims,
-                               bool is_variable = false);
-
-TfLiteTensor CreateQuantizedTensor(const uint8_t* data, TfLiteIntArray* dims,
-                                   float scale, int zero_point,
-                                   bool is_variable = false);
-
-TfLiteTensor CreateQuantizedTensor(const int8_t* data, TfLiteIntArray* dims,
-                                   float scale, int zero_point,
-                                   bool is_variable = false);
-
-TfLiteTensor CreateQuantizedTensor(const int16_t* data, TfLiteIntArray* dims,
-                                   float scale, int zero_point,
-                                   bool is_variable = false);
+template <typename T>
+TfLiteTensor CreateQuantizedTensor(const T* data, TfLiteIntArray* dims,
+                                   const float scale, const int zero_point = 0,
+                                   const bool is_variable = false) {
+  TfLiteTensor result = CreateTensor(data, dims, is_variable);
+  result.params = {scale, zero_point};
+  result.quantization = {kTfLiteAffineQuantization, nullptr};
+  return result;
+}
 
 template <typename T>
 TfLiteTensor CreateQuantizedTensor(const float* input, T* quantized,
                                    TfLiteIntArray* dims, float scale,
                                    int zero_point, bool is_variable = false) {
   int input_size = ElementCount(*dims);
-  tflite::AsymmetricQuantize(input, quantized, input_size, scale, zero_point);
+  tflite::Quantize(input, quantized, input_size, scale, zero_point);
   return CreateQuantizedTensor(quantized, dims, scale, zero_point, is_variable);
 }
 

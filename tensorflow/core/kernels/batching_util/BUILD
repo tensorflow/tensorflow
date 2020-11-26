@@ -123,6 +123,7 @@ cc_library(
         ":batch_scheduler",
         ":periodic_function_dynamic",
         "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/lib:connected_traceme",
     ],
 )
 
@@ -240,17 +241,19 @@ cc_library(
     srcs = ["batch_resource_base.cc"],
     hdrs = ["batch_resource_base.h"],
     deps = [
+        ":adaptive_shared_batch_scheduler",
         ":batch_scheduler",
         ":concat_split_util",
         ":shared_batch_scheduler",
+        ":threadsafe_status",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/kernels/batching_util:threadsafe_status",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
         "//tensorflow/core/util:incremental_barrier",
+        "@com_google_absl//absl/strings",
     ],
 )

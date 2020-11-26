@@ -50,7 +50,6 @@ from tensorflow.lite.python.convert import toco_convert_protos  # pylint: disabl
 from tensorflow.lite.python.convert_saved_model import freeze_saved_model as _freeze_saved_model
 from tensorflow.lite.python.interpreter import Interpreter  # pylint: disable=unused-import
 from tensorflow.lite.python.interpreter import load_delegate  # pylint: disable=unused-import
-from tensorflow.lite.python.keras.saving import saving_utils as _keras_saving_utils
 from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs  # pylint: disable=unused-import
 from tensorflow.lite.python.op_hint import is_ophint_converted as _is_ophint_converted
 from tensorflow.lite.python.op_hint import OpHint  # pylint: disable=unused-import
@@ -63,10 +62,11 @@ from tensorflow.lite.python.util import get_grappler_config as _get_grappler_con
 from tensorflow.lite.python.util import get_tensor_name as _get_tensor_name
 from tensorflow.lite.python.util import get_tensors_from_tensor_names as _get_tensors_from_tensor_names
 from tensorflow.lite.python.util import is_frozen_graph as _is_frozen_graph
+from tensorflow.lite.python.util import model_input_signature as _model_input_signature
 from tensorflow.lite.python.util import modify_model_io_type as _modify_model_io_type
 from tensorflow.lite.python.util import run_graph_optimizations as _run_graph_optimizations
 from tensorflow.lite.python.util import set_tensor_shapes as _set_tensor_shapes
-from tensorflow.python import keras as _keras
+from tensorflow.lite.python.util import trace_model_call as _trace_model_call
 from tensorflow.python.client import session as _session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function as _def_function
@@ -76,7 +76,6 @@ from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops as _ops
 from tensorflow.python.framework.errors_impl import NotFoundError as _NotFoundError
 from tensorflow.python.framework.importer import import_graph_def as _import_graph_def
-from tensorflow.python.keras.saving import saving_utils as _saving_utils
 from tensorflow.python.lib.io import file_io as _file_io
 from tensorflow.python.saved_model import loader_impl as _loader_impl
 from tensorflow.python.saved_model import signature_constants as _signature_constants
@@ -84,6 +83,7 @@ from tensorflow.python.saved_model import tag_constants as _tag_constants
 from tensorflow.python.saved_model.load import load as _load
 from tensorflow.python.saved_model.loader_impl import parse_saved_model_with_debug_info as _parse_saved_model_with_debug_info
 from tensorflow.python.util import deprecation as _deprecation
+from tensorflow.python.util import keras_deps
 from tensorflow.python.util.tf_export import tf_export as _tf_export
 
 
@@ -165,15 +165,29 @@ class TargetSpec(object):
     supported_types: List of types for constant values on the target device.
       Frequently, an optimization choice is driven by the most compact
       (i.e. smallest) type in this list (default [tf.float32])
+    experimental_select_user_tf_ops: Experimental flag, subject to change. Set
+      of user's TensorFlow operators' names that are required in the TensorFlow
+      Lite runtime. These ops will be exported as select TensorFlow ops in the
+      model (in conjunction with the OpsSet.SELECT_TF_OPS flag). This is an
+      advanced feature that should only be used if the client is using TF ops
+      that may not be linked in by default with the TF ops that are provided
+      when using the SELECT_TF_OPS path. The client is responsible for linking
+      these ops into the target runtime.
+
   """
 
-  def __init__(self, supported_ops=None, supported_types=None):
+  def __init__(self,
+               supported_ops=None,
+               supported_types=None,
+               experimental_select_user_tf_ops=None):
     if supported_ops is None:
       supported_ops = set([OpsSet.TFLITE_BUILTINS])
     self.supported_ops = supported_ops
     if supported_types is None:
       supported_types = []
     self.supported_types = supported_types
+    if experimental_select_user_tf_ops is None:
+      self.experimental_select_user_tf_ops = []
 
 
 class QuantizationMode(object):
@@ -188,10 +202,14 @@ class QuantizationMode(object):
 
     self._validate_int8_required()
 
+  # TODO(b/162537905): Refactor the following quantization functions -
+  # re-organize and refactor for better readability.
   def post_training_int8_no_float(self):
     """Post training int8 quantize, disallow float fallback."""
-    return (self._is_int8_target_required() and
+    return (self._any_optimization_enabled() and
+            self._is_int8_target_required() and
             not self._is_int16x8_target_required() and
+            not self._is_allow_float() and
             self._representative_dataset is not None)
 
   def post_training_int8_allow_float(self):
@@ -211,27 +229,28 @@ class QuantizationMode(object):
     return (self.post_training_int16x8_no_float() or
             self.post_training_int16x8_allow_float())
 
-  def is_post_training_integer_quantize(self):
-    """Post training integer quantization."""
+  def is_integer_quantize(self):
     return (self.is_post_training_integer_quantize_8() or
-            self.is_post_training_integer_quantize_16x8())
+            self.is_post_training_integer_quantize_16x8() or
+            self.is_training_time_int8_allow_float())
 
-  def training_time_int8_allow_float(self):
-    """Training-time int8 quantize, allow float fallback."""
+  def is_training_time_int8_allow_float(self):
     return (self._any_optimization_enabled() and
-            not self.post_training_dynamic_range_int8() and
-            not self.post_training_fp16())
+            self.contains_training_quant_op())
 
   def post_training_int16x8_no_float(self):
     """Post training int16x8 quantize, disallow float fallback."""
-    return (not self._is_int8_target_required() and
+    return (self._any_optimization_enabled() and
+            not self._is_int8_target_required() and
             self._is_int16x8_target_required() and
             not self._is_allow_float() and
             self._representative_dataset is not None)
 
   def post_training_int16x8_allow_float(self):
     """Post training int16x8 quantize, allow float fallback."""
-    return self._is_int16x8_target_required() and self._is_allow_float()
+    return (self._any_optimization_enabled() and
+            self._is_int16x8_target_required() and
+            self._is_allow_float())
 
   def post_training_dynamic_range_int8(self):
     """Post training int8 const, on-the-fly int8 quantize of dynamic tensors."""
@@ -249,11 +268,7 @@ class QuantizationMode(object):
 
   def fp32_execution(self):
     """If none of the above are true."""
-    return not (self.post_training_int8_no_float() or
-                self.post_training_int8_allow_float() or
-                self.training_time_int8_allow_float() or
-                self.post_training_int16x8_no_float() or
-                self.post_training_int16x8_allow_float() or
+    return not (self.is_integer_quantize() or
                 self.post_training_dynamic_range_int8() or
                 self.post_training_fp16())
 
@@ -263,17 +278,12 @@ class QuantizationMode(object):
 
   def converter_flags(self, inference_ty=None, inference_input_ty=None):
     """Flags to the converter."""
-    if self.is_post_training_integer_quantize():
-      # The inference_input_type is for the quantizer, then we need to keep the
-      # converter inference_input_type to float.
-      inference_input_ty = _dtypes.float32
 
-    if self.training_time_int8_allow_float():
+    if self.is_integer_quantize():
       return {
           "inference_type": inference_ty if inference_ty else \
             self.activations_type(),
-          "inference_input_type":
-              inference_input_ty if inference_input_ty else _dtypes.float32,
+          "inference_input_type": _dtypes.float32,
           "post_training_quantize": False,  # disable dynamic range quantization
           "quantize_to_float16": False  # disable float16 quantization
       }
@@ -326,19 +336,13 @@ class QuantizationMode(object):
     else:
       return False, None
 
-  def flags_modify_model_io_type(
-      self, input_type=_dtypes.float32, output_type=_dtypes.float32):
+  def flags_modify_model_io_type(self, input_ty=None, output_ty=None):
     """Flags for modifying the input and output type of a tflite model."""
-    is_post_training_quantize = self.quantizer_flags(input_type, output_type)[0]
-    is_training_time_only_quantize = self.training_time_int8_allow_float() and \
-        not is_post_training_quantize
 
-    # TODO(b/153576658): Consolidate post/during training quantization workflows
-    # to modify model input/output type after MLIR conversion.
-    if is_training_time_only_quantize:
+    if self.is_integer_quantize():
       return {
-          "inference_input_type": input_type,
-          "inference_output_type": output_type,
+          "inference_input_type": input_ty if input_ty else _dtypes.float32,
+          "inference_output_type": output_ty if output_ty else _dtypes.float32,
       }
     else:
       return None
@@ -368,20 +372,18 @@ class QuantizationMode(object):
                        "TFLITE_BUILTINS_INT8 or INT8 supported types.")
 
   def _is_int8_target_required(self):
-    return (set([OpsSet.TFLITE_BUILTINS_INT8]) == set(
-        self._target_spec.supported_ops) or
-            set(self._target_spec.supported_types) == set([_dtypes.int8]))
+    return (OpsSet.TFLITE_BUILTINS_INT8 in set(
+        self._target_spec.supported_ops)) or (set(
+            self._target_spec.supported_types) == set([_dtypes.int8]))
 
   def _is_int16x8_target_required(self):
-    return bool(
-        set(self._target_spec.supported_ops).intersection([
-            OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
-        ]))
+    return (OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
+            in set(self._target_spec.supported_ops))
 
   def _is_allow_float(self):
-    return bool(
-        set(self._target_spec.supported_ops).intersection(
-            [OpsSet.TFLITE_BUILTINS]))
+    return (OpsSet.TFLITE_BUILTINS in set(
+        self._target_spec.supported_ops)) or (OpsSet.SELECT_TF_OPS in set(
+            self._target_spec.supported_ops))
 
   def _any_optimization_enabled(self):
     return bool(
@@ -462,6 +464,8 @@ class TFLiteConverterBase(object):
       self.representative_dataset = RepresentativeDataset(
           self.representative_dataset)
 
+    # Add intermediate tensors to the model if needed.
+    result = _calibrator.add_intermediate_tensors(result)
     calibrate_quantize = _calibrator.Calibrator(result)
     if self._experimental_calibrate_only or self._experimental_new_quantizer:
       calibrated = calibrate_quantize.calibrate(
@@ -492,6 +496,7 @@ class TFLiteConverterBase(object):
         "debug_info": self._debug_info,
         "target_ops": self.target_spec.supported_ops,
         "enable_mlir_converter": self.experimental_new_converter,
+        "select_user_tf_ops": self.target_spec.experimental_select_user_tf_ops,
     }
 
     if self.saved_model_dir:
@@ -561,7 +566,7 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
     """Validate inference_input_type and inference_output_type flags."""
     default_types = [_dtypes.float32]
     # We support integer input/output for integer quantized models only.
-    if quant_mode.training_time_int8_allow_float():
+    if quant_mode.is_integer_quantize():
       if quant_mode.is_post_training_integer_quantize_16x8():
         all_types = default_types + [_dtypes.int16]
       else:
@@ -643,8 +648,7 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
         output_tensors=output_tensors,
         **converter_kwargs)
 
-    calibrate_and_quantize, flags = quant_mode.quantizer_flags(
-        self.inference_input_type, self.inference_output_type)
+    calibrate_and_quantize, flags = quant_mode.quantizer_flags()
     if calibrate_and_quantize:
       result = self._calibrate_quantize_model(result, **flags)
 
@@ -733,8 +737,7 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
       # TODO(b/162537905): Clean these indirect dependencies.
       self.saved_model_dir = None
       return super(TFLiteSavedModelConverterV2,
-                   self).convert(graph_def, input_tensors,
-                                 output_tensors)
+                   self).convert(graph_def, input_tensors, output_tensors)
 
     if self._trackable_obj is None:
       self._debug_info = _get_debug_info(
@@ -754,8 +757,7 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
     converter_kwargs.update(quant_mode.converter_flags())
 
     result = _convert_saved_model(**converter_kwargs)
-    calibrate_and_quantize, flags = quant_mode.quantizer_flags(
-        self.inference_input_type, self.inference_output_type)
+    calibrate_and_quantize, flags = quant_mode.quantizer_flags()
     if calibrate_and_quantize:
       result = self._calibrate_quantize_model(result, **flags)
 
@@ -858,10 +860,11 @@ class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
       # Pass `keep_original_batch_size=True` will ensure that we get an input
       # signature including the batch dimension specified by the user.
       # TODO(b/169898786): Use the Keras public API when TFLite moves out of TF
-      input_signature = _keras_saving_utils.model_input_signature(
+      input_signature = _model_input_signature(
           self._keras_model, keep_original_batch_size=True)
 
-    func = _saving_utils.trace_model_call(self._keras_model, input_signature)
+    # TODO(b/169898786): Use the Keras public API when TFLite moves out of TF
+    func = _trace_model_call(self._keras_model, input_signature)
     concrete_func = func.get_concrete_function()
     self._funcs = [concrete_func]
 
@@ -977,8 +980,9 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
       dataset to evaluate different optimizations. Note that this is an optional
       attribute but it is necessary if INT8 is the only support builtin ops in
       target ops.
-    target_spec: Experimental flag, subject to change. Specification of target
-      device.
+    target_spec: Experimental flag, subject to change. Specifications of target
+      device, including supported ops set, supported types and a set of user's
+      defined TensorFlow operators required in the TensorFlow Lite runtime.
     inference_input_type: Data type of the input layer. Note that integer types
       (tf.int8 and tf.uint8) are currently only supported for post training
       integer quantization and quantization aware training. (default tf.float32,
@@ -1305,8 +1309,11 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
                    "please file a bug. You can opt-out "
                    "by setting experimental_new_converter=False")
 
-    calibrate_quantize, flags = quant_mode.quantizer_flags(
-        self.inference_input_type, self.inference_output_type)
+    if not self.experimental_new_converter:
+      calibrate_quantize, flags = quant_mode.quantizer_flags(
+          self.inference_input_type, self.inference_output_type)
+    else:
+      calibrate_quantize, flags = quant_mode.quantizer_flags()
 
     self._validate_quantized_input_stats(converter_kwargs, calibrate_quantize)
 
@@ -1326,6 +1333,12 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
 
     if calibrate_quantize:
       result = self._calibrate_quantize_model(result, **flags)
+
+    if self.experimental_new_converter:
+      flags_modify_model_io_type = quant_mode.flags_modify_model_io_type(
+          self.inference_input_type, self.inference_output_type)
+      if flags_modify_model_io_type:
+        result = _modify_model_io_type(result, **flags_modify_model_io_type)
 
     if self._experimental_sparsify_model:
       result = _mlir_sparsify(result)
@@ -1349,7 +1362,7 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
     Returns:
       Bool.
     """
-    return self._input_tensors and self._output_tensors
+    return self._input_tensors is not None and self._output_tensors
 
   def _set_batch_size(self, batch_size):
     """Sets the first dimension of the input tensor to `batch_size`.
@@ -1474,10 +1487,9 @@ class TFLiteKerasModelConverter(TFLiteConverterBaseV1):
                          "with Eager mode. If your model requires any of these "
                          "parameters, please use disable_eager_execution().")
 
-      _keras.backend.set_learning_phase(False)
-      keras_model = _keras.models.load_model(model_file, custom_objects)
-
-      function = _saving_utils.trace_model_call(keras_model)
+      keras_model = keras_deps.get_load_model_function()(
+          model_file, custom_objects)
+      function = _trace_model_call(keras_model)
       concrete_func = function.get_concrete_function()
 
       frozen_func = _convert_to_constants.convert_variables_to_constants_v2(
@@ -1491,10 +1503,10 @@ class TFLiteKerasModelConverter(TFLiteConverterBaseV1):
       return
 
     # Handles Keras when Eager mode is disabled.
-    _keras.backend.clear_session()
-    _keras.backend.set_learning_phase(False)
-    keras_model = _keras.models.load_model(model_file, custom_objects)
-    sess = _keras.backend.get_session()
+    keras_deps.get_clear_session_function()()
+    keras_model = keras_deps.get_load_model_function()(
+        model_file, custom_objects)
+    sess = keras_deps.get_get_session_function()()
 
     # Get input and output tensors.
     if input_arrays:
@@ -1585,7 +1597,7 @@ class TFLiteFrozenGraphConverter(TFLiteConverterBaseV1):
       output_tensors: List of output tensors (only .name is used from this).
       input_arrays_with_shape: Tuple of strings representing input tensor names
         and list of integers representing input shapes
-        (e.g., [("foo" : [1, 16, 16, 3])]). Use only when graph cannot be loaded
+        (e.g., [("foo", [1, 16, 16, 3])]). Use only when graph cannot be loaded
           into TensorFlow and when `input_tensors` and `output_tensors` are
           None. (default None)
       output_arrays: List of output tensors to freeze graph with. Use only when
@@ -1611,6 +1623,15 @@ class TFLiteFrozenGraphConverter(TFLiteConverterBaseV1):
             "input_arrays_with_shape and output_arrays must be defined.")
       self._input_arrays_with_shape = input_arrays_with_shape
       self._output_arrays = output_arrays
+
+    if input_tensors is not None and input_arrays_with_shape is not None:
+      logging.warning("input_arrays_with_shape will be ignored when both the "
+                      "given input_tensors and input_arrays_with_shape are not "
+                      "None.")
+
+    if output_tensors is not None and output_arrays is not None:
+      logging.warning("output_arrays will be ignored when both the given "
+                      "output_tensors and output_arrays are not None.")
 
 
 @_tf_export(v1=["lite.TFLiteConverter"])
@@ -1680,8 +1701,9 @@ class TFLiteConverter(TFLiteFrozenGraphConverter):
     target_ops: Deprecated. Please specify `target_spec.supported_ops` instead.
       Set of OpsSet options indicating which converter to use. (default
       set([OpsSet.TFLITE_BUILTINS]))
-    target_spec: Experimental flag, subject to change. Specification of target
-      device.
+    target_spec: Experimental flag, subject to change. Specifications of target
+      device, including supported ops set, supported types and a set of user's
+      defined TensorFlow operators required in the TensorFlow Lite runtime.
     optimizations: Experimental flag, subject to change. A list of optimizations
       to apply when converting the model. E.g. `[Optimize.DEFAULT]`
     representative_dataset: A representative dataset that can be used to

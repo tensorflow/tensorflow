@@ -69,6 +69,7 @@ func @main(tensor<40x37xf32>, tensor<40x37xf32>) -> tensor<40x40xf32> {
   // CHECK-NEXT:  name: "min_runtime_version",
   // CHECK-NEXT:  buffer: 5
   // CHECK-NEXT:  } ]
+  // CHECK-NEXT:  signature_defs: [ ]
   // CHECK-NEXT:}
 
   %cst = constant unit

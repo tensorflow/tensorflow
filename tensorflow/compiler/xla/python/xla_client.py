@@ -28,6 +28,8 @@ import inspect
 import os
 from typing import List, Sequence, Tuple, Union
 
+from . import xla_extension as _xla
+
 from absl import logging
 import numpy as np
 
@@ -35,8 +37,6 @@ import numpy as np
 # Python bindings are currently packaged both as part of jaxlib and as part
 # of TensorFlow. If we use protocol buffers here, then importing both jaxlib
 # and TensorFlow may fail with duplicate protocol buffer message definitions.
-
-from tensorflow.compiler.xla.python import xla_extension as _xla
 
 # Most functions are snake_case for consistency with other modules, some
 # method names are CamelCase for consistency with XLA.
@@ -90,11 +90,16 @@ def _gpu_backend_factory(distributed_client=None, node_id=0):
       node_id=node_id)
 
 
+def _tpu_backend_factory():
+  return _xla.get_tpu_client(asynchronous=True)
+
+
 # Backend factories, keyed by user-visible name, in increasing priority order.
 _local_backend_factories = collections.OrderedDict([
     ('interpreter', _interpreter_backend_factory),
     ('cpu', _cpu_backend_factory),
     ('gpu', _gpu_backend_factory),
+    ('tpu', _tpu_backend_factory),
 ])
 
 
@@ -414,6 +419,7 @@ XlaComputation = _xla.XlaComputation
 FftType = _xla.FftType
 Client = _xla.Client
 Buffer = _xla.Buffer
+DeviceArrayBase = _xla.DeviceArrayBase
 Executable = _xla.Executable
 
 

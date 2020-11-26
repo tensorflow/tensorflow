@@ -75,6 +75,19 @@ class AlgorithmDesc;
 class StreamExecutor;
 class ScratchAllocator;
 
+namespace detail {
+
+// Helper class to prevent a template function argument from being deduced. This
+// is identical to std::type_identity in C++20.
+template <typename T>
+struct NonDeduced {
+  using type = T;
+};
+template <typename T>
+using NonDeducedType = typename NonDeduced<T>::type;
+
+}  // namespace detail
+
 // Convert a type to the corresponding QuantizedActivationMode.
 template <typename ElementType>
 struct Quantization;
@@ -1632,6 +1645,25 @@ class Stream {
                        const DeviceMemory<std::complex<double>> &a, int lda,
                        DeviceMemory<std::complex<double>> *b, int ldb);
 
+  // See BlasSupport::DoBlatLtMatmul.
+  // Note that we prevent alpha and beta from being used to deduce CType so that
+  // they can be constructed implicitly from values of type CType. Without this,
+  // type deduction would fail when this function is called with a value of type
+  // CType for alpha or beta.
+  template <typename ABType, typename CType>
+  Stream &ThenBlasLtMatmul(
+      const blas::IBlasLtMatmulPlan *plan,
+      const detail::NonDeducedType<HostOrDeviceScalar<CType>> &alpha,
+      const DeviceMemory<ABType> &a, const DeviceMemory<ABType> &b,
+      const detail::NonDeducedType<HostOrDeviceScalar<CType>> &beta,
+      DeviceMemory<CType> *c, ScratchAllocator *scratch_allocator,
+      const blas::IBlasLtMatmulAlgorithm *algorithm,
+      const DeviceMemory<CType> &bias = {},
+      blas::ProfileResult *output_profile_result = nullptr) {
+    return ThenBlasLtMatmulImpl(plan, alpha, a, b, beta, c, scratch_allocator,
+                                algorithm, bias, output_profile_result);
+  }
+
   // See FftSupport::DoFft.
   Stream &ThenFft(fft::Plan *plan,
                   const DeviceMemory<std::complex<float>> &input,
@@ -2063,6 +2095,19 @@ class Stream {
       const DeviceMemory<T> &input_data,
       const dnn::BatchDescriptor &bias_descriptor,
       DeviceMemory<T> *backward_bias_data);
+
+  // Implementation of ThenBlasLtMatmul that is shared by all types.
+  template <typename ABType, typename CType>
+  Stream &ThenBlasLtMatmulImpl(const blas::IBlasLtMatmulPlan *plan,
+                               const HostOrDeviceScalar<CType> &alpha,
+                               const DeviceMemory<ABType> &a,
+                               const DeviceMemory<ABType> &b,
+                               const HostOrDeviceScalar<CType> &beta,
+                               DeviceMemory<CType> *c,
+                               ScratchAllocator *scratch_allocator,
+                               const blas::IBlasLtMatmulAlgorithm *algorithm,
+                               const DeviceMemory<CType> &bias,
+                               blas::ProfileResult *output_profile_result);
 
   SE_DISALLOW_COPY_AND_ASSIGN(Stream);
 };

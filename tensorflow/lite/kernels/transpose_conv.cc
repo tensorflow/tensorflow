@@ -22,10 +22,10 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
-// NOLINTNEXTLINE - This header file should't go to the top.
+// NOLINTNEXTLINE - This header file shouldn't go to the top.
 #include "tensorflow/lite/kernels/internal/optimized/integer_ops/transpose_conv.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
-// NOLINTNEXTLINE - This header file should't go to the top.
+// NOLINTNEXTLINE - This header file shouldn't go to the top.
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/transpose_conv.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
@@ -204,7 +204,7 @@ TfLiteStatus ResizeAndTransposeWeights(TfLiteContext* context,
   TF_LITE_ENSURE_STATUS(context->ResizeTensor(context, transposed_weights,
                                               transposed_weights_shape_array));
 
-  // Transpose the weights from from OHWI order to HWOI order.
+  // Transpose the weights from OHWI order to HWOI order.
   TransposeParams transpose_params;
   transpose_params.perm_count = 4;
   transpose_params.perm[0] = 1;

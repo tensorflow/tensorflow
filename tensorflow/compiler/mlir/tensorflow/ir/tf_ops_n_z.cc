@@ -28,6 +28,7 @@ limitations under the License.
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
+#include "llvm/ADT/Twine.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -75,15 +77,6 @@ namespace {
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_helpers.inc"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/generated_canonicalize.inc"
 }  // namespace
-
-//===----------------------------------------------------------------------===//
-// NegOp
-//===----------------------------------------------------------------------===//
-
-void NegOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
-                                        MLIRContext *context) {
-  results.insert<NegNested>(context);
-}
 
 //===----------------------------------------------------------------------===//
 // NotEqualOp
@@ -483,15 +476,6 @@ void ReadVariableOp::getCanonicalizationPatterns(
 }
 
 //===----------------------------------------------------------------------===//
-// ReciprocalOp
-//===----------------------------------------------------------------------===//
-
-void ReciprocalOp::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
-  results.insert<ReciprocalNested>(context);
-}
-
-//===----------------------------------------------------------------------===//
 // RandomUniformOp
 //===----------------------------------------------------------------------===//
 
@@ -580,131 +564,143 @@ Optional<ContractionFusion> ReluOp::GetContractionFusion() {
 // ReshapeOp
 //===----------------------------------------------------------------------===//
 
-// TODO(b/128020684): Verify the output type.
-static LogicalResult Verify(ReshapeOp op) {
-  auto shape_type = op.shape().getType().cast<TensorType>();
-  if (!shape_type.hasRank()) return success();
-  if (shape_type.getRank() != 1)
-    return op.emitOpError("shape must be 1D tensor");
-  auto rank_by_shape = shape_type.getShape()[0];
-  auto type_of_tensor = op.tensor().getType().cast<TensorType>();
-  // No compile time verification for unknown sized shape.
-  if (rank_by_shape == -1 || !type_of_tensor.hasStaticShape()) return success();
-  int64_t num_by_tensor = type_of_tensor.getNumElements();
+namespace {
+using ReshapeErrorHandler =
+    llvm::function_ref<LogicalResult(const llvm::Twine &)>;
 
-  auto out_ty = op.getType().dyn_cast<RankedTensorType>();
-  if (out_ty && out_ty.hasStaticShape()) {
-    int64_t num_output_elements = out_ty.getNumElements();
-    if (num_by_tensor != num_output_elements)
-      return op.emitOpError()
-             << "number of output elements (" << num_output_elements
-             << ") does not match expected number of elements ("
-             << num_by_tensor << ")";
-  }
+LogicalResult GetReshapeOutputType(Value tensor, Value shape,
+                                   ReshapeErrorHandler error_handler,
+                                   TensorType &output_ty) {
+  auto tensor_ty = tensor.getType().cast<TensorType>();
+  auto element_ty = tensor_ty.getElementType();
+  output_ty = UnrankedTensorType::get(element_ty);
 
-  // Check values if constant shape. No compiling time verification for
-  // non-constant shape.
-  auto *shape_op = op.shape().getDefiningOp();
-  if (!shape_op) return success();
-  Attribute shape_cst;
-  if (!matchPattern(shape_op, m_Constant(&shape_cst))) return success();
-  auto shape_cst_attr = shape_cst.dyn_cast<ElementsAttr>();
-  if (!shape_cst_attr) return op.emitOpError("shape must be a valid tensor");
+  auto shape_ty = shape.getType().dyn_cast<RankedTensorType>();
+  if (!shape_ty) return success();
+  if (shape_ty.getRank() != 1)
+    return error_handler(llvm::formatv(
+        "requires 'shape' to be rank 1, but got {0}", shape_ty.getRank()));
 
-  if (auto opaque_attr = shape_cst_attr.dyn_cast<OpaqueElementsAttr>()) {
-    opaque_attr.decode(shape_cst_attr);
-  }
-
-  // We know the shape is a 1-D Tensor, then let us get the number of
-  // elements it implies.
-  unsigned num_by_shape = 1;
-  unsigned unknown_dim_count = 0;
-  for (int i = 0, e = rank_by_shape; i != e; ++i) {
-    auto num = shape_cst_attr.getValue<IntegerAttr>(i).getInt();
-    // The dimension size value can be -1, and that the real size needs to
-    // be computed so that the total size remains constant. At most one
-    // component of shape can be -1.
-    if (num == -1) {
-      if (++unknown_dim_count > 1) {
-        return op.emitOpError("more than one component of shape are -1");
-      }
-    } else {
-      num_by_shape *= num;
+  DenseIntElementsAttr shape_attr;
+  if (!matchPattern(shape, m_Constant(&shape_attr))) {
+    // If only shape of `shape` is known, return ranked but dynamic output
+    // shape.
+    if (shape_ty.hasStaticShape()) {
+      llvm::SmallVector<int64_t, 8> dynamic_shape(shape_ty.getDimSize(0),
+                                                  ShapedType::kDynamicSize);
+      output_ty = RankedTensorType::get(dynamic_shape, element_ty);
     }
-  }
-  // If there is one component of shape is -1, the dimension should be
-  // computed so that the total size remains constant.
-  if (unknown_dim_count == 1) {
-    if (num_by_tensor % num_by_shape != 0)
-      return op.emitOpError(
-          "one component of shape is -1 but couldn't infer the dimension");
     return success();
   }
-  // If the elements by the tensor and implies by the shape don't match,
-  // fail this static check.
-  if (num_by_tensor != num_by_shape) {
-    return op.emitOpError(
-        "mismatch in tensor elements and shape implied elements");
+
+  // Detect if reshape output shape is folded.
+  bool shape_ty_zero_dim = false;
+  int unknown_index = -1;
+  // The product of constant shape argument excluding unknown dimension.
+  int64_t shape_ty_size = 1;
+  llvm::SmallVector<int64_t, 8> output_ty_shape;
+  output_ty_shape.reserve(shape_attr.getNumElements());
+  for (const auto &dim : llvm::enumerate(shape_attr.getIntValues())) {
+    const int64_t size = dim.value().getSExtValue();
+    if (size == ShapedType::kDynamicSize) {
+      if (unknown_index != -1)
+        return error_handler(llvm::formatv(
+            "requires 'shape' to have at most one dynamic dimension, but got "
+            "multiple dynamic dimensions at indices {0} and {1}",
+            unknown_index, dim.index()));
+
+      unknown_index = dim.index();
+    } else if (size == 0) {
+      shape_ty_zero_dim = true;
+    } else if (size > 0) {
+      shape_ty_size *= size;
+    } else {
+      return error_handler(
+          llvm::formatv("requires 'shape' to have dimensions greater than -1, "
+                        "but got {0} at index {1}",
+                        size, dim.index()));
+    }
+    output_ty_shape.push_back(size);
   }
+
+  if (!tensor_ty.hasStaticShape()) {
+    output_ty = RankedTensorType::get(output_ty_shape, element_ty);
+    return success();
+  }
+
+  // Compute the value of the unknown dimension.
+  if (unknown_index != -1) {
+    // Compute number of elements in tensor shape.
+    int64_t tensor_ty_size = 1;
+    bool tensor_ty_zero_dim = false;
+    for (const auto &dim : tensor_ty.getShape()) {
+      if (dim > 0 || !shape_ty_zero_dim) {
+        tensor_ty_size *= dim;
+      } else {
+        tensor_ty_zero_dim = true;
+      }
+    }
+
+    const int64_t missing_dim = tensor_ty_size / shape_ty_size;
+    if (!tensor_ty_zero_dim && shape_ty_size * missing_dim != tensor_ty_size)
+      return error_handler(
+          llvm::formatv("requires 'tensor' number of elements be a multiple of "
+                        "{0}, but got {1}",
+                        shape_ty_size, tensor_ty_size));
+
+    // Set the unknown dimension such that total number of elements remain
+    // constant.
+    output_ty_shape[unknown_index] = missing_dim;
+  }
+
+  output_ty = RankedTensorType::get(output_ty_shape, element_ty);
+
+  return success();
+}
+}  // namespace
+
+static LogicalResult Verify(ReshapeOp op) {
+  auto error_handler = [&op](const llvm::Twine &message) -> LogicalResult {
+    return op.emitOpError() << message;
+  };
+  TensorType expected_ty;
+  if (failed(GetReshapeOutputType(op.tensor(), op.shape(), error_handler,
+                                  expected_ty)))
+    return failure();
+
+  auto output_ty = op.getType().dyn_cast<RankedTensorType>();
+  if (!output_ty) return success();
+  auto tensor_ty = op.tensor().getType().cast<TensorType>();
+  if (output_ty.hasStaticShape() && tensor_ty.hasStaticShape()) {
+    const int64_t output_ty_size = output_ty.getNumElements();
+    const int64_t tensor_ty_size = tensor_ty.getNumElements();
+    if (tensor_ty_size != output_ty_size)
+      return op.emitOpError() << "requires 'output' number of elements to "
+                                 "match 'tensor' number of elements, but got "
+                              << output_ty_size << " and " << tensor_ty_size;
+  }
+
+  if (!AreCastCompatible({output_ty, expected_ty}))
+    return op.emitOpError()
+           << "requires 'output' type " << output_ty
+           << " to be cast compatible with expected type " << expected_ty;
+
   return success();
 }
 
+// Currently there are use cases that rely on partial evaluation of the `shape`
+// operand, so InferTypeOpInterface is not used (along with generated builder of
+// the same signature).
 void ReshapeOp::build(OpBuilder &builder, OperationState &result, Value tensor,
                       Value shape) {
-  auto ttype = tensor.getType().cast<ShapedType>();
-  auto etype = ttype.getElementType();
-
-  auto unranked = [&builder, etype, &result, shape, tensor]() {
-    return ReshapeOp::build(builder, result, UnrankedTensorType::get(etype),
-                            tensor, shape);
+  auto error_handler = [&result](const llvm::Twine &message) {
+    return mlir::emitError(result.location) << message;
   };
+  TensorType output_ty;
+  if (failed(GetReshapeOutputType(tensor, shape, error_handler, output_ty)))
+    return;
 
-  // If tensor is unranked then we have no info about output of shape.
-  if (!ttype.hasRank()) return unranked();
-
-  DenseIntElementsAttr attr_shape;
-  if (matchPattern(shape, m_Constant(&attr_shape))) {
-    llvm::SmallVector<int64_t, 4> const_shape;
-    const_shape.reserve(attr_shape.getNumElements());
-
-    // Detect if reshape output shape is folded.
-    bool flatten = false;
-    int unknown_index = -1;
-    // The product of constant shape argument excluding unknown dimension.
-    int64_t product_cshape = 1;
-    for (auto e : llvm::enumerate(attr_shape)) {
-      int64_t val = e.value().getSExtValue();
-      if (IsUnknownDimOrRank(val)) {
-        if (flatten) {
-          mlir::emitError(result.location)
-              << "only one unknown dimension allowed";
-          return;
-        }
-        flatten = true;
-        unknown_index = e.index();
-      } else {
-        product_cshape *= val;
-      }
-      const_shape.push_back(val);
-    }
-
-    // Compute the value of the unknown dimension.
-    if (flatten) {
-      // Compute number of elements in tensor shape.
-      auto tshape = ttype.getShape();
-      int64_t product_tshape = std::accumulate(tshape.begin(), tshape.end(), 1,
-                                               std::multiplies<int64_t>());
-      // Set the unknown dimension such that total number of elements remain
-      // constant.
-      // Note: The case where the ratio is not integral, and so the total size
-      // of reshape not constant, is checked in verify function.
-      const_shape[unknown_index] = product_tshape / product_cshape;
-    }
-    return ReshapeOp::build(builder, result,
-                            RankedTensorType::get(const_shape, etype), tensor,
-                            shape);
-  }
-  return unranked();
+  return ReshapeOp::build(builder, result, output_ty, tensor, shape);
 }
 
 void ReshapeOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
@@ -1318,7 +1314,7 @@ LogicalResult SpaceToBatchNDOp::inferReturnTypes(
   SmallVector<int64_t, 4> return_shape(input_rank, ShapedType::kDynamicSize);
 
   // The return has all dimension sizes unknown when block_rank is unknown.
-  if (block_rank == -1) {
+  if (block_rank == ShapedType::kDynamicSize) {
     inferredReturnTypes.assign(
         {RankedTensorType::get(return_shape, input_type.getElementType())});
     return success();
@@ -1337,6 +1333,14 @@ LogicalResult SpaceToBatchNDOp::inferReturnTypes(
       matchPattern(paddings_val, m_Constant(&paddings_attr))) {
     int64_t return_batch = input_shape[0];
     for (uint64_t i = 0; i < block_rank; ++i) {
+      // Propagate dynamic dimension.
+      if (input_shape[i + 1] == ShapedType::kDynamicSize) {
+        return_batch = ShapedType::kDynamicSize;
+      }
+      if (return_batch == ShapedType::kDynamicSize) {
+        return_shape[1 + i] = ShapedType::kDynamicSize;
+        continue;
+      }
       int64_t paddings_sum =
           paddings_attr.getValue({i, 0}).cast<IntegerAttr>().getInt() +
           paddings_attr.getValue({i, 1}).cast<IntegerAttr>().getInt();
@@ -1533,6 +1537,21 @@ void SumOp::build(OpBuilder &builder, OperationState &result, Value input,
   Type out_ty =
       InferReductionOpType(input, reduction_indices, keep_dims, &builder);
   build(builder, result, out_ty, input, reduction_indices, keep_dims);
+}
+
+// TODO: Templatize this fold for all reduction ops.
+OpFoldResult SumOp::fold(ArrayRef<Attribute> operands) {
+  auto input_ty = input().getType().template dyn_cast<RankedTensorType>();
+  if (!input_ty) return {};
+  auto result_ty = getType().template dyn_cast<RankedTensorType>();
+  if (!result_ty) return {};
+
+  // Bypass this op if the result has the same shape and type. This can happen
+  // if the input tensor has size 0 or size 1.
+  if (!keep_dims() && input_ty == result_ty) {
+    return input();
+  }
+  return {};
 }
 
 //===----------------------------------------------------------------------===//
@@ -1913,6 +1932,19 @@ bool StridedSliceGradOp::GetSlicedShapeAndBoundRanges(
       end_mask(), ellipsis_mask(), new_axis_mask(), shrink_axis_mask(),
       slice_begin, slice_end, slice_stride);
   return true;
+}
+
+//===----------------------------------------------------------------------===//
+// SummaryWriterOp
+//===----------------------------------------------------------------------===//
+
+ResourceHandleValueAndId SummaryWriterOp::GetResourceHandleValueAndId(
+    llvm::SmallDenseMap<ResourceHandle, int64_t> &resource_handle_id_map,
+    int64_t &next_id) {
+  llvm::StringRef device = GetDeviceOrEmpty(getOperation());
+  return GetResourceHandleValueAndIdBase(container(), shared_name(), device,
+                                         writer(), resource_handle_id_map,
+                                         next_id);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2323,6 +2355,41 @@ void NonMaxSuppressionV3Op::getCanonicalizationPatterns(
 }
 
 //===----------------------------------------------------------------------===//
+// FusedBatchNormOp
+//===----------------------------------------------------------------------===//
+
+namespace {
+
+class ConvertFusedBatchNorm : public OpRewritePattern<TF::FusedBatchNormOp> {
+  using OpRewritePattern<FusedBatchNormOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(TF::FusedBatchNormOp tf_fused_batch_norm_op,
+                                PatternRewriter &rewriter) const override {
+    auto new_result_types =
+        llvm::to_vector<6>(tf_fused_batch_norm_op.getResultTypes());
+    // reserve_space_3
+    new_result_types.push_back(
+        UnrankedTensorType::get(FloatType::getF32(rewriter.getContext())));
+
+    OperationState new_state(tf_fused_batch_norm_op.getLoc(),
+                             TF::FusedBatchNormV3Op::getOperationName(),
+                             tf_fused_batch_norm_op.getOperands(),
+                             new_result_types,
+                             tf_fused_batch_norm_op.getAttrs());
+    Operation *tf_fused_batch_norm_op_v3 = rewriter.createOperation(new_state);
+
+    rewriter.replaceOp(tf_fused_batch_norm_op,
+                       tf_fused_batch_norm_op_v3->getResults().drop_back());
+    return success();
+  }
+};
+}  // namespace.
+
+void FusedBatchNormOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<ConvertFusedBatchNorm>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // UnpackOp
 //===----------------------------------------------------------------------===//
 
@@ -2396,18 +2463,10 @@ static LogicalResult VerifyUnsortedSegmentReduction(Op op) {
 ResourceHandleValueAndId VarHandleOp::GetResourceHandleValueAndId(
     llvm::SmallDenseMap<ResourceHandle, int64_t> &resource_handle_id_map,
     int64_t &next_id) {
-  // Always create a new ID for anonymous handle.
-  if (IsResourceHandleAnonymous(shared_name())) return {resource(), next_id++};
-
-  llvm::StringRef device;
-  if (auto device_attr = getAttrOfType<StringAttr>("device"))
-    device = device_attr.getValue();
-
-  ResourceHandle handle(container(), shared_name(), device, /*op=*/nullptr);
-  auto emplace_res = resource_handle_id_map.try_emplace(handle, next_id);
-  // New ID created, increment next_id.
-  if (emplace_res.second) ++next_id;
-  return {resource(), emplace_res.first->second};
+  llvm::StringRef device = GetDeviceOrEmpty(getOperation());
+  return GetResourceHandleValueAndIdBase(container(), shared_name(), device,
+                                         resource(), resource_handle_id_map,
+                                         next_id);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2544,14 +2603,6 @@ static LogicalResult Verify(WhileOp op) {
                               /*body_result=*/body_fn_type.getResults())))
     return failure();
   return success();
-}
-
-//===----------------------------------------------------------------------===//
-// WhileOp canonicalization.
-//===----------------------------------------------------------------------===//
-void WhileOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
-                                          MLIRContext *context) {
-  results.insert<DropAttributes<WhileOp>>(context);
 }
 
 //===----------------------------------------------------------------------===//

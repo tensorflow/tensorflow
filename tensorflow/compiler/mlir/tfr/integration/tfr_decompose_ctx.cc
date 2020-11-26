@@ -54,6 +54,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
+namespace tfr {
 
 const char* const kTFRLibEnv = "TF_MLIR_TFR_LIB_DIR";
 
@@ -66,6 +67,10 @@ StatusOr<std::unique_ptr<TFRDecomposeContext>> TFRDecomposeContext::Get(
   string composite_mlir_dir = io::JoinPath(env->GetRunfilesDir(), tfr_lib_dir);
   std::vector<string> files;
   TF_RETURN_IF_ERROR(env->GetChildren(composite_mlir_dir, &files));
+  if (files.empty()) {
+    return errors::Internal(absl::StrCat(
+        "Failed to find the decomposition lib from path ", composite_mlir_dir));
+  }
   std::string tfr_raw_text;
   for (const auto& file : files) {
     string fullpath = io::JoinPath(composite_mlir_dir, file);
@@ -76,7 +81,7 @@ StatusOr<std::unique_ptr<TFRDecomposeContext>> TFRDecomposeContext::Get(
     }
   }
 
-  auto ctx = TFRDecomposeContext::Get(tfr_raw_text, mlir_ctx);
+  auto ctx = TFRDecomposeContext::GetFromText(tfr_raw_text, mlir_ctx);
   if (!ctx) {
     return errors::Internal(absl::StrCat(
         "Failed to load the imported decomposition lib: ", tfr_raw_text));
@@ -84,7 +89,7 @@ StatusOr<std::unique_ptr<TFRDecomposeContext>> TFRDecomposeContext::Get(
   return ctx;
 }
 
-std::unique_ptr<TFRDecomposeContext> TFRDecomposeContext::Get(
+std::unique_ptr<TFRDecomposeContext> TFRDecomposeContext::GetFromText(
     StringPiece tfr_raw_text, mlir::MLIRContext* mlir_ctx) {
   mlir_ctx->allowUnregisteredDialects(/*allow=*/true);
   // Load dialects involved in the conversion
@@ -98,6 +103,7 @@ std::unique_ptr<TFRDecomposeContext> TFRDecomposeContext::Get(
                   mlir::tf_executor::TensorFlowExecutorDialect,
                   mlir::TFR::TFRDialect>();
   // clang-format on
+  registry.loadAll(mlir_ctx);
 
   // Load the TFR functions in a mlir::ModuleOp
   auto memory_buffer = llvm::MemoryBuffer::getMemBuffer(
@@ -105,20 +111,22 @@ std::unique_ptr<TFRDecomposeContext> TFRDecomposeContext::Get(
   llvm::SourceMgr source_mgr;
   source_mgr.AddNewSourceBuffer(std::move(memory_buffer), llvm::SMLoc());
   mlir::OwningModuleRef module = mlir::parseSourceFile(source_mgr, mlir_ctx);
+  // The MLIRContext owns the module
+  auto module_op = module.release();
 
   // Create the context
-  return absl::make_unique<TFRDecomposeContext>(std::move(module));
+  return absl::make_unique<TFRDecomposeContext>(module_op);
 }
 
-StatusOr<FunctionDef> TFRDecomposeContext::Decompose(const NodeDef& node_def,
-                                                     StringPiece func_name) {
+StatusOr<FunctionDef> TFRDecomposeContext::ExpandNode(const NodeDef& node_def,
+                                                      StringPiece func_name) {
   const OpDef* op_def;
   TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUpOpDef(node_def.op(), &op_def));
   DataTypeVector input_dtys, output_dtys;
   TF_RETURN_IF_ERROR(InputTypesForNode(node_def, *op_def, &input_dtys));
   TF_RETURN_IF_ERROR(OutputTypesForNode(node_def, *op_def, &output_dtys));
 
-  mlir::MLIRContext* context = tfr_module_->getContext();
+  mlir::MLIRContext* context = tfr_module_.getContext();
   llvm::SmallVector<mlir::Type, 4> input_tys, output_tys;
   mlir::Builder builder(context);
   for (auto ty : input_dtys) {
@@ -159,15 +167,8 @@ StatusOr<FunctionDef> TFRDecomposeContext::Decompose(const NodeDef& node_def,
   mlir::Operation* tf_op = op_builder.createOperation(op_state);
   op_builder.create<mlir::ReturnOp>(loc, tf_op->getResults());
 
-  if (failed(mlir::verify(module))) {
-    return errors::Internal(absl::StrCat(
-        "Failed to verify the imported NodeDef: ", node_def.DebugString()));
-  }
-
-  // Call the decompose passes by using the external symbol table.
-  if (failed(pm_.run(module))) {
-    return errors::Internal("Failed to run the decompose passes.");
-  }
+  // Run the decompose passes on the module
+  TF_RETURN_IF_ERROR(DecomposeGraph(module));
 
   // Export the result as a FunctionDef.
   FunctionDef func_def;
@@ -177,7 +178,7 @@ StatusOr<FunctionDef> TFRDecomposeContext::Decompose(const NodeDef& node_def,
   return func_def;
 }
 
-Status TFRDecomposeContext::Decompose(mlir::ModuleOp user_module) {
+Status TFRDecomposeContext::DecomposeGraph(mlir::ModuleOp user_module) {
   // Call the decompose passes by using the external symbol table.
   if (failed(pm_.run(user_module))) {
     return errors::Internal("Failed to run the decompose passes.");
@@ -185,35 +186,38 @@ Status TFRDecomposeContext::Decompose(mlir::ModuleOp user_module) {
   return Status::OK();
 }
 
-StatusOr<FunctionDef> TFRDecomposeContext::Expand(const NodeDef& node_def,
-                                                  StringPiece func_name) {
-  mlir::MLIRContext mlir_ctx;
-  mlir_ctx.allowUnregisteredDialects(/*allow=*/true);
-  TF_ASSIGN_OR_RETURN(auto ctx, Get(&mlir_ctx));
-  return ctx->Decompose(node_def, func_name);
-}
-
-Status TFRDecomposeContext::Destroy() {
-  tfr_module_.release().erase();
-  return Status::OK();
-}
-
 // Constructor of the decompose context.
-TFRDecomposeContext::TFRDecomposeContext(mlir::OwningModuleRef tfr_module)
-    : tfr_module_(std::move(tfr_module)), pm_(tfr_module_->getContext()) {
+TFRDecomposeContext::TFRDecomposeContext(mlir::ModuleOp tfr_module)
+    : tfr_module_(tfr_module), pm_(tfr_module_.getContext()) {
   mlir::OpPassManager& func_pm = pm_.nest<mlir::FuncOp>();
 
   // Prepare the imported graph.
   func_pm.addPass(mlir::CreateExecutorDialectToFunctionalConversionPass());
 
   // Run TFR lowering, inlining and raising to tf.
-  func_pm.addPass(mlir::TFR::CreateDecomposeTFOpsPass(tfr_module_.get()));
+  func_pm.addPass(mlir::TFR::CreateDecomposeTFOpsPass(tfr_module_));
   func_pm.addPass(mlir::TFR::CreateRaiseToTFOpsPass(
-      tfr_module_.get(), /*materialize_derived_attrs=*/true));
+      tfr_module_, /*materialize_derived_attrs=*/true));
 
   // Prepare to be exported.
   func_pm.addPass(mlir::CreateFunctionalToExecutorDialectConversionPass());
   pm_.addPass(mlir::CreateBreakUpIslandsPass());
 }
 
+void TFRDecomposeContext::Destroy() { tfr_module_.erase(); }
+
+StatusOr<FunctionDef> ExpandNode(const NodeDef& node_def,
+                                 StringPiece func_name) {
+  mlir::MLIRContext mlir_ctx;
+  TF_ASSIGN_OR_RETURN(auto ctx, TFRDecomposeContext::Get(&mlir_ctx));
+  return ctx->ExpandNode(node_def, func_name);
+}
+
+Status DecomposeGraph(mlir::ModuleOp user_module) {
+  mlir::MLIRContext* mlir_ctx = user_module.getContext();
+  TF_ASSIGN_OR_RETURN(auto ctx, TFRDecomposeContext::Get(mlir_ctx));
+  return ctx->DecomposeGraph(user_module);
+}
+
+}  // namespace tfr
 }  // namespace tensorflow

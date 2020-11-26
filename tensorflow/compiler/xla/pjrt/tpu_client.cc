@@ -97,33 +97,25 @@ Status TpuDeviceState::ThenMemcpyDeviceToDevice(
 class PjRtTpuClient : public PjRtClient {
  public:
   PjRtTpuClient(LocalClient* client,
-                std::vector<std::unique_ptr<PjRtDevice>> devices, int host_id,
-                tf_tpu::TpuPlatformInterface* tpu_platform);
+                std::vector<std::unique_ptr<PjRtDevice>> devices, int host_id);
 
   StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
 
-  bool EnqueueD2DTransfersOnSrcStream() const override {
-    return tpu_platform_->topology().version() == kTpuV4;
-  }
+  bool EnqueueD2DTransfersOnSrcStream() const override { return false; }
 
   StatusOr<absl::optional<std::string>> ExecutableFingerprint(
       const PjRtExecutable& executable) const override;
-
- private:
-  tf_tpu::TpuPlatformInterface* tpu_platform_;
 };
 
 PjRtTpuClient::PjRtTpuClient(LocalClient* client,
                              std::vector<std::unique_ptr<PjRtDevice>> devices,
-                             int host_id,
-                             tf_tpu::TpuPlatformInterface* tpu_platform)
-    : PjRtClient("tpu", client, std::move(devices), host_id,
+                             int host_id)
+    : PjRtClient(kTpuName, client, std::move(devices), host_id,
                  /*allocator=*/nullptr,
                  /*host_memory_allocator=*/nullptr,
                  /*should_stage_host_to_device_transfers=*/false,
-                 /*gpu_run_options=*/nullptr),
-      tpu_platform_(tpu_platform) {}
+                 /*gpu_run_options=*/nullptr) {}
 
 StatusOr<DeviceAssignment> PjRtTpuClient::GetDefaultDeviceAssignment(
     int num_replicas, int num_partitions) const {
@@ -199,7 +191,8 @@ StatusOr<std::vector<std::unique_ptr<PjRtDevice>>> GetTpuDevices(
 StatusOr<std::shared_ptr<PjRtClient>> GetTpuClient(
     bool asynchronous, absl::Duration init_retry_timeout) {
   tf_tpu::TpuPlatformInterface* platform =
-      tf_tpu::TpuPlatformInterface::GetRegisteredPlatform();
+      tf_tpu::TpuPlatformInterface::GetRegisteredPlatform(
+          /*initialize_platform=*/true, /*num_tries=*/1);
   if (platform == nullptr) {
     return InvalidArgument("TpuPlatform is not available.");
   }
@@ -239,8 +232,8 @@ StatusOr<std::shared_ptr<PjRtClient>> GetTpuClient(
                       GetTpuDevices(client, std::move(local_device_states)));
   int host_id = platform->GetTpuHostLocation().Id();
 
-  return std::shared_ptr<PjRtClient>(absl::make_unique<PjRtTpuClient>(
-      client, std::move(devices), host_id, platform));
+  return std::shared_ptr<PjRtClient>(
+      absl::make_unique<PjRtTpuClient>(client, std::move(devices), host_id));
 }
 
 }  // namespace xla

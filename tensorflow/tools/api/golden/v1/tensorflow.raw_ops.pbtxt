@@ -762,7 +762,7 @@ tf_module {
   }
   member_method {
     name: "CollectiveGatherV2"
-    argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'communication_hint\', \'timeout_seconds\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'0\', \'None\'], "
+    argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'ordering_token\', \'communication_hint\', \'timeout_seconds\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'0\', \'None\'], "
   }
   member_method {
     name: "CollectivePermute"
@@ -774,7 +774,7 @@ tf_module {
   }
   member_method {
     name: "CollectiveReduceV2"
-    argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'merge_op\', \'final_op\', \'communication_hint\', \'timeout_seconds\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'0\', \'None\'], "
+    argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'ordering_token\', \'merge_op\', \'final_op\', \'communication_hint\', \'timeout_seconds\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'0\', \'None\'], "
   }
   member_method {
     name: "CombinedNonMaxSuppression"
@@ -3213,6 +3213,10 @@ tf_module {
     argspec: "args=[\'rt_nested_splits\', \'rt_dense_values\', \'batched_input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "RaggedTensorToVariantGradient"
+    argspec: "args=[\'encoded_ragged_grad\', \'row_splits\', \'dense_values_shape\', \'Tvalues\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "RandomCrop"
     argspec: "args=[\'image\', \'size\', \'seed\', \'seed2\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'0\', \'None\'], "
   }
@@ -4118,7 +4122,7 @@ tf_module {
   }
   member_method {
     name: "SnapshotDatasetV2"
-    argspec: "args=[\'input_dataset\', \'path\', \'reader_func_other_args\', \'shard_func_other_args\', \'output_types\', \'output_shapes\', \'reader_func\', \'shard_func\', \'compression\', \'reader_prefix\', \'writer_prefix\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'\', \'None\'], "
+    argspec: "args=[\'input_dataset\', \'path\', \'reader_func_other_args\', \'shard_func_other_args\', \'output_types\', \'output_shapes\', \'reader_func\', \'shard_func\', \'compression\', \'reader_prefix\', \'writer_prefix\', \'hash_valid\', \'hash\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'\', \'False\', \'0\', \'None\'], "
   }
   member_method {
     name: "SobolSample"
@@ -4563,6 +4567,14 @@ tf_module {
   member_method {
     name: "StatelessRandomGammaV2"
     argspec: "args=[\'shape\', \'seed\', \'alpha\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "StatelessRandomGetAlg"
+    argspec: "args=[\'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "StatelessRandomGetKeyCounter"
+    argspec: "args=[\'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "StatelessRandomGetKeyCounterAlg"

@@ -16,47 +16,13 @@ exports_files(["LICENSE"])
 py_library(
     name = "distribute_test_lib_pip",
     deps = [
-        ":all_reduce",
         ":combinations",
         ":multi_worker_test_base",
         ":single_loss_example",
         ":strategy_combinations",
         ":strategy_test_lib",
         ":test_util",
-    ],
-)
-
-py_library(
-    name = "all_reduce",
-    srcs = [
-        "all_reduce.py",
-    ],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:nccl_ops",
-    ],
-)
-
-tf_py_test(
-    name = "all_reduce_test",
-    srcs = ["all_reduce_test.py"],
-    deps = [
-        ":all_reduce",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python:state_ops",
-        "//third_party/py/numpy",
+        "//tensorflow/python/distribute/v1:all_reduce",
     ],
 )
 
@@ -68,10 +34,12 @@ py_library(
         ":collective_util",
         ":cross_device_utils",
         ":device_util",
+        ":distribute_utils",
         ":ps_values",
         ":reduce_util",
         ":tpu_values",
         ":values",
+        ":values_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:device_lib",
         "//tensorflow/python:framework_ops",
@@ -82,8 +50,10 @@ py_library(
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:tf_export",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:executor",
         "//tensorflow/tools/docs:doc_controls",
+        "@enum34_archive//:enum",
         "@six_archive//:six",
     ],
 )
@@ -102,6 +72,7 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nccl_ops",
         "//tensorflow/python:platform",
+        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
     ],
@@ -142,15 +113,15 @@ py_library(
     name = "distribute",
     srcs_version = "PY2AND3",
     deps = [
-        ":all_reduce",
         ":cross_device_ops",
         ":distribute_lib",
         ":mirrored_strategy",
         ":multi_process_runner",
         ":multi_worker_test_base",
         ":one_device_strategy",
+        ":parameter_server_strategy_v2",
         ":sharded_variable",
-        "//tensorflow/python/distribute/client",
+        "//tensorflow/python/distribute/coordinator:cluster_coordinator",
         "//tensorflow/python/distribute/experimental",
     ],
 )
@@ -240,9 +211,6 @@ py_test(
     srcs = ["distribute_coordinator_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
-    tags = [
-        "no_oss_py2",  # b/138443278
-    ],
     deps = [
         ":distribute_coordinator",
         "//tensorflow/core:protos_all_py",
@@ -333,6 +301,7 @@ py_library(
     name = "mirrored_strategy",
     srcs = ["mirrored_strategy.py"],
     deps = [
+        ":collective_util",
         ":cross_device_ops",
         ":device_util",
         ":distribute_lib",
@@ -421,18 +390,27 @@ py_library(
     srcs = ["collective_all_reduce_strategy.py"],
     visibility = ["//tensorflow:internal"],
     deps = [
+        ":collective_util",
         ":cross_device_ops",
         ":cross_device_utils",
+        ":device_util",
+        ":distribute_lib",
+        ":distribute_utils",
         ":input_lib",
         ":mirrored_strategy",
         ":multi_worker_util",
         ":numpy_dataset",
+        ":reduce_util",
         ":values",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:collective_ops",
+        "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:tf_export",
         "//tensorflow/python:training",
+        "//tensorflow/python:util",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:context",
     ],
@@ -457,6 +435,7 @@ cuda_py_test(
     ],
     python_version = "PY3",
     tags = [
+        "notap",  # TODO(b/171355671)
         "notsan",  # TODO(b/151841995)
     ],
     deps = [
@@ -665,9 +644,19 @@ py_library(
 py_library(
     name = "collective_util",
     srcs = ["collective_util.py"],
+    srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
+    ],
+)
+
+tf_py_test(
+    name = "collective_util_test",
+    srcs = ["collective_util_test.py"],
+    deps = [
+        ":collective_util",
+        "//tensorflow/python/eager:test",
     ],
 )
 
@@ -845,10 +834,10 @@ py_library(
         ":one_device_strategy",
         ":test_util",
         ":tpu_strategy",
-        "//tensorflow/python:config",
         "//tensorflow/python:platform",
         "//tensorflow/python:tf2",
-        "//tensorflow/python:util",
+        "//tensorflow/python:tf_export",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:remote",
@@ -908,6 +897,9 @@ tf_py_test(
     name = "multi_worker_test_base_test",
     srcs = ["multi_worker_test_base_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "no_oss",  # TODO(b/170834611)
+    ],
     deps = [
         ":multi_worker_test_base",
     ],
@@ -935,7 +927,6 @@ cuda_py_test(
 distribute_py_test(
     name = "checkpointing_test",
     srcs = ["checkpointing_test.py"],
-    disable_mlir_bridge = False,
     main = "checkpointing_test.py",
     tags = [
         "multi_and_single_gpu",
@@ -956,6 +947,7 @@ distribute_py_test(
     shard_count = 10,
     tags = [
         "multi_and_single_gpu",
+        "no_cuda_asan",  # times out
     ],
     deps = [
         ":collective_all_reduce_strategy",
@@ -990,22 +982,24 @@ distribute_py_test(
         "multi_and_single_gpu",
     ],
     deps = [
-        ":collective_all_reduce_strategy",
         ":combinations",
-        ":input_lib",
-        ":mirrored_strategy",
-        ":multi_worker_test_base",
-        ":reduce_util",
+        ":distribute_lib",
         ":strategy_combinations",
+        ":test_util",
         ":tpu_strategy",
         ":values",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:composite_tensor",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:string_ops",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python:tf2",
+        "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/eager:context",
+        "//tensorflow/python/data/ops:readers",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//third_party/py/numpy",
@@ -1017,7 +1011,6 @@ cuda_py_test(
     name = "cross_device_utils_test",
     srcs = ["cross_device_utils_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":combinations",
         ":cross_device_utils",
@@ -1037,16 +1030,21 @@ cuda_py_test(
     name = "cross_device_ops_test",
     srcs = ["cross_device_ops_test.py"],
     python_version = "PY3",
+    shard_count = 2,
     tags = [
         "multi_and_single_gpu",
+        "no_cuda_asan",  # times out
+        "notsan",  # b/173031470
     ],
     deps = [
         ":collective_util",
         ":combinations",
         ":cross_device_ops",
+        ":cross_device_utils",
         ":multi_process_runner",
         ":multi_worker_test_base",
         ":reduce_util",
+        ":test_util",
         ":values",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:collective_ops",
@@ -1083,9 +1081,15 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:composite_tensor",
+        "//tensorflow/python:embedding_ops",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:partitioned_variables",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tf_export",
+        "//tensorflow/python:type_spec",
+        "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/saved_model:save_context",
         "//tensorflow/python/training/saving:saveable_object_util",
@@ -1101,15 +1105,20 @@ tf_py_test(
         ":sharded_variable",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:embedding_ops",
         "//tensorflow/python:extra_py_tests_deps",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:session",
+        "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_spec",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/module",
         "//tensorflow/python/saved_model:loader",
         "//tensorflow/python/saved_model:save",
         "//tensorflow/python/saved_model:signature_constants",
@@ -1153,18 +1162,20 @@ distribute_py_test(
     name = "values_test",
     size = "medium",
     srcs = ["values_test.py"],
-    disable_mlir_bridge = False,
     main = "values_test.py",
     shard_count = 5,
     tags = [
         "multi_and_single_gpu",
+        "no_cuda_asan",  # times out
         "no_rocm",
         "notsan",  # b/168645872
     ],
     tpu_tags = [
-        "no_oss",  # b/150954621 Target too big to run serially reliably.
+        "no_oss",  # TODO(b/150954621) Target too big to run serially reliably.
+        "noasan",  # TODO(b/337374867) fails with -fsanitize=null
     ],
     deps = [
+        ":collective_all_reduce_strategy",
         ":combinations",
         ":distribute_lib",
         ":distribute_utils",
@@ -1176,7 +1187,6 @@ distribute_py_test(
         ":tpu_strategy",
         ":tpu_values",
         ":values",
-        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:constant_op",
@@ -1186,7 +1196,6 @@ distribute_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:indexed_slices",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:random_ops",
         "//tensorflow/python:saver",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
@@ -1197,14 +1206,12 @@ distribute_py_test(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
-        "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/saved_model:save",
         "//tensorflow/python/saved_model:save_context",
         "//tensorflow/python/saved_model:save_options",
-        "//tensorflow/python/saved_model/model_utils:mode_keys",
-        "//tensorflow/python/tpu:tpu_lib",
         "//tensorflow/python/types",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -1244,6 +1251,7 @@ distribute_py_test(
     shard_count = 5,
     tags = [
         "multi_and_single_gpu",
+        "no_cuda_asan",  # times out
         "no_rocm",
     ],
     tpu_tags = [
@@ -1301,7 +1309,6 @@ distribute_py_test(
 distribute_py_test(
     name = "moving_averages_test",
     srcs = ["moving_averages_test.py"],
-    disable_mlir_bridge = False,
     main = "moving_averages_test.py",
     deps = [
         ":combinations",
@@ -1624,6 +1631,7 @@ py_library(
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/eager:test",
+        "@absl_py//absl/logging",
     ],
 )
 
@@ -1671,37 +1679,6 @@ py_test(
     ],
 )
 
-py_library(
-    name = "distributed_file_utils",
-    srcs = [
-        "distributed_file_utils.py",
-    ],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":multi_worker_util",
-    ],
-)
-
-py_test(
-    name = "distributed_file_utils_test",
-    srcs = ["distributed_file_utils_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
-    deps = [
-        ":distributed_file_utils",
-        ":multi_worker_util",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:training",
-        "//tensorflow/python/eager:test",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
 distribute_py_test(
     name = "strategy_common_test",
     srcs = ["strategy_common_test.py"],
@@ -1738,9 +1715,10 @@ distribute_py_test(
     srcs = ["strategy_gather_test.py"],
     disable_mlir_bridge = False,
     python_version = "PY3",
-    shard_count = 2,
+    shard_count = 4,
     tags = [
         "multi_and_single_gpu",
+        "no_cuda_asan",  # times out
         "notsan",  # TODO(b/160006974)
     ],
     xla_enable_strict_auto_jit = True,
@@ -1852,18 +1830,19 @@ tf_py_test(
     srcs = ["parameter_server_strategy_v2_test.py"],
     python_version = "PY3",
     tags = [
-        "notsan",  # b/168675975
+        "no_windows",  # TODO(171349346)
+        "notsan",  # TODO(b/168675975)
     ],
     deps = [
         ":multi_worker_test_base",
         ":parameter_server_strategy_v2",
         ":sharded_variable",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:extra_py_tests_deps",
         "//tensorflow/python:init_ops_v2",
         "//tensorflow/python:linalg_ops_impl",
-        "//tensorflow/python:partitioned_variables",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:context",

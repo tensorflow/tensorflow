@@ -63,8 +63,10 @@ stream_executor::port::StatusOr<mlir::OwningModuleRef> ImportSavedModel(
 Status ConvertTFExecutorToTFLOrFlatbuffer(
     mlir::ModuleOp module, bool export_to_mlir, bool emit_builtin_tflite_ops,
     bool emit_select_tf_ops, bool emit_custom_ops,
-    const mlir::TFL::QuantizationSpecs& quant_specs, std::string* result,
-    mlir::PassManager* pass_manager);
+    const std::unordered_set<std::string>& select_user_tf_ops,
+    const mlir::TFL::QuantizationSpecs& quant_specs,
+    const std::unordered_set<std::string>& saved_model_tags,
+    std::string* result, mlir::PassManager* pass_manager);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_TF_TO_TFL_FLATBUFFER_H_

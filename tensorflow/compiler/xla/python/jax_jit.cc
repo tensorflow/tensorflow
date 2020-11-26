@@ -130,11 +130,28 @@ struct CallSignature {
   PjRtDevice* device;
 
   bool operator==(const CallSignature& other) const {
-    return std::tie(dynamic_positional_args_treedef, static_args, keyword_args,
+    return std::tie(dynamic_positional_args_treedef, keyword_args,
                     dynamic_args_signatures, device) ==
-           std::tie(other.dynamic_positional_args_treedef, other.static_args,
-                    other.keyword_args, other.dynamic_args_signatures,
-                    other.device);
+               std::tie(other.dynamic_positional_args_treedef,
+                        other.keyword_args, other.dynamic_args_signatures,
+                        other.device) &&
+           // `==` on py:objects is the Python `is`. We need equal.
+           std::equal(
+               static_args.begin(), static_args.end(),
+               other.static_args.begin(), other.static_args.end(),
+               [](const py::object& a, const py::object& b) {
+                 try {
+                   return a.equal(b);
+                 } catch (const py::error_already_set& e) {
+                   throw std::invalid_argument(absl::StrCat(
+                       "static arguments should be comparable using __eq__."
+                       "The following error was raised when comparing two "
+                       "objects of types ",
+                       py::cast<std::string>(py::str(py::type::of(a))), " and ",
+                       py::cast<std::string>(py::str(py::type::of(b))),
+                       ". The error was:\n", e.what()));
+                 }
+               });
   }
   bool operator!=(const CallSignature& other) const {
     return !(*this == other);
@@ -169,12 +186,6 @@ H AbslHashValue(H h, const CallSignature::KwargEntry& kw) {
 
 template <typename H>
 H AbslHashValue(H h, const CallSignature& s) {
-  // /!\ important: We cannot include static arguments to the hash, because
-  // the py::object must be hashable for absl. We can try delegating to the
-  // Python __hash__, but there are many non-hashable Python types such as
-  // np.ndarray.
-  // TODO(jblespiau): We should either ban non-hashable objects from jit or we
-  // should hash them by object identity.
   h = H::combine_contiguous(std::move(h),
                             s.dynamic_positional_args_treedef.data(),
                             s.dynamic_positional_args_treedef.size());
@@ -183,6 +194,20 @@ H AbslHashValue(H h, const CallSignature& s) {
   h = H::combine_contiguous(std::move(h), s.dynamic_args_signatures.data(),
                             s.dynamic_args_signatures.size());
   h = H::combine(std::move(h), s.device);
+  for (const auto& static_arg : s.static_args) {
+    ssize_t hash;
+    try {
+      hash = py::hash(static_arg);
+    } catch (const py::error_already_set& e) {
+      throw std::invalid_argument(absl::StrCat(
+          "Non-hashable static arguments are not supported. An error occured "
+          "while trying to hash an object of type ",
+          py::cast<std::string>(py::str(py::type::of(static_arg))), ", ",
+          py::cast<std::string>(py::str(static_arg)), ". The error was:\n",
+          e.what(), "\n"));
+    }
+    h = H::combine(std::move(h), hash);
+  }
   return h;
 }
 
@@ -269,6 +294,8 @@ class CompiledFunction {
     return inspect->attr("signature")(fun_);
   }
 
+  int cache_size() const { return executables_.size(); }
+
  private:
   // Returns nullptr if not present in the cache.
   CacheEntry* GetCacheEntryIfPresent(const CallSignature& signature);
@@ -348,10 +375,13 @@ namespace {
 //
 // Expects *only* instances of `DeviceArray`.
 bool HasTrivialLazyExpr(py::handle device_array) {
+  auto lexpr = py::getattr(device_array, "_lazy_expr");
+  if (lexpr.is_none()) {
+    return true;
+  }
+
   static const auto* lazy_module =
       new py::module(py::module::import("jax.lazy"));
-
-  auto lexpr = py::getattr(device_array, "_lazy_expr");
   auto input = py::getattr(lexpr, "input");
   if (!input.get_type().is(lazy_module->attr("ArrayVar"))) {
     return false;
@@ -457,10 +487,10 @@ std::unique_ptr<xla::PjRtBuffer> ConvertToScalarBuffer(
     xla::PjRtDevice* device) {
   CppType data = py::cast<Pybind11Type>(scalar);
   xla::Shape shape = xla::ShapeUtil::MakeShapeWithType<CppType>({});
-  return ValueOrThrow(xla::PjRtBuffer::FromHostBuffer(
+  return ValueOrThrow(client->BufferFromHostBuffer(
       &data, shape,
-      xla::PjRtBuffer::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
-      client, device));
+      xla::PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+      device));
 }
 
 // Convert a scalar to the associated PjRtBuffer or raises an error if it is
@@ -494,17 +524,17 @@ StatusOr<std::unique_ptr<xla::PjRtBuffer>> ScalarToBuffer(
     if (jax_enable_x64) {
       xla::complex128 data(result.real, result.imag);
       xla::Shape shape = xla::ShapeUtil::MakeShapeWithType<xla::complex128>({});
-      return ValueOrThrow(xla::PjRtBuffer::FromHostBuffer(
+      return ValueOrThrow(client->BufferFromHostBuffer(
           &data, shape,
-          xla::PjRtBuffer::HostBufferSemantics::kImmutableOnlyDuringCall,
-          nullptr, client, device));
+          xla::PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall,
+          nullptr, device));
     } else {
       xla::complex64 data(result.real, result.imag);
       xla::Shape shape = xla::ShapeUtil::MakeShapeWithType<xla::complex64>({});
-      return ValueOrThrow(xla::PjRtBuffer::FromHostBuffer(
+      return ValueOrThrow(client->BufferFromHostBuffer(
           &data, shape,
-          xla::PjRtBuffer::HostBufferSemantics::kImmutableOnlyDuringCall,
-          nullptr, client, device));
+          xla::PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall,
+          nullptr, device));
     }
   }
   return InvalidArgument(
@@ -565,7 +595,7 @@ Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
 
   static const auto* xla_module =
       new py::module(py::module::import("jax.interpreters.xla"));
-  const auto& device_array = xla_module->attr("DeviceArray");
+  const auto& device_array = xla_module->attr("_DeviceArray");
 
   static const auto* numpy_module = new py::module(py::module::import("numpy"));
   const auto& np_array = numpy_module->attr("array");
@@ -583,7 +613,7 @@ Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
     for (py::handle arg : arguments.flat_dynamic_args) {
       // We specically only deal with DeviceArray (not ShardedDeviceArray).
       // (Can happen in jit(pmap), e.g. "test_jit_nested_donate_ignored").
-      if (arg.get_type().is(device_array)) {
+      if (py::isinstance<PyBuffer>(arg) || arg.get_type().is(device_array)) {
         xla::PyBuffer* buffer;
         if (arg.attr("_device").is_none()) {  // Skip non-sticky devices.
           continue;
@@ -623,7 +653,7 @@ Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
   xla::PjRtClient* pjrt_client = data_device->client();
 
   for (py::handle arg : arguments.flat_dynamic_args) {
-    if (arg.get_type().is(device_array)) {
+    if (py::isinstance<PyBuffer>(arg) || arg.get_type().is(device_array)) {
       if (!HasTrivialLazyExpr(arg)) {
         return InvalidArgument(
             "Non-trivial lazy expression not supported in C++. "
@@ -670,7 +700,7 @@ Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
           ValueOrThrow(pyclient.BufferFromPyval(
               numpy_array, data_device,
               /*force_copy=*/false, /*host_buffer_semantics=*/
-              xla::PjRtBuffer::HostBufferSemantics::kZeroCopy));
+              xla::PjRtClient::HostBufferSemantics::kZeroCopy));
       arg_buffers.push_back(buffer->buffer());
 
       ArgSignature sig;
@@ -789,6 +819,10 @@ py::object CompiledFunction::Call(py::args args, py::kwargs kwargs) {
         }
         default_pyclient_ = default_pydevice_.client;
         default_device_ = default_pydevice_.contents;
+        if (!default_device_) {  // UPTC
+          always_fallback_to_python_ = true;
+          return py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0];
+        }
         is_committed_ =
             py::cast<bool>(device_and_is_committed.attr("committed_to_device"));
       }
@@ -866,6 +900,7 @@ void BuildJaxjitSubmodule(pybind11::module& m) {
       });
 
   // Only for testing purposes
+  cfun.def("_cache_size", &CompiledFunction::cache_size);
   jitlib.def("_DtypeTo32BitDtype", [](const py::object obj) -> py::object {
     py::dtype dtype = py::dtype::from_args(obj);
     const py::dtype* res = DtypeTo32BitDtype(dtype);

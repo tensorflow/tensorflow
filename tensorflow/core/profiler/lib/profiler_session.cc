@@ -18,7 +18,9 @@ limitations under the License.
 #include <memory>
 
 #include "absl/memory/memory.h"
-#include "tensorflow/core/platform/env_time.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/platform.h"
@@ -34,10 +36,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/post_process_single_host_xplane.h"
 #include "tensorflow/core/profiler/lib/profiler_factory.h"
 #include "tensorflow/core/profiler/lib/profiler_lock.h"
-#include "tensorflow/core/profiler/utils/derived_timeline.h"
-#include "tensorflow/core/profiler/utils/group_events.h"
-#include "tensorflow/core/profiler/utils/xplane_schema.h"
-#include "tensorflow/core/profiler/utils/xplane_utils.h"
+#include "tensorflow/core/profiler/utils/time_utils.h"
 #endif
 
 namespace tensorflow {
@@ -65,6 +64,7 @@ tensorflow::Status ProfilerSession::Status() {
 Status ProfilerSession::CollectData(profiler::XSpace* space) {
   mutex_lock l(mutex_);
   if (!status_.ok()) return status_;
+  LOG(INFO) << "Profiler session collecting data.";
   for (auto& profiler : profilers_) {
     profiler->Stop().IgnoreError();
   }
@@ -116,7 +116,6 @@ ProfilerSession::ProfilerSession(ProfileOptions options)
 #else
     : active_(false),
 #endif
-      start_time_ns_(EnvTime::NowNanos()),
       options_(std::move(options)) {
   if (!active_) {
 #if !defined(IS_MOBILE_PLATFORM)
@@ -130,9 +129,27 @@ ProfilerSession::ProfilerSession(ProfileOptions options)
     return;
   }
 
-  LOG(INFO) << "Profiler session started.";
+  LOG(INFO) << "Profiler session initializing.";
+  // Sleep until it is time to start profiling.
+  const bool delayed_start = options_.start_timestamp_ns() > 0;
+  if (delayed_start) {
+    absl::Time scheduled_start =
+        absl::FromUnixNanos(options_.start_timestamp_ns());
+    auto now = absl::Now();
+    if (scheduled_start < now) {
+      LOG(WARNING) << "Profiling is late (" << now
+                   << ") for the scheduled start (" << scheduled_start
+                   << ") and will start immediately.";
+    } else {
+      absl::Duration sleep_duration = scheduled_start - now;
+      LOG(INFO) << "Delaying start of profiler session by " << sleep_duration;
+      absl::SleepFor(sleep_duration);
+    }
+  }
 
+  LOG(INFO) << "Profiler session started.";
 #if !defined(IS_MOBILE_PLATFORM)
+  start_time_ns_ = profiler::GetCurrentTimeNanos();
   CreateProfilers(options_, &profilers_);
 #endif
   status_ = Status::OK();
@@ -147,7 +164,7 @@ ProfilerSession::ProfilerSession(ProfileOptions options)
 }
 
 ProfilerSession::~ProfilerSession() {
-  VLOG(1) << "Profiler session stopping.";
+  LOG(INFO) << "Profiler session tear down.";
   for (auto& profiler : profilers_) {
     profiler->Stop().IgnoreError();
   }

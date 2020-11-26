@@ -45,6 +45,7 @@ from tensorflow.python.autograph.pyct.static_analysis import reaching_fndefs
 from tensorflow.python.autograph.pyct.static_analysis import type_inference
 from tensorflow.python.framework import load_library
 from tensorflow.python.framework import op_def_registry
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_inspect
 
 
@@ -183,7 +184,7 @@ def _get_val_from_proto(attr_type, attr_val):
       array_attr_elts = ['{}:{}'.format(val, elt_ty) for val in values]
       return '[{}]'.format(','.join(array_attr_elts))
   raise NotImplementedError(
-      'Proto AttrValue not recoganized. type: {}, value: {}'.format(
+      'Proto AttrValue not recognized. type: {}, value: {}'.format(
           attr_type, attr_val))
 
 
@@ -241,7 +242,7 @@ class OpDefCache(object):
     elif not func_def:
       op_name = f_name
     else:
-      # TODO(fengliuai): create one utility method to match different apis.
+      # TODO(fengliuai): create one utility method to match different APIs.
       compose_dec = []
       for dec in func_def.decorator_list:
         if isinstance(dec, ast.Call):
@@ -380,7 +381,7 @@ class TFRTypeResolver(type_inference.Resolver):
     if hasattr(value, '__module__'):
       # All the imported operations, which are not autograph built-ins, are
       # considered to be TF raw ops.
-      # TODO(fengliuai): refine the condition so we only matche tensorflow
+      # TODO(fengliuai): refine the condition so we only match TensorFlow
       # ops here.
       return {TFRTypes.TF_RAW_OP}
     # TODO(mdan): Is ATTR equivalent to string?
@@ -518,7 +519,7 @@ class SymbolTable(object):
   def insert_symbol(self, name, value, type_):
     self.curr_table['symbols'][name] = (value, type_)
     # TODO(mdan): Use the inferred type rather than tracking it here.
-    # The following field is decrepcated.
+    # The following field is deprecated.
     self.curr_table['types'][name] = type_
     return value
 
@@ -695,7 +696,7 @@ class TFRGen(transformer.CodeGenerator):
       if ty == TFRTypes.SHAPE and node.attr == 'as_list':
         return (value, TFRTypes.TF_TENSOR_SHAPE_FUNC)
 
-    raise NotImplementedError('Attribute kind not recoganized.')
+    raise NotImplementedError('Attribute kind not recognized.')
 
   def visit_Assign(self, node):
     values = self.visit(node.value)
@@ -704,7 +705,7 @@ class TFRGen(transformer.CodeGenerator):
     elif isinstance(node.targets[0], ast.Name):
       targets = [node.targets[0].id]
     else:
-      raise NotImplementedError('Assignment target type not recoganized.')
+      raise NotImplementedError('Assignment target type not recognized.')
 
     if isinstance(values, list):
       if len(targets) == len(values):
@@ -788,8 +789,6 @@ class TFRGen(transformer.CodeGenerator):
         # The out symbols are just a Tuple of names
         for out in node.args[5].elts[:nouts]:
           val, ty = self.symbol_table.lookup(out.value)
-          if ty != TFRTypes.AG_UNDEFINED_VAL:
-            raise ValueError('if stmt out symbol is not defined.')
           out_symbols.append(out.value)
         return self._visit_if_stmt(cond, body, orelse, get_state, out_symbols,
                                    node)
@@ -979,10 +978,8 @@ class TFRGen(transformer.CodeGenerator):
     if ret_ssa_values:
       self.emit(ret_str + ' = ')
 
-    # add ssa values to the symbol table
     out_types = []
     for symbol, ssa_value in zip(out_symbols, ret_ssa_values):
-      self.symbol_table.insert_symbol(symbol, ssa_value, TFRTypes.TENSOR)
       out_types.append(str(TFRTypes.TENSOR))
 
     self.emit('scf.if {} -> ({}) {{'.format(cond, ', '.join(out_types)))
@@ -999,6 +996,10 @@ class TFRGen(transformer.CodeGenerator):
     self.visit_block(orelse_def.body)
     self.visit_block(get_state.body)
     self.symbol_table.exit_scope()
+
+    # add ssa values to the symbol table
+    for symbol, ssa_value in zip(out_symbols, ret_ssa_values):
+      self.symbol_table.insert_symbol(symbol, ssa_value, TFRTypes.TENSOR)
 
     self._emit_with_loc('\n}', node)
     return list(zip(ret_ssa_values, out_types))
@@ -1299,7 +1300,7 @@ class TFRGen(transformer.CodeGenerator):
 
 def _apply_py_to_tf_passes(node, ctx):
   """Apply transformations from PyToTF to match tf.function tracing."""
-  # TODO(fengliuai): we don't know which passes are required, thus we evalute
+  # TODO(fengliuai): we don't know which passes are required, thus we evaluate
   # each one when the corresponding node is handled.
   # copied from PyToTF.transform_ast
   node = return_statements.transform(node, ctx, False)
@@ -1339,20 +1340,33 @@ def tfr_gen(func, op_defs):
 
 
 def tfr_gen_from_module(source, method_prefix=None, op_libraries=None):
-  """Parse a python code and emit the TFR functions from a target class."""
+  """Parse the input source module and emit the TFR functions."""
   op_defs = OpDefCache()
 
+  # Load the op library so the op is added to the op registry. This is
+  # required when the op cc_library couldn't be statically linked in open
+  # source.
+  # This is a no op if the op shared library couldn't be found in the same
+  # directory of the op Python API.
+  # TODO(fengliuai): make the .so file path configurable.
   if op_libraries:
+    prefix_len = len('gen_')
     for m in op_libraries:
       lib_dir = os.path.dirname(m.__file__)
-      prefix_len = len('gen_')
       lib_name = os.path.basename(m.__file__)[prefix_len:].replace('.py', '.so')
-      # Load the op library so the op is added to the op registry. This is
-      # required when the op cc_library couldn't be statically linked in open
-      # source.
-      # This is a no op if the op shared library couldn't be found in the same
-      # directory of the op Python API.
-      load_library.load_op_library(os.path.join(lib_dir, lib_name))
+      lib_path = os.path.join(lib_dir, lib_name)
+      if os.path.exists(lib_path):
+        logging.info('load file: ' + lib_path)
+        load_library.load_op_library(lib_path)
+  else:
+    # The op library is generated from the source module, then we load all the
+    # .so file in the directory
+    lib_dir = os.path.dirname(source.__file__)
+    for lib_name in os.listdir(lib_dir):
+      if lib_name.endswith('.so'):
+        lib_path = os.path.join(lib_dir, lib_name)
+        logging.info('load file: ' + lib_path)
+        load_library.load_op_library(lib_path)
 
   mlir_funcs = [
       tfr_gen(func, op_defs)

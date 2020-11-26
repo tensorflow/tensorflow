@@ -133,8 +133,6 @@ cc_library(
     ],
     hdrs = ["acceleration_test_util.h"],
     deps = [
-        ":acceleration_test_util_internal",
-        "//tensorflow/lite:minimal_logging",
         "@com_google_absl//absl/types:optional",
         "@com_google_googletest//:gtest",
     ],
@@ -152,7 +150,6 @@ cc_library(
         "//conditions:default": ["-lm"],
     }),
     deps = [
-        "//tensorflow/lite:minimal_logging",
         "@com_google_absl//absl/types:optional",
         "@com_googlesource_code_re2//:re2",
     ],
@@ -190,12 +187,10 @@ cc_library(
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/kernels/internal:tensor_utils",
         "//tensorflow/lite/nnapi:nnapi_implementation",
+        "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
-        "//tensorflow/lite/schema:schema_utils",
         "//tensorflow/lite/testing:util",
-        "//tensorflow/lite/tools:command_line_flags",
         "//tensorflow/lite/tools:logging",
-        "//tensorflow/lite/tools:tool_params",
         "//tensorflow/lite/tools/optimize:quantization_utils",
         "//tensorflow/lite/tools/optimize/sparsity:format_converter",
         "//tensorflow/lite/tools/versioning",
@@ -225,6 +220,7 @@ cc_library(
         ],
     }),
     alwayslink = 1,
+    # TODO(b/161243354): add testonly=1?
 )
 
 cc_library(
@@ -271,7 +267,6 @@ cc_library(
         "//tensorflow/lite:arena_planner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:optimized_eigen",
-        "//third_party/eigen3",
     ],
 )
 
@@ -287,7 +282,6 @@ cc_test(
         ":eigen_support",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:optimized_eigen",
-        "//third_party/eigen3",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -373,7 +367,6 @@ cc_library(
         ":cpu_backend_context",
         ":tflite_with_ruy",
         "//tensorflow/lite/kernels/internal:compatibility",
-        "//tensorflow/lite/kernels/internal:types",
         # For now this unconditionally depends on both ruy and gemmlowp.
         # We only need to depend on gemmlowp when tflite_with_ruy
         # is false, but putting these dependencies in a select() seems to
@@ -472,7 +465,6 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:cppmath",
         "//tensorflow/lite/kernels/internal:quantization_util",
-        "@flatbuffers//:runtime_cc",
     ],
 )
 
@@ -544,11 +536,14 @@ BUILTIN_KERNEL_SRCS = [
     "batch_to_space_nd.cc",
     "bidirectional_sequence_lstm.cc",
     "bidirectional_sequence_rnn.cc",
+    "broadcast_to.cc",
+    "call_once.cc",
     "cast.cc",
     "ceil.cc",
     "comparisons.cc",
     "concatenation.cc",
     "conv.cc",
+    "cumsum.cc",
     "densify.cc",
     "depth_to_space.cc",
     "depthwise_conv.cc",
@@ -690,7 +685,6 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         ":kernel_util",
-        ":op_macros",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/resource",
@@ -717,7 +711,6 @@ cc_library(
     name = "custom_ops",
     srcs = [
         "complex_support.cc",
-        "cumsum.cc",
         "multinomial.cc",
         "random_standard_normal.cc",
         "rfft2d.cc",
@@ -727,12 +720,10 @@ cc_library(
     deps = [
         ":kernel_util",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels/internal:optimized_base",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal:types",
         "//third_party/fft2d:fft2d_headers",
         "@fft2d",
-        "@flatbuffers",
         "@ruy//ruy/profiler:instrumentation",
     ],
 )
@@ -747,10 +738,8 @@ cc_library(
         ":cpu_backend_context",
         ":op_macros",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels/internal:common",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:kernel_utils",
-        "//tensorflow/lite/kernels/internal:quantization_util",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal:tensor_utils",
         "@ruy//ruy/profiler:instrumentation",
@@ -799,7 +788,8 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":builtin_op_kernels",
-        "//tensorflow/lite:framework_lib",
+        "//tensorflow/lite:cc_api",
+        "//tensorflow/lite:mutable_op_resolver",
         "//tensorflow/lite:tflite_with_xnnpack_optional",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
@@ -1013,6 +1003,19 @@ cc_test(
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
+    ],
+)
+
+cc_test(
+    name = "broadcast_to_test",
+    size = "small",
+    srcs = ["broadcast_to_test.cc"],
+    deps = [
+        ":builtin_ops",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite:framework",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -2101,6 +2104,21 @@ cc_test(
 )
 
 cc_test(
+    name = "call_once_test",
+    size = "small",
+    srcs = ["call_once_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":kernel_util",
+        ":subgraph_test_util",
+        ":test_main",
+        ":variable_op_kernels",
+        "//tensorflow/lite:framework",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "if_test",
     size = "small",
     srcs = ["if_test.cc"],
@@ -2224,12 +2242,10 @@ cc_library(
     deps = [
         ":builtin_ops",
         ":kernel_util",
-        ":test_util",
-        "//tensorflow/lite:builtin_op_data",
+        ":variable_op_kernels",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:common",
         "@com_google_googletest//:gtest",
-        "@flatbuffers",
     ],
 )
 
@@ -2335,23 +2351,30 @@ cc_test(
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
-        "@flatbuffers",
     ],
 )
 
 cc_test(
     name = "cumsum_test",
+    size = "small",
     srcs = ["cumsum_test.cc"],
     deps = [
-        ":custom_ops",
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
-        "@flatbuffers",
     ],
+)
+
+exports_files(
+    [
+        "register.h",
+        "builtin_op_kernels.h",
+        "fully_connected.h",
+    ],
+    visibility = ["//tensorflow/lite/core/shims:__subpackages__"],
 )
 
 tflite_portable_test_suite_combined(combine_conditions = {"deps": [":test_main"]})

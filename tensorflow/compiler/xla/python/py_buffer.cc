@@ -144,7 +144,7 @@ int PjRtBufferGetBuffer(PyObject* exporter, Py_buffer* view, int flags) {
     // Additionally we call BlockHostUntilReady() below, which may block.
     py::gil_scoped_release gil_release;
 
-    if (buffer.device()->platform_name() != "cpu") {
+    if (!buffer.IsOnCpu()) {
       return InvalidArgument(
           "Python buffer protocol is only defined for CPU buffers.");
     }
@@ -236,6 +236,24 @@ PyBufferProcs PjRtBufferProcs = []() {
 
 /*static*/ PyBufferProcs* PyBuffer::BufferProtocol() {
   return &PjRtBufferProcs;
+}
+
+void PyBuffer::SetStickyDevice(pybind11::object sticky_device) {
+  if (sticky_device_ && !sticky_device_->equal(sticky_device)) {
+    throw std::invalid_argument(
+        "One cannot set again the stickyness of a buffer and needs to create "
+        "a new one or a `_DeviceArray`");
+  }
+  sticky_device_ = sticky_device;
+}
+
+void PyBuffer::SetAval(pybind11::object aval) {
+  if (aval_ && !aval_->equal(aval)) {
+    throw std::invalid_argument(
+        "One cannot set again the aval_ of a buffer and needs to create a "
+        "new one or a `_DeviceArray`");
+  }
+  aval_ = aval;
 }
 
 }  // namespace xla

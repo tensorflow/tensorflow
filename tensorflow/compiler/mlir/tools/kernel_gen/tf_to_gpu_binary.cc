@@ -25,6 +25,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/init_mlir.h"
+#include "tensorflow/compiler/mlir/tools/kernel_gen/crash_handler.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/kernel_creator.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
@@ -36,7 +37,6 @@ namespace {
 
 xla::Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
                 std::string architecture, llvm::ArrayRef<uint32_t> tile_sizes,
-                llvm::ArrayRef<uint32_t> same_shape,
                 llvm::ArrayRef<uint32_t> unroll_factors) {
   // Read TF code.
   std::string tf_code;
@@ -47,8 +47,9 @@ xla::Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
   TF_ASSIGN_OR_RETURN(
       mlir::OwningModuleRef module,
       GenerateKernelForTfCode(context, tf_code, /*gpu_binary_only=*/true,
-                              architecture, tile_sizes, same_shape,
-                              unroll_factors, /*generate_fatbin=*/false));
+                              architecture, tile_sizes, unroll_factors,
+                              /*embed_memref_prints=*/false,
+                              /*generate_fatbin=*/false));
   // Extract gpu_binary.
   TF_ASSIGN_OR_RETURN(std::string gpu_binary, ExtractGpuBinary(*module));
 
@@ -63,6 +64,7 @@ xla::Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
 }  // namespace tensorflow
 
 int main(int argc, char** argv) {
+  tensorflow::kernel_gen::SetCrashReportMessage();
   llvm::cl::opt<std::string> input_file("input", llvm::cl::desc("input file"),
                                         llvm::cl::value_desc("filename"),
                                         llvm::cl::init("foo.mlir"));
@@ -79,18 +81,13 @@ int main(int argc, char** argv) {
       "unroll_factors",
       llvm::cl::desc("factors to unroll by, separated by commas"),
       llvm::cl::ZeroOrMore, llvm::cl::CommaSeparated);
-  llvm::cl::list<uint32_t> same_shape(
-      "same_shape",
-      llvm::cl::desc("arguments with same shape, separated by commas"),
-      llvm::cl::ZeroOrMore, llvm::cl::CommaSeparated);
 
   tensorflow::InitMlir y(&argc, &argv);
   mlir::registerPassManagerCLOptions();
   llvm::cl::ParseCommandLineOptions(argc, argv, "TF op GPU kernel generator\n");
 
-  auto status =
-      tensorflow::kernel_gen::Run(input_file, output_file, architecture,
-                                  tile_sizes, same_shape, unroll_factors);
+  auto status = tensorflow::kernel_gen::Run(
+      input_file, output_file, architecture, tile_sizes, unroll_factors);
   if (!status.ok()) {
     LOG(ERROR) << status;
     return 1;

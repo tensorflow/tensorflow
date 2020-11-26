@@ -164,9 +164,8 @@ Status HadoopFileSystem::Connect(StringPiece fname, hdfsFS* fs) {
   string nn(namenode);
 
   string cacheKey(scheme.data(), scheme.size());
-  hdfsBuilder* builder = libhdfs()->hdfsNewBuilder();
   if (scheme == "file") {
-    libhdfs()->hdfsBuilderSetNameNode(builder, nullptr);
+    nn = "";
   } else if (scheme == "viewfs") {
     char* defaultFS = nullptr;
     libhdfs()->hdfsConfGetStr("fs.defaultFS", &defaultFS);
@@ -181,22 +180,24 @@ Status HadoopFileSystem::Connect(StringPiece fname, hdfsFS* fs) {
     // The default NameNode configuration will be used (from the XML
     // configuration files). See:
     // https://github.com/tensorflow/tensorflow/blob/v1.0.0/third_party/hadoop/hdfs.h#L259
-    libhdfs()->hdfsBuilderSetNameNode(builder, "default");
+    nn = "default";
   } else if (scheme == "har") {
     TF_RETURN_IF_ERROR(SplitArchiveNameAndPath(path, nn));
-    libhdfs()->hdfsBuilderSetNameNode(builder, nn.c_str());
-    cacheKey += nn;
   } else {
-    libhdfs()->hdfsBuilderSetNameNode(builder,
-                                      nn.empty() ? "default" : nn.c_str());
-    cacheKey += nn;
+    if (nn.empty()) {
+      nn = "default";
+    }
   }
+  cacheKey += nn;
   {
     mutex_lock lock(mu_);
     if (connectionCache_.find(cacheKey) == connectionCache_.end()) {
+      hdfsBuilder* builder = libhdfs()->hdfsNewBuilder();
+      libhdfs()->hdfsBuilderSetNameNode(builder,
+                                        nn.empty() ? nullptr : nn.c_str());
       hdfsFS cacheFs = libhdfs()->hdfsBuilderConnect(builder);
       if (cacheFs == nullptr) {
-        return errors::NotFound(strerror(errno));
+        return errors::Aborted(strerror(errno));
       }
       connectionCache_[cacheKey] = cacheFs;
     }

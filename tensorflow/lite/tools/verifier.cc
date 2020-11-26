@@ -126,6 +126,25 @@ bool VerifyStringTensorBuffer(const Tensor& tensor, const Buffer& buffer,
   return true;
 }
 
+bool CheckArraySegments(const DimensionMetadata* dim_metadata) {
+  if (dim_metadata->array_segments() == nullptr) {
+    return false;
+  }
+  switch (dim_metadata->array_segments_type()) {
+    case SparseIndexVector_Int32Vector:
+      return (dim_metadata->array_segments_as_Int32Vector()->values() !=
+              nullptr);
+    case SparseIndexVector_Uint16Vector:
+      return (dim_metadata->array_segments_as_Uint16Vector()->values() !=
+              nullptr);
+    case SparseIndexVector_Uint8Vector:
+      return (dim_metadata->array_segments_as_Uint8Vector()->values() !=
+              nullptr);
+    default:
+      return false;
+  }
+}
+
 int GetSizeOfSegments(const DimensionMetadata* dim_metadata) {
   switch (dim_metadata->array_segments_type()) {
     case SparseIndexVector_Int32Vector:
@@ -152,6 +171,25 @@ int GetValueOfSegmentsAt(const DimensionMetadata* dim_metadata, const int i) {
           dim_metadata->array_segments_as_Uint8Vector()->values()->Get(i));
     default:
       return -1;
+  }
+}
+
+bool CheckArrayIndices(const DimensionMetadata* dim_metadata) {
+  if (dim_metadata->array_indices() == nullptr) {
+    return false;
+  }
+  switch (dim_metadata->array_indices_type()) {
+    case SparseIndexVector_Int32Vector:
+      return (dim_metadata->array_indices_as_Int32Vector()->values() !=
+              nullptr);
+    case SparseIndexVector_Uint16Vector:
+      return (dim_metadata->array_indices_as_Uint16Vector()->values() !=
+              nullptr);
+    case SparseIndexVector_Uint8Vector:
+      return (dim_metadata->array_indices_as_Uint8Vector()->values() !=
+              nullptr);
+    default:
+      return false;
   }
 }
 
@@ -205,9 +243,8 @@ absl::optional<uint64_t> VerifyAndCountElements(
       // Each index in a dense dimension is stored implicitly.
       num_elements *= dim_metadata->dense_size();
     } else {
-      const auto* array_segments = dim_metadata->array_segments();
-      const auto* array_indices = dim_metadata->array_indices();
-      if (array_segments == nullptr || array_indices == nullptr) {
+      if (!CheckArraySegments(dim_metadata) ||
+          !CheckArrayIndices(dim_metadata)) {
         return absl::nullopt;
       }
 
@@ -314,6 +351,9 @@ absl::optional<uint64_t> VerifyAndCountSparseElements(const Tensor& tensor) {
   for (int i = 0; i < block_rank; i++) {
     int original_block_dim =
         sparsity->traversal_order()->Get(i + original_rank);
+    if (original_block_dim < 0 || original_block_dim >= total_dims) {
+      return absl::nullopt;
+    }
     int block_dim_size =
         sparsity->dim_metadata()->Get(i + original_rank)->dense_size();
     if (block_dim_size == 0) {
@@ -321,7 +361,12 @@ absl::optional<uint64_t> VerifyAndCountSparseElements(const Tensor& tensor) {
     }
 
     expanded_dim_sizes[original_block_dim] = block_dim_size;
-    expanded_dim_sizes[sparsity->block_map()->Get(i)] /= block_dim_size;
+
+    int mapped_block_dim = sparsity->block_map()->Get(i);
+    if (mapped_block_dim < 0 || mapped_block_dim >= total_dims) {
+      return absl::nullopt;
+    }
+    expanded_dim_sizes[mapped_block_dim] /= block_dim_size;
   }
 
   return VerifyAndCountElements(*sparsity, expanded_dim_sizes);
@@ -380,6 +425,9 @@ bool VerifyNumericTensorBuffer(const Tensor& tensor, const Buffer& buffer,
       break;
     case TensorType_INT64:
       bytes_required *= sizeof(int64_t);
+      break;
+    case TensorType_UINT64:
+      bytes_required *= sizeof(uint64_t);
       break;
     case TensorType_BOOL:
       bytes_required *= sizeof(bool);

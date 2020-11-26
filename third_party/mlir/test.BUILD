@@ -17,6 +17,23 @@ cc_library(
     includes = ["."],
 )
 
+filegroup(
+    name = "TestOpTdFiles",
+    srcs = [
+        "lib/Dialect/Test/TestInterfaces.td",
+        "lib/Dialect/Test/TestOps.td",
+        "@llvm-project//mlir:OpBaseTdFiles",
+        "@llvm-project//mlir:SideEffectTdFiles",
+        "@llvm-project//mlir:include/mlir/IR/OpAsmInterface.td",
+        "@llvm-project//mlir:include/mlir/IR/RegionKindInterface.td",
+        "@llvm-project//mlir:include/mlir/IR/SymbolInterfaces.td",
+        "@llvm-project//mlir:include/mlir/Interfaces/CallInterfaces.td",
+        "@llvm-project//mlir:include/mlir/Interfaces/ControlFlowInterfaces.td",
+        "@llvm-project//mlir:include/mlir/Interfaces/CopyOpInterface.td",
+        "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
+    ],
+)
+
 gentbl(
     name = "TestOpsIncGen",
     strip_include_prefix = "lib/Dialect/Test",
@@ -57,14 +74,7 @@ gentbl(
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "lib/Dialect/Test/TestOps.td",
     td_srcs = [
-        "@llvm-project//mlir:OpBaseTdFiles",
-        "@llvm-project//mlir:include/mlir/IR/OpAsmInterface.td",
-        "@llvm-project//mlir:include/mlir/IR/RegionKindInterface.td",
-        "@llvm-project//mlir:include/mlir/IR/SymbolInterfaces.td",
-        "@llvm-project//mlir:include/mlir/Interfaces/CallInterfaces.td",
-        "@llvm-project//mlir:include/mlir/Interfaces/ControlFlowInterfaces.td",
-        "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
-        "@llvm-project//mlir:include/mlir/Interfaces/SideEffectInterfaces.td",
+        ":TestOpTdFiles",
     ],
     test = True,
 )
@@ -81,11 +91,41 @@ gentbl(
             "-gen-type-interface-defs",
             "lib/Dialect/Test/TestTypeInterfaces.cpp.inc",
         ),
+        (
+            "-gen-op-interface-decls",
+            "lib/Dialect/Test/TestOpInterfaces.h.inc",
+        ),
+        (
+            "-gen-op-interface-defs",
+            "lib/Dialect/Test/TestOpInterfaces.cpp.inc",
+        ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "lib/Dialect/Test/TestInterfaces.td",
     td_srcs = [
         "@llvm-project//mlir:OpBaseTdFiles",
+        "@llvm-project//mlir:SideEffectBaseTdFiles",
+    ],
+    test = True,
+)
+
+gentbl(
+    name = "TestTypeDefsIncGen",
+    strip_include_prefix = "lib/Dialect/Test",
+    tbl_outs = [
+        (
+            "-gen-typedef-decls",
+            "lib/Dialect/Test/TestTypeDefs.h.inc",
+        ),
+        (
+            "-gen-typedef-defs",
+            "lib/Dialect/Test/TestTypeDefs.cpp.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "lib/Dialect/Test/TestTypeDefs.td",
+    td_srcs = [
+        ":TestOpTdFiles",
     ],
     test = True,
 )
@@ -94,10 +134,14 @@ cc_library(
     name = "TestDialect",
     srcs = [
         "lib/Dialect/Test/TestDialect.cpp",
+        "lib/Dialect/Test/TestInterfaces.cpp",
         "lib/Dialect/Test/TestPatterns.cpp",
+        "lib/Dialect/Test/TestTraits.cpp",
+        "lib/Dialect/Test/TestTypes.cpp",
     ],
     hdrs = [
         "lib/Dialect/Test/TestDialect.h",
+        "lib/Dialect/Test/TestInterfaces.h",
         "lib/Dialect/Test/TestTypes.h",
     ],
     includes = [
@@ -106,8 +150,10 @@ cc_library(
     deps = [
         ":TestInterfacesIncGen",
         ":TestOpsIncGen",
+        ":TestTypeDefsIncGen",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ControlFlowInterfaces",
+        "@llvm-project//mlir:CopyOpInterface",
         "@llvm-project//mlir:DerivedAttributeOpInterface",
         "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:IR",
@@ -236,6 +282,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SPIRVDialect",
+        "@llvm-project//mlir:SPIRVLinking",
         "@llvm-project//mlir:SPIRVLowering",
     ],
 )
@@ -249,5 +296,19 @@ cc_library(
         ":TestDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMDialect",
+    ],
+)
+
+cc_library(
+    name = "TestTosaDialect",
+    srcs = glob([
+        "lib/Dialect/Tosa/*.cpp",
+    ]),
+    deps = [
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:TosaDialect",
+        "@llvm-project//mlir:Transforms",
     ],
 )

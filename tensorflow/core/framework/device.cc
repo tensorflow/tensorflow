@@ -54,4 +54,21 @@ DeviceAttributes Device::BuildDeviceAttributes(
   return da;
 }
 
+bool Device::IsRemoteCallAllowed() const {
+  auto& type = parsed_name_.type;
+  if (type == "TPU") {
+    return true;
+  }
+  if (type == "TPU_SYSTEM") {
+    return true;
+  }
+  if (type == "CPU") {
+    return true;
+  }
+  if (type == "GPU") {
+    return true;
+  }
+  return false;
+}
+
 }  // namespace tensorflow

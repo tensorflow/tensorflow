@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/init_mlir.h"
@@ -143,6 +144,7 @@ int main(int argc, char **argv) {
   mlir::SourceMgrDiagnosticHandler sourceMgrHandler(source_mgr, &context);
 
   StatusOr<mlir::OwningModuleRef> module;
+  std::unordered_set<std::string> tags;
 
   tensorflow::GraphImportConfig specs;
   specs.upgrade_legacy = upgrade_legacy;
@@ -161,8 +163,7 @@ int main(int argc, char **argv) {
       module = tensorflow::errors::InvalidArgument(
           "Importing saved model should not have input_mlir set");
 
-    std::unordered_set<std::string> tags =
-        absl::StrSplit(saved_model_tags, ',');
+    tags = absl::StrSplit(saved_model_tags, ',');
     std::vector<std::string> exported_names_vector =
         absl::StrSplit(saved_model_exported_names, ',', absl::SkipEmpty());
     absl::Span<std::string> exported_names(exported_names_vector);
@@ -187,7 +188,7 @@ int main(int argc, char **argv) {
   // message. So we can just return here.
   if (!module.ok()) return kTrFailure;
 
-  mlir::PassManager pm(&context);
+  mlir::PassManager pm(&context, mlir::OpPassManager::Nesting::Implicit);
   mlir::applyPassManagerCLOptions(pm);
 
   // Set the quantization specifications from the command line flags.
@@ -241,7 +242,8 @@ int main(int argc, char **argv) {
   std::string result;
   auto status = tensorflow::ConvertTFExecutorToTFLOrFlatbuffer(
       module.ValueOrDie().get(), output_mlir, emit_builtin_tflite_ops,
-      emit_select_tf_ops, emit_custom_ops, quant_specs, &result, &pm);
+      emit_select_tf_ops, emit_custom_ops,
+      /*select_user_tf_ops=*/{}, quant_specs, tags, &result, &pm);
   if (!status.ok()) return kTrFailure;
 
   std::string error_msg;

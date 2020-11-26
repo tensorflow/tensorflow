@@ -53,7 +53,7 @@ class FakeWorker : public TestWorkerInterface {
              CollectiveParamResolverDistributed* cpres)
       : name_(name), device_mgr_(dev_mgr), param_resolver_(cpres) {}
 
-  void GetStatusAsync(const GetStatusRequest* request,
+  void GetStatusAsync(CallOptions* opts, const GetStatusRequest* request,
                       GetStatusResponse* response, bool fail_fast,
                       StatusCallback done) override {
     std::vector<DeviceAttributes> dev_attr;

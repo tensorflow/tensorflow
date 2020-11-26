@@ -74,7 +74,7 @@ import tensorflow as tf
 
 # Convert the model
 converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir) # path to the SavedModel directory
-tflite_model = converter.convert().
+tflite_model = converter.convert()
 
 # Save the model.
 with open('model.tflite', 'wb') as f:
@@ -92,7 +92,7 @@ import tensorflow as tf
 
 # Create a model using high-level tf.keras.* APIs
 model = tf.keras.models.Sequential([
-    tf.keras.layers.Dense(units=1, input_shape=[1])
+    tf.keras.layers.Dense(units=1, input_shape=[1]),
     tf.keras.layers.Dense(units=16, activation='relu'),
     tf.keras.layers.Dense(units=1)
 ])

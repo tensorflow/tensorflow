@@ -33,10 +33,10 @@ from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_util_v2
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.training.tracking import base as tracking
+from tensorflow.python.util import keras_deps
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 
@@ -189,6 +189,19 @@ def create_keras_history(tensors):
   return created_layers
 
 
+# Unsafe Internal attribute.
+# If True, Keras will not evaluate the constant-foldable inputs to tf op
+# layers in TF1 graphs. This *might* speed up model construction time in
+# certain settings, but it means
+# the models will not be serializable/deserializable via get_config
+# (Only via Savedmodels). It may also change the semantics of whether
+# generated random numbers are generated once and re-used, or recomputed
+# each time.
+# Note: This path triggers for TPUEstimators / xla compiled graphs regardless
+# of this setting.
+_UNSAFE_GRAPH_OP_LAYER_CREATION = False
+
+
 def _create_keras_history_helper(tensors, processed_ops, created_layers):
   """Helper method for `create_keras_history`.
 
@@ -213,7 +226,8 @@ def _create_keras_history_helper(tensors, processed_ops, created_layers):
   for tensor in tensor_list:
     if getattr(tensor, '_keras_history', None) is not None:
       continue
-    if sparse_tensor.is_sparse(tensor):
+    if isinstance(
+        tensor, (sparse_tensor.SparseTensor, sparse_tensor.SparseTensorValue)):
       sparse_ops.append(tensor.op)
       continue
     if tf_utils.is_ragged(tensor):
@@ -237,7 +251,7 @@ def _create_keras_history_helper(tensors, processed_ops, created_layers):
               not ops.executing_eagerly_outside_functions())
           using_xla = control_flow_util.GraphOrParentsInXlaContext(
               ops.get_default_graph())
-          if ds_with_session or using_xla:
+          if ds_with_session or using_xla or _UNSAFE_GRAPH_OP_LAYER_CREATION:
             # In Legacy Graph mode, evaluating here makes Session be
             # configured improperly. The downside of this is that saving
             # via `get_config` breaks, but SavedModel still works.
@@ -417,7 +431,9 @@ def call_context():
   return call_ctx
 
 
-control_flow_util_v2._register_keras_layer_context_function(call_context)  # pylint: disable=protected-access
+# Inject the call_context function to keras_deps to remove the dependency
+# from TFLite to Keras.
+keras_deps.register_call_context_function(call_context)
 
 
 class CallContext(object):
@@ -741,9 +757,9 @@ def enable_v2_dtype_behavior():
   autocasting part of the V2 behavior for that layer, but not the defaulting to
   floatx part of the V2 behavior.
 
-  When a global `tf.keras.mixed_precision.experimental.Policy` is set, a Keras
-  layer's dtype will default to the global policy instead of floatx. Layers
-  will automatically cast inputs to the policy's compute_dtype.
+  When a global `tf.keras.mixed_precision.Policy` is set, a Keras layer's dtype
+  will default to the global policy instead of floatx. Layers will automatically
+  cast inputs to the policy's compute_dtype.
   """
   global V2_DTYPE_BEHAVIOR
   V2_DTYPE_BEHAVIOR = True

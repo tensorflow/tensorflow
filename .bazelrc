@@ -49,7 +49,6 @@
 #     rocm:         Build with AMD GPU support (rocm).
 #     mkl:          Enable full mkl support.
 #     tensorrt:     Enable Tensorrt support.
-#     ngraph:       Enable ngraph support.
 #     numa:         Enable numa using hwloc.
 #     noaws:        Disable AWS S3 storage support
 #     nogcp:        Disable GCS support.
@@ -159,6 +158,7 @@ build --host_java_toolchain=//third_party/toolchains/java:tf_java_toolchain
 # environment variable "TF_MKL_ROOT" every time before build.
 build:mkl --define=build_with_mkl=true --define=enable_mkl=true
 build:mkl --define=tensorflow_mkldnn_contraction_kernel=0
+build:mkl --define=build_with_openmp=true
 build:mkl -c opt
 
 # config to build OneDNN backend with a user specified threadpool.
@@ -172,6 +172,7 @@ build:mkl_threadpool -c opt
 build:mkl_opensource_only --define=build_with_mkl=true --define=enable_mkl=true
 build:mkl_opensource_only --define=tensorflow_mkldnn_contraction_kernel=0
 build:mkl_opensource_only --define=build_with_mkl_opensource=true
+build:mkl_opensource_only --define=build_with_openmp=true
 build:mkl_opensource_only -c opt
 
 # Config setting to build with oneDNN for Arm.
@@ -218,7 +219,6 @@ build:rocm --define=using_rocm=true --define=using_rocm_hipcc=true
 build:rocm --action_env TF_NEED_ROCM=1
 
 # Options extracted from configure script
-build:ngraph --define=with_ngraph_support=true
 build:numa --define=with_numa_support=true
 
 # Options to disable default on features
@@ -283,7 +283,7 @@ build:ios --copt=-w
 build:linux --copt=-w
 build:linux --host_copt=-w
 build:macos --copt=-w
-build:windows --copt=/w
+build:windows --copt=/W0
 
 # Tensorflow uses M_* math constants that only get defined by MSVC headers if
 # _USE_MATH_DEFINES is defined.
@@ -294,9 +294,11 @@ build:windows --host_copt=/D_USE_MATH_DEFINES
 build:linux --define=PREFIX=/usr
 build:linux --define=LIBDIR=$(PREFIX)/lib
 build:linux --define=INCLUDEDIR=$(PREFIX)/include
+build:linux --define=PROTOBUF_INCLUDE_PATH=$(PREFIX)/include
 build:macos --define=PREFIX=/usr
 build:macos --define=LIBDIR=$(PREFIX)/lib
 build:macos --define=INCLUDEDIR=$(PREFIX)/include
+build:macos --define=PROTOBUF_INCLUDE_PATH=$(PREFIX)/include
 # TF_SYSTEM_LIBS do not work on windows.
 
 # By default, build TF in C++ 14 mode.
@@ -599,6 +601,10 @@ build:release_gpu_linux --crosstool_top=//third_party/toolchains/preconfig/ubunt
 build:release_windows_common --config=release_common
 build:release_windows_common --define=no_tensorflow_py_deps=true
 build:release_windows_common --announce_rc
+
+# First available in VS 16.4. Speeds Windows compile times by a lot. See
+# https://groups.google.com/a/tensorflow.org/d/topic/build/SsW98Eo7l3o/discussion
+build:release_windows_common --copt=/d2ReducedOptimizeHugeFunctions --host_copt=/d2ReducedOptimizeHugeFunctions
 
 build:release_cpu_windows --config=release_windows_common
 

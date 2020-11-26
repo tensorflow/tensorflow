@@ -20,6 +20,7 @@ cc_library(
     srcs = [
         "convolution_handler.cc",
         "dot_handler.cc",
+        "fft_handler.cc",
         "spmd_partitioner.cc",
         "spmd_partitioner_util.cc",
     ],

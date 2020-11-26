@@ -521,8 +521,7 @@ XLA_TEST_F(ConcatTest, ConcatDeeplyNested) {
   ComputeAndCompareR1<float>(&builder, expected, {a_data.get()});
 }
 
-// TODO(b/169314478): Enable the test when the slow compilation is fixed.
-XLA_TEST_F(ConcatTestHlo, DISABLED_ConcatWithBitcast) {
+XLA_TEST_F(ConcatTestHlo, ConcatWithBitcast) {
   auto module = ParseAndReturnVerifiedModule(R"(
 HloModule jit_broken.874
 
@@ -555,7 +554,7 @@ ENTRY jit_broken.874 {
   abs.129 = f32[4]{0} abs(subtract.126)
   constant.130 = f32[] constant(inf)
   broadcast.131 = f32[4]{0} broadcast(constant.130), dimensions={}
-  compare.132 = pred[4]{0} compare(abs.129, broadcast.131), direction=EQ, type=UNSIGNED
+  compare.132 = pred[4]{0} compare(abs.129, broadcast.131), direction=EQ
   not.133 = pred[4]{0} not(compare.132)
   and.134 = pred[4]{0} and(not.128, not.133)
   add.135 = f32[4]{0} add(add.124, add.89)
@@ -578,7 +577,7 @@ ENTRY jit_broken.874 {
   abs.219 = f32[4]{0} abs(subtract.216)
   constant.220 = f32[] constant(inf)
   broadcast.221 = f32[4]{0} broadcast(constant.220), dimensions={}
-  compare.222 = pred[4]{0} compare(abs.219, broadcast.221), direction=EQ, type=UNSIGNED
+  compare.222 = pred[4]{0} compare(abs.219, broadcast.221), direction=EQ
   not.223 = pred[4]{0} not(compare.222)
   and.224 = pred[4]{0} and(not.218, not.223)
   add.225 = f32[4]{0} add(add.214, add.179)
@@ -601,7 +600,7 @@ ENTRY jit_broken.874 {
   abs.309 = f32[4]{0} abs(subtract.306)
   constant.310 = f32[] constant(inf)
   broadcast.311 = f32[4]{0} broadcast(constant.310), dimensions={}
-  compare.312 = pred[4]{0} compare(abs.309, broadcast.311), direction=EQ, type=UNSIGNED
+  compare.312 = pred[4]{0} compare(abs.309, broadcast.311), direction=EQ
   not.313 = pred[4]{0} not(compare.312)
   and.314 = pred[4]{0} and(not.308, not.313)
   add.315 = f32[4]{0} add(add.304, add.269)
@@ -624,7 +623,7 @@ ENTRY jit_broken.874 {
   abs.399 = f32[4]{0} abs(subtract.396)
   constant.400 = f32[] constant(inf)
   broadcast.401 = f32[4]{0} broadcast(constant.400), dimensions={}
-  compare.402 = pred[4]{0} compare(abs.399, broadcast.401), direction=EQ, type=UNSIGNED
+  compare.402 = pred[4]{0} compare(abs.399, broadcast.401), direction=EQ
   not.403 = pred[4]{0} not(compare.402)
   and.404 = pred[4]{0} and(not.398, not.403)
   add.405 = f32[4]{0} add(add.394, add.359)
@@ -647,7 +646,7 @@ ENTRY jit_broken.874 {
   abs.489 = f32[4]{0} abs(subtract.486)
   constant.490 = f32[] constant(inf)
   broadcast.491 = f32[4]{0} broadcast(constant.490), dimensions={}
-  compare.492 = pred[4]{0} compare(abs.489, broadcast.491), direction=EQ, type=UNSIGNED
+  compare.492 = pred[4]{0} compare(abs.489, broadcast.491), direction=EQ
   not.493 = pred[4]{0} not(compare.492)
   and.494 = pred[4]{0} and(not.488, not.493)
   add.495 = f32[4]{0} add(add.484, add.449)
@@ -670,7 +669,7 @@ ENTRY jit_broken.874 {
   abs.579 = f32[4]{0} abs(subtract.576)
   constant.580 = f32[] constant(inf)
   broadcast.581 = f32[4]{0} broadcast(constant.580), dimensions={}
-  compare.582 = pred[4]{0} compare(abs.579, broadcast.581), direction=EQ, type=UNSIGNED
+  compare.582 = pred[4]{0} compare(abs.579, broadcast.581), direction=EQ
   not.583 = pred[4]{0} not(compare.582)
   and.584 = pred[4]{0} and(not.578, not.583)
   add.585 = f32[4]{0} add(add.574, add.539)
@@ -693,7 +692,7 @@ ENTRY jit_broken.874 {
   abs.669 = f32[4]{0} abs(subtract.666)
   constant.670 = f32[] constant(inf)
   broadcast.671 = f32[4]{0} broadcast(constant.670), dimensions={}
-  compare.672 = pred[4]{0} compare(abs.669, broadcast.671), direction=EQ, type=UNSIGNED
+  compare.672 = pred[4]{0} compare(abs.669, broadcast.671), direction=EQ
   not.673 = pred[4]{0} not(compare.672)
   and.674 = pred[4]{0} and(not.668, not.673)
   add.675 = f32[4]{0} add(add.664, add.629)
@@ -716,7 +715,7 @@ ENTRY jit_broken.874 {
   abs.759 = f32[4]{0} abs(subtract.756)
   constant.760 = f32[] constant(inf)
   broadcast.761 = f32[4]{0} broadcast(constant.760), dimensions={}
-  compare.762 = pred[4]{0} compare(abs.759, broadcast.761), direction=EQ, type=UNSIGNED
+  compare.762 = pred[4]{0} compare(abs.759, broadcast.761), direction=EQ
   not.763 = pred[4]{0} not(compare.762)
   and.764 = pred[4]{0} and(not.758, not.763)
   add.765 = f32[4]{0} add(add.754, add.719)
@@ -739,7 +738,7 @@ ENTRY jit_broken.874 {
   abs.849 = f32[4]{0} abs(subtract.846)
   constant.850 = f32[] constant(inf)
   broadcast.851 = f32[4]{0} broadcast(constant.850), dimensions={}
-  compare.852 = pred[4]{0} compare(abs.849, broadcast.851), direction=EQ, type=UNSIGNED
+  compare.852 = pred[4]{0} compare(abs.849, broadcast.851), direction=EQ
   not.853 = pred[4]{0} not(compare.852)
   and.854 = pred[4]{0} and(not.848, not.853)
   add.855 = f32[4]{0} add(add.844, add.809)
@@ -762,7 +761,7 @@ ENTRY jit_broken.874 {
   auto input_array = absl::make_unique<Array2D<float>>(4, 2);
   input_array->FillUnique(1.0f);
   auto input = LiteralUtil::CreateR2FromArray2D<float>(*input_array);
-  EXPECT_TRUE(RunAndCompare(std::move(module), {&input}, absl::nullopt));
+  EXPECT_TRUE(RunAndCompare(std::move(module), {&input}, error_spec_));
 }
 
 // Describes a binary rank-2 concatenation test.

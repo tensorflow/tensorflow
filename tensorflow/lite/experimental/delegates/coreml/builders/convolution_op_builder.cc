@@ -15,7 +15,6 @@ limitations under the License.
 #include "tensorflow/lite/experimental/delegates/coreml/builders/convolution_op_builder.h"
 
 #include "google/protobuf/repeated_field.h"
-#include "external/coremltools/mlmodel/format/NeuralNetwork.pb.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/experimental/delegates/coreml/builders/activation_layer_builder.h"
 #include "tensorflow/lite/experimental/delegates/coreml/builders/op_factory.h"
@@ -26,10 +25,9 @@ limitations under the License.
 namespace tflite {
 namespace delegates {
 namespace coreml {
-const char* ConvolutionOpBuilder::DebugName() {
-  if (!str_debug_name_[0])
-    GetDebugName("ConvolutionOpBuilder", node_id_, str_debug_name_);
-  return str_debug_name_;
+const std::string& ConvolutionOpBuilder::DebugName() {
+  if (debug_name_.empty()) SetDebugName("ConvolutionOpBuilder", node_id_);
+  return debug_name_;
 }
 
 void ConvolutionOpBuilder::SetWeights(TfLiteTensor* weights) {

@@ -43,7 +43,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/buffer_convert.h"
 #include "tensorflow/lite/delegates/gpu/metal/common.h"
 #include "tensorflow/lite/delegates/gpu/metal/compiled_model.h"
-#include "tensorflow/lite/delegates/gpu/metal/environment.h"
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/metal/inference_context.h"
 #include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -177,10 +177,7 @@ class Delegate {
     if (options) {
       options_ = *options;
     } else {
-      // Default options.
-      options_.allow_precision_loss = false;
-      options_.enable_quantization = false;
-      options_.wait_type = TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypePassive;
+      options_ = TFLGpuDelegateOptionsDefault();
     }
     metal_device_ = MTLCreateSystemDefaultDevice();
     command_queue_ = [metal_device_ newCommandQueue];
@@ -341,13 +338,14 @@ class Delegate {
     }
 
     std::string device_name = std::string([[metal_device_ name] UTF8String]);
-    DeviceInfo device_info(device_name);
+    GpuInfo gpu_info;
+    GetGpuInfoFromDeviceDescription(device_name, GpuApi::kMetal, &gpu_info);
     size_t storage_type_size;
     RuntimeOptions runtime_options;
     if (options_.allow_precision_loss) {
       storage_type_size = sizeof(HalfBits);
       runtime_options.storage_precision = RuntimeOptions::Precision::FP16;
-      if (device_info.IsRoundToNearestSupported()) {
+      if (gpu_info.IsRoundToNearestSupported()) {
         runtime_options.accumulator_precision = RuntimeOptions::Precision::FP16;
       } else {
         runtime_options.accumulator_precision = RuntimeOptions::Precision::FP32;
@@ -440,7 +438,7 @@ class Delegate {
 
     // TODO(impjdi): Merge these.
     CompiledModel compiled_model;
-    RETURN_IF_ERROR(Compile(graph, device_info, runtime_options, &compiled_model));
+    RETURN_IF_ERROR(Compile(graph, gpu_info, runtime_options, &compiled_model));
     CompiledModel optimized_model;
     RETURN_IF_ERROR(ValidateOptimizeModel(input_ids, output_ids, compiled_model, &optimized_model));
 
@@ -731,4 +729,13 @@ bool TFLGpuDelegateSetCommandEncoder(
   if (!metal_delegate) return false;
   metal_delegate->SetCommandEncoder(encoder, control_encoder);
   return true;
+}
+
+TFLGpuDelegateOptions TFLGpuDelegateOptionsDefault() {
+  TFLGpuDelegateOptions options = {
+      .allow_precision_loss = false,
+      .wait_type = TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypePassive,
+      .enable_quantization = true,
+  };
+  return options;
 }

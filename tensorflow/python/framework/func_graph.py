@@ -49,6 +49,7 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
+from tensorflow.python.util.tf_export import tf_export
 
 ALLOWLIST_COLLECTIONS = [
     ops.GraphKeys.GLOBAL_VARIABLES,
@@ -107,6 +108,7 @@ def convert_structure_to_signature(structure, arg_names=None):
         int,
         float,
         bool,
+        str,
         type(None),
         dtypes.DType,
         tensor_spec.TensorSpec,
@@ -132,6 +134,7 @@ def convert_structure_to_signature(structure, arg_names=None):
   return nest.pack_sequence_as(structure, mapped)
 
 
+@tf_export("__internal__.FuncGraph", v1=[])
 class FuncGraph(ops.Graph):
   """Graph representing a function body.
 
@@ -441,6 +444,11 @@ class FuncGraph(ops.Graph):
     if current is None:
       return self._fallback_outer_graph
     return current
+
+  @outer_graph.setter
+  def outer_graph(self, new_outer_graph):
+    """Sets `outer_graph` to `new_outer_graph`."""
+    self._weak_outer_graph = weakref.ref(new_outer_graph)
 
   @property
   def output_types(self):

@@ -50,6 +50,8 @@ int TfLiteTypeToPyArrayType(TfLiteType tf_lite_type) {
       return NPY_INT8;
     case kTfLiteInt64:
       return NPY_INT64;
+    case kTfLiteUInt64:
+      return NPY_UINT64;
     case kTfLiteString:
       return NPY_STRING;
     case kTfLiteBool:
@@ -153,6 +155,11 @@ bool FillStringBufferWithPyArray(PyObject* value,
     case NPY_OBJECT:
     case NPY_STRING:
     case NPY_UNICODE: {
+      if (PyArray_NDIM(array) == 0) {
+        dynamic_buffer->AddString(static_cast<char*>(PyArray_DATA(array)),
+                                  PyArray_NBYTES(array));
+        return true;
+      }
       UniquePyObjectRef iter(PyArray_IterNew(value));
       while (PyArray_ITER_NOTDONE(iter.get())) {
         UniquePyObjectRef item(PyArray_GETITEM(

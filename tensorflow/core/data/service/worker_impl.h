@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/protobuf/data/experimental/service_config.pb.h"
+#include "tensorflow/core/protobuf/service_config.pb.h"
 #include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
@@ -60,6 +60,7 @@ class DataServiceWorkerImpl {
     TaskDef task_def;
     mutex mu;
     bool initialized TF_GUARDED_BY(mu) = false;
+    bool finished = false;
     // TODO(aaudibert): Have standalone::Iterator own a reference to
     // standalone::Dataset so that we don't need to store the dataset here.
     std::unique_ptr<standalone::Dataset> dataset;
@@ -67,16 +68,17 @@ class DataServiceWorkerImpl {
   };
 
   // Sends task status to the dispatcher and checks for dispatcher commands.
-  Status SendTaskUpdates() LOCKS_EXCLUDED(mu_);
+  Status SendTaskUpdates() TF_LOCKS_EXCLUDED(mu_);
   // Creates an iterator to process a task.
-  Status ProcessTaskInternal(const TaskDef& task) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  Status ProcessTaskInternal(const TaskDef& task)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   Status EnsureTaskInitialized(Task& task);
   // A thread for notifying the dispatcher when tasks complete.
-  void TaskCompletionThread() LOCKS_EXCLUDED(mu_);
+  void TaskCompletionThread() TF_LOCKS_EXCLUDED(mu_);
   // A thread for doing periodic heartbeats to the dispatcher.
-  void HeartbeatThread() LOCKS_EXCLUDED(mu_);
+  void HeartbeatThread() TF_LOCKS_EXCLUDED(mu_);
   // Performs a heartbeat to the dispatcher.
-  Status Heartbeat() LOCKS_EXCLUDED(mu_);
+  Status Heartbeat() TF_LOCKS_EXCLUDED(mu_);
 
   const experimental::WorkerConfig config_;
   // The worker's own address.

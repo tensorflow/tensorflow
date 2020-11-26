@@ -98,9 +98,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       reinterpret_cast<TfLiteDepthwiseConvParams*>(node->builtin_data);
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
-  // TODO(ahentz): use could use GetOptionalInputTensor() here, but we need to
-  // decide whether we are OK with optional tensors being completely absent, as
-  // opposed to having -1 as their index.
   bool hasBias = NumInputs(node) == 3;
 
   TF_LITE_ENSURE(context, hasBias || NumInputs(node) == 2);
@@ -133,6 +130,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                    filter->type == data_type || data_type == kTfLiteInt16);
   }
 
+  if (data_type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
+    TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
+  }
+
   // Filter in DepthwiseConv is expected to be [1, H, W, O].
   TF_LITE_ENSURE_EQ(context, SizeOfDimension(filter, 0), 1);
 
@@ -144,8 +146,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     } else if (data_type == kTfLiteInt16) {
       TF_LITE_ENSURE_TYPES_EQ(context, bias->type, kTfLiteInt64);
       TF_LITE_ENSURE_EQ(context, bias->params.zero_point, 0);
-      TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
-      TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
     } else {
       TF_LITE_ENSURE_TYPES_EQ(context, bias->type, data_type);
     }

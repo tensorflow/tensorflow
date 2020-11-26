@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/nccl/collective_communicator.h"
 
+#include "tensorflow/core/framework/cancellation.h"
+
 #if TENSORFLOW_USE_NCCL && (GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
 
 #include "absl/memory/memory.h"
@@ -77,7 +79,25 @@ void NcclCommunicator::Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
   auto* gpu_info = col_ctx->op_ctx->device()->tensorflow_gpu_device_info();
   auto participant = absl::make_unique<NcclManager::Participant>(
       compute_stream->parent(), compute_stream, gpu_info, col_ctx->input,
-      col_ctx->output, col_ctx->col_params.default_rank, std::move(done));
+      col_ctx->output, col_ctx->col_params.default_rank,
+      /*done_callback=*/nullptr);
+  CancellationManager* cancel_mgr = col_ctx->op_ctx->cancellation_manager();
+  if (cancel_mgr == nullptr) {
+    participant->done_callback = std::move(done);
+  } else {
+    CancellationToken cancel_token = cancel_mgr->get_cancellation_token();
+    cancel_mgr->RegisterCallback(cancel_token, [this]() {
+      nccl_manager_.StartAbort(errors::Cancelled("op cancelled"));
+      nccl_manager_.Reset();
+    });
+    participant->done_callback = [cancel_mgr, cancel_token,
+                                  done = std::move(done)](const Status& s) {
+      // Do not block on deregistration since this can be invoked by
+      // NcclManager::StartAbort() in the cancellation callback.
+      cancel_mgr->TryDeregisterCallback(cancel_token);
+      done(s);
+    };
+  }
   NcclManager::Context context(
       nccl_collective_key, num_local_devices, num_global_devices,
       col_params.group.runtime_details.communicator_key,

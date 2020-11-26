@@ -19,7 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import atexit
 import collections
 import contextlib
 import json
@@ -699,6 +698,8 @@ class MultiProcessRunner(object):
     sig = sig or getattr(signal, 'SIGKILL', signal.SIGTERM)
     for (task_type, task_id), p in self._processes.items():
       if p.exitcode is not None:
+        logging.info('%s-%d has already exited. Not terminating.', task_type,
+                     task_id)
         continue
       try:
         os.kill(p.pid, sig)
@@ -853,17 +854,19 @@ class _ProcFunc(object):
 
 
 # Active MultiProcessPoolRunner. We need to shut them down when the program
-# exits. For the main process, we do this via atexit callback. For a process
-# that is spawned by MultiProcessPoolRunner, e.g. nested MultiProcessPoolRunner,
-# we do this manually at the end of _pool_runner_worker. The reason is that
-# multiprocessing library waits for all spawned processes to exit, so atexit
-# callbacks won't trigger until all pools are shutdown.
+# exits, and this is by setting the `tearDownModule` of the module containing
+# `__main__`. Note this it set in both the parent process and the subprocesses.
 _active_pool_runners = weakref.WeakSet()
 
 
 def _shutdown_all_pool_runners():
   for pool in _active_pool_runners:
     pool.shutdown()
+
+
+def is_oss():
+  """Returns whether the test is run under OSS."""
+  return len(sys.argv) >= 1 and 'bazel' in sys.argv[0]
 
 
 class MultiProcessPoolRunner(object):
@@ -937,10 +940,6 @@ class MultiProcessPoolRunner(object):
             task_id,
             fn=_pool_runner_worker,
             args=(task_type, task_id, initializer, conn2))
-    # In the case MultiProcessPoolRunner is not GC-ed, we register an atexit
-    # callback to shut them down. For example, when there're global
-    # MultiProcessPoolRunner.
-    atexit.register(_shutdown_all_pool_runners)
 
   def run(self, fn, args=None, kwargs=None):
     """Runs `fn` with `args` and `kwargs` on all jobs.
@@ -1012,12 +1011,6 @@ def _pool_runner_worker(task_type, task_id, initializer, conn):
     sys.stdout.flush()
     sys.stderr.flush()
     conn.send(info)
-  # Shutdown all MultiProcessPoolRunner in this process manually.
-  # MultiProcessPoolRunner registers an atexit callback to shutdown all pool
-  # runners, but we cannot rely on that in processes spawned by the
-  # multiprocessing library. This is because the library waits for all
-  # subprocesses before exiting and thus all atexit callbacks.
-  _shutdown_all_pool_runners()
 
 
 def _run_contained(task_type, task_id, fn, args, kwargs):
@@ -1412,4 +1405,17 @@ def test_main():
     tf.__internal__.distribute.multi_process_runner.test_main()
   ```
   """
+  # Inject tearDownModule() to shut down all pool runners. Active pool runners
+  # will block the program from exiting. This is necessary for global pool
+  # runners. We tried atexit in the past, and it doesn't work in some
+  # deployment.
+  old_tear_down_module = getattr(sys.modules['__main__'], 'tearDownModule',
+                                 None)
+
+  def tear_down_module():
+    _shutdown_all_pool_runners()
+    if old_tear_down_module is not None:
+      old_tear_down_module()
+
+  setattr(sys.modules['__main__'], 'tearDownModule', tear_down_module)
   multi_process_lib.test_main()

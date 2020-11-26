@@ -80,9 +80,9 @@ def _wrap_into_factory(nodes, entity_name, inner_factory_name,
         return inner_factory
 
   The lexical scoping is created using dummy symbol declarations which create
-  local fariables in the body of the outer factory, so that the Python parser
+  local variables in the body of the outer factory, so that the Python parser
   correctly marks them as free non-global variables upon load (that is, it
-  creates cell slots for each symbol. Thes symbols are initialized with None,
+  creates cell slots for each symbol. These symbols are initialized with None,
   but their values are not expected to be used; instead, the caller is expected
   to replace them with the cells of the source entity. For more details, see:
   https://docs.python.org/3/reference/executionmodel.html#binding-of-names
@@ -277,7 +277,7 @@ class GenericTranspiler(object):
       user_context: An opaque object (may be None) that is forwarded to
         transform_ast, through the ctx.user_context argument.
     Returns:
-      Tre result of calling transform_function.
+      The result of calling transform_function.
 
     Raises:
       NotImplementedError: if the type of obj is not handled.
@@ -288,7 +288,7 @@ class GenericTranspiler(object):
     raise NotImplementedError('Non-function: {}'.format(type(obj)))
 
   def _erase_arg_defaults(self, node):
-    """Erase argde fault expressions, which would otherwise be unbound."""
+    """Erase arg default expressions, which would otherwise be unbound."""
     args = node.args
     for i in range(len(args.defaults)):
       args.defaults[i] = parser.parse_expression('None')

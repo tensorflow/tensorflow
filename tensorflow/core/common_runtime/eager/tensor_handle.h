@@ -125,12 +125,15 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   void Release() override;
 
   tensorflow::DataType DataType() const override;
+  Status Shape(tensorflow::PartialTensorShape* shape) const override;
   Status NumDims(int* num_dims) const override;
   Status NumElements(int64* num_elements) const override;
   Status Dim(int dim_index, int64* dim) const override;
 
   const char* DeviceName(Status* status) const override;
   const char* BackingDeviceName(Status* status) const override;
+  const char* DeviceType(Status* status) const override;
+  int DeviceId(Status* status) const override;
   AbstractTensorInterface* Resolve(Status* status) override;
 
   ImmediateExecutionTensorHandle* Copy() override;

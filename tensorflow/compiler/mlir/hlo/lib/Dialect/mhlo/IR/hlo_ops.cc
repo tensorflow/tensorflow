@@ -27,6 +27,7 @@ limitations under the License.
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -62,8 +63,6 @@ namespace mlir {
 #include "hlo_patterns.cc.inc"
 }  // namespace mlir
 
-#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_structs.cc.inc"
-
 namespace mlir {
 namespace mhlo {
 
@@ -86,6 +85,26 @@ namespace {
 //===----------------------------------------------------------------------===//
 // Utilities for the canonicalize patterns
 //===----------------------------------------------------------------------===//
+
+// Verifies that dimension attribute for the op correctly indexes in operand or
+// result shape.
+template <typename OpT>
+static LogicalResult VerifyDimAttr(OpT op) {
+  int64_t rank = -1;
+  if (auto ty = op.operand().getType().template dyn_cast<RankedTensorType>()) {
+    rank = ty.getRank();
+  } else if (auto ty = op.getType().template dyn_cast<RankedTensorType>()) {
+    rank = ty.getRank();
+  } else {
+    return success();
+  }
+
+  int64_t dim = op.dimension();
+  if (dim < 0 || dim >= rank)
+    return op.emitOpError() << "requires dimension attribute in range [0, "
+                            << rank << "); found (" << dim << ")";
+  return success();
+}
 
 // Returns 1D 64-bit dense elements attribute with the given values.
 DenseIntElementsAttr GetI64ElementsAttr(ArrayRef<int64_t> values,
@@ -246,10 +265,14 @@ void GatherOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
 //===----------------------------------------------------------------------===//
 // GetDimensionSizeOp
 //===----------------------------------------------------------------------===//
+//
+static LogicalResult Verify(GetDimensionSizeOp op) { return VerifyDimAttr(op); }
 
 /// Fold get_dimension_size when the said shape dimension is a constant.
 OpFoldResult GetDimensionSizeOp::fold(ArrayRef<Attribute> attrs) {
-  RankedTensorType type = operand().getType().cast<RankedTensorType>();
+  RankedTensorType type = operand().getType().dyn_cast<RankedTensorType>();
+  if (!type) return {};
+
   int32_t dim = dimension();
   if (type.isDynamic(dim)) return {};
   // The result type is always is a 0-d i32 tensor.
@@ -742,7 +765,7 @@ static LogicalResult Verify(BroadcastInDimOp op) {
     if (dimIndex >= resultRank) {
       return op.emitOpError(
           llvm::formatv("broadcast_dimensions contains invalid value {0} for "
-                        "result result with rank {1}",
+                        "result with rank {1}",
                         dimIndex, resultRank));
     }
 
@@ -829,7 +852,7 @@ static LogicalResult Verify(DynamicBroadcastInDimOp op) {
     if (dimIndex >= resultRank) {
       return op.emitOpError(
           llvm::formatv("broadcast_dimensions contains invalid value {0} for "
-                        "result result with rank {1}",
+                        "result with rank {1}",
                         dimIndex, resultRank));
     }
 
@@ -1054,6 +1077,9 @@ LogicalResult ConcatenateOp::inferReturnTypes(
     return success();
   }
 
+  if (first_type.getRank() == 0)
+    return emitOptionalError(location, "rank-0 values cannot be concatenated");
+
   auto out_shape = llvm::to_vector<6>(first_type.getShape());
 
   // Determine what the non-concatenate dimensions should be.
@@ -1242,7 +1268,8 @@ class DynamicReshapeOpNotActuallyDynamic
 
 void DynamicReshapeOp::getCanonicalizationPatterns(
     OwningRewritePatternList& results, MLIRContext* context) {
-  results.insert<DynamicReshapeOpNotActuallyDynamic>(context);
+  results.insert<DynamicReshapeOpNotActuallyDynamic, ShapeOfDynamicReshape>(
+      context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1723,6 +1750,35 @@ LogicalResult SelectOp::reifyReturnTypeShapes(
 }
 
 //===----------------------------------------------------------------------===//
+// SetDimensionSizeOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(SetDimensionSizeOp op) {
+  if (auto size = op.size().getType().dyn_cast<RankedTensorType>()) {
+    if (size.getRank() != 0)
+      return op.emitOpError() << "size operand should be of rank-0";
+  }
+
+  return VerifyDimAttr(op);
+}
+
+OpFoldResult SetDimensionSizeOp::fold(ArrayRef<Attribute> operands) {
+  DenseElementsAttr input = operands[0].dyn_cast_or_null<DenseElementsAttr>();
+  if (input) return input;
+
+  DenseElementsAttr size = operands[1].dyn_cast_or_null<DenseElementsAttr>();
+  if (!size || !size.isSplat()) return {};
+
+  auto ty = getType().dyn_cast<RankedTensorType>();
+  if (!ty) return {};
+
+  int64_t dim_size = ty.getDimSize(dimension());
+  if (dim_size == size.getSplatValue().cast<IntegerAttr>().getInt())
+    return operand();
+  return {};
+}
+
+//===----------------------------------------------------------------------===//
 // PadOp
 //===----------------------------------------------------------------------===//
 
@@ -1785,6 +1841,61 @@ static LogicalResult Verify(PadOp op) {
   return success();
 }
 
+OpFoldResult PadOp::fold(ArrayRef<Attribute> operands) {
+  // If all padding is zero then it is an identity pad.
+  auto is_zero = [](const APInt& i) { return i == 0; };
+  if (llvm::all_of(edge_padding_low().getIntValues(), is_zero) &&
+      llvm::all_of(edge_padding_high().getIntValues(), is_zero) &&
+      llvm::all_of(interior_padding().getIntValues(), is_zero))
+    return operand();
+
+  // If any padding is negative then it isn't supported by the folder (yet).
+  auto is_negative = [](const APInt& i) { return i.slt(0); };
+  if (llvm::all_of(edge_padding_low().getIntValues(), is_negative) &&
+      llvm::all_of(edge_padding_high().getIntValues(), is_negative) &&
+      llvm::all_of(interior_padding().getIntValues(), is_negative))
+    return {};
+
+  DenseElementsAttr input = operands[0].dyn_cast_or_null<DenseElementsAttr>();
+  DenseElementsAttr padding = operands[1].dyn_cast_or_null<DenseElementsAttr>();
+  RankedTensorType return_type = getType().dyn_cast_or_null<RankedTensorType>();
+  if (!input || !input.getType().hasRank() || !padding || !return_type ||
+      !return_type.hasStaticShape())
+    return {};
+
+  // Fill the full result tensor with the padding value.
+  llvm::SmallVector<Attribute, 4> result(return_type.getNumElements(),
+                                         padding.getValue({}));
+
+  auto next_index = [](llvm::SmallVector<uint64_t, 8>& index,
+                       llvm::ArrayRef<int64_t> shape) {
+    for (int64_t i = index.size() - 1; i >= 0; --i) {
+      ++index[i];
+      if (index[i] < shape[i]) return true;
+      index[i] = 0;
+    }
+    return false;
+  };
+
+  // Iterate over all elements of the input tensor and copy it to the correct
+  // location in the output tensor.
+  llvm::SmallVector<uint64_t, 8> index(input.getType().getRank(), 0);
+  do {
+    uint64_t linear_index = 0;
+    uint64_t linear_index_multiplyer = 1;
+    for (int64_t i = index.size() - 1; i >= 0; --i) {
+      linear_index +=
+          (edge_padding_low().getValue<int64_t>({uint64_t(i)}) +
+           index[i] *
+               (interior_padding().getValue<int64_t>({uint64_t(i)}) + 1)) *
+          linear_index_multiplyer;
+      linear_index_multiplyer *= return_type.getShape()[i];
+    }
+    result[linear_index] = input.getValue(index);
+  } while (next_index(index, input.getType().getShape()));
+  return DenseElementsAttr::get(return_type, result);
+}
+
 //===----------------------------------------------------------------------===//
 // ReshapeOp
 //===----------------------------------------------------------------------===//
@@ -1826,6 +1937,12 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
   }
 
   return {};
+}
+
+void ReshapeOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+                                            MLIRContext* context) {
+  results.insert<IdentityBroadcastReshape, IdentityBroadcastInDimReshape>(
+      context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1931,6 +2048,14 @@ static Attribute UnaryFolder(Op* op, ArrayRef<Attribute> attrs) {
   return DenseElementsAttr::get(type, values);
 }
 
+struct round {
+  APFloat operator()(const APFloat& f) {
+    APFloat r = f;
+    r.roundToIntegral(llvm::RoundingMode::NearestTiesToAway);
+    return r;
+  }
+};
+
 #define UNARY_FOLDER(Op, Func)                                                \
   OpFoldResult Op::fold(ArrayRef<Attribute> attrs) {                          \
     if (getElementTypeOrSelf(getType()).isa<FloatType>())                     \
@@ -1940,7 +2065,15 @@ static Attribute UnaryFolder(Op* op, ArrayRef<Attribute> attrs) {
     return {};                                                                \
   }
 
+#define UNARY_FOLDER_FLOAT(Op, Func)                                 \
+  OpFoldResult Op::fold(ArrayRef<Attribute> attrs) {                 \
+    if (getElementTypeOrSelf(getType()).isa<FloatType>())            \
+      return UnaryFolder<Op, FloatType, APFloat, Func>(this, attrs); \
+    return {};                                                       \
+  }
+
 UNARY_FOLDER(NegOp, std::negate);
+UNARY_FOLDER_FLOAT(RoundOp, round);
 
 //===----------------------------------------------------------------------===//
 // BinaryOps
@@ -2069,14 +2202,77 @@ BINARY_FOLDER(MinOp, min);
 // SliceOp
 //===----------------------------------------------------------------------===//
 
-void SliceOp::build(OpBuilder& builder, OperationState& result, Value operand,
-                    DenseIntElementsAttr start_indices,
-                    DenseIntElementsAttr limit_indices,
-                    DenseIntElementsAttr strides) {
-  return build(builder, result,
-               InferOutputTypes(&builder, operand, start_indices, limit_indices,
-                                strides),
-               operand, start_indices, limit_indices, strides);
+// Returns output dimension size for slice result for the given arguments.
+// Returns -1 if arguments are illegal.
+static int64_t InferSliceDim(int64_t input_dim, int64_t start, int64_t end,
+                             int64_t stride) {
+  if (input_dim == -1 || start < 0 || start > end || end > input_dim ||
+      stride == 0)
+    return -1;
+
+  return llvm::divideCeil(end - start, stride);
+}
+
+LogicalResult SliceOp::inferReturnTypes(
+    MLIRContext* context, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<Type>& inferredReturnTypes) {
+  SliceOpAdaptor slice(operands, attributes);
+  // TODO(jpienaar): Update this code after refactoring verify.
+  if (failed(slice.verify(location.getValueOr(UnknownLoc::get(context))))) {
+    return failure();
+  }
+
+  Type ty = slice.operand().getType();
+  RankedTensorType ranked_ty = ty.dyn_cast<RankedTensorType>();
+  if (!ranked_ty) {
+    // The operand type is unranked, so the best we can infer for the result
+    // type is an unranked tensor with the same element type as the operand
+    // type.
+    inferredReturnTypes.assign({ty});
+    return success();
+  }
+
+  ShapedType attr_ty = slice.start_indices().getType();
+  if (attr_ty.getRank() != 1) {
+    return emitOptionalError(location, "start_indices has rank ",
+                             attr_ty.getRank(), " instead of required rank 1");
+  }
+
+  int64_t rank = ranked_ty.getRank();
+  if (attr_ty.getNumElements() != rank) {
+    return emitOptionalError(
+        location, "the number of elements in start_indices (",
+        attr_ty.getNumElements(), ") does not match the rank of the operand (",
+        rank, ")");
+  }
+
+  if (!attr_ty.getElementType().isSignlessInteger(64) ||
+      slice.limit_indices().getType() != attr_ty ||
+      slice.strides().getType() != attr_ty) {
+    // Unfortunately we can't rely on the AllTypesMatch trait for the SliceOp
+    // having been verified at this point. Emit an error message that matches
+    // the one that would be reported by AllTypesMatch for a more consistent
+    // user experience.
+    // TODO(b/171567182): Clean this up after AllTypesMatch has been refactored.
+    return emitOptionalError(location,
+                             "failed to verify that all of {start_indices, "
+                             "limit_indices, strides} have same type");
+  }
+
+  SmallVector<int64_t, 4> start(slice.start_indices().getValues<int64_t>());
+  SmallVector<int64_t, 4> limit(slice.limit_indices().getValues<int64_t>());
+  SmallVector<int64_t, 4> stride_vals(slice.strides().getValues<int64_t>());
+
+  SmallVector<int64_t, 4> shape;
+  shape.reserve(rank);
+  for (int64_t i = 0, e = rank; i != e; i++) {
+    shape.push_back(InferSliceDim(ranked_ty.getDimSize(i), start[i], limit[i],
+                                  stride_vals[i]));
+  }
+  inferredReturnTypes.assign(
+      {RankedTensorType::get(shape, ranked_ty.getElementType())});
+  return success();
 }
 
 template <typename I, typename E>
@@ -2257,46 +2453,6 @@ struct SimplifyConcatSlice : public OpRewritePattern<SliceOp> {
 void SliceOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
                                           MLIRContext* context) {
   results.insert<SimplifyConcatSlice>(context);
-}
-
-// Returns output dimension size for slice result for the given arguments.
-// Returns -1 if arguments are illegal.
-static int64_t InferSliceDim(int64_t input_dim, int64_t start, int64_t end,
-                             int64_t stride) {
-  if (input_dim == -1 || start < 0 || start > end || end > input_dim ||
-      stride == 0)
-    return -1;
-
-  return llvm::divideCeil(end - start, stride);
-}
-
-Type SliceOp::InferOutputTypes(Builder* builder, Value operand,
-                               DenseIntElementsAttr start_indices,
-                               DenseIntElementsAttr limit_indices,
-                               DenseIntElementsAttr strides) {
-  Type ty = operand.getType();
-  RankedTensorType ranked_ty = ty.dyn_cast<RankedTensorType>();
-  if (!ranked_ty) return ty;
-  int64_t rank = ranked_ty.getRank();
-
-  // Illegal attributes.
-  ShapedType attr_ty = start_indices.getType();
-  if (attr_ty.getRank() != 1 || attr_ty.getNumElements() != rank ||
-      !attr_ty.getElementType().isSignlessInteger(64) ||
-      limit_indices.getType() != attr_ty || strides.getType() != attr_ty)
-    return ty;
-
-  SmallVector<int64_t, 4> start(start_indices.getValues<int64_t>());
-  SmallVector<int64_t, 4> limit(limit_indices.getValues<int64_t>());
-  SmallVector<int64_t, 4> stride_vals(strides.getValues<int64_t>());
-
-  SmallVector<int64_t, 4> shape;
-  shape.reserve(rank);
-  for (int64_t i = 0, e = rank; i != e; i++) {
-    shape.push_back(InferSliceDim(ranked_ty.getDimSize(i), start[i], limit[i],
-                                  stride_vals[i]));
-  }
-  return RankedTensorType::get(shape, ranked_ty.getElementType());
 }
 
 //===----------------------------------------------------------------------===//
@@ -2526,10 +2682,12 @@ void UnaryEinsumOp::getCanonicalizationPatterns(
 //===----------------------------------------------------------------------===//
 
 void CompareOp::build(OpBuilder& builder, OperationState& result, Value lhs,
-                      Value rhs, StringAttr comparison_direction) {
+                      Value rhs, StringAttr comparison_direction,
+                      StringAttr compare_type) {
   auto new_type =
       UpdateResultElementType(&builder, lhs.getType(), builder.getI1Type());
-  build(builder, result, new_type, lhs, rhs, comparison_direction);
+  build(builder, result, new_type, lhs, rhs, comparison_direction,
+        compare_type);
 }
 
 LogicalResult CompareOp::inferReturnTypeComponents(
@@ -2645,6 +2803,145 @@ OpFoldResult CompareOp::fold(ArrayRef<Attribute> operands) {
   return {};
 }
 
+//===----------------------------------------------------------------------===//
+// ScatterOp
+//===----------------------------------------------------------------------===//
+
+llvm::SmallVector<Attribute, 4> evaluateMhloRegion(Region& region,
+                                                   ArrayRef<Attribute> inputs) {
+  if (region.getNumArguments() != inputs.size()) return {};
+
+  llvm::DenseMap<Value, Attribute> values;
+  values.reserve(region.getNumArguments());
+  for (auto it : llvm::zip(region.getArguments(), inputs)) {
+    values.try_emplace(std::get<0>(it), std::get<1>(it));
+  }
+
+  for (auto& op : region.getOps()) {
+    llvm::SmallVector<Attribute, 4> inputs;
+    for (auto& operand : op.getOpOperands()) {
+      inputs.push_back(values.lookup(operand.get()));
+    }
+    if (isa<ReturnOp>(op)) return inputs;
+
+    llvm::SmallVector<OpFoldResult, 4> results;
+    if (failed(op.fold(inputs, results))) return {};
+    for (auto it : llvm::zip(op.getResults(), results)) {
+      if (!std::get<1>(it).is<Attribute>()) return {};
+      values.insert({std::get<0>(it), std::get<1>(it).get<Attribute>()});
+    }
+  }
+  return {};
+}
+
+OpFoldResult ScatterOp::fold(ArrayRef<Attribute> operands) {
+  auto base = operands[0].dyn_cast_or_null<DenseElementsAttr>();
+  auto index = operands[1].dyn_cast_or_null<DenseIntElementsAttr>();
+  auto update = operands[2].dyn_cast_or_null<DenseElementsAttr>();
+  if (!base || !index || !update) return {};
+
+  auto base_type = base.getType().dyn_cast<RankedTensorType>();
+  auto index_type = index.getType().dyn_cast<RankedTensorType>();
+  auto update_type = update.getType().dyn_cast<RankedTensorType>();
+  if (!base_type || !index_type || !update_type) return {};
+
+  // Add the virtual trailing dimension of size 1 if index_vector_dim equals to
+  // index_type.rank.
+  const int64_t index_vector_dim =
+      scatter_dimension_numbers().index_vector_dim().getInt();
+  if (index_vector_dim == index_type.getRank()) {
+    auto index_shape = index_type.getShape().vec();
+    index_shape.push_back(1);
+    index_type =
+        RankedTensorType::get(index_shape, index_type.getElementType());
+    index = index.reshape(index_type).cast<DenseIntElementsAttr>();
+  }
+
+  // Increment the multi-dimensional index vector based on the limits for each
+  // dimension specified by shape and returns false if the index rolled around
+  // with true otherwise.
+  auto next_index = [](llvm::SmallVector<uint64_t, 8>& index,
+                       llvm::ArrayRef<int64_t> shape) {
+    for (int64_t i = index.size() - 1; i >= 0; --i) {
+      ++index[i];
+      if (index[i] < shape[i]) return true;
+      index[i] = 0;
+    }
+    return false;
+  };
+
+  // Iterate over all elements of the update tensor, then find the corresponding
+  // value in the indices tensor to determine which location we have to update
+  // in the base/result tensor.
+  llvm::SmallVector<Attribute, 8> results(base.getValues<Attribute>());
+  llvm::SmallVector<uint64_t, 8> update_index(update_type.getRank(), 0);
+  llvm::SmallVector<uint64_t, 8> index_index;
+  index_index.reserve(index_type.getRank());
+  llvm::SmallVector<uint64_t, 8> base_index;
+  base_index.reserve(base_type.getRank());
+  do {
+    // Compute the index for the slice of the indices tensor for this update
+    // value.
+    index_index.clear();
+    if (index_vector_dim == 0) index_index.push_back(0);
+    for (int64_t i = 0; i < update_index.size(); ++i) {
+      if (llvm::count(scatter_dimension_numbers().update_window_dims(), i) == 0)
+        index_index.push_back(update_index[i]);
+      if (index_index.size() == index_vector_dim) index_index.push_back(0);
+    }
+
+    // Compute the index for the given update value in the base tensor.
+    base_index.assign(base_type.getRank(), 0);
+    uint64_t index_count = index_type.getShape()[index_vector_dim];
+    for (uint64_t i = 0; i < index_count; ++i) {
+      uint64_t operand_dim = scatter_dimension_numbers()
+                                 .scatter_dims_to_operand_dims()
+                                 .getValue<APInt>({i})
+                                 .getSExtValue();
+      index_index[index_vector_dim] = i;
+      base_index[operand_dim] +=
+          index.getValue<APInt>(index_index).getSExtValue();
+    }
+    uint64_t update_window_dim_index = 0;
+    for (uint64_t i = 0; i < base_index.size(); ++i) {
+      if (llvm::count(scatter_dimension_numbers().inserted_window_dims(), i))
+        continue;
+      base_index[i] +=
+          update_index[scatter_dimension_numbers()
+                           .update_window_dims()
+                           .getValue<APInt>({update_window_dim_index})
+                           .getSExtValue()];
+      update_window_dim_index++;
+    }
+
+    // Compute the linear index for the index into the base tensor.
+    int64_t linear_base_index = 0;
+    int64_t linear_base_index_multiplyer = 1;
+    for (int64_t i = base_index.size() - 1; i >= 0; --i) {
+      // Out of bound index have backend specific behaviour so avoid folding it.
+      if (base_index[i] < 0 || base_index[i] >= base_type.getShape()[i])
+        return {};
+      linear_base_index += base_index[i] * linear_base_index_multiplyer;
+      linear_base_index_multiplyer *= base_type.getShape()[i];
+    }
+
+    // Evaluate update computation and update the value with the newly computed
+    // attribute in the base tensor.
+    auto lhs = DenseElementsAttr::get(
+        RankedTensorType::get({}, base_type.getElementType()),
+        results[linear_base_index]);
+    auto rhs = DenseElementsAttr::get(
+        RankedTensorType::get({}, base_type.getElementType()),
+        update.getValue<Attribute>(update_index));
+    auto new_value = evaluateMhloRegion(update_computation(), {lhs, rhs});
+    if (new_value.size() != 1 || !new_value[0]) return {};
+    results[linear_base_index] =
+        new_value[0].cast<DenseElementsAttr>().getValue<Attribute>({});
+  } while (next_index(update_index, update_type.getShape()));
+
+  return DenseElementsAttr::get(base_type, results);
+}
+
 }  // namespace mhlo
 }  // namespace mlir
 
@@ -2661,15 +2958,22 @@ namespace mhlo {
 namespace {
 struct HLOInlinerInterface : public DialectInlinerInterface {
   using DialectInlinerInterface::DialectInlinerInterface;
+
+  // Allow all call operations to be inlined.
+  bool isLegalToInline(Operation* call, Operation* callable,
+                       bool wouldBeCloned) const final {
+    return true;
+  }
   // We don't have any special restrictions on what can be inlined into
   // destination regions (e.g. while/conditional bodies). Always allow it.
-  bool isLegalToInline(Region* dest, Region* src,
+  bool isLegalToInline(Region* dest, Region* src, bool wouldBeCloned,
                        BlockAndValueMapping& valueMapping) const final {
     return true;
   }
   // Operations in mhlo dialect are always legal to inline since they are
   // pure.
-  bool isLegalToInline(Operation*, Region*, BlockAndValueMapping&) const final {
+  bool isLegalToInline(Operation*, Region*, bool,
+                       BlockAndValueMapping&) const final {
     return true;
   }
 };

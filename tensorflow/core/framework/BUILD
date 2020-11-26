@@ -10,13 +10,14 @@ load(
     "tf_cc_tests",
     "tf_copts",
     "tf_cuda_library",
+    "tf_gen_options_header",
 )
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "filegroup")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
+load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_generate_proto_text_sources")
@@ -155,6 +156,7 @@ exports_files(
         "op.h",
         "op_def_builder.h",
         "op_def_util.h",
+        "registration_options",
         "selective_registration.h",
         "shape_inference.h",
     ],
@@ -216,6 +218,7 @@ filegroup(
         "reader_op_kernel.h",
         "register_types.h",
         "register_types_traits.h",
+        "registration_options.h",
         "rendezvous.h",
         "resource_handle.h",
         "resource_mgr.h",
@@ -400,6 +403,7 @@ filegroup(
         "queue_interface.h",
         "reader_interface.h",
         "register_types_traits.h",
+        "registration_options.h",
         "rendezvous.cc",
         "rendezvous.h",
         "resource_mgr.cc",
@@ -967,9 +971,21 @@ cc_library(
     ],
 )
 
+tf_gen_options_header(
+    name = "gen_registration_options",
+    build_settings = {
+        "//tensorflow:enable_registration_v2": "REGISTRATION_V2",
+    },
+    output_header = "registration_options.h",
+    template = "registration_options.h.tpl",
+)
+
 cc_library(
     name = "selective_registration",
-    hdrs = ["selective_registration.h"],
+    hdrs = [
+        "registration_options.h",
+        "selective_registration.h",
+    ],
     deps = tf_selective_registration_deps(),
 )
 
@@ -1049,7 +1065,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test_gpu(
+tf_cuda_cc_test(
     name = "variant_op_copy_test",
     size = "small",
     srcs = ["variant_op_copy_test.cc"],
@@ -1060,13 +1076,11 @@ tf_cc_test_gpu(
         "//tensorflow/cc:client_session",
         "//tensorflow/cc:ops",
         "//tensorflow/cc:scope",
-        "//tensorflow/core",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:direct_session",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
-        "//tensorflow/core:gpu_runtime",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
@@ -1185,7 +1199,6 @@ tf_cc_tests(
         "variant_op_registry_test.cc",
         "variant_test.cc",
     ],
-    create_named_test_suite = True,
     linkopts = select({
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
@@ -1235,6 +1248,31 @@ cc_library(
     visibility = [
         "//tensorflow/core:__pkg__",
         "//tensorflow/python:__pkg__",
+    ],
+)
+
+cc_library(
+    name = "extension_type_variant",
+    srcs = ["extension_type_variant.cc"],
+    hdrs = ["extension_type_variant.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_cc_test(
+    name = "extension_type_variant_test",
+    size = "small",
+    srcs = ["extension_type_variant_test.cc"],
+    deps = [
+        ":extension_type_variant",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 

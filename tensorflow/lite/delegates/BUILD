@@ -71,9 +71,6 @@ cc_test(
     size = "small",
     srcs = ["delegate_test.cc"],
     features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
-    tags = [
-        "tflite_not_portable_ios",  # TODO(b/117786830)
-    ],
     deps = [
         ":interpreter_utils",
         ":utils",
@@ -85,8 +82,8 @@ cc_test(
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:compatibility",
+        "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
-        "//tensorflow/lite/schema:schema_utils",
         "//tensorflow/lite/testing:util",
         "//third_party/eigen3",
         "@com_google_googletest//:gtest",

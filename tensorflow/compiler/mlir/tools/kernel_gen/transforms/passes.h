@@ -37,6 +37,9 @@ std::unique_ptr<OperationPass<ModuleOp> > CreateEmbedTFFrameworkPass();
 
 namespace transforms {
 
+// Pass to find and annotate candidates for buffer reuse.
+std::unique_ptr<FunctionPass> CreateBufferReusePass();
+
 // Pass for applying LLVM legalization patterns.
 std::unique_ptr<OperationPass<ModuleOp> > CreateTFKernelToLLVMPass();
 
@@ -44,20 +47,16 @@ std::unique_ptr<OperationPass<ModuleOp> > CreateTFKernelToLLVMPass();
 // using memref descriptors.
 std::unique_ptr<OperationPass<ModuleOp> > CreateShapeToDescriptorsPass();
 
-// Pass to tranform computations on values to their corresponding parts on
+// Pass to tranform operations on values to their corresponding parts on
 // buffers.
-std::unique_ptr<OperationPass<ModuleOp> > CreateBufferizePass();
+std::unique_ptr<OperationPass<ModuleOp>> CreateBufferizePass(
+    bool allow_partial_bufferization = false);
 
 // Pass to materialize broadcasts.
 std::unique_ptr<FunctionPass> CreateMaterializeBroadcastsPass();
 
 // Pass to convert scf::ParallelOp to scf::ForOp.
 std::unique_ptr<FunctionPass> CreateParallelLoopsToSequential();
-
-// Pass to propagate TF ABI knowledge, e.g. offsets, alignment.
-std::unique_ptr<OperationPass<LLVM::LLVMFuncOp>>
-CreatePropagateTensorFlowABIKnowledgePass(
-    llvm::ArrayRef<uint32_t> same_shape = {});
 
 // Pass to annotate GPU Module with its PTX.
 std::unique_ptr<OperationPass<gpu::GPUModuleOp>> CreateGpuKernelToBlobPass(
@@ -66,6 +65,15 @@ std::unique_ptr<OperationPass<gpu::GPUModuleOp>> CreateGpuKernelToBlobPass(
 
 // Pass to unfuse batch norm.
 std::unique_ptr<FunctionPass> CreateUnfuseBatchNormPass();
+
+// Pass to propagate tensorflow runtime ABI knowledge across kernel boundaries.
+std::unique_ptr<FunctionPass> CreatePropagateTfAbiKnowledgeToKernels();
+
+// Pass to propagate shape equalities across kernel boundaries.
+std::unique_ptr<FunctionPass> CreatePropagateShapeKnowledgeToKernels();
+
+// Pass to print content of memrefs.
+std::unique_ptr<FunctionPass> CreateEmbedMemRefPrintsPass();
 
 }  // namespace transforms
 

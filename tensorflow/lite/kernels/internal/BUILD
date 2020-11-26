@@ -316,7 +316,6 @@ cc_library(
         ":tensor_utils",
         ":transpose_utils",
         ":types",
-        ":legacy_types",
         ":legacy_reference_base",
         ":cppmath",
         "//third_party/eigen3",
@@ -352,10 +351,8 @@ cc_library(
     deps = [
         ":common",
         ":optimized_base",
-        ":tensor",
         ":types",
         "//tensorflow/core/kernels:eigen_spatial_convolutions-inl",
-        "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
         "//third_party/eigen3",
     ],
@@ -392,7 +389,6 @@ cc_library(
         ":compatibility",
         ":cppmath",
         ":types",
-        "//tensorflow/lite/kernels:op_macros",
     ],
 )
 
@@ -452,6 +448,7 @@ cc_library(
         "reference/arg_min_max.h",
         "reference/batch_matmul.h",
         "reference/binary_function.h",
+        "reference/broadcast_to.h",
         "reference/ceil.h",
         "reference/comparisons.h",
         "reference/concatenation.h",
@@ -521,6 +518,7 @@ cc_library(
         "@ruy//ruy/profiler:instrumentation",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/tools/optimize/sparsity:format_converter",
     ] + select({
@@ -663,7 +661,6 @@ cc_library(
         ":common",
         ":compatibility",
         ":cppmath",
-        "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:common",
         "@gemmlowp",
     ],
@@ -895,7 +892,6 @@ cc_test(
     shard_count = 2,
     deps = [
         ":common",
-        ":optimized_base",
         ":quantization_util",
         ":reference_base",
         ":test_util",
@@ -912,7 +908,6 @@ cc_test(
     shard_count = 2,
     deps = [
         ":common",
-        ":optimized_base",
         ":quantization_util",
         ":reference_base",
         ":test_util",
@@ -1006,10 +1001,8 @@ cc_test(
     shard_count = 1,
     deps = [
         ":optimized_base",
-        ":quantization_util",
         ":reference_base",
         ":test_util",
-        "//tensorflow/lite:string",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1023,10 +1016,8 @@ cc_test(
     shard_count = 1,
     deps = [
         ":optimized_base",
-        ":quantization_util",
         ":reference_base",
         ":test_util",
-        "//tensorflow/lite:string",
         "@com_google_googletest//:gtest_main",
     ],
 )

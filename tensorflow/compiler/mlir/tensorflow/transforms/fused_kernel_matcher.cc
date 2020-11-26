@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir {
@@ -199,14 +200,23 @@ class FuseConv2DBiasAdd
 
 // Performs a fusion of the following pattern(s), if possible:
 //   MatMulOp + BiasAdd + <Activation> -> _FusedMatMulOp
-using FuseMatMulBiasAdd = FuseContractionWithBiasAdd<MatMulOp, _FusedMatMulOp>;
+class FuseMatMulBiasAdd
+    : public FuseContractionWithBiasAdd<MatMulOp, _FusedMatMulOp> {
+  using FuseContractionWithBiasAdd<MatMulOp,
+                                   _FusedMatMulOp>::FuseContractionWithBiasAdd;
+
+  bool AreFuseCompatible(MatMulOp matmul, BiasAddOp bias_add,
+                         PatternRewriter &rewriter) const override {
+    return matmul.T().isF32() || matmul.T().isBF16();
+  }
+};
 
 void FusedKernelMatcherPass::runOnFunction() {
   OwningRewritePatternList patterns;
   auto func = getFunction();
   patterns.insert<FuseConv2DBiasAdd, FuseMatMulBiasAdd>(&getContext());
 
-  applyPatternsAndFoldGreedily(func, patterns);
+  applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
 }  // namespace

@@ -322,12 +322,9 @@ Status LhloDialectEmitter::HandleGather(HloInstruction* instr) {
   TF_ASSIGN_OR_RETURN(auto function, CreateFunction(*instr));
   OpBuilder func_builder(function.getBody());
 
-  // TODO(pifon): Clean-up LHLO GatherOp to be consistent with HLO GatherOp.
   func_builder.create<lhlo::GatherOp>(
       getLocation(instr), function.getArgument(0), function.getArgument(1),
-      dim_numbers.index_vector_dim(), dim_numbers.offset_dims(), slice_sizes,
-      dim_numbers.collapsed_slice_dims(), dim_numbers.start_index_map(),
-      function.getArgument(2));
+      dim_numbers, slice_sizes, function.getArgument(2));
 
   return Status::OK();
 }
@@ -348,7 +345,9 @@ Status LhloDialectEmitter::HandleReduce(HloInstruction* instr) {
       CreateDenseIntElementsAttrFromVector(instr->dimensions(), builder_);
   auto reduce_op = builder.create<lhlo::ReduceOp>(loc, inputs, init_values,
                                                   results, dimensions_attr);
-  reduce_op.ensureTerminator(reduce_op.body(), builder, getLocation(instr));
+  builder.createBlock(&reduce_op.body());
+  OpBuilder::atBlockEnd(&reduce_op.body().front())
+      .create<lhlo::TerminatorOp>(getLocation(instr));
   return SpliceHloComputation(OpBuilder{&reduce_op.body()}, loc,
                               *instr->to_apply(), emission_context_);
 }

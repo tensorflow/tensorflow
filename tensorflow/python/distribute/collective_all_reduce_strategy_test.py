@@ -62,6 +62,8 @@ CollectiveAllReduceStrategy = (
     collective_all_reduce_strategy.CollectiveAllReduceStrategy)
 CollectiveAllReduceExtended = (
     collective_all_reduce_strategy.CollectiveAllReduceExtended)
+_CollectiveAllReduceStrategyExperimental = (
+    collective_all_reduce_strategy._CollectiveAllReduceStrategyExperimental)
 
 
 def create_test_objects(cluster_spec=None,
@@ -398,48 +400,6 @@ class DistributedCollectiveAllReduceStrategyTest(
     self.assertEqual(['CollectiveReduce'],
                      new_rewrite_options.scoped_allocator_opts.enable_op)
 
-  def _get_strategy_with_mocked_methods(self):
-    mock_called = [False]
-
-    # pylint: disable=dangerous-default-value
-    def mock_enable_collective_ops(server_def, mock_called=mock_called):
-      self.assertEqual('worker', server_def.job_name)
-      self.assertEqual(1, server_def.task_index)
-      self.assertEqual('grpc', server_def.protocol)
-      mock_called[0] = True
-
-    def mock_configure_collective_ops(*args, **kwargs):
-      del args, kwargs
-
-    with test.mock.patch.object(context.context(), 'enable_collective_ops',
-                                mock_enable_collective_ops), \
-         test.mock.patch.object(context.context(), 'configure_collective_ops',
-                                mock_configure_collective_ops):
-      strategy, _, _ = self._get_test_object(
-          task_type='worker', task_id=1, num_gpus=2)
-
-    return strategy, mock_called
-
-  @combinations.generate(combinations.combine(mode=['eager']))
-  def testEnableCollectiveOps(self):
-    # We cannot enable check health with this test because it mocks
-    # enable_collective_ops.
-    CollectiveAllReduceExtended._enable_check_health = False
-    strategy, mock_called = self._get_strategy_with_mocked_methods()
-    CollectiveAllReduceExtended._enable_check_health = True
-    self.assertTrue(strategy.extended._std_server_started)
-    self.assertTrue(mock_called[0])
-
-  @combinations.generate(combinations.combine(mode=['eager']))
-  def testEnableCollectiveOpsAndClusterResolver(self):
-    # We cannot enable check health with this test because it mocks
-    # enable_collective_ops.
-    CollectiveAllReduceExtended._enable_check_health = False
-    strategy, _ = self._get_strategy_with_mocked_methods()
-    CollectiveAllReduceExtended._enable_check_health = True
-    self.assertEqual(strategy.cluster_resolver.task_type, 'worker')
-    self.assertEqual(strategy.cluster_resolver.task_id, 1)
-
 
 class DistributedCollectiveAllReduceStrategyTestWithChief(
     CollectiveAllReduceStrategyTestBase, parameterized.TestCase):
@@ -610,5 +570,28 @@ class CollectiveAllReduceStrategyV2Test(test.TestCase, parameterized.TestCase):
         strategy.extended._num_workers, results[1].numpy())
 
 
+class ExperimentalCompatibilityTest(test.TestCase):
+
+  def testIsInstance(self):
+    # It's not uncommon for people to special case MultiWorkerMirroredStrategy,
+    # so we need to make sure isinstance check works for combinations between
+    # the experimental and non-experimental endpoints.
+    strategy = CollectiveAllReduceStrategy()
+    experimental_strategy = _CollectiveAllReduceStrategyExperimental()
+    self.assertIsInstance(strategy, CollectiveAllReduceStrategy)
+    self.assertIsInstance(strategy, _CollectiveAllReduceStrategyExperimental)
+    self.assertIsInstance(experimental_strategy, CollectiveAllReduceStrategy)
+    self.assertIsInstance(experimental_strategy,
+                          _CollectiveAllReduceStrategyExperimental)
+
+  def testName(self):
+    # Estimator checks the __name__ to special case MultiWorkerMirroredStrategy.
+    self.assertEqual(CollectiveAllReduceStrategy.__name__,
+                     'CollectiveAllReduceStrategy')
+    self.assertEqual(_CollectiveAllReduceStrategyExperimental.__name__,
+                     'CollectiveAllReduceStrategy')
+
+
 if __name__ == '__main__':
-  test_util.main()
+  # TODO(b/172304955): enable logical devices.
+  test_util.main(config_logical_devices=False)

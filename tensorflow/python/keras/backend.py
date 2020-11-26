@@ -41,6 +41,8 @@ from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function as eager_function
 from tensorflow.python.eager import lift_to_graph
+from tensorflow.python.eager.context import get_config
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device_spec
@@ -54,6 +56,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend_config
 from tensorflow.python.keras.engine import keras_tensor
 from tensorflow.python.keras.utils import control_flow_util
+from tensorflow.python.keras.utils import object_identity
 from tensorflow.python.keras.utils import tf_contextlib
 from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.ops import array_ops
@@ -75,14 +78,13 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables as variables_module
-from tensorflow.python.ops.ragged import ragged_concat_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import moving_averages
 from tensorflow.python.training.tracking import util as tracking_util
 from tensorflow.python.util import dispatch
+from tensorflow.python.util import keras_deps
 from tensorflow.python.util import nest
-from tensorflow.python.util import object_identity
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 
@@ -114,7 +116,7 @@ PER_GRAPH_OBJECT_NAME_UIDS = weakref.WeakKeyDictionary()
 
 
 # A global set tracking what object names have been seen so far.
-# Optionally used as an avoid-list when generaing names
+# Optionally used as an avoid-list when generating names
 OBSERVED_NAMES = set()
 
 
@@ -317,6 +319,10 @@ def clear_session():
     _GRAPH_VARIABLES.pop(graph, None)
     _GRAPH_TF_OPTIMIZERS.pop(graph, None)
 
+# Inject the clear_session function to keras_deps to remove the dependency
+# from TFLite to Keras.
+keras_deps.register_clear_session_function(clear_session)
+
 
 @keras_export('keras.backend.manual_variable_initialization')
 @doc_controls.do_not_generate_docs
@@ -444,7 +450,7 @@ def deprecated_internal_set_learning_phase(value):
   This method is an internal-only version of `set_learning_phase` that
   does not raise a deprecation error. It is required because
   saved_model needs to keep working with user code that uses the deprecated
-  learning phase methods until those apis are fully removed from the public api.
+  learning phase methods until those APIs are fully removed from the public API.
 
   Specifically SavedModel saving needs to make sure the learning phase is 0
   during tracing even if users overwrote it to a different value.
@@ -510,7 +516,7 @@ def deprecated_internal_learning_phase_scope(value):
   with code that sets/gets the learning phase, but saved model
   saving itself shouldn't raise a deprecation warning.
 
-  We can get rid of this method and its usages when the public api is
+  We can get rid of this method and its usages when the public API is
   removed.
 
   Arguments:
@@ -585,9 +591,109 @@ def eager_learning_phase_scope(value):
       del _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH.key]
 
 
-def _current_graph(op_input_list):
-  """Return the graph members of `op_input_list`, or the current graph."""
-  return ops._get_graph_from_inputs(op_input_list)
+def _as_graph_element(obj):
+  """Convert `obj` to a graph element if possible, otherwise return `None`.
+
+  Args:
+    obj: Object to convert.
+
+  Returns:
+    The result of `obj._as_graph_element()` if that method is available;
+        otherwise `None`.
+  """
+  conv_fn = getattr(obj, '_as_graph_element', None)
+  if conv_fn and callable(conv_fn):
+    return conv_fn()
+  return None
+
+
+def _assert_same_graph(original_item, item):
+  """Fail if the 2 items are from different graphs.
+
+  Args:
+    original_item: Original item to check against.
+    item: Item to check.
+
+  Raises:
+    ValueError: if graphs do not match.
+  """
+  original_graph = getattr(original_item, 'graph', None)
+  graph = getattr(item, 'graph', None)
+  if original_graph and graph and original_graph is not graph:
+    raise ValueError(
+        '%s must be from the same graph as %s (graphs are %s and %s).' %
+        (item, original_item, graph, original_graph))
+
+
+def _current_graph(op_input_list, graph=None):
+  """Returns the appropriate graph to use for the given inputs.
+
+  This library method provides a consistent algorithm for choosing the graph
+  in which an Operation should be constructed:
+
+  1. If the default graph is being used to construct a function, we
+     use the default graph.
+  2. If the "graph" is specified explicitly, we validate that all of the inputs
+     in "op_input_list" are compatible with that graph.
+  3. Otherwise, we attempt to select a graph from the first Operation-
+     or Tensor-valued input in "op_input_list", and validate that all other
+     such inputs are in the same graph.
+  4. If the graph was not specified and it could not be inferred from
+     "op_input_list", we attempt to use the default graph.
+
+  Args:
+    op_input_list: A list of inputs to an operation, which may include `Tensor`,
+      `Operation`, and other objects that may be converted to a graph element.
+    graph: (Optional) The explicit graph to use.
+
+  Raises:
+    TypeError: If op_input_list is not a list or tuple, or if graph is not a
+      Graph.
+    ValueError: If a graph is explicitly passed and not all inputs are from it,
+      or if the inputs are from multiple graphs, or we could not find a graph
+      and there was no default graph.
+
+  Returns:
+    The appropriate graph to use for the given inputs.
+
+  """
+  current_default_graph = ops.get_default_graph()
+  if current_default_graph.building_function:
+    return current_default_graph
+
+  op_input_list = tuple(op_input_list)  # Handle generators correctly
+  if graph and not isinstance(graph, ops.Graph):
+    raise TypeError('Input graph needs to be a Graph: %s' % (graph,))
+
+  # 1. We validate that all of the inputs are from the same graph. This is
+  #    either the supplied graph parameter, or the first one selected from one
+  #    the graph-element-valued inputs. In the latter case, we hold onto
+  #    that input in original_graph_element so we can provide a more
+  #    informative error if a mismatch is found.
+  original_graph_element = None
+  for op_input in op_input_list:
+    # Determine if this is a valid graph_element.
+    # TODO(josh11b): Note that we exclude subclasses of Tensor. Need to clean this
+    # up.
+    if (isinstance(op_input, (
+        ops.Operation, ops.Tensor, composite_tensor.CompositeTensor)) and
+        ((not isinstance(op_input, ops.Tensor))
+         or type(op_input) == ops.Tensor)):  # pylint: disable=unidiomatic-typecheck
+      graph_element = op_input
+    else:
+      graph_element = _as_graph_element(op_input)
+
+    if graph_element is not None:
+      if not graph:
+        original_graph_element = graph_element
+        graph = getattr(graph_element, 'graph', None)
+      elif original_graph_element is not None:
+        _assert_same_graph(original_graph_element, graph_element)
+      elif graph_element.graph is not graph:
+        raise ValueError('%s is not from the passed-in graph.' % graph_element)
+
+  # 2. If all else fails, we use the default graph, which is always there.
+  return graph or current_default_graph
 
 
 def _get_session(op_input_list=()):
@@ -644,6 +750,9 @@ def get_session(op_input_list=()):
       _initialize_variables(session)
   return session
 
+# Inject the get_session function to keras_deps to remove the dependency
+# from TFLite to Keras.
+keras_deps.register_get_session_function(get_session)
 
 # Inject the get_session function to tracking_util to avoid the backward
 # dependency from TF to Keras.
@@ -713,7 +822,7 @@ def get_default_session_config():
         'OMP_NUM_THREADS is no longer used by the default Keras config. '
         'To configure the number of threads, use tf.config.threading APIs.')
 
-  config = context.context().config
+  config = get_config()
   config.allow_soft_placement = True
 
   return config
@@ -785,7 +894,7 @@ def _is_current_explicit_device(device_type):
 
 
 def _get_available_gpus():
-  """Get a list of available gpu devices (formatted as strings).
+  """Get a list of available GPU devices (formatted as strings).
 
   Returns:
       A list of available GPU devices.
@@ -1569,14 +1678,13 @@ def zeros_like(x, dtype=None, name=None):
 
   Example:
 
-
+  ```python
   from tensorflow.keras import backend as K
   kvar = K.variable(np.random.random((2,3)))
   kvar_zeros = K.zeros_like(kvar)
   K.eval(kvar_zeros)
   # array([[ 0.,  0.,  0.], [ 0.,  0.,  0.]], dtype=float32)
-
-
+  ```
   """
   return array_ops.zeros_like(x, dtype=dtype, name=name)
 
@@ -2446,8 +2554,8 @@ def abs(x):
 def sqrt(x):
   """Element-wise square root.
 
-     This function clips tensor values to a specified min(0) and max(inf)
-     before taking sqrt.
+     This function clips negative tensor values to 0 before computing the
+     square root.
 
   Arguments:
       x: Tensor or variable.
@@ -2456,8 +2564,7 @@ def sqrt(x):
       A tensor.
   """
   zero = _constant_to_tensor(0., x.dtype.base_dtype)
-  inf = _constant_to_tensor(np.inf, x.dtype.base_dtype)
-  x = clip_ops.clip_by_value(x, zero, inf)
+  x = math_ops.maximum(x, zero)
   return math_ops.sqrt(x)
 
 
@@ -2984,7 +3091,7 @@ def concatenate(tensors, axis=-1):
   if py_all(is_sparse(x) for x in tensors):
     return sparse_ops.sparse_concat(axis, tensors)
   elif py_all(isinstance(x, ragged_tensor.RaggedTensor) for x in tensors):
-    return ragged_concat_ops.concat(tensors, axis)
+    return array_ops.concat(tensors, axis)
   else:
     return array_ops.concat([to_dense(x) for x in tensors], axis)
 
@@ -4836,6 +4943,11 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
   # activations cache logits on the `output` Tensor.
   if hasattr(output, '_keras_logits'):
     output = output._keras_logits  # pylint: disable=protected-access
+    if from_logits:
+      warnings.warn(
+          '"`categorical_crossentropy` received `from_logits=True`, but '
+          'the `output` argument was produced by a sigmoid or softmax '
+          'activation and thus does not represent logits. Was this intended?"')
     from_logits = True
 
   if from_logits:
@@ -4891,6 +5003,11 @@ def sparse_categorical_crossentropy(target, output, from_logits=False, axis=-1):
   # activations cache logits on the `output` Tensor.
   if hasattr(output, '_keras_logits'):
     output = output._keras_logits  # pylint: disable=protected-access
+    if from_logits:
+      warnings.warn(
+          '"`sparse_categorical_crossentropy` received `from_logits=True`, but '
+          'the `output` argument was produced by a sigmoid or softmax '
+          'activation and thus does not represent logits. Was this intended?"')
     from_logits = True
   elif (not from_logits and
         not isinstance(output, (ops.EagerTensor, variables_module.Variable)) and
@@ -4973,6 +5090,11 @@ def binary_crossentropy(target, output, from_logits=False):
   # activations cache logits on the `output` Tensor.
   if hasattr(output, '_keras_logits'):
     output = output._keras_logits  # pylint: disable=protected-access
+    if from_logits:
+      warnings.warn(
+          '"`binary_crossentropy` received `from_logits=True`, but the `output`'
+          ' argument was produced by a sigmoid or softmax activation and thus '
+          'does not represent logits. Was this intended?"')
     from_logits = True
 
   if from_logits:
@@ -6412,7 +6534,7 @@ def configure_and_create_distributed_session(distribution_strategy):
     dc.run_distribute_coordinator(
         _create_session,
         distribution_strategy,
-        mode=dc.CoordinatorMode.INDEPENDENT_WORKER)
+        mode='independent_worker')
   else:
     _create_session(distribution_strategy)
 
@@ -6473,9 +6595,9 @@ class ContextValueCache(weakref.WeakKeyDictionary):
 
   This class is similar to defaultdict, where values may be produced by the
   default factory specified during initialization. This class also has a default
-  value for the key (when key is `None`) -- the key is set to the the current
-  graph or eager context. The default factories for key and value are only used
-  in `__getitem__` and `setdefault`. The `.get()` behavior remains the same.
+  value for the key (when key is `None`) -- the key is set to the current graph
+  or eager context. The default factories for key and value are only used in
+  `__getitem__` and `setdefault`. The `.get()` behavior remains the same.
 
   This object will return the value of the current graph or closest parent graph
   if the current graph is a function. This is to reflect the fact that if a

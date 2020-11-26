@@ -685,7 +685,7 @@ class DeviceKernelOpTest : public OpsTestBase {
     EXPECT_EQ(TF_OK, TF_GetCode(status));
     TF_DeleteStatus(status);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     std::unique_ptr<Device> device(
         DeviceFactory::NewDevice(device_name_, {}, "/job:a/replica:0/task:0"));
     OpsTestBase::SetDevice(DEVICE_GPU, std::move(device));
@@ -694,7 +694,7 @@ class DeviceKernelOpTest : public OpsTestBase {
     TF_ASSERT_OK(InitOp());
   }
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   const char* device_name_ = tensorflow::DEVICE_GPU;
 #else
   const char* device_name_ = tensorflow::DEVICE_CPU;
@@ -710,6 +710,23 @@ void validate_tensor(TF_Tensor* tensor, int64_t* dims, int64_t num_dims,
 template <typename T>
 void set_tensor_data(TF_Tensor* tensor, T* values, size_t tensor_size_bytes,
                      TF_OpKernelContext* ctx);
+
+REGISTER_OP("StreamOp").Output("output1: float");
+
+TEST_F(DeviceKernelOpTest, TestStream) {
+  auto my_compute_func = [](void* kernel, TF_OpKernelContext* ctx) {
+    TF_Status* s = TF_NewStatus();
+    SP_Stream stream = TF_GetStream(ctx, s);
+    // Stream is always null if device is not a pluggable device. More test
+    // cases will be added when pluggable device mechanism is supported.
+    EXPECT_EQ(stream, nullptr);
+    EXPECT_NE(TF_OK, TF_GetCode(s));
+    TF_DeleteStatus(s);
+  };
+
+  SetupOp("StreamOp", "StreamOp", my_compute_func);
+  TF_ASSERT_OK(RunOpKernel());
+}
 
 REGISTER_OP("AllocateOutputOp1").Output("output1: float");
 
@@ -801,7 +818,7 @@ TEST_F(DeviceKernelOpTest, TestAllocateTempSizeOne) {
     int64_t dim = 1;
     TF_AllocatorAttributes alloc_attrs;
     alloc_attrs.struct_size = TF_ALLOCATOR_ATTRIBUTES_STRUCT_SIZE;
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     alloc_attrs.on_host = 0;
 #else
     alloc_attrs.on_host = 1;
@@ -838,7 +855,7 @@ TEST_F(DeviceKernelOpTest, TestAllocateTempEmpty) {
     int64_t dim = 0;
     TF_AllocatorAttributes alloc_attrs;
     alloc_attrs.struct_size = TF_ALLOCATOR_ATTRIBUTES_STRUCT_SIZE;
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     alloc_attrs.on_host = 0;
 #else
     alloc_attrs.on_host = 1;
@@ -871,7 +888,7 @@ TEST_F(DeviceKernelOpTest, TestAllocateTempSize2x3) {
     int64_t dim[2] = {2, 3};
     TF_AllocatorAttributes alloc_attrs;
     alloc_attrs.struct_size = TF_ALLOCATOR_ATTRIBUTES_STRUCT_SIZE;
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     alloc_attrs.on_host = 0;
 #else
     alloc_attrs.on_host = 1;
@@ -979,7 +996,7 @@ template <typename T>
 void set_tensor_data(TF_Tensor* tensor, T* values, size_t tensor_size_bytes,
                      TF_OpKernelContext* ctx) {
   T* data = reinterpret_cast<T*>(TF_TensorData(tensor));
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   OpKernelContext* cc_ctx = reinterpret_cast<OpKernelContext*>(ctx);
   cc_ctx->eigen_gpu_device().memcpyHostToDevice(data, values,
                                                 tensor_size_bytes);

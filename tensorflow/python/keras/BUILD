@@ -36,9 +36,10 @@ py_library(
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/keras/applications",
         "//tensorflow/python/keras/datasets",
+        "//tensorflow/python/keras/distribute",
         "//tensorflow/python/keras/feature_column",
         "//tensorflow/python/keras/layers",
-        "//tensorflow/python/keras/mixed_precision/experimental:mixed_precision_experimental",
+        "//tensorflow/python/keras/mixed_precision:mixed_precision_experimental",
         "//tensorflow/python/keras/optimizer_v2",
         "//tensorflow/python/keras/premade",
         "//tensorflow/python/keras/preprocessing",
@@ -60,7 +61,6 @@ py_library(
         "//tensorflow/python:check_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:clip_ops",
-        "//tensorflow/python:composite_tensor_utils",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:ctc_ops",
@@ -95,6 +95,7 @@ py_library(
         "//tensorflow/python/distribute:multi_worker_util",
         "//tensorflow/python/keras/engine:keras_tensor",
         "//tensorflow/python/keras/utils:control_flow_util",
+        "//tensorflow/python/keras/utils:object_identity",
         "//tensorflow/python/keras/utils:tf_contextlib",
         "//tensorflow/python/keras/utils:tf_inspect",
     ],
@@ -130,6 +131,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":backend",
+        "//tensorflow/python/keras/layers:advanced_activations",
         "//tensorflow/python/keras/utils:engine_utils",
     ],
 )
@@ -152,7 +154,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":backend",
-        "//tensorflow/python/distribute:distributed_file_utils",
+        "//tensorflow/python/keras/distribute:distributed_file_utils",
         "//tensorflow/python/keras/distribute:worker_training_state",
         "//tensorflow/python/keras/protobuf:projector_config_proto_py",
         "//tensorflow/python/keras/utils:engine_utils",
@@ -339,7 +341,6 @@ tf_py_test(
     size = "small",
     srcs = ["activations_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":activations",
         ":backend",
@@ -359,7 +360,6 @@ tf_py_test(
     size = "small",
     srcs = ["combinations_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":combinations",
         ":testing_utils",
@@ -376,7 +376,6 @@ tf_py_test(
     size = "small",
     srcs = ["constraints_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":backend",
         ":combinations",
@@ -391,7 +390,6 @@ tf_py_test(
     size = "small",
     srcs = ["initializers_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":backend",
         ":combinations",
@@ -426,7 +424,6 @@ tf_py_test(
     python_version = "PY3",
     shard_count = 8,
     tags = ["notsan"],
-    tfrt_enabled = True,
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
@@ -630,7 +627,6 @@ tf_py_test(
     size = "medium",
     srcs = ["backend_config_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":backend",
         ":backend_config",
@@ -645,11 +641,90 @@ tf_py_test(
     srcs = ["keras_parameterized_test.py"],
     python_version = "PY3",
     tags = ["notsan"],
-    tfrt_enabled = True,
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
+)
+
+py_library(
+    name = "expect_absl_installed",
+    # This is a dummy rule used as a absl dependency in open-source.
+    # We expect absl to already be installed on the system, e.g. via
+    # `pip install absl`
+    visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "expect_h5py_installed",
+    # This is a dummy rule used as a h5 dependency in open-source.
+    # We expect h5py to already be installed on the system, e.g. via
+    # `pip install h5py'
+    visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "expect_keras_preprocessing_installed",
+    # This is a dummy rule used as a keras_preprocessing dependency in open-source.
+    # We expect keras_preprocessing to already be installed on the system, e.g. via
+    # `pip install keras_preprocessing`
+    visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "expect_numpy_installed",
+    # This is a dummy rule used as a numpy dependency in open-source.
+    # We expect numpy to already be installed on the system, e.g. via
+    # `pip install numpy`
+    visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "expect_pandas_installed",
+    # This is a dummy rule used as a pandas dependency in open-source.
+    # We expect pandas to already be installed on the system, e.g. via
+    # `pip install pandas'
+    visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "expect_pydot_installed",
+    # This is a dummy rule used as a pydot dependency in open-source.
+    # We expect pydot to already be installed on the system, e.g. via
+    # `pip install pydot'
+    visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "expect_scipy_installed",
+    # This is a dummy rule used as a scipy dependency in open-source.
+    # We expect scipy to already be installed on the system, e.g. via
+    # `pip install scipy'
+    visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "expect_six_installed",
+    # This is a dummy rule used as a six dependency in open-source.
+    # We expect six to already be installed on the system, e.g. via
+    # `pip install six`
+    visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "expect_tensorflow_installed",
+    # This is a dummy rule used as a tensorflow dependency in open-source.
+    # We expect tensorflow to already be installed on the system, e.g. via
+    # `pip install tensorflow` or `pip install tensorflow_gpu`
+    visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "expect_yaml_installed",
+    # This is a dummy rule used as a yaml dependency in open-source.
+    # We expect yaml to already be installed on the system, e.g. via
+    # `pip install yaml`
+    visibility = ["//visibility:public"],
 )

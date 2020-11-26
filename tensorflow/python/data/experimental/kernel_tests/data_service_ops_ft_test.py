@@ -78,6 +78,42 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     self.assertEqual(list(range(num_elements)), results)
 
   @combinations.generate(test_base.eager_only_combinations())
+  def testDispatcherRestartDuringDistributedEpoch(self):
+    cluster = self.create_cluster(num_workers=1)
+    num_elements = 100
+    ds = self.make_distributed_range_dataset(
+        num_elements, cluster, processing_mode="distributed_epoch")
+    iterator = iter(ds)
+    results = []
+    for _ in range(num_elements // 2):
+      results.append(next(iterator).numpy())
+    cluster.restart_dispatcher()
+    for elem in iterator:
+      results.append(elem.numpy())
+
+    self.assertEqual(list(range(num_elements)), results)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testDispatcherRestartDuringDistributedEpochRepeat(self):
+    cluster = self.create_cluster(num_workers=1)
+    num_elements = 100
+    repetitions = 5
+    breakpoints = [50, 250, 450, 500]
+    ds = dataset_ops.Dataset.range(num_elements)
+    ds = ds.repeat(repetitions)
+    ds = self.make_distributed_dataset(
+        ds, cluster, processing_mode="distributed_epoch")
+
+    iterator = iter(ds)
+    results = []
+    for breakpoint in breakpoints:
+      for _ in range(len(results), breakpoint):
+        results.append(next(iterator).numpy())
+      cluster.restart_dispatcher()
+
+    self.assertCountEqual(repetitions * list(range(num_elements)), results)
+
+  @combinations.generate(test_base.eager_only_combinations())
   def testDispatcherRestartBetweenIterations(self):
     cluster = self.create_cluster(num_workers=1)
     num_elements = 100
@@ -219,6 +255,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
   @combinations.generate(test_base.eager_only_combinations())
   def testChangeProcessingModeAfterRestart(self):
+    self.skipTest("b/170910141")
     cluster = self.create_cluster(num_workers=1)
     num_elements = 100
     range_dataset = dataset_ops.Dataset.range(num_elements)

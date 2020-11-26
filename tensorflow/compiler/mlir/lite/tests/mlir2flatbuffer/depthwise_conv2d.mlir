@@ -91,6 +91,7 @@ func @main(tensor<1x224x224x3xf32>) -> tensor<1x112x112x32xf32> {
   // CHECK-NEXT:  name: "min_runtime_version",
   // CHECK-NEXT:  buffer: 6
   // CHECK-NEXT:  } ]
+  // CHECK-NEXT:  signature_defs: [ ]
   // CHECK-NEXT:}
 
   %0 = "tfl.pseudo_const" () {value = dense<-1.23697901> : tensor<32xf32>} : () -> tensor<32xf32> loc("Const")

@@ -74,11 +74,9 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
-        "//tensorflow/core:lib_internal",
+        "//tensorflow/compiler/xla/service:global_device_id",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
-        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -250,6 +248,7 @@ cc_library(
         "ir_emitter_unnested.h",
         "kernel_mapping_scheme.h",
     ],
+    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]),
     deps = [
         ":backend_configs_cc",
         ":buffer_allocations",
@@ -268,6 +267,8 @@ cc_library(
         "//tensorflow/compiler/mlir:name_utils",
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/hlo:lhlo",
+        "//tensorflow/compiler/mlir/hlo:lhlo_gpu",
+        "//tensorflow/compiler/mlir/xla:hlo_module_importer",
         "//tensorflow/compiler/mlir/xla:hlo_utils",
         "//tensorflow/compiler/mlir/xla:mhlo_to_lhlo_with_xla",
         "//tensorflow/compiler/mlir/xla:mlir_hlo_to_hlo",
@@ -288,6 +289,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_execution_profile",
         "//tensorflow/compiler/xla/service:name_uniquer",
         "//tensorflow/compiler/xla/service:pattern_matcher",
+        "//tensorflow/compiler/xla/service:shape_inference",
         "//tensorflow/compiler/xla/service:while_loop_analysis",
         "//tensorflow/compiler/xla/service/llvm_ir:buffer_assignment_util",
         "//tensorflow/compiler/xla/service/llvm_ir:dynamic_update_slice_util",
@@ -913,6 +915,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service:hlo_reachability",
+        "//tensorflow/compiler/xla/service/llvm_ir:fused_ir_emitter",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -1186,6 +1189,7 @@ cc_library(
         ":gpu_layout_assignment",
         ":gpu_sanitize_constant_names",
         ":gpu_scatter_expander",
+        ":horizontal_input_fusion",
         ":horizontal_loop_fusion",
         ":instruction_fusion",
         ":ir_emission_utils",
@@ -1234,8 +1238,10 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_proto_util",
         "//tensorflow/compiler/xla/service:hlo_subcomputation_unification",
         "//tensorflow/compiler/xla/service:hlo_verifier",
+        "//tensorflow/compiler/xla/service:integral_upcaster",
         "//tensorflow/compiler/xla/service:llvm_compiler",
         "//tensorflow/compiler/xla/service:logistic_expander",
+        "//tensorflow/compiler/xla/service:loop_schedule_linearizer",
         "//tensorflow/compiler/xla/service:qr_expander",
         "//tensorflow/compiler/xla/service:reshape_mover",
         "//tensorflow/compiler/xla/service:rng_bit_generator_expander",
@@ -1769,6 +1775,7 @@ cc_library(
     srcs = ["horizontal_loop_fusion.cc"],
     hdrs = ["horizontal_loop_fusion.h"],
     deps = [
+        ":gpu_fusible",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_creation_utils",
@@ -1801,6 +1808,45 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:tuple_simplifier",
         "//tensorflow/compiler/xla/tests:filecheck",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
+cc_library(
+    name = "horizontal_input_fusion",
+    srcs = ["horizontal_input_fusion.cc"],
+    hdrs = ["horizontal_input_fusion.h"],
+    deps = [
+        ":gpu_fusible",
+        ":ir_emission_utils",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_creation_utils",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_cc_test(
+    name = "horizontal_input_fusion_test",
+    srcs = ["horizontal_input_fusion_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":horizontal_input_fusion",
+        ":multi_output_fusion",
+        "//tensorflow/compiler/jit:xla_gpu_jit",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
+        "//tensorflow/compiler/xla/service/gpu/tests:gpu_codegen_test",
+        "//tensorflow/compiler/xla/tests:filecheck",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
     ],
 )

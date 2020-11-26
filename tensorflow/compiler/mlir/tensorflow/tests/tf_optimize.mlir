@@ -30,3 +30,93 @@ func @notfuseMulIntoConv2d(%arg0: tensor<1x112x112x3xf32>) -> tensor<1x112x112x2
   // CHECK: %1 = "tf.Mul"(%0, %cst_0) : (tensor<1x112x112x2xf32>, tensor<112x2xf32>) -> tensor<1x112x112x2xf32>
   // CHECK: return %1 : tensor<1x112x112x2xf32>
 }
+
+
+// CHECK-LABEL: simplifyBroadcastReshape
+func @simplifyBroadcastReshape(%arg0: tensor<1x8x1x1x1x1x1x18xbf16>) -> tensor<8x6x6x18xbf16> {
+  %cst_1 = constant dense<[1, 8, 6, 1, 6, 1, 1, 18]> : tensor<8xi64>
+  %97 = "tf.BroadcastTo"(%arg0, %cst_1) : (tensor<1x8x1x1x1x1x1x18xbf16>, tensor<8xi64>) -> tensor<1x8x6x1x6x1x1x18xbf16>
+  %cst_2 = constant dense<[8, 6, 6, 18]> : tensor<4xi64>
+  %98 = "tf.Reshape"(%97, %cst_2) : (tensor<1x8x6x1x6x1x1x18xbf16>, tensor<4xi64>) -> tensor<8x6x6x18xbf16>
+  return %98 : tensor<8x6x6x18xbf16>
+
+  // CHECK: %[[CST:.*]] = "tf.Const"() {value = dense<[8, 1, 1, 18]> : tensor<4xi64>} : () -> tensor<4xi64>
+  // CHECK: %[[CST1:.*]] =  "tf.Const"() {value = dense<[8, 6, 6, 18]> : tensor<4xi64>} : () -> tensor<4xi64>
+  // CHECK: %[[RESHAPE:.*]] = "tf.Reshape"(%arg0, %[[CST]]) : (tensor<1x8x1x1x1x1x1x18xbf16>, tensor<4xi64>) -> tensor<8x1x1x18xbf16>
+  // CHECK: %[[BROADCAST:.*]] = "tf.BroadcastTo"(%[[RESHAPE]], %[[CST1]]) : (tensor<8x1x1x18xbf16>, tensor<4xi64>) -> tensor<8x6x6x18xbf16>
+  // CHECK: return %[[BROADCAST]] : tensor<8x6x6x18xbf16>
+}
+
+// CHECK-LABEL: simplifyBroadcastReshapeExtraDims
+func @simplifyBroadcastReshapeExtraDims(%arg0: tensor<1x8x1x1x1x1x1x18xbf16>) -> tensor<7x8x6x6x18xbf16> {
+  %cst_1 = constant dense<[7, 1, 8, 6, 1, 6, 1, 1, 18]> : tensor<9xi64>
+  %97 = "tf.BroadcastTo"(%arg0, %cst_1) : (tensor<1x8x1x1x1x1x1x18xbf16>, tensor<9xi64>) -> tensor<7x1x8x6x1x6x1x1x18xbf16>
+  %cst_2 = constant dense<[7, 8, 6, 6, 18]> : tensor<5xi64>
+  %98 = "tf.Reshape"(%97, %cst_2) : (tensor<7x1x8x6x1x6x1x1x18xbf16>, tensor<5xi64>) -> tensor<7x8x6x6x18xbf16>
+  return %98 : tensor<7x8x6x6x18xbf16>
+
+  // CHECK: %[[CST:.*]] = "tf.Const"() {value = dense<[1, 8, 1, 1, 18]> : tensor<5xi64>} : () -> tensor<5xi64>
+  // CHECK: %[[CST1:.*]] =  "tf.Const"() {value = dense<[7, 8, 6, 6, 18]> : tensor<5xi64>} : () -> tensor<5xi64>
+  // CHECK: %[[RESHAPE:.*]] = "tf.Reshape"(%arg0, %[[CST]]) : (tensor<1x8x1x1x1x1x1x18xbf16>, tensor<5xi64>) -> tensor<1x8x1x1x18xbf16>
+  // CHECK: %[[BROADCAST:.*]] = "tf.BroadcastTo"(%[[RESHAPE]], %[[CST1]]) : (tensor<1x8x1x1x18xbf16>, tensor<5xi64>) -> tensor<7x8x6x6x18xbf16>
+  // CHECK: return %[[BROADCAST]] : tensor<7x8x6x6x18xbf16>
+}
+
+// CHECK-LABEL: simplifyBroadcastReshapeOnes
+func @simplifyBroadcastReshapeOnes(%arg0: tensor<1x1x1x1x1x1x1x18xbf16>) -> tensor<1x6x1x6x18xbf16> {
+  %cst_1 = constant dense<[1, 1, 6, 1, 6, 1, 1, 18]> : tensor<8xi64>
+  %97 = "tf.BroadcastTo"(%arg0, %cst_1) : (tensor<1x1x1x1x1x1x1x18xbf16>, tensor<8xi64>) -> tensor<1x1x6x1x6x1x1x18xbf16>
+  %cst_2 = constant dense<[1, 6, 1, 6, 18]> : tensor<5xi64>
+  %98 = "tf.Reshape"(%97, %cst_2) : (tensor<1x1x6x1x6x1x1x18xbf16>, tensor<5xi64>) -> tensor<1x6x1x6x18xbf16>
+  return %98 : tensor<1x6x1x6x18xbf16>
+
+  // CHECK: %[[CST:.*]] = "tf.Const"() {value = dense<[1, 1, 1, 1, 18]> : tensor<5xi64>} : () -> tensor<5xi64>
+  // CHECK: %[[CST1:.*]] = "tf.Const"() {value = dense<[1, 6, 1, 6, 18]> : tensor<5xi64>} : () -> tensor<5xi64>
+  // CHECK: %[[RESHAPE:.*]] = "tf.Reshape"(%arg0, %[[CST]]) : (tensor<1x1x1x1x1x1x1x18xbf16>, tensor<5xi64>) -> tensor<1x1x1x1x18xbf16>
+  // CHECK: %[[BROADCAST:.*]] = "tf.BroadcastTo"(%[[RESHAPE]], %[[CST1]]) : (tensor<1x1x1x1x18xbf16>, tensor<5xi64>) -> tensor<1x6x1x6x18xbf16>
+  // CHECK: return %[[BROADCAST]] : tensor<1x6x1x6x18xbf16>
+}
+
+// CHECK-LABEL: avoidSimplifyBroadcastReshape
+func @avoidSimplifyBroadcastReshape(%arg0: tensor<1x8x1x1x1x1x1x18xbf16>) -> (tensor<1x8x6x1x6x1x1x18xbf16>, tensor<8x6x6x18xbf16>) {
+  %cst_1 = constant dense<[1, 8, 6, 1, 6, 1, 1, 18]> : tensor<8xi64>
+  %97 = "tf.BroadcastTo"(%arg0, %cst_1) : (tensor<1x8x1x1x1x1x1x18xbf16>, tensor<8xi64>) -> tensor<1x8x6x1x6x1x1x18xbf16>
+  %cst_2 = constant dense<[8, 6, 6, 18]> : tensor<4xi64>
+  %98 = "tf.Reshape"(%97, %cst_2) : (tensor<1x8x6x1x6x1x1x18xbf16>, tensor<4xi64>) -> tensor<8x6x6x18xbf16>
+  return %97, %98 : tensor<1x8x6x1x6x1x1x18xbf16>, tensor<8x6x6x18xbf16>
+
+  // CHECK: %[[CST:.*]] = constant dense<[1, 8, 6, 1, 6, 1, 1, 18]> : tensor<8xi64>
+  // CHECK: %[[CST1:.*]] = constant dense<[8, 6, 6, 18]> : tensor<4xi64>
+  // CHECK: %[[BROADCAST:.*]] = "tf.BroadcastTo"(%arg0, %[[CST]]) : (tensor<1x8x1x1x1x1x1x18xbf16>, tensor<8xi64>) -> tensor<1x8x6x1x6x1x1x18xbf16>
+  // CHECK: %[[RESHAPE:.*]] = "tf.Reshape"(%[[BROADCAST]], %[[CST1]]) : (tensor<1x8x6x1x6x1x1x18xbf16>, tensor<4xi64>) -> tensor<8x6x6x18xbf16>
+  // CHECK: return %[[BROADCAST]], %[[RESHAPE]] : tensor<1x8x6x1x6x1x1x18xbf16>, tensor<8x6x6x18xbf16>
+}
+
+// CHECK-LABEL: avoidSimplifyBroadcastReshapeUnmatchedDims
+// The reshape splits broadcasted dimensions, instead of eliminating size-1 dimensions.
+// This results in a mismatch between the non-unit dimensions in the input and output.
+func @avoidSimplifyBroadcastReshapeUnmatchedDims(%arg0: tensor<1x1x1x1x1x1x1x18xbf16>) -> tensor<1x3x2x1x3x2x18xbf16> {
+  %cst_1 = constant dense<[1, 1, 6, 1, 6, 1, 1, 18]> : tensor<8xi64>
+  %97 = "tf.BroadcastTo"(%arg0, %cst_1) : (tensor<1x1x1x1x1x1x1x18xbf16>, tensor<8xi64>) -> tensor<1x1x6x1x6x1x1x18xbf16>
+  %cst_2 = constant dense<[1, 3, 2, 1, 3, 2, 18]> : tensor<7xi64>
+  %98 = "tf.Reshape"(%97, %cst_2) : (tensor<1x1x6x1x6x1x1x18xbf16>, tensor<7xi64>) -> tensor<1x3x2x1x3x2x18xbf16>
+  return %98 : tensor<1x3x2x1x3x2x18xbf16>
+
+  // CHECK: %[[CST:.*]] = constant dense<[1, 1, 6, 1, 6, 1, 1, 18]> : tensor<8xi64>
+  // CHECK: %[[CST1:.*]] = constant dense<[1, 3, 2, 1, 3, 2, 18]> : tensor<7xi64>
+  // CHECK: %[[BROADCAST:.*]] = "tf.BroadcastTo"(%arg0, %[[CST]]) : (tensor<1x1x1x1x1x1x1x18xbf16>, tensor<8xi64>) -> tensor<1x1x6x1x6x1x1x18xbf16>
+  // CHECK: %[[RESHAPE:.*]] = "tf.Reshape"(%[[BROADCAST]], %[[CST1]]) : (tensor<1x1x6x1x6x1x1x18xbf16>, tensor<7xi64>) -> tensor<1x3x2x1x3x2x18xbf16>
+  // CHECK: return %[[RESHAPE]] : tensor<1x3x2x1x3x2x18xbf16>
+}
+
+// CHECK-LABEL: avoidSimplifyBroadcastReshapeUnknownDims
+func @avoidSimplifyBroadcastReshapeUnknownDims(%arg0: tensor<1x?x1x1x1x1x1x?xbf16>) -> tensor<8x6x6x18xbf16> {
+  %cst_1 = constant dense<[1, -1, 6, 1, 6, 1, 1, -1]> : tensor<8xi64>
+  %97 = "tf.BroadcastTo"(%arg0, %cst_1) : (tensor<1x?x1x1x1x1x1x?xbf16>, tensor<8xi64>) -> tensor<1x?x6x1x6x1x1x?xbf16>
+  %cst_2 = constant dense<[8, 6, 6, 18]> : tensor<4xi64>
+  %98 = "tf.Reshape"(%97, %cst_2) : (tensor<1x?x6x1x6x1x1x?xbf16>, tensor<4xi64>) -> tensor<8x6x6x18xbf16>
+  return %98 : tensor<8x6x6x18xbf16>
+
+  // CHECK: "tf.BroadcastTo"
+  // CHECK: "tf.Reshape"
+}

@@ -13,9 +13,6 @@ load(
 load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
-
-# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 
 # buildifier: disable=same-origin-load
@@ -1540,6 +1537,7 @@ cc_library(
         ":local_device",
         ":scoped_allocator",
         ":session_options",
+        "@com_google_absl//absl/base",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
@@ -2035,7 +2033,7 @@ tf_cc_test_mkl(
     ],
 )
 
-tf_cc_test_gpu(
+tf_cuda_cc_test(
     name = "memory_types_test",
     size = "small",
     srcs = ["memory_types_test.cc"],
@@ -2053,7 +2051,6 @@ tf_cc_test_gpu(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/common_runtime/gpu:gpu_runtime",
         "//tensorflow/core/kernels:cast_op",
         "//third_party/eigen3",
     ],
@@ -2216,14 +2213,10 @@ tf_cc_test(
 
 tf_cuda_cc_test(
     name = "direct_session_test",
-    size = "small",
+    size = "medium",
     srcs = ["direct_session_test.cc"],
     args = [] + if_cuda(["--heap_check=local"]),  # The GPU tracer leaks memory
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = [
-        "noasan",  # b/168317266
-        "notsan",  # b/168317266
-    ],
     deps = [
         ":core_cpu",
         ":core_cpu_internal",
@@ -2263,13 +2256,8 @@ tf_cuda_cc_test(
 # enables support for TensorFlow Debugger (tfdbg).
 tf_cc_test(
     name = "direct_session_with_debug_test",
-    size = "small",
     srcs = ["direct_session_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = [
-        "noasan",  #b/168811551
-        "notsan",  #b/168811551
-    ],
     deps = [
         ":core",
         ":core_cpu",
@@ -2525,10 +2513,13 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tf_cuda_cc_test(
     name = "lower_if_op_test",
     size = "small",
     srcs = ["lower_if_op_test.cc"],
+    tags = tf_cuda_tests_tags() + [
+        "no_cuda_asan",  # TODO(b/171575050): re-enable once fixed.
+    ],
     deps = [
         ":core_cpu",
         ":core_cpu_internal",

@@ -39,10 +39,9 @@ TEST_F(GPUCompatibilityTest, ReturnsSupportedForFullMatch) {
   tflite::acceleration::AndroidInfo android_info = {.android_sdk_version = "24",
                                                     .model = "m712c"};
 
-  tflite::gpu::GpuInfo tflite_gpu_info = {
-      .major_version = 3,
-      .minor_version = 1,
-  };
+  tflite::gpu::GpuInfo tflite_gpu_info;
+  tflite_gpu_info.opengl_info.major_version = 3;
+  tflite_gpu_info.opengl_info.minor_version = 1;
 
   EXPECT_TRUE(list_->Includes(android_info, tflite_gpu_info));
 }
@@ -54,11 +53,10 @@ TEST_F(GPUCompatibilityTest, ReturnsUnsupportedForFullMatch) {
                                                     .model = "SM-G960F",
                                                     .device = "starlte",
                                                     .manufacturer = "Samsung"};
-  tflite::gpu::GpuInfo tflite_gpu_info = {
-      .renderer_name = "Mali-G72",
-      .major_version = 3,
-      .minor_version = 2,
-  };
+  tflite::gpu::GpuInfo tflite_gpu_info;
+  tflite_gpu_info.opengl_info.renderer_name = "Mali-G72";
+  tflite_gpu_info.opengl_info.major_version = 3;
+  tflite_gpu_info.opengl_info.minor_version = 2;
   EXPECT_FALSE(list_->Includes(android_info, tflite_gpu_info));
 }
 

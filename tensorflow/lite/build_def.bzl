@@ -172,6 +172,34 @@ def tf_to_tflite(name, src, options, out):
     Args:
       name: Name of rule.
       src: name of the input graphdef file.
+      options: options passed to TFLite Converter.
+      out: name of the output flatbuffer file.
+    """
+
+    toco_cmdline = " ".join([
+        "$(location //tensorflow/lite/python:tflite_convert)",
+        "--enable_v1_converter",
+        "--experimental_new_converter",
+        ("--graph_def_file=$(location %s)" % src),
+        ("--output_file=$(location %s)" % out),
+    ] + options)
+    native.genrule(
+        name = name,
+        srcs = [src],
+        outs = [out],
+        cmd = toco_cmdline,
+        tools = ["//tensorflow/lite/python:tflite_convert"] + tf_binary_additional_srcs(),
+    )
+
+def DEPRECATED_tf_to_tflite(name, src, options, out):
+    """DEPRECATED Convert a frozen tensorflow graphdef to TF Lite's flatbuffer, using toco.
+
+    Please use tf_to_tflite instead.
+    TODO(b/138396996): Migrate away from this deprecated rule.
+
+    Args:
+      name: Name of rule.
+      src: name of the input graphdef file.
       options: options passed to TOCO.
       out: name of the output flatbuffer file.
     """
@@ -647,8 +675,7 @@ def gen_zipped_test_file(name, file, toco, flags):
         cmd = (("$(locations :generate_examples) --toco $(locations {0}) " +
                 " --zip_to_output {1} {2} $(@D)").format(toco, file, flags)),
         outs = [file],
-        # `exec_tools` is required for PY3 compatibility in place of `tools`.
-        exec_tools = [
+        tools = [
             ":generate_examples",
             toco,
         ],
@@ -736,6 +763,7 @@ def gen_model_coverage_test(src, model_name, data, failure_type, tags, size = "m
                 "no_windows",
             ] + tags + coverage_tags,
             deps = [
+                "//third_party/py/tensorflow",
                 "//tensorflow/lite/testing/model_coverage:model_coverage_lib",
                 "//tensorflow/lite/python:lite",
                 "//tensorflow/python:client_testlib",

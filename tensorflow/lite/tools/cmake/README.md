@@ -4,24 +4,25 @@ This page describes how to build the TensorFlow Lite static library with CMake
 tool.
 
 The following instructions have been tested on Ubuntu 16.04.3 64-bit PC (AMD64)
-and TensorFlow devel docker image
+, TensorFlow devel docker image and Windows 10.
 [tensorflow/tensorflow:devel](https://hub.docker.com/r/tensorflow/tensorflow/tags/).
 
 **Note:** This is an experimental that is subject to change.
 
-**Note:** The following are not currently supported: Android, iOS, Tests and
-Host Tools (i.e benchmark / analysis tools etc.)
+**Note:** The following are not currently supported: iOS, Tests and
+Host Tools (i.e analysis tools etc.)
 
 #### Step 1. Install CMake tool
 
-It requires CMake 3.16 or higher. On Ubunutu, you can simply run the following
+It requires CMake 3.16 or higher. On Ubuntu, you can simply run the following
 command.
 
 ```sh
 sudo apt-get install cmake
 ```
 
-Or you can follow [the offcial cmake installation guide](https://cmake.org/install/)
+Or you can follow
+[the official cmake installation guide](https://cmake.org/install/)
 
 #### Step 2. Clone TensorFlow repository
 
@@ -38,6 +39,13 @@ provided in `/tensorflow_src/`.
 mkdir tflite_build
 cd tflite_build
 cmake ../tensorflow_src/tensorflow/lite
+```
+
+It generates release binary by default. If you need to produce debug builds, you
+need to provide '-DCMAKE_BUILD_TYPE=Debug' option.
+
+```sh
+cmake ../tensorflow_src/tensorflow/lite -DCMAKE_BUILD_TYPE=Debug
 ```
 
 If you want to configure Android build with GPU delegate support,
@@ -72,6 +80,12 @@ current directory.
 #### Step 5. Build TensorFlow Lite Benchmark Tool
 
 In the tflite_build directory,
+
+```sh
+cmake --build . -j -t benchmark_model
+```
+
+Or
 
 ```sh
 make benchmark_model -j

@@ -45,6 +45,8 @@ message IteratorMetadata {
 message InputPipelineStat {
   // Id of the blocking iterator with the longest self time.
   int64 bottleneck_iterator_id = 2;
+  // Latency of the bottleneck iterator.
+  int64 bottleneck_iterator_latency_ps = 3;
   // Stats per iterator.
   map<int64, IteratorStat> iterator_stats = 1;
 }
@@ -76,6 +78,8 @@ message InputPipelineStats {
   int64 min_latency_ps = 4;
   // Maximum latency of the input pipeline.
   int64 max_latency_ps = 5;
+  // The number of times this input pipeline was slower than 50 us.
+  int64 num_slow_calls = 6;
   // Stats per call sorted by the root iterator's duration.
   repeated InputPipelineStat stats = 2;
 }
@@ -86,4 +90,33 @@ message TfDataStats {
   map<int64, IteratorMetadata> iterator_metadata = 2;
   // Stats per input pipeline.
   map<int64, InputPipelineStats> input_pipelines = 1;
+}
+
+message TfDataBottleneckAnalysis {
+  // Host name.
+  string host = 1;
+  // Input pipeline name.
+  string input_pipeline = 2;
+  // Maximum latency of the input pipeline.
+  int64 max_latency_ps = 3;
+  // Name of the bottleneck iterator.
+  string iterator_name = 4;
+  // Long name of the bottleneck iterator.
+  string iterator_long_name = 5;
+  // Latency of the bottleneck iterator.
+  int64 iterator_latency_ps = 7;
+  // Suggestion to resolve the bottleneck.
+  string suggestion = 6;
+}
+
+// TfDataStats of all hosts.
+message CombinedTfDataStats {
+  // Whether it is input bound.
+  bool is_input_bound = 3;
+  // Summary of the analysis.
+  string summary = 4;
+  // Bottleneck analysis result.
+  repeated TfDataBottleneckAnalysis bottleneck_analysis = 1;
+  // TfDataStats per host.
+  map<string, TfDataStats> tf_data_stats = 2;
 }

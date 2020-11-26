@@ -2881,7 +2881,7 @@ def group(*inputs, **kwargs):
 
   When operating in a v1-style graph context, ops are not executed in the same
   order as specified in the code; TensorFlow will attempt to execute ops in
-  parallel or in an order convienient to the result it is computing.  `tf.group`
+  parallel or in an order convenient to the result it is computing.  `tf.group`
   allows you to request that one or more results finish before execution
   continues.
 
@@ -3616,6 +3616,7 @@ def switch_case(branch_index,
   return _indexed_case_helper(branch_fns, default, branch_index, name)
 
 
+@tf_export("__internal__.execute_fn_for_device", v1=[])
 def execute_fn_for_device(device_branch_fns, default_fn, name="execute_fn"):
   """Executes one of the provided callables based on the device placement.
 
@@ -3690,6 +3691,24 @@ class XLAControlFlowContext(ControlFlowContext):
     """Returns whether the tf.function should be retraced if the context changes.
     """
     return False
+
+
+@tf_export("__internal__.get_enclosing_xla_context", v1=[])
+def get_enclosing_xla_context():
+  """Recursively find and return the XLAControlFlowContext."""
+  graph = ops.get_default_graph()
+  while graph is not None:
+    # pylint: disable=protected-access
+    context_ = graph._get_control_flow_context()
+    # pylint: enable=protected-access
+    while context_ is not None:
+      if isinstance(context_, XLAControlFlowContext):
+        return context_
+      context_ = context_.outer_context
+    # This may be a FuncGraph due to defuns or v2 control flow. We need to
+    # find the original graph with the XLAControlFlowContext.
+    graph = getattr(graph, "outer_graph", None)
+  return None
 
 
 def from_control_flow_context_def(context_def, import_scope=None):

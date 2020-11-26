@@ -301,6 +301,19 @@ REGISTER_OP("XlaSetBound")
         returns the same value.
 )doc");
 
+REGISTER_OP("XlaSetDynamicDimensionSize")
+    .Input("input: T")
+    .Input("dim_index: int32")
+    .Input("size: int32")
+    .Output("output: T")
+    .Attr("T: type")
+    // Use unknown shape to prevent constant folding.
+    .SetShapeFn(shape_inference::UnknownShape)
+    .Doc(
+        R"doc(Make a static dimension into a xla bounded dynamic dimension.
+        The current static dimension size will become the bound and the second
+        operand becomes the dynamic size of the dimension.)doc");
+
 REGISTER_OP("XlaDynamicSlice")
     .Input("input: T")
     .Input("start_indices: Tindices")
@@ -792,7 +805,7 @@ REGISTER_OP("XlaGather")
     .Input("slice_sizes: Tindices")
     .Attr("dimension_numbers: string")
     .Attr("indices_are_sorted: bool")
-    .Attr("T: numbertype")
+    .Attr("T: {numbertype, bool}")
     .Attr("Tindices: {int32, int64}")
     .Output("output: T")
     .SetShapeFn(shape_inference::UnknownShape)
@@ -813,7 +826,7 @@ REGISTER_OP("XlaScatter")
     .Attr("update_computation: func")
     .Attr("dimension_numbers: string")
     .Attr("indices_are_sorted: bool")
-    .Attr("T: numbertype")
+    .Attr("T: {numbertype, bool}")
     .Attr("Tindices: {int32, int64}")
     .Output("output: T")
     .SetShapeFn(shape_inference::UnchangedShape)

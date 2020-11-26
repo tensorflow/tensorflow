@@ -157,7 +157,6 @@ tf_py_test(
     srcs = ["data_service_ops_test.py"],
     shard_count = 10,
     srcs_version = "PY3",
-    tags = ["notap"],  # TODO(b/170783829)
     deps = [
         ":data_service_test_base",
         "//tensorflow:tensorflow_py",
@@ -380,9 +379,6 @@ tf_py_test(
     name = "map_and_batch_test",
     size = "medium",
     srcs = ["map_and_batch_test.py"],
-    tags = [
-        "nomsan",  # b/168906619
-    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -406,7 +402,6 @@ tf_py_test(
     size = "small",
     srcs = ["map_defun_op_test.py"],
     tags = ["no_pip"],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
@@ -687,7 +682,10 @@ tf_py_test(
     name = "replicate_test",
     srcs = ["replicate_test.py"],
     grpc_enabled = True,
-    tags = ["no_oss"],
+    tags = [
+        "no_oss",
+        "notsan",  # b/173146507
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_combinations",
@@ -744,7 +742,6 @@ tf_py_test(
 tf_py_test(
     name = "sleep_test",
     srcs = ["sleep_test.py"],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:util",
@@ -811,6 +808,7 @@ tf_py_test(
     size = "small",
     srcs = ["stats_dataset_ops_test.py"],
     tags = [
+        "no_oss",  # TODO(b/155795733): Note that this functionality is deprecated.
         "no_pip",
         "notap",
     ],

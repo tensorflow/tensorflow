@@ -47,7 +47,7 @@ TfLiteStatus ResizeOutput(TfLiteContext* context, TfLiteNode* node) {
   // Tensorflow's Reshape allows one of the shape components to have the
   // special -1 value, meaning it will be calculated automatically based on the
   // input. Here we calculate what that dimension should be so that the number
-  // of output elements in the same as the number of input elements.
+  // of output elements is the same as the number of input elements.
   int num_input_elements = NumElements(input);
 
   int num_output_elements = 1;

@@ -631,9 +631,10 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_AllToAll(
     xla::int32 replica_groups_str_size, xla::int32 num_buffers,
     xla::int64 buffer_size, void** source_buffers, void** destination_buffers) {
   int device_ordinal = GetDeviceOrdinal(run_options);
-  xla::int32 replica_id = run_options->device_assignment()
-                              ->ReplicaIdForDeviceOrdinal(device_ordinal)
-                              .ValueOrDie();
+  xla::int32 replica_id =
+      run_options->device_assignment()
+          ->ReplicaIdForDevice(xla::GlobalDeviceId(device_ordinal))
+          .ValueOrDie();
   absl::string_view replica_groups_serialized(
       static_cast<const char*>(replica_groups_str), replica_groups_str_size);
   std::vector<xla::ReplicaGroup> group =
@@ -720,9 +721,10 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_AllReduce(
 TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_ReplicaId(
     const xla::ExecutableRunOptions* run_options, void* output_buffer) {
   int device_ordinal = GetDeviceOrdinal(run_options);
-  xla::int32 replica_id = run_options->device_assignment()
-                              ->ReplicaIdForDeviceOrdinal(device_ordinal)
-                              .ValueOrDie();
+  xla::int32 replica_id =
+      run_options->device_assignment()
+          ->ReplicaIdForDevice(xla::GlobalDeviceId(device_ordinal))
+          .ValueOrDie();
   std::memcpy(output_buffer, &replica_id, 4);
 }
 
@@ -735,9 +737,10 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_CollectivePermute(
   absl::string_view source_target_pairs_serialized(
       static_cast<const char*>(source_target_pairs), source_target_pairs_size);
   auto pairs = absl::StrSplit(source_target_pairs_serialized, ',');
-  xla::int32 replica_id = run_options->device_assignment()
-                              ->ReplicaIdForDeviceOrdinal(device_ordinal)
-                              .ValueOrDie();
+  xla::int32 replica_id =
+      run_options->device_assignment()
+          ->ReplicaIdForDevice(xla::GlobalDeviceId(device_ordinal))
+          .ValueOrDie();
   std::vector<int> copy_to;
   for (auto& p : pairs) {
     std::vector<std::string> mapping = absl::StrSplit(p, '=');

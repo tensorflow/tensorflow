@@ -28,13 +28,23 @@ def EmbedTFFrameworkPass : Pass<"embed-tf-framework", "ModuleOp"> {
   let constructor = "tf_framework::CreateEmbedTFFrameworkPass()";
 }
 
+def BufferReusePass : FunctionPass<"buffer-reuse"> {
+  let summary = "Pass to find and annotate candidates for buffer reuse.";
+  let constructor = "transforms::CreateBufferReusePass()";
+}
+
 def ShapeToDescriptorsPass : Pass<"shape-to-descriptors", "ModuleOp"> {
   let summary = "Pass to transform shape computations to descriptors";
   let constructor = "transforms::CreateShapeToDescriptorsPass()";
 }
 
 def BufferizePass : Pass<"bufferize", "ModuleOp"> {
-  let summary = "Pass to transform operations on values to buffer based ones";
+  let summary = "Pass to transform operations on values to buffer-based ones.";
+  let options = [
+    Option<"allow_partial_bufferization_", "allow-partial-bufferization",
+           "bool", /*default=*/"false", "Allow partial bufferization. "
+           "Value-based operations may remain, e.g. for shape operations.">,
+  ];
   let constructor = "transforms::CreateBufferizePass()";
 }
 
@@ -66,14 +76,21 @@ def ParallelLoopsToSequential : FunctionPass<"parallel-loops-to-sequential"> {
   let constructor = "transforms::CreateParallelLoopsToSequential()";
 }
 
-def PropagateTensorFlowABIKnowledgePass
-    : Pass<"propagate-tf-abi-knowledge", "LLVM::LLVMFuncOp"> {
-  let summary = "Pass to propagate TF ABI knowledge, e.g. offsets, alignment";
-  let options = [
-    ListOption<"same_shape_", "same-shape", "uint32_t",
-               "List of same shape args">,
-  ];
-  let constructor = "transforms::CreatePropagateTensorFlowABIKnowledgePass()";
+def PropagateTfAbiKnowledgeToKernels
+    : FunctionPass<"propagate-tf-abi-knowledge-to-kernels"> {
+  let summary = "Pass to propagate tensorflow ABI knowledge to kernels";
+  let constructor = "transforms::CreatePropagateTfAbiKnowledgeToKernels()";
+}
+
+def PropagateShapeKnowledgeToKernels
+    : FunctionPass<"propagate-shape-knowledge-to-kernels"> {
+  let summary = "Pass to propagate shape information into kernels";
+  let constructor = "transforms::CreatePropagateShapeKnowledgeToKernels()";
+}
+
+def EmbedMemRefPrintsPass : FunctionPass<"embed-memref-prints"> {
+  let summary = "Pass to print content of memrefs";
+  let constructor = "transforms::CreateEmbedMemRefPrintsPass()";
 }
 
 #endif // TF_KERNEL_GEN_PASSES

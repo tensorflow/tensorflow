@@ -37,6 +37,11 @@ struct Annotation {
 };
 Annotation ParseAnnotation(absl::string_view annotation);
 
+inline bool HasMetadata(absl::string_view annotation) {
+  constexpr char kUserMetadataMarker = '#';
+  return !annotation.empty() && annotation.back() == kUserMetadataMarker;
+}
+
 std::vector<Annotation> ParseAnnotationStack(
     absl::string_view annotation_stack);
 

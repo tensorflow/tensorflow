@@ -179,7 +179,7 @@ inline void Elu(const RuntimeShape& input_shape, const float* input_data,
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
     const float val = input_data[i];
-    output_data[i] = val < 0.0 ? std::exp(val) - 1 : val;
+    output_data[i] = val < 0.0f ? std::expm1(val) : val;
   }
 }
 
@@ -319,10 +319,6 @@ inline void AddN(const RuntimeShape& input_shape, const size_t num_inputs,
 // dimensionality if the runtime code does a single loop over one dimension
 // that handles broadcasting as the base case. The code generator would then
 // generate max(D1, D2) nested for loops.
-// TODO(benoitjacob): BroadcastMul is intentionally duplicated from
-// reference_ops.h. Once an optimized version is implemented and NdArrayDesc<T>
-// is no longer referenced in this file, move NdArrayDesc<T> from types.h to
-// reference_ops.h.
 inline void BroadcastMulFivefold(const ArithmeticParams& unswitched_params,
                                  const RuntimeShape& unswitched_input1_shape,
                                  const uint8* unswitched_input1_data,
@@ -1659,17 +1655,18 @@ inline void ComputeInterpolationValues(const int32 value, const int32 scale_10,
     *scaled_value = value * scale_10;
   }
   *lower_bound = std::max(*scaled_value / (1 << 10), 0);
-  *upper_bound = std::min(*scaled_value / (1 << 10) + 1, input_size - 1);
+  *upper_bound =
+      std::min((*scaled_value + (1 << 10) - 1) / (1 << 10), input_size - 1);
 }
 
-// Same as above but takes int8 as input and output.
-inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
-                           const RuntimeShape& unextended_input_shape,
-                           const int8_t* input_data,
-                           const RuntimeShape& unextended_output_size_shape,
-                           const int32* output_size_data,
-                           const RuntimeShape& unextended_output_shape,
-                           int8_t* output_data) {
+// Same as above but doesn't use any floating-point for the resize
+template <typename T>
+inline void ResizeBilinearInteger(
+    const tflite::ResizeBilinearParams& op_params,
+    const RuntimeShape& unextended_input_shape, const T* input_data,
+    const RuntimeShape& unextended_output_size_shape,
+    const int32* output_size_data, const RuntimeShape& unextended_output_shape,
+    T* output_data) {
   // If half_pixel_centers is True, align_corners must be False.
   TFLITE_DCHECK(!op_params.half_pixel_centers || !op_params.align_corners);
   TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
@@ -1743,8 +1740,9 @@ inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
               (input_y - (1 << 10) * y0) * (input_x - (1 << 10) * x0);
           const int64_t output_20 =
               output_20_ll + output_20_lu + output_20_rl + output_20_ru;
-          const int8_t interpolation =
-              static_cast<int8_t>((output_20 + (1 << 19)) / (1 << 20));
+          const int64_t round = (output_20 > 0) ? (1 << 19) : -(1 << 19);
+          const T interpolation =
+              static_cast<T>((output_20 + round) / (1 << 20));
           output_data[Offset(output_shape, b, y, x, c)] = interpolation;
         }
       }

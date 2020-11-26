@@ -103,6 +103,11 @@ enum HostEventType {
   // Batching related.
   kBatchingSessionRun,
   kProcessBatch,
+  kConcatInputTensors,
+  kMergeInputTensors,
+  kScheduleWithoutSplit,
+  kScheduleWithSplit,
+  kASBSQueueSchedule,
   // JAX related.
   kExecuteOnLocalDevices,
   // GPU related.
@@ -191,7 +196,15 @@ enum StatType {
   kDevCapMemorySize,
   kDevCapComputeCapMajor,
   kDevCapComputeCapMinor,
-  kLastStatType = kDevCapComputeCapMinor,
+  // Batching related.
+  kBatchSizeAfterPadding,
+  kPaddingAmount,
+  kBatchingInputTaskSize,
+  // GPU occupancy metrics
+  kTheoreticalOccupancyPct,
+  kOccupancyMinGridSize,
+  kOccupancySuggestedBlockSize,
+  kLastStatType = kOccupancySuggestedBlockSize,
 };
 
 inline std::string GpuPlaneName(int32 device_ordinal) {

@@ -17,8 +17,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/casts.h"
-#include "tensorflow/core/tpu/kernels/tpu_execute_c_api.h"
 #include "tensorflow/core/tpu/tpu_api.h"
+#include "tensorflow/core/tpu/tpu_ops_c_api.h"
 #include "tensorflow/stream_executor/tpu/c_api_conversions.h"
 #include "tensorflow/stream_executor/tpu/proto_helper.h"
 #include "tensorflow/stream_executor/tpu/status_helper.h"
@@ -30,9 +30,7 @@ namespace xla {
 TpuExecutable::TpuExecutable(const XLA_TpuProgram* core_program,
                              std::unique_ptr<HloModule> hlo_module,
                              HostCommandHandler host_command_handler)
-    : TpuExecutableInterface(std::move(hlo_module),
-                             /*hlo_profile_printer_data=*/nullptr,
-                             /*hlo_profile_index_map=*/nullptr),
+    : TpuExecutableInterface(std::move(hlo_module)),
       core_program_(core_program),
       host_command_handler_(std::move(host_command_handler)) {}
 
@@ -79,11 +77,22 @@ Status TpuExecutable::LoadProgramAndEnqueueToStream(
       run_options.run_options().stream()->implementation());
   StatusHelper status;
 
-  tensorflow::tpu::ExecuteApiFn()
-      ->TpuExecutable_LoadProgramAndEnqueueToStreamFn(
-          core_program_, arguments_bases, arguments.size(), &result_base,
-          (cross_program_prefetch_addr.has_value() ? &prefetch_base : nullptr),
-          rng_seed, &c_dev_assign, stream, status.c_status);
+  TpuExecutable_LoadProgramAndEnqueueToStream_Params params;
+  params.struct_size = TpuExecutable_LoadProgramAndEnqueueToStream_Params_SIZE;
+  params.priv = nullptr;
+  params.program = core_program_;
+  params.arguments = arguments_bases;
+  params.arguments_len = arguments.size();
+  params.result = &result_base;
+  params.cross_program_prefetch_addr =
+      cross_program_prefetch_addr.has_value() ? &prefetch_base : nullptr;
+  params.rng_seed = rng_seed;
+  params.device_assignment = &c_dev_assign;
+  params.stream = stream;
+  params.status = status.c_status;
+
+  tensorflow::tpu::OpsApiFn()->TpuExecutable_LoadProgramAndEnqueueToStreamFn(
+      &params);
 
   if (dev_assign != nullptr) {
     stream_executor::tpu::SerializedProto_Free(dev_assign_serialized);
@@ -96,7 +105,7 @@ Shape TpuExecutable::HostShapeToDeviceShape(const Shape& host_shape) {
   XLA_Shape c_host_shape;
   XLA_Shape c_device_shape;
   ApiConverter::ToC(host_shape, &c_host_shape);
-  tensorflow::tpu::ExecuteApiFn()->HardwareLayout_HostShapeToDeviceShapeFn(
+  tensorflow::tpu::OpsApiFn()->HardwareLayout_HostShapeToDeviceShapeFn(
       &c_host_shape, &c_device_shape);
   Shape device_shape = ApiConverter::FromC(&c_device_shape);
   ApiConverter::Free(&c_host_shape);
@@ -108,7 +117,7 @@ int64 TpuExecutable::ShapeSize(const Shape& shape) {
   XLA_Shape c_shape;
   ApiConverter::ToC(shape, &c_shape);
   int64 size =
-      tensorflow::tpu::ExecuteApiFn()->HardwareLayout_ShapeSizeFn(&c_shape);
+      tensorflow::tpu::OpsApiFn()->HardwareLayout_ShapeSizeFn(&c_shape);
   ApiConverter::Free(&c_shape);
   return size;
 }

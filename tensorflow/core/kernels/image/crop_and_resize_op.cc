@@ -207,7 +207,7 @@ class CropAndResizeOp : public AsyncOpKernel {
 namespace functor {
 template <typename T>
 struct CropAndResize<CPUDevice, T> {
-  bool operator()(const OpKernelContext* context,
+  bool operator()(OpKernelContext* context,
                   typename TTypes<T, 4>::ConstTensor image,
                   typename TTypes<float, 2>::ConstTensor boxes,
                   typename TTypes<int32, 1>::ConstTensor box_index,
@@ -221,6 +221,17 @@ struct CropAndResize<CPUDevice, T> {
     const int crop_height = crops.dimension(1);
     const int crop_width = crops.dimension(2);
     const int depth = crops.dimension(3);
+
+    // Since `functor::CropAndResize` operates on float, we first validate
+    // that we don't overflow (since overflow causes undefined behavior which
+    // could result in segfault in this scenario).
+    const Eigen::Tensor<bool, 0, Eigen::RowMajor> only_finite_elements =
+        boxes.isfinite().all();
+    if (!only_finite_elements()) {
+      context->SetStatus(errors::InvalidArgument(
+          "Boxes contains at least one element that is not finite"));
+      return false;
+    }
 
     // Sharding across boxes.
     auto CropAndResizePerBox = [&](int64 start_box, int64 limit_box) {

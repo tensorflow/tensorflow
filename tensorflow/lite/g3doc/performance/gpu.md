@@ -12,11 +12,9 @@ resulting in lower latency. In the best scenario, inference on the GPU may now
 run fast enough for previously not available real-time applications.
 
 Unlike CPUs, GPUs compute with 16-bit or 32-bit floating point numbers and do
-not require quantization for optimal performance.
-
-**NOTE:** The delegate does accept 8-bit quantized models on Android. Support on
-iOS is experimental. Refer to the [advanced documentation](gpu_advanced.md) for
-details.
+not require quantization for optimal performance. The delegate does accept 8-bit
+quantized models, but the calculation will be performed in floating point
+numbers. Refer to the [advanced documentation](gpu_advanced.md) for details.
 
 Another benefit with GPU inference is its power efficiency. GPUs carry out the
 computations in a very efficient and optimized manner, so that they consume less
@@ -116,7 +114,7 @@ OR
 pod 'TensorFlowLiteSwift', '~> 0.0.1-nightly', :subspecs => ['Metal']
 ```
 
-You can do similiarly for `TensorFlowLiteC` if you want to use the C API.
+You can do similarly for `TensorFlowLiteC` if you want to use the C API.
 
 #### Step 3. Enable the GPU delegate
 
@@ -156,9 +154,15 @@ Lastly make sure to select Release-only builds on 64-bit architecture. Under
 
 ### Android
 
-Note: The TensorFlow Lite Interpreter must be created on the same thread as when
-is is run. Otherwise, `TfLiteGpuDelegate Invoke: GpuDelegate must run on the
-same thread where it was initialized.` may occur.
+Note: The TensorFlow Lite Interpreter must be created on the same thread as
+where it is run. Otherwise, `TfLiteGpuDelegate Invoke: GpuDelegate must run on
+the same thread where it was initialized.` may occur.
+
+There are two ways to invoke model acceleration depending on if you are using
+[Android Studio ML Model Binding](../inference_with_metadata/codegen#acceleration)
+or TensorFlow Lite Interpreter.
+
+#### TensorFlow Lite Interpreter
 
 Look at the demo to see how to add the delegate. In your application, add the
 AAR as above, import `org.tensorflow.lite.gpu.GpuDelegate` module, and use

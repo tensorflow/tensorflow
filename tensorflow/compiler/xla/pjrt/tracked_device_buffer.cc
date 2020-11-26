@@ -117,11 +117,9 @@ TrackedDeviceBuffer::FromScopedShapedBuffer(
       /*on_delete_callback=*/nullptr);
 }
 
-ShapedBuffer TrackedDeviceBuffer::AsShapedBuffer(const Shape& on_host_shape,
-                                                 const Shape& on_device_shape,
-                                                 se::Platform* platform) const {
-  ShapedBuffer shaped_buffer(on_host_shape, on_device_shape, platform,
-                             device_ordinal_);
+ShapedBuffer TrackedDeviceBuffer::AsShapedBuffer(
+    const Shape& on_host_shape, const Shape& on_device_shape) const {
+  ShapedBuffer shaped_buffer(on_host_shape, on_device_shape, device_ordinal_);
   ShapeTree<se::DeviceMemoryBase>::iterator iterator =
       shaped_buffer.buffers().begin();
   for (const se::DeviceMemoryBase& buf : device_memory_) {

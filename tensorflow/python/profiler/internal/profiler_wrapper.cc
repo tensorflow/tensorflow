@@ -29,6 +29,7 @@ limitations under the License.
 #include "pybind11/pytypes.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/xplane_to_tools_data.h"
@@ -47,7 +48,7 @@ namespace {
 using ::tensorflow::RemoteProfilerSessionManagerOptions;
 
 // Profiler gives grace after profiling duration to terminate.
-constexpr absl::Duration kSessionGraceTime = absl::Seconds(5);
+constexpr absl::Duration kMinSessionGraceTime = absl::Seconds(60);
 
 tensorflow::Status ValidateHostPortPair(absl::string_view host_port) {
   tensorflow::uint32 port;
@@ -105,9 +106,9 @@ void UpdateMaxSessionDuration(RemoteProfilerSessionManagerOptions& options) {
   // is bounded.
   DCHECK_GT(local_profiler_duration, 0);
   VLOG(3) << "duration_ms was given as " << local_profiler_duration;
-  // Max session duration includes the profiling session and grace time.
-  auto profile_duration =
-      absl::Milliseconds(local_profiler_duration) + kSessionGraceTime;
+  // Max session duration is the profiling session with grace time.
+  auto profile_duration = std::max(
+      kMinSessionGraceTime, absl::Milliseconds(local_profiler_duration) * 2);
   absl::Duration delay_duration;
   // When requested start timestamp is 0, profiling starts immediately.
   if (requested_start_ts > 0) {
@@ -159,6 +160,12 @@ RemoteProfilerSessionManagerOptions GetOptionsLocked(absl::string_view logdir,
       auto value = py::cast<int>(kw.second);
       options.mutable_profiler_options()->set_python_tracer_level(value);
       VLOG(1) << "python_tracer_level set to " << value;
+    } else if (key == "delay_ms") {
+      if (!kw.second.is_none()) {
+        auto value = py::cast<int>(kw.second);
+        options.set_delay_ms(value);
+        VLOG(1) << "delay_ms was set to " << value;
+      }
     } else {
       LOG(WARNING) << "Unrecognised key: " << key;
     }
@@ -234,6 +241,7 @@ class ProfilerSessionWrapper {
     tensorflow::profiler::XSpace xspace;
     tensorflow::Status status;
     status = session_->CollectData(&xspace);
+    xspace.add_hostnames(tensorflow::port::Hostname());
     session_.reset();
     status = tensorflow::profiler::ExportToTensorBoard(xspace, logdir_);
     tensorflow::MaybeRaiseRegisteredFromStatus(status);
