@@ -139,6 +139,7 @@ tf_cuda_cc_test(
     tags = tf_cuda_tests_tags() + ["nomac"],
     deps = [
         ":grad_test_helper",
+        ":nn_grad",
         "//tensorflow/c/eager:c_api_test_util",
         "//tensorflow/c/experimental/gradients/tape:tape_context",
         "//tensorflow/core:test",

@@ -34,6 +34,7 @@ void CompareWithGradientsCheckers(Model model, Model grad_model,
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   for (int i = 0; i < num_inputs; ++i) {
+    if (!outputs[i]) continue;
     std::vector<AbstractTensorHandle*> numerical_inputs{inputs};
 
     AbstractTensorHandle* g;  // Will contain numerical approximation data.
@@ -69,6 +70,7 @@ void CompareWithGradientsCheckers(Model model, Model grad_model,
     TF_DeleteTensor(numerical_tensor);
     delete[] danalytical;
     delete[] dnumerical;
+    outputs[i]->Unref();
   }
 }
 

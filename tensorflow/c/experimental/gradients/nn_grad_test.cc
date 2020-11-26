@@ -27,51 +27,18 @@ namespace {
 using tensorflow::TF_StatusPtr;
 using tracing::TracingOperation;
 
-Status BiasAddModel(AbstractContext* ctx,
-                    absl::Span<AbstractTensorHandle* const> inputs,
-                    absl::Span<AbstractTensorHandle*> outputs,
-                    const GradientRegistry& registry) {
-  auto tape = new Tape(/*persistent=*/false);
-  tape->Watch(ToId(inputs[0]));  // Watch x.
-  tape->Watch(ToId(inputs[1]));  // Watch y.
-  std::vector<AbstractTensorHandle*> bias_add_outputs(1);
-  AbstractContextPtr tape_ctx(new TapeContext(ctx, tape, registry));
+TF_MODEL_FACTORY(BiasAddModel, 2, 1, {
   TF_RETURN_IF_ERROR(ops::BiasAdd(tape_ctx.get(), inputs,
-                                  absl::MakeSpan(bias_add_outputs), "BiasAdd"));
-  outputs[0] = bias_add_outputs[0];
+                                  absl::MakeSpan(temp_outputs), "BiasAdd"));
+})
 
-  delete tape;
-  return Status::OK();
-}
+TF_GRAD_MODEL_FACTORY(BiasAddGradModel, 2, 1, 2, {
+  TF_RETURN_IF_ERROR(ops::BiasAdd(tape_ctx.get(), inputs,
+                                  absl::MakeSpan(temp_outputs), "BiasAddGrad"));
+})
 
-Status BiasAddGradModel(AbstractContext* ctx,
-                        absl::Span<AbstractTensorHandle* const> inputs,
-                        absl::Span<AbstractTensorHandle*> outputs,
-                        const GradientRegistry& registry) {
-  TapeVSpace vspace(ctx);
-  auto tape = new Tape(/*persistent=*/false);
-  tape->Watch(ToId(inputs[0]));  // Watch x.
-  tape->Watch(ToId(inputs[1]));  // Watch y.
-  std::vector<AbstractTensorHandle*> bias_add_outputs(1);
-  AbstractContextPtr tape_ctx(new TapeContext(ctx, tape, registry));
-  TF_RETURN_IF_ERROR(ops::BiasAdd(
-      tape_ctx.get(), inputs, absl::MakeSpan(bias_add_outputs), "BiasAddGrad"));
-  std::unordered_map<tensorflow::int64, TapeTensor>
-      source_tensors_that_are_targets;
-
-  std::vector<AbstractTensorHandle*> out_grads;
-  TF_RETURN_IF_ERROR(tape->ComputeGradient(
-      vspace, /*target_tensor_ids=*/{ToId(bias_add_outputs[0])},
-      /*source_tensor_ids=*/{ToId(inputs[0]), ToId(inputs[1])},
-      source_tensors_that_are_targets,
-      /*output_gradients=*/{}, &out_grads,
-      /*build_default_zeros_grads=*/false));
-  for (auto bias_add_output : bias_add_outputs) {
-    bias_add_output->Unref();
-  }
-  outputs[0] = out_grads[0];
-  outputs[1] = out_grads[1];
-  delete tape;
+Status RegisterGradients(GradientRegistry* registry) {
+  TF_RETURN_IF_ERROR(registry->Register("BiasAdd", BiasAddRegisterer));
   return Status::OK();
 }
 
@@ -83,45 +50,42 @@ class CppGradients
     TF_SetTracingImplementation(std::get<0>(GetParam()), status.get());
     Status s = StatusFromTF_Status(status.get());
     CHECK_EQ(errors::OK, s.code()) << s.error_message();
+
+    {
+      AbstractContext* ctx_raw = nullptr;
+      Status s =
+          BuildImmediateExecutionContext(std::get<1>(GetParam()), &ctx_raw);
+      ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+      ctx_.reset(ctx_raw);
+    }
+
+    s = RegisterGradients(&registry_);
+    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
   }
+
+  GradientRegistry registry_;
+  AbstractContextPtr ctx_;
 };
 
-Status RegisterGradients(GradientRegistry* registry) {
-  TF_RETURN_IF_ERROR(registry->Register("BiasAdd", BiasAddRegisterer));
-  return Status::OK();
-}
-
-TEST_P(CppGradients, TestBiasAddGradChecker) {
+TEST_P(CppGradients, TestBiasAddGrad) {
   if (std::get<0>(GetParam()) == "mlir" && !std::get<2>(GetParam())) {
     GTEST_SKIP() << "SetAttrString has not been implemented yet.\n";
-  }
-  AbstractContextPtr ctx;
-  {
-    AbstractContext* ctx_raw = nullptr;
-    Status s =
-        BuildImmediateExecutionContext(std::get<1>(GetParam()), &ctx_raw);
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-    ctx.reset(ctx_raw);
   }
 
   // A
   float A_vals[] = {1.0f, 2.0f, 3.0f, 4.0f};
   int64_t A_dims[] = {2, 2};
   AbstractTensorHandlePtr A =
-      GetTensorHandleUtilFloat(ctx.get(), A_vals, A_dims, 2);
+      GetTensorHandleUtilFloat(ctx_.get(), A_vals, A_dims, 2);
   // Bias
   float Bias_vals[] = {2.0f, 3.0f};
   int64_t Bias_dims[] = {2};
   AbstractTensorHandlePtr Bias =
-      GetTensorHandleUtilFloat(ctx.get(), Bias_vals, Bias_dims, 1);
-
-  GradientRegistry registry;
-  Status s = RegisterGradients(&registry);
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+      GetTensorHandleUtilFloat(ctx_.get(), Bias_vals, Bias_dims, 1);
 
   ASSERT_NO_FATAL_FAILURE(CompareWithGradientsCheckers(
-      BiasAddModel, BiasAddGradModel, ctx.get(), {A.get(), Bias.get()},
-      /*use_function=*/!std::get<2>(GetParam()), registry));
+      BiasAddModel, BiasAddGradModel, ctx_.get(), {A.get(), Bias.get()},
+      /*use_function=*/!std::get<2>(GetParam()), registry_));
 }
 
 #ifdef PLATFORM_GOOGLE
