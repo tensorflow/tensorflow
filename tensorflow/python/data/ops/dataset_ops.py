@@ -455,17 +455,12 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     return length
 
   def __evenly_divisible__(self, batch_size):
-    if smart_cond.smart_cond(self.cardinality()>0,
-                            lambda: constant_op.constant(True),
-                            lambda: constant_op.constant(False)
-                            ):
-      pred = self.cardinality() % batch_size == 0
-      const_true = lambda: constant_op.constant(True)
-      const_false = lambda: constant_op.constant(False)
-      evenly_divisible = smart_cond.smart_cond(pred, const_true, const_false)
-    else:
-      evenly_divisible = False
-    return evenly_divisible
+    batch_mod = math_ops.floor_mod(self.cardinality(),batch_size)
+    cond = math_ops.logical_and(math_ops.greater(self.cardinality(),0),
+                                math_ops.equal(batch_mod,0))
+    pred = smart_cond.smart_cond(cond, lambda: constant_op.constant(True),
+                            lambda: constant_op.constant(False))                            
+    return pred
 
   @abc.abstractproperty
   def element_spec(self):
