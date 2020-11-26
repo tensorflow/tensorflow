@@ -79,24 +79,29 @@ echo -e "*** Settings ***\n" \
         "    Create Platform\n" > $ROBOT_SCRIPT
 
 # Prepare test binaries list using binaries directory path or single binary path
+# Internal field separator needs to be temporarely set to newline to handle paths with spaces
+IFS=$'\n'
+declare -a FILES
 if [[ -d $1 ]]; then
-    FILES=`ls $1/*_test`;
+    FILES=($(ls -1 $1/*_test));
 else
-    FILES="$1";
+    FILES=("$1");
 fi
 
-for binary in $FILES;
+for binary in "${FILES[@]}";
 do
     echo -e "Should Run $(basename ${binary})\n"\
             "    Test Binary    @$(realpath ${binary})\n" >> $ROBOT_SCRIPT
 done
 
+IFS=$' \n\t'
 ROBOT_COMMAND="${RENODE_TEST_SCRIPT} ${ROBOT_SCRIPT} \
   -r ${RESULTS_DIRECTORY} \
   --variable RESC:${RESC_PATH} \
   --variable UART_LOG:${UART_LOG}"
 
 echo "${ROBOT_COMMAND}"
+echo " "
 
 if ! ${ROBOT_COMMAND}
 then
