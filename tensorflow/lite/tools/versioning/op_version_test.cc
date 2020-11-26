@@ -825,4 +825,39 @@ TEST(OpVersionTest, VersioningBatchMatMulTest) {
   fake_op_sig.options.input_quantization.asymmetric_quantize_inputs = true;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
 }
+TEST(OpVersionTest, VersioningSquaredDifferenceTest) {
+  // Default.
+  OpSignature fake_op_sig = {
+      .op = BuiltinOperator_SQUARED_DIFFERENCE,
+      .input_types =
+          std::vector<TensorType>{TensorType_FLOAT32, TensorType_FLOAT32},
+      .output_types = std::vector<TensorType>{TensorType_FLOAT32},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+
+  // int8 input is version 2.
+  fake_op_sig = {
+      .op = BuiltinOperator_SQUARED_DIFFERENCE,
+      .input_types = std::vector<TensorType>{TensorType_INT8, TensorType_INT8},
+      .output_types = std::vector<TensorType>{TensorType_INT8},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+}
+TEST(OpVersionTest, VersioningRsqrtTest) {
+  // Default.
+  OpSignature fake_op_sig = {
+      .op = BuiltinOperator_RSQRT,
+      .input_types = std::vector<TensorType>{TensorType_FLOAT32},
+      .output_types = std::vector<TensorType>{TensorType_FLOAT32},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+
+  // int8 input is version 2.
+  fake_op_sig = {
+      .op = BuiltinOperator_RSQRT,
+      .input_types = std::vector<TensorType>{TensorType_INT8},
+      .output_types = std::vector<TensorType>{TensorType_INT8},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+}
 }  // namespace tflite

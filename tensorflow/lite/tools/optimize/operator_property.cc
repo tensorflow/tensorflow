@@ -77,6 +77,7 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
   OperatorProperty property;
   switch (op_code) {
     case BuiltinOperator_ABS:
+    case BuiltinOperator_RSQRT:
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
       property.version = 2;
@@ -921,6 +922,7 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.restrict_same_input_output_scale = true;
       property.version = 2;
       break;
+    case BuiltinOperator_SQUARED_DIFFERENCE:
     case BuiltinOperator_SUB:
       property.inputs = {{0, {}}, {1, {}}};
       property.outputs = {{0, {}}};
