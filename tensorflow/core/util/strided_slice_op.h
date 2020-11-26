@@ -40,6 +40,17 @@ namespace tensorflow {
 // some dimensions of <processing_shape> and/or <final_shape> may be unknown
 // (-1). Any validation that can be done without complete information is
 // performed.
+//
+// This function changes the orders of dimensions, output_to_sparse_mapping and
+// output_to_processing_mapping are used to track the order change.
+//
+// output_to_sparse_mapping[i] represents output[i]'s the corresponding dim
+// index in the begin_tensor. If
+// output_to_sparse_mapping[i] is -1, it means the dimension doesn't show up in
+// sparse_mapping.
+//
+// output_to_processing_mapping is similar to output_to_sparse_mapping, but for
+// processing_shape.
 Status ValidateStridedSliceOp(
     const Tensor* begin_tensor, const Tensor* end_tensor,
     const Tensor& strides_tensor, const PartialTensorShape& input_shape,
@@ -48,7 +59,9 @@ Status ValidateStridedSliceOp(
     PartialTensorShape* processing_shape, PartialTensorShape* final_shape,
     bool* is_identity, bool* is_simple_slice, bool* slice_dim0,
     gtl::InlinedVector<int64, 4>* begin, gtl::InlinedVector<int64, 4>* end,
-    gtl::InlinedVector<int64, 4>* strides);
+    gtl::InlinedVector<int64, 4>* strides,
+    gtl::InlinedVector<int64, 4>* output_to_sparse_mapping = nullptr,
+    gtl::InlinedVector<int64, 4>* output_to_processing_mapping = nullptr);
 
 // Same as above, but the outputs are TensorShape, not PartialTensorShape
 Status ValidateStridedSliceOp(
@@ -58,7 +71,9 @@ Status ValidateStridedSliceOp(
     int32 new_axis_mask, int32 shrink_axis_mask, TensorShape* processing_shape,
     TensorShape* final_shape, bool* is_identity, bool* is_simple_slice,
     bool* slice_dim0, gtl::InlinedVector<int64, 4>* begin,
-    gtl::InlinedVector<int64, 4>* end, gtl::InlinedVector<int64, 4>* strides);
+    gtl::InlinedVector<int64, 4>* end, gtl::InlinedVector<int64, 4>* strides,
+    gtl::InlinedVector<int64, 4>* output_to_sparse_mapping = nullptr,
+    gtl::InlinedVector<int64, 4>* output_to_processing_mapping = nullptr);
 
 }  // namespace tensorflow
 

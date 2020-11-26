@@ -42,6 +42,10 @@ from tensorflow.python.platform import tf_logging as logging
 
 class CollectiveOpTest(test.TestCase):
 
+  def setUp(self):
+    context._reset_context()  # pylint: disable=protected-access
+    super(CollectiveOpTest, self).setUp()
+
   def _testCollectiveReduce(self,
                             inputs,
                             expected,
@@ -159,49 +163,6 @@ class CollectiveOpTest(test.TestCase):
           'Collective has timed out waiting for other workers'):
         self._testCollectiveReduce(
             reported_group_size=len(kwargs['inputs']) + 1, **kwargs)
-    elapsed = time.time() - start_time
-    self.assertAllGreaterEqual(elapsed, timeout)
-
-  @test_util.run_v2_only
-  def testCollectiveTimeoutV2(self):
-    context._reset_context()
-    timeout = 4.5
-    cpus = config.list_physical_devices('CPU')
-    self.assertEqual(len(cpus), 1)
-    config.set_logical_device_configuration(cpus[0], [
-        context.LogicalDeviceConfiguration(),
-        context.LogicalDeviceConfiguration()
-    ])
-    context.ensure_initialized()
-
-    @def_function.function
-    def run_all_reduce(group_size, reported_group_size=None):
-      group_key = 20
-      instance_key = 30
-      tensor = [1, 2, 3, 4]
-      results = []
-      if reported_group_size is None:
-        reported_group_size = group_size
-      for i in range(group_size):
-        with ops.device('/CPU:{}'.format(i)):
-          input_data = constant_op.constant(tensor)
-          collective_op = collective_ops.all_reduce(
-              input_data,
-              group_size=reported_group_size,
-              group_key=group_key,
-              instance_key=instance_key,
-              merge_op='Add',
-              final_op='Id',
-              timeout=timeout)
-          results.append(collective_op)
-      return results
-
-    run_all_reduce(2, 2)
-
-    start_time = time.time()
-    with self.assertRaisesRegex(errors.DeadlineExceededError,
-                                'Collective has timed out during execution'):
-      run_all_reduce(1, 2)
     elapsed = time.time() - start_time
     self.assertAllGreaterEqual(elapsed, timeout)
 
@@ -426,8 +387,8 @@ class CollectiveOpTest(test.TestCase):
         run_options = config_pb2.RunOptions()
         run_options.experimental.collective_graph_key = 1
         sess.run([c0, c1], options=run_options)
-        with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                     'Shape mismatch'):
+        with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                    'Shape mismatch'):
           sess.run([c0, c2], options=run_options)
 
   def testCollectiveGatherShapeMismatchAcrossDevices(self):
@@ -447,8 +408,8 @@ class CollectiveOpTest(test.TestCase):
           c1 = collective_ops.all_gather(in1, 2, group_key, instance_key)
         run_options = config_pb2.RunOptions()
         run_options.experimental.collective_graph_key = 1
-        with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                     'Shape mismatch'):
+        with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                    'Shape mismatch'):
           sess.run([c0, c1], options=run_options)
 
   def testCollectiveGatherPolymorphicShape(self):
@@ -510,13 +471,12 @@ class CollectiveOpTest(test.TestCase):
             merge_op='Add', final_op='Id')
       return c0, c1
 
-    with self.assertRaisesRegexp(errors.InternalError,
-                                 'but that group has size'):
+    with self.assertRaisesRegex(errors.InternalError,
+                                'but that group has size'):
       run_all_reduce()
 
   @test_util.run_v2_only
   def testCollectiveTensorsHaveNoDeviceSpecified(self):
-    context._reset_context()
     cpus = config.list_physical_devices('CPU')
     self.assertEqual(len(cpus), 1)
     config.set_logical_device_configuration(cpus[0], [
@@ -555,22 +515,6 @@ class CollectiveOpTest(test.TestCase):
     result = fn([in0, in1])
     self.assertAllClose(result, [2, 2])
 
-  @test_util.run_v2_only
-  def testCollectiveGroupSizeOne(self):
-    group_size = 1
-    group_key = 100
-    instance_key = 100
-    in_value = [1, 2, 3, 4]
-    in_tensor = constant_op.constant(in_value)
-
-    reduced_tensor = collective_ops.all_reduce(
-        in_tensor, group_size, group_key, instance_key, 'Add', 'Id')
-    self.assertAllEqual(in_value, reduced_tensor.numpy())
-
-    gathered_tensor = collective_ops.all_gather(
-        in_tensor, group_size, group_key, instance_key)
-    self.assertAllEqual(in_value, gathered_tensor.numpy())
-
   def testConstantWithScopedAllocator(self):
     group_size = 2
     group_key = 1
@@ -606,41 +550,6 @@ class CollectiveOpTest(test.TestCase):
             run_ops.append(array_ops.identity(reduced_tensor2))
         results = sess.run(run_ops)
     self.assertEqual(results, [3., 3., 3., 3.])
-
-  @test_util.run_v2_only
-  def testMultipleGroups(self):
-    context._reset_context()
-    cpus = config.list_physical_devices('CPU')
-    self.assertEqual(len(cpus), 1)
-    config.set_logical_device_configuration(cpus[0], [
-        context.LogicalDeviceConfiguration(),
-        context.LogicalDeviceConfiguration(),
-        context.LogicalDeviceConfiguration()
-    ])
-    context.ensure_initialized()
-    num_elements = 4
-
-    @def_function.function
-    def run_all_reduce(group_size, group_key):
-      instance_key = group_key
-      input_value = [group_key for i in range(num_elements)]
-      collectives = []
-      for device_idx in range(group_size):
-        with ops.device('/CPU:{}'.format(device_idx)):
-          input_tensor = constant_op.constant(input_value)
-          collectives.append(collective_ops.all_reduce(
-              input_tensor, group_size, group_key, instance_key, merge_op='Add',
-              final_op='Id'))
-      return collectives
-
-    def run_and_assert(group_size, group_key):
-      for reduced_tensor in run_all_reduce(group_size, group_key):
-        self.assertAllEqual(
-            [group_key * group_size for i in range(num_elements)],
-            reduced_tensor.numpy())
-
-    run_and_assert(group_size=2, group_key=1)
-    run_and_assert(group_size=3, group_key=2)
 
 
 if __name__ == '__main__':

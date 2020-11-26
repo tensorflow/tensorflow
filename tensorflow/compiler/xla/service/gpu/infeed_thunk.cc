@@ -23,18 +23,19 @@ namespace xla {
 namespace gpu {
 
 InfeedThunk::InfeedThunk(
-    const ShapeTree<BufferAllocation::Slice>& infeed_slices,
-    const HloInstruction* hlo_instruction)
-    : Thunk(Kind::kInfeed, hlo_instruction), infeed_slices_(infeed_slices) {}
+    ThunkInfo thunk_info,
+    const ShapeTree<BufferAllocation::Slice>& infeed_slices)
+    : Thunk(Kind::kInfeed, thunk_info),
+      infeed_slices_(infeed_slices) {}
 
 Status InfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
   auto& stream = *params.stream;
   auto& buffer_allocations = *params.buffer_allocations;
 
-  VLOG(2) << "Infeeding to GPU: " << hlo_instruction()->ToString();
+  VLOG(2) << "Infeeding to GPU";
 
   auto op_profiler =
-      params.profiler->MakeScopedInstructionProfiler(hlo_instruction());
+      params.profiler->MakeScopedInstructionProfiler(profile_index());
   ShapeTree<InfeedBuffer> infeed_buffers =
       GetOrCreateInfeedManager()->BlockingGetNextDestination();
 

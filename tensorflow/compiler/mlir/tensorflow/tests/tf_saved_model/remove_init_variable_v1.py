@@ -65,10 +65,9 @@ def Test():
           inputs={'x': tensor_info_x},
           outputs={'r': tensor_info_r},
           method_name='some_function'))
-  }
+  }, tf.initializers.global_variables(), None
 
 
 if __name__ == '__main__':
   common_v1.set_tf_options()
-  common_v1.do_test(
-      Test(), tf.initializers.global_variables(), canonicalize=True)
+  common_v1.do_test(Test, canonicalize=True)

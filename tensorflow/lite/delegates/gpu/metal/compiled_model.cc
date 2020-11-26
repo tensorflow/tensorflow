@@ -543,11 +543,12 @@ ComputeTaskDescriptorPtr FuseChain(const FusionSequence& chain) {
       function_index++;
     }
   }
+  fused_descriptor->args = std::move(sequence.front()->args);
 
   ComputeTaskDescriptorPtr non_linkable = sequence.front();
   fused_descriptor->shader_source =
-      absl::Substitute(non_linkable->shader_source, function_code,
-                       buffer_declarations, call_code);
+      absl::Substitute(non_linkable->shader_source, function_code + "$0",
+                       buffer_declarations + "$1", call_code);
   std::vector<ValueId> alias;
   alias.reserve(chain.size() - 1);
   for (int i = 0; i < chain.size() - 1; i++) {
@@ -566,10 +567,10 @@ ComputeTaskDescriptorPtr FuseChain(const FusionSequence& chain) {
 
 absl::Status ValidateOptimizeModel(const std::vector<ValueId>& input_buffers,
                                    const std::vector<ValueId>& output_buffers,
-                                   const CompiledModel& input_vector,
-                                   CompiledModel* output) {
+                                   const CompiledModel& input_model,
+                                   CompiledModel* output_model) {
   std::list<ComputeTaskDescriptorPtr> input;
-  input.insert(input.end(), input_vector.begin(), input_vector.end());
+  input.insert(input.end(), input_model.tasks.begin(), input_model.tasks.end());
   OptimizationInfo info;
   info.operations_count = static_cast<int>(input.size());
 
@@ -608,7 +609,9 @@ absl::Status ValidateOptimizeModel(const std::vector<ValueId>& input_buffers,
         std::to_string(info.missing_output_buffer_ids.size());
     return absl::InternalError(message);
   }
-  for (const auto& chain : sorted_chains) output->push_back(FuseChain(chain));
+  for (const auto& chain : sorted_chains)
+    output_model->tasks.push_back(FuseChain(chain));
+  output_model->tensor_shapes = input_model.tensor_shapes;
   return absl::OkStatus();
 }
 

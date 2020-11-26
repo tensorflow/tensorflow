@@ -34,7 +34,7 @@ from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.engine import training
-from tensorflow.python.keras.engine import training_generator
+from tensorflow.python.keras.engine import training_generator_v1
 from tensorflow.python.keras.optimizer_v2 import rmsprop
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.platform import test
@@ -446,11 +446,11 @@ class TestGeneratorMethodsWithSequences(keras_parameterized.TestCase):
     model.evaluate(CustomSequence())
     model.predict(CustomSequence())
 
-    with self.assertRaisesRegexp(ValueError, '`y` argument is not supported'):
+    with self.assertRaisesRegex(ValueError, '`y` argument is not supported'):
       model.fit(CustomSequence(), y=np.ones([10, 1]))
 
-    with self.assertRaisesRegexp(ValueError,
-                                 '`sample_weight` argument is not supported'):
+    with self.assertRaisesRegex(ValueError,
+                                '`sample_weight` argument is not supported'):
       model.fit(CustomSequence(), sample_weight=np.ones([10, 1]))
 
     model.compile(rmsprop.RMSprop(0.001), 'binary_crossentropy')
@@ -527,7 +527,7 @@ class TestConvertToGeneratorLike(test.TestCase, parameterized.TestCase):
         isinstance(data, (dataset_ops.DatasetV2, iterator_ops.Iterator))):
       return
 
-    generator, steps = training_generator.convert_to_generator_like(
+    generator, steps = training_generator_v1.convert_to_generator_like(
         data, batch_size=2, steps_per_epoch=expected_batches)
     self.assertEqual(steps, expected_batches)
 

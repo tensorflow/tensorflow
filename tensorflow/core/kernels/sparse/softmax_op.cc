@@ -20,7 +20,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "tensorflow/core/kernels/cuda_sparse.h"
+#include "tensorflow/core/util/cuda_sparse.h"
 #define EIGEN_USE_GPU
 #endif
 

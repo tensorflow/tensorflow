@@ -2,16 +2,12 @@ load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_all_protos",
     "tf_proto_library",
-    "tf_proto_library_cc",
-    "tf_proto_library_py",  # @unused
     "tf_pyclif_proto_library",
 )
 
 package(
     licenses = ["notice"],  # Apache 2.0
 )
-
-exports_files(["LICENSE"])
 
 tf_proto_library(
     name = "tpu_embedding_configuration_proto",
@@ -32,6 +28,7 @@ tf_proto_library(
         "optimization_parameters.proto",
     ],
     cc_api_version = 2,
+    protodeps = ["//tensorflow/compiler/xla/service:hlo_proto"],
     visibility = ["//visibility:public"],
 )
 
@@ -62,7 +59,7 @@ tf_proto_library(
     visibility = ["//visibility:public"],
 )
 
-tf_proto_library_py(
+tf_proto_library(
     name = "compilation_result_proto",
     srcs = [
         "compilation_result.proto",
@@ -74,7 +71,7 @@ tf_proto_library_py(
     visibility = ["//visibility:public"],
 )
 
-tf_proto_library_cc(
+tf_proto_library(
     name = "compile_metadata_proto",
     srcs = [
         "compile_metadata.proto",

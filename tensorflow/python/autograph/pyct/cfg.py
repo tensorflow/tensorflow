@@ -219,7 +219,7 @@ class GraphVisitor(object):
                       (gast.Break, gast.Continue, gast.Raise, gast.Pass))
 
   def _visit_internal(self, mode):
-    """Visits the CFG, depth-first."""
+    """Visits the CFG, breadth-first."""
     assert mode in (_WalkMode.FORWARD, _WalkMode.REVERSE)
     if mode == _WalkMode.FORWARD:
       open_ = [self.graph.entry]
@@ -268,7 +268,7 @@ class GraphBuilder(object):
   nodes and their subsequent statements.
 
   Important concepts:
-   * nodes - nodes refer refer to CFG nodes; AST nodes are qualified explicitly
+   * nodes - nodes refer to CFG nodes; AST nodes are qualified explicitly
    * leaf set - since the graph is constructed gradually, a leaf set maintains
      the CFG nodes that will precede the node that the builder expects to
      receive next; when an ordinary node is added, it is connected to the

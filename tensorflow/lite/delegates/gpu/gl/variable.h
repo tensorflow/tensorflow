@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <array>
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "absl/types/variant.h"

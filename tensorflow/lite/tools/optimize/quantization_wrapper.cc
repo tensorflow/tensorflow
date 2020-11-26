@@ -27,7 +27,7 @@ bool CreateModelForCalibration(const std::string& input_path,
     return false;
   }
   flatbuffers::FlatBufferBuilder builder;
-  if (AddIntemediateTensorsToFusedOp(&builder, &model) != kTfLiteOk) {
+  if (AddIntermediateTensorsToFusedOp(&builder, &model) != kTfLiteOk) {
     return false;
   }
   return WriteFile(output_path, builder.GetBufferPointer(), builder.GetSize());

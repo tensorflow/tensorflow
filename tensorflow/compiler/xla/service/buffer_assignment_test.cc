@@ -492,8 +492,7 @@ TEST_F(BufferAssignmentTest, AliasedParamCanBeReused) {
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK(module->input_output_alias_config().SetUpAlias(
-      {}, 0, {}, HloInputOutputAliasConfig::kUserAlias));
+  TF_ASSERT_OK(module->input_output_alias_config().SetUpAlias({}, 0, {}));
 
   auto buffers = RunBufferAssignment(module.get());
 
@@ -1926,8 +1925,10 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_text));
   HloInstruction* parameter =
       m->entry_computation()->GetInstructionWithName("get-tuple-element.4");
-  HloInstruction* dus =
+  HloInstruction* dus1 =
       m->entry_computation()->GetInstructionWithName("dynamic-update-slice.5");
+  HloInstruction* dus2 =
+      m->entry_computation()->GetInstructionWithName("dynamic-update-slice.9");
 
   auto buffers = RunBufferAssignment(m.get());
 
@@ -1935,8 +1936,10 @@ ENTRY main {
     const BufferAllocation& parameter_alloc =
         GetTopLevelAllocation(*buffers, parameter);
 
-    const BufferAllocation& dus_alloc = GetTopLevelAllocation(*buffers, dus);
-    EXPECT_NE(parameter_alloc, dus_alloc);
+    const BufferAllocation& dus1_alloc = GetTopLevelAllocation(*buffers, dus1);
+    EXPECT_EQ(parameter_alloc, dus1_alloc);
+    const BufferAllocation& dus2_alloc = GetTopLevelAllocation(*buffers, dus2);
+    EXPECT_EQ(parameter_alloc, dus2_alloc);
   }
 }
 

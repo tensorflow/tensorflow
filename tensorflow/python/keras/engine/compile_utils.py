@@ -24,10 +24,10 @@ import six
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.keras import losses as losses_mod
 from tensorflow.python.keras import metrics as metrics_mod
+from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops.losses import util as tf_losses_utils
 from tensorflow.python.util import nest
 
 
@@ -63,7 +63,7 @@ class Container(object):
     struct = map_to_output_names(outputs, self._output_names, struct)
     struct = map_missing_dict_keys(outputs, struct)
     # Allow passing one object that applies to all outputs.
-    if not nest.is_sequence(struct) and nest.is_sequence(outputs):
+    if not nest.is_nested(struct) and nest.is_nested(outputs):
       struct = nest.map_structure(lambda _: struct, outputs)
     return struct
 
@@ -262,13 +262,15 @@ class LossesContainer(Container):
 
     loss = losses_mod.get(loss)
     if not isinstance(loss, losses_mod.Loss):
-      loss_name = loss.__name__
+      loss_name = get_custom_object_name(loss)
+      if loss_name is None:
+        raise ValueError('Loss should be a callable, found: {}'.format(loss))
       loss = losses_mod.LossFunctionWrapper(loss, name=loss_name)
     loss._allow_sum_over_batch_size = True  # pylint: disable=protected-access
     return loss
 
   def _should_broadcast(self, obj):
-    return not nest.is_sequence(obj)
+    return not nest.is_nested(obj)
 
   def _copy_object(self, obj):
     return obj  # Losses don't need to be copied.
@@ -290,10 +292,24 @@ class MetricsContainer(Container):
 
   @property
   def metrics(self):
-    """Metrics created by this container."""
+    """All metrics in this container."""
     if not self._built:
       return []
     return self._metrics_in_order
+
+  @property
+  def unweighted_metrics(self):
+    """Metrics in this container that should not be passed `sample_weight`."""
+    if not self._built:
+      return None
+    return nest.flatten(self._metrics)
+
+  @property
+  def weighted_metrics(self):
+    """Metrics in this container that should be passed `sample_weight`."""
+    if not self._built:
+      return None
+    return nest.flatten(self._weighted_metrics)
 
   def build(self, y_pred, y_true):
     """One-time setup of metric objects."""
@@ -467,11 +483,11 @@ class MetricsContainer(Container):
     if not isinstance(metric_obj, metrics_mod.Metric):
       if isinstance(metric, six.string_types):
         metric_name = metric
-      elif hasattr(metric, 'name'):
-        metric_name = metric.name  # TODO(omalleyt): Is this needed?
       else:
-        # function was passed.
-        metric_name = metric.__name__
+        metric_name = get_custom_object_name(metric)
+        if metric_name is None:
+          raise ValueError(
+              'Metric should be a callable, found: {}'.format(metric))
 
       metric_obj = metrics_mod.MeanMetricWrapper(metric_obj, name=metric_name)
 
@@ -479,11 +495,11 @@ class MetricsContainer(Container):
 
   def _should_broadcast(self, obj):
     # e.g. 'mse'.
-    if not nest.is_sequence(obj):
+    if not nest.is_nested(obj):
       return True
     # e.g. ['mse'] or ['mse', 'mae'].
     return (isinstance(obj, (list, tuple)) and
-            not any(nest.is_sequence(o) for o in obj))
+            not any(nest.is_nested(o) for o in obj))
 
   def _copy_object(self, obj):
     if isinstance(obj, metrics_mod.Metric):
@@ -573,10 +589,10 @@ def map_to_output_names(y_pred, output_names, struct):
   Returns:
     `struct` mapped to a list in same order as `output_names`.
   """
-  single_output = not nest.is_sequence(y_pred)
+  single_output = not nest.is_nested(y_pred)
   outputs_are_flat_list = (not single_output and
                            isinstance(y_pred, (list, tuple)) and
-                           not any(nest.is_sequence(y_p) for y_p in y_pred))
+                           not any(nest.is_nested(y_p) for y_p in y_pred))
 
   if (single_output or outputs_are_flat_list) and isinstance(struct, dict):
     output_names = output_names or create_pseudo_output_names(y_pred)
@@ -634,8 +650,27 @@ def apply_mask(y_p, sw, mask):
     mask = math_ops.cast(mask, y_p.dtype)
     if sw is not None:
       mask, _, sw = (
-          tf_losses_utils.squeeze_or_expand_dimensions(mask, sample_weight=sw))
+          losses_utils.squeeze_or_expand_dimensions(mask, sample_weight=sw))
       sw *= mask
     else:
       sw = mask
   return sw
+
+
+def get_custom_object_name(obj):
+  """Returns the name to use for a custom loss or metric callable.
+
+  Arguments:
+    obj: Custom loss of metric callable
+
+  Returns:
+    Name to use, or `None` if the object was not recognized.
+  """
+  if hasattr(obj, 'name'):  # Accept `Loss` instance as `Metric`.
+    return obj.name
+  elif hasattr(obj, '__name__'):  # Function.
+    return obj.__name__
+  elif hasattr(obj, '__class__'):  # Class instance.
+    return generic_utils.to_snake_case(obj.__class__.__name__)
+  else:  # Unrecognized object.
+    return None

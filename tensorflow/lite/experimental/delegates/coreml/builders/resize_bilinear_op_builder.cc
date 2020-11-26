@@ -28,10 +28,10 @@ namespace tflite {
 namespace delegates {
 namespace coreml {
 
-const char* ResizeBilinearOpBuilder::DebugName() {
-  if (str_debug_name_[0]) return str_debug_name_;
-  GetDebugName("ResizeBilinearOpBuilder", node_id_, str_debug_name_);
-  return str_debug_name_;
+const std::string& ResizeBilinearOpBuilder::DebugName() {
+  if (!debug_name_.empty()) return debug_name_;
+  SetDebugName("ResizeBilinearOpBuilder", node_id_);
+  return debug_name_;
 }
 
 CoreML::Specification::NeuralNetworkLayer* ResizeBilinearOpBuilder::Build() {

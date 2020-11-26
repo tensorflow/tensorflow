@@ -125,7 +125,7 @@ bool CheckTwoUnidirectionalSequenceOpsAreValid(
       return false;
 
     // Make sure the inputs datatype matches.
-    for (int i = 0; i < fw_sequence_op->inputs.size(); ++i) {
+    for (size_t i = 0; i < fw_sequence_op->inputs.size(); ++i) {
       const auto& fw_input_array_name = fw_sequence_op->inputs[i];
       const auto& bw_input_array_name = bw_sequence_op->inputs[i];
       if (model.HasArray(fw_input_array_name) &&
@@ -137,7 +137,7 @@ bool CheckTwoUnidirectionalSequenceOpsAreValid(
     }
 
     // Make sure the outputs datatype matches.
-    for (int i = 0; i < fw_sequence_op->outputs.size(); ++i) {
+    for (size_t i = 0; i < fw_sequence_op->outputs.size(); ++i) {
       const auto& fw_output_array_name = fw_sequence_op->outputs[i];
       const auto& bw_output_array_name = bw_sequence_op->outputs[i];
       if (model.HasArray(fw_output_array_name) &&

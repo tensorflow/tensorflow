@@ -25,17 +25,16 @@ import math
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import combinations
+from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
 from tensorflow.python.keras.optimizer_v2 import rmsprop
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -59,7 +58,7 @@ _TESTPARAMS = [
 ]
 
 
-class RMSpropOptimizerTest(test.TestCase):
+class RMSpropOptimizerTest(test.TestCase, parameterized.TestCase):
 
   def _rmsprop_update_numpy(self, var, g, mg, rms, mom, lr, rho, momentum,
                             epsilon, centered):
@@ -105,15 +104,15 @@ class RMSpropOptimizerTest(test.TestCase):
   def testDense(self):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for (dtype, learning_rate, rho, momentum, epsilon, centered) in _TESTPARAMS:
-      with ops.get_default_graph().as_default(), test_util.use_gpu():
+      with ops.get_default_graph().as_default(), testing_utils.use_gpu():
         # Initialize variables for numpy implementation.
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
         grads0_np = np.array([0.1, 0.2], dtype=dtype.as_numpy_dtype)
         var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
         grads1_np = np.array([0.01, 0.2], dtype=dtype.as_numpy_dtype)
 
-        var0 = resource_variable_ops.ResourceVariable(var0_np, dtype=dtype)
-        var1 = resource_variable_ops.ResourceVariable(var1_np, dtype=dtype)
+        var0 = variables.Variable(var0_np, dtype=dtype)
+        var1 = variables.Variable(var1_np, dtype=dtype)
         grads0 = constant_op.constant(grads0_np, dtype=dtype)
         grads1 = constant_op.constant(grads1_np, dtype=dtype)
         opt = rmsprop.RMSprop(
@@ -187,8 +186,8 @@ class RMSpropOptimizerTest(test.TestCase):
       var1_np = np.array([3.0, 4.0])
       grads1_np = np.array([0.01, 0.2])
 
-      var0 = resource_variable_ops.ResourceVariable(var0_np)
-      var1 = resource_variable_ops.ResourceVariable(var1_np)
+      var0 = variables.Variable(var0_np)
+      var1 = variables.Variable(var1_np)
       grads0 = constant_op.constant(grads0_np)
       grads1 = constant_op.constant(grads1_np)
       learning_rate = 0.01
@@ -259,8 +258,8 @@ class RMSpropOptimizerTest(test.TestCase):
       var1_np = np.array([3.0, 4.0])
       grads1_np = np.array([0.01, 0.2])
 
-      var0 = resource_variable_ops.ResourceVariable(var0_np)
-      var1 = resource_variable_ops.ResourceVariable(var1_np)
+      var0 = variables.Variable(var0_np)
+      var1 = variables.Variable(var1_np)
       grads0 = constant_op.constant(grads0_np)
       grads1 = constant_op.constant(grads1_np)
       learning_rate = 0.01
@@ -328,7 +327,7 @@ class RMSpropOptimizerTest(test.TestCase):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
     with ops.Graph().as_default():
       for dtype in _DATA_TYPES:
-        var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
+        var0 = variables.Variable([[1.0, 2.0]], dtype=dtype)
         x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
 
         def loss():
@@ -355,7 +354,7 @@ class RMSpropOptimizerTest(test.TestCase):
       for dtype in _DATA_TYPES:
         if test_util.is_xla_enabled() and dtype.is_complex:
           self.skipTest("b/143578550")
-        var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
+        var0 = variables.Variable([[1.0, 2.0]], dtype=dtype)
         x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
 
         def loss():
@@ -380,7 +379,7 @@ class RMSpropOptimizerTest(test.TestCase):
   def testSparse(self):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for (dtype, learning_rate, rho, momentum, epsilon, centered) in _TESTPARAMS:
-      with ops.get_default_graph().as_default(), test_util.use_gpu():
+      with ops.get_default_graph().as_default(), testing_utils.use_gpu():
         # Initialize variables for numpy implementation.
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
         grads0_np = np.array([0.1], dtype=dtype.as_numpy_dtype)
@@ -459,54 +458,54 @@ class RMSpropOptimizerTest(test.TestCase):
           self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
           self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
 
+  @combinations.generate(combinations.combine(mode=["eager"]))
   def testCallableParams(self):
-    with context.eager_mode():
-      for dtype in _DATA_TYPES:
-        var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
-        var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
-        grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
-        grads1 = constant_op.constant([0.01, 0.01], dtype=dtype)
+    for dtype in _DATA_TYPES:
+      var0 = variables.Variable([1.0, 2.0], dtype=dtype)
+      var1 = variables.Variable([3.0, 4.0], dtype=dtype)
+      grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
+      grads1 = constant_op.constant([0.01, 0.01], dtype=dtype)
 
-        learning_rate = lambda: 2.0
-        rho = lambda: 0.9
-        momentum = lambda: 0.0
-        epsilon = 1.0
-        opt = rmsprop.RMSprop(learning_rate, rho, momentum, epsilon)
+      learning_rate = lambda: 2.0
+      rho = lambda: 0.9
+      momentum = lambda: 0.0
+      epsilon = 1.0
+      opt = rmsprop.RMSprop(learning_rate, rho, momentum, epsilon)
 
-        # Fetch params to validate initial values
-        self.assertAllClose([1.0, 2.0], self.evaluate(var0))
-        self.assertAllClose([3.0, 4.0], self.evaluate(var1))
-        # Step 1: the rms accumulators where 1. So we should see a normal
-        # update: v -= grad * learning_rate
-        opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        # Check the parameters.
-        self.assertAllCloseAccordingToType(
-            np.array([
-                1.0 - (0.1 * 2.0 / math.sqrt(0.001 + 1.0)),
-                2.0 - (0.1 * 2.0 / math.sqrt(0.001 + 1.0))
-            ]), self.evaluate(var0))
-        self.assertAllCloseAccordingToType(
-            np.array([
-                3.0 - (0.01 * 2.0 / math.sqrt(0.00001 + 1.0)),
-                4.0 - (0.01 * 2.0 / math.sqrt(0.00001 + 1.0))
-            ]), self.evaluate(var1))
-        # Step 2: the root mean square accumulators contain the previous update.
-        opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        # Check the parameters.
-        self.assertAllCloseAccordingToType(
-            np.array([
-                1.0 - (0.1 * 2.0 / math.sqrt(0.001 + 1.0)) -
-                (0.1 * 2.0 / math.sqrt(0.001 * 0.9 + 0.001 + 1.0)),
-                2.0 - (0.1 * 2.0 / math.sqrt(0.001 + 1.0)) -
-                (0.1 * 2.0 / math.sqrt(0.001 * 0.9 + 0.001 + 1.0))
-            ]), self.evaluate(var0))
-        self.assertAllCloseAccordingToType(
-            np.array([
-                3.0 - (0.01 * 2.0 / math.sqrt(0.00001 + 1.0)) -
-                (0.01 * 2.0 / math.sqrt(0.00001 * 0.9 + 1e-5 + 1.0)),
-                4.0 - (0.01 * 2.0 / math.sqrt(0.00001 + 1.0)) -
-                (0.01 * 2.0 / math.sqrt(0.00001 * 0.9 + 1e-5 + 1.0))
-            ]), self.evaluate(var1))
+      # Fetch params to validate initial values
+      self.assertAllClose([1.0, 2.0], self.evaluate(var0))
+      self.assertAllClose([3.0, 4.0], self.evaluate(var1))
+      # Step 1: the rms accumulators where 1. So we should see a normal
+      # update: v -= grad * learning_rate
+      opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
+      # Check the parameters.
+      self.assertAllCloseAccordingToType(
+          np.array([
+              1.0 - (0.1 * 2.0 / math.sqrt(0.001 + 1.0)),
+              2.0 - (0.1 * 2.0 / math.sqrt(0.001 + 1.0))
+          ]), self.evaluate(var0))
+      self.assertAllCloseAccordingToType(
+          np.array([
+              3.0 - (0.01 * 2.0 / math.sqrt(0.00001 + 1.0)),
+              4.0 - (0.01 * 2.0 / math.sqrt(0.00001 + 1.0))
+          ]), self.evaluate(var1))
+      # Step 2: the root mean square accumulators contain the previous update.
+      opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
+      # Check the parameters.
+      self.assertAllCloseAccordingToType(
+          np.array([
+              1.0 - (0.1 * 2.0 / math.sqrt(0.001 + 1.0)) -
+              (0.1 * 2.0 / math.sqrt(0.001 * 0.9 + 0.001 + 1.0)),
+              2.0 - (0.1 * 2.0 / math.sqrt(0.001 + 1.0)) -
+              (0.1 * 2.0 / math.sqrt(0.001 * 0.9 + 0.001 + 1.0))
+          ]), self.evaluate(var0))
+      self.assertAllCloseAccordingToType(
+          np.array([
+              3.0 - (0.01 * 2.0 / math.sqrt(0.00001 + 1.0)) -
+              (0.01 * 2.0 / math.sqrt(0.00001 * 0.9 + 1e-5 + 1.0)),
+              4.0 - (0.01 * 2.0 / math.sqrt(0.00001 + 1.0)) -
+              (0.01 * 2.0 / math.sqrt(0.00001 * 0.9 + 1e-5 + 1.0))
+          ]), self.evaluate(var1))
 
   def testConstructRMSpropWithLR(self):
     opt = rmsprop.RMSprop(lr=1.0)
@@ -521,31 +520,31 @@ class RMSpropOptimizerTest(test.TestCase):
     self.assertAllClose(self.evaluate(opt_2.lr), (1.0))
     self.assertAllClose(self.evaluate(opt_3.lr), (0.1))
 
+  @combinations.generate(combinations.combine(mode=["eager"]))
   def testSlotsUniqueEager(self):
-    with context.eager_mode():
-      v1 = variables.Variable(1.)
-      v2 = variables.Variable(1.)
+    v1 = variables.Variable(1.)
+    v2 = variables.Variable(1.)
 
-      opt = rmsprop.RMSprop(1., momentum=0., centered=False)
-      opt.minimize(lambda: v1 + v2, var_list=[v1, v2])
-      # There should be iteration, and one unique slot variable for v1 and v2.
-      self.assertEqual(3, len(set({id(v) for v in opt.variables()})))
-      self.assertEqual(
-          self.evaluate(opt.variables()[0]), self.evaluate(opt.iterations))
+    opt = rmsprop.RMSprop(1., momentum=0., centered=False)
+    opt.minimize(lambda: v1 + v2, var_list=[v1, v2])
+    # There should be iteration, and one unique slot variable for v1 and v2.
+    self.assertLen(set({id(v) for v in opt.variables()}), 3)
+    self.assertEqual(
+        self.evaluate(opt.variables()[0]), self.evaluate(opt.iterations))
 
-      opt = rmsprop.RMSprop(learning_rate=1., momentum=0.2, centered=False)
-      opt.minimize(lambda: v1 + v2, var_list=[v1, v2])
-      # There should be iteration, and two unique slot variables for v1 and v2.
-      self.assertEqual(5, len(set({id(v) for v in opt.variables()})))
-      self.assertEqual(
-          self.evaluate(opt.variables()[0]), self.evaluate(opt.iterations))
+    opt = rmsprop.RMSprop(learning_rate=1., momentum=0.2, centered=False)
+    opt.minimize(lambda: v1 + v2, var_list=[v1, v2])
+    # There should be iteration, and two unique slot variables for v1 and v2.
+    self.assertLen(set({id(v) for v in opt.variables()}), 5)
+    self.assertEqual(
+        self.evaluate(opt.variables()[0]), self.evaluate(opt.iterations))
 
-      opt = rmsprop.RMSprop(learning_rate=1., momentum=0.2, centered=True)
-      opt.minimize(lambda: v1 + v2, var_list=[v1, v2])
-      # There should be iteration, and three unique slot variables for v1 and v2
-      self.assertEqual(7, len(set({id(v) for v in opt.variables()})))
-      self.assertEqual(
-          self.evaluate(opt.variables()[0]), self.evaluate(opt.iterations))
+    opt = rmsprop.RMSprop(learning_rate=1., momentum=0.2, centered=True)
+    opt.minimize(lambda: v1 + v2, var_list=[v1, v2])
+    # There should be iteration, and three unique slot variables for v1 and v2
+    self.assertLen(set({id(v) for v in opt.variables()}), 7)
+    self.assertEqual(
+        self.evaluate(opt.variables()[0]), self.evaluate(opt.iterations))
 
 
 @combinations.generate(combinations.combine(mode=["graph", "eager"]))
@@ -556,10 +555,8 @@ class SlotColocationTest(test.TestCase, parameterized.TestCase):
   def testRunMinimizeOnGPUForCPUVariables(self, use_resource):
     with ops.device("/device:CPU:0"):
       if use_resource:
-        var0 = resource_variable_ops.ResourceVariable([1.0, 2.0],
-                                                      dtype=dtypes.float32)
-        var1 = resource_variable_ops.ResourceVariable([3.0, 4.0],
-                                                      dtype=dtypes.float32)
+        var0 = variables.Variable([1.0, 2.0], dtype=dtypes.float32)
+        var1 = variables.Variable([3.0, 4.0], dtype=dtypes.float32)
       else:
         var0 = variables.Variable([1.0, 2.0], dtype=dtypes.float32)
         var1 = variables.Variable([3.0, 4.0], dtype=dtypes.float32)

@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir {
@@ -53,7 +54,7 @@ struct FusedKernelMatcherPass
 };
 
 bool IsActivationFunction(Operation *op) {
-  return isa<EluOp>(op) || isa<ReluOp>(op) || isa<Relu6Op>(op);
+  return isa<EluOp, ReluOp, Relu6Op>(op);
 }
 
 // Finds and returns an activation op that uses the result of `op`. If there are
@@ -165,6 +166,12 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
     attrs.push_back(
         NamedAttribute(Identifier::get("epsilon", context), epsilon));
 
+    // Insert fused operation right before the BiasAdd operation to guarantee
+    // that bias value dominates the fused operation. We already verified that
+    // original operation has a single use, so this is safe to do.
+    auto *bias_add_op = bias_add.getOperation();
+    if (bias_add_op) rewriter.setInsertionPoint(bias_add_op);
+
     Value fused_op = rewriter.create<FusedOpT>(fused_loc, result_type,
                                                ValueRange(operands), attrs);
     auto op_to_replace = fuse_activation ? activation : bias_add;
@@ -199,14 +206,24 @@ class FuseConv2DBiasAdd
 
 // Performs a fusion of the following pattern(s), if possible:
 //   MatMulOp + BiasAdd + <Activation> -> _FusedMatMulOp
-using FuseMatMulBiasAdd = FuseContractionWithBiasAdd<MatMulOp, _FusedMatMulOp>;
+class FuseMatMulBiasAdd
+    : public FuseContractionWithBiasAdd<MatMulOp, _FusedMatMulOp> {
+  using FuseContractionWithBiasAdd<MatMulOp,
+                                   _FusedMatMulOp>::FuseContractionWithBiasAdd;
+
+  bool AreFuseCompatible(MatMulOp matmul, BiasAddOp bias_add,
+                         PatternRewriter &rewriter) const override {
+    // FusedMatMul kernel supports limited set of data types.
+    return matmul.T().isF32() || matmul.T().isBF16();
+  }
+};
 
 void FusedKernelMatcherPass::runOnFunction() {
   OwningRewritePatternList patterns;
   auto func = getFunction();
   patterns.insert<FuseConv2DBiasAdd, FuseMatMulBiasAdd>(&getContext());
 
-  applyPatternsAndFoldGreedily(func, patterns);
+  applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
 }  // namespace

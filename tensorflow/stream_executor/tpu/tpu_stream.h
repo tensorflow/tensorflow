@@ -23,6 +23,9 @@ limitations under the License.
 #include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
 #include "tensorflow/stream_executor/tpu/tpu_stream_interface.h"
 
+namespace tensorflow {
+namespace tpu {
+
 class TpuStream : public tensorflow::tpu::TpuStreamInterface {
  public:
   using Status = stream_executor::port::Status;
@@ -39,32 +42,44 @@ class TpuStream : public tensorflow::tpu::TpuStreamInterface {
             stream_, static_cast<TpuStream*>(other)->stream_);
   }
 
+  Status EnqueueTransferHostToDevice(
+      stream_executor::DeviceMemoryBase device_dst, const void* host_src,
+      uint64 size) {
+    StatusHelper status;
+    tensorflow::tpu::ExecutorApiFn()->TpuStream_EnqueueTransferHostToDeviceFn(
+        stream_, ApiConverter::ToC(device_dst), const_cast<void*>(host_src),
+        size, status.c_status);
+    return status.status();
+  }
+
+  Status EnqueueTransferDeviceToHost(
+      stream_executor::DeviceMemoryBase device_src, void* host_dst,
+      uint64 size) {
+    StatusHelper status;
+    tensorflow::tpu::ExecutorApiFn()->TpuStream_EnqueueTransferDeviceToHostFn(
+        stream_, ApiConverter::ToC(device_src), host_dst, size,
+        status.c_status);
+    return status.status();
+  }
+
   Status EnqueueOnTpuDeviceSendRecvLocal(
       stream_executor::DeviceMemoryBase send_buffer,
       stream_executor::DeviceMemoryBase recv_buffer) override {
     StatusHelper status;
     tensorflow::tpu::ExecutorApiFn()
         ->TpuStream_TpuEnqueueOnDeviceSendRecvLocalFn(
-            stream_,
-            TpuConversions::DeviceMemoryBaseToSE_DeviceMemoryBase(send_buffer),
-            TpuConversions::DeviceMemoryBaseToSE_DeviceMemoryBase(recv_buffer),
-            status.c_status);
+            stream_, ApiConverter::ToC(send_buffer),
+            ApiConverter::ToC(recv_buffer), status.c_status);
     return status.status();
   }
 
- private:
-  SE_Stream* stream_;
-};
-
-class TpuEvent : public ::stream_executor::internal::EventInterface {
- public:
-  explicit TpuEvent(SE_Event* event) : event_(event) {}
-  ~TpuEvent() override {
-    tensorflow::tpu::ExecutorApiFn()->TpuEvent_FreeFn(event_);
-  }
+  SE_Stream* se_stream() const { return stream_; }
 
  private:
-  SE_Event* event_;
+  mutable SE_Stream* stream_;
 };
+
+}  // namespace tpu
+}  // namespace tensorflow
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_STREAM_H_

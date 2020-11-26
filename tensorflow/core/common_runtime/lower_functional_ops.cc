@@ -159,7 +159,7 @@ Status LowerFunctionalOpsPass::Run(
     if (n->IsIfNode() && lower_control_flow(n)) {
       TF_RETURN_IF_ERROR(RewriteIfNode(n, g, keep_lowered_nodes_fetchable));
 
-    } else if (n->type_string() == "Case" && lower_control_flow(n)) {
+    } else if (n->IsCaseNode() && lower_control_flow(n)) {
       TF_RETURN_IF_ERROR(RewriteCaseNode(n, g, keep_lowered_nodes_fetchable));
 
     } else if (n->IsWhileNode() && lower_control_flow(n)) {

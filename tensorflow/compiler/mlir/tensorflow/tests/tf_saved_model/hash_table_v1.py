@@ -33,10 +33,10 @@ from tensorflow.compiler.mlir.tensorflow.tests.tf_saved_model import common_v1
 # CHECK-SAME: min_consumer
 # CHECK-SAME: producer
 
-# CHECK: "tf_saved_model.session_initializer"() {initializer = [[init:@.*]]} : () -> ()
 # CHECK: "tf_saved_model.global_tensor"()
+# CHECK: "tf_saved_model.session_initializer"() {initializers = [@[[init:.*]]]} : () -> ()
 
-# CHECK:      func [[init]]
+# CHECK:      func @[[init]]
 # CHECK-NEXT: [[R5:%.*]] = "tf.Const"()
 # CHECK-NEXT: [[R6:%.*]] = "tf.Const"()
 # CHECK-NEXT: [[R7:%.*]] = "tf.HashTableV2"()
@@ -84,9 +84,9 @@ def Test():
           inputs={'x': tensor_info_x},
           outputs={'r': tensor_info_r},
           method_name='some_function'))
-  }
+  }, tf.tables_initializer(), None
 
 
 if __name__ == '__main__':
   common_v1.set_tf_options()
-  common_v1.do_test(Test(), tf.tables_initializer())
+  common_v1.do_test(Test, canonicalize=True)

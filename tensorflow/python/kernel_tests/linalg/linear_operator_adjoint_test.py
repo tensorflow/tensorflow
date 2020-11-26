@@ -102,11 +102,11 @@ class LinearOperatorAdjointTest(
     matrix = [[1., 0.], [1., 1.]]
     operator = linalg.LinearOperatorFullMatrix(
         matrix, is_positive_definite=False)
-    with self.assertRaisesRegexp(ValueError, "positive-definite"):
+    with self.assertRaisesRegex(ValueError, "positive-definite"):
       LinearOperatorAdjoint(operator, is_positive_definite=True)
 
     operator = linalg.LinearOperatorFullMatrix(matrix, is_self_adjoint=False)
-    with self.assertRaisesRegexp(ValueError, "self-adjoint"):
+    with self.assertRaisesRegex(ValueError, "self-adjoint"):
       LinearOperatorAdjoint(operator, is_self_adjoint=True)
 
   def test_name(self):

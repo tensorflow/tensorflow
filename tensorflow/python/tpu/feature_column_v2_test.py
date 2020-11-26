@@ -28,8 +28,10 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import parsing_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.tpu import feature_column_v2 as tpu_fc
@@ -42,6 +44,40 @@ def _initialized_session():
   sess.run(variables_lib.global_variables_initializer())
   sess.run(lookup_ops.tables_initializer())
   return sess
+
+
+class _TestStateManager(fc_lib.StateManager):
+
+  def __init__(self, trainable=True):
+    self._all_variables = {}
+    self._trainable = trainable
+
+  def create_variable(self,
+                      feature_column,
+                      name,
+                      shape,
+                      dtype=None,
+                      trainable=True,
+                      use_resource=True,
+                      initializer=None):
+    if feature_column not in self._all_variables:
+      self._all_variables[feature_column] = {}
+    var_dict = self._all_variables[feature_column]
+    if name in var_dict:
+      return var_dict[name]
+    else:
+      var = variable_scope.get_variable(
+          name=name,
+          shape=shape,
+          dtype=dtype,
+          trainable=self._trainable and trainable,
+          use_resource=use_resource,
+          initializer=initializer)
+      var_dict[name] = var
+      return var
+
+  def get_variable(self, feature_column, name):
+    return self._all_variables[feature_column][name]
 
 
 class EmbeddingColumnTestV2(test.TestCase, parameterized.TestCase):
@@ -167,8 +203,8 @@ class EmbeddingColumnTestV2(test.TestCase, parameterized.TestCase):
          'sequence_features/bbb_embedding/embedding_weights:0',),
         tuple([v.name for v in global_vars]))
     with _initialized_session():
-      self.assertAllEqual(embedding_values, global_vars[0].eval())
-      self.assertAllEqual(expected_lookups, embedding_lookup.eval())
+      self.assertAllEqual(embedding_values, global_vars[0])
+      self.assertAllEqual(expected_lookups, embedding_lookup)
       self.assertAllEqual(expected_lookups_sequence,
                           sequence_embedding_lookup[0].eval())
       # The graph will still have SparseFillEmptyRows due to sequence being
@@ -192,6 +228,56 @@ class EmbeddingColumnTestV2(test.TestCase, parameterized.TestCase):
                      embedding_column_copy.dimension)
     self.assertEqual(embedding_column._max_sequence_length,
                      embedding_column_copy._max_sequence_length)
+
+  def test_with_scope_validation(self):
+    categorical_column = fc_lib.categorical_column_with_identity(
+        key='aaa', num_buckets=3)
+    embedding_dimension = 2
+    initializer = init_ops.truncated_normal_initializer(mean=0.0, stddev=.5)
+    embedding_column = tpu_fc._TPUEmbeddingColumnV2(
+        categorical_column=categorical_column,
+        dimension=embedding_dimension,
+        combiner='mean',
+        initializer=initializer,
+        max_sequence_length=0,
+        learning_rate_fn=None,
+        use_safe_embedding_lookup=True,
+        bypass_scope_validation=False)
+    self.assertIs(categorical_column, embedding_column.categorical_column)
+    self.assertEqual(embedding_dimension, embedding_column.dimension)
+    state_manager = _TestStateManager()
+    with tpu_function.tpu_shard_context(1):
+      with variable_scope.variable_scope('tower1/scope1'):
+        embedding_column.create_state(state_manager)
+      with variable_scope.variable_scope('tower2/scope2'):
+        # With default scope validation, the same column cannot be used in a new
+        # variable scope.
+        with self.assertRaisesRegex(ValueError,
+                                    'the variable scope name is different'):
+          embedding_column.create_state(state_manager)
+
+  def test_bypass_scope_validation(self):
+    categorical_column = fc_lib.categorical_column_with_identity(
+        key='aaa', num_buckets=3)
+    embedding_dimension = 2
+    initializer = init_ops.truncated_normal_initializer(mean=0.0, stddev=.5)
+    embedding_column = tpu_fc._TPUEmbeddingColumnV2(
+        categorical_column=categorical_column,
+        dimension=embedding_dimension,
+        combiner='mean',
+        initializer=initializer,
+        max_sequence_length=0,
+        learning_rate_fn=None,
+        use_safe_embedding_lookup=True,
+        bypass_scope_validation=True)
+    self.assertIs(categorical_column, embedding_column.categorical_column)
+    self.assertEqual(embedding_dimension, embedding_column.dimension)
+    state_manager = _TestStateManager()
+    with tpu_function.tpu_shard_context(1):
+      with variable_scope.variable_scope('tower1/scope1'):
+        embedding_column.create_state(state_manager)
+      with variable_scope.variable_scope('tower2/scope2'):
+        embedding_column.create_state(state_manager)
 
 
 class SharedEmbeddingColumnTestV2(test.TestCase, parameterized.TestCase):
@@ -341,8 +427,8 @@ class SharedEmbeddingColumnTestV2(test.TestCase, parameterized.TestCase):
         tuple([v.name for v in global_vars]))
     embedding_var = global_vars[0]
     with _initialized_session():
-      self.assertAllEqual(embedding_values, embedding_var.eval())
-      self.assertAllEqual(expected_lookups_a, embedding_lookup_a.eval())
+      self.assertAllEqual(embedding_values, embedding_var)
+      self.assertAllEqual(expected_lookups_a, embedding_lookup_a)
       self.assertAllEqual(expected_lookups_b,
                           embedding_lookup_b[0].eval())
       # The graph will still have SparseFillEmptyRows due to sequence being
@@ -411,7 +497,7 @@ class DeviceSpecificEmbeddingColumnTestV2(test.TestCase,
           embedding_lookup_device='cpu',
           tensor_core_shape=[None, 3])
     dense_features = fc_lib.DenseFeatures(embedding_column)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         r'.*embedding_lookup_device=\"cpu\" during training is not'):
       dense_features(input_features)
@@ -432,7 +518,7 @@ class DeviceSpecificEmbeddingColumnTestV2(test.TestCase,
     context = tpu._TPUInferenceContext('tpu_inference')
     context.Enter()
     dense_features = fc_lib.DenseFeatures(embedding_column)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         r'Using embedding_lookup_device=tpu_embedding_core during inference is '
     ):
@@ -522,7 +608,7 @@ class DeviceSpecificEmbeddingColumnTestV2(test.TestCase,
       dense_features = fc_lib.DenseFeatures(embedding_column)
       # Sqrtn combiner not supported for now.
       if combiner == 'sqrtn':
-        with self.assertRaisesRegexp(
+        with self.assertRaisesRegex(
             ValueError, 'Dense TPU Embedding does not support combiner'):
           embedding_lookup = dense_features(input_features)
         return
@@ -556,7 +642,7 @@ class DeviceSpecificEmbeddingColumnTestV2(test.TestCase,
 
       embedding_var = global_vars[0]
       with _initialized_session():
-        self.assertAllEqual(embedding_values, embedding_var.eval())
+        self.assertAllEqual(embedding_values, embedding_var)
         eval_res = embedding_lookup.eval()
         self.assertAllEqual(expected_lookups, eval_res)
       context.Exit()
@@ -624,7 +710,7 @@ class DeviceSpecificEmbeddingColumnTestV2(test.TestCase,
 
       embedding_var = global_vars[0]
       with _initialized_session():
-        self.assertAllEqual(embedding_values, embedding_var.eval())
+        self.assertAllEqual(embedding_values, embedding_var)
         eval_res = embedding_lookup.eval()
         self.assertAllEqual(expected_lookups, eval_res)
       context.Exit()
@@ -633,8 +719,7 @@ class DeviceSpecificEmbeddingColumnTestV2(test.TestCase,
   def test_error_dense_shape_invalid(self):
     categorical_column_input = fc_lib.categorical_column_with_identity(
         key='inp', num_buckets=5)
-    with self.assertRaisesRegexp(ValueError,
-                                 'tensor_core_shape must be size 2'):
+    with self.assertRaisesRegex(ValueError, 'tensor_core_shape must be size 2'):
       tpu_fc.shared_embedding_columns_v2([categorical_column_input],
                                          dimension=20,
                                          tensor_core_shape=[None, 20, 15])

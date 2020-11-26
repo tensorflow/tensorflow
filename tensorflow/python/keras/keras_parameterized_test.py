@@ -28,7 +28,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import keras_tensor
-from tensorflow.python.platform import googletest
+from tensorflow.python.platform import test
 
 
 class KerasParameterizedTest(keras_parameterized.TestCase):
@@ -269,8 +269,8 @@ class KerasParameterizedTest(keras_parameterized.TestCase):
       self.assertLen(l, 4)
       self.assertAllEqual(l, [
           ("graph", False, False),
-          ("eager", True, False),
-          ("eager", False, False),
+          ("eager", True, keras_tensor._KERAS_TENSORS_ENABLED),
+          ("eager", False, keras_tensor._KERAS_TENSORS_ENABLED),
           ("eager", False, True),
       ])
 
@@ -281,8 +281,8 @@ class KerasParameterizedTest(keras_parameterized.TestCase):
     else:
       self.assertLen(l, 3)
       self.assertAllEqual(l, [
-          ("eager", True, False),
-          ("eager", False, False),
+          ("eager", True, keras_tensor._KERAS_TENSORS_ENABLED),
+          ("eager", False, keras_tensor._KERAS_TENSORS_ENABLED),
           ("eager", False, True),
       ])
 
@@ -600,4 +600,4 @@ class KerasParameterizedTest(keras_parameterized.TestCase):
     self.assertEqual(arg, True)
 
 if __name__ == "__main__":
-  googletest.main()
+  test.main()

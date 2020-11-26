@@ -18,6 +18,7 @@ limitations under the License.
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
+#include "tensorflow/lite/delegates/nnapi/nnapi_delegate_kernel.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate_mock_test.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/delegate_registry.h"
@@ -44,7 +45,12 @@ class SingleAddOpModel : tflite::SingleOpModel {
 
     SetBuiltinOp(tflite::BuiltinOperator_ADD, tflite::BuiltinOptions_AddOptions,
                  tflite::CreateAddOptions(builder_).Union());
-    BuildInterpreter({GetShape(input), GetShape(constant)});
+    // Set apply_delegate to false to skip applying TfLite default delegates.
+    BuildInterpreter({GetShape(input), GetShape(constant)},
+                     /*num_threads=*/-1,
+                     /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/false,
+                     /*allocate_and_delegate=*/true);
   }
 
   tflite::Interpreter* Interpreter() const { return interpreter_.get(); }
@@ -74,6 +80,25 @@ class NNAPIPluginTest : public ::testing::Test {
           return preference - output;
         };
     CreateDelegate(CreateNNAPISettings(fbb_, 0, 0, 0, input));
+    // Since delegation succeeds, the model becomes immutable and hence can't
+    // reuse it.
+    SingleAddOpModel model;
+    model.Build();
+    EXPECT_EQ(model.Interpreter()->ModifyGraphWithDelegate(delegate_.get()),
+              kTfLiteOk)
+        << " given input: " << input << " expected output: " << output;
+  }
+  template <NNAPIExecutionPriority input, int output>
+  void CheckExecutionPriority() {
+    // Note - this uses a template since the NNAPI functions are C function
+    // pointers rather than lambdas so can't capture variables.
+    nnapi_->ANeuralNetworksCompilation_setPriority =
+        [](ANeuralNetworksCompilation* compilation, int32_t priority) {
+          return priority - output;
+        };
+    CreateDelegate(CreateNNAPISettings(fbb_, 0, 0, 0,
+                                       NNAPIExecutionPreference_UNDEFINED, 0, 0,
+                                       /*allow CPU=*/true, input));
     // Since delegation succeeds, the model becomes immutable and hence can't
     // reuse it.
     SingleAddOpModel model;
@@ -122,6 +147,19 @@ TEST_F(NNAPIPluginTest, PassesExecutionPreference) {
                            StatefulNnApiDelegate::Options::kFastSingleAnswer>();
   CheckExecutionPreference<NNAPIExecutionPreference_NNAPI_SUSTAINED_SPEED,
                            StatefulNnApiDelegate::Options::kSustainedSpeed>();
+}
+
+TEST_F(NNAPIPluginTest, PassesExecutionPriority) {
+  nnapi_->android_sdk_version =
+      tflite::delegate::nnapi::kMinSdkVersionForNNAPI13;
+  CheckExecutionPriority<NNAPIExecutionPriority_NNAPI_PRIORITY_UNDEFINED,
+                         ANEURALNETWORKS_PRIORITY_DEFAULT>();
+  CheckExecutionPriority<NNAPIExecutionPriority_NNAPI_PRIORITY_LOW,
+                         ANEURALNETWORKS_PRIORITY_LOW>();
+  CheckExecutionPriority<NNAPIExecutionPriority_NNAPI_PRIORITY_MEDIUM,
+                         ANEURALNETWORKS_PRIORITY_MEDIUM>();
+  CheckExecutionPriority<NNAPIExecutionPriority_NNAPI_PRIORITY_HIGH,
+                         ANEURALNETWORKS_PRIORITY_HIGH>();
 }
 
 TEST_F(NNAPIPluginTest, PassesCachingParameters) {

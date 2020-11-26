@@ -23,18 +23,22 @@ import tempfile
 
 from absl.testing import parameterized
 import numpy as np
+
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import combinations as ds_combinations
+from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.keras import losses
 from tensorflow.python.keras.distribute import distribute_strategy_test as keras_test_lib
-from tensorflow.python.keras.distribute import distributed_training_utils
+from tensorflow.python.keras.distribute import distributed_training_utils_v1
+from tensorflow.python.keras.distribute import optimizer_combinations
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
 
@@ -72,7 +76,7 @@ class Counter(keras.callbacks.Callback):
 class TestDistributionStrategyWithCallbacks(test.TestCase,
                                             parameterized.TestCase):
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.times(
           keras_test_lib.all_strategy_combinations()))
   def test_callbacks_in_fit(self, distribution):
@@ -126,7 +130,7 @@ class TestDistributionStrategyWithCallbacks(test.TestCase,
             'on_train_end': 1
         })
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.times(
           keras_test_lib.all_strategy_combinations()))
   def test_callbacks_in_eval(self, distribution):
@@ -150,7 +154,7 @@ class TestDistributionStrategyWithCallbacks(test.TestCase,
             'on_test_end': 1
         })
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.times(
           keras_test_lib.all_strategy_combinations()))
   def test_callbacks_in_predict(self, distribution):
@@ -180,7 +184,7 @@ class TestDistributionStrategyWithCallbacks(test.TestCase,
 
 class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.combine(
           distribution=[
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
@@ -196,15 +200,15 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
       # Removed device and input tensor shape details from the error message
       # since the order of the device and the corresponding input tensor shape
       # is not deterministic over different runs.
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, 'Input tensor shapes do not match for '
           'distributed tensor inputs '
           'DistributedValues:.+'):
         with distribution.scope():
-          distributed_training_utils.validate_distributed_dataset_inputs(
+          distributed_training_utils_v1.validate_distributed_dataset_inputs(
               distribution, x, y)
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.combine(
           distribution=[
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
@@ -220,15 +224,15 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
       # Removed device and input tensor dtype details from the error message
       # since the order of the device and the corresponding input tensor dtype
       # is not deterministic over different runs.
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, 'Input tensor dtypes do not match for '
           'distributed tensor inputs '
           'DistributedValues:.+'):
         with distribution.scope():
-          distributed_training_utils.validate_distributed_dataset_inputs(
+          distributed_training_utils_v1.validate_distributed_dataset_inputs(
               distribution, x, y)
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.combine(
           distribution=[
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
@@ -278,7 +282,7 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
       with self.assertRaises(ValueError):
         model.predict(dataset, verbose=0)
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.combine(
           distribution=[
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
@@ -301,7 +305,7 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
       model = _SimpleMLP(3)
 
       if not context.executing_eagerly():
-        with self.assertRaisesRegexp(
+        with self.assertRaisesRegex(
             ValueError,
             'We currently do not support distribution strategy with a '
             '`Sequential` model that is created without `input_shape`/'
@@ -312,7 +316,7 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
         model.compile(
             'sgd')
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.combine(
           distribution=[
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
@@ -330,7 +334,7 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
         model.compile(
             'sgd')
       else:
-        with self.assertRaisesRegexp(
+        with self.assertRaisesRegex(
             ValueError,
             'We currently do not support distribution strategy with a '
             '`Sequential` model that is created without '
@@ -339,13 +343,13 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
           model.compile(
               'sgd')
 
-  @combinations.generate(
+  @ds_combinations.generate(
       keras_test_lib.all_strategy_combinations_minus_default())
   def test_standalone_loss_without_loss_reduction(self, distribution):
     with distribution.scope():
       loss_object = losses.MeanSquaredError()
 
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, 'Please use `tf.keras.losses.Reduction.SUM` or '
           '`tf.keras.losses.Reduction.NONE`'):
         y = np.asarray([1, 0])
@@ -357,13 +361,14 @@ class TestDistributionStrategyWithLossMasking(test.TestCase,
 
   # TODO(priyag): Enable all strategies for this test. Currently it does not
   # work for TPU due to some invalid datatype.
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.combine(
           distribution=[
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
           ],
           mode=['graph', 'eager'],
-          optimizer=strategy_combinations.gradient_descent_optimizer_keras_v2_fn
+          optimizer=optimizer_combinations
+          .gradient_descent_optimizer_keras_v2_fn
       ))
   def test_masking(self, distribution, optimizer):
     with self.cached_session():
@@ -389,12 +394,12 @@ class TestDistributionStrategyWithLossMasking(test.TestCase,
 class TestDistributionStrategyWithNormalizationLayer(test.TestCase,
                                                      parameterized.TestCase):
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.times(
           keras_test_lib.all_strategy_combinations(),
           combinations.combine(
               fused=[True, False],
-              optimizer=strategy_combinations
+              optimizer=optimizer_combinations
               .gradient_descent_optimizer_keras_v2_fn)))
   def test_batchnorm_correctness(self, distribution, fused, optimizer):
     with self.cached_session():
@@ -434,11 +439,11 @@ class TestDistributionStrategyWithNormalizationLayer(test.TestCase,
 class TestDistributionStrategySaveLoadWeights(test.TestCase,
                                               parameterized.TestCase):
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.times(
           keras_test_lib.all_strategy_combinations_minus_default(),
           combinations.combine(
-              optimizer=strategy_combinations.rmsprop_optimizer_keras_v2_fn)))
+              optimizer=optimizer_combinations.rmsprop_optimizer_keras_v2_fn)))
   def test_save_load_h5(self, distribution, optimizer):
     with self.cached_session():
       dataset = keras_test_lib.get_dataset(distribution)
@@ -461,11 +466,11 @@ class TestDistributionStrategySaveLoadWeights(test.TestCase,
             keras_test_lib.get_predict_dataset(distribution), steps=2)
         model_2.fit(dataset, epochs=1, steps_per_epoch=1)
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.times(
           keras_test_lib.all_strategy_combinations_minus_default(),
           combinations.combine(
-              optimizer=strategy_combinations.rmsprop_optimizer_keras_v2_fn)))
+              optimizer=optimizer_combinations.rmsprop_optimizer_keras_v2_fn)))
   def test_save_load_trackable(self, distribution, optimizer):
     # TODO(b/123533246): Enable the test for TPU once bug is fixed
     if (isinstance(distribution,
@@ -496,12 +501,12 @@ class TestDistributionStrategySaveLoadWeights(test.TestCase,
 
 class TestDistributionStrategyValidation(test.TestCase, parameterized.TestCase):
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.times(
           keras_test_lib.all_strategy_combinations_minus_default()))
   def test_layer_outside_scope(self, distribution):
     with self.cached_session():
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, 'was not created in the distribution strategy'):
         x = keras.layers.Input(shape=(3,), name='input')
         y = keras.layers.Dense(4, name='dense')(x)
@@ -515,11 +520,11 @@ class TestDistributionStrategyValidation(test.TestCase, parameterized.TestCase):
               loss,
               metrics=metrics)
 
-  @combinations.generate(
+  @ds_combinations.generate(
       keras_test_lib.all_strategy_combinations_minus_default())
   def test_model_outside_scope(self, distribution):
     with self.cached_session():
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, 'was not created in the distribution strategy'):
         x = keras.layers.Input(shape=(3,), name='input')
         y = keras.layers.Dense(4, name='dense')(x)
@@ -534,7 +539,7 @@ class TestDistributionStrategyValidation(test.TestCase, parameterized.TestCase):
 class TestDistributionStrategyWithStaticShapes(test.TestCase,
                                                parameterized.TestCase):
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.combine(
           distribution=[
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
@@ -542,12 +547,12 @@ class TestDistributionStrategyWithStaticShapes(test.TestCase,
           mode=['graph', 'eager']))
   def test_input_batch_size_not_divisible_by_num_replicas(self, distribution):
     with distribution.scope():
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, r'The `batch_size` argument \(5\) must be divisible by '
-                      r'the number of replicas \(2\)'):
+          r'the number of replicas \(2\)'):
         keras.layers.Input(shape=(3,), batch_size=5, name='input')
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.combine(
           distribution=[
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
@@ -572,4 +577,4 @@ class TestDistributionStrategyWithStaticShapes(test.TestCase,
 
 
 if __name__ == '__main__':
-  test.main()
+  multi_process_runner.test_main()

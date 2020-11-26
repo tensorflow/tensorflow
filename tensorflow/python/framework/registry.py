@@ -36,6 +36,8 @@ _TYPE_TAG = "type"
 class Registry(object):
   """Provides a registry for saving objects."""
 
+  __slots__ = ["_name", "_registry"]
+
   def __init__(self, name):
     """Creates a new registry."""
     self._name = name

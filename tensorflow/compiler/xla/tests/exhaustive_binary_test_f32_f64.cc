@@ -114,6 +114,10 @@ BINARY_TEST_FLOAT_32(Min, {
 //
 // TODO(bixia): Need to investigate the failure on CPU and file bugs.
 BINARY_TEST_FLOAT_32(DISABLED_ON_CPU(AbsComplex), {
+  // TODO(timshen): see b/162664705.
+  known_incorrect_fn_ = [this](int64 val) {
+    return std::isnan(this->ConvertValue(val));
+  };
   auto host_abs_complex = [](float x, float y) {
     return std::abs(std::complex<float>(x, y));
   };
@@ -198,6 +202,10 @@ BINARY_TEST_FLOAT_64(Min, {
 
 // TODO(bixia): Need to investigate the failure on CPU and file bugs.
 BINARY_TEST_FLOAT_64(DISABLED_ON_CPU(AbsComplex), {
+  // TODO(timshen): see b/162664705.
+  known_incorrect_fn_ = [this](int64 val) {
+    return std::isnan(this->ConvertValue(val));
+  };
   auto host_abs_complex = [](double x, double y) {
     return std::abs(std::complex<double>(x, y));
   };

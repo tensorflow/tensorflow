@@ -265,7 +265,7 @@ class GroupByWindowTest(test_base.DatasetTestBase, parameterized.TestCase):
         grouping.group_by_window(lambda _: 0, lambda _, xs: xs, 0))
 
     get_next = self.getNext(dataset)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         errors.InvalidArgumentError,
         "Window size must be greater than zero, but got 0."):
       print(self.evaluate(get_next()))
@@ -340,6 +340,14 @@ class GroupByWindowTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset.map(lambda x: x + 1, num_parallel_calls=-1)
     get_next = self.getNext(dataset)
     self.evaluate(get_next())
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testGroupByWindowCardinality(self):
+    dataset = dataset_ops.Dataset.range(1).repeat().apply(
+        grouping.group_by_window(
+            lambda x: x % 2,
+            lambda key, window: dataset_ops.Dataset.from_tensors(key), 4))
+    self.assertEqual(self.evaluate(dataset.cardinality()), dataset_ops.INFINITE)
 
 
 if __name__ == "__main__":

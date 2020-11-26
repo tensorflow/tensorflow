@@ -55,7 +55,7 @@ TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
                            const TensorType& output_type, bool allow_float,
                            ErrorReporter* error_reporter);
 
-// Same as above, but enables only quantizing a whitelist of operations,
+// Same as above, but enables only quantizing an allowlist of operations,
 // specified by their operator output name.
 //
 // Note: This is a private API, subject to change.

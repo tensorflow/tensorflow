@@ -19,6 +19,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
@@ -53,7 +54,6 @@ class PostQuantizePass : public PassWrapper<PostQuantizePass, FunctionPass> {
 void RemoveQuantizationAdaptorOps(FuncOp func) {
   mlir::OpBuilder builder(func.getBody());
   auto& bb = func.front();
-  auto* terminator = bb.getTerminator();
 
   int num_args = bb.getNumArguments();
   llvm::SmallVector<Type, 4> input_types;
@@ -99,13 +99,15 @@ void RemoveQuantizationAdaptorOps(FuncOp func) {
   }
 
   // Edit the return ops and remove the dequantize ops in place.
+  auto* terminator = bb.getTerminator();
   int num_return_operands = terminator->getNumOperands();
   llvm::SmallVector<Type, 4> output_types;
   output_types.reserve(num_return_operands);
   for (int i = 0; i != num_return_operands; ++i) {
     auto returned_value = terminator->getOperand(i);
     Operation* returned_op = returned_value.getDefiningOp();
-    if (returned_op && llvm::isa<DequantizeOp>(returned_op)) {
+    if (returned_op && returned_op->hasOneUse() &&
+        llvm::isa<DequantizeOp>(returned_op)) {
       auto dequantize_op = llvm::cast<DequantizeOp>(returned_op);
       Value dequantized_result = dequantize_op.input();
       output_types.push_back(dequantized_result.getType());
@@ -137,22 +139,51 @@ struct RemoveVolatileOps : public OpRewritePattern<DequantizeOp> {
   }
 };
 
+// Removes LSTMs that have dangling output.
+// LSTMs are not removed automatically becuase they are stateful ops.
+template <typename LstmOpTy>
+struct PruneUnusedLstm : public OpRewritePattern<LstmOpTy> {
+ public:
+  explicit PruneUnusedLstm(MLIRContext* context)
+      : OpRewritePattern<LstmOpTy>(context) {}
+
+  LogicalResult matchAndRewrite(LstmOpTy lstm_op,
+                                PatternRewriter& rewriter) const override {
+    Operation* op = lstm_op.getOperation();
+    if (op->isKnownTerminator()) {
+      return failure();
+    }
+    for (auto result : op->getOpResults()) {
+      if (!result.use_empty()) {
+        return failure();
+      }
+    }
+    rewriter.eraseOp(op);
+    return success();
+  }
+};
+
 #include "tensorflow/compiler/mlir/lite/transforms/generated_post_quantize.inc"
 
 void PostQuantizePass::runOnFunction() {
   OwningRewritePatternList patterns;
   auto func = getFunction();
   auto* ctx = func.getContext();
-  TFL::populateWithGenerated(ctx, &patterns);
+  TFL::populateWithGenerated(ctx, patterns);
   patterns.insert<quant::FoldTrivalRequantizeOp<QuantizeOp>>(ctx);
-  applyPatternsAndFoldGreedily(func, patterns);
+  patterns.insert<PruneUnusedLstm<TFL::UnidirectionalSequenceLSTMOp>>(ctx);
+  applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   if (!emit_quant_adaptor_ops_) {
     RemoveQuantizationAdaptorOps(getFunction());
   }
 
-  patterns.insert<RemoveVolatileOps>(ctx);
-  applyPatternsAndFoldGreedily(func, patterns);
+  OwningRewritePatternList phase_2_patterns;
+  TFL::populateWithGenerated(ctx, phase_2_patterns);
+  phase_2_patterns
+      .insert<quant::FoldTrivalRequantizeOp<QuantizeOp>, RemoveVolatileOps>(
+          ctx);
+  applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
 }
 
 }  // namespace

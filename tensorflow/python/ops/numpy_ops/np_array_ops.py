@@ -19,6 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import enum
+import functools
 import math
 import numbers
 import numpy as np
@@ -37,8 +39,12 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sort_ops
 from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.numpy_ops import np_dtypes
+from tensorflow.python.ops.numpy_ops import np_export
 from tensorflow.python.ops.numpy_ops import np_utils
 from tensorflow.python.util import nest
+
+
+newaxis = np_export.np_export_constant(__name__, 'newaxis', np.newaxis)
 
 
 @np_utils.np_doc('empty')
@@ -161,27 +167,12 @@ def full_like(a, fill_value, dtype=None, order='K', subok=True, shape=None):  # 
       array_ops.broadcast_to(fill_value.data, array_ops.shape(a)))
 
 
-# TODO(wangpeng): investigate whether we can make `copy` default to False.
-# pylint: disable=g-short-docstring-punctuation,g-no-space-after-docstring-summary,g-doc-return-or-yield,g-doc-args
-@np_utils.np_doc_only('array')
-def array(val, dtype=None, copy=True, ndmin=0):  # pylint: disable=redefined-outer-name
-  """Since Tensors are immutable, a copy is made only if val is placed on a
-
-  different device than the current one. Even if `copy` is False, a new Tensor
-  may need to be built to satisfy `dtype` and `ndim`. This is used only if `val`
-  is an ndarray or a Tensor.
-  """  # pylint:disable=g-docstring-missing-newline
-  if dtype:
-    dtype = np_utils.result_type(dtype)
+def _array_internal(val, dtype=None, copy=True, ndmin=0):  # pylint: disable=redefined-outer-name
+  """Main implementation of np.array()."""
   if isinstance(val, np_arrays.ndarray):
     result_t = val.data
   else:
     result_t = val
-
-  if copy and isinstance(result_t, ops.Tensor):
-    # Note: In eager mode, a copy of `result_t` is made only if it is not on
-    # the context device.
-    result_t = array_ops.identity(result_t)
 
   if not isinstance(result_t, ops.Tensor):
     if not dtype:
@@ -208,6 +199,13 @@ def array(val, dtype=None, copy=True, ndmin=0):  # pylint: disable=redefined-out
     result_t = math_ops.cast(result_t, dtype=dtype)
   elif dtype:
     result_t = math_ops.cast(result_t, dtype)
+
+  if copy:
+    result_t = array_ops.identity(result_t)
+
+  if ndmin == 0:
+    return np_arrays.tensor_to_ndarray(result_t)
+
   ndims = array_ops.rank(result_t)
 
   def true_fn():
@@ -219,6 +217,21 @@ def array(val, dtype=None, copy=True, ndmin=0):  # pylint: disable=redefined-out
   result_t = np_utils.cond(
       np_utils.greater(ndmin, ndims), true_fn, lambda: result_t)
   return np_arrays.tensor_to_ndarray(result_t)
+
+
+# TODO(wangpeng): investigate whether we can make `copy` default to False.
+# pylint: disable=g-short-docstring-punctuation,g-no-space-after-docstring-summary,g-doc-return-or-yield,g-doc-args
+@np_utils.np_doc_only('array')
+def array(val, dtype=None, copy=True, ndmin=0):  # pylint: disable=redefined-outer-name
+  """Since Tensors are immutable, a copy is made only if val is placed on a
+
+  different device than the current one. Even if `copy` is False, a new Tensor
+  may need to be built to satisfy `dtype` and `ndim`. This is used only if `val`
+  is an ndarray or a Tensor.
+  """  # pylint:disable=g-docstring-missing-newline
+  if dtype:
+    dtype = np_utils.result_type(dtype)
+  return _array_internal(val, dtype, copy, ndmin)
 
 
 # pylint: enable=g-short-docstring-punctuation,g-no-space-after-docstring-summary,g-doc-return-or-yield,g-doc-args
@@ -360,7 +373,20 @@ def diagflat(v, k=0):
 
 def _promote_dtype(*arrays):
   dtype = np_utils.result_type(*arrays)
-  return [asarray(a, dtype=dtype) for a in arrays]
+  def _fast_asarray(a):
+    if isinstance(a, np_arrays.ndarray) and dtype == a.dtype:
+      return a
+    return _array_internal(a, dtype=dtype, copy=False)
+  return [_fast_asarray(a) for a in arrays]
+
+
+def _promote_dtype_binary(t1, t2):
+  dtype = np_utils._result_type_binary(t1, t2)  # pylint: disable=protected-access
+  if not(isinstance(t1, np_arrays.ndarray) and dtype == t1.dtype):
+    t1 = _array_internal(t1, dtype=dtype, copy=False)
+  if not(isinstance(t2, np_arrays.ndarray) and dtype == t2.dtype):
+    t2 = _array_internal(t2, dtype=dtype, copy=False)
+  return t1, t2
 
 
 @np_utils.np_doc('all')
@@ -457,11 +483,11 @@ def cumsum(a, axis=None, dtype=None):  # pylint: disable=missing-docstring
 
 
 @np_utils.np_doc('imag')
-def imag(a):
-  a = asarray(a)
-  # TODO(srbs): np.imag returns a scalar if a is a scalar, whereas we always
+def imag(val):
+  val = asarray(val)
+  # TODO(srbs): np.imag returns a scalar if `val` is a scalar, whereas we always
   # return an ndarray.
-  return np_utils.tensor_to_ndarray(math_ops.imag(a.data))
+  return np_utils.tensor_to_ndarray(math_ops.imag(val.data))
 
 
 _TO_INT_ = 0
@@ -534,6 +560,21 @@ def _reduce(tf_fn,
 
   return np_utils.tensor_to_ndarray(
       tf_fn(input_tensor=a.data, axis=axis, keepdims=keepdims))
+
+
+# TODO (DarrenZhang01): Add `axis` support to the `size` API.
+@np_utils.np_doc('size')
+def size(x, axis=None):  # pylint: disable=missing-docstring
+  if axis is not None:
+    raise NotImplementedError('axis argument is not supported in the current '
+                              '`np.size` implementation')
+  if isinstance(x, (int, float, np.int32, np.int64, np.float32, np.float64)):
+    return 1
+  x = asarray(x).data
+  if x.shape.is_fully_defined():
+    return np.prod(x.shape.as_list(), dtype=int)
+  else:
+    return np_utils.tensor_to_ndarray(array_ops.size_v2(x))
 
 
 @np_utils.np_doc('sum')
@@ -781,16 +822,32 @@ def transpose(a, axes=None):
 @np_utils.np_doc('swapaxes')
 def swapaxes(a, axis1, axis2):  # pylint: disable=missing-docstring
   a = asarray(a).data
+  def adjust_axes(axes, rank):
+    def f(x):
+      if isinstance(x, int):
+        if x < 0:
+          x = x + rank
+      else:
+        x = array_ops.where_v2(x < 0, np_utils.add(x, a_rank), x)
+      return x
+    return nest.map_structure(f, axes)
 
-  a_rank = array_ops.rank(a)
-  axis1 = array_ops.where_v2(axis1 < 0, axis1 + a_rank, axis1)
-  axis2 = array_ops.where_v2(axis2 < 0, axis2 + a_rank, axis2)
-
-  perm = math_ops.range(a_rank)
-  perm = array_ops.tensor_scatter_update(perm, [[axis1], [axis2]],
-                                         [axis2, axis1])
+  if (a.shape.rank is not None and
+      isinstance(axis1, int) and isinstance(axis2, int)):
+    # This branch makes sure `perm` is statically known, to avoid a
+    # not-compile-time-constant XLA error.
+    a_rank = a.shape.rank
+    axis1, axis2 = adjust_axes((axis1, axis2), a_rank)
+    perm = list(range(a_rank))
+    perm[axis1] = axis2
+    perm[axis2] = axis1
+  else:
+    a_rank = array_ops.rank(a)
+    axis1, axis2 = adjust_axes((axis1, axis2), a_rank)
+    perm = math_ops.range(a_rank)
+    perm = array_ops.tensor_scatter_update(perm, [[axis1], [axis2]],
+                                           [axis2, axis1])
   a = array_ops.transpose(a, perm)
-
   return np_utils.tensor_to_ndarray(a)
 
 
@@ -806,6 +863,8 @@ def moveaxis(a, source, destination):  # pylint: disable=missing-docstring
     source = (source,)
   if isinstance(destination, int):
     destination = (destination,)
+  if len(source) != len(destination):
+    raise ValueError('The lengths of source and destination must equal')
 
   a_rank = np_utils._maybe_static(array_ops.rank(a))  # pylint: disable=protected-access
 
@@ -859,16 +918,17 @@ setattr(np_arrays.ndarray, 'reshape', _reshape_method_wrapper)
 
 
 @np_utils.np_doc('pad')
-def pad(ary, pad_width, mode, constant_values=0):
+def pad(array, pad_width, mode, **kwargs):  # pylint: disable=redefined-outer-name
   """Only supports modes 'constant', 'reflect' and 'symmetric' currently."""
+  constant_values = kwargs.get('constant_values', 0)
   if not (mode == 'constant' or mode == 'reflect' or mode == 'symmetric'):
     raise ValueError('Unsupported padding mode: ' + mode)
   mode = mode.upper()
-  ary = asarray(ary)
+  array = asarray(array)
   pad_width = asarray(pad_width, dtype=dtypes.int32)
   return np_utils.tensor_to_ndarray(
       array_ops.pad(
-          tensor=ary.data,
+          tensor=array.data,
           paddings=pad_width.data,
           mode=mode,
           constant_values=constant_values))
@@ -931,21 +991,22 @@ def select(condlist, choicelist, default=0):  # pylint: disable=missing-docstrin
   return output
 
 
-@np_utils.np_doc('shape')
+@np_utils.np_doc('shape', link=np_utils.Link(
+    'https://numpy.org/doc/1.18/reference/generated/numpy.shape.html'))
 def shape(a):
   a = asarray(a)
   return a.shape
 
 
-@np_utils.np_doc('ndim')
+@np_utils.np_doc('ndim', link=np_utils.NoLink())
 def ndim(a):
   a = asarray(a)
   return a.ndim
 
 
 @np_utils.np_doc('isscalar')
-def isscalar(a):
-  return ndim(a) == 0
+def isscalar(num):
+  return ndim(num) == 0
 
 
 def _boundaries_to_sizes(a, boundaries, axis):
@@ -1390,7 +1451,7 @@ def take_along_axis(arr, indices, axis):  # pylint: disable=missing-docstring
   indices = indices.data
 
   rank = array_ops.rank(arr)
-  axis = array_ops.where_v2(axis < 0, axis + rank, axis)
+  axis = axis + rank if axis < 0 else axis
 
   # Broadcast shapes to match, ensure that the axis of interest is not
   # broadcast.
@@ -1416,7 +1477,7 @@ def take_along_axis(arr, indices, axis):  # pylint: disable=missing-docstring
 
   swapaxes_ = lambda t: swapaxes(np_utils.tensor_to_ndarray(t), axis, -1).data
 
-  dont_move_axis_to_end = math_ops.equal(axis, rank - 1)
+  dont_move_axis_to_end = math_ops.equal(axis, np_utils.subtract(rank, 1))
   arr = np_utils.cond(dont_move_axis_to_end, lambda: arr,
                       lambda: swapaxes_(arr))
   indices = np_utils.cond(dont_move_axis_to_end, lambda: indices,
@@ -1482,8 +1543,50 @@ def _as_index(idx, need_scalar=True):
   return data, data.shape.rank == 0
 
 
-def _slice_helper(tensor, slice_spec):
-  """Helper function for __getitem__."""
+class _UpdateMethod(enum.Enum):
+  UPDATE = 0
+  ADD = 1
+  MIN = 2
+  MAX = 3
+
+
+def _slice_helper(tensor, slice_spec, update_method=None, updates=None):
+  """Helper function for __getitem__ and _with_index_update_helper.
+
+  This function collects the indices in `slice_spec` into two buckets, which we
+  can call "idx1" and "idx2" here. idx1 is intended for `strided_slice`, idx2
+  `gather`.  They also correspond to "basic indices" and "advanced indices" in
+  numpy.  This function supports both reading and writing at the indices. The
+  reading path can be summarized as `gather(stride_slice(tensor, idx1),
+  idx2)`. The writing path can be summarized as `strided_slice_update(tensor,
+  idx1, scatter(strided_slice(tensor, idx1), idx2, updates))`.  (`gather` here
+  means `tf.gather` or `tf.gather_nd`; `scatter` here means
+  `tf.tensor_scatter_update`.)  The writing path is inefficient because it needs
+  to first read out a portion (probably much larger than `updates`) of `tensor`
+  using `strided_slice`, update it, and then write the portion back. An
+  alternative approach is to only use `scatter`, which amounts to using the
+  indexing mechanism of gather/scatter to implement
+  strided_slice/strided_slice_update. This is feasible for XLA Gather/Scatter
+  because they support spans (e.g. `2:5`) in indices (as begin/end pairs), but
+  not TF gather/scatter because they don't support spans (except those that
+  cover entire dimensions, i.e. `:`).  If we materialize spans into individual
+  indices, the size of the index tensor would explode.  (Note that XLA
+  Gather/Scatter have a similar problem for stride > 1 because they don't
+  support strides.  Indices such as `1:2:8` will need to be materialized into
+  individual indices such as [1, 3, 5, 7].)
+
+  Args:
+    tensor: the tensor to be read from or write into.
+    slice_spec: the indices.
+    update_method: (optional) a member of `_UpdateMethod`, indicating how to
+      update the values (replacement, add, etc.). `None` indicates just reading.
+    updates: (optional) the new values to write into `tensor`. It must have the
+      same dtype as `tensor`.
+
+  Returns:
+    The result of reading (if `update_method` is `None`) or the updated `tensor`
+    after writing.
+  """
   begin, end, strides = [], [], []
   new_axis_mask, shrink_axis_mask = 0, 0
   begin_mask, end_mask = 0, 0
@@ -1553,20 +1656,60 @@ def _slice_helper(tensor, slice_spec):
     else:
       var_empty = constant_op.constant([], dtype=dtypes.int32)
       packed_begin = packed_end = packed_strides = var_empty
-    # TODO(agarwal): set_shape on tensor to set rank.
-    tensor = array_ops.strided_slice(
-        tensor,
-        packed_begin,
-        packed_end,
-        packed_strides,
-        begin_mask=begin_mask,
-        end_mask=end_mask,
-        shrink_axis_mask=shrink_axis_mask,
-        new_axis_mask=new_axis_mask,
-        ellipsis_mask=ellipsis_mask,
-        name=name)
+    if update_method == _UpdateMethod.UPDATE and not advanced_indices:
+      return array_ops.tensor_strided_slice_update(
+          tensor,
+          packed_begin,
+          packed_end,
+          packed_strides,
+          updates,
+          begin_mask=begin_mask,
+          end_mask=end_mask,
+          shrink_axis_mask=shrink_axis_mask,
+          new_axis_mask=new_axis_mask,
+          ellipsis_mask=ellipsis_mask,
+          name=name)
+    else:
+      # TODO(b/164251540): Find a better way to support update that does not
+      #   involve one read + two writes.
+      if updates is not None:
+        original_tensor = tensor
+      # TODO(agarwal): set_shape on tensor to set rank.
+      tensor = array_ops.strided_slice(
+          tensor,
+          packed_begin,
+          packed_end,
+          packed_strides,
+          begin_mask=begin_mask,
+          end_mask=end_mask,
+          shrink_axis_mask=shrink_axis_mask,
+          new_axis_mask=new_axis_mask,
+          ellipsis_mask=ellipsis_mask,
+          name=name)
     if not advanced_indices:
-      return tensor
+      if update_method is None:
+        return tensor
+      assert update_method != _UpdateMethod.UPDATE
+      # TF lacks TensorStridedSliceAdd and alike, so we need to do
+      # read+add+update.
+      if update_method == _UpdateMethod.ADD:
+        update_op = math_ops.add
+      elif update_method == _UpdateMethod.MIN:
+        update_op = math_ops.minimum
+      elif update_method == _UpdateMethod.MAX:
+        update_op = math_ops.maximum
+      return array_ops.tensor_strided_slice_update(
+          original_tensor,
+          packed_begin,
+          packed_end,
+          packed_strides,
+          update_op(tensor, updates),
+          begin_mask=begin_mask,
+          end_mask=end_mask,
+          shrink_axis_mask=shrink_axis_mask,
+          new_axis_mask=new_axis_mask,
+          ellipsis_mask=ellipsis_mask,
+          name=name + '_2')
     advanced_indices_map = {}
     for index, data, had_ellipsis in advanced_indices:
       if had_ellipsis:
@@ -1590,23 +1733,71 @@ def _slice_helper(tensor, slice_spec):
     indices = [x.data for x in _promote_dtype(*indices)]
     indices = np_utils.tf_broadcast(*indices)
     stacked_indices = array_ops.stack(indices, axis=-1)
-    if not dims_contiguous:
-      tensor = moveaxis(tensor, dims, range(len(dims))).data
+    # Skip the contiguous-dims optimization for update because there is no
+    # tf.*scatter* op that supports the `axis` argument.
+    if not dims_contiguous or updates is not None:
+      if range(len(dims)) != dims:
+        tensor = moveaxis(tensor, dims, range(len(dims))).data
       tensor_shape_prefix = array_ops.shape(
           tensor, out_type=stacked_indices.dtype)[:len(dims)]
       stacked_indices = array_ops.where_v2(
           stacked_indices < 0, stacked_indices + tensor_shape_prefix,
           stacked_indices)
-      return array_ops.gather_nd(tensor, stacked_indices)
+      if updates is None:
+        return array_ops.gather_nd(tensor, stacked_indices)
+      else:
+        # We only need to move-axis `updates` in the contiguous case becausce
+        # only in this case the result dimensions of advanced indexing are in
+        # the middle of `updates`. In the non-contiguous case, those dimensions
+        # are always at the front.
+        if dims_contiguous:
+          # TODO(wangpeng): Support unknown rank (e.g. by partially flattening
+          #   `updates`)
+          if stacked_indices.shape.rank is None:
+            raise NotImplementedError(
+                'Rank of the advanced indices must currently be known')
+          batch_size = stacked_indices.shape.rank - 1
+          batch_start = dims[0]
+          if batch_start < 0:
+            batch_start += len(dims) - batch_size
+          def range_(start, length):
+            return range(start, start + length)
+          updates = moveaxis(updates, range_(batch_start, batch_size),
+                             range(batch_size)).data
+        if update_method == _UpdateMethod.UPDATE:
+          update_op = array_ops.tensor_scatter_update
+        elif update_method == _UpdateMethod.ADD:
+          update_op = array_ops.tensor_scatter_add
+        elif update_method == _UpdateMethod.MIN:
+          update_op = array_ops.tensor_scatter_min
+        elif update_method == _UpdateMethod.MAX:
+          update_op = array_ops.tensor_scatter_max
+        tensor = update_op(
+            tensor, stacked_indices, updates)
+        if range(len(dims)) != dims:
+          tensor = moveaxis(tensor, range(len(dims)), dims).data
+        return array_ops.tensor_strided_slice_update(
+            original_tensor,
+            packed_begin,
+            packed_end,
+            packed_strides,
+            tensor,
+            begin_mask=begin_mask,
+            end_mask=end_mask,
+            shrink_axis_mask=shrink_axis_mask,
+            new_axis_mask=new_axis_mask,
+            ellipsis_mask=ellipsis_mask,
+            name=name + '_2')
     # Note that gather_nd does not support gathering from inside the array.
     # To avoid shuffling data back and forth, we transform the indices and
     # do a gather instead.
     rank = np_utils._maybe_static(array_ops.rank(tensor))  # pylint: disable=protected-access
     dims = [(x + rank if x < 0 else x) for x in dims]
-    shape_tensor = array_ops.shape(tensor, out_type=stacked_indices.dtype)
+    shape_tensor = array_ops.shape(tensor)
     dim_sizes = array_ops.gather(shape_tensor, dims)
     if len(dims) == 1:
       stacked_indices = indices[0]
+    stacked_indices = math_ops.cast(stacked_indices, dtypes.int32)
     stacked_indices = array_ops.where_v2(stacked_indices < 0,
                                          stacked_indices + dim_sizes,
                                          stacked_indices)
@@ -1614,8 +1805,12 @@ def _slice_helper(tensor, slice_spec):
     if len(dims) > 1:
       index_scaling = math_ops.cumprod(
           dim_sizes, reverse=True, exclusive=True)
-      stacked_indices = math_ops.tensordot(
-          stacked_indices, index_scaling, axes=1)
+      def _tensordot(a, b):
+        # TODO(b/168657656): This function should be replaced by
+        # tensordot(axis=1) once MatMul has int32 XLA kernel.
+        b = array_ops.broadcast_to(b, array_ops.shape(a))
+        return math_ops.reduce_sum(a * b, axis=-1)
+      stacked_indices = _tensordot(stacked_indices, index_scaling)
       flat_shape = array_ops.concat(
           [shape_tensor[:axis], [-1], shape_tensor[axis + len(dims):]],
           axis=0)
@@ -1657,4 +1852,29 @@ def _getitem(self, slice_spec):
   return np_utils.tensor_to_ndarray(result_t)
 
 
+def _with_index_update_helper(update_method, a, slice_spec, updates):
+  """Implementation of ndarray._with_index_*."""
+  if (isinstance(slice_spec, bool) or (isinstance(slice_spec, ops.Tensor) and
+                                       slice_spec.dtype == dtypes.bool) or
+      (isinstance(slice_spec, (np.ndarray, np_arrays.ndarray)) and
+       slice_spec.dtype == np.bool)):
+    slice_spec = nonzero(slice_spec)
+
+  if not isinstance(slice_spec, tuple):
+    slice_spec = _as_spec_tuple(slice_spec)
+
+  a_dtype = a.dtype
+  a, updates = _promote_dtype_binary(a, updates)
+  result_t = _slice_helper(a.data, slice_spec, update_method, updates.data)
+  return np_utils.tensor_to_ndarray(result_t).astype(a_dtype)
+
+
 setattr(np_arrays.ndarray, '__getitem__', _getitem)
+setattr(np_arrays.ndarray, '_with_index_update',
+        functools.partial(_with_index_update_helper, _UpdateMethod.UPDATE))
+setattr(np_arrays.ndarray, '_with_index_add',
+        functools.partial(_with_index_update_helper, _UpdateMethod.ADD))
+setattr(np_arrays.ndarray, '_with_index_min',
+        functools.partial(_with_index_update_helper, _UpdateMethod.MIN))
+setattr(np_arrays.ndarray, '_with_index_max',
+        functools.partial(_with_index_update_helper, _UpdateMethod.MAX))

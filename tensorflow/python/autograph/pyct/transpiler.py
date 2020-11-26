@@ -18,12 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import inspect
 import threading
 import types
 
 import gast
 
-from tensorflow.python.autograph.pyct import ast_util
 from tensorflow.python.autograph.pyct import cache
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.pyct import loader
@@ -80,9 +80,9 @@ def _wrap_into_factory(nodes, entity_name, inner_factory_name,
         return inner_factory
 
   The lexical scoping is created using dummy symbol declarations which create
-  local fariables in the body of the outer factory, so that the Python parser
+  local variables in the body of the outer factory, so that the Python parser
   correctly marks them as free non-global variables upon load (that is, it
-  creates cell slots for each symbol. Thes symbols are initialized with None,
+  creates cell slots for each symbol. These symbols are initialized with None,
   but their values are not expected to be used; instead, the caller is expected
   to replace them with the cells of the source entity. For more details, see:
   https://docs.python.org/3/reference/executionmodel.html#binding-of-names
@@ -144,11 +144,11 @@ def _wrap_into_factory(nodes, entity_name, inner_factory_name,
       outer_factory_name=outer_factory_name)
 
 
-class _TransformedFnFactory(object):
-  """Helper object that wraps a transformed function factory."""
+class _PythonFnFactory(object):
+  """Helper object that wraps a Python function factory."""
 
   def __init__(self, name, freevars, extra_locals):
-    """Creates a new factory for a transformed function.
+    """Creates a new factory for a Python function.
 
     Args:
       name: The function name.
@@ -170,7 +170,7 @@ class _TransformedFnFactory(object):
              inner_factory_name='inner_factory',
              outer_factory_name='outer_factory',
              future_features=()):
-    """Initializes a transformed function."""
+    """Initializes a function."""
     if self._unbound_factory is not None:
       raise ValueError('double initialization; create a new object instead')
 
@@ -192,7 +192,7 @@ class _TransformedFnFactory(object):
                   closure,
                   defaults=None,
                   kwdefaults=None):
-    """Creates a new instance of the transformed function."""
+    """Creates a new function instance."""
     if self._unbound_factory is None:
       raise ValueError('call create first')
 
@@ -214,81 +214,81 @@ class _TransformedFnFactory(object):
         closure=factory_closure)
 
     # The lint override is a false positive.
-    transformed_entity = bound_factory(**self._extra_locals)  # pylint:disable=not-callable
+    new_fn = bound_factory(**self._extra_locals)  # pylint:disable=not-callable
 
     if defaults:
-      transformed_entity.__defaults__ = defaults
+      new_fn.__defaults__ = defaults
     if kwdefaults:
-      transformed_entity.__kwdefaults__ = kwdefaults
+      new_fn.__kwdefaults__ = kwdefaults
 
-    return transformed_entity
+    return new_fn
 
 
-class FunctionTranspiler(object):
-  """A generic source-to-source transpiler for Python functions.
+class GenericTranspiler(object):
+  """A generic transpiler for Python functions.
 
-  Its interface `transform_function` API offers a function-in, function-out
-  interface. Internally, it takes care of parsing, caching and variable binding.
+  Its interface is the `transform` API, which can process Python function
+  objects. Internally, it handles parsing.
 
-  Users typically subclass this, customizing the transform_ast method.
-
-  Usually, instances of this class are singletons, since each instance manages
-  its own cache. The caching subkey allows managing multiple types of
-  transformation.
+  Users typically subclass this, customizing the `transform_ast` method. The
+  output of transformed_ast is returned directly by `transform`. Existing
+  methods like `transform_function` may also be overloaded.
 
   Example:
 
-      class MyTransformer(FunctionTranspiler):
+      class MyTransformer(GenericTranspiler):
 
         def transform_ast(self, node, ctx):
-          node = <<transform node, usually using ast.NodeTransformer classes>>
-          return node
+          result = <<transform node>>
+          return result
 
       transformer = MyTransfomer()
 
-      new_f, module, source_map = transformer.transform_function(f, ...)
-      # new_f is a function with signature identical to f
-
-  The transformed function has access to the same namespace as the original
-  function. To allow access to internal APIs, users may inject additional
-  symbols though the `extra_locals` argument of `transform_function`.
+      result = transformer.transform(f, ...)
+      # result is the output
   """
-
-  def __init__(self):
-    self._cache_lock = threading.RLock()
-    self._cache = cache.CodeObjectCache()
-
-  def transform_ast(self, node, user_context):
-    """Performs an actual transformation of a function's AST.
-
-    Subclasses must implement this method. They must not call it.
-
-    The method receives the original AST and generates code according to the
-    AST that the method returns. For functions, the returned AST is expected to
-    contain a function with the exact same arguments and closure. The resulting
-    function will receive the globals, closure and argument defaults of the
-    input function.
-
-    Args:
-      node: One or more ast.AST nodes representing the AST to be transformed.
-      user_context: The same value that the caller passed to
-        `transform_function`.
-    """
-    raise NotImplementedError('subclasses must override this')
 
   def get_transformed_name(self, node):
     """Returns a name for the output function. Subclasses may override this."""
     if isinstance(node, gast.Lambda):
       return 'lam'
     elif isinstance(node, gast.FunctionDef):
-      # Note that we need to rename the function, to avoid any namespace
-      # clashes.
       return node.name
-    else:
-      raise ValueError('Unknown node type {}'.format(node))
+    raise ValueError('Unknown node type {}'.format(node))
+
+  def transform_ast(self, node, ctx):
+    """Performs an actual transformation of a function's AST.
+
+    Subclasses must implement this method, and do not usually call it.
+
+    Args:
+      node: One or more ast.AST nodes representing the AST to be transformed.
+      ctx: transformer.Context.
+    """
+    raise NotImplementedError('subclasses must override this')
+
+  def transform(self, obj, user_context):
+    """Transforms a Python object.
+
+    Users typically call this method.
+
+    Args:
+      obj: A Python object, function, type, etc.
+      user_context: An opaque object (may be None) that is forwarded to
+        transform_ast, through the ctx.user_context argument.
+    Returns:
+      The result of calling transform_function.
+
+    Raises:
+      NotImplementedError: if the type of obj is not handled.
+    """
+    if inspect.isfunction(obj) or inspect.ismethod(obj):
+      return self.transform_function(obj, user_context)
+
+    raise NotImplementedError('Non-function: {}'.format(type(obj)))
 
   def _erase_arg_defaults(self, node):
-    """Erase argde fault expressions, which would otherwise be unbound."""
+    """Erase arg default expressions, which would otherwise be unbound."""
     args = node.args
     for i in range(len(args.defaults)):
       args.defaults[i] = parser.parse_expression('None')
@@ -297,30 +297,54 @@ class FunctionTranspiler(object):
         args.kw_defaults[i] = parser.parse_expression('None')
     return node
 
-  def _transform_function(self, fn, user_context):
-    """Performs source code transformation on a function."""
+  def transform_module(self, mod, user_context):
+    """Transforms a module.
+
+    Subclasses may override this method. The return value is opaque.
+
+    The method receives the original AST. The result is passed as-is to the
+    output of `transform`.
+
+    Args:
+      mod: A Python module.
+      user_context: An opaque object (may be None) that is forwarded to
+        transform_ast, through the ctx.user_context argument.
+    Returns:
+      List[Tuple[Any, Any]]. By default it returns the output of transform_ast,
+      evaluated on each supported member, other than modules, together with a
+      `transformer.Context` containing information about the transformation
+      process.
+    """
+    result = []
+    for member in mod.__dict__.values():
+      if inspect.ismodule(member):
+        continue  # Not transforming modules recursively.
+      try:
+        result.append(self.transform(member, user_context))
+      except NotImplementedError:
+        pass  # Skip unsupported elements.
+    return result
+
+  def transform_function(self, fn, user_context):
+    """Transforms a function.
+
+    Subclasses may override this method. The return value is opaque.
+
+    The method receives the original AST. The result is passed as-is to the
+    output of `transform`.
+
+    Args:
+      fn: A function or lambda.
+      user_context: An opaque object (may be None) that is forwarded to
+        transform_ast, through the ctx.user_context argument.
+    Returns:
+      Tuple[Any, Any]. By default it returns the output of transform_ast,
+      together with a `transformer.Context` containing information about the
+      transformation process.
+    """
     future_features = inspect_utils.getfutureimports(fn)
     node, source = parser.parse_entity(fn, future_features=future_features)
     logging.log(3, 'Source code of %s:\n\n%s\n', fn, source)
-
-    # In general, the output of inspect.getsource is inexact for lambdas
-    # because it uses regex matching to adjust the exact location around
-    # the line number that CPython records. Then, the entire containing line
-    # is returned, which we may have trouble disambiguating.
-    # For example:
-    #   x, y = lambda: 1, lambda: 2
-    is_lambda = fn.__name__ == '<lambda>'
-    if is_lambda:
-      nodes = ast_util.find_matching_definitions(node, fn)
-      if len(nodes) != 1:
-        raise ValueError(
-            'Unable to identify source code of lambda function {}.'
-            ' It was defined in this code:\n'
-            '{}\n'
-            'This code must contain a single distinguishable lambda.'
-            ' To avoid this problem, define each lambda in a separate'
-            ' expression.'.format(fn, source))
-      node, = nodes
 
     origin_info.resolve_entity(node, source, fn)
 
@@ -336,22 +360,72 @@ class FunctionTranspiler(object):
     context = transformer.Context(entity_info, namer, user_context)
 
     node = self._erase_arg_defaults(node)
-    node = self.transform_ast(node, context)
+    result = self.transform_ast(node, context)
 
-    if is_lambda:
-      node = gast.Assign(
-          targets=[
-              gast.Name(
-                  new_name,
-                  ctx=gast.Store(),
-                  annotation=None,
-                  type_comment=None)
-          ],
-          value=node)
-    else:
-      node.name = new_name
+    return result, context
 
-    return node, context
+
+class PyToPy(GenericTranspiler):
+  """A generic Python-to-Python transpiler.
+
+  Its `transform` method offers a function-in, function-out interface.
+  Internally, it takes care of parsing, caching and loading of the translated
+  code.
+
+  Users typically subclass this, overriding `transform_ast`.
+
+  Usually, instances of this class are singletons, since each instance manages
+  its own cache. The caching can be controlled by overriding `get_caching_key`.
+
+  Example:
+
+      class MyTransformer(PyToPy):
+
+        def transform_ast(self, node, ctx):
+          node = <<transform node, usually using ast.NodeTransformer classes>>
+          return node
+
+      transformer = MyTransfomer()
+
+      new_f, module, source_map = transformer.transform_function(f, ...)
+      # new_f is a function with signature identical to f
+
+  The transformed function has access to the same namespace as the original
+  function. To allow access to internal APIs, users may inject additional
+  symbols by overriding `get_extra_locals`.
+  """
+
+  def __init__(self):
+    self._cache_lock = threading.RLock()
+    self._cache = cache.CodeObjectCache()
+
+  def get_extra_locals(self):
+    """Returns extra static local variables to be made to transformed code.
+
+    Subclasses must override this.
+
+    Returns:
+      extra_locals: A Dict[Text, Any] containing additional variables to make
+        available to the transformed code.
+    """
+    raise NotImplementedError('subclasses must override this')
+
+  def get_caching_key(self, user_context):
+    """Returns a unique key to use for caching.
+
+    Subclasses must override this.
+
+    Calls made to `transform_function` with functions that have the same code
+    object and caching key will return a cached instance on subsequent
+    invocations.
+
+    Args:
+      user_context: The context object which was passed to `transform`.
+
+    Returns:
+      extra_locals: A hashable.
+    """
+    raise NotImplementedError('subclasses must override this')
 
   def _cached_factory(self, fn, cache_subkey):
     cached_factory = self._cache[fn][cache_subkey]
@@ -359,57 +433,63 @@ class FunctionTranspiler(object):
                 cached_factory)
     return cached_factory
 
-  def _transformed_factory(self, fn, cache_subkey, user_context, extra_locals):
-    """Returns the transformed function factory for a given input."""
-    if self._cache.has(fn, cache_subkey):
-      return self._cached_factory(fn, cache_subkey)
+  def transform_function(self, fn, user_context):
+    """Transforms a function. See GenericTranspiler.trasnform_function.
 
-    with self._cache_lock:
-      # Check again under lock.
-      if self._cache.has(fn, cache_subkey):
-        return self._cached_factory(fn, cache_subkey)
-
-      logging.log(1, '%s is not cached for subkey %s', fn, cache_subkey)
-      nodes, ctx = self._transform_function(fn, user_context)
-
-      if logging.has_verbosity(2):
-        logging.log(2, 'Transformed %s:\n\n%s\n', fn, parser.unparse(nodes))
-
-      factory = _TransformedFnFactory(
-          ctx.info.name, fn.__code__.co_freevars, extra_locals)
-      factory.create(nodes, ctx.namer, future_features=ctx.info.future_features)
-      self._cache[fn][cache_subkey] = factory
-    return factory
-
-  def transform_function(self, fn, caching_subkey, user_context, extra_locals):
-    """Transforms a function.
-
-    The `caching_subkey` argument allows mapping each function to multiple
-    outputs in the cache. This is useful for instance when transformers
-    can generate multiple variants of output code, typically as a result of
-    different transformation flags.
+    This overload wraps the parent's `transform_function`, adding caching and
+    facilities to instantiate the output as a Python object. It also
+    adds facilities to make new symbols available to the generated Python code,
+    visible as local variables - see `get_extra_locals`.
 
     Args:
       fn: A function or lambda.
-      caching_subkey: Used for caching. Calls made for functions with the same
-        code object and caching_subkey will return a cached instance on
-        subsequent invocations. Using a constant will create unique per-function
-        entries.
-      user_context: An opaque object (may be none) that is forwarded to
-        transform_ast.
-      extra_locals: A Dict[Text, Any] containing additional variables to make
-        available to the transformed code. These will be visible as local
-        variables.
+      user_context: An opaque object (may be None) that is forwarded to
+        transform_ast, through the ctx.user_context argument.
     Returns:
       A tuple:
         * A function or lambda with the same signature and closure as `fn`
         * The temporary module into which the transformed function was loaded
         * The source map as a
             Dict[origin_info.LineLocation, origin_info.OriginInfo]
-
     """
-    factory = self._transformed_factory(fn, caching_subkey, user_context,
-                                        extra_locals)
+    cache_subkey = self.get_caching_key(user_context)
+
+    if self._cache.has(fn, cache_subkey):
+      # Fast path: use a lock-free check.
+      factory = self._cached_factory(fn, cache_subkey)
+
+    else:
+      with self._cache_lock:
+        # Check again under lock.
+        if self._cache.has(fn, cache_subkey):
+          factory = self._cached_factory(fn, cache_subkey)
+
+        else:
+          logging.log(1, '%s is not cached for subkey %s', fn, cache_subkey)
+          # TODO(mdan): Confusing overloading pattern. Fix.
+          nodes, ctx = super(PyToPy, self).transform_function(fn, user_context)
+
+          if isinstance(nodes, gast.Lambda):
+            nodes = gast.Assign(
+                targets=[
+                    gast.Name(
+                        ctx.info.name,
+                        ctx=gast.Store(),
+                        annotation=None,
+                        type_comment=None)
+                ],
+                value=nodes)
+          else:
+            nodes.name = ctx.info.name
+
+          if logging.has_verbosity(2):
+            logging.log(2, 'Transformed %s:\n\n%s\n', fn, parser.unparse(nodes))
+
+          factory = _PythonFnFactory(
+              ctx.info.name, fn.__code__.co_freevars, self.get_extra_locals())
+          factory.create(
+              nodes, ctx.namer, future_features=ctx.info.future_features)
+          self._cache[fn][cache_subkey] = factory
 
     transformed_fn = factory.instantiate(
         globals_=fn.__globals__,

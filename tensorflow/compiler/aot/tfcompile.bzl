@@ -434,5 +434,6 @@ def target_llvm_triple():
         "//tensorflow:linux_ppc64le": "ppc64le-ibm-linux-gnu",
         "//tensorflow:macos": "x86_64-none-darwin",
         "//tensorflow:windows": "x86_64-none-windows",
+        "//tensorflow:linux_s390x": "systemz-none-linux-gnu",
         "//conditions:default": "x86_64-pc-linux",
     })

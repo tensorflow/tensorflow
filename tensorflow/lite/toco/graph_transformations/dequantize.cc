@@ -35,7 +35,7 @@ void DequantizeBuffer(Array* array) {
   auto& new_data = array->GetMutableBuffer<ArrayDataType::kFloat>().data;
   new_data.resize(old_data.size());
   const auto& qparams = array->GetQuantizationParams();
-  for (int i = 0; i < old_data.size(); i++) {
+  for (int i = 0, end = old_data.size(); i < end; i++) {
     new_data[i] = qparams.scale * (old_data[i] - qparams.zero_point);
   }
 }

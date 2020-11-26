@@ -1,0 +1,382 @@
+// RUN: hlo_to_llvm_ir %s | FileCheck %s
+
+HloModule TestModule
+
+compare {
+  p.0.lhs = f32[] parameter(0)
+  p.0.rhs = f32[] parameter(1)
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
+}
+
+// CHECK: define void @sort(i8* noalias align 64 dereferenceable(24) [[ALLOC0:%.*]])
+// CHECK-NEXT:  entry:
+// CHECK-NEXT:    [[COMPARE_RETURN_BUFFER:%.*]] = alloca i8, align 1
+// CHECK-NEXT:    [[TMP0:%.*]] = getelementptr inbounds i8, i8* [[ALLOC0:%.*]], i64 0
+// CHECK-NEXT:    [[TMP1:%.*]] = bitcast i8* [[TMP0]] to [2 x [3 x float]]*
+// CHECK-NEXT:    [[TMP2:%.*]] = getelementptr inbounds i8, i8* [[ALLOC0]], i64 0
+// CHECK-NEXT:    [[TMP3:%.*]] = bitcast i8* [[TMP2]] to [2 x [3 x float]]*
+// CHECK-NEXT:    [[TMP4:%.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !6
+// CHECK-NEXT:    [[BLOCK_ID:%.*]] = zext i32 [[TMP4]] to i64
+// CHECK-NEXT:    [[TMP5:%.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !7
+// CHECK-NEXT:    [[THREAD_ID:%.*]] = zext i32 [[TMP5]] to i64
+// CHECK-NEXT:    [[TMP6:%.*]] = mul nuw nsw i64 [[BLOCK_ID]], 4
+// CHECK-NEXT:    [[LINEAR_INDEX:%.*]] = add nuw nsw i64 [[TMP6]], [[THREAD_ID]]
+// CHECK-NEXT:    [[LINEAR_INDEX_IN_RANGE:%.*]] = icmp ult i64 [[LINEAR_INDEX]], 4
+// CHECK-NEXT:    call void @llvm.assume(i1 [[LINEAR_INDEX_IN_RANGE]])
+// CHECK-NEXT:    [[TMP7:%.*]] = udiv i64 [[LINEAR_INDEX]], 1
+// CHECK-NEXT:    [[TMP8:%.*]] = urem i64 [[TMP7]], 2
+// CHECK-NEXT:    [[TMP9:%.*]] = udiv i64 [[LINEAR_INDEX]], 2
+// CHECK-NEXT:    [[TMP10:%.*]] = icmp ult i64 [[LINEAR_INDEX]], 4
+// CHECK-NEXT:    br i1 [[TMP10]], label [[SORT_IN_BOUNDS_TRUE:%.*]], label [[SORT_IN_BOUNDS_AFTER:%.*]]
+// CHECK:       sort.in_bounds-after:
+// CHECK-NEXT:    ret void
+// CHECK:       sort.in_bounds-true:
+// CHECK-NEXT:    [[TMP11:%.*]] = mul i64 [[TMP8]], 2
+// CHECK-NEXT:    [[TMP12:%.*]] = xor i64 [[TMP11]], 1
+// CHECK-NEXT:    [[TMP13:%.*]] = icmp slt i64 [[TMP11]], [[TMP12]]
+// CHECK-NEXT:    [[TMP14:%.*]] = icmp slt i64 [[TMP12]], 3
+// CHECK-NEXT:    [[TMP15:%.*]] = and i1 [[TMP13]], [[TMP14]]
+// CHECK-NEXT:    br i1 [[TMP15]], label [[SMALLER_COMPARISON_INDEX_TRUE:%.*]], label [[SMALLER_COMPARISON_INDEX_AFTER:%.*]]
+// CHECK:       smaller_comparison_index-after:
+// CHECK-NEXT:    br label [[SORT_IN_BOUNDS_AFTER]]
+// CHECK:       smaller_comparison_index-true:
+// CHECK-NEXT:    [[TMP16:%.*]] = getelementptr inbounds [2 x [3 x float]], [2 x [3 x float]]* [[TMP1]], i64 0, i64 [[TMP9]], i64 [[TMP12]]
+// CHECK-NEXT:    [[TMP17:%.*]] = getelementptr inbounds [2 x [3 x float]], [2 x [3 x float]]* [[TMP1]], i64 0, i64 [[TMP9]], i64 [[TMP11]]
+// CHECK-NEXT:    call void @region_0_4(float* [[TMP16]], float* [[TMP17]], i8* [[COMPARE_RETURN_BUFFER]])
+// CHECK-NEXT:    [[TMP18:%.*]] = load i8, i8* [[COMPARE_RETURN_BUFFER]], align 1
+// CHECK-NEXT:    [[BOOLEAN_PREDICATE:%.*]] = icmp ne i8 [[TMP18]], 0
+// CHECK-NEXT:    br i1 [[BOOLEAN_PREDICATE]], label [[IS_SMALLER_THAN_TRUE:%.*]], label [[IS_SMALLER_THAN_AFTER:%.*]]
+// CHECK:       is_smaller_than-after:
+// CHECK-NEXT:    br label [[SMALLER_COMPARISON_INDEX_AFTER]]
+// CHECK:       is_smaller_than-true:
+// CHECK-NEXT:    [[TMP19:%.*]] = load float, float* [[TMP16]], align 4
+// CHECK-NEXT:    [[TMP20:%.*]] = load float, float* [[TMP17]], align 4
+// CHECK-NEXT:    [[TMP21:%.*]] = getelementptr inbounds [2 x [3 x float]], [2 x [3 x float]]* [[TMP1]], i64 0, i64 [[TMP9]], i64 [[TMP11]]
+// CHECK-NEXT:    store float [[TMP19]], float* [[TMP21]], align 4
+// CHECK-NEXT:    [[TMP22:%.*]] = getelementptr inbounds [2 x [3 x float]], [2 x [3 x float]]* [[TMP1]], i64 0, i64 [[TMP9]], i64 [[TMP12]]
+// CHECK-NEXT:    store float [[TMP20]], float* [[TMP22]], align 4
+// CHECK-NEXT:    br label [[IS_SMALLER_THAN_AFTER]]
+
+// CHECK: define internal void @region_0_4(float* dereferenceable(4) [[P_0_LHS_TYPED:%.*]], float* dereferenceable(4) [[P_0_RHS_TYPED:%.*]], i8* dereferenceable(1) [[OUTPUT_ARG:%.*]])
+// CHECK-NEXT:  entry:
+// CHECK-NEXT:    [[COMPARE_3_TYPED:%.*]] = alloca i8, align 1
+// CHECK-NEXT:    [[TMP0:%.*]] = load float, float* [[ARG_0_1_TYPED:%.*]], align 4
+// CHECK-NEXT:    [[TMP1:%.*]] = load float, float* [[ARG_1_2_TYPED:%.*]], align 4
+// CHECK-NEXT:    [[TMP2:%.*]] = fcmp olt float [[TMP0]], [[TMP1]]
+// CHECK-NEXT:    [[TMP3:%.*]] = zext i1 [[TMP2]] to i8
+// CHECK-NEXT:    store i8 [[TMP3]], i8* [[COMPARE_3_TYPED]], align 1
+// CHECK-NEXT:    [[LOAD_RET_VALUE:%.*]] = load i8, i8* [[COMPARE_3_TYPED]], align 1
+// CHECK-NEXT:    store i8 [[LOAD_RET_VALUE]], i8* [[OUTPUT_ARG:%.*]], align 1
+// CHECK-NEXT:    ret void
+
+// CHECK: define void @sort__1(i8* noalias align 64 dereferenceable(24) [[ALLOC0:%.*]]) {
+// CHECK-NEXT:  entry:
+// CHECK-NEXT:    [[COMPARE_RETURN_BUFFER:%.*]] = alloca i8, align 1
+// CHECK-NEXT:    [[TMP0:%.*]] = getelementptr inbounds i8, i8* [[ALLOC0:%.*]], i64 0
+// CHECK-NEXT:    [[TMP1:%.*]] = bitcast i8* [[TMP0]] to [2 x [3 x float]]*
+// CHECK-NEXT:    [[TMP2:%.*]] = getelementptr inbounds i8, i8* [[ALLOC0]], i64 0
+// CHECK-NEXT:    [[TMP3:%.*]] = bitcast i8* [[TMP2]] to [2 x [3 x float]]*
+// CHECK-NEXT:    [[TMP4:%.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !6
+// CHECK-NEXT:    [[BLOCK_ID:%.*]] = zext i32 [[TMP4]] to i64
+// CHECK-NEXT:    [[TMP5:%.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !7
+// CHECK-NEXT:    [[THREAD_ID:%.*]] = zext i32 [[TMP5]] to i64
+// CHECK-NEXT:    [[TMP6:%.*]] = mul nuw nsw i64 [[BLOCK_ID]], 4
+// CHECK-NEXT:    [[LINEAR_INDEX:%.*]] = add nuw nsw i64 [[TMP6]], [[THREAD_ID]]
+// CHECK-NEXT:    [[LINEAR_INDEX_IN_RANGE:%.*]] = icmp ult i64 [[LINEAR_INDEX]], 4
+// CHECK-NEXT:    call void @llvm.assume(i1 [[LINEAR_INDEX_IN_RANGE]])
+// CHECK-NEXT:    [[TMP7:%.*]] = udiv i64 [[LINEAR_INDEX]], 1
+// CHECK-NEXT:    [[TMP8:%.*]] = urem i64 [[TMP7]], 2
+// CHECK-NEXT:    [[TMP9:%.*]] = udiv i64 [[LINEAR_INDEX]], 2
+// CHECK-NEXT:    [[TMP10:%.*]] = icmp ult i64 [[LINEAR_INDEX]], 4
+// CHECK-NEXT:    br i1 [[TMP10]], label [[SORT_IN_BOUNDS_TRUE:%.*]], label [[SORT_IN_BOUNDS_AFTER:%.*]]
+// CHECK:       sort.in_bounds-after:
+// CHECK-NEXT:    ret void
+// CHECK:       sort.in_bounds-true:
+// CHECK-NEXT:    [[TMP11:%.*]] = xor i64 [[TMP8]], 3
+// CHECK-NEXT:    [[TMP12:%.*]] = icmp slt i64 [[TMP8]], [[TMP11]]
+// CHECK-NEXT:    [[TMP13:%.*]] = icmp slt i64 [[TMP11]], 3
+// CHECK-NEXT:    [[TMP14:%.*]] = and i1 [[TMP12]], [[TMP13]]
+// CHECK-NEXT:    br i1 [[TMP14]], label [[SMALLER_COMPARISON_INDEX_TRUE:%.*]], label [[SMALLER_COMPARISON_INDEX_AFTER:%.*]]
+// CHECK:       smaller_comparison_index-after:
+// CHECK-NEXT:    br label [[SORT_IN_BOUNDS_AFTER]]
+// CHECK:       smaller_comparison_index-true:
+// CHECK-NEXT:    [[TMP15:%.*]] = getelementptr inbounds [2 x [3 x float]], [2 x [3 x float]]* [[TMP1]], i64 0, i64 [[TMP9]], i64 [[TMP11]]
+// CHECK-NEXT:    [[TMP16:%.*]] = getelementptr inbounds [2 x [3 x float]], [2 x [3 x float]]* [[TMP1]], i64 0, i64 [[TMP9]], i64 [[TMP8]]
+// CHECK-NEXT:    call void @region_0_4(float* [[TMP15]], float* [[TMP16]], i8* [[COMPARE_RETURN_BUFFER]])
+// CHECK-NEXT:    [[TMP17:%.*]] = load i8, i8* [[COMPARE_RETURN_BUFFER]], align 1
+// CHECK-NEXT:    [[BOOLEAN_PREDICATE:%.*]] = icmp ne i8 [[TMP17]], 0
+// CHECK-NEXT:    br i1 [[BOOLEAN_PREDICATE]], label [[IS_SMALLER_THAN_TRUE:%.*]], label [[IS_SMALLER_THAN_AFTER:%.*]]
+// CHECK:       is_smaller_than-after:
+// CHECK-NEXT:    br label [[SMALLER_COMPARISON_INDEX_AFTER]]
+// CHECK:       is_smaller_than-true:
+// CHECK-NEXT:    [[TMP18:%.*]] = load float, float* [[TMP15]], align 4
+// CHECK-NEXT:    [[TMP19:%.*]] = load float, float* [[TMP16]], align 4
+// CHECK-NEXT:    [[TMP20:%.*]] = getelementptr inbounds [2 x [3 x float]], [2 x [3 x float]]* [[TMP1]], i64 0, i64 [[TMP9]], i64 [[TMP8]]
+// CHECK-NEXT:    store float [[TMP18]], float* [[TMP20]], align 4
+// CHECK-NEXT:    [[TMP21:%.*]] = getelementptr inbounds [2 x [3 x float]], [2 x [3 x float]]* [[TMP1]], i64 0, i64 [[TMP9]], i64 [[TMP11]]
+// CHECK-NEXT:    store float [[TMP19]], float* [[TMP21]], align 4
+// CHECK-NEXT:    br label [[IS_SMALLER_THAN_AFTER]]
+
+// CHECK: define void @sort__2(i8* noalias align 64 dereferenceable(24) [[ALLOC0:%.*]]) {
+// CHECK-NEXT:  entry:
+// CHECK-NEXT:    [[COMPARE_RETURN_BUFFER:%.*]] = alloca i8, align 1
+// CHECK-NEXT:    [[TMP0:%.*]] = getelementptr inbounds i8, i8* [[ALLOC0:%.*]], i64 0
+// CHECK-NEXT:    [[TMP1:%.*]] = bitcast i8* [[TMP0]] to [2 x [3 x float]]*
+// CHECK-NEXT:    [[TMP2:%.*]] = getelementptr inbounds i8, i8* [[ALLOC0]], i64 0
+// CHECK-NEXT:    [[TMP3:%.*]] = bitcast i8* [[TMP2]] to [2 x [3 x float]]*
+// CHECK-NEXT:    [[TMP4:%.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !6
+// CHECK-NEXT:    [[BLOCK_ID:%.*]] = zext i32 [[TMP4]] to i64
+// CHECK-NEXT:    [[TMP5:%.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !7
+// CHECK-NEXT:    [[THREAD_ID:%.*]] = zext i32 [[TMP5]] to i64
+// CHECK-NEXT:    [[TMP6:%.*]] = mul nuw nsw i64 [[BLOCK_ID]], 4
+// CHECK-NEXT:    [[LINEAR_INDEX:%.*]] = add nuw nsw i64 [[TMP6]], [[THREAD_ID]]
+// CHECK-NEXT:    [[LINEAR_INDEX_IN_RANGE:%.*]] = icmp ult i64 [[LINEAR_INDEX]], 4
+// CHECK-NEXT:    call void @llvm.assume(i1 [[LINEAR_INDEX_IN_RANGE]])
+// CHECK-NEXT:    [[TMP7:%.*]] = udiv i64 [[LINEAR_INDEX]], 1
+// CHECK-NEXT:    [[TMP8:%.*]] = urem i64 [[TMP7]], 2
+// CHECK-NEXT:    [[TMP9:%.*]] = udiv i64 [[LINEAR_INDEX]], 2
+// CHECK-NEXT:    [[TMP10:%.*]] = icmp ult i64 [[LINEAR_INDEX]], 4
+// CHECK-NEXT:    br i1 [[TMP10]], label [[SORT_IN_BOUNDS_TRUE:%.*]], label [[SORT_IN_BOUNDS_AFTER:%.*]]
+// CHECK:       sort.in_bounds-after:
+// CHECK-NEXT:    ret void
+// CHECK:       sort.in_bounds-true:
+// CHECK-NEXT:    [[TMP11:%.*]] = mul i64 [[TMP8]], 2
+// CHECK-NEXT:    [[TMP12:%.*]] = xor i64 [[TMP11]], 1
+// CHECK-NEXT:    [[TMP13:%.*]] = icmp slt i64 [[TMP11]], [[TMP12]]
+// CHECK-NEXT:    [[TMP14:%.*]] = icmp slt i64 [[TMP12]], 3
+// CHECK-NEXT:    [[TMP15:%.*]] = and i1 [[TMP13]], [[TMP14]]
+// CHECK-NEXT:    br i1 [[TMP15]], label [[SMALLER_COMPARISON_INDEX_TRUE:%.*]], label [[SMALLER_COMPARISON_INDEX_AFTER:%.*]]
+// CHECK:       smaller_comparison_index-after:
+// CHECK-NEXT:    br label [[SORT_IN_BOUNDS_AFTER]]
+// CHECK:       smaller_comparison_index-true:
+// CHECK-NEXT:    [[TMP16:%.*]] = getelementptr inbounds [2 x [3 x float]], [2 x [3 x float]]* [[TMP1]], i64 0, i64 [[TMP9]], i64 [[TMP12]]
+// CHECK-NEXT:    [[TMP17:%.*]] = getelementptr inbounds [2 x [3 x float]], [2 x [3 x float]]* [[TMP1]], i64 0, i64 [[TMP9]], i64 [[TMP11]]
+// CHECK-NEXT:    call void @region_0_4(float* [[TMP16]], float* [[TMP17]], i8* [[COMPARE_RETURN_BUFFER]])
+// CHECK-NEXT:    [[TMP18:%.*]] = load i8, i8* [[COMPARE_RETURN_BUFFER]], align 1
+// CHECK-NEXT:    [[BOOLEAN_PREDICATE:%.*]] = icmp ne i8 [[TMP18]], 0
+// CHECK-NEXT:    br i1 [[BOOLEAN_PREDICATE]], label [[IS_SMALLER_THAN_TRUE:%.*]], label [[IS_SMALLER_THAN_AFTER:%.*]]
+// CHECK:       is_smaller_than-after:
+// CHECK-NEXT:    br label [[SMALLER_COMPARISON_INDEX_AFTER]]
+// CHECK:       is_smaller_than-true:
+// CHECK-NEXT:    [[TMP19:%.*]] = load float, float* [[TMP16]], align 4
+// CHECK-NEXT:    [[TMP20:%.*]] = load float, float* [[TMP17]], align 4
+// CHECK-NEXT:    [[TMP21:%.*]] = getelementptr inbounds [2 x [3 x float]], [2 x [3 x float]]* [[TMP1]], i64 0, i64 [[TMP9]], i64 [[TMP11]]
+// CHECK-NEXT:    store float [[TMP19]], float* [[TMP21]], align 4
+// CHECK-NEXT:    [[TMP22:%.*]] = getelementptr inbounds [2 x [3 x float]], [2 x [3 x float]]* [[TMP1]], i64 0, i64 [[TMP9]], i64 [[TMP12]]
+// CHECK-NEXT:    store float [[TMP20]], float* [[TMP22]], align 4
+// CHECK-NEXT:    br label [[IS_SMALLER_THAN_AFTER]]
+ENTRY main {
+  x = f32[2, 3] parameter(0)
+  ROOT sort = f32[2, 3] sort(x), dimensions={1}, to_apply=compare
+}
+
+// -----
+
+HloModule TestModule
+
+compare {
+  p.0.lhs = s32[] parameter(0)
+  p.0.rhs = s32[] parameter(1)
+  p.1.lhs = f32[] parameter(2)
+  p.1.rhs = f32[] parameter(3)
+  ROOT lt = pred[] compare(p.1.lhs, p.1.rhs), direction=LT
+}
+
+// CHECK: define void @sort(i8* noalias align 64 dereferenceable(24) [[ALLOC0:%.*]], i8* noalias align 64 dereferenceable(24) [[ALLOC1:%.*]], i8* noalias align 64 dereferenceable(16) [[ALLOC4:%.*]])
+// CHECK-NEXT:  entry:
+// CHECK-NEXT:    [[COMPARE_RETURN_BUFFER:%.*]] = alloca i8, align 1
+// CHECK-NEXT:    [[TMP0:%.*]] = getelementptr inbounds i8, i8* [[ALLOC0:%.*]], i64 0
+// CHECK-NEXT:    [[TMP1:%.*]] = bitcast i8* [[TMP0]] to [2 x [3 x i32]]*
+// CHECK-NEXT:    [[TMP2:%.*]] = getelementptr inbounds i8, i8* [[ALLOC1:%.*]], i64 0
+// CHECK-NEXT:    [[TMP3:%.*]] = bitcast i8* [[TMP2]] to [2 x [3 x float]]*
+// CHECK-NEXT:    [[TMP4:%.*]] = getelementptr inbounds i8, i8* [[ALLOC4:%.*]], i64 0
+// CHECK-NEXT:    [[TMP5:%.*]] = bitcast i8* [[TMP4]] to [2 x i8*]*
+// CHECK-NEXT:    [[TMP6:%.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !6
+// CHECK-NEXT:    [[BLOCK_ID:%.*]] = zext i32 [[TMP6]] to i64
+// CHECK-NEXT:    [[TMP7:%.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !7
+// CHECK-NEXT:    [[THREAD_ID:%.*]] = zext i32 [[TMP7]] to i64
+// CHECK-NEXT:    [[TMP8:%.*]] = mul nuw nsw i64 [[BLOCK_ID]], 4
+// CHECK-NEXT:    [[LINEAR_INDEX:%.*]] = add nuw nsw i64 [[TMP8]], [[THREAD_ID]]
+// CHECK-NEXT:    [[LINEAR_INDEX_IN_RANGE:%.*]] = icmp ult i64 [[LINEAR_INDEX]], 4
+// CHECK-NEXT:    call void @llvm.assume(i1 [[LINEAR_INDEX_IN_RANGE]])
+// CHECK-NEXT:    [[TMP9:%.*]] = udiv i64 [[LINEAR_INDEX]], 1
+// CHECK-NEXT:    [[TMP10:%.*]] = urem i64 [[TMP9]], 2
+// CHECK-NEXT:    [[TMP11:%.*]] = udiv i64 [[LINEAR_INDEX]], 2
+// CHECK-NEXT:    [[TMP12:%.*]] = icmp ult i64 [[LINEAR_INDEX]], 4
+// CHECK-NEXT:    br i1 [[TMP12]], label [[SORT_IN_BOUNDS_TRUE:%.*]], label [[SORT_IN_BOUNDS_AFTER:%.*]]
+// CHECK:       sort.in_bounds-after:
+// CHECK-NEXT:    ret void
+// CHECK:       sort.in_bounds-true:
+// CHECK-NEXT:    [[TMP13:%.*]] = mul i64 [[TMP10]], 2
+// CHECK-NEXT:    [[TMP14:%.*]] = xor i64 [[TMP13]], 1
+// CHECK-NEXT:    [[TMP15:%.*]] = icmp slt i64 [[TMP13]], [[TMP14]]
+// CHECK-NEXT:    [[TMP16:%.*]] = icmp slt i64 [[TMP14]], 3
+// CHECK-NEXT:    [[TMP17:%.*]] = and i1 [[TMP15]], [[TMP16]]
+// CHECK-NEXT:    br i1 [[TMP17]], label [[SMALLER_COMPARISON_INDEX_TRUE:%.*]], label [[SMALLER_COMPARISON_INDEX_AFTER:%.*]]
+// CHECK:       smaller_comparison_index-after:
+// CHECK-NEXT:    br label [[SORT_IN_BOUNDS_AFTER]]
+// CHECK:       smaller_comparison_index-true:
+// CHECK-NEXT:    [[TMP18:%.*]] = getelementptr inbounds [2 x [3 x i32]], [2 x [3 x i32]]* [[TMP1]], i64 0, i64 [[TMP11]], i64 [[TMP14]]
+// CHECK-NEXT:    [[TMP19:%.*]] = getelementptr inbounds [2 x [3 x i32]], [2 x [3 x i32]]* [[TMP1]], i64 0, i64 [[TMP11]], i64 [[TMP13]]
+// CHECK-NEXT:    [[TMP20:%.*]] = getelementptr inbounds [2 x [3 x float]], [2 x [3 x float]]* [[TMP3]], i64 0, i64 [[TMP11]], i64 [[TMP14]]
+// CHECK-NEXT:    [[TMP21:%.*]] = getelementptr inbounds [2 x [3 x float]], [2 x [3 x float]]* [[TMP3]], i64 0, i64 [[TMP11]], i64 [[TMP13]]
+// CHECK-NEXT:    call void @region_0_6(i32* [[TMP18]], i32* [[TMP19]], float* [[TMP20]], float* [[TMP21]], i8* [[COMPARE_RETURN_BUFFER]])
+// CHECK-NEXT:    [[TMP22:%.*]] = load i8, i8* [[COMPARE_RETURN_BUFFER]], align 1
+// CHECK-NEXT:    [[BOOLEAN_PREDICATE:%.*]] = icmp ne i8 [[TMP22]], 0
+// CHECK-NEXT:    br i1 [[BOOLEAN_PREDICATE]], label [[IS_SMALLER_THAN_TRUE:%.*]], label [[IS_SMALLER_THAN_AFTER:%.*]]
+// CHECK:       is_smaller_than-after:
+// CHECK-NEXT:    br label [[SMALLER_COMPARISON_INDEX_AFTER]]
+// CHECK:       is_smaller_than-true:
+// CHECK-NEXT:    [[TMP23:%.*]] = load i32, i32* [[TMP18]], align 4
+// CHECK-NEXT:    [[TMP24:%.*]] = load i32, i32* [[TMP19]], align 4
+// CHECK-NEXT:    [[TMP25:%.*]] = getelementptr inbounds [2 x [3 x i32]], [2 x [3 x i32]]* [[TMP1]], i64 0, i64 [[TMP11]], i64 [[TMP13]]
+// CHECK-NEXT:    store i32 [[TMP23]], i32* [[TMP25]], align 4
+// CHECK-NEXT:    [[TMP26:%.*]] = getelementptr inbounds [2 x [3 x i32]], [2 x [3 x i32]]* [[TMP1]], i64 0, i64 [[TMP11]], i64 [[TMP14]]
+// CHECK-NEXT:    store i32 [[TMP24]], i32* [[TMP26]], align 4
+// CHECK-NEXT:    [[TMP27:%.*]] = load float, float* [[TMP20]], align 4
+// CHECK-NEXT:    [[TMP28:%.*]] = load float, float* [[TMP21]], align 4
+// CHECK-NEXT:    [[TMP29:%.*]] = getelementptr inbounds [2 x [3 x float]], [2 x [3 x float]]* [[TMP3]], i64 0, i64 [[TMP11]], i64 [[TMP13]]
+// CHECK-NEXT:    store float [[TMP27]], float* [[TMP29]], align 4
+// CHECK-NEXT:    [[TMP30:%.*]] = getelementptr inbounds [2 x [3 x float]], [2 x [3 x float]]* [[TMP3]], i64 0, i64 [[TMP11]], i64 [[TMP14]]
+// CHECK-NEXT:    store float [[TMP28]], float* [[TMP30]], align 4
+// CHECK-NEXT:    br label [[IS_SMALLER_THAN_AFTER]]
+
+// CHECK: define internal void @region_0_6(i32* dereferenceable(4) [[P_0_LHS_TYPED:%.*]], i32* dereferenceable(4) [[P_0_RHS_TYPED:%.*]], float* dereferenceable(4) [[P_1_LHS_TYPED:%.*]], float* dereferenceable(4) [[P_1_RHS_TYPED:%.*]], i8* dereferenceable(1) [[OUTPUT_ARG:%.*]])
+// CHECK-NEXT:  entry:
+// CHECK-NEXT:    [[COMPARE_5_TYPED:%.*]] = alloca i8, align 1
+// CHECK-NEXT:    [[TMP0:%.*]] = load float, float* [[ARG_2_3_TYPED:%.*]], align 4
+// CHECK-NEXT:    [[TMP1:%.*]] = load float, float* [[ARG_3_4_TYPED:%.*]], align 4
+// CHECK-NEXT:    [[TMP2:%.*]] = fcmp olt float [[TMP0]], [[TMP1]]
+// CHECK-NEXT:    [[TMP3:%.*]] = zext i1 [[TMP2]] to i8
+// CHECK-NEXT:    store i8 [[TMP3]], i8* [[COMPARE_5_TYPED]], align 1
+// CHECK-NEXT:    [[LOAD_RET_VALUE:%.*]] = load i8, i8* [[COMPARE_5_TYPED]], align 1
+// CHECK-NEXT:    store i8 [[LOAD_RET_VALUE]], i8* [[OUTPUT_ARG:%.*]], align 1
+// CHECK-NEXT:    ret void
+
+// CHECK: define void @sort__1(i8* noalias align 64 dereferenceable(24) [[ALLOC0:%.*]], i8* noalias align 64 dereferenceable(24) [[ALLOC1:%.*]], i8* noalias align 64 dereferenceable(16) [[ALLOC4:%.*]])
+// CHECK-NEXT:  entry:
+// CHECK-NEXT:    [[COMPARE_RETURN_BUFFER:%.*]] = alloca i8, align 1
+// CHECK-NEXT:    [[TMP0:%.*]] = getelementptr inbounds i8, i8* [[ALLOC0:%.*]], i64 0
+// CHECK-NEXT:    [[TMP1:%.*]] = bitcast i8* [[TMP0]] to [2 x [3 x i32]]*
+// CHECK-NEXT:    [[TMP2:%.*]] = getelementptr inbounds i8, i8* [[ALLOC1:%.*]], i64 0
+// CHECK-NEXT:    [[TMP3:%.*]] = bitcast i8* [[TMP2]] to [2 x [3 x float]]*
+// CHECK-NEXT:    [[TMP4:%.*]] = getelementptr inbounds i8, i8* [[ALLOC4:%.*]], i64 0
+// CHECK-NEXT:    [[TMP5:%.*]] = bitcast i8* [[TMP4]] to [2 x i8*]*
+// CHECK-NEXT:    [[TMP6:%.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !6
+// CHECK-NEXT:    [[BLOCK_ID:%.*]] = zext i32 [[TMP6]] to i64
+// CHECK-NEXT:    [[TMP7:%.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !7
+// CHECK-NEXT:    [[THREAD_ID:%.*]] = zext i32 [[TMP7]] to i64
+// CHECK-NEXT:    [[TMP8:%.*]] = mul nuw nsw i64 [[BLOCK_ID]], 4
+// CHECK-NEXT:    [[LINEAR_INDEX:%.*]] = add nuw nsw i64 [[TMP8]], [[THREAD_ID]]
+// CHECK-NEXT:    [[LINEAR_INDEX_IN_RANGE:%.*]] = icmp ult i64 [[LINEAR_INDEX]], 4
+// CHECK-NEXT:    call void @llvm.assume(i1 [[LINEAR_INDEX_IN_RANGE]])
+// CHECK-NEXT:    [[TMP9:%.*]] = udiv i64 [[LINEAR_INDEX]], 1
+// CHECK-NEXT:    [[TMP10:%.*]] = urem i64 [[TMP9]], 2
+// CHECK-NEXT:    [[TMP11:%.*]] = udiv i64 [[LINEAR_INDEX]], 2
+// CHECK-NEXT:    [[TMP12:%.*]] = icmp ult i64 [[LINEAR_INDEX]], 4
+// CHECK-NEXT:    br i1 [[TMP12]], label [[SORT_IN_BOUNDS_TRUE:%.*]], label [[SORT_IN_BOUNDS_AFTER:%.*]]
+// CHECK:       sort.in_bounds-after:
+// CHECK-NEXT:    ret void
+// CHECK:       sort.in_bounds-true:
+// CHECK-NEXT:    [[TMP13:%.*]] = xor i64 [[TMP10]], 3
+// CHECK-NEXT:    [[TMP14:%.*]] = icmp slt i64 [[TMP10]], [[TMP13]]
+// CHECK-NEXT:    [[TMP15:%.*]] = icmp slt i64 [[TMP13]], 3
+// CHECK-NEXT:    [[TMP16:%.*]] = and i1 [[TMP14]], [[TMP15]]
+// CHECK-NEXT:    br i1 [[TMP16]], label [[SMALLER_COMPARISON_INDEX_TRUE:%.*]], label [[SMALLER_COMPARISON_INDEX_AFTER:%.*]]
+// CHECK:       smaller_comparison_index-after:
+// CHECK-NEXT:    br label [[SORT_IN_BOUNDS_AFTER]]
+// CHECK:       smaller_comparison_index-true:
+// CHECK-NEXT:    [[TMP17:%.*]] = getelementptr inbounds [2 x [3 x i32]], [2 x [3 x i32]]* [[TMP1]], i64 0, i64 [[TMP11]], i64 [[TMP13]]
+// CHECK-NEXT:    [[TMP18:%.*]] = getelementptr inbounds [2 x [3 x i32]], [2 x [3 x i32]]* [[TMP1]], i64 0, i64 [[TMP11]], i64 [[TMP10]]
+// CHECK-NEXT:    [[TMP19:%.*]] = getelementptr inbounds [2 x [3 x float]], [2 x [3 x float]]* [[TMP3]], i64 0, i64 [[TMP11]], i64 [[TMP13]]
+// CHECK-NEXT:    [[TMP20:%.*]] = getelementptr inbounds [2 x [3 x float]], [2 x [3 x float]]* [[TMP3]], i64 0, i64 [[TMP11]], i64 [[TMP10]]
+// CHECK-NEXT:    call void @region_0_6(i32* [[TMP17]], i32* [[TMP18]], float* [[TMP19]], float* [[TMP20]], i8* [[COMPARE_RETURN_BUFFER]])
+// CHECK-NEXT:    [[TMP21:%.*]] = load i8, i8* [[COMPARE_RETURN_BUFFER]], align 1
+// CHECK-NEXT:    [[BOOLEAN_PREDICATE:%.*]] = icmp ne i8 [[TMP21]], 0
+// CHECK-NEXT:    br i1 [[BOOLEAN_PREDICATE]], label [[IS_SMALLER_THAN_TRUE:%.*]], label [[IS_SMALLER_THAN_AFTER:%.*]]
+// CHECK:       is_smaller_than-after:
+// CHECK-NEXT:    br label [[SMALLER_COMPARISON_INDEX_AFTER]]
+// CHECK:       is_smaller_than-true:
+// CHECK-NEXT:    [[TMP22:%.*]] = load i32, i32* [[TMP17]], align 4
+// CHECK-NEXT:    [[TMP23:%.*]] = load i32, i32* [[TMP18]], align 4
+// CHECK-NEXT:    [[TMP24:%.*]] = getelementptr inbounds [2 x [3 x i32]], [2 x [3 x i32]]* [[TMP1]], i64 0, i64 [[TMP11]], i64 [[TMP10]]
+// CHECK-NEXT:    store i32 [[TMP22]], i32* [[TMP24]], align 4
+// CHECK-NEXT:    [[TMP25:%.*]] = getelementptr inbounds [2 x [3 x i32]], [2 x [3 x i32]]* [[TMP1]], i64 0, i64 [[TMP11]], i64 [[TMP13]]
+// CHECK-NEXT:    store i32 [[TMP23]], i32* [[TMP25]], align 4
+// CHECK-NEXT:    [[TMP26:%.*]] = load float, float* [[TMP19]], align 4
+// CHECK-NEXT:    [[TMP27:%.*]] = load float, float* [[TMP20]], align 4
+// CHECK-NEXT:    [[TMP28:%.*]] = getelementptr inbounds [2 x [3 x float]], [2 x [3 x float]]* [[TMP3]], i64 0, i64 [[TMP11]], i64 [[TMP10]]
+// CHECK-NEXT:    store float [[TMP26]], float* [[TMP28]], align 4
+// CHECK-NEXT:    [[TMP29:%.*]] = getelementptr inbounds [2 x [3 x float]], [2 x [3 x float]]* [[TMP3]], i64 0, i64 [[TMP11]], i64 [[TMP13]]
+// CHECK-NEXT:    store float [[TMP27]], float* [[TMP29]], align 4
+// CHECK-NEXT:    br label [[IS_SMALLER_THAN_AFTER]]
+
+// CHECK: define void @sort__2(i8* noalias align 64 dereferenceable(24) [[ALLOC0:%.*]], i8* noalias align 64 dereferenceable(24) [[ALLOC1:%.*]], i8* noalias align 64 dereferenceable(16) [[ALLOC4:%.*]])
+// CHECK-NEXT:  entry:
+// CHECK-NEXT:    [[COMPARE_RETURN_BUFFER:%.*]] = alloca i8, align 1
+// CHECK-NEXT:    [[TMP0:%.*]] = getelementptr inbounds i8, i8* [[ALLOC0:%.*]], i64 0
+// CHECK-NEXT:    [[TMP1:%.*]] = bitcast i8* [[TMP0]] to [2 x [3 x i32]]*
+// CHECK-NEXT:    [[TMP2:%.*]] = getelementptr inbounds i8, i8* [[ALLOC1:%.*]], i64 0
+// CHECK-NEXT:    [[TMP3:%.*]] = bitcast i8* [[TMP2]] to [2 x [3 x float]]*
+// CHECK-NEXT:    [[TMP4:%.*]] = getelementptr inbounds i8, i8* [[ALLOC4:%.*]], i64 0
+// CHECK-NEXT:    [[TMP5:%.*]] = bitcast i8* [[TMP4]] to [2 x i8*]*
+// CHECK-NEXT:    [[TMP6:%.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !6
+// CHECK-NEXT:    [[BLOCK_ID:%.*]] = zext i32 [[TMP6]] to i64
+// CHECK-NEXT:    [[TMP7:%.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !7
+// CHECK-NEXT:    [[THREAD_ID:%.*]] = zext i32 [[TMP7]] to i64
+// CHECK-NEXT:    [[TMP8:%.*]] = mul nuw nsw i64 [[BLOCK_ID]], 4
+// CHECK-NEXT:    [[LINEAR_INDEX:%.*]] = add nuw nsw i64 [[TMP8]], [[THREAD_ID]]
+// CHECK-NEXT:    [[LINEAR_INDEX_IN_RANGE:%.*]] = icmp ult i64 [[LINEAR_INDEX]], 4
+// CHECK-NEXT:    call void @llvm.assume(i1 [[LINEAR_INDEX_IN_RANGE]])
+// CHECK-NEXT:    [[TMP9:%.*]] = udiv i64 [[LINEAR_INDEX]], 1
+// CHECK-NEXT:    [[TMP10:%.*]] = urem i64 [[TMP9]], 2
+// CHECK-NEXT:    [[TMP11:%.*]] = udiv i64 [[LINEAR_INDEX]], 2
+// CHECK-NEXT:    [[TMP12:%.*]] = icmp ult i64 [[LINEAR_INDEX]], 4
+// CHECK-NEXT:    br i1 [[TMP12]], label [[SORT_IN_BOUNDS_TRUE:%.*]], label [[SORT_IN_BOUNDS_AFTER:%.*]]
+// CHECK:       sort.in_bounds-after:
+// CHECK-NEXT:    [[TMP13:%.*]] = bitcast [2 x [3 x i32]]* [[TMP1]] to i8*
+// CHECK-NEXT:    [[TMP14:%.*]] = getelementptr inbounds [2 x i8*], [2 x i8*]* [[TMP5]], i64 0, i64 0
+// CHECK-NEXT:    store i8* [[TMP13]], i8** [[TMP14]], align 8
+// CHECK-NEXT:    [[TMP15:%.*]] = bitcast [2 x [3 x float]]* [[TMP3]] to i8*
+// CHECK-NEXT:    [[TMP16:%.*]] = getelementptr inbounds [2 x i8*], [2 x i8*]* [[TMP5]], i64 0, i64 1
+// CHECK-NEXT:    store i8* [[TMP15]], i8** [[TMP16]], align 8
+// CHECK-NEXT:    ret void
+// CHECK:       sort.in_bounds-true:
+// CHECK-NEXT:    [[TMP17:%.*]] = mul i64 [[TMP10]], 2
+// CHECK-NEXT:    [[TMP18:%.*]] = xor i64 [[TMP17]], 1
+// CHECK-NEXT:    [[TMP19:%.*]] = icmp slt i64 [[TMP17]], [[TMP18]]
+// CHECK-NEXT:    [[TMP20:%.*]] = icmp slt i64 [[TMP18]], 3
+// CHECK-NEXT:    [[TMP21:%.*]] = and i1 [[TMP19]], [[TMP20]]
+// CHECK-NEXT:    br i1 [[TMP21]], label [[SMALLER_COMPARISON_INDEX_TRUE:%.*]], label [[SMALLER_COMPARISON_INDEX_AFTER:%.*]]
+// CHECK:       smaller_comparison_index-after:
+// CHECK-NEXT:    br label [[SORT_IN_BOUNDS_AFTER]]
+// CHECK:       smaller_comparison_index-true:
+// CHECK-NEXT:    [[TMP22:%.*]] = getelementptr inbounds [2 x [3 x i32]], [2 x [3 x i32]]* [[TMP1]], i64 0, i64 [[TMP11]], i64 [[TMP18]]
+// CHECK-NEXT:    [[TMP23:%.*]] = getelementptr inbounds [2 x [3 x i32]], [2 x [3 x i32]]* [[TMP1]], i64 0, i64 [[TMP11]], i64 [[TMP17]]
+// CHECK-NEXT:    [[TMP24:%.*]] = getelementptr inbounds [2 x [3 x float]], [2 x [3 x float]]* [[TMP3]], i64 0, i64 [[TMP11]], i64 [[TMP18]]
+// CHECK-NEXT:    [[TMP25:%.*]] = getelementptr inbounds [2 x [3 x float]], [2 x [3 x float]]* [[TMP3]], i64 0, i64 [[TMP11]], i64 [[TMP17]]
+// CHECK-NEXT:    call void @region_0_6(i32* [[TMP22]], i32* [[TMP23]], float* [[TMP24]], float* [[TMP25]], i8* [[COMPARE_RETURN_BUFFER]])
+// CHECK-NEXT:    [[TMP26:%.*]] = load i8, i8* [[COMPARE_RETURN_BUFFER]], align 1
+// CHECK-NEXT:    [[BOOLEAN_PREDICATE:%.*]] = icmp ne i8 [[TMP26]], 0
+// CHECK-NEXT:    br i1 [[BOOLEAN_PREDICATE]], label [[IS_SMALLER_THAN_TRUE:%.*]], label [[IS_SMALLER_THAN_AFTER:%.*]]
+// CHECK:       is_smaller_than-after:
+// CHECK-NEXT:    br label [[SMALLER_COMPARISON_INDEX_AFTER]]
+// CHECK:       is_smaller_than-true:
+// CHECK-NEXT:    [[TMP27:%.*]] = load i32, i32* [[TMP22]], align 4
+// CHECK-NEXT:    [[TMP28:%.*]] = load i32, i32* [[TMP23]], align 4
+// CHECK-NEXT:    [[TMP29:%.*]] = getelementptr inbounds [2 x [3 x i32]], [2 x [3 x i32]]* [[TMP1]], i64 0, i64 [[TMP11]], i64 [[TMP17]]
+// CHECK-NEXT:    store i32 [[TMP27]], i32* [[TMP29]], align 4
+// CHECK-NEXT:    [[TMP30:%.*]] = getelementptr inbounds [2 x [3 x i32]], [2 x [3 x i32]]* [[TMP1]], i64 0, i64 [[TMP11]], i64 [[TMP18]]
+// CHECK-NEXT:    store i32 [[TMP28]], i32* [[TMP30]], align 4
+// CHECK-NEXT:    [[TMP31:%.*]] = load float, float* [[TMP24]], align 4
+// CHECK-NEXT:    [[TMP32:%.*]] = load float, float* [[TMP25]], align 4
+// CHECK-NEXT:    [[TMP33:%.*]] = getelementptr inbounds [2 x [3 x float]], [2 x [3 x float]]* [[TMP3]], i64 0, i64 [[TMP11]], i64 [[TMP17]]
+// CHECK-NEXT:    store float [[TMP31]], float* [[TMP33]], align 4
+// CHECK-NEXT:    [[TMP34:%.*]] = getelementptr inbounds [2 x [3 x float]], [2 x [3 x float]]* [[TMP3]], i64 0, i64 [[TMP11]], i64 [[TMP18]]
+// CHECK-NEXT:    store float [[TMP32]], float* [[TMP34]], align 4
+// CHECK-NEXT:    br label [[IS_SMALLER_THAN_AFTER]]
+ENTRY main {
+  x = s32[2, 3] parameter(0)
+  y = f32[2, 3] parameter(1)
+  ROOT sort = (s32[2, 3], f32[2, 3]) sort(x, y), dimensions={1}, to_apply=compare
+}

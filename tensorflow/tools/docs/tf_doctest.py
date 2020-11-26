@@ -29,7 +29,6 @@ from absl.testing import absltest
 import numpy as np
 import tensorflow.compat.v2 as tf
 
-import tensorflow.python as tf_root
 from tensorflow.tools.docs import tf_doctest_lib
 
 # We put doctest after absltest so that it picks up the unittest monkeypatch.
@@ -46,6 +45,8 @@ flags.DEFINE_list('module_prefix_skip', [],
 flags.DEFINE_boolean('list', None,
                      'List all the modules in the core package imported.')
 flags.DEFINE_string('file', None, 'A specific file to run doctest on.')
+flags.DEFINE_integer('required_gpus', 0,
+                     'The number of GPUs required for the tests.')
 
 flags.mark_flags_as_mutual_exclusive(['module', 'file'])
 flags.mark_flags_as_mutual_exclusive(['list', 'file'])
@@ -128,6 +129,38 @@ def get_module_and_inject_docstring(file_path):
   return [file_module]
 
 
+def setup_gpu(required_gpus):
+  """Sets up the GPU devices.
+
+  If there're more available GPUs than needed, it hides the additional ones. If
+  there're less, it creates logical devices. This is to make sure the tests see
+  a fixed number of GPUs regardless of the environment.
+
+  Args:
+    required_gpus: an integer. The number of GPUs required.
+
+  Raises:
+    ValueError: if num_gpus is larger than zero but no GPU is available.
+  """
+  if required_gpus == 0:
+    return
+  available_gpus = tf.config.experimental.list_physical_devices('GPU')
+  if not available_gpus:
+    raise ValueError('requires at least one physical GPU')
+  if len(available_gpus) >= required_gpus:
+    tf.config.set_visible_devices(available_gpus[:required_gpus])
+  else:
+    # Create logical GPUs out of one physical GPU for simplicity. Note that the
+    # other physical GPUs are still available and corresponds to one logical GPU
+    # each.
+    num_logical_gpus = required_gpus - len(available_gpus) + 1
+    logical_gpus = [
+        tf.config.LogicalDeviceConfiguration(memory_limit=256)
+        for _ in range(num_logical_gpus)
+    ]
+    tf.config.set_logical_device_configuration(available_gpus[0], logical_gpus)
+
+
 class TfTestCase(tf.test.TestCase):
 
   def set_up(self, test):
@@ -156,8 +189,9 @@ def load_tests(unused_loader, tests, unused_ignore):
     tf_modules = get_module_and_inject_docstring(FLAGS.file)
 
   for module in tf_modules:
-    if any(module.__name__.startswith(PACKAGE + prefix)
-           for prefix in FLAGS.module_prefix_skip):
+    if any(
+        module.__name__.startswith(PACKAGE + prefix)
+        for prefix in FLAGS.module_prefix_skip):
       continue
     testcase = TfTestCase()
     tests.addTests(
@@ -178,6 +212,18 @@ def load_tests(unused_loader, tests, unused_ignore):
         ))
   return tests
 
+
+# We can only create logical devices before initializing Tensorflow. This is
+# called by unittest framework before running any test.
+# https://docs.python.org/3/library/unittest.html#setupmodule-and-teardownmodule
+def setUpModule():
+  setup_gpu(FLAGS.required_gpus)
+
+
 if __name__ == '__main__':
-  recursive_import(tf_root)
+  # Use importlib to import python submodule of tensorflow.
+  # We delete python submodule in root __init__.py file. This means
+  # normal import won't work for some Python versions.
+  tf_python_root = importlib.import_module(PACKAGE[:-1])
+  recursive_import(tf_python_root)
   absltest.main()

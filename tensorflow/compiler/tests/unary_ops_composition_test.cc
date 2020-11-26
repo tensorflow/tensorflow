@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/synchronization/notification.h"
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -42,6 +43,11 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
+
+static bool Initialized = [] {
+  tensorflow::GetXlaDeviceFlags()->tf_xla_enable_xla_devices = true;
+  return true;
+}();
 
 class UnaryOpsCompositionTest : public OpsTestBase {
  protected:

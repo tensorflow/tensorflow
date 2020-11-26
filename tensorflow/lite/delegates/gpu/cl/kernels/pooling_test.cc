@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/cl/kernels/pooling.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/pooling.h"
 
 #include <vector>
 
@@ -52,9 +52,11 @@ TEST_F(OpenCLOperationTest, AveragePooling) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      Pooling operation = CreatePooling(op_def, attr);
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 1, 1, 2), &dst_tensor));
+      GPUOperation operation = CreatePooling(op_def, attr);
+      ASSERT_OK(ExecuteGPUOperation(
+          src_tensor, creation_context_,
+          absl::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 1, 1, 2), &dst_tensor));
       EXPECT_THAT(dst_tensor.data, Pointwise(FloatNear(eps), {3.0f, 4.0f}));
     }
   }
@@ -81,9 +83,11 @@ TEST_F(OpenCLOperationTest, AveragePoolingNonEmptyPadding) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      Pooling operation = CreatePooling(op_def, attr);
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 2, 2, 1), &dst_tensor));
+      GPUOperation operation = CreatePooling(op_def, attr);
+      ASSERT_OK(ExecuteGPUOperation(
+          src_tensor, creation_context_,
+          absl::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 2, 2, 1), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
                   Pointwise(FloatNear(eps), {1.5f, 2.0f, 2.5f, 3.0f}));
     }
@@ -111,9 +115,11 @@ TEST_F(OpenCLOperationTest, MaxPooling) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      Pooling operation = CreatePooling(op_def, attr);
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 1, 1, 2), &dst_tensor));
+      GPUOperation operation = CreatePooling(op_def, attr);
+      ASSERT_OK(ExecuteGPUOperation(
+          src_tensor, creation_context_,
+          absl::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 1, 1, 2), &dst_tensor));
       EXPECT_THAT(dst_tensor.data, Pointwise(FloatNear(eps), {8.0f, 7.0f}));
     }
   }
@@ -143,10 +149,12 @@ TEST_F(OpenCLOperationTest, MaxPoolingIndices) {
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       TensorFloat32 dst_tensor_ind;
-      Pooling operation = CreatePooling(op_def, attr);
-      ASSERT_OK(ExecuteGPUOperation({src_tensor}, creation_context_, &operation,
-                                    {BHWC(1, 1, 1, 2), BHWC(1, 1, 1, 2)},
-                                    {&dst_tensor, &dst_tensor_ind}));
+      GPUOperation operation = CreatePooling(op_def, attr);
+      ASSERT_OK(ExecuteGPUOperation(
+          {src_tensor}, creation_context_,
+          absl::make_unique<GPUOperation>(std::move(operation)),
+          {BHWC(1, 1, 1, 2), BHWC(1, 1, 1, 2)},
+          {&dst_tensor, &dst_tensor_ind}));
       EXPECT_THAT(dst_tensor.data, Pointwise(FloatNear(eps), {8.0f, 7.0f}));
       for (auto& v : dst_tensor_ind.data) {
         v = static_cast<int>(v);

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/c/eager/parallel_device/parallel_device_lib.h"
 
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -57,7 +58,7 @@ using ExecutorPtr = std::unique_ptr<TFE_Executor, ExecutorDeleter>;
 class DeviceThread {
  public:
   // Starts a background thread waiting for `StartExecute`.
-  explicit DeviceThread(const std::string& device)
+  explicit DeviceThread(const std::string& device, const bool is_async)
       : status_(TF_NewStatus()),
         device_(device),
         // If the context's default exector is set to async, re-using that in
@@ -66,7 +67,7 @@ class DeviceThread {
         //
         // TODO(allenl): We should have an async API that works with the
         // parallel device.
-        executor_(TFE_NewExecutor(/*is_async=*/false)),
+        executor_(TFE_NewExecutor(is_async)),
         op_(nullptr),
         thread_(tensorflow::Env::Default()->StartThread(
             tensorflow::ThreadOptions(), "parallel_device_execute",
@@ -118,6 +119,9 @@ class DeviceThread {
   int expected_max_outputs_ TF_GUARDED_BY(execution_mutex_);
   //   Outputs
   std::vector<TensorHandlePtr> op_outputs_ TF_GUARDED_BY(execution_mutex_);
+  // TF_Status is an incomplete type and so can't be stack allocated. To avoid
+  // unnecessary allocations each Execute call, we keep one heap-allocated
+  // version for the thread.
   StatusPtr status_ TF_GUARDED_BY(execution_mutex_);
 
   const std::string device_;
@@ -188,6 +192,9 @@ std::vector<TensorHandlePtr> DeviceThread::Join(TF_Status* status) {
     if (TF_GetCode(status_.get()) != TF_OK) {
       TF_SetStatus(status, TF_GetCode(status_.get()),
                    TF_Message(status_.get()));
+      // Reset the member `status_` so future op executions (after recovery from
+      // the bad `status`) start with an OK status.
+      TF_SetStatus(status_.get(), TF_OK, "");
     }
     execution_state_ = ExecutionState::kIdle;
     result = std::move(op_outputs_);
@@ -229,12 +236,13 @@ void DeviceThread::Execute(TFE_Context* context, const char* operation_name,
   }
 }
 
-ParallelDevice::ParallelDevice(const std::vector<std::string>& devices)
+ParallelDevice::ParallelDevice(const std::vector<std::string>& devices,
+                               const bool is_async)
     : underlying_devices_(devices) {
   device_threads_.reserve(devices.size());
   for (int device_index = 0; device_index < devices.size(); ++device_index) {
     device_threads_.emplace_back(
-        new DeviceThread(devices[device_index].c_str()));
+        new DeviceThread(devices[device_index].c_str(), is_async));
   }
 }
 
@@ -255,18 +263,27 @@ std::unique_ptr<ParallelTensor> ParallelDevice::CopyToParallelDevice(
                                            status);
 }
 
-std::unique_ptr<ParallelTensor> ParallelDevice::DeviceIDs(
-    TFE_Context* context, TF_Status* status) const {
+std::unique_ptr<ParallelTensor> ParallelDevice::Vector(
+    TFE_Context* context, TF_Status* status,
+    absl::Span<const int32_t> values) const {
   // TODO(allenl): We could cache DeviceIDs (keyed by context).
   std::vector<TensorHandlePtr> components;
   components.reserve(underlying_devices_.size());
-  for (int device_index = 0; device_index < underlying_devices_.size();
+
+  if (values.size() != num_underlying_devices()) {
+    TF_SetStatus(
+        status, TF_INVALID_ARGUMENT,
+        "Number of values did not match number of underlying devices.");
+    return nullptr;
+  }
+
+  for (int device_index = 0; device_index < num_underlying_devices();
        ++device_index) {
-    int32_t* device_id = new int32_t;
-    *device_id = device_index;
+    int32_t* device_value = new int32_t;
+    *device_value = values[device_index];
     std::unique_ptr<TF_Tensor, decltype(&TF_DeleteTensor)> tensor(
         TF_NewTensor(
-            TF_INT32, /*dims=*/nullptr, /*num_dims=*/0, device_id,
+            TF_INT32, /*dims=*/nullptr, /*num_dims=*/0, device_value,
             sizeof(int32_t),
             [](void* data, size_t, void* arg) {
               delete reinterpret_cast<int32_t*>(data);
@@ -295,12 +312,33 @@ std::unique_ptr<ParallelTensor> ParallelDevice::DeviceIDs(
                                            status);
 }
 
+std::unique_ptr<ParallelTensor> ParallelDevice::DeviceIDs(
+    TFE_Context* context, TF_Status* status) const {
+  std::vector<int32_t> ids;
+  ids.reserve(num_underlying_devices());
+  for (int i = 0; i < num_underlying_devices(); ++i) {
+    ids.push_back(i);
+  }
+  return Vector(context, status, ids);
+}
+
 absl::optional<std::vector<std::unique_ptr<ParallelTensor>>>
 ParallelDevice::Execute(TFE_Context* context,
                         const std::vector<ParallelTensor*>& inputs,
                         const char* operation_name,
                         const TFE_OpAttrs* attributes, int expected_max_outputs,
                         TF_Status* status) const {
+  std::vector<PartialTensorShape> expected_output_shapes(expected_max_outputs);
+  return Execute(context, inputs, operation_name, attributes,
+                 expected_output_shapes, status);
+}
+
+absl::optional<std::vector<std::unique_ptr<ParallelTensor>>>
+ParallelDevice::Execute(
+    TFE_Context* context, const std::vector<ParallelTensor*>& inputs,
+    const char* operation_name, const TFE_OpAttrs* attributes,
+    const std::vector<PartialTensorShape>& expected_output_shapes,
+    TF_Status* status) const {
   absl::optional<std::vector<std::unique_ptr<ParallelTensor>>> result;
   // Compute per-device per-output tensors
   std::vector<std::vector<TensorHandlePtr>> per_device_output_tensors;
@@ -317,22 +355,37 @@ ParallelDevice::Execute(TFE_Context* context,
     }
     device_thread->StartExecute(context, operation_name,
                                 std::move(device_inputs), attributes,
-                                expected_max_outputs);
+                                expected_output_shapes.size());
   }
+  StatusPtr first_bad_status(nullptr);
   for (int device_index = 0; device_index < underlying_devices_.size();
        ++device_index) {
     DeviceThread* device_thread = device_threads_[device_index].get();
     per_device_output_tensors.push_back(device_thread->Join(status));
-    if (TF_GetCode(status) != TF_OK) return result;
+    // We will run every Join even if there are bad statuses in case the user
+    // wants to recover and continue running ops on the parallel device (which
+    // would otherwise deadlock).
+    if (TF_GetCode(status) != TF_OK && first_bad_status == nullptr) {
+      first_bad_status.reset(TF_NewStatus());
+      TF_SetStatus(first_bad_status.get(), TF_GetCode(status),
+                   TF_Message(status));
+    }
+
     if (device_index == 0) {
       first_op_output_count = per_device_output_tensors.rbegin()->size();
     } else {
-      if (per_device_output_tensors.rbegin()->size() != first_op_output_count) {
-        TF_SetStatus(status, TF_INTERNAL,
+      if (first_bad_status == nullptr &&
+          per_device_output_tensors.rbegin()->size() != first_op_output_count) {
+        first_bad_status.reset(TF_NewStatus());
+        TF_SetStatus(first_bad_status.get(), TF_INTERNAL,
                      "Parallel ops produced different numbers of tensors.");
-        return result;
       }
     }
+  }
+  if (first_bad_status != nullptr) {
+    TF_SetStatus(status, TF_GetCode(first_bad_status.get()),
+                 TF_Message(first_bad_status.get()));
+    return result;
   }
   // For each output of the original operation, pack the per-device
   // TensorHandles we've computed into a single parallel TensorHandle.
@@ -344,8 +397,15 @@ ParallelDevice::Execute(TFE_Context* context,
     for (int j = 0; j < underlying_devices_.size(); ++j) {
       components.push_back(std::move(per_device_output_tensors[j][i]));
     }
-    per_device_outputs.push_back(ParallelTensor::FromTensorHandles(
-        *this, std::move(components), status));
+    if (expected_output_shapes[i].IsFullyDefined()) {
+      per_device_outputs.push_back(ParallelTensor::FromTensorHandles(
+          *this, std::move(components),
+          absl::Span<const int64>(expected_output_shapes[i].dim_sizes()),
+          status));
+    } else {
+      per_device_outputs.push_back(ParallelTensor::FromTensorHandles(
+          *this, std::move(components), status));
+    }
     if (TF_GetCode(status) != TF_OK) return result;
   }
   result.emplace(std::move(per_device_outputs));
@@ -354,9 +414,27 @@ ParallelDevice::Execute(TFE_Context* context,
 
 std::unique_ptr<ParallelTensor> ParallelTensor::FromTensorHandles(
     const ParallelDevice& parallel_device,
-    std::vector<TensorHandlePtr> components, TF_Status* status) {
+    std::vector<TensorHandlePtr> components, absl::Span<const int64> shape,
+    TF_Status* status) {
   TF_DataType dtype = TFE_TensorHandleDataType(components[0].get());
-  std::vector<int64_t> shape(
+  // Verify that the TensorHandle's shape and dtype match all of the component
+  // shapes and dtypes.
+  for (TensorHandlePtr& component : components) {
+    if (TFE_TensorHandleDataType(component.get()) != dtype) {
+      TF_SetStatus(status, TF_INTERNAL,
+                   "Components of a ParallelTensor must all have "
+                   "the same dtype");
+      return nullptr;
+    }
+  }
+  return std::unique_ptr<ParallelTensor>(
+      new ParallelTensor(parallel_device, std::move(components), shape, dtype));
+}
+
+std::unique_ptr<ParallelTensor> ParallelTensor::FromTensorHandles(
+    const ParallelDevice& parallel_device,
+    std::vector<TensorHandlePtr> components, TF_Status* status) {
+  std::vector<int64> shape(
       TFE_TensorHandleNumDims(components[0].get(), status));
   if (TF_GetCode(status) != TF_OK) return nullptr;
   for (int i = 0; i < shape.size(); ++i) {
@@ -364,11 +442,10 @@ std::unique_ptr<ParallelTensor> ParallelTensor::FromTensorHandles(
     if (TF_GetCode(status) != TF_OK) return nullptr;
   }
 
-  // Verify that the TensorHandle's shape and dtype match all of the component
-  // shapes and dtypes.
+  // Verify that the TensorHandle's shape matches all of the component shapes.
   for (TensorHandlePtr& component : components) {
     for (int i = 0; i < shape.size(); ++i) {
-      int64_t tensor_dim = TFE_TensorHandleDim(component.get(), i, status);
+      int64 tensor_dim = TFE_TensorHandleDim(component.get(), i, status);
       if (TF_GetCode(status) != TF_OK) return nullptr;
       if (tensor_dim != shape[i]) {
         // TODO(allenl): Allow shapes to differ.
@@ -377,17 +454,10 @@ std::unique_ptr<ParallelTensor> ParallelTensor::FromTensorHandles(
                      "the same shape");
         return nullptr;
       }
-      if (TFE_TensorHandleDataType(component.get()) != dtype) {
-        TF_SetStatus(status, TF_INTERNAL,
-                     "Components of a ParallelTensor must all have "
-                     "the same dtype");
-        return nullptr;
-      }
     }
   }
-
-  return std::unique_ptr<ParallelTensor>(new ParallelTensor(
-      parallel_device, std::move(components), std::move(shape), dtype));
+  return FromTensorHandles(parallel_device, std::move(components),
+                           absl::Span<const int64>(shape), status);
 }
 
 }  // namespace parallel_device

@@ -1248,5 +1248,60 @@ TEST_F(DynamicDimensionInferenceTest, InfersCustomOp) {
   EXPECT_TRUE(handler_called);
 }
 
+TEST_F(DynamicDimensionInferenceTest, DynamicReshapeOp) {
+  auto builder = HloComputation::Builder(TestName());
+  auto input = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {9}), "data_input"));
+  auto six = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(6)));
+  // Creates an input of shape [<=9], dynamic size is 6.
+  auto dynamic_input =
+      builder.AddInstruction(HloInstruction::CreateSetDimensionSize(
+          ShapeUtil::MakeShape(F32, {9}, {true}), input, six, 0));
+  auto dynamic_size = builder.AddInstruction(HloInstruction::CreateParameter(
+      1, ShapeUtil::MakeShape(S32, {}), "size_param"));
+  auto three = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(3)));
+
+  // Reshape [<=9] into [3, <=3]
+
+  auto dynamic_reshape =
+      builder.AddInstruction(HloInstruction::CreateDynamicReshape(
+          ShapeUtil::MakeShape(F32, {3, 3}, {false, true}), dynamic_input,
+          {three, dynamic_size}));
+
+  module_->AddEntryComputation(builder.Build());
+
+  TF_ASSERT_OK(RunInference());
+  EXPECT_EQ(inference_->GetDynamicSize(dynamic_reshape, {}, 0), nullptr);
+  EXPECT_EQ(inference_->GetDynamicSize(dynamic_reshape, {}, 1), dynamic_size);
+}
+
+TEST_F(DynamicDimensionInferenceTest, ReshapeOpWithMultipleDynamicDimensions) {
+  auto builder = HloComputation::Builder(TestName());
+  auto input = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {9, 2}), "data_input"));
+  auto six = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(6)));
+  input = builder.AddInstruction(HloInstruction::CreateSetDimensionSize(
+      ShapeUtil::MakeShape(F32, {9, 2}, {true, false}), input, six, 0));
+  auto one = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(1)));
+  input = builder.AddInstruction(HloInstruction::CreateSetDimensionSize(
+      ShapeUtil::MakeShape(F32, {9, 2}, {true, true}), input, one, 1));
+
+  // Reshape [<=9, <=2] into [<=9, 1, <=2]
+
+  auto dynamic_reshape = builder.AddInstruction(HloInstruction::CreateReshape(
+      ShapeUtil::MakeShape(F32, {9, 1, 2}, {true, false, true}), input));
+
+  module_->AddEntryComputation(builder.Build());
+
+  TF_ASSERT_OK(RunInference());
+  EXPECT_EQ(inference_->GetDynamicSize(dynamic_reshape, {}, 0), six);
+  EXPECT_EQ(inference_->GetDynamicSize(dynamic_reshape, {}, 1), nullptr);
+  EXPECT_EQ(inference_->GetDynamicSize(dynamic_reshape, {}, 2), one);
+}
+
 }  // namespace
 }  // namespace xla

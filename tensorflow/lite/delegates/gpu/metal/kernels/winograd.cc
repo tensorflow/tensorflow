@@ -613,8 +613,7 @@ std::vector<ComputeTaskDescriptorPtr> Winograd4x4To36TileX6(
        }},
   };
 
-  desc->resize_function = [output_id,
-                           attr](const std::map<ValueId, BHWC>& buffers) {
+  desc->resize_function = [output_id](const std::map<ValueId, BHWC>& buffers) {
     const uint3 groups_size{4, 6, 1};
     const auto& dst_shape = buffers.find(output_id)->second;
     int grid_x = dst_shape.w;

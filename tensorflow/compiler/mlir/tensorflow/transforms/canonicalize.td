@@ -108,12 +108,6 @@ def ConvertToConcatV2 : Pat<(TF_ConcatOp $axis, $inputs),
                             (TF_ConcatV2Op $inputs, $axis)>;
 
 //===----------------------------------------------------------------------===//
-// Conj op patterns.
-//===----------------------------------------------------------------------===//
-
-def ConjNested : Pat<(TF_ConjOp (TF_ConjOp $arg)), (replaceWithValue $arg)>;
-
-//===----------------------------------------------------------------------===//
 // Div op patterns.
 //===----------------------------------------------------------------------===//
 
@@ -122,24 +116,26 @@ def DivWithSqrtDivisor : Pat<(TF_DivOp $arg0, (TF_SqrtOp $arg1)),
                              (TF_MulOp $arg0, (TF_RsqrtOp $arg1))>;
 
 //===----------------------------------------------------------------------===//
-// Invert op patterns.
-//===----------------------------------------------------------------------===//
-
-def InvertNested : Pat<(TF_InvertOp (TF_InvertOp $arg)),
-                       (replaceWithValue $arg)>;
-
-//===----------------------------------------------------------------------===//
 // Log op patterns.
 //===----------------------------------------------------------------------===//
 
 def LogOfSoftmax : Pat<(TF_LogOp (TF_SoftmaxOp $arg)), (TF_LogSoftmaxOp $arg)>;
 
+// Canonicalize: Log(1.0 + x) to Log1p(x)
+//
+// We currently do this rewrite only if the constant `1` is a scalar, because
+// it is safely broadcastable to any shape. To be able to canonicalize when
+// constant values is not a scalar, we have to first prove that it is
+// broadcastable to `x`, which requires static shape information.
+def LogToLog1p : Pat<
+    (TF_LogOp (TF_AddV2Op
+                $arg,
+                (TF_ConstOp ConstantAttr<RankedF32ElementsAttr<[]>, "1.0f">))),
+    (TF_Log1pOp $arg)>;
+
 //===----------------------------------------------------------------------===//
 // LogicalNot op patterns.
 //===----------------------------------------------------------------------===//
-
-def LogicalNotNested : Pat<(TF_LogicalNotOp (TF_LogicalNotOp $arg)),
-                           (replaceWithValue $arg)>;
 
 def LogicalNotOfEqual : Pat<
     (TF_LogicalNotOp (TF_EqualOp $arg0, $arg1, $shape_error)),
@@ -163,10 +159,24 @@ def LogicalNotOfLessEqual : Pat<(TF_LogicalNotOp (TF_LessEqualOp $arg0, $arg1)),
                                 (TF_GreaterOp $arg0, $arg1)>;
 
 //===----------------------------------------------------------------------===//
-// Neg op patterns.
+// MatrixSetDiag op patterns.
 //===----------------------------------------------------------------------===//
 
-def NegNested : Pat<(TF_NegOp (TF_NegOp $arg)), (replaceWithValue $arg)>;
+class GetI32Attr<int x>: NativeCodeCall<
+  "$_builder.getI32IntegerAttr(" # x # ")">;
+
+class GetStrAttr<string x>: NativeCodeCall<
+  "$_builder.getStringAttr(\"" # x # "\")">;
+
+def MatrixSetDiagToV3 : Pat<(TF_MatrixSetDiagOp $input, $diag),
+                            (TF_MatrixSetDiagV3Op $input, $diag,
+                              (TF_ConstOp (GetI32Attr<0>)),
+                              (GetStrAttr<"RIGHT_LEFT">))>;
+
+// MatrixSetDiagToV2 op implicitly used LEFT_LEFT alignment.
+def MatrixSetDiagV2ToV3 : Pat<(TF_MatrixSetDiagV2Op $input, $diag, $k),
+                              (TF_MatrixSetDiagV3Op $input, $diag, $k,
+                                (GetStrAttr<"LEFT_LEFT">))>;
 
 //===----------------------------------------------------------------------===//
 // RealDiv op patterns.
@@ -175,12 +185,22 @@ def NegNested : Pat<(TF_NegOp (TF_NegOp $arg)), (replaceWithValue $arg)>;
 def RealDivWithSqrtDivisor : Pat<(TF_RealDivOp $arg0, (TF_SqrtOp $arg1)),
                                  (TF_MulOp $arg0, (TF_RsqrtOp $arg1))>;
 
+// Replace division by a constant with a multiplication by a reciprocal of that
+// constant. Floating point division can be ~10x more expensive than a
+// multiplication.
+def RealDivWithConstDivisor : Pat<
+  (TF_RealDivOp $arg0, (TF_ConstOp FloatElementsAttr<32>:$value)),
+  (TF_MulOp $arg0, (TF_ReciprocalOp (TF_ConstOp $value)))>;
+
 //===----------------------------------------------------------------------===//
-// Reciprocal op patterns.
+// Reshape op patterns.
 //===----------------------------------------------------------------------===//
 
-def ReciprocalNested : Pat<(TF_ReciprocalOp (TF_ReciprocalOp $arg)),
-                           (replaceWithValue $arg)>;
+def RedundantReshape : Pat<(TF_ReshapeOp (TF_ReshapeOp $arg, $unused), $shape),
+                           (TF_ReshapeOp $arg, $shape)>;
+
+def ReshapeToSelfShape : Pat<(TF_ReshapeOp $x, (TF_ShapeOp $x)),
+                         (replaceWithValue $x)>;
 
 //===----------------------------------------------------------------------===//
 // Select op patterns.

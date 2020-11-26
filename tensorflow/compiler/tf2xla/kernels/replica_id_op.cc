@@ -30,7 +30,8 @@ class XlaReplicaIdOp : public XlaOpKernel {
 };
 
 void XlaReplicaIdOp::Compile(XlaOpKernelContext* ctx) {
-  ctx->SetOutput(0, xla::ReplicaId(ctx->builder()));
+  ctx->SetOutput(
+      0, xla::ConvertElementType(xla::ReplicaId(ctx->builder()), xla::S32));
 }
 
 REGISTER_XLA_OP(Name("XlaReplicaId"), XlaReplicaIdOp);

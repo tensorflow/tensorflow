@@ -265,7 +265,7 @@ class StackOpRefTest(test.TestCase):
       h2 = gen_data_flow_ops._stack(dtypes.float32, stack_name="foo")
       c2 = gen_data_flow_ops.stack_push(h2, 5.0)
       _ = c1 + c2
-      self.assertNotEqual(h1.eval()[1], self.evaluate(h2)[1])
+      self.assertNotEqual(self.evaluate(h1)[1], self.evaluate(h2)[1])
 
   @test_util.run_deprecated_v1
   def testSameNameStacks(self):

@@ -15,14 +15,13 @@
 # ==============================================================================
 
 set -e
-set -x
 
-WORKSPACE_ROOT=$(bazel info workspace)
+WORKSPACE_ROOT=$(bazel info workspace 2> /dev/null)
 BENCHMARK_DIR=tensorflow/lite/tools/benchmark
 DEST_DIR="${BENCHMARK_DIR}/ios/TFLiteBenchmark/TFLiteBenchmark/Frameworks"
 FRAMEWORK_TARGET=TensorFlowLiteBenchmarkC_framework
 
-usage() {
+function usage() {
   echo "Usage: $(basename "$0") [-p]"
   echo "-p enable profiling"
   exit 1
@@ -37,19 +36,35 @@ while getopts "p" opt_name; do
 done
 shift $(($OPTIND - 1))
 
-pushd "${WORKSPACE_ROOT}"
+function check_ios_configured() {
+  if [ ! -f "${WORKSPACE_ROOT}/${BENCHMARK_DIR}/experimental/ios/BUILD" ]; then
+    echo "ERROR: Benchmark framework BUILD file not found."
+    echo "Please enable iOS support by running the \"./configure\" script" \
+         "from the workspace root."
+    exit 1
+  fi
+}
+
+function build_framework() {
+  set -x
+  pushd "${WORKSPACE_ROOT}"
 
 # Build the framework.
-bazel build --config=ios_fat -c opt ${PROFILING_ARGS} \
-    "//${BENCHMARK_DIR}/experimental/ios:${FRAMEWORK_TARGET}"
+  bazel build --config=ios_fat -c opt ${PROFILING_ARGS} \
+      "//${BENCHMARK_DIR}/experimental/ios:${FRAMEWORK_TARGET}"
 
 # Copy the framework into the destination and unzip.
-mkdir -p "${DEST_DIR}"
-cp -f "bazel-bin/${BENCHMARK_DIR}/experimental/ios/${FRAMEWORK_TARGET}.zip" \
-    "${DEST_DIR}"
-pushd "${DEST_DIR}"
-unzip -o "${FRAMEWORK_TARGET}.zip"
-rm -f "${FRAMEWORK_TARGET}.zip"
+  mkdir -p "${DEST_DIR}"
+  cp -f "bazel-bin/${BENCHMARK_DIR}/experimental/ios/${FRAMEWORK_TARGET}.zip" \
+      "${DEST_DIR}"
+  pushd "${DEST_DIR}"
+  unzip -o "${FRAMEWORK_TARGET}.zip"
+  rm -f "${FRAMEWORK_TARGET}.zip"
 
-popd
-popd
+  popd
+  popd
+}
+
+check_ios_configured
+build_framework
+

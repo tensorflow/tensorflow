@@ -16,6 +16,9 @@ limitations under the License.
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_COLLECTIVE_PARAM_RESOLVER_DISTRIBUTED_H_
 
 #include "tensorflow/core/common_runtime/collective_param_resolver_local.h"
+#include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 class ConfigProto;
@@ -31,7 +34,7 @@ class CollectiveParamResolverDistributed : public CollectiveParamResolverLocal {
                                      WorkerCacheInterface* worker_cache,
                                      const string& task_name);
 
-  void CompleteParamsAsync(const string& device, CollectiveParams* cp,
+  void CompleteParamsAsync(const DeviceAttributes& device, CollectiveParams* cp,
                            CancellationManager* cancel_mgr,
                            const StatusCallback& done) override;
 
@@ -45,10 +48,12 @@ class CollectiveParamResolverDistributed : public CollectiveParamResolverLocal {
                              CancellationManager* cancel_mgr,
                              const StatusCallback& done) override;
 
+  void StartAbort(const Status& s) override;
+
  protected:
-  // Returns true iff there's an entry for this group_key in the
-  // local group_table_.
-  bool GroupIsCached(int32 group_key) TF_LOCKS_EXCLUDED(group_mu_);
+  // Returns the cached group iff there's an entry for this group_key in the
+  // local group_table_; returns nullptr otherwise.
+  GroupRec* GetCachedGroup(int32 group_key) TF_LOCKS_EXCLUDED(group_mu_);
 
   // Updates group_table_ with contents of resp.
   Status UpdateGroupCache(const CompleteGroupResponse& resp)
@@ -59,18 +64,19 @@ class CollectiveParamResolverDistributed : public CollectiveParamResolverLocal {
   //
   // Semantics are like those of CompleteGroupLocal but will make a
   // remote call to the group leader if necessary.
-  void CompleteGroupDistributed(const string& device, CollectiveParams* cp,
+  void CompleteGroupDistributed(const DeviceAttributes& device,
+                                CollectiveParams* cp,
                                 CancellationManager* cancel_mgr,
                                 const GroupRecCallback& done);
 
   // Returns true iff there's an entry for this instance_key in the
   // local instance_table_.
-  bool InstanceIsCached(int32 instance_key) TF_LOCKS_EXCLUDED(instance_mu_);
+  bool InstanceIsCached(int32 group_key, int32 instance_key)
+      TF_LOCKS_EXCLUDED(instance_mu_);
 
   // Updates instance_table_ with contents of resp.
-  void UpdateInstanceCache(const GroupRec* gr, CollectiveParams* cp,
-                           const CompleteInstanceResponse& resp,
-                           const StatusCallback& done)
+  Status UpdateInstanceCache(const GroupRec* gr, CollectiveParams* cp,
+                             const CompleteInstanceResponse& resp)
       TF_LOCKS_EXCLUDED(instance_mu_, gr->mu, group_mu_);
 
   // Finish populating *cp.  Semantics are like those of
@@ -84,6 +90,7 @@ class CollectiveParamResolverDistributed : public CollectiveParamResolverLocal {
 
   WorkerCacheInterface* worker_cache_;  // Not owned
   const string group_leader_;
+  CancellationManager abortion_cancel_mgr_;
 };
 
 }  // namespace tensorflow

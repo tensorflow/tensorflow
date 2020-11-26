@@ -201,8 +201,10 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
   // Merging into all users enables the removal of 'fusion' from the
   // computation.
   if (!absl::c_all_of(fusion->users(), [&](const HloInstruction* user) {
-        return user->opcode() == HloOpcode::kFusion &&
-               IsProducerConsumerFusible(*fusion, *user);
+        return IsProducerConsumerFusible(*fusion, *user) &&
+               // Do not fuse into bitcast ops, which are no-ops and do not
+               // generate any GPU code.
+               user->opcode() != HloOpcode::kBitcast;
       })) {
     VLOG(3) << "Not merging " << fusion->name()
             << ": Some of its users are not loop/input fusion kernels.";
@@ -230,18 +232,15 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
   // This is done to avoid the duplication of expensive instructions, which
   // would occur if 'fusion' were merged into multiple users.
   //
-  // If 'fusion' has just one user, then an earlier fusion pass chose not to
-  // fuse this producer/consumer pair (likely because of expensive instruction
-  // re-use by the consumer), and so we honor that choice here as well.
-  //
-  // Moreover, if we are going to save a "lot" in memory bandwidth then we
+  // However, if we are going to save a "lot" in memory bandwidth then we
   // ignore how expensive the fusion instructions are.  The heuristic used to
   // determine "a lot" is the following: merging must reduce memory traffic by a
   // factor of 0.3, and the amount of memory accessed must not be entirely
   // trivial (above 1K).  This likely has room for improvement in the future.
 
   bool allow_expensive_ops =
-      merged_to_current_bytes_ratio < 0.3 && current_bytes_transferred > 1024;
+      fusion->user_count() == 1 ||
+      (merged_to_current_bytes_ratio < 0.3 && current_bytes_transferred > 1024);
 
   if (!allow_expensive_ops &&
       absl::c_any_of(fusion->fused_instructions(),
@@ -286,7 +285,15 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
   // Merge fused instructions from 'fusion' into each user.
   std::vector<HloInstruction*> users = fusion->users();
   for (HloInstruction* user : users) {
-    user->MergeFusionInstruction(fusion);
+    if (user->opcode() == HloOpcode::kFusion) {
+      user->MergeFusionInstruction(fusion);
+    } else {
+      HloInstruction* fused_user =
+          computation_->AddInstruction(HloInstruction::CreateFusion(
+              user->shape(), ChooseFusionKind(*fusion, *user), user));
+      TF_CHECK_OK(computation_->ReplaceInstruction(user, fused_user));
+      fused_user->MergeFusionInstruction(fusion);
+    }
     changed_ = true;
   }
   ++total_merged_;
@@ -299,7 +306,7 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
                            })
           << " }";
   // Remove 'fusion' instruction.
-  CHECK_EQ(0, fusion->user_count());
+  CHECK_EQ(0, fusion->user_count()) << fusion->ToString();
   return computation_->RemoveInstruction(fusion);
 }
 

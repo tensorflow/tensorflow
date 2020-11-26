@@ -10,6 +10,9 @@ tf_cc_test(
     srcs = [
         "saved_model_api_test.cc",
     ],
+    data = [
+        "//tensorflow/cc/saved_model:saved_model_half_plus_two",
+    ],
     deps = [
         "//tensorflow/cc/experimental/base/public:runtime",
         "//tensorflow/cc/experimental/base/public:runtime_builder",

@@ -38,7 +38,7 @@ function run_build () {
   tag_filters="-no_oss,-no_oss_py2,-gpu,-tpu,-benchmark-test,-nomac,-no_mac,-v1only"
 
   # Get the default test targets for bazel.
-  source tensorflow/tools/ci_build/build_scripts/PRESUBMIT_BUILD_TARGETS.sh
+  source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
 
   "${BAZEL_WRAPPER_PATH}" \
     test \
@@ -52,7 +52,7 @@ function run_build () {
     --strategy=Javac=standalone \
     --strategy=Closure=standalone \
     --genrule_strategy=standalone \
-    -- ${DEFAULT_BAZEL_TARGETS} -//tensorflow/lite/...
+    -- ${DEFAULT_BAZEL_TARGETS}
 
   # Copy log to output to be available to GitHub
   ls -la "$(bazel info output_base)/java.log"

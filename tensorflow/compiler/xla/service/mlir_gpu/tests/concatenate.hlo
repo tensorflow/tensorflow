@@ -8,6 +8,6 @@ ENTRY %Concatenate (x: f32[2,3], y: f32[2,2]) -> f32[2,5] {
 }
 
 // CHECK: func @concatenate(%[[ARG0:.*]]: [[TYPE0:.*]], %[[ARG1:.*]]: [[TYPE1:.*]], %[[RESULT:.*]]: [[RTYPE:.*]]) {
-// CHECK:   "xla_lhlo.concatenate"(%[[ARG0]], %[[ARG1]], %[[RESULT]])
+// CHECK:   "lmhlo.concatenate"(%[[ARG0]], %[[ARG1]], %[[RESULT]])
 // CHECK:   {dimension = 1 : i64} : ([[TYPE0]], [[TYPE1]], [[RTYPE]]) -> ()
 // CHECK: }

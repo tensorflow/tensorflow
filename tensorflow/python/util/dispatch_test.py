@@ -18,15 +18,21 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.linalg import linear_operator_diag
+from tensorflow.python.ops.proto_ops import decode_proto
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
+from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import get_canonical_name_for_symbol
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -56,6 +62,8 @@ class TensorTracer(object):
     self.name = name
     self.args = args
     self.kwargs = kwargs
+    self.shape = array_ops.ones(shape=(4, 4)).shape
+    self.dtype = dtypes.float32
 
   def __repr__(self):
     if self.args is None and self.kwargs is None:
@@ -66,9 +74,41 @@ class TensorTracer(object):
           ["{}={}".format(name, x) for (name, x) in self.kwargs.items()])
       return "{}({})".format(self.name, ", ".join(args))
 
+  @property
+  def is_tensor_like(self):
+    return True
+
+  @classmethod
+  def _overload_all_operators(cls):  # pylint: disable=invalid-name
+    """Register overloads for all operators."""
+    for operator in ops.Tensor.OVERLOADABLE_OPERATORS:
+      cls._overload_operator(operator)
+
+  @classmethod
+  def _overload_operator(cls, operator):  # pylint: disable=invalid-name
+    """Overload an operator with the same overloading as `ops.Tensor`."""
+    tensor_oper = getattr(ops.Tensor, operator)
+
+    # Compatibility with Python 2:
+    # Python 2 unbound methods have type checks for the first arg,
+    # so we need to extract the underlying function
+    tensor_oper = getattr(tensor_oper, "__func__", tensor_oper)
+    setattr(cls, operator, tensor_oper)
+
+TensorTracer._overload_all_operators()  # pylint: disable=protected-access
+
 
 class TensorTracerOpDispatcher(dispatch.GlobalOpDispatcher):
   """Global op dispatcher for TensorTracer."""
+
+  def _flatten_with_slice_flattening(self, x):
+    flat = []
+    for val in nest.flatten(x):
+      if isinstance(val, slice):
+        flat.extend((val.start, val.stop, val.step))
+      else:
+        flat.append(val)
+    return flat
 
   def handle(self, op, args, kwargs):
     # Dispatcher only applies if at least one arg is a TensorTracer.
@@ -76,14 +116,12 @@ class TensorTracerOpDispatcher(dispatch.GlobalOpDispatcher):
             any(self.is_tensor_tracer_arg(x) for x in kwargs.values())):
       return self.NOT_SUPPORTED
 
-    return TensorTracer(op.__name__, args, kwargs)
+    symbol_name = get_canonical_name_for_symbol(op)
+    return TensorTracer(symbol_name, args, kwargs)
 
   def is_tensor_tracer_arg(self, value):
-    if isinstance(value, TensorTracer):
-      return True
-    if isinstance(value, (list, tuple)):
-      if any(isinstance(x, TensorTracer) for x in value):
-        return True
+    return any(isinstance(x, TensorTracer) for x in
+               self._flatten_with_slice_flattening(value))
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -141,8 +179,10 @@ class DispatchTest(test_util.TensorFlowTestCase):
     test_op._tf_dispatchers = original_handlers
 
   def testDispatchForTypes_SignatureMismatch(self):
-    with self.assertRaisesRegexp(AssertionError, "The decorated function's "
-                                 "signature must exactly match.*"):
+    with self.assertRaisesRegex(
+        AssertionError, "The decorated function's "
+        "signature must exactly match.*"):
+
       @dispatch.dispatch_for_types(test_op, CustomTensor)
       def override_for_test_op(a, b, c):  # pylint: disable=unused-variable
         return CustomTensor(test_op(a.tensor, b.tensor, c.tensor),
@@ -152,7 +192,8 @@ class DispatchTest(test_util.TensorFlowTestCase):
     def some_op(x, y):
       return x + y
 
-    with self.assertRaisesRegexp(AssertionError, "Dispatching not enabled for"):
+    with self.assertRaisesRegex(AssertionError, "Dispatching not enabled for"):
+
       @dispatch.dispatch_for_types(some_op, CustomTensor)
       def override_for_some_op(x, y):  # pylint: disable=unused-variable
         return x if x.score > 0 else y
@@ -167,9 +208,8 @@ class DispatchTest(test_util.TensorFlowTestCase):
     some_op(5)
 
     message = mock_warning.call_args[0][0] % mock_warning.call_args[0][1:]
-    self.assertRegexpMatches(
-        message,
-        r".*some_op \(from __main__\) is deprecated and will be "
+    self.assertRegex(
+        message, r".*some_op \(from __main__\) is deprecated and will be "
         "removed in a future version.*")
 
   def testGlobalDispatcher(self):
@@ -181,12 +221,111 @@ class DispatchTest(test_util.TensorFlowTestCase):
       y = TensorTracer("y")
       trace = math_ops.reduce_sum(math_ops.add(math_ops.abs(x), y), axis=3)
       self.assertEqual(
-          str(trace), "reduce_sum(add(name=None, x=abs(x), y=y), axis=3)")
+          str(trace),
+          "math.reduce_sum(math.add(name=None, x=math.abs(x), y=y), axis=3)")
+
+      proto_val = TensorTracer("proto")
+      trace = decode_proto(proto_val, "message_type", ["field"], ["float32"])
+      self.assertIn("io.decode_proto(bytes=proto,", str(trace))
 
     finally:
       # Clean up.
       dispatch._GLOBAL_DISPATCHERS = original_global_dispatchers
 
+  def testGlobalDispatcherConvertToTensor(self):
+    original_global_dispatchers = dispatch._GLOBAL_DISPATCHERS
+    try:
+      TensorTracerOpDispatcher().register()
+
+      x = TensorTracer("x")
+      y = TensorTracer("y")
+      trace = math_ops.add(math_ops.abs(
+          ops.convert_to_tensor_v2_with_dispatch(x)), y)
+      self.assertEqual(
+          str(trace),
+          "math.add(name=None, x=math.abs(convert_to_tensor(x)), y=y)")
+
+    finally:
+      # Clean up.
+      dispatch._GLOBAL_DISPATCHERS = original_global_dispatchers
+
+  def testGlobalDispatcherGetItem(self):
+    original_global_dispatchers = dispatch._GLOBAL_DISPATCHERS
+    try:
+      TensorTracerOpDispatcher().register()
+
+      x = TensorTracer("x")
+      trace = x[0]
+      self.assertEqual(
+          str(trace),
+          "__operators__.getitem(x, 0)")
+
+      x = TensorTracer("x")
+      y = TensorTracer("y")
+      trace = x[y]
+      self.assertEqual(
+          str(trace),
+          "__operators__.getitem(x, y)")
+
+      x = TensorTracer("x")
+      y = TensorTracer("y")
+      trace = x[:y]  # pylint: disable=invalid-slice-index
+      self.assertEqual(
+          str(trace),
+          "__operators__.getitem(x, slice(None, y, None))")
+
+      x = array_ops.ones(shape=(3, 3))
+      y = TensorTracer("y")
+      trace = x[y]
+      self.assertEqual(
+          str(trace),
+          "__operators__.getitem(%s, y)" % x)
+
+      trace = x[:y]  # pylint: disable=invalid-slice-index
+      self.assertEqual(
+          str(trace),
+          "__operators__.getitem(%s, slice(None, y, None))" % x)
+
+    finally:
+      # Clean up.
+      dispatch._GLOBAL_DISPATCHERS = original_global_dispatchers
+
+  def testGlobalDispatcherLinearOperators(self):
+    original_global_dispatchers = dispatch._GLOBAL_DISPATCHERS
+    try:
+      TensorTracerOpDispatcher().register()
+
+      x = TensorTracer("x")
+
+      # To grab the eigenvalues the diag operator just calls convert_to_tensor
+      # (twice) in this case.
+      trace = linear_operator_diag.LinearOperatorDiag(x).eigvals()
+      self.assertEqual(
+          str(trace),
+          "convert_to_tensor(convert_to_tensor(x, dtype=None, dtype_hint=None, "
+          "name=diag))")
+
+      # The diagonal tensor addition gets traced even though the linear_operator
+      # API only uses dispatchable ops instead of directly exposing dispatching.
+      trace = linear_operator_diag.LinearOperatorDiag(x).add_to_tensor(x)
+      self.assertIn(
+          "linalg.set_diag(convert_to_tensor(x, name=x), __operators__.add("
+          "convert_to_tensor(x, dtype=None, dtype_hint=None, name=diag), "
+          "linalg.diag_part(convert_to_tensor(x, name=x)), "
+          "name=",
+          str(trace))
+
+      # The dispatch-supporting ops the non-singular check calls out to
+      # get traced.
+      trace = linear_operator_diag.LinearOperatorDiag(x).assert_non_singular()
+      self.assertIn("debugging.assert_less", str(trace))
+      self.assertIn(
+          "message=Singular operator:  Diagonal contained zero values.",
+          str(trace))
+
+    finally:
+      # Clean up.
+      dispatch._GLOBAL_DISPATCHERS = original_global_dispatchers
 
 if __name__ == "__main__":
   googletest.main()

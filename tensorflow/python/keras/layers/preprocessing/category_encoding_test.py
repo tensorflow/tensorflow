@@ -28,6 +28,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import keras_parameterized
@@ -267,6 +268,34 @@ class CategoryEncodingInputTest(keras_parameterized.TestCase,
     model = keras.Model(inputs=input_data, outputs=output_data)
     _ = model.predict(input_array, steps=1)
 
+  def test_dense_oov_input(self):
+    input_array = constant_op.constant([[0, 1, 2], [2, 3, 1]])
+    max_tokens = 3
+    expected_output_shape = [None, max_tokens]
+    encoder_layer = get_layer_class()(max_tokens)
+    input_data = keras.Input(shape=(3,), dtype=dtypes.int32)
+    int_data = encoder_layer(input_data)
+    self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        ".*must be in the range 0 <= values < max_tokens.*"):
+      _ = model.predict(input_array, steps=1)
+
+  def test_dense_negative(self):
+    input_array = constant_op.constant([[1, 2, 0], [2, 2, -1]])
+    max_tokens = 3
+    expected_output_shape = [None, max_tokens]
+    encoder_layer = get_layer_class()(max_tokens)
+    input_data = keras.Input(shape=(3,), dtype=dtypes.int32)
+    int_data = encoder_layer(input_data)
+    self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        ".*must be in the range 0 <= values < max_tokens.*"):
+      _ = model.predict(input_array, steps=1)
+
 
 @keras_parameterized.run_all_keras_modes
 class CategoryEncodingAdaptTest(keras_parameterized.TestCase,
@@ -322,28 +351,6 @@ class CategoryEncodingAdaptTest(keras_parameterized.TestCase,
 
     model = keras.Model(inputs=input_data, outputs=int_data)
     output_dataset = model.predict(input_array, steps=1)
-    self.assertAllEqual(expected_output, output_dataset)
-
-  def test_adapt_after_build(self):
-    vocab_data = np.array([[1, 1, 1, 1, 2, 2, 2, 3, 3, 4]])
-    input_array = np.array([[1, 2, 3, 1], [0, 3, 1, 0]])
-
-    # pyformat: disable
-    expected_output = [[0, 1, 1, 1, 0],
-                       [1, 1, 0, 1, 0]]
-    # pyformat: enable
-    max_tokens = 5
-    expected_output_shape = [None, max_tokens]
-
-    input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
-    layer = get_layer_class()(
-        max_tokens=max_tokens, output_mode=category_encoding.BINARY)
-    int_data = layer(input_data)
-    layer.adapt(vocab_data)
-    self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
-
-    model = keras.Model(inputs=input_data, outputs=int_data)
-    output_dataset = model.predict(input_array)
     self.assertAllEqual(expected_output, output_dataset)
 
   def test_hard_maximum_set_state_variables_after_build(self):
@@ -403,19 +410,9 @@ class CategoryEncodingAdaptTest(keras_parameterized.TestCase,
         max_tokens=None, output_mode=category_encoding.BINARY)
     layer.adapt([1, 2])
     _ = layer(input_data)
-    with self.assertRaisesRegex(RuntimeError, "num_elements cannot be changed"):
+    with self.assertRaisesRegex(
+        RuntimeError, ".*'max_tokens' arg must be set to None."):
       layer.set_num_elements(5)
-
-  def test_adapt_after_call_fails(self):
-    vocab_data = np.array([1, 1, 1, 1, 2, 2, 2, 3, 3, 4])
-
-    input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
-    layer = get_layer_class()(
-        max_tokens=None, output_mode=category_encoding.BINARY)
-    layer.adapt(vocab_data)
-    _ = layer(input_data)
-    with self.assertRaisesRegex(RuntimeError, "can't be adapted"):
-      layer.adapt(vocab_data)
 
   def test_set_state_variables_after_call_fails(self):
     state_variables = {category_encoding._NUM_ELEMENTS_NAME: 5}
@@ -425,7 +422,7 @@ class CategoryEncodingAdaptTest(keras_parameterized.TestCase,
         max_tokens=None, output_mode=category_encoding.BINARY)
     layer.adapt([1, 2])
     _ = layer(input_data)
-    with self.assertRaisesRegex(RuntimeError, "num_elements cannot be changed"):
+    with self.assertRaisesRegex(RuntimeError, "Cannot update states.*"):
       layer._set_state_variables(state_variables)
 
 
@@ -468,7 +465,7 @@ class CategoryEncodingOutputTest(keras_parameterized.TestCase,
     input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
     layer = get_layer_class()(
         max_tokens=None, output_mode=category_encoding.BINARY)
-    layer.set_weights([np.array(max_tokens)])
+    layer.set_num_elements(max_tokens)
     int_data = layer(input_data)
     self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
 
@@ -508,7 +505,7 @@ class CategoryEncodingOutputTest(keras_parameterized.TestCase,
     input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
     layer = get_layer_class()(
         max_tokens=None, output_mode=category_encoding.COUNT)
-    layer.set_weights([np.array(max_tokens)])
+    layer.set_num_elements(max_tokens)
     int_data = layer(input_data)
     self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
 
@@ -604,7 +601,7 @@ class CategoryEncodingModelBuildingTest(
 
     weights = []
     if max_tokens is None:
-      weights.append(np.array(5))
+      layer.set_num_elements(5)
     if output_mode == category_encoding.TFIDF:
       weights.append(tfidf_data)
 
@@ -754,6 +751,20 @@ class CategoryEncodingCombinerTest(
     with self.assertRaisesRegex(
         RuntimeError, r".*you need to call.*"):
       _ = layer([1, 2, 3])
+
+  def test_saving_loading(self):
+    encoder = category_encoding.CategoryEncoding()
+    encoder.adapt([1, 2, 3])
+    model = keras.Sequential([encoder])
+    model.save("/tmp/model", save_format="tf")
+    loaded_model = keras.models.load_model("/tmp/model")
+    self.assertAllClose(model.predict([[1]]), loaded_model.predict([[1]]))
+
+  def test_serialize(self):
+    encoder = category_encoding.CategoryEncoding()
+    encoder.adapt([1, 2, 3])
+    model = keras.Sequential([encoder])
+    _ = keras.models.clone_model(model)
 
 
 if __name__ == "__main__":

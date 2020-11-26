@@ -24,10 +24,9 @@ limitations under the License.
 namespace tflite {
 namespace delegates {
 namespace coreml {
-const char* FullyConnectedOpBuilder::DebugName() {
-  if (!str_debug_name_[0])
-    GetDebugName("FullyConnectedOpBuilder", node_id_, str_debug_name_);
-  return str_debug_name_;
+const std::string& FullyConnectedOpBuilder::DebugName() {
+  if (debug_name_.empty()) SetDebugName("FullyConnectedOpBuilder", node_id_);
+  return debug_name_;
 }
 
 void FullyConnectedOpBuilder::SetWeights(TfLiteTensor* weights) {
@@ -153,8 +152,10 @@ bool IsFullyConnectedOpSupported(const TfLiteRegistration* registration,
   if (fc_params->weights_format != kTfLiteFullyConnectedWeightsFormatDefault) {
     return false;
   }
-  const TfLiteTensor* input = GetInput(context, node, kInput);
-  const TfLiteTensor* weights = GetInput(context, node, kWeights);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInput, &input));
+  const TfLiteTensor* weights;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kWeights, &weights));
 
   if (!IsFloatType(input->type)) {
     return false;
@@ -169,7 +170,8 @@ bool IsFullyConnectedOpSupported(const TfLiteRegistration* registration,
   }
 
   if (node->inputs->size > 2) {
-    const TfLiteTensor* bias = GetInput(context, node, kBias);
+    const TfLiteTensor* bias;
+    TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kBias, &bias));
     if (!IsFloatType(bias->type) || !IsConstantTensor(bias)) {
       return false;
     }

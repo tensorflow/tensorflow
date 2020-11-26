@@ -51,9 +51,9 @@ def Test():
       inputs=None, outputs={'t': tensor_info_t}, method_name='some_function')
 
   # Create two signatures that share the same variable.
-  return {'key': signature_def, 'key2': signature_def2}
+  return {'key': signature_def, 'key2': signature_def2}, None, None
 
 
 if __name__ == '__main__':
   common_v1.set_tf_options()
-  common_v1.do_test(Test())
+  common_v1.do_test(Test)

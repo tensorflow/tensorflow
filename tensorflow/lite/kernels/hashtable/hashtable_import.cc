@@ -33,14 +33,19 @@ TfLiteStatus PrepareHashtableImport(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 0);
 
-  const TfLiteTensor* input_resource_id_tensor =
-      GetInput(context, node, kInputResourceIdTensor);
+  const TfLiteTensor* input_resource_id_tensor;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputResourceIdTensor,
+                                          &input_resource_id_tensor));
   TF_LITE_ENSURE_EQ(context, input_resource_id_tensor->type, kTfLiteInt32);
   TF_LITE_ENSURE_EQ(context, NumDimensions(input_resource_id_tensor), 1);
   TF_LITE_ENSURE_EQ(context, SizeOfDimension(input_resource_id_tensor, 0), 1);
 
-  const TfLiteTensor* key_tensor = GetInput(context, node, kKeyTensor);
-  const TfLiteTensor* value_tensor = GetInput(context, node, kValueTensor);
+  const TfLiteTensor* key_tensor;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kKeyTensor, &key_tensor));
+  const TfLiteTensor* value_tensor;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kValueTensor, &value_tensor));
   TF_LITE_ENSURE(context, (key_tensor->type == kTfLiteInt64 &&
                            value_tensor->type == kTfLiteString) ||
                               (key_tensor->type == kTfLiteString &&
@@ -52,12 +57,17 @@ TfLiteStatus PrepareHashtableImport(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus EvalHashtableImport(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* input_resource_id_tensor =
-      GetInput(context, node, kInputResourceIdTensor);
+  const TfLiteTensor* input_resource_id_tensor;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputResourceIdTensor,
+                                          &input_resource_id_tensor));
   const int resource_id = input_resource_id_tensor->data.i32[0];
 
-  const TfLiteTensor* key_tensor = GetInput(context, node, kKeyTensor);
-  const TfLiteTensor* value_tensor = GetInput(context, node, kValueTensor);
+  const TfLiteTensor* key_tensor;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kKeyTensor, &key_tensor));
+  const TfLiteTensor* value_tensor;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kValueTensor, &value_tensor));
 
   Subgraph* subgraph = reinterpret_cast<Subgraph*>(context->impl_);
   auto& resources = subgraph->resources();

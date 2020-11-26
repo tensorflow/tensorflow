@@ -43,10 +43,10 @@ from tensorflow.python.eager import context
 from tensorflow.python.estimator import run_config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as tf_device
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.keras.layers import core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients
@@ -84,7 +84,7 @@ def create_test_objects(cluster_spec=None,
         task_type=task_type,
         task_id=task_id,
         num_accelerators={'GPU': num_gpus})
-    distribution = parameter_server_strategy.ParameterServerStrategy(
+    distribution = parameter_server_strategy.ParameterServerStrategyV1(
         cluster_resolver)
     target = 'grpc://' + cluster_spec[WORKER][task_id]
   else:
@@ -191,7 +191,7 @@ class ParameterServerStrategyTestBase(
           g = e + 1.0
         self.assertEqual(g.device, worker_device + '/device:CPU:1')
 
-        # Ths ops.colocate_with will be ignored when defining a variable but not
+        # This ops.colocate_with will be ignored when defining a variable but not
         # for a normal tensor.
         with ops.colocate_with(x):
           u = variable_scope.get_variable('u', initializer=30.0)
@@ -213,7 +213,7 @@ class ParameterServerStrategyTestBase(
       self.assertNotEqual(f, None)
 
       if context.num_gpus() >= 1 and num_gpus <= 1:
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         y_val, z_val, f_val = sess.run([y, z, f])
         self.assertEqual(y_val, 33.0)
         self.assertEqual(z_val, 43.0)
@@ -259,7 +259,7 @@ class ParameterServerStrategyTestBase(
       x = d.extended.call_for_each_replica(model_fn)
 
       if context.num_gpus() >= 1:
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         x_val = sess.run(x)
         if num_gpus < 1:
           self.assertEqual(x_val, [13.0, 25.0])
@@ -345,7 +345,7 @@ class ParameterServerStrategyTestBase(
           g = e + 1.0
         self.assertEqual(g.device, device_util.canonicalize('/device:CPU:1'))
 
-        # Ths ops.colocate_with will be ignored when defining a variable but not
+        # This ops.colocate_with will be ignored when defining a variable but not
         # for a normal tensor.
         with ops.colocate_with(x):
           u = variable_scope.get_variable('u', initializer=30.0)
@@ -363,7 +363,7 @@ class ParameterServerStrategyTestBase(
       self.assertNotEqual(f, None)
 
       if context.num_gpus() >= 1 and num_gpus <= 1:
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         y_val, z_val, f_val = sess.run([y, z, f])
         self.assertEqual(y_val, 33.0)
         self.assertEqual(z_val, 43.0)
@@ -408,7 +408,7 @@ class ParameterServerStrategyTestBase(
       train_op = d.group(train_op)
 
       if task_id == 0:
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
       # Workers waiting for chief worker's initializing variables.
       self._init_condition.acquire()
@@ -450,10 +450,12 @@ class ParameterServerStrategyTestBase(
          self.cached_session(target=master_target,
                              config=sess_config) as sess, \
          d.scope():
-      l = core.Dense(1, use_bias=False)
+      kernel = strategy_test_lib.create_variable_like_keras_layer(
+          'kernel', (1, 1), dtypes.float32,)
 
       def loss_fn(x):
-        y = array_ops.reshape(l(x), []) - constant_op.constant(1.)
+        y = array_ops.reshape(
+            math_ops.matmul(x, kernel), []) - constant_op.constant(1.)
         return y * y
 
       # TODO(yuefengz, apassos): eager.backprop.implicit_grad is not safe for
@@ -496,7 +498,7 @@ class ParameterServerStrategyTestBase(
       if (not task_type or
           multi_worker_util.is_chief(
               d.extended._cluster_spec, task_type, task_id)):
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
       # Workers waiting for chief worker's initializing variables.
       self._init_condition.acquire()
@@ -746,7 +748,7 @@ class ParameterServerStrategyTest(
         task_type='worker',
         task_id=1,
         num_accelerators={'GPU': 0})
-    strategy = parameter_server_strategy.ParameterServerStrategy(
+    strategy = parameter_server_strategy.ParameterServerStrategyV1(
         cluster_resolver)
     dataset = dataset_ops.DatasetV2.from_tensor_slices([5., 6., 7., 8.])
 
@@ -757,10 +759,9 @@ class ParameterServerStrategyTest(
                            strategy.experimental_distribute_dataset,
                            dataset.batch(2))
 
-    self.assertRaisesRegex(
-        NotImplementedError, 'ParameterServerStrategy*',
-        strategy.experimental_distribute_datasets_from_function,
-        lambda _: dataset)
+    self.assertRaisesRegex(NotImplementedError, 'ParameterServerStrategy*',
+                           strategy.distribute_datasets_from_function,
+                           lambda _: dataset)
 
     self.assertRaisesRegex(NotImplementedError, 'ParameterServerStrategy*',
                            strategy.scope)

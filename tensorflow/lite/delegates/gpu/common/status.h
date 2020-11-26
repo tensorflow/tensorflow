@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_STATUS_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_STATUS_H_
 
-#include "absl/status/status.h"
-#define RETURN_IF_ERROR(s) {auto c=(s);if(!c.ok())return c;}
+#include "absl/status/status.h"  // IWYU pragma: export
+#define RETURN_IF_ERROR(s) {auto c=(s);if(!c.ok())return c;}         // IWYU pragma: export
 
 #endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_STATUS_H_

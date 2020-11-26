@@ -38,7 +38,7 @@ inline uint64 Hash64(const char* data, size_t n) {
 
 inline uint64 Hash64(const char* data) { return Hash64(data, ::strlen(data)); }
 
-inline uint64 Hash64(const string& str) {
+inline uint64 Hash64(const std::string& str) {
   return Hash64(str.data(), str.size());
 }
 

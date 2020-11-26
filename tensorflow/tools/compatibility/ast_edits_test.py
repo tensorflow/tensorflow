@@ -495,11 +495,10 @@ class TestAstEdits(test_util.TensorFlowTestCase):
 
   def testFullNameNode(self):
     t = ast_edits.full_name_node("a.b.c")
-    self.assertEquals(
+    self.assertEqual(
         ast.dump(t),
         "Attribute(value=Attribute(value=Name(id='a', ctx=Load()), attr='b', "
-        "ctx=Load()), attr='c', ctx=Load())"
-    )
+        "ctx=Load()), attr='c', ctx=Load())")
 
   def testImport(self):
     # foo should be renamed to bar.

@@ -36,6 +36,8 @@ Status LowerLHLOToGPU(mlir::ModuleOp module,
 
 Status LowerKernelBodiesToNVVM(mlir::ModuleOp module);
 
+Status LowerKernelBodiesToROCDL(mlir::ModuleOp module);
+
 StatusOr<mlir::ModuleOp> ExtractKernelModule(mlir::ModuleOp module);
 
 }  // namespace mlir_gpu

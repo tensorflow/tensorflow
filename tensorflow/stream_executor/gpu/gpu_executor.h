@@ -188,10 +188,6 @@ class GpuExecutor : public internal::StreamExecutorInterface {
 
   bool CanEnablePeerAccessTo(StreamExecutorInterface* other) override;
 
-  SharedMemoryConfig GetDeviceSharedMemoryConfig() override;
-
-  port::Status SetDeviceSharedMemoryConfig(SharedMemoryConfig config) override;
-
   bool DeviceMemoryUsage(int64* free, int64* total) const override;
 
   // Search for the symbol and returns a device pointer and size.

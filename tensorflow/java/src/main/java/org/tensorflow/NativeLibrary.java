@@ -51,7 +51,7 @@ final class NativeLibrary {
       // (1) The native library has already been statically loaded, OR
       // (2) The required native code has been statically linked (through a custom launcher), OR
       // (3) The native code is part of another library (such as an application-level library)
-      // that has already been loaded. For example, tensorflow/examples/android and
+      // that has already been loaded. For example, tensorflow/tools/android/test and
       // tensorflow/tools/android/inference_interface include the required native code in
       // differently named libraries.
       //

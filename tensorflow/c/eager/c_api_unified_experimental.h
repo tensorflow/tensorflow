@@ -52,7 +52,7 @@ typedef struct TF_AbstractFunction TF_AbstractFunction;
 // This allows the client to swap the implementation of the tracing engine.
 // Any future call to TF_CreateFunction will use the implementation defined
 // here.
-void TF_SetTracingImplementation(const char* name);
+void TF_SetTracingImplementation(const char* name, TF_Status*);
 
 // Creates a new TensorFlow function. A Function is an execution context, and as
 // such it can trace operations through TF_ExecuteOperation. After completing
@@ -64,10 +64,16 @@ TF_ExecutionContext* TF_NewEagerExecutionContext(TFE_ContextOptions*,
                                                  TF_Status* s);
 void TF_DeleteExecutionContext(TF_ExecutionContext*);
 
+// Represents a (partially-defined) shape.
+typedef struct TF_Shape {
+  int num_dims;  // Must be >= -1; -1 represents unknown rank.
+  int64_t* dim_sizes;
+} TF_Shape;
+
 // Add a new parameter to a TensorFlow Function.
-// TODO(aminim): what about shape?
 TF_AbstractTensor* TF_AddFunctionParameter(TF_ExecutionContext* func,
-                                           TF_DataType dtype, TF_Status* s);
+                                           TF_DataType dtype, TF_Shape shape,
+                                           TF_Status* s);
 
 // Create an operation suitable to use with the provided context. The operation
 // requires its type (e.g. "AddV2") to be set independently.

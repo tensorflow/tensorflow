@@ -8,6 +8,8 @@
 # 2. Are std:: types
 # 3. Wrap an opaque C type
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+
 package(
     # This is intentionally public
     default_visibility = [

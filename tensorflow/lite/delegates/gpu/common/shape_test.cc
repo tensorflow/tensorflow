@@ -14,10 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 
-#include <initializer_list>
+#include <stdint.h>
+
 #include <vector>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
 namespace tflite {

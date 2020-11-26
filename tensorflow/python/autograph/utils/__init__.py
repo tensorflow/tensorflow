@@ -22,4 +22,3 @@ from tensorflow.python.autograph.utils.context_managers import control_dependenc
 from tensorflow.python.autograph.utils.misc import alias_tensors
 from tensorflow.python.autograph.utils.py_func import wrap_py_func
 from tensorflow.python.autograph.utils.tensor_list import dynamic_list_append
-from tensorflow.python.autograph.utils.testing import fake_tf

@@ -191,7 +191,7 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     os.mkdir(dir_path)
     self.assertTrue(os.path.isdir(dir_path))
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, "dump_root path points to a non-empty directory"):
       local_cli_wrapper.LocalCLIDebugWrapperSession(
           session.Session(), dump_root=self._tmp_dir, log_usage=False)
@@ -201,7 +201,7 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     file_path = os.path.join(self._tmp_dir, "foo")
     open(file_path, "a").close()  # Create the file
     self.assertTrue(os.path.isfile(file_path))
-    with self.assertRaisesRegexp(ValueError, "dump_root path points to a file"):
+    with self.assertRaisesRegex(ValueError, "dump_root path points to a file"):
       local_cli_wrapper.LocalCLIDebugWrapperSession(
           session.Session(), dump_root=file_path, log_usage=False)
 
@@ -540,7 +540,7 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
 
     wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
         [["run"]], self.sess, dump_root=self._tmp_dir)
-    with self.assertRaisesRegexp(errors.OpError, r".*[Dd]evice.*1337.*"):
+    with self.assertRaisesRegex(errors.OpError, r".*[Dd]evice.*1337.*"):
       wrapped_sess.run(w)
 
   def testRunTillFilterPassesShouldLaunchCLIAtCorrectRun(self):
@@ -811,7 +811,7 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
   def testCallingShouldStopMethodOnNonWrappedNonMonitoredSessionErrors(self):
     wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
         [["run"], ["run"]], self.sess)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         r"The wrapped session .* does not have a method .*should_stop.*"):
       wrapped_sess.should_stop()

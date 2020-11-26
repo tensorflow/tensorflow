@@ -146,11 +146,12 @@ class AutoTuneMap {
   }
 
  private:
-  AutoTuneMap(const string& name) : name_(name) {
+  AutoTuneMap(const std::string& name) : name_(name) {
     min_score_threshold_ = 1;
     int min_warmup_iterations = 10;
     const char* threshold_str = getenv("TF_AUTOTUNE_THRESHOLD");
     if (threshold_str != nullptr) {
+      VLOG(1) << "TF_AUTOTUNE_THRESHOLD = " << threshold_str;
       strings::safe_strto32(threshold_str, &min_score_threshold_);
     }
     const char* min_warmup_iteration_str =
@@ -174,8 +175,8 @@ class AutoTuneMap {
     }
   };
 
-  string GetActionSummary(StringPiece action, const Parameters& params,
-                          const Config& config) {
+  std::string GetActionSummary(StringPiece action, const Parameters& params,
+                               const Config& config) {
     return strings::Printf("autotune_map %s %s: %s -> (%s)", name_.c_str(),
                            string(action).c_str(), params.ToString().c_str(),
                            config.ToString().c_str());
@@ -189,7 +190,7 @@ class AutoTuneMap {
   };
   std::unordered_map<Parameters, ValueType, Hasher> params_config_map_
       TF_GUARDED_BY(mu_);
-  string name_;
+  std::string name_;
   int32 min_score_threshold_;
   int32 max_autotune_count_;
   int32 max_autotune_global_count_;

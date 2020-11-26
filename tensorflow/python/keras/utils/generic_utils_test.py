@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from functools import partial
+
 import numpy as np
 
 from tensorflow.python import keras
@@ -39,6 +41,11 @@ class HasArgTest(test.TestCase):
       _ = kwargs
       return x
 
+    def f(a, b, c):
+      return a + b + c
+
+    partial_f = partial(f, b=1)
+
     self.assertTrue(keras.utils.generic_utils.has_arg(
         f_x, 'x', accept_all=False))
     self.assertFalse(keras.utils.generic_utils.has_arg(
@@ -53,6 +60,8 @@ class HasArgTest(test.TestCase):
         f_x_kwargs, 'y', accept_all=False))
     self.assertTrue(keras.utils.generic_utils.has_arg(
         f_x_kwargs, 'y', accept_all=True))
+    self.assertTrue(
+        keras.utils.generic_utils.has_arg(partial_f, 'c', accept_all=True))
 
 
 class TestCustomObjectScope(test.TestCase):
@@ -344,6 +353,20 @@ class SerializeKerasObjectTest(test.TestCase):
     output = old_model.predict(input_data)
     expected_output = new_model.predict(input_data)
     self.assertAllEqual(output, expected_output)
+
+  def test_deserialize_unknown_object(self):
+
+    class CustomLayer(keras.layers.Layer):
+      pass
+
+    layer = CustomLayer()
+    config = keras.utils.generic_utils.serialize_keras_object(layer)
+    with self.assertRaisesRegexp(ValueError,
+                                 'passed to the `custom_objects` arg'):
+      keras.utils.generic_utils.deserialize_keras_object(config)
+    restored = keras.utils.generic_utils.deserialize_keras_object(
+        config, custom_objects={'CustomLayer': CustomLayer})
+    self.assertIsInstance(restored, CustomLayer)
 
 
 class SliceArraysTest(test.TestCase):

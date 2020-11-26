@@ -8,6 +8,6 @@ ENTRY %Compare (x: f32[2,2], y: f32[2,2]) -> pred[2,2] {
 }
 
 // CHECK: func @compare(%[[ARG0:.*]]: [[TYPE:.*]], %[[ARG1:.*]]: [[TYPE]], %[[PRED:.*]]: [[PRED_TYPE:.*]]) {
-// CHECK:   "xla_lhlo.compare"(%[[ARG0]], %[[ARG1]], %[[PRED]])
+// CHECK:   "lmhlo.compare"(%[[ARG0]], %[[ARG1]], %[[PRED]])
 // CHECK: {comparison_direction = "EQ"} : ([[TYPE]], [[TYPE]], [[PRED_TYPE]]) -> ()
 // CHECK: }

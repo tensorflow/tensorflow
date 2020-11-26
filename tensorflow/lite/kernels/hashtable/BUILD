@@ -1,5 +1,3 @@
-load("//tensorflow/lite/micro:build_def.bzl", "cc_library")
-
 package(
     default_visibility = [
         "//visibility:public",
@@ -48,7 +46,6 @@ cc_test(
         "//tensorflow/lite/testing:util",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest",
         "@flatbuffers",
     ],
 )

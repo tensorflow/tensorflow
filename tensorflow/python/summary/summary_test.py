@@ -59,9 +59,9 @@ class SummaryTest(test.TestCase):
       i = constant_op.constant(7)
       with ops.name_scope('outer'):
         im1 = summary_lib.scalar('inner', i, family='family')
-        self.assertEquals(im1.op.name, 'outer/family/inner')
+        self.assertEqual(im1.op.name, 'outer/family/inner')
         im2 = summary_lib.scalar('inner', i, family='family')
-        self.assertEquals(im2.op.name, 'outer/family/inner_1')
+        self.assertEqual(im2.op.name, 'outer/family/inner_1')
       sm1, sm2 = s.run([im1, im2])
     summary = summary_pb2.Summary()
 
@@ -114,7 +114,7 @@ class SummaryTest(test.TestCase):
       i = array_ops.ones((5, 2, 3, 1))
       with ops.name_scope('outer'):
         im = summary_lib.image('inner', i, max_outputs=3, family='family')
-        self.assertEquals(im.op.name, 'outer/family/inner')
+        self.assertEqual(im.op.name, 'outer/family/inner')
       summary_str = s.run(im)
     summary = summary_pb2.Summary()
     summary.ParseFromString(summary_str)
@@ -143,7 +143,7 @@ class SummaryTest(test.TestCase):
       i = array_ops.ones((5, 4, 4, 3))
       with ops.name_scope('outer'):
         summ_op = summary_lib.histogram('inner', i, family='family')
-        self.assertEquals(summ_op.op.name, 'outer/family/inner')
+        self.assertEqual(summ_op.op.name, 'outer/family/inner')
       summary_str = s.run(summ_op)
     summary = summary_pb2.Summary()
     summary.ParseFromString(summary_str)
@@ -177,7 +177,7 @@ class SummaryTest(test.TestCase):
       i = array_ops.ones((5, 3, 4))
       with ops.name_scope('outer'):
         aud = summary_lib.audio('inner', i, 0.2, max_outputs=3, family='family')
-        self.assertEquals(aud.op.name, 'outer/family/inner')
+        self.assertEqual(aud.op.name, 'outer/family/inner')
       summary_str = s.run(aud)
     summary = summary_pb2.Summary()
     summary.ParseFromString(summary_str)
@@ -221,9 +221,9 @@ class SummaryTest(test.TestCase):
     with ops.name_scope('outer'):
       i = constant_op.constant(11)
       summ = summary_lib.scalar('inner', i)
-      self.assertEquals(summ.op.name, 'outer/inner')
+      self.assertEqual(summ.op.name, 'outer/inner')
       summ_f = summary_lib.scalar('inner', i, family='family')
-      self.assertEquals(summ_f.op.name, 'outer/family/inner')
+      self.assertEqual(summ_f.op.name, 'outer/family/inner')
 
     metagraph_def, _ = meta_graph.export_scoped_meta_graph(export_scope='outer')
 
@@ -239,11 +239,11 @@ class SummaryTest(test.TestCase):
         new_summ_str, new_summ_f_str = s.run([new_summ, new_summ_f])
         new_summ_pb = summary_pb2.Summary()
         new_summ_pb.ParseFromString(new_summ_str)
-        self.assertEquals('outer/inner', new_summ_pb.value[0].tag)
+        self.assertEqual('outer/inner', new_summ_pb.value[0].tag)
         new_summ_f_pb = summary_pb2.Summary()
         new_summ_f_pb.ParseFromString(new_summ_f_str)
-        self.assertEquals('family/outer/family/inner',
-                          new_summ_f_pb.value[0].tag)
+        self.assertEqual('family/outer/family/inner',
+                         new_summ_f_pb.value[0].tag)
 
 
 if __name__ == '__main__':

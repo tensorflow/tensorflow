@@ -99,7 +99,7 @@ func @prepareConv2D(%arg0: tensor<1x5x5x1xf32>) -> tensor<1x5x5x3xf32> {
 
 // CHECK: %[[cst:.*]] = constant dense<[{{\[\[\[}}0.000000e+00]]], [{{\[\[}}1.270000e+02]]], [{{\[\[}}-1.270000e+02]]]]>
 // CHECK: %[[q:.*]] = "tfl.quantize"(%[[cst]]) {qtype = tensor<3x1x1x1x!quant.uniform<i8<-127:127>:f32:0,
-// CHECK-SAME: {0.0078740157480314959,1.000000e+00,1.000000e+00}>>, volatile}
+// CHECK-SAME: {3.9370078740157481E-9,1.000000e+00,1.000000e+00}>>, volatile}
 // CHECK: %[[dq:.*]] = "tfl.dequantize"(%[[q]])
 // CHECK: %[[conv:.*]] = "tfl.conv_2d"(%arg0, %[[dq]]
 

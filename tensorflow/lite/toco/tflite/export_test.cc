@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/toco/tflite/builtin_operator.h"
 #include "tensorflow/lite/toco/tflite/operator.h"
 #include "tensorflow/lite/toco/tflite/types.h"
@@ -171,10 +172,10 @@ class ExportTest : public ::testing::Test {
     auto* model = ::tflite::GetModel(result.data());
 
     for (const ::tflite::OperatorCode* opcode : *model->operator_codes()) {
-      if (opcode->builtin_code() != ::tflite::BuiltinOperator_CUSTOM) {
-        names.push_back(
-            std::string("builtin:") +
-            ::tflite::EnumNameBuiltinOperator(opcode->builtin_code()));
+      auto builtin_code = GetBuiltinCode(opcode);
+      if (builtin_code != ::tflite::BuiltinOperator_CUSTOM) {
+        names.push_back(std::string("builtin:") +
+                        ::tflite::EnumNameBuiltinOperator(builtin_code));
       } else {
         names.push_back(std::string("custom:") +
                         opcode->custom_code()->c_str());
@@ -495,7 +496,7 @@ TEST_F(OpSetsTest, TfSelectOnly) {
   EXPECT_THAT(
       ImportExport(
           {"Add", "AdjustHue", "RandomUniform", "UnrollAndFold", "Assert"}),
-      ElementsAre("custom:AdjustHue", "custom:FlexAdd", "custom:FlexAssert",
+      ElementsAre("custom:FlexAdd", "custom:FlexAdjustHue", "custom:FlexAssert",
                   "custom:FlexRandomUniform", "custom:UnrollAndFold"));
 }
 
@@ -512,7 +513,7 @@ TEST_F(OpSetsTest, BuiltinsAndTfSelect) {
   EXPECT_THAT(
       ImportExport(
           {"Add", "AdjustHue", "RandomUniform", "UnrollAndFold", "Assert"}),
-      ElementsAre("builtin:ADD", "custom:AdjustHue", "custom:FlexAssert",
+      ElementsAre("builtin:ADD", "custom:FlexAdjustHue", "custom:FlexAssert",
                   "custom:FlexRandomUniform", "custom:UnrollAndFold"));
 }
 
@@ -661,10 +662,10 @@ TEST_F(VersionedOpExportTest, Export) {
   // different versions.
   EXPECT_EQ(2, operator_codes->size());
   EXPECT_EQ(::tflite::BuiltinOperator_CONV_2D,
-            (*operator_codes)[0]->builtin_code());
+            GetBuiltinCode((*operator_codes)[0]));
   EXPECT_EQ(1, (*operator_codes)[0]->version());
   EXPECT_EQ(::tflite::BuiltinOperator_CONV_2D,
-            (*operator_codes)[1]->builtin_code());
+            GetBuiltinCode((*operator_codes)[1]));
   EXPECT_EQ(2, (*operator_codes)[1]->version());
 
   // Verify that the 2 operators points to the correct indices of the operation
@@ -794,9 +795,9 @@ TEST(OperatorKeyTest, TestFlexWithUnsupportedOp) {
   EXPECT_EQ(key.type(), ::tflite::BuiltinOperator_CUSTOM);
   EXPECT_EQ(key.custom_code(), "HashTableV2");
   EXPECT_EQ(key.version(), 1);
-  // While HashTableV2 is excluded from the whitelisted flex op list, eventually
+  // While HashTableV2 is excluded from the allowlisted flex op list, eventually
   // it won't be, and the following expectations will need to change as the op
-  // is explicitly blacklisted due to lack of asset support.
+  // is explicitly denylisted due to lack of asset support.
   EXPECT_FALSE(key.is_flex_op());
   EXPECT_FALSE(key.is_unsupported_flex_op());
 }

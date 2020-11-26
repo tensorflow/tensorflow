@@ -1295,6 +1295,47 @@ TEST_P(ConvolutionOpTest, SimpleTestHybridInt8) {
                                  0.16)));
 }
 
+TEST_P(ConvolutionOpTest, SimpleTestHybridInt8Big) {
+  // A bigger variant of the simple hybrid test to ensure coverage on
+  // optimized paths that are only enabled at larger matrix sizes.
+  HybridConvolutionOpModel m(
+      GetRegistration(), {TensorType_FLOAT32, {2, 2, 4, 1}},
+      {TensorType_INT8, {8, 2, 2, 1}, 0, 0, 4.0 / 127.0, 0},
+      {TensorType_FLOAT32, {}});
+
+  m.SetInput({
+      // First batch
+      1, 1, 1, 1,  // row = 1
+      2, 2, 2, 2,  // row = 2
+      // Second batch
+      1, 2, 3, 4,  // row = 1
+      1, 2, 3, 4,  // row = 2
+  });
+  m.SetSignedFilter({
+      1,  2,  3,  4,   // first 2x2 filter
+      -1, 1,  -1, 1,   // second 2x2 filter
+      -1, -1, 1,  1,   // third 2x2 filter
+      1,  1,  3,  3,   // fourth 2x2 filter
+      -1, -1, 3,  3,   // fifth 2x2 filter
+      4,  3,  2,  1,   // sixth 2x2 filter
+      2,  1,  1,  2,   // seventh 2x2 filter
+      1,  -1, 2,  -2,  // eighth 2x2 filter
+  });
+  m.SetBias({1, 2, 3, 4, 5, 6, 7, 8});
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      18, 2, 5, 18, 15, 19, 16, 8,  // first batch, left
+                      18, 2, 5, 18, 15, 19, 16, 8,  // first batch, right
+                      17, 4, 3, 16, 11, 20, 16, 5,  // second batch, left
+                      37, 4, 3, 32, 19, 40, 28, 5   // second batch, right
+                  },
+                  0.17)));
+}
+
 // This test's output is equivalent to the SimpleTestHybrid
 // because we break each input into two channels, each with half of the value,
 // while keeping the filters for each channel equivalent.

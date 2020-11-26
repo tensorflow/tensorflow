@@ -22,39 +22,70 @@ from absl.testing import parameterized
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import strategy_test_lib
+from tensorflow.python.distribute import test_util
+from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.distribute.collective_all_reduce_strategy import CollectiveAllReduceStrategy
-from tensorflow.python.distribute.tpu_strategy import TPUStrategy
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.util import nest
 
 
-class StrategyReduceTest(test.TestCase, parameterized.TestCase):
+@combinations.generate(
+    combinations.combine(
+        strategy=[
+            strategy_combinations.multi_worker_mirrored_2x1_cpu,
+            strategy_combinations.multi_worker_mirrored_2x1_gpu,
+        ] + strategy_combinations.all_strategies,
+        mode=['eager']))
+class StrategyTest(test.TestCase, parameterized.TestCase):
 
-  @combinations.generate(
-      combinations.combine(
-          strategy=[strategy_combinations.multi_worker_mirrored_two_workers] +
-          strategy_combinations.strategies_minus_tpu,
-          mode=['eager']))
-  def testSimpleReduce(self, strategy):
+  def testCaptureReplicaId(self, strategy):
+    m = {}
+
+    @def_function.function
+    def f():
+      return ds_context.get_replica_context().replica_id_in_sync_group
+
+    @def_function.function
+    def g():
+      # Make g() a stateful function so it's traced twice.
+      if m.get('v', None) is None:
+        m['v'] = variables.Variable(0.)
+      return strategy.run(f)
+
+    g()
+
+
+@combinations.generate(
+    combinations.combine(
+        strategy=[
+            strategy_combinations.multi_worker_mirrored_2x1_cpu,
+            strategy_combinations.multi_worker_mirrored_2x1_gpu,
+        ] + strategy_combinations.all_strategies,
+        mode=['eager']))
+class ReduceTest(test.TestCase, parameterized.TestCase):
+
+  def testBasic(self, strategy):
+    per_replica_value = strategy.experimental_distribute_values_from_function(
+        lambda _: array_ops.ones((), dtypes.float32))
 
     def fn_eager():
 
-      def replica_fn():
-        return array_ops.ones((), dtypes.float32)
-
-      per_replica_value = strategy.run(replica_fn)
       return strategy.reduce(
           reduce_util.ReduceOp.SUM, value=per_replica_value, axis=None)
 
     fn_graph = def_function.function(fn_eager)
-
     # Run reduce under the strategy scope to explicitly enter
     # strategy default_device scope.
     with strategy.scope():
@@ -66,10 +97,48 @@ class StrategyReduceTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(fn_eager().numpy(), 1.0 * strategy.num_replicas_in_sync)
     self.assertEqual(fn_graph().numpy(), 1.0 * strategy.num_replicas_in_sync)
 
+  def testAxis(self, strategy):
+
+    @def_function.function
+    def fn():
+      return constant_op.constant([1., 2.])
+
+    x = strategy.run(fn)
+
+    x_m = strategy.reduce(reduce_util.ReduceOp.MEAN, x, axis=0)
+    self.assertEqual(1.5, x_m)
+    x_s = strategy.reduce(reduce_util.ReduceOp.SUM, x, axis=0)
+    self.assertEqual(3 * strategy.num_replicas_in_sync, x_s)
+
+
+def _make_indexed_slices(values, indices, dense_shape):
+  tensor = ops.IndexedSlices(
+      values=constant_op.constant(values),
+      indices=constant_op.constant(indices),
+      dense_shape=constant_op.constant(dense_shape))
+  return tensor
+
+
+def _get_num_replicas_per_client(strategy):
+  if isinstance(strategy, CollectiveAllReduceStrategy):
+    resolver = strategy.cluster_resolver
+    return max(nest.flatten(resolver.num_accelerators())[0], 1)
+  else:
+    return strategy.num_replicas_in_sync
+
+
+def _is_tpu_strategy(strategy):
+  return isinstance(strategy,
+                    (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1,
+                     tpu_strategy.TPUStrategyV2))
+
 
 @combinations.generate(
     combinations.combine(
-        strategy=[strategy_combinations.multi_worker_mirrored_two_workers],
+        strategy=[
+            strategy_combinations.multi_worker_mirrored_2x1_cpu,
+            strategy_combinations.multi_worker_mirrored_2x1_gpu,
+        ],
         mode=['eager']))
 class DistributedCollectiveAllReduceStrategyTest(
     strategy_test_lib.DistributionTestBase,
@@ -83,9 +152,9 @@ class DistributedCollectiveAllReduceStrategyTest(
       return d.shard(input_context.num_input_pipelines,
                      input_context.input_pipeline_id)
 
-    expected_sum_on_workers = [10, 35]
+    expected_sum_on_workers = {'chief': 10, 'worker': 35}
     input_iterator = iter(
-        strategy.experimental_distribute_datasets_from_function(dataset_fn))
+        strategy.distribute_datasets_from_function(dataset_fn))
 
     @def_function.function
     def run(iterator):
@@ -95,7 +164,55 @@ class DistributedCollectiveAllReduceStrategyTest(
     sum_value = math_ops.reduce_sum(result)
     self.assertEqual(
         sum_value.numpy(),
-        expected_sum_on_workers[multi_worker_test_base.get_task_index()])
+        expected_sum_on_workers[multi_worker_test_base.get_task_type()])
+
+  def testSimpleInputFromDatasetLastPartialBatch(self, strategy):
+    global_batch_size = 8
+    dataset = dataset_ops.DatasetV2.range(14).batch(
+        global_batch_size, drop_remainder=False)
+    input_iterator = iter(strategy.experimental_distribute_dataset(dataset))
+
+    @def_function.function
+    def run(input_iterator):
+      return strategy.run(lambda x: x, args=(next(input_iterator),))
+
+    # Let the complete batch go.
+    run(input_iterator)
+
+    # `result` is an incomplete batch
+    result = run(input_iterator)
+    expected_data_on_workers = {'chief': [8, 9, 10], 'worker': [11, 12, 13]}
+    self.assertAllEqual(
+        expected_data_on_workers[multi_worker_test_base.get_task_type()],
+        result.numpy(),
+    )
+
+  def testSimpleInputFromFnLastPartialBatch(self, strategy):
+
+    def dataset_fn(input_context):
+      global_batch_size = 8
+      batch_size = input_context.get_per_replica_batch_size(global_batch_size)
+      dataset = dataset_ops.DatasetV2.range(14).batch(
+          batch_size, drop_remainder=False)
+      return dataset.shard(input_context.num_input_pipelines,
+                           input_context.input_pipeline_id)
+
+    input_iterator = iter(
+        strategy.distribute_datasets_from_function(dataset_fn))
+
+    @def_function.function
+    def run(input_iterator):
+      return strategy.run(lambda x: x, args=(next(input_iterator),))
+
+    # Let the complete batch go.
+    run(input_iterator)
+    # `result` is an incomplete batch
+    result = run(input_iterator)
+
+    expected_data_on_worker = {'chief': [8, 9, 10, 11], 'worker': [12, 13]}
+    self.assertAllEqual(
+        expected_data_on_worker[multi_worker_test_base.get_task_type()],
+        result.numpy())
 
   def testReduceHostTensor(self, strategy):
     reduced = strategy.reduce(
@@ -113,7 +230,7 @@ class DistributedCollectiveAllReduceStrategyTest(
     reduced = strategy.extended.batch_reduce_to(reduce_util.ReduceOp.SUM,
                                                 [(value, value),
                                                  (value, value)])
-    self.assertAllEqual(reduced, [2., 2.])
+    self.assertAllEqual([2., 2.], reduced)
 
   def testReduceDeviceTensors(self, strategy):
     value = strategy.run(lambda: array_ops.identity(1.))
@@ -131,7 +248,7 @@ class DistributedCollectiveAllReduceStrategyTest(
     reduced = strategy.extended.batch_reduce_to(reduce_util.ReduceOp.SUM,
                                                 [(value, value),
                                                  (value, value)])
-    self.assertAllEqual(reduced, [2., 2.])
+    self.assertAllEqual([2., 2.], reduced)
 
   # TODO(crccw): add a test that mixes device and host tensors after multi
   # worker strategy combinations can run on a fixed number of GPUs.
@@ -141,7 +258,7 @@ class StrategyClusterResolverTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.combine(
-          strategy=[strategy_combinations.multi_worker_mirrored_two_workers] +
+          strategy=[strategy_combinations.multi_worker_mirrored_2x1_cpu] +
           strategy_combinations.all_strategies,
           mode=['eager']))
   def testClusterResolverProperty(self, strategy):
@@ -149,28 +266,22 @@ class StrategyClusterResolverTest(test.TestCase, parameterized.TestCase):
     # `None` otherwise.
     resolver = strategy.cluster_resolver
     if not isinstance(strategy, CollectiveAllReduceStrategy) and not isinstance(
-        strategy, TPUStrategy):
+        strategy, tpu_strategy.TPUStrategy):
       self.assertIsNone(resolver)
       return
 
     with strategy.scope():
       self.assertIs(strategy.cluster_resolver, resolver)
+
     self.assertTrue(hasattr(resolver, 'cluster_spec'))
-    if isinstance(strategy, TPUStrategy):
-      self.skipTest('b/159747888')
-    self.assertTrue(hasattr(resolver, 'environment'))
     self.assertTrue(hasattr(resolver, 'master'))
     self.assertTrue(hasattr(resolver, 'num_accelerators'))
-    self.assertIsNone(resolver.rpc_layer)
+    self.assertTrue(hasattr(resolver, 'task_id'))
+    self.assertTrue(hasattr(resolver, 'task_type'))
     if isinstance(strategy, CollectiveAllReduceStrategy):
-      self.assertGreaterEqual(resolver.task_id, 0)
-      self.assertLessEqual(resolver.task_id, 1)
-      self.assertEqual(resolver.task_type, 'worker')
-    elif isinstance(strategy, TPUStrategy):
-      # TPUStrategy does not have task_id and task_type applicable.
-      self.assertIsNone(resolver.task_id)
-      self.assertIsNone(resolver.task_type)
+      self.assertEqual(resolver.task_id, 0)
+      self.assertAllInSet(resolver.task_type, ['chief', 'worker'])
 
 
 if __name__ == '__main__':
-  combinations.main()
+  test_util.main()

@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_import.h"
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
@@ -52,6 +53,7 @@ TfLiteStatus QuantizeModel(
   }
 
   MLIRContext context;
+  context.getDialectRegistry().insert<mlir::TFL::TensorFlowLiteDialect>();
   StatusScopedDiagnosticHandler statusHandler(&context,
                                               /*propagate=*/true);
 
@@ -73,7 +75,7 @@ TfLiteStatus QuantizeModel(
   }
 
   // Apply quantization passes
-  PassManager pm(module->getContext());
+  PassManager pm(module->getContext(), OpPassManager::Nesting::Implicit);
   TFL::QuantizationSpecs quant_specs;
   quant_specs.inference_type = tflite::TflTypeToTfType(inference_type);
   quant_specs.post_training_quantization = true;

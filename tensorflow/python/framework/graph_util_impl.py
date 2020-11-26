@@ -270,14 +270,14 @@ def convert_variables_to_constants(sess,
 
   Raises:
     RuntimeError: if a DT_RESOURCE op is found whose ancestor Variables are both
-      blacklisted AND whitelisted for freezing.
+      denylisted AND whitelisted for freezing.
   """
   ret = convert_to_constants.convert_variables_to_constants_from_session_graph(
       session=sess,
       graph_def=input_graph_def,
       output_node_names=output_node_names,
-      variable_names_whitelist=variable_names_whitelist,
-      variable_names_blacklist=variable_names_blacklist)
+      variable_names_allowlist=variable_names_whitelist,
+      variable_names_denylist=variable_names_blacklist)
   # The previous code logic generated an empty versions field, we clear it here
   # to maintain backwards compatibility.
   ret.versions.Clear()

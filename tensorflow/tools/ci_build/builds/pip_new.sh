@@ -448,11 +448,10 @@ install_tensorflow_pip() {
   # Check that requested python version matches configured one.
   check_python_pip_version
 
-  # Force upgrade of setuptools. This must happen before the pip install of the
-  # WHL_PATH, which pulls in absl-py, which uses install_requires notation
-  # introduced in setuptools >=20.5. The default version of setuptools is 5.5.1,
-  # which is too old for absl-py.
-  ${PIP_BIN_PATH} install --upgrade setuptools==39.1.0 || \
+  # Force upgrade of setuptools. We need it to install pips using
+  # `install_requires` notation introduced in setuptools >=20.5. The default
+  # version of setuptools is 5.5.1.
+  ${PIP_BIN_PATH} install --upgrade setuptools || \
     die "Error: setuptools install, upgrade FAILED"
 
   # Force tensorflow reinstallation. Otherwise it may not get installed from
@@ -461,13 +460,6 @@ install_tensorflow_pip() {
   ${PIP_BIN_PATH} install ${PIP_FLAGS} ${WHL_PATH} || \
     die "pip install (forcing to reinstall tensorflow) FAILED"
   echo "Successfully installed pip package ${WHL_PATH}"
-
-  # Force downgrade of setuptools. This must happen after the pip install of the
-  # WHL_PATH, which ends up upgrading to the latest version of setuptools.
-  # Versions of setuptools >= 39.1.0 will cause tests to fail like this:
-  #   ImportError: cannot import name py31compat
-  ${PIP_BIN_PATH} install --upgrade setuptools==39.1.0 || \
-    die "Error: setuptools install, upgrade FAILED"
 
   # Install the future package in the virtualenv. Installing it in user system
   # packages does not appear to port it over when creating a virtualenv.
@@ -675,7 +667,7 @@ if [[ "$BUILD_BOTH_GPU_PACKAGES" -eq "1" ]] || [[ "$BUILD_BOTH_CPU_PACKAGES" -eq
         "\"${CONTAINER_TYPE}\" instead."
   fi
   if [[ "$PROJECT_NAME" == *_${PROJECT_SUFFIX} ]]; then
-    NEW_PROJECT_NAME=${PROJECT_NAME%"_${PROJECT_SUFFIX}"}
+    NEW_PROJECT_NAME=${PROJECT_NAME}"_${PROJECT_SUFFIX}"
   else
     NEW_PROJECT_NAME="${PROJECT_NAME}_${PROJECT_SUFFIX}"
   fi

@@ -346,20 +346,27 @@ TEST_F(QuantizedPadOpTest, UInt8ZeroNotInQuantizationRange) {
 TEST_F(QuantizedPadOpTest, Int8ZeroNotInQuantizationRange) {
   ZeroNotInQuantizationRange<int8_t, TensorType_INT8>();
 }
+TEST_F(QuantizedPadOpTest, Int16ZeroNotInQuantizationRange) {
+  ZeroNotInQuantizationRange<int16_t, TensorType_INT16>();
+}
 #endif
 
 template <typename integer_type, TensorType tensor_dtype>
 void SimpleConstTest() {
   // Padding is represented as four 2-D lists representing above padding and
   // below padding (i.e. {{0, 0}, {1, 1}, {1, 1}, {0, 0}}).
-  PadOpConstModel m({tensor_dtype, {1, 2, 2, 1}, -1.0, 1.0}, {4, 2},
-                    {0, 0, 1, 1, 1, 1, 0, 0}, {tensor_dtype, {}, -1.0, 1.0});
+
+  const float kMin = -1.f;
+  const float kMax = tensor_dtype == TensorType_INT16 ? 32767.f / 32768.f : 1.f;
+
+  PadOpConstModel m({tensor_dtype, {1, 2, 2, 1}, kMin, kMax}, {4, 2},
+                    {0, 0, 1, 1, 1, 1, 0, 0}, {tensor_dtype, {}, kMin, kMax});
   m.template SetQuantizedInput<integer_type>({-0.8, 0.2, 0.9, 0.7});
   m.Invoke();
   EXPECT_THAT(m.template GetDequantizedOutput<integer_type>(),
               ElementsAreArray(DequantizedArrayNear(
                   {0, 0, 0, 0, 0, -0.8, 0.2, 0, 0, 0.9, 0.7, 0, 0, 0, 0, 0},
-                  -1.0, 1.0)));
+                  kMin, kMax)));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
 }
 
@@ -369,18 +376,24 @@ TEST_F(QuantizedPadOpTest, UInt8SimpleConstTest) {
 TEST_F(QuantizedPadOpTest, Int8SimpleConstTest) {
   SimpleConstTest<int8_t, TensorType_INT8>();
 }
+TEST_F(QuantizedPadOpTest, Int16SimpleConstTest) {
+  SimpleConstTest<int16_t, TensorType_INT16>();
+}
 
 template <typename integer_type, TensorType tensor_dtype>
 void SimpleDynamicTest() {
-  PadOpDynamicModel m({tensor_dtype, {1, 2, 2, 1}, -1.0, 1.0}, {4, 2},
-                      {tensor_dtype, {}, -1.0, 1.0});
+  const float kMin = -1.f;
+  const float kMax = tensor_dtype == TensorType_INT16 ? 32767.f / 32768.f : 1.f;
+
+  PadOpDynamicModel m({tensor_dtype, {1, 2, 2, 1}, kMin, kMax}, {4, 2},
+                      {tensor_dtype, {}, kMin, kMax});
   m.template SetQuantizedInput<integer_type>({-0.8, 0.2, 0.9, 0.7});
   m.SetPaddings({0, 0, 1, 1, 1, 1, 0, 0});
   m.Invoke();
   EXPECT_THAT(m.template GetDequantizedOutput<integer_type>(),
               ElementsAreArray(DequantizedArrayNear(
                   {0, 0, 0, 0, 0, -0.8, 0.2, 0, 0, 0.9, 0.7, 0, 0, 0, 0, 0},
-                  -1.0, 1.0)));
+                  kMin, kMax)));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
 }
 
@@ -390,18 +403,24 @@ TEST_F(QuantizedPadOpTest, UInt8SimpleDynamicTest) {
 TEST_F(QuantizedPadOpTest, Int8SimpleDynamicTest) {
   SimpleDynamicTest<int8_t, TensorType_INT8>();
 }
+TEST_F(QuantizedPadOpTest, Int16SimpleDynamicTest) {
+  SimpleDynamicTest<int16_t, TensorType_INT16>();
+}
 
 template <typename integer_type, TensorType tensor_dtype>
 void AdvancedConstTest() {
-  PadOpConstModel m({tensor_dtype, {1, 2, 3, 1}, -1.0, 1.0}, {4, 2},
-                    {0, 0, 0, 2, 1, 3, 0, 0}, {tensor_dtype, {}, -1.0, 1.0});
+  const float kMin = -1.f;
+  const float kMax = tensor_dtype == TensorType_INT16 ? 32767.f / 32768.f : 1.f;
+
+  PadOpConstModel m({tensor_dtype, {1, 2, 3, 1}, kMin, kMax}, {4, 2},
+                    {0, 0, 0, 2, 1, 3, 0, 0}, {tensor_dtype, {}, kMin, kMax});
   m.template SetQuantizedInput<integer_type>({-0.8, 0.2, 0.9, 0.7, 0.1, -0.3});
   m.Invoke();
   EXPECT_THAT(m.template GetDequantizedOutput<integer_type>(),
               ElementsAreArray(DequantizedArrayNear(
                   {0, -0.8, 0.2, 0.9, 0, 0, 0, 0, 0.7, 0.1, -0.3, 0, 0, 0,
                    0, 0,    0,   0,   0, 0, 0, 0, 0,   0,   0,    0, 0, 0},
-                  -1.0, 1.0)));
+                  kMin, kMax)));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 7, 1}));
 }
 
@@ -411,11 +430,17 @@ TEST_F(QuantizedPadOpTest, UInt8AdvancedConstTest) {
 TEST_F(QuantizedPadOpTest, Int8AdvancedConstTest) {
   AdvancedConstTest<int8_t, TensorType_INT8>();
 }
+TEST_F(QuantizedPadOpTest, Int16AdvancedConstTest) {
+  AdvancedConstTest<int16_t, TensorType_INT16>();
+}
 
 template <typename integer_type, TensorType tensor_dtype>
 void AdvancedDynamicTest() {
-  PadOpDynamicModel m({tensor_dtype, {1, 2, 3, 1}, -1.0, 1.0}, {4, 2},
-                      {tensor_dtype, {}, -1.0, 1.0});
+  const float kMin = -1.f;
+  const float kMax = tensor_dtype == TensorType_INT16 ? 32767.f / 32768.f : 1.f;
+
+  PadOpDynamicModel m({tensor_dtype, {1, 2, 3, 1}, kMin, kMax}, {4, 2},
+                      {tensor_dtype, {}, kMin, kMax});
   m.template SetQuantizedInput<integer_type>({-0.8, 0.2, 0.9, 0.7, 0.1, -0.3});
   m.SetPaddings({0, 0, 0, 2, 1, 3, 0, 0});
   m.Invoke();
@@ -423,7 +448,7 @@ void AdvancedDynamicTest() {
               ElementsAreArray(DequantizedArrayNear(
                   {0, -0.8, 0.2, 0.9, 0, 0, 0, 0, 0.7, 0.1, -0.3, 0, 0, 0,
                    0, 0,    0,   0,   0, 0, 0, 0, 0,   0,   0,    0, 0, 0},
-                  -1.0, 1.0)));
+                  kMin, kMax)));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 7, 1}));
 }
 
@@ -432,6 +457,9 @@ TEST_F(QuantizedPadOpTest, UInt8AdvancedDynamicTest) {
 }
 TEST_F(QuantizedPadOpTest, Int8AdvancedDynamicTest) {
   AdvancedDynamicTest<int8_t, TensorType_INT8>();
+}
+TEST_F(QuantizedPadOpTest, Int16AdvancedDynamicTest) {
+  AdvancedDynamicTest<int16_t, TensorType_INT16>();
 }
 
 #ifdef GTEST_HAS_DEATH_TEST

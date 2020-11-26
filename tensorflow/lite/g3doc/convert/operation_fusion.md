@@ -77,7 +77,7 @@ TensorFlow Lite fused operations is below:
 
 In the TensorFlow model source code, identify and abstract out the composite
 operation into a `tf.function` with the
-[experimental\_implements](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/eager/function.py#L88)
+[experimental\_implements](https://github.com/tensorflow/tensorflow/blob/c11d5d8881fd927165eeb09fd524a80ebaf009f2/tensorflow/python/eager/def_function.py#L470)
 function annotation. See an example of [embedding lookup](#composing_ops). The
 function defines the interface and its arguments should be used to implement the
 conversion logic.
@@ -90,12 +90,12 @@ The conversion code is written per the interface of the function with the
 composite implementation of this interface with the fused one.
 
 In the prepare-composite-functions pass, plugin in your
-[conversion code](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/mlir/lite/transforms/prepare_composite_functions_tf.cc#L108).
+[conversion code](https://github.com/tensorflow/tensorflow/blob/c11d5d8881fd927165eeb09fd524a80ebaf009f2/tensorflow/compiler/mlir/lite/transforms/prepare_composite_functions_tf.cc#L115).
 
 In more advanced usages, it is possible to implement complex transformations of
 the composite operation's operands in order to derive the operands of the fused
 operation. See
-[Keras LSTM](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/mlir/lite/utils/lstm_utils.cc#L627).
+[Keras LSTM](https://github.com/tensorflow/tensorflow/blob/1099faa8d6a941ef44d09ed8c372ff0ffda94112/tensorflow/compiler/mlir/lite/utils/lstm_utils.cc#L627).
 conversion code as an example.
 
 ### Convert to TensorFlow Lite
@@ -116,7 +116,7 @@ operations in TensorFlow Lite.
 <a id="composing_ops"></a>
 
 The use of `tf.function` with the
-[experimental\_implements](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/eager/function.py#L88)
+[experimental\_implements](https://github.com/tensorflow/tensorflow/blob/c11d5d8881fd927165eeb09fd524a80ebaf009f2/tensorflow/python/eager/def_function.py#L470)
 function attribute allows users to explicitly compose new operations using
 TensorFlow primitive operations and specify the interface that the resultant
 composite operation implements. This is very useful as it provides:
@@ -127,13 +127,12 @@ composite operation implements. This is very useful as it provides:
     arguments of the `tf.function` correspond to the arguments of this
     interface.
 
-As an example, let’s consider a composite operation defined in
-[Lingvo/TensorFlow](https://github.com/tensorflow/lingvo) to implement embedding
-lookup. This maps to a fused operation in TensorFlow Lite.
+As an example, let’s consider a composite operation defined to implement
+embedding lookup. This maps to a fused operation in TensorFlow Lite.
 
 ```python
   @tf.function(
-        experimental_implements="lingvo.embedding_lookup")
+        experimental_implements="embedding_lookup")
     def EmbFprop(embs, ids_vec):
       """Embedding forward prop.
 
@@ -197,10 +196,10 @@ models in the converter to support the composite operation fusion use case.
 Specifically, the new features added are:
 
 1.  Importing TensorFlow
-    [saved models into MLIR](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/mlir/tensorflow/translate/import_model.cc#L3593)
-1.  [fuse composite operations](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/mlir/lite/transforms/prepare_composite_functions_tf.cc#L103)
-1.  [variable mutability analysis](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/mlir/tensorflow/transforms/optimize_global_tensors.cc#L43)
-1.  [freeze all read-only variables](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/mlir/tensorflow/transforms/freeze_global_tensors.cc#L44)
+    [saved models into MLIR](https://github.com/tensorflow/tensorflow/blob/1099faa8d6a941ef44d09ed8c372ff0ffda94112/tensorflow/compiler/mlir/tensorflow/translate/import_model.cc#L3748)
+1.  [fuse composite operations](https://github.com/tensorflow/tensorflow/blob/1099faa8d6a941ef44d09ed8c372ff0ffda94112/tensorflow/compiler/mlir/lite/transforms/prepare_composite_functions_tf.cc#L103)
+1.  [variable mutability analysis](https://github.com/tensorflow/tensorflow/blob/1099faa8d6a941ef44d09ed8c372ff0ffda94112/tensorflow/compiler/mlir/tensorflow/transforms/optimize_global_tensors.cc#L43)
+1.  [freeze all read-only variables](https://github.com/tensorflow/tensorflow/blob/1099faa8d6a941ef44d09ed8c372ff0ffda94112/tensorflow/compiler/mlir/tensorflow/transforms/freeze_global_tensors.cc#L44)
 
 This allows us to perform operation fusion using the functions representing the
 composite operations prior to function inlining and variable freezing.
@@ -229,7 +228,7 @@ Here is code snippet from the pass showing the main workflow:
 ```
 void PrepareCompositeFunctionsPass::ConvertTFImplements(FuncOp func,
                                                         StringAttr attr) {
-  if (attr.getValue() == "lingvo.embedding_lookup") {
+  if (attr.getValue() == "embedding_lookup") {
     func.eraseBody();
     func.addEntryBlock();
     // Convert the composite embedding_lookup function body to a

@@ -27,6 +27,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_BATCHING_UTIL_BATCH_SCHEDULER_H_
 
 #include <stddef.h>
+
 #include <algorithm>
 #include <functional>
 #include <memory>
@@ -40,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
 namespace serving {
@@ -125,6 +127,8 @@ class Batch {
 
   // The sum of the sizes of the tasks in 'tasks_'.
   size_t size_ TF_GUARDED_BY(mu_) = 0;
+
+  std::atomic<bool> empty_ TF_GUARDED_BY(mu_){true};
 
   // Whether the batch has been closed.
   Notification closed_;
@@ -213,6 +217,7 @@ void Batch<TaskType>::AddTask(std::unique_ptr<TaskType> task) {
     mutex_lock l(mu_);
     size_ += task->size();
     tasks_.push_back(std::move(task));
+    empty_.store(false);
   }
 }
 
@@ -226,6 +231,9 @@ std::unique_ptr<TaskType> Batch<TaskType>::RemoveTask() {
     std::unique_ptr<TaskType> task = std::move(tasks_.back());
     size_ -= task->size();
     tasks_.pop_back();
+    if (tasks_.empty()) {
+      empty_.store(true);
+    }
     return task;
   }
 }
@@ -239,11 +247,13 @@ int Batch<TaskType>::num_tasks() const {
 }
 
 template <typename TaskType>
-bool Batch<TaskType>::empty() const {
-  {
-    mutex_lock l(mu_);
-    return tasks_.empty();
-  }
+bool Batch<TaskType>::empty() const TF_NO_THREAD_SAFETY_ANALYSIS {
+  // tracer is added to zoom in about this method.
+  // TODO(b/160249203): Remove tracer after evaluating a change to reduce
+  // lock contention and cpu usage (which is observed in profiler and
+  // very data-driven).
+  tensorflow::profiler::TraceMe tracer("BatchTask::empty");
+  return empty_.load();
 }
 
 template <typename TaskType>

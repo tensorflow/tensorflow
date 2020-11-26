@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import functools
 import re
 import threading
@@ -41,12 +42,13 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.experimental import mixed_precision_global_state
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
-from tensorflow.python.util.tf_export import tf_export
 from tensorflow.python.util.compat import collections_abc
+from tensorflow.python.util.tf_export import tf_export
 
 _python_session_create_counter = monitoring.Counter(
     '/tensorflow/api/python/session_create_counter',
     'Counter for number of sessions created in Python.')
+
 
 class SessionInterface(object):
   """Base class for implementations of TensorFlow client sessions."""
@@ -406,6 +408,12 @@ class _DictFetchMapper(_FetchMapper):
       fetches: Dict of fetches.
     """
     self._fetch_type = type(fetches)
+    if isinstance(fetches, collections.defaultdict):
+      self._type_ctor = functools.partial(collections.defaultdict,
+                                          fetches.default_factory)
+    else:
+      self._type_ctor = self._fetch_type
+
     self._keys = fetches.keys()
     self._mappers = [
         _FetchMapper.for_fetch(fetch) for fetch in fetches.values()
@@ -416,10 +424,12 @@ class _DictFetchMapper(_FetchMapper):
     return self._unique_fetches
 
   def build_results(self, values):
-    results = self._fetch_type()
-    for k, m, vi in zip(self._keys, self._mappers, self._value_indices):
-      results[k] = m.build_results([values[j] for j in vi])
-    return results
+
+    def _generator():
+      for k, m, vi in zip(self._keys, self._mappers, self._value_indices):
+        yield k, m.build_results([values[j] for j in vi])
+
+    return self._type_ctor(_generator())
 
 
 class _AttrsFetchMapper(_FetchMapper):

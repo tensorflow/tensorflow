@@ -389,8 +389,13 @@ void TestSomeGemm(int rows, int depth, int cols,
   }
   MakeDeterministicPseudoRandomVector(rows * cols, &dst_data);
 
+  auto random_order = [&]() {
+    return random_engine() % 2 ? cpu_backend_gemm::Order::kRowMajor
+                               : cpu_backend_gemm::Order::kColMajor;
+  };
   MatrixParams<LhsScalar> lhs_params;
-  lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
+  lhs_params.order =
+      use_golden ? cpu_backend_gemm::Order::kRowMajor : random_order();
   lhs_params.rows = rows;
   lhs_params.cols = depth;
   if (!std::is_floating_point<LhsScalar>::value) {
@@ -401,7 +406,8 @@ void TestSomeGemm(int rows, int depth, int cols,
   }
 
   MatrixParams<RhsScalar> rhs_params;
-  rhs_params.order = cpu_backend_gemm::Order::kColMajor;
+  rhs_params.order =
+      use_golden ? cpu_backend_gemm::Order::kColMajor : random_order();
   rhs_params.rows = depth;
   rhs_params.cols = cols;
   if (!std::is_floating_point<RhsScalar>::value) {
@@ -412,7 +418,8 @@ void TestSomeGemm(int rows, int depth, int cols,
   }
 
   MatrixParams<DstScalar> dst_params;
-  dst_params.order = cpu_backend_gemm::Order::kColMajor;
+  dst_params.order =
+      use_golden ? cpu_backend_gemm::Order::kColMajor : random_order();
   dst_params.rows = rows;
   dst_params.cols = cols;
   if (!std::is_floating_point<DstScalar>::value) {

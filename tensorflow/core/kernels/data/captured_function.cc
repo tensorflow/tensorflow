@@ -110,18 +110,33 @@ class SimpleStepStatsCollector : public StepStatsCollectorInterface {
   int64 processing_time_ TF_GUARDED_BY(mu_) = 0;
 };
 
+Status GetCapturedInput(const CapturedFunction* const func, int index,
+                        const Tensor** out) {
+  if (TF_PREDICT_FALSE(index >= func->captured_inputs().size())) {
+    return errors::OutOfRange(
+        "Out of range access to captured inputs for function ",
+        func->func().name(), ". Index: ", index,
+        ". Num captured inputs: ", func->captured_inputs().size());
+  }
+  *out = &func->captured_inputs()[index];
+  return Status::OK();
+}
+
 Status RunShortCircuit(const ShortCircuitInfo& info,
                        const std::vector<Tensor>& args,
                        const CapturedFunction* const func,
                        std::vector<Tensor>* rets) {
   VLOG(3) << "Running function " << func->func().name() << " short circuit";
-  size_t num_args = args.size();
+  const int num_args = args.size();
   rets->reserve(info.indices.size());
   for (size_t i = 0; i < info.indices.size(); ++i) {
     if (info.indices[i] < num_args) {
       rets->push_back(args[info.indices[i]]);
     } else {
-      rets->push_back(func->captured_inputs()[info.indices[i] - num_args]);
+      const Tensor* captured_input;
+      TF_RETURN_IF_ERROR(
+          GetCapturedInput(func, info.indices[i] - num_args, &captured_input));
+      rets->push_back(*captured_input);
     }
   }
   return Status::OK();
@@ -131,7 +146,7 @@ Status RunShortCircuit(const ShortCircuitInfo& info, std::vector<Tensor>&& args,
                        const CapturedFunction* const func,
                        std::vector<Tensor>* rets) {
   VLOG(3) << "Running function " << func->func().name() << " short circuit";
-  size_t num_args = args.size();
+  const int num_args = args.size();
   rets->reserve(info.indices.size());
   for (size_t i = 0; i < info.indices.size(); ++i) {
     if (info.indices[i] < num_args) {
@@ -141,7 +156,10 @@ Status RunShortCircuit(const ShortCircuitInfo& info, std::vector<Tensor>&& args,
         rets->push_back(args[info.indices[i]]);
       }
     } else {
-      rets->push_back(func->captured_inputs()[info.indices[i] - num_args]);
+      const Tensor* captured_input;
+      TF_RETURN_IF_ERROR(
+          GetCapturedInput(func, info.indices[i] - num_args, &captured_input));
+      rets->push_back(*captured_input);
     }
   }
   return Status::OK();
@@ -198,7 +216,7 @@ Status CreateShortCircuitInfo(OpKernelConstruction* ctx,
       last_use[indices[i]] = i;
     }
     can_move.resize(indices.size());
-    for (size_t i = 0; i < indices.size(); ++i) {
+    for (int i = 0, end = indices.size(); i < end; ++i) {
       can_move[i] = last_use[indices[i]] == i;
     }
   }
@@ -232,16 +250,16 @@ Status IsFunctionStateful(const FunctionLibraryDefinition& library,
   return Status::OK();
 }
 
-// Returns whether an op has been whitelisted as stateless. Uses a heuristic to
-// whitelist source dataset ops which have been marked stateful due to
+// Returns whether an op has been allowlisted as stateless. Uses a heuristic to
+// allowlist source dataset ops which have been marked stateful due to
 // b/65524810. Also looks up the `op_def->name` in the global
-// `WhitelistedStatefulOpRegistry`.
-bool IsOpWhitelisted(const OpDef* op_def) {
+// `AllowlistedStatefulOpRegistry`.
+bool IsOpAllowlisted(const OpDef* op_def) {
   return (op_def->output_arg_size() == 1 &&
           op_def->output_arg(0).type() == DT_VARIANT &&
           (absl::EndsWith(op_def->name(), "Dataset") ||
            absl::EndsWith(op_def->name(), "DatasetV2"))) ||
-         WhitelistedStatefulOpRegistry::Global()->Contains(op_def->name());
+         AllowlistedStatefulOpRegistry::Global()->Contains(op_def->name());
 }
 
 Status LookupFunction(const FunctionLibraryDefinition& lib_def,
@@ -278,11 +296,12 @@ class CallFrameBase : public CallFrameInterface {
 
   // Callee methods.
   Status SetRetval(int index, const Tensor& val) override {
-    if (index < retvals_.size() && val.dtype() == ret_types_[index] &&
+    const int retvals_size = retvals_.size();
+    if (index < retvals_size && val.dtype() == ret_types_[index] &&
         !retvals_[index]) {
       retvals_[index] = val;
       return Status::OK();
-    } else if (index >= retvals_.size()) {
+    } else if (index >= retvals_size) {
       return errors::InvalidArgument("Return value ", index,
                                      " is out of range.");
     } else if (val.dtype() != ret_types_[index]) {
@@ -317,10 +336,12 @@ class OwnedArgsCallFrame : public CallFrameBase {
 
   // Callee methods.
   Status GetArg(int index, const Tensor** val) override {
-    if (index < args_.size()) {
+    const int args_size = args_.size();
+    const int captured_inputs_size = captured_inputs_->size();
+    if (index < args_size) {
       *val = &args_[index];
       return Status::OK();
-    } else if (index < args_.size() + captured_inputs_->size()) {
+    } else if (index < args_size + captured_inputs_size) {
       *val = &(*captured_inputs_)[index - args_.size()];
       return Status::OK();
     } else {
@@ -336,7 +357,7 @@ class OwnedArgsCallFrame : public CallFrameBase {
     *val = std::move(args_[index]);
   }
   bool CanConsumeArg(int index) const override {
-    return index >= 0 && index < args_.size();
+    return index >= 0 && index < static_cast<int>(args_.size());
   }
 
  private:
@@ -359,11 +380,13 @@ class BorrowedArgsCallFrame : public CallFrameBase {
 
   // Callee methods.
   Status GetArg(int index, const Tensor** val) override {
-    if (index < args_.size()) {
+    const int args_size = args_.size();
+    const int captured_inputs_size = captured_inputs_->size();
+    if (index < args_size) {
       *val = &args_[index];
       return Status::OK();
-    } else if (index < args_.size() + captured_inputs_->size()) {
-      *val = &(*captured_inputs_)[index - args_.size()];
+    } else if (index < args_size + captured_inputs_size) {
+      *val = &(*captured_inputs_)[index - args_size];
       return Status::OK();
     } else {
       return errors::InvalidArgument("Argument ", index, " is out of range.");
@@ -384,7 +407,7 @@ Status IsNodeStateful(const FunctionLibraryDefinition& library,
   // TODO(jsimsa): Fix C++ unit tests so that we do not have to ignore
   // `LookUpOpDef` errors here.
   if (!OpRegistry::Global()->LookUpOpDef(node.op(), &op_def).ok() ||
-      IsOpWhitelisted(op_def) || !op_def->is_stateful() ||
+      IsOpAllowlisted(op_def) || !op_def->is_stateful() ||
       op_def->name() == "Assert") {
     return Status::OK();
   }
@@ -425,10 +448,21 @@ Status MakeIteratorFromInputElement(
     const std::vector<Tensor>& input_element, int64 thread_index,
     const InstantiatedCapturedFunction& inst_captured_func, StringPiece prefix,
     std::unique_ptr<IteratorBase>* out_iterator) {
+  return MakeIteratorFromInputElement(ctx, parent, input_element, thread_index,
+                                      inst_captured_func, prefix, out_iterator,
+                                      /*node=*/nullptr);
+}
+
+Status MakeIteratorFromInputElement(
+    IteratorContext* ctx, const IteratorBase* parent,
+    const std::vector<Tensor>& input_element, int64 thread_index,
+    const InstantiatedCapturedFunction& inst_captured_func, StringPiece prefix,
+    std::unique_ptr<IteratorBase>* out_iterator,
+    const std::shared_ptr<model::Node>& node) {
   std::vector<Tensor> return_values;
 
-  TF_RETURN_IF_ERROR(inst_captured_func.RunWithBorrowedArgs(ctx, input_element,
-                                                            &return_values));
+  TF_RETURN_IF_ERROR(inst_captured_func.RunWithBorrowedArgs(
+      ctx, input_element, &return_values, node));
 
   if (!(return_values.size() == 1 && return_values[0].dtype() == DT_VARIANT &&
         TensorShapeUtils::IsScalar(return_values[0].shape()))) {
@@ -442,9 +476,16 @@ Status MakeIteratorFromInputElement(
       GetDatasetFromVariantTensor(return_values[0], &returned_dataset));
 
   // Create an iterator for the dataset that was returned by `f`.
-  return returned_dataset->MakeIterator(
-      ctx, parent, strings::StrCat(prefix, "[", thread_index, "]"),
-      out_iterator);
+  std::string iterator_prefix = strings::StrCat(prefix, "[", thread_index, "]");
+  if (ctx->split_provider() == nullptr) {
+    return returned_dataset->MakeIterator(ctx, parent, iterator_prefix,
+                                          out_iterator);
+  }
+  // Strip out the split provider so that it doesn't apply to sub-iterators.
+  IteratorContext::Params params(ctx);
+  params.split_provider = nullptr;
+  return returned_dataset->MakeIterator(IteratorContext(std::move(params)),
+                                        parent, iterator_prefix, out_iterator);
 }
 
 /* static */
@@ -494,13 +535,6 @@ Status FunctionMetadata::Create(
     if (!validate_arg(arg)) {
       (*out_metadata)->use_multi_device_function_ = false;
       return Status::OK();
-    }
-  }
-  for (const auto& node : fdef->node_def()) {
-    if (node.op() == kDataServiceDataset) {
-      return errors::InvalidArgument(
-          "The `.distribute(...)` dataset transformation is not supported "
-          "within tf.data functions.");
     }
   }
   return Status::OK();
@@ -640,7 +674,7 @@ Status CapturedFunction::Instantiate(
       inst_opts.composite_devices[it.first] = &it.second;
     }
 
-    for (size_t i = 0; i < fdef->signature().output_arg_size(); ++i) {
+    for (int i = 0, end = fdef->signature().output_arg_size(); i < end; ++i) {
       inst_opts.output_devices.push_back(inst_opts.target);
     }
 
@@ -793,6 +827,12 @@ InstantiatedCapturedFunction::InstantiatedCapturedFunction(
 Status InstantiatedCapturedFunction::Run(IteratorContext* ctx,
                                          std::vector<Tensor>&& args,
                                          std::vector<Tensor>* rets) const {
+  return Run(ctx, std::move(args), rets, /*node=*/nullptr);
+}
+
+Status InstantiatedCapturedFunction::Run(
+    IteratorContext* ctx, std::vector<Tensor>&& args, std::vector<Tensor>* rets,
+    const std::shared_ptr<model::Node>& node) const {
   auto& info = captured_func_->short_circuit_info();
   if (!info.indices.empty()) {
     return RunShortCircuit(info, std::move(args), captured_func_, rets);
@@ -809,6 +849,14 @@ Status InstantiatedCapturedFunction::Run(IteratorContext* ctx,
   CancellationManager cancellation_manager(ctx->cancellation_manager());
   f_opts.cancellation_manager = &cancellation_manager;
 
+  std::shared_ptr<SimpleStepStatsCollector> stats_collector;
+  if (node || ctx->stats_aggregator()) {
+    stats_collector = std::make_shared<SimpleStepStatsCollector>();
+  }
+  const bool collect_usage =
+      node && ctx->model() && ctx->model()->collect_resource_usage();
+  f_opts.stats_collector = stats_collector.get();
+
   OwnedArgsCallFrame frame(std::move(args), &captured_func_->captured_inputs(),
                            ret_types_);
   profiler::TraceMe activity(
@@ -817,13 +865,37 @@ Status InstantiatedCapturedFunction::Run(IteratorContext* ctx,
             "InstantiatedCapturedFunction::Run#id=", f_opts.step_id, "#");
       },
       profiler::TraceMeLevel::kInfo);
-  TF_RETURN_IF_ERROR(lib_->RunSync(std::move(f_opts), f_handle_, &frame));
+  if (node) {
+    // Resource usage for function execution is gathered from the executor.
+    // TODO(jsimsa): Factor out common code for Run, RunAsync, and
+    // RunWithBorrowedArguments
+    if (collect_usage) node->record_stop(EnvTime::NowNanos());
+    TF_RETURN_IF_ERROR(lib_->RunSync(std::move(f_opts), f_handle_, &frame));
+    if (ctx->stats_aggregator()) {
+      string prefix_with_func_name = strings::StrCat(
+          node->name(), stats_utils::kDelimiter, captured_func_->func().name());
+      ctx->stats_aggregator()->AddToHistogram(
+          stats_utils::ExecutionTimeHistogramName(prefix_with_func_name),
+          {static_cast<float>(stats_collector->processing_time())},
+          node->num_elements());
+    }
+    node->add_processing_time(stats_collector->processing_time());
+    if (collect_usage) node->record_start(EnvTime::NowNanos());
+  } else {
+    TF_RETURN_IF_ERROR(lib_->RunSync(std::move(f_opts), f_handle_, &frame));
+  }
   return frame.ConsumeRetvals(rets);
 }
 
 Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
     IteratorContext* ctx, const std::vector<Tensor>& args,
-    std::vector<Tensor>* rets) const {
+    std::vector<Tensor>* ret) const {
+  return RunWithBorrowedArgs(ctx, args, ret, /*node=*/nullptr);
+}
+
+Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
+    IteratorContext* ctx, const std::vector<Tensor>& args,
+    std::vector<Tensor>* rets, const std::shared_ptr<model::Node>& node) const {
   auto& info = captured_func_->short_circuit_info();
   if (!info.indices.empty()) {
     return RunShortCircuit(info, args, captured_func_, rets);
@@ -840,6 +912,14 @@ Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
   CancellationManager cancellation_manager(ctx->cancellation_manager());
   f_opts.cancellation_manager = &cancellation_manager;
 
+  std::shared_ptr<SimpleStepStatsCollector> stats_collector;
+  if (node || ctx->stats_aggregator()) {
+    stats_collector = std::make_shared<SimpleStepStatsCollector>();
+  }
+  const bool collect_usage =
+      node && ctx->model() && ctx->model()->collect_resource_usage();
+  f_opts.stats_collector = stats_collector.get();
+
   BorrowedArgsCallFrame frame(args, &captured_func_->captured_inputs(),
                               ret_types_);
   profiler::TraceMe activity(
@@ -849,7 +929,23 @@ Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
             f_opts.step_id, "#");
       },
       profiler::TraceMeLevel::kInfo);
-  TF_RETURN_IF_ERROR(lib_->RunSync(std::move(f_opts), f_handle_, &frame));
+  if (node) {
+    // Resource usage for function execution is gathered from the executor.
+    if (collect_usage) node->record_stop(EnvTime::NowNanos());
+    TF_RETURN_IF_ERROR(lib_->RunSync(std::move(f_opts), f_handle_, &frame));
+    if (ctx->stats_aggregator()) {
+      string prefix_with_func_name = strings::StrCat(
+          node->name(), stats_utils::kDelimiter, captured_func_->func().name());
+      ctx->stats_aggregator()->AddToHistogram(
+          stats_utils::ExecutionTimeHistogramName(prefix_with_func_name),
+          {static_cast<float>(stats_collector->processing_time())},
+          node->num_elements());
+    }
+    node->add_processing_time(stats_collector->processing_time());
+    if (collect_usage) node->record_start(EnvTime::NowNanos());
+  } else {
+    TF_RETURN_IF_ERROR(lib_->RunSync(std::move(f_opts), f_handle_, &frame));
+  }
   return frame.ConsumeRetvals(rets);
 }
 

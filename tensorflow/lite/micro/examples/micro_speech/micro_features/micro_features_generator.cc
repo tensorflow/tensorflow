@@ -81,7 +81,7 @@ TfLiteStatus GenerateMicroFeatures(tflite::ErrorReporter* error_reporter,
   FrontendOutput frontend_output = FrontendProcessSamples(
       &g_micro_features_state, frontend_input, input_size, num_samples_read);
 
-  for (int i = 0; i < frontend_output.size; ++i) {
+  for (size_t i = 0; i < frontend_output.size; ++i) {
     // These scaling values are derived from those used in input_data.py in the
     // training pipeline.
     // The feature pipeline outputs 16-bit signed integers in roughly a 0 to 670

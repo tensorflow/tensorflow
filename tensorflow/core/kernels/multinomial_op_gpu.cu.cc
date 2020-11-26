@@ -66,8 +66,9 @@ struct MultinomialFunctor<GPUDevice, T, OutputType> {
                   typename TTypes<OutputType>::Matrix output) {
     // Uniform, [0, 1).
     typedef random::UniformDistribution<random::PhiloxRandom, float> Dist;
-    functor::FillPhiloxRandom<GPUDevice, Dist>()(ctx, d, gen, noises.data(),
-                                                 noises.size(), Dist());
+    functor::FillPhiloxRandom<GPUDevice, Dist>()(
+        ctx, d, /*key=*/nullptr, /*counter=*/nullptr, gen, noises.data(),
+        noises.size(), Dist());
 
 #if defined(EIGEN_HAS_INDEX_LIST)
     Eigen::IndexList<int, int, int> bsc;

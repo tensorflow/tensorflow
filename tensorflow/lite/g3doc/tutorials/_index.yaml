@@ -132,18 +132,18 @@ landing_page:
     items:
     - classname: tfo-landing-page-card
       description: >
-        <a href="https://codelabs.developers.google.com/codelabs/recognize-flowers-with-tensorflow-on-android/#0">
+        <a href="https://codelabs.developers.google.com/codelabs/sparkfun-tensorflow/#0">
           <h3 class="no-link">Hotword detection</h3>
         </a>
         Train a tiny speech model that can detect simple hotwords.
-      path: https://github.com/tensorflow/examples/blob/master/lite/examples/object_detection/raspberry_pi/
+      path: https://codelabs.developers.google.com/codelabs/sparkfun-tensorflow/#0
     - classname: tfo-landing-page-card
       description: >
-        <a href="https://codelabs.developers.google.com/codelabs/recognize-flowers-with-tensorflow-on-android/#0">
+        <a href="https://blog.tensorflow.org/2019/11/how-to-get-started-with-machine.html">
           <h3 class="no-link">Gesture recognition</h3>
         </a>
         Train a model that can recognize different gestures using accelerometer data.
-      path: https://github.com/tensorflow/examples/blob/master/lite/examples/object_detection/raspberry_pi/
+      path: https://blog.tensorflow.org/2019/11/how-to-get-started-with-machine.html
 
 
   # Next steps

@@ -233,6 +233,42 @@ tf_module {
     argspec: "args=[\'img1\', \'img2\', \'max_val\', \'power_factors\', \'filter_size\', \'filter_sigma\', \'k1\', \'k2\'], varargs=None, keywords=None, defaults=[\'(0.0448, 0.2856, 0.3001, 0.2363, 0.1333)\', \'11\', \'1.5\', \'0.01\', \'0.03\'], "
   }
   member_method {
+    name: "stateless_random_brightness"
+    argspec: "args=[\'image\', \'max_delta\', \'seed\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "stateless_random_contrast"
+    argspec: "args=[\'image\', \'lower\', \'upper\', \'seed\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "stateless_random_crop"
+    argspec: "args=[\'value\', \'size\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "stateless_random_flip_left_right"
+    argspec: "args=[\'image\', \'seed\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "stateless_random_flip_up_down"
+    argspec: "args=[\'image\', \'seed\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "stateless_random_hue"
+    argspec: "args=[\'image\', \'max_delta\', \'seed\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "stateless_random_jpeg_quality"
+    argspec: "args=[\'image\', \'min_jpeg_quality\', \'max_jpeg_quality\', \'seed\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "stateless_random_saturation"
+    argspec: "args=[\'image\', \'lower\', \'upper\', \'seed\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "stateless_sample_distorted_bounding_box"
+    argspec: "args=[\'image_size\', \'bounding_boxes\', \'seed\', \'min_object_covered\', \'aspect_ratio_range\', \'area_range\', \'max_attempts\', \'use_image_if_no_bounding_boxes\', \'name\'], varargs=None, keywords=None, defaults=[\'0.1\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
     name: "total_variation"
     argspec: "args=[\'images\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }

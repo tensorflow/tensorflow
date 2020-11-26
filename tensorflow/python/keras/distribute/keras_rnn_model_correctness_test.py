@@ -20,16 +20,17 @@ from __future__ import print_function
 import numpy as np
 from tensorflow.python import keras
 from tensorflow.python import tf2
-from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import central_storage_strategy
+from tensorflow.python.distribute import combinations as ds_combinations
+from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.distribute import keras_correctness_test_base
 from tensorflow.python.keras.layers import recurrent as rnn_v1
 from tensorflow.python.keras.layers import recurrent_v2 as rnn_v2
-from tensorflow.python.keras.mixed_precision.experimental import policy
+from tensorflow.python.keras.mixed_precision import policy
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras
-from tensorflow.python.platform import test
 
 
 class _DistributionStrategyRnnModelCorrectnessTest(
@@ -69,6 +70,8 @@ class _DistributionStrategyRnnModelCorrectnessTest(
     return model
 
 
+@testing_utils.run_all_without_tensor_float_32(
+    'Uses Dense layers, which call matmul')
 class DistributionStrategyGruModelCorrectnessTest(
     _DistributionStrategyRnnModelCorrectnessTest):
 
@@ -80,14 +83,16 @@ class DistributionStrategyGruModelCorrectnessTest(
     else:
       return rnn_v1.GRU
 
-  @combinations.generate(
-      keras_correctness_test_base.test_combinations_for_embedding_model())
+  @ds_combinations.generate(
+      keras_correctness_test_base.test_combinations_for_embedding_model() +
+      keras_correctness_test_base.multi_worker_mirrored_eager())
   def test_gru_model_correctness(self, distribution, use_numpy,
                                  use_validation_data):
-    self.skipTest('Test is sensitive to TF random seed, b/TBD')
     self.run_correctness_test(distribution, use_numpy, use_validation_data)
 
 
+@testing_utils.run_all_without_tensor_float_32(
+    'Uses Dense layers, which call matmul')
 class DistributionStrategyLstmModelCorrectnessTest(
     _DistributionStrategyRnnModelCorrectnessTest):
 
@@ -99,17 +104,24 @@ class DistributionStrategyLstmModelCorrectnessTest(
     else:
       return rnn_v1.LSTM
 
-  @combinations.generate(
-      keras_correctness_test_base.test_combinations_for_embedding_model())
+  @ds_combinations.generate(
+      keras_correctness_test_base.test_combinations_for_embedding_model() +
+      keras_correctness_test_base.multi_worker_mirrored_eager())
   def test_lstm_model_correctness(self, distribution, use_numpy,
                                   use_validation_data):
     self.run_correctness_test(distribution, use_numpy, use_validation_data)
 
-  @combinations.generate(
-      keras_correctness_test_base.test_combinations_for_embedding_model())
+  @ds_combinations.generate(
+      keras_correctness_test_base.test_combinations_for_embedding_model() +
+      keras_correctness_test_base.multi_worker_mirrored_eager())
   @testing_utils.enable_v2_dtype_behavior
   def test_lstm_model_correctness_mixed_precision(self, distribution, use_numpy,
                                                   use_validation_data):
+    if isinstance(distribution,
+                  (central_storage_strategy.CentralStorageStrategy,
+                   central_storage_strategy.CentralStorageStrategyV1)):
+      self.skipTest('CentralStorageStrategy is not supported by '
+                    'mixed precision.')
     if isinstance(distribution,
                   (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)):
       policy_name = 'mixed_bfloat16'
@@ -121,4 +133,4 @@ class DistributionStrategyLstmModelCorrectnessTest(
 
 
 if __name__ == '__main__':
-  test.main()
+  multi_process_runner.test_main()

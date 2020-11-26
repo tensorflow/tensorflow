@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/lite/c/common.h"
 
 namespace tflite {
@@ -66,6 +67,9 @@ class FormatConverter {
   void Populate(const T* src_data, std::vector<int> indices, int level,
                 int prev_idx, int* src_data_ptr);
 
+  // Check if val is equal to zero.
+  bool IsZero(const T val);
+
   // Shape of the conceptual dense tensor.
   std::vector<int> dense_shape_;
   // Shape of the dense tensor with inner blocks reduced. For example, a (4, 4)
@@ -92,9 +96,13 @@ class FormatConverter {
   std::vector<T> data_;
 };
 
+template <>
+bool FormatConverter<Eigen::half>::IsZero(const Eigen::half val);
+
 extern template class FormatConverter<int32_t>;
 extern template class FormatConverter<int8_t>;
 extern template class FormatConverter<float>;
+extern template class FormatConverter<Eigen::half>;
 }  // namespace sparsity
 }  // namespace optimize
 }  // namespace tflite

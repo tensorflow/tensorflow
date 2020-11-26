@@ -35,16 +35,17 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.framework import test_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import sequential
+from tensorflow.python.keras.feature_column import dense_features
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
+from tensorflow.python.saved_model import load as load_lib
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import save as save_lib
 from tensorflow.python.saved_model import signature_constants
@@ -70,8 +71,7 @@ class TraceModelCallTest(keras_parameterized.TestCase):
     inputs = array_ops.ones((8, 5))
 
     if input_dim is None:
-      with self.assertRaisesRegexp(ValueError,
-                                   'input shapes have not been set'):
+      with self.assertRaisesRegex(ValueError, 'input shapes have not been set'):
         saving_utils.trace_model_call(model)
       model._set_inputs(inputs)
 
@@ -130,8 +130,7 @@ class TraceModelCallTest(keras_parameterized.TestCase):
     input_b_np = np.random.random((10, input_dim)).astype(np.float32)
 
     if testing_utils.get_model_type() == 'subclass':
-      with self.assertRaisesRegexp(ValueError,
-                                   'input shapes have not been set'):
+      with self.assertRaisesRegex(ValueError, 'input shapes have not been set'):
         saving_utils.trace_model_call(model)
 
     model.compile(
@@ -159,7 +158,7 @@ class TraceModelCallTest(keras_parameterized.TestCase):
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_trace_features_layer(self):
     columns = [feature_column_lib.numeric_column('x')]
-    model = sequential.Sequential([feature_column_lib.DenseFeatures(columns)])
+    model = sequential.Sequential([dense_features.DenseFeatures(columns)])
     model_input = {'x': constant_op.constant([[1.]])}
     model.predict(model_input, steps=1)
     fn = saving_utils.trace_model_call(model)
@@ -169,7 +168,7 @@ class TraceModelCallTest(keras_parameterized.TestCase):
         feature_column_lib.numeric_column('x'),
         feature_column_lib.numeric_column('y')
     ]
-    model = sequential.Sequential([feature_column_lib.DenseFeatures(columns)])
+    model = sequential.Sequential([dense_features.DenseFeatures(columns)])
     model_input = {'x': constant_op.constant([[1.]]),
                    'y': constant_op.constant([[2.]])}
     model.predict(model_input, steps=1)
@@ -182,7 +181,7 @@ class TraceModelCallTest(keras_parameterized.TestCase):
     model = testing_utils.get_small_sequential_mlp(10, 3, None)
     inputs = array_ops.ones((8, 5))
 
-    with self.assertRaisesRegexp(ValueError, 'input shapes have not been set'):
+    with self.assertRaisesRegex(ValueError, 'input shapes have not been set'):
       saving_utils.trace_model_call(model)
 
     fn = saving_utils.trace_model_call(
@@ -270,9 +269,79 @@ def _import_and_infer(save_dir, inputs):
     return session.run(output_dict, feed_dict=feed_dict)
 
 
+class AutographedMetric(keras.metrics.Metric):
+
+  def build(self, input_shape):
+    pass
+
+  def update_state(self, values):
+    if constant_op.constant(False):
+      x = 1
+    else:
+      x = 2
+    return x
+
+  def reset_states(self):
+    pass
+
+  def result(self):
+    return constant_op.constant(0)
+
+  def GetMean(self):
+    return constant_op.constant(0)
+
+  def GetCount(self):
+    return constant_op.constant(0)
+
+
+class BasicAutographedMetricLayer(keras.layers.Layer):
+
+  def build(self, input_shape):
+    self._metric = AutographedMetric()
+
+  def call(self, inp):
+    self._metric.update_state(inp)
+    # TODO(b/172853147): Test control flow here.
+    return inp
+
+
+class BasicAutographedMetricModel(keras.models.Model):
+
+  def __init__(self):
+    super(BasicAutographedMetricModel, self).__init__(name='test_model')
+    self._layer = BasicAutographedMetricLayer()
+
+  def call(self, inputs, **kwargs):
+    return self._layer(inputs)
+
+
 @keras_parameterized.run_with_all_model_types
 @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
 class ModelSaveTest(keras_parameterized.TestCase):
+
+  def test_model_save_preserves_autograph(self):
+    model = BasicAutographedMetricModel()
+    inputs = array_ops.ones((8, 5))
+    model._set_inputs(inputs)
+
+    save_dir = os.path.join(self.get_temp_dir(), 'saved_model')
+    save_lib.save(model, save_dir)
+
+    if model.output_names:
+      output_name = model.output_names[0]
+      input_name = model.input_names[0]
+    else:
+      output_name = 'output_1'
+      input_name = 'input_1'
+
+    self.assertAllClose({output_name: model.predict_on_batch(inputs)},
+                        _import_and_infer(save_dir,
+                                          {input_name: np.ones((8, 5))}))
+
+    # Test v2 loading.
+    # TODO(mdan): tests using _import_and_infer should uniformly do this.
+    self.assertAllClose(model.predict_on_batch(inputs),
+                        load_lib.load(save_dir)(inputs))
 
   def test_model_save(self):
     input_dim = 5
@@ -297,44 +366,46 @@ class ModelSaveTest(keras_parameterized.TestCase):
                                           {input_name: np.ones((8, 5))}))
 
 
-@test_util.run_deprecated_v1  # Not used in v2.
 class ExtractModelMetricsTest(keras_parameterized.TestCase):
 
   def test_extract_model_metrics(self):
-    a = keras.layers.Input(shape=(3,), name='input_a')
-    b = keras.layers.Input(shape=(3,), name='input_b')
+    # saving_utils.extract_model_metrics is used in V1 only API
+    # keras.experimental.export_saved_model.
+    with ops.Graph().as_default():
+      a = keras.layers.Input(shape=(3,), name='input_a')
+      b = keras.layers.Input(shape=(3,), name='input_b')
 
-    dense = keras.layers.Dense(4, name='dense')
-    c = dense(a)
-    d = dense(b)
-    e = keras.layers.Dropout(0.5, name='dropout')(c)
+      dense = keras.layers.Dense(4, name='dense')
+      c = dense(a)
+      d = dense(b)
+      e = keras.layers.Dropout(0.5, name='dropout')(c)
 
-    model = keras.models.Model([a, b], [d, e])
-    extract_metrics = saving_utils.extract_model_metrics(model)
-    self.assertEqual(None, extract_metrics)
+      model = keras.models.Model([a, b], [d, e])
+      extract_metrics = saving_utils.extract_model_metrics(model)
+      self.assertEqual(None, extract_metrics)
 
-    extract_metric_names = [
-        'dense_binary_accuracy', 'dropout_binary_accuracy',
-        'dense_mean_squared_error', 'dropout_mean_squared_error'
-    ]
-    if tf2.enabled():
-      extract_metric_names.extend(['dense_mae', 'dropout_mae'])
-    else:
-      extract_metric_names.extend(
-          ['dense_mean_absolute_error', 'dropout_mean_absolute_error'])
+      extract_metric_names = [
+          'dense_binary_accuracy', 'dropout_binary_accuracy',
+          'dense_mean_squared_error', 'dropout_mean_squared_error'
+      ]
+      if tf2.enabled():
+        extract_metric_names.extend(['dense_mae', 'dropout_mae'])
+      else:
+        extract_metric_names.extend(
+            ['dense_mean_absolute_error', 'dropout_mean_absolute_error'])
 
-    model_metric_names = ['loss', 'dense_loss', 'dropout_loss'
-                         ] + extract_metric_names
-    model.compile(
-        loss='mae',
-        metrics=[
-            keras.metrics.BinaryAccuracy(), 'mae',
-            keras.metrics.mean_squared_error
-        ],
-        optimizer=rmsprop.RMSPropOptimizer(learning_rate=0.01))
-    extract_metrics = saving_utils.extract_model_metrics(model)
-    self.assertEqual(set(model_metric_names), set(model.metrics_names))
-    self.assertEqual(set(extract_metric_names), set(extract_metrics.keys()))
+      model_metric_names = ['loss', 'dense_loss', 'dropout_loss'
+                           ] + extract_metric_names
+      model.compile(
+          loss='mae',
+          metrics=[
+              keras.metrics.BinaryAccuracy(), 'mae',
+              keras.metrics.mean_squared_error
+          ],
+          optimizer=rmsprop.RMSPropOptimizer(learning_rate=0.01))
+      extract_metrics = saving_utils.extract_model_metrics(model)
+      self.assertEqual(set(model_metric_names), set(model.metrics_names))
+      self.assertEqual(set(extract_metric_names), set(extract_metrics.keys()))
 
 
 if __name__ == '__main__':

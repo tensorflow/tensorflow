@@ -287,7 +287,7 @@ __global__ void SwapDimension1And2InTensor3UsingTiles(
   // One extra line in the inner dimension to avoid share memory bank conflict.
   // This is to mimic the following, but no constructor of T can be invoked.
   //     __shared__ T shared_memory_tile[TileSizeI][TileSizeJ + 1];
-#if GOOGLE_CUDA || TENSORFLOW_COMPILER_IS_HIP_CLANG
+#if GOOGLE_CUDA
   __shared__ __align__(
       alignof(T)) char shared_mem_raw[TileSizeI * (TileSizeJ + 1) * sizeof(T)];
   typedef T(*SharedMemoryTile)[TileSizeJ + 1];
@@ -417,14 +417,12 @@ __global__ void SwapDimension1And2InTensor3UsingTiles(
 }
 
 // A Gpu custom kernel that convert input to output, given proper padding on
-// the left and the top. The padded value is zero.
+// the left and the top.
 template <typename T, int NDIMS>
-__global__ void PadInputCustomKernelNHWC(int nthreads,
-                                         const T* __restrict__ input,
-                                         Dimension<NDIMS> input_dims,
-                                         T* __restrict__ output,
-                                         Dimension<NDIMS> output_dims,
-                                         Dimension<NDIMS - 2> padding_left) {
+__global__ void PadInputCustomKernelNHWC(
+    int nthreads, const T* __restrict__ input, Dimension<NDIMS> input_dims,
+    T* __restrict__ output, Dimension<NDIMS> output_dims,
+    Dimension<NDIMS - 2> padding_left, T padding_value) {
   GPU_1D_KERNEL_LOOP(index, nthreads) {
     int output_index = index;
     Index<NDIMS> output_tensor_index =
@@ -444,18 +442,16 @@ __global__ void PadInputCustomKernelNHWC(int nthreads,
       const int input_index = TensorIndexToFlat(input_tensor_index, input_dims);
       output[output_index] = input[input_index];
     } else {
-      output[output_index] = T(0);
+      output[output_index] = padding_value;
     }
   }
 }
 
 template <typename T, int NDIMS>
-__global__ void PadInputCustomKernelNCHW(int nthreads,
-                                         const T* __restrict__ input,
-                                         Dimension<NDIMS> input_dims,
-                                         T* __restrict__ output,
-                                         Dimension<NDIMS> output_dims,
-                                         Dimension<NDIMS - 2> padding_left) {
+__global__ void PadInputCustomKernelNCHW(
+    int nthreads, const T* __restrict__ input, Dimension<NDIMS> input_dims,
+    T* __restrict__ output, Dimension<NDIMS> output_dims,
+    Dimension<NDIMS - 2> padding_left, T padding_value) {
   GPU_1D_KERNEL_LOOP(index, nthreads) {
     int output_index = index;
     Index<NDIMS> output_tensor_index =
@@ -475,7 +471,7 @@ __global__ void PadInputCustomKernelNCHW(int nthreads,
       const int input_index = TensorIndexToFlat(input_tensor_index, input_dims);
       output[output_index] = input[input_index];
     } else {
-      output[output_index] = T(0);
+      output[output_index] = padding_value;
     }
   }
 }
@@ -572,7 +568,7 @@ struct PadInput<GPUDevice, T, int, NDIMS> {
                   const std::array<int, NDIMS - 2>& padding_left,
                   const std::array<int, NDIMS - 2>& padding_right,
                   typename TTypes<T, NDIMS, int>::Tensor out,
-                  TensorFormat format) {
+                  TensorFormat format, const T& padding_value) {
     GpuLaunchConfig config = GetGpuLaunchConfig(out.size(), d);
     Dimension<NDIMS> input_dims;
     for (int i = 0; i < NDIMS; ++i) {
@@ -589,12 +585,14 @@ struct PadInput<GPUDevice, T, int, NDIMS> {
       TF_CHECK_OK(GpuLaunchKernel(
           PadInputCustomKernelNHWC<T, NDIMS>, config.block_count,
           config.thread_per_block, 0, d.stream(), config.virtual_thread_count,
-          in.data(), input_dims, out.data(), output_dims, padding_left_dim));
+          in.data(), input_dims, out.data(), output_dims, padding_left_dim,
+          padding_value));
     } else if (format == FORMAT_NCHW) {
       TF_CHECK_OK(GpuLaunchKernel(
           PadInputCustomKernelNCHW<T, NDIMS>, config.block_count,
           config.thread_per_block, 0, d.stream(), config.virtual_thread_count,
-          in.data(), input_dims, out.data(), output_dims, padding_left_dim));
+          in.data(), input_dims, out.data(), output_dims, padding_left_dim,
+          padding_value));
     } else {
       LOG(FATAL) << "Invalid data format: " << format;
     }

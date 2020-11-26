@@ -71,7 +71,7 @@ void XlaArgMinMaxOp::Compile(XlaOpKernelContext* ctx) {
     if (is_gpu_) {
       output = xla::ArgMinTwoPass(input, index_xla_type, axis);
     } else {
-      output = xla::ArgMin(input, index_xla_type, axis);
+      output = xla::ArgMin(input, index_xla_type, axis, /*stable=*/true);
     }
   } else {
     if (is_gpu_) {

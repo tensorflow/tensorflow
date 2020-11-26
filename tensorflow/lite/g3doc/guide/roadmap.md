@@ -37,6 +37,13 @@ roadmap and provide us feedback in the
 *   **More models and examples**
     *   More examples to demonstrate model usage as well as new features and
         APIs, covering different platforms.
+*   **Task Library**
+    *   Improve the usability of the C++ Task Library, such as providing
+        prebuilt binaries and creating user-friendly workflows for users who
+        want to build from source code.
+    *   Release reference examples of using the Task Library.
+    *   Enable more task types.
+    *   Improve cross-platform support and enable more tasks for iOS.
 
 ## Performance
 

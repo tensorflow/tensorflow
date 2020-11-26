@@ -157,7 +157,7 @@ TEST(PARALLEL_DEVICE, TestExplicitCopies) {
   // Copies off of parallel devices must be explicit.
   TensorHandlePtr copy_back(TFE_TensorHandleCopyToDevice(
       device_value.get(), context.get(), first_device_name, status.get()));
-  ASSERT_EQ(TF_GetCode(status.get()), TF_INTERNAL);
+  ASSERT_EQ(TF_GetCode(status.get()), TF_UNIMPLEMENTED);
 }
 
 TEST(PARALLEL_DEVICE, TestDifferentShapes) {

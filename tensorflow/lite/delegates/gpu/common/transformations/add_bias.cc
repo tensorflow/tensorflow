@@ -15,50 +15,75 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/transformations/add_bias.h"
 
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "absl/memory/memory.h"
-#include "absl/strings/str_cat.h"
 #include "absl/types/any.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
+#include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
-#include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/shape.h"
+#include "tensorflow/lite/delegates/gpu/common/tensor.h"
 
 namespace tflite {
 namespace gpu {
 namespace {
 
-template <typename T>
-TransformResult FillBias(Node* node) {
-  auto& attr = absl::any_cast<T&>(node->operation.attributes);
-  if (attr.bias.data.empty()) {
-    const int dst_channels = attr.weights.shape.o;
-    attr.bias = MakeZeroTensor<Linear, DataType::FLOAT32>(Linear(dst_channels));
+TransformResult FillBias(
+    int output_channels,
+    tflite::gpu::Tensor<Linear, DataType::FLOAT32>* biases) {
+  if (biases->data.empty()) {
+    *biases =
+        MakeZeroTensor<Linear, DataType::FLOAT32>(Linear(output_channels));
     return {TransformStatus::APPLIED, "Added bias"};
+  }
+  if (biases->shape.v != output_channels) {
+    float last_value = biases->data.back();
+    biases->shape.v = output_channels;
+    biases->data.resize(output_channels, last_value);
+    return {TransformStatus::APPLIED, "Bias extended"};
   }
   return {TransformStatus::SKIPPED, ""};
 }
-
-template TransformResult FillBias<Convolution2DAttributes>(Node* node);
-template TransformResult FillBias<ConvolutionTransposedAttributes>(Node* node);
-template TransformResult FillBias<DepthwiseConvolution2DAttributes>(Node* node);
-template TransformResult FillBias<FullyConnectedAttributes>(Node* node);
 
 class AddBias : public NodeTransformation {
  public:
   TransformResult ApplyToNode(Node* node, GraphFloat32* graph) final {
     if (node->operation.type == ToString(OperationType::CONVOLUTION_2D)) {
-      return FillBias<Convolution2DAttributes>(node);
+      if (graph->FindInputs(node->id).size() != 1) {
+        return {TransformStatus::DECLINED,
+                "This transformation is only applicable to conv with one "
+                "runtime input."};
+      }
+      auto& attr =
+          absl::any_cast<Convolution2DAttributes&>(node->operation.attributes);
+      return FillBias(attr.weights.shape.o, &attr.bias);
     }
     if (node->operation.type ==
         ToString(OperationType::CONVOLUTION_TRANSPOSED)) {
-      return FillBias<ConvolutionTransposedAttributes>(node);
+      auto& attr = absl::any_cast<ConvolutionTransposedAttributes&>(
+          node->operation.attributes);
+      return FillBias(attr.weights.shape.o, &attr.bias);
     }
     if (node->operation.type ==
         ToString(OperationType::DEPTHWISE_CONVOLUTION)) {
-      return FillBias<DepthwiseConvolution2DAttributes>(node);
+      if (graph->FindInputs(node->id).size() != 1) {
+        return {TransformStatus::DECLINED,
+                "This transformation is only applicable to depth wise conv "
+                "with one "
+                "runtime input."};
+      }
+      auto& attr = absl::any_cast<DepthwiseConvolution2DAttributes&>(
+          node->operation.attributes);
+      return FillBias(attr.weights.shape.o * attr.weights.shape.i, &attr.bias);
     }
     if (node->operation.type == ToString(OperationType::FULLY_CONNECTED)) {
-      return FillBias<FullyConnectedAttributes>(node);
+      auto& attr =
+          absl::any_cast<FullyConnectedAttributes&>(node->operation.attributes);
+      return FillBias(attr.weights.shape.o, &attr.bias);
     }
     return {TransformStatus::SKIPPED, ""};
   }

@@ -126,7 +126,13 @@ def build_tensor_info_from_op(op):
 
   Returns:
     A TensorInfo protocol buffer constructed based on the supplied argument.
+
+  Raises:
+    RuntimeError: If eager execution is enabled.
   """
+  if context.executing_eagerly():
+    raise RuntimeError(
+        "build_tensor_info_from_op is not supported in Eager mode.")
   return meta_graph_pb2.TensorInfo(
       dtype=types_pb2.DT_INVALID,
       tensor_shape=tensor_shape.unknown_shape().as_proto(),
@@ -254,6 +260,18 @@ def get_or_create_debug_dir(export_dir):
     file_io.recursive_create_dir(debug_dir)
 
   return debug_dir
+
+
+def get_saved_model_pbtxt_path(export_dir):
+  return os.path.join(
+      compat.as_bytes(compat.path_to_str(export_dir)),
+      compat.as_bytes(constants.SAVED_MODEL_FILENAME_PBTXT))
+
+
+def get_saved_model_pb_path(export_dir):
+  return os.path.join(
+      compat.as_bytes(compat.path_to_str(export_dir)),
+      compat.as_bytes(constants.SAVED_MODEL_FILENAME_PB))
 
 
 def get_debug_dir(export_dir):

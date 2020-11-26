@@ -21,7 +21,15 @@ END
   description: <<END
 This operation converts Unicode code points to script codes corresponding to
 each code point. Script codes correspond to International Components for
-Unicode (ICU) UScriptCode values. See http://icu-project.org/apiref/icu4c/uscript_8h.html.
+Unicode (ICU) UScriptCode values.
+
+See
+[ICU project docs](http://icu-project.org/apiref/icu4c/uscript_8h.html)
+for more details on script codes.
+
+For an example, see the unicode strings guide on [unicode scripts]
+(https://www.tensorflow.org/tutorials/load_data/unicode#representing_unicode).
+
 Returns -1 (USCRIPT_INVALID_CODE) for invalid codepoints. Output shape will
 match input shape.
 

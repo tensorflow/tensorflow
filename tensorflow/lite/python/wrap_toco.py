@@ -55,3 +55,8 @@ def wrapped_experimental_mlir_quantize(input_data_str, disable_per_channel,
 def wrapped_experimental_mlir_sparsify(input_data_str):
   """Wraps experimental mlir sparsify model."""
   return _pywrap_toco_api.ExperimentalMlirSparsifyModel(input_data_str)
+
+
+def wrapped_register_custom_opdefs(custom_opdefs_list):
+  """Wraps RegisterCustomOpdefs with lazy loader."""
+  return _pywrap_toco_api.RegisterCustomOpdefs(custom_opdefs_list)

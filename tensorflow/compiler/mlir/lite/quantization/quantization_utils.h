@@ -19,6 +19,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_QUANTIZATION_UTILS_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_QUANTIZATION_UTILS_H_
 
+#include <string>
 #include <unordered_map>
 
 #include "llvm/ADT/SmallVector.h"
@@ -103,15 +104,19 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
       if (!stats) return failure();
 
       for (auto it = stats.begin(), e = stats.end(); it != e; ++it) {
-        mins.push_back(FloatAttr::getValueAsDouble(*it++));
-        maxs.push_back(FloatAttr::getValueAsDouble(*it));
+        double min = FloatAttr::getValueAsDouble(*it++);
+        double max = FloatAttr::getValueAsDouble(*it);
+        TensorRangeSanityCheck(op, min, max);
+        mins.push_back(min);
+        maxs.push_back(max);
       }
-      quant_type = quant::fakeQuantAttrsToType(
-          op.getLoc(), num_bits, op.axis()->getSExtValue(), mins, maxs,
-          narrow_range, expressed, is_signed);
+      quant_type =
+          quant::fakeQuantAttrsToType(op.getLoc(), num_bits, *op.axis(), mins,
+                                      maxs, narrow_range, expressed, is_signed);
     } else if (auto stats = op.layerStats().dyn_cast<DenseFPElementsAttr>()) {
       double rmin = FloatAttr::getValueAsDouble(stats.getValue<APFloat>({0}));
       double rmax = FloatAttr::getValueAsDouble(stats.getValue<APFloat>({1}));
+      TensorRangeSanityCheck(op, rmin, rmax);
       quant_type =
           quant::fakeQuantAttrsToType(op.getLoc(), num_bits, rmin, rmax,
                                       narrow_range, expressed, is_signed);
@@ -119,7 +124,7 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
       return failure();
     }
 
-    rewriter.setInsertionPointAfter(op);
+    rewriter.setInsertionPointAfter(op.getOperation());
     Type result_type = quant_type.castFromExpressedType(op.getType());
     auto q = rewriter.create<Q>(op.getLoc(), result_type, op.arg());
     auto dq = rewriter.create<DQ>(op.getLoc(), op.getType(), q);
@@ -134,6 +139,19 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
   int num_bits;
   bool narrow_range;
   bool is_signed;
+
+  // Emits an op warning message if the calibrated range is larger than 10.0 and
+  // the storage type is less than or equal to 8 bits.
+  void TensorRangeSanityCheck(quant::StatisticsOp op, double min,
+                              double max) const {
+    double range = std::fabs(max - min);
+    if (num_bits <= 8 && range >= 10.0) {
+      op.emitWarning(
+          "Tensor range is too wide to be quantized. Use tf.clip_by_value or "
+          "tf.relu6 to narrow the tensor range. Range: " +
+          std::to_string(range) + ", bit width: " + std::to_string(num_bits));
+    }
+  }
 };
 
 // A base rewrite pattern which matches any N-in-M-out operations with
@@ -172,7 +190,7 @@ struct QuantizationPattern : public RewritePattern {
     Value quantized_value = op->getResult(0);
     for (Operation* quantized_op : quantized_value.getUsers()) {
       // If it is requantize op, we shouldn't rewrite this op.
-      if (llvm::isa<Q>(quantized_op) || llvm::isa<DQ>(quantized_op)) {
+      if (llvm::isa<Q, DQ>(quantized_op)) {
         return failure();
       }
 
@@ -180,8 +198,8 @@ struct QuantizationPattern : public RewritePattern {
       // ops dialect, we shouldn't rewrite.
       if (quantized_op->isKnownTerminator() ||
           quantized_op->hasTrait<OpTrait::quant::NoQuantizableResult>() ||
-          llvm::isa<quant::QuantizeCastOp>(quantized_op) ||
-          llvm::isa<quant::DequantizeCastOp>(quantized_op)) {
+          llvm::isa<quant::QuantizeCastOp, quant::DequantizeCastOp>(
+              quantized_op)) {
         return failure();
       }
 
@@ -386,8 +404,7 @@ struct FoldTrivalRequantizeOp : public OpRewritePattern<RQ> {
 
     Operation* def = pre_quantized.getDefiningOp();
     if (!def) return failure();
-    if (llvm::isa<FixedOutputRangeInterface>(def) ||
-        def->hasTrait<OpTrait::quant::SameOperandsAndResultsScale>() ||
+    if (llvm::isa<FixedOutputRangeInterface, SameScalesOpInterface>(def) ||
         def->hasTrait<OpTrait::quant::NoQuantizableResult>()) {
       return failure();
     }
@@ -396,8 +413,6 @@ struct FoldTrivalRequantizeOp : public OpRewritePattern<RQ> {
 
     llvm::SmallVector<Type, 4> new_output_types;
     for (auto result : def->getResults()) {
-      result.getUsers().begin()->dump();
-      op.dump();
       if (result.hasOneUse() && *result.getUsers().begin() == op) {
         new_output_types.push_back(op.qtype());
       } else {
@@ -433,7 +448,7 @@ TypeAttr RescaleQuantizedType(Type input, Attribute factor);
 // if it is using signed int symmetric quantization.
 //
 // Note that this method may broadcast min and max to match the dimension length
-// of `input_type`, if the the `quant_dim` is valid. On the other hand, the
+// of `input_type`, if the `quant_dim` is valid. On the other hand, the
 // symmetry of min and max is not adjusted by this method. The QAT workflow
 // should set min/max correctly (and use `narrow_range`=true, `is_signed`=true)
 // if symmetric quantization is required.
@@ -493,9 +508,13 @@ quant::QuantizedType GetUniformQuantizedTypeForBias(
 // and the propagation results are materialized by inserting pairs of quantize
 // and dequantize ops to this function. Set `disable_per_channel` to true to not
 // use per channel quantization even the op supports it.
+// Setting `infer_tensor_range` to true, to infer quantization parameters from
+// the activation ops and weight constants. This is only used for post-training
+// quantization.
 void ApplyQuantizationParamsPropagation(mlir::FuncOp func, bool is_signed,
                                         bool disable_per_channel,
-                                        OpQuantSpecGetter op_quant_spec_getter);
+                                        OpQuantSpecGetter op_quant_spec_getter,
+                                        bool infer_tensor_ranges);
 
 // The function might contain more stats ops than required, and it will
 // introduce requantize if the calibration stats have conflicts. This method
@@ -503,6 +522,13 @@ void ApplyQuantizationParamsPropagation(mlir::FuncOp func, bool is_signed,
 bool RemoveRedundantStatsOps(mlir::FuncOp func,
                              OpQuantSpecGetter op_quant_spec_getter);
 
+// Given quantization parameters for int8, compute the quantization parameters
+// for uint if it is required, and wrap the result in an UniformQuantizedType.
+quant::UniformQuantizedType GetFixedOutputRange(bool is_signed, int bit_width,
+                                                Type tensor_type, double scale,
+                                                int64_t zero_point,
+                                                int64_t storage_min = -128,
+                                                int64_t storage_max = 127);
 }  // namespace quant
 }  // namespace mlir
 

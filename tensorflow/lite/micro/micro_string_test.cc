@@ -24,7 +24,7 @@ TF_LITE_MICRO_TEST(FormatPositiveIntShouldMatchExpected) {
   char buffer[kBufferLen];
   const char golden[] = "Int: 55";
   int bytes_written = MicroSnprintf(buffer, kBufferLen, "Int: %d", 55);
-  TF_LITE_MICRO_EXPECT_EQ(sizeof(golden), bytes_written);
+  TF_LITE_MICRO_EXPECT_EQ(static_cast<int>(sizeof(golden)), bytes_written);
   TF_LITE_MICRO_EXPECT_STRING_EQ(golden, buffer);
 }
 
@@ -33,7 +33,7 @@ TF_LITE_MICRO_TEST(FormatNegativeIntShouldMatchExpected) {
   char buffer[kBufferLen];
   const char golden[] = "Int: -55";
   int bytes_written = MicroSnprintf(buffer, kBufferLen, "Int: %d", -55);
-  TF_LITE_MICRO_EXPECT_EQ(sizeof(golden), bytes_written);
+  TF_LITE_MICRO_EXPECT_EQ(static_cast<int>(sizeof(golden)), bytes_written);
   TF_LITE_MICRO_EXPECT_STRING_EQ(golden, buffer);
 }
 
@@ -42,7 +42,7 @@ TF_LITE_MICRO_TEST(FormatUnsignedIntShouldMatchExpected) {
   char buffer[kBufferLen];
   const char golden[] = "UInt: 12345";
   int bytes_written = MicroSnprintf(buffer, kBufferLen, "UInt: %u", 12345);
-  TF_LITE_MICRO_EXPECT_EQ(sizeof(golden), bytes_written);
+  TF_LITE_MICRO_EXPECT_EQ(static_cast<int>(sizeof(golden)), bytes_written);
   TF_LITE_MICRO_EXPECT_STRING_EQ(golden, buffer);
 }
 
@@ -51,7 +51,7 @@ TF_LITE_MICRO_TEST(FormatHexShouldMatchExpected) {
   char buffer[kBufferLen];
   const char golden[] = "Hex: 0x12345";
   int bytes_written = MicroSnprintf(buffer, kBufferLen, "Hex: %x", 0x12345);
-  TF_LITE_MICRO_EXPECT_EQ(sizeof(golden), bytes_written);
+  TF_LITE_MICRO_EXPECT_EQ(static_cast<int>(sizeof(golden)), bytes_written);
   TF_LITE_MICRO_EXPECT_STRING_EQ(golden, buffer);
 }
 
@@ -59,8 +59,8 @@ TF_LITE_MICRO_TEST(FormatFloatShouldMatchExpected) {
   const int kBufferLen = 32;
   char buffer[kBufferLen];
   const char golden[] = "Float: 1.0*2^4";
-  int bytes_written = MicroSnprintf(buffer, kBufferLen, "Float: %f", 16.f);
-  TF_LITE_MICRO_EXPECT_EQ(sizeof(golden), bytes_written);
+  int bytes_written = MicroSnprintf(buffer, kBufferLen, "Float: %f", 16.);
+  TF_LITE_MICRO_EXPECT_EQ(static_cast<int>(sizeof(golden)), bytes_written);
   TF_LITE_MICRO_EXPECT_STRING_EQ(golden, buffer);
 }
 
@@ -70,7 +70,7 @@ TF_LITE_MICRO_TEST(BadlyFormattedStringShouldProduceReasonableString) {
   const char golden[] = "Test Badly % formated % string";
   int bytes_written =
       MicroSnprintf(buffer, kBufferLen, "Test Badly %% formated %% string%");
-  TF_LITE_MICRO_EXPECT_EQ(sizeof(golden), bytes_written);
+  TF_LITE_MICRO_EXPECT_EQ(static_cast<int>(sizeof(golden)), bytes_written);
   TF_LITE_MICRO_EXPECT_STRING_EQ(golden, buffer);
 }
 
@@ -79,7 +79,7 @@ TF_LITE_MICRO_TEST(IntFormatOverrunShouldTruncate) {
   char buffer[kBufferLen];
   const char golden[] = "Int: ";
   int bytes_written = MicroSnprintf(buffer, kBufferLen, "Int: %d", 12345);
-  TF_LITE_MICRO_EXPECT_EQ(sizeof(golden), bytes_written);
+  TF_LITE_MICRO_EXPECT_EQ(static_cast<int>(sizeof(golden)), bytes_written);
   TF_LITE_MICRO_EXPECT_STRING_EQ(golden, buffer);
 }
 
@@ -88,7 +88,7 @@ TF_LITE_MICRO_TEST(UnsignedIntFormatOverrunShouldTruncate) {
   char buffer[kBufferLen];
   const char golden[] = "UInt: ";
   int bytes_written = MicroSnprintf(buffer, kBufferLen, "UInt: %u", 12345);
-  TF_LITE_MICRO_EXPECT_EQ(sizeof(golden), bytes_written);
+  TF_LITE_MICRO_EXPECT_EQ(static_cast<int>(sizeof(golden)), bytes_written);
   TF_LITE_MICRO_EXPECT_STRING_EQ(golden, buffer);
 }
 
@@ -97,7 +97,7 @@ TF_LITE_MICRO_TEST(HexFormatOverrunShouldTruncate) {
   char buffer[kBufferLen];
   const char golden[] = "Hex: ";
   int bytes_written = MicroSnprintf(buffer, kBufferLen, "Hex: %x", 0x12345);
-  TF_LITE_MICRO_EXPECT_EQ(sizeof(golden), bytes_written);
+  TF_LITE_MICRO_EXPECT_EQ(static_cast<int>(sizeof(golden)), bytes_written);
   TF_LITE_MICRO_EXPECT_STRING_EQ(golden, buffer);
 }
 
@@ -105,8 +105,27 @@ TF_LITE_MICRO_TEST(FloatFormatOverrunShouldTruncate) {
   const int kBufferLen = 12;
   char buffer[kBufferLen];
   const char golden[] = "Float: ";
-  int bytes_written = MicroSnprintf(buffer, kBufferLen, "Float: %x", 12345.f);
-  TF_LITE_MICRO_EXPECT_EQ(sizeof(golden), bytes_written);
+  int bytes_written = MicroSnprintf(buffer, kBufferLen, "Float: %x", 12345.);
+  TF_LITE_MICRO_EXPECT_EQ(static_cast<int>(sizeof(golden)), bytes_written);
+  TF_LITE_MICRO_EXPECT_STRING_EQ(golden, buffer);
+}
+
+TF_LITE_MICRO_TEST(FloatFormatShouldPrintFractionCorrectly) {
+  const int kBufferLen = 24;
+  char buffer[kBufferLen];
+  const char golden[] = "Float: 1.0625*2^0";
+  // Add small offset to float value to account for float rounding error.
+  int bytes_written = MicroSnprintf(buffer, kBufferLen, "Float: %f", 1.0625001);
+  TF_LITE_MICRO_EXPECT_EQ(static_cast<int>(sizeof(golden)), bytes_written);
+  TF_LITE_MICRO_EXPECT_STRING_EQ(golden, buffer);
+}
+
+TF_LITE_MICRO_TEST(FloatFormatShouldPrintFractionCorrectlyNoLeadingZeros) {
+  const int kBufferLen = 24;
+  char buffer[kBufferLen];
+  const char golden[] = "Float: 1.6332993*2^-1";
+  int bytes_written = MicroSnprintf(buffer, kBufferLen, "Float: %f", 0.816650);
+  TF_LITE_MICRO_EXPECT_EQ(static_cast<int>(sizeof(golden)), bytes_written);
   TF_LITE_MICRO_EXPECT_STRING_EQ(golden, buffer);
 }
 
@@ -116,7 +135,7 @@ TF_LITE_MICRO_TEST(StringFormatOverrunShouldTruncate) {
   const char golden[] = "String: h";
   int bytes_written =
       MicroSnprintf(buffer, kBufferLen, "String: %s", "hello world");
-  TF_LITE_MICRO_EXPECT_EQ(sizeof(golden), bytes_written);
+  TF_LITE_MICRO_EXPECT_EQ(static_cast<int>(sizeof(golden)), bytes_written);
   TF_LITE_MICRO_EXPECT_STRING_EQ(golden, buffer);
 }
 
@@ -125,7 +144,7 @@ TF_LITE_MICRO_TEST(StringFormatWithExactOutputSizeOverrunShouldTruncate) {
   char buffer[kBufferLen];
   const char golden[] = "format st";
   int bytes_written = MicroSnprintf(buffer, kBufferLen, "format str");
-  TF_LITE_MICRO_EXPECT_EQ(sizeof(golden), bytes_written);
+  TF_LITE_MICRO_EXPECT_EQ(static_cast<int>(sizeof(golden)), bytes_written);
   TF_LITE_MICRO_EXPECT_STRING_EQ(golden, buffer);
 }
 

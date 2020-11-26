@@ -21,6 +21,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "ExternalStatePolicy"
+    mtype: "<class \'enum.EnumMeta\'>"
+  }
+  member {
     name: "INFINITE_CARDINALITY"
     mtype: "<type \'int\'>"
   }
@@ -138,7 +142,7 @@ tf_module {
   }
   member_method {
     name: "ignore_errors"
-    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'log_warning\'], varargs=None, keywords=None, defaults=[\'False\'], "
   }
   member_method {
     name: "latency_stats"

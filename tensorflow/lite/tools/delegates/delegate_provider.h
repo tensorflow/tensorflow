@@ -40,8 +40,10 @@ class DelegateProvider {
   // 'params' whose value will be set to the corresponding runtime flag value.
   virtual std::vector<Flag> CreateFlags(ToolParams* params) const = 0;
 
-  // Log tool params.
-  virtual void LogParams(const ToolParams& params) const = 0;
+  // Log tool params. If 'verbose' is set to false, the param is going to be
+  // only logged if its value has been set, say via being parsed from
+  // commandline flags.
+  virtual void LogParams(const ToolParams& params, bool verbose) const = 0;
 
   // Create a TfLiteDelegate based on tool params.
   virtual TfLiteDelegatePtr CreateTfLiteDelegate(
@@ -93,8 +95,8 @@ class DelegateProviderRegistrar {
 };
 
 #define REGISTER_DELEGATE_PROVIDER_VNAME(T) gDelegateProvider_##T##_
-#define REGISTER_DELEGATE_PROVIDER(T)           \
-  static DelegateProviderRegistrar::Register<T> \
+#define REGISTER_DELEGATE_PROVIDER(T)                          \
+  static tflite::tools::DelegateProviderRegistrar::Register<T> \
       REGISTER_DELEGATE_PROVIDER_VNAME(T);
 
 // A global helper function to get all registered delegate providers.

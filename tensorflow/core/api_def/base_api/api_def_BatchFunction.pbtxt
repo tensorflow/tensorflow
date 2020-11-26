@@ -50,8 +50,9 @@ END
     description: <<END
 Optional list of allowed batch sizes. If left empty, does
 nothing. Otherwise, supplies a list of batch sizes, causing the op to pad
-batches up to one of those sizes. The entries must increase monotonically, and
-the final entry must equal max_batch_size.
+batches up to one of those sizes. The entries must increase monotonically.
+If enable_large_batch_splitting is false (i.e., large-input-split is not
+enabled) the final entry must equal max_batch_size.
 END
   }
   attr {
@@ -116,6 +117,7 @@ So, for example, in the following code
           batch_timeout_micros=100000,  # 100ms
           allowed_batch_sizes=[3, 10],
           batching_queue="")
+  ```
 
 If more than one session.run call is simultaneously trying to compute `b`
 the values of `a` will be gathered, non-deterministically concatenated

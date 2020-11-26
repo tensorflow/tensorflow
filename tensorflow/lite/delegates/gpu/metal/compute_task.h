@@ -19,6 +19,7 @@ limitations under the License.
 #import <Metal/Metal.h>
 
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -35,10 +36,10 @@ limitations under the License.
                    taskDescriptor:(::tflite::gpu::metal::ComputeTaskDescriptorPtr)desc
                    runtimeOptions:(const ::tflite::gpu::metal::RuntimeOptions&)options;
 
-/// Updates dimensions for inputs/outputs/intermediate tensors
-- (absl::Status)
-    setInputDimensionsWithDevice:(id<MTLDevice>)device
-                      dimensions:(std::map<::tflite::gpu::ValueId, ::tflite::gpu::BHWC>*)dimensions;
+/// Updates parameters for inputs/outputs/intermediate tensors
+- (absl::Status)updateParamsWithDevice:(id<MTLDevice>)device
+                          tensorShapes:(const std::map<tflite::gpu::ValueId, tflite::gpu::BHWC>&)
+                                           tensorShapes;
 
 /// Updates buffers for intermediate tensors only. Returns error if out of memory or a buffer is
 /// larger than MTLDevice can support.
@@ -56,9 +57,14 @@ limitations under the License.
               sharedBufferIds:(const std::vector<size_t>&)sharedBufferIds
                 sharedBuffers:(const std::vector<id<MTLBuffer>>&)sharedBuffers;
 
-- (void)encodeWithEncoder:(id<MTLComputeCommandEncoder>)encoder
-       inputOutputBuffers:
-           (const std::map<::tflite::gpu::ValueId, id<MTLBuffer>>&)inputOutputBuffers;
+- (bool)hasInOutIds:(const std::set<::tflite::gpu::ValueId>&)ids;
+
+- (void)updateBuffers:(const std::map<::tflite::gpu::ValueId, id<MTLBuffer>>&)inputOutputBuffers;
+
+- (void)encodeWithEncoder:(id<MTLComputeCommandEncoder>)encoder;
+
+- (std::vector<tflite::gpu::ValueId>)getOutputIds;
+- (std::vector<tflite::gpu::ValueId>)getInputIds;
 
 @end
 

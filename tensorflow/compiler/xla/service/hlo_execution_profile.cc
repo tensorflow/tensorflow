@@ -133,8 +133,12 @@ HloExecutionProfile::HloExecutionProfile(
 
 void HloExecutionProfile::SetCyclesTakenBy(const HloInstruction* hlo,
                                            uint64 cycles_taken) {
-  profile_counters_[hlo_profile_index_map_.GetProfileIndexFor(*hlo)] =
-      cycles_taken;
+  SetCyclesTakenBy(hlo_profile_index_map_.GetProfileIndexFor(*hlo),
+                   cycles_taken);
+}
+
+void HloExecutionProfile::SetCyclesTakenBy(size_t index, uint64 cycles_taken) {
+  profile_counters_[index] = cycles_taken;
 }
 
 uint64 HloExecutionProfile::GetCyclesTakenBy(const HloInstruction& hlo) const {

@@ -1,11 +1,9 @@
 # Description:
 #   Contains experimental kernels for datasets and iterators.
 
-load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_cc_test",
-    "tf_kernel_library",
-)
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -32,6 +30,7 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:experimental_dataset_ops_op_lib",
         "//tensorflow/core:framework",
+        "//tensorflow/core/kernels/data:dataset_utils",
         "//tensorflow/core/kernels/data:name_utils",
     ],
 )
@@ -124,6 +123,25 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "compute_batch_size_op",
+    srcs = ["compute_batch_size_op.cc"],
+    deps = [
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:graph_view",
+        "//tensorflow/core/grappler/optimizers/data:graph_utils",
+        "//tensorflow/core/kernels/data:dataset_utils",
+        "//tensorflow/core/kernels/data:name_utils",
+        "//tensorflow/core/kernels/data:serialization_utils",
+        "//tensorflow/core/platform:regexp",
+    ],
+)
+
+tf_kernel_library(
     name = "csv_dataset_op",
     srcs = ["csv_dataset_op.cc"],
     deps = [
@@ -148,6 +166,7 @@ tf_kernel_library(
         "//tensorflow/core/data:compression_utils",
         "//tensorflow/core/data:dataset_proto_cc",
         "//tensorflow/core/data/service:data_service",
+        "//tensorflow/core/data/service:grpc_util",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "//tensorflow/core/kernels/data:dataset_utils",
         "//tensorflow/core/kernels/data:name_utils",
@@ -169,6 +188,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/data/service:data_service",
+        "//tensorflow/core/data/service:grpc_util",
         "//tensorflow/core/kernels/data:dataset_utils",
         "//tensorflow/core/kernels/data:iterator_ops",
     ],
@@ -248,6 +268,7 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:experimental_dataset_ops_op_lib",
         "//tensorflow/core:framework",
+        "//tensorflow/core/platform:logging",
         "//third_party/eigen3",
     ],
 )
@@ -286,7 +307,7 @@ tf_cc_test(
     name = "lmdb_dataset_op_test",
     size = "small",
     srcs = ["lmdb_dataset_op_test.cc"],
-    data = ["//tensorflow/core:lmdb_testdata"],
+    data = ["//tensorflow/core/lib/lmdb:lmdb_testdata"],
     deps = [
         ":lmdb_dataset_op",
         "//tensorflow/core:experimental_dataset_ops_op_lib",
@@ -319,6 +340,8 @@ tf_kernel_library(
         "//tensorflow/core/kernels/data:dataset_utils",
         "//tensorflow/core/kernels/data:name_utils",
         "//tensorflow/core/kernels/data:stats_utils",
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/lib:traceme_encode",
     ],
 )
 
@@ -372,6 +395,8 @@ tf_kernel_library(
         "//tensorflow/core/kernels/data:captured_function",
         "//tensorflow/core/kernels/data:dataset_utils",
         "//tensorflow/core/kernels/data:name_utils",
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/lib:traceme_encode",
     ],
 )
 
@@ -399,10 +424,13 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:functional_ops_op_lib",
         "//tensorflow/core:lib",
+        "//tensorflow/core/kernels:ragged_tensor_variant",
         "//tensorflow/core/kernels/data:dataset_utils",
         "//tensorflow/core/kernels/data:name_utils",
         "//tensorflow/core/kernels/data:parallel_map_dataset_op",
         "//tensorflow/core/kernels/data:stats_utils",
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/lib:traceme_encode",
     ],
 )
 
@@ -587,6 +615,7 @@ tf_kernel_library(
         "//tensorflow/core/grappler:graph_view",
         "//tensorflow/core/kernels/data:captured_function",
         "//tensorflow/core/kernels/data:dataset_utils",
+        "//tensorflow/core/kernels/data:hash_utils",
         "//tensorflow/core/kernels/data:name_utils",
         "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/profiler/lib:traceme",
@@ -725,7 +754,7 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
-    name = "dataset_kernels",
+    name = "experimental",
     deps = [
         ":assert_cardinality_dataset_op",
         ":assert_next_dataset_op",
@@ -733,6 +762,7 @@ tf_kernel_library(
         ":choose_fastest_branch_dataset_op",
         ":choose_fastest_dataset_op",
         ":compression_ops",
+        ":compute_batch_size_op",
         ":csv_dataset_op",
         ":dense_to_sparse_batch_dataset_op",
         ":directed_interleave_dataset_op",

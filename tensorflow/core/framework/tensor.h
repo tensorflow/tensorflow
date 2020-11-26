@@ -238,8 +238,8 @@ class Tensor {
   Tensor(const Tensor& other);
 
   /// \brief Move constructor. After this call, <other> is safely destructible
-  /// and can be assigned to, but other calls on it (e.g. shape manipulation)
-  /// are not valid.
+  /// can be assigned to, and IsInitialized() can be called and will return
+  /// false. Other calls on <other> (e.g. shape manipulation) are not valid.
   Tensor(Tensor&& other);
 
   // Explicitly delete constructor that take a pointer (except char*)
@@ -697,7 +697,19 @@ class Tensor {
     set_dtype(dt);
   }
 
-  void CopyFromInternal(const Tensor& other, const TensorShape& shape);
+  inline void CopyFromInternal(const Tensor& other, const TensorShape& shape) {
+    DCHECK_EQ(shape.num_elements(), other.NumElements());
+    // Data type will be overwritten if this == &other, since dtype is part of
+    // shape.
+    DataType other_dtype = other.dtype();
+    shape_ = shape;
+    set_dtype(other_dtype);
+    if (buf_ != other.buf_) {
+      if (buf_) buf_->Unref();
+      buf_ = other.buf_;
+      if (buf_) buf_->Ref();
+    }
+  }
 
   template <typename T>
   T* base() const;

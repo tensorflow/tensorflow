@@ -124,6 +124,9 @@ struct CompiledSubgraph : public core::RefCounted {
   // Compilation cache proto key to identify the cache entry.
   std::vector<std::string> proto_key;
 
+  // Fingerprints of sharding programs if there is any.
+  std::vector<std::string> sharding_key;
+
   // The number of 'external' client-held references to the entry.
   int external_references = 0;
 

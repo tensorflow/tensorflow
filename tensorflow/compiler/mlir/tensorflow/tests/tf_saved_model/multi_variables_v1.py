@@ -56,9 +56,9 @@ def Test():
           inputs=None,
           outputs={'z': tensor_info_z},
           method_name='some_function'))
-  }
+  }, None, None
 
 
 if __name__ == '__main__':
   common_v1.set_tf_options()
-  common_v1.do_test(Test())
+  common_v1.do_test(Test)

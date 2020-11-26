@@ -24,7 +24,7 @@ is, they do not change at runtime. So if you do something like this:
   tf.autograph.set_loop_options = <new function>
 
 Then the directive will may no longer be recognized. Furthermore, if the
-converted function is cached, such an action action may be irreversible.
+converted function is cached, such an action may be irreversible.
 """
 
 from __future__ import absolute_import
@@ -71,7 +71,7 @@ def _map_args(call_node, function):
   # Keyword arguments not specified in kwds will be mapped to their defaults,
   # which are Python values. Since we don't currently have a way to transform
   # those into AST references, we simply remove them. By convention, directives
-  # use UNSPECIFIED as default value for for optional arguments. No other
+  # use UNSPECIFIED as default value for optional arguments. No other
   # defaults should be present.
   unexpected_defaults = []
   for k in call_args:
@@ -164,6 +164,9 @@ class DirectivesTransformer(converter.Base):
     self.state[_LoopScope].enter()
     self.state[_LoopScope].ast_node = node
     node = self.generic_visit(node)
+    # Edge case: a loop with just one directive statement would become empty.
+    if not node.body:
+      node.body = [gast.Pass()]
     self.state[_LoopScope].exit()
     return node
 

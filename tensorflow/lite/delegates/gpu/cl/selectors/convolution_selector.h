@@ -18,38 +18,33 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/lite/delegates/gpu/cl/kernels/conv_common.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
-#include "tensorflow/lite/delegates/gpu/cl/model_hints.h"
+#include "tensorflow/lite/delegates/gpu/common/model_hints.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
+#include "tensorflow/lite/delegates/gpu/common/task/weights_layout.h"
 
 namespace tflite {
 namespace gpu {
 namespace cl {
 
-absl::Status SelectConvolution(const Convolution2DAttributes& attr,
-                               const BHWC& dst_shape,
-                               const CreationContext& creation_context,
-                               const OperationDef& op_def, ModelHints hints,
-                               std::unique_ptr<GPUOperation>* ptr);
-
-absl::Status SelectConvolutionForWinograd(
+std::unique_ptr<GPUOperation> SelectConvolution(
     const Convolution2DAttributes& attr, const BHWC& dst_shape,
-    const CreationContext& creation_context, const OperationDef& op_def,
-    ModelHints hints, std::unique_ptr<GPUOperation>* ptr);
+    const GpuInfo& gpu_info, const OperationDef& op_def, ModelHints hints);
 
-absl::Status SelectConvolutionWithDynamicWeights(
+std::unique_ptr<GPUOperation> SelectConvolutionForWinograd(
+    const Convolution2DAttributes& attr, const BHWC& dst_shape,
+    const GpuInfo& gpu_info, const OperationDef& op_def, ModelHints hints);
+
+std::unique_ptr<GPUOperation> SelectConvolutionWithDynamicWeights(
     const Convolution2DAttributes& attr, const BHWC& weights_shape,
-    const BHWC& dst_shape, const CreationContext& creation_context,
-    const OperationDef& op_def, ModelHints hints,
-    std::unique_ptr<GPUOperation>* ptr, ConvWeightsDescription* weights_desc);
+    const BHWC& dst_shape, const GpuInfo& gpu_info, const OperationDef& op_def,
+    ModelHints hints, WeightsDescription* weights_desc);
 
-absl::Status SelectConverterToConvWeights(
-    const ConvWeightsDescription& weights_desc,
-    const CreationContext& creation_context, const OperationDef& op_def,
-    ModelHints hints, std::unique_ptr<GPUOperation>* ptr);
+std::unique_ptr<GPUOperation> SelectConverterToConvWeights(
+    const WeightsDescription& weights_desc, const OperationDef& op_def,
+    ModelHints hints);
 
 }  // namespace cl
 }  // namespace gpu

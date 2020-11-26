@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/cl/kernels/convolution_transposed_thin.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/convolution_transposed_thin.h"
 
 #include <vector>
 
@@ -55,11 +55,12 @@ TEST_F(OpenCLOperationTest, ConvolutionTransposedThinSimpleWeights) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      ConvolutionTransposedThin operation;
-      ASSERT_OK(CreateConvolutionTransposedThin(creation_context_, op_def, attr,
-                                                &operation));
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 4, 4, 2), &dst_tensor));
+      ConvolutionTransposedThin operation = CreateConvolutionTransposedThin(
+          creation_context_.GetGpuInfo(), op_def, attr);
+      ASSERT_OK(ExecuteGPUOperation(
+          src_tensor, creation_context_,
+          absl::make_unique<ConvolutionTransposedThin>(std::move(operation)),
+          BHWC(1, 4, 4, 2), &dst_tensor));
       EXPECT_THAT(
           dst_tensor.data,
           Pointwise(FloatNear(eps),
@@ -94,11 +95,12 @@ TEST_F(OpenCLOperationTest, ConvolutionTransposedThin) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      ConvolutionTransposedThin operation;
-      ASSERT_OK(CreateConvolutionTransposedThin(creation_context_, op_def, attr,
-                                                &operation));
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 4, 4, 1), &dst_tensor));
+      ConvolutionTransposedThin operation = CreateConvolutionTransposedThin(
+          creation_context_.GetGpuInfo(), op_def, attr);
+      ASSERT_OK(ExecuteGPUOperation(
+          src_tensor, creation_context_,
+          absl::make_unique<ConvolutionTransposedThin>(std::move(operation)),
+          BHWC(1, 4, 4, 1), &dst_tensor));
       EXPECT_THAT(
           dst_tensor.data,
           Pointwise(FloatNear(eps),

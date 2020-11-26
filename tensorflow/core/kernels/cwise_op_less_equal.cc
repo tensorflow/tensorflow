@@ -37,15 +37,4 @@ REGISTER_KERNEL_BUILDER(Name("LessEqual")
                         BinaryOp<CPUDevice, functor::less_equal<int32>>);
 #endif
 
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER6(BinaryOp, SYCL, "LessEqual", functor::less_equal, float, double,
-          int64, uint8, int8, int16);
-REGISTER_KERNEL_BUILDER(Name("LessEqual")
-                            .Device(DEVICE_SYCL)
-                            .HostMemory("x")
-                            .HostMemory("y")
-                            .HostMemory("z")
-                            .TypeConstraint<int32>("T"),
-                        BinaryOp<CPUDevice, functor::less_equal<int32>>);
-#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_CONVERT_TRACE_EVENTS_TO_JSON_H_
 #define TENSORFLOW_CORE_PROFILER_CONVERT_TRACE_EVENTS_TO_JSON_H_
 
+#include <string>
+
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
 
@@ -24,7 +26,7 @@ namespace profiler {
 
 // Converts trace events in the trace proto to a JSON string that can be
 // consumed by catapult trace viewer.
-string TraceEventsToJson(const Trace &trace);
+std::string TraceEventsToJson(const Trace& trace);
 
 }  // namespace profiler
 }  // namespace tensorflow

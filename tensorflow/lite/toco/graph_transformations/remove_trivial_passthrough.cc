@@ -82,7 +82,7 @@ bool RemoveTrivialPassthroughOp(GraphTransformation* transformation,
     // We call 'main input' the unique nonconstant input array if there is one,
     // or else the 0-th input.
     int count_nonconstant_input_arrays = 0;
-    for (int i = 0; i < passthru_op->inputs.size(); i++) {
+    for (size_t i = 0; i < passthru_op->inputs.size(); i++) {
       if (!model->GetArray(passthru_op->inputs[i]).buffer) {
         count_nonconstant_input_arrays++;
         if (count_nonconstant_input_arrays == 1) {

@@ -22,6 +22,7 @@ py_library(
         ":gradients",
         ":test_util",
         "//tensorflow/compiler/tf2xla/python:xla",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:constant_op",
@@ -85,10 +86,12 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:tensor_array_ops",
+        "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
+        "//tensorflow/python/ops/signal",
     ],
 )
 
@@ -108,7 +111,10 @@ py_library(
 cuda_py_test(
     name = "control_flow_ops_test",
     srcs = ["control_flow_ops_test.py"],
-    tags = ["no_rocm"],
+    shard_count = 16,
+    tags = [
+        "no_rocm",
+    ],
     deps = [
         ":control_flow_ops",
         ":test_util",
@@ -151,6 +157,9 @@ cuda_py_test(
 cuda_py_test(
     name = "array_test",
     srcs = ["array_test.py"],
+    tags = [
+        "notsan",  # TODO(b/170999669): Data race
+    ],
     deps = [
         ":control_flow_ops",
         ":test_util",

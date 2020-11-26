@@ -177,7 +177,7 @@ class CallTreeTransformer(converter.Base):
     # Calls to pdb.set_trace or ipdb.set_trace are never converted. We don't use
     # the normal mechanisms to bypass these literals because they are sensitive
     # to the frame they are being called from.
-    # TODO(mdan): Generalize this to a "static whitelist" config.
+    # TODO(mdan): Generalize this to a "static allowlist" config.
     if full_name in ('pdb.set_trace', 'ipdb.set_trace', 'breakpoint'):
       global set_trace_warned
       if not set_trace_warned:

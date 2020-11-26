@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 from absl.testing import parameterized
-import numpy as np
 
 from tensorflow.python.autograph.core import converter_testing
 from tensorflow.python.data.ops import dataset_ops
@@ -32,7 +31,6 @@ from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
@@ -75,8 +73,7 @@ class _TestExtended(distribute_lib.StrategyExtendedV1):
 
   def _call_for_each_replica(self, fn, args, kwargs):
     with _TestReplicaContext(
-        self._container_strategy(),
-        replica_id_in_sync_group=constant_op.constant(0, dtypes.int32)):
+        self._container_strategy(), replica_id_in_sync_group=0):
       return fn(*args, **kwargs)
 
   def _create_variable(self, next_creator, **kwargs):
@@ -91,20 +88,15 @@ class _TestExtended(distribute_lib.StrategyExtendedV1):
                                            [distribute_lib.InputContext()],
                                            self._container_strategy())
 
-  def _experimental_distribute_datasets_from_function(self, dataset_fn,
-                                                      options):
+  def _distribute_datasets_from_function(self, dataset_fn, options):
     return dataset_fn(distribute_lib.InputContext())
 
   def _local_results(self, value):
     return (value,)
 
-  def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
-    del reduce_op, destinations, experimental_hints
+  def _reduce_to(self, reduce_op, value, destinations, options):
+    del reduce_op, destinations, options
     return value
-
-  def _experimental_make_numpy_dataset(self, numpy_input, session):
-    del session
-    return dataset_ops.DatasetV2.from_tensor_slices(numpy_input)
 
   def _experimental_run_steps_on_iterator(self, fn, iterator, iterations,
                                           initial_loop_values=None):
@@ -126,6 +118,9 @@ class _TestExtended(distribute_lib.StrategyExtendedV1):
       return result
     else:
       return nest.map_structure(self._unwrap, result)
+
+  def _get_local_replica_id(self, replica_id_in_sync_group):
+    return replica_id_in_sync_group
 
 
 def _assert_in_default_state(t):
@@ -150,7 +145,7 @@ def _run_in_and_out_of_scope(unbound_test_method):
     # When run under a different strategy the test method should fail.
     another_strategy = _TestStrategy()
     msg = "Mixing different .*Strategy objects"
-    with test_case.assertRaisesRegexp(RuntimeError, msg):
+    with test_case.assertRaisesRegex(RuntimeError, msg):
       with another_strategy.scope():
         unbound_test_method(test_case, dist)
   return wrapper
@@ -164,7 +159,7 @@ class TestStrategyTest(test.TestCase):
 
     def run_fn():
       replica_context = ds_context.get_replica_context()
-      self.assertTrue(replica_context is not None)
+      self.assertIsNotNone(replica_context)
       self.assertIs(None, ds_context.get_cross_replica_context())
       self.assertFalse(ds_context.in_cross_replica_context())
       self.assertTrue(ds_context.has_strategy())
@@ -206,7 +201,7 @@ class TestStrategyTest(test.TestCase):
     scope.__enter__()
     self.assertIs(dist, ds_context.get_strategy())
     with ops.device("/device:CPU:0"):
-      with self.assertRaisesRegexp(RuntimeError, "Device scope nesting error"):
+      with self.assertRaisesRegex(RuntimeError, "Device scope nesting error"):
         scope.__exit__(None, None, None)
     scope.__exit__(None, None, None)
     _assert_in_default_state(self)
@@ -222,8 +217,8 @@ class TestStrategyTest(test.TestCase):
     scope.__enter__()
     self.assertIs(dist, ds_context.get_strategy())
     with variable_scope.variable_creator_scope(creator):
-      with self.assertRaisesRegexp(RuntimeError,
-                                   "Variable creator scope nesting error"):
+      with self.assertRaisesRegex(RuntimeError,
+                                  "Variable creator scope nesting error"):
         scope.__exit__(None, None, None)
     scope.__exit__(None, None, None)
     _assert_in_default_state(self)
@@ -239,8 +234,8 @@ class TestStrategyTest(test.TestCase):
       scope.__enter__()
       self.assertIs(dist, ds_context.get_strategy())
       with variable_scope.variable_scope("AA"):
-        with self.assertRaisesRegexp(RuntimeError,
-                                     "Variable scope nesting error"):
+        with self.assertRaisesRegex(RuntimeError,
+                                    "Variable scope nesting error"):
           scope.__exit__(None, None, None)
     _assert_in_default_state(self)
 
@@ -284,15 +279,15 @@ class TestStrategyTest(test.TestCase):
     _assert_in_default_state(self)
     dist = _TestStrategy()
     with dist.scope():
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           RuntimeError,
           "Must not be called inside a `tf.distribute.Strategy` scope"):
         ds_context.experimental_set_strategy(_TestStrategy())
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           RuntimeError,
           "Must not be called inside a `tf.distribute.Strategy` scope"):
         ds_context.experimental_set_strategy(dist)
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           RuntimeError,
           "Must not be called inside a `tf.distribute.Strategy` scope"):
         ds_context.experimental_set_strategy(None)
@@ -313,9 +308,8 @@ class TestStrategyTest(test.TestCase):
       self.assertIs(dist, ds_context.get_strategy())
       dist2 = _TestStrategy()
       scope2 = dist2.scope()
-      with self.assertRaisesRegexp(
-          RuntimeError,
-          "Mixing different tf.distribute.Strategy objects"):
+      with self.assertRaisesRegex(
+          RuntimeError, "Mixing different tf.distribute.Strategy objects"):
         with scope2:
           pass
     _assert_in_default_state(self)
@@ -346,13 +340,6 @@ class TestStrategyTest(test.TestCase):
                                                ((x, "/CPU:0"), (y, "/CPU:0")))
       self.assertEqual(self.evaluate(x), self.evaluate(x_r))
       self.assertEqual(self.evaluate(y), self.evaluate(y_r))
-
-  @_run_in_and_out_of_scope
-  def testExperimentalMakeNumpyDataset(self, dist):
-    numpy_input = np.ones([10], dtype=np.float32)
-    dataset = dist.experimental_make_numpy_dataset(numpy_input)
-    self.assertEqual(
-        self.evaluate(dataset.reduce(0., lambda a, b: a + b)), 10.)
 
   @_run_in_and_out_of_scope
   def testExperimentalRunStepsOnIterator(self, dist):
@@ -496,7 +483,7 @@ class DefaultDistributionStrategyTest(test.TestCase, parameterized.TestCase):
       _assert_in_default_state(self)
 
       with test_strategy.scope():
-        with self.assertRaisesRegexp(
+        with self.assertRaisesRegex(
             RuntimeError, "Mixing different tf.distribute.Strategy objects"):
           variable_scope.variable(1.0, name="error")
 
@@ -504,7 +491,7 @@ class DefaultDistributionStrategyTest(test.TestCase, parameterized.TestCase):
         _assert_in_default_state(self)
 
         with test_strategy.scope():
-          with self.assertRaisesRegexp(
+          with self.assertRaisesRegex(
               RuntimeError, "Mixing different tf.distribute.Strategy objects"):
             variable_scope.variable(1.0, name="also_error")
 
@@ -549,16 +536,24 @@ class DefaultDistributionStrategyTest(test.TestCase, parameterized.TestCase):
     if context.executing_eagerly():
       dataset_fn = lambda _: dataset_ops.DatasetV2.range(10).batch(2)
       dist_dataset_from_func = \
-          default_strategy.experimental_distribute_datasets_from_function(
+          default_strategy.distribute_datasets_from_function(
               dataset_fn)
       next_val = next(iter(dist_dataset_from_func))
       self.assertAllEqual([0, 1], self.evaluate(next_val))
     else:
       dataset_fn = lambda _: dataset_ops.DatasetV2.range(10).batch(2)
       dist_dataset_from_func = \
-        default_strategy.experimental_distribute_datasets_from_function(
+        default_strategy.distribute_datasets_from_function(
             dataset_fn)
       dataset_ops.make_initializable_iterator(dist_dataset_from_func)
+
+  @combinations.generate(combinations.combine(tf_api_version=1))
+  def testV1(self):
+    self.assertIsInstance(ds_context.get_strategy(), distribute_lib.StrategyV1)
+
+  @combinations.generate(combinations.combine(tf_api_version=2))
+  def testV2(self):
+    self.assertIsInstance(ds_context.get_strategy(), distribute_lib.Strategy)
 
 
 class InputContextTest(test.TestCase):

@@ -68,7 +68,13 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
       instr->GetModule()->config().debug_options();
 
   if (debug_options.xla_gpu_force_conv_nchw()) {
+    VLOG(2) << "Overriding layout to NCHW for " << instr->ToString();
     return kAllNCHW;
+  }
+
+  if (debug_options.xla_gpu_force_conv_nhwc()) {
+    VLOG(2) << "Overriding layout to NHWC for " << instr->ToString();
+    return kAllNHWC;
   }
 
   // If we're not Volta or not fp16, or not conv2D, the decision is easy: Use

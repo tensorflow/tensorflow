@@ -517,6 +517,12 @@ class DatasetOpsTestBase : public ::testing::Test {
   Status MakeDataset(const DatasetParams& dataset_params,
                      std::unique_ptr<TestDataset>* dataset);
 
+  // Creates an iterator for the given dataset, using the specified split
+  // provider.
+  Status MakeIterator(const DatasetParams& dataset_params,
+                      const TestDataset& dataset,
+                      std::unique_ptr<SplitProvider> split_provider,
+                      std::unique_ptr<TestIterator>* iterator);
   // Creates an iterator for the given dataset.
   Status MakeIterator(const DatasetParams& dataset_params,
                       const TestDataset& dataset,
@@ -556,6 +562,18 @@ class DatasetOpsTestBase : public ::testing::Test {
                               const std::vector<Tensor>& expected_outputs,
                               bool compare_order);
 
+  // Checks that iterating through the dataset using a split provider produces
+  // the expected outputs.
+  Status CheckSplitProviderFullIteration(
+      const DatasetParams& params, const std::vector<Tensor>& expected_outputs);
+
+  // Checks that iterating through the dataset using a sharded split provider
+  // with the given `num_shards` and `shard_index` produces the expected
+  // outputs.
+  Status CheckSplitProviderShardedIteration(
+      const DatasetParams& params, int64 num_shards, int64 shard_index,
+      const std::vector<Tensor>& expected_outputs);
+
   // Checks `DatasetBase::node_name()`.
   Status CheckDatasetNodeName(const string& expected_dataset_node_name);
 
@@ -583,9 +601,14 @@ class DatasetOpsTestBase : public ::testing::Test {
   // Checks `IteratorBase::prefix()`.
   Status CheckIteratorPrefix(const string& expected_iterator_prefix);
 
-  // Checks `IteratorBase::GetNext()`.
   Status CheckIteratorSaveAndRestore(
-      const string& iterator_prefix,
+      DatasetBase* dataset, IteratorContext* iterator_ctx,
+      const std::string& iterator_prefix,
+      const std::vector<Tensor>& expected_outputs,
+      const std::vector<int>& breakpoints, bool compare_order);
+
+  Status CheckIteratorSaveAndRestore(
+      const std::string& iterator_prefix,
       const std::vector<Tensor>& expected_outputs,
       const std::vector<int>& breakpoints, bool compare_order);
 
@@ -660,6 +683,7 @@ class DatasetOpsTestBase : public ::testing::Test {
       OpKernelContext* const op_context,
       std::unique_ptr<IteratorContext>* iterator_context);
 
+  // Creates a new iterator context for iterating the dataset.
   // Creates a new serialization context for serializing the dataset and
   // iterator.
   Status CreateSerializationContext(

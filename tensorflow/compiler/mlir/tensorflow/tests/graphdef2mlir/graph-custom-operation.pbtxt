@@ -54,5 +54,5 @@ versions {
 # the names are matching between the function definition and the uses / call
 # site (a numerical suffix may be appended).
 
-# CHECK: "tf.LegacyCall"(%outputs) {_disable_call_shape_inference = false, f = @foo0}
-# CHECK: func @foo0
+# CHECK: "tf.LegacyCall"(%outputs) {_disable_call_shape_inference = false, device = "", f = @foo0}
+# CHECK: func private @foo0

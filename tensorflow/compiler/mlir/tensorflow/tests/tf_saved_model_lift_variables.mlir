@@ -1,6 +1,6 @@
 // RUN: tf-opt -verify-diagnostics -tf-saved-model-lift-variables-test -split-input-file %s | FileCheck %s --dump-input=fail
 
-module attributes {tf_saved_model.semantics} {
+module attributes {tf_saved_model.semantics, tf_saved_model.under_construction} {
 
   // Test case: Freezing VarHandleOp ops.
 
@@ -24,7 +24,7 @@ module attributes {tf_saved_model.semantics} {
 
 // -----
 
-module attributes {tf_saved_model.semantics} {
+module attributes {tf_saved_model.semantics, tf_saved_model.under_construction} {
 
   // Test case: Freezing shared VarHandleOp ops.
 
@@ -56,6 +56,28 @@ module attributes {tf_saved_model.semantics} {
   // CHECK:    %arg1: tensor<!tf.resource<tensor<50xf32>>> {tf_saved_model.bound_input = @"dense/bias"})
 
   // CHECK:  func @f2(
+  // CHECK:    %arg0: tensor<!tf.resource<tensor<100x50xf32>>> {tf_saved_model.bound_input = @"dense/kernel"},
+  // CHECK:    %arg1: tensor<!tf.resource<tensor<50xf32>>> {tf_saved_model.bound_input = @"dense/bias"})
+}
+
+// -----
+
+module attributes {tf_saved_model.semantics, tf_saved_model.under_construction} {
+
+  // Test case: Fix bound_inputs' types.
+
+  func @serving_default(%arg0: tensor<!tf.resource<tensor<*xf32>>> {tf.resource_name = "dense/kernel"}, %arg1: tensor<!tf.resource<tensor<*xf32>>> {tf.resource_name = "dense/bias"}) -> (tensor<*xf32> {tf_saved_model.index_path = ["dense_2"]})
+  attributes {tf.entry_function = {control_outputs = "", inputs = "", outputs = "dense_2/Add:0"}, tf_saved_model.exported_names = ["serving_default"]} {
+    %0 = "tf.ReadVariableOp"(%arg0) {device = ""} : (tensor<!tf.resource<tensor<*xf32>>>) -> tensor<*xf32>
+    %1 = "tf.ReadVariableOp"(%arg1) {device = ""} : (tensor<!tf.resource<tensor<*xf32>>>) -> tensor<*xf32>
+    %2 = "tf.Add"(%0, %1) {device = ""} : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+    return %2 : tensor<*xf32>
+  }
+  // CHECK: "tf_saved_model.global_tensor"()
+  // CHECK:    sym_name = "dense/kernel"
+  // CHECK: "tf_saved_model.global_tensor"()
+  // CHECK:    sym_name = "dense/bias"
+  // CHECK:  func @serving_default(
   // CHECK:    %arg0: tensor<!tf.resource<tensor<100x50xf32>>> {tf_saved_model.bound_input = @"dense/kernel"},
   // CHECK:    %arg1: tensor<!tf.resource<tensor<50xf32>>> {tf_saved_model.bound_input = @"dense/bias"})
 }

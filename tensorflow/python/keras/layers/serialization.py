@@ -37,6 +37,7 @@ from tensorflow.python.keras.layers import einsum_dense
 from tensorflow.python.keras.layers import embeddings
 from tensorflow.python.keras.layers import local
 from tensorflow.python.keras.layers import merge
+from tensorflow.python.keras.layers import multi_head_attention
 from tensorflow.python.keras.layers import noise
 from tensorflow.python.keras.layers import normalization
 from tensorflow.python.keras.layers import normalization_v2
@@ -60,7 +61,7 @@ from tensorflow.python.keras.layers.preprocessing import string_lookup_v1 as pre
 from tensorflow.python.keras.layers.preprocessing import text_vectorization as preprocessing_text_vectorization
 from tensorflow.python.keras.layers.preprocessing import text_vectorization_v1 as preprocessing_text_vectorization_v1
 from tensorflow.python.keras.utils import generic_utils
-from tensorflow.python.util import tf_inspect as inspect
+from tensorflow.python.keras.utils import tf_inspect as inspect
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -70,7 +71,8 @@ ALL_MODULES = (base_layer, input_layer, advanced_activations, convolutional,
                pooling, image_preprocessing, preprocessing_integer_lookup_v1,
                preprocessing_normalization_v1, preprocessing_string_lookup_v1,
                preprocessing_text_vectorization_v1, recurrent, wrappers,
-               hashing, category_crossing, category_encoding_v1, discretization)
+               hashing, category_crossing, category_encoding_v1, discretization,
+               multi_head_attention)
 ALL_V2_MODULES = (rnn_cell_wrapper_v2, normalization_v2, recurrent_v2,
                   preprocessing_integer_lookup, preprocessing_normalization,
                   preprocessing_string_lookup, preprocessing_text_vectorization,

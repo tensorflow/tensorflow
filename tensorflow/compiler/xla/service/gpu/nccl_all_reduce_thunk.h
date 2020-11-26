@@ -18,17 +18,43 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
+#include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace gpu {
+
+struct NcclAllReduceConfig {
+  int64 operand_count;
+  std::vector<PrimitiveType> operand_element_type;
+  int64 replica_count;
+  std::vector<ReplicaGroup> replica_groups;
+  ReductionKind reduction_kind;
+  RendezvousKey::CollectiveOpKind collective_op_kind;
+  int64 op_id;
+
+  NcclAllReduceConfig() = default;
+  NcclAllReduceConfig(NcclAllReduceConfig &&);
+  ~NcclAllReduceConfig();
+
+  // Extra data stored in NcclAllReduceThunk whose types we don't want exposed
+  // in the header file.  (This is mainly because the implementation of
+  // NcclAllReduceThunk is different depending on whether CUDA is enabled in the
+  // build, and we don't want to expose *that* mess in the header.)
+  struct AuxData;
+  std::unique_ptr<AuxData> aux_data;
+};
+
+NcclAllReduceConfig GetNcclAllReduceConfig(const HloInstruction *instr,
+                                           int64 replica_count);
 
 // Thunk that performs a NCCL-based All-Reduce among CUDA GPU-based replicas.
 class NcclAllReduceThunk : public Thunk {
@@ -56,9 +82,8 @@ class NcclAllReduceThunk : public Thunk {
     BufferAllocation::Slice source_buffer;
     BufferAllocation::Slice destination_buffer;
   };
-  NcclAllReduceThunk(int64 replica_count, std::vector<Buffer> buffers,
-                     const HloInstruction* all_reduce);
-  ~NcclAllReduceThunk() override;
+  NcclAllReduceThunk(ThunkInfo thunk_info, NcclAllReduceConfig &&config,
+                     std::vector<Buffer> buffers);
 
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
@@ -67,15 +92,8 @@ class NcclAllReduceThunk : public Thunk {
   static bool CanImplement(const HloInstruction* crs);
 
  private:
-  // Extra data stored in NcclAllReduceThunk whose types we don't want exposed
-  // in the header file.  (This is mainly because the implementation of
-  // NcclAllReduceThunk is different depending on whether CUDA is enabled in the
-  // build, and we don't want to expose *that* mess in the header.)
-  struct AuxData;
-
-  const int64 replica_count_;
+  const NcclAllReduceConfig config_;
   const std::vector<Buffer> buffers_;
-  std::unique_ptr<AuxData> aux_data_;
 };
 
 }  // namespace gpu

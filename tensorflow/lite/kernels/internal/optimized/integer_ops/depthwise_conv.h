@@ -1430,7 +1430,7 @@ void QuantizedDepthwiseConvAccumRow(int stride, int dilation_factor,
                                     int out_x_buffer_end, int output_depth,
                                     int32* acc_buffer) {
   ruy::profiler::ScopeLabel label(__PRETTY_FUNCTION__);
-  // Sanity check parameters. This is important in particular to ensure
+  // Consistency check parameters. This is important in particular to ensure
   // that we keep the number of template instantiations minimal, so we don't
   // increase binary size unnecessarily.
   static_assert(kFixedDepthMultiplier || !kFixedInputDepth, "");
@@ -1819,8 +1819,7 @@ inline void DepthwiseConvWithRounding(
 #if defined(__ANDROID__) && defined(__clang__)
   CpuFlags cpu_flags;
   GetCpuFlags(&cpu_flags);
-  // TODO(b/150208140): Re-enable once erroneous activation in test is resolved.
-  const bool has_dot_product_instructions = false && cpu_flags.neon_dotprod;
+  const bool has_dot_product_instructions = cpu_flags.neon_dotprod;
 
   // Dispatch to dot-product 3x3 kernels when supported.
   if (has_dot_product_instructions) {

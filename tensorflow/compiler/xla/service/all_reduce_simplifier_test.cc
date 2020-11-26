@@ -167,5 +167,30 @@ test {
           m::Parameter(0), m::AllReduce(m::Parameter(1)))));
 }
 
+TEST_F(AllReduceSimplifierTest, TrivialSubgroupAllReduce) {
+  const char* kModuleStr = R"(
+HloModule m
+
+sum {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT add.2 = f32[] add(a, b)
+}
+
+
+test {
+  p0 = f32[8,16] parameter(0), parameter_replication={false}
+  ROOT all-reduce = f32[8,16] all-reduce(p0),
+    replica_groups={{0},{1},{2},{3},{4},{5},{6},{7}},
+    to_apply=sum
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                           kModuleStr, /*replica_count=*/8));
+  AllReduceSimplifier simplifier(/*replica_count=*/8);
+  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Parameter(0)));
+}
 }  // namespace
 }  // namespace xla

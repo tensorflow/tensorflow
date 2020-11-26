@@ -28,11 +28,12 @@ from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.feature_column import feature_column_lib
 from tensorflow.python.framework import sparse_tensor
-from tensorflow.python.framework import test_util
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import losses
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import sequential
+from tensorflow.python.keras.feature_column import dense_features
+from tensorflow.python.keras.feature_column import sequence_feature_column as ksfc
 from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.saving import model_config
 from tensorflow.python.keras.saving import save
@@ -65,45 +66,78 @@ class TestSaveModel(test.TestCase, parameterized.TestCase):
   def assert_saved_model(self, path):
     loader_impl.parse_saved_model(path)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def test_save_format_defaults(self):
     path = os.path.join(self.get_temp_dir(), 'model_path')
     save.save_model(self.model, path)
     self.assert_saved_model(path)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
+  def test_save_format_defaults_pathlib(self):
+    if sys.version_info < (3, 6):
+      self.skipTest('pathlib is only available for python version >= 3.6')
+    path = pathlib.Path(self.get_temp_dir()) / 'model_path'
+    save.save_model(self.model, path)
+    self.assert_saved_model(path)
+
+  @testing_utils.run_v2_only
   def test_save_hdf5(self):
     path = os.path.join(self.get_temp_dir(), 'model')
     save.save_model(self.model, path, save_format='h5')
     self.assert_h5_format(path)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         NotImplementedError,
         'requires the model to be a Functional model or a Sequential model.'):
       save.save_model(self.subclassed_model, path, save_format='h5')
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
+  def test_save_load_hdf5_pathlib(self):
+    if sys.version_info < (3, 6):
+      self.skipTest('pathlib is only available for python version >= 3.6')
+    path = pathlib.Path(self.get_temp_dir()) / 'model'
+    save.save_model(self.model, path, save_format='h5')
+    save.load_model(path)
+
+  @testing_utils.run_v2_only
   def test_save_tf(self):
     path = os.path.join(self.get_temp_dir(), 'model')
     save.save_model(self.model, path, save_format='tf')
     self.assert_saved_model(path)
-    with self.assertRaisesRegexp(ValueError, 'input shapes have not been set'):
+    with self.assertRaisesRegex(ValueError, 'input shapes have not been set'):
       save.save_model(self.subclassed_model, path, save_format='tf')
     self.subclassed_model.predict(np.random.random((3, 5)))
     save.save_model(self.subclassed_model, path, save_format='tf')
     self.assert_saved_model(path)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def test_save_load_tf_string(self):
     path = os.path.join(self.get_temp_dir(), 'model')
     save.save_model(self.model, path, save_format='tf')
     save.load_model(path)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def test_save_load_tf_pathlib(self):
-    if sys.version_info >= (3, 6):
-      path = pathlib.Path(self.get_temp_dir()) / 'model'
-      save.save_model(self.model, path, save_format='tf')
-      save.load_model(path)
+    if sys.version_info < (3, 6):
+      self.skipTest('pathlib is only available for python version >= 3.6')
+    path = pathlib.Path(self.get_temp_dir()) / 'model'
+    save.save_model(self.model, path, save_format='tf')
+    save.load_model(path)
+
+  @testing_utils.run_v2_only
+  def test_save_load_weights_tf_pathlib(self):
+    if sys.version_info < (3, 6):
+      self.skipTest('pathlib is only available for python version >= 3.6')
+    path = pathlib.Path(self.get_temp_dir()) / 'model'
+    self.model.save_weights(path, save_format='tf')
+    self.model.load_weights(path)
+
+  @testing_utils.run_v2_only
+  def test_save_load_weights_hdf5_pathlib(self):
+    if sys.version_info < (3, 6):
+      self.skipTest('pathlib is only available for python version >= 3.6')
+    path = pathlib.Path(self.get_temp_dir()) / 'model'
+    self.model.save_weights(path, save_format='h5')
+    self.model.load_weights(path)
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_saving_with_dense_features(self):
@@ -118,7 +152,7 @@ class TestSaveModel(test.TestCase, parameterized.TestCase):
         'b': keras.layers.Input(shape=(1,), name='b', dtype='string')
     }
 
-    fc_layer = feature_column_lib.DenseFeatures(cols)(input_layers)
+    fc_layer = dense_features.DenseFeatures(cols)(input_layers)
     output = keras.layers.Dense(10)(fc_layer)
 
     model = keras.models.Model(input_layers, output)
@@ -157,7 +191,7 @@ class TestSaveModel(test.TestCase, parameterized.TestCase):
                 shape=(None, 1), sparse=True, name='b', dtype='string')
     }
 
-    fc_layer, _ = feature_column_lib.SequenceFeatures(cols)(input_layers)
+    fc_layer, _ = ksfc.SequenceFeatures(cols)(input_layers)
     # TODO(tibell): Figure out the right dtype and apply masking.
     # sequence_length_mask = array_ops.sequence_mask(sequence_length)
     # x = keras.layers.GRU(32)(fc_layer, mask=sequence_length_mask)
@@ -256,7 +290,7 @@ class TestSaveModel(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_saving_model_with_custom_object(self):
-    with generic_utils.custom_object_scope():
+    with generic_utils.custom_object_scope(), self.cached_session():
 
       @generic_utils.register_keras_serializable()
       class CustomLoss(losses.MeanSquaredError):

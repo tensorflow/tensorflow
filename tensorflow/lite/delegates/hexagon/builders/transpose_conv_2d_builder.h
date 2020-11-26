@@ -47,7 +47,7 @@ class TransposeConv2dOpBuilder : public OpBuilder {
   TensorID node_output_;
   std::vector<float> transposed_weights_;
   std::vector<int> stride_shape_;
-  std::vector<int> weight_shape_, bias_shape_;
+  std::vector<int> bias_shape_;
   std::vector<int> bias_data_;
 
   // Non-null only if node has per-channel quantized weights/biases.

@@ -28,6 +28,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/scanner.h"
@@ -273,6 +274,35 @@ int64 UniqueId() {
   return ++id;
 }
 
+string CommonPathPrefix(absl::Span<const string> paths) {
+  if (paths.empty()) return "";
+  size_t min_filename_size =
+      absl::c_min_element(paths, [](const string& a, const string& b) {
+        return a.size() < b.size();
+      })->size();
+  if (min_filename_size == 0) return "";
+
+  size_t common_prefix_size = [&] {
+    for (size_t prefix_size = 0; prefix_size < min_filename_size;
+         prefix_size++) {
+      char c = paths[0][prefix_size];
+      for (int f = 1; f < paths.size(); f++) {
+        if (paths[f][prefix_size] != c) {
+          return prefix_size;
+        }
+      }
+    }
+    return min_filename_size;
+  }();
+
+  size_t rpos = absl::string_view(paths[0])
+                    .substr(0, common_prefix_size)
+                    .rfind(internal::kPathSep);
+  return rpos == std::string::npos
+             ? ""
+             : std::string(absl::string_view(paths[0]).substr(0, rpos + 1));
+}
+
 string GetTempFilename(const string& extension) {
 #if defined(__ANDROID__)
   LOG(FATAL) << "GetTempFilename is not implemented in this platform.";
@@ -328,6 +358,7 @@ string GetTempFilename(const string& extension) {
     }
   }
   LOG(FATAL) << "No temp directory found.";
+  std::abort();
 #endif
 }
 

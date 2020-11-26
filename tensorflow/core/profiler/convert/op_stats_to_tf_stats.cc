@@ -20,12 +20,18 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_stats.pb.h"
+#include "tensorflow/core/profiler/utils/kernel_stats_utils.h"
+#include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
 #include "tensorflow/core/profiler/utils/time_utils.h"
 
 namespace tensorflow {
 namespace profiler {
 namespace {
+
+// The maximum number of Tensorflow Ops displayed on Tensorflow Stats page.
+// 500 device side ops and 500 host side ops.
+const int kMaxNumOfOps = 500;
 
 TfStatsRecord ConvertOpMetricsToTfStatsRecord(
     bool on_device, const OpMetrics& metrics,
@@ -40,9 +46,11 @@ TfStatsRecord ConvertOpMetricsToTfStatsRecord(
   return record;
 }
 
-TfStatsTable GenerateTfStatsTable(const OpMetricsDb& host_tf_metrics_db,
-                                  const OpMetricsDb& device_tf_metrics_db,
-                                  double ridge_point, bool exclude_idle) {
+TfStatsTable GenerateTfStatsTable(
+    const OpMetricsDb& host_tf_metrics_db,
+    const OpMetricsDb& device_tf_metrics_db,
+    const KernelStatsByOpName& kernel_stats_by_op_name, double ridge_point,
+    bool exclude_idle) {
   TfStatsTable tf_stats_table;
   TfStatsRecord sentinel;
   sentinel.set_rank(0);
@@ -56,11 +64,21 @@ TfStatsTable GenerateTfStatsTable(const OpMetricsDb& host_tf_metrics_db,
     total_device_time_ps -= IdleTimePs(device_tf_metrics_db);
   }
   double total_device_time_us = PicosToMicros(total_device_time_ps);
-  for (const OpMetrics* metrics : SortedOpMetricsDb(device_tf_metrics_db)) {
+  for (const OpMetrics* metrics :
+       SortedOpMetricsDb(device_tf_metrics_db, kMaxNumOfOps)) {
     if (exclude_idle && IsIdleOp(*metrics)) continue;
     TfStatsRecord* record = tf_stats_table.add_tf_stats_record();
     *record = ConvertOpMetricsToTfStatsRecord(
         /*on_device=*/true, *metrics, ridge_point);
+    // Compute TensorCore utilization only on device side.
+    auto iter = kernel_stats_by_op_name.find(record->op_name());
+    if (iter != kernel_stats_by_op_name.end()) {
+      record->set_gpu_tensorcore_utilization(
+          SafeDivide(iter->second.tensor_core_duration_ns,
+                     iter->second.total_duration_ns));
+    } else {
+      record->set_gpu_tensorcore_utilization(0.0);
+    }
     SetRankAndDeviceTimeFractions(total_device_time_us, *prev_record, record);
     prev_record = record;
   }
@@ -71,12 +89,14 @@ TfStatsTable GenerateTfStatsTable(const OpMetricsDb& host_tf_metrics_db,
     total_host_time_ps -= IdleTimePs(host_tf_metrics_db);
   }
   double total_host_time_us = PicosToMicros(total_host_time_ps);
-  for (const OpMetrics* metrics :
-       tensorflow::profiler::SortedOpMetricsDb(host_tf_metrics_db)) {
+  for (const OpMetrics* metrics : tensorflow::profiler::SortedOpMetricsDb(
+           host_tf_metrics_db, kMaxNumOfOps)) {
     if (exclude_idle && IsIdleOp(*metrics)) continue;
     TfStatsRecord* record = tf_stats_table.add_tf_stats_record();
     *record = ConvertOpMetricsToTfStatsRecord(
         /*on_device=*/false, *metrics, ridge_point);
+    // Host side TensorCore utilization is always 0.0
+    record->set_gpu_tensorcore_utilization(0.0);
     SetRankAndHostTimeFractions(total_host_time_us, *prev_record, record);
     prev_record = record;
   }
@@ -90,13 +110,16 @@ TfStatsDatabase ConvertOpStatsToTfStats(const OpStats& op_stats) {
   OpMetricsDb device_tf_metrics_db =
       CreateTfMetricsDbFromDeviceOpMetricsDb(op_stats.device_op_metrics_db());
   double ridge_point = op_stats.perf_env().ridge_point();
+  KernelStatsByOpName kernel_stats_by_op_name =
+      GroupKernelReportsByOpName(op_stats.kernel_stats_db());
   TfStatsDatabase tf_stats_db;
-  *tf_stats_db.mutable_with_idle() =
-      GenerateTfStatsTable(host_tf_metrics_db, device_tf_metrics_db,
-                           ridge_point, /*exclude_idle=*/false);
-  *tf_stats_db.mutable_without_idle() =
-      GenerateTfStatsTable(host_tf_metrics_db, device_tf_metrics_db,
-                           ridge_point, /*exclude_idle=*/true);
+  *tf_stats_db.mutable_with_idle() = GenerateTfStatsTable(
+      host_tf_metrics_db, device_tf_metrics_db, kernel_stats_by_op_name,
+      ridge_point, /*exclude_idle=*/false);
+  *tf_stats_db.mutable_without_idle() = GenerateTfStatsTable(
+      host_tf_metrics_db, device_tf_metrics_db, kernel_stats_by_op_name,
+      ridge_point, /*exclude_idle=*/true);
+  tf_stats_db.set_device_type(op_stats.run_environment().device_type());
   return tf_stats_db;
 }
 

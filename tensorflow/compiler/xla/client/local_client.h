@@ -64,10 +64,6 @@ class LocalExecutable {
 
   // Similar to RunAsync(), but allows for donating argument buffers to the
   // executable.
-  StatusOr<ExecutionOutput> RunAsync(
-      absl::Span<Shape const* const> argument_host_shapes,
-      std::vector<ExecutionInput> arguments, ExecutableRunOptions run_options);
-
   StatusOr<ExecutionOutput> RunAsync(std::vector<ExecutionInput> arguments,
                                      ExecutableRunOptions run_options);
 
@@ -78,6 +74,10 @@ class LocalExecutable {
   Executable* executable() const { return executable_.get(); }
 
  private:
+  StatusOr<ExecutionOutput> RunAsync(
+      absl::Span<Shape const* const> argument_host_shapes,
+      std::vector<ExecutionInput> arguments, ExecutableRunOptions run_options);
+
   // Validates that the given arguments and options satisfy various constraints
   // of the computation.
   //

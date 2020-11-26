@@ -182,10 +182,10 @@ class BroadcastMatrixBatchDimsTest(test.TestCase):
     x = rng.rand(3)
     y = rng.rand(1, 1)
 
-    with self.assertRaisesRegexp(ValueError, "at least two dimensions"):
+    with self.assertRaisesRegex(ValueError, "at least two dimensions"):
       linear_operator_util.broadcast_matrix_batch_dims([x, y])
 
-    with self.assertRaisesRegexp(ValueError, "at least two dimensions"):
+    with self.assertRaisesRegex(ValueError, "at least two dimensions"):
       linear_operator_util.broadcast_matrix_batch_dims([y, x])
 
 
@@ -337,7 +337,7 @@ class UseOperatorOrProvidedHintUnlessContradictingTest(test.TestCase,
   )
   def test_raises_if_contradicting(self, operator_hint_value,
                                    provided_hint_value):
-    with self.assertRaisesRegexp(ValueError, "my error message"):
+    with self.assertRaisesRegex(ValueError, "my error message"):
       linear_operator_util.use_operator_or_provided_hint_unless_contradicting(
           operator=DummyOperatorWithHint(my_hint=operator_hint_value),
           hint_attr_name="my_hint",
@@ -413,7 +413,7 @@ class BlockwiseTest(test.TestCase, parameterized.TestCase):
 
     # Since the leftmost dimension of `x` is equal to the number of blocks, and
     # the operators have unknown dimension, the input is ambiguous.
-    with self.assertRaisesRegexp(ValueError, "structure is ambiguous"):
+    with self.assertRaisesRegex(ValueError, "structure is ambiguous"):
       linear_operator_util.arg_is_blockwise(op_dimensions, x, -2)
 
   def test_mismatched_input_raises(self):
@@ -425,7 +425,7 @@ class BlockwiseTest(test.TestCase, parameterized.TestCase):
     # two-element list; if interpreted blockwise, its corresponding dimensions
     # sum to 12 (=6*2). If not interpreted blockwise, its corresponding
     # dimension is 6. This is a mismatch.
-    with self.assertRaisesRegexp(ValueError, "dimension does not match"):
+    with self.assertRaisesRegex(ValueError, "dimension does not match"):
       linear_operator_util.arg_is_blockwise(op_dimensions, x, -1)
 
 if __name__ == "__main__":

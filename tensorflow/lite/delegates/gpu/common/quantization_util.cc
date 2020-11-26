@@ -15,15 +15,23 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/quantization_util.h"
 
-#include "tensorflow/lite/builtin_ops.h"
+#include <stdint.h>
+
+#include <vector>
+
+#include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
 namespace gpu {
 namespace {
-void DequantizeInput(TfLiteContext* context, int input_index,
-                     const std::unordered_map<int, int>& quant_conversion_map) {
+void DequantizeInput(
+    TfLiteContext* context, int input_index,
+    const absl::flat_hash_map<int, int>& quant_conversion_map) {
   if (quant_conversion_map.find(input_index) == quant_conversion_map.end()) {
     return;
   }
@@ -50,7 +58,7 @@ void DequantizeInput(TfLiteContext* context, int input_index,
 }
 
 void QuantizeOutput(TfLiteContext* context, int output_index,
-                    const std::unordered_map<int, int>& quant_conversion_map) {
+                    const absl::flat_hash_map<int, int>& quant_conversion_map) {
   if (quant_conversion_map.find(output_index) == quant_conversion_map.end()) {
     return;
   }
@@ -80,7 +88,7 @@ void QuantizeOutput(TfLiteContext* context, int output_index,
 
 absl::Status DequantizeInputs(
     TfLiteContext* context, const std::vector<uint32_t>& input_indices,
-    const std::unordered_map<int, int>& quant_conversion_map) {
+    const absl::flat_hash_map<int, int>& quant_conversion_map) {
   for (auto index : input_indices) {
     DequantizeInput(context, static_cast<int>(index), quant_conversion_map);
   }
@@ -89,7 +97,7 @@ absl::Status DequantizeInputs(
 
 absl::Status DequantizeInputs(
     TfLiteContext* context, const std::vector<int64_t>& input_indices,
-    const std::unordered_map<int, int>& quant_conversion_map) {
+    const absl::flat_hash_map<int, int>& quant_conversion_map) {
   for (auto index : input_indices) {
     DequantizeInput(context, static_cast<int>(index), quant_conversion_map);
   }
@@ -98,7 +106,7 @@ absl::Status DequantizeInputs(
 
 absl::Status QuantizeOutputs(
     TfLiteContext* context, const std::vector<uint32_t>& output_indices,
-    const std::unordered_map<int, int>& quant_conversion_map) {
+    const absl::flat_hash_map<int, int>& quant_conversion_map) {
   for (auto index : output_indices) {
     QuantizeOutput(context, static_cast<int>(index), quant_conversion_map);
   }
@@ -108,7 +116,7 @@ absl::Status QuantizeOutputs(
 
 absl::Status QuantizeOutputs(
     TfLiteContext* context, const std::vector<int64_t>& output_indices,
-    const std::unordered_map<int, int>& quant_conversion_map) {
+    const absl::flat_hash_map<int, int>& quant_conversion_map) {
   for (auto index : output_indices) {
     QuantizeOutput(context, static_cast<int>(index), quant_conversion_map);
   }

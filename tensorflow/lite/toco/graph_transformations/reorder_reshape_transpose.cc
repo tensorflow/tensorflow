@@ -60,7 +60,7 @@ std::vector<int> ComputeNewPerm(std::vector<int> input_dims,
                                 std::vector<int> perm) {
   // These are the major axis of the input.
   std::vector<int> input_indices;
-  for (int i = 0; i < input_dims.size(); i++) {
+  for (size_t i = 0; i < input_dims.size(); i++) {
     if (input_dims[i] != 1) {
       input_indices.push_back(i);
     }
@@ -69,7 +69,7 @@ std::vector<int> ComputeNewPerm(std::vector<int> input_dims,
   // This maps which indices of the input produced the intermediate indices for
   // non-unary dimensions.
   std::unordered_map<int, int> intermediate_to_input_indices_map;
-  for (int i = 0; i < intermediate_dims.size(); i++) {
+  for (size_t i = 0; i < intermediate_dims.size(); i++) {
     if (intermediate_dims[i] != 1) {
       intermediate_to_input_indices_map[i] =
           input_indices[intermediate_to_input_indices_map.size()];
@@ -80,14 +80,14 @@ std::vector<int> ComputeNewPerm(std::vector<int> input_dims,
   // major indices.
   std::vector<int> new_perm;
   new_perm.reserve(input_dims.size());
-  for (int i = 0; i < perm.size(); i++) {
+  for (size_t i = 0; i < perm.size(); i++) {
     if (intermediate_dims[perm[i]] == 1) continue;
 
     new_perm.push_back(intermediate_to_input_indices_map[perm[i]]);
   }
 
   // Fill the rest of the transpose in with the ones.
-  for (int index = 0; index < input_dims.size(); index++) {
+  for (size_t index = 0; index < input_dims.size(); index++) {
     if (input_dims[index] == 1) {
       new_perm.push_back(index);
     }
@@ -193,9 +193,9 @@ std::vector<int> ComputeNewPerm(std::vector<int> input_dims,
     DeleteArrayIfUnused(intermediate_name, model);
   } else {
     // The intermediate array is now the output array.
-    for (int i = 0; i < model->operators.size(); i++) {
+    for (size_t i = 0; i < model->operators.size(); i++) {
       Operator* consumer = model->operators[i].get();
-      for (int j = 0; j < consumer->inputs.size(); j++) {
+      for (size_t j = 0; j < consumer->inputs.size(); j++) {
         if (consumer->inputs[j] == output_name) {
           consumer->inputs[j] = intermediate_name;
         }

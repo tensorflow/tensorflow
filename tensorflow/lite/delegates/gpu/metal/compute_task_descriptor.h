@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
+#include "tensorflow/lite/delegates/gpu/common/task/arguments.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
@@ -79,6 +80,7 @@ struct ComputeTaskDescriptor {
     UniformsFunction data_function;
   };
 
+  Arguments args;
   // Unique ID to match the graph compilation errors.
   int id;
   bool is_linkable;

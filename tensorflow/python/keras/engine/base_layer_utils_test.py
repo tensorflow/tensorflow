@@ -90,16 +90,25 @@ class OpLayerTest(keras_parameterized.TestCase):
     self.assertAllClose(expected, output)
 
   def test_ragged_op_layer(self):
-    with self.assertRaisesRegexp(ValueError, 'Keras automatic op wrapping'):
-      int_values = keras.Input(shape=(None,), dtype=dtypes.int32, ragged=True)
-      float_values = math_ops.cast(int_values, dtypes.float32)
-      _ = keras.Model(int_values, float_values)
+    with testing_utils.use_keras_tensors_scope(False):
+      with self.assertRaisesRegex(
+          ValueError, '(?ms)Keras automatic op wrapping'
+          '.*Ragged tensors encountered: '
+          r'\[tf.RaggedTensor\(values=Tensor\("Cast:0", shape=\((\?|None),\), '
+          r'dtype=float32\), row_splits=Tensor\("Placeholder_1:0", '
+          r'shape=\((\?|None),\), dtype=int64\)\)\]'):
+        int_values = keras.Input(shape=(None,), dtype=dtypes.int32, ragged=True)
+        float_values = math_ops.cast(int_values, dtypes.float32)
+        _ = keras.Model(int_values, float_values)
 
   def test_sparse_op_layer(self):
-    with self.assertRaisesRegexp(ValueError, 'Keras automatic op wrapping'):
-      int_values = keras.Input(shape=(None,), dtype=dtypes.int32, sparse=True)
-      float_values = math_ops.cast(int_values, dtypes.float32)
-      _ = keras.Model(int_values, float_values)
+    with testing_utils.use_keras_tensors_scope(False):
+      with self.assertRaisesRegex(
+          ValueError, "(?ms)Keras automatic op wrapping"
+          r".*Sparse ops encountered: \[\<tf\.Operation 'Cast' type=Cast\>\]"):
+        int_values = keras.Input(shape=(None,), dtype=dtypes.int32, sparse=True)
+        float_values = math_ops.cast(int_values, dtypes.float32)
+        _ = keras.Model(int_values, float_values)
 
   def test_ragged_op_layer_keras_tensors(self):
     with testing_utils.use_keras_tensors_scope(True):

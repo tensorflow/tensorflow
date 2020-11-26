@@ -15,15 +15,18 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/testing/feature_parity/utils.h"
 
+#include <memory>
+#include <optional>
 #include <ostream>
 #include <string>
+#include <utility>
 
 #include "absl/status/status.h"
 #include "absl/strings/substitute.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
+#include "tensorflow/lite/string_type.h"
 
 std::ostream& operator<<(std::ostream& os, const TfLiteTensor& tensor) {
   std::string shape;

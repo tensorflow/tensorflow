@@ -54,7 +54,7 @@ struct AllocRecord {
 class TrackingAllocator : public Allocator {
  public:
   explicit TrackingAllocator(Allocator* allocator, bool track_ids);
-  string Name() override { return allocator_->Name(); }
+  std::string Name() override { return allocator_->Name(); }
   void* AllocateRaw(size_t alignment, size_t num_bytes) override {
     return AllocateRaw(alignment, num_bytes, AllocationAttributes());
   }

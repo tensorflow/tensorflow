@@ -1,5 +1,10 @@
 """Rules for simple testing without dependencies by parsing output logs."""
 
+load(
+    "//tensorflow/lite/micro:build_def.bzl",
+    "micro_copts",
+)
+
 def tflite_micro_cc_test(
         name,
         size = "medium",
@@ -7,7 +12,7 @@ def tflite_micro_cc_test(
         srcs = [],
         includes = [],
         defines = [],
-        copts = ["-Werror", "-Wno-unused-variable"],
+        copts = micro_copts(),
         nocopts = "",
         linkopts = [],
         deps = [],

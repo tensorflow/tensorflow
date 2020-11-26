@@ -36,7 +36,8 @@ TEST(CUSTOM_DEVICE, RegisterSimpleDevice) {
   bool arrived = false;
   bool executed = false;
   const char* name = "/job:localhost/replica:0/task:0/device:CUSTOM:0";
-  RegisterLoggingDevice(context, name, &arrived, &executed, status.get());
+  RegisterLoggingDevice(context, name, /*strict_scope_placement=*/true,
+                        &arrived, &executed, status.get());
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
   TFE_TensorHandle* hcpu = TestMatrixTensorHandle(context);
   ASSERT_FALSE(arrived);
@@ -73,7 +74,8 @@ TEST(CUSTOM_DEVICE, ResetOperation) {
   bool executed = false;
   const char* custom_device_name =
       "/job:localhost/replica:0/task:0/device:CUSTOM:0";
-  RegisterLoggingDevice(context.get(), custom_device_name, &arrived, &executed,
+  RegisterLoggingDevice(context.get(), custom_device_name,
+                        /*strict_scope_placement=*/true, &arrived, &executed,
                         status.get());
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
 
@@ -103,7 +105,8 @@ TEST(CUSTOM_DEVICE, MakeVariable) {
   bool arrived = false;
   bool executed = false;
   const char* name = "/job:localhost/replica:0/task:0/device:CUSTOM:0";
-  RegisterLoggingDevice(context.get(), name, &arrived, &executed, status.get());
+  RegisterLoggingDevice(context.get(), name, /*strict_scope_placement=*/true,
+                        &arrived, &executed, status.get());
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
 
   // Create a variable handle placed on the custom device.
@@ -187,7 +190,8 @@ TEST(CUSTOM_DEVICE, AccessVariableOnCustomDevice) {
   bool arrived = false;
   bool executed = false;
   const char* name = "/job:localhost/replica:0/task:0/device:CUSTOM:0";
-  RegisterLoggingDevice(context.get(), name, &arrived, &executed, status.get());
+  RegisterLoggingDevice(context.get(), name, /*strict_scope_placement=*/false,
+                        &arrived, &executed, status.get());
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
 
   // Create a variable handle placed on the custom device.
@@ -264,10 +268,12 @@ TEST(CUSTOM_DEVICE, InputBasedPlacement) {
   const char* custom1 = "/job:localhost/replica:0/task:0/device:CUSTOM:1";
   bool arrived = false;
   bool executed = false;
-  RegisterLoggingDevice(context.get(), custom0, &arrived, &executed,
+  RegisterLoggingDevice(context.get(), custom0,
+                        /*strict_scope_placement=*/false, &arrived, &executed,
                         status.get());
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
-  RegisterLoggingDevice(context.get(), custom1, &arrived, &executed,
+  RegisterLoggingDevice(context.get(), custom1,
+                        /*strict_scope_placement=*/true, &arrived, &executed,
                         status.get());
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
 
@@ -314,14 +320,34 @@ TEST(CUSTOM_DEVICE, InputBasedPlacement) {
   ASSERT_TRUE(absl::StrContains(TF_Message(status.get()), custom0));
   ASSERT_TRUE(absl::StrContains(TF_Message(status.get()), custom1));
 
-  // Custom device: mix of custom/physical fails.
+  // Custom device: mix of custom/physical places the op on the custom device.
   matmul.reset(MatMulOp(context.get(), hcustom0.get(), hcpu.get()));
   num_retvals = 1;
+  executed = false;
   TFE_Execute(matmul.get(), &retval, &num_retvals, status.get());
-  ASSERT_NE(TF_OK, TF_GetCode(status.get()));
-  ASSERT_TRUE(absl::StrContains(TF_Message(status.get()), custom0));
-  ASSERT_TRUE(
-      absl::StrContains(TF_Message(status.get()), "[]"));  // kVariantDeviceNull
+  EXPECT_TRUE(executed);
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+  TFE_DeleteTensorHandle(retval);
+
+  // Explicit placement still forces the op onto the requested device
+  matmul.reset(MatMulOp(context.get(), hcustom0.get(), hcpu.get()));
+  TFE_OpSetDevice(matmul.get(), "/job:localhost/replica:0/task:0/device:CPU:0",
+                  status.get());
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+  num_retvals = 1;
+  executed = false;
+  TFE_Execute(matmul.get(), &retval, &num_retvals, status.get());
+  EXPECT_FALSE(executed);
+  ASSERT_FALSE(TF_GetCode(status.get()) == TF_OK);
+
+  // Custom devices can refuse to do type-based dispatch (as hcustom1 is
+  // configured to do)
+  matmul.reset(MatMulOp(context.get(), hcustom1.get(), hcpu.get()));
+  num_retvals = 1;
+  executed = false;
+  TFE_Execute(matmul.get(), &retval, &num_retvals, status.get());
+  EXPECT_FALSE(executed);
+  ASSERT_FALSE(TF_GetCode(status.get()) == TF_OK);
 }
 
 TEST(CUSTOM_DEVICE, InvalidRegistrationError) {
@@ -334,21 +360,24 @@ TEST(CUSTOM_DEVICE, InvalidRegistrationError) {
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
   bool arrived = false;
   bool executed = false;
-  RegisterLoggingDevice(context.get(), "/device:CUSTOM:0", &arrived, &executed,
+  RegisterLoggingDevice(context.get(), "/device:CUSTOM:0",
+                        /*strict_scope_placement=*/true, &arrived, &executed,
                         status.get());
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_INVALID_ARGUMENT)
       << TF_Message(status.get());
 
   const char* name = "/job:localhost/replica:0/task:0/device:CUSTOM:0";
-  RegisterLoggingDevice(context.get(), name, &arrived, &executed, status.get());
+  RegisterLoggingDevice(context.get(), name, /*strict_scope_placement=*/true,
+                        &arrived, &executed, status.get());
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
-  RegisterLoggingDevice(context.get(), name, &arrived, &executed, status.get());
+  RegisterLoggingDevice(context.get(), name, /*strict_scope_placement=*/true,
+                        &arrived, &executed, status.get());
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_ALREADY_EXISTS)
       << TF_Message(status.get());
 
-  RegisterLoggingDevice(context.get(),
-                        "/job:localhost/replica:0/task:0/device:CPU:0",
-                        &arrived, &executed, status.get());
+  RegisterLoggingDevice(
+      context.get(), "/job:localhost/replica:0/task:0/device:CPU:0",
+      /*strict_scope_placement=*/true, &arrived, &executed, status.get());
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_ALREADY_EXISTS)
       << TF_Message(status.get());
 }

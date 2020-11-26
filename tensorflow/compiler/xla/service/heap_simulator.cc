@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/hlo_live_range.h"
 #include "tensorflow/compiler/xla/service/hlo_schedule.h"
+#include "tensorflow/compiler/xla/service/memory_space_assignment_repacking.h"
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
@@ -55,9 +56,10 @@ StatusOr<int64> HeapSimulator::MinimumMemoryForModule(
   // rather than summing each computation, since it gives us a better lower
   // bound, by minimizing the liveness of sub-computations.
   TF_ASSIGN_OR_RETURN(
-      HeapSimulator::Result result,
-      HeapSimulator::Run(absl::make_unique<NoFragmentationStatsHeap>(), *module,
-                         schedule, *alias_analysis, size_function));
+      HeapSimulator::Result<HloValue> result,
+      HeapSimulator::Run(
+          absl::make_unique<NoFragmentationStatsHeap<HloValue>>(), *module,
+          schedule, *alias_analysis, size_function));
   return result.heap_size;
 }
 
@@ -69,10 +71,11 @@ StatusOr<int64> HeapSimulator::MinimumMemoryForComputation(
     const absl::flat_hash_map<const HloComputation*, int64>*
         memory_by_computation) {
   TF_ASSIGN_OR_RETURN(
-      HeapSimulator::Result result,
-      HeapSimulator::Run(absl::make_unique<NoFragmentationStatsHeap>(),
-                         computation, sequence, alias_analysis, size_function,
-                         HeapSimulator::Options(), memory_by_computation));
+      HeapSimulator::Result<HloValue> result,
+      HeapSimulator::Run(
+          absl::make_unique<NoFragmentationStatsHeap<HloValue>>(), computation,
+          sequence, alias_analysis, size_function, HeapSimulator::Options(),
+          memory_by_computation));
   return result.heap_size;
 }
 
@@ -82,16 +85,17 @@ StatusOr<int64> HeapSimulator::MinimumMemoryForComputation(
     const LogicalBuffer::SizeFunction& size_function,
     const HloSchedule* schedule) {
   TF_ASSIGN_OR_RETURN(
-      HeapSimulator::Result result,
-      HeapSimulator::Run(absl::make_unique<NoFragmentationStatsHeap>(),
-                         computation, sequence, alias_analysis, size_function,
-                         schedule, HeapSimulator::Options()));
+      HeapSimulator::Result<HloValue> result,
+      HeapSimulator::Run(
+          absl::make_unique<NoFragmentationStatsHeap<HloValue>>(), computation,
+          sequence, alias_analysis, size_function, schedule,
+          HeapSimulator::Options()));
   return result.heap_size;
 }
 
 /*static*/
-StatusOr<HeapSimulator::Result> HeapSimulator::Run(
-    std::unique_ptr<HeapAlgorithm> algorithm, const HloModule& module,
+StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Run(
+    std::unique_ptr<HeapAlgorithm<HloValue>> algorithm, const HloModule& module,
     const HloSchedule& schedule, const HloAliasAnalysis& alias_analysis,
     const BufferValue::SizeFunction& size_fn, const Options& options) {
   HeapSimulator heap(std::move(algorithm), size_fn, options, &schedule);
@@ -108,8 +112,9 @@ StatusOr<HeapSimulator::Result> HeapSimulator::Run(
 }
 
 /*static*/
-StatusOr<HeapSimulator::Result> HeapSimulator::Run(
-    std::unique_ptr<HeapAlgorithm> algorithm, const HloComputation& computation,
+StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Run(
+    std::unique_ptr<HeapAlgorithm<HloValue>> algorithm,
+    const HloComputation& computation,
     const HloInstructionSequence& instruction_sequence,
     const HloAliasAnalysis& alias_analysis,
     const BufferValue::SizeFunction& size_fn, const Options& options,
@@ -128,8 +133,9 @@ StatusOr<HeapSimulator::Result> HeapSimulator::Run(
 }
 
 /*static*/
-StatusOr<HeapSimulator::Result> HeapSimulator::Run(
-    std::unique_ptr<HeapAlgorithm> algorithm, const HloComputation& computation,
+StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Run(
+    std::unique_ptr<HeapAlgorithm<HloValue>> algorithm,
+    const HloComputation& computation,
     const HloInstructionSequence& instruction_sequence,
     const HloAliasAnalysis& alias_analysis,
     const BufferValue::SizeFunction& size_fn, const HloSchedule* schedule,
@@ -326,12 +332,13 @@ Status HeapSimulator::RunComputation(
 }
 
 HeapSimulator::HeapSimulator(
-    std::unique_ptr<HeapAlgorithm> algorithm,
+    std::unique_ptr<HeapAlgorithm<HloValue>> algorithm,
     const BufferValue::SizeFunction& size_fn, const Options& options,
     const HloSchedule* schedule,
     const absl::flat_hash_map<const HloComputation*, int64>*
         memory_by_computation)
-    : no_fragmentation_stats_(absl::make_unique<NoFragmentationStatsHeap>()),
+    : no_fragmentation_stats_(
+          absl::make_unique<NoFragmentationStatsHeap<HloValue>>()),
       algorithm_(std::move(algorithm)),
       size_fn_(size_fn),
       options_(options),
@@ -396,22 +403,27 @@ void HeapSimulator::ShareBuffer(const HloValue* buffer, const HloValue* shared,
                  shared);
 }
 
-HeapSimulator::Result HeapSimulator::Finish() {
-  Result result = algorithm_->Finish();
+HeapSimulator::Result<HloValue> HeapSimulator::Finish() {
+  Result<HloValue> result = algorithm_->Finish();
 
   // Post-process the result to add chunks for shared buffers.  An empty chunk
   // map means that either no buffers were allocated, or the heap was only
   // collecting statistics, e.g. NoFragmentationStatsHeap.
-  if (!result.chunk_map.empty()) {
+  size_t total_chunk_count = absl::c_accumulate(
+      result.heap_results, static_cast<size_t>(0),
+      [&](size_t lhs, const HeapResult<HloValue>& rhs) -> size_t {
+        return lhs + rhs.chunk_map.size();
+      });
+  if (total_chunk_count != 0) {
     // If we were told to assign specific buffers, make sure we've assigned
     // exactly that many buffers.
     if (options_.buffers_to_assign != nullptr) {
-      CHECK_EQ(options_.buffers_to_assign->size(), result.chunk_map.size());
+      CHECK_EQ(options_.buffers_to_assign->size(), total_chunk_count);
     }
   }
 
   // Fragmentation is the difference between the actual and ideal sizes.
-  const Result no_frag_result = no_fragmentation_stats_->Finish();
+  const Result<HloValue> no_frag_result = no_fragmentation_stats_->Finish();
   result.fragmentation_size = result.heap_size - no_frag_result.heap_size;
 
   // Copy the debug trace we collected to the final result.
@@ -437,14 +449,17 @@ void HeapSimulator::FillDebugTrace(HeapSimulatorTrace::Event::Kind kind,
   }
 }
 
-void NoFragmentationStatsHeap::Alloc(const HloValue* buffer, int64 size) {
+template <typename BufferType>
+void NoFragmentationStatsHeap<BufferType>::Alloc(const BufferType* buffer,
+                                                 int64 size) {
   current_heap_size_ += size;
   if (current_heap_size_ > max_heap_size_) {
     max_heap_size_ = current_heap_size_;
   }
 }
 
-void NoFragmentationStatsHeap::AccountForSubcomputationMemory(
+template <typename BufferType>
+void NoFragmentationStatsHeap<BufferType>::AccountForSubcomputationMemory(
     const HloInstruction* instruction, int64 alloc_size_by_instruction,
     const absl::flat_hash_map<const HloComputation*, int64>&
         memory_by_computation) {
@@ -472,11 +487,15 @@ void NoFragmentationStatsHeap::AccountForSubcomputationMemory(
       std::max(max_heap_size_, current_heap_size_ + max_subcomputation_bytes);
 }
 
-void NoFragmentationStatsHeap::Free(const HloValue* buffer, int64 size) {
+template <typename BufferType>
+void NoFragmentationStatsHeap<BufferType>::Free(const BufferType* buffer,
+                                                int64 size) {
   current_heap_size_ -= size;
 }
 
-HeapSimulator::Result NoFragmentationStatsHeap::Finish() {
+template <typename BufferType>
+HeapSimulator::Result<BufferType>
+NoFragmentationStatsHeap<BufferType>::Finish() {
   // The result.chunk_map is empty, since we only collect stats, and don't
   // actually compute chunk assignments.
   Result result;
@@ -484,7 +503,8 @@ HeapSimulator::Result NoFragmentationStatsHeap::Finish() {
   return result;
 }
 
-GlobalDecreasingSizeBestFitHeap::GlobalDecreasingSizeBestFitHeap(
+template <typename BufferType>
+GlobalDecreasingSizeBestFitHeap<BufferType>::GlobalDecreasingSizeBestFitHeap(
     int64 alignment, Type type)
     : alignment_(alignment) {
   if (type == kTemporal) {
@@ -495,8 +515,10 @@ GlobalDecreasingSizeBestFitHeap::GlobalDecreasingSizeBestFitHeap(
   }
 }
 
-GlobalDecreasingSizeBestFitHeap::BufferIntervalCompare
-GlobalDecreasingSizeBestFitHeap::GetTemporalBufferIntervalCompare() const {
+template <typename BufferType>
+typename GlobalDecreasingSizeBestFitHeap<BufferType>::BufferIntervalCompare
+GlobalDecreasingSizeBestFitHeap<BufferType>::GetTemporalBufferIntervalCompare()
+    const {
   return [&](const BufferInterval& x, const BufferInterval& y) {
     int64 x_end = x.end;
     for (auto colocation : GetTransitiveColocations(x)) {
@@ -515,12 +537,14 @@ GlobalDecreasingSizeBestFitHeap::GetTemporalBufferIntervalCompare() const {
     if (x.size != y.size) {
       return x.size > y.size;
     }
-    return x.buffer->id() < y.buffer->id();
+    return *x.buffer < *y.buffer;
   };
 }
 
-/*static*/ GlobalDecreasingSizeBestFitHeap::BufferIntervalCompare
-GlobalDecreasingSizeBestFitHeap::GetSpatialBufferIntervalCompare() {
+template <typename BufferType>
+/*static*/ typename GlobalDecreasingSizeBestFitHeap<
+    BufferType>::BufferIntervalCompare
+GlobalDecreasingSizeBestFitHeap<BufferType>::GetSpatialBufferIntervalCompare() {
   return [&](const BufferInterval& x, const BufferInterval& y) {
     if (x.size != y.size) {
       return x.size > y.size;
@@ -528,12 +552,13 @@ GlobalDecreasingSizeBestFitHeap::GetSpatialBufferIntervalCompare() {
     if (x.end - x.start != y.end - y.start) {
       return x.end - x.start > y.end - y.start;
     }
-    return x.buffer->id() < y.buffer->id();
+    return *x.buffer < *y.buffer;
   };
 }
 
-void GlobalDecreasingSizeBestFitHeap::Alloc(const HloValue* buffer,
-                                            int64 size) {
+template <typename BufferType>
+void GlobalDecreasingSizeBestFitHeap<BufferType>::Alloc(
+    const BufferType* buffer, int64 size) {
   // Degenerate case: 0-sized buffers are always allocated at offset 0.
   if (size == 0) {
     result_.chunk_map.emplace(buffer, Chunk{0, 0});
@@ -546,9 +571,9 @@ void GlobalDecreasingSizeBestFitHeap::Alloc(const HloValue* buffer,
   ++current_time_;
 }
 
-void GlobalDecreasingSizeBestFitHeap::ShareWith(const HloValue* buffer,
-                                                const HloValue* share_with,
-                                                int64 size) {
+template <typename BufferType>
+void GlobalDecreasingSizeBestFitHeap<BufferType>::ShareWith(
+    const BufferType* buffer, const BufferType* share_with, int64 size) {
   // Degenerate case: 0-sized buffers are always allocated at offset 0.
   if (size == 0) {
     result_.chunk_map.emplace(buffer, Chunk{0, 0});
@@ -562,15 +587,16 @@ void GlobalDecreasingSizeBestFitHeap::ShareWith(const HloValue* buffer,
   ++current_time_;
 }
 
-absl::flat_hash_set<const HloValue*>
-GlobalDecreasingSizeBestFitHeap::GetTransitiveColocations(
+template <typename BufferType>
+absl::flat_hash_set<const BufferType*>
+GlobalDecreasingSizeBestFitHeap<BufferType>::GetTransitiveColocations(
     const BufferInterval& interval) const {
-  absl::flat_hash_set<const HloValue*> result;
+  absl::flat_hash_set<const BufferType*> result;
   std::vector<const BufferInterval*> worklist = {&interval};
   while (!worklist.empty()) {
     const BufferInterval* item = worklist.back();
     worklist.pop_back();
-    for (const HloValue* buffer_colocated : item->colocations) {
+    for (const BufferType* buffer_colocated : item->colocations) {
       result.insert(buffer_colocated);
       worklist.push_back(&buffer_intervals_.at(buffer_colocated));
     }
@@ -579,7 +605,9 @@ GlobalDecreasingSizeBestFitHeap::GetTransitiveColocations(
   return result;
 }
 
-void GlobalDecreasingSizeBestFitHeap::Free(const HloValue* buffer, int64 size) {
+template <typename BufferType>
+void GlobalDecreasingSizeBestFitHeap<BufferType>::Free(const BufferType* buffer,
+                                                       int64 size) {
   // Degenerate case: 0-sized buffers are always allocated at offset 0.
   if (size == 0) {
     return;
@@ -785,7 +813,9 @@ std::vector<Chunk> BufferIntervalTree::ChunksOverlappingInTime(
   return result;
 }
 
-HeapSimulator::Result GlobalDecreasingSizeBestFitHeap::Finish() {
+template <typename BufferType>
+HeapSimulator::Result<BufferType>
+GlobalDecreasingSizeBestFitHeap<BufferType>::Finish() {
   std::vector<BufferInterval> sorted_buffer_intervals =
       GetSortedBufferIntervals();
 
@@ -800,11 +830,16 @@ HeapSimulator::Result GlobalDecreasingSizeBestFitHeap::Finish() {
     CommitChunk(buffer_interval, chunk_candidate);
   }
   VLOG(1) << "result heap_size: " << result_.heap_size;
-  return result_;
+  Result result;
+  result.heap_size = result_.heap_size;
+  result.heap_results.emplace_back(result_);
+  return result;
 }
 
-std::vector<GlobalDecreasingSizeBestFitHeap::BufferInterval>
-GlobalDecreasingSizeBestFitHeap::GetSortedBufferIntervals() const {
+template <typename BufferType>
+std::vector<
+    typename GlobalDecreasingSizeBestFitHeap<BufferType>::BufferInterval>
+GlobalDecreasingSizeBestFitHeap<BufferType>::GetSortedBufferIntervals() const {
   std::vector<BufferInterval> sorted_buffer_intervals;
   for (auto& entry : buffer_intervals_) {
     sorted_buffer_intervals.push_back(entry.second);
@@ -814,8 +849,9 @@ GlobalDecreasingSizeBestFitHeap::GetSortedBufferIntervals() const {
   return sorted_buffer_intervals;
 }
 
-GlobalDecreasingSizeBestFitHeap::ChunkCandidate
-GlobalDecreasingSizeBestFitHeap::FindChunkCandidate(
+template <typename BufferType>
+typename GlobalDecreasingSizeBestFitHeap<BufferType>::ChunkCandidate
+GlobalDecreasingSizeBestFitHeap<BufferType>::FindChunkCandidate(
     const GlobalDecreasingSizeBestFitHeap::BufferInterval& buffer_interval,
     int64 preferred_offset) const {
   VLOG(1) << "Finding chunks for buffer: "
@@ -912,9 +948,12 @@ GlobalDecreasingSizeBestFitHeap::FindChunkCandidate(
   return chunk_candidate;
 }
 
-void GlobalDecreasingSizeBestFitHeap::CommitChunk(
-    const GlobalDecreasingSizeBestFitHeap::BufferInterval& buffer_interval,
-    GlobalDecreasingSizeBestFitHeap::ChunkCandidate chunk_candidate) {
+template <typename BufferType>
+void GlobalDecreasingSizeBestFitHeap<BufferType>::CommitChunk(
+    const GlobalDecreasingSizeBestFitHeap<BufferType>::BufferInterval&
+        buffer_interval,
+    GlobalDecreasingSizeBestFitHeap<BufferType>::ChunkCandidate
+        chunk_candidate) {
   // Update the maximum heap size according to the one determined by the chunk
   // candidate.
   result_.heap_size = chunk_candidate.heap_size;
@@ -930,13 +969,68 @@ void GlobalDecreasingSizeBestFitHeap::CommitChunk(
   AddToChunkMap(buffer_interval.buffer, chunk_candidate.chunk);
 }
 
-void GlobalDecreasingSizeBestFitHeap::AddToChunkMap(const HloValue* buffer,
-                                                    Chunk chunk) {
+template <typename BufferType>
+void GlobalDecreasingSizeBestFitHeap<BufferType>::AddToChunkMap(
+    const BufferType* buffer, Chunk chunk) {
   const auto emplace_result = result_.chunk_map.emplace(buffer, chunk);
   DCHECK(emplace_result.second);
 }
 
-HeapSimulator::Result ChooseBestHeapAlgorithm::Finish() {
+HeapSimulator::Result<HloValue>
+ConstrainedGlobalDecreasingSizeBestFitHeap::Finish() {
+  std::vector<BufferInterval> sorted_buffer_vec = GetSortedBufferIntervals();
+  // Convert into std::list so that erase() is O(1).
+  std::list<BufferInterval> sorted_buffer_intervals(sorted_buffer_vec.begin(),
+                                                    sorted_buffer_vec.end());
+
+  // Use do-while here, because we need to create 1 heap in `multi_heap_result`
+  // even if `sorted_buffer_intervals` is empty.
+  Result multi_heap_result;
+  do {
+    // Place buffers into the currently processed heap as many as possible.
+    for (auto it = sorted_buffer_intervals.begin();
+         it != sorted_buffer_intervals.end();) {
+      BufferInterval buffer_interval = *it;
+      if (!buffer_interval.need_allocation) {
+        it = sorted_buffer_intervals.erase(it);
+        continue;
+      }
+      if (buffer_interval.size > size_limit_per_heap_) {
+        LOG(WARNING) << "Alloc buffer size " << buffer_interval.size
+                     << " larger than the per-heap size limit "
+                     << size_limit_per_heap_;
+      }
+
+      ChunkCandidate chunk_candidate = FindChunkCandidate(buffer_interval);
+      if (chunk_candidate.heap_size <= size_limit_per_heap_ ||
+          // Commit the chunk as long as the heap is empty. We do this because
+          // we want the size constraint to be soft, meaning that results are
+          // successfully generated even if there are some buffer sizes larger
+          // than the given constraint size.
+          result_.heap_size == 0) {
+        CommitChunk(buffer_interval, chunk_candidate);
+        it = sorted_buffer_intervals.erase(it);
+        continue;
+      }
+
+      ++it;
+    }
+    // Collect the result from the currently processed heap and reset the heap
+    // states.
+    multi_heap_result.heap_size += result_.heap_size;
+    multi_heap_result.heap_results.push_back(std::move(result_));
+    result_ = {};
+    interval_tree_ = {};
+  } while (!sorted_buffer_intervals.empty());
+
+  VLOG(1) << "Number of heaps produced = "
+          << multi_heap_result.heap_results.size();
+  return multi_heap_result;
+}
+
+template <typename BufferType>
+HeapSimulator::Result<BufferType>
+ChooseBestHeapAlgorithm<BufferType>::Finish() {
   DCHECK(!algorithms_.empty());
   std::vector<Result> results(algorithms_.size());
   int64 min_size = INT64_MAX;
@@ -952,5 +1046,10 @@ HeapSimulator::Result ChooseBestHeapAlgorithm::Finish() {
   DCHECK_GE(min_size_index, 0);
   return results[min_size_index];
 }
+
+template class GlobalDecreasingSizeBestFitHeap<HloValue>;
+template class GlobalDecreasingSizeBestFitHeap<
+    MemorySpaceAssignmentRepacker::AllocationBlock>;
+template class ChooseBestHeapAlgorithm<HloValue>;
 
 }  // namespace xla

@@ -143,6 +143,9 @@ from tensorflow.python.keras.layers.embeddings import Embedding
 # Einsum-based dense layer/
 from tensorflow.python.keras.layers.einsum_dense import EinsumDense
 
+# Multi-head Attention layer.
+from tensorflow.python.keras.layers.multi_head_attention import MultiHeadAttention
+
 # Locally-connected layers.
 from tensorflow.python.keras.layers.local import LocallyConnected1D
 from tensorflow.python.keras.layers.local import LocallyConnected2D

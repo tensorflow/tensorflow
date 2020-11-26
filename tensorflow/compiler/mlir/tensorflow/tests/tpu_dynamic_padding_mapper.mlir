@@ -17,7 +17,7 @@ func @single_arg_single_shape(%arg0: tensor<i1>) {
 }
 
 // CHECK-LABEL: func @func0
-// CHECK-SAME: (%{{[a-z0-9]+}}: tensor<i1> {xla_hlo.padding_map = {padding_arg_indices = [1 : i32], shape_indices = [2 : i32]}}, %{{[a-z0-9]+}}: tensor<i1>)
+// CHECK-SAME: (%{{[a-z0-9]+}}: tensor<i1> {mhlo.padding_map = {padding_arg_indices = [1 : i32], shape_indices = [2 : i32]}}, %{{[a-z0-9]+}}: tensor<i1>)
 func @func0(%arg0: tensor<i1>, %arg1: tensor<i1>) {
   return
 }
@@ -44,7 +44,7 @@ func @single_arg_multiple_shapes(%arg0: tensor<i1>) {
 }
 
 // CHECK-LABEL: func @func1
-// CHECK-SAME: (%{{[a-z0-9]+}}: tensor<i1> {xla_hlo.padding_map = {padding_arg_indices = [1 : i32, 2 : i32], shape_indices = [2 : i32, 3 : i32]}}, %{{[a-z0-9]+}}: tensor<i1>, %{{[a-z0-9]+}}: tensor<i1>)
+// CHECK-SAME: (%{{[a-z0-9]+}}: tensor<i1> {mhlo.padding_map = {padding_arg_indices = [1 : i32, 2 : i32], shape_indices = [2 : i32, 3 : i32]}}, %{{[a-z0-9]+}}: tensor<i1>, %{{[a-z0-9]+}}: tensor<i1>)
 func @func1(%arg0: tensor<i1>, %arg1: tensor<i1>, %arg2: tensor<i1>) {
   return
 }
@@ -76,7 +76,7 @@ func @multiple_args(%arg0: tensor<i1>) {
 }
 
 // CHECK-LABEL: func @func2
-// CHECK-SAME: (%{{[a-z0-9]+}}: tensor<i1> {xla_hlo.padding_map = {padding_arg_indices = [1 : i32, 2 : i32], shape_indices = [2 : i32, 3 : i32]}}, %{{[a-z0-9]+}}: tensor<i1>, %{{[a-z0-9]+}}: tensor<i1>, %{{[a-z0-9]+}}: tensor<i1>, %{{[a-z0-9]+}}: tensor<i1> {xla_hlo.padding_map = {padding_arg_indices = [3 : i32], shape_indices = [1 : i32]}})
+// CHECK-SAME: (%{{[a-z0-9]+}}: tensor<i1> {mhlo.padding_map = {padding_arg_indices = [1 : i32, 2 : i32], shape_indices = [2 : i32, 3 : i32]}}, %{{[a-z0-9]+}}: tensor<i1>, %{{[a-z0-9]+}}: tensor<i1>, %{{[a-z0-9]+}}: tensor<i1>, %{{[a-z0-9]+}}: tensor<i1> {mhlo.padding_map = {padding_arg_indices = [3 : i32], shape_indices = [1 : i32]}})
 func @func2(%arg0: tensor<i1>, %arg1: tensor<i1>, %arg2: tensor<i1>, %arg3: tensor<i1>, %arg4: tensor<i1>) {
   return
 }
@@ -97,7 +97,7 @@ func @remap_indices(%arg0: tensor<i1>) {
 }
 
 // CHECK-LABEL: func @func3
-// CHECK-SAME: (%{{[a-z0-9]+}}: tensor<i1>, %{{[a-z0-9]+}}: tensor<i1>, %{{[a-z0-9]+}}: tensor<i1> {xla_hlo.padding_map = {padding_arg_indices = [0 : i32], shape_indices = [2 : i32]}})
+// CHECK-SAME: (%{{[a-z0-9]+}}: tensor<i1>, %{{[a-z0-9]+}}: tensor<i1>, %{{[a-z0-9]+}}: tensor<i1> {mhlo.padding_map = {padding_arg_indices = [0 : i32], shape_indices = [2 : i32]}})
 func @func3(%arg0: tensor<i1>, %arg1: tensor<i1>, %arg2: tensor<i1>) {
   return
 }
@@ -196,7 +196,7 @@ func @missing_padding_arg(%arg0: tensor<i1>) {
 }
 
 // CHECK-LABEL: func @func8
-// CHECK-SAME: (%{{[a-z0-9]+}}: tensor<i1>, %{{[a-z0-9]+}}: tensor<i1> {xla_hlo.padding_map = {padding_arg_indices = [2 : i32], shape_indices = [2 : i32]}}, %{{[a-z0-9]+}}: tensor<i1>)
+// CHECK-SAME: (%{{[a-z0-9]+}}: tensor<i1>, %{{[a-z0-9]+}}: tensor<i1> {mhlo.padding_map = {padding_arg_indices = [2 : i32], shape_indices = [2 : i32]}}, %{{[a-z0-9]+}}: tensor<i1>)
 func @func8(%arg0: tensor<i1>, %arg1: tensor<i1>, %arg2: tensor<i1>) {
   return
 }
@@ -218,7 +218,7 @@ func @missing_replicated_input_indices(%arg0: tensor<i1>) {
 }
 
 // CHECK-LABEL: func @func9
-// CHECK-NOT: xla_hlo.padding_map
+// CHECK-NOT: mhlo.padding_map
 func @func9(%arg0: tensor<i1>, %arg1: tensor<i1>) {
   return
 }
@@ -240,7 +240,7 @@ func @non_contigous_indices(%arg0: tensor<i1>) {
 }
 
 // CHECK-LABEL: func @func10
-// CHECK-SAME: (%{{[a-z0-9]+}}: tensor<i1>, %{{[a-z0-9]+}}: tensor<i1> {xla_hlo.padding_map = {padding_arg_indices = [0 : i32], shape_indices = [6 : i32]}})
+// CHECK-SAME: (%{{[a-z0-9]+}}: tensor<i1>, %{{[a-z0-9]+}}: tensor<i1> {mhlo.padding_map = {padding_arg_indices = [0 : i32], shape_indices = [6 : i32]}})
 func @func10(%arg0: tensor<i1>, %arg1: tensor<i1>) {
   return
 }

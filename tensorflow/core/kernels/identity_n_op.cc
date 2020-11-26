@@ -25,6 +25,9 @@ limitations under the License.
 namespace tensorflow {
 
 REGISTER_KERNEL_BUILDER(Name("IdentityN").Device(DEVICE_DEFAULT), IdentityNOp);
+REGISTER_KERNEL_BUILDER(Name("IdentityN").Device(DEVICE_TPU_SYSTEM),
+                        IdentityNOp);
+
 // Do not worry about colocating IdentityN op with its resource inputs since
 // it just forwards it's inputs anyway. This is needed because we create
 // IdentityN nodes to club "all" outputs of functional ops while lowering to

@@ -243,8 +243,9 @@ class MatrixDiagOp : public XlaOpKernel {
         errors::InvalidArgument("MatrixDiag op must have at least one input"));
     const TensorShape diag_shape = context->InputShape(0);
     OP_REQUIRES(context, TensorShapeUtils::IsVectorOrHigher(diag_shape),
-                errors::InvalidArgument("Expected >= 1 dims, got shape ",
-                                        diag_shape.DebugString()));
+                errors::InvalidArgument(
+                    "diagonal must be at least 1-dim, received shape: ",
+                    diag_shape.DebugString()));
 
     const DataType dtype = context->expected_output_dtype(0);
     const xla::XlaOp zero = XlaHelpers::Zero(context->builder(), dtype);

@@ -52,7 +52,7 @@ Operation* GetOpOfValue(Value value) {
 
 // TODO(b/158596585): Replace this with a cost model analysis.
 bool IsTrivialUnaryOperation(Operation* op) {
-  return llvm::isa<TF::CastOp>(op) || llvm::isa<TF::IdentityOp>(op);
+  return llvm::isa<TF::CastOp, TF::IdentityOp>(op);
 }
 
 // Adds outside compilation attributes to unary ops such as Identity/Cast ops

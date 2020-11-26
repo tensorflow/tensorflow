@@ -171,6 +171,15 @@ class LinearOperatorTridiag(linear_operator.LinearOperator):
       TypeError:  If `diag.dtype` is not an allowed type.
       ValueError:  If `diag.dtype` is real, and `is_self_adjoint` is not `True`.
     """
+    parameters = dict(
+        diagonals=diagonals,
+        diagonals_format=diagonals_format,
+        is_non_singular=is_non_singular,
+        is_self_adjoint=is_self_adjoint,
+        is_positive_definite=is_positive_definite,
+        is_square=is_square,
+        name=name
+    )
 
     with ops.name_scope(name, values=[diagonals]):
       if diagonals_format not in _DIAGONAL_FORMATS:
@@ -193,6 +202,7 @@ class LinearOperatorTridiag(linear_operator.LinearOperator):
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
           is_square=is_square,
+          parameters=parameters,
           name=name)
 
   def _shape(self):
@@ -246,7 +256,7 @@ class LinearOperatorTridiag(linear_operator.LinearOperator):
           self.diagonals, linalg.adjoint(self.diagonals),
           message='Matrix was not equal to its adjoint.')]
     elif self.diagonals_format == _COMPACT:
-      diagonals = ops.convert_to_tensor(self.diagonals)
+      diagonals = ops.convert_to_tensor_v2_with_dispatch(self.diagonals)
       asserts += [linear_operator_util.assert_zero_imag_part(
           diagonals[..., 1, :], message=diag_message)]
       # Roll the subdiagonal so the shifted argument is at the end.
@@ -353,7 +363,9 @@ class LinearOperatorTridiag(linear_operator.LinearOperator):
           align='LEFT_RIGHT',
           padding_value=0.)
 
-    diagonals = [ops.convert_to_tensor(d) for d in self.diagonals]
+    diagonals = [
+        ops.convert_to_tensor_v2_with_dispatch(d) for d in self.diagonals
+    ]
     diagonals = array_ops.stack(diagonals, axis=-2)
 
     return gen_array_ops.matrix_diag_v3(

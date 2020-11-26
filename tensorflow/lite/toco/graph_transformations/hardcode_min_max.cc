@@ -405,7 +405,7 @@ bool HardcodeMinMaxForPack(Model* model, Operator* op) {
   }
   const auto& first_input_minmax = first_input_array.GetMinMax();
 
-  for (int i = 1; i < op->inputs.size(); i++) {
+  for (size_t i = 1; i < op->inputs.size(); i++) {
     const auto& input_array = model->GetArray(op->inputs[i]);
     if (!input_array.minmax) {
       return false;

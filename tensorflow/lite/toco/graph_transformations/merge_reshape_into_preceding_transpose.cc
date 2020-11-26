@@ -70,7 +70,7 @@ std::vector<int32> ReshapeToTranspose(const Model& model,
   std::vector<int> not_one_indices;
 
   // Separate into one indices and not one indices.
-  for (int i = 0; i < in_shape.size(); i++) {
+  for (size_t i = 0; i < in_shape.size(); i++) {
     if (in_shape[i] == 1) {
       one_indices.push_back(i);
     } else {
@@ -167,7 +167,7 @@ std::vector<int32> ReshapeToTranspose(const Model& model,
 
   // Combine the permutations.
   const auto& transpose_perm = transpose_op->perm;
-  for (int i = 0; i < merged_perm.size(); i++) {
+  for (size_t i = 0; i < merged_perm.size(); i++) {
     merged_perm[i] = transpose_perm[merged_perm[i]];
   }
 

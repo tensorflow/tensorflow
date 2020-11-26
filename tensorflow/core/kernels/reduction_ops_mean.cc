@@ -58,25 +58,5 @@ TF_CALL_COMPLEX_TYPES(REGISTER_GPU_KERNELS);
 
 #endif
 
-#ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNELS(type)                                      \
-  REGISTER_KERNEL_BUILDER(                                               \
-      Name("Mean")                                                       \
-          .Device(DEVICE_SYCL)                                           \
-          .TypeConstraint<type>("T")                                     \
-          .TypeConstraint<int32>("Tidx")                                 \
-          .HostMemory("reduction_indices"),                              \
-      ReductionOp<SYCLDevice, type, int32, functor::MeanReducer<type>>); \
-  REGISTER_KERNEL_BUILDER(                                               \
-      Name("Mean")                                                       \
-          .Device(DEVICE_SYCL)                                           \
-          .TypeConstraint<type>("T")                                     \
-          .TypeConstraint<int64>("Tidx")                                 \
-          .HostMemory("reduction_indices"),                              \
-      ReductionOp<SYCLDevice, type, int64, functor::MeanReducer<type>>);
-REGISTER_SYCL_KERNELS(float);
-REGISTER_SYCL_KERNELS(double);
-#undef REGISTER_SYCL_KERNELS
-#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

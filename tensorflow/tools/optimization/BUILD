@@ -6,18 +6,18 @@ load(
     "tf_cc_binary",
     "tf_cuda_library",
 )
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
-
 tf_cuda_library(
     name = "optimization_pass_runner_lib",
     srcs = ["optimization_pass_runner.cc"],
     hdrs = ["optimization_pass_runner.h"],
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_base",

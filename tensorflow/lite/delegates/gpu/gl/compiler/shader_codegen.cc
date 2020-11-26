@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -30,13 +31,13 @@ namespace gl {
 
 ShaderCodegen::ShaderCodegen(const CompilationOptions& options,
                              const GpuInfo& gpu_info)
-    : options_(options), gpu_type_(gpu_info.type) {}
+    : options_(options), gpu_type_(gpu_info.vendor) {}
 
 absl::Status ShaderCodegen::Build(CompiledNodeAttributes attr,
                                   ShaderCode* shader_code) const {
   VariableAccessor variable_accessor(options_.inline_parameters,
                                      options_.vulkan_support);
-  ObjectAccessor object_accessor(gpu_type_ == GpuType::MALI,
+  ObjectAccessor object_accessor(gpu_type_ == GpuVendor::kMali,
                                  options_.sampler_textures, &variable_accessor);
 
   const auto add_object = [&](const std::string& name, Object&& object) {
@@ -48,6 +49,11 @@ absl::Status ShaderCodegen::Build(CompiledNodeAttributes attr,
 
   const auto add_uniform_parameter = [&](Variable&& variable) {
     const std::string name = variable.name;
+    const Variable& const_ref = variable;
+    if (variable_accessor.IsEmptyVariableLength(const_ref)) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Empty uniform vector value \"", name, "\""));
+    }
     if (!variable_accessor.AddUniformParameter(std::move(variable))) {
       return absl::AlreadyExistsError(
           absl::StrCat("Uniform parameter \"", name, "\""));

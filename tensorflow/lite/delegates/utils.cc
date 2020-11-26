@@ -29,8 +29,8 @@ TfLiteStatus CreateNewTensorWithDifferentType(TfLiteContext* context,
                                               TfLiteType new_type,
                                               TfLiteTensor** new_tensor,
                                               int* new_tensor_index) {
-  const TfLiteTensor& original_tensor = context->tensors[original_tensor_index];
   TF_LITE_ENSURE_STATUS(context->AddTensors(context, 1, new_tensor_index));
+  const TfLiteTensor& original_tensor = context->tensors[original_tensor_index];
   *new_tensor = &context->tensors[*new_tensor_index];
   (*new_tensor)->type = new_type;
   (*new_tensor)->allocation_type = kTfLiteArenaRw;

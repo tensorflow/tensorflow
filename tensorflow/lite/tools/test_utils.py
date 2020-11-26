@@ -21,7 +21,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from flatbuffers.python import flatbuffers
+import flatbuffers
 from tensorflow.lite.python import schema_py_generated as schema_fb
 
 TFLITE_SCHEMA_VERSION = 3
@@ -155,6 +155,8 @@ def build_mock_flatbuffer_model():
 
   schema_fb.OperatorCodeStart(builder)
   schema_fb.OperatorCodeAddBuiltinCode(builder, schema_fb.BuiltinOperator.ADD)
+  schema_fb.OperatorCodeAddDeprecatedBuiltinCode(builder,
+                                                 schema_fb.BuiltinOperator.ADD)
   schema_fb.OperatorCodeAddVersion(builder, 1)
   code_offset = schema_fb.OperatorCodeEnd(builder)
 

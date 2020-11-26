@@ -36,7 +36,7 @@ void AddTFToTFJSConversionPasses(mlir::OpPassManager* pm) {
   pm->addPass(mlir::tf_saved_model::CreateFreezeGlobalTensorsPass());
 
   // TFJS dialect passes.
-  pm->addPass(mlir::tfjs::CreateOptimizePass());
+  pm->addNestedPass<mlir::FuncOp>(mlir::tfjs::CreateOptimizePass());
 
   // Canonicalize, CSE etc.
   pm->addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
@@ -45,7 +45,7 @@ void AddTFToTFJSConversionPasses(mlir::OpPassManager* pm) {
   // raise to executor dialect in order to use GraphDef converter
   pm->addNestedPass<mlir::FuncOp>(
       mlir::CreateFunctionalToExecutorDialectConversionPass());
-  pm->addNestedPass<mlir::FuncOp>(mlir::CreateBreakUpIslandsPass());
+  pm->addPass(mlir::CreateBreakUpIslandsPass());
 }
 
 }  // namespace tensorflow

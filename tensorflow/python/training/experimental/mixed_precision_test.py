@@ -85,7 +85,7 @@ class MixedPrecisionTest(test.TestCase, parameterized.TestCase):
     else:
       expected_regex = ('"opt" must be an instance of a tf.train.Optimizer or '
                         'a tf.keras.optimizers.Optimizer, but got')
-    with self.assertRaisesRegexp(ValueError, expected_regex):
+    with self.assertRaisesRegex(ValueError, expected_regex):
       enable_mixed_precision_graph_rewrite(opt)
     self.assertFalse(config.get_optimizer_experimental_options()
                      .get('auto_mixed_precision', False))
@@ -93,15 +93,16 @@ class MixedPrecisionTest(test.TestCase, parameterized.TestCase):
     opt = gradient_descent_v1.GradientDescentOptimizer(1.0)
     opt = loss_scale_optimizer_v1.MixedPrecisionLossScaleOptimizer(opt,
                                                                    'dynamic')
-    with self.assertRaisesRegexp(ValueError,
-                                 '"opt" must not already be an instance of a '
-                                 'MixedPrecisionLossScaleOptimizer.'):
+    with self.assertRaisesRegex(
+        ValueError, '"opt" must not already be an instance of a '
+        'MixedPrecisionLossScaleOptimizer.'):
       enable_mixed_precision_graph_rewrite(opt)
     self.assertFalse(config.get_optimizer_experimental_options()
                      .get('auto_mixed_precision', False))
 
   @test_util.run_gpu_only
   @test_util.run_in_graph_and_eager_modes
+  @test_util.disable_tfrt('Grappler rewrite doesn\'t apply to tfrt.')
   def test_grappler_pass_enabled(self):
     opt = gradient_descent_v1.GradientDescentOptimizer(1.0)
     enable_mixed_precision_graph_rewrite(opt, 123.)

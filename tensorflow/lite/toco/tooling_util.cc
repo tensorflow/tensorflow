@@ -1769,6 +1769,8 @@ int ElementSize(ArrayDataType data_type) {
       return 8;
     case ArrayDataType::kComplex64:
       return 8;
+    case ArrayDataType::kComplex128:
+      return 16;
     case ArrayDataType::kFloat64:
       return 8;
 
@@ -2307,12 +2309,16 @@ ArrayDataType ConvertIODataTypeToArrayDataType(IODataType type) {
       return ArrayDataType::kInt32;
     case INT64:
       return ArrayDataType::kInt64;
+    case UINT64:
+      return ArrayDataType::kUint64;
     case BOOL:
       return ArrayDataType::kBool;
     case STRING:
       return ArrayDataType::kString;
     case COMPLEX64:
       return ArrayDataType::kComplex64;
+    case COMPLEX128:
+      return ArrayDataType::kComplex128;
     case FLOAT16:
       return ArrayDataType::kFloat16;
     case FLOAT64:

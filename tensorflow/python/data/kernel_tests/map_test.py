@@ -56,6 +56,8 @@ from tensorflow.python.ops.ragged import ragged_concat_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
+from tensorflow.python.training import checkpoint_management
+from tensorflow.python.training.tracking import util as trackable_utils
 
 
 def _test_combinations_with_mode_v1(mode):
@@ -1012,7 +1014,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(_test_combinations())
   def testReturnValueError(self, apply_map):
     dataset = dataset_ops.Dataset.from_tensors([1.0, 2.0, 3.0])
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         TypeError, r"Unsupported return value from function passed to "
         r"Dataset.map\(\)"):
       _ = apply_map(dataset, lambda x: Foo)
@@ -1379,6 +1381,23 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     dataset = apply_map(dataset, map_function)
     self.assertDatasetProduces(dataset, expected_output=[21])
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testCheckpointLargeBuffer(self):
+    # Tensor of size 100M
+    dataset = dataset_ops.Dataset.from_tensors(
+        array_ops.ones((25, 1000, 1000), dtype=dtypes.float32))
+    # Repeat 25 times to exceed the 2G proto limit
+    dataset = dataset.repeat(30)
+    dataset = dataset.map(lambda x: x * 2, num_parallel_calls=25)
+
+    iterator = iter(dataset)
+    # Call next() to trigger parallel map calls.
+    next(iterator)
+    ckpt = trackable_utils.Checkpoint(iterator=iterator)
+    manager = checkpoint_management.CheckpointManager(
+        ckpt, self.get_temp_dir(), max_to_keep=1)
+    manager.save()
 
 
 if __name__ == "__main__":
