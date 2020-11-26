@@ -833,6 +833,10 @@ gentbl(
             "-gen-pass-decls -name TensorFlow",
             "transforms/tf_passes.h.inc",
         ),
+        (
+            "-gen-pass-doc",
+            "g3doc/includes/tf_passes.md",
+        ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/tf_passes.td",

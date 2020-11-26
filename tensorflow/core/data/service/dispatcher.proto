@@ -74,6 +74,11 @@ message GetOrCreateJobRequest {
   // Optional job key identifying a shared job. If not set, the RPC will always
   // create a new job.
   JobKey job_key = 5;
+  // Optional number of consumers. If set, the job's tasks will provide their
+  // elements to consumers round-robin.
+  oneof optional_num_consumers {
+    int64 num_consumers = 7;
+  }
 }
 
 message GetOrCreateJobResponse {

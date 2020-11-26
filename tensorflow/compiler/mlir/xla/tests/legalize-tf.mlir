@@ -940,16 +940,6 @@ func @real(%arg0: tensor<3xcomplex<f32>>) -> tensor<3xf32> {
   return %1 : tensor<3xf32>
 }
 
-// CHECK-LABEL: func @conj
-func @conj(%arg0: tensor<3xcomplex<f32>>) -> tensor<3xcomplex<f32>> {
-  // CHECK-DAG: [[R1:%.*]] = "mhlo.real"(%arg0)
-  // CHECK-DAG: [[R2:%.*]] = "mhlo.imag"(%arg0)
-  // CHECK-DAG: [[R3:%.*]] = "mhlo.negate"([[R2]])
-  // CHECK: [[R4:%.*]] = "mhlo.complex"([[R1]], [[R3]])
-  %1 = "tf.Conj"(%arg0) : (tensor<3xcomplex<f32>>) -> tensor<3xcomplex<f32>>
-  return %1 : tensor<3xcomplex<f32>>
-}
-
 //===----------------------------------------------------------------------===//
 // Concat op legalizations.
 //===----------------------------------------------------------------------===//

@@ -372,6 +372,19 @@ def HLOClient_AtanOp : HLOClient_UnaryElementwiseOp<"atan", [],
   }];
 }
 
+def HLOClient_ConjOp : HLOClient_UnaryElementwiseOp<"conj", [],
+    HLO_FpOrComplexTensor> {
+  let summary = "Conj operator";
+
+  let description = [{
+    Returns `Conj(operand)` element-wise.
+
+    $$
+    \conj(x) = (\real(x), \neg(\imag(x)))
+    $$
+  }];
+}
+
 def HLOClient_SinhOp : HLOClient_UnaryElementwiseOp<"sinh", [],
     HLO_FpOrComplexTensor> {
   let summary = "Sinh operation";

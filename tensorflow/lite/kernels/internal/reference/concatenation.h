@@ -69,7 +69,6 @@ inline void Concatenation(const ConcatenationParams& params,
   }
 }
 
-// TODO(prabhumk): This is the same as the optimized implementation.
 inline void ConcatenationWithScaling(const ConcatenationParams& params,
                                      const RuntimeShape* const* input_shapes,
                                      const uint8_t* const* input_data,

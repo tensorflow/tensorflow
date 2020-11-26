@@ -230,13 +230,6 @@ def : EqualityPat<TF_EqualOp, HLO_COMPARISON_DIRECTION_EQ>;
 def : EqualityPat<TF_NotEqualOp, HLO_COMPARISON_DIRECTION_NE>;
 
 //===----------------------------------------------------------------------===//
-// Complex op patterns.
-//===----------------------------------------------------------------------===//
-
-def : Pat<(TF_ConjOp $v),
-          (HLO_ComplexOp (HLO_RealOp $v), (HLO_NegOp (HLO_ImagOp $v)))>;
-
-//===----------------------------------------------------------------------===//
 // Concat op patterns.
 //===----------------------------------------------------------------------===//
 
@@ -584,6 +577,7 @@ foreach Mapping = [
                    [TF_AtanOp, HLOClient_AtanOp],
                    [TF_CeilOp, HLO_CeilOp],
                    [TF_ComplexAbsOp, HLO_AbsOp],
+                   [TF_ConjOp, HLOClient_ConjOp],
                    [TF_CosOp, HLO_CosOp],
                    [TF_ExpOp, HLO_ExpOp],
                    [TF_ErfOp, HLOClient_ErfOp],

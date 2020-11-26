@@ -180,6 +180,7 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
                                 const GpuInfo& gpu_info,
                                 const RuntimeOptions& options,
                                 int* last_node_id, int* last_value_id,
+                                std::map<ValueId, BHWC>* tensor_shapes,
                                 std::vector<ComputeTaskDescriptorPtr>* tasks) {
   if (!IsBatchMatchesForAllValues(graph)) {
     return absl::InvalidArgumentError(
@@ -225,24 +226,28 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
         return absl::UnimplementedError(
             "Convolution does not support more than 1 runtime tensor");
       }
+      const auto src_shape = graph.FindInputs(node_id)[0]->tensor.shape;
       const auto dst_shape = graph.FindOutputs(node_id)[0]->tensor.shape;
       auto attr =
           absl::any_cast<Convolution2DAttributes>(node->operation.attributes);
       if (IsSuitableForWinograd4x4To6x6(attr, dst_shape)) {
         int tiles_x = DivideRoundUp(dst_shape.w, 4);
         int tiles_y = DivideRoundUp(dst_shape.h, 4);
+        const BHWC shape_0{src_shape.b, 36, tiles_x * tiles_y, src_shape.c};
+        const BHWC shape_1{src_shape.b, 36, tiles_x * tiles_y, dst_shape.c};
 
         Winograd4x4To36Attributes wino_up_attr;
         wino_up_attr.padding = attr.padding;
         (*last_node_id) += 1;
         int value_id = *last_value_id + 1;
+        (*tensor_shapes)[value_id] = shape_0;
+        (*tensor_shapes)[value_id + 1] = shape_1;
         *tasks = SelectWinograd4x4To36(*last_node_id, inputs[0], value_id,
                                        wino_up_attr, gpu_info, options);
 
-        BHWC conv_shape{dst_shape.b, 36, tiles_x * tiles_y, dst_shape.c};
         (*last_node_id) += 1;
         auto t1 = ConvolutionWino4x4To6x6(*last_node_id, value_id, value_id + 1,
-                                          conv_shape, attr, gpu_info, options);
+                                          shape_1, attr, gpu_info, options);
         tasks->insert(tasks->end(), t1.begin(), t1.end());
 
         Winograd36To4x4Attributes wino_down_attr;
@@ -454,6 +459,7 @@ absl::Status Compile(const GraphFloat32& graph, const GpuInfo& gpu_info,
   }
   int last_value_id = 0;
   for (const auto& value : graph.values()) {
+    compiled_model->tensor_shapes[value->id] = value->tensor.shape;
     last_value_id = std::max(last_value_id, static_cast<int>(value->id));
   }
   for (const auto& node : graph.nodes()) {
@@ -469,9 +475,9 @@ absl::Status Compile(const GraphFloat32& graph, const GpuInfo& gpu_info,
     auto custom_status =
         RegisterCustomOps(graph, node, inputs, outputs, options, &tasks);
     if (!custom_status.ok()) {
-      auto primary_status =
-          RegisterPrimaryOps(graph, node, inputs, outputs, gpu_info, options,
-                             &last_node_id, &last_value_id, &tasks);
+      auto primary_status = RegisterPrimaryOps(
+          graph, node, inputs, outputs, gpu_info, options, &last_node_id,
+          &last_value_id, &compiled_model->tensor_shapes, &tasks);
       if (!primary_status.ok()) {
         return absl::UnimplementedError(
             absl::Substitute("Unsupported op type: $0; custom registry error: "
@@ -483,7 +489,8 @@ absl::Status Compile(const GraphFloat32& graph, const GpuInfo& gpu_info,
     for (const auto& task : tasks) {
       task->description = node->operation.type + "_" + std::to_string(node->id);
     }
-    compiled_model->insert(compiled_model->end(), tasks.begin(), tasks.end());
+    compiled_model->tasks.insert(compiled_model->tasks.end(), tasks.begin(),
+                                 tasks.end());
   }
   return absl::OkStatus();
 }

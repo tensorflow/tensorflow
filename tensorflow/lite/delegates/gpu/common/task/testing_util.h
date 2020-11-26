@@ -47,6 +47,23 @@ class TestExecutionEnvironment {
       std::unique_ptr<GPUOperation>&& operation,
       const std::vector<BHWC>& dst_sizes,
       const std::vector<TensorFloat32*>& dst_cpu) = 0;
+
+  absl::Status ExecuteGPUOperation(const TensorFloat32& src_cpu,
+                                   std::unique_ptr<GPUOperation>&& operation,
+                                   const BHWC& dst_size,
+                                   TensorFloat32* result) {
+    return ExecuteGPUOperation(std::vector<TensorFloat32>{src_cpu},
+                               std::move(operation), dst_size, result);
+  }
+
+  absl::Status ExecuteGPUOperation(const std::vector<TensorFloat32>& src_cpu,
+                                   std::unique_ptr<GPUOperation>&& operation,
+                                   const BHWC& dst_size,
+                                   TensorFloat32* result) {
+    return ExecuteGPUOperation(
+        std::vector<TensorFloat32>{src_cpu}, std::move(operation),
+        std::vector<BHWC>{dst_size}, std::vector<TensorFloat32*>{result});
+  }
 };
 
 }  // namespace gpu

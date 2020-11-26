@@ -4331,6 +4331,16 @@ cc_library(
     ],
 )
 
+filegroup(
+    name = "TosaDialectTdFiles",
+    srcs = glob(["include/mlir/Dialect/Tosa/IR/*.td"]) + [
+        "include/mlir/Interfaces/LoopLikeInterface.td",
+        ":OpBaseTdFiles",
+        ":QuantizationOpsTdFiles",
+        ":SideEffectTdFiles",
+    ],
+)
+
 gentbl(
     name = "TosaDialectIncGen",
     strip_include_prefix = "include",

@@ -93,6 +93,10 @@ struct LayoutOptimizationPipelineOptions
   Option<std::string> force_data_format{
       *this, "force-data-format",
       llvm::cl::desc("Force data format for all layout sensitive ops")};
+  Option<bool> skip_fold_transpose_in_ops{
+      *this, "skip-fold-transpose-in-ops",
+      llvm::cl::desc("Skip folding transpose operands in Ops which can support "
+                     "different layouts.")};
 };
 
 // Layout optimization assigns optimal data layout for layout sensitive

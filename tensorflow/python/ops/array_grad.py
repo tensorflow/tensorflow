@@ -568,15 +568,9 @@ def _IndexedSlicesToTensorNoWarning(indexed_slices):
 def _GatherGrad(op, grad):
   """Gradient for Gather op."""
   # params can be large, so colocate the shape calculation with it.
-  #
-  # params can be very large for sparse model, array_ops.shape raises
-  # exception on the Windows platform when any dimension is larger than
-  # int32. params_shape is not used in optimizer apply_sparse gradients,
-  # so it's fine to convert it back to int32 regardless of truncation.
   params = op.inputs[0]
   with ops.colocate_with(params):
-    params_shape = array_ops.shape(params, out_type=ops.dtypes.int64)
-    params_shape = math_ops.cast(params_shape, dtypes.int32)
+    params_shape = array_ops.shape(params)
 
   # Build appropriately shaped IndexedSlices
   indices = op.inputs[1]
