@@ -87,7 +87,8 @@ TEST(LSHProjectionOpTest2, Dense1DInputs) {
 
   m.Invoke();
 
-#if defined(__s390x__)
+#if defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && \
+    __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
   // Hash returns differently on machines with different endianness
   EXPECT_THAT(m.GetOutput(), ElementsAre(0, 0, 1, 1, 1, 0));
 #else
@@ -103,7 +104,8 @@ TEST(LSHProjectionOpTest2, Sparse1DInputs) {
 
   m.Invoke();
 
-#if defined(__s390x__)
+#if defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && \
+    __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
   // Hash returns differently on machines with different endianness
   EXPECT_THAT(m.GetOutput(), ElementsAre(0 + 0, 4 + 3, 8 + 2));
 #else
@@ -121,7 +123,8 @@ TEST(LSHProjectionOpTest2, Sparse3DInputs) {
 
   m.Invoke();
 
-#if defined(__s390x__)
+#if defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && \
+    __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
   // Hash returns differently on machines with different endianness
   EXPECT_THAT(m.GetOutput(), ElementsAre(0 + 0, 4 + 3, 8 + 2));
 #else
