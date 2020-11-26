@@ -81,7 +81,8 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         ":flatbuffer_utils",
-        "//tensorflow/python:platform",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
     ],
 )
 
@@ -92,7 +93,8 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         ":flatbuffer_utils",
-        "//tensorflow/python:platform",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
     ],
 )
 
@@ -103,7 +105,8 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         ":flatbuffer_utils",
-        "//tensorflow/python:platform",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
     ],
 )
 
