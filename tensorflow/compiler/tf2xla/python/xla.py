@@ -399,6 +399,21 @@ replica_id = gen_xla_ops.xla_replica_id
 set_bound = gen_xla_ops.xla_set_bound
 
 
+# Make a static dimension into a xla bounded dynamic dimension. The current
+# static dimension size will become the bound and the second operand becomes the
+# dynamic size of the dimension.
+#
+# This should mostly be used for testing.
+#
+# def f():
+#   array = tf.convert_to_tensor([[1, 2, 3, 4, 5]])
+#   # Tells xla the valid size of the array is 3.
+#   dim = 0
+#   p = xla_set_dynamic_dimension_size(array, dim, 3)
+#   assert(reduce_sum(p) == 6) # xla knows only the first 3 elements are valid.
+set_dynamic_dimension_size = gen_xla_ops.xla_set_dynamic_dimension_size
+
+
 def reshape(x, new_sizes, dimensions=None, name=None):
   if dimensions is not None:
     x = array_ops.transpose(x, dimensions)

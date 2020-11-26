@@ -141,7 +141,7 @@ class DepthwiseConvolution : public NodeShader {
         /*workload=*/uint3(),
         /*workgroup=*/
         GetIdealWorkgroupIfPossible(
-            ctx.gpu_info->gpu_model, OperationType::DEPTHWISE_CONVOLUTION,
+            *ctx.gpu_info, OperationType::DEPTHWISE_CONVOLUTION,
             HW(attr.weights.shape.h, attr.weights.shape.w), attr.strides,
             OHWI(attr.weights.shape.o, ctx.input_shapes[0][1],
                  ctx.input_shapes[0][2], ctx.input_shapes[0][3])),

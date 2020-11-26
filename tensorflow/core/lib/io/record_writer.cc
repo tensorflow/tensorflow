@@ -115,7 +115,7 @@ Status RecordWriter::WriteRecord(StringPiece data) {
   return dest_->Append(StringPiece(footer, sizeof(footer)));
 }
 
-#if defined(PLATFORM_GOOGLE)
+#if defined(TF_CORD_SUPPORT)
 Status RecordWriter::WriteRecord(const absl::Cord& data) {
   if (dest_ == nullptr) {
     return Status(::tensorflow::error::FAILED_PRECONDITION,

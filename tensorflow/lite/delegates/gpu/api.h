@@ -364,7 +364,7 @@ struct InferenceOptions {
 };
 
 // Returns a position number for the priority. If priority is missing,
-// then it it would return 'max num priorities + 1'.
+// then it would return 'max num priorities + 1'.
 int GetPosition(const InferenceOptions& options, InferencePriority p);
 
 // Return true if options are valid.

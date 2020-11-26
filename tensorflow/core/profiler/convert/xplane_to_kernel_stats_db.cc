@@ -52,7 +52,8 @@ void ConvertDeviceTraceXPlaneToKernelReports(
       event.ForEachStat([&](const tensorflow::profiler::XStatVisitor& stat) {
         if (!stat.Type().has_value()) return;
         switch (stat.Type().value()) {
-          case StatType::kLevel0:
+          case StatType::kTfOp:
+          case StatType::kLevel0:  // old way to deliver tf_op info.
             tf_op_fullname = stat.StrOrRefValue();
             break;
           case StatType::kKernelDetails:

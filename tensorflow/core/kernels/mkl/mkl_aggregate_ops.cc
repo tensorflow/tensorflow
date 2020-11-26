@@ -19,13 +19,14 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include <numeric>
+
+#include "mkldnn.hpp"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/logging.h"
-
-#include "mkldnn.hpp"
 #include "tensorflow/core/util/mkl_util.h"
+
 using mkldnn::stream;
 using mkldnn::sum;
 
@@ -152,23 +153,18 @@ class MklAddNOp : public OpKernel {
         return;
       }
 
-      auto cpu_engine = engine(ENGINE_CPU, 0);
+      auto cpu_engine = engine(engine::kind::cpu, 0);
       std::vector<float> coeff(num_inputs, 1.0);
-      std::vector<MEMORY_PRIMITIVE_DESC> srcs_pd;
-
-#ifdef ENABLE_MKLDNN_V1
+      std::vector<memory::desc> srcs_pd;
       std::vector<memory> inputs;
-#else
-      std::vector<primitive::at> inputs;
-#endif
 
       MklDnnData<T> dst(&cpu_engine);
       MklDnnData<T> src(&cpu_engine);
       bool has_mkl_input = false;
       int mkl_input_index = FindMKLInputIndex(ctx);
-      MKL_TENSOR_FORMAT mkl_data_format;
+      MklTensorFormat mkl_data_format;
       TensorFormat tf_data_format;
-      MEMORY_FORMAT dnn_fmt = MEMORY_FORMAT::any;
+      memory::format_tag dnn_fmt = memory::format_tag::any;
       if (mkl_input_index >= 0) {
         has_mkl_input = true;
         GetMklShape(ctx, mkl_input_index, &mkl_shape);
@@ -187,7 +183,8 @@ class MklAddNOp : public OpKernel {
       for (int src_idx = 0; src_idx < num_inputs; ++src_idx) {
         MklDnnShape src_mkl_shape;
         GetMklShape(ctx, src_idx, &src_mkl_shape);
-        memory::desc md({}, MEMORY_DATA_TYPE_UNDEF, MEMORY_FORMAT_UNDEF);
+        memory::desc md({}, memory::data_type::undef,
+                        memory::format_tag::undef);
         src = MklDnnData<T>(&cpu_engine);
         const Tensor& src_tensor = MklGetInput(ctx, src_idx);
 
@@ -212,23 +209,15 @@ class MklAddNOp : public OpKernel {
             md = MklDnnData<T>::CreateBlockedMemDesc(dims, strides);
           }
         }
-#ifdef ENABLE_MKLDNN_V1
         srcs_pd.push_back(memory::desc(md));
-#else
-        srcs_pd.push_back(memory::primitive_desc(md, cpu_engine));
-#endif
         src.SetUsrMem(md, &src_tensor);
         src.SetUsrMemDataHandle(&src_tensor, fwd_cpu_stream);
         inputs.push_back(src.GetOpMem());
       }
 
-#ifdef ENABLE_MKLDNN_V1
       auto sum_pd = sum::primitive_desc(coeff, srcs_pd, cpu_engine);
-#else
-      auto sum_pd = sum::primitive_desc(coeff, srcs_pd);
-#endif
       output_mkl_shape.SetMklTensor(has_mkl_input);
-      auto output_pd = sum_pd.PRIMITIVE_DESC_DST;
+      auto output_pd = sum_pd.dst_desc();
       dst.SetUsrMem(output_pd);
 
       if (has_mkl_input) {
@@ -248,19 +237,13 @@ class MklAddNOp : public OpKernel {
 
       // Create Sum op, and submit net for execution.
       std::vector<primitive> net;
-#ifdef ENABLE_MKLDNN_V1
       mkldnn::sum sum_op(sum_pd);
       std::unordered_map<int, memory> net_args = {
-          { MKLDNN_ARG_DST,
-            dst.GetOpMem() }};
+          {MKLDNN_ARG_DST, dst.GetOpMem()}};
       for (int i = 0; i < num_inputs; ++i) {
         net_args.insert({MKLDNN_ARG_MULTIPLE_SRC + i, inputs[i]});
       }
       sum_op.execute(*fwd_cpu_stream, net_args);
-#else
-      net.push_back(sum(sum_pd, inputs, dst.GetOpMem()));
-      fwd_cpu_stream->submit(net).wait();
-#endif
     } catch (mkldnn::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +

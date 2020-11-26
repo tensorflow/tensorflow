@@ -15,10 +15,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_DELEGATES_COREML_BUILDERS_OP_BUILDER_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_DELEGATES_COREML_BUILDERS_OP_BUILDER_H_
 
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
-#include "external/coremltools/mlmodel/format/Model.pb.h"
-#include "external/coremltools/mlmodel/format/NeuralNetwork.pb.h"
+#include <string>
+
+#include "mlmodel/format/Model.pb.h"
+#include "mlmodel/format/NeuralNetwork.pb.h"
 #include "tensorflow/lite/c/common.h"
 
 namespace tflite {
@@ -34,11 +34,11 @@ class TensorID {
   TensorID() {}
   TensorID(int node, int output_id) : node_(node), output_id_(output_id) {}
 
-  std::string ToString() const { return absl::StrCat(node_, "__", output_id_); }
+  std::string ToString() const;
 
-  int NodeID() const { return node_; }
+  int NodeID() const;
 
-  int OutputID() const { return output_id_; }
+  int OutputID() const;
 
  private:
   int node_ = -1;
@@ -101,20 +101,18 @@ class OpBuilder {
 
   // Returns the Layer this builder responsible for.
   // Ownership is transferred to caller.
-  virtual CoreML::Specification::NeuralNetworkLayer* Build() {
-    layer_->set_name(DebugName());
-    return layer_.release();
-  }
+  virtual CoreML::Specification::NeuralNetworkLayer* Build();
 
+  // Associates TfLite input tensors to Core ML layer's inputs and properties.
+  // Verification for input constraints should happen here.
   virtual TfLiteStatus RegisterInputs(const TfLiteIntArray* inputs,
-                                      TfLiteContext* context) {
-    return kTfLiteOk;
-  }
+                                      TfLiteContext* context) = 0;
 
+  // Associates TFLite output tensor with the node's output. If the OpBuilder
+  // has subgraphs, The final output of that subgraph should be associated with
+  // the output tensor.
   virtual TfLiteStatus RegisterOutputs(const TfLiteIntArray* outputs,
-                                       TfLiteContext* context) {
-    return kTfLiteOk;
-  }
+                                       TfLiteContext* context) = 0;
 
   // Adds additional required OpBuilders, and populate builder_output_ with
   // Actual output that corresponds to output tensor of TFL Node.
@@ -122,32 +120,17 @@ class OpBuilder {
   // composing other ops. For example, Relu6 in TfLite can be converted to
   // Relu -> Threshold -> Neg.
   // TODO(b/147211734): have this called automatically when necessary.
-  virtual TfLiteStatus PopulateSubgraph(TfLiteContext* context) {
-    builder_output_ = AddOutput();
-    return kTfLiteOk;
-  }
+  virtual TfLiteStatus PopulateSubgraph(TfLiteContext* context);
 
-  virtual const char* DebugName() = 0;
+  virtual const std::string& DebugName() = 0;
 
-  void SetBuiltinData(void* builtin_data) { builtin_data_ = builtin_data; }
+  void SetBuiltinData(void* builtin_data);
 
-  void SetNodeID(int id) { node_id_ = id; }
+  void SetNodeID(int id);
 
-  void SetTfLiteNode(const TfLiteNode* node) { tflite_node_ = node; }
+  void SetTfLiteNode(const TfLiteNode* node);
 
-  int GetID() const { return node_id_; }
-
-  TensorID AddOutput();
-
-  // To be used by clients that needs the output of the node.
-  virtual TensorID GetOutput(TfLiteContext* context) {
-    if (builder_output_.NodeID() != -1) {
-      return builder_output_;
-    }
-    // builder_output_ is not set when PopulateSubgraph is not called.
-    builder_output_ = AddOutput();
-    return builder_output_;
-  }
+  int GetID() const;
 
   // Adds input with tensor name.
   void AddInput(const std::string& input_name);
@@ -159,13 +142,16 @@ class OpBuilder {
   // TODO(taeheej): cleanup AddInput use cases and used tensor tracking.
   void AddInput(int tf_input_id);
 
+  // Simply adds new output to the underlying layer.
+  TensorID AddOutput();
+
+  // Should set builder_output_ (if unset) and return it as the output of
+  // this node. To be used by clients that needs the output of the node.
+  virtual TensorID GetOutput(TfLiteContext* context);
+
  protected:
-  // Helper to print op instance name.
-  void GetDebugName(const char* name, int id, char* debug_name) {
-    // TODO(karimnosseir): Move away from absl, probably adding overhead
-    // on binary size ?.
-    absl::SNPrintF(debug_name, 100 * sizeof(char), "%s_%d", name, id);
-  }
+  // Sets layer's name.
+  void SetDebugName(const char* layer_name, int id);
 
   GraphBuilder* graph_builder_ = nullptr;
   // Data needed by this node.
@@ -174,7 +160,7 @@ class OpBuilder {
   int num_outputs_ = 0;
   const TfLiteNode* tflite_node_ = nullptr;
   TensorID builder_output_;
-  char str_debug_name_[100] = {0};
+  std::string debug_name_;
   std::unique_ptr<CoreML::Specification::NeuralNetworkLayer> layer_;
 };
 

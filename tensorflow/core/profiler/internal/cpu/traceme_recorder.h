@@ -16,6 +16,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_PROFILER_INTERNAL_CPU_TRACEME_RECORDER_H_
 
 #include <atomic>
+#include <deque>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -44,18 +46,29 @@ TF_EXPORT extern std::atomic<int> g_trace_level;
 //
 // This is the backend for TraceMe instrumentation.
 // The profiler starts the recorder, the TraceMe destructor records complete
-// events. TraceMe::ActivityStart records begin events, and TraceMe::ActivityEnd
+// events. TraceMe::ActivityStart records start events, and TraceMe::ActivityEnd
 // records end events. The profiler then stops the recorder and finds start/end
 // pairs. (Unpaired start/end events are discarded at that point).
 class TraceMeRecorder {
  public:
   // An Event is either the start of a TraceMe, the end of a TraceMe, or both.
   // Times are in ns since the Unix epoch.
+  // A negative time encodes the activity_id used to pair up the start of an
+  // event with its end.
   struct Event {
-    uint64 activity_id;
+    bool IsComplete() const { return start_time > 0 && end_time > 0; }
+    bool IsStart() const { return end_time < 0; }
+    bool IsEnd() const { return start_time < 0; }
+
+    int64 ActivityId() const {
+      if (IsStart()) return -end_time;
+      if (IsEnd()) return -start_time;
+      return 1;  // complete
+    }
+
     std::string name;
-    uint64 start_time;  // 0 = missing
-    uint64 end_time;    // 0 = missing
+    int64 start_time;
+    int64 end_time;
   };
   struct ThreadInfo {
     uint32 tid;
@@ -63,7 +76,7 @@ class TraceMeRecorder {
   };
   struct ThreadEvents {
     ThreadInfo thread;
-    std::vector<Event> events;
+    std::deque<Event> events;
   };
   using Events = std::vector<ThreadEvents>;
 
@@ -85,13 +98,14 @@ class TraceMeRecorder {
   static constexpr int kTracingDisabled = -1;
 
   // Records an event. Non-blocking.
-  static void Record(Event event);
+  static void Record(Event&& event);
 
   // Returns an activity_id for TraceMe::ActivityStart.
-  static uint64 NewActivityId();
+  static int64 NewActivityId();
 
  private:
   class ThreadLocalRecorder;
+  class ThreadLocalRecorderWrapper;
 
   // Returns singleton.
   static TraceMeRecorder* Get();
@@ -100,22 +114,29 @@ class TraceMeRecorder {
 
   TF_DISALLOW_COPY_AND_ASSIGN(TraceMeRecorder);
 
-  void RegisterThread(uint32 tid, ThreadLocalRecorder* thread);
+  void RegisterThread(uint32 tid, std::shared_ptr<ThreadLocalRecorder> thread);
   void UnregisterThread(uint32 tid);
 
   bool StartRecording(int level);
   Events StopRecording();
 
+  // Clears events from all active threads that were added due to Record
+  // racing with StopRecording.
+  void Clear() TF_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
   // Gathers events from all active threads, and clears their buffers.
-  Events Clear() TF_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  TF_MUST_USE_RESULT Events Consume() TF_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   mutex mutex_;
-  // Map of the static container instances (thread_local storage) for each
-  // thread. While active, a ThreadLocalRecorder stores trace events.
-  absl::flat_hash_map<uint32, ThreadLocalRecorder*> threads_
+  // A ThreadLocalRecorder stores trace events. Ownership is shared with
+  // ThreadLocalRecorderWrapper, which is allocated in thread_local storage.
+  // ThreadLocalRecorderWrapper creates the ThreadLocalRecorder and registers it
+  // with TraceMeRecorder on the first TraceMe executed on a thread while
+  // tracing is active. If the thread is destroyed during tracing, the
+  // ThreadLocalRecorder is marked inactive but remains alive until tracing
+  // stops so the events can be retrieved.
+  absl::flat_hash_map<uint32, std::shared_ptr<ThreadLocalRecorder>> threads_
       TF_GUARDED_BY(mutex_);
-  // Events from threads that died during recording.
-  TraceMeRecorder::Events orphaned_events_ TF_GUARDED_BY(mutex_);
 };
 
 }  // namespace profiler

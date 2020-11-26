@@ -133,9 +133,9 @@ endif
   CCFLAGS += $(PLATFORM_FLAGS)
   LDFLAGS += $(PLATFORM_LDFLAGS)
 
-
-
-
 endif # ARC_TOOLCHAIN
-endif  # TARGET_ARCH
 
+else
+  $(error "Only ARC target architecture supported (TARGET_ARCH=arc)")
+
+endif  # TARGET_ARCH

@@ -66,7 +66,7 @@ def lstm():
 
 
 def multi_input_multi_output():
-  """Multi-input Multi-ouput model."""
+  """Multi-input Multi-output model."""
   body_input = keras.Input(shape=(None,), name='body')
   tags_input = keras.Input(shape=(2,), name='tags')
 
@@ -290,7 +290,7 @@ ALL_MODELS = [
 
 
 def get_models(exclude_models=None):
-  """Get all models excluding the specificed ones."""
+  """Get all models excluding the specified ones."""
   models = [model for model in ALL_MODELS
             if model[0] not in exclude_models]
   return models

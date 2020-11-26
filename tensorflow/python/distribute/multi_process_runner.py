@@ -854,11 +854,8 @@ class _ProcFunc(object):
 
 
 # Active MultiProcessPoolRunner. We need to shut them down when the program
-# exits. For the main process, we do this via atexit callback. For a process
-# that is spawned by MultiProcessPoolRunner, e.g. nested MultiProcessPoolRunner,
-# we do this manually at the end of _pool_runner_worker. The reason is that
-# multiprocessing library waits for all spawned processes to exit, so atexit
-# callbacks won't trigger until all pools are shutdown.
+# exits, and this is by setting the `tearDownModule` of the module containing
+# `__main__`. Note this it set in both the parent process and the subprocesses.
 _active_pool_runners = weakref.WeakSet()
 
 
@@ -1014,12 +1011,6 @@ def _pool_runner_worker(task_type, task_id, initializer, conn):
     sys.stdout.flush()
     sys.stderr.flush()
     conn.send(info)
-  # Shutdown all MultiProcessPoolRunner in this process manually.
-  # MultiProcessPoolRunner registers an atexit callback to shutdown all pool
-  # runners, but we cannot rely on that in processes spawned by the
-  # multiprocessing library. This is because the library waits for all
-  # subprocesses before exiting and thus all atexit callbacks.
-  _shutdown_all_pool_runners()
 
 
 def _run_contained(task_type, task_id, fn, args, kwargs):

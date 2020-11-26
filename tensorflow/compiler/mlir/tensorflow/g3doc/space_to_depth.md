@@ -168,7 +168,7 @@ module {
               %filter: tensor<7x7x3x64xf32>) {
      %filter_transform = "tf.Pad/tf.Transpose/tf.Reshape"(%filter):
        tensor<7x7x3x64xf32>) -> tensor<4x4x12x64xf32>
-     %conv = "tf.Conv2D"(%input, %filter_transfrom) {strides = [1, 1, 1, 1]}:
+     %conv = "tf.Conv2D"(%input, %filter_transform) {strides = [1, 1, 1, 1]}:
        (tensor<2x112x112x12xf32>, tensor<4x4x12x64xf32>) ->
        tensor<2x112x112x64xf32>
    }

@@ -44,4 +44,5 @@ class StringLookup(string_lookup.StringLookup, index_lookup_v1.IndexLookup):
         vocabulary=vocabulary,
         invert=invert,
         **kwargs)
-    base_preprocessing_layer._kpl_gauge.get_cell("V1").set("StringLookup")
+    base_preprocessing_layer.keras_kpl_gauge.get_cell(
+        "StringLookup_V1").set(True)

@@ -397,7 +397,7 @@ class NearComparator {
           (error_.relaxed_nans && !IsNan(expected) && IsNan(actual))) {
         num_nan_mismatches_++;
         // A nan mismatch is considered to have infinite error. rel_error is
-        // used for sorting a std::set of the top mismatchs, and a nan value
+        // used for sorting a std::set of the top mismatches, and a nan value
         // here will result in undefined behavior because nan's do not satisfy
         // the strict weak ordering requirement of std containers.
         abs_error = std::numeric_limits<float>::infinity();
@@ -625,7 +625,7 @@ class NearComparator {
   // Callback to invoke on miscompare.
   MiscompareCallback miscompare_callback_;
 
-  // Number of element element mismatches encountered so far.
+  // Number of element mismatches encountered so far.
   int64 num_mismatches_ = 0;
 
   // Number of elements with a nan mismatch.

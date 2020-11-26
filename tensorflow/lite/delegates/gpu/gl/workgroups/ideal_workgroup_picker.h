@@ -28,15 +28,16 @@ namespace gl {
 // Picks up the ideal workgroup size for the given convolution case.
 // Ideal workgroup gives top 10% of the possible performance for the given case.
 // They are received after the workgroup performance research (b/117291356).
-uint3 GetIdealWorkgroupIfPossible(GpuModel gpu_model, OperationType op_type,
-                                  HW kernel, HW strides, OHWI workload);
+uint3 GetIdealWorkgroupIfPossible(const GpuInfo& gpu_info,
+                                  OperationType op_type, HW kernel, HW strides,
+                                  OHWI workload);
 
 // Does the same as the function above. Use this one if your operation can
 // suggest some reasonable workgroup size. It's expected to give better
 // performance than the default workgroup calculator.
-uint3 GetIdealWorkgroupIfPossible(GpuModel gpu_model, OperationType op_type,
-                                  HW kernel, HW strides, uint3 default_wg,
-                                  OHWI workload);
+uint3 GetIdealWorkgroupIfPossible(const GpuInfo& gpu_info,
+                                  OperationType op_type, HW kernel, HW strides,
+                                  uint3 default_wg, OHWI workload);
 
 }  // namespace gl
 }  // namespace gpu

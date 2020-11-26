@@ -68,7 +68,7 @@ class MLIRConcreteFunctionImportTest(test.TestCase):
         tensor_spec.TensorSpec(None, dtypes.float32))
     mlir_module = mlir.convert_function(concrete_function)
     self.assertRegex(mlir_module, r'func @.*caller.*\(')
-    self.assertRegex(mlir_module, r'func @.*callee.*\(')
+    self.assertRegex(mlir_module, r'func private @.*callee.*\(')
 
   def testImportWithControlRet(self):
 

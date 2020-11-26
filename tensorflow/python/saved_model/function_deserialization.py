@@ -143,17 +143,17 @@ def _deserialize_function_spec_as_nonmethod(function_spec_proto, coder):
       annotations=typeless_fullargspec.annotations)
   input_signature = coder.decode_proto(function_spec_proto.input_signature)
 
-  # See `tf.function` and the ExperimentalCompile proto for details.
-  experimental_compile = {
-      saved_object_graph_pb2.FunctionSpec.ExperimentalCompile.DEFAULT: None,
-      saved_object_graph_pb2.FunctionSpec.ExperimentalCompile.ON: True,
-      saved_object_graph_pb2.FunctionSpec.ExperimentalCompile.OFF: False,
-  }.get(function_spec_proto.experimental_compile)
+  # See `tf.function` and the JitCompile proto for details.
+  jit_compile = {
+      saved_object_graph_pb2.FunctionSpec.JitCompile.DEFAULT: None,
+      saved_object_graph_pb2.FunctionSpec.JitCompile.ON: True,
+      saved_object_graph_pb2.FunctionSpec.JitCompile.OFF: False,
+  }.get(function_spec_proto.jit_compile)
 
   return function_lib.FunctionSpec(fullargspec=fullargspec,
                                    is_method=False,
                                    input_signature=input_signature,
-                                   experimental_compile=experimental_compile)
+                                   jit_compile=jit_compile)
 
 
 # TODO(allenl): The fact that we can't derive ConcreteFunction calling
@@ -191,7 +191,7 @@ class RestoredFunction(def_function.Function):
     # TODO(mdan): We may enable autograph once exceptions are supported.
     super(RestoredFunction, self).__init__(
         python_function, name, autograph=False,
-        experimental_compile=function_spec.experimental_compile)
+        jit_compile=function_spec.jit_compile)
     self.concrete_functions = concrete_functions
     self._function_spec = function_spec
 
@@ -407,13 +407,14 @@ def _sort_function_defs(library, library_function_names):
   return [reverse[x] for x in output]
 
 
-def fix_node_def(node_def, functions, shared_name_suffix, debug_name):
+def _check_op_has_custom_gradients(node_def):
+  """Returns True if op has custom gradients."""
+  return ("_gradient_op_type" in node_def.attr and
+          node_def.op not in ["StatefulPartitionedCall", "PartitionedCall"])
+
+
+def fix_node_def(node_def, functions, shared_name_suffix):
   """Replace functions calls and shared names in `node_def`."""
-  if ("_gradient_op_type" in node_def.attr and
-      node_def.op not in ["StatefulPartitionedCall", "PartitionedCall"]):
-    logging.warning(
-        "Importing a function (%s) with ops with custom gradients. Will likely "
-        "fail if a gradient is requested.", debug_name)
   if node_def.op in functions:
     node_def.op = functions[node_def.op].name
   for _, attr_value in node_def.attr.items():
@@ -471,8 +472,16 @@ def _fix_fdef(orig_fdef, functions, shared_name_suffix):
   """
   fdef = function_pb2.FunctionDef()
   fdef.CopyFrom(orig_fdef)
+  contains_custom_gradients = False
+
   for node_def in fdef.node_def:
-    fix_node_def(node_def, functions, shared_name_suffix, fdef.signature.name)
+    fix_node_def(node_def, functions, shared_name_suffix)
+    if not contains_custom_gradients:
+      contains_custom_gradients = _check_op_has_custom_gradients(node_def)
+  if contains_custom_gradients:
+    logging.warning(
+        "Importing a function (%s) with ops with custom gradients. Will likely "
+        "fail if a gradient is requested.", fdef.signature.name)
 
   fdef.signature.name = _clean_function_name(fdef.signature.name)
   return fdef

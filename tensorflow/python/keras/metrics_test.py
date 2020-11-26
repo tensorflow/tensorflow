@@ -191,7 +191,10 @@ class MeanTest(keras_parameterized.TestCase):
     self.assertEqual(self.evaluate(m.count), 1)
 
     # check update_state() and result() + state accumulation + tensor input
-    update_op = m.update_state(ops.convert_n_to_tensor([1, 5]))
+    update_op = m.update_state([
+        ops.convert_to_tensor_v2_with_dispatch(1),
+        ops.convert_to_tensor_v2_with_dispatch(5)
+    ])
     self.evaluate(update_op)
     self.assertAlmostEqual(self.evaluate(m.result()), 106 / 3, 2)
     self.assertEqual(self.evaluate(m.total), 106)  # 100 + 1 + 5
@@ -1414,7 +1417,10 @@ class MeanTensorTest(test.TestCase, parameterized.TestCase):
       self.assertAllClose(self.evaluate(m.count), [1, 1])
 
       # check update_state() and result() + state accumulation + tensor input
-      update_op = m.update_state(ops.convert_n_to_tensor([1, 5]))
+      update_op = m.update_state([
+          ops.convert_to_tensor_v2_with_dispatch(1),
+          ops.convert_to_tensor_v2_with_dispatch(5)
+      ])
       self.evaluate(update_op)
       self.assertAllClose(self.evaluate(m.result()), [50.5, 22.5])
       self.assertAllClose(self.evaluate(m.total), [101, 45])

@@ -20,8 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
+#include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
 
 namespace tflite {
 namespace gpu {
@@ -117,7 +116,7 @@ std::string GenerateCode(const OperationDef& op_def,
                          const DepthwiseConvolution2DAttributes& dw_attr,
                          int result_depth, GPUOperation* result) {
   auto src_desc = op_def.src_tensors[0];
-  src_desc.SetTextureAddressMode(TextureAddressMode::ZERO);
+  src_desc.SetAddressMode(AddressMode::kZero);
   result->AddSrcTensor("src_tensor", src_desc);
   result->AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
 
@@ -128,12 +127,7 @@ std::string GenerateCode(const OperationDef& op_def,
   result->args_.AddInt("padding_y", -dw_attr.padding.prepended.h);
   result->args_.AddInt("dilation_y", dw_attr.dilations.h);
 
-  const auto src_tensor_type = op_def.src_tensors[0].storage_type;
-
-  const bool manual_clamp = src_tensor_type == TensorStorageType::BUFFER ||
-                            src_tensor_type == TensorStorageType::IMAGE_BUFFER;
-
-  std::string c = GetCommonDefines(op_def.precision);
+  std::string c;
   c += "__kernel void main_function(\n";
   c += "$0) {\n";
   if (op_def.dst_tensors[0].HasAxis(Axis::BATCH)) {
@@ -160,29 +154,54 @@ std::string GenerateCode(const OperationDef& op_def,
   c += "  int x_offseted = X * args.stride_x + args.padding_x;\n";
   c += "  int y_offseted = Y * args.stride_y + args.padding_y;\n";
   c += "  int x_c, y_c;\n";
-  if (manual_clamp) {
-    c += "  bool x_in, y_in;\n";
+
+  auto generate_check = [&]() {
+    std::string check;
+    const std::vector<Axis> axes{Axis::WIDTH, Axis::HEIGHT, Axis::DEPTH};
+    const std::vector<std::string> names{"x_in", "y_in", "z_in"};
+    for (int i = 0; i < axes.size(); ++i) {
+      const auto& axis = axes[i];
+      if (src_desc.HasAxis(axis) && !src_desc.SupportsZeroClamp(axis)) {
+        if (!check.empty()) {
+          check += " && ";
+        }
+        check += names[i];
+      }
+    }
+    return check;
+  };
+  const std::string check = generate_check();
+  if (!src_desc.SupportsZeroClamp(Axis::HEIGHT)) {
+    c += "  bool y_in;\n";
   }
+  if (!src_desc.SupportsZeroClamp(Axis::WIDTH)) {
+    c += "  bool x_in;\n";
+  }
+
+  const std::string postfixes[] = {".x", ".xy", ".xyz", ""};
   c += "  FLT4 src;\n";
   for (int ky = 0; ky < dw_attr.weights.shape.h; ++ky) {
     c += "  y_c = y_offseted + " + std::to_string(ky) + " * args.dilation_y;\n";
-    if (manual_clamp) {
+    if (!src_desc.SupportsZeroClamp(Axis::HEIGHT)) {
       c += "  y_in = y_c >= 0 && y_c < args.src_tensor.Height();\n";
       c += "  y_c = clamp(y_c, 0, args.src_tensor.Height() - 1);\n";
     }
     for (int kx = 0; kx < dw_attr.weights.shape.w; ++kx) {
       c += "  x_c = x_offseted + " + std::to_string(kx) +
            " * args.dilation_x;\n";
-      if (manual_clamp) {
+      if (!src_desc.SupportsZeroClamp(Axis::WIDTH)) {
         c += "  x_in = x_c >= 0 && x_c < args.src_tensor.Width();\n";
         c += "  x_c = clamp(x_c, 0, args.src_tensor.Width() - 1);\n";
       }
       for (int d = 0; d < intermediate_depth; ++d) {
-        std::string multiplier = manual_clamp ? "* (FLT)(x_in && y_in)" : "";
-        c += "  src = args.src_tensor.Read(x_c, y_c, " + std::to_string(d) +
-             ")" + multiplier + ";\n";
-        c += "  dw_res_" + std::to_string(d) + " += src * constants[" +
-             std::to_string(weights_counter++) + "];\n";
+        const int src_ch_count = std::min(4, dw_attr.weights.shape.i - d * 4);
+        const std::string s_postfix = postfixes[src_ch_count - 1];
+        std::string multiplier = check.empty() ? "" : " * (FLT)(" + check + ")";
+        c += "  src" + s_postfix + " = args.src_tensor.Read(x_c, y_c, " +
+             std::to_string(d) + ")" + s_postfix + multiplier + ";\n";
+        c += "  dw_res_" + std::to_string(d) + s_postfix + " += src" +
+             s_postfix + " * constants[" + std::to_string(weights_counter++) +
+             "]" + s_postfix + ";\n";
       }
     }
   }

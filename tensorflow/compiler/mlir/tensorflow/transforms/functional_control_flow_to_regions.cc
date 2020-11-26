@@ -112,7 +112,8 @@ LogicalResult ConvertIfOp(IfOp if_op) {
 LogicalResult ConvertWhileOp(WhileOp while_op) {
   auto while_region = OpBuilder(while_op).create<TF::WhileRegionOp>(
       while_op.getLoc(), while_op.getResultTypes(), while_op.input(),
-      while_op.is_stateless(), while_op.parallel_iterations());
+      while_op.parallel_iterations(), while_op.is_stateless(),
+      while_op.shape_invariant());
   CopyDeviceAndUnderscoredAttributes(while_op, while_region);
 
   YieldOp cond_yield =

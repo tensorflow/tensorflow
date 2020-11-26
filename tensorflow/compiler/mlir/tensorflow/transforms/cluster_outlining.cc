@@ -68,7 +68,7 @@ FuncOp BuildFunction(llvm::ArrayRef<Value> live_ins,
 
   // This function is not externally visible and marking it private would allow
   // symbol-dce pass to remove it when it is not referenced anymore.
-  outlined_func.setVisibility(FuncOp::Visibility::Private);
+  outlined_func.setPrivate();
 
   // Create function body.
   Block* outlined_func_block = outlined_func.addEntryBlock();

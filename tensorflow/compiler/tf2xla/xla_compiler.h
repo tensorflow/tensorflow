@@ -197,6 +197,9 @@ class XlaCompiler {
     // Alias input and output buffers for parameters that are passed-through XLA
     // modules without being changed.
     bool alias_passthrough_params = false;
+
+    // Enable detailed logging of compilation metadata.
+    bool detailed_logging = true;
   };
 
   explicit XlaCompiler(Options options);

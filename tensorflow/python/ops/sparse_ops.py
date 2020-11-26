@@ -111,6 +111,15 @@ def from_dense(tensor, name=None):
   Only elements not equal to zero will be present in the result. The resulting
   `SparseTensor` has the same dtype and shape as the input.
 
+  >>> sp = tf.sparse.from_dense([0, 0, 3, 0, 1])
+  >>> sp.shape.as_list()
+  [5]
+  >>> sp.values.numpy()
+  array([3, 1], dtype=int32)
+  >>> sp.indices.numpy()
+  array([[2],
+         [4]])
+
   Args:
     tensor: A dense `Tensor` to be converted to a `SparseTensor`.
     name: Optional name for the op.
@@ -1602,23 +1611,24 @@ def sparse_tensor_to_dense(sp_input,
                            name=None):
   """Converts a `SparseTensor` into a dense tensor.
 
-  This op is a convenience wrapper around `sparse_to_dense` for `SparseTensor`s.
+  For this sparse tensor with three non-empty values:
 
-  For example, if `sp_input` has shape `[3, 5]` and non-empty string values:
+  >>> sp_input = tf.SparseTensor(
+  ...   dense_shape=[3, 5],
+  ...   values=[7, 8, 9],
+  ...   indices =[[0, 1],
+  ...             [0, 3],
+  ...             [2, 0]])
 
-      [0, 1]: a
-      [0, 3]: b
-      [2, 0]: c
+  The output will be a dense `[3, 5]` tensor with values:
 
-  and `default_value` is `x`, then the output will be a dense `[3, 5]`
-  string tensor with values:
+  >>> tf.sparse.to_dense(sp_input).numpy()
+  array([[0, 7, 0, 8, 0],
+         [0, 0, 0, 0, 0],
+         [9, 0, 0, 0, 0]], dtype=int32)
 
-      [[x a x b x]
-       [x x x x x]
-       [c x x x x]]
-
-  Indices must be without repeats.  This is only
-  tested if `validate_indices` is `True`.
+  Note: Indices must be without repeats.  This is only tested if
+  `validate_indices` is `True`.
 
   Args:
     sp_input: The input `SparseTensor`.
@@ -1905,7 +1915,7 @@ def sparse_retain(sp_input, to_retain):
   retain_shape = to_retain.get_shape()
   retain_shape.assert_has_rank(1)
   if sp_input.values.get_shape().dims is not None:
-    sp_input.values.get_shape().dims[0].merge_with(
+    sp_input.values.get_shape().dims[0].assert_is_compatible_with(
         tensor_shape.dimension_at_index(retain_shape, 0))
 
   where_true = array_ops.reshape(array_ops.where_v2(to_retain), [-1])
@@ -1993,7 +2003,7 @@ def sparse_reset_shape(sp_input, new_shape=None):
     # For cases when shape is known during graph construction, this catches the
     # error before the sparse_tensor.SparseTensor catches it.
     if output_shape_tensor.get_shape().rank is not None:
-      output_shape_tensor.get_shape().dims[0].merge_with(
+      output_shape_tensor.get_shape().dims[0].assert_is_compatible_with(
           in_shape.get_shape().dims[0])
 
     output_shape_tensor_const = tensor_util.constant_value(output_shape_tensor)

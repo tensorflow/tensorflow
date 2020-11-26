@@ -950,7 +950,8 @@ StatusOr<std::unique_ptr<HloInstruction>> CreateShardedConvConvolution(
       Shape sharded_conv_shape,
       ShapeInference::InferConvolveShape(
           sharded_lhs_hlo->shape(), sharded_rhs_hlo->shape(),
-          feature_group_count, batch_group_count, window, conv_dnums));
+          feature_group_count, batch_group_count, window, conv_dnums,
+          /*preferred_element_type=*/conv.shape().element_type()));
   *sharded_conv_shape.mutable_layout() = conv.shape().layout();
   return HloInstruction::CreateConvolve(
       sharded_conv_shape, sharded_lhs_hlo, sharded_rhs_hlo, feature_group_count,

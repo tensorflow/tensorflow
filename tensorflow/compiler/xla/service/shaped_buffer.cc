@@ -31,23 +31,20 @@ limitations under the License.
 
 namespace xla {
 
-ShapedBuffer::ShapedBuffer(Shape on_device_shape, const se::Platform* platform,
-                           int device_ordinal)
+ShapedBuffer::ShapedBuffer(Shape on_device_shape, int device_ordinal)
     : on_device_shape_(std::move(on_device_shape)),
-      platform_(platform),
       device_ordinal_(device_ordinal),
       buffers_(&on_device_shape_) {
   on_host_shape_ = ShapeUtil::DeviceShapeToHostShape(on_device_shape_);
 }
 
 ShapedBuffer::ShapedBuffer(Shape on_host_shape, Shape on_device_shape,
-                           const se::Platform* platform, int device_ordinal)
-    : ShapedBuffer(on_device_shape, platform, device_ordinal) {}
+                           int device_ordinal)
+    : ShapedBuffer(on_device_shape, device_ordinal) {}
 
 ShapedBuffer::ShapedBuffer(ShapedBuffer&& s)
     : on_host_shape_(std::move(s.on_host_shape_)),
       on_device_shape_(std::move(s.on_device_shape_)),
-      platform_(s.platform_),
       device_ordinal_(s.device_ordinal_),
       buffers_(std::move(s.buffers_)) {
   // s.buffers_ has a pointer to s.on_device_shape_. When we move s.buffers_
@@ -59,7 +56,6 @@ ShapedBuffer::ShapedBuffer(ShapedBuffer&& s)
 ShapedBuffer& ShapedBuffer::operator=(ShapedBuffer&& s) {
   on_device_shape_ = std::move(s.on_device_shape_);
   on_host_shape_ = std::move(s.on_host_shape_);
-  platform_ = s.platform_;
   device_ordinal_ = s.device_ordinal_;
   buffers_ = std::move(s.buffers_);
   // buffers_ has a pointer to its on_device_shape_. When we move s.buffers_
@@ -75,7 +71,7 @@ StatusOr<ShapedBuffer> ShapedBuffer::SubShapedBuffer(
     const ShapeIndex& index) const {
   TF_ASSIGN_OR_RETURN(const Shape* device_sub_shape,
                       ShapeUtil::TryGetSubshape(on_device_shape(), index));
-  ShapedBuffer sub_shaped_buffer(*device_sub_shape, platform_, device_ordinal_);
+  ShapedBuffer sub_shaped_buffer(*device_sub_shape, device_ordinal_);
   TF_ASSIGN_OR_RETURN(ShapeTree<se::DeviceMemoryBase> sub_buffers,
                       buffers_.SubShapeTree(index));
   sub_shaped_buffer.set_buffers(std::move(sub_buffers));
@@ -91,7 +87,7 @@ void ShapedBuffer::clear() {
 
 string ShapedBuffer::ToString() const {
   string s =
-      absl::StrCat("ShapedBuffer(", platform_->Name(), ":", device_ordinal(),
+      absl::StrCat("ShapedBuffer(", device_ordinal(),
                    "), on-device shape=" +
                        ShapeUtil::HumanStringWithLayout(on_device_shape()),
                    ":\n");
@@ -120,8 +116,7 @@ std::ostream& operator<<(std::ostream& out, const ShapedBuffer& buffer) {
 ScopedShapedBuffer::ScopedShapedBuffer(Shape on_device_shape,
                                        se::DeviceMemoryAllocator* allocator,
                                        int device_ordinal)
-    : ShapedBuffer(std::move(on_device_shape), allocator->platform(),
-                   device_ordinal),
+    : ShapedBuffer(std::move(on_device_shape), device_ordinal),
       allocator_(allocator) {}
 
 ScopedShapedBuffer::ScopedShapedBuffer(Shape on_host_shape,

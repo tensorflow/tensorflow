@@ -31,7 +31,7 @@ class ActivationLayerBuilder : public OpBuilder {
                                   TfLiteFusedActivation activation)
       : OpBuilder(graph_builder), activation_(activation) {}
 
-  const char* DebugName() override;
+  const std::string& DebugName() override;
 
   CoreML::Specification::NeuralNetworkLayer* Build() override;
 

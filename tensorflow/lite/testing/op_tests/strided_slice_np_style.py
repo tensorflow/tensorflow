@@ -80,13 +80,25 @@ def make_strided_slice_np_style_tests(options):
               slice(None)
           ], [Ellipsis, slice(3, 7, 2)]],
       },
-      # All combinations.
+      # Ellipsis + Shrink Mask
       {
           "dtype": [tf.float32],
-          "shape": [[21, 15, 7]],
-          "spec": [[tf.newaxis,
+          "shape": [[22, 15, 7]],
+          "spec": [[2,  # shrink before ellipsis
+                    Ellipsis],
+                   [Ellipsis,  # shrink after ellipsis
+                    2]],
+      },
+      # Ellipsis + New Axis Mask
+      {
+          "dtype": [tf.float32],
+          "shape": [[23, 15, 7]],
+          "spec": [[tf.newaxis,  # new_axis before ellipsis
                     slice(3, 7, 2),
-                    slice(None), Ellipsis]],
+                    slice(None), Ellipsis],
+                   [tf.newaxis,  # new_axis after (and before) ellipsis
+                    slice(3, 7, 2),
+                    slice(None), Ellipsis, tf.newaxis]],
       },
   ]
 

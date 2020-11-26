@@ -118,7 +118,7 @@ func @Int64SliceBeginSize(%arg0: tensor<4x128x32xf32>) -> tensor<1x128x32xf32> {
 // Make sure that second output of the tf.while is not incorrectly inferred as
 // pass through just because the corresponding input is not used in either
 // condition or body. The tensor<f32> result of the loop can be either %arg1
-// (if the body never executes, or 22.0 if the body executes atleast once).
+// (if the body never executes, or 22.0 if the body executes at least once).
 func @WhileCanonicalizeBug(%arg0: tensor<i32>, %arg1: tensor<f32>) -> tensor<f32> {
   %0:2 = "tfl.while"(%arg0, %arg1) ( {
   ^bb0(%arg2: tensor<i32>, %arg3: tensor<f32>):

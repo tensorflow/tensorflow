@@ -23,8 +23,6 @@ HloModule TestModule
 // CHECK:         %[[VAL_26:.*]] = bitcast i8* %[[VAL_24]] to [128 x [112 x [112 x [64 x half]]]]*
 // CHECK:         %[[VAL_27:.*]] = getelementptr inbounds i8, i8* %[[VAL_28:.*]], i64 0
 // CHECK:         %[[VAL_29:.*]] = bitcast i8* %[[VAL_27]] to [128 x [112 x [112 x [64 x half]]]]*
-// CHECK:         %[[VAL_30:.*]] = getelementptr inbounds i8, i8* %[[VAL_28]], i64 0
-// CHECK:         %[[VAL_31:.*]] = bitcast i8* %[[VAL_30]] to [128 x [112 x [112 x [64 x half]]]]*
 // CHECK:         %[[VAL_32:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !2
 // CHECK:         %[[VAL_33:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !3
 // CHECK:         %[[VAL_34:.*]] = mul nuw nsw i32 %[[VAL_32]], 256

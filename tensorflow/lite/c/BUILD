@@ -68,7 +68,7 @@ cc_library(
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels/internal:compatibility",
     ],
-    alwayslink = 1,
+    alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
 
 cc_library(
@@ -83,7 +83,7 @@ cc_library(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:kernel_api",
     ],
-    alwayslink = 1,
+    alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
 
 cc_test(
@@ -127,8 +127,8 @@ cc_library(
         "common.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    deps = ["//tensorflow/lite:builtin_ops"],
-    alwayslink = 1,
+    copts = tflite_copts(),
+    alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
 
 # For use with library targets that can't use relative paths.

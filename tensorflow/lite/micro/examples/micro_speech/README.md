@@ -1,3 +1,5 @@
+<!-- mdformat off(b/169948621#comment2) -->
+
 # Micro Speech Example
 
 This example shows how to run a 20 kB model that can recognize 2 keywords,
@@ -69,7 +71,7 @@ generate_micro_speech_mock_make_project
 ```
 
 Note that `TAGS=reduce_codesize` applies example specific changes of code to
-reduce total size of application. It can be ommited.
+reduce total size of application. It can be omitted.
 
 ### Build and Run Example
 
@@ -214,28 +216,36 @@ The next steps assume that the
 
 ### Generate the examples
 
-The example project can be generated with the following command: `make -f
-tensorflow/lite/micro/tools/make/Makefile TARGET=esp
-generate_micro_speech_esp_project`
+The example project can be generated with the following command:
+```
+make -f tensorflow/lite/micro/tools/make/Makefile TARGET=esp generate_micro_speech_esp_project
+```
 
 ### Building the example
 
-Go the the example project directory `cd
-tensorflow/lite/micro/tools/make/gen/esp_xtensa-esp32/prj/micro_speech/esp-idf`
+Go to the example project directory
+```
+cd tensorflow/lite/micro/tools/make/gen/esp_xtensa-esp32/prj/micro_speech/esp-idf
+```
 
 Then build with `idf.py` `idf.py build`
 
 ### Load and run the example
 
-To flash (replace `/dev/ttyUSB0` with the device serial port): `idf.py --port
-/dev/ttyUSB0 flash`
+To flash (replace `/dev/ttyUSB0` with the device serial port):
+```
+idf.py --port /dev/ttyUSB0 flash
+```
 
-Monitor the serial output: `idf.py --port /dev/ttyUSB0 monitor`
+Monitor the serial output:
+```idf.py --port /dev/ttyUSB0 monitor```
 
 Use `Ctrl+]` to exit.
 
-The previous two commands can be combined: `idf.py --port /dev/ttyUSB0 flash
-monitor`
+The previous two commands can be combined:
+```
+idf.py --port /dev/ttyUSB0 flash monitor
+```
 
 ## Deploy to SparkFun Edge
 
@@ -567,7 +577,7 @@ using [ARM Mbed](https://github.com/ARMmbed/mbed-cli).
 
 The following instructions will help you build and deploy this example to
 [HIMAX WE1 EVB](https://github.com/HimaxWiseEyePlus/bsp_tflu/tree/master/HIMAX_WE1_EVB_board_brief)
-board. To undstand more about using this board, please check
+board. To understand more about using this board, please check
 [HIMAX WE1 EVB user guide](https://github.com/HimaxWiseEyePlus/bsp_tflu/tree/master/HIMAX_WE1_EVB_user_guide).
 
 ### Initial Setup
@@ -688,9 +698,9 @@ The following instructions will help you build and deploy the sample to the
 5.  Build the project:
     /tensorflow/lite/micro/tools/make/gen/ceva_bx1/prj/micro_speech/make$ make
 6.  This should build the project and create a file called micro_speech.elf.
-7.  The supplied configuarion reads input from a files and expects a file called
-    input.wav (easily changed in audio_provider.cc) to be placed in the same
-    directory of the .elf file
+7.  The supplied configuration reads input from a files and expects a file
+    called input.wav (easily changed in audio_provider.cc) to be placed in the
+    same directory of the .elf file
 8.  We used Google's speech command dataset: V0.0.2:
     http://download.tensorflow.org/data/speech_commands_v0.02.tar.gz V0.0.1:
     http://download.tensorflow.org/data/speech_commands_v0.01.tar.gz

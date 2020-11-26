@@ -57,7 +57,7 @@ def _is_known_loaded_type(f, module_name, entity_name):
     return True
   # Note: inspect is required here, to avoid unpacking tf.function decorators.
   if inspect.ismethod(f):
-    # The the unbound method if of this type. Example:
+    # The unbound method if of this type. Example:
     #
     # class ClassType:
     #   @function

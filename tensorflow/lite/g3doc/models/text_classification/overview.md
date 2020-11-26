@@ -7,9 +7,10 @@ Use a pre-trained model to category a paragraph into predefined groups.
 <img src="images/screenshot.gif" class="attempt-right" style="max-width: 300px">
 
 If you are new to TensorFlow Lite and are working with Android, we recommend
-exploring the guide of TensorFLow Lite Task Library to
-[integrate text classification models](../../inference_with_metadata/task_library/nl_classifier).
-within just a few lines of code. You can also integrate the model using the
+exploring the guide of
+[TensorFLow Lite Task Library](../../inference_with_metadata/task_library/nl_classifier)
+to integrate text classification models within just a few lines of code. You can
+also integrate the model using the
 [TensorFlow Lite Interpreter Java API](../../guide/inference#load_and_run_a_model_in_java).
 
 The Android example below demonstrates the implementation for both methods as

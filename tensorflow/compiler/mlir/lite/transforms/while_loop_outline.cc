@@ -182,7 +182,7 @@ void WhileOutlinePass::OutlineWhile(WhileOp while_op) {
     b.create<ReturnOp>(yield_op->getLoc(), args);
     yield_op->erase();
     symbol_table.insert(outlined_func);
-    outlined_func.setVisibility(FuncOp::Visibility::Private);
+    outlined_func.setPrivate();
     return outlined_func;
   };
 

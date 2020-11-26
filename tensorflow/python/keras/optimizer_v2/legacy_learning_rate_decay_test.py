@@ -26,7 +26,7 @@ from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras.optimizer_v2 import legacy_learning_rate_decay as learning_rate_decay
 from tensorflow.python.ops import variables
-from tensorflow.python.platform import googletest
+from tensorflow.python.platform import test
 
 
 @combinations.generate(combinations.combine(mode=["graph", "eager"]))
@@ -478,4 +478,4 @@ class NoisyLinearCosineDecayTest(keras_parameterized.TestCase):
 
 
 if __name__ == "__main__":
-  googletest.main()
+  test.main()

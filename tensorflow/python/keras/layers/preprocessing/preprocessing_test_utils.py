@@ -18,10 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections.abc as collections_abc
 import numpy as np
 
 from tensorflow.python.platform import test
-from tensorflow.python.util.compat import collections_abc
 
 
 class PreprocessingLayerTest(test.TestCase):

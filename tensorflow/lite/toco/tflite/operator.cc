@@ -49,6 +49,7 @@ namespace tflite {
       {ArrayDataType::kInt16, ::tflite::TensorType_INT16},
       {ArrayDataType::kInt32, ::tflite::TensorType_INT32},
       {ArrayDataType::kInt64, ::tflite::TensorType_INT64},
+      {ArrayDataType::kUint64, ::tflite::TensorType_UINT64},
       {ArrayDataType::kString, ::tflite::TensorType_STRING},
       {ArrayDataType::kComplex64, ::tflite::TensorType_COMPLEX64},
       {ArrayDataType::kComplex128, ::tflite::TensorType_COMPLEX128},

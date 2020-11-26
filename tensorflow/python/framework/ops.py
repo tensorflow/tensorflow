@@ -1261,7 +1261,10 @@ class _EagerTensorBase(Tensor):
 
 # This call creates an EagerTensor class, as a subclass of _EagerTensorBase, and
 # registers it with the current module.
-EagerTensor = pywrap_tfe.TFE_Py_InitEagerTensor(_EagerTensorBase)
+# It is exposed as an __internal__ api for now (b/171081052), though we
+# expect it to be eventually covered by tf Tensor types and typing.
+EagerTensor = tf_export("__internal__.EagerTensor", v1=[])(
+    pywrap_tfe.TFE_Py_InitEagerTensor(_EagerTensorBase))
 
 
 @tf_export(v1=["convert_to_tensor"])
@@ -1802,6 +1805,7 @@ _VALID_OP_NAME_REGEX = re.compile(r"^[A-Za-z0-9.][A-Za-z0-9_.\\/>-]*$")
 _VALID_SCOPE_NAME_REGEX = re.compile(r"^[A-Za-z0-9_.\\/>-]*$")
 
 
+@tf_export("__internal__.create_c_op", v1=[])
 def _create_c_op(graph, node_def, inputs, control_inputs, op_def=None):
   """Creates a TF_Operation.
 
@@ -6027,6 +6031,8 @@ def has_default_graph():
   return len(_default_graph_stack.stack) >= 1
 
 
+# Exported due to b/171079555
+@tf_export("__internal__.get_name_scope", v1=[])
 def get_name_scope():
   """Returns the current name scope in the default_graph.
 

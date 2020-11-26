@@ -12,7 +12,7 @@ func @f() {
 }
 
 // CHECK: func @g()
-// CHECK: func @[[NEWG]]() attributes {sym_visibility = "private"}
+// CHECK: func private @[[NEWG]]()
 func @g() {
   return
 }
@@ -22,12 +22,12 @@ func @g() {
 // CHECK-LABEL: func @f
 // 2 copies of @g
 // CHECK-DAG: func @g{{.*}}
-// CHECK-DAG: func @g{{.*}}
+// CHECK-DAG: func private @g{{.*}}
 // 4 copies of @h
 // CHECK-DAG: func @h{{.*}}
-// CHECK-DAG: func @h{{.*}}
-// CHECK-DAG: func @h{{.*}}
-// CHECK-DAG: func @h{{.*}}
+// CHECK-DAG: func private @h{{.*}}
+// CHECK-DAG: func private @h{{.*}}
+// CHECK-DAG: func private @h{{.*}}
 func @f() {
   call @g() : () -> ()
   call @g() : () -> ()
@@ -47,7 +47,7 @@ func @h() {
 // -----
 // Handle error case of infinite recursion.
 // expected-error @+1 {{reached cloning limit}}
-func @f() attributes {sym_visibility = "private"} {
+func private @f() {
   call @f() : () -> ()
   call @f() : () -> ()
   return

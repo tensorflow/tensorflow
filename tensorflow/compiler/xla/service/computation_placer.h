@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/array2d.h"
+#include "tensorflow/compiler/xla/service/global_device_id.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -48,7 +49,7 @@ class DeviceAssignment : public Array2D<int> {
   int computation_count() const { return width(); }
 
   // Finds the replica ID for the given device.
-  StatusOr<int> ReplicaIdForDeviceOrdinal(int device_ordinal) const;
+  StatusOr<int> ReplicaIdForDevice(GlobalDeviceId device_id) const;
 
   // Protocol buffer serialization and deserialization.
   Status Serialize(DeviceAssignmentProto* proto) const;

@@ -89,7 +89,7 @@ absl::Status CreateClEventFromEglSync(cl_context context,
 }
 
 bool IsClEventFromEglSyncSupported(const CLDevice& device) {
-  return device.SupportsExtension("cl_khr_egl_event");
+  return device.GetInfo().SupportsExtension("cl_khr_egl_event");
 }
 
 absl::Status CreateClMemoryFromGlBuffer(GLuint gl_ssbo_id,
@@ -126,7 +126,7 @@ absl::Status CreateClMemoryFromGlTexture(GLenum texture_target,
 
 bool IsGlSharingSupported(const CLDevice& device) {
   return clCreateFromGLBuffer && clCreateFromGLTexture &&
-         device.SupportsExtension("cl_khr_gl_sharing");
+         device.GetInfo().SupportsExtension("cl_khr_gl_sharing");
 }
 
 AcquiredGlObjects::~AcquiredGlObjects() { Release({}, nullptr).IgnoreError(); }

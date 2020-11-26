@@ -19,7 +19,7 @@ limitations under the License.
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-int tf_main(int argc, char* argv[]) {
+void tf_main(void) {
   setup();
   while (true) {
     loop();

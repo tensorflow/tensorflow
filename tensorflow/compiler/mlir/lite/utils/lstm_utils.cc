@@ -744,7 +744,12 @@ LogicalResult ConvertKerasLSTMLayer(mlir::FuncOp func_op, OpBuilder* builder) {
       /*cell_layer_norm_coefficients=*/none,
       /*output_layer_norm_coefficients=*/none, builder->getStringAttr("TANH"),
       builder->getF32FloatAttr(10.0), builder->getF32FloatAttr(0.0),
-      builder->getBoolAttr(time_majored));
+      builder->getBoolAttr(time_majored),
+      /*input_to_input_intermediate=*/mlir::TypeAttr(),
+      /*input_to_forget_intermediate=*/mlir::TypeAttr(),
+      /*input_to_cell_intermediate=*/mlir::TypeAttr(),
+      /*input_to_output_intermediate=*/mlir::TypeAttr(),
+      /*effective_hidden_scale_intermediate=*/mlir::TypeAttr());
 
   auto final_output_full_sequences = lstm.getResult();
 

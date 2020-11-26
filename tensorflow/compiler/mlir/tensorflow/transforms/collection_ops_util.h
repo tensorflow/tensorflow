@@ -23,7 +23,6 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/core/framework/types.pb.h"
 
 namespace mlir {
 namespace TF {
@@ -34,7 +33,7 @@ namespace collection_ops_util {
 // shape [max_element_count, element_shape].
 
 // Creates an i32 scalar tf.Const.
-Value CreateScalarConst(int value, OpBuilder builder, Location loc);
+Value CreateScalarConst(int32_t value, OpBuilder builder, Location loc);
 
 // Creates an integer vector tf.Const.
 Value GetR1Const(ArrayRef<int64_t> r1, OpBuilder builder, Location loc,

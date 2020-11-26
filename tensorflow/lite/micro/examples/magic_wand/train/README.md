@@ -84,8 +84,8 @@ $ python train.py --model CNN --person true
 
 #### Model type
 
-In the `--model` argument, you can can provide `CNN` or `LSTM`. The CNN
-model has a smaller size and lower latency.
+In the `--model` argument, you can provide `CNN` or `LSTM`. The CNN model has a
+smaller size and lower latency.
 
 ## Collecting new data
 

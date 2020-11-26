@@ -16,9 +16,11 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/mlir/tfr/integration/tfr_decompose_ctx.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
@@ -34,7 +36,14 @@ namespace tfr {
 Status CompositeOpExpansion::Run(EagerOperation* orig_op,
                                  std::unique_ptr<EagerOperation>* out_op) {
   if (!IsEnabled()) return Status::OK();
+  // This can be the default cpu device.
   if (orig_op->Device() != kVariantDeviceNull) return Status::OK();
+  // TODO(fengliuai): We need a better condition to skip the rewrite. Currently,
+  // The rewrite is enabled for all the tf ops and it is a no-op if the tf op
+  // isn't a composite op. "VarHandleOp" is explicitly skipped here because its
+  // roundtrip fails due to some unknown reasons.
+  if (orig_op->is_function()) return Status::OK();
+  if (absl::StartsWith(orig_op->op_name(), "VarHandleOp")) return Status::OK();
 
   tf_core_op_expansion_node_counter->GetCell()->IncrementBy(1);
 

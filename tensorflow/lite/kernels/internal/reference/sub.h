@@ -65,10 +65,6 @@ inline void SubNonBroadcast(const ArithmeticParams& params,
 // dimensionality if the runtime code does a single loop over one dimension
 // that handles broadcasting as the base case. The code generator would then
 // generate max(D1, D2) nested for loops.
-// TODO(b/151345101): BroadcastSub is intentionally duplicated from
-// reference_ops.h. Once an optimized version is implemented and NdArrayDesc<T>
-// is no longer referenced in this file, move NdArrayDesc<T> from types.h to
-// reference_ops.h.
 template <int N = 5>
 inline void BroadcastSubSlow(const ArithmeticParams& params,
                              const RuntimeShape& input1_shape,

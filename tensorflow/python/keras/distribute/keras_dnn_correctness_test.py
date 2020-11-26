@@ -28,15 +28,16 @@ from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.distribute import keras_correctness_test_base
+from tensorflow.python.keras.distribute import strategy_combinations
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras
 from tensorflow.python.training import gradient_descent
 
 
 def all_strategy_combinations_with_eager_and_graph_modes():
   return (combinations.combine(
-      distribution=keras_correctness_test_base.all_strategies,
+      distribution=strategy_combinations.all_strategies,
       mode=['graph', 'eager']) + combinations.combine(
-          distribution=keras_correctness_test_base.multi_worker_mirrored,
+          distribution=strategy_combinations.multi_worker_mirrored_strategies,
           mode='eager'))
 
 

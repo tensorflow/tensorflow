@@ -484,6 +484,10 @@ public final class InterpreterTest {
       fail();
     } catch (IllegalStateException e) {
       // Expected failure.
+    } catch (IllegalArgumentException e) {
+      // As we could apply some TfLite delegate by default, the flex ops preparation could fail if
+      // the flex delegate isn't applied first, in which this type of exception is thrown.
+      // Expected failure
     }
   }
 
@@ -534,6 +538,8 @@ public final class InterpreterTest {
   }
 
   @Test
+  // modifyGraphWithDelegate(...) is deprecated, suppress the warning to allow testing.
+  @SuppressWarnings("deprecation")
   public void testModifyGraphWithDelegate() throws Exception {
     System.loadLibrary("tensorflowlite_test_jni");
     Delegate delegate =
@@ -543,7 +549,8 @@ public final class InterpreterTest {
             return getNativeHandleForDelegate();
           }
         };
-    Interpreter interpreter = new Interpreter(MODEL_BUFFER);
+    Interpreter interpreter =
+        new Interpreter(MODEL_BUFFER, new Interpreter.Options().setUseXNNPACK(false));
     interpreter.modifyGraphWithDelegate(delegate);
 
     // The native delegate stubs out the graph with a single op that produces the scalar value 7.
@@ -640,8 +647,8 @@ public final class InterpreterTest {
   public void testCancelInference() throws Exception {
     float[][][][] inputs = new float[2][8][8][3];
     float[][][][] parsedOutputs = new float[2][8][8][3];
-    Interpreter interpreter = new Interpreter(
-        MODEL_BUFFER, new Interpreter.Options().setCancellable(true));
+    Interpreter interpreter =
+        new Interpreter(MODEL_BUFFER, new Interpreter.Options().setCancellable(true));
 
     // Part 1: Should be interrupted when flag is set to true.
     try {
@@ -649,7 +656,7 @@ public final class InterpreterTest {
       interpreter.run(inputs, parsedOutputs);
       fail();
     } catch (IllegalArgumentException e) {
-    // TODO(b/168266570): Return InterruptedException.
+      // TODO(b/168266570): Return InterruptedException.
       assertThat(e)
           .hasMessageThat()
           .contains(

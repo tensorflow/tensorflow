@@ -761,6 +761,16 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       *builtin_data = params.release();
       return kTfLiteOk;
     }
+    case BuiltinOperator_CALL_ONCE: {
+      auto params = safe_allocator.Allocate<TfLiteCallOnceParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      if (const auto* call_once_params =
+              op->builtin_options_as_CallOnceOptions()) {
+        params->init_subgraph_index = call_once_params->init_subgraph_index();
+      }
+      *builtin_data = params.release();
+      return kTfLiteOk;
+    }
     case BuiltinOperator_CUMSUM: {
       auto params = safe_allocator.Allocate<TfLiteCumsumParams>();
       TF_LITE_ENSURE(error_reporter, params != nullptr);
@@ -812,6 +822,7 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_SCATTER_ND:
     case BuiltinOperator_DENSIFY:
     case BuiltinOperator_SEGMENT_SUM:
+    case BuiltinOperator_BROADCAST_TO:
       return kTfLiteOk;
     case BuiltinOperator_PLACEHOLDER_FOR_GREATER_OP_CODES:
       return kTfLiteError;
@@ -847,6 +858,9 @@ TfLiteStatus ConvertTensorType(TensorType tensor_type, TfLiteType* type,
       return kTfLiteOk;
     case TensorType_INT64:
       *type = kTfLiteInt64;
+      return kTfLiteOk;
+    case TensorType_UINT64:
+      *type = kTfLiteUInt64;
       return kTfLiteOk;
     case TensorType_STRING:
       *type = kTfLiteString;

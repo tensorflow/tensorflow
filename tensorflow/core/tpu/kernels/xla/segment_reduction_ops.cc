@@ -22,58 +22,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
-// TODO(b/32945756): Add a scatter op in XLA and move this to a HLO optimization
-// pass. Optimization for UnsortedSegmentSum on TPU: use k-hot matmul. This
-// optimization requires:
-//     1. data has dtype supported by TPU matmul and has rank of 1 or 2.
-//     2. indices has rank of 1.
-//     3. matmul op count is less than 800 billion.
-//
-// Example of calculating UnsortedSegmentSum by k-hot matmul:
-//     data shape        [A, B]
-//     indices shape     [A]
-//     num_segment        N
-//     output shape      [N, B]
-//     matmul op count    N * A * B
-// Step 1: create k-hot matrix
-//     k-hot matrix has shape of [A, N], where row i is responsible for
-//     collecting the sum of the i-th segment, concretely
-//            k-hot[i][j] = 1 if indices[i] = j
-// Step 2: perform matmul
-//     the final result is obtained by multiplying k-hot matrix with data
-//     matrix, namely
-//             k-hot  *  data   => result
-// shape:      [N, A] *  [A, B] => [N, B]
-xla::XlaOp KHotMatmul(XlaOpKernelContext* ctx, xla::XlaBuilder* builder,
-                      const xla::XlaOp data, const xla::XlaOp indices,
-                      int64 num_segments) {
-  DataType data_dtype = ctx->input_type(0);
-  xla::PrimitiveType indices_type = ctx->input_xla_type(1);
-  TensorShape data_shape = ctx->InputShape(0);
-  TensorShape indices_shape = ctx->InputShape(1);
-  xla::XlaOp linspace = xla::Iota(builder, indices_type, num_segments);
-  xla::XlaOp linspace_col = xla::Reshape(linspace, {num_segments, 1});
-  TensorShape indices_row_shape = indices_shape;
-  indices_row_shape.InsertDim(0, 1);
-  xla::XlaOp indices_row = xla::Reshape(indices, indices_row_shape.dim_sizes());
-  xla::XlaOp k_hot = xla::Eq(indices_row, linspace_col);
-  xla::XlaOp k_hot_with_data_dtype =
-      XlaHelpers::ConvertElementType(k_hot, data_dtype);
-  // F32 version of the KHotMatmul. It splits the F32 data into three
-  // BF16 partial data and run KHotMatmul for each of them. The final result
-  // is the summation of three BF16 results.
-  // Note that this still doesn't fully retain f32 precision.
-  // In particular, values smaller than 2^-111 may see loss of precision.
-  xla::PrecisionConfig precision_config;
-  if (data_dtype == DT_FLOAT) {
-    precision_config.add_operand_precision(xla::PrecisionConfig::HIGHEST);
-  } else {
-    CHECK_EQ(data_dtype, DT_BFLOAT16);
-    precision_config.add_operand_precision(xla::PrecisionConfig::DEFAULT);
-  }
-  precision_config.add_operand_precision(xla::PrecisionConfig::DEFAULT);
-  return xla::Dot(k_hot_with_data_dtype, data, &precision_config);
-}
 
 class UnsortedSegmentSum : public XlaOpKernel {
  public:

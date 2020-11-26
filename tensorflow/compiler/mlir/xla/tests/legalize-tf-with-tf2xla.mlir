@@ -126,7 +126,7 @@ func @constant(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 
 // CHECK-LABEL: func @greater
 func @greater(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
-  // CHECK-NEXT:  "mhlo.compare"(%arg0, %arg1) {comparison_direction = "GT"}
+  // CHECK-NEXT:  "mhlo.compare"(%arg0, %arg1) {compare_type = "SIGNED", comparison_direction = "GT"}
   %0 = "tf.Greater"(%arg0, %arg1) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
   return %0: tensor<2xi1>
 }
@@ -298,6 +298,29 @@ func @multinomial(%arg0: tensor<2x4xf32>, %seed: tensor<i32>, %seed2: tensor<i32
   %1 = "tf.Multinomial"(%arg0, %samples) {seed = 0, seed2 = 0}: (tensor<2x4xf32>, tensor<i32>) -> tensor<2x10xi32>
   return %1 : tensor<2x10xi32>
 }
+
+// CHECK-LABEL: @set_dynamic_dimension_size
+func @set_dynamic_dimension_size(%input: tensor<4xf32>, %size: tensor<i32>) -> tensor<4xf32> {
+  %dimension = "tf.Const"() { value = dense<0> : tensor<i32> } : () -> tensor<i32>
+  // CHECK: mhlo.set_dimension_size
+  %0 = "tf.XlaSetDynamicDimensionSize"(%input, %dimension, %size) : (tensor<4xf32>, tensor<i32>, tensor<i32>) -> tensor<4xf32>
+  return %0 : tensor<4xf32>
+}
+
+// CHECK-LABEL: @erfinv
+func @erfinv(%input: tensor<4xf32>) -> tensor<4xf32> {
+  // CHECK-NOT: tf.Erfinv
+  %0 = "tf.Erfinv"(%input) : (tensor<4xf32>) -> tensor<4xf32>
+  return %0 : tensor<4xf32>
+}
+
+// CHECK-LABEL: @ndtri
+func @ndtri(%input: tensor<4xf32>) -> tensor<4xf32> {
+  // CHECK-NOT: tf.Ndtri
+  %0 = "tf.Ndtri"(%input) : (tensor<4xf32>) -> tensor<4xf32>
+  return %0 : tensor<4xf32>
+}
+
 
 // TODO(hinsu): Add a test with a valid TF op for which tf2xla kernel is
 // available but doesn't support this instance.

@@ -159,6 +159,8 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
   def __init__(self, methodName="runTest"):  # pylint: disable=invalid-name
     super(TfTrtIntegrationTestBase, self).__init__(methodName)
     self._trt_test_params = None
+    self._disable_non_trt_optimizers = False
+    self._use_implicit_batch = True
 
   def setUp(self):
     """Setup method."""
@@ -257,12 +259,33 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
         input_dims=[input_shapes] + extra_inputs,
         expected_output_dims=[output_shapes] + extra_outputs)
 
+  def DisableNonTrtOptimizers(self):
+    self._disable_non_trt_optimizers = True
+
+  def DisableImplicitBatchMode(self):
+    self._use_implicit_batch = False
+
   def GetParams(self):
-    """Return a TfTrtIntegrationTestParams for test, implemented by subclass."""
+    """Returns a TfTrtIntegrationTestParams for the test."""
     raise NotImplementedError()
 
   def GetConversionParams(self, run_params):
-    """Return a TrtConversionParams for test."""
+    """Returns a TrtConversionParams for test."""
+    conversion_params = trt_convert.TrtConversionParams(
+        # We use the minimum of all the batch sizes, so when multiple different
+        # input shapes are provided it'll always create new engines in the
+        # cache, and we can therefore test the cache behavior.
+        max_workspace_size_bytes=1 << 25,
+        precision_mode=run_params.precision_mode,
+        minimum_segment_size=2,
+        maximum_cached_engines=1,
+        use_calibration=run_params.use_calibration)
+    return conversion_params
+
+  def GetMaxBatchSize(self, run_params):
+    """Returns the max_batch_size that the converter should use for tests."""
+    if run_params.dynamic_engine:
+      return None
     batch_list = []
     for dims_list in self._GetParamsCached().input_dims:
       assert dims_list
@@ -270,33 +293,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
       input_batches = [dims[0] for dims in dims_list]
       assert max(input_batches) == min(input_batches)
       batch_list.append(input_batches[0])
-    conversion_params = trt_convert.TrtConversionParams(
-        # We use the minimum of all the batch sizes, so when multiple different
-        # input shapes are provided it'll always create new engines in the
-        # cache, and we can therefore test the cache behavior.
-        rewriter_config_template=None,
-        max_workspace_size_bytes=1 << 25,
-        precision_mode=run_params.precision_mode,
-        minimum_segment_size=2,
-        is_dynamic_op=run_params.dynamic_engine,
-        maximum_cached_engines=1,
-        use_calibration=run_params.use_calibration,
-        max_batch_size=max(batch_list))
-    return conversion_params
-
-  def GetTrtRewriterConfig(self,
-                           run_params,
-                           conversion_params,
-                           disable_non_trt_optimizers=False,
-                           use_implicit_batch=True):
-    rewriter_config = trt_convert.get_tensorrt_rewriter_config(
-        conversion_params=conversion_params,
-        is_v2=run_params.is_v2,
-        disable_non_trt_optimizers=disable_non_trt_optimizers)
-    for optimizer in rewriter_config.custom_optimizers:
-      if optimizer.name == "TensorRTOptimizer":
-        optimizer.parameter_map["use_implicit_batch"].b = use_implicit_batch
-    return rewriter_config
+    return max(batch_list)
 
   def ShouldRunTest(self, run_params):
     """Whether to run the test."""
@@ -333,14 +330,15 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
   def _GetConfigProto(self, run_params, graph_state):
     """Get config proto based on specific settings."""
     conversion_params = self.GetConversionParams(run_params)
+    max_batch_size = self.GetMaxBatchSize(run_params)
     if graph_state == GraphState.INFERENCE and run_params.convert_online:
-      rewriter_cfg = trt_convert.get_tensorrt_rewriter_config(conversion_params)
+      rewriter_cfg = trt_convert.get_tensorrt_rewriter_config(
+          conversion_params,
+          is_dynamic_op=run_params.dynamic_engine,
+          max_batch_size=max_batch_size)
       graph_options = config_pb2.GraphOptions(rewrite_options=rewriter_cfg)
     else:
       graph_options = config_pb2.GraphOptions()
-      if conversion_params.rewriter_config_template is not None:
-        graph_options.rewrite_options.CopyFrom(
-            conversion_params.rewriter_config_template)
 
     config = config_pb2.ConfigProto(
         gpu_options=self._GetGPUOptions(), graph_options=graph_options)
@@ -444,30 +442,37 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
       config = self._GetConfigProto(run_params, GraphState.INFERENCE)
     return self._RunGraphV1(saved_model_dir, inputs_data, config, num_runs)
 
-  def _CreateConverter(self, run_params, saved_model_dir, session_config,
-                       conversion_params):
-    """Return a TrtGraphConverter."""
+  def _CreateConverter(self, run_params, saved_model_dir, conversion_params):
+    """Returns a TrtGraphConverter."""
     if run_params.is_v2:
-      return trt_convert.TrtGraphConverterV2(
+      converter_v2 = trt_convert.TrtGraphConverterV2(
           input_saved_model_dir=saved_model_dir,
           conversion_params=conversion_params)
-    return trt_convert.TrtGraphConverter(
+      if self._disable_non_trt_optimizers:
+        converter_v2._test_only_disable_non_trt_optimizers = True  # pylint: disable=protected-access
+      if not self._use_implicit_batch:
+        converter_v2._test_only_use_implicit_batch = False  # pylint: disable=protected-access
+      return converter_v2
+
+    converter_v1 = trt_convert.TrtGraphConverter(
         input_saved_model_dir=saved_model_dir,
-        session_config=session_config,
-        max_batch_size=conversion_params.max_batch_size,
+        max_batch_size=self.GetMaxBatchSize(run_params),
         max_workspace_size_bytes=conversion_params.max_workspace_size_bytes,
         precision_mode=conversion_params.precision_mode,
         minimum_segment_size=conversion_params.minimum_segment_size,
-        is_dynamic_op=conversion_params.is_dynamic_op,
+        is_dynamic_op=run_params.dynamic_engine,
         maximum_cached_engines=conversion_params.maximum_cached_engines,
         use_calibration=conversion_params.use_calibration)
+    if self._disable_non_trt_optimizers:
+      converter_v1._test_only_disable_non_trt_optimizers = True  # pylint: disable=protected-access
+    return converter_v1
 
   def _GetCalibratedInferGraph(self, run_params, saved_model_dir, inputs_data):
     """Return trt converted graphdef in INT8 mode."""
     conversion_params = self.GetConversionParams(run_params)
     logging.info(conversion_params)
     assert conversion_params.precision_mode == "INT8"
-    assert conversion_params.is_dynamic_op
+    assert run_params.dynamic_engine
     assert conversion_params.maximum_cached_engines == 1
     assert conversion_params.use_calibration
 
@@ -475,11 +480,8 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     # TODO(aaroey): fix this.
     assert len(inputs_data) == 1
 
-    session_config = self._GetConfigProto(run_params, GraphState.CALIBRATE)
-    logging.info("Running calibration graph, config:\n%s", str(session_config))
-
     converter = self._CreateConverter(run_params, saved_model_dir,
-                                      session_config, conversion_params)
+                                      conversion_params)
     int8_gdef = converter.convert()
     self._VerifyGraphDef(run_params, saved_model_dir, int8_gdef,
                          GraphState.CALIBRATE)
@@ -498,15 +500,11 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     conversion_params = self.GetConversionParams(run_params)
     logging.info(conversion_params)
 
-    session_config = self._GetConfigProto(run_params, GraphState.INFERENCE)
-    logging.info("Creating TRT graph for inference, config\n%s",
-                 str(session_config))
     converter = self._CreateConverter(run_params, saved_model_dir,
-                                      session_config, conversion_params)
+                                      conversion_params)
     converter.convert()
 
-    if trt_convert.is_explicit_batch_mode_enabled(
-        conversion_params.rewriter_config_template):
+    if not self._use_implicit_batch:
       logging.info("Using build mode")
 
       def _BuildInputFn():
@@ -684,7 +682,8 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
       original_gdef: GraphDef. The graph def before TensorRT conversion.
       converted_gdef: GraphDef. The graph def after TensorRT conversion.
       default_max_batch_size: The default maximum batch size to use if no node
-        inside a segment is annoted with a customized max batch size.
+        inside a segment is annoted with a customized max batch size. This value
+        is None when the graph is converted to TF-TRT with dynamic engines.
       expected_max_batch_sizes: Optional. A sequence of max batch sizes for all
         the engines. `None` if does not check enforce max batch sizes.
     """
@@ -780,7 +779,8 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
                           node_max_batch_size is None)
         logging.info("'{%s}'s max batch size is %d.", engine_name,
                      engine_max_batch_size)
-        self.assertTrue(engine_max_batch_size == default_max_batch_size or
+        self.assertTrue(default_max_batch_size is None or
+                        engine_max_batch_size == default_max_batch_size or
                         not node_max_batch_size_all_none)
 
     self.assertCountEqual(expected_engines, tuple(name_to_engines_map.keys()))
@@ -851,9 +851,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
           original_gdef=original_gdef,
           converted_gdef=gdef_to_verify,
           expected_max_batch_sizes=self.ExpectedMaxBatchSizes(run_params),
-          default_max_batch_size=self.GetConversionParams(
-              run_params).max_batch_size,
-      )
+          default_max_batch_size=self.GetMaxBatchSize(run_params))
 
   def _VerifyGraphDefV2(self, run_params, original_gdef, gdef_to_verify,
                         graph_state):
@@ -886,14 +884,6 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
       expected_engines = set(expected_engines.keys())
 
     self.assertEqual(set(expected_engines), trt_op_names)
-    self._VerifyMaxBatchSizeAnnotations(
-        expected_engines=expected_engines,
-        original_gdef=original_gdef,
-        converted_gdef=gdef_to_verify,
-        expected_max_batch_sizes=self.ExpectedMaxBatchSizes(run_params),
-        default_max_batch_size=self.GetConversionParams(
-            run_params).max_batch_size,
-    )
 
   def _VerifyGraphDef(self, run_params, original_gdef_or_saved_model_dir,
                       gdef_or_saved_model_dir_to_verify, graph_state):

@@ -917,7 +917,7 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
       x = constant_op.constant([[1, 0.], [0., 0.]])
       if defunc:
         reduce_func = def_function.function(
-            math_ops.reduce_logsumexp, experimental_compile=xla_compile)
+            math_ops.reduce_logsumexp, jit_compile=xla_compile)
         func = lambda: reduce_func(x)
       else:
         func = lambda: math_ops.reduce_logsumexp(x)
@@ -1085,13 +1085,12 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
       self._run(func, num_iters=self._num_iters_2_by_2)
 
   def _benchmark_tf_dropout_2_by_2(self,
+                                   rate=0.5,
                                    is_rate_tensor=True,
                                    noise_shape=None,
                                    device=CPU):
     if is_rate_tensor:
-      rate = constant_op.constant(0.5, dtype=dtypes.float32)
-    else:
-      rate = 0.5
+      rate = constant_op.constant(rate, dtype=dtypes.float32)
     with context.device(device):
 
       def func():
@@ -1111,6 +1110,19 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
 
   def benchmark_tf_dropout_2_by_2_GPU(self):
     self._benchmark_tf_dropout_2_by_2(device=GPU)
+
+  def benchmark_tf_dropout_scalar_rate_2_by_2_CPU_rate_0(self):
+    self._benchmark_tf_dropout_2_by_2(rate=0, is_rate_tensor=False)
+
+  def benchmark_tf_dropout_scalar_rate_2_by_2_GPU_rate_0(self):
+    self._benchmark_tf_dropout_2_by_2(rate=0.0,
+                                      is_rate_tensor=False, device=GPU)
+
+  def benchmark_tf_dropout_2_by_2_CPU_rate_0(self):
+    self._benchmark_tf_dropout_2_by_2(rate=0.0)
+
+  def benchmark_tf_dropout_2_by_2_GPU_rate_0(self):
+    self._benchmark_tf_dropout_2_by_2(rate=0, device=GPU)
 
   def _benchmark_transpose(self,
                            m,

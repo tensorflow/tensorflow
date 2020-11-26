@@ -105,5 +105,36 @@ std::string ToCLDataType(DataType data_type, int vec_size) {
   return "undefined";
 }
 
+std::string ToMetalDataType(DataType data_type, int vec_size) {
+  const std::string postfix = vec_size == 1 ? "" : std::to_string(vec_size);
+  switch (data_type) {
+    case DataType::FLOAT16:
+      return "half" + postfix;
+    case DataType::FLOAT32:
+      return "float" + postfix;
+    case DataType::FLOAT64:
+      return "double" + postfix;
+    case DataType::INT16:
+      return "short" + postfix;
+    case DataType::INT32:
+      return "int" + postfix;
+    case DataType::INT64:
+      return "long" + postfix;
+    case DataType::INT8:
+      return "char" + postfix;
+    case DataType::UINT16:
+      return "ushort" + postfix;
+    case DataType::UINT32:
+      return "uint" + postfix;
+    case DataType::UINT64:
+      return "ulong" + postfix;
+    case DataType::UINT8:
+      return "uchar" + postfix;
+    case DataType::UNKNOWN:
+      return "unknown";
+  }
+  return "undefined";
+}
+
 }  // namespace gpu
 }  // namespace tflite

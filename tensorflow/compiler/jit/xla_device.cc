@@ -398,7 +398,7 @@ static void ShowXlaDeviceDeprecationWarning(
     absl::call_once(once, [] {
       LOG(INFO) << "XLA_GPU and XLA_CPU devices are deprecated and will be "
                    "removed in subsequent releases. Instead, use either "
-                   "@tf.function(experimental_compile=True) for must-compile "
+                   "@tf.function(jit_compile=True) for must-compile "
                    "semantics, or run with TF_XLA_FLAGS=--tf_xla_auto_jit=2 "
                    "for auto-clustering best-effort compilation.";
     });

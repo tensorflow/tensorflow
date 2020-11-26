@@ -846,7 +846,8 @@ class TrainingTest(keras_parameterized.TestCase):
         return self.layer2(self.layer1(inputs))
 
     l = LayerWithWeightSharedLayers()
-    self.assertEqual(l._layers, [l.layer1, l.layer2])
+    layers = list(l._flatten_layers(include_self=False, recursive=False))
+    self.assertEqual(layers, [l.layer1, l.layer2])
     self.assertEqual(l.variables,
                      [l.layer1.trainable_var, l.layer1.non_trainable_var])
     self.assertEqual(l.trainable_variables, [l.layer1.trainable_var])

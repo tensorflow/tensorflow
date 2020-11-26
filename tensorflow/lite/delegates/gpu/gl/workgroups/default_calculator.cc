@@ -81,7 +81,7 @@ class WorkgroupsCalculatorForMali : public WorkgroupsCalculator {
 
 std::unique_ptr<WorkgroupsCalculator> NewDefaultWorkgroupsCalculator(
     const GpuInfo& gpu_info) {
-  if (gpu_info.type == GpuType::MALI) {
+  if (gpu_info.IsMali()) {
     return absl::make_unique<WorkgroupsCalculatorForMali>(gpu_info);
   } else {
     return absl::make_unique<DefaultWorkgroupsCalculator>(gpu_info);

@@ -192,11 +192,11 @@ void AllocateAndParseFlags() {
             "XLA clusters."),
        Flag("tf_xla_check_cluster_input_numerics",
             &build_ops_flags->tf_xla_check_cluster_input_numerics,
-            "If true then insert CheckNumerics nodes to to check all cluster "
+            "If true then insert CheckNumerics nodes to check all cluster "
             "inputs."),
        Flag("tf_xla_check_cluster_output_numerics",
             &build_ops_flags->tf_xla_check_cluster_output_numerics,
-            "If true then insert CheckNumerics nodes to to check all cluster "
+            "If true then insert CheckNumerics nodes to check all cluster "
             "outputs."),
        Flag("tf_xla_disable_constant_folding",
             &build_ops_flags->tf_xla_disable_constant_folding,

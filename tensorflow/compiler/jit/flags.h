@@ -39,7 +39,7 @@ struct XlaAutoJitFlag {
   int32 optimization_level_general;
 };
 
-// Sets the xla_auto_jit_flag based on the given flag sting. Supported syntax
+// Sets the xla_auto_jit_flag based on the given flag string. Supported syntax
 // is:
 // <number>: sets general and single_gpu setting to the provided number.
 // single-gpu(<number>): sets the single_gpu setting to the provided number.

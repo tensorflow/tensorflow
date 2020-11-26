@@ -202,9 +202,9 @@ def LHLOGPU_CholeskyOp : LHLOGPU_Op<"cholesky"> {
   let arguments = (ins
     Arg<LHLO_Buffer, "", [MemRead]>:$input,
     Arg<LHLO_Buffer, "", [MemWrite]>:$output,
-    Arg<UntypedBuffer, "", [MemWrite]>:$scratch,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$scratch,
     Arg<I32Buffer, "", [MemWrite]>:$info,
-    BoolAttr:$is_upper);
+    BoolAttr:$is_lower);
 }
 
 #endif // LHLO_GPU_OPS

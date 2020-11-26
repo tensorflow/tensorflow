@@ -693,7 +693,7 @@ class EagerFunctionTest(xla_test.XLATestCase):
         return x, y
 
       wholly_compiled_f = def_function.function(f)
-      op_by_op_f = def_function.function(f, experimental_compile=False)
+      op_by_op_f = def_function.function(f, jit_compile=False)
 
       x = array_ops.identity([0.0, 2.0], name='data')
 

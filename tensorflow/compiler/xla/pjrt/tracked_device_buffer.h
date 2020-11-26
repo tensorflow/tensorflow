@@ -141,8 +141,7 @@ class TrackedDeviceBuffer {
   // not verify that TransferManager::HostShapeToDeviceShape(on_host_shape) ==
   // on_device_shape().
   ShapedBuffer AsShapedBuffer(const Shape& on_host_shape,
-                              const Shape& on_device_shape,
-                              se::Platform* platform) const;
+                              const Shape& on_device_shape) const;
 
   // Adds the owned device buffers in order to 'iterator'. Used to add the
   // buffers to an ExecutionInput. We require but do not verify that 'iterator'

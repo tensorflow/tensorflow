@@ -92,6 +92,7 @@ py_library(
     srcs = ["tf_utils.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":object_identity",
         "//tensorflow/python:composite_tensor",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_ops",
@@ -208,6 +209,13 @@ py_library(
         "//tensorflow/python:util",
         "//third_party/py/numpy",
     ],
+)
+
+py_library(
+    name = "object_identity",
+    srcs = ["object_identity.py"],
+    srcs_version = "PY2AND3",
+    deps = [],
 )
 
 py_library(

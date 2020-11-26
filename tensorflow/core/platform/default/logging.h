@@ -23,6 +23,7 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <sstream>
+#include <vector>
 
 #include "absl/base/log_severity.h"
 #include "absl/strings/string_view.h"
@@ -477,15 +478,27 @@ class TFLogEntry {
   }
 
  public:
-  explicit TFLogEntry(int severity, absl::string_view log_line)
-      : severity_(AsAbslLogSeverity(severity)), log_line_(log_line) {}
+  explicit TFLogEntry(int severity, absl::string_view message)
+      : severity_(AsAbslLogSeverity(severity)), message_(message) {}
+
+  explicit TFLogEntry(int severity, absl::string_view fname, int line,
+                      absl::string_view message)
+      : severity_(AsAbslLogSeverity(severity)),
+        fname_(fname),
+        line_(line),
+        message_(message) {}
 
   absl::LogSeverity log_severity() const { return severity_; }
-  std::string ToString() const { return std::string(log_line_); }
+  std::string FName() const { return fname_; }
+  int Line() const { return line_; }
+  std::string ToString() const { return message_; }
+  absl::string_view text_message() const { return message_; }
 
  private:
   const absl::LogSeverity severity_;
-  const absl::string_view log_line_;
+  const std::string fname_;
+  int line_ = -1;
+  const std::string message_;
 };
 
 class TFLogSink {
@@ -513,9 +526,22 @@ class TFLogSink {
   virtual void WaitTillSent() {}
 };
 
+// This is the default log sink. This log sink is used if there are no other
+// log sinks registered. To disable the default log sink, set the
+// "no_default_logger" Bazel config setting to true or define a
+// NO_DEFAULT_LOGGER preprocessor symbol. This log sink will always log to
+// stderr.
+class TFDefaultLogSink : public TFLogSink {
+ public:
+  void Send(const TFLogEntry& entry) override;
+};
+
 // Add or remove a `LogSink` as a consumer of logging data.  Thread-safe.
 void TFAddLogSink(TFLogSink* sink);
 void TFRemoveLogSink(TFLogSink* sink);
+
+// Get all the log sinks.  Thread-safe.
+std::vector<TFLogSink*> TFGetLogSinks();
 
 }  // namespace tensorflow
 

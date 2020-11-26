@@ -421,7 +421,6 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn",
         "//tensorflow/python:platform",
-        "//tensorflow/python:platform_build_info",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:util",
@@ -548,6 +547,9 @@ cuda_py_test(
     shard_count = 4,
     tags = [
         "no_windows_gpu",
+    ],
+    xla_tags = [
+        "no_cuda_asan",  # times out
     ],
     deps = [
         "//tensorflow/python:client_testlib",
@@ -833,6 +835,9 @@ cuda_py_test(
     tags = [
         "no_oss",
         "notsan",  # TODO(b/170954246)
+    ],
+    xla_tags = [
+        "no_cuda_asan",  # times out
     ],
     deps = [
         "//tensorflow/python:client_testlib",

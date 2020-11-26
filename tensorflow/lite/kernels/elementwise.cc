@@ -58,7 +58,7 @@ bool IsLogicalSupportedType(const TfLiteType type) {
 }
 
 bool IsAbsSupportedType(const TfLiteType type) {
-  return type == kTfLiteFloat32 || type == kTfLiteInt8;
+  return type == kTfLiteFloat32 || type == kTfLiteInt8 || type == kTfLiteInt16;
 }
 
 typedef bool (*IsSupportedType)(TfLiteType);
@@ -83,7 +83,7 @@ TfLiteStatus AbsPrepare(TfLiteContext* context, TfLiteNode* node) {
       context, (GenericPrepare<IsAbsSupportedType, kAbsName>(context, node)),
       kTfLiteOk);
   const TfLiteTensor* input = GetInput(context, node, 0);
-  if (input->type == kTfLiteInt8) {
+  if (input->type == kTfLiteInt8 || input->type == kTfLiteInt16) {
     TfLiteTensor* output = GetOutput(context, node, 0);
     auto* op_data = static_cast<OpData*>(node->user_data);
     TF_LITE_ENSURE_EQ(context, input->quantization.type,
@@ -104,6 +104,10 @@ TfLiteStatus AbsPrepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE(context, output_params->zero_point->size > 0);
     op_data->input_offset = input_params->zero_point->data[0];
     op_data->output_offset = output_params->zero_point->data[0];
+    if (input->type == kTfLiteInt16) {
+      TF_LITE_ENSURE_EQ(context, op_data->input_offset, 0);
+      TF_LITE_ENSURE_EQ(context, op_data->output_offset, 0);
+    }
     const float input_scale = input_params->scale->data[0];
     const float output_scale = output_params->scale->data[0];
     double scale = input_scale / output_scale;
@@ -148,26 +152,34 @@ void AbsFree(TfLiteContext* context, void* buffer) {
   delete static_cast<OpData*>(buffer);
 }
 
+template <typename T>
+TfLiteStatus AbsEvalQuantized(TfLiteContext* context, TfLiteNode* node,
+                              TfLiteType type) {
+  const auto* op_data = static_cast<const OpData*>(node->user_data);
+  const int kMin = std::numeric_limits<T>::min();
+  const int kMax = std::numeric_limits<T>::max();
+
+  std::function<T(T)> func = [&](T i) {
+    const int32_t value = std::abs(i - op_data->input_offset);
+    const int32_t output = MultiplyByQuantizedMultiplier(
+                               value, op_data->multiplier, op_data->shift) +
+                           op_data->output_offset;
+
+    return static_cast<T>(std::min(std::max(output, kMin), kMax));
+  };
+
+  return EvalImpl<T>(context, node, func, type);
+}
+
 TfLiteStatus AbsEval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteType type = GetInput(context, node, 0)->type;
   switch (type) {
     case kTfLiteFloat32:
       return EvalImpl<float>(context, node, std::abs<float>, type);
-    case kTfLiteInt8: {
-      const auto* op_data = static_cast<const OpData*>(node->user_data);
-      const int kMinInt8 = std::numeric_limits<int8_t>::min();
-      const int kMaxInt8 = std::numeric_limits<int8_t>::max();
-      std::function<int8_t(int8_t)> func = [&](int8_t i) {
-        const int32_t value = std::abs(i - op_data->input_offset);
-        return std::min(
-            std::max(op_data->output_offset +
-                         MultiplyByQuantizedMultiplier(
-                             value, op_data->multiplier, op_data->shift),
-                     kMinInt8),
-            kMaxInt8);
-      };
-      return EvalImpl<int8_t>(context, node, func, type);
-    }
+    case kTfLiteInt8:
+      return AbsEvalQuantized<int8_t>(context, node, type);
+    case kTfLiteInt16:
+      return AbsEvalQuantized<int16_t>(context, node, type);
     default:
       TF_LITE_KERNEL_LOG(context, "Current data type %s is not supported.",
                          TfLiteTypeGetName(type));

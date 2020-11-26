@@ -8,7 +8,9 @@ ENTRY %Add (x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
 }
 
 // CHECK: func @add(%[[ARG0:.*]]: [[TYPE:.*]], %[[ARG1:.*]]: [[TYPE]], %[[ARG2:.*]]: [[TYPE]]) {
-// CHECK: "gpu.launch_func"(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %[[ARG0]], %[[ARG1]], %[[ARG2]]
+// CHECK: gpu.launch_func
+// CHECK-SAME: blocks in (%{{.*}}, %{{.*}}, %{{.*}}) threads in (%{{.*}}, %{{.*}}, %{{.*}}) args
+// CHECK-SAME: (%[[ARG0]] : [[TYPE]], %[[ARG1]] : [[TYPE]], %[[ARG2]] : [[TYPE]])
 // CHECK: }
 // CHECK: func @add_kernel(%[[ARG0]]: [[TYPE]], %[[ARG1]]: [[TYPE]], %[[ARG2]]: [[TYPE]]
 // CHECK-DAG: subview %[[ARG0]]{{\[}}[[INDEX:.*]]]

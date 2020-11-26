@@ -223,12 +223,10 @@ class StridedSliceOp : public XlaOpKernel {
         input_elements_sliced *= input_shape.dim_size(d);
       }
 
-      OP_REQUIRES(
-          ctx, output_elements == input_elements_sliced,
-          errors::InvalidArgument(
-              "The number of output elements ", output_elements,
-              " has to equal to number of input elements that are sliced ",
-              input_elements_sliced, " when input indices are not constant."));
+      OP_REQUIRES(ctx, output_elements == input_elements_sliced,
+                  errors::InvalidArgument(
+                      "Dynamic indices of strided_slice_op have to be leading "
+                      "dimensions in the indices list."));
 
       for (int64 i = 0; i < ctx->InputShape("begin").dims(); ++i) {
         OP_REQUIRES(

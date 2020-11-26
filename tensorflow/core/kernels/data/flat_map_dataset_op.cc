@@ -157,7 +157,8 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
           return Status::OK();
         }
 
-        TF_RETURN_IF_ERROR(BuildCurrentElementIteratorLocked(ctx));
+        TF_RETURN_IF_ERROR(
+            BuildCurrentElementIteratorLocked(ctx, /*is_get_next=*/true));
       } while (true);
     }
 
@@ -230,7 +231,8 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
                 &captured_func_inputs_.back()));
           }
           element_index_--;
-          TF_RETURN_IF_ERROR(BuildCurrentElementIteratorLocked(ctx));
+          TF_RETURN_IF_ERROR(
+              BuildCurrentElementIteratorLocked(ctx, /*is_get_next=*/false));
           TF_RETURN_IF_ERROR(
               RestoreInput(ctx, reader, current_element_iterator_));
         }
@@ -239,11 +241,21 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
     }
 
    private:
-    Status BuildCurrentElementIteratorLocked(IteratorContext* ctx)
+    Status BuildCurrentElementIteratorLocked(IteratorContext* ctx,
+                                             bool is_get_next)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      return MakeIteratorFromInputElement(
-          ctx, this, captured_func_inputs_, element_index_++,
-          *instantiated_captured_func_, prefix(), &current_element_iterator_);
+      if (is_get_next) {
+        return MakeIteratorFromInputElement(
+            ctx, this, captured_func_inputs_, element_index_++,
+            *instantiated_captured_func_, prefix(), &current_element_iterator_,
+            model_node());
+      } else {
+        // NOTE: We intentionally ignore resource modeling outside GetNext().
+        return MakeIteratorFromInputElement(
+            ctx, this, captured_func_inputs_, element_index_++,
+            *instantiated_captured_func_, prefix(), &current_element_iterator_,
+            /*node=*/nullptr);
+      }
     }
 
     mutex mu_;

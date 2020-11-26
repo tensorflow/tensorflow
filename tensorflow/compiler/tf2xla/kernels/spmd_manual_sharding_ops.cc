@@ -59,7 +59,7 @@ class XlaSpmdFullToShardShapeOp : public XlaOpKernel {
     }
     xla::XlaOp input_annotation;
     {
-      // Annotate the full-shape input with the manual sharding.
+      // Annotate the full-shape input with the sharding.
       xla::XlaScopedShardingAssignment assign_sharding(ctx->builder(),
                                                        sharding);
       input_annotation =
@@ -68,12 +68,11 @@ class XlaSpmdFullToShardShapeOp : public XlaOpKernel {
     }
 
     {
-      // Annotate the shard-shape output with replicated sharding, so that the
+      // Annotate the shard-shape output with manual sharding, so that the
       // partitioner will leave it as is.
-      xla::OpSharding replicated;
-      replicated.set_type(xla::OpSharding::REPLICATED);
-      xla::XlaScopedShardingAssignment assign_sharding(ctx->builder(),
-                                                       replicated);
+      xla::OpSharding manual;
+      manual.set_type(xla::OpSharding::MANUAL);
+      xla::XlaScopedShardingAssignment assign_sharding(ctx->builder(), manual);
       auto output = xla::CustomCall(ctx->builder(),
                                     /*call_target_name=*/"SPMDFullToShardShape",
                                     {input_annotation}, output_shape);
@@ -112,19 +111,18 @@ class XlaSpmdShardToFullShapeOp : public XlaOpKernel {
     }
     xla::XlaOp input_annotation;
     {
-      // Annotate the shard-shape input with replicated sharding, so that the
+      // Annotate the shard-shape input with manual sharding, so that the
       // partitioner will leave it as is.
-      xla::OpSharding replicated;
-      replicated.set_type(xla::OpSharding::REPLICATED);
-      xla::XlaScopedShardingAssignment assign_sharding(ctx->builder(),
-                                                       replicated);
+      xla::OpSharding manual;
+      manual.set_type(xla::OpSharding::MANUAL);
+      xla::XlaScopedShardingAssignment assign_sharding(ctx->builder(), manual);
       input_annotation =
           xla::CustomCall(ctx->builder(), /*call_target_name=*/"Sharding",
                           {input}, input_shape_or.ValueOrDie());
     }
 
     {
-      // Annotate the full-shape output with the manual sharding.
+      // Annotate the full-shape output with the sharding.
       xla::XlaScopedShardingAssignment assign_sharding(ctx->builder(),
                                                        sharding);
       ctx->SetOutput(

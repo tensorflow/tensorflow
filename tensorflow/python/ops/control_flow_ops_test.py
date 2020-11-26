@@ -1288,7 +1288,7 @@ class ExecuteFnForDeviceTest(test_util.TensorFlowTestCase):
     def gpu_fn(x):
       return x * x
 
-    @def_function.function(experimental_compile=True)
+    @def_function.function(jit_compile=True)
     def flexible_defun(a):
       branches = {"CPU": lambda: cpu_fn(a), "GPU": lambda: gpu_fn(a)}
       return control_flow_ops.execute_fn_for_device(branches, lambda: cpu_fn(a))

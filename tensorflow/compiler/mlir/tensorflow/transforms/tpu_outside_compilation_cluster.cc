@@ -124,32 +124,49 @@ class OutsideCompiledCluster {
   }
 
  private:
-  // Checks if it is safe for an op to be merged into this cluster.
+  // Checks if it is safe for `op` to be merged into this cluster.
   bool IsSafeToAdd(Operation* op,
                    const TF::SideEffectAnalysis::Info& side_effect_analysis) {
-    if (closed_) return false;
     // If the op is not marked for outside compilation it doesn't belong in a
     // cluster.
-    if (!op->getAttrOfType<StringAttr>(kXlaOutsideCompilationAttr)) {
-      auto successors = side_effect_analysis.DirectControlSuccessors(op);
-      // If non outside compiled op with side effect successors is encountered,
-      // close this cluster to additions so that no cluster cyclic dependencies
-      // can be created.
-      if (!successors.empty()) {
-        closed_ = true;
-      }
+    if (!op->getAttrOfType<StringAttr>(kXlaOutsideCompilationAttr))
       return false;
-    }
 
     if (host_cluster_ops_.empty()) return true;
 
-    // Checks to see if there is data dependency between ops in
-    // `host_cluster_ops_` and `op`.
-    const bool contains_data_dependency = llvm::any_of(
-        op->getUsers(),
-        [&](Operation* user) { return host_cluster_ops_.contains(user); });
+    // If there is an intermediate data or side effect dependency between the op
+    // and ops in the cluster, it's not safe to add.
+    llvm::SmallSetVector<Operation*, 4> op_stack;
+    for (auto* user : op->getUsers()) {
+      if (!host_cluster_ops_.contains(user)) op_stack.insert(user);
+    }
+    for (auto* successor : side_effect_analysis.DirectControlSuccessors(op)) {
+      if (!host_cluster_ops_.contains(successor)) op_stack.insert(successor);
+    }
+    bool safe_to_add = true;
+    while (!op_stack.empty()) {
+      auto* next_op = op_stack.pop_back_val();
+      for (auto* user : next_op->getUsers()) {
+        if (host_cluster_ops_.contains(user)) {
+          safe_to_add = false;
+          break;
+        } else {
+          op_stack.insert(user);
+        }
+      }
+      for (auto* successor :
+           side_effect_analysis.DirectControlSuccessors(next_op)) {
+        if (host_cluster_ops_.contains(successor)) {
+          safe_to_add = false;
+          break;
+        } else {
+          op_stack.insert(successor);
+        }
+      }
+      if (!safe_to_add) break;
+    }
 
-    return contains_data_dependency;
+    return safe_to_add;
   }
 
   // `host_cluster_op_` stores a set of ops that will be grouped and computed
@@ -158,7 +175,6 @@ class OutsideCompiledCluster {
   // cluster.
   llvm::SmallPtrSet<Operation*, 8> host_cluster_ops_;
   std::string cluster_name_;
-  bool closed_ = false;  // Cluster is closed to further additions.
 };
 
 void TPUOutsideCompilationCluster::runOnFunction(

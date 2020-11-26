@@ -55,4 +55,7 @@ enum IODataType {
 
   // Complex128, not quantized
   COMPLEX128 = 12;
+
+  // Uint64, not quantized
+  UINT64 = 13;
 }

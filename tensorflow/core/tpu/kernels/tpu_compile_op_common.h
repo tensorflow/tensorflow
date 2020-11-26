@@ -26,6 +26,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/platform/fingerprint.h"
+#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_interface.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
@@ -72,7 +75,9 @@ class TpuCompileOpKernelCommon {
         num_computations_(num_computations),
         return_hlo_protos_(return_hlo_protos),
         unload_cache_entry_on_session_close_(unload_cache_on_session_close),
-        persistent_cache_(nullptr) {}
+        persistent_cache_(nullptr) {
+    mlir_module_fingerprint_ = tensorflow::Fingerprint64(mlir_module_);
+  }
 
   TpuCompileOpKernelCommon(
       const NameAttrList& function, const tpu::TPUCompileMetadataProto metadata,
@@ -208,6 +213,9 @@ class TpuCompileOpKernelCommon {
 
   // A serialized MLIR ModuleOp.
   std::string mlir_module_;
+  // Fingerprint of the MLIR Module created once on construction to avoid paying
+  // the cost on each invocation.
+  uint64 mlir_module_fingerprint_ = 0;
 
   // Number of different programs to compile. This maps to number of cores in
   // each replica.

@@ -1,0 +1,11 @@
+op {
+  graph_op_name: "RiscMax"
+  visibility: HIDDEN
+  summary: "Returns max(x, y) element-wise."
+  description: <<END
+*NOTE*: `RiscMax` does not supports broadcasting.
+
+Given two input tensors, the `tf.risc_max` operation computes the maximum for every element in the tensor.
+
+END
+}

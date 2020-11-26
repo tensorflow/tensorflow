@@ -34,7 +34,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/inference_context.h"
 #include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
-#include "tensorflow/lite/delegates/gpu/metal/environment.h"
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 
 namespace tflite {
 namespace gpu {
@@ -80,12 +80,13 @@ absl::Status SingleOpModel::Invoke() {
 
   id<MTLDevice> device = MTLCreateSystemDefaultDevice();
   std::string device_name = std::string([[device name] UTF8String]);
-  DeviceInfo device_info(device_name);
+  GpuInfo gpu_info;
+  GetGpuInfoFromDeviceDescription(device_name, GpuApi::kMetal, &gpu_info);
   RuntimeOptions options;
   options.storage_precision = RuntimeOptions::Precision::FP32;
   options.accumulator_precision = RuntimeOptions::Precision::FP32;
   CompiledModel compiled_model;
-  RETURN_IF_ERROR(Compile(graph_, device_info, options, &compiled_model));
+  RETURN_IF_ERROR(Compile(graph_, gpu_info, options, &compiled_model));
   CompiledModel optimized_model;
   RETURN_IF_ERROR(ValidateOptimizeModel(input_ids, output_ids, compiled_model, &optimized_model));
 

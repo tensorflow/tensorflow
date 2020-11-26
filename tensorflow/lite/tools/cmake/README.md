@@ -14,14 +14,15 @@ Host Tools (i.e analysis tools etc.)
 
 #### Step 1. Install CMake tool
 
-It requires CMake 3.16 or higher. On Ubunutu, you can simply run the following
+It requires CMake 3.16 or higher. On Ubuntu, you can simply run the following
 command.
 
 ```sh
 sudo apt-get install cmake
 ```
 
-Or you can follow [the offcial cmake installation guide](https://cmake.org/install/)
+Or you can follow
+[the official cmake installation guide](https://cmake.org/install/)
 
 #### Step 2. Clone TensorFlow repository
 
@@ -38,6 +39,13 @@ provided in `/tensorflow_src/`.
 mkdir tflite_build
 cd tflite_build
 cmake ../tensorflow_src/tensorflow/lite
+```
+
+It generates release binary by default. If you need to produce debug builds, you
+need to provide '-DCMAKE_BUILD_TYPE=Debug' option.
+
+```sh
+cmake ../tensorflow_src/tensorflow/lite -DCMAKE_BUILD_TYPE=Debug
 ```
 
 If you want to configure Android build with GPU delegate support,

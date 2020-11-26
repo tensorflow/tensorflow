@@ -406,7 +406,7 @@ XTimesTwo[T:{float, double, int32, int64}](x:T) -> (y:T) {
 TEST(TFunc, WXPlusB) {
   auto expect = R"P(
 WXPlusB[T:{float, double}](w:T, x:T, b:T) -> (y:T) {
-  mm = MatMul[T=$T, _kernel="eigen", transpose_a=false, transpose_b=false](w, x)
+  mm = MatMul[T=$T, transpose_a=false, transpose_b=false](w, x)
   y = Add[T=$T](mm:product:0, b)
   return y = y:z:0
 }

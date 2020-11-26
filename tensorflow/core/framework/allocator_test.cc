@@ -221,14 +221,16 @@ TEST(CustomAllocatorAttributes, TestSetterAndGetter) {
   EXPECT_FALSE(HasDeviceAllocatorAttribute(AllocatorAttributes()));
 }
 
-static void BM_Allocation(int iters, int arg) {
+static void BM_Allocation(::testing::benchmark::State& state) {
+  const int arg = state.range(0);
+
   Allocator* a = cpu_allocator();
   // Exercise a few different allocation sizes
   std::vector<int> sizes = {256, 4096, 16384, 524288, 512, 1048576};
   int size_index = 0;
 
   if (arg) EnableCPUAllocatorStats();
-  while (--iters > 0) {
+  for (auto s : state) {
     int bytes = sizes[size_index++ % sizes.size()];
     void* p = a->AllocateRaw(1, bytes);
     a->DeallocateRaw(p);

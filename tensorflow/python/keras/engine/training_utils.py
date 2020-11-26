@@ -214,7 +214,7 @@ def get_static_batch_size(layer):
   """
   batch_input_shape, _ = get_input_shape_and_dtype(layer)
   if batch_input_shape is not None:
-    return tensor_shape.as_dimension(batch_input_shape[0]).value
+    return tensor_shape.Dimension(batch_input_shape[0]).value
   return None
 
 

@@ -1,3 +1,4 @@
+load("@rules_proto//proto:defs.bzl", "proto_library")
 load(
     "@com_google_protobuf//:protobuf.bzl",
     "cc_proto_library",

@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import gzip
 import os
+import pathlib
 import zlib
 
 from absl.testing import parameterized
@@ -167,6 +168,16 @@ class TextLineDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
           "psutil is required to check that we've closed our files.")
     open_files = psutil.Process().open_files()
     self.assertNotIn(filename, [open_file.path for open_file in open_files])
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testTextLineDatasetPathlib(self):
+    files = self._createFiles(1, 5)
+    files = [pathlib.Path(f) for f in files]
+
+    expected_output = [self._lineText(0, i) for i in range(5)]
+    ds = readers.TextLineDataset(files)
+    self.assertDatasetProduces(
+        ds, expected_output=expected_output, assert_items_equal=True)
 
 
 if __name__ == "__main__":

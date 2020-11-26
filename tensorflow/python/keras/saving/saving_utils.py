@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections.abc as collections_abc
 import copy
 import os
 import six
@@ -32,7 +33,6 @@ from tensorflow.python.keras.utils import version_utils
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
-from tensorflow.python.util.compat import collections_abc
 
 
 def extract_model_metrics(model):
@@ -122,8 +122,7 @@ def trace_model_call(model, input_signature=None):
   if input_signature is None:
     raise_model_input_error(model)
 
-  # TODO(mdan): Should the model's call be autographed by default?
-  @def_function.function(input_signature=input_signature, autograph=False)
+  @def_function.function(input_signature=input_signature)
   def _wrapped_model(*args):
     """A concrete tf.function that wraps the model's call function."""
     # When given a single input, Keras models will call the model on the tensor

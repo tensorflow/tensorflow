@@ -24,10 +24,9 @@ limitations under the License.
 namespace tflite {
 namespace delegates {
 namespace coreml {
-const char* FullyConnectedOpBuilder::DebugName() {
-  if (!str_debug_name_[0])
-    GetDebugName("FullyConnectedOpBuilder", node_id_, str_debug_name_);
-  return str_debug_name_;
+const std::string& FullyConnectedOpBuilder::DebugName() {
+  if (debug_name_.empty()) SetDebugName("FullyConnectedOpBuilder", node_id_);
+  return debug_name_;
 }
 
 void FullyConnectedOpBuilder::SetWeights(TfLiteTensor* weights) {

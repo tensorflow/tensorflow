@@ -376,6 +376,61 @@ inline T FtrlCompute(const T& accum, const T& linear, const T& lr, const T& l1,
   }
 }
 
+template <typename T, typename GradTy, typename GradeMaybeWithShrinkageTy,
+          typename AccumTy, typename LinearTy, typename VarTy>
+void ComputeFtrl(GradTy grad,
+                 GradeMaybeWithShrinkageTy grad_maybe_with_shrinkage,
+                 AccumTy accum, LinearTy linear, VarTy var, T l1_scalar,
+                 T l2_scalar, bool multiply_linear_by_lr, T lr_power_scalar,
+                 T lr_scalar) {
+  auto new_accum = accum + grad.square();
+  if (multiply_linear_by_lr) {
+    if (lr_power_scalar == static_cast<T>(-0.5)) {
+      linear += grad_maybe_with_shrinkage * lr_scalar -
+                (new_accum.sqrt() - accum.sqrt()) * var;
+    } else {
+      linear +=
+          grad_maybe_with_shrinkage * lr_scalar -
+          (new_accum.pow(-lr_power_scalar) - accum.pow(-lr_power_scalar)) * var;
+    }
+  } else {
+    if (lr_power_scalar == static_cast<T>(-0.5)) {
+      linear += grad_maybe_with_shrinkage -
+                (new_accum.sqrt() - accum.sqrt()) / lr_scalar * var;
+    } else {
+      linear += grad_maybe_with_shrinkage - (new_accum.pow(-lr_power_scalar) -
+                                             accum.pow(-lr_power_scalar)) /
+                                                lr_scalar * var;
+    }
+  }
+  auto l1_reg_adjust =
+      (multiply_linear_by_lr ? linear.cwiseMin(l1_scalar * lr_scalar)
+                                   .cwiseMax(-l1_scalar * lr_scalar)
+                             : linear.cwiseMin(l1_scalar).cwiseMax(-l1_scalar));
+  auto x = l1_reg_adjust - linear;
+  if (multiply_linear_by_lr) {
+    if (lr_power_scalar == static_cast<T>(-0.5)) {
+      auto y = new_accum.sqrt() +
+               linear.constant(static_cast<T>(2) * l2_scalar * lr_scalar);
+      var = x / y;
+    } else {
+      auto y = new_accum.pow(-lr_power_scalar) +
+               linear.constant(static_cast<T>(2) * l2_scalar * lr_scalar);
+      var = x / y;
+    }
+  } else {
+    if (lr_power_scalar == static_cast<T>(-0.5)) {
+      auto y = new_accum.sqrt() / new_accum.constant(lr_scalar) +
+               linear.constant(static_cast<T>(2) * l2_scalar);
+      var = x / y;
+    } else {
+      auto y = new_accum.pow(-lr_power_scalar) / new_accum.constant(lr_scalar) +
+               linear.constant(static_cast<T>(2) * l2_scalar);
+      var = x / y;
+    }
+  }
+  accum += grad.square();
+}
 }  // namespace
 
 template <typename T, typename Tindex, bool has_l2_shrinkage>
@@ -417,70 +472,25 @@ struct SparseApplyFtrl<CPUDevice, T, Tindex, has_l2_shrinkage> {
           auto grad = grad_flat.template chip<0>(i);
           auto var = var_flat.template chip<0>(index);
 
-// TODO(sanjoy): Remove this macro.
-// Use a macro to implement the computation here due to the templating of the
-// eigen tensor library.
-#define COMPUTE_FTRL(grad, grad_maybe_with_shrinkage)                          \
-  auto new_accum = accum + grad.square();                                      \
-  if (multiply_linear_by_lr) {                                                 \
-    if (lr_power_scalar == static_cast<T>(-0.5)) {                             \
-      linear += grad_maybe_with_shrinkage * lr_scalar -                        \
-                (new_accum.sqrt() - accum.sqrt()) * var;                       \
-    } else {                                                                   \
-      linear +=                                                                \
-          grad_maybe_with_shrinkage * lr_scalar -                              \
-          (new_accum.pow(-lr_power_scalar) - accum.pow(-lr_power_scalar)) *    \
-              var;                                                             \
-    }                                                                          \
-  } else {                                                                     \
-    if (lr_power_scalar == static_cast<T>(-0.5)) {                             \
-      linear += grad_maybe_with_shrinkage -                                    \
-                (new_accum.sqrt() - accum.sqrt()) / lr_scalar * var;           \
-    } else {                                                                   \
-      linear += grad_maybe_with_shrinkage - (new_accum.pow(-lr_power_scalar) - \
-                                             accum.pow(-lr_power_scalar)) /    \
-                                                lr_scalar * var;               \
-    }                                                                          \
-  }                                                                            \
-  auto l1_reg_adjust =                                                         \
-      (multiply_linear_by_lr                                                   \
-           ? linear.cwiseMin(l1_scalar * lr_scalar)                            \
-                 .cwiseMax(-l1_scalar * lr_scalar)                             \
-           : linear.cwiseMin(l1_scalar).cwiseMax(-l1_scalar));                 \
-  auto x = l1_reg_adjust - linear;                                             \
-  if (multiply_linear_by_lr) {                                                 \
-    if (lr_power_scalar == static_cast<T>(-0.5)) {                             \
-      auto y = new_accum.sqrt() +                                              \
-               linear.constant(static_cast<T>(2) * l2_scalar * lr_scalar);     \
-      var = x / y;                                                             \
-    } else {                                                                   \
-      auto y = new_accum.pow(-lr_power_scalar) +                               \
-               linear.constant(static_cast<T>(2) * l2_scalar * lr_scalar);     \
-      var = x / y;                                                             \
-    }                                                                          \
-  } else {                                                                     \
-    if (lr_power_scalar == static_cast<T>(-0.5)) {                             \
-      auto y = new_accum.sqrt() / new_accum.constant(lr_scalar) +              \
-               linear.constant(static_cast<T>(2) * l2_scalar);                 \
-      var = x / y;                                                             \
-    } else {                                                                   \
-      auto y =                                                                 \
-          new_accum.pow(-lr_power_scalar) / new_accum.constant(lr_scalar) +    \
-          linear.constant(static_cast<T>(2) * l2_scalar);                      \
-      var = x / y;                                                             \
-    }                                                                          \
-  }                                                                            \
-  accum += grad.square();
-
           if (has_l2_shrinkage) {
             auto grad_with_shrinkage =
                 grad + static_cast<T>(2) * l2_shrinkage_scalar * var;
-            COMPUTE_FTRL(grad, grad_with_shrinkage);
+            ComputeFtrl(/*grad=*/grad,
+                        /*grad_maybe_with_shrinkage=*/grad_with_shrinkage,
+                        /*accum=*/accum, /*linear=*/linear, /*var=*/var,
+                        /*l1_scalar=*/l1_scalar, /*l2_scalar=*/l2_scalar,
+                        /*multiply_linear_by_lr=*/multiply_linear_by_lr,
+                        /*lr_power_scalar=*/lr_power_scalar,
+                        /*lr_scalar=*/lr_scalar);
           } else {
-            COMPUTE_FTRL(grad, grad);
+            ComputeFtrl(/*grad=*/grad, /*grad_maybe_with_shrinkage=*/grad,
+                        /*accum=*/accum, /*linear=*/linear, /*var=*/var,
+                        /*l1_scalar=*/l1_scalar, /*l2_scalar=*/l2_scalar,
+                        /*multiply_linear_by_lr=*/multiply_linear_by_lr,
+                        /*lr_power_scalar=*/lr_power_scalar,
+                        /*lr_scalar=*/lr_scalar);
           }
         }
-#undef COMPUTE_FTRL
       } else {
         const Tindex first_dim_size = accum_flat.size();
 

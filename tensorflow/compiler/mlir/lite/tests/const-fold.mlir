@@ -577,3 +577,71 @@ func @div_dense_different_rank() -> tensor<1x2x2xf32> {
 // CHECK: %[[CST:.*]] = constant dense<[{{\[}}{{\[}}5.000000e-01, 0.333333343], [1.000000e+00, 0.666666686]]]> : tensor<1x2x2xf32>
 // CHECK:  return %[[CST]]
 }
+
+// CHECK-LABEL: @rsqrt_bf16
+func @rsqrt_bf16() -> tensor<bf16> {
+  %cst = constant dense<4.0> : tensor<bf16>
+  %0 = "tfl.rsqrt"(%cst) : (tensor<bf16>) -> tensor<bf16>
+  return %0 : tensor<bf16>
+
+// CHECK: %[[CST:.*]] = constant dense<5.000000e-01> : tensor<bf16>
+// CHECK:  return %[[CST]]
+}
+
+// CHECK-LABEL: @cast_i64_to_i32
+func @cast_i64_to_i32() -> tensor<5xi32> {
+  %cst = constant dense<[-1, 0, 1, 2147483647, 2147483648]> : tensor<5xi64>
+  %0 = "tfl.cast"(%cst) : (tensor<5xi64>) -> tensor<5xi32>
+  return %0 : tensor<5xi32>
+
+// CHECK: %[[CST:.*]] = constant dense<[-1, 0, 1, 2147483647, -2147483648]> : tensor<5xi32>
+// CHECK:  return %[[CST]]
+}
+
+// CHECK-LABEL: @cast_i32_to_ui8
+func @cast_i32_to_ui8() -> tensor<6xui8> {
+  %cst = constant dense<[0, -1, 256, 127, -128, -129]> : tensor<6xi32>
+  %0 = "tfl.cast"(%cst) : (tensor<6xi32>) -> tensor<6xui8>
+  return %0 : tensor<6xui8>
+
+// CHECK: %[[CST:.*]] = constant dense<[0, 255, 0, 127, 128, 127]> : tensor<6xui8>
+// CHECK:  return %[[CST]]
+}
+
+// CHECK-LABEL: @cast_ui8_to_i8
+func @cast_ui8_to_i8() -> tensor<4xi8> {
+  %cst = constant dense<[0, 255, 127, 128]> : tensor<4xui8>
+  %0 = "tfl.cast"(%cst) : (tensor<4xui8>) -> tensor<4xi8>
+  return %0 : tensor<4xi8>
+
+// CHECK: %[[CST:.*]] = constant dense<[0, -1, 127, -128]> : tensor<4xi8>
+// CHECK:  return %[[CST]]
+}
+
+// CHECK-LABEL: @cast_i8_to_i32
+func @cast_i8_to_i32() -> tensor<4xi32> {
+  %cst = constant dense<[0, 128, -1, -128]> : tensor<4xi8>
+  %0 = "tfl.cast"(%cst) : (tensor<4xi8>) -> tensor<4xi32>
+  return %0 : tensor<4xi32>
+
+// CHECK: %[[CST:.*]] = constant dense<[0, -128, -1, -128]> : tensor<4xi32>
+// CHECK:  return %[[CST]]
+}
+
+// CHECK-LABEL: @cast_ui8_to_i32
+func @cast_ui8_to_i32() -> tensor<4xi32> {
+  %cst = constant dense<[0, 128, 129, 255]> : tensor<4xui8>
+  %0 = "tfl.cast"(%cst) : (tensor<4xui8>) -> tensor<4xi32>
+  return %0 : tensor<4xi32>
+
+// CHECK: %[[CST:.*]] = constant dense<[0, 128, 129, 255]> : tensor<4xi32>
+// CHECK:  return %[[CST]]
+}
+
+// CHECK-LABEL: @cast_identity
+func @cast_identity(%arg0 : tensor<7xf32>) -> tensor<7xf32> {
+  %0 = "tfl.cast"(%arg0) : (tensor<7xf32>) -> tensor<7xf32>
+  return %0 : tensor<7xf32>
+  // CHECK: return %arg0 : tensor<7xf32>
+}
+

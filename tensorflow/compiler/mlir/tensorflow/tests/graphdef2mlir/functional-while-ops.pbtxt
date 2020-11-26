@@ -1,4 +1,4 @@
-# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -tf-input-arrays=iter,val -tf-input-data-types=DT_INT32,DT_FLOAT -tf-input-shapes=':' -tf-output-arrays=StatefulWhile:1,StatelessWhile:1 -o - -mlir-print-debuginfo | FileCheck %s
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -tf-input-arrays=iter,val -tf-input-data-types=DT_INT32,DT_FLOAT -tf-input-shapes=':' -tf-output-arrays=StatefulWhile:1,StatelessWhile:1,WhileWithOutputShapes:1 -o - -mlir-print-debuginfo -mlir-print-local-scope | FileCheck %s
 
 # Verify that TensorFlow While and StatelessWhile ops are mapped to the
 # composite While op in MLIR with is_stateless attribute set accordingly to
@@ -6,6 +6,7 @@
 
 # CHECK-DAG: "tf.While"{{.*}} is_stateless = false{{.*}} loc("StatefulWhile")
 # CHECK-DAG: "tf.While"{{.*}} is_stateless = true{{.*}} loc("StatelessWhile")
+# CHECK-DAG: "tf.While"{{.*}} is_stateless = false{{.*}} shape_invariant{{.*}} -> (tensor<i32>, tensor<*xf32>) loc("WhileWithOutputShapes")
 
 node {
   name: "StatefulWhile"
@@ -74,6 +75,51 @@ node {
   }
 }
 node {
+  name: "WhileWithOutputShapes"
+  op: "While"
+  input: "iter"
+  input: "val"
+  attr {
+    key: "T"
+    value {
+      list {
+        type: DT_INT32
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    key: "body"
+    value {
+      func {
+        name: "body"
+      }
+    }
+  }
+  attr {
+    key: "cond"
+    value {
+      func {
+        name: "cond"
+      }
+    }
+  }
+  attr {
+    key: "output_shapes"
+    value {
+      list {
+        shape {
+        }
+        shape {
+          unknown_rank: true
+        }
+      }
+    }
+  }
+  experimental_debug_info {
+  }
+}
+node {
   name: "main"
   op: "_Retval"
   input: "StatefulWhile:1"
@@ -104,6 +150,23 @@ node {
     key: "index"
     value {
       i: 1
+    }
+  }
+}
+node {
+  name: "main2"
+  op: "_Retval"
+  input: "WhileWithOutputShapes:1"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "index"
+    value {
+      i: 2
     }
   }
 }

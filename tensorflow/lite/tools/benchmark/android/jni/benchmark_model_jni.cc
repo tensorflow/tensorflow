@@ -39,6 +39,8 @@ class AndroidBenchmarkLoggingListener : public BenchmarkListener {
                    << "Init: " << init_us << ", "
                    << "Inference: " << inference_us.avg();
     results_output << "Overall " << results.overall_mem_usage();
+    results_output << std::endl
+                   << "Inference time us:" << results.inference_time_us();
 
 #ifdef __ANDROID__
     __android_log_print(ANDROID_LOG_ERROR, "tflite", "%s",

@@ -35,9 +35,9 @@ We had several objectives for XLA to work with TensorFlow:
 ## How does XLA work?
 
 The input language to XLA is called "HLO IR", or just HLO (High Level
-Optimizer). The semantics of HLO are described on the
-[Operation Semantics](./operation_semantics.md) page. It
-is most convenient to think of HLO as a
+Operations). The semantics of HLO are described on the
+[Operation Semantics](./operation_semantics.md) page. It is most convenient to
+think of HLO as a
 [compiler IR](https://en.wikipedia.org/wiki/Intermediate_representation).
 
 XLA takes graphs ("computations") defined in HLO and compiles them into machine

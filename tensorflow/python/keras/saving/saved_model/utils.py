@@ -25,7 +25,6 @@ from tensorflow.python.eager import context
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.utils import control_flow_util
-from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.keras.utils import tf_contextlib
 from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils.generic_utils import LazyLoader
@@ -117,10 +116,11 @@ def layer_uses_training_bool(layer):
 
 def list_all_layers(obj):
   if isinstance(obj, training_lib.Model):
+    # Handle special case of Sequential, which doesn't return
+    # the `Input` layer.
     return obj.layers
   else:
-    return list(
-        layer_utils.filter_empty_layer_containers(obj._layers))  # pylint: disable=protected-access
+    return list(obj._flatten_layers(include_self=False, recursive=False))  # pylint: disable=protected-access
 
 
 def list_all_layers_and_sublayers(obj):

@@ -111,16 +111,20 @@ class TestModelCloning(keras_parameterized.TestCase):
     model = models.Sequential(_get_layers(input_shape, add_input_layer))
     # Sanity check
     self.assertEqual(
-        isinstance(model._layers[0], keras.layers.InputLayer),
-        add_input_layer)
+        isinstance(
+            list(model._flatten_layers(include_self=False, recursive=False))[0],
+            keras.layers.InputLayer), add_input_layer)
     self.assertEqual(model._is_graph_network, add_input_layer)
 
     # With placeholder creation -- clone model should have an InputLayer
     # if the original model has one.
     new_model = clone_fn(model)
     self.assertEqual(
-        isinstance(new_model._layers[0], keras.layers.InputLayer),
-        add_input_layer)
+        isinstance(
+            list(
+                new_model._flatten_layers(include_self=False,
+                                          recursive=False))[0],
+            keras.layers.InputLayer), add_input_layer)
     self.assertEqual(new_model._is_graph_network, model._is_graph_network)
     if input_shape and not ops.executing_eagerly_outside_functions():
       # update ops from batch norm needs to be included
@@ -129,7 +133,9 @@ class TestModelCloning(keras_parameterized.TestCase):
     # On top of new tensor  -- clone model should always have an InputLayer.
     input_a = keras.Input(shape=(4,))
     new_model = clone_fn(model, input_tensors=input_a)
-    self.assertIsInstance(new_model._layers[0], keras.layers.InputLayer)
+    self.assertIsInstance(
+        list(new_model._flatten_layers(include_self=False, recursive=False))[0],
+        keras.layers.InputLayer)
     self.assertTrue(new_model._is_graph_network)
 
     # On top of new, non-Keras tensor  -- clone model should always have an
@@ -139,7 +145,10 @@ class TestModelCloning(keras_parameterized.TestCase):
       # saying they should not be used with EagerTensors
       input_a = keras.backend.variable(val_a)
       new_model = clone_fn(model, input_tensors=input_a)
-      self.assertIsInstance(new_model._layers[0], keras.layers.InputLayer)
+      self.assertIsInstance(
+          list(new_model._flatten_layers(include_self=False,
+                                         recursive=False))[0],
+          keras.layers.InputLayer)
       self.assertTrue(new_model._is_graph_network)
 
   @keras_parameterized.run_all_keras_modes

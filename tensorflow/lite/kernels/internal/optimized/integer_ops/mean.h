@@ -89,8 +89,8 @@ inline void MeanImpl(const tflite::MeanParams& op_params,
         }
       }
 
-      temp_sum = optimized_ops::MultiplyByQuantizedMultiplier4Rows(
-          temp_sum, multiplier, shift);
+      temp_sum =
+          MultiplyByQuantizedMultiplier4Rows(temp_sum, multiplier, shift);
 
       temp_sum.val[0] = vaddq_s32(temp_sum.val[0], bias_dup);
       temp_sum.val[1] = vaddq_s32(temp_sum.val[1], bias_dup);

@@ -190,11 +190,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
   StridedSliceParams op_params = BuildStridedSliceParams(&op_context);
 
-#define TF_LITE_STRIDED_SLICE(kernel_type, data_type)                    \
-  kernel_type::StridedSlice(op_params, GetTensorShape(op_context.input), \
-                            GetTensorData<data_type>(op_context.input),  \
-                            GetTensorShape(op_context.output),           \
-                            GetTensorData<data_type>(op_context.output))
+#define TF_LITE_STRIDED_SLICE(kernel_type, data_type)                \
+  kernel_type::StridedSlice<data_type>(                              \
+      op_params, GetTensorShape(op_context.input), op_context.input, \
+      GetTensorShape(op_context.output), op_context.output)
 
   switch (op_context.input->type) {
     case kTfLiteFloat32:
@@ -230,6 +229,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteBool:
       if (kernel_type == kReference) {
         TF_LITE_STRIDED_SLICE(reference_ops, bool);
+      }
+      break;
+    case kTfLiteString:
+      if (kernel_type == kReference) {
+        TF_LITE_STRIDED_SLICE(reference_ops, string);
       }
       break;
     default:

@@ -572,9 +572,9 @@ TEST(DeviceNameUtilsTest, CanonicalizeDeviceName) {
   }
 }
 
-static void BM_ParseFullName(int iters) {
+static void BM_ParseFullName(::testing::benchmark::State& state) {
   DeviceNameUtils::ParsedName p;
-  while (iters--) {
+  for (auto s : state) {
     DeviceNameUtils::ParseFullName("/job:worker/replica:3/task:0/cpu:0", &p);
   }
 }

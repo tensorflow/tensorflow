@@ -39,8 +39,7 @@ from tensorflow.python.util import nest
 
 
 def remove_variants(get_next_op):
-  # TODO(b/72408568): Remove this once session.run can get
-  # variant tensors.
+  # TODO(b/72408568): Remove this once session.run can get variant tensors.
   """Remove variants from a nest structure, so sess.run will execute."""
 
   def _remove_variant(x):
@@ -61,7 +60,7 @@ class DatasetSerializationTestBase(test.TestCase):
 
   # TODO(b/72657739): Remove sparse_tensor argument, which is to test the
   # (deprecated) saveable `SparseTensorSliceDataset`, once the API
-  # `from_sparse_tensor_slices()`and related tests are deleted.
+  # `from_sparse_tensor_slices()` and related tests are deleted.
   def run_core_tests(self, ds_fn, num_outputs, sparse_tensors=False):
     """Runs the core tests.
 

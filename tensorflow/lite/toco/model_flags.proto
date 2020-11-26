@@ -18,7 +18,13 @@ package toco;
 import "tensorflow/lite/toco/types.proto";
 
 message InputArrayShape {
+  // Dimensions of the tensor.
   repeated int32 dims = 2;
+
+  // If true, the number of dimensions in the shape is unknown.
+  //
+  // If true, "dims.size()" must be 0.
+  optional bool unknown_rank = 3;
 }
 
 // Next ID to USE: 7.

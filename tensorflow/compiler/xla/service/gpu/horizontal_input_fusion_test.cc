@@ -77,8 +77,7 @@ TEST_F(HorizontalInputFusionTest, BasicTest) {
               op::Tuple(op::Reduce(), op::Reduce()));
 }
 
-// TODO(b/171227713): Re-enable once fixed.
-TEST_F(HorizontalInputFusionTest, DISABLED_ManyInputFusions) {
+TEST_F(HorizontalInputFusionTest, ManyInputFusions) {
   auto module = CreateNewVerifiedModule();
 
   HloComputation* reduce_computation;

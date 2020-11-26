@@ -169,10 +169,6 @@ REGISTER_OP("LookupTableFindV2")
       ShapeHandle handle;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &handle));
 
-      // Default value must be scalar or vector.
-      ShapeHandle keys;
-      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(2), 1, &keys));
-
       ShapeAndType value_shape_and_type;
       TF_RETURN_IF_ERROR(ValidateTableResourceHandle(
           c,

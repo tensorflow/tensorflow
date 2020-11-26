@@ -148,6 +148,116 @@ TEST_P(AutotuneSetting, AutotuneBufferSizesTest) {
             autotune);
 }
 
+class MultipleNodes : public ::testing::TestWithParam<std::tuple<bool, int64>> {
+};
+
+TEST_P(MultipleNodes, AutotuneBufferSizesTest) {
+  const bool legacy_autotune = std::get<0>(GetParam());
+  const int64 initial_buffer_size = std::get<1>(GetParam());
+
+  GrapplerItem item;
+  MutableGraphView graph(&item.graph);
+
+  NodeDef *start_val = graph_utils::AddScalarConstNode<int64>(0, &graph);
+  NodeDef *stop_val = graph_utils::AddScalarConstNode<int64>(10, &graph);
+  NodeDef *step_val = graph_utils::AddScalarConstNode<int64>(1, &graph);
+
+  std::vector<string> range_inputs(3);
+  range_inputs[0] = start_val->name();
+  range_inputs[1] = stop_val->name();
+  range_inputs[2] = step_val->name();
+  std::vector<std::pair<string, AttrValue>> range_attrs;
+  NodeDef *range_node = graph_utils::AddNode("range", "RangeDataset",
+                                             range_inputs, range_attrs, &graph);
+
+  NodeDef *parallelism_val = graph_utils::AddScalarConstNode<int64>(1, &graph);
+  std::vector<string> map_inputs1(2);
+  map_inputs1[0] = range_node->name();
+  map_inputs1[1] = parallelism_val->name();
+  std::vector<std::pair<string, AttrValue>> map_attrs(4);
+  AttrValue attr_val;
+  SetAttrValue("value", &attr_val);
+  map_attrs[0] = std::make_pair("f", attr_val);
+  map_attrs[1] = std::make_pair("Targuments", attr_val);
+  map_attrs[2] = std::make_pair("output_types", attr_val);
+  map_attrs[3] = std::make_pair("output_shapes", attr_val);
+  NodeDef *map_node1 = graph_utils::AddNode("map1", "ParallelMapDatasetV2",
+                                            map_inputs1, map_attrs, &graph);
+
+  NodeDef *buffer_size_val =
+      graph_utils::AddScalarConstNode<int64>(initial_buffer_size, &graph);
+  std::vector<string> prefetch_inputs(2);
+  prefetch_inputs[0] = map_node1->name();
+  prefetch_inputs[1] = buffer_size_val->name();
+  std::vector<std::pair<string, AttrValue>> prefetch_attrs(4);
+  AttrValue legacy_autotune_attr;
+  SetAttrValue(legacy_autotune, &legacy_autotune_attr);
+  AttrValue buffer_size_min_attr;
+  SetAttrValue(0, &buffer_size_min_attr);
+  prefetch_attrs[0] = std::make_pair("legacy_autotune", legacy_autotune_attr);
+  prefetch_attrs[1] = std::make_pair("buffer_size_min", buffer_size_min_attr);
+  prefetch_attrs[2] = std::make_pair("output_types", attr_val);
+  prefetch_attrs[3] = std::make_pair("output_shapes", attr_val);
+  NodeDef *prefetch_node = graph_utils::AddNode(
+      "prefetch", "PrefetchDataset", prefetch_inputs, prefetch_attrs, &graph);
+
+  std::vector<string> map_inputs2(2);
+  map_inputs2[0] = prefetch_node->name();
+  map_inputs2[1] = parallelism_val->name();
+  NodeDef *map_node2 = graph_utils::AddNode("map2", "ParallelMapDatasetV2",
+                                            map_inputs2, map_attrs, &graph);
+
+  std::vector<string> map_inputs3(1);
+  map_inputs3[0] = map_node2->name();
+  graph_utils::AddNode("map3", "MapDataset", map_inputs3, map_attrs, &graph);
+
+  GraphDef output;
+  TF_ASSERT_OK(OptimizeWithAutotuneBufferSizes(item, &output, true));
+
+  std::vector<int> prefetch_indices =
+      graph_utils::FindAllGraphNodesWithOp("PrefetchDataset", output);
+  EXPECT_EQ(prefetch_indices.size(), 2);
+
+  NodeDef new_map_node3 =
+      output.node(graph_utils::FindGraphNodeWithName("map3", output));
+
+  NodeDef new_prefetch_node2 = output.node(
+      graph_utils::FindGraphNodeWithName(new_map_node3.input(0), output));
+  EXPECT_EQ(new_prefetch_node2.op(), "PrefetchDataset");
+  EXPECT_EQ(new_prefetch_node2.input_size(), 2);
+  EXPECT_TRUE(new_prefetch_node2.attr().find("legacy_autotune") ==
+              new_prefetch_node2.attr().end());
+  EXPECT_TRUE(new_prefetch_node2.attr().find("buffer_size_min") ==
+              new_prefetch_node2.attr().end());
+  NodeDef new_buffer_size_val2 = output.node(
+      graph_utils::FindGraphNodeWithName(new_prefetch_node2.input(1), output));
+  EXPECT_EQ(new_buffer_size_val2.attr().at("value").tensor().int64_val(0), -1);
+
+  NodeDef new_map_node2 = output.node(
+      graph_utils::FindGraphNodeWithName(new_prefetch_node2.input(0), output));
+  EXPECT_EQ(new_map_node2.name(), "map2");
+
+  NodeDef new_prefetch_node1 = output.node(
+      graph_utils::FindGraphNodeWithName(new_map_node2.input(0), output));
+  EXPECT_EQ(new_prefetch_node1.op(), "PrefetchDataset");
+  EXPECT_EQ(new_prefetch_node1.input_size(), 2);
+  EXPECT_EQ(new_prefetch_node1.attr().at("legacy_autotune").b(),
+            legacy_autotune);
+  EXPECT_EQ(new_prefetch_node1.attr().at("buffer_size_min").i(),
+            (initial_buffer_size == -1 ? 0 : initial_buffer_size));
+  NodeDef new_buffer_size_val1 = output.node(
+      graph_utils::FindGraphNodeWithName(new_prefetch_node1.input(1), output));
+  EXPECT_EQ(new_buffer_size_val1.attr().at("value").tensor().int64_val(0), -1);
+
+  NodeDef new_map_node1 = output.node(
+      graph_utils::FindGraphNodeWithName(new_prefetch_node1.input(0), output));
+  EXPECT_EQ(new_map_node1.name(), "map1");
+}
+
+INSTANTIATE_TEST_SUITE_P(Test, MultipleNodes,
+                         ::testing::Combine(::testing::Values(true, false),
+                                            ::testing::Values(-1, 3)));
+
 INSTANTIATE_TEST_SUITE_P(Test, AutotuneSetting, ::testing::Values(false, true));
 
 }  // namespace

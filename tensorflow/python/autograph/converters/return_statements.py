@@ -41,7 +41,7 @@ class _RewriteBlock(object):
 
 
 class ConditionalReturnRewriter(converter.Base):
-  """Rewrites a a pattern where it's unobvious that all paths return a value.
+  """Rewrites a pattern where it's unobvious that all paths return a value.
 
   This rewrite allows avoiding intermediate None return values.
 
@@ -355,7 +355,7 @@ class ReturnStatementsTransformer(converter.Base):
         if block.return_used:
 
           if self.allow_missing_return:
-            # The function whould have a single `with` node that wraps the
+            # The function would have a single `with` node that wraps the
             # entire body. If the function had a docstring, the body has two
             # nodes, with the `with` as the second node.
             wrapper_node = node.body[-1]

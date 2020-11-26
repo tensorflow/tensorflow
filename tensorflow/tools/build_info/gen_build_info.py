@@ -28,6 +28,12 @@ try:
 except ImportError:
   cuda_config = None
 
+# tensorrt.tensorrt is only valid in OSS
+try:
+  from tensorrt.tensorrt import tensorrt_config  # pylint: disable=g-import-not-at-top
+except ImportError:
+  tensorrt_config = None
+
 
 def write_build_info(filename, key_value_list):
   """Writes a Python that describes the build.
@@ -42,6 +48,9 @@ def write_build_info(filename, key_value_list):
 
   if cuda_config:
     build_info.update(cuda_config.config)
+
+  if tensorrt_config:
+    build_info.update(tensorrt_config.config)
 
   for arg in key_value_list:
     key, value = six.ensure_str(arg).split("=")

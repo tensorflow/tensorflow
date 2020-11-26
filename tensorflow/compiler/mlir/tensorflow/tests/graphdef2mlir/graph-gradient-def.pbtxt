@@ -4,7 +4,7 @@
 # links the function and its gradient. In MLIR a TF ops gradient function is
 # added to its list of function attributes.
 
-# CHECK: func @foo0(
+# CHECK: func private @foo0(
 # CHECK:   tf.gradient = @foo_grad
 
 node {

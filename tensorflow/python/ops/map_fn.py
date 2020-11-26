@@ -445,7 +445,7 @@ def map_fn(fn,
         tensor_shape.dimension_value(
             elems_batchable[0].get_shape().with_rank_at_least(1)[0]))
     for tensor in elems_batchable[1:]:
-      n_static.merge_with(
+      n_static.assert_is_compatible_with(
           tensor_shape.Dimension(
               tensor_shape.dimension_value(
                   tensor.get_shape().with_rank_at_least(1)[0])))

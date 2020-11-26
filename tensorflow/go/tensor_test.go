@@ -276,6 +276,14 @@ func TestReadTensorReadAll(t *testing.T) {
 	}
 }
 
+func TestReadTensorNegativeDimention(t *testing.T) {
+	buf := new(bytes.Buffer)
+	_, err := ReadTensor(Int32, []int64{-1, 1}, buf)
+	if err == nil {
+		t.Fatal("ReadTensor should failed if shape contains negative dimention")
+	}
+}
+
 func benchmarkNewTensor(b *testing.B, v interface{}) {
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {

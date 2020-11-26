@@ -28,7 +28,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import keras_tensor
-from tensorflow.python.platform import googletest
+from tensorflow.python.platform import test
 
 
 class KerasParameterizedTest(keras_parameterized.TestCase):
@@ -600,4 +600,4 @@ class KerasParameterizedTest(keras_parameterized.TestCase):
     self.assertEqual(arg, True)
 
 if __name__ == "__main__":
-  googletest.main()
+  test.main()

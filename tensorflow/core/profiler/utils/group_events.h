@@ -126,6 +126,8 @@ class EventNode {
   bool StartsBefore(const EventNode& other) const;
 
  private:
+  XStat* FindOrAddStatByType(int64 stat_type);
+
   const XPlaneVisitor* plane_;
   XEventVisitor visitor_;
   XLine* raw_line_;

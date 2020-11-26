@@ -713,7 +713,7 @@ struct LhloLegalizeToParallelLoopsPass
     target.addIllegalOp<lmhlo::ReduceOp, lmhlo::ReduceWindowOp,
                         lmhlo::SelectAndScatterOp>();
 
-    if (failed(applyPartialConversion(func, target, patterns))) {
+    if (failed(applyPartialConversion(func, target, std::move(patterns)))) {
       signalPassFailure();
     }
   }

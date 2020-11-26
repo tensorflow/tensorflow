@@ -112,10 +112,10 @@ class ConvBackpropInputOp : public XlaOpKernel {
                     "The rank of the specified input shape must be "
                     "num_spatial_dims + 2. Expected ",
                     attrs_.num_spatial_dims + 2, " got ", input_shape.rank()));
-
-    xla::StatusOr<xla::XlaOp> in_backprop =
-        MakeXlaBackpropInputConvOp(ctx->op_kernel().type_string(), input_shape,
-                                   ctx->Input(1), ctx->Input(2), attrs_);
+    xla::XlaOp input_sizes = ctx->Input(0);
+    xla::StatusOr<xla::XlaOp> in_backprop = MakeXlaBackpropInputConvOp(
+        ctx->op_kernel().type_string(), input_shape, ctx->Input(1),
+        ctx->Input(2), attrs_, nullptr, &input_sizes);
     OP_REQUIRES_OK(ctx, in_backprop.status());
     ctx->SetOutput(0, in_backprop.ValueOrDie());
   }

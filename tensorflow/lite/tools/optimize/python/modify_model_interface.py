@@ -1,4 +1,3 @@
-# Lint as: python3
 # Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,66 +12,46 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-r"""Modify a quantized model's interface from float to integer.
-
-Example usage:
-python modify_model_interface_main.py \
-  --input_file=float_model.tflite \
-  --output_file=int_model.tflite \
-  --input_type=INT8 \
-  --output_type=INT8
-"""
+r"""Modify a quantized model's interface from float to integer."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import argparse
-import sys
+from absl import app
+from absl import flags
 
 from tensorflow.lite.tools.optimize.python import modify_model_interface_constants as mmi_constants
 from tensorflow.lite.tools.optimize.python import modify_model_interface_lib as mmi_lib
-from tensorflow.python.platform import app
+
+FLAGS = flags.FLAGS
+
+flags.DEFINE_string('input_tflite_file', None,
+                    'Full path name to the input TFLite file.')
+flags.DEFINE_string('output_tflite_file', None,
+                    'Full path name to the output TFLite file.')
+flags.DEFINE_enum('input_type', mmi_constants.DEFAULT_STR_TYPE,
+                  mmi_constants.STR_TYPES,
+                  'Modified input integer interface type.')
+flags.DEFINE_enum('output_type', mmi_constants.DEFAULT_STR_TYPE,
+                  mmi_constants.STR_TYPES,
+                  'Modified output integer interface type.')
+
+flags.mark_flag_as_required('input_tflite_file')
+flags.mark_flag_as_required('output_tflite_file')
 
 
 def main(_):
-  """Application run loop."""
-  parser = argparse.ArgumentParser(
-      description="Modify a quantized model's interface from float to integer.")
-  parser.add_argument(
-      '--input_file',
-      type=str,
-      required=True,
-      help='Full path name to the input tflite file.')
-  parser.add_argument(
-      '--output_file',
-      type=str,
-      required=True,
-      help='Full path name to the output tflite file.')
-  parser.add_argument(
-      '--input_type',
-      type=str.upper,
-      choices=mmi_constants.STR_TYPES,
-      default=mmi_constants.DEFAULT_STR_TYPE,
-      help='Modified input integer interface type.')
-  parser.add_argument(
-      '--output_type',
-      type=str.upper,
-      choices=mmi_constants.STR_TYPES,
-      default=mmi_constants.DEFAULT_STR_TYPE,
-      help='Modified output integer interface type.')
-  args = parser.parse_args()
+  input_type = mmi_constants.STR_TO_TFLITE_TYPES[FLAGS.input_type]
+  output_type = mmi_constants.STR_TO_TFLITE_TYPES[FLAGS.output_type]
 
-  input_type = mmi_constants.STR_TO_TFLITE_TYPES[args.input_type]
-  output_type = mmi_constants.STR_TO_TFLITE_TYPES[args.output_type]
-
-  mmi_lib.modify_model_interface(args.input_file, args.output_file, input_type,
-                                 output_type)
+  mmi_lib.modify_model_interface(FLAGS.input_file, FLAGS.output_file,
+                                 input_type, output_type)
 
   print('Successfully modified the model input type from FLOAT to '
         '{input_type} and output type from FLOAT to {output_type}.'.format(
-            input_type=args.input_type, output_type=args.output_type))
+            input_type=FLAGS.input_type, output_type=FLAGS.output_type))
 
 
 if __name__ == '__main__':
-  app.run(main=main, argv=sys.argv[:1])
+  app.run(main)

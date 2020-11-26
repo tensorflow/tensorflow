@@ -66,6 +66,9 @@ TfLiteStatus TfLiteTypeSizeOf(TfLiteType type, size_t* size) {
     case kTfLiteInt64:
       *size = sizeof(int64_t);
       break;
+    case kTfLiteUInt64:
+      *size = sizeof(uint64_t);
+      break;
     case kTfLiteBool:
       *size = sizeof(bool);
       break;

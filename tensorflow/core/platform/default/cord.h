@@ -16,6 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_DEFAULT_CORD_H_
 #define TENSORFLOW_CORE_PLATFORM_DEFAULT_CORD_H_
 
-// TODO(ebrevdo): Fill this in.
+#if !defined(__CUDACC__)
+
+// TODO(frankchn): Resolve compilation errors when building absl::Cord with CUDA
+#include "absl/strings/cord.h"
+#define TF_CORD_SUPPORT 1
+
+#endif  // __CUDACC__
 
 #endif  // TENSORFLOW_CORE_PLATFORM_DEFAULT_CORD_H_

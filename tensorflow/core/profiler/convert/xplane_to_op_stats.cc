@@ -170,10 +170,8 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
       if (!op_stats.has_perf_env()) {
         *op_stats.mutable_perf_env() = GetPerfEnvFromXPlane(*device_trace);
       }
-      const PerfEnv& perf_env = op_stats.perf_env();
-      OpMetricsDb device_op_metrics_db = ConvertDeviceTraceXPlaneToOpMetricsDb(
-          *device_trace, perf_env.peak_tera_flops_per_second(),
-          perf_env.peak_hbm_bw_giga_bytes_per_second());
+      OpMetricsDb device_op_metrics_db =
+          ConvertDeviceTraceXPlaneToOpMetricsDb(*device_trace);
       op_metrics_db_combiner.Combine(device_op_metrics_db);
     }
     if (options.generate_step_db) {

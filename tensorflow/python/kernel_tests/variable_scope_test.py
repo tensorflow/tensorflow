@@ -279,6 +279,21 @@ class VariableScopeTest(test.TestCase):
       self.assertFalse(ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES))
       self.assertFalse(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES))
 
+  def testEagerVariableStoreWithFunctionalLayer(self):
+    with context.eager_mode():
+      container = variable_scope.EagerVariableStore()
+      x = constant_op.constant([[2.0]])
+      with container.as_default():
+        y = core_layers.dense(x, 1, name="my_dense",
+                              kernel_initializer=init_ops.ones_initializer())
+      self.assertAllEqual(y, [[2.0]])
+      self.assertEqual(len(container.variables()), 2)
+      # Recreate the layer to test reuse.
+      with container.as_default():
+        core_layers.dense(x, 1, name="my_dense",
+                          kernel_initializer=init_ops.ones_initializer())
+      self.assertEqual(len(container.variables()), 2)
+
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
   # TypeError: Expected tf.group() expected Tensor arguments not 'None' with
   # type '<type 'NoneType'>'.

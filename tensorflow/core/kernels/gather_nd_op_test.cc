@@ -132,18 +132,22 @@ static Graph* GatherNd(int dim) {
   return g;
 }
 
-#define BM_GATHER_ND(DEVICE, INDEX)                                 \
-  static void BM_##DEVICE##_gather_nd_##INDEX(int iters, int dim) { \
-    const int64 tot = static_cast<int64>(iters) * kLookups * 4;     \
-    testing::ItemsProcessed(tot);                                   \
-    testing::BytesProcessed(tot * sizeof(float));                   \
-    testing::UseRealTime();                                         \
-    test::Benchmark(#DEVICE, GatherNd<INDEX>(dim)).Run(iters);      \
-  }                                                                 \
-  BENCHMARK(BM_##DEVICE##_gather_nd_##INDEX)                        \
-      ->Arg(10)                                                     \
-      ->Arg(100)                                                    \
-      ->Arg(1000)                                                   \
+#define BM_GATHER_ND(DEVICE, INDEX)                                          \
+  static void BM_##DEVICE##_gather_nd_##INDEX(                               \
+      ::testing::benchmark::State& state) {                                  \
+    const int dim = state.range(0);                                          \
+    test::Benchmark(#DEVICE, GatherNd<INDEX>(dim),                           \
+                    /*old_benchmark_api=*/false)                             \
+        .Run(state);                                                         \
+    const int64 tot = static_cast<int64>(state.iterations()) * kLookups * 4; \
+    state.SetItemsProcessed(tot);                                            \
+    state.SetBytesProcessed(tot * sizeof(float));                            \
+  }                                                                          \
+  BENCHMARK(BM_##DEVICE##_gather_nd_##INDEX)                                 \
+      ->UseRealTime()                                                        \
+      ->Arg(10)                                                              \
+      ->Arg(100)                                                             \
+      ->Arg(1000)                                                            \
       ->Arg(10000)
 
 BM_GATHER_ND(cpu, int32);

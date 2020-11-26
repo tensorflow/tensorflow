@@ -63,7 +63,7 @@ StatusOr<std::vector<int64>> GetParticipatingReplicas(
 
   // Use the DeviceAssignment to figure out our replica-id.
   TF_ASSIGN_OR_RETURN(int replica_id,
-                      device_assn.ReplicaIdForDeviceOrdinal(device_id.value()));
+                      device_assn.ReplicaIdForDevice(device_id));
 
   // Figure out the other replicas that go together with this one.
   absl::optional<ReplicaGroup> replica_group;

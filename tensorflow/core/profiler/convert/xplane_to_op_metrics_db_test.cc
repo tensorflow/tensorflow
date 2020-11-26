@@ -132,9 +132,7 @@ TEST(ConvertXPlaneToOpMetricsDb, DeviceOpMetricsDb) {
                        kKernel3DurationNs, /*on_device=*/true, kKernel3,
                        &device_plane, &stream2);
 
-  OpMetricsDb op_metrics = ConvertDeviceTraceXPlaneToOpMetricsDb(
-      *xplane, /*peak_tera_flops_per_second=*/0,
-      /*peak_hbm_bw_giga_bytes_per_second=*/0);
+  OpMetricsDb op_metrics = ConvertDeviceTraceXPlaneToOpMetricsDb(*xplane);
 
   // kernel1, kernel2, kernel3, Idle.
   EXPECT_EQ(4, op_metrics.metrics_db_size());

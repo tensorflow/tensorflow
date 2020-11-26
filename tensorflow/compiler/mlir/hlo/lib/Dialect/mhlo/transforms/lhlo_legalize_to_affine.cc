@@ -19,12 +19,10 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/map_lmhlo_to_scalar_op.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
-#include "mlir/IR/Attributes.h"
 #include "mlir/IR/Location.h"
-#include "mlir/IR/MLIRContext.h"
-#include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
 namespace lmhlo {
@@ -160,7 +158,7 @@ struct LhloLegalizeToAffinePass
     OwningRewritePatternList patterns;
     auto func = getFunction();
     populateLHLOToAffineConversionPattern(func.getContext(), &patterns);
-    applyPatternsAndFoldGreedily(func, patterns);
+    applyPatternsAndFoldGreedily(func, std::move(patterns));
   }
 };
 

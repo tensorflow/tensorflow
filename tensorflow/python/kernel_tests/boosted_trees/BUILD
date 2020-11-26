@@ -24,6 +24,9 @@ tf_py_test(
     name = "resource_ops_test",
     size = "small",
     srcs = ["resource_ops_test.py"],
+    tags = [
+        "no_mac",  # b/173427076
+    ],
     deps = [
         "//tensorflow/core/kernels/boosted_trees:boosted_trees_proto_py",
         "//tensorflow/python:boosted_trees_ops",
@@ -39,6 +42,9 @@ tf_py_test(
     name = "prediction_ops_test",
     size = "small",
     srcs = ["prediction_ops_test.py"],
+    tags = [
+        "no_mac",  # b/173427076
+    ],
     deps = [
         "//tensorflow/core/kernels/boosted_trees:boosted_trees_proto_py",
         "//tensorflow/python:array_ops",
@@ -69,6 +75,9 @@ tf_py_test(
     name = "training_ops_test",
     size = "small",
     srcs = ["training_ops_test.py"],
+    tags = [
+        "no_mac",  # b/173427076
+    ],
     deps = [
         "//tensorflow/core/kernels/boosted_trees:boosted_trees_proto_py",
         "//tensorflow/python:array_ops",

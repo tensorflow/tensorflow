@@ -114,8 +114,8 @@ func @div(%arg0 : tensor<2xf32>, %arg1 : tensor<2xf32>, %arg2 : tensor<2xf32>, %
   // Compute the real valued denominator as rhs * con(rhs):
   //   denominator = rhs.real * rhs.real + rhs.imag * rhs.imag
   // CHECK-DAG: [[VAL4:%.+]] = mhlo.multiply %arg2, %arg2
-  // CHECK-DAG: [[VAL5:%.+]] = mhlo.multiply %arg3, [[VAL0]]
-  // CHECK-DAG: [[VAL6:%.+]] = mhlo.subtract [[VAL4]], [[VAL5]]
+  // CHECK-DAG: [[VAL5:%.+]] = mhlo.multiply %arg3, %arg3
+  // CHECK-DAG: [[VAL6:%.+]] = mhlo.add [[VAL4]], [[VAL5]]
 
   // Compute the numerator's imaginary component:
   //   numerator.imag = lhs.imag * rhs.real - lhs.real * rhs.imag
@@ -153,8 +153,8 @@ func @div_unranked(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>, %arg2 : tensor<
   // Compute the real valued denominator as rhs * con(rhs):
   //   denominator = rhs.real * rhs.real + rhs.imag * rhs.imag
   // CHECK-DAG: [[VAL4:%.+]] = mhlo.multiply %arg2, %arg2
-  // CHECK-DAG: [[VAL5:%.+]] = mhlo.multiply %arg3, [[VAL0]]
-  // CHECK-DAG: [[VAL6:%.+]] = mhlo.subtract [[VAL4]], [[VAL5]]
+  // CHECK-DAG: [[VAL5:%.+]] = mhlo.multiply %arg3, %arg3
+  // CHECK-DAG: [[VAL6:%.+]] = mhlo.add [[VAL4]], [[VAL5]]
 
   // Compute the numerator's imaginary component:
   //   numerator.imag = lhs.imag * rhs.real - lhs.real * rhs.imag
@@ -165,6 +165,7 @@ func @div_unranked(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>, %arg2 : tensor<
   // Divide the numerator by the real valued denominator.
   // CHECK-DAG: [[VAL10:%.+]] = mhlo.divide [[VAL3]], [[VAL6]]
   // CHECK-DAG: [[VAL11:%.+]] = mhlo.divide [[VAL9]], [[VAL6]]
+
   %4 = "mhlo.divide"(%2, %3) : (tensor<*xcomplex<f32>>, tensor<*xcomplex<f32>>) -> (tensor<*xcomplex<f32>>)
 
   %5 = "mhlo.real"(%4) : (tensor<*xcomplex<f32>>) -> (tensor<*xf32>)
@@ -192,32 +193,48 @@ func @abs(%arg0 : tensor<2xf32>, %arg1 : tensor<2xf32>) -> (tensor<2xf32>) {
 func @exp(%arg0 : tensor<2xf32>, %arg1 : tensor<2xf32>) -> (tensor<2xf32>, tensor<2xf32>) {
   %0 = "mhlo.complex"(%arg0, %arg1) : (tensor<2xf32>, tensor<2xf32>) -> (tensor<2xcomplex<f32>>)
 
-  // CHECK-DAG: [[VAL0:%.+]] = "mhlo.exponential"(%arg0)
-  // CHECK-DAG: [[VAL1:%.+]] = "mhlo.cosine"(%arg1)
-  // CHECK-DAG: [[VAL2:%.+]] = "mhlo.sine"(%arg1)
-  // CHECK-DAG: [[VAL3:%.+]] = mhlo.multiply [[VAL0]], [[VAL1]]
-  // CHECK-DAG: [[VAL4:%.+]] = mhlo.multiply [[VAL0]], [[VAL2]]
+  // CHECK-DAG: [[EXP:%.+]] = "mhlo.exponential"(%arg0)
+  // CHECK-DAG: [[COS:%.+]] = "mhlo.cosine"(%arg1)
+  // CHECK-DAG: [[SIN:%.+]] = "mhlo.sine"(%arg1)
+  // CHECK-DAG: [[OUTR:%.+]] = mhlo.multiply [[COS]], [[EXP]]
+  // CHECK-DAG: [[OUTI:%.+]] = mhlo.multiply [[SIN]], [[EXP]]
   %1 = "mhlo.exponential"(%0) : (tensor<2xcomplex<f32>>) -> (tensor<2xcomplex<f32>>)
+
   %2 = "mhlo.real"(%1) : (tensor<2xcomplex<f32>>) -> (tensor<2xf32>)
   %3 = "mhlo.imag"(%1) : (tensor<2xcomplex<f32>>) -> (tensor<2xf32>)
 
-  // CHECK: return [[VAL3]], [[VAL4]]
+  // CHECK: [[OUTR]], [[OUTI]]
   return %2, %3 : tensor<2xf32>, tensor<2xf32>
 }
 
+// CHECK-LABEL: @exp_complex
+func @exp_complex(%arg0 : tensor<2xcomplex<f32>>) -> (tensor<2xcomplex<f32>>) {
+  // CHECK-DAG: [[REAL:%.+]] = "mhlo.real"(%arg0)
+  // CHECK-DAG: [[IMAG:%.+]] = "mhlo.imag"(%arg0)
+  // CHECK-DAG: [[EXP:%.+]] = "mhlo.exponential"([[REAL]])
+  // CHECK-DAG: [[COS:%.+]] = "mhlo.cosine"([[IMAG]])
+  // CHECK-DAG: [[SIN:%.+]] = "mhlo.sine"([[IMAG]])
+  // CHECK-DAG: [[OUTR:%.+]] = mhlo.multiply [[COS]], [[EXP]]
+  // CHECK-DAG: [[OUTI:%.+]] = mhlo.multiply [[SIN]], [[EXP]]
+  // CHECK-DAG: [[OUT:%.+]] = "mhlo.complex"([[OUTR]], [[OUTI]])
+  %0 = "mhlo.exponential"(%arg0) : (tensor<2xcomplex<f32>>) -> (tensor<2xcomplex<f32>>)
+
+  // CHECK: [[OUT]]
+  return %0 : tensor<2xcomplex<f32>>
+}
+
 // CHECK-LABEL: @exp_unranked
-func @exp_unranked(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> (tensor<*xf32>, tensor<*xf32>) {
-  %0 = "mhlo.complex"(%arg0, %arg1) : (tensor<*xf32>, tensor<*xf32>) -> (tensor<*xcomplex<f32>>)
+func @exp_unranked(%arg0 : tensor<*xcomplex<f32>>) -> (tensor<*xcomplex<f32>>) {
+  // CHECK-DAG: [[REAL:%.+]] = "mhlo.real"(%arg0)
+  // CHECK-DAG: [[IMAG:%.+]] = "mhlo.imag"(%arg0)
+  // CHECK-DAG: [[EXP:%.+]] = "mhlo.exponential"([[REAL]])
+  // CHECK-DAG: [[COS:%.+]] = "mhlo.cosine"([[IMAG]])
+  // CHECK-DAG: [[SIN:%.+]] = "mhlo.sine"([[IMAG]])
+  // CHECK-DAG: [[OUTR:%.+]] = mhlo.multiply [[COS]], [[EXP]]
+  // CHECK-DAG: [[OUTI:%.+]] = mhlo.multiply [[SIN]], [[EXP]]
+  // CHECK-DAG: [[OUT:%.+]] = "mhlo.complex"([[OUTR]], [[OUTI]])
+  %0 = "mhlo.exponential"(%arg0) : (tensor<*xcomplex<f32>>) -> (tensor<*xcomplex<f32>>)
 
-  // CHECK-DAG: [[VAL0:%.+]] = "mhlo.exponential"(%arg0)
-  // CHECK-DAG: [[VAL1:%.+]] = "mhlo.cosine"(%arg1)
-  // CHECK-DAG: [[VAL2:%.+]] = "mhlo.sine"(%arg1)
-  // CHECK-DAG: [[VAL3:%.+]] = mhlo.multiply [[VAL0]], [[VAL1]]
-  // CHECK-DAG: [[VAL4:%.+]] = mhlo.multiply [[VAL0]], [[VAL2]]
-  %1 = "mhlo.exponential"(%0) : (tensor<*xcomplex<f32>>) -> (tensor<*xcomplex<f32>>)
-  %2 = "mhlo.real"(%1) : (tensor<*xcomplex<f32>>) -> (tensor<*xf32>)
-  %3 = "mhlo.imag"(%1) : (tensor<*xcomplex<f32>>) -> (tensor<*xf32>)
-
-  // CHECK: return [[VAL3]], [[VAL4]]
-  return %2, %3 : tensor<*xf32>, tensor<*xf32>
+  // CHECK: [[OUT]]
+  return %0 : tensor<*xcomplex<f32>>
 }

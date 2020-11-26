@@ -98,22 +98,27 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
   ]
   ONES = [np.ones([34000, 2])]
 
+  @test_util.disable_mlir_bridge('TODO(b/172473885)')
   def testReduceSumF32(self, index_dtype):
     self._testReduction(math_ops.reduce_sum, np.sum, np.float32, self.REAL_DATA,
                         index_dtype)
 
+  @test_util.disable_mlir_bridge('TODO(b/172473885)')
   def testReduceSumC64(self, index_dtype):
     self._testReduction(math_ops.reduce_sum, np.sum, np.complex64,
                         self.COMPLEX_DATA, index_dtype)
 
+  @test_util.disable_mlir_bridge('TODO(b/172473885)')
   def testReduceProdF32(self, index_dtype):
     self._testReduction(math_ops.reduce_prod, np.prod, np.float32,
                         self.REAL_DATA, index_dtype)
 
+  @test_util.disable_mlir_bridge('TODO(b/172473885)')
   def testReduceProdC64(self, index_dtype):
     self._testReduction(math_ops.reduce_prod, np.prod, np.complex64,
                         self.COMPLEX_DATA, index_dtype)
 
+  @test_util.disable_mlir_bridge('TODO(b/172473885)')
   def testReduceMin(self, index_dtype):
 
     def reference_min(dtype, inp, axis):
@@ -131,6 +136,7 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
                           functools.partial(reference_min, dtype), dtype,
                           self.REAL_DATA, index_dtype)
 
+  @test_util.disable_mlir_bridge('TODO(b/172473885)')
   def testReduceMax(self, index_dtype):
 
     def reference_max(dtype, inp, axis):
@@ -149,6 +155,7 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
                           functools.partial(reference_max, dtype), dtype,
                           self.REAL_DATA, index_dtype)
 
+  @test_util.disable_mlir_bridge('TODO(b/172473885)')
   def testReduceMeanF32(self, index_dtype):
     # TODO(phawkins): mean on XLA currently returns 0 instead of NaN when
     # reducing across zero inputs.
@@ -164,10 +171,12 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
     self._testReduction(math_ops.reduce_mean, np.mean, np.complex64,
                         self.NONEMPTY_COMPLEX_DATA, index_dtype)
 
+  @test_util.disable_mlir_bridge('TODO(b/172473885)')
   def testReduceAll(self, index_dtype):
     self._testReduction(math_ops.reduce_all, np.all, np.bool, self.BOOL_DATA,
                         index_dtype)
 
+  @test_util.disable_mlir_bridge('TODO(b/172473885)')
   def testReduceAny(self, index_dtype):
     self._testReduction(math_ops.reduce_any, np.any, np.bool, self.BOOL_DATA,
                         index_dtype)

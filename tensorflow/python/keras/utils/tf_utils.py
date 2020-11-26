@@ -32,13 +32,13 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine import keras_tensor
+from tensorflow.python.keras.utils import object_identity
 from tensorflow.python.keras.utils import tf_contextlib
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.util import nest
-from tensorflow.python.util import object_identity
 
 
 def is_tensor_or_tensor_list(v):
@@ -127,9 +127,9 @@ def map_structure_with_atomic(is_atomic_fn, map_fn, nested):
   if not nest.is_nested(nested):
     raise ValueError(
         'Received non-atomic and non-sequence element: {}'.format(nested))
-  if nest._is_mapping(nested):
-    values = [nested[k] for k in nest._sorted(nested)]
-  elif nest._is_attrs(nested):
+  if nest.is_mapping(nested):
+    values = [nested[k] for k in sorted(nested.keys())]
+  elif nest.is_attrs(nested):
     values = _astuple(nested)
   else:
     values = nested

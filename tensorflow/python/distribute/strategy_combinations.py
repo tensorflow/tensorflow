@@ -26,6 +26,7 @@ from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import mirrored_strategy as mirrored_lib
 from tensorflow.python.distribute import multi_process_runner
+from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import one_device_strategy as one_device_lib
 from tensorflow.python.distribute import test_util
 from tensorflow.python.distribute import tpu_strategy as tpu_lib
@@ -40,6 +41,7 @@ from tensorflow.python.util.tf_export import tf_export
 _TF_INTERNAL_API_PREFIX = "__internal__.distribute.combinations."
 
 _did_connect_to_cluster = False
+_topology = None
 CollectiveAllReduceExtended = (
     collective_all_reduce_strategy.CollectiveAllReduceExtended)
 
@@ -75,6 +77,7 @@ def _get_tpu_strategy_creator(steps_per_run,
   def _create_tpu_strategy():
     FLAGS = flags.FLAGS  # pylint: disable=invalid-name
     global _did_connect_to_cluster
+    global _topology
 
     try:
       # Attempt to locally discover the TPU. This will fail for Cloud TPU, in
@@ -92,16 +95,16 @@ def _get_tpu_strategy_creator(steps_per_run,
       )
 
     # Only connect once per process, rather than per test method.
-    if getattr(FLAGS, "tpu", "") or did_automatically_resolve:
-      if not _did_connect_to_cluster:
+    if not _did_connect_to_cluster:
+      if getattr(FLAGS, "tpu", "") or did_automatically_resolve:
         remote.connect_to_cluster(resolver)
         _did_connect_to_cluster = True
+      _topology = tpu_strategy_util.initialize_tpu_system(resolver)
 
-    topology = tpu_strategy_util.initialize_tpu_system(resolver)
     device_assignment = None
     if use_single_core:
       device_assignment = device_assignment_lib.DeviceAssignment(
-          topology,
+          _topology,
           core_assignment=device_assignment_lib.SINGLE_CORE_ASSIGNMENT)
 
     # Steps per run is only supported in TF 1.x
@@ -156,6 +159,50 @@ def _get_multi_worker_mirrored_creator(required_gpus):
     return strategy
 
   return _create_multi_worker_mirrored
+
+
+def _deferred_pool_runner(has_chief, num_workers, initializer=None):
+  """Returns a callable that returns the pool runner.
+
+  It creates the pool runner only upon first invocation. This avoids creating it
+  when this file is imported.
+
+  Args:
+    has_chief: whether there should be a chief.
+    num_workers: the number of workers excluding the chief.
+    initializer: initializer of each process.
+
+  Returns:
+    A callable that returns the runner.
+  """
+
+  container = []
+
+  def get_or_create():
+    if not container:
+      cluster_spec = multi_worker_test_base.create_cluster_spec(
+          has_chief=has_chief,
+          num_workers=num_workers,
+          num_ps=0,
+          has_eval=False)
+      runner = multi_process_runner.MultiProcessPoolRunner(
+          cluster_spec, initializer=initializer)
+      container.append(runner)
+    return container[0]
+
+  return get_or_create
+
+
+# We need to create the strategy in the initializer to start the server before
+# any test runs.
+_two_worker_pool = _deferred_pool_runner(
+    has_chief=True,
+    num_workers=1,
+    initializer=_get_multi_worker_mirrored_creator(required_gpus=0))
+_four_worker_pool = _deferred_pool_runner(
+    has_chief=True,
+    num_workers=3,
+    initializer=_get_multi_worker_mirrored_creator(required_gpus=0))
 
 
 # pylint: disable=g-long-lambda
@@ -230,7 +277,7 @@ multi_worker_mirrored_2x1_cpu = combinations.NamedDistribution(
     _get_multi_worker_mirrored_creator(required_gpus=0),
     has_chief=True,
     num_workers=1,
-    use_pool_runner=True,
+    pool_runner_fn=_two_worker_pool,
     no_xla=True,
 )
 # chief + 1 worker, with 1 GPU each.
@@ -240,7 +287,7 @@ multi_worker_mirrored_2x1_gpu = combinations.NamedDistribution(
     has_chief=True,
     num_workers=1,
     required_gpus=1,
-    use_pool_runner=True,
+    pool_runner_fn=_two_worker_pool,
     no_xla=True,
 )
 # chief + 1 worker, with 2 GPU each.
@@ -250,7 +297,7 @@ multi_worker_mirrored_2x2_gpu = combinations.NamedDistribution(
     has_chief=True,
     num_workers=1,
     required_gpus=2,
-    use_pool_runner=True,
+    pool_runner_fn=_two_worker_pool,
     no_xla=True,
 )
 # chief + 3 workers, with CPU.
@@ -259,7 +306,7 @@ multi_worker_mirrored_4x1_cpu = combinations.NamedDistribution(
     _get_multi_worker_mirrored_creator(required_gpus=0),
     has_chief=True,
     num_workers=3,
-    use_pool_runner=True,
+    pool_runner_fn=_four_worker_pool,
     no_xla=True,
 )
 

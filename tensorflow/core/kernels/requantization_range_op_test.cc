@@ -67,56 +67,29 @@ TEST_F(RequantizationRangeTest, HandCrafted) {
   test::ExpectTensorEqual<float>(expected_max, *GetOutput(1));
 }
 
-static void BM_RequantizationRange(int iters, int size) {
-  testing::StopTiming();
-  testing::UseRealTime();
-  testing::ItemsProcessed(static_cast<int64>(iters) * size);
-  testing::ItemsProcessed(static_cast<int64>(iters) * size * 4);
+static void BM_RequantizationRange(::testing::benchmark::State& state) {
+  const int size = state.range(0);
 
   Tensor quantized_tensor(DT_QINT32, TensorShape({1, size}));
   test::FillFn<qint32>(&quantized_tensor, [](int n) { return qint32(n); });
 
   qint32 actual_min;
   qint32 actual_max;
-  testing::StartTiming();
-  for (int iter = 0; iter < iters; ++iter) {
+  for (auto s : state) {
     CalculateUsedRange(quantized_tensor, &actual_min, &actual_max);
   }
+  state.SetItemsProcessed(static_cast<int64>(state.iterations()) * size);
+  state.SetBytesProcessed(static_cast<int64>(state.iterations()) * size * 4);
 }
 
-static void BM_RequantizationRange100(int iters) {
-  BM_RequantizationRange(100, iters);
-}
-BENCHMARK(BM_RequantizationRange100);
-
-static void BM_RequantizationRange1000(int iters) {
-  BM_RequantizationRange(1000, iters);
-}
-BENCHMARK(BM_RequantizationRange1000);
-
-static void BM_RequantizationRange10000(int iters) {
-  BM_RequantizationRange(10000, iters);
-}
-BENCHMARK(BM_RequantizationRange10000);
-
-static void BM_RequantizationRange100000(int iters) {
-  BM_RequantizationRange(100000, iters);
-}
-BENCHMARK(BM_RequantizationRange100000);
-
-static void BM_RequantizationRange1000000(int iters) {
-  BM_RequantizationRange(1000000, iters);
-}
-BENCHMARK(BM_RequantizationRange1000000);
-
-static void BM_RequantizationRange10000000(int iters) {
-  BM_RequantizationRange(10000000, iters);
-}
-BENCHMARK(BM_RequantizationRange10000000);
-
-static void BM_RequantizationRange100000000(int iters) {
-  BM_RequantizationRange(100000000, iters);
-}
-BENCHMARK(BM_RequantizationRange100000000);
+BENCHMARK(BM_RequantizationRange)
+    ->UseRealTime()
+    ->Arg(100)
+    ->Arg(1000)
+    ->Arg(10000)
+    ->Arg(100000)
+    ->Arg(1000000)
+    ->Arg(10000000)
+    ->Arg(100000000);
 
 }  // end namespace tensorflow

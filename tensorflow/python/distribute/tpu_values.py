@@ -204,7 +204,7 @@ class TPUDistributedVariable(TPUVariableMixin, values.DistributedVariable):
   """DistributedVariable subclass for TPUStrategy."""
 
   def _is_mirrored(self):
-    self._policy._is_mirrored()  # pylint: disable=protected-access
+    return self._policy._is_mirrored()  # pylint: disable=protected-access
 
   def assign_sub(self, value, use_locking=False, name=None, read_value=True):
     if values_util.is_saving_non_distributed():

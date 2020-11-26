@@ -85,7 +85,7 @@ void InitTextFileToImportTestPass::runOnOperation() {
 
   // Run the lowering pass.
   PassManager pm(context);
-  pm.addPass(CreateInitTextFileToImportPass());
+  pm.addNestedPass<FuncOp>(CreateInitTextFileToImportPass());
   if (failed(pm.run(module))) return signalPassFailure();
 }
 

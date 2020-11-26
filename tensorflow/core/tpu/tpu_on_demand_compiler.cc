@@ -88,7 +88,7 @@ class TpuExecutable : public TpuExecutableInterface {
  public:
   TpuExecutable(SE_Executable* se_executable,
                 std::shared_ptr<HloModule> hlo_module)
-      : TpuExecutableInterface(std::move(hlo_module), nullptr, nullptr),
+      : TpuExecutableInterface(std::move(hlo_module)),
         se_executable_(se_executable) {}
 
   ~TpuExecutable() override {

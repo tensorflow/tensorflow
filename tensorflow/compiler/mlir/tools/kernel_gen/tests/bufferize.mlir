@@ -11,20 +11,12 @@ func @extract_element(%arg : tensor<?xf32>) -> f32 {
   return %result : f32
 }
 
-// CHECK-LABEL: @tensor_load
-// CHECK-SAME: (%[[ARG:.*]]: memref<?xf32>) -> memref<?xf32>
-func @tensor_load(%arg : memref<?xf32>) -> tensor<?xf32> {
-  // CHECK: return %[[ARG]] : memref<?xf32>
-  %result = tensor_load %arg : memref<?xf32>
-  return %result : tensor<?xf32>
-}
-
 // CHECK-LABEL: @tensor_from_elements
 // CHECK-SAME: (%[[A:.*]]: f32) -> memref<3xf32>
 func @tensor_from_elements(%a : f32) -> tensor<3xf32> {
   // CHECK: %[[B:.*]] = constant 1.2
   // CHECK: %[[C:.*]] = constant 2.3
-  // CHECK: %[[MEM:.*]] = alloca() : memref<3xf32>
+  // CHECK: %[[MEM:.*]] = alloc() : memref<3xf32>
   // CHECK: %[[C0:.*]] = constant 0 : index
   // CHECK: store %[[A]], %[[MEM]][%[[C0]]] : memref<3xf32>
   // CHECK: %[[C1:.*]] = constant 1 : index
@@ -75,4 +67,38 @@ func @assuming(%witness: !shape.witness, %arg : memref<?xf32>)
     shape.assuming_yield %result : tensor<?xf32>
   }
   return %assuming_result : tensor<?xf32>
+}
+
+// CHECK-LABEL: @const
+// CHECK-SAME: -> memref<3xf32>
+func @const() -> tensor<3xf32> {
+  // CHECK: %[[MEM:.*]] = alloca() : memref<3xf32>
+  // CHECK: %[[C4:.*]] = constant 4.000000e+00 : f32
+  // CHECK: %[[C0:.*]] = constant 0 : index
+  // CHECK: store %[[C4]], %[[MEM]][%[[C0]]] : memref<3xf32>
+  // CHECK: %[[C5:.*]] = constant 5.000000e+00 : f32
+  // CHECK: %[[C1:.*]] = constant 1 : index
+  // CHECK: store %[[C5]], %[[MEM]][%[[C1]]] : memref<3xf32>
+  // CHECK: %[[C6:.*]] = constant 6.000000e+00 : f32
+  // CHECK: %[[C2:.*]] = constant 2 : index
+  // CHECK: store %[[C6]], %[[MEM]][%[[C2]]] : memref<3xf32>
+  // CHECK-NEXT: return %[[MEM]] : memref<3xf32>
+  %result = constant dense<[4.0, 5.0, 6.0]> : tensor<3xf32>
+  return %result : tensor<3xf32>
+}
+
+// CHECK-LABEL: @const_splat
+// CHECK-SAME: -> memref<3xf32>
+func @const_splat() -> tensor<3xf32> {
+  // CHECK: %[[MEM:.*]] = alloca() : memref<3xf32>
+  // CHECK: %[[C4:.*]] = constant 4.000000e+00 : f32
+  // CHECK: %[[C0:.*]] = constant 0 : index
+  // CHECK: store %[[C4]], %[[MEM]][%[[C0]]] : memref<3xf32>
+  // CHECK: %[[C1:.*]] = constant 1 : index
+  // CHECK: store %[[C4]], %[[MEM]][%[[C1]]] : memref<3xf32>
+  // CHECK: %[[C2:.*]] = constant 2 : index
+  // CHECK: store %[[C4]], %[[MEM]][%[[C2]]] : memref<3xf32>
+  // CHECK-NEXT: return %[[MEM]] : memref<3xf32>
+  %result = constant dense<4.0> : tensor<3xf32>
+  return %result : tensor<3xf32>
 }

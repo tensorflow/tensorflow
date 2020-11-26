@@ -126,26 +126,22 @@ class SaveOptions(object):
         by a single tf.function you can use the `function_aliases` argument to
         store a map from the alias name to all concrete function names.
         E.g.
-        ```python
-        class MyModel:
-        @tf.function
-        def func():
-          ...
 
-        @tf.function
-        def serve():
-          ...
-          func()
+        >>> class Adder(tf.Module):
+        ...   @tf.function
+        ...   def double(self, x):
+        ...     return x + x
 
-        model = MyModel()
-        signatures = {
-            'serving_default': model.serve.get_concrete_function(),
-        }
-        options = tf.saved_model.SaveOptions(function_aliases={
-            'my_func': func,
-        })
-        tf.saved_model.save(model, export_dir, signatures, options)
-        ```
+        >>> model = Adder()
+        >>> model.double.get_concrete_function(
+        ...   tf.TensorSpec(shape=[], dtype=tf.float32, name="float_input"))
+        >>> model.double.get_concrete_function(
+        ...   tf.TensorSpec(shape=[], dtype=tf.string, name="string_input"))
+
+        >>> options = tf.saved_model.SaveOptions(
+        ...   function_aliases={'double': model.double})
+        >>> tf.saved_model.save(model, '/tmp/adder', options=options)
+
       experimental_io_device: string. Applies in a distributed setting.
         Tensorflow device to use to access the filesystem. If `None` (default)
         then for each variable the filesystem is accessed from the CPU:0 device

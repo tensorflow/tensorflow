@@ -281,6 +281,7 @@ TokKind HloLexer::LexIdentifier() {
   KEYWORD(ROOT);
   KEYWORD(maximal);
   KEYWORD(replicated);
+  KEYWORD(manual);
   KEYWORD(last_tile_dim_replicate);
 
 #undef KEYWORD
@@ -502,6 +503,8 @@ string TokKindToString(TokKind kind) {
       return "kw_maximal";
     case TokKind::kw_replicated:
       return "kw_replicated";
+    case TokKind::kw_manual:
+      return "kw_manual";
     case TokKind::kw_last_tile_dim_replicate:
       return "kw_last_tile_dim_replicate";
     case TokKind::kw_nan:

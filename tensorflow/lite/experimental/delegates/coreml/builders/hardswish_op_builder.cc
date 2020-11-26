@@ -23,10 +23,9 @@ limitations under the License.
 namespace tflite {
 namespace delegates {
 namespace coreml {
-const char* HardSwishOpBuilder::DebugName() {
-  if (!str_debug_name_[0])
-    GetDebugName("HardSwishOpBuilder", node_id_, str_debug_name_);
-  return str_debug_name_;
+const std::string& HardSwishOpBuilder::DebugName() {
+  if (debug_name_.empty()) SetDebugName("HardSwishOpBuilder", node_id_);
+  return debug_name_;
 }
 
 CoreML::Specification::NeuralNetworkLayer* HardSwishOpBuilder::Build() {

@@ -132,7 +132,8 @@ Status XlaCompileOnDemandOp::Compile(
       ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr,
       platform_info_,
       /*has_ref_vars=*/true, &tf_allocator_adapter);
-
+  // No detailed logging from on demand op.
+  options.detailed_logging = false;
   XlaCompiler::CompileOptions compile_options;
   compile_options.is_entry_computation = true;
   // Optimization: where possible, have the computation return a naked array
@@ -152,7 +153,8 @@ Status XlaCompileOnDemandOp::Compile(
         ctx, variables_indices, variable_infos, variable_args));
 
     args = XlaComputationLaunchContext::BuildXlaCompilerArguments(
-        constant_input_indices, inputs, variable_infos);
+        constant_input_indices, inputs, variable_infos,
+        static_cast<Device*>(ctx->device()));
     TF_RETURN_IF_ERROR(args.status());
   }
 

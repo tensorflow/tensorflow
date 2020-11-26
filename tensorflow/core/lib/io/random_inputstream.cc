@@ -49,7 +49,7 @@ Status RandomAccessInputStream::ReadNBytes(int64 bytes_to_read,
   return s;
 }
 
-#if defined(PLATFORM_GOOGLE)
+#if defined(TF_CORD_SUPPORT)
 Status RandomAccessInputStream::ReadNBytes(int64 bytes_to_read,
                                            absl::Cord* result) {
   if (bytes_to_read < 0) {

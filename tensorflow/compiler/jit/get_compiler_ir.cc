@@ -115,7 +115,7 @@ xla::StatusOr<std::string> GetCompilerIr(
 
   xla::StatusOr<std::vector<XlaCompiler::Argument>> args =
       XlaComputationLaunchContext::BuildXlaCompilerArguments(
-          constant_arg_indices, inputs, variable_infos);
+          constant_arg_indices, inputs, variable_infos, dev);
   TF_RETURN_IF_ERROR(args.status());
 
   switch (stage) {

@@ -121,11 +121,8 @@ static Graph* Activation(const string& op_name, const string& kind,
   BM(OP, 32, 64, 128, 256, cpu); \
   BM(OP, 33, 65, 129, 257, cpu);
 
-#ifdef ENABLE_MKLDNN_V1
-// Optimized MKLDNN TanhGrad support exists in DNNL1.x only.
 TEST_ALL_SIZES(Tanh)
 TEST_ALL_SIZES(TanhGrad)
-#endif  // ENABLE_MKLDNN_V1
 TEST_ALL_SIZES(Relu)
 TEST_ALL_SIZES(ReluGrad)
 TEST_ALL_SIZES(Elu)

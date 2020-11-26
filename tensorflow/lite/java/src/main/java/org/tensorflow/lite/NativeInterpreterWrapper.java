@@ -83,9 +83,17 @@ final class NativeInterpreterWrapper implements AutoCloseable {
       allowBufferHandleOutput(interpreterHandle, options.allowBufferHandleOutput.booleanValue());
     }
     applyDelegates(options);
+
+    // Simply use "-1" to represent the default mode.
+    int applyXNNPACKMode = -1;
     if (options.useXNNPACK != null) {
-      useXNNPACK(
-          interpreterHandle, errorHandle, options.useXNNPACK.booleanValue(), options.numThreads);
+      applyXNNPACKMode = options.useXNNPACK.booleanValue() ? 1 : 0;
+    }
+
+    // TODO(b/171856982): uncomment the following when applying XNNPACK delegate by default is
+    // enabled for C++ TfLite library on Android platform.
+    if (applyXNNPACKMode == 1 /*|| applyXNNPACKMode == -1*/) {
+      useXNNPACK(interpreterHandle, errorHandle, applyXNNPACKMode, options.numThreads);
     }
     allocateTensors(interpreterHandle, errorHandle);
     this.isMemoryAllocated = true;
@@ -459,7 +467,7 @@ final class NativeInterpreterWrapper implements AutoCloseable {
   private static native void allowBufferHandleOutput(long interpreterHandle, boolean allow);
 
   private static native void useXNNPACK(
-      long interpreterHandle, long errorHandle, boolean state, int numThreads);
+      long interpreterHandle, long errorHandle, int state, int numThreads);
 
   private static native long createErrorReporter(int size);
 

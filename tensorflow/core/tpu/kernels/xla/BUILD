@@ -16,7 +16,6 @@ cc_library(
         "inplace_ops.cc",
         "outfeed_ops.cc",
         "segment_reduction_ops.cc",
-        "where_op.cc",
     ],
     visibility = ["//visibility:public"],
     deps = [

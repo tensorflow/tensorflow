@@ -90,12 +90,14 @@ class HloPassPipeline : public HloPassInterface {
       const DebugOptions& debug_options);
 
   // Maybe dumps the given module or module group depending on flag values
-  // contained in DebugOptions of module config.
-  void MaybeDumpHlo(const HloModuleGroup& module_group,
-                    absl::string_view after_pass_name,
-                    absl::string_view before_pass_name);
-  void MaybeDumpHlo(const HloModule& module, absl::string_view after_pass_name,
-                    absl::string_view before_pass_name);
+  // contained in DebugOptions of module config. If it is dumped, saves the
+  // filenames of the dumps into module metadata.
+  void MaybeDumpHloAndSaveFilenames(HloModuleGroup& module_group,
+                                    absl::string_view after_pass_name,
+                                    absl::string_view before_pass_name);
+  void MaybeDumpHloAndSaveFilenames(HloModule& module,
+                                    absl::string_view after_pass_name,
+                                    absl::string_view before_pass_name);
 
   // Runs the invariant checker on the given HLO. HloT can be either HloModule
   // or HloModuleGroup.

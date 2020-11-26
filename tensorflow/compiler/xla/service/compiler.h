@@ -135,7 +135,7 @@ class AotCompilationMetadata {
  public:
   AotCompilationMetadata(const AotCompilationMetadata&) = delete;
   AotCompilationMetadata& operator=(AotCompilationMetadata const&) = delete;
-
+  virtual std::string ToString() const { return ""; }
   virtual ~AotCompilationMetadata() = default;
 
  protected:

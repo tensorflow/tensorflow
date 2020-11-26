@@ -32,11 +32,14 @@ namespace crc32c {
 // crc32c of a stream of data.
 extern uint32 Extend(uint32 init_crc, const char* data, size_t n);
 
+#if defined(TF_CORD_SUPPORT)
+extern uint32 Extend(uint32 init_crc, const absl::Cord& cord);
+#endif
+
 // Return the crc32c of data[0,n-1]
 inline uint32 Value(const char* data, size_t n) { return Extend(0, data, n); }
 
-#if defined(PLATFORM_GOOGLE)
-extern uint32 Extend(uint32 init_crc, const absl::Cord& cord);
+#if defined(TF_CORD_SUPPORT)
 inline uint32 Value(const absl::Cord& cord) { return Extend(0, cord); }
 #endif
 

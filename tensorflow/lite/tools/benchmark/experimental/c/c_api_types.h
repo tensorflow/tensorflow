@@ -80,7 +80,7 @@ struct TfLiteRegistration;
 
 // An external context is a collection of information unrelated to the TF Lite
 // framework, but useful to a subset of the ops. TF Lite knows very little
-// about about the actual contexts, but it keeps a list of them, and is able to
+// about the actual contexts, but it keeps a list of them, and is able to
 // refresh them if configurations like the number of recommended threads
 // change.
 typedef struct TfLiteExternalContext {
@@ -300,6 +300,7 @@ typedef enum {
   kTfLiteFloat16 = 10,
   kTfLiteFloat64 = 11,
   kTfLiteComplex128 = 12,
+  kTfLiteUInt64 = 13,
 } TfLiteType;
 
 // Return the name of a given type, for error reporting purposes.
@@ -354,6 +355,7 @@ typedef union TfLitePtrUnion {
    * members are deprecated. */
   int32_t* i32;
   int64_t* i64;
+  uint64_t* u64;
   float* f;
   TfLiteFloat16* f16;
   double* f64;

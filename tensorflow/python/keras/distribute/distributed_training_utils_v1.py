@@ -42,11 +42,11 @@ from tensorflow.python.keras.engine import training_utils_v1
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.utils import tf_contextlib
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.ops.ragged import ragged_concat_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
@@ -1154,5 +1154,5 @@ def concat_along_batch_dimension(outputs):
   if isinstance(outputs[0], sparse_tensor.SparseTensor):
     return sparse_ops.sparse_concat_v2(axis=0, sp_inputs=outputs)
   if isinstance(outputs[0], ragged_tensor.RaggedTensor):
-    return ragged_concat_ops.concat(outputs, axis=0)
+    return array_ops.concat(outputs, axis=0)
   return np.concatenate(outputs)

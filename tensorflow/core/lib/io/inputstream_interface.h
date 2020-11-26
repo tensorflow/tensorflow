@@ -37,7 +37,7 @@ class InputStreamInterface {
   //  * OUT_OF_RANGE - not enough bytes remaining before end of file.
   virtual Status ReadNBytes(int64 bytes_to_read, tstring* result) = 0;
 
-#if defined(PLATFORM_GOOGLE)
+#if defined(TF_CORD_SUPPORT)
   // Reads the next bytes_to_read from the file. Typical return codes:
   //  * OK - in case of success.
   //  * OUT_OF_RANGE - not enough bytes remaining before end of file.

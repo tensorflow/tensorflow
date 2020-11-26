@@ -239,7 +239,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
               // group.
               std::vector<Tensor> key_func_output;
               TF_RETURN_IF_ERROR(instantiated_key_func_->RunWithBorrowedArgs(
-                  ctx, next_input_element, &key_func_output));
+                  ctx, next_input_element, &key_func_output, model_node()));
 
               if (key_func_output.size() != 1 ||
                   key_func_output[0].dtype() != DT_INT64 ||
@@ -255,7 +255,8 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
                 // window size.
                 std::vector<Tensor> window_size_func_output;
                 TF_RETURN_IF_ERROR(instantiated_window_size_func_->Run(
-                    ctx, std::move(key_func_output), &window_size_func_output));
+                    ctx, std::move(key_func_output), &window_size_func_output,
+                    model_node()));
 
                 if (window_size_func_output.size() != 1 ||
                     window_size_func_output[0].dtype() != DT_INT64 ||
@@ -486,8 +487,8 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
         std::vector<Tensor> args(
             {std::move(key_arg), std::move(group_dataset_arg)});
         std::vector<Tensor> return_values;
-        TF_RETURN_IF_ERROR(instantiated_reduce_func_->Run(ctx, std::move(args),
-                                                          &return_values));
+        TF_RETURN_IF_ERROR(instantiated_reduce_func_->Run(
+            ctx, std::move(args), &return_values, model_node()));
 
         if (!(return_values.size() == 1 &&
               return_values[0].dtype() == DT_VARIANT &&

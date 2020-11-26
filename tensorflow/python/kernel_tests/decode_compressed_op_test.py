@@ -24,7 +24,7 @@ import zlib
 from six import BytesIO
 
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import test_util
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.platform import test
@@ -43,31 +43,40 @@ class DecodeCompressedOpTest(test.TestCase):
         f.write(bytes_in)
       return out.getvalue()
 
-  @test_util.run_deprecated_v1
+  def testDecompressShapeInference(self):
+    with ops.Graph().as_default():
+      for compression_type in ["ZLIB", "GZIP", ""]:
+        with self.cached_session():
+          in_bytes = array_ops.placeholder(dtypes.string, shape=[2])
+          decompressed = parsing_ops.decode_compressed(
+              in_bytes, compression_type=compression_type)
+          self.assertEqual([2], decompressed.get_shape().as_list())
+
   def testDecompress(self):
     for compression_type in ["ZLIB", "GZIP", ""]:
       with self.cached_session():
-        in_bytes = array_ops.placeholder(dtypes.string, shape=[2])
-        decompressed = parsing_ops.decode_compressed(
-            in_bytes, compression_type=compression_type)
-        self.assertEqual([2], decompressed.get_shape().as_list())
 
-        result = decompressed.eval(
-            feed_dict={in_bytes: [self._compress(b"AaAA", compression_type),
-                                  self._compress(b"bBbb", compression_type)]})
+        def decode(in_bytes, compression_type=compression_type):
+          return parsing_ops.decode_compressed(
+              in_bytes, compression_type=compression_type)
+
+        in_val = [self._compress(b"AaAA", compression_type),
+                  self._compress(b"bBbb", compression_type)]
+        result = self.evaluate(decode(in_val))
         self.assertAllEqual([b"AaAA", b"bBbb"], result)
 
-  @test_util.run_deprecated_v1
   def testDecompressWithRaw(self):
     for compression_type in ["ZLIB", "GZIP", ""]:
       with self.cached_session():
-        in_bytes = array_ops.placeholder(dtypes.string, shape=[None])
-        decompressed = parsing_ops.decode_compressed(
-            in_bytes, compression_type=compression_type)
-        decode = parsing_ops.decode_raw(decompressed, out_type=dtypes.int16)
 
-        result = decode.eval(
-            feed_dict={in_bytes: [self._compress(b"AaBC", compression_type)]})
+        def decode(in_bytes, compression_type=compression_type):
+          decompressed = parsing_ops.decode_compressed(in_bytes,
+                                                       compression_type)
+          return parsing_ops.decode_raw(decompressed, out_type=dtypes.int16)
+
+        result = self.evaluate(
+            decode([self._compress(b"AaBC", compression_type)]))
+
         self.assertAllEqual(
             [[ord("A") + ord("a") * 256, ord("B") + ord("C") * 256]], result)
 

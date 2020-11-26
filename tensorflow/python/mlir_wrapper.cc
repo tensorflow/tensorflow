@@ -53,6 +53,19 @@ PYBIND11_MODULE(_pywrap_mlir, m) {
           return output;
         });
 
+  m.def("ExperimentalConvertSavedModelV1ToMlirLite",
+        [](const std::string &saved_model_path, const std::string &tags,
+           bool upgrade_legacy, bool show_debug_info) {
+          tensorflow::Safe_TF_StatusPtr status =
+              tensorflow::make_safe(TF_NewStatus());
+          std::string output =
+              tensorflow::ExperimentalConvertSavedModelV1ToMlirLite(
+                  saved_model_path, tags, upgrade_legacy, show_debug_info,
+                  status.get());
+          tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+          return output;
+        });
+
   m.def("ExperimentalConvertSavedModelV1ToMlir",
         [](const std::string &saved_model_path, const std::string &tags,
            bool lift_variables, bool upgrade_legacy, bool show_debug_info) {

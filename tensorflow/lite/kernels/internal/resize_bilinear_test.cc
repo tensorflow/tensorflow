@@ -241,7 +241,7 @@ TEST(ResizeBilinear, TestResizeBilinearHalfPixelCenters_2x2to4x4) {
                                    3, 4};
   // clang-format on
 
-  // Output: 2x2
+  // Output: 4x4
   RuntimeShape output_dims_inference({1, 4, 4, 1});
   // Initialize the output data with something other than zero, so we can catch
   // issue with kernels failing to initialize the output.
@@ -287,6 +287,82 @@ TEST(ResizeBilinear, TestResizeBilinearHalfPixelCenters_2x2to4x4) {
     EXPECT_EQ(static_cast<float>(output_data[i]),
               static_cast<float>(reference_half_pixel_centers_true[i]));
   }
+}
+
+template <typename T>
+void TestResizeBilinearHalfPixelCenters_2x2to4x6() {
+  // Input: 2x2
+  RuntimeShape input_dims_inference({1, 2, 2, 1});
+  // clang-format off
+  std::vector<T> input_data = {127, -128, 64, 0};
+  // clang-format on
+
+  // Output: 4x6
+  RuntimeShape output_dims_inference({1, 4, 6, 1});
+  // Initialize the output data with something other than zero, so we can catch
+  // issue with kernels failing to initialize the output.
+  const int output_buffer_size = output_dims_inference.FlatSize();
+  std::vector<T> output_data(output_buffer_size, 3);
+
+  RuntimeShape output_size_dims({1, 1, 1, 2});
+  std::vector<int32> output_size_data = {4, 6};
+
+  tflite::ResizeBilinearParams op_params;
+  op_params.align_corners = false;
+  op_params.half_pixel_centers = false;
+
+  // Test with half_pixel_centers = false.
+  reference_ops::ResizeBilinearInteger(
+      op_params, input_dims_inference, input_data.data(), output_size_dims,
+      output_size_data.data(), output_dims_inference, output_data.data());
+  // clang-format off
+  std::vector<T> reference_half_pixel_centers_false =
+      {  127,   42,  -43, -128,  -128, -128,
+          96,   42,  -11,  -64,   -64,  -64,
+          64,   43,   21,    0,     0,    0,
+          64,   43,   21,    0,     0,    0};
+  // Float results =
+  // {127.000000, 41.999996, -43.000004, -128.000000, -128.000000, -128.000000,
+  //   95.500000, 42.333328, -10.833336,  -64.000000,  -64.000000,  -64.000000,
+  //   64.000000, 42.666664,  21.333332,    0.000000,    0.000000,    0.000000,
+  //   64.000000, 42.666664,  21.333332,    0.000000,    0.000000,    0.000000};
+
+  // clang-format on
+  for (int i = 0; i < output_buffer_size; i++) {
+    EXPECT_EQ(static_cast<T>(output_data[i]),
+              static_cast<T>(reference_half_pixel_centers_false[i]));
+  }
+
+  // Test with half_pixel_centers = true.
+  op_params.half_pixel_centers = true;
+  reference_ops::ResizeBilinearInteger(
+      op_params, input_dims_inference, input_data.data(), output_size_dims,
+      output_size_data.data(), output_dims_inference, output_data.data());
+  // clang-format off
+  std::vector<T> reference_half_pixel_centers_true =
+      {  127,  127,   42,  -43, -128, -128,
+         111,  111,   42,  -27,  -96,  -96,
+          80,   80,   43,    5,  -32,  -32,
+          64,   64,   43,   21,    0,    0};
+  // Float result =
+  // {127.000000, 127.000000, 41.999992, -43.000023, -128.000000, -128.000000,
+  //  111.249992, 111.250000, 42.166660, -26.916683,  -96.000000,  -96.000000,
+  //   79.749992,  79.750000, 42.499996,   5.249992,  -32.000000,  -32.000000,
+  //   63.999996,  64.000000, 42.666664,  21.333328,    0.000000,    0.000000};
+
+  // clang-format on
+  for (int i = 0; i < output_buffer_size; i++) {
+    EXPECT_EQ(static_cast<T>(output_data[i]),
+              static_cast<T>(reference_half_pixel_centers_true[i]));
+  }
+}
+
+TEST(ResizeBilinear, TestResizeBilinearHalfPixelCenters_2x2to4x6_Int8) {
+  TestResizeBilinearHalfPixelCenters_2x2to4x6<int8_t>();
+}
+
+TEST(ResizeBilinear, TestResizeBilinearHalfPixelCenters_2x2to4x6_Int16) {
+  TestResizeBilinearHalfPixelCenters_2x2to4x6<int16_t>();
 }
 
 }  // namespace

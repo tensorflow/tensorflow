@@ -3,7 +3,7 @@
 # Verify that the _input_shapes attribute of the FunctionDef is respected.
 # This also checks that the output type is correctly inferred based on
 # that.
-#CHECK: func @identity_function0(%arg0: tensor<i32>) -> tensor<i32>
+#CHECK: func private @identity_function0(%arg0: tensor<i32>) -> tensor<i32>
 
 node {
   name: "Placeholder"

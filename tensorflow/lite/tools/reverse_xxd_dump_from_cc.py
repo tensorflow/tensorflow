@@ -12,57 +12,41 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-r"""Reverses xxd dump from to binary file
+r"""Reverses xxd dump, i.e, converts a C++ source file back to a TFLite file.
 
-This script is used to convert models from C++ source file (dumped with xxd) to
-the binary model weight file and analyze it with model visualizer like Netron
-(https://github.com/lutzroeder/netron) or load the model in TensorFlow Python
-API
-to evaluate the results in Python.
+This script is used to convert a model from a C++ source file (dumped with xxd)
+back to it's original TFLite file format in order to analyze it with either a
+model visualizer like Netron (https://github.com/lutzroeder/netron) or to
+evaluate the model using the Python TensorFlow Lite Interpreter API.
 
-The command to dump binary file to C++ source file looks like
-
+The xxd command to dump the TFLite file to a C++ source file looks like:
 xxd -i model_data.tflite > model_data.cc
 
-Example usage:
-
-python reverse_xxd_dump_from_cc.py \
-  --input_cc_file=model_data.cc \
-  --output_tflite_file=model_data.tflite
 """
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import argparse
-import sys
+from absl import app
+from absl import flags
 
 from tensorflow.lite.tools import flatbuffer_utils
-from tensorflow.python.platform import app
+
+FLAGS = flags.FLAGS
+
+flags.DEFINE_string('input_cc_file', None,
+                    'Full path name to the input C++ source file.')
+flags.DEFINE_string('output_tflite_file', None,
+                    'Full path name to the output TFLite file.')
+
+flags.mark_flag_as_required('input_cc_file')
+flags.mark_flag_as_required('output_tflite_file')
 
 
 def main(_):
-  """Application run loop."""
-  parser = argparse.ArgumentParser(
-      description='Reverses xxd dump from to binary file')
-  parser.add_argument(
-      '--input_cc_file',
-      type=str,
-      required=True,
-      help='Full path name to the input cc file.')
-  parser.add_argument(
-      '--output_tflite_file',
-      type=str,
-      required=True,
-      help='Full path name to the stripped output tflite file.')
-
-  args = parser.parse_args()
-
-  # Read the model from xxd output C++ source file
-  model = flatbuffer_utils.xxd_output_to_object(args.input_cc_file)
-  # Write the model
-  flatbuffer_utils.write_model(model, args.output_tflite_file)
+  model = flatbuffer_utils.xxd_output_to_object(FLAGS.input_cc_file)
+  flatbuffer_utils.write_model(model, FLAGS.output_tflite_file)
 
 
 if __name__ == '__main__':
-  app.run(main=main, argv=sys.argv[:1])
+  app.run(main)

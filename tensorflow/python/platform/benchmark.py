@@ -65,13 +65,24 @@ def _rename_function(f, arg_num, name):
                               func_code.co_firstlineno, func_code.co_lnotab,
                               func_code.co_freevars, func_code.co_cellvars)
   else:
-    new_code = types.CodeType(arg_num, 0, func_code.co_nlocals,
-                              func_code.co_stacksize, func_code.co_flags,
-                              func_code.co_code, func_code.co_consts,
-                              func_code.co_names, func_code.co_varnames,
-                              func_code.co_filename, name,
-                              func_code.co_firstlineno, func_code.co_lnotab,
-                              func_code.co_freevars, func_code.co_cellvars)
+    if sys.version_info > (3, 8, 0, "alpha", 3):
+      # Python3.8 / PEP570 added co_posonlyargcount argument to CodeType.
+      new_code = types.CodeType(arg_num, func_code.co_posonlyargcount,
+                                0, func_code.co_nlocals,
+                                func_code.co_stacksize, func_code.co_flags,
+                                func_code.co_code, func_code.co_consts,
+                                func_code.co_names, func_code.co_varnames,
+                                func_code.co_filename, name,
+                                func_code.co_firstlineno, func_code.co_lnotab,
+                                func_code.co_freevars, func_code.co_cellvars)
+    else:
+      new_code = types.CodeType(arg_num, 0, func_code.co_nlocals,
+                                func_code.co_stacksize, func_code.co_flags,
+                                func_code.co_code, func_code.co_consts,
+                                func_code.co_names, func_code.co_varnames,
+                                func_code.co_filename, name,
+                                func_code.co_firstlineno, func_code.co_lnotab,
+                                func_code.co_freevars, func_code.co_cellvars)
 
   return types.FunctionType(new_code, f.__globals__, name, f.__defaults__,
                             f.__closure__)
@@ -168,11 +179,35 @@ class _BenchmarkRegistrar(type):
     return newclass
 
 
+@tf_export("__internal__.test.ParameterizedBenchmark", v1=[])
 class ParameterizedBenchmark(_BenchmarkRegistrar):
-  """Metaclass to generate parameterized benchmarks."""
+  """Metaclass to generate parameterized benchmarks.
+
+  Use this class as a metaclass and override the `_benchmark_parameters` to
+  generate multiple benchmark test cases. For example:
+
+  class FooBenchmark(metaclass=tf.test.ParameterizedBenchmark,
+                     tf.test.Benchmark):
+    # The `_benchmark_parameters` is expected to be a list with test cases.
+    # Each of the test case is a tuple, with the first time to be test case
+    # name, followed by any number of the parameters needed for the test case.
+    _benchmark_parameters = [
+      ('case_1', Foo, 1, 'one'),
+      ('case_2', Bar, 2, 'two'),
+    ]
+
+    def benchmark_test(self, target_class, int_param, string_param):
+      # benchmark test body
+
+  The example above will generate two benchmark test cases:
+  "benchmark_test__case_1" and "benchmark_test__case_2".
+  """
 
   def __new__(mcs, clsname, base, attrs):
     param_config_list = attrs["_benchmark_parameters"]
+
+    def create_benchmark_function(original_benchmark, params):
+      return lambda self: original_benchmark(self, *params)
 
     for name in attrs.copy().keys():
       if not name.startswith("benchmark"):
@@ -189,10 +224,7 @@ class ParameterizedBenchmark(_BenchmarkRegistrar):
           raise Exception(
               "Benchmark named {} already defined.".format(benchmark_name))
 
-        def create_benchmark_function(params):
-          return lambda self: original_benchmark(self, *params)
-
-        benchmark = create_benchmark_function(params)
+        benchmark = create_benchmark_function(original_benchmark, params)
         # Renaming is important because `report_benchmark` function looks up the
         # function name in the stack trace.
         attrs[benchmark_name] = _rename_function(benchmark, 1, benchmark_name)

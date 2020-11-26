@@ -6,12 +6,10 @@
 // CHECK-SAME: %[[ARG_0:.*]]: tensor<*x!tf.resource<tensor<32xf32>>>
 // CHECK-SAME: %[[ARG_1:.*]]: tensor<*x!tf.resource<tensor<64xf32>>>
 // CHECK-SAME: %[[ARG_2:.*]]: tensor<*x!tf.resource<tensor<16xf32>>>
-// CHECK-SAME: %[[ARG_3:.*]]: tensor<!tf.string>
 func @merge_same_device_variables(
   %arg0: tensor<*x!tf.resource<tensor<32xf32>>> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"},
   %arg1: tensor<*x!tf.resource<tensor<64xf32>>> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"},
-  %arg2: tensor<*x!tf.resource<tensor<16xf32>>> {tf.device = "/job:localhost/replica:0/task:0/device:CPU:0"},
-  %arg3: tensor<!tf.string>) {
+  %arg2: tensor<*x!tf.resource<tensor<16xf32>>> {tf.device = "/job:localhost/replica:0/task:0/device:CPU:0"}) {
   // CHECK-NEXT: %[[ID_0:.*]] = "tf.IdentityN"(%[[ARG_0]])
   %id0 = "tf.IdentityN"(%arg0) {device = "/job:localhost/replica:0/task:0/device:TPU:0"}
     : (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<*x!tf.resource<tensor<32xf32>>>
@@ -19,15 +17,27 @@ func @merge_same_device_variables(
   %read0 = "tf.ReadVariableOp"(%id0) : (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
   %read1 = "tf.ReadVariableOp"(%arg1) : (tensor<*x!tf.resource<tensor<64xf32>>>) -> tensor<64xf32>
   %read2 = "tf.ReadVariableOp"(%arg2) : (tensor<*x!tf.resource<tensor<16xf32>>>) -> tensor<16xf32>
-  // CHECK-NEXT: %[[EXE:.*]] = "tf_device.launch"
-  // CHECK-NEXT: "tf.TPUExecuteAndUpdateVariables"(%[[ID_0]], %[[ARG_1]], %[[READ_2]], %[[ARG_3]])
+  // CHECK: %[[COMPILE:.*]]:2 = "tf_device.launch"
+  %compile:2 = "tf_device.launch"() ( {
+      // CHECK: tf._TPUCompileMlir
+      // CHECK-SAME: mlir_module
+      // CHECK-SAME: func @main(%arg0: tensor<32xf32> {tf.aliasing_output = 0 : i64},
+      // CHECK-SAME:            %arg1: tensor<64xf32>, %arg2: tensor<16xf32>)
+      %0:2 = "tf._TPUCompileMlir"() {
+        metadata = "",
+        mlir_module = "module attributes {tf.versions = {producer = 888 : i32}} {\0A  func @main(%arg0: tensor<32xf32>, %arg1: tensor<64xf32>, %arg2: tensor<16xf32>) -> (tensor<32xf32>, tensor<16xf32>) {\0A    %0:2 = \22tf.A\22(%arg0, %arg1, %arg2) : (tensor<32xf32>, tensor<64xf32>, tensor<16xf32>) -> (tensor<32xf32>, tensor<16xf32>)\0A    return %0#0, %0#1 : tensor<32xf32>, tensor<16xf32>\0A  }\0A}"
+      } : () -> (tensor<!tf.string>, tensor<2x!tf.string>)
+      tf_device.return %0#0, %0#1 : tensor<!tf.string>, tensor<2x!tf.string>
+    }) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> (tensor<!tf.string>, tensor<2x!tf.string>)
+  // CHECK: %[[EXE:.*]] = "tf_device.launch"
+  // CHECK-NEXT: "tf.TPUExecuteAndUpdateVariables"(%[[ID_0]], %[[ARG_1]], %[[READ_2]], %[[COMPILE]]#1)
   // CHECK-SAME: device_var_reads_indices = [0, 1],
   // CHECK-SAME: device_var_updates_indices = [0, -1]
   %execute:2 = "tf_device.launch"() ( {
-    %0:2 = "tf.TPUExecute"(%read0, %read1, %read2, %arg3) {
+    %0:2 = "tf.TPUExecute"(%read0, %read1, %read2, %compile#1) {
       Targs = [tensor<32xf32>, tensor<64xf32>, tensor<16xf32>],
       Tresults = [tensor<32xf32>, tensor<16xf32>]}
-      : (tensor<32xf32>, tensor<64xf32>, tensor<16xf32>, tensor<!tf.string>) -> (tensor<32xf32>, tensor<16xf32>)
+      : (tensor<32xf32>, tensor<64xf32>, tensor<16xf32>, tensor<2x!tf.string>) -> (tensor<32xf32>, tensor<16xf32>)
     tf_device.return %0#0, %0#1 : tensor<32xf32>, tensor<16xf32>
   }) {device = "/job:localhost/replica:0/task:0/device:TPU:0"} : () -> (tensor<32xf32>, tensor<16xf32>)
   // CHECK-NEXT: tf_device.return
@@ -44,26 +54,35 @@ func @merge_same_device_variables(
 // Tests that the pass do not check devices for replicated region.
 
 // CHECK-LABEL: func @merge_replicated_variables
-// CHECK-SAME: %[[ARG_0:.*]]: tensor<*x!tf.resource<tensor<32xf32>>>, %[[ARG_1:.*]]: tensor<!tf.string>,
-// CHECK-SAME: %[[ARG_2:.*]]: tensor<*x!tf.resource<tensor<32xf32>>>,
-// CHECK-SAME: %[[ARG_3:.*]]: tensor<*x!tf.resource<tensor<32xf32>>>
+// CHECK-SAME: %[[ARG_0:.*]]: tensor<*x!tf.resource<tensor<32xf32>>>, %[[ARG_1:.*]]: tensor<*x!tf.resource<tensor<32xf32>>>,
+// CHECK-SAME: %[[ARG_2:.*]]: tensor<*x!tf.resource<tensor<32xf32>>>
 func @merge_replicated_variables(
   %arg0: tensor<*x!tf.resource<tensor<32xf32>>>,
-  %arg1: tensor<!tf.string>,
-  %arg2: tensor<*x!tf.resource<tensor<32xf32>>>,
-  %arg3: tensor<*x!tf.resource<tensor<32xf32>>>) {
+  %arg1: tensor<*x!tf.resource<tensor<32xf32>>>,
+  %arg2: tensor<*x!tf.resource<tensor<32xf32>>>) {
   // CHECK-NEXT: %[[READ_0:.*]] = "tf.ReadVariableOp"(%[[ARG_0]])
   %read0 = "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
-  // CHECK-NEXT: tf_device.replicate([%[[ARG_2]], %[[ARG_3]]] as %[[R_ARG:.*]]: tensor<*x!tf.resource<tensor<32xf32>>>)
-  tf_device.replicate([%arg2, %arg3] as %r: tensor<*x!tf.resource<tensor<32xf32>>>) {n = 2 : i32} {
+  // CHECK: %[[COMPILE:.*]]:2 = "tf_device.launch"
+  %compile:2 = "tf_device.launch"() ( {
+    // CHECK: tf._TPUCompileMlir
+    // CHECK-SAME: mlir_module
+    // CHECK-SAME: func @main(%arg0: tensor<32xf32>, %arg1: tensor<32xf32> {tf.aliasing_output = 0 : i64})
+    %0:2 = "tf._TPUCompileMlir"() {
+      metadata = "",
+      mlir_module = "module attributes {tf.versions = {producer = 888 : i32}} {\0A  func @main(%arg0: tensor<32xf32>, %arg1: tensor<32xf32>) -> (tensor<32xf32>) {\0A    %0 = \22tf.A\22(%arg0, %arg1) : (tensor<32xf32>, tensor<32xf32>) -> (tensor<32xf32>)\0A    return %0 : tensor<32xf32>\0A  }\0A}"
+    } : () -> (tensor<!tf.string>, tensor<2x!tf.string>)
+    tf_device.return %0#0, %0#1 : tensor<!tf.string>, tensor<2x!tf.string>
+  }) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> (tensor<!tf.string>, tensor<2x!tf.string>)
+  // CHECK: tf_device.replicate([%[[ARG_1]], %[[ARG_2]]] as %[[R_ARG:.*]]: tensor<*x!tf.resource<tensor<32xf32>>>)
+  tf_device.replicate([%arg1, %arg2] as %r: tensor<*x!tf.resource<tensor<32xf32>>>) {n = 2 : i32} {
     // CHECK-NEXT: "tf_device.launch"
-    // CHECK-NEXT: "tf.TPUExecuteAndUpdateVariables"(%[[READ_0]], %[[R_ARG]], %[[ARG_1]])
+    // CHECK-NEXT: "tf.TPUExecuteAndUpdateVariables"(%[[READ_0]], %[[R_ARG]], %[[COMPILE]]#1)
     // CHECK-SAME: device_var_reads_indices = [1],
     // CHECK-SAME: device_var_updates_indices = [0]
     %read1 = "tf.ReadVariableOp"(%r) : (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
     %execute = "tf_device.launch"() ( {
-      %0 = "tf.TPUExecute"(%read0, %read1, %arg1)
-        : (tensor<32xf32>, tensor<32xf32>, tensor<!tf.string>) -> tensor<32xf32>
+      %0 = "tf.TPUExecute"(%read0, %read1, %compile#1)
+        : (tensor<32xf32>, tensor<32xf32>, tensor<2x!tf.string>) -> tensor<32xf32>
       tf_device.return %0 : tensor<32xf32>
     }) {device = ""} : () -> tensor<32xf32>
     // CHECK-NEXT: tf_device.return
@@ -86,7 +105,6 @@ func @merge_replicated_variables(
 // CHECK-SAME: %[[ARG_0:.*]]: tensor<*x!tf.resource<tensor<32xf32>>>
 // CHECK-SAME: %[[ARG_1:.*]]: tensor<*x!tf.resource<tensor<64xf32>>>
 // CHECK-SAME: %[[ARG_2:.*]]: tensor<32xf32>
-// CHECK-SAME: %[[ARG_3:.*]]: tensor<!tf.string>
 // CHECK-SAME: %[[ARG_4:.*]]: tensor<*x!tf.resource<tensor<8xf32>>>
 // CHECK-SAME: %[[ARG_5:.*]]: tensor<*x!tf.resource<tensor<2xf32>>>
 // CHECK-SAME: %[[ARG_6:.*]]: tensor<2xf32>
@@ -94,7 +112,6 @@ func @interferencing_accesses(
   %arg0: tensor<*x!tf.resource<tensor<32xf32>>> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"},
   %arg1: tensor<*x!tf.resource<tensor<64xf32>>> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"},
   %arg2: tensor<32xf32>,
-  %arg3: tensor<!tf.string>,
   %arg4: tensor<*x!tf.resource<tensor<8xf32>>> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"},
   %arg5: tensor<*x!tf.resource<tensor<2xf32>>> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"},
   %arg6: tensor<2xf32>) -> (tensor<8xf32>) {
@@ -108,15 +125,26 @@ func @interferencing_accesses(
   "tf.AssignVariableOp"(%arg5, %arg6) : (tensor<*x!tf.resource<tensor<2xf32>>>, tensor<2xf32>) -> ()
   %read1 = "tf.ReadVariableOp"(%arg1) : (tensor<*x!tf.resource<tensor<64xf32>>>) -> tensor<64xf32>
   %read2 = "tf.ReadVariableOp"(%arg4) : (tensor<*x!tf.resource<tensor<8xf32>>>) -> tensor<8xf32>
-  // CHECK-NEXT: %[[EXE:.*]]:2 = "tf_device.launch"
-  // CHECK-NEXT: "tf.TPUExecuteAndUpdateVariables"(%[[READ_0]], %[[ARG_1]], %[[ARG_4]], %[[READ_5]], %[[ARG_3]])
+  // CHECK: %[[COMPILE:.*]]:2 = "tf_device.launch"
+  %compile:2 = "tf_device.launch"() ( {
+    // CHECK: tf._TPUCompileMlir
+    // CHECK-SAME: mlir_module
+    // CHECK-SAME: func @main(%arg0: tensor<32xf32>, %arg1: tensor<32xf32> {tf.aliasing_output = 1 : i64})
+    %0:2 = "tf._TPUCompileMlir"() {
+      metadata = "",
+      mlir_module = "module attributes {tf.versions = {producer = 888 : i32}} {\0A  func @main(%arg0: tensor<32xf32>, %arg1: tensor<32xf32>) -> (tensor<32xf32>) {\0A    %0 = \22tf.A\22(%arg0, %arg1) : (tensor<32xf32>, tensor<32xf32>) -> (tensor<32xf32>)\0A    return %0 : tensor<32xf32>\0A  }\0A}"
+    } : () -> (tensor<!tf.string>, tensor<2x!tf.string>)
+    tf_device.return %0#0, %0#1 : tensor<!tf.string>, tensor<2x!tf.string>
+  }) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> (tensor<!tf.string>, tensor<2x!tf.string>)
+  // CHECK: %[[EXE:.*]]:2 = "tf_device.launch"
+  // CHECK-NEXT: "tf.TPUExecuteAndUpdateVariables"(%[[READ_0]], %[[ARG_1]], %[[ARG_4]], %[[READ_5]], %[[COMPILE]]#1)
   // CHECK-SAME: device_var_reads_indices = [1, 2],
   // CHECK-SAME: device_var_updates_indices = [1, -1]
   %execute:3 = "tf_device.launch"() ( {
-    %0:3 = "tf.TPUExecute"(%read0, %read1, %read2, %read5, %arg3) {
+    %0:3 = "tf.TPUExecute"(%read0, %read1, %read2, %read5, %compile#1) {
       Targs = [tensor<32xf32>, tensor<64xf32>, tensor<8xf32>, tensor<2xf32>],
       Tresults = [tensor<32xf32>, tensor<64xf32>, tensor<8xf32>]}
-      : (tensor<32xf32>, tensor<64xf32>, tensor<8xf32>, tensor<2xf32>, tensor<!tf.string>)
+      : (tensor<32xf32>, tensor<64xf32>, tensor<8xf32>, tensor<2xf32>, tensor<2x!tf.string>)
         -> (tensor<32xf32>, tensor<64xf32>, tensor<8xf32>)
     tf_device.return %0#0, %0#1, %0#2 : tensor<32xf32>, tensor<64xf32>, tensor<8xf32>
   }) {device = "/job:localhost/replica:0/task:0/device:TPU:0"} : () -> (tensor<32xf32>, tensor<64xf32>, tensor<8xf32>)

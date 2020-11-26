@@ -31,7 +31,8 @@ def : Pat<(HLOClient_AcosOp $input),
     (HLO_CompareOp
       $input,
       (HLO_ConstantLike<"-1"> $input),
-      HLO_COMPARISON_DIRECTION_NE
+      HLO_COMPARISON_DIRECTION_NE,
+      (HLO_DEFAULT_COMPARISON_TYPE)
     ),
     (HLO_MulOp
       (HLO_ConstantLike<"2"> $input),
@@ -59,6 +60,11 @@ def : Pat<(HLOClient_AtanOp $input),
     (HLO_ConstantLike<"1"> $input)
   )>;
 
+// Express `conj` as
+//   conj(x) = (re(x), -im(x)).
+def : Pat<(HLOClient_ConjOp $v),
+          (HLO_ComplexOp (HLO_RealOp $v), (HLO_NegOp (HLO_ImagOp $v)))>;
+
 // Express `sinh` as
 //   sinh(x) = (e^x - e^-x) / 2                     if |x| < 1
 //           = e^(x + log(1/2)) - e^(-x + log(1/2)) otherwise.
@@ -67,7 +73,8 @@ def : Pat<(HLOClient_SinhOp $input),
     (HLO_CompareOp
       (HLO_AbsOp $input),
       (HLO_ConstantLike<"1"> $input),
-      HLO_COMPARISON_DIRECTION_LT
+      HLO_COMPARISON_DIRECTION_LT,
+      (HLO_DEFAULT_COMPARISON_TYPE)
     ),
     (HLO_DivOp
       (HLO_SubOp

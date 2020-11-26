@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Keras categorical preprocessing layers."""
+"""Keras category crossing preprocessing layers."""
 # pylint: disable=g-classes-have-attributes
 from __future__ import absolute_import
 from __future__ import division
@@ -116,7 +116,8 @@ class CategoryCrossing(base_preprocessing_layer.PreprocessingLayer):
 
   def __init__(self, depth=None, name=None, separator=None, **kwargs):
     super(CategoryCrossing, self).__init__(name=name, **kwargs)
-    base_preprocessing_layer._kpl_gauge.get_cell('V2').set('CategoryCrossing')
+    base_preprocessing_layer.keras_kpl_gauge.get_cell(
+        'CategoryCrossing').set(True)
     self.depth = depth
     if separator is None:
       separator = '_X_'

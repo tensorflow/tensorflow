@@ -19,11 +19,12 @@ func @caller(%arg0: memref<32xf32>, %arg1: memref<16xf32>) -> memref<8xf32> {
   %res = alloc() : memref<8xf32>
 
   // CHECK: gpu.launch_func
-  // CHECK-SAME: index, memref<32xf32>, memref<16xf32>, memref<8xf32>)
-  "gpu.launch_func"(%cst, %cst, %cst, %cst, %cst, %cst, %res, %arg1, %arg0)
-      { kernel = @kernel_module::@kernel }
-      : (index, index, index, index, index, index,
-         memref<8xf32>, memref<16xf32>, memref<32xf32>) -> ()
+  // CHECK-SAME: memref<32xf32>,
+  // CHECK-SAME: memref<16xf32>,
+  // CHECK-SAME: memref<8xf32>)
+  gpu.launch_func @kernel_module::@kernel
+      blocks in (%cst, %cst, %cst) threads in(%cst, %cst, %cst)
+      args(%res : memref<8xf32>, %arg1 : memref<16xf32>, %arg0 : memref<32xf32>)
 
   return %res : memref<8xf32>
 }
@@ -45,10 +46,9 @@ func @caller(%arg0: memref<32xf32>, %arg1: memref<16xf32>) -> memref<8xf32> {
   %cst = constant 8 : index
   %res = alloc() : memref<8xf32>
 
-  "gpu.launch_func"(%cst, %cst, %cst, %cst, %cst, %cst, %arg1, %arg0)
-      { kernel = @kernel_module::@kernel }
-      : (index, index, index, index, index, index,
-         memref<16xf32>, memref<32xf32>) -> ()
+  gpu.launch_func @kernel_module::@kernel
+      blocks in (%cst, %cst, %cst) threads in (%cst, %cst, %cst)
+      args(%arg1 : memref<16xf32>, %arg0 : memref<32xf32>)
 
   return %res : memref<8xf32>
 }
@@ -72,10 +72,9 @@ func @caller(%arg0: memref<32xf32>, %arg1: memref<16xf32>) -> memref<8xf32> {
   %res = alloc() : memref<8xf32>
   %fake = alloc() : memref<8xf32>
 
-  "gpu.launch_func"(%cst, %cst, %cst, %cst, %cst, %cst, %arg1, %arg0, %fake)
-      { kernel = @kernel_module::@kernel }
-      : (index, index, index, index, index, index,
-         memref<16xf32>, memref<32xf32>, memref<8xf32>) -> ()
+  gpu.launch_func @kernel_module::@kernel
+      blocks in (%cst, %cst, %cst) threads in (%cst, %cst, %cst)
+      args(%arg1 : memref<16xf32>, %arg0 : memref<32xf32>, %fake : memref<8xf32>)
 
   return %res : memref<8xf32>
 }
@@ -99,10 +98,9 @@ func @caller(%arg0: memref<32xf32>, %arg1: memref<16xf32>) -> memref<8xf32> {
   %res = alloc() : memref<8xf32>
   %fake = alloc() : memref<16xf32>
 
-  "gpu.launch_func"(%cst, %cst, %cst, %cst, %cst, %cst, %fake, %arg0, %res)
-      { kernel = @kernel_module::@kernel }
-      : (index, index, index, index, index, index,
-         memref<16xf32>, memref<32xf32>, memref<8xf32>) -> ()
+  gpu.launch_func @kernel_module::@kernel
+      blocks in (%cst, %cst, %cst) threads in (%cst, %cst, %cst)
+      args(%fake : memref<16xf32>, %arg0 : memref<32xf32>, %res : memref<8xf32>)
 
   return %res : memref<8xf32>
 }
@@ -127,10 +125,9 @@ func @caller(%arg0: memref<32xf32>, %arg1: memref<16xf32>) -> memref<8xf32> {
   br ^bb1
 
   ^bb1:
-  "gpu.launch_func"(%cst, %cst, %cst, %cst, %cst, %cst, %res, %arg1, %arg0)
-      { kernel = @kernel_module::@kernel }
-      : (index, index, index, index, index, index,
-         memref<8xf32>, memref<16xf32>, memref<32xf32>) -> ()
+  gpu.launch_func @kernel_module::@kernel
+      blocks in (%cst, %cst, %cst) threads in (%cst, %cst, %cst)
+      args(%res : memref<8xf32>, %arg1 : memref<16xf32>, %arg0 : memref<32xf32>)
 
   return %res : memref<8xf32>
 }

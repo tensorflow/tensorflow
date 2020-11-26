@@ -24,7 +24,6 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
-#include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
@@ -44,6 +43,7 @@ using tensorflow::StatusFromTF_Status;
 
 namespace stream_executor {
 using tensorflow::StringPiece;
+using OwnedTFStatus = std::unique_ptr<TF_Status, TFStatusDeleter>;
 
 namespace {
 
@@ -188,41 +188,6 @@ port::Status ValidateSEPlatformRegistrationParams(
 }
 #undef VALIDATE_MEMBER
 
-struct TFStatusDeleter {
-  void operator()(TF_Status* s) const { TF_DeleteStatus(s); }
-};
-using OwnedTFStatus = std::unique_ptr<TF_Status, TFStatusDeleter>;
-
-class CStream : public internal::StreamInterface {
- public:
-  CStream(SP_Device* device, SP_StreamExecutor* stream_executor)
-      : device_(device),
-        stream_executor_(stream_executor),
-        stream_handle_(nullptr) {}
-  ~CStream() override { Destroy(); }
-
-  port::Status Create() {
-    OwnedTFStatus c_status(TF_NewStatus());
-    stream_executor_->create_stream(device_, &stream_handle_, c_status.get());
-    port::Status s = StatusFromTF_Status(c_status.get());
-    return s;
-  }
-
-  void Destroy() {
-    if (stream_handle_ != nullptr) {
-      stream_executor_->destroy_stream(device_, stream_handle_);
-      stream_handle_ = nullptr;
-    }
-  }
-
-  SP_Stream Handle() { return stream_handle_; }
-
- private:
-  SP_Device* device_;
-  SP_StreamExecutor* stream_executor_;
-  SP_Stream stream_handle_;
-};
-
 // Converts SE_EventStatus to Event::Status.
 Event::Status SEEventStatusToEventStatus(SE_EventStatus s) {
   switch (s) {
@@ -237,82 +202,6 @@ Event::Status SEEventStatusToEventStatus(SE_EventStatus s) {
   }
 }
 
-class CEvent : public internal::EventInterface {
- public:
-  CEvent(SP_Device* device, SP_StreamExecutor* stream_executor)
-      : device_(device),
-        stream_executor_(stream_executor),
-        event_handle_(nullptr) {}
-  ~CEvent() override { Destroy(); }
-
-  port::Status Create() {
-    OwnedTFStatus c_status(TF_NewStatus());
-    stream_executor_->create_event(device_, &event_handle_, c_status.get());
-    return StatusFromTF_Status(c_status.get());
-  }
-
-  port::Status Record(SP_Stream stream_handle) {
-    OwnedTFStatus c_status(TF_NewStatus());
-    stream_executor_->record_event(device_, stream_handle, event_handle_,
-                                   c_status.get());
-    return StatusFromTF_Status(c_status.get());
-  }
-
-  void Destroy() {
-    if (event_handle_ != nullptr) {
-      stream_executor_->destroy_event(device_, event_handle_);
-      event_handle_ = nullptr;
-    }
-  }
-
-  SP_Event Handle() { return event_handle_; }
-
- private:
-  SP_Device* device_;
-  SP_StreamExecutor* stream_executor_;
-  SP_Event event_handle_;
-};
-
-class CTimer : public internal::TimerInterface {
- public:
-  CTimer(SP_Device* device, SP_StreamExecutor* stream_executor,
-         SP_TimerFns* timer_fns)
-      : device_(device),
-        stream_executor_(stream_executor),
-        timer_handle_(nullptr),
-        timer_fns_(timer_fns) {}
-  ~CTimer() override { Destroy(); }
-
-  port::Status Create() {
-    OwnedTFStatus c_status(TF_NewStatus());
-    stream_executor_->create_timer(device_, &timer_handle_, c_status.get());
-    return StatusFromTF_Status(c_status.get());
-  }
-
-  void Destroy() {
-    if (timer_handle_ != nullptr) {
-      stream_executor_->destroy_timer(device_, timer_handle_);
-      timer_handle_ = nullptr;
-    }
-  }
-
-  SP_Timer Handle() { return timer_handle_; }
-
-  uint64 Microseconds() const override {
-    return timer_fns_->nanoseconds(timer_handle_) / 1000;
-  }
-
-  uint64 Nanoseconds() const override {
-    return timer_fns_->nanoseconds(timer_handle_);
-  }
-
- private:
-  SP_Device* device_;
-  SP_StreamExecutor* stream_executor_;
-  SP_Timer timer_handle_;
-  SP_TimerFns* timer_fns_;
-};
-
 // Converts DeviceMemoryBase to a C struct.
 SP_DeviceMemoryBase DeviceMemoryBaseToC(const DeviceMemoryBase* mem) {
   SP_DeviceMemoryBase device_memory_base{SP_DEVICE_MEMORY_BASE_STRUCT_SIZE};
@@ -321,14 +210,12 @@ SP_DeviceMemoryBase DeviceMemoryBaseToC(const DeviceMemoryBase* mem) {
   device_memory_base.opaque = const_cast<void*>(mem->opaque());
   device_memory_base.size = mem->size();
   device_memory_base.payload = mem->payload();
-  // TODO(annarev): Add `ext` field to DeviceMemoryBase and set it here.
   return device_memory_base;
 }
 
 DeviceMemoryBase DeviceMemoryBaseFromC(const SP_DeviceMemoryBase& mem) {
   DeviceMemoryBase base(mem.opaque, mem.size);
   base.SetPayload(mem.payload);
-  // TODO(annarev): Add `ext` field to DeviceMemoryBase and set it here.
   return base;
 }
 
@@ -426,7 +313,6 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
       LOG(ERROR) << status.error_message();
       return absl::nullopt;
     }
-    // TODO(annarev): validate SP_AllocatorStats.
     ::stream_executor::AllocatorStats stats;
     stats.num_allocs = c_stats.num_allocs;
     stats.bytes_in_use = c_stats.bytes_in_use;

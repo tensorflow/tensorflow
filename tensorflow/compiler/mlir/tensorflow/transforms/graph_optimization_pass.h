@@ -27,12 +27,14 @@ class MlirGraphOptimizationPass : public ::tensorflow::MlirOptimizationPass {
  public:
   llvm::StringRef name() const override { return "graph_optimization"; }
 
-  bool IsEnabled(const ::tensorflow::ConfigProto& config_proto) const override {
+  bool IsEnabled(const ::tensorflow::ConfigProto& config_proto,
+                 const tensorflow::Graph& graph) const override {
     return config_proto.experimental().enable_mlir_graph_optimization();
   }
 
   ::tensorflow::Status Run(const ::tensorflow::ConfigProto& config_proto,
-                           ModuleOp module) override;
+                           ModuleOp module,
+                           const ::tensorflow::Graph& graph) override;
 };
 
 }  // namespace TF

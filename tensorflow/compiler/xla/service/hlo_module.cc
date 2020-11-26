@@ -44,7 +44,10 @@ namespace xla {
 HloModule::HloModule(const string& name, HloModuleConfig config)
     : name_(NameUniquer::GetSanitizedName(name)),
       config_(std::move(config)),
-      unique_id_(next_unique_module_id_++) {}
+      unique_id_(next_unique_module_id_++),
+      metadata_(tensorflow::Env::Default()) {
+  metadata_.set_canonical_module_id(unique_id_);
+}
 
 Status HloModule::set_schedule(HloSchedule schedule) {
   TF_RET_CHECK(schedule.module() == this);

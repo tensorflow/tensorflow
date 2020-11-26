@@ -1222,6 +1222,25 @@ ENTRY %conv {
           "{devices=[2,2,1,2]0,1,2,3,4,5,6,7 last_tile_dim_replicate}"));
 }
 
+TEST_F(ShardingPropagationTest, DotMergeOperands3) {
+  const char* const hlo_string = R"(
+HloModule module
+ENTRY %conv {
+  %p0 = f32[256,512] parameter(0), sharding={devices=[2,4]0,1,2,3,4,5,6,7}
+  %p1 = f32[128,512] parameter(1), sharding={devices=[4,2]0,4,2,6,3,7,1,5}
+  %dot = f32[256,128] dot(%p0, %p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+  ROOT %copy = f32[256,128] copy(%dot)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, ShardingPropagation(/*is_spmd=*/true).Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(FindInstruction(module.get(), "dot"),
+              op::Sharding("{devices=[2,4]0,2,3,1,4,6,7,5}"));
+}
+
 TEST_F(ShardingPropagationTest, BackwardDotFromContracting) {
   const char* const hlo_string = R"(
 HloModule module

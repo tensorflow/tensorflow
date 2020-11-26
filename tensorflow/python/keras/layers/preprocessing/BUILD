@@ -47,6 +47,7 @@ py_library(
     name = "discretization",
     srcs = [
         "discretization.py",
+        "discretization_v1.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -54,6 +55,7 @@ py_library(
         "//tensorflow/python:boosted_trees_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:resources",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:tf_export",
@@ -343,6 +345,9 @@ cuda_py_test(
     srcs = ["category_crossing_test.py"],
     python_version = "PY3",
     shard_count = 4,
+    tags = [
+        "no_windows",  # b/149031156
+    ],
     deps = [
         ":category_crossing",
         "//tensorflow/python:array_ops",
@@ -399,9 +404,9 @@ distribute_py_test(
         "//tensorflow/python:framework_test_combinations_lib",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/distribute:tpu_strategy",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras/distribute:strategy_combinations",
     ],
 )
 
@@ -425,9 +430,9 @@ distribute_py_test(
         "//tensorflow/python:framework_test_combinations_lib",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/distribute:tpu_strategy",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras/distribute:strategy_combinations",
     ],
 )
 
@@ -448,8 +453,8 @@ distribute_py_test(
         "//tensorflow/python:framework_test_combinations_lib",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras/distribute:strategy_combinations",
     ],
 )
 
@@ -458,6 +463,7 @@ tf_py_test(
     size = "small",
     srcs = ["discretization_test.py"],
     python_version = "PY3",
+    shard_count = 4,
     tags = ["no_rocm"],
     deps = [
         ":discretization",
@@ -483,8 +489,8 @@ distribute_py_test(
         "//tensorflow/python:config",
         "//tensorflow/python:framework_test_combinations_lib",
         "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras/distribute:strategy_combinations",
     ],
 )
 
@@ -520,8 +526,8 @@ tpu_py_test(
     deps = [
         ":hashing",
         "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras/distribute:strategy_combinations",
     ],
 )
 
@@ -551,8 +557,8 @@ tpu_py_test(
     deps = [
         ":index_lookup",
         "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras/distribute:strategy_combinations",
     ],
 )
 
@@ -631,9 +637,9 @@ distribute_py_test(
         "//tensorflow/python:framework_test_combinations_lib",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras/distribute:strategy_combinations",
     ],
 )
 
@@ -688,9 +694,9 @@ distribute_py_test(
         "//tensorflow/python:framework_test_combinations_lib",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras/distribute:strategy_combinations",
     ],
 )
 

@@ -420,6 +420,18 @@ class MetricsContainerTest(keras_parameterized.TestCase):
     self.assertEqual(acc_metric_2.result().numpy(), 0.)
     self.assertEqual(acc_metric_2._fn, metrics_mod.binary_accuracy)
 
+    weighted_metrics = metric_container.weighted_metrics
+    self.assertLen(weighted_metrics, 2)
+    self.assertEqual(weighted_metrics[0].name, 'output_1_accuracy')
+    self.assertEqual(weighted_metrics[1].name, 'output_2_accuracy')
+
+    unweighted_metrics = metric_container.unweighted_metrics
+    self.assertLen(unweighted_metrics, 4)
+    self.assertEqual(unweighted_metrics[0].name, 'output_1_mse')
+    self.assertEqual(unweighted_metrics[1].name, 'output_1_mae')
+    self.assertEqual(unweighted_metrics[2].name, 'output_2_mse')
+    self.assertEqual(unweighted_metrics[3].name, 'output_2_mae')
+
   def test_metric_dict(self):
     metric_container = compile_utils.MetricsContainer(
         metrics={

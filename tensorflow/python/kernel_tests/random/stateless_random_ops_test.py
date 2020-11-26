@@ -32,6 +32,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_stateless_random_ops_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import stateless_random_ops as stateless
@@ -411,6 +412,16 @@ class StatelessOpsTest(test.TestCase, parameterized.TestCase):
       # CPU kernels.
       self.skipTest('Lacking XLA kernel')
     self._test_determinism(case, seed_type)
+
+  @test_util.run_v2_only
+  def testGetKeyCounterAlg(self):
+    seed = [1, 2]
+    key, counter = gen_stateless_random_ops_v2.stateless_random_get_key_counter(
+        seed)
+    self.assertAllEqual(key.shape, [1])
+    self.assertAllEqual(counter.shape, [2])
+    alg = gen_stateless_random_ops_v2.stateless_random_get_alg()
+    self.assertAllEqual(alg.shape, [])
 
   def assertDTypeEqual(self, a, b):
     self.assertEqual(dtypes.as_dtype(a), dtypes.as_dtype(b))

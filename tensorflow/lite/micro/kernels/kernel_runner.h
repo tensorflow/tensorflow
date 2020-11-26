@@ -23,12 +23,12 @@ limitations under the License.
 namespace tflite {
 namespace micro {
 
-// Helper class to perform a simulated kernel (i.e. TfLiteRegistration) lifecyle
-// (init, prepare, invoke). All internal allocations are handled by this class.
-// Simply pass in the registration, list of required tensors, inputs array,
-// outputs array, and any pre-builtin data. Calling Invoke() will automatically
-// walk the kernl and outputs will be ready on the the TfLiteTensor output
-// provided during construction.
+// Helper class to perform a simulated kernel (i.e. TfLiteRegistration)
+// lifecycle (init, prepare, invoke). All internal allocations are handled by
+// this class. Simply pass in the registration, list of required tensors, inputs
+// array, outputs array, and any pre-builtin data. Calling Invoke() will
+// automatically walk the kernel and outputs will be ready on the TfLiteTensor
+// output provided during construction.
 class KernelRunner {
  public:
   KernelRunner(const TfLiteRegistration& registration, TfLiteTensor* tensors,

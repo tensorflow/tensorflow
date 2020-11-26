@@ -201,10 +201,7 @@ class KernelAndDeviceOp final : public KernelAndDevice {
       : KernelAndDevice(flr, runner, std::move(collective_executor),
                         host_cpu_device),
         rendezvous_(rendezvous),
-        log_memory_(log_memory),
-        step_container_(0, [this](const string& name) {
-          device_->resource_manager()->Cleanup(name).IgnoreError();
-        }) {}
+        log_memory_(log_memory) {}
 
   ~KernelAndDeviceOp() override {}
 
@@ -252,7 +249,6 @@ class KernelAndDeviceOp final : public KernelAndDevice {
   Rendezvous* const rendezvous_;
   checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_;
   const bool log_memory_;
-  ScopedStepContainer step_container_;
 };
 
 // Represents a multi-device function. Functions can also be run using
@@ -286,15 +282,7 @@ class KernelAndDeviceFunc : public KernelAndDevice {
             std::move(input_resource_dtypes_and_shapes)),
         name_(name),
         rendezvous_creator_(std::move(rendezvous_creator)),
-        get_op_id_(std::move(get_op_id)),
-        step_container_(0, [this](const string& name) {
-          // TODO(b/139809335): This does not properly clean up remote resources
-          const std::vector<Device*> devices =
-              pflr_->device_mgr()->ListDevices();
-          for (Device* device : devices) {
-            device->resource_manager()->Cleanup(name).IgnoreError();
-          }
-        }) {}
+        get_op_id_(std::move(get_op_id)) {}
 
   ~KernelAndDeviceFunc() override;
 
@@ -362,8 +350,6 @@ class KernelAndDeviceFunc : public KernelAndDevice {
 
   std::function<Rendezvous*(const int64)> rendezvous_creator_;
   std::function<int64()> get_op_id_;
-
-  ScopedStepContainer step_container_;
 };
 
 }  // namespace tensorflow

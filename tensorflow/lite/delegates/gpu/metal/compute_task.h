@@ -19,6 +19,7 @@ limitations under the License.
 #import <Metal/Metal.h>
 
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -56,9 +57,11 @@ limitations under the License.
               sharedBufferIds:(const std::vector<size_t>&)sharedBufferIds
                 sharedBuffers:(const std::vector<id<MTLBuffer>>&)sharedBuffers;
 
-- (void)encodeWithEncoder:(id<MTLComputeCommandEncoder>)encoder
-       inputOutputBuffers:
-           (const std::map<::tflite::gpu::ValueId, id<MTLBuffer>>&)inputOutputBuffers;
+- (bool)hasInOutIds:(const std::set<::tflite::gpu::ValueId>&)ids;
+
+- (void)updateBuffers:(const std::map<::tflite::gpu::ValueId, id<MTLBuffer>>&)inputOutputBuffers;
+
+- (void)encodeWithEncoder:(id<MTLComputeCommandEncoder>)encoder;
 
 @end
 

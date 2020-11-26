@@ -14,7 +14,11 @@ load(
     "tf_cuda_library",
     "tf_opts_nortti_if_lite_protos",
 )
-load("//tensorflow/core/kernels/mlir_generated:build_defs.bzl", "if_mlir_generated_gpu_kernels_enabled")
+load(
+    "//tensorflow/core/kernels/mlir_generated:build_defs.bzl",
+    "if_mlir_generated_gpu_kernels_enabled",
+    "if_mlir_unranked_kernels_enabled",
+)
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
@@ -48,7 +52,6 @@ load(
 )
 load(
     "//third_party/mkl:build_defs.bzl",
-    "if_mkl_ml",
     "mkl_deps",
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
@@ -85,7 +88,10 @@ package_group(
 
 package_group(
     name = "optimizer_helper_friends",
-    packages = ["//learning/brain/research/lather/..."],
+    packages = [
+        "//learning/brain/research/lather/...",
+        "//learning/clair/alise/...",
+    ],
 )
 
 config_setting(
@@ -629,9 +635,11 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/kernels/batching_util:adaptive_shared_batch_scheduler",
         "//tensorflow/core/kernels/batching_util:batch_resource_base",
         "//tensorflow/core/kernels/batching_util:concat_split_util",
         "//tensorflow/core/kernels/batching_util:periodic_function_dynamic",
+        "//tensorflow/core/platform:numbers",
         "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
@@ -3241,7 +3249,6 @@ cc_library(
     deps = [
         ":aggregate_ops",
         ":argmax_op",
-        ":batch_matmul_op",
         ":betainc_op",
         ":bincount_op",
         ":bucketize_op",
@@ -3337,14 +3344,27 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "batch_matmul_op",
+    deps = [":matmul_op"],
+)
+
+tf_kernel_library(
+    name = "matmul_op",
     # <prefix>*impl.h are excluded by default from the CPU build, add explicitly.
-    hdrs = ["batch_matmul_op_impl.h"],
-    prefix = "batch_matmul_op",
-    deps = MATH_DEPS + [":eigen_contraction_kernel"] + if_mkl_ml([
-        "//third_party/mkl:intel_binary_blob",
-    ]) + if_cuda_or_rocm([
-        "//tensorflow/core/kernels:gpu_utils",
-    ]),
+    hdrs = ["matmul_op_impl.h"],
+    defines = select({
+        ":xsmm": ["TENSORFLOW_USE_LIBXSMM"],
+        "//conditions:default": [],
+    }),
+    prefix = "matmul_op",
+    deps = MATH_DEPS + [
+        ":eigen_contraction_kernel",
+        ":fused_eigen_output_kernels",
+    ] + select({
+        ":xsmm": ["@libxsmm_archive//:xsmm_avx"],
+        "//conditions:default": [],
+    }) + mkl_deps() + if_cuda([
+        "//tensorflow/core/platform/default/build_config:cublas_plugin",
+    ]) + if_cuda_or_rocm([":gpu_utils"]),
 )
 
 tf_kernel_library(
@@ -3380,9 +3400,10 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "cwise_op",
-    copts = if_mlir_generated_gpu_kernels_enabled(if_true = ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED=1"]),
+    copts = if_mlir_generated_gpu_kernels_enabled(if_true = ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED=1"]) +
+            if_mlir_unranked_kernels_enabled(if_true = ["-DMLIR_GENERATED_UNRANKED_GPU_KERNELS_ENABLED=1"]),
     prefix = "cwise_op",
-    deps = MATH_DEPS + if_mlir_generated_gpu_kernels_enabled(if_true = ["//tensorflow/core/kernels/mlir_generated:cwise_unary_op"]),
+    deps = MATH_DEPS + if_mlir_generated_gpu_kernels_enabled(if_true = ["//tensorflow/core/kernels/mlir_generated:cwise_op"]),
 )
 
 tf_kernel_library(
@@ -3401,31 +3422,9 @@ tf_kernel_library(
     name = "fft_ops",
     prefix = "fft_ops",
     deps = MATH_DEPS + [
-    ] + if_cuda_or_rocm([":gpu_utils"]) + if_cuda([
+    ] + if_cuda([
         "//tensorflow/core/platform/default/build_config:cufft_plugin",
     ]),
-)
-
-tf_kernel_library(
-    name = "matmul_op",
-    srcs = [
-        "matmul_op.cc",
-        "matmul_op_fused.cc",
-    ],
-    hdrs = ["matmul_op.h"],
-    defines = select({
-        ":xsmm": ["TENSORFLOW_USE_LIBXSMM"],
-        "//conditions:default": [],
-    }),
-    deps = MATH_DEPS + [
-        ":eigen_contraction_kernel",
-        ":fused_eigen_output_kernels",
-    ] + select({
-        ":xsmm": ["@libxsmm_archive//:xsmm_avx"],
-        "//conditions:default": [],
-    }) + mkl_deps() + if_cuda([
-        "//tensorflow/core/platform/default/build_config:cublas_plugin",
-    ]) + if_cuda_or_rocm([":gpu_utils"]),
 )
 
 tf_kernel_library(
@@ -3617,25 +3616,6 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "@com_google_absl//absl/algorithm:container",
-    ],
-)
-
-tf_cuda_cc_test(
-    name = "batch_matmul_op_test",
-    size = "small",
-    srcs = ["batch_matmul_op_test.cc"],
-    deps = [
-        ":batch_matmul_op",
-        ":broadcast_to_op",
-        ":ops_testutil",
-        ":ops_util",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
     ],
 )
 
@@ -5064,7 +5044,14 @@ STRING_DEPS = [
 
 tf_kernel_library(
     name = "string_to_hash_bucket_op",
-    prefix = "string_to_hash_bucket_op",
+    srcs = [
+        "string_to_hash_bucket_fast_op.cc",
+        "string_to_hash_bucket_op.cc",
+    ],
+    hdrs = [
+        "string_to_hash_bucket_fast_op.h",
+        "string_to_hash_bucket_op.h",
+    ],
     deps = STRING_DEPS,
 )
 
@@ -5519,13 +5506,9 @@ tf_cc_test(
     ],
 )
 
-filegroup(
+alias(
     name = "spectrogram_test_data",
-    srcs = [
-        "spectrogram_test_data/short_test_segment.wav",
-        "spectrogram_test_data/short_test_segment_spectrogram.csv.bin",
-        "spectrogram_test_data/short_test_segment_spectrogram_400_200.csv.bin",
-    ],
+    actual = "//tensorflow/core/kernels/spectrogram_test_data:spectrogram_test_data",
     visibility = ["//visibility:public"],
 )
 
@@ -5868,8 +5851,8 @@ filegroup(
         "identity_op.h",
         "immutable_constant_op.cc",
         "immutable_constant_op.h",
-        "matmul_op.cc",
-        "matmul_op.h",
+        "matmul_op_impl.h",
+        "matmul_op_real.cc",
         "no_op.cc",
         "no_op.h",
         "one_hot_op.cc",
@@ -5948,7 +5931,6 @@ filegroup(
     srcs = [
         "argmax_op.h",
         "avgpooling_op.h",
-        "batch_matmul_op_impl.h",
         "batch_norm_op.h",
         "bincount_op.h",
         "broadcast_to_op.h",
@@ -5989,6 +5971,7 @@ filegroup(
         "relu_op_functor.h",
         "reshape_util.h",
         "reverse_op.h",
+        "roll_op.h",
         "save_restore_tensor.h",
         "scan_ops.h",
         "scatter_nd_op.h",
@@ -6001,8 +5984,10 @@ filegroup(
         "spacetodepth_op.h",
         "spectrogram.h",
         "stateless_random_ops.h",
+        "stateless_random_ops_v2.h",
         "string_util.h",
         "string_to_hash_bucket_op.h",
+        "string_to_hash_bucket_fast_op.h",
         "tensor_array.h",
         "tensor_list.h",
         "tile_functor.h",
@@ -6039,7 +6024,6 @@ filegroup(
         ":android_extended_ops_headers",
         "argmax_op.cc",
         "avgpooling_op.cc",
-        "batch_matmul_op_real.cc",
         "batch_norm_op.cc",
         "bcast_ops.cc",
         "check_numerics_op.cc",
@@ -6133,6 +6117,7 @@ filegroup(
         "fake_quant_ops.cc",
         "fifo_queue.cc",
         "fifo_queue_op.cc",
+        "fingerprint_op.cc",
         "fused_batch_norm_op.cc",
         "fused_eigen_output_kernels.cc",
         "fused_eigen_output_kernels.h",
@@ -6221,10 +6206,12 @@ filegroup(
         "reduction_ops_prod.cc",
         "reduction_ops_sum.cc",
         "regex_replace_op.cc",
+        "regex_full_match_op.cc",
         "relu_op.cc",
         "reshape_util.cc",
         "restore_op.cc",
         "reverse_op.cc",
+        "roll_op.cc",
         "save_op.cc",
         "save_restore_tensor.cc",
         "save_restore_v2_ops.cc",
@@ -6259,12 +6246,14 @@ filegroup(
         "stack.h",
         "stack_ops.cc",
         "stateless_random_ops.cc",
+        "stateless_random_ops_v2.cc",
         "string_join_op.cc",
         "string_lower_op.cc",
         "string_util.cc",
         "string_split_op.cc",
         "string_strip_op.cc",
         "string_to_hash_bucket_op.cc",
+        "string_to_hash_bucket_fast_op.cc",
         "substr_op.cc",
         "tensor_array.cc",
         "tensor_array_ops.cc",
@@ -6480,6 +6469,7 @@ cc_library(
         "//tensorflow/core/platform:strong_hash",
         "//third_party/eigen3",
         "//third_party/fft2d:fft2d_headers",
+        "//third_party/icu/data:conversion_data",
         "@com_google_absl//absl/base",
         "@com_google_protobuf//:protobuf",
         "@fft2d",
@@ -7431,7 +7421,6 @@ test_suite(
         "manual",  # Avoid redundancy when using wildcard test patterns.
     ],
     tests = [
-        ":batch_matmul_op_test",
         ":batch_norm_op_test",
         ":broadcast_to_op_test",
         ":cast_op_test",

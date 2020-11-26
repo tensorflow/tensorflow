@@ -34,6 +34,7 @@ void InitKernelTest(int* argc, char** argv) {
     auto* params = delegate_providers->MutableParams();
     if (!params->HasValueSet<std::string>("nnapi_accelerator_name")) {
       params->Set<std::string>("nnapi_accelerator_name", "nnapi-reference");
+      params->Set("disable_nnapi_cpu", false);
     }
   }
 }

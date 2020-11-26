@@ -37,8 +37,7 @@ class SingleLossStepTest(test.TestCase, parameterized.TestCase):
   @ds_combinations.generate(
       combinations.times(
           optimizer_combinations.distributions_and_v1_optimizers(),
-          combinations.combine(
-              mode=strategy_combinations.graph_and_eager_modes),
+          combinations.combine(mode=["eager", "graph"]),
           combinations.combine(is_tpu=[False])) + combinations.combine(
               distribution=[strategy_combinations.tpu_strategy],
               optimizer_fn=optimizer_combinations.optimizers_v1,

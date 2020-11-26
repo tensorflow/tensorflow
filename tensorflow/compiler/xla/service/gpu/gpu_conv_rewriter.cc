@@ -536,11 +536,12 @@ MatchBackwardInput(HloInstruction* conv) {
   // 'kernel_output_feature_dimension' by 'feature_group_count'.
   int64 input_feature_dimension = dnums.kernel_input_feature_dimension();
   int64 output_feature_dimension = dnums.kernel_output_feature_dimension();
+  // The following code assumes that input_feature_dimension and
+  // output_feature_dimension are adjacent.
+  if (std::abs(input_feature_dimension - output_feature_dimension) != 1) {
+    return no_match_result;
+  }
 
-  // In the backward convolution case, the spatial dimensions become the
-  // feature dimensions, and we are guaranteed that the spatial dimensions are
-  // adjacent.
-  CHECK_EQ(std::abs(input_feature_dimension - output_feature_dimension), 1LL);
   int64 input_features = rhs->shape().dimensions(input_feature_dimension);
   int64 output_features = rhs->shape().dimensions(output_feature_dimension);
 

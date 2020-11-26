@@ -20,9 +20,9 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/lite/delegates/gpu/cl/buffer.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_image_format.h"
-#include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 
 namespace tflite {
 namespace gpu {
@@ -252,14 +252,6 @@ absl::Status CreateTensorShared(const CLContext& context, const BHWDC& shape,
 }
 
 }  // namespace
-
-absl::Status TensorDescriptor::CreateGPUObject(CLContext* context,
-                                               GPUObjectPtr* result) const {
-  Tensor gpu_tensor;
-  RETURN_IF_ERROR(gpu_tensor.CreateFromDescriptor(*this, context));
-  *result = absl::make_unique<Tensor>(std::move(gpu_tensor));
-  return absl::OkStatus();
-}
 
 Tensor::Tensor(cl_mem memory, bool memory_owner, const BHWC& shape,
                const TensorDescriptor& descriptor)

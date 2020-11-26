@@ -296,8 +296,13 @@ TYPED_TEST_CASE(ConcatenationOpTestTyped, TestTypes);
 TYPED_TEST(ConcatenationOpTestTyped, FourInputsQuantizedInt8) {
   using TestType = typename TestFixture::TestType;
 
+  const float kMin = -1;
+  const float kMax =
+      std::numeric_limits<TestType>::max() /
+      static_cast<float>(std::numeric_limits<TestType>::max() + 1);
+
   QuantizedConcatenationOpModel m0(
-      {TestFixture::tensor_type, {2, 1, 2}, -12.7, 12.8},
+      {TestFixture::tensor_type, {2, 1, 2}, 12.8f * kMin, 12.8f * kMax},
       /*axis=*/2,
       /*num_inputs=*/4);
 
@@ -311,20 +316,6 @@ TYPED_TEST(ConcatenationOpTestTyped, FourInputsQuantizedInt8) {
                   1, 3, 1.1, 3.1, 1.2, 3.2, 1.3, 3.3,  //
                   4, 7, 4.1, 7.1, 4.2, 7.2, 4.3, 7.3   //
               })));
-
-  if (TestFixture::tensor_type == TensorType_INT8) {
-    EXPECT_THAT(m0.GetOutput<int8_t>(), ElementsAreArray({
-                                            9, 29, 10, 30, 11, 31, 12, 32,   //
-                                            39, 69, 40, 70, 41, 71, 42, 72,  //
-                                        }));
-  }
-
-  if (TestFixture::tensor_type == TensorType_INT16) {
-    EXPECT_THAT(m0.GetOutput<int16_t>(),
-                ElementsAreArray({2441, 7581, 2698, 7838, 2955,    //
-                                  8095, 3212, 8352, 10151, 17861,  //
-                                  10408, 18118, 10665, 18375, 10922, 18632}));
-  }
 }
 
 TEST(ConcatenationOpTest, FourInputsQuantizedMixedRange) {

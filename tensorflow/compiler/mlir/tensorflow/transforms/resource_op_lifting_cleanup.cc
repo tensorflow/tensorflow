@@ -31,11 +31,18 @@ bool IsResource(Value value) {
   return getElementTypeOrSelf(value.getType()).isa<TF::ResourceType>();
 }
 
-// Removes identity nodes in the block. The device computation does not need
+// Checks if a cast op is casting a resource -> resource.
+bool IsCastOfResource(Operation &op) {
+  auto cast = dyn_cast<TF::CastOp>(op);
+  if (!cast) return false;
+  return IsResource(cast.x());
+}
+
+// Removes passthrough ops in the block. The device computation does not need
 // such nodes to carry information.
-void RemoveIdentity(Block &block) {
+void RemovePassthroughOp(Block &block) {
   for (auto &op : llvm::make_early_inc_range(block)) {
-    if (isa<TF::IdentityOp, TF::IdentityNOp>(&op)) {
+    if (isa<TF::IdentityOp, TF::IdentityNOp>(op) || IsCastOfResource(op)) {
       op.replaceAllUsesWith(op.getOperands());
       op.erase();
     }
@@ -115,7 +122,7 @@ FuncOp CloneFunctionIfNeeded(FuncOp func) {
   if (func_uses.hasValue() && llvm::hasSingleElement(func_uses.getValue()))
     return func;
   FuncOp cloned = func.clone();
-  cloned.setVisibility(SymbolTable::Visibility::Private);
+  cloned.setPrivate();
   cloned.setName(func.getName().str() + "_lifted");
   SymbolTable(module).insert(cloned);
   return cloned;
@@ -397,7 +404,7 @@ LogicalResult CleanupAndCanonicalize(Operation *parent_op) {
     // Cleanup code in attached regions.
     for (Region &region : op->getRegions()) {
       if (!llvm::hasSingleElement(region)) return WalkResult::interrupt();
-      RemoveIdentity(region.front());
+      RemovePassthroughOp(region.front());
       RemoveDeadLocalVariables(region.front());
     }
 

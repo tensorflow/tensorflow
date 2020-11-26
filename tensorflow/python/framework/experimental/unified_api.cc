@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/c/eager/tfe_context_internal.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
@@ -132,7 +133,9 @@ PYBIND11_MODULE(_unified_api, m) {
       .def("AddParameter",
            [](TracingContext* self, DataType dtype) {
              TracingTensorHandle* handle = nullptr;
-             Status s = self->AddParameter(dtype, &handle);
+             // TODO(srbs): Add shape argument to this function.
+             tensorflow::PartialTensorShape shape;
+             Status s = self->AddParameter(dtype, shape, &handle);
              MaybeRaiseRegisteredFromStatus(s);
              return static_cast<AbstractTensorHandle*>(handle);
            })

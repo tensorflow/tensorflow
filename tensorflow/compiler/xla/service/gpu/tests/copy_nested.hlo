@@ -1,0 +1,70 @@
+// RUN: hlo_to_llvm_ir %s | FileCheck %s
+
+// CHECK-LABEL: entry:
+// CHECK:         %[[VAL_0:.*]] = getelementptr inbounds i8, i8* %[[VAL_1:.*]], i64 0
+// CHECK:         %[[VAL_2:.*]] = bitcast i8* %[[VAL_0]] to [100 x [200 x [300 x float]]]*
+// CHECK:         %[[VAL_3:.*]] = getelementptr inbounds i8, i8* %[[VAL_4:.*]], i64 0
+// CHECK:         %[[VAL_5:.*]] = bitcast i8* %[[VAL_3]] to [200 x [100 x [300 x float]]]*
+// CHECK:         %[[VAL_6:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !2
+// CHECK:         %[[VAL_7:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !3
+// CHECK:         %[[VAL_8:.*]] = mul nuw nsw i32 %[[VAL_6]], 256
+// CHECK:         %[[VAL_9:.*]] = add nuw nsw i32 %[[VAL_8]], %[[VAL_7]]
+// CHECK:         %[[VAL_10:.*]] = icmp ult i32 %[[VAL_9]], {{.*}}
+// CHECK:         call void @llvm.assume(i1 %[[VAL_10]])
+// CHECK:         %[[VAL_11:.*]] = mul nuw nsw i32 %[[VAL_9]], 4
+// CHECK:         %[[VAL_12:.*]] = udiv i32 %[[VAL_11]], 1
+// CHECK:         %[[VAL_13:.*]] = urem i32 %[[VAL_12]], 300
+// CHECK:         %[[VAL_14:.*]] = udiv i32 %[[VAL_11]], 300
+// CHECK:         %[[VAL_15:.*]] = urem i32 %[[VAL_14]], 100
+// CHECK:         %[[VAL_16:.*]] = udiv i32 %[[VAL_11]], 30000
+// CHECK:         %[[VAL_17:.*]] = add nuw nsw i32 %[[VAL_11]], 1
+// CHECK:         %[[VAL_18:.*]] = udiv i32 %[[VAL_17]], 1
+// CHECK:         %[[VAL_19:.*]] = urem i32 %[[VAL_18]], 300
+// CHECK:         %[[VAL_20:.*]] = udiv i32 %[[VAL_17]], 300
+// CHECK:         %[[VAL_21:.*]] = urem i32 %[[VAL_20]], 100
+// CHECK:         %[[VAL_22:.*]] = udiv i32 %[[VAL_17]], 30000
+// CHECK:         %[[VAL_23:.*]] = add nuw nsw i32 %[[VAL_11]], 2
+// CHECK:         %[[VAL_24:.*]] = udiv i32 %[[VAL_23]], 1
+// CHECK:         %[[VAL_25:.*]] = urem i32 %[[VAL_24]], 300
+// CHECK:         %[[VAL_26:.*]] = udiv i32 %[[VAL_23]], 300
+// CHECK:         %[[VAL_27:.*]] = urem i32 %[[VAL_26]], 100
+// CHECK:         %[[VAL_28:.*]] = udiv i32 %[[VAL_23]], 30000
+// CHECK:         %[[VAL_29:.*]] = add nuw nsw i32 %[[VAL_11]], 3
+// CHECK:         %[[VAL_30:.*]] = udiv i32 %[[VAL_29]], 1
+// CHECK:         %[[VAL_31:.*]] = urem i32 %[[VAL_30]], 300
+// CHECK:         %[[VAL_32:.*]] = udiv i32 %[[VAL_29]], 300
+// CHECK:         %[[VAL_33:.*]] = urem i32 %[[VAL_32]], 100
+// CHECK:         %[[VAL_34:.*]] = udiv i32 %[[VAL_29]], 30000
+// CHECK:         %[[VAL_35:.*]] = icmp ult i32 %[[VAL_11]], 6000000
+// CHECK:         br i1 %[[VAL_35]], label %[[VAL_36:.*]], label %[[VAL_37:.*]]
+// CHECK:       b.in_bounds-after:                                ; preds = %[[VAL_36]], %[[VAL_38:.*]]
+// CHECK:         ret void
+// CHECK:       b.in_bounds-true:                                 ; preds = %[[VAL_38]]
+// CHECK:         %[[VAL_39:.*]] = getelementptr inbounds [100 x [200 x [300 x float]]], [100 x [200 x [300 x float]]]* %[[VAL_2]], i32 0, i32 %[[VAL_15]], i32 %[[VAL_16]], i32 %[[VAL_13]]
+// CHECK:         %[[VAL_40:.*]] = load float, float* %[[VAL_39]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_41:.*]] = bitcast [200 x [100 x [300 x float]]]* %[[VAL_5]] to float*
+// CHECK:         %[[VAL_42:.*]] = getelementptr inbounds float, float* %[[VAL_41]], i32 %[[VAL_11]]
+// CHECK:         store float %[[VAL_40]], float* %[[VAL_42]], align 4
+// CHECK:         %[[VAL_43:.*]] = getelementptr inbounds [100 x [200 x [300 x float]]], [100 x [200 x [300 x float]]]* %[[VAL_2]], i32 0, i32 %[[VAL_21]], i32 %[[VAL_22]], i32 %[[VAL_19]]
+// CHECK:         %[[VAL_44:.*]] = load float, float* %[[VAL_43]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_45:.*]] = bitcast [200 x [100 x [300 x float]]]* %[[VAL_5]] to float*
+// CHECK:         %[[VAL_46:.*]] = getelementptr inbounds float, float* %[[VAL_45]], i32 %[[VAL_17]]
+// CHECK:         store float %[[VAL_44]], float* %[[VAL_46]], align 4
+// CHECK:         %[[VAL_47:.*]] = getelementptr inbounds [100 x [200 x [300 x float]]], [100 x [200 x [300 x float]]]* %[[VAL_2]], i32 0, i32 %[[VAL_27]], i32 %[[VAL_28]], i32 %[[VAL_25]]
+// CHECK:         %[[VAL_48:.*]] = load float, float* %[[VAL_47]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_49:.*]] = bitcast [200 x [100 x [300 x float]]]* %[[VAL_5]] to float*
+// CHECK:         %[[VAL_50:.*]] = getelementptr inbounds float, float* %[[VAL_49]], i32 %[[VAL_23]]
+// CHECK:         store float %[[VAL_48]], float* %[[VAL_50]], align 4
+// CHECK:         %[[VAL_51:.*]] = getelementptr inbounds [100 x [200 x [300 x float]]], [100 x [200 x [300 x float]]]* %[[VAL_2]], i32 0, i32 %[[VAL_33]], i32 %[[VAL_34]], i32 %[[VAL_31]]
+// CHECK:         %[[VAL_52:.*]] = load float, float* %[[VAL_51]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_53:.*]] = bitcast [200 x [100 x [300 x float]]]* %[[VAL_5]] to float*
+// CHECK:         %[[VAL_54:.*]] = getelementptr inbounds float, float* %[[VAL_53]], i32 %[[VAL_29]]
+// CHECK:         store float %[[VAL_52]], float* %[[VAL_54]], align 4
+// CHECK:         br label %[[VAL_37]]
+
+HloModule Test
+
+ENTRY main {
+  a = f32[100, 200, 300]{2,1,0} parameter(0)
+  ROOT b = f32[100, 200, 300]{2,0,1} copy(a)
+}

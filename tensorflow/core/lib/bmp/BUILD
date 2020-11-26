@@ -1,24 +1,12 @@
 # Description:
-# bmp test data packages.
-
-load("//tensorflow:tensorflow.bzl", "filegroup")
+# bmp test data package alias.
 
 package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-filegroup(
+alias(
     name = "bmp_testdata",
-    srcs = [
-        # BMP data
-        "testdata/lena.bmp",
-        "testdata/rgb_small.bmp",
-        "testdata/rgb_small_255.bmp",
-        "testdata/rgba_small.bmp",
-        "testdata/rgba_small_255.bmp",
-        "testdata/grayscale_small.bmp",
-        "testdata/grayscale_small_3channels.bmp",
-        "testdata/grayscale_small_4channels.bmp",
-    ],
+    actual = "//tensorflow/core/lib/bmp/testdata:bmp_testdata",
     visibility = ["//visibility:public"],
 )

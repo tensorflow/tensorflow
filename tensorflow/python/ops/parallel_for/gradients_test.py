@@ -529,7 +529,7 @@ class GradientsTest(test.TestCase):
     os.environ["TF_ENABLE_WINOGRAD_NONFUSED"] = "0"
     data_format = ("channels_first"
                    if test.is_gpu_available() else "channels_last")
-    # Note that we we are setting training=False here so that dropout produces
+    # Note that we are setting training=False here so that dropout produces
     # the same result with pfor and with while_loop.
     pfor_outputs, while_outputs = create_mnist_per_eg_grad(
         4, data_format, training=False)
@@ -543,7 +543,7 @@ class GradientsTest(test.TestCase):
     os.environ["TF_ENABLE_WINOGRAD_NONFUSED"] = "0"
     data_format = ("channels_first"
                    if test.is_gpu_available() else "channels_last")
-    # Note that we we are setting training=False here so that dropout produces
+    # Note that we are setting training=False here so that dropout produces
     # the same result with pfor and with while_loop.
     pfor_outputs, while_outputs = create_mnist_per_eg_jacobian(
         2, data_format, training=False)

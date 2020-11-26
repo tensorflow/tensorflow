@@ -303,3 +303,50 @@ func @testDilatedConvWithDifferentExpandSqueezeAxis(%arg0: tensor<1x128x128xf32>
   // CHECK-NEXT: [[RESULT:%.*]] = "tf.BatchToSpaceND"
   // CHECK-NEXT: return [[RESULT]]
 }
+
+func @testNoDilatedConvWhenFirstDimIsDynamic(%arg0: tensor<?x128x128x3xf32>, %arg1: tensor<5x5x3x8xf32>) -> tensor<?x128x128x8xf32> {
+  %cst = constant dense<[2, 2]> : tensor<2xi32>
+  %cst_0 = constant dense<4> : tensor<2x2xi32>
+  %cst_1 = constant dense<0> : tensor<2x2xi32>
+  %0 = "tf.SpaceToBatchND"(%arg0, %cst, %cst_0) : (tensor<?x128x128x3xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<?x68x68x3xf32>
+  %1 = "tf.Conv2D"(%0, %arg1) {padding = "VALID", strides = [1, 1, 1, 1]} : (tensor<?x68x68x3xf32>, tensor<5x5x3x8xf32>) -> tensor<?x64x64x8xf32>
+  %2 = "tf.BatchToSpaceND"(%1, %cst, %cst_1) : (tensor<?x64x64x8xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<?x128x128x8xf32>
+  return %2 : tensor<?x128x128x8xf32>
+
+  // CHECK-LABEL: testNoDilatedConvWhenFirstDimIsDynamic
+  // CHECK: [[STB:%.*]] = "tf.SpaceToBatchND"
+  // CHECK-NEXT: [[CONV:%.*]] = "tf.Conv2D"
+  // CHECK-NEXT: [[RESULT:%.*]] = "tf.BatchToSpaceND"
+  // CHECK-NEXT: return [[RESULT]]
+}
+
+func @testNoDilatedConvWhenLastDimIsDynamic(%arg0: tensor<1x128x128x?xf32>, %arg1: tensor<5x5x3x8xf32>) -> tensor<1x128x128x?xf32> {
+  %cst = constant dense<[2, 2]> : tensor<2xi32>
+  %cst_0 = constant dense<4> : tensor<2x2xi32>
+  %cst_1 = constant dense<0> : tensor<2x2xi32>
+  %0 = "tf.SpaceToBatchND"(%arg0, %cst, %cst_0) : (tensor<1x128x128x?xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<4x68x68x?xf32>
+  %1 = "tf.Conv2D"(%0, %arg1) {padding = "VALID", strides = [1, 1, 1, 1]} : (tensor<4x68x68x?xf32>, tensor<5x5x3x8xf32>) -> tensor<4x64x64x?xf32>
+  %2 = "tf.BatchToSpaceND"(%1, %cst, %cst_1) : (tensor<4x64x64x?xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<1x128x128x?xf32>
+  return %2 : tensor<1x128x128x?xf32>
+
+  // CHECK-LABEL: testNoDilatedConvWhenLastDimIsDynamic
+  // CHECK: [[STB:%.*]] = "tf.SpaceToBatchND"
+  // CHECK-NEXT: [[CONV:%.*]] = "tf.Conv2D"
+  // CHECK-NEXT: [[RESULT:%.*]] = "tf.BatchToSpaceND"
+  // CHECK-NEXT: return [[RESULT]]
+}
+
+func @testNoDilatedConvWhenGivenInputIsNonFloatType(%arg0: tensor<1x128x128x3xi32>, %arg1: tensor<5x5x3x8xi32>) -> tensor<1x128x128x8xi32> {
+  %cst = constant dense<[2, 2]> : tensor<2xi32>
+  %cst_0 = constant dense<4> : tensor<2x2xi32>
+  %0 = "tf.SpaceToBatchND"(%arg0, %cst, %cst_0) : (tensor<1x128x128x3xi32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<4x68x68x3xi32>
+  %1 = "tf.Conv2D"(%0, %arg1) {padding = "VALID", strides = [1, 1, 1, 1]} : (tensor<4x68x68x3xi32>, tensor<5x5x3x8xi32>) -> tensor<4x64x64x8xi32>
+  %2 = "tf.BatchToSpaceND"(%1, %cst, %cst_0) : (tensor<4x64x64x8xi32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<1x128x128x8xi32>
+  return %2 : tensor<1x128x128x8xi32>
+
+  // CHECK-LABEL: testNoDilatedConvWhenGivenInputIsNonFloatType
+  // CHECK: [[STB:%.*]] = "tf.SpaceToBatchND"
+  // CHECK-NEXT: [[CONV:%.*]] = "tf.Conv2D"
+  // CHECK-NEXT: [[RESULT:%.*]] = "tf.BatchToSpaceND"
+  // CHECK-NEXT: return [[RESULT]]
+}

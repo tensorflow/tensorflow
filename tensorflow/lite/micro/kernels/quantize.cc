@@ -67,11 +67,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                               input->type == kTfLiteInt8);
   TF_LITE_ENSURE(context, output->type == kTfLiteUInt8 ||
                               output->type == kTfLiteInt8 ||
-                              output->type == kTfLiteInt16);
+                              output->type == kTfLiteInt16 ||
+                              output->type == kTfLiteInt32);
 
-  if (((input->type == kTfLiteInt16 || input->type == kTfLiteInt8) &&
-       output->type == kTfLiteInt8) ||
-      (input->type == kTfLiteInt16 && output->type == kTfLiteInt16)) {
+  if ((input->type == kTfLiteInt16 && output->type == kTfLiteInt8) ||
+      (input->type == kTfLiteInt8 && output->type == kTfLiteInt8) ||
+      (input->type == kTfLiteInt16 && output->type == kTfLiteInt16) ||
+      (input->type == kTfLiteInt16 && output->type == kTfLiteInt32)) {
     double effective_scale = static_cast<double>(input->params.scale) /
                              static_cast<double>(output->params.scale);
 
@@ -138,6 +140,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
             data->output_multiplier, data->output_shift, data->input_zero_point,
             data->quantization_params.zero_point,
             tflite::micro::GetTensorData<int16_t>(output));
+        return kTfLiteOk;
+      case kTfLiteInt32:
+        reference_ops::Requantize(
+            tflite::micro::GetTensorData<int16_t>(input), size,
+            data->output_multiplier, data->output_shift, data->input_zero_point,
+            data->quantization_params.zero_point,
+            tflite::micro::GetTensorData<int32_t>(output));
         return kTfLiteOk;
       default:
         TF_LITE_KERNEL_LOG(context, "Input %s, output %s not supported.",

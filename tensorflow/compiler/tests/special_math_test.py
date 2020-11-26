@@ -45,22 +45,22 @@ flags.DEFINE_bool('vary_seed', False,
 NUM_SAMPLES = int(1e3)
 
 
-@def_function.function(experimental_compile=True)
+@def_function.function(jit_compile=True)
 def _igamma(a, x):
   return math_ops.igamma(a, x)
 
 
-@def_function.function(experimental_compile=True)
+@def_function.function(jit_compile=True)
 def _igammac(a, x):
   return math_ops.igammac(a, x)
 
 
-@def_function.function(experimental_compile=True)
+@def_function.function(jit_compile=True)
 def _polygamma(n, x):
   return math_ops.polygamma(n, x)
 
 
-@def_function.function(experimental_compile=True)
+@def_function.function(jit_compile=True)
 def _zeta(a, q):
   return math_ops.zeta(a, q)
 
@@ -72,7 +72,7 @@ def implicit_reparameterization_grad(a, x):
   return -gen_math_ops.igamma_grad_a(a, x) / prob
 
 
-@def_function.function(experimental_compile=True)
+@def_function.function(jit_compile=True)
 def _log1p(x):
   return math_ops.log1p(x)
 

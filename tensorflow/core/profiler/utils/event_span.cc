@@ -120,23 +120,6 @@ class PriorityTracker {
   }
 };
 
-std::vector<EventTypeSpan> ToNonOverlappedEvents(
-    const std::vector<EventTypeSpan>& overlapped_events) {
-  std::vector<EventBoundary> event_boundaries =
-      GenerateEventBoundaries(overlapped_events);
-  std::vector<EventTypeSpan> result;
-  if (event_boundaries.empty()) return result;
-  result.reserve(event_boundaries.size());
-  PriorityTracker priority_tracker;
-  for (int64 i = 0, end = (event_boundaries.size() - 1); i < end; i++) {
-    EventType highest_priority = priority_tracker.Update(event_boundaries[i]);
-    result.push_back({highest_priority, Timespan::FromEndPoints(
-                                            event_boundaries[i].time_ps,
-                                            event_boundaries[i + 1].time_ps)});
-  }
-  return result;
-}
-
 void CombineStepDetails(const StepDetails& src, StepDetails* dst) {
   dst->AppendMarkers(src.Markers());
   dst->AppendEvents(src.Events());
@@ -304,6 +287,23 @@ void CombineStepEvents(const StepEvents& src, StepEvents* dst) {
     StepDetails* dst_details = &(*dst)[step_id];
     CombineStepDetails(src_details, dst_details);
   }
+}
+
+std::vector<EventTypeSpan> ToNonOverlappedEvents(
+    const std::vector<EventTypeSpan>& overlapped_events) {
+  std::vector<EventBoundary> event_boundaries =
+      GenerateEventBoundaries(overlapped_events);
+  std::vector<EventTypeSpan> result;
+  if (event_boundaries.empty()) return result;
+  result.reserve(event_boundaries.size());
+  PriorityTracker priority_tracker;
+  for (int64 i = 0, end = (event_boundaries.size() - 1); i < end; i++) {
+    EventType highest_priority = priority_tracker.Update(event_boundaries[i]);
+    result.push_back({highest_priority, Timespan::FromEndPoints(
+                                            event_boundaries[i].time_ps,
+                                            event_boundaries[i + 1].time_ps)});
+  }
+  return result;
 }
 
 // Converts from overlapped step-events to non-overlapped step-events.

@@ -919,6 +919,34 @@ ENTRY main {
   EXPECT_EQ(result, expected);
 }
 
+XLA_TEST_F(ExecutionTest, DynamicInputFeature) {
+  const string hlo_text = R"(
+HloModule DynamicInputFeature
+
+ENTRY main {
+  param = f32[1, 1, 5] parameter(0)
+  const = s32[] constant(5)
+  one = f32[] constant(1)
+  kernel = f32[1,5,1]{2,1,0} broadcast(f32[] one), dimensions={}
+  param_dynamic = f32[1,1,<=5] set-dimension-size(param, const), dimensions={2}
+  ROOT conv = f32[1, 1, 1]{2,1,0} custom-call(f32[1, 1, <=5] param_dynamic, f32[1,5,1]{2,1,0} kernel),
+                             window={size=1 pad=0_0},
+                             dim_labels=b0f_0io->b0f,
+                             padding_type=PADDING_VALID,
+                             custom_call_target="DynamicConvolutionForward"
+}
+)";
+
+  Literal operand = LiteralUtil::CreateR3<float>({{{1, 2, 3, 4, 5}}});
+  auto module = GetHloModule(hlo_text);
+
+  Literal result = PadAndExecute(std::move(module), {&operand});
+
+  Literal expected = LiteralUtil::CreateR3<float>({{{15}}});
+
+  EXPECT_EQ(result, expected);
+}
+
 XLA_TEST_F(ExecutionTest, DynamicDimensionReshapeUnchanged) {
   const string hlo_text = R"(
 HloModule TensorFlowScatterV1

@@ -36,9 +36,9 @@ int inference_count = 0;
 // Create an area of memory to use for input, output, and intermediate arrays.
 // Minimum arena size, at the time of writing. After allocating tensors
 // you can retrieve this value by invoking interpreter.arena_used_bytes().
-const int kModelArenaSize = 2468;
+const int kModelArenaSize = 754;
 // Extra headroom for model + alignment + future interpreter changes.
-const int kExtraArenaSize = 560 + 16 + 100;
+const int kExtraArenaSize = 554 + 16 + 100;
 const int kTensorArenaSize = kModelArenaSize + kExtraArenaSize;
 uint8_t tensor_arena[kTensorArenaSize];
 }  // namespace
@@ -94,25 +94,29 @@ void loop() {
   // trained on, and use this to calculate a value.
   float position = static_cast<float>(inference_count) /
                    static_cast<float>(kInferencesPerCycle);
-  float x_val = position * kXrange;
+  float x = position * kXrange;
 
-  // Place our calculated x value in the model's input tensor
-  input->data.f[0] = x_val;
+  // Quantize the input from floating-point to integer
+  int8_t x_quantized = x / input->params.scale + input->params.zero_point;
+  // Place the quantized input in the model's input tensor
+  input->data.int8[0] = x_quantized;
 
   // Run inference, and report any error
   TfLiteStatus invoke_status = interpreter->Invoke();
   if (invoke_status != kTfLiteOk) {
-    TF_LITE_REPORT_ERROR(error_reporter, "Invoke failed on x_val: %f\n",
-                         static_cast<double>(x_val));
+    TF_LITE_REPORT_ERROR(error_reporter, "Invoke failed on x: %f\n",
+                         static_cast<double>(x));
     return;
   }
 
-  // Read the predicted y value from the model's output tensor
-  float y_val = output->data.f[0];
+  // Obtain the quantized output from model's output tensor
+  int8_t y_quantized = output->data.int8[0];
+  // Dequantize the output from integer to floating-point
+  float y = (y_quantized - output->params.zero_point) * output->params.scale;
 
   // Output the results. A custom HandleOutput function can be implemented
   // for each supported hardware target.
-  HandleOutput(error_reporter, x_val, y_val);
+  HandleOutput(error_reporter, x, y);
 
   // Increment the inference_counter, and reset it if we have reached
   // the total number per cycle

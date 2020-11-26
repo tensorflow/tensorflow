@@ -90,7 +90,8 @@ MlirCompiler::IRHook XlaGpuOpt::GetIRHookBreakingLoweringStage(
     LoweringStage breaking_stage) {
   return {[](mlir::ModuleOp module) -> Status {
             mlir::PassManager pm(module.getContext());
-            pm.addPass(::mlir::createInjectErrorsForTestingPass());
+            pm.addNestedPass<::mlir::FuncOp>(
+                ::mlir::createInjectErrorsForTestingPass());
             if (failed(pm.run(module))) {
               return InternalError("InjectErrorsForTestingPass failed.");
             }

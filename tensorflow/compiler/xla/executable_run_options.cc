@@ -103,12 +103,12 @@ const DeviceAssignment* ExecutableRunOptions::device_assignment() const {
 }
 
 ExecutableRunOptions& ExecutableRunOptions::set_gpu_executable_run_options(
-    const GpuExecutableRunOptions* gpu_executable_run_options) {
+    const gpu::GpuExecutableRunOptions* gpu_executable_run_options) {
   gpu_executable_run_options_ = gpu_executable_run_options;
   return *this;
 }
 
-const GpuExecutableRunOptions*
+const gpu::GpuExecutableRunOptions*
 ExecutableRunOptions::gpu_executable_run_options() const {
   return gpu_executable_run_options_;
 }

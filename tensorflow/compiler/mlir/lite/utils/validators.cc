@@ -78,5 +78,21 @@ bool IsBroadcastableElementsAttrs(mlir::Attribute a, mlir::Attribute b) {
   return OpTrait::util::getBroadcastedType(a.getType(), b.getType()) != Type();
 }
 
+bool IsDimensionsDegenerateExceptLastOne(ArrayRef<int64_t> elements_shape) {
+  if (elements_shape.empty()) return true;
+
+  for (auto dim : elements_shape.drop_back(1)) {
+    if (dim != 1) return false;
+  }
+  return true;
+}
+
+bool IsDimensionsDegenerateExceptLastOne(Attribute val) {
+  if (auto ranked_type = val.getType().dyn_cast<RankedTensorType>()) {
+    return IsDimensionsDegenerateExceptLastOne(ranked_type.getShape());
+  }
+  return false;
+}
+
 }  // namespace TFL
 }  // namespace mlir

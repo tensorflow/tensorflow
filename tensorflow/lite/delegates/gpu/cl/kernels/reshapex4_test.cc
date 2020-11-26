@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/cl/kernels/reshapex4.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/reshapex4.h"
 
 #include <vector>
 
@@ -46,8 +46,10 @@ TEST_F(OpenCLOperationTest, Reshapex4) {
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreateReshapex4(op_def);
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 1, 2, 4), &dst_tensor));
+      ASSERT_OK(ExecuteGPUOperation(
+          src_tensor, creation_context_,
+          absl::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 1, 2, 4), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
                   Pointwise(FloatNear(0.0f),
                             {half(0.5f), half(-1.1f), half(-2.2f), half(3.1f),

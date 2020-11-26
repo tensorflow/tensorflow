@@ -61,7 +61,7 @@ struct ShapeToDescriptorsPass
 
     // Apply conversion.
     auto module = getOperation();
-    if (failed(applyPartialConversion(module, target, patterns)))
+    if (failed(applyPartialConversion(module, target, std::move(patterns))))
       signalPassFailure();
   }
 };

@@ -596,7 +596,7 @@ TEST_F(TuplePointsToAnalysisTest, TupleWithBitcast) {
 
 TEST_F(TuplePointsToAnalysisTest, PointsToTupleConstantElements) {
   // Construct a tuple constant and kCopy it. Verify the points-to set of the
-  // copy correctly correctly points into the nested elements of the constant.
+  // copy correctly points into the nested elements of the constant.
   auto builder = HloComputation::Builder(TestName());
   Literal elements[] = {LiteralUtil::CreateR2<float>({{1.0}, {2.0}}),
                         LiteralUtil::CreateR1<float>({2.0, 42})};

@@ -69,6 +69,7 @@ MATCH_TYPE_AND_TFLITE_TYPE(std::complex<float>, kTfLiteComplex64);
 MATCH_TYPE_AND_TFLITE_TYPE(std::complex<double>, kTfLiteComplex128);
 MATCH_TYPE_AND_TFLITE_TYPE(TfLiteFloat16, kTfLiteFloat16);
 MATCH_TYPE_AND_TFLITE_TYPE(double, kTfLiteFloat64);
+MATCH_TYPE_AND_TFLITE_TYPE(uint64_t, kTfLiteUInt64);
 
 }  // namespace tflite
 #endif  // TENSORFLOW_LITE_PORTABLE_TYPE_TO_TFLITETYPE_H_

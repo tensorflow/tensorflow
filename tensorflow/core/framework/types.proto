@@ -84,4 +84,6 @@ enum SpecializedType {
   ST_INVALID = 0;
   // "tensorflow::TensorList" in the variant type registry.
   ST_TENSOR_LIST = 1;
+  // "tensorflow::data::Optional" in the variant type registry.
+  ST_OPTIONAL = 2;
 }

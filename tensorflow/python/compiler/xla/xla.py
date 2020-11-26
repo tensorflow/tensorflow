@@ -67,7 +67,7 @@ _UNSUPPORTED_OPS = set([
 @tf_export('xla.experimental.compile')
 @deprecated(
     None, 'xla.experimental.compile is deprecated. Consider using '
-    'tf.function(experimental_compile=True)',
+    'tf.function(jit_compile=True)',
     warn_once=True)
 def compile(computation, inputs=None):  # pylint: disable=redefined-builtin
   """Builds an operator that compiles and runs `computation` with XLA.

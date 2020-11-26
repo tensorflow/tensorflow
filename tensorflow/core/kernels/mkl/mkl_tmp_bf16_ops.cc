@@ -56,9 +56,7 @@ namespace tensorflow {
                               .TypeConstraint<float>("U"),                    \
                           NoOp);                                              \
   REGISTER_KERNEL_BUILDER(                                                    \
-      Name("_FusedMatMul").Device(DEVICE_CPU).TypeConstraint<T>("T"), NoOp);  \
-  REGISTER_KERNEL_BUILDER(                                                    \
-      Name("BatchMatMulV2").Device(DEVICE_CPU).TypeConstraint<T>("T"), NoOp);
+      Name("_FusedMatMul").Device(DEVICE_CPU).TypeConstraint<T>("T"), NoOp);
 
 TF_CALL_bfloat16(REGISTER_CPU);
 #undef REGISTER_CPU

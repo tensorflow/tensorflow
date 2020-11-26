@@ -13,6 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+#include <vector>
+
+#include "absl/algorithm/container.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
@@ -23,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
+#include "tensorflow/compiler/xla/tests/test_utils.h"
 
 namespace xla {
 namespace {
@@ -247,6 +252,29 @@ INSTANTIATE_TEST_CASE_P(
     ::testing::Combine(::testing::ValuesIn(GetConv2DTestCases()),
                        ::testing::Bool()),
     GroupedConvolution2DTestDataToString);
+
+using GroupedConvolutionTest = HloTestBase;
+
+XLA_TEST_F(GroupedConvolutionTest, BackwardInputConvolution) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule convolution_module
+
+ENTRY convolution {
+  p1 = f32[2,1,1,1]{3,2,1,0} parameter(0)
+  p2 = f32[2,4,4,1]{3,2,1,0} parameter(1)
+  reverse = f32[2,4,4,1]{3,2,1,0} reverse(p2), dimensions={1,2}
+  ROOT convolution = f32[2,4,4,1]{3,2,1,0} convolution(p1, reverse), window={size=4x4 pad=3_3x3_3}, dim_labels=fb01_o01i->f01b, feature_group_count=2
+}
+)")
+                    .ValueOrDie();
+  TF_ASSERT_OK_AND_ASSIGN(auto fake_arguments, MakeFakeArguments(module.get()));
+  std::vector<Literal*> fake_argument_ptrs;
+  absl::c_transform(
+      fake_arguments, std::back_inserter(fake_argument_ptrs),
+      [](const Literal& literal) { return &const_cast<Literal&>(literal); });
+  EXPECT_TRUE(RunAndCompare(std::move(module), fake_argument_ptrs,
+                            ErrorSpec{0.01, 0.01}));
+}
 
 }  // namespace
 }  // namespace xla

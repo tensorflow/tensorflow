@@ -5,8 +5,8 @@
 // CHECK: func @main(%arg0: tensor<1xf32>) -> tensor<*xf32>
 // CHECK: %0 = "tf.While"(%arg0) {body = @body, cond = @cond, is_stateless = false} : (tensor<1xf32>) -> tensor<*xf32>
 // CHECK: return %0 : tensor<*xf32>
-// CHECK: func @cond(%arg0: tensor<*xf32>) -> tensor<*xf32>
-// CHECK: func @body(%arg0: tensor<*xf32>) -> tensor<*xf32>
+// CHECK: func private @cond(%arg0: tensor<*xf32>) -> tensor<*xf32>
+// CHECK: func private @body(%arg0: tensor<*xf32>) -> tensor<*xf32>
 
 func @main(%arg0: tensor<1xf32>) -> tensor<*xf32> {
   %0 = "tf.While"(%arg0) {cond = @cond, body = @body, is_stateless = false} : (tensor<1xf32>) -> tensor<*xf32>

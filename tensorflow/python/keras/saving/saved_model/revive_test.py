@@ -328,7 +328,9 @@ class TestModelRevive(ReviveTestBase):
     ])
     model.save(self.path, save_format='tf')
     revived = keras_load.load(self.path)
-    self.assertEqual(dtypes.string, revived._layers[0].dtype)
+    revived_layers = list(
+        revived._flatten_layers(include_self=False, recursive=False))
+    self.assertEqual(dtypes.string, revived_layers[0].dtype)
 
   @parameterized.named_parameters(
       ('default_config', CustomNetworkDefaultConfig),

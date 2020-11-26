@@ -1029,12 +1029,18 @@ class CollectiveAllReduce(CrossDeviceOps):
     # function building, the executors are not used.
     self._executors = []
     self._launchers = []
+    # Whether to only use NCCL for batched all-reduce when NCCL is requested.
+    # This is because of the lack of mechanism to order NCCL operations
+    # deterministically.
+    self._limited_nccl = False
     for device in self._devices:
       executor = executor_lib.new_executor(enable_async=True)
       self._executors.append(executor)
       launcher = cross_device_utils.CollectiveReplicaLauncher(
           group_key, group_size, self._collective_keys, device, executor)
       self._launchers.append(launcher)
+      if not launcher.can_order_nccl():
+        self._limited_nccl = True
 
     super(CollectiveAllReduce, self).__init__()
 
@@ -1121,8 +1127,8 @@ class CollectiveAllReduce(CrossDeviceOps):
     # all-reduce, which is the gradients.
     # TODO(b/132575814): switch to NCCL for all collectives when communication
     # is NCCL if and only if we can order collectives deterministically.
-    # is NCCL.
-    if (options.implementation == CommunicationImplementation.NCCL and
+    if (self._limited_nccl and
+        options.implementation == CommunicationImplementation.NCCL and
         batch_size == 1):
       implementation = CommunicationImplementation.AUTO.value
 
@@ -1182,8 +1188,9 @@ class CollectiveAllReduce(CrossDeviceOps):
     # For now, we use NCCL only when batch_size > 1.
     # TODO(b/132575814): switch to NCCL for all collectives when implementation
     # is NCCL.
-    if options.implementation == CommunicationImplementation.NCCL and len(
-        per_replica_values) == 1:
+    if (self._limited_nccl and
+        options.implementation == CommunicationImplementation.NCCL and
+        len(per_replica_values) == 1):
       implementation = CommunicationImplementation.AUTO.value
 
     gathered_values = []

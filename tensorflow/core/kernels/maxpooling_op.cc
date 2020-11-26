@@ -66,7 +66,7 @@ static void SpatialMaxPoolWithArgMaxHelper(
         context, include_batch_in_index,
         errors::Internal(
             "SpatialMaxPoolWithArgMaxHelper requires include_batch_in_index "
-            "to be True when when input_backprop != nullptr"));
+            "to be True when input_backprop != nullptr"));
   }
 
   typedef Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>

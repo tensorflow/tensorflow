@@ -285,13 +285,7 @@ Status KernelAndDeviceOp::Run(
 
   params.runner = get_runner();
 
-  params.step_container =
-      step_container == nullptr ? &step_container_ : step_container;
-  auto step_container_cleanup = gtl::MakeCleanup([step_container, this] {
-    if (step_container == nullptr) {
-      this->step_container_.CleanUp();
-    }
-  });
+  params.step_container = step_container;
 
   params.collective_executor =
       collective_executor_ ? collective_executor_->get() : nullptr;
@@ -392,8 +386,7 @@ void KernelAndDeviceFunc::RunAsync(
     opts->cancellation_manager = local_cm.get();
   }
   opts->allow_dead_tensors = true;
-  opts->step_container =
-      step_container == nullptr ? &step_container_ : step_container;
+  opts->step_container = step_container;
   opts->collective_executor =
       collective_executor_ ? collective_executor_->get() : nullptr;
 
@@ -406,9 +399,6 @@ void KernelAndDeviceFunc::RunAsync(
              [opts, rendezvous, local_cm, step_container, this,
               done = std::move(done)](const Status& s) {
                rendezvous->Unref();
-               if (step_container == nullptr) {
-                 this->step_container_.CleanUp();
-               }
                done(s);
              });
 }

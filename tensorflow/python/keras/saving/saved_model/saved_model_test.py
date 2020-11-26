@@ -83,6 +83,10 @@ class LayerWithLearningPhase(keras.engine.base_layer.Layer):
   def compute_output_shape(self, input_shape):
     return input_shape
 
+  @property
+  def _use_input_spec_as_call_signature(self):
+    return True
+
 
 class LayerWithLoss(keras.layers.Layer):
 
@@ -325,6 +329,10 @@ class TestSavedModelFormatAllModes(keras_parameterized.TestCase):
         self.input_spec = {
             'a': keras.layers.InputSpec(max_ndim=3, axes={-1: 2}),
             'b': keras.layers.InputSpec(shape=(None, 2, 3), dtype='float16')}
+
+      @property
+      def _use_input_spec_as_call_signature(self):
+        return True
 
     layer = LayerWithNestedSpec()
     saved_model_dir = self._save_model_dir()
@@ -737,8 +745,7 @@ class TestSavedModelFormatAllModes(keras_parameterized.TestCase):
                         predictions)
 
   @parameterized.named_parameters([
-      # TODO(b/148491963): Unrolling does not work with SavedModel
-      # ('with_unrolling', True),
+      ('with_unrolling', True),
       ('no_unrolling', False)
   ])
   def testSaveStatefulRNN(self, unroll):
@@ -881,6 +888,10 @@ class TestSavedModelFormat(test.TestCase):
 
       def get_config(self):
         return {}
+
+      @property
+      def _use_input_spec_as_call_signature(self):
+        return True
 
     root = keras.models.Sequential()
     root.add(keras.layers.Input(shape=(3,)))

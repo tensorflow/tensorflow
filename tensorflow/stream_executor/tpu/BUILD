@@ -72,16 +72,6 @@ cc_library(
 )
 
 cc_library(
-    name = "tpu_node_context_c_api_hdrs",
-    hdrs = ["tpu_node_context_c_api.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":c_api_decl",
-        "//tensorflow/core/tpu:libtftpu_header",
-    ],
-)
-
-cc_library(
     name = "status_helper",
     hdrs = ["status_helper.h"],
     deps = [

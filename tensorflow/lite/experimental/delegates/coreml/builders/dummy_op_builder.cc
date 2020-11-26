@@ -24,7 +24,10 @@ CoreML::Specification::NeuralNetworkLayer* DummyOpBuilder::Build() {
   return nullptr;
 }
 
-const char* DummyOpBuilder::DebugName() { return "Dummy OpBuilder"; }
+const std::string& DummyOpBuilder::DebugName() {
+  SetDebugName("DummyOpBuilder", node_id_);
+  return debug_name_;
+}
 
 TfLiteStatus DummyOpBuilder::PopulateSubgraph(TfLiteContext* context) {
   return kTfLiteOk;
@@ -32,6 +35,16 @@ TfLiteStatus DummyOpBuilder::PopulateSubgraph(TfLiteContext* context) {
 
 OpBuilder* CreateDummyOpBuilder(GraphBuilder* graph_builder) {
   return new DummyOpBuilder(graph_builder);
+}
+
+TfLiteStatus DummyOpBuilder::RegisterInputs(const TfLiteIntArray* inputs,
+                                            TfLiteContext* context) {
+  return kTfLiteOk;
+}
+
+TfLiteStatus DummyOpBuilder::RegisterOutputs(const TfLiteIntArray* outputs,
+                                             TfLiteContext* context) {
+  return kTfLiteOk;
 }
 
 }  // namespace coreml

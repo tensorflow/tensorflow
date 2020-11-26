@@ -1371,6 +1371,8 @@ py_library(
         ":_pywrap_py_exception_registry",
         ":_pywrap_py_func",  # TODO(b/142001480): remove once the bug is fixed.
         ":_pywrap_python_api_dispatcher",
+        ":_pywrap_python_api_info",
+        ":_pywrap_python_api_parameter_converter",
         ":_pywrap_python_op_gen",
         ":_pywrap_quantize_training",
         ":_pywrap_stacktrace_handler",
@@ -1380,6 +1382,7 @@ py_library(
         ":_pywrap_util_port",
         ":_pywrap_utils",
         ":composite_tensor",
+        ":config",
         ":convert_to_constants",
         ":cpp_shape_inference_proto_py",
         ":errors",
@@ -1538,6 +1541,7 @@ py_library(
     name = "function_def_to_graph",
     srcs = ["framework/function_def_to_graph.py"],
     srcs_version = "PY2AND3",
+    visibility = visibility,
     deps = [
         ":framework",
         ":framework_ops",
@@ -1591,7 +1595,7 @@ py_library(
         "framework/convert_to_constants.py",
     ],
     srcs_version = "PY2AND3",
-    visibility = visibility + ["//waymo/ml:__subpackages__"],
+    visibility = visibility,
     deps = [
         ":dtypes",
         ":framework_ops",
@@ -1695,6 +1699,7 @@ cc_library(
         ":cpp_python_util",
         ":safe_pyobject_ptr",
         "//tensorflow/core:protos_all_cc",
+        "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/strings",
     ],
 )
@@ -1739,6 +1744,168 @@ tf_py_test(
 )
 
 cc_library(
+    name = "python_api_parameter_converter",
+    srcs = ["framework/python_api_parameter_converter.cc"],
+    hdrs = ["framework/python_api_parameter_converter.h"],
+    deps = [
+        ":cpp_python_util",
+        ":op_def_util_cc",
+        ":python_api_info",
+        ":python_tensor_converter",
+        ":safe_pyobject_ptr",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/python/eager:pywrap_tfe_lib",
+        "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+# Note: this target is only used by python_api_parameter_converter_test.
+tf_python_pybind_extension(
+    name = "_pywrap_python_api_parameter_converter",
+    srcs = ["framework/python_api_parameter_converter_wrapper.cc"],
+    hdrs = [
+        "framework/op_def_util.h",
+        "framework/python_api_info.h",
+        "framework/python_api_parameter_converter.h",
+        "framework/python_tensor_converter.h",
+        "lib/core/numpy.h",
+        "//tensorflow/c:headers",
+        "//tensorflow/c/eager:pywrap_required_hdrs",
+        "//tensorflow/c/experimental/ops:pywrap_required_hdrs",
+        "//tensorflow/core/common_runtime/eager:pywrap_required_hdrs",
+        "//tensorflow/core/distributed_runtime:pywrap_required_hdrs",
+        "//tensorflow/core/distributed_runtime/eager:pywrap_required_hdrs",
+        "//tensorflow/python/eager:pywrap_required_hdrs",
+    ],
+    module_name = "_pywrap_python_api_parameter_converter",
+    deps = [
+        ":safe_pyobject_ptr_required_hdrs",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@pybind11",
+        "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/common_runtime:core_cpu_headers_lib",
+        "//tensorflow/core:lib_headers_for_pybind",
+        "//third_party/py/numpy:headers",
+        "//tensorflow/c:pywrap_required_hdrs",
+        "@com_google_absl//absl/types:span",
+    ] + if_static(
+        extra_deps = [
+            "//tensorflow/core/protobuf:eager_service_proto_cc",
+            "//tensorflow/core/protobuf:master_proto_cc",
+            "//tensorflow/core/protobuf:worker_proto_cc",
+        ],
+        otherwise = [
+            "//tensorflow/core/protobuf:eager_service_proto_cc_headers_only",
+            "//tensorflow/core/protobuf:master_proto_cc_headers_only",
+            "//tensorflow/core/protobuf:worker_proto_cc_headers_only",
+        ],
+    ),
+)
+
+tf_py_test(
+    name = "python_api_parameter_converter_test",
+    srcs = ["framework/python_api_parameter_converter_test.py"],
+    python_version = "PY3",
+    tags = ["no_pip"],
+    deps = [
+        ":_pywrap_python_api_parameter_converter",
+        ":_pywrap_python_tensor_converter",
+        ":client_testlib",
+    ],
+)
+
+cc_library(
+    name = "python_api_info",
+    srcs = ["framework/python_api_info.cc"],
+    hdrs = ["framework/python_api_info.h"],
+    deps = [
+        ":cpp_python_util",
+        ":op_def_util_cc",
+        ":python_tensor_converter",
+        ":safe_pyobject_ptr",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/python/eager:pywrap_tfe_lib",
+        "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+# Note: this target is only used by python_api_info_test.
+tf_python_pybind_extension(
+    name = "_pywrap_python_api_info",
+    srcs = ["framework/python_api_info_wrapper.cc"],
+    hdrs = [
+        "framework/op_def_util.h",
+        "framework/python_api_info.h",
+        "framework/python_tensor_converter.h",
+        "lib/core/numpy.h",
+        "//tensorflow/c:headers",
+        "//tensorflow/c/eager:pywrap_required_hdrs",
+        "//tensorflow/c/experimental/ops:pywrap_required_hdrs",
+        "//tensorflow/core/common_runtime/eager:pywrap_required_hdrs",
+        "//tensorflow/core/distributed_runtime:pywrap_required_hdrs",
+        "//tensorflow/core/distributed_runtime/eager:pywrap_required_hdrs",
+        "//tensorflow/python/eager:pywrap_required_hdrs",
+    ],
+    module_name = "_pywrap_python_api_info",
+    deps = [
+        ":safe_pyobject_ptr_required_hdrs",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@pybind11",
+        "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/common_runtime:core_cpu_headers_lib",
+        "//tensorflow/core:lib_headers_for_pybind",
+        "//third_party/py/numpy:headers",
+        "//tensorflow/c:pywrap_required_hdrs",
+        "@com_google_absl//absl/types:span",
+    ] + if_static(
+        extra_deps = [
+            "//tensorflow/core/protobuf:eager_service_proto_cc",
+            "//tensorflow/core/protobuf:master_proto_cc",
+            "//tensorflow/core/protobuf:worker_proto_cc",
+        ],
+        otherwise = [
+            "//tensorflow/core/protobuf:eager_service_proto_cc_headers_only",
+            "//tensorflow/core/protobuf:master_proto_cc_headers_only",
+            "//tensorflow/core/protobuf:worker_proto_cc_headers_only",
+        ],
+    ),
+)
+
+tf_py_test(
+    name = "python_api_info_test",
+    srcs = ["framework/python_api_info_test.py"],
+    python_version = "PY3",
+    tags = ["no_pip"],
+    deps = [
+        ":_pywrap_python_api_info",
+        ":_pywrap_python_tensor_converter",
+        ":client_testlib",
+    ],
+)
+
+cc_library(
     name = "python_api_dispatcher",
     srcs = ["framework/python_api_dispatcher.cc"],
     hdrs = ["framework/python_api_dispatcher.h"],
@@ -1773,6 +1940,79 @@ tf_py_test(
     tags = ["no_pip"],
     deps = [
         ":_pywrap_python_api_dispatcher",
+        ":client_testlib",
+    ],
+)
+
+cc_library(
+    name = "python_tensor_converter",
+    srcs = ["framework/python_tensor_converter.cc"],
+    hdrs = ["framework/python_tensor_converter.h"],
+    deps = [
+        ":cpp_python_util",
+        ":safe_pyobject_ptr",
+        "//tensorflow/c/eager:c_api",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/python/eager:pywrap_tfe_lib",
+        "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+# Note: this target is only used by python_tensor_converter_test.
+tf_python_pybind_extension(
+    name = "_pywrap_python_tensor_converter",
+    srcs = ["framework/python_tensor_converter_wrapper.cc"],
+    hdrs = [
+        "framework/python_tensor_converter.h",
+        "lib/core/numpy.h",
+        "//tensorflow/c:headers",
+        "//tensorflow/c/eager:pywrap_required_hdrs",
+        "//tensorflow/c/experimental/ops:pywrap_required_hdrs",
+        "//tensorflow/core/common_runtime/eager:pywrap_required_hdrs",
+        "//tensorflow/core/distributed_runtime:pywrap_required_hdrs",
+        "//tensorflow/core/distributed_runtime/eager:pywrap_required_hdrs",
+        "//tensorflow/python/eager:pywrap_required_hdrs",
+    ],
+    module_name = "_pywrap_python_tensor_converter",
+    deps = [
+        ":safe_pyobject_ptr_required_hdrs",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@pybind11",
+        "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/common_runtime:core_cpu_headers_lib",
+        "//tensorflow/core:lib_headers_for_pybind",
+        "//third_party/py/numpy:headers",
+        "//tensorflow/c:pywrap_required_hdrs",
+        "@com_google_absl//absl/types:span",
+    ] + if_static(
+        extra_deps = [
+            "//tensorflow/core/protobuf:eager_service_proto_cc",
+            "//tensorflow/core/protobuf:master_proto_cc",
+            "//tensorflow/core/protobuf:worker_proto_cc",
+        ],
+        otherwise = [
+            "//tensorflow/core/protobuf:eager_service_proto_cc_headers_only",
+            "//tensorflow/core/protobuf:master_proto_cc_headers_only",
+            "//tensorflow/core/protobuf:worker_proto_cc_headers_only",
+        ],
+    ),
+)
+
+tf_py_test(
+    name = "python_tensor_converter_test",
+    srcs = ["framework/python_tensor_converter_test.py"],
+    python_version = "PY3",
+    tags = ["no_pip"],
+    deps = [
+        ":_pywrap_python_tensor_converter",
         ":client_testlib",
     ],
 )
@@ -1968,6 +2208,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":platform",
+        ":tf_stack",
         ":util",
     ],
 )
@@ -2023,22 +2264,6 @@ py_library(
     ],
 )
 
-py_library(
-    name = "composite_tensor_utils",
-    srcs = ["framework/composite_tensor_utils.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":array_ops",
-        ":composite_tensor",
-        ":sparse_ops",
-        ":sparse_tensor",
-        "//tensorflow/python/ops/ragged:ragged_concat_ops",
-        "//tensorflow/python/ops/ragged:ragged_tensor",
-        "//tensorflow/python/ops/ragged:ragged_tensor_value",
-        "//third_party/py/numpy",
-    ],
-)
-
 py_test(
     name = "framework_composite_tensor_test",
     srcs = ["framework/composite_tensor_test.py"],
@@ -2052,24 +2277,6 @@ py_test(
         ":framework_test_lib",
         ":platform_test",
         "//tensorflow/core:protos_all_py",
-    ],
-)
-
-tf_py_test(
-    name = "framework_composite_tensor_utils_test",
-    srcs = ["framework/composite_tensor_utils_test.py"],
-    main = "framework/composite_tensor_utils_test.py",
-    python_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":composite_tensor",
-        ":composite_tensor_utils",
-        ":framework_test_lib",
-        ":sparse_ops",
-        ":sparse_tensor",
-        "//tensorflow/python/ops/ragged:ragged_tensor",
-        "//tensorflow/python/ops/ragged:ragged_tensor_value",
-        "//third_party/py/numpy",
     ],
 )
 
@@ -3284,6 +3491,16 @@ tf_gen_op_wrapper_private_py(
 tf_gen_op_wrapper_private_py(
     name = "ragged_conversion_ops_gen",
     visibility = ["//tensorflow/python/ops/ragged:__pkg__"],
+)
+
+tf_gen_op_wrapper_private_py(
+    name = "risc_ops_gen",
+    visibility = [
+        "//tensorflow/python/ops/risc:__pkg__",
+    ],
+    deps = [
+        "//tensorflow/core:risc_ops_op_lib",
+    ],
 )
 
 tf_gen_op_wrapper_private_py(name = "rnn_ops_gen")
@@ -5045,6 +5262,9 @@ cuda_py_test(
     srcs = ["ops/control_flow_ops_test.py"],
     python_version = "PY3",
     shard_count = 2,
+    tags = [
+        "no_cuda_asan",  # b/173241932
+    ],
     xla_tags = [
         "no_cuda_asan",  # times out
     ],
@@ -5530,16 +5750,15 @@ py_strict_library(
         "//learning/deepmind/research/language/translation/lm:__subpackages__",
     ],
     deps = [
-        ":tf_stack",
         "@six_archive//:six",
     ],
 )
 
-# Leaf library: may not depend on anything else inside TensorFlow.
+# Note: this is a heavyweight library specialized for TensorFlow graphs. Do not use for
+# other purposes.
 py_strict_library(
     name = "tf_stack",
     srcs = ["util/tf_stack.py"],
-    compatible_with = get_compatible_with_portable(),
     srcs_version = "PY2AND3",
     # TODO(mdan): Remove public visibility.
     visibility = ["//visibility:public"],
@@ -5552,11 +5771,15 @@ py_strict_library(
 pybind_extension(
     name = "_tf_stack",
     srcs = ["util/tf_stack.cc"],
-    compatible_with = get_compatible_with_portable(),
     # TODO(b/138203821): change to "util._tf_stack" once the bug is fixed.
     module_name = "_tf_stack",
     deps = [
+        ":stack_trace",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@pybind11",
     ],
 )
@@ -5577,12 +5800,12 @@ cc_library(
     srcs = ["util/stack_trace.cc"],
     hdrs = ["util/stack_trace.h"],
     deps = [
-        ":py_util",
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/util:abstract_stack_trace",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/types:optional",
     ],
 )
@@ -5670,7 +5893,6 @@ py_library(
         ":global_test_configuration",
         ":tf_decorator",
         ":tf_export",
-        ":tf_stack",
         "@org_python_pypi_backports_weakref",
         "@com_google_protobuf//:protobuf_python",
         "//third_party/py/numpy",
@@ -6025,7 +6247,10 @@ pywrap_tensorflow_macro(
         ":pybind11_status",
         ":pybind11_proto",
         ":python_api_dispatcher",
+        ":python_api_info",
+        ":python_api_parameter_converter",
         ":python_op_gen",
+        ":python_tensor_converter",
         ":safe_pyobject_ptr",
         ":tf_session_helper",
         "//third_party/python_runtime:headers",
@@ -6096,6 +6321,9 @@ filegroup(
         ":py_exception_registry",  # py_exception_registry
         ":py_func_lib",  # py_func
         ":python_api_dispatcher",  # python_api_dispatcher
+        ":python_api_info",  # python_api_info
+        ":python_api_parameter_converter",  # python_api_parameter_converter
+        ":python_tensor_converter",  # python_tensor_converter
         ":python_op_gen",  # python_op_gen
         ":safe_ptr",  # checkpoint_reader
         "//tensorflow/c:checkpoint_reader",  # checkpoint_reader
@@ -6704,7 +6932,10 @@ tf_py_test(
     size = "small",
     srcs = ["ops/dequantize_op_test.py"],
     python_version = "PY3",
-    tags = ["no_windows"],
+    tags = [
+        "no_tfrt",  # TODO(b/169901260)
+        "no_windows",
+    ],
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -6718,7 +6949,10 @@ tf_py_test(
     size = "small",
     srcs = ["ops/quantized_ops_test.py"],
     python_version = "PY3",
-    tags = ["no_windows"],
+    tags = [
+        "no_tfrt",  # TODO(b/169901260)
+        "no_windows",
+    ],
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -6732,7 +6966,10 @@ tf_py_test(
     size = "small",
     srcs = ["ops/quantized_conv_ops_test.py"],
     python_version = "PY3",
-    tags = ["no_windows"],
+    tags = [
+        "no_tfrt",  # TODO(b/169901260)
+        "no_windows",
+    ],
     deps = [
         ":client_testlib",
         ":framework_for_generated_wrappers",
@@ -7110,6 +7347,7 @@ cuda_py_test(
     tags = [
         "grappler",
         "no_pip",  # tf_optimizer is not available in pip.
+        "no_windows",  # b/173520599
         "notap",  # TODO(b/135924227): Re-enable after fixing flakiness.
     ],
     # This test will not run on XLA because it primarily tests the TF Classic flow.
@@ -7414,7 +7652,6 @@ py_library(
     visibility = visibility + [
         "//learning/deepmind/tensorflow:__subpackages__",
         "//third_party/car/deep_nets/tensorflow:__subpackages__",
-        "//waymo/ml:__subpackages__",
     ],
     deps = [
         ":framework_for_generated_wrappers",

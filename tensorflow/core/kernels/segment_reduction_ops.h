@@ -36,7 +36,8 @@ namespace functor {
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 typedef Eigen::GpuDevice GPUDevice;
-// Functor for SegmentSumGPUOp.
+// Functor for SegmentSumGPUOp & SegmentProdGPUOp & SegmentMaxGPUOp
+//             & SegmentMinGPUOp.
 // output_rows: the number of output segments (unique segment ids in
 //                'segment_ids').
 // segment_ids_shape: shape of 'segment_ids' tensor.
@@ -45,8 +46,9 @@ typedef Eigen::GpuDevice GPUDevice;
 // data_size: size of input data tensor.
 // data: input data tensor.
 // output: output reshaped to {output_rows, output.size/output_rows}
-template <typename T, typename Index>
-struct SegmentSumFunctor {
+template <typename T, typename Index, typename InitialValueF,
+          typename ReductionF, typename AtomicReductionF>
+struct SegmentReductionFunctor {
   void operator()(OpKernelContext* ctx, const GPUDevice& d,
                   const Index output_rows, const TensorShape& segment_ids_shape,
                   typename TTypes<Index>::ConstFlat segment_ids,
@@ -66,9 +68,10 @@ struct UnsortedSegmentFunctor {
 };
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-// reduction functors for the gpu
+
+// Atomic reduction functors for the gpu.
 template <typename T>
-struct SumOpGpu {
+struct AtomicSumOpGpu {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void operator()(T* dest,
                                                         const T& value) {
     GpuAtomicAdd(dest, value);
@@ -76,7 +79,7 @@ struct SumOpGpu {
 };
 
 template <typename T>
-struct ProdOpGpu {
+struct AtomicProdOpGpu {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void operator()(T* dest,
                                                         const T& value) {
     GpuAtomicMul(dest, value);
@@ -84,7 +87,7 @@ struct ProdOpGpu {
 };
 
 template <typename T>
-struct MaxOpGpu {
+struct AtomicMaxOpGpu {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void operator()(T* dest,
                                                         const T& value) {
     GpuAtomicMax(dest, value);
@@ -92,16 +95,49 @@ struct MaxOpGpu {
 };
 
 template <typename T>
-struct MinOpGpu {
+struct AtomicMinOpGpu {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void operator()(T* dest,
                                                         const T& value) {
     GpuAtomicMin(dest, value);
   }
 };
 
+// Non-atomic reduction functors for the gpu.
+template <typename T>
+struct NonAtomicSumOpGpu {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void operator()(T* dest,
+                                                        const T& value) {
+    *dest += value;
+  }
+};
+
+template <typename T>
+struct NonAtomicProdOpGpu {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void operator()(T* dest,
+                                                        const T& value) {
+    *dest *= value;
+  }
+};
+
+template <typename T>
+struct NonAtomicMaxOpGpu {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void operator()(T* dest,
+                                                        const T& value) {
+    *dest = max(*dest, value);
+  }
+};
+
+template <typename T>
+struct NonAtomicMinOpGpu {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void operator()(T* dest,
+                                                        const T& value) {
+    *dest = min(*dest, value);
+  }
+};
+
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-// initial value functors
+// Initial value functors.
 template <typename T>
 struct Zero {
   EIGEN_STRONG_INLINE T operator()() const { return T(0); }

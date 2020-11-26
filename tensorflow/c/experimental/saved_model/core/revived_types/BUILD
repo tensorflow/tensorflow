@@ -146,6 +146,7 @@ cc_library(
         ":tf_signature_def_function",
         ":variable",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 

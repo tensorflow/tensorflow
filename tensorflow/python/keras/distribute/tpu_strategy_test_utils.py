@@ -19,10 +19,12 @@ from __future__ import division
 from __future__ import google_type_annotations
 from __future__ import print_function
 
+from absl import flags
+
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.eager import remote
-from tensorflow.python.platform import flags
+# from tensorflow.python.platform import flags
 from tensorflow.python.tpu import tpu_strategy_util
 
 FLAGS = flags.FLAGS

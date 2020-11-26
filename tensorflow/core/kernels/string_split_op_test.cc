@@ -76,17 +76,17 @@ Graph* SetupStringSplitGraph(const Tensor& input) {
   return g;
 }
 
-void BM_StringSplit(int iters, int batch_size) {
-  testing::StopTiming();
-  testing::ItemsProcessed(static_cast<int64>(iters));
-  testing::UseRealTime();
+static void BM_StringSplit(::testing::benchmark::State& state) {
+  const int batch_size = state.range(0);
+
   Tensor input = GetTestTensor(batch_size);
   Graph* g = SetupStringSplitGraph(input);
-  testing::StartTiming();
-  test::Benchmark("cpu", g).Run(iters);
+  test::Benchmark("cpu", g, /*old_benchmark_api*/ false).Run(state);
+  state.SetItemsProcessed(static_cast<int64>(state.iterations()));
 }
 
 BENCHMARK(BM_StringSplit)
+    ->UseRealTime()
     ->Arg(1)
     ->Arg(8)
     ->Arg(16)
@@ -107,17 +107,17 @@ Graph* SetupStringSplitV2Graph(const Tensor& input) {
   return g;
 }
 
-void BM_StringSplitV2(int iters, int batch_size) {
-  testing::StopTiming();
-  testing::ItemsProcessed(static_cast<int64>(iters));
-  testing::UseRealTime();
+static void BM_StringSplitV2(::testing::benchmark::State& state) {
+  const int batch_size = state.range(0);
+
   Tensor input = GetTestTensor(batch_size);
   Graph* g = SetupStringSplitV2Graph(input);
-  testing::StartTiming();
-  test::Benchmark("cpu", g).Run(iters);
+  test::Benchmark("cpu", g, /*old_benchmark_api*/ false).Run(state);
+  state.SetItemsProcessed(static_cast<int64>(state.iterations()));
 }
 
 BENCHMARK(BM_StringSplitV2)
+    ->UseRealTime()
     ->Arg(1)
     ->Arg(8)
     ->Arg(16)

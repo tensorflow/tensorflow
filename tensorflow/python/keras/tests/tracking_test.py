@@ -34,6 +34,7 @@ from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.layers import normalization
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -226,7 +227,7 @@ class ListTests(keras_parameterized.TestCase):
 
     self.assertAllEqual(
         [1., 2., 3.],
-        self.evaluate(array_ops.pack(ListToTensor().l)))
+        self.evaluate(gen_array_ops.Pack(values=ListToTensor().l)))
 
 
 class ListWrapperTest(test.TestCase):
@@ -540,7 +541,7 @@ class TupleTests(keras_parameterized.TestCase):
 
     self.assertAllEqual(
         (1., 2., 3.),
-        self.evaluate(array_ops.pack(TupleToTensor().l)))
+        self.evaluate(gen_array_ops.Pack(values=TupleToTensor().l)))
 
 
 class InterfaceTests(keras_parameterized.TestCase):

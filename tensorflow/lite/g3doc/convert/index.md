@@ -92,7 +92,7 @@ import tensorflow as tf
 
 # Create a model using high-level tf.keras.* APIs
 model = tf.keras.models.Sequential([
-    tf.keras.layers.Dense(units=1, input_shape=[1])
+    tf.keras.layers.Dense(units=1, input_shape=[1]),
     tf.keras.layers.Dense(units=16, activation='relu'),
     tf.keras.layers.Dense(units=1)
 ])

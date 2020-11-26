@@ -79,6 +79,14 @@ def _create_dummy_repository(repository_ctx):
         {},
     )
 
+    # Set up tensorrt_config.py, which is used by gen_build_info to provide
+    # build environment info to the API
+    _tpl(
+        repository_ctx,
+        "tensorrt/tensorrt_config.py",
+        _py_tmpl_dict({}),
+    )
+
 def enable_tensorrt(repository_ctx):
     """Returns whether to build with TensorRT support."""
     return int(get_host_environ(repository_ctx, _TF_NEED_TENSORRT, False))
@@ -93,6 +101,7 @@ def _create_local_tensorrt_repository(repository_ctx):
         "build_defs.bzl": _tpl_path(repository_ctx, "build_defs.bzl"),
         "BUILD": _tpl_path(repository_ctx, "BUILD"),
         "tensorrt/include/tensorrt_config.h": _tpl_path(repository_ctx, "tensorrt/include/tensorrt_config.h"),
+        "tensorrt/tensorrt_config.py": _tpl_path(repository_ctx, "tensorrt/tensorrt_config.py"),
     }
 
     config = find_cuda_config(repository_ctx, find_cuda_config_path, ["tensorrt"])
@@ -148,6 +157,19 @@ def _create_local_tensorrt_repository(repository_ctx):
         {"%{tensorrt_version}": trt_version},
     )
 
+    # Set up tensorrt_config.py, which is used by gen_build_info to provide
+    # build environment info to the API
+    repository_ctx.template(
+        "tensorrt/tensorrt_config.py",
+        tpl_paths["tensorrt/tensorrt_config.py"],
+        _py_tmpl_dict({
+            "tensorrt_version": trt_version,
+        }),
+    )
+
+def _py_tmpl_dict(d):
+    return {"%{tensorrt_config}": str(d)}
+
 def _tensorrt_configure_impl(repository_ctx):
     """Implementation of the tensorrt_configure repository rule."""
 
@@ -163,6 +185,11 @@ def _tensorrt_configure_impl(repository_ctx):
         repository_ctx.template(
             "tensorrt/include/tensorrt_config.h",
             config_repo_label(remote_config_repo, ":tensorrt/include/tensorrt_config.h"),
+            {},
+        )
+        repository_ctx.template(
+            "tensorrt/tensorrt_config.py",
+            config_repo_label(remote_config_repo, ":tensorrt/tensorrt_config.py"),
             {},
         )
         repository_ctx.template(

@@ -47,6 +47,7 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text) {
   gpu_device_info.threads_per_block_limit = 1024;
   gpu_device_info.threads_per_warp = 32;
   gpu_device_info.shared_memory_per_block = 1024 * 96;
+  gpu_device_info.core_count = 80;
 
   xla::gpu::CudaComputeCapability cuda_compute_capability;
   cuda_compute_capability.cc_major = 7;

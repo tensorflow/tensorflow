@@ -524,7 +524,7 @@ def recompute_grad(f):
         # Gradient calculation for reverse mode autodiff.
         variables = grad_kwargs.get("variables")
         with backprop.GradientTape() as t:
-          id_args = [gen_array_ops.identity(x) for x in args]
+          id_args = nest.map_structure(gen_array_ops.identity, args)
           t.watch(id_args)
           if variables is not None:
             t.watch(variables)

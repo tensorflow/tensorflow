@@ -34,6 +34,8 @@ import itertools
 
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.tf_export import tf_export
+
 
 # Private function attribute used to store a list of dispatchers.
 DISPATCH_ATTR = "_tf_dispatchers"
@@ -43,6 +45,7 @@ DISPATCH_ATTR = "_tf_dispatchers"
 _GLOBAL_DISPATCHERS = []
 
 
+@tf_export("__internal__.dispatch.OpDispatcher", v1=[])
 class OpDispatcher(object):
   """Abstract base class for TensorFlow operator dispatchers.
 
@@ -86,6 +89,7 @@ class OpDispatcher(object):
     getattr(op, DISPATCH_ATTR).append(self)
 
 
+@tf_export("__internal__.dispatch.GlobalOpDispatcher", v1=[])
 class GlobalOpDispatcher(object):
   """Abstract base class for TensorFlow global operator dispatchers."""
 
@@ -193,6 +197,7 @@ def add_dispatch_list(target):
   return target
 
 
+@tf_export("__internal__.dispatch.add_dispatch_support", v1=[])
 def add_dispatch_support(target):
   """Decorator that adds a dispatch handling wrapper to an op."""
   def wrapper(*args, **kwargs):

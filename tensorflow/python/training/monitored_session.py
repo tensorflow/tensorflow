@@ -1323,7 +1323,7 @@ class _CoordinatedSession(_WrappedSession):
   raises an exception, the exception is reported to the coordinator.
 
   In addition, after each call to `run()` this session ask the coordinator if
-  the session should stop.  In that case it will will join all the threads
+  the session should stop.  In that case it will join all the threads
   registered with the coordinator before returning.
 
   If the coordinator was requested to stop with an exception, that exception

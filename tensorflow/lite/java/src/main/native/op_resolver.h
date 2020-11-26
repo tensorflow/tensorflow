@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_JAVA_SRC_MAIN_NATIVE_OP_RESOLVER_H_
 #define TENSORFLOW_LITE_JAVA_SRC_MAIN_NATIVE_OP_RESOLVER_H_
 
+#include <memory>
+
 #include "tensorflow/lite/op_resolver.h"
 
 namespace tflite {

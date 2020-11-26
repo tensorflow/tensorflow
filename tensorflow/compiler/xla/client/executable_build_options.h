@@ -104,6 +104,17 @@ class ExecutableBuildOptions {
     alias_passthrough_params_ = alias_passthrough_params;
   }
 
+  bool run_backend_only() const { return run_backend_only_; }
+  // By default, XLA builds an executable by invoking standard compilation, i.e,
+  // running Compiler::Compile, or both Compiler::RunHloPasses and
+  // Compiler::RunBackend. When run_backend_only is set to true, XLA builds an
+  // executable by invoking only RunBackend and skip invoking RunHloPasses,
+  // which can be used to compile post-optimizations HLO modules.
+  ExecutableBuildOptions& set_run_backend_only(bool run_backend_only) {
+    run_backend_only_ = run_backend_only;
+    return *this;
+  }
+
  private:
   int device_ordinal_ = -1;
   Shape result_layout_;
@@ -116,6 +127,7 @@ class ExecutableBuildOptions {
   bool deduplicate_hlo_ = false;
   absl::optional<DeviceAssignment> device_assignment_;
   bool alias_passthrough_params_ = false;
+  bool run_backend_only_ = false;
 };
 
 }  // namespace xla

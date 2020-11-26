@@ -447,9 +447,13 @@ Status AddArgToSig(const NodeDefOrAttrSlice& node_or_attrs,
   const int original_size = sig->size();
   if (!arg_def.number_attr().empty()) {
     // Same type repeated "repeats" times.
-    int32 repeats = -1;
+    int64 repeats = -1;
     TF_RETURN_IF_ERROR(
         GetNodeAttr(node_or_attrs, arg_def.number_attr(), &repeats));
+    // We can't handle outputs that are larger than int32 sizes.
+    if (static_cast<int64>(static_cast<int32>(repeats)) != repeats) {
+      return errors::InvalidArgument("Number of outputs is too big: ", repeats);
+    }
     if (repeats < 0) {
       return errors::InvalidArgument("Value for number_attr() ", repeats,
                                      " < 0");

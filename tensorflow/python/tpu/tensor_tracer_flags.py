@@ -71,6 +71,7 @@ FLAG_NAME_SUMMARY_PER_CORE = 'collect_summary_per_core'
 FLAG_NAME_TEMP_CACHE_VAR = 'use_temp_cache'
 FLAG_NAME_INSPECT_TRACE = 'inspect_trace'
 FLAG_NAME_FINGERPRINT_DIR = 'use_fingerprint_subdirectory'
+FLAG_FLUSH_SUMMARY = 'flush_summaries'
 
 _OP_RANGE_PAT = re.compile(r'(\d+):(\d+)')
 _TEST_UNDECLARED_OUTPUTS_DIR_ENV_VAR = 'TEST_UNDECLARED_OUTPUTS_DIR'
@@ -80,6 +81,7 @@ _TT_PREFIX = 'tensor_tracer'
 
 _TT_NORM = 'norm'
 _TT_MAX = 'max'
+_TT_MAX_ABS = 'max-abs'
 _TT_MIN = 'min'
 _TT_MEAN = 'mean'
 _TT_VAR = 'var'
@@ -87,13 +89,15 @@ _TT_SIZE = 'size'
 
 TT_SUMMARY_NORM = '%s_%s' % (_TT_PREFIX, _TT_NORM)
 TT_SUMMARY_MAX = '%s_%s' % (_TT_PREFIX, _TT_MAX)
+TT_SUMMARY_MAX_ABS = '%s_%s' % (_TT_PREFIX, _TT_MAX_ABS)
 TT_SUMMARY_MIN = '%s_%s' % (_TT_PREFIX, _TT_MIN)
 TT_SUMMARY_MEAN = '%s_%s' % (_TT_PREFIX, _TT_MEAN)
 TT_SUMMARY_VAR = '%s_%s' % (_TT_PREFIX, _TT_VAR)
 TT_SUMMARY_SIZE = '%s_%s' % (_TT_PREFIX, _TT_SIZE)
 
 TT_SUMMARY_SIGNATURES = (TT_SUMMARY_NORM, TT_SUMMARY_MAX, TT_SUMMARY_MIN,
-                         TT_SUMMARY_MEAN, TT_SUMMARY_VAR, TT_SUMMARY_SIZE)
+                         TT_SUMMARY_MEAN, TT_SUMMARY_VAR, TT_SUMMARY_SIZE,
+                         TT_SUMMARY_MAX_ABS)
 
 
 class TTParameters(object):
@@ -135,6 +139,8 @@ class TTParameters(object):
                                                 _TT_DEFAULT_TRACE_LEVEL)
     self.summary_signatures = self._get_summary_signatures()
     self.collect_summary_per_core = self.is_flag_on(FLAG_NAME_SUMMARY_PER_CORE)
+    self.flush_summaries_with_outside_compile = self.is_flag_on(
+        FLAG_FLUSH_SUMMARY)
 
   def _get_report_filepath(self):
     """Sets the path of the output report file."""
@@ -253,7 +259,7 @@ class TTParameters(object):
         FLAG_NAME_DUMP_BEFORE_AFTER_GRAPHS, FLAG_NAME_TRACE_LEVEL,
         FLAG_NAME_SUMMARY_SIGNATURES, FLAG_NAME_SUMMARY_PER_CORE,
         FLAG_NAME_TEMP_CACHE_VAR, FLAG_NAME_FINGERPRINT_DIR,
-        FLAG_NAME_INSPECT_TRACE
+        FLAG_NAME_INSPECT_TRACE, FLAG_FLUSH_SUMMARY
     ]
     tensor_tracer_flags = self._env.get(FLAGS_ENV_VAR)
     if not tensor_tracer_flags:
@@ -292,7 +298,7 @@ class TTParameters(object):
             signature, TT_SUMMARY_SIGNATURES))
     if not tt_signatures:
       # Default case collects norm and max only.
-      return {TT_SUMMARY_MAX: 0, TT_SUMMARY_NORM: 1}
+      return {TT_SUMMARY_MAX_ABS: 0, TT_SUMMARY_NORM: 1}
     else:
       return {signature: idx for idx, signature in enumerate(tt_signatures)}
 
@@ -303,6 +309,9 @@ class TTParameters(object):
             TRACE_MODE_NAN_INF: math_ops.reduce_max,
             TT_SUMMARY_NORM: linalg_ops.norm,
             TT_SUMMARY_MAX: math_ops.reduce_max,
+            TT_SUMMARY_MAX_ABS:
+                lambda t, axis=0: math_ops.reduce_max(math_ops.abs(t),  # pylint: disable=g-long-lambda
+                                                      axis=axis),
             TT_SUMMARY_MIN: math_ops.reduce_min,
             TT_SUMMARY_MEAN: math_ops.reduce_mean,
             TT_SUMMARY_VAR: math_ops.reduce_max,  # Simply reduce max variance.

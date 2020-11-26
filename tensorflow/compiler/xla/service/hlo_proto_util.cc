@@ -38,12 +38,14 @@ HloProto MakeHloProto(const HloModule& module) {
 }
 
 StatusOr<std::unique_ptr<HloModule>> CreateModuleFromProto(
-    const HloModuleProto& proto, const HloModuleConfig& module_config) {
+    const HloModuleProto& proto, const HloModuleConfig& module_config,
+    bool is_module_post_optimizations) {
   VLOG(4) << proto.ShortDebugString();
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                       HloModule::CreateFromProto(proto, module_config));
   TF_RETURN_IF_ERROR(
-      HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/false)
+      HloVerifier(/*layout_sensitive=*/false,
+                  /*allow_mixed_precision=*/is_module_post_optimizations)
           .Run(module.get())
           .status());
   return std::move(module);

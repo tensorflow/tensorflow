@@ -247,6 +247,6 @@ issue with all the necessary details to reproduce.
 
 ## APIs
 
-*   [Core ML delegate Swift API](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/swift/Sources/CoreMLDelegate.swift)
+*   [Core ML delegate Swift API](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/swift/Sources/CoreMLDelegate.swift)
 *   [Core ML delegate C API](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/delegates/coreml/coreml_delegate.h)
     *   This can be used for Objective-C codes.

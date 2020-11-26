@@ -412,6 +412,11 @@ XlaOpRegistry::CompileTimeConstantInputArgNames(const string& op) {
     }
   }
 
+  VLOG(3) << "For operation "
+          << (op_def != nullptr ? op_def->name() : op_kernel->name())
+          << " required constants are: "
+          << absl::StrJoin(*compile_time_constant_inputs, ", ");
+
   for (const string& input : *compile_time_constant_inputs) {
     if (op_def) {
       NameRangeMap input_name_ranges;

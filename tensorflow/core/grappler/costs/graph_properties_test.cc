@@ -1016,7 +1016,7 @@ TEST_F(GraphPropertiesTest, IdentityPassingShape) {
 TEST_F(GraphPropertiesTest, SkippingValueInferenceForLargeTensors) {
   // When using aggressive_shape_inference, we run EvaluateNode() for
   // allowlisted ops and small input / output tensors. For instance, Fill op is
-  // evaluated and produces output tensor value if output tensor size is smal
+  // evaluated and produces output tensor value if output tensor size is small
   // (currently, fewer than 17 elements); otherwise we don't run EvaluateNode().
   // This is to avoid wasting time and memory for producing huge tensors (e.g.,
   // initializing a large table using Fill.
@@ -1132,7 +1132,7 @@ TEST_F(GraphPropertiesTest, PackWithIdentityInput) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   // Same to PackWithConstInput test case, but a, b, c, and d are Identity ops
   // from Const.
-  // If output_tensors_as_shape is not not set for those Shape ops or Pack op
+  // If output_tensors_as_shape is not set for those Shape ops or Pack op
   // doesn't take input_tensors_as_shape, Fill op's input doesn't have value;
   // hence, its output shape becomes unknown.
   Output a0 = ops::Const(s.WithOpName("a0"), 1, {});
@@ -1197,7 +1197,7 @@ TEST_F(GraphPropertiesTest, FunctionWithDtResourceInput) {
         break;
       }
     }
-    // We cannot infer the function output shape correclty without those attr,
+    // We cannot infer the function output shape correctly without those attr,
     // but still it shouldn't fail; also, there can be some shapes we can
     // infer in such a case. In this test graph,
     // z2 of the function node just returns x input; hence, even if _Arg's shape
@@ -2377,7 +2377,7 @@ TEST_F(GraphPropertiesTest,
   TF_ASSERT_OK(properties.InferStatically(true));
   const auto& y1_output_properties = properties.GetOutputProperties("y1");
   // y1=reshape(x1), but x1's shape in unknown, so y1 should be [-1, 10].
-  // The first dimensino should not be 10.
+  // The first dimension should not be 10.
   EXPECT_EQ(y1_output_properties.size(), 1);
   EXPECT_EQ(y1_output_properties[0].shape().dim_size(), 2);
   EXPECT_LT(y1_output_properties[0].shape().dim(0).size(), 0);

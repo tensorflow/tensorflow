@@ -155,6 +155,9 @@ StatusOr<absl::flat_hash_set<absl::string_view>> GetAttributesToIgnore(
   if (llvm::isa<mlir::TF::CaseOp, mlir::TF::IfOp, mlir::TF::WhileOp>(inst))
     attrs_to_ignore.insert("is_stateless");
 
+  if (llvm::isa<mlir::TF::WhileOp>(inst))
+    attrs_to_ignore.insert("shape_invariant");
+
   return attrs_to_ignore;
 }
 

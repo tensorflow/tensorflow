@@ -62,8 +62,7 @@ void ExecutionInput::SetUnownedBuffer(const ShapeIndex& index,
 StatusOr<ShapedBuffer> ExecutionInput::ToShapedBuffer(
     se::DeviceMemoryAllocator* allocator, int device_ordinal) const {
   const Shape& input_shape = shape();
-  ShapedBuffer shaped_buffer(input_shape, allocator->platform(),
-                             device_ordinal);
+  ShapedBuffer shaped_buffer(input_shape, device_ordinal);
   for (const auto& index_buffer : Buffers()) {
     const tensorflow::se::OwningDeviceMemory* mem =
         index_buffer.second.AsOwningDeviceMemory();

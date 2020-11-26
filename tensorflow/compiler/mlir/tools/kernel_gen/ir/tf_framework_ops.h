@@ -25,6 +25,8 @@ limitations under the License.
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_status.h.inc"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace mlir {
 namespace kernel_gen {
@@ -37,6 +39,8 @@ class OpKernelContextType
  public:
   using Base::Base;
 };
+
+::tensorflow::error::Code ConvertAttrToEnumValue(ErrorCode error_code);
 
 }  // namespace tf_framework
 }  // namespace kernel_gen

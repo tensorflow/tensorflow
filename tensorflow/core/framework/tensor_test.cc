@@ -1468,19 +1468,19 @@ TEST(SummarizeValue, STRING_PRINT_V2) {
             x.SummarizeValue(16, true));
 }
 
-void BM_CreateAndDestroy(int iters) {
+void BM_CreateAndDestroy(::testing::benchmark::State& state) {
   TensorShape shape({10, 20});
-  while (--iters) {
+  for (auto s : state) {
     Tensor t(DT_FLOAT, shape);
   }
 }
 BENCHMARK(BM_CreateAndDestroy);
 
-void BM_Assign(int iters) {
+void BM_Assign(::testing::benchmark::State& state) {
   Tensor a(DT_FLOAT, TensorShape({10, 20}));
   Tensor b(DT_FLOAT, TensorShape({10, 20}));
   bool a_to_b = true;
-  while (--iters) {
+  for (auto s : state) {
     if (a_to_b) {
       b = a;
     } else {
@@ -1498,20 +1498,20 @@ TEST(Tensor, EmptyTensorData) {
 }
 
 // Benchmark create and destroy a tensor, with an allocated buffer.
-void BM_CreateAndDestroyWithBuf(int iters) {
+void BM_CreateAndDestroyWithBuf(::testing::benchmark::State& state) {
   TensorShape shape({10, 20});
   Allocator* allocator = cpu_allocator();
-  while (--iters) {
+  for (auto s : state) {
     Tensor a(allocator, DT_FLOAT, shape);
   }
 }
 BENCHMARK(BM_CreateAndDestroyWithBuf);
 
 // Benchmark create+copy a tensor, with an allocated buffer.
-void BM_CreateAndCopyCtrWithBuf(int iters) {
+void BM_CreateAndCopyCtrWithBuf(::testing::benchmark::State& state) {
   TensorShape shape({10, 20});
   Allocator* allocator = cpu_allocator();
-  while (--iters) {
+  for (auto s : state) {
     Tensor a(allocator, DT_FLOAT, shape);
     Tensor b(a);
   }
@@ -1519,10 +1519,10 @@ void BM_CreateAndCopyCtrWithBuf(int iters) {
 BENCHMARK(BM_CreateAndCopyCtrWithBuf);
 
 // Benchmark create+move a tensor, with an allocated buffer.
-void BM_CreateAndMoveCtrWithBuf(int iters) {
+void BM_CreateAndMoveCtrWithBuf(::testing::benchmark::State& state) {
   TensorShape shape({10, 20});
   Allocator* allocator = cpu_allocator();
-  while (--iters) {
+  for (auto s : state) {
     Tensor a(allocator, DT_FLOAT, shape);
     Tensor b(std::move(a));
   }
@@ -1531,10 +1531,11 @@ BENCHMARK(BM_CreateAndMoveCtrWithBuf);
 
 // Benchmark creating and destroy a host-scalar tensor, using the allocator
 // interface.
-void BM_CreateAndDestroyHostScalarNonOptimized(int iters) {
+void BM_CreateAndDestroyHostScalarNonOptimized(
+    ::testing::benchmark::State& state) {
   TensorShape shape({});
   Allocator* allocator = cpu_allocator();
-  while (--iters) {
+  for (auto s : state) {
     Tensor a(allocator, DT_FLOAT, shape);
     a.scalar<float>()() = 37.0;
   }
@@ -1543,32 +1544,33 @@ BENCHMARK(BM_CreateAndDestroyHostScalarNonOptimized);
 
 // Benchmark creating and destroy a host-scalar tensor, using the specialized
 // constructor.
-void BM_CreateAndDestroyHostScalarOptimized(int iters) {
-  while (--iters) {
+void BM_CreateAndDestroyHostScalarOptimized(
+    ::testing::benchmark::State& state) {
+  for (auto s : state) {
     Tensor a(37.0);
   }
 }
 BENCHMARK(BM_CreateAndDestroyHostScalarOptimized);
 
-static void BM_FromProto(int iters, int size) {
-  testing::StopTiming();
+void BM_FromProto(::testing::benchmark::State& state) {
+  const int size = state.range(0);
+
   TensorShape shape({size});
   Allocator* allocator = cpu_allocator();
   Tensor a(allocator, DT_FLOAT, shape);
   std::fill_n(a.flat<float>().data(), size, 42.0);
   TensorProto p;
   a.AsProtoField(&p);
-  testing::StartTiming();
-  while (--iters) {
+  for (auto s : state) {
     Tensor b;
     ASSERT_TRUE(b.FromProto(p));
   }
-  testing::StopTiming();
 }
 BENCHMARK(BM_FromProto)->Range(1, 1 << 20);
 
-static void BM_FromProtoCompressed(int iters, int size) {
-  testing::StopTiming();
+void BM_FromProtoCompressed(::testing::benchmark::State& state) {
+  const int size = state.range(0);
+
   TensorShape shape({size});
   Allocator* allocator = cpu_allocator();
   Tensor a(allocator, DT_FLOAT, shape);
@@ -1576,17 +1578,16 @@ static void BM_FromProtoCompressed(int iters, int size) {
   TensorProto p;
   a.AsProtoField(&p);
   tensor::CompressTensorProtoInPlace(&p);
-  testing::StartTiming();
-  while (--iters) {
+  for (auto s : state) {
     Tensor b;
     ASSERT_TRUE(b.FromProto(p));
   }
-  testing::StopTiming();
 }
 BENCHMARK(BM_FromProtoCompressed)->Range(1, 1 << 20);
 
-static void BM_FromProtoCompressedZero(int iters, int size) {
-  testing::StopTiming();
+void BM_FromProtoCompressedZero(::testing::benchmark::State& state) {
+  const int size = state.range(0);
+
   TensorShape shape({size});
   Allocator* allocator = cpu_allocator();
   Tensor a(allocator, DT_FLOAT, shape);
@@ -1595,12 +1596,10 @@ static void BM_FromProtoCompressedZero(int iters, int size) {
   TensorProto p;
   a.AsProtoField(&p);
   tensor::CompressTensorProtoInPlace(&p);
-  testing::StartTiming();
-  while (--iters) {
+  for (auto s : state) {
     Tensor b;
     ASSERT_TRUE(b.FromProto(p));
   }
-  testing::StopTiming();
 }
 BENCHMARK(BM_FromProtoCompressedZero)->Range(1, 1 << 20);
 

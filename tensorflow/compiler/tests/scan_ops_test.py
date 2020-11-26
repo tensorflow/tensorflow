@@ -91,6 +91,7 @@ class CumsumTest(xla_test.XLATestCase):
       for reverse in [True, False]:
         self._compare(x, axis, exclusive, reverse)
 
+  @test_util.disable_mlir_bridge("TODO(b/172473885)")
   def testEmpty(self):
     for dtype in self.valid_dtypes:
       x = np.zeros([0]).astype(dtype)
@@ -170,6 +171,7 @@ class CumprodTest(xla_test.XLATestCase):
       for reverse in [True, False]:
         self._compare(x, axis, exclusive, reverse)
 
+  @test_util.disable_mlir_bridge("TODO(b/172473885)")
   def testEmpty(self):
     for dtype in self.valid_dtypes:
       x = np.zeros([0]).astype(dtype)

@@ -276,6 +276,42 @@ Status TpuProgramGroup::CompileAndBuild(
   return status.status();
 }
 
+/*static*/
+Status TpuProgramGroup::CompileAndBuild(
+    const xrt::XLAComputation& xrt_computation_proto,
+    const XLA_TpuMeshState* mesh_state,
+    TpuProgramGroupInterface* tpu_program_group_interface) {
+  se_tpu::SerializedProto serialized_compilation_request =
+      se_tpu::SerializeProto(xrt_computation_proto);
+  auto cleanup = gtl::MakeCleanup([serialized_compilation_request] {
+    se_tpu::SerializedProto_Free(serialized_compilation_request);
+  });
+  size_t count = 0;
+  XLA_TpuProgram** xla_tpu_programs = nullptr;
+  StatusHelper status;
+  OpsApiFn()->TpuCompile_XrtCompileAndBuildFn(serialized_compilation_request,
+                                              mesh_state, &xla_tpu_programs,
+                                              &count, status.c_status);
+  if (!status.ok()) {
+    VLOG(1) << "Run CompileAndBuild failed.";
+    return status.status();
+  }
+
+  // SPMD could return 1 result for all partitions.
+  int num_cores_per_replica =
+      xrt_computation_proto.config().num_cores_per_replica()
+          ? xrt_computation_proto.config().num_cores_per_replica()
+          : 1;
+  TF_RET_CHECK(count == 1 || count == num_cores_per_replica);
+  VLOG(1) << "Initialize TpuProgramGroup.";
+  TpuProgramGroup* tpu_program_group =
+      tensorflow::down_cast<TpuProgramGroup*>(tpu_program_group_interface);
+  tpu_program_group->Initialize(
+      absl::MakeConstSpan(&xla_tpu_programs[0], count));
+  OpsApiFn()->TpuProgram_FreeArrayFn(xla_tpu_programs);
+  return status.status();
+}
+
 std::vector<XLA_TpuProgram*> TpuProgramGroup::tpu_programs(
     TpuProgramShardingType sharding_type) const {
   std::vector<XLA_TpuProgram*> tpu_programs;

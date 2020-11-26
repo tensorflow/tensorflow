@@ -92,6 +92,15 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
     return failure();
   }
 
+  if (!TFTypeIsFloat32Tensor(op.input()) || !TFDataFormatIsNHWC(op))
+    return failure();
+
+  // Allow dynamic width and height dimensions only.
+  auto result_ty = op.getResult().getType().template cast<TensorType>();
+  if (!result_ty.hasRank() || result_ty.getRank() != 4 ||
+      result_ty.isDynamicDim(0) || result_ty.isDynamicDim(3))
+    return failure();
+
   // Check if the ConvOp is preceded by a `Expand` op and succeeded by a
   // `Squeeze` op.
   Operation* prev_op = op.getOperation()->getPrevNode();

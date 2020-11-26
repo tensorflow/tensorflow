@@ -29,7 +29,7 @@ class StatusHelper {
     tensorflow::tpu::ExecutorApiFn()->TpuStatus_FreeFn(c_status);
   }
 
-  static tensorflow::Status FromC(SE_Status* const c_status) {
+  static tensorflow::Status FromC(TF_Status* const c_status) {
     if (tensorflow::tpu::ExecutorApiFn()->TpuStatus_OkFn(c_status)) {
       return tensorflow::Status::OK();
     } else {
@@ -46,7 +46,7 @@ class StatusHelper {
 
   tensorflow::Status status() const { return FromC(c_status); }
 
-  SE_Status* const c_status;  // NOLINT
+  TF_Status* const c_status;  // NOLINT
 };
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_TPU_STATUS_HELPER_H_

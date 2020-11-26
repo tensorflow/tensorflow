@@ -33,7 +33,7 @@ class LayerBenchmarksBase(tf.test.Benchmark):
   Note: xprof runs fewer iterations, and the maximum iterations is 100.
   """
 
-  def run_report(self, func, num_iters):
+  def run_report(self, func, num_iters, metadata=None):
     """Run and report benchmark results for different settings."""
 
     # 0. Warm up.
@@ -65,8 +65,10 @@ class LayerBenchmarksBase(tf.test.Benchmark):
     # 3. Run with xprof and python trace.
     xprof_link, us_per_example = run_xprof.run_with_xprof(
         func, num_iters_xprof, True)
-    extras["xprof_with_python_trace"] = xprof_link
+    extras["python_trace_xprof_link"] = xprof_link
     extras["us_per_example_with_xprof_and_python"] = us_per_example
 
+    if metadata:
+      extras.update(metadata)
     self.report_benchmark(
         iters=num_iters, wall_time=us_mean_time, extras=extras, metrics=metrics)

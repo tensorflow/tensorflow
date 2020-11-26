@@ -575,6 +575,42 @@ TEST_F(QuantizationUtilsTest, SymmetricQuantizeTensor) {
   EXPECT_EQ(quant_buffer_size * 4, float_buffer_size);
 }
 
+TEST_F(QuantizationUtilsTest, QuantizeFloat16Clamp) {
+  // Create data.
+  auto model = absl::make_unique<ModelT>();
+  auto subgraph = absl::make_unique<tflite::SubGraphT>();
+  auto tensor = absl::make_unique<TensorT>();
+  auto buffer = absl::make_unique<tflite::BufferT>();
+  constexpr int kNumElements = 6;
+  const std::vector<float> weights = {2.0, 1.0, 65504., 65505, -65504., -99999};
+  auto weights_reinterpreted_data =
+      reinterpret_cast<const unsigned char*>(weights.data());
+  buffer->data.assign(weights_reinterpreted_data,
+                      weights_reinterpreted_data + weights.size() * 4);
+  tensor->buffer = 0;
+  tensor->shape = {1, kNumElements};
+
+  // Wire the model.
+  model->subgraphs.push_back(std::move(subgraph));
+  model->subgraphs[0]->tensors.push_back(std::move(tensor));
+  model->buffers.push_back(std::move(buffer));
+
+  // Call and verify.
+  EXPECT_EQ(
+      QuantizeTensorFloat16(model.get(), model->subgraphs[0]->tensors[0].get()),
+      kTfLiteOk);
+  auto weightsf16 = reinterpret_cast<Eigen::half*>(
+      model->buffers[model->subgraphs[0]->tensors[0]->buffer]->data.data());
+  std::vector<float> wf32(kNumElements);
+  std::transform(weightsf16, weightsf16 + 6, wf32.begin(), [](Eigen::half a) {
+    return Eigen::half_impl::half_to_float(a);
+  });
+
+  EXPECT_THAT(wf32,
+              ElementsAreArray({2.0, 1.0, 65504., 65504., -65504., -65504.}));
+  EXPECT_EQ(model->subgraphs[0]->tensors[0]->type, TensorType_FLOAT16);
+}
+
 TEST_F(QuantizationUtilsTest, QuantizeFloat16) {
   // Conv model has weights between 0 and 10.
   // Quantize the weights tensor.

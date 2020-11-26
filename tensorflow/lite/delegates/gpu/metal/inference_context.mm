@@ -40,6 +40,8 @@ using ::tflite::gpu::TensorUsageRecord;
 
 @implementation TFLInferenceContext {
   std::vector<TFLComputeTask*> _computeTasks;
+  // contains indexes of _computeTasks
+  std::vector<int> _taskIdsWithInOutBuffers;
   std::vector<ValueId> _outputIds;
   id<MTLDevice> _device;
   RuntimeOptions _options;
@@ -144,7 +146,11 @@ using ::tflite::gpu::TensorUsageRecord;
     sharedBuffers[i] = [_device newBufferWithLength:bufferSize
                                             options:MTLResourceStorageModeShared];
   }
-  for (auto& task : _computeTasks) {
+  for (int i = 0; i < _computeTasks.size(); ++i) {
+    auto& task = _computeTasks[i];
+    if ([task hasInOutIds:preallocatedIds]) {
+      _taskIdsWithInOutBuffers.push_back(i);
+    }
     RETURN_IF_ERROR([task assignBuffers:&buffers
                               outputIds:_outputIds
                          usageRecordIds:usageRecordIds
@@ -157,9 +163,13 @@ using ::tflite::gpu::TensorUsageRecord;
 - (void)encodeWithEncoder:(id<MTLComputeCommandEncoder>)commandEncoder
        inputOutputBuffers:(const std::map<ValueId, id<MTLBuffer>>&)inputOutputBuffers
              encoderBlock:(id<MTLComputeCommandEncoder> (^)(bool isLast))encoderBlock {
+  for (auto& task_index : _taskIdsWithInOutBuffers) {
+    auto& task = _computeTasks[task_index];
+    [task updateBuffers:inputOutputBuffers];
+  }
   for (int i = 0; i < _computeTasks.size(); ++i) {
     auto& task = _computeTasks[i];
-    [task encodeWithEncoder:commandEncoder inputOutputBuffers:inputOutputBuffers];
+    [task encodeWithEncoder:commandEncoder];
     if (encoderBlock != nil) {
       commandEncoder = encoderBlock(i == _computeTasks.size() - 1);
     }

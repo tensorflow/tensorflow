@@ -138,7 +138,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'name\', \'dtype\'], varargs=None, keywords=None, defaults=[\'mean_tensor\', \'None\'], "
+    argspec: "args=[\'self\', \'name\', \'dtype\', \'shape\'], varargs=None, keywords=None, defaults=[\'mean_tensor\', \'None\', \'None\'], "
   }
   member_method {
     name: "add_loss"

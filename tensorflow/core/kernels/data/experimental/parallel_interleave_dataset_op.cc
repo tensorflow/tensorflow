@@ -773,7 +773,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
                 MakeIteratorFromInputElement(
                     ctx.get(), this, worker_thread_states_[thread_index].input,
                     thread_index, *instantiated_captured_func_, prefix(),
-                    &worker_thread_states_[thread_index].iterator);
+                    &worker_thread_states_[thread_index].iterator,
+                    model_node());
             iterator_creation_status =
                 worker_thread_states_[thread_index].iterator_creation_status;
             if (!iterator_creation_status.ok()) {
@@ -1011,9 +1012,10 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         state->iterator.reset();
       } else {
         std::unique_ptr<IteratorBase> iterator;
+        // NOTE: We intentionally ignore resource modeling outside GetNext().
         TF_RETURN_IF_ERROR(MakeIteratorFromInputElement(
             ctx, this, state->input, index, *instantiated_captured_func_,
-            prefix(), &iterator));
+            prefix(), &iterator, /*node=*/nullptr));
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, iterator));
         state->iterator.swap(iterator);
       }

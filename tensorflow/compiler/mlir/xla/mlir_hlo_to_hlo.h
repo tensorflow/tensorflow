@@ -66,6 +66,8 @@ llvm::Optional<::xla::XlaOp> CreateXlaOperator(
 
 mlir::DenseIntElementsAttr GetLayoutFromMlirHlo(mlir::Operation* op);
 
+::xla::StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op);
+
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_XLA_MLIR_HLO_TO_HLO_H_

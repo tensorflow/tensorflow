@@ -502,9 +502,14 @@ TfLiteStatus QuantizeTensorFloat16(ModelT* model, TensorT* tensor) {
   // Transform float data to float16.
   std::vector<Eigen::half> quantized_buffer;
   quantized_buffer.resize(num_elements);
-  std::transform(
-      float_vector.begin(), float_vector.end(), quantized_buffer.begin(),
-      [](float a) { return Eigen::half_impl::float_to_half_rtne(a); });
+  constexpr float kMaxFloat16Value = 65504.f;
+  constexpr float kMinFloat16Value = -65504.f;
+  std::transform(float_vector.begin(), float_vector.end(),
+                 quantized_buffer.begin(), [=](float a) {
+                   float clamped = std::min(std::max(a, kMinFloat16Value),
+                                            kMaxFloat16Value);
+                   return Eigen::half_impl::float_to_half_rtne(clamped);
+                 });
 
   char* half_buffer = reinterpret_cast<char*>(quantized_buffer.data());
   model->buffers[tensor->buffer]->data.assign(

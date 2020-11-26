@@ -429,15 +429,6 @@ class Interpreter {
   /// Returns status of success or failure.
   TfLiteStatus Invoke();
 
-  /// Enable or disable NNAPI (true to enable). Disabled by default.
-  ///
-  /// WARNING: NNAPI cannot be disabled after the graph has been prepared
-  /// (via `AllocateTensors`) with NNAPI enabled.
-  ///
-  /// WARNING: This API is deprecated, prefer using the NNAPI delegate directly.
-  /// This method will be removed in a future release.
-  void UseNNAPI(bool enable);
-
   /// Set the number of threads available to the interpreter.
   ///
   /// NOTE: num_threads should be >= -1.
@@ -473,7 +464,7 @@ class Interpreter {
   /// parts of the graph themselves. After this is called, the graph may
   /// contain new nodes that replace 1 more nodes.
   /// 'delegate' must outlive the interpreter.
-  /// Returns one of the following three status codes:
+  /// Returns one of the following four status codes:
   /// 1. kTfLiteOk: Success.
   /// 2. kTfLiteDelegateError: Delegation failed due to an error in the
   /// delegate. The Interpreter has been restored to its pre-delegation state.

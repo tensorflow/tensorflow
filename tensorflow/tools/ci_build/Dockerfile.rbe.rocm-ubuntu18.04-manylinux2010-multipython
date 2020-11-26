@@ -16,8 +16,8 @@ ARG DEBIAN_FRONTEND=noninteractive
 # Install ROCm packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl libnuma-dev gnupg sudo libelf1 build-essential \
-  && curl -sL http://repo.radeon.com/rocm/apt/debian/rocm.gpg.key | apt-key add - \
-  && printf "deb [arch=amd64] http://repo.radeon.com/rocm/apt/debian/ xenial main" | tee /etc/apt/sources.list.d/rocm.list \
+  && curl -sL http://repo.radeon.com/rocm/apt/3.9/rocm.gpg.key | apt-key add - \
+  && printf "deb [arch=amd64] http://repo.radeon.com/rocm/apt/3.9/ xenial main" | tee /etc/apt/sources.list.d/rocm.list \
   && apt-get update && apt-get install -y --no-install-recommends \
     rocm-dev rocm-libs hipcub rocm-utils rocm-cmake \
     rocfft miopen-hip miopengemm rocblas hipblas rocrand rccl \

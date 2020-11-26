@@ -21,10 +21,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+# pylint: disable=unused-import
 from tensorflow.python import tf2
+from tensorflow.python.keras import distribute
 
 # See b/110718070#comment18 for more details about this import.
 from tensorflow.python.keras import models
+
 
 from tensorflow.python.keras.engine.input_layer import Input
 from tensorflow.python.keras.engine.sequential import Sequential

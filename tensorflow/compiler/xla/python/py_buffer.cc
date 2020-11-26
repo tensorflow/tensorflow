@@ -238,4 +238,22 @@ PyBufferProcs PjRtBufferProcs = []() {
   return &PjRtBufferProcs;
 }
 
+void PyBuffer::SetStickyDevice(pybind11::object sticky_device) {
+  if (sticky_device_ && !sticky_device_->equal(sticky_device)) {
+    throw std::invalid_argument(
+        "One cannot set again the stickyness of a buffer and needs to create "
+        "a new one or a `_DeviceArray`");
+  }
+  sticky_device_ = sticky_device;
+}
+
+void PyBuffer::SetAval(pybind11::object aval) {
+  if (aval_ && !aval_->equal(aval)) {
+    throw std::invalid_argument(
+        "One cannot set again the aval_ of a buffer and needs to create a "
+        "new one or a `_DeviceArray`");
+  }
+  aval_ = aval;
+}
+
 }  // namespace xla

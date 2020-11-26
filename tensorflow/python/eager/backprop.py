@@ -848,10 +848,6 @@ class GradientTape(object):
     self._watch_accessed_variables = watch_accessed_variables
     self._watched_variables = ()
     self._recording = False
-    self._created_eagerly = context.executing_eagerly()
-    if self._created_eagerly:
-      context.ensure_initialized()
-      context.context().start_step()
 
   def __enter__(self):
     """Enters a context inside which operations are recorded on this tape."""
@@ -881,15 +877,6 @@ class GradientTape(object):
       raise ValueError("Tape is not recording.")
     tape.pop_tape(self._tape)
     self._recording = False
-
-  def __del__(self):
-    if self._created_eagerly:
-      try:
-        context.context().end_step()
-      except AttributeError:
-        pass
-      except TypeError:
-        pass
 
   def watch(self, tensor):
     """Ensures that `tensor` is being traced by this tape.
@@ -1111,7 +1098,13 @@ class GradientTape(object):
     Note: Unless you set `persistent=True` a GradientTape can only be used to
     compute one set of gradients (or jacobians).
 
-    See[wikipedia article](http://en.wikipedia.org/wiki/jacobian_matrix_and_determinant)
+    Note: By default the jacobian implementation uses parallel for (pfor), which
+    creates a tf.function under the hood for each jacobian call. For better
+    performance, and to avoid recompilation and vectorization rewrites on each
+    call, enclose GradientTape code in @tf.function.
+
+    See[wikipedia
+    article](http://en.wikipedia.org/wiki/jacobian_matrix_and_determinant)
     for the definition of a Jacobian.
 
     Example usage:
@@ -1242,6 +1235,12 @@ class GradientTape(object):
 
     Note: Unless you set `persistent=True` a GradientTape can only be used to
     compute one set of gradients (or jacobians).
+
+    Note: By default the batch_jacobian implementation uses parallel for (pfor),
+    which creates a tf.function under the hood for each batch_jacobian call.
+    For better performance, and to avoid recompilation and vectorization
+    rewrites on each call, enclose GradientTape code in @tf.function.
+
 
     Example usage:
 

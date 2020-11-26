@@ -16,8 +16,8 @@
 # Description:
 #   Contains the Keras Mixed Precision API (TensorFlow version).
 
-load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "tf_py_test")  # buildifier: disable=same-origin-load
 
 package(
     default_visibility = [
@@ -61,7 +61,7 @@ py_library(
     ],
 )
 
-py_test(
+tf_py_test(
     name = "policy_test",
     size = "medium",
     srcs = [
@@ -111,7 +111,7 @@ py_library(
     ],
 )
 
-py_test(
+tf_py_test(
     name = "get_layer_policy_test",
     srcs = ["get_layer_policy_test.py"],
     srcs_version = "PY2AND3",
@@ -141,7 +141,7 @@ py_library(
     ],
 )
 
-py_test(
+tf_py_test(
     name = "autocast_variable_test",
     size = "medium",
     srcs = ["autocast_variable_test.py"],
@@ -280,7 +280,7 @@ cuda_py_test(
     ],
 )
 
-py_test(
+tf_py_test(
     name = "layer_correctness_test",
     size = "medium",
     srcs = ["layer_correctness_test.py"],

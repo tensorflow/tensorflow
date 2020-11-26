@@ -45,7 +45,12 @@ class SingleAddOpModel : tflite::SingleOpModel {
 
     SetBuiltinOp(tflite::BuiltinOperator_ADD, tflite::BuiltinOptions_AddOptions,
                  tflite::CreateAddOptions(builder_).Union());
-    BuildInterpreter({GetShape(input), GetShape(constant)});
+    // Set apply_delegate to false to skip applying TfLite default delegates.
+    BuildInterpreter({GetShape(input), GetShape(constant)},
+                     /*num_threads=*/-1,
+                     /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/false,
+                     /*allocate_and_delegate=*/true);
   }
 
   tflite::Interpreter* Interpreter() const { return interpreter_.get(); }

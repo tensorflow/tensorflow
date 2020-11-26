@@ -41,10 +41,7 @@ readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile TARGET=${TARG
 readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
 readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile TARGET=${TARGET} build
 
-# TODO(b/149597202): Running tests via renode are disabled as part of the
-# continuous integration until we can get Docker running inside Docker. However,
-# if this script is run locally, the tests will still be run.
-if [[ ${1} != "PRESUBMIT" ]]; then
-readable_run make -f tensorflow/lite/micro/tools/make/Makefile TARGET=${TARGET} test
-fi
-
+# TODO(b/172939049): Using renode to run the tests is not currently integrated
+# with the Makefile.  So, we manually run the test script with the correct path
+# to the bluepill generated files.
+tensorflow/lite/micro/testing/test_bluepill_binary.sh tensorflow/lite/micro/tools/make/gen/bluepill_cortex-m3/bin/

@@ -78,7 +78,7 @@ For example, the following TensorFlow function which performs the MNIST training
 is compiled with XLA:
 
 ```
-@tf.function(experimental_compile=True)
+@tf.function(jit_compile=True)
 def train_mnist(images, labels):
     images, labels = cast(images, labels)
 
@@ -92,7 +92,7 @@ def train_mnist(images, labels):
     optimizer.apply_gradients(zip(grads, layer_variables))
 ```
 
-The `experimental_compile` API has _must-compile_ semantics: either the entire
+The `jit_compile` API has _must-compile_ semantics: either the entire
 function is compiled with XLA, or an `errors.InvalidArgumentError` exception is
 thrown. XLA can not currently compile functions where dimensions are not
 _inferrable_: that is, if it's not possible to infer the dimensions of all
@@ -108,7 +108,7 @@ def not_compilable(x):
 Shapes can vary across the runs though:
 
 ```
-@tf.function(experimental_compile=True)
+@tf.function(jit_compile=True)
 def recompiled_on_launch(a, b):
   return a + b
 

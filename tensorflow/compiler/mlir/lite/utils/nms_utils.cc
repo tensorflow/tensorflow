@@ -64,7 +64,7 @@ LogicalResult ConvertNMSPaddedFunc::VerifySignature() {
   if (func_.getNumArguments() < 5) {
     return func_.emitError()
            << "Invalid number of arguments to "
-              "non_max_suppression_padded_v2 (need atleast 5): "
+              "non_max_suppression_padded_v2 (need at least 5): "
            << func_.getNumArguments();
   }
   if (func_.getType().getNumResults() != 2) {

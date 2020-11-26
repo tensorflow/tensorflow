@@ -18,7 +18,7 @@ limitations under the License.
 
 namespace xla {
 
-static constexpr int kDistributedRuntimeProtocolVersion = 2;
+static constexpr int kDistributedRuntimeProtocolVersion = 3;
 
 }  // namespace xla
 

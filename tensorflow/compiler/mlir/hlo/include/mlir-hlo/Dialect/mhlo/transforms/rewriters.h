@@ -24,8 +24,6 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir {
-class LLVMTypeConverter;
-class LowerToLLVMOptions;
 class OwningRewritePatternList;
 
 // Populates a collection of rewrite patterns to realize element-wise operations
@@ -93,14 +91,6 @@ void PopulateTrigonometricToApproximationPatterns(
     MLIRContext *context, OwningRewritePatternList *patterns);
 
 }  // namespace mhlo
-
-namespace lmhlo {
-
-/// Collect a set of patterns to convert from the LHLO dialect to LLVM.
-void PopulateLhloToLLVMConversionPatterns(LLVMTypeConverter *converter,
-                                          OwningRewritePatternList *patterns);
-
-}  // namespace lmhlo
 
 namespace chlo {
 

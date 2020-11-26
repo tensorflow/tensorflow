@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/graph_view.h"
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/cc/ops/parsing_ops.h"
@@ -291,17 +292,16 @@ TEST_F(GraphViewTest, GetRegularFaninPortOutOfBounds) {
   EXPECT_EQ(d_output_control, GraphView::OutputPort());
 }
 
-static void BM_GraphViewConstruction(int iters, int num_nodes,
-                                     int num_edges_per_node) {
-  testing::StopTiming();
+void BM_GraphViewConstruction(::testing::benchmark::State& state) {
+  const int num_nodes = state.range(0);
+  const int num_edges_per_node = state.range(1);
+
   const GraphDef graph_def =
       test::CreateGraphDef(num_nodes, num_edges_per_node);
 
-  testing::StartTiming();
-  for (int i = 0; i < iters; ++i) {
+  for (auto s : state) {
     GraphView graph_view(&graph_def);
   }
-  testing::StopTiming();
 }
 
 BENCHMARK(BM_GraphViewConstruction)
@@ -334,17 +334,16 @@ BENCHMARK(BM_GraphViewConstruction)
     ->ArgPair(50000, 16)
     ->ArgPair(100000, 16);
 
-static void BM_GraphViewGetNode(int iters, int num_nodes) {
-  testing::StopTiming();
+void BM_GraphViewGetNode(::testing::benchmark::State& state) {
+  const int num_nodes = state.range(0);
+
   const GraphDef graph_def =
       test::CreateGraphDef(num_nodes, /*num_edges_per_node=*/16);
   GraphView graph_view(&graph_def);
 
-  testing::StartTiming();
-  for (int i = 0; i < iters; ++i) {
+  for (auto s : state) {
     graph_view.GetNode("out");
   }
-  testing::StopTiming();
 }
 
 BENCHMARK(BM_GraphViewGetNode)
@@ -384,124 +383,121 @@ BENCHMARK(BM_GraphViewGetNode)
       ->ArgPair(100000, 10000)           \
       ->ArgPair(100000, 100000);
 
-static void BM_GraphViewGetFanout(int iters, int num_fanins, int num_fanouts) {
-  testing::StopTiming();
+void BM_GraphViewGetFanout(::testing::benchmark::State& state) {
+  const int num_fanins = state.range(0);
+  const int num_fanouts = state.range(1);
+
   const GraphDef graph_def = test::CreateFaninFanoutNodeGraph(
       num_fanins, num_fanouts, num_fanins, num_fanouts,
       /*fanout_unique_index=*/true);
   GraphView graph_view(&graph_def);
 
-  testing::StartTiming();
-  for (int i = 0; i < iters; ++i) {
+  for (auto s : state) {
     const NodeDef* node = graph_view.GetNode("node");
     graph_view.GetFanout({node, 0});
   }
-  testing::StopTiming();
 }
 
 RUN_FANIN_FANOUT_BENCHMARK(BM_GraphViewGetFanout);
 
-static void BM_GraphViewGetFanin(int iters, int num_fanins, int num_fanouts) {
-  testing::StopTiming();
+void BM_GraphViewGetFanin(::testing::benchmark::State& state) {
+  const int num_fanins = state.range(0);
+  const int num_fanouts = state.range(1);
+
   const GraphDef graph_def = test::CreateFaninFanoutNodeGraph(
       num_fanins, num_fanouts, num_fanins, num_fanouts,
       /*fanout_unique_index=*/true);
   GraphView graph_view(&graph_def);
 
-  testing::StartTiming();
-  for (int i = 0; i < iters; ++i) {
+  for (auto s : state) {
     const NodeDef* node = graph_view.GetNode("node");
     graph_view.GetFanin({node, 0});
   }
-  testing::StopTiming();
 }
 
 RUN_FANIN_FANOUT_BENCHMARK(BM_GraphViewGetFanin);
 
-static void BM_GraphViewGetRegularFanin(int iters, int num_fanins,
-                                        int num_fanouts) {
-  testing::StopTiming();
+void BM_GraphViewGetRegularFanin(::testing::benchmark::State& state) {
+  const int num_fanins = state.range(0);
+  const int num_fanouts = state.range(1);
+
   const GraphDef graph_def = test::CreateFaninFanoutNodeGraph(
       num_fanins, num_fanouts, num_fanins, num_fanouts,
       /*fanout_unique_index=*/true);
   GraphView graph_view(&graph_def);
 
-  testing::StartTiming();
-  for (int i = 0; i < iters; ++i) {
+  for (auto s : state) {
     const NodeDef* node = graph_view.GetNode("node");
     graph_view.GetRegularFanin({node, 0});
   }
-  testing::StopTiming();
 }
 
 RUN_FANIN_FANOUT_BENCHMARK(BM_GraphViewGetRegularFanin);
 
-static void BM_GraphViewGetFanouts(int iters, int num_fanins, int num_fanouts) {
-  testing::StopTiming();
+void BM_GraphViewGetFanouts(::testing::benchmark::State& state) {
+  const int num_fanins = state.range(0);
+  const int num_fanouts = state.range(1);
+
   const GraphDef graph_def = test::CreateFaninFanoutNodeGraph(
       num_fanins, num_fanouts, num_fanins, num_fanouts,
       /*fanout_unique_index=*/true);
   GraphView graph_view(&graph_def);
 
-  testing::StartTiming();
-  for (int i = 0; i < iters; ++i) {
+  for (auto s : state) {
     const NodeDef* node = graph_view.GetNode("node");
     graph_view.GetFanouts(*node, /*include_controlled_nodes=*/false);
   }
-  testing::StopTiming();
 }
 
 RUN_FANIN_FANOUT_BENCHMARK(BM_GraphViewGetFanouts);
 
-static void BM_GraphViewGetFanins(int iters, int num_fanins, int num_fanouts) {
-  testing::StopTiming();
+void BM_GraphViewGetFanins(::testing::benchmark::State& state) {
+  const int num_fanins = state.range(0);
+  const int num_fanouts = state.range(1);
+
   const GraphDef graph_def = test::CreateFaninFanoutNodeGraph(
       num_fanins, num_fanouts, num_fanins, num_fanouts,
       /*fanout_unique_index=*/true);
   GraphView graph_view(&graph_def);
 
-  testing::StartTiming();
-  for (int i = 0; i < iters; ++i) {
+  for (auto s : state) {
     const NodeDef* node = graph_view.GetNode("node");
     graph_view.GetFanins(*node, /*include_controlling_nodes=*/false);
   }
-  testing::StopTiming();
 }
 
 RUN_FANIN_FANOUT_BENCHMARK(BM_GraphViewGetFanins);
 
-static void BM_GraphViewGetFanoutEdges(int iters, int num_fanins,
-                                       int num_fanouts) {
-  testing::StopTiming();
+void BM_GraphViewGetFanoutEdges(::testing::benchmark::State& state) {
+  const int num_fanins = state.range(0);
+  const int num_fanouts = state.range(1);
+
   const GraphDef graph_def = test::CreateFaninFanoutNodeGraph(
       num_fanins, num_fanouts, num_fanins, num_fanouts,
       /*fanout_unique_index=*/true);
   GraphView graph_view(&graph_def);
 
-  testing::StartTiming();
-  for (int i = 0; i < iters; ++i) {
+  for (auto s : state) {
     const NodeDef* node = graph_view.GetNode("node");
     graph_view.GetFanoutEdges(*node, /*include_controlled_edges=*/false);
   }
-  testing::StopTiming();
 }
 
 RUN_FANIN_FANOUT_BENCHMARK(BM_GraphViewGetFanoutEdges);
 
-static void BM_GraphViewGetFaninEdges(int iters, int num_fanins,
-                                      int num_fanouts) {
-  testing::StopTiming();
+void BM_GraphViewGetFaninEdges(::testing::benchmark::State& state) {
+  const int num_fanins = state.range(0);
+  const int num_fanouts = state.range(1);
+
   const GraphDef graph_def = test::CreateFaninFanoutNodeGraph(
       num_fanins, num_fanouts, num_fanins, num_fanouts,
       /*fanout_unique_index=*/true);
   GraphView graph_view(&graph_def);
 
-  testing::StartTiming();
-  for (int i = 0; i < iters; ++i) {
+  for (auto s : state) {
     const NodeDef* node = graph_view.GetNode("node");
     graph_view.GetFaninEdges(*node, /*include_controlling_edges=*/false);
   }
-  testing::StopTiming();
 }
 
 RUN_FANIN_FANOUT_BENCHMARK(BM_GraphViewGetFaninEdges);

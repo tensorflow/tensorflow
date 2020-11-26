@@ -370,23 +370,76 @@ class AddNOp<Device, Variant, OpKernelT, OpKernelConstructionT,
               i, " has shape: ", ctx->input(i).shape().DebugString(), "."));
     }
 
-    // Step 2: attempt to add using
+    // Step 2: Sum input variants in a tree-like structure using
     //   BinaryOpVariants(ADD_VARIANT_BINARY_OP, ...)
     //   For the output create a default-constructed variant object.
-    // TODO(ebrevdo): Perform summation in a tree-structure.
-    Tensor out(cpu_allocator(), DT_VARIANT, TensorShape({}));
-    Variant* v_out = &(out.scalar<Variant>()());
-    OP_REQUIRES_OK(ctx, BinaryOpVariants<Device>(
-                            ctx, ADD_VARIANT_BINARY_OP,
-                            ctx->input(0).template scalar<Variant>()(),
-                            ctx->input(1).template scalar<Variant>()(), v_out));
-    for (int i = 2; i < num; ++i) {
-      const Variant tmp = std::move(*v_out);
-      const Variant& inp = ctx->input(i).template scalar<Variant>()();
-      OP_REQUIRES_OK(ctx, BinaryOpVariants<Device>(ctx, ADD_VARIANT_BINARY_OP,
-                                                   inp, tmp, v_out));
+    //
+    // Pairwise summation provides better numerical precision by
+    // reducing round-off error:
+    //
+    //   https://en.wikipedia.org/wiki/Pairwise_summation
+    //
+    // These two vectors are used to store and mark intermediate sums.
+    gtl::InlinedVector<bool, 4> temp_filled(num, false);
+    gtl::InlinedVector<Variant, 4> temp(num);
+
+    // Tree-based summation.
+    int skip = 1;
+    int n = num;
+    while (skip < n) {
+      int i = skip;
+      while (i < n) {
+        // TODO(ebrevdo, rmlarsen): Parallelize the pairwise summations in the
+        // inner loop if the variants are "large".
+
+        // x[i - skip] += x[i]
+        OP_REQUIRES_OK(ctx,
+                       AddVariantTo(ctx, i - skip, i, &temp, &temp_filled));
+        // We won't use this index again, recover its memory.
+        temp[i].clear();
+        i += 2 * skip;
+      }
+      if (i == n) {
+        // x[0] += x[i - skip]
+        OP_REQUIRES_OK(ctx,
+                       AddVariantTo(ctx, 0, i - skip, &temp, &temp_filled));
+        // We won't use this index again, recover its memory.
+        temp[i - skip].clear();
+        n -= skip;
+      }
+      skip *= 2;
     }
+
+    Tensor out(cpu_allocator(), DT_VARIANT, TensorShape({}));
+    out.scalar<Variant>()() = std::move(temp[0]);
     ctx->set_output(0, out);
+  }
+
+ private:
+  // AddVariantTo efficiently performs:
+  //    temp[lhs_ix] <- array(lhs_ix) + array(rhs_ix)
+  // where array(ix) := (temp_filled[ix]
+  //                     ? temp[ix]
+  //                     : ctx->input(ix).scalar<Variant>()())
+  // This reduces (possibly expensive) copying of Variants from
+  // the inputs into temp at the lowest levels of the summation tree.
+  static inline Status AddVariantTo(OpKernelContextT* ctx, const int lhs_ix,
+                                    const int rhs_ix,
+                                    gtl::InlinedVector<Variant, 4>* temp,
+                                    gtl::InlinedVector<bool, 4>* temp_filled) {
+    Variant tmp;
+    if (temp_filled->at(lhs_ix)) tmp = std::move(temp->at(lhs_ix));
+    const Variant& a = temp_filled->at(lhs_ix)
+                           ? tmp
+                           : ctx->input(lhs_ix).template scalar<Variant>()();
+    const Variant& b = temp_filled->at(rhs_ix)
+                           ? temp->at(rhs_ix)
+                           : ctx->input(rhs_ix).template scalar<Variant>()();
+    Variant* c = &temp->at(lhs_ix);
+    TF_RETURN_IF_ERROR(
+        BinaryOpVariants<Device>(ctx, ADD_VARIANT_BINARY_OP, a, b, c));
+    temp_filled->at(lhs_ix) = true;
+    return Status::OK();
   }
 };
 

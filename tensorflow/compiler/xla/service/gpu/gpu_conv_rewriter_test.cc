@@ -110,7 +110,8 @@ TEST_F(GpuConvRewriterTest, BackwardFilterConvolve) {
       ShapeInference::InferConvolveShape(
           activations->shape(), gradients->shape(), /*feature_group_count=*/1,
           /*batch_group_count=*/1, conv_window,
-          tf_default_dnums_for_backward_filter_)
+          tf_default_dnums_for_backward_filter_,
+          /*preferred_element_type=*/absl::nullopt)
           .ConsumeValueOrDie(),
       activations, gradients, /*feature_group_count=*/1,
       /*batch_group_count=*/1, conv_window,
@@ -150,7 +151,8 @@ TEST_F(GpuConvRewriterTest,
       ShapeInference::InferConvolveShape(
           activations->shape(), gradients->shape(), /*feature_group_count=*/1,
           /*batch_group_count=*/1, conv_window,
-          tf_default_dnums_for_backward_filter_)
+          tf_default_dnums_for_backward_filter_,
+          /*preferred_element_type=*/absl::nullopt)
           .ConsumeValueOrDie(),
       activations, gradients, /*feature_group_count=*/1,
       /*batch_group_count=*/1, conv_window,
@@ -292,11 +294,12 @@ TEST_F(GpuConvRewriterTest, BackwardInputConvolveEvenPadding) {
       DefaultPrecisionConfig(2)));
   // Verify the convolution's shape is consistent with ShapeInference.
   CHECK(ShapeUtil::Compatible(
-      conv->shape(), ShapeInference::InferConvolveShape(
-                         output->shape(), reverse_kernel->shape(),
-                         /*feature_group_count=*/1, /*batch_group_count=*/1,
-                         conv_window, conv_dnums)
-                         .ValueOrDie()));
+      conv->shape(),
+      ShapeInference::InferConvolveShape(
+          output->shape(), reverse_kernel->shape(),
+          /*feature_group_count=*/1, /*batch_group_count=*/1, conv_window,
+          conv_dnums, /*preferred_element_type=*/absl::nullopt)
+          .ValueOrDie()));
 
   auto module = CreateNewVerifiedModule();
   HloComputation* entry_computation =
@@ -337,10 +340,12 @@ TEST_F(GpuConvRewriterTest, BackwardInputConvolve1x1Filter) {
   conv_window.mutable_dimensions(1)->set_base_dilation(2);
 
   builder.AddInstruction(HloInstruction::CreateConvolve(
-      ShapeInference::InferConvolveShape(output->shape(), kernel->shape(),
-                                         /*feature_group_count=*/1,
-                                         /*batch_group_count=*/1, conv_window,
-                                         tf_default_dnums_for_backward_input_)
+      ShapeInference::InferConvolveShape(
+          output->shape(), kernel->shape(),
+          /*feature_group_count=*/1,
+          /*batch_group_count=*/1, conv_window,
+          tf_default_dnums_for_backward_input_,
+          /*preferred_element_type=*/absl::nullopt)
           .ConsumeValueOrDie(),
       /*lhs=*/output, /*rhs=*/kernel, /*feature_group_count=*/1,
       /*batch_group_count=*/1, conv_window,
@@ -374,7 +379,8 @@ TEST_F(GpuConvRewriterTest,
       ShapeInference::InferConvolveShape(
           output->shape(), kernel->shape(), /*feature_group_count=*/1,
           /*batch_group_count=*/1, default_conv_window_,
-          tf_default_dnums_for_backward_input_)
+          tf_default_dnums_for_backward_input_,
+          /*preferred_element_type=*/absl::nullopt)
           .ConsumeValueOrDie(),
       /*lhs=*/output, /*rhs=*/kernel, /*feature_group_count=*/1,
       /*batch_group_count=*/1, default_conv_window_,
@@ -431,7 +437,8 @@ TEST_F(GpuConvRewriterTest, BackwardInputConvolveUnevenPaddingOnGradients) {
       conv->shape(), ShapeInference::InferConvolveShape(
                          output->shape(), reverse_kernel->shape(),
                          /*feature_group_count=*/1, /*batch_group_count=*/1,
-                         conv_window, tf_default_dnums_for_backward_input_)
+                         conv_window, tf_default_dnums_for_backward_input_,
+                         /*preferred_element_type=*/absl::nullopt)
                          .ValueOrDie()));
 
   auto module = CreateNewVerifiedModule();
@@ -481,7 +488,8 @@ TEST_F(GpuConvRewriterTest, BackwardInputConvolveLowPaddingTooLarge) {
       conv->shape(), ShapeInference::InferConvolveShape(
                          output->shape(), reverse_kernel->shape(),
                          /*feature_group_count=*/1, /*batch_group_count=*/1,
-                         conv_window, tf_default_dnums_for_backward_input_)
+                         conv_window, tf_default_dnums_for_backward_input_,
+                         /*preferred_element_type=*/absl::nullopt)
                          .ValueOrDie()));
 
   auto module = CreateNewVerifiedModule();
@@ -535,7 +543,8 @@ TEST_F(GpuConvRewriterTest, BackwardInputConvolveUnevenPaddingOnActivations) {
       conv->shape(), ShapeInference::InferConvolveShape(
                          output->shape(), reverse_kernel->shape(),
                          /*feature_group_count=*/1, /*batch_group_count=*/1,
-                         conv_window, tf_default_dnums_for_backward_input_)
+                         conv_window, tf_default_dnums_for_backward_input_,
+                         /*preferred_element_type=*/absl::nullopt)
                          .ValueOrDie()));
 
   auto module = CreateNewVerifiedModule();
@@ -590,7 +599,8 @@ TEST_F(GpuConvRewriterTest,
       conv->shape(), ShapeInference::InferConvolveShape(
                          output->shape(), reverse_kernel->shape(),
                          /*feature_group_count=*/1, /*batch_group_count=*/1,
-                         conv_window, tf_default_dnums_for_backward_input_)
+                         conv_window, tf_default_dnums_for_backward_input_,
+                         /*preferred_element_type=*/absl::nullopt)
                          .ValueOrDie()));
 
   auto module = CreateNewVerifiedModule();

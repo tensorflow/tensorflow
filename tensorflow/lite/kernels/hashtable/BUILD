@@ -46,7 +46,6 @@ cc_test(
         "//tensorflow/lite/testing:util",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest",
         "@flatbuffers",
     ],
 )

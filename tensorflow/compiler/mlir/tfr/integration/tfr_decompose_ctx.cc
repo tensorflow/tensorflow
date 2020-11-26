@@ -103,6 +103,7 @@ std::unique_ptr<TFRDecomposeContext> TFRDecomposeContext::GetFromText(
                   mlir::tf_executor::TensorFlowExecutorDialect,
                   mlir::TFR::TFRDialect>();
   // clang-format on
+  registry.loadAll(mlir_ctx);
 
   // Load the TFR functions in a mlir::ModuleOp
   auto memory_buffer = llvm::MemoryBuffer::getMemBuffer(

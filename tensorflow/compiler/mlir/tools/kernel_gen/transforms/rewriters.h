@@ -43,7 +43,7 @@ namespace transforms {
 
 /// Collects a set of patterns that bufferize operations from the standard
 /// dialect.
-void populateStandardBufferizePattern(MLIRContext *context,
+void populateExtraStdBufferizePattern(MLIRContext *context,
                                       BufferizeTypeConverter *converter,
                                       OwningRewritePatternList *patterns);
 }  // namespace transforms

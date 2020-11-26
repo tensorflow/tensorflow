@@ -460,7 +460,7 @@ class Interpreter(object):
     ]
 
   def get_tensor(self, tensor_index):
-    """Gets the value of the input tensor (get a copy).
+    """Gets the value of the output tensor (get a copy).
 
     If you wish to avoid the copy, use `tensor()`. This function cannot be used
     to read intermediate results.

@@ -451,6 +451,7 @@ class _ParseOpParams(object):
           raise ValueError("Unsupported %s %s." %
                            (type(feature).__name__, feature))
         params._add_feature(key, feature)  # pylint: disable=protected-access
+    params._validate()  # pylint: disable=protected-access
     return params
 
   @property

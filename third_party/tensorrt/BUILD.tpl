@@ -40,4 +40,9 @@ bzl_library(
     ],
 )
 
+py_library(
+    name = "tensorrt_config_py",
+    srcs = ["tensorrt/tensorrt_config.py"]
+)
+
 %{copy_rules}

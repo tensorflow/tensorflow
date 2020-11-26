@@ -376,8 +376,7 @@ l()  # Prints 0!
 ```
 
 Note that none of these restrictions only apply to TensorFlow loops; Python
-loops correctly correctly handle closures in all cases.
-
+loops correctly handle closures in all cases.
 
 ### Python collections in TensorFlow control flow
 

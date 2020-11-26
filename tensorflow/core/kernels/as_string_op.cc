@@ -20,6 +20,9 @@ limitations under the License.
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/variant.h"
+#include "tensorflow/core/framework/variant_encode_decode.h"
+#include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -112,6 +115,8 @@ class AsStringOp : public OpKernel {
         break;
       case DT_BOOL:
         break;
+      case DT_VARIANT:
+        break;
       default:
         bool type_not_supported = true;
         OP_REQUIRES(ctx, !type_not_supported,
@@ -154,6 +159,12 @@ class AsStringOp : public OpKernel {
         const auto& input_flat = input_tensor->flat<bool>();
         for (int i = 0; i < input_flat.size(); ++i) {
           output_flat(i) = (input_flat(i)) ? "true" : "false";
+        }
+      } break;
+      case (DT_VARIANT): {
+        const auto& input_flat = input_tensor->flat<Variant>();
+        for (int i = 0; i < input_flat.size(); ++i) {
+          output_flat(i) = input_flat(i).DebugString();
         }
       } break;
       case (DT_COMPLEX64): {

@@ -18,6 +18,7 @@ limitations under the License.
 #include <stdlib.h>
 
 #include <algorithm>
+#include <complex>
 #include <limits>
 #include <memory>
 
@@ -282,8 +283,7 @@ TfLiteStatus GetQuantizedConvolutionMultipler(TfLiteContext* context,
                                               double* multiplier) {
   const double input_product_scale = static_cast<double>(input->params.scale) *
                                      static_cast<double>(filter->params.scale);
-  // TODO(ahentz): The following conditions must be guaranteed by the training
-  // pipeline.
+  // The following conditions must be guaranteed by the training pipeline.
   if (bias) {
     const double bias_scale = static_cast<double>(bias->params.scale);
     // Here we're making sure the input_product_scale & bias_scale are about the
@@ -433,5 +433,48 @@ TfLiteStatus CalculateShapeForBroadcast(TfLiteContext* context,
   return kTfLiteOk;
 }
 #endif  // TF_LITE_STATIC_MEMORY
+
+// Size of string is not constant, return 0 in such case.
+int TfLiteTypeGetSize(TfLiteType type) {
+  switch (type) {
+    case kTfLiteUInt8:
+      TF_LITE_ASSERT_EQ(sizeof(uint8_t), 1);
+      return 1;
+    case kTfLiteInt8:
+      TF_LITE_ASSERT_EQ(sizeof(int8_t), 1);
+      return 1;
+    case kTfLiteBool:
+      return sizeof(bool);
+    case kTfLiteInt16:
+      TF_LITE_ASSERT_EQ(sizeof(int16_t), 2);
+      return 2;
+    case kTfLiteFloat16:
+      TF_LITE_ASSERT_EQ(sizeof(int16_t), 2);
+      return 2;
+    case kTfLiteFloat32:
+      TF_LITE_ASSERT_EQ(sizeof(float), 4);
+      return 4;
+    case kTfLiteInt32:
+      TF_LITE_ASSERT_EQ(sizeof(int32_t), 4);
+      return 4;
+    case kTfLiteInt64:
+      TF_LITE_ASSERT_EQ(sizeof(int64_t), 8);
+      return 8;
+    case kTfLiteUInt64:
+      TF_LITE_ASSERT_EQ(sizeof(uint64_t), 8);
+      return 8;
+    case kTfLiteFloat64:
+      TF_LITE_ASSERT_EQ(sizeof(double), 8);
+      return 8;
+    case kTfLiteComplex64:
+      TF_LITE_ASSERT_EQ(sizeof(std::complex<float>), 8);
+      return 8;
+    case kTfLiteComplex128:
+      TF_LITE_ASSERT_EQ(sizeof(std::complex<double>), 16);
+      return 16;
+    default:
+      return 0;
+  }
+}
 
 }  // namespace tflite

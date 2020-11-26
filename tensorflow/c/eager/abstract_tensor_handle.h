@@ -17,8 +17,10 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/refcount.h"
+#include "tensorflow/core/platform/status.h"
 namespace tensorflow {
 
 // Abstract interface to a Tensor handle in either tracing or immediate
@@ -32,6 +34,9 @@ class AbstractTensorHandle : public core::RefCounted {
  public:
   // Returns tensor dtype.
   virtual tensorflow::DataType DataType() const = 0;
+  // Returns tensor shape. If tensor has unknown rank, shape remains untouched.
+  virtual tensorflow::Status Shape(
+      tensorflow::PartialTensorShape* shape) const = 0;
 
   AbstractTensorHandleKind getKind() const { return kind_; }
 

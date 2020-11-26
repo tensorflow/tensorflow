@@ -44,6 +44,10 @@ extern "C" CUmodule mgpuModuleLoad(void *data) {
   return module;
 }
 
+extern "C" void mgpuModuleUnload(CUmodule module) {
+  CUDA_REPORT_IF_ERROR(cuModuleUnload(module));
+}
+
 extern "C" CUfunction mgpuModuleGetFunction(CUmodule module, const char *name) {
   CUfunction function = nullptr;
   CUDA_REPORT_IF_ERROR(cuModuleGetFunction(&function, module, name));
@@ -64,14 +68,13 @@ extern "C" void mgpuLaunchKernel(CUfunction function, intptr_t gridX,
 }
 
 extern "C" CUstream mgpuStreamCreate() {
-  static CUstream stream = []() {
-    // TODO(b/170649852): This is neither thread-safe nor handles
-    // creation/descruction of one stream per context.
-    CUstream stream = nullptr;
-    CUDA_REPORT_IF_ERROR(cuStreamCreate(&stream, CU_STREAM_NON_BLOCKING));
-    return stream;
-  }();
+  CUstream stream = nullptr;
+  CUDA_REPORT_IF_ERROR(cuStreamCreate(&stream, CU_STREAM_NON_BLOCKING));
   return stream;
+}
+
+extern "C" void mgpuStreamDestroy(CUstream stream) {
+  CUDA_REPORT_IF_ERROR(cuStreamDestroy(stream));
 }
 
 extern "C" void mgpuStreamSynchronize(CUstream stream) {

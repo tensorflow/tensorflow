@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/kernel_stats_utils.h"
 
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/profiler/internal/gpu/cupti_collector.h"
 #include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
 
 namespace tensorflow {
@@ -64,6 +65,33 @@ TEST(KernelStatsUtilsTest, TestGroupKernelReportsByOpName) {
   EXPECT_EQ(op2_stats.is_op_tensor_core_eligible, false);
   EXPECT_EQ(op2_stats.total_duration_ns, 100);
   EXPECT_EQ(op2_stats.tensor_core_duration_ns, 0);
+}
+
+TEST(KernelStatsUtilsTest, KernelDetailsXStatParser) {
+  KernelDetails kernel_info;
+  kernel_info.registers_per_thread = 10;
+  kernel_info.static_shared_memory_usage = 128;
+  kernel_info.dynamic_shared_memory_usage = 256;
+  kernel_info.block_x = 32;
+  kernel_info.block_y = 8;
+  kernel_info.block_z = 4;
+  kernel_info.grid_x = 3;
+  kernel_info.grid_y = 2;
+  kernel_info.grid_z = 1;
+  const double occupancy_pct = 50.0;
+  std::string xstat_kernel_details = ToXStat(kernel_info, occupancy_pct);
+  KernelReport kernel;
+  ParseKernelLaunchParams(xstat_kernel_details, &kernel);
+  // Verifies that the parser can parse kKernelDetails XStat.
+  EXPECT_EQ(kernel.registers_per_thread(), 10);
+  EXPECT_EQ(kernel.static_shmem_bytes(), 128);
+  EXPECT_EQ(kernel.dynamic_shmem_bytes(), 256);
+  EXPECT_EQ(kernel.block_dim()[0], 32);
+  EXPECT_EQ(kernel.block_dim()[1], 8);
+  EXPECT_EQ(kernel.block_dim()[2], 4);
+  EXPECT_EQ(kernel.grid_dim()[0], 3);
+  EXPECT_EQ(kernel.grid_dim()[1], 2);
+  EXPECT_EQ(kernel.grid_dim()[2], 1);
 }
 
 }  // namespace

@@ -1245,8 +1245,8 @@ func @testWhileRegionUnusedValue(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>, %ar
 }
 
 // Check that output_shapes attribute is removed for tf.If
-func @testIfThen(tensor<*xf32>) -> tensor<*xf32>
-func @testIfElse(tensor<*xf32>) -> tensor<*xf32>
+func private @testIfThen(tensor<*xf32>) -> tensor<*xf32>
+func private @testIfElse(tensor<*xf32>) -> tensor<*xf32>
 // CHECK-LABEL: func @testIfDropOutputShapes
 func @testIfDropOutputShapes(tensor<i1>, tensor<2xf32>) -> tensor<2xf32> {
 ^bb0(%arg0: tensor<i1>, %arg1: tensor<2xf32>):
@@ -1257,24 +1257,6 @@ func @testIfDropOutputShapes(tensor<i1>, tensor<2xf32>) -> tensor<2xf32> {
   } : (tensor<i1>, tensor<2xf32>) -> tensor<2xf32>
 
   return %1 : tensor<2xf32>
-}
-
-// Check that output_shapes attribute is removed for tf.Whileß
-func @testWhileCond(tensor<*xf32>) -> (tensor<i1>)
-func @testWhileBody(tensor<*xf32>) -> (tensor<*xf32>)
-// CHECK-LABEL: func @testWhileDropOutputShapes
-func @testWhileDropOutputShapes(tensor<*xf32>) -> (tensor<*xf32>) {
-^bb0(%arg0: tensor<*xf32>):
-  // CHECK: "tf.While"
-  // CHECK-NOT: output_shapes
-  %1 = "tf.While"(%arg0) {
-    cond = @testWhileCond,
-    body = @testWhileBody,
-    is_stateless = false,
-    output_shapes = [#tf.shape<>]
-  } : (tensor<*xf32>) -> (tensor<*xf32>)
-
-  return %1 : tensor<*xf32>
 }
 
 // CHECK-LABEL: testNMSV3ToNMSV4
@@ -1291,3 +1273,31 @@ func @testFusedBatchNormToBatchNormV3(%arg0: tensor<8x8x8x8xf32>, %arg1: tensor<
   %0:5 = "tf.FusedBatchNorm"(%arg0, %arg1, %arg2, %arg3, %arg4): (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>) -> (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32> )
   return %0#0  : tensor<8x8x8x8xf32>
 }
+
+// CHECK-LABEL: func @testSumFoldBypass
+func @testSumFoldBypass(%arg0: tensor<4x?xf16>, %arg1: tensor<*xi64>) -> tensor<4x?xf16> {
+    // CHECK: return %arg0
+  %0 = "tf.Sum"(%arg0, %arg1) { keep_dims = false }: (tensor<4x?xf16>, tensor<*xi64>) -> tensor<4x?xf16>
+  return %0 : tensor<4x?xf16>
+}
+
+// CHECK-LABEL: @testMatrixSetDiag
+func @testMatrixSetDiag(%arg0: tensor<3x3xi64>, %arg1: tensor<3xi64>) -> tensor<3x3xi64> {
+  %0 = "tf.MatrixSetDiag"(%arg0, %arg1) : (tensor<3x3xi64>, tensor<3xi64>) -> tensor<3x3xi64>
+  return %0 : tensor<3x3xi64>
+
+  // CHECK: %[[ZERO:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>}
+  // CHECK: %[[RES:.*]] = "tf.MatrixSetDiagV3"(%arg0, %arg1, %[[ZERO]])
+  // CHECK-SAME: {align = "RIGHT_LEFT"}
+  // CHECK-SAME: (tensor<3x3xi64>, tensor<3xi64>, tensor<i32>) -> tensor<3x3xi64>
+}
+
+// CHECK-LABEL: @testMatrixSetDiagV2
+func @testMatrixSetDiagV2(%arg0: tensor<3x3xi64>, %arg1: tensor<3xi64>, %arg2: tensor<i32>) -> tensor<3x3xi64> {
+  %0 = "tf.MatrixSetDiagV2"(%arg0, %arg1, %arg2) : (tensor<3x3xi64>, tensor<3xi64>, tensor<i32>) -> tensor<3x3xi64>
+  return %0 : tensor<3x3xi64>
+
+  // CHECK: %[[RES:.*]] = "tf.MatrixSetDiagV3"(%arg0, %arg1, %arg2)
+  // CHECK-SAME: {align = "LEFT_LEFT"}
+}
+

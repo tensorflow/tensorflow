@@ -66,8 +66,6 @@ class TFSavedModelAPI : public SavedModelAPI {
       ImmediateExecutionContext* context,
       std::unique_ptr<TFSavedModelAPI>* out);
 
-  std::vector<ConcreteFunction*> ListFunctions() override;
-
   ~TFSavedModelAPI() override = default;
 
   Status GetVariable(const std::string& variable_path, Variable** variable);

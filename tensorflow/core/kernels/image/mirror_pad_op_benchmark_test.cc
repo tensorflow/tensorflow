@@ -21,8 +21,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-static Graph* BM_MirrorPad(int batches, int height, int width, int depth,
-                           int pad, const char* mode) {
+static Graph* MirrorPad(int batches, int height, int width, int depth, int pad,
+                        const char* mode) {
   Graph* g = new Graph(OpRegistry::Global());
   Tensor in(DT_FLOAT, TensorShape({batches, height, width, depth}));
   in.flat<float>().setRandom();
@@ -39,12 +39,15 @@ static Graph* BM_MirrorPad(int batches, int height, int width, int depth,
   return g;
 }
 
-#define BM_MirrorPadDev(DEVICE, B, W, H, D, P, MODE)                         \
-  static void BM_MirrorPad_##DEVICE##_##B##_##W##_##H##_##D##_##P##_##MODE(  \
-      int iters) {                                                           \
-    testing::ItemsProcessed(iters* B*(W + 2 * P) * (H + 2 * P) * D / 32);    \
-    test::Benchmark(#DEVICE, BM_MirrorPad(B, W, H, D, P, #MODE)).Run(iters); \
-  }                                                                          \
+#define BM_MirrorPadDev(DEVICE, B, W, H, D, P, MODE)                        \
+  static void BM_MirrorPad_##DEVICE##_##B##_##W##_##H##_##D##_##P##_##MODE( \
+      ::testing::benchmark::State& state) {                                 \
+    test::Benchmark(#DEVICE, MirrorPad(B, W, H, D, P, #MODE),               \
+                    /*old_benchmark_api*/ false)                            \
+        .Run(state);                                                        \
+    state.SetItemsProcessed(state.iterations() * B * (W + 2 * P) *          \
+                            (H + 2 * P) * D / 32);                          \
+  }                                                                         \
   BENCHMARK(BM_MirrorPad_##DEVICE##_##B##_##W##_##H##_##D##_##P##_##MODE);
 
 BM_MirrorPadDev(cpu, 1, 16, 16, 32, 1, REFLECT);

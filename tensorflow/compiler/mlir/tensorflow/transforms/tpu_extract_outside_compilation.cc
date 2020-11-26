@@ -21,13 +21,16 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
@@ -86,6 +89,41 @@ struct TPUExtractOutsideCompilation
                          OperationPass<ModuleOp>> {
   void runOnOperation() override;
 };
+
+// Creates a tf._XlaSendFromHost or tf._XlaSendFromHostV2 op. If device ordinal
+// is present, a tf._XlaSendFromHostV2 op is created instead.
+Operation* CreateSendFromHostOp(OpBuilder& builder, Location loc,
+                                ValueRange inputs, Value compilation_key,
+                                Value device_ordinal,
+                                llvm::StringRef communication_key) {
+  if (device_ordinal)
+    return builder.create<TF::_XlaSendFromHostV2Op>(
+        loc, inputs,
+        /*dynamic_key=*/compilation_key, device_ordinal,
+        builder.getStringAttr(communication_key));
+
+  return builder.create<TF::_XlaSendFromHostOp>(
+      loc, inputs,
+      /*dynamic_key=*/compilation_key, builder.getStringAttr(communication_key),
+      /*device_ordinal=*/builder.getI64IntegerAttr(0));
+}
+
+// Creates a tf._XlaRecvAtHost or tf._XlaRecvAtHostV2 op. If device ordinal is
+// present, a tf._XlaRecvAtHostV2 op is created instead.
+Operation* CreateRecvAtHostOp(OpBuilder& builder, Location loc,
+                              TypeRange output_types, Value compilation_key,
+                              Value device_ordinal,
+                              llvm::StringRef communication_key) {
+  if (device_ordinal)
+    return builder.create<TF::_XlaRecvAtHostV2Op>(
+        loc, output_types, /*dynamic_key=*/compilation_key, device_ordinal,
+        builder.getStringAttr(communication_key));
+
+  return builder.create<TF::_XlaRecvAtHostOp>(
+      loc, output_types, /*dynamic_key=*/compilation_key,
+      builder.getStringAttr(communication_key),
+      /*device_ordinal=*/builder.getI64IntegerAttr(0));
+}
 
 // Holds information about control flow operations that wrap outside compiled
 // op. Currently only tf.IfRegion and tf.WhileRegion ops are supported.
@@ -158,34 +196,34 @@ llvm::SmallVector<ControlFlowStackInfo, 4> GetControlFlowStackForOp(
 // Creates a IfRegionOp with `predicate` and then/else region with yield op and
 // an empty block.
 TF::IfRegionOp CloneEmptyIfWithPredicate(Value predicate, bool is_stateless,
-                                         Location loc, OpBuilder* builder) {
-  auto host_side_if = builder->create<TF::IfRegionOp>(
+                                         Location loc, OpBuilder& builder) {
+  auto host_side_if = builder.create<TF::IfRegionOp>(
       loc, llvm::SmallVector<Type, 4>{}, predicate, is_stateless);
 
   // Create empty then branch region.
   auto& then_branch = host_side_if.then_branch();
   then_branch.push_back(new Block);
-  builder->setInsertionPointToEnd(&then_branch.front());
-  builder->create<TF::YieldOp>(loc, /*operands=*/ArrayRef<Value>{});
+  builder.setInsertionPointToEnd(&then_branch.front());
+  builder.create<TF::YieldOp>(loc, /*operands=*/ArrayRef<Value>{});
 
   // Create empty else branch region.
   auto& else_branch = host_side_if.else_branch();
   else_branch.push_back(new Block);
-  builder->setInsertionPointToEnd(&else_branch.front());
-  builder->create<TF::YieldOp>(loc, /*operands=*/ArrayRef<Value>{});
+  builder.setInsertionPointToEnd(&else_branch.front());
+  builder.create<TF::YieldOp>(loc, /*operands=*/ArrayRef<Value>{});
   return host_side_if;
 }
 
 // Replicates tf.IfRegion op to host side computation.
 Operation* ReplicateIf(const ControlFlowStackInfo& controlflow_info,
                        llvm::StringRef outside_cluster_name,
-                       Value compilation_key, OpBuilder* builder,
-                       int* send_recv_counter) {
+                       Value compilation_key, Value device_ordinal,
+                       OpBuilder& builder, int* send_recv_counter) {
   // Create XlaSendToHostOp to send predicate value from device to host.
-  OpBuilder::InsertPoint insert_point = builder->saveInsertionPoint();
+  OpBuilder::InsertPoint insert_point = builder.saveInsertionPoint();
   auto if_callsite_op =
       llvm::cast<TF::IfRegionOp>(controlflow_info.GetCallSiteOp());
-  builder->setInsertionPoint(if_callsite_op);
+  builder.setInsertionPoint(if_callsite_op);
 
   const auto predicate_send_recv_key =
       llvm::formatv("if_predicate_channel_{0}_{1}", outside_cluster_name,
@@ -195,19 +233,17 @@ Operation* ReplicateIf(const ControlFlowStackInfo& controlflow_info,
 
   auto predicate = if_callsite_op.cond();
   auto predicate_shape = predicate.getType();
-  builder->create<TF::XlaSendToHostOp>(if_callsite_op.getLoc(), predicate,
-                                       predicate_send_recv_key);
+  builder.create<TF::XlaSendToHostOp>(if_callsite_op.getLoc(), predicate,
+                                      predicate_send_recv_key);
 
   // Create XlaRecvAtHostOp to receive predicate value from host.
-  builder->restoreInsertionPoint(insert_point);
-  auto recv_predicate_at_host = builder->create<TF::_XlaRecvAtHostOp>(
-      if_callsite_op.getLoc(), llvm::ArrayRef<Type>{predicate_shape},
-      /*dynamic_key=*/compilation_key,
-      builder->getStringAttr(predicate_send_recv_key),
-      /*device_ordinal=*/builder->getI64IntegerAttr(0));
+  builder.restoreInsertionPoint(insert_point);
+  Operation* recv_predicate_at_host = CreateRecvAtHostOp(
+      builder, if_callsite_op.getLoc(), TypeRange{predicate_shape},
+      compilation_key, device_ordinal, predicate_send_recv_key);
 
   // Create host side if op.
-  return CloneEmptyIfWithPredicate(recv_predicate_at_host.getResult(0),
+  return CloneEmptyIfWithPredicate(recv_predicate_at_host->getResult(0),
                                    if_callsite_op.is_stateless(),
                                    if_callsite_op.getLoc(), builder);
 }
@@ -216,29 +252,29 @@ Operation* ReplicateIf(const ControlFlowStackInfo& controlflow_info,
 // an empty body.
 TF::WhileRegionOp CloneEmptyWhile(bool is_stateless,
                                   uint64_t parallel_iterations, Location loc,
-                                  OpBuilder* builder) {
-  auto host_side_while = builder->create<TF::WhileRegionOp>(
+                                  OpBuilder& builder) {
+  auto host_side_while = builder.create<TF::WhileRegionOp>(
       loc, /*output=*/ArrayRef<Type>{}, /*input=*/ArrayRef<Value>{},
-      is_stateless, parallel_iterations);
+      parallel_iterations, is_stateless, /*shape_invariant=*/false);
 
   // Create empty else branch region.
   auto& body = host_side_while.body();
   body.push_back(new Block);
-  builder->setInsertionPointToEnd(&body.front());
-  builder->create<TF::YieldOp>(loc, /*operands=*/ArrayRef<Value>{});
+  builder.setInsertionPointToEnd(&body.front());
+  builder.create<TF::YieldOp>(loc, /*operands=*/ArrayRef<Value>{});
   return host_side_while;
 }
 
 // Replicates tf.WhileRegion op to host side computation.
 Operation* ReplicateWhile(const ControlFlowStackInfo& controlflow_info,
                           llvm::StringRef outside_cluster_name,
-                          Value compilation_key, OpBuilder* builder,
-                          int* send_recv_counter) {
+                          Value compilation_key, Value device_ordinal,
+                          OpBuilder& builder, int* send_recv_counter) {
   // Create XlaSendToHostOp to send cond region output from device to host.
-  OpBuilder::InsertPoint insert_point = builder->saveInsertionPoint();
+  OpBuilder::InsertPoint insert_point = builder.saveInsertionPoint();
   auto while_callsite_op =
       llvm::cast<TF::WhileRegionOp>(controlflow_info.GetCallSiteOp());
-  builder->setInsertionPoint(while_callsite_op.cond().front().getTerminator());
+  builder.setInsertionPoint(while_callsite_op.cond().front().getTerminator());
 
   const auto condition_send_recv_key =
       llvm::formatv("while_condition_channel_{0}_{1}", outside_cluster_name,
@@ -247,9 +283,9 @@ Operation* ReplicateWhile(const ControlFlowStackInfo& controlflow_info,
   *send_recv_counter += 1;
   auto condition =
       while_callsite_op.cond().front().getTerminator()->getOperand(0);
-  builder->create<TF::XlaSendToHostOp>(while_callsite_op.getLoc(), condition,
-                                       condition_send_recv_key);
-  builder->restoreInsertionPoint(insert_point);
+  builder.create<TF::XlaSendToHostOp>(while_callsite_op.getLoc(), condition,
+                                      condition_send_recv_key);
+  builder.restoreInsertionPoint(insert_point);
 
   auto host_side_while = CloneEmptyWhile(
       while_callsite_op.is_stateless(), while_callsite_op.parallel_iterations(),
@@ -258,14 +294,12 @@ Operation* ReplicateWhile(const ControlFlowStackInfo& controlflow_info,
   // Create cond region and yield the condition from the device.
   auto& cond = host_side_while.cond();
   cond.push_back(new Block);
-  builder->setInsertionPointToEnd(&cond.front());
-  auto recv_condition_at_host = builder->create<TF::_XlaRecvAtHostOp>(
-      while_callsite_op.getLoc(), llvm::ArrayRef<Type>{condition.getType()},
-      /*dynamic_key=*/compilation_key,
-      builder->getStringAttr(condition_send_recv_key),
-      /*device_ordinal=*/builder->getI64IntegerAttr(0));
-  builder->create<TF::YieldOp>(while_callsite_op.getLoc(),
-                               recv_condition_at_host.getResults());
+  builder.setInsertionPointToEnd(&cond.front());
+  auto recv_condition_at_host = CreateRecvAtHostOp(
+      builder, while_callsite_op.getLoc(), TypeRange{condition.getType()},
+      compilation_key, device_ordinal, condition_send_recv_key);
+  builder.create<TF::YieldOp>(while_callsite_op.getLoc(),
+                              recv_condition_at_host->getResults());
 
   return host_side_while;
 }
@@ -277,10 +311,10 @@ Operation* ReplicateWhile(const ControlFlowStackInfo& controlflow_info,
 // _XlaSendFromHost but the _TPUCompileMlir has not yet been created for the TPU
 // cluster that contains the outside compiled ops. This placeholder should be
 // replaced by the TPU cluster _TPUCompileMlir in a subsequent pass.
-Value CreateCompilationKeyPlaceholder(Location loc, OpBuilder* builder) {
+Value CreateCompilationKeyPlaceholder(Location loc, OpBuilder& builder) {
   auto result_type =
-      RankedTensorType::get({2}, builder->getType<TF::StringType>());
-  return builder->create<TF::_TPUCompileMlirPlaceholderProgramKeyOp>(
+      RankedTensorType::get({2}, builder.getType<TF::StringType>());
+  return builder.create<TF::_TPUCompileMlirPlaceholderProgramKeyOp>(
       loc, /*program=*/result_type, llvm::ArrayRef<Value>{});
 }
 
@@ -312,7 +346,7 @@ Operation* GetOrReplicateControlFlowStack(
     llvm::StringRef outside_cluster_name,
     const llvm::SmallVectorImpl<ControlFlowStackInfo>& stack_info,
     tf_device::ClusterOp tpu_cluster, ModuleOp module, Value compilation_key,
-    Block* destination_block, int* send_recv_counter,
+    Value device_ordinal, Block* destination_block, int* send_recv_counter,
     llvm::SmallDenseMap<Operation*, Operation*>* replicated_controlflow_map) {
   assert(!stack_info.empty());
   const auto& controlflow_info = stack_info.back();
@@ -338,9 +372,9 @@ Operation* GetOrReplicateControlFlowStack(
     // ControlFlowStackInfo.
     if (auto control_flow_op = llvm::dyn_cast<TF::IfRegionOp>(
             controlflow_stack_info.GetCallSiteOp())) {
-      previous_replicated_controlflow_op =
-          ReplicateIf(controlflow_stack_info, outside_cluster_name,
-                      compilation_key, &builder, send_recv_counter);
+      previous_replicated_controlflow_op = ReplicateIf(
+          controlflow_stack_info, outside_cluster_name, compilation_key,
+          device_ordinal, builder, send_recv_counter);
       auto if_op =
           llvm::cast<TF::IfRegionOp>(previous_replicated_controlflow_op);
       auto type = controlflow_stack_info.GetBranchType();
@@ -354,9 +388,9 @@ Operation* GetOrReplicateControlFlowStack(
       }
     } else if (auto control_flow_op = llvm::dyn_cast<TF::WhileRegionOp>(
                    controlflow_stack_info.GetCallSiteOp())) {
-      previous_replicated_controlflow_op =
-          ReplicateWhile(controlflow_stack_info, outside_cluster_name,
-                         compilation_key, &builder, send_recv_counter);
+      previous_replicated_controlflow_op = ReplicateWhile(
+          controlflow_stack_info, outside_cluster_name, compilation_key,
+          device_ordinal, builder, send_recv_counter);
       auto while_op =
           llvm::cast<TF::WhileRegionOp>(previous_replicated_controlflow_op);
       auto type = controlflow_stack_info.GetBranchType();
@@ -417,20 +451,18 @@ void MoveOutsideClusterOpsBeforeOp(Operation* op,
 
 // Creates a `tf_device.launch` to wrap cluster ops.
 tf_device::LaunchOp CreateLaunchOpForOutsideCluster(
-    OpBuilder* builder, Operation* last_cluster_op,
+    OpBuilder& builder, Operation* last_cluster_op,
     llvm::StringRef host_device) {
   // An empty string placeholder is used for the device as that will be later
   // populated with the device of the associated TPUReplicateMetadata op.
-  auto launch_op = builder->create<tf_device::LaunchOp>(
-      last_cluster_op->getLoc(), builder->getStringAttr(host_device),
+  auto launch_op = builder.create<tf_device::LaunchOp>(
+      last_cluster_op->getLoc(), builder.getStringAttr(host_device),
       /*result_types=*/ArrayRef<Type>{});
 
   launch_op.body().push_back(new Block);
-
-  // Add terminator.
-  builder->setInsertionPointToEnd(&launch_op.GetBody());
-  builder->create<tf_device::ReturnOp>(last_cluster_op->getLoc(),
-                                       llvm::ArrayRef<Value>{});
+  builder.setInsertionPointToEnd(&launch_op.GetBody());
+  builder.create<tf_device::ReturnOp>(last_cluster_op->getLoc(),
+                                      llvm::ArrayRef<Value>{});
 
   return launch_op;
 }
@@ -533,13 +565,13 @@ llvm::SmallSetVector<Value, 4> GetExternalOutputs(
 // as an operand.  If there are no external_inputs, set insertion point to first
 // cluster_op.
 void SetHostComputeInsertion(
-    OpBuilder* builder, llvm::ArrayRef<Operation*> cluster_ops,
+    OpBuilder& builder, llvm::ArrayRef<Operation*> cluster_ops,
     const llvm::SmallSetVector<Value, 4>& external_inputs) {
-  if (external_inputs.empty()) builder->setInsertionPoint(cluster_ops.front());
+  if (external_inputs.empty()) builder.setInsertionPoint(cluster_ops.front());
   for (const auto& cluster_op : cluster_ops) {
     for (Value v : cluster_op->getOperands()) {
       if (external_inputs.count(v)) {
-        builder->setInsertionPoint(cluster_op);
+        builder.setInsertionPoint(cluster_op);
         return;
       }
     }
@@ -549,13 +581,13 @@ void SetHostComputeInsertion(
   // implicitly captured inputs for ops inside internal regions of one of the
   // `cluster_ops`. In that case, set the insertion point to the last op of the
   // `cluster_ops` in the IR.
-  builder->setInsertionPoint(cluster_ops.back());
+  builder.setInsertionPoint(cluster_ops.back());
 }
 
 // Creates the HostCompute with `inputs` and `outputs`
 // using `communication_key`.
 TF::_XlaHostComputeMlirOp CreateHostCompute(
-    OpBuilder* builder, tf_device::ClusterOp tpu_cluster,
+    OpBuilder& builder, tf_device::ClusterOp tpu_cluster,
     llvm::ArrayRef<Operation*> cluster_ops,
     const llvm::SmallSetVector<Value, 4>& inputs, llvm::ArrayRef<Value> outputs,
     llvm::StringRef args_communication_key,
@@ -564,11 +596,11 @@ TF::_XlaHostComputeMlirOp CreateHostCompute(
   for (const auto& output : outputs)
     device_output_types.push_back(output.getType());
   SetHostComputeInsertion(builder, cluster_ops, inputs);
-  auto host_compute = builder->create<TF::_XlaHostComputeMlirOp>(
+  auto host_compute = builder.create<TF::_XlaHostComputeMlirOp>(
       tpu_cluster.getLoc(), device_output_types, inputs.getArrayRef(),
-      builder->getStringAttr(args_communication_key),
-      builder->getStringAttr(retvals_communication_key),
-      /*tpu_core=*/builder->getI64IntegerAttr(0));
+      builder.getStringAttr(args_communication_key),
+      builder.getStringAttr(retvals_communication_key),
+      /*tpu_core=*/builder.getI64IntegerAttr(0));
   return host_compute;
 }
 
@@ -595,8 +627,9 @@ void MoveOutsideCompiledOpsInsideControlFlow(
     ModuleOp module, tf_device::ClusterOp tpu_cluster,
     llvm::StringRef host_cluster_section_name,
     tf_device::LaunchOp host_launch_op, Value compilation_key,
-    llvm::ArrayRef<Operation*> cluster_section_ops,
+    Value device_ordinal, llvm::ArrayRef<Operation*> cluster_section_ops,
     const llvm::SmallVectorImpl<ControlFlowStackInfo>& controlflow_stack,
+    llvm::ArrayRef<Operation*> cluster_ops,
     const llvm::SmallSetVector<Value, 4>& section_external_inputs,
     llvm::ArrayRef<Value> section_external_outputs,
     llvm::SmallDenseMap<Operation*, Operation*>* replicated_controlflow_map) {
@@ -607,8 +640,8 @@ void MoveOutsideCompiledOpsInsideControlFlow(
     int send_recv_counter = 0;
     insertion_op = GetOrReplicateControlFlowStack(
         host_cluster_section_name, controlflow_stack, tpu_cluster, module,
-        compilation_key, &host_launch_op.GetBody(), &send_recv_counter,
-        replicated_controlflow_map);
+        compilation_key, device_ordinal, &host_launch_op.GetBody(),
+        &send_recv_counter, replicated_controlflow_map);
   }
 
   MLIRContext* context = host_launch_op.getContext();
@@ -630,39 +663,41 @@ void MoveOutsideCompiledOpsInsideControlFlow(
                     host_cluster_section_name)
           .str();
 
-  auto recv_at_host = builder.create<TF::_XlaRecvAtHostOp>(
-      tpu_cluster.getLoc(), host_output_types,
-      /*dynamic_key=*/compilation_key,
-      builder.getStringAttr(args_communication_key),
-      /*device_ordinal=*/builder.getI64IntegerAttr(0));
+  auto recv_at_host = CreateRecvAtHostOp(
+      builder, tpu_cluster.getLoc(), host_output_types, compilation_key,
+      device_ordinal, args_communication_key);
 
   auto host_compute =
-      CreateHostCompute(&builder, tpu_cluster, cluster_section_ops,
+      CreateHostCompute(builder, tpu_cluster, cluster_section_ops,
                         section_external_inputs, section_external_outputs,
                         args_communication_key, retvals_communication_key);
   MoveOutsideClusterOpsBeforeOp(insertion_op, cluster_section_ops, context);
 
   builder.setInsertionPoint(insertion_op);
-  builder.create<TF::_XlaSendFromHostOp>(
-      tpu_cluster.getLoc(), section_external_outputs,
-      /*dynamic_key=*/compilation_key,
-      builder.getStringAttr(retvals_communication_key),
-      /*device_ordinal=*/builder.getI64IntegerAttr(0));
+  if (!section_external_outputs.empty())
+    CreateSendFromHostOp(builder, tpu_cluster.getLoc(),
+                         section_external_outputs, compilation_key,
+                         device_ordinal, retvals_communication_key);
 
   for (auto result :
-       llvm::zip(section_external_inputs, recv_at_host.getResults())) {
+       llvm::zip(section_external_inputs, recv_at_host->getResults())) {
     mlir::replaceAllUsesInRegionWith(std::get<0>(result), std::get<1>(result),
                                      *insertion_op->getParentRegion());
   }
 
+  auto operand_inside_device_cluster = [&](OpOperand& operand) {
+    return tpu_cluster.body().isAncestor(
+               operand.getOwner()->getParentRegion()) &&
+           llvm::none_of(cluster_ops, [&](Operation* cluster_op) {
+             return operand.getOwner() == cluster_op;
+           });
+  };
+
   for (auto result :
        llvm::zip(section_external_outputs, host_compute.getResults())) {
-    for (auto& result_use : std::get<0>(result).getUses()) {
-      Operation* result_using_op = result_use.getOwner();
-      const bool inside_device_cluster =
-          tpu_cluster.body().isAncestor(result_using_op->getParentRegion());
-      if (inside_device_cluster) result_use.set(std::get<1>(result));
-    }
+    Value external_output = std::get<0>(result);
+    external_output.replaceUsesWithIf(std::get<1>(result),
+                                      operand_inside_device_cluster);
   }
 }
 
@@ -693,12 +728,24 @@ void MoveOutsideCompiledOps(
         return !host_cluster_section.controlflow_stack.empty();
       });
 
-  Value compilation_key;
+  Value compilation_key = nullptr;
+  Value device_ordinal = nullptr;
   if (has_control_flow || !external_inputs.empty() ||
       !external_outputs.empty()) {
     OpBuilder builder(&host_launch_op.GetBody().front());
     compilation_key =
-        CreateCompilationKeyPlaceholder(tpu_cluster.getLoc(), &builder);
+        CreateCompilationKeyPlaceholder(tpu_cluster.getLoc(), builder);
+
+    // If there is no replication/data parallelism, it is assumed the device
+    // ordinal is always 0 (e.g. /device:TPU:0). In that case, a constant 0
+    // attribute can be used instead for _XlaSendFromHost/_XlaRecvAtHost ops.
+    if (tpu_cluster.getParentOfType<tf_device::ReplicateOp>()) {
+      auto device_ordinal_op =
+          builder.create<TF::_TPUDeviceOrdinalPlaceholderOp>(
+              host_launch_op.getLoc(),
+              RankedTensorType::get({}, builder.getI64Type()));
+      device_ordinal = device_ordinal_op.device_ordinal();
+    }
   }
 
   // Maintains a map of control flow callsite operation in TPU device side
@@ -731,9 +778,9 @@ void MoveOutsideCompiledOps(
 
     MoveOutsideCompiledOpsInsideControlFlow(
         module, tpu_cluster, host_cluster_section_name, host_launch_op,
-        compilation_key, cluster_section_ops, controlflow_stack,
-        section_external_inputs, section_external_outputs.takeVector(),
-        &replicated_controlflows);
+        compilation_key, device_ordinal, cluster_section_ops, controlflow_stack,
+        cluster_ops, section_external_inputs,
+        section_external_outputs.takeVector(), &replicated_controlflows);
   }
 }
 
@@ -759,7 +806,7 @@ void CreateParallelExecuteFromOutsideClusters(ModuleOp module,
 
     builder.setInsertionPointToEnd(&outside_block);
     tf_device::LaunchOp host_launch_op = CreateLaunchOpForOutsideCluster(
-        &builder, cluster_ops.back(), host_device);
+        builder, cluster_ops.back(), host_device);
 
     // Determine if there are any inputs that are provided out of cluster.
     auto external_inputs = GetExternalOperands(tpu_cluster, cluster_ops);

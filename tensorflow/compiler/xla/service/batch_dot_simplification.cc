@@ -87,9 +87,11 @@ BatchDotSimplification::ElideDegenerateBatchDimensionFromBatchDot(
       0,
       new_dim_numbers.rhs_contracting_dimensions(0) - degenerate_dims.size());
 
-  TF_ASSIGN_OR_RETURN(HloInstruction * new_dot,
-                      MakeDotHlo(new_lhs, new_rhs, new_dim_numbers,
-                                 batch_dot->precision_config()));
+  TF_ASSIGN_OR_RETURN(
+      HloInstruction * new_dot,
+      MakeDotHlo(new_lhs, new_rhs, new_dim_numbers,
+                 batch_dot->precision_config(),
+                 /*preferred_element_type=*/batch_dot->shape().element_type()));
 
   TF_ASSIGN_OR_RETURN(HloInstruction * new_dot_reshaped,
                       MakeReshapeHlo(batch_dot->shape(), new_dot));

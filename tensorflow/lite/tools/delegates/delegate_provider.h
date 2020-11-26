@@ -95,8 +95,8 @@ class DelegateProviderRegistrar {
 };
 
 #define REGISTER_DELEGATE_PROVIDER_VNAME(T) gDelegateProvider_##T##_
-#define REGISTER_DELEGATE_PROVIDER(T)           \
-  static DelegateProviderRegistrar::Register<T> \
+#define REGISTER_DELEGATE_PROVIDER(T)                          \
+  static tflite::tools::DelegateProviderRegistrar::Register<T> \
       REGISTER_DELEGATE_PROVIDER_VNAME(T);
 
 // A global helper function to get all registered delegate providers.

@@ -46,7 +46,6 @@ const constexpr char* NnapiAccelerationTestParams::kAccelerationTestConfig =
 #test-id,min-android-sdk-version
 
 # activations_test
-QuantizedActivationsOpTest/Relu6Uint8
 FloatActivationsOpTest/Softmax[13]D,29
 QuantizedActivationsOpTest/Softmax[13]D.+nt8,29
 FloatActivationsOpTest/Softmax\dD
@@ -60,7 +59,7 @@ FloatActivationsOpTest/Elu,30
 FloatActivationsOpTest/HardSwish
 QuantizedActivationsOpTest/HardSwish
 QuantizedActivationsOpTest/HardSwishBias
-QuantizedActivationsOpTest/Relu*
+QuantizedActivationsOpTest/Relu.+nt8
 QuantizedActivationsOpTest/PRelu,29
 QuantizedActivationsOpTest/PReluSameShapes,29
 QuantizedActivationsOpTest/PReluInt8.+,30
@@ -161,7 +160,7 @@ DepthToSpaceOpModel/int8
 FloatDivOpTest/.+
 
 # elementwise_test
-ElementWise/Abs
+ElementWise/Abs,29
 ElementWise/Sin,29
 ElementWise/Log,29
 ElementWise/Sqrt,29
@@ -306,6 +305,9 @@ PowOpModel/.+,29
 
 # quant_basic_lstm_test
 QuantizedLstmTest/BasicQuantizedLstmTest/29
+
+# quantized_lstm op test
+IntegerLstmOpTest/NoCifg_NoPeephole_Projection_LayerNorm,30
 
 # quantize_test
 QuantizeOpTest/UINT8,29

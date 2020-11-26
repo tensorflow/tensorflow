@@ -1753,6 +1753,22 @@ XLA_TEST_F(DotOperationTest, ReorderContractingDims_Multipass) {
   ComputeAndCompare(&builder, {}, error_spec_);
 }
 
+XLA_TEST_F(DotOperationTextTest, WiderIntegralResultAccumulation) {
+  absl::string_view hlo_string =
+      R"(
+HloModule WiderIntegralAccumulation
+
+ENTRY MatrixVectorComplex {
+  p0 = s8[5,5]{1,0} parameter(0)
+  p1 = s16[5,1]{0,1} parameter(1)
+  ROOT dot = s32[5,1]{1,0} dot(p0, p1), lhs_contracting_dims={1},
+                                        rhs_contracting_dims={0}
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
+}
+
 // This benchmark is to show the performance impact of the following
 // transformation:
 //   dot(reshape(transpose(A)), Const) ==>

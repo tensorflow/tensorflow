@@ -19,6 +19,8 @@ namespace tensorflow {
 REGISTER8(UnaryOp, CPU, "Sign", functor::sign, float, double, int32, int64,
           complex64, Eigen::half, bfloat16, complex128);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
+    !defined(MLIR_GENERATED_UNRANKED_GPU_KERNELS_ENABLED)
 REGISTER6(UnaryOp, GPU, "Sign", functor::sign, float, Eigen::half, double,
           int64, complex64, complex128);
 
@@ -32,6 +34,6 @@ REGISTER_KERNEL_BUILDER(Name("Sign")
                             .TypeConstraint<int32>("T"),
                         UnaryOp<CPUDevice, functor::sign<int32>>);
 #endif
-
+#endif
 
 }  // namespace tensorflow

@@ -45,11 +45,15 @@ static Graph* Bincount(int arr_size, int nbins) {
   return g;
 }
 
-#define BM_BincountDev(K, NBINS, type)                             \
-  static void BM_Bincount##_##type##_##K##_##NBINS(int iters) {    \
-    testing::ItemsProcessed(static_cast<int64>(iters) * K * 1024); \
-    test::Benchmark(#type, Bincount(K * 1024, NBINS)).Run(iters);  \
-  }                                                                \
+#define BM_BincountDev(K, NBINS, type)                                   \
+  static void BM_Bincount##_##type##_##K##_##NBINS(                      \
+      ::testing::benchmark::State& state) {                              \
+    test::Benchmark(#type, Bincount(K * 1024, NBINS),                    \
+                    /*old_benchmark_api=*/false)                         \
+        .Run(state);                                                     \
+    state.SetItemsProcessed(static_cast<int64>(state.iterations()) * K * \
+                            1024);                                       \
+  }                                                                      \
   BENCHMARK(BM_Bincount##_##type##_##K##_##NBINS);
 
 BM_BincountDev(32, 1000, cpu);

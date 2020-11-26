@@ -472,14 +472,14 @@ func @main(%arg0: tensor<i1>) -> () {
 }
 
 // CHECK: func @callee(%[[AARG0:.*]]: tensor<!tf.variant<tensor<f32>>>, %[[AARG1:.*]]: tensor<i1>) -> tensor<!tf.variant<tensor<f32>>>
-func @callee(%arg0: tensor<!tf.variant<tensor<f32>>>, %arg1: tensor<i1>) -> tensor<!tf.variant<tensor<f32>>> attributes {sym_visibility = "public"} {
+func @callee(%arg0: tensor<!tf.variant<tensor<f32>>>, %arg1: tensor<i1>) -> tensor<!tf.variant<tensor<f32>>> {
   %elem = "tf._SomeOp"(%arg1) : (tensor<i1>) -> tensor<f32>
   // CHECK: "tf.TensorListPushBack"
   %push = "tf.TensorListPushBack"(%arg0, %elem) : (tensor<!tf.variant<tensor<f32>>>, tensor<f32>) -> tensor<!tf.variant<tensor<f32>>>
   return %push : tensor<!tf.variant<tensor<f32>>>
 }
 
-// CHECK: func @callee_tensorlist_decomposed(%[[ARG0:.*]]: tensor<10xf32>, %[[ARG1:.*]]: tensor<i1>, %[[ARG2:.*]]: tensor<1xi32>) -> (tensor<10xf32>, tensor<1xi32>)
+// CHECK: func private @callee_tensorlist_decomposed(%[[ARG0:.*]]: tensor<10xf32>, %[[ARG1:.*]]: tensor<i1>, %[[ARG2:.*]]: tensor<1xi32>) -> (tensor<10xf32>, tensor<1xi32>)
 // CHECK-NOT: "tf.TensorListPushBack"
 // CHECK: %[[UPDATE:.*]] = "tf.XlaDynamicUpdateSlice"
 // CHECK: %[[CONST1:.*]] = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
@@ -514,7 +514,7 @@ func @main(%arg0: tensor<i1>) -> () {
   return
 }
 
-// CHECK: func @callee(%[[ARG0:.*]]: tensor<10xf32>, %[[ARG1:.*]]: tensor<i1>, %[[ARG2:.*]]: tensor<1xi32>) -> (tensor<10xf32>, tensor<1xi32>)
+// CHECK: func private @callee(%[[ARG0:.*]]: tensor<10xf32>, %[[ARG1:.*]]: tensor<i1>, %[[ARG2:.*]]: tensor<1xi32>) -> (tensor<10xf32>, tensor<1xi32>)
 func @callee(%arg0: tensor<!tf.variant<tensor<f32>>>, %arg1: tensor<i1>) -> tensor<!tf.variant<tensor<f32>>> attributes {sym_visibility = "private"} {
   %elem = "tf._SomeOp"(%arg1) : (tensor<i1>) -> tensor<f32>
 
@@ -533,12 +533,12 @@ func @callee(%arg0: tensor<!tf.variant<tensor<f32>>>, %arg1: tensor<i1>) -> tens
 // Tests PartitionedCall op with no signature change on callee.
 
 // CHECK-LABEL: func @main
-func @main() -> () {
+func @main() {
   "tf.PartitionedCall"() {f = @callee, config = "", config_proto = "", executor_type = ""} : () -> ()
   return
 }
-// CHECK: func @callee()
-func @callee() -> () attributes {sym_visibility = "public"} {
+// CHECK: func private @callee()
+func @callee() {
   %elem_shape = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
   %max_size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
   // CHECK-NOT: tf.EmptyTensorList

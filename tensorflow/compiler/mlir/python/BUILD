@@ -40,6 +40,8 @@ cc_library(
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
+        "//tensorflow/compiler/mlir/tensorflow:translate_lib",
+        "//tensorflow/core/common_runtime:core_cpu_base_no_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
     ],

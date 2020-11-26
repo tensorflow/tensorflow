@@ -38,8 +38,7 @@ ops = xla_client.ops
 class ShapeTest(absltest.TestCase):
 
   def testInvalidShapes(self):
-    with self.assertRaisesRegex(RuntimeError,
-                                "shape's dimensions must not be < 0.*"):
+    with self.assertRaisesRegex(RuntimeError, "invalid shape"):
       xla_client.Shape.array_shape(xla_client.PrimitiveType.F32, [-2, 4])
 
     with self.assertRaisesRegex(

@@ -65,7 +65,12 @@ allows the appropriate versions; for example, ADD v2.
 
 ## Basic usage
 
-### Android (Kotlin / Java)
+There are two ways to invoke model acceleration in Android depending on if you
+are using
+[Android Studio ML Model Binding](../inference_with_metadata/codegen#acceleration)
+or TensorFlow Lite Interpreter.
+
+### Android via TensorFlow Lite Interpreter
 
 Add the `tensorflow-lite-gpu` package alongside the existing `tensorflow-lite`
 package in the existing `dependencies` block.
@@ -242,7 +247,7 @@ called.
 
 `TFLGpuDelegateCreate()` accepts a `struct` of options.
 ([C API](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/gpu/metal_delegate.h),
-[Swift API](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/swift/Sources/MetalDelegate.swift))
+[Swift API](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/swift/Sources/MetalDelegate.swift))
 
 Passing `nullptr`(C API) or nothing (Swift API) to the initializer sets the
 default options (which are explicated in the Basic Usage example above).

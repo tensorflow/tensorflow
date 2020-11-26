@@ -54,15 +54,15 @@ Once Bazel is properly configured with iOS support, you can build the
 
 ```sh
 bazel build --config=ios_fat -c opt \
-  //tensorflow/lite/experimental/ios:TensorFlowLiteC_framework
+  //tensorflow/lite/ios:TensorFlowLiteC_framework
 ```
 
 This command will generate the `TensorFlowLiteC_framework.zip` file under
-`bazel-bin/tensorflow/lite/experimental/ios/` directory under your TensorFlow
-root directory. By default, the generated framework contains a "fat" binary,
-containing armv7, arm64, and x86_64 (but no i386). To see the full list of build
-flags used when you specify `--config=ios_fat`, please refer to the iOS configs
-section in the [`.bazelrc` file][bazelrc].
+`bazel-bin/tensorflow/lite/ios/` directory under your TensorFlow root directory.
+By default, the generated framework contains a "fat" binary, containing armv7,
+arm64, and x86_64 (but no i386). To see the full list of build flags used when
+you specify `--config=ios_fat`, please refer to the iOS configs section in the
+[`.bazelrc` file][bazelrc].
 
 ## Use in your own application
 
@@ -125,7 +125,8 @@ You can set up a private CocoaPods specs repository, and publish your custom
   ...
   s.version      = <your_desired_version_tag>
   ...
-  s.source       = { :http => "file://<path_to_TensorFlowLiteC_framework.zip>" }
+  # Note the `///`, two from the `file://` and one from the `/path`.
+  s.source       = { :http => "file:///path/to/TensorFlowLiteC_framework.zip" }
   ...
   s.vendored_frameworks = 'TensorFlowLiteC.framework'
   ...
@@ -147,7 +148,7 @@ For Swift:
 ```python
 swift_library(
   deps = [
-      "//tensorflow/lite/experimental/swift:TensorFlowLite",
+      "//tensorflow/lite/swift:TensorFlowLite",
   ],
 )
 ```
@@ -157,7 +158,7 @@ For Objective-C:
 ```python
 objc_library(
   deps = [
-      "//tensorflow/lite/experimental/objc:TensorFlowLite",
+      "//tensorflow/lite/objc:TensorFlowLite",
   ],
 )
 ```
@@ -200,7 +201,7 @@ TensorFlow Lite's C API, defined by the header files under
 [bazel-install]: https://docs.bazel.build/versions/master/install-os-x.html
 [bazelrc]: https://github.com/tensorflow/tensorflow/blob/master/.bazelrc
 [configure-py]: https://github.com/tensorflow/tensorflow/blob/master/configure.py
-[objc-api]: https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/objc
+[objc-api]: https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/objc
 [private-cocoapods]: https://guides.cocoapods.org/making/private-cocoapods.html
-[swift-api]: https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/swift
-[tflite-podspec]: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/ios/TensorFlowLiteC.podspec
+[swift-api]: https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/swift
+[tflite-podspec]: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/ios/TensorFlowLiteC.podspec

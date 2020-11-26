@@ -25,28 +25,36 @@ from tensorflow.python.eager import monitoring
 from tensorflow.python.util import tf_contextlib
 
 enable_metrics = False
+_METRICS_MAPPING = {}
 
-# Time in seconds to bucket the distribution of execution time. Range from
-# 0.001s (i.e., 1ms) to 1000s.
-_time_buckets = monitoring.ExponentialBuckets(0.001, 10, 6)
 
-_function_tracing_sampler = monitoring.Sampler(
-    '/tensorflow/api/ps_strategy/coordinator/function_tracing', _time_buckets,
-    'Sampler to track the time (in seconds) for tracing functions.')
+def _init():
+  """Initialize the metrics mapping."""
+  global _METRICS_MAPPING
 
-_closure_execution_sampler = monitoring.Sampler(
-    '/tensorflow/api/ps_strategy/coordinator/closure_execution', _time_buckets,
-    'Sampler to track the time (in seconds) for executing closures.')
+  # Time in seconds to bucket the distribution of execution time. Range from
+  # 0.001s (i.e., 1ms) to 1000s.
+  time_buckets = monitoring.ExponentialBuckets(0.001, 10, 6)
 
-_remote_value_fetch_sampler = monitoring.Sampler(
-    '/tensorflow/api/ps_strategy/coordinator/remote_value_fetch', _time_buckets,
-    'Sampler to track the time (in seconds) for fetching remote_value.')
+  function_tracing_sampler = monitoring.Sampler(
+      '/tensorflow/api/ps_strategy/coordinator/function_tracing', time_buckets,
+      'Sampler to track the time (in seconds) for tracing functions.')
 
-_METRICS_MAPPING = {
-    'function_tracing': _function_tracing_sampler,
-    'closure_execution': _closure_execution_sampler,
-    'remote_value_fetch': _remote_value_fetch_sampler
-}
+  closure_execution_sampler = monitoring.Sampler(
+      '/tensorflow/api/ps_strategy/coordinator/closure_execution',
+      time_buckets,
+      'Sampler to track the time (in seconds) for executing closures.')
+
+  remote_value_fetch_sampler = monitoring.Sampler(
+      '/tensorflow/api/ps_strategy/coordinator/remote_value_fetch',
+      time_buckets,
+      'Sampler to track the time (in seconds) for fetching remote_value.')
+
+  _METRICS_MAPPING = {
+      'function_tracing': function_tracing_sampler,
+      'closure_execution': closure_execution_sampler,
+      'remote_value_fetch': remote_value_fetch_sampler
+  }
 
 
 @tf_contextlib.contextmanager
@@ -55,6 +63,8 @@ def monitored_timer(metric_name, state_tracker=None):
   if not enable_metrics:
     yield
   else:
+    if not _METRICS_MAPPING:
+      _init()
     start_time = time.time()
     start_state = state_tracker() if state_tracker else None
     yield

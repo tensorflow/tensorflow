@@ -9,7 +9,7 @@ message NewProfileSessionRequest {
   // The place where we will dump profile data. We will normally use
   // MODEL_DIR/plugins/profile as the repository root.
   string repository_root = 2;
-  repeated string hosts = 3;
+  repeated string hosts = 3;  // host or host:port, port will be ignored.
   string session_id = 4;
 }
 

@@ -12,6 +12,8 @@ py_strict_binary(
     srcs = ["gen_saved_models.py"],
     python_version = "PY3",
     deps = [
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:platform",
         "//tensorflow/python:resource_variable_ops",
@@ -21,7 +23,6 @@ py_strict_binary(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/module",
         "//tensorflow/python/saved_model",
-        "//tensorflow/python/saved_model:save_options",
     ],
 )
 
@@ -29,6 +30,7 @@ py_strict_binary(
 filegroup(
     name = "saved_models",
     srcs = glob([
+        "SimpleWhileLoop/**",
         "UninitializedVariable/**",
     ]),
     visibility = [

@@ -42,15 +42,19 @@ int RowsAndColsArg(int r, int c) { return r * kRows + c; }
 int RowsFromArg(int arg) { return (arg / kRows); }
 int ColsFromArg(int arg) { return (arg % kRows); }
 
-#define BM_UNARY(DEVICE, FUNC, T, TYPE)                              \
-  void BM_##DEVICE##_##FUNC##_##TYPE(int iters, int num) {           \
-    const int64 tot = static_cast<int64>(iters) * num;               \
-    testing::UseRealTime();                                          \
-    testing::ItemsProcessed(tot);                                    \
-    testing::BytesProcessed(tot * sizeof(T));                        \
-    test::Benchmark(#DEVICE, Unary<T>(#FUNC, num, TYPE)).Run(iters); \
-  }                                                                  \
-  BENCHMARK(BM_##DEVICE##_##FUNC##_##TYPE)->Range(4 << 10, 1 << 20);
+#define BM_UNARY(DEVICE, FUNC, T, TYPE)                                    \
+  void BM_##DEVICE##_##FUNC##_##TYPE(::testing::benchmark::State& state) { \
+    const int num = state.range(0);                                        \
+    test::Benchmark(#DEVICE, Unary<T>(#FUNC, num, TYPE),                   \
+                    /*old_benchmark_api*/ false)                           \
+        .Run(state);                                                       \
+    const int64 tot = static_cast<int64>(state.iterations()) * num;        \
+    state.SetItemsProcessed(tot);                                          \
+    state.SetBytesProcessed(tot * sizeof(T));                              \
+  }                                                                        \
+  BENCHMARK(BM_##DEVICE##_##FUNC##_##TYPE)                                 \
+      ->UseRealTime()                                                      \
+      ->Range(4 << 10, 1 << 20);
 
 BM_UNARY(cpu, Floor, float, DT_FLOAT);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -101,27 +105,30 @@ Graph* BinaryScalar(int num, const string& func) {
   return g;
 }
 
-#define BM_BINARY_SCALAR(DEVICE, FUNC)                             \
-  void BM_##DEVICE##_##FUNC##_scalar(int iters, int num) {         \
-    const int64 tot = static_cast<int64>(iters) * num;             \
-    testing::UseRealTime();                                        \
-    testing::ItemsProcessed(tot);                                  \
-    testing::BytesProcessed(tot * sizeof(float));                  \
-    test::Benchmark(#DEVICE, BinaryScalar(num, #FUNC)).Run(iters); \
-  }                                                                \
-  BENCHMARK(BM_##DEVICE##_##FUNC##_scalar)                         \
-      ->Arg(1 << 12) /* must >= 4096 */                            \
-      ->Arg(1 << 13)                                               \
-      ->Arg(1 << 14)                                               \
-      ->Arg((1 << 15) - (1 << 13))                                 \
-      ->Arg(1 << 15)                                               \
-      ->Arg((1 << 15) + (1 << 14))                                 \
-      ->Arg(1 << 16)                                               \
-      ->Arg((1 << 17) - (1 << 15))                                 \
-      ->Arg(1 << 17)                                               \
-      ->Arg((1 << 17) + (1 << 16))                                 \
-      ->Arg(1 << 18)                                               \
-      ->Arg(1 << 19)                                               \
+#define BM_BINARY_SCALAR(DEVICE, FUNC)                                     \
+  void BM_##DEVICE##_##FUNC##_scalar(::testing::benchmark::State& state) { \
+    const int num = state.range(0);                                        \
+                                                                           \
+    test::Benchmark(#DEVICE, BinaryScalar(num, #FUNC),                     \
+                    /*old_benchmark_api=*/false)                           \
+        .Run(state);                                                       \
+    const int64 tot = static_cast<int64>(state.iterations()) * num;        \
+    state.SetItemsProcessed(tot);                                          \
+    state.SetBytesProcessed(tot * sizeof(float));                          \
+  }                                                                        \
+  BENCHMARK(BM_##DEVICE##_##FUNC##_scalar)                                 \
+      ->Arg(1 << 12) /* must >= 4096 */                                    \
+      ->Arg(1 << 13)                                                       \
+      ->Arg(1 << 14)                                                       \
+      ->Arg((1 << 15) - (1 << 13))                                         \
+      ->Arg(1 << 15)                                                       \
+      ->Arg((1 << 15) + (1 << 14))                                         \
+      ->Arg(1 << 16)                                                       \
+      ->Arg((1 << 17) - (1 << 15))                                         \
+      ->Arg(1 << 17)                                                       \
+      ->Arg((1 << 17) + (1 << 16))                                         \
+      ->Arg(1 << 18)                                                       \
+      ->Arg(1 << 19)                                                       \
       ->Arg(1 << 20);
 
 BM_BINARY_SCALAR(cpu, Less);
@@ -173,17 +180,20 @@ Graph* CubeWithMulSquare(int num) {
   return g;
 }
 
-#define BM_CUBE(DEVICE, Impl)                          \
-  void BM_##DEVICE##_Cube_##Impl(int iters, int num) { \
-    const int64 tot = static_cast<int64>(iters) * num; \
-    testing::UseRealTime();                            \
-    testing::ItemsProcessed(tot);                      \
-    testing::BytesProcessed(tot * sizeof(float));      \
-    test::Benchmark(#DEVICE, Impl(num)).Run(iters);    \
-  }                                                    \
-  BENCHMARK(BM_##DEVICE##_Cube_##Impl)                 \
-      ->Arg(1 << 12) /* must >= 4096 */                \
-      ->Arg(1 << 16)                                   \
+#define BM_CUBE(DEVICE, Impl)                                          \
+  void BM_##DEVICE##_Cube_##Impl(::testing::benchmark::State& state) { \
+    const int num = state.range(0);                                    \
+                                                                       \
+    test::Benchmark(#DEVICE, Impl(num), /*old_benchmark_api*/ false)   \
+        .Run(state);                                                   \
+    const int64 tot = static_cast<int64>(state.iterations()) * num;    \
+    state.SetItemsProcessed(tot);                                      \
+    state.SetBytesProcessed(tot * sizeof(float));                      \
+  }                                                                    \
+  BENCHMARK(BM_##DEVICE##_Cube_##Impl)                                 \
+      ->UseRealTime()                                                  \
+      ->Arg(1 << 12) /* must >= 4096 */                                \
+      ->Arg(1 << 16)                                                   \
       ->Arg(1 << 20);
 
 BM_CUBE(cpu, CubeWithPow3);
@@ -211,17 +221,21 @@ Graph* BiasAdd(int rows, int cols, DataType type) {
   return g;
 }
 
-#define BM_BIAS_ADD(DEVICE, C_TYPE, TF_TYPE, R, C)                             \
-  void BM_##DEVICE##_##C_TYPE##_BiasAdd_R##R##_C##C(int iters, int arg) {      \
-    const int rows = RowsFromArg(arg);                                         \
-    const int cols = ColsFromArg(arg);                                         \
-    const int64 tot = static_cast<int64>(iters) * rows * cols;                 \
-    testing::UseRealTime();                                                    \
-    testing::ItemsProcessed(tot);                                              \
-    testing::BytesProcessed(tot * sizeof(C_TYPE));                             \
-    test::Benchmark(#DEVICE, BiasAdd<C_TYPE>(rows, cols, TF_TYPE)).Run(iters); \
-  }                                                                            \
-  BENCHMARK(BM_##DEVICE##_##C_TYPE##_BiasAdd_R##R##_C##C)                      \
+#define BM_BIAS_ADD(DEVICE, C_TYPE, TF_TYPE, R, C)                          \
+  void BM_##DEVICE##_##C_TYPE##_BiasAdd_R##R##_C##C(                        \
+      ::testing::benchmark::State& state) {                                 \
+    const int arg = state.range(0);                                         \
+    const int rows = RowsFromArg(arg);                                      \
+    const int cols = ColsFromArg(arg);                                      \
+    const int64 tot = static_cast<int64>(state.iterations()) * rows * cols; \
+    test::Benchmark(#DEVICE, BiasAdd<C_TYPE>(rows, cols, TF_TYPE),          \
+                    /*old_benchmark_api=*/false)                            \
+        .Run(state);                                                        \
+    state.SetItemsProcessed(tot);                                           \
+    state.SetBytesProcessed(tot * sizeof(C_TYPE));                          \
+  }                                                                         \
+  BENCHMARK(BM_##DEVICE##_##C_TYPE##_BiasAdd_R##R##_C##C)                   \
+      ->UseRealTime()                                                       \
       ->Arg(RowsAndColsArg(R, C));
 
 #define BM_BIAS_ADD_ALL(DEVICE, C_TYPE, TF_TYPE)   \
@@ -264,16 +278,21 @@ Graph* BiasAddGrad(int rows, int cols, int channels, DataType type,
 
 #define BM_BIAS_ADD_GRAD(DEVICE, FMT, C_TYPE, TF_TYPE, R, C, CH)               \
   void BM_##DEVICE##_##FMT##_##C_TYPE##_BiasAddGrad_R##R##_C##C##_CH##CH(      \
-      int iters, int arg, int channels) {                                      \
+      ::testing::benchmark::State& state) {                                    \
+    const int arg = state.range(0);                                            \
+    const int channels = state.range(1);                                       \
+                                                                               \
     const int rows = RowsFromArg(arg);                                         \
     const int cols = ColsFromArg(arg);                                         \
-    const int64 tot = static_cast<int64>(iters) * rows * cols * channels;      \
-    testing::UseRealTime();                                                    \
-    testing::ItemsProcessed(tot);                                              \
-    testing::BytesProcessed(tot * sizeof(C_TYPE));                             \
-    test::Benchmark(#DEVICE, BiasAddGrad<C_TYPE>(rows, cols, channels,         \
-                                                 TF_TYPE, FORMAT_##FMT))       \
-        .Run(iters);                                                           \
+    test::Benchmark(                                                           \
+        #DEVICE,                                                               \
+        BiasAddGrad<C_TYPE>(rows, cols, channels, TF_TYPE, FORMAT_##FMT),      \
+        /*old_benchmark_api=*/false)                                           \
+        .Run(state);                                                           \
+    const int64 tot =                                                          \
+        static_cast<int64>(state.iterations()) * rows * cols * channels;       \
+    state.SetItemsProcessed(tot);                                              \
+    state.SetBytesProcessed(tot * sizeof(C_TYPE));                             \
   }                                                                            \
   BENCHMARK(BM_##DEVICE##_##FMT##_##C_TYPE##_BiasAddGrad_R##R##_C##C##_CH##CH) \
       ->ArgPair(RowsAndColsArg(R, C), CH);
@@ -326,16 +345,20 @@ Graph* BcastAdd(int rows, int cols, int dim) {
   return g;
 }
 
-#define BM_BCAST_ADD_ROW(DEVICE, R, C)                             \
-  void BM_##DEVICE##_BcastAddRow_R##R##_C##C(int iters, int arg) { \
-    const int rows = RowsFromArg(arg);                             \
-    const int cols = ColsFromArg(arg);                             \
-    const int64 tot = static_cast<int64>(iters) * rows * cols;     \
-    testing::UseRealTime();                                        \
-    testing::ItemsProcessed(tot);                                  \
-    testing::BytesProcessed(tot * sizeof(float));                  \
-    test::Benchmark(#DEVICE, BcastAdd(rows, cols, 0)).Run(iters);  \
-  }                                                                \
+#define BM_BCAST_ADD_ROW(DEVICE, R, C)                                      \
+  void BM_##DEVICE##_BcastAddRow_R##R##_C##C(                               \
+      ::testing::benchmark::State& state) {                                 \
+    const int arg = state.range(0);                                         \
+                                                                            \
+    const int rows = RowsFromArg(arg);                                      \
+    const int cols = ColsFromArg(arg);                                      \
+    test::Benchmark(#DEVICE, BcastAdd(rows, cols, 0),                       \
+                    /*old_benchmark_api=*/false)                            \
+        .Run(state);                                                        \
+    const int64 tot = static_cast<int64>(state.iterations()) * rows * cols; \
+    state.SetItemsProcessed(tot);                                           \
+    state.SetBytesProcessed(tot * sizeof(float));                           \
+  }                                                                         \
   BENCHMARK(BM_##DEVICE##_BcastAddRow_R##R##_C##C)->Arg(RowsAndColsArg(R, C));
 
 #define BM_BCAST_ADD_ROW_ALL(DEVICE)   \
@@ -350,17 +373,24 @@ BM_BCAST_ADD_ROW_ALL(gpu);
 #undef BM_BCAST_ADD_ROW_ALL
 #undef BM_BCAST_ADD_ROW
 
-#define BM_BCAST_ADD_COL(DEVICE, R, C)                             \
-  void BM_##DEVICE##_BcastAddCol_R##R##_C##C(int iters, int arg) { \
-    const int rows = RowsFromArg(arg);                             \
-    const int cols = ColsFromArg(arg);                             \
-    const int64 tot = static_cast<int64>(iters) * rows * cols;     \
-    testing::UseRealTime();                                        \
-    testing::ItemsProcessed(tot);                                  \
-    testing::BytesProcessed(tot * sizeof(float));                  \
-    test::Benchmark(#DEVICE, BcastAdd(rows, cols, 1)).Run(iters);  \
-  }                                                                \
-  BENCHMARK(BM_##DEVICE##_BcastAddCol_R##R##_C##C)->Arg(RowsAndColsArg(R, C));
+#define BM_BCAST_ADD_COL(DEVICE, R, C)                                      \
+  void BM_##DEVICE##_BcastAddCol_R##R##_C##C(                               \
+      ::testing::benchmark::State& state) {                                 \
+    const int arg = state.range(0);                                         \
+                                                                            \
+    const int rows = RowsFromArg(arg);                                      \
+    const int cols = ColsFromArg(arg);                                      \
+    test::Benchmark(#DEVICE, BcastAdd(rows, cols, 1),                       \
+                    /*old_benchmark_api=*/false)                            \
+        .Run(state);                                                        \
+    const int64 tot = static_cast<int64>(state.iterations()) * rows * cols; \
+                                                                            \
+    state.SetItemsProcessed(tot);                                           \
+    state.SetBytesProcessed(tot * sizeof(float));                           \
+  }                                                                         \
+  BENCHMARK(BM_##DEVICE##_BcastAddCol_R##R##_C##C)                          \
+      ->UseRealTime()                                                       \
+      ->Arg(RowsAndColsArg(R, C));
 
 #define BM_BCAST_ADD_COL_ALL(DEVICE)   \
   BM_BCAST_ADD_COL(DEVICE, 512, 2048); \
@@ -374,17 +404,23 @@ BM_BCAST_ADD_COL_ALL(gpu);
 #undef BM_BCAST_ADD_COL_ALL
 #undef BM_BCAST_ADD_COL
 
-#define BM_BCAST_ADD_CROSS_RC(DEVICE, R, C)                            \
-  void BM_##DEVICE##_BcastAddCrossRC_R##R##_C##C(int iters, int arg) { \
-    const int rows = RowsFromArg(arg);                                 \
-    const int cols = ColsFromArg(arg);                                 \
-    const int64 tot = static_cast<int64>(iters) * rows * cols;         \
-    testing::UseRealTime();                                            \
-    testing::ItemsProcessed(tot);                                      \
-    testing::BytesProcessed(tot * sizeof(float));                      \
-    test::Benchmark(#DEVICE, BcastAdd(rows, cols, 2)).Run(iters);      \
-  }                                                                    \
-  BENCHMARK(BM_##DEVICE##_BcastAddCrossRC_R##R##_C##C)                 \
+#define BM_BCAST_ADD_CROSS_RC(DEVICE, R, C)                                 \
+  void BM_##DEVICE##_BcastAddCrossRC_R##R##_C##C(                           \
+      ::testing::benchmark::State& state) {                                 \
+    const int arg = state.range(0);                                         \
+                                                                            \
+    const int rows = RowsFromArg(arg);                                      \
+    const int cols = ColsFromArg(arg);                                      \
+    test::Benchmark(#DEVICE, BcastAdd(rows, cols, 2),                       \
+                    /*old_benchmark_api=*/false)                            \
+        .Run(state);                                                        \
+    const int64 tot = static_cast<int64>(state.iterations()) * rows * cols; \
+                                                                            \
+    state.SetItemsProcessed(tot);                                           \
+    state.SetBytesProcessed(tot * sizeof(float));                           \
+  }                                                                         \
+  BENCHMARK(BM_##DEVICE##_BcastAddCrossRC_R##R##_C##C)                      \
+      ->UseRealTime()                                                       \
       ->Arg(RowsAndColsArg(R, C));
 
 #define BM_BCAST_ADD_CROSS_RC_ALL(DEVICE)   \
@@ -399,17 +435,22 @@ BM_BCAST_ADD_CROSS_RC_ALL(gpu);
 #undef BM_BCAST_ADD_CROSS_RC_ALL
 #undef BM_BCAST_ADD_CROSS_RC
 
-#define BM_BCAST_ADD_CROSS_CR(DEVICE, R, C)                            \
-  void BM_##DEVICE##_BcastAddCrossCR_R##R##_C##C(int iters, int arg) { \
-    const int rows = RowsFromArg(arg);                                 \
-    const int cols = ColsFromArg(arg);                                 \
-    const int64 tot = static_cast<int64>(iters) * rows * cols;         \
-    testing::UseRealTime();                                            \
-    testing::ItemsProcessed(tot);                                      \
-    testing::BytesProcessed(tot * sizeof(float));                      \
-    test::Benchmark(#DEVICE, BcastAdd(rows, cols, 3)).Run(iters);      \
-  }                                                                    \
-  BENCHMARK(BM_##DEVICE##_BcastAddCrossCR_R##R##_C##C)                 \
+#define BM_BCAST_ADD_CROSS_CR(DEVICE, R, C)                                 \
+  void BM_##DEVICE##_BcastAddCrossCR_R##R##_C##C(                           \
+      ::testing::benchmark::State& state) {                                 \
+    const int arg = state.range(0);                                         \
+                                                                            \
+    const int rows = RowsFromArg(arg);                                      \
+    const int cols = ColsFromArg(arg);                                      \
+    test::Benchmark(#DEVICE, BcastAdd(rows, cols, 3),                       \
+                    /*old_benchmark_api*/ false)                            \
+        .Run(state);                                                        \
+    const int64 tot = static_cast<int64>(state.iterations()) * rows * cols; \
+    state.SetItemsProcessed(tot);                                           \
+    state.SetBytesProcessed(tot * sizeof(float));                           \
+  }                                                                         \
+  BENCHMARK(BM_##DEVICE##_BcastAddCrossCR_R##R##_C##C)                      \
+      ->UseRealTime()                                                       \
       ->Arg(RowsAndColsArg(R, C));
 
 #define BM_BCAST_ADD_CROSS_CR_ALL(DEVICE)   \

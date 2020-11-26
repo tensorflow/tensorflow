@@ -111,10 +111,12 @@ REGISTER_OP("CollectiveReduceV2")
     .Input("group_size: int32")
     .Input("group_key: int32")
     .Input("instance_key: int32")
+    .Input("ordering_token: Nordering_token * resource")
     .Attr("merge_op: {'Min', 'Max', 'Mul', 'Add'}")
     .Attr("final_op: {'Id', 'Div'}")
     .Attr("communication_hint: string = 'auto'")
     .Attr("timeout_seconds: float = 0")
+    .Attr("Nordering_token: int >= 0 = 0")
     .SetIsStateful()
     .SetShapeFn(shape_inference::UnchangedShape);
 
@@ -125,8 +127,10 @@ REGISTER_OP("CollectiveGatherV2")
     .Input("group_size: int32")
     .Input("group_key: int32")
     .Input("instance_key: int32")
+    .Input("ordering_token: Nordering_token * resource")
     .Attr("communication_hint: string = 'auto'")
     .Attr("timeout_seconds: float = 0")
+    .Attr("Nordering_token: int >= 0 = 0")
     .SetIsStateful()
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       // Scalar input is not supported.

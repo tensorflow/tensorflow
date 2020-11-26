@@ -207,10 +207,20 @@ void WaitForDistributedTpuOp::Compute(OpKernelContext* ctx) {
   });
 
   auto* mesh_common_state = mesh_state->mesh_common_state();
-  tpu::OpsApiFn()->WaitForDistributedTpuOp_DoWorkFn(
-      num_hosts, num_devices_per_host,
-      const_cast<const int32_t**>(mapping_arg.data()), mesh_common_state,
-      &tpu_topology_output_size, &tpu_topology_output, status);
+
+  WaitForDistributedTpuOp_DoWork_Params params;
+  params.struct_size = WaitForDistributedTpuOp_DoWork_Params_SIZE;
+  params.priv = nullptr;
+  params.num_hosts = num_hosts;
+  params.num_cores_per_host = num_devices_per_host;
+  params.host_ordinal_to_global_core_id_map =
+      const_cast<const int32_t**>(mapping_arg.data());
+  params.tpu_mesh_common_state = mesh_common_state;
+  params.tpu_topology_output_size = &tpu_topology_output_size;
+  params.tpu_topology_output = &tpu_topology_output;
+  params.status = status;
+
+  tpu::OpsApiFn()->WaitForDistributedTpuOp_DoWorkFn(&params);
 
   OP_REQUIRES_OK(ctx, StatusFromTF_Status(status));
 
@@ -284,10 +294,19 @@ void InitializeHostForDistributedTpuOp::Compute(OpKernelContext* ctx) {
     TF_DeleteStatus(status);
     tpu::OpsApiFn()->TpuConfigurationApi_FreeInt32ArrayFn(device_id_output);
   });
-  tpu::OpsApiFn()->InitializeHostForDistributedTpuOp_DoWorkFn(
-      tpu_host_config.size(), tpu_host_config.data(),
-      enable_whole_mesh_compilations_, is_master_worker, &device_id_output_size,
-      &device_id_output, status);
+
+  InitializeHostForDistributedTpuOp_DoWork_Params params;
+  params.struct_size = InitializeHostForDistributedTpuOp_DoWork_Params_SIZE;
+  params.priv = nullptr;
+  params.tpu_host_config_size = tpu_host_config.size();
+  params.tpu_host_config = tpu_host_config.data();
+  params.enable_whole_mesh_compilations = enable_whole_mesh_compilations_;
+  params.is_master_worker = is_master_worker;
+  params.core_id_output_size = &device_id_output_size;
+  params.core_id_output = &device_id_output;
+  params.status = status;
+
+  tpu::OpsApiFn()->InitializeHostForDistributedTpuOp_DoWorkFn(&params);
   OP_REQUIRES_OK(ctx, StatusFromTF_Status(status));
 
   if (local_compilation_cache != nullptr) {
@@ -310,10 +329,20 @@ void InitializeHostForDistributedTpuOp::Compute(OpKernelContext* ctx) {
           server_address_output);
     });
     size_t server_address_output_size;
+
+    TpuConfigurationApi_CompilationCacheServerAddrFromConfig_Params params;
+    params.struct_size =
+        TpuConfigurationApi_CompilationCacheServerAddrFromConfig_Params_SIZE;
+    params.priv = nullptr;
+    params.tpu_host_config_size = tpu_host_config.size();
+    params.tpu_host_config = tpu_host_config.data();
+    params.server_address_output_size = &server_address_output_size;
+    params.server_address_output = &server_address_output;
+    params.status = status;
+
     tpu::OpsApiFn()
         ->TpuConfigurationApi_CompilationCacheServerAddressFromConfigFn(
-            tpu_host_config.size(), tpu_host_config.data(),
-            &server_address_output_size, &server_address_output, status);
+            &params);
     OP_REQUIRES_OK(ctx, StatusFromTF_Status(status));
 
     std::string server_address(server_address_output,

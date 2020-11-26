@@ -25,7 +25,6 @@ import functools
 import weakref
 
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import function
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import backend as K
@@ -377,26 +376,26 @@ class LayerCallCollection(object):
     if (isinstance(layer.call, def_function.Function) and
         layer.call.input_signature is not None):
       return layer.call.input_signature
+    elif isinstance(layer, training_lib.Model):
+      return saving_utils.model_input_signature(layer)
+    elif (layer.input_spec is not None and
+          layer._use_input_spec_as_call_signature):  # pylint: disable=protected-access
+
+      def to_tensor_spec_or_none(x):
+        spec = input_spec.to_tensor_spec(x, layer._compute_dtype)  # pylint: disable=protected-access
+        # If the shape is too general (e.g. multiple dimensions are allowed),
+        # return None so that separate functions can be generated for each
+        # inferred input signature.
+        # TODO(b/134962016): currently partial signatures are not supported.
+        if spec.shape == tensor_shape.TensorShape(None):
+          return None
+        return spec
+      input_signature = [nest.map_structure(
+          to_tensor_spec_or_none, layer.input_spec)]
+
+      return input_signature
     else:
-      if isinstance(layer, training_lib.Model):
-        return saving_utils.model_input_signature(layer)
-      elif layer.input_spec is not None:
-
-        def to_tensor_spec_or_none(x):
-          spec = input_spec.to_tensor_spec(x, layer._compute_dtype)  # pylint: disable=protected-access
-          # If the shape is too general (e.g. multiple dimensions are allowed),
-          # return None so that separate functions can be generated for each
-          # inferred input signature.
-          # TODO(b/134962016): currently partial signatures are not supported.
-          if spec.shape == tensor_shape.TensorShape(None):
-            return None
-          return spec
-        input_signature = [nest.map_structure(
-            to_tensor_spec_or_none, layer.input_spec)]
-
-        return input_signature
-      else:
-        return None
+      return None
 
   def add_trace(self, *args, **kwargs):
     """Traces all functions with the same args and kwargs.
@@ -635,6 +634,6 @@ def _wrap_activity_regularizer(layer):
 
 
 def _get_layer_call_method(layer):
-  if isinstance(layer.call, (def_function.Function, function.ConcreteFunction)):
+  if isinstance(layer.call, (def_function.Function)):
     return layer.call.python_function
   return layer.call

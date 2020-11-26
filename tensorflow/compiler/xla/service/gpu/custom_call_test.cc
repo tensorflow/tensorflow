@@ -143,46 +143,5 @@ TEST_F(CustomCallTest, SubBuffers) {
   EXPECT_THAT(result.data<float>({1, 1}), ::testing::Each(2));
   EXPECT_THAT(result.data<float>({2}), ::testing::Each(3));
 }
-
-void Callback_TupleSelect(CUstream stream, void** buffers,
-                          const char* /*opaque*/, size_t /*opaque_len*/) {
-  // Set the two output leaf buffers equal to the two input leaf buffers.
-  cudaMemcpyAsync(buffers[2], buffers[0], 10 * sizeof(float),
-                  cudaMemcpyDeviceToDevice, stream);
-  cudaMemcpyAsync(buffers[3], buffers[1], 10 * sizeof(float),
-                  cudaMemcpyDeviceToDevice, stream);
-}
-XLA_REGISTER_CUSTOM_CALL_TARGET(Callback_TupleSelect, "CUDA");
-// Tuple-shaped select is a case where XLA can't know all buffer assignments
-// statically ahead of time and has to walk the on-device tuple sub-buffers.
-TEST_F(CustomCallTest, TupleSelect) {
-  XlaBuilder b(TestName());
-  auto tuple_shape = ShapeUtil::MakeTupleShape({
-      ShapeUtil::MakeShape(F32, {10}),
-      ShapeUtil::MakeShape(F32, {10}),
-  });
-  auto p0 = AddParam(LiteralUtil::CreateR0(false), &b);
-  auto p1 =
-      AddParam(LiteralUtil::MakeTupleOwned(
-                   LiteralUtil::CreateR1<float>(std::vector<float>(10, 1.0f)),
-                   LiteralUtil::CreateR1<float>(std::vector<float>(10, 2.0f))),
-               &b);
-  auto p2 =
-      AddParam(LiteralUtil::MakeTupleOwned(
-                   LiteralUtil::CreateR1<float>(std::vector<float>(10, 10.0f)),
-                   LiteralUtil::CreateR1<float>(std::vector<float>(10, 20.0f))),
-               &b);
-  auto cc = CustomCall(&b, "Callback_TupleSelect",
-                       /*operands=*/{Select(p0, p1, p2)}, tuple_shape,
-                       /*opaque=*/"");
-
-  // Do a tuple-select on the custom-call result to ensure that the custom-call
-  // sets its output tuple index buffers.
-  Select(p0, p1, cc);
-  TF_ASSERT_OK_AND_ASSIGN(auto result, ComputeAndTransfer(&b, {}));
-  EXPECT_THAT(result.data<float>({0}), ::testing::Each(10));
-  EXPECT_THAT(result.data<float>({1}), ::testing::Each(20));
-}
-
 }  // anonymous namespace
 }  // namespace xla

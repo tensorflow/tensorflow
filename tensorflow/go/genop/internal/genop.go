@@ -94,6 +94,9 @@ func updateAPIDefs(m *apiDefMap, dir string) error {
 		return err
 	}
 	for _, file := range files {
+		if file.IsDir() || !strings.HasSuffix(file.Name(), ".pbtxt") {
+			continue
+		}
 		data, err := ioutil.ReadFile(path.Join(dir, file.Name()))
 		if err != nil {
 			return fmt.Errorf("failed to read %q: %v", file.Name(), err)

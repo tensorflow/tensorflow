@@ -19,7 +19,9 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/stream_executor/multi_platform_manager.h"
 #include "tensorflow/stream_executor/tpu/tpu_node_context.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
@@ -40,6 +42,8 @@ TpuTransferAsyncOpKernelBase::TpuTransferAsyncOpKernelBase(
 
 void TpuTransferAsyncOpKernelBase::ComputeAsync(OpKernelContext* ctx,
                                                 DoneCallback done) {
+  profiler::TraceMeProducer schedule_activity(
+      "TpuTransferAsyncOpKernelBase::ComputeAsync");
   CancellationToken token =
       ctx->cancellation_manager()->get_cancellation_token();
   bool already_cancelled;
@@ -52,12 +56,17 @@ void TpuTransferAsyncOpKernelBase::ComputeAsync(OpKernelContext* ctx,
   }
   OP_REQUIRES_ASYNC(ctx, !already_cancelled,
                     errors::Cancelled("Infeed was cancelled."), done);
-  thread_pool_->Schedule([this, ctx, done, token]() {
-    Status s = RunTransfer(ctx);
-    ctx->cancellation_manager()->DeregisterCallback(token);
-    OP_REQUIRES_OK_ASYNC(ctx, s, done);
-    done();
-  });
+  thread_pool_->Schedule(
+      [this, ctx, done, token,
+       traceme_context_id = schedule_activity.GetContextId()]() {
+        profiler::TraceMeConsumer compute_activity(
+            [this] { return profiler::TraceMeOp(name(), type_string()); },
+            traceme_context_id);
+        Status s = RunTransfer(ctx);
+        ctx->cancellation_manager()->DeregisterCallback(token);
+        OP_REQUIRES_OK_ASYNC(ctx, s, done);
+        done();
+      });
 }
 
 Status TpuTransferAsyncOpKernelBase::RunTransferWithOrdinal(
@@ -74,11 +83,13 @@ Status TpuTransferAsyncOpKernelBase::RunTransferWithOrdinal(
   stream_executor::StreamExecutor* stream_executor =
       tpu_platform->ExecutorForDevice(real_device_ordinal).ValueOrDie();
 
-  // When Xprof profiling is off (which is the default), constructing the
-  // activity is simple enough that its overhead is negligible.
   profiler::TraceMe activity(
-      [this] { return profiler::TraceMeOp(name(), type_string()); },
-      profiler::TraceMeLevel::kInfo);
+      [real_device_ordinal] {
+        return profiler::TraceMeEncode(
+            "RunTransferWithOrdinal",
+            {{"device_ordinal", real_device_ordinal}});
+      },
+      profiler::kInfo);
   return DoWork(
       ctx, xla::TpuTransferManagerInterface::GetRegisteredTpuTransferManager(),
       stream_executor);

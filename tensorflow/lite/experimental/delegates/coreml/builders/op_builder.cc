@@ -14,7 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/delegates/coreml/builders/op_builder.h"
 
-#include "external/coremltools/mlmodel/format/NeuralNetwork.pb.h"
+#include <string>
+
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/experimental/delegates/coreml/builders/op_factory.h"
@@ -23,6 +24,15 @@ limitations under the License.
 namespace tflite {
 namespace delegates {
 namespace coreml {
+
+std::string TensorID::ToString() const {
+  return std::to_string(node_) + "_" + std::to_string(output_id_);
+}
+
+int TensorID::NodeID() const { return node_; }
+
+int TensorID::OutputID() const { return output_id_; }
+
 OpBuilder* GraphBuilder::AddBuilder(int builtin_code, const TfLiteNode* node) {
   switch (builtin_code) {
     case kTfLiteBuiltinAdd:
@@ -114,7 +124,7 @@ CoreML::Specification::Model* GraphBuilder::BuildModel() {
     CoreML::Specification::NeuralNetworkLayer* layer = builder->Build();
     if (layer == nullptr) {
       fprintf(stderr, "Null layer returned from builder: %s\n",
-              builder->DebugName());
+              builder->DebugName().c_str());
       continue;
     }
     neural_network->mutable_layers()->AddAllocated(layer);
@@ -160,6 +170,35 @@ bool GraphBuilder::IsTensorUsed(int tflite_tensor_index) {
   return used_tensor_[tflite_tensor_index];
 }
 
+CoreML::Specification::NeuralNetworkLayer* OpBuilder::Build() {
+  layer_->set_name(DebugName());
+  return layer_.release();
+}
+
+TfLiteStatus OpBuilder::PopulateSubgraph(TfLiteContext* context) {
+  builder_output_ = AddOutput();
+  return kTfLiteOk;
+}
+
+void OpBuilder::SetBuiltinData(void* builtin_data) {
+  builtin_data_ = builtin_data;
+}
+
+void OpBuilder::SetNodeID(int id) { node_id_ = id; }
+
+void OpBuilder::SetTfLiteNode(const TfLiteNode* node) { tflite_node_ = node; }
+
+int OpBuilder::GetID() const { return node_id_; }
+
+TensorID OpBuilder::GetOutput(TfLiteContext* context) {
+  if (builder_output_.NodeID() != -1) {
+    return builder_output_;
+  }
+  // builder_output_ is not set when PopulateSubgraph is not called.
+  builder_output_ = AddOutput();
+  return builder_output_;
+}
+
 void OpBuilder::AddInput(const std::string& input_name) {
   if (layer_ == nullptr) {
     layer_.reset(new CoreML::Specification::NeuralNetworkLayer);
@@ -179,6 +218,10 @@ TensorID OpBuilder::AddOutput() {
   auto tensor_id = TensorID(GetID(), num_outputs_++);
   *layer_->mutable_output()->Add() = tensor_id.ToString();
   return tensor_id;
+}
+
+void OpBuilder::SetDebugName(const char* name, int id) {
+  debug_name_ = std::string(name) + "_" + std::to_string(id);
 }
 
 }  // namespace coreml

@@ -110,8 +110,10 @@ TEST_F(XlaExpressionTest, GetShape) {
 TEST_F(XlaExpressionTest, ResolveConstant) {
   EXPECT_FALSE(XlaExpression().ResolveConstant(client_).ok());
   EXPECT_FALSE(XlaExpression::Invalid().ResolveConstant(client_).ok());
-  EXPECT_FALSE(
-      XlaExpression::Resource(resource_.get()).ResolveConstant(client_).ok());
+
+  EXPECT_FALSE(XlaExpression::Resource(resource_.get())
+                   .ResolveConstant(client_)
+                   ->has_value());
 
   TF_ASSERT_OK_AND_ASSIGN(
       absl::optional<Tensor> op_constant,
@@ -129,6 +131,18 @@ TEST_F(XlaExpressionTest, ResolveConstant) {
       XlaExpression::Constant(constant_).ResolveConstant(client_));
   ASSERT_TRUE(constant_constant.has_value());
   test::ExpectTensorEqual<int32>(constant_, *constant_constant);
+}
+
+TEST_F(XlaExpressionTest, ResolveConstantOnResource) {
+  XlaExpression constant_resource =
+      XlaExpression::ConstantResource(constant_, resource_.get());
+  EXPECT_TRUE(constant_resource.ResolveConstant(client_).ok());
+  EXPECT_TRUE(resource_->SetZeroValue(builder_.get()).ok());
+  LOG(ERROR) << "Resource is overwritten: " << resource_->IsOverwritten();
+  xla::StatusOr<absl::optional<Tensor>> resolved_constant =
+      constant_resource.ResolveConstant(client_);
+  EXPECT_TRUE(resolved_constant.ok());
+  EXPECT_FALSE(resolved_constant->has_value());
 }
 
 }  // namespace

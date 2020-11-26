@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/strings/strip.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/profiler/utils/time_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
@@ -117,7 +118,7 @@ void PythonHooks::Start(const PythonHooksOptions& options) {
 #endif
 
   options_ = options;
-  start_timestamp_ns_ = EnvTime::NowNanos();
+  start_timestamp_ns_ = GetCurrentTimeNanos();
   if (options_.enable_python_traceme || options_.enable_trace_python_function) {
     PyGILState_STATE gil_state = PyGILState_Ensure();
     if (options_.enable_trace_python_function) {
@@ -176,7 +177,7 @@ void PythonHooks::CollectData(XPlane* raw_plane) {
       AddEventToXLine(event, &line, &plane);
     }
     if (options_.include_incomplete_events) {
-      uint64 now = EnvTime::NowNanos();
+      uint64 now = GetCurrentTimeNanos();
       while (!thread_events.active.empty()) {
         auto& event = thread_events.active.top();
         event.end_time_ns = now;
@@ -238,7 +239,7 @@ void PythonHooks::ProfileSlow(const py::object& frame, const string& event,
 
 void PythonHooks::ProfileFast(PyFrameObject* frame, int what, PyObject* arg) {
   const int64 thread_id = Env::Default()->GetCurrentThreadId();
-  uint64 now = EnvTime::NowNanos();
+  uint64 now = GetCurrentTimeNanos();
   auto& thread_traces = entries_[thread_id];
 
   switch (what) {

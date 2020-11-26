@@ -52,6 +52,13 @@ struct QuantizationSpecs {
   // weight FakeQuant).
   bool disable_per_channel = false;
 
+  // When set to true, the fixed output ranges of the activation ops (tanh,
+  // sigmoid, etc.) and the weight constants are not inferred. Then, to quantize
+  // these ops, quantization emulation ops should be placed after the ops in the
+  // input graph. This flag should be set to false for post-training
+  // quantization.
+  bool disable_infer_tensor_range = false;
+
   // The node type when the model is exported. Currently this is limited to
   // DT_FLOAT, DT_HALF, DT_QINT8, and DT_QUINT8. When DT_HALF is used, the
   // `weight_quantization` flag needs to set to true. When DT_QUINT8 is used,

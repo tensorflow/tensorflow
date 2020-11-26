@@ -198,9 +198,11 @@ TEST_F(SparseToDenseTest, ThreeD_MultValues) {
 
 }  // namespace
 
-static void BM_SparseToDense(int iters, int NDIM, int N) {
+static void BM_SparseToDense(::testing::benchmark::State& state) {
+  const int NDIM = state.range(0);
+  const int N = state.range(1);
+
   // TODO(zhifengc): Switch to use kernel_benchmark_testlib.h
-  tensorflow::testing::StopTiming();
 
   const int IndexDim = (NDIM == 1) ? 0 : 1;
 
@@ -253,18 +255,15 @@ static void BM_SparseToDense(int iters, int NDIM, int N) {
 
   std::unique_ptr<OpKernelContext> sparse_context(new OpKernelContext(&params));
   op->Compute(sparse_context.get());
-  tensorflow::testing::StartTiming();
-  for (int i = 0; i < iters; ++i) {
+  for (auto s : state) {
     delete sparse_context->release_output(0).tensor;
     op->Compute(sparse_context.get());
     TF_ASSERT_OK(sparse_context->status());
   }
-  tensorflow::testing::StopTiming();
 
   // processing input, mainly
   int64 bytes_per_iter = static_cast<int64>((N + N * NDIM) * sizeof(float));
-
-  tensorflow::testing::BytesProcessed(bytes_per_iter * iters);
+  state.SetBytesProcessed(bytes_per_iter * state.iterations());
 }
 
 BENCHMARK(BM_SparseToDense)

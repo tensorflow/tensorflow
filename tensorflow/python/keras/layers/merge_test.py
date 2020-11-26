@@ -182,6 +182,10 @@ class MergeLayersTest(keras_parameterized.TestCase):
                 concat_layer.compute_mask(
                     [i1, i2], [K.variable(x1), K.variable(x2)]))))
 
+    # Should work with unit-length input.
+    unit_length_o = concat_layer([i1])
+    self.assertListEqual(unit_length_o.shape.as_list(), i1.shape.as_list())
+
     with self.assertRaisesRegex(ValueError, '`mask` should be a list.'):
       concat_layer.compute_mask([i1, i2], x1)
     with self.assertRaisesRegex(ValueError, '`inputs` should be a list.'):
@@ -283,8 +287,6 @@ class MergeLayersTestNoExecution(test.TestCase):
       keras.layers.concatenate([i1, i2], axis=-1)
     with self.assertRaisesRegex(ValueError, 'called on a list'):
       keras.layers.concatenate(i1, axis=-1)
-    with self.assertRaisesRegex(ValueError, 'called on a list'):
-      keras.layers.concatenate([i1], axis=-1)
 
   def test_concatenate_with_partial_shape(self):
     i1 = keras.layers.Input(shape=(5,), batch_size=32)

@@ -704,8 +704,8 @@ class Model {
   // (e.g. CPU, memory). The logic for collecting this information assumes that
   // the collection is not repeatedly disabled and enabled. As a consequence,
   // the implementation starts collecting resource usage when it encounters a
-  // tunable parameter (because the information is used for for tuning the value
-  // of the parameter) and never stops.
+  // tunable parameter (because the information is used for tuning the value of
+  // the parameter) and never stops.
   std::atomic<bool> collect_resource_usage_;
 };
 

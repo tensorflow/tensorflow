@@ -125,7 +125,7 @@ std::string OpOrArgLocNameMapper::GetName(OpOrVal op_or_val) {
                            result.getResultNumber());
     return std::string(result.getOwner()->getName().getStringRef());
   }
-  // Use the ASM syntax for BloackArgument
+  // Use the ASM syntax for BlockArgument
   if (auto arg = val.dyn_cast<mlir::BlockArgument>()) {
     return "arg" + std::to_string(arg.getArgNumber());
   }

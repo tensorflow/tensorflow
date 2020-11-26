@@ -105,7 +105,7 @@ void ExpectClose(const Tensor& x, const Tensor& y, double atol = -1.0,
                  double rtol = -1.0);
 
 // Expects "x" and "y" are tensors of the same type T, same shape, and
-// equal equal values. Consider using ExpectEqual above instead.
+// equal values. Consider using ExpectEqual above instead.
 template <typename T>
 void ExpectTensorEqual(const Tensor& x, const Tensor& y) {
   EXPECT_EQ(x.dtype(), DataTypeToEnum<T>::value);

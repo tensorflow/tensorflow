@@ -76,7 +76,7 @@ class Tensor {
   // unknown rank.
   int dims() const;
 
-  // Returns the number of elements in in demension `d`.
+  // Returns the number of elements in dimension `d`.
   // REQUIRES: `0 <= d < dims()`
   int64_t dim_size(int d) const;
 
@@ -154,7 +154,7 @@ inline Tensor Tensor::FromBuffer(TF_DataType dtype,
   // 1. Only a function pointer is sent across the C API (&DeleterFunction)
   // 2. DeleterFunction is defined in the same build artifact that constructed
   //    the std::function (so there isn't confusion about std::function ABI).
-  // Note that 2. is satisifed by the fact that this is a header-only API, where
+  // Note that 2. is satisfied by the fact that this is a header-only API, where
   // the function implementations are inline.
 
   DeleterStruct* deleter_struct = new DeleterStruct{deleter};

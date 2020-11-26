@@ -39,10 +39,9 @@ limitations under the License.
 namespace tensorflow {
 
 template <typename Index>
-static void BM_SegmentReduction(int iters, const string& reduction,
-                                Index num_rows, Index num_cols,
-                                Index segment_size) {
-  testing::StopTiming();
+static void BM_SegmentReduction(::testing::benchmark::State& state,
+                                const string& reduction, Index num_rows,
+                                Index num_cols, Index segment_size) {
   std::unique_ptr<Device> device(
       DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0"));
 
@@ -81,24 +80,25 @@ static void BM_SegmentReduction(int iters, const string& reduction,
 
   reduction_op->Compute(reduction_context.get());
   TF_CHECK_OK(reduction_context->status());
-  testing::StartTiming();
-  for (int i = 0; i < iters; ++i) {
+  for (auto s : state) {
     delete reduction_context->release_output(0).tensor;
     reduction_op->Compute(reduction_context.get());
   }
   int64 bytes_per_iter =
       static_cast<int64>(num_rows * num_cols * sizeof(float));
-  testing::BytesProcessed(bytes_per_iter * iters);
+  state.SetBytesProcessed(bytes_per_iter * state.iterations());
 }
 
-#define BM_Reduce(O, R, C, S)                                      \
-  static void BM_Reduce_##O##_##R##_##C##_##S##_int32(int iters) { \
-    BM_SegmentReduction<int32>(iters, #O, R, C, S);                \
-  }                                                                \
-  static void BM_Reduce_##O##_##R##_##C##_##S##_int64(int iters) { \
-    BM_SegmentReduction<int64>(iters, #O, R, C, S);                \
-  }                                                                \
-  BENCHMARK(BM_Reduce_##O##_##R##_##C##_##S##_int32);              \
+#define BM_Reduce(O, R, C, S)                          \
+  static void BM_Reduce_##O##_##R##_##C##_##S##_int32( \
+      ::testing::benchmark::State & state) {           \
+    BM_SegmentReduction<int32>(state, #O, R, C, S);    \
+  }                                                    \
+  static void BM_Reduce_##O##_##R##_##C##_##S##_int64( \
+      ::testing::benchmark::State & state) {           \
+    BM_SegmentReduction<int64>(state, #O, R, C, S);    \
+  }                                                    \
+  BENCHMARK(BM_Reduce_##O##_##R##_##C##_##S##_int32);  \
   BENCHMARK(BM_Reduce_##O##_##R##_##C##_##S##_int64);
 
 #define BM_Reduce_Arg(R, C, S)    \
@@ -113,8 +113,8 @@ BM_Reduce_Arg(64, 32, 2);
 BM_Reduce_Arg(4096, 32, 2);
 BM_Reduce_Arg(4096, 128, 2);
 
-static void SparseSegmentMeanGradHelper(int iters, float uniqueness, int size) {
-  testing::StopTiming();
+static void SparseSegmentMeanGradHelper(::testing::benchmark::State& state,
+                                        float uniqueness, int size) {
   Graph* g = new Graph(OpRegistry::Global());
   CHECK_LE(uniqueness, 1.0);
   CHECK_GT(uniqueness, 0.0);
@@ -148,22 +148,24 @@ static void SparseSegmentMeanGradHelper(int iters, float uniqueness, int size) {
                   .Attr("T", DT_FLOAT)
                   .Finalize(g, &node));
 
-  testing::UseRealTime();
-  testing::BytesProcessed(static_cast<int64>(iters) * (kDim1 * kDim2) *
-                          sizeof(float));
-  testing::StartTiming();
-  test::Benchmark("cpu", g).Run(iters);
+  test::Benchmark("cpu", g, /*old_benchmark_api*/ false).Run(state);
+  state.SetBytesProcessed(static_cast<int64>(state.iterations()) *
+                          (kDim1 * kDim2) * sizeof(float));
 }
 
-static void BM_SparseSegmentMeanGrad_Low(int iters, int size) {
-  return SparseSegmentMeanGradHelper(iters, 1.0, size);
+static void BM_SparseSegmentMeanGrad_Low(::testing::benchmark::State& state) {
+  const int size = state.range(0);
+
+  return SparseSegmentMeanGradHelper(state, 1.0, size);
 }
 
-static void BM_SparseSegmentMeanGrad_High(int iters, int size) {
-  return SparseSegmentMeanGradHelper(iters, 0.01, size);
+static void BM_SparseSegmentMeanGrad_High(::testing::benchmark::State& state) {
+  const int size = state.range(0);
+
+  return SparseSegmentMeanGradHelper(state, 0.01, size);
 }
 
-BENCHMARK(BM_SparseSegmentMeanGrad_Low)->Arg(1000)->Arg(100000);
-BENCHMARK(BM_SparseSegmentMeanGrad_High)->Arg(1000)->Arg(100000);
+BENCHMARK(BM_SparseSegmentMeanGrad_Low)->UseRealTime()->Arg(1000)->Arg(100000);
+BENCHMARK(BM_SparseSegmentMeanGrad_High)->UseRealTime()->Arg(1000)->Arg(100000);
 
 }  // namespace tensorflow

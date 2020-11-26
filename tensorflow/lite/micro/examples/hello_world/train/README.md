@@ -48,13 +48,8 @@ includes the following 3 model files:
 | Name | Format | Target Framework | Target Device |
 | :------------- |:-------------|:-------------|-----|
 | `model.pb` | Keras SavedModel | TensorFlow | Large-Scale/Cloud/Servers   |
-| `model.tflite` *(2.5 kB)*  | Fully Quantized* TFLite Model | TensorFlow Lite | Mobile Devices|
+| `model.tflite` *(2.5 kB)*  | Integer Only Quantized TFLite Model | TensorFlow Lite | Mobile Devices|
 | `model.cc`  | C Source File | TensorFlow Lite for Microcontrollers | Microcontrollers |
-
-**Fully quantized implies that the model is **strictly int8** quantized
-**excluding** the input(s) and output(s).*
-<!-- **Fully quantized implies that the model is **strictly int8** quantized
-including the input(s)and output(s).* -->
 
 
 ## Model Architecture

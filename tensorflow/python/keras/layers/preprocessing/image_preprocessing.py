@@ -97,7 +97,7 @@ class Resizing(PreprocessingLayer):
     self._interpolation_method = get_interpolation(interpolation)
     self.input_spec = InputSpec(ndim=4)
     super(Resizing, self).__init__(name=name, **kwargs)
-    base_preprocessing_layer._kpl_gauge.get_cell('V2').set('Resizing')
+    base_preprocessing_layer.keras_kpl_gauge.get_cell('Resizing').set(True)
 
   def call(self, inputs):
     outputs = image_ops.resize_images_v2(
@@ -147,7 +147,7 @@ class CenterCrop(PreprocessingLayer):
     self.target_width = width
     self.input_spec = InputSpec(ndim=4)
     super(CenterCrop, self).__init__(name=name, **kwargs)
-    base_preprocessing_layer._kpl_gauge.get_cell('V2').set('CenterCrop')
+    base_preprocessing_layer.keras_kpl_gauge.get_cell('CenterCrop').set(True)
 
   def call(self, inputs):
     inputs_shape = array_ops.shape(inputs)
@@ -222,7 +222,7 @@ class RandomCrop(PreprocessingLayer):
     self._rng = make_generator(self.seed)
     self.input_spec = InputSpec(ndim=4)
     super(RandomCrop, self).__init__(name=name, **kwargs)
-    base_preprocessing_layer._kpl_gauge.get_cell('V2').set('RandomCrop')
+    base_preprocessing_layer.keras_kpl_gauge.get_cell('RandomCrop').set(True)
 
   def call(self, inputs, training=True):
     if training is None:
@@ -327,7 +327,7 @@ class Rescaling(PreprocessingLayer):
     self.scale = scale
     self.offset = offset
     super(Rescaling, self).__init__(name=name, **kwargs)
-    base_preprocessing_layer._kpl_gauge.get_cell('V2').set('Rescaling')
+    base_preprocessing_layer.keras_kpl_gauge.get_cell('Rescaling').set(True)
 
   def call(self, inputs):
     dtype = self._compute_dtype
@@ -383,7 +383,7 @@ class RandomFlip(PreprocessingLayer):
                name=None,
                **kwargs):
     super(RandomFlip, self).__init__(name=name, **kwargs)
-    base_preprocessing_layer._kpl_gauge.get_cell('V2').set('RandomFlip')
+    base_preprocessing_layer.keras_kpl_gauge.get_cell('RandomFlip').set(True)
     self.mode = mode
     if mode == HORIZONTAL:
       self.horizontal = True
@@ -532,7 +532,8 @@ class RandomTranslation(PreprocessingLayer):
     self._rng = make_generator(self.seed)
     self.input_spec = InputSpec(ndim=4)
     super(RandomTranslation, self).__init__(name=name, **kwargs)
-    base_preprocessing_layer._kpl_gauge.get_cell('V2').set('RandomTranslation')
+    base_preprocessing_layer.keras_kpl_gauge.get_cell(
+        'RandomTranslation').set(True)
 
   def call(self, inputs, training=True):
     if training is None:
@@ -840,7 +841,8 @@ class RandomRotation(PreprocessingLayer):
     self._rng = make_generator(self.seed)
     self.input_spec = InputSpec(ndim=4)
     super(RandomRotation, self).__init__(name=name, **kwargs)
-    base_preprocessing_layer._kpl_gauge.get_cell('V2').set('RandomRotation')
+    base_preprocessing_layer.keras_kpl_gauge.get_cell(
+        'RandomRotation').set(True)
 
   def call(self, inputs, training=True):
     if training is None:
@@ -987,7 +989,7 @@ class RandomZoom(PreprocessingLayer):
     self._rng = make_generator(self.seed)
     self.input_spec = InputSpec(ndim=4)
     super(RandomZoom, self).__init__(name=name, **kwargs)
-    base_preprocessing_layer._kpl_gauge.get_cell('V2').set('RandomZoom')
+    base_preprocessing_layer.keras_kpl_gauge.get_cell('RandomZoom').set(True)
 
   def call(self, inputs, training=True):
     if training is None:
@@ -1127,7 +1129,8 @@ class RandomContrast(PreprocessingLayer):
     self.seed = seed
     self.input_spec = InputSpec(ndim=4)
     super(RandomContrast, self).__init__(name=name, **kwargs)
-    base_preprocessing_layer._kpl_gauge.get_cell('V2').set('RandomContrast')
+    base_preprocessing_layer.keras_kpl_gauge.get_cell(
+        'RandomContrast').set(True)
 
   def call(self, inputs, training=True):
     if training is None:
@@ -1211,7 +1214,7 @@ class RandomHeight(PreprocessingLayer):
     self.seed = seed
     self._rng = make_generator(self.seed)
     super(RandomHeight, self).__init__(name=name, **kwargs)
-    base_preprocessing_layer._kpl_gauge.get_cell('V2').set('RandomHeight')
+    base_preprocessing_layer.keras_kpl_gauge.get_cell('RandomHeight').set(True)
 
   def call(self, inputs, training=True):
     if training is None:
@@ -1311,7 +1314,7 @@ class RandomWidth(PreprocessingLayer):
     self.seed = seed
     self._rng = make_generator(self.seed)
     super(RandomWidth, self).__init__(name=name, **kwargs)
-    base_preprocessing_layer._kpl_gauge.get_cell('V2').set('RandomWidth')
+    base_preprocessing_layer.keras_kpl_gauge.get_cell('RandomWidth').set(True)
 
   def call(self, inputs, training=True):
     if training is None:

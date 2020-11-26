@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
+#include "tensorflow/compiler/xla/service/hlo_module_metadata.h"
 #include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -363,6 +364,16 @@ class HloModule {
     return cross_program_prefetches_;
   }
 
+  const HloModuleMetadata& metadata() const { return metadata_; }
+  HloModuleMetadata* metadata() { return &metadata_; }
+
+  // Moves (not copies) metadata from this HloModule to `module`. To be used
+  // in cases like HloModuleGroup::ReplaceModule when metadata should be
+  // transferred out of a module before it's destroyed.
+  void MoveMetadataToModule(HloModule* module) {
+    module->metadata_ = std::move(metadata_);
+  }
+
  private:
   HloComputation* AddComputationInternal(
       std::unique_ptr<HloComputation> computation, bool is_entry,
@@ -413,6 +424,9 @@ class HloModule {
 
   // Arguments to be prefetched across programs.
   std::vector<std::pair<int64, ShapeIndex>> cross_program_prefetches_;
+
+  // Metadata for this module, such as its canonical id and the HLO passes run.
+  HloModuleMetadata metadata_;
 };
 
 }  // namespace xla

@@ -44,38 +44,34 @@ static Graph* MakeGraph(int split_dim, int num_split,
 }
 
 #define BM_SPLIT_1D(num_split, chunk_size)                                  \
-  static void BM_Split_1d_##num_split##_##chunk_size(int iters) {           \
-    testing::StopTiming();                                                  \
-    testing::ItemsProcessed(static_cast<int64>(iters) * num_split *         \
-                            chunk_size);                                    \
+  static void BM_Split_1d_##num_split##_##chunk_size(                       \
+      ::testing::benchmark::State& state) {                                 \
     auto label =                                                            \
         strings::Printf("1-D %d chunks of %d each", num_split, chunk_size); \
-    testing::SetLabel(label);                                               \
-    testing::UseRealTime();                                                 \
+    state.SetLabel(label);                                                  \
     auto g = MakeGraph(/* split_dim = */ 0, num_split, {chunk_size});       \
-    testing::StartTiming();                                                 \
-    test::Benchmark("cpu", g).Run(iters);                                   \
+    test::Benchmark("cpu", g, /*old_benchmark_api*/ false).Run(state);      \
+    state.SetItemsProcessed(static_cast<int64>(state.iterations()) *        \
+                            num_split * chunk_size);                        \
   }                                                                         \
-  BENCHMARK(BM_Split_1d_##num_split##_##chunk_size);
+  BENCHMARK(BM_Split_1d_##num_split##_##chunk_size)->UseRealTime();
 
 #define BM_SPLIT_2D(split_dim, num_split, chunk_size0, chunk_size1)          \
   static void                                                                \
       BM_Split_2d_##split_dim##_##num_split##_##chunk_size0##_##chunk_size1( \
-          int iters) {                                                       \
-    testing::StopTiming();                                                   \
-    testing::ItemsProcessed(static_cast<int64>(iters) * num_split *          \
-                            chunk_size0 * chunk_size1);                      \
+          ::testing::benchmark::State& state) {                              \
     auto label =                                                             \
         strings::Printf("2-D %d chunks in dim %d of (%d * %d) each",         \
                         num_split, split_dim, chunk_size0, chunk_size1);     \
-    testing::SetLabel(label);                                                \
-    testing::UseRealTime();                                                  \
+    state.SetLabel(label);                                                   \
     auto g = MakeGraph(split_dim, num_split, {chunk_size0, chunk_size1});    \
-    testing::StartTiming();                                                  \
-    test::Benchmark("cpu", g).Run(iters);                                    \
+    test::Benchmark("cpu", g, /*old_benchmark_api*/ false).Run(state);       \
+    state.SetItemsProcessed(static_cast<int64>(state.iterations()) *         \
+                            num_split * chunk_size0 * chunk_size1);          \
   }                                                                          \
   BENCHMARK(                                                                 \
-      BM_Split_2d_##split_dim##_##num_split##_##chunk_size0##_##chunk_size1);
+      BM_Split_2d_##split_dim##_##num_split##_##chunk_size0##_##chunk_size1) \
+      ->UseRealTime();
 
 BM_SPLIT_1D(5, 1);
 BM_SPLIT_1D(262144, 1);

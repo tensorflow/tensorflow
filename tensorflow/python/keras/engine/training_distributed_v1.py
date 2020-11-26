@@ -777,7 +777,7 @@ def _train_with_multi_worker(method):
     return dc.run_distribute_coordinator(
         _worker_fn,
         model._distribution_strategy,
-        mode=dc.CoordinatorMode.INDEPENDENT_WORKER)
+        mode='independent_worker')
 
   return wrapper
 

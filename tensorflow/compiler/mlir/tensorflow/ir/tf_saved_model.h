@@ -81,7 +81,7 @@ Type GetBoundInputArgTypeFor(mlir::Operation *op);
 SessionInitializerOp GetSessionInitializerOp(mlir::ModuleOp op);
 
 // Returns the exported name for the session initializer function.
-llvm::Optional<StringRef> GetSessionInitializerExportedName(mlir::ModuleOp op);
+SmallVector<StringRef, 2> GetSessionInitializerExportedName(mlir::ModuleOp op);
 
 }  // namespace tf_saved_model
 }  // namespace mlir

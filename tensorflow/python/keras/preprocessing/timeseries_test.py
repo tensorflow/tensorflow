@@ -48,6 +48,24 @@ class TimeseriesDatasetTest(test.TestCase):
         # Check each sample in the batch
         self.assertAllClose(inputs[j], np.arange(i * 5 + j, i * 5 + j + 9))
 
+  def test_timeseries_regression(self):
+    # Test simple timeseries regression use case
+    data = np.arange(10)
+    offset = 3
+    targets = data[offset:]
+    dataset = timeseries.timeseries_dataset_from_array(
+        data, targets, sequence_length=offset, batch_size=1)
+    i = 0
+    for batch in dataset:
+      self.assertLen(batch, 2)
+      inputs, targets = batch
+      self.assertEqual(inputs.shape, (1, 3))
+      # Check values
+      self.assertAllClose(targets[0], data[offset + i])
+      self.assertAllClose(inputs[0], data[i : i + offset])
+      i += 1
+    self.assertEqual(i, 7)  # Expect 7 batches
+
   def test_no_targets(self):
     data = np.arange(50)
     dataset = timeseries.timeseries_dataset_from_array(
@@ -138,11 +156,6 @@ class TimeseriesDatasetTest(test.TestCase):
       self.assertAllGreater(batch[0], 9)
 
   def test_errors(self):
-    # bad targets
-    with self.assertRaisesRegex(ValueError,
-                                'data and targets to have the same number'):
-      _ = timeseries.timeseries_dataset_from_array(
-          np.arange(10), np.arange(9), 3)
     # bad start index
     with self.assertRaisesRegex(ValueError, 'start_index must be '):
       _ = timeseries.timeseries_dataset_from_array(

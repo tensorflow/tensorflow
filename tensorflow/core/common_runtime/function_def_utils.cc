@@ -36,6 +36,8 @@ Status FunctionDefToBodyHelper(
   TF_RETURN_IF_ERROR(InstantiateFunction(fdef, attrs, get_func_sig, &result));
 
   std::unique_ptr<Graph> graph(new Graph(lib_def));
+  graph->SetConstructionContext(ConstructionContext::kFunctionDef);
+
   GraphConstructorOptions opts;
   opts.allow_internal_ops = true;
   opts.expect_device_spec = false;

@@ -52,8 +52,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, axis >= 0);
   TF_LITE_ENSURE(context, axis < t0->dims->size);
 
-  // TODO(ahentz): These are limitations of our implementation that could be
-  // removed with a bit of effort.
   TF_LITE_ENSURE_EQ(context, params->activation, kTfLiteActNone);
   TF_LITE_ENSURE(context,
                  input_type == kTfLiteFloat32 || input_type == kTfLiteUInt8 ||
@@ -98,6 +96,15 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_ENSURE_EQ(context, t->params.zero_point,
                         output->params.zero_point);
     }
+  }
+
+  if (input_type == kTfLiteInt16) {
+    // Make sure that all Int16 inputs have a null zero-point.
+    for (int i = 0; i < node->inputs->size; ++i) {
+      const TfLiteTensor* t = GetInput(context, node, i);
+      TF_LITE_ENSURE_EQ(context, t->params.zero_point, 0);
+    }
+    TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
   }
 
   return context->ResizeTensor(context, output, output_size);
