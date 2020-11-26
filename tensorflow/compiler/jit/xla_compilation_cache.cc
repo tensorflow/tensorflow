@@ -387,7 +387,7 @@ Status XlaCompilationCache::CompileAsynchronous(
     const std::function<Status(XlaCompiler* compiler,
                                const std::vector<XlaCompiler::Argument>& args,
                                XlaCompiler::CompilationResult*)>& compile_fn) {
-  entry->compile_state = CompileState::kCompiling; // Still under caller's lock.
+  entry->compile_state = CompileState::kCompiling;
   {
     mutex_lock lock(async_compilation_.async_compilation_mu_);
     async_compilation_.num_ongoing_compilations++;
@@ -539,14 +539,12 @@ Status XlaCompilationCache::CompileImpl(
 
       if (compile_mode == CompileMode::kAsync) {
         // asynchronous compilation is enabled.
-        {
-          mutex_lock lock(async_compilation_.async_compilation_mu_);
-          if (async_compilation_.num_ongoing_compilations >=
-                async_compilation_.kMaxNumOngoingCompilations) {
-            VLOG(2) << "Not asynchronously compiling cluster " << function.name()
-                    << " because of too many ongoing compilations.";
-            return false;
-          }
+        mutex_lock lock(async_compilation_.async_compilation_mu_);
+        if (async_compilation_.num_ongoing_compilations >=
+              async_compilation_.kMaxNumOngoingCompilations) {
+          VLOG(2) << "Not asynchronously compiling cluster " << function.name()
+                  << " because of too many ongoing compilations.";
+          return false;
         }
       }
 

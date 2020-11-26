@@ -37,7 +37,8 @@ static xla::StatusOr<xla::LocalExecutable*> GetLocalExecutable(
     const XlaCompiler::Options& options,
     const XlaCompiler::CompileOptions& compile_options,
     const NameAttrList& function, XlaCompilationCache* cache,
-    std::vector<XlaCompiler::Argument>& args, const XlaCompiler& compiler) {
+    const std::vector<XlaCompiler::Argument>& args,
+    const XlaCompiler& compiler) {
   const XlaCompiler::CompilationResult* compilation_result = nullptr;
   xla::LocalExecutable* executable = nullptr;
   TF_RETURN_IF_ERROR(cache->Compile(options, function, args, compile_options,
