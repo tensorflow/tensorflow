@@ -74,7 +74,6 @@ filegroup(
 filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
-        "abstract_stack_trace.h",
         "batch_util.cc",
         "batch_util.h",
         "bcast.cc",
@@ -97,6 +96,7 @@ filegroup(
         "example_proto_helper.h",
         "guarded_philox_random.cc",
         "guarded_philox_random.h",
+        "managed_stack_trace.h",
         "matmul_autotune.cc",
         "matmul_autotune.h",
         "matmul_bcast.h",
@@ -327,7 +327,6 @@ filegroup(
 filegroup(
     name = "framework_srcs",
     srcs = [
-        "abstract_stack_trace.h",
         "activation_mode.h",
         "batch_util.h",
         "bcast.h",
@@ -340,6 +339,7 @@ filegroup(
         "example_proto_helper.h",
         "gpu_kernel_helper.h",
         "guarded_philox_random.h",
+        "managed_stack_trace.h",
         "matmul_autotune.h",
         "matmul_bcast.h",
         "mirror_pad_mode.h",
@@ -470,7 +470,7 @@ cc_library(
 
 cc_library(
     name = "abstract_stack_trace",
-    hdrs = ["abstract_stack_trace.h"],
+    hdrs = ["managed_stack_trace.h"],
     visibility = [
         "//tensorflow/c/eager:__pkg__",
         "//tensorflow/core:__pkg__",

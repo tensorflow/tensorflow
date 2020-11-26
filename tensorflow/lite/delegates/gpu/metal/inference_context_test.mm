@@ -85,9 +85,9 @@ static std::vector<ComputeTaskDescriptorPtr> Add(int id, ValueId input_id, Value
 
   desc->uniform_buffers = {
       {"constant int2& size",
-       [output_id](const std::map<ValueId, BHWC>& buffers) {
+       [input_id](const std::map<ValueId, BHWC>& buffers) {
          std::vector<uint8_t> data;
-         const auto& dimension = buffers.find(output_id)->second;
+         const auto& dimension = buffers.find(input_id)->second;
          const int temp[] = {dimension.w, dimension.h};
          data.insert(data.begin(), reinterpret_cast<const uint8_t*>(temp),
                      reinterpret_cast<const uint8_t*>(temp) + sizeof(temp));
@@ -95,8 +95,8 @@ static std::vector<ComputeTaskDescriptorPtr> Add(int id, ValueId input_id, Value
        }},
   };
 
-  desc->resize_function = [output_id](const std::map<ValueId, BHWC>& buffers) {
-    const auto& dimension = buffers.find(output_id)->second;
+  desc->resize_function = [input_id](const std::map<ValueId, BHWC>& buffers) {
+    const auto& dimension = buffers.find(input_id)->second;
     uint3 groups_size{16, 16, 1};
     uint3 groups_count{AlignByN(dimension.w, groups_size.x), AlignByN(dimension.h, groups_size.y),
                        AlignByN(dimension.c, 4)};
@@ -169,8 +169,10 @@ static std::vector<ComputeTaskDescriptorPtr> MulArrayLinkable(
   input.shape = BHWC(1, 1, 1, 3);
   input.id = inputBufferID;
   input.data = {1, 2, 3};
+  TensorFloat32 output;
+  output.shape = BHWC(1, 1, 1, 3);
   std::map<ValueId, TensorFloat32> inputs{{inputBufferID, input}};
-  std::map<ValueId, TensorFloat32> outputs{{outputBufferID, {}}};
+  std::map<ValueId, TensorFloat32> outputs{{outputBufferID, output}};
   auto status = RunGraph(graph, _device, inputs, &outputs);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
   status = CompareVectors({2.2f, 3.3f, 4.4f}, outputs[outputBufferID].data, 1e-6f);
@@ -186,8 +188,10 @@ static std::vector<ComputeTaskDescriptorPtr> MulArrayLinkable(
   input.shape = BHWC(1, 1, 1, 7);
   input.id = inputBufferID;
   input.data = {1, 2, 3, 4, 5, 6, 7};
+  TensorFloat32 output;
+  output.shape = BHWC(1, 1, 1, 7);
   std::map<ValueId, TensorFloat32> inputs{{inputBufferID, input}};
-  std::map<ValueId, TensorFloat32> outputs{{outputBufferID, {}}};
+  std::map<ValueId, TensorFloat32> outputs{{outputBufferID, output}};
   auto status = RunGraph(graph, _device, inputs, &outputs);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
   status = CompareVectors({1, 4, 9, 16, 25, 36, 49}, outputs[outputBufferID].data, 1e-6f);
@@ -202,8 +206,10 @@ static std::vector<ComputeTaskDescriptorPtr> MulArrayLinkable(
   input.shape = BHWC(1, 1, 1, 3);
   input.id = inputBufferID;
   input.data = {1, 2, 3};
+  TensorFloat32 output;
+  output.shape = BHWC(1, 1, 1, 3);
   std::map<ValueId, TensorFloat32> inputs{{inputBufferID, input}};
-  std::map<ValueId, TensorFloat32> outputs{{outputBufferID, {}}};
+  std::map<ValueId, TensorFloat32> outputs{{outputBufferID, output}};
   auto status = RunGraph(graph, _device, inputs, &outputs);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
   status = CompareVectors({2, 4, 6}, outputs[outputBufferID].data, 1e-6f);
@@ -221,8 +227,10 @@ static std::vector<ComputeTaskDescriptorPtr> MulArrayLinkable(
   input.shape = BHWC(1, 1, 1, 7);
   input.id = inputBufferID;
   input.data = {1, 2, 3, 4, 5, 6, 7};
+  TensorFloat32 output;
+  output.shape = BHWC(1, 1, 1, 7);
   std::map<ValueId, TensorFloat32> inputs{{inputBufferID, input}};
-  std::map<ValueId, TensorFloat32> outputs{{outputBufferID, {}}};
+  std::map<ValueId, TensorFloat32> outputs{{outputBufferID, output}};
   auto status = RunGraph(graph, _device, inputs, &outputs);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
   status = CompareVectors({2, 6, 12, 20, 26, 38, 52}, outputs[outputBufferID].data, 1e-6f);

@@ -28,7 +28,7 @@ limitations under the License.
 #include "absl/base/optimization.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/types/optional.h"
-#include "tensorflow/core/util/abstract_stack_trace.h"
+#include "tensorflow/core/util/managed_stack_trace.h"
 
 namespace tensorflow {
 
@@ -158,9 +158,9 @@ extern StackTraceManager* const stack_trace_manager;
 // Note that the actual stack trace is kept in a circular buffer for string
 // conversion could fail if it's evicted before.
 // Python GIL must be acquired beforehand.
-inline AbstractStackTrace GetStackTrace(int limit) {
+inline ManagedStackTrace GetStackTrace(int limit) {
   DCheckPyGilStateForStackTrace();
-  return AbstractStackTrace(stack_trace_manager->Capture(limit), [](int id) {
+  return ManagedStackTrace(stack_trace_manager->Capture(limit), [](int id) {
     PyGILState_STATE gstate = PyGILState_Ensure();
     std::vector<StackFrame> result =
         stack_trace_manager->Get(id)->ToStackFrames();

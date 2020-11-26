@@ -30,7 +30,7 @@ class PadOpBuilder : public OpBuilder {
   explicit PadOpBuilder(GraphBuilder* graph_builder, PadType padding_type)
       : OpBuilder(graph_builder), padding_type_(padding_type) {}
 
-  const char* DebugName() override;
+  const std::string& DebugName() override;
 
   CoreML::Specification::NeuralNetworkLayer* Build() override;
 

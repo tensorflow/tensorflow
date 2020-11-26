@@ -1894,7 +1894,7 @@ inline void Slice(const tflite::SliceParams& op_params,
                   const RuntimeShape& output_shape,
                   SequentialTensorWriter<T>* writer) {
   const RuntimeShape ext_shape = RuntimeShape::ExtendedShape(4, input_shape);
-  // TODO(dkalenichenko): This op only supports 4D tensors or smaller.
+  // TODO(b/174275841): This op only supports 4D tensors or smaller.
   TFLITE_DCHECK_LE(op_params.begin_count, 4);
   TFLITE_DCHECK_LE(op_params.size_count, 4);
   const int begin_count = op_params.begin_count;

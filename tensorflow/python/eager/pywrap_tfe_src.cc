@@ -42,7 +42,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/core/util/abstract_stack_trace.h"
+#include "tensorflow/core/util/managed_stack_trace.h"
 #include "tensorflow/python/eager/pywrap_gradient_exclusions.h"
 #include "tensorflow/python/eager/pywrap_tensor.h"
 #include "tensorflow/python/eager/pywrap_tfe.h"

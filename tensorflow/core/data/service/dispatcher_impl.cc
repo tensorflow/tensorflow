@@ -234,7 +234,7 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
     }
     TaskDef* task_def = response->add_new_tasks();
     std::shared_ptr<const Dataset> dataset;
-    TF_RETURN_IF_ERROR(state_.DatasetFromId(task->dataset_id, dataset));
+    TF_RETURN_IF_ERROR(state_.DatasetFromId(task->job->dataset_id, dataset));
     std::string dataset_key =
         DatasetKey(dataset->dataset_id, dataset->fingerprint);
     if (config_.work_dir().empty()) {
@@ -246,10 +246,14 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
           io::JoinPath(DatasetsDir(config_.work_dir()), dataset_key);
       task_def->set_path(path);
     }
-    task_def->set_dataset_id(task->dataset_id);
-    task_def->set_job_id(task->job_id);
+    task_def->set_dataset_id(task->job->dataset_id);
+    task_def->set_job_id(task->job->job_id);
     task_def->set_task_id(task->task_id);
-    task_def->set_processing_mode(ProcessingModeDef(task->processing_mode));
+    task_def->set_processing_mode(
+        ProcessingModeDef(task->job->processing_mode));
+    if (task->job->num_consumers.has_value()) {
+      task_def->set_num_consumers(task->job->num_consumers.value());
+    }
   }
   for (int64 current_task : current_tasks) {
     if (!correct_tasks_set.contains(current_task)) {
@@ -279,7 +283,7 @@ Status DataServiceDispatcherImpl::WorkerUpdate(
       Update update;
       update.mutable_finish_task()->set_task_id(task_id);
       TF_RETURN_IF_ERROR(Apply(update));
-      VLOG(3) << "Task " << task_id << " from job " << task->job_id
+      VLOG(3) << "Task " << task_id << " from job " << task->job->job_id
               << " completed";
     }
   }
@@ -435,8 +439,14 @@ Status DataServiceDispatcherImpl::GetOrCreateJob(
         return s;
       }
     }
-    TF_RETURN_IF_ERROR(
-        CreateJob(request->dataset_id(), requested_processing_mode, key, job));
+    absl::optional<int64> num_consumers;
+    if (request->optional_num_consumers_case() ==
+        GetOrCreateJobRequest::kNumConsumers) {
+      num_consumers = request->num_consumers();
+    }
+    TF_RETURN_IF_ERROR(CreateJob(request->dataset_id(),
+                                 requested_processing_mode, key, num_consumers,
+                                 job));
     int64 job_client_id;
     TF_RETURN_IF_ERROR(AcquireJobClientId(job, job_client_id));
     response->set_job_client_id(job_client_id);
@@ -486,7 +496,8 @@ Status DataServiceDispatcherImpl::ValidateMatchingJob(
 
 Status DataServiceDispatcherImpl::CreateJob(
     int64 dataset_id, ProcessingMode processing_mode,
-    absl::optional<NamedJobKey> named_job_key, std::shared_ptr<const Job>& job)
+    absl::optional<NamedJobKey> named_job_key,
+    absl::optional<int64> num_consumers, std::shared_ptr<const Job>& job)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   switch (processing_mode) {
     case ProcessingMode::PARALLEL_EPOCHS:
@@ -509,6 +520,9 @@ Status DataServiceDispatcherImpl::CreateJob(
     NamedJobKeyDef* key = create_job->mutable_named_job_key();
     key->set_name(named_job_key->name);
     key->set_index(named_job_key->index);
+  }
+  if (num_consumers.has_value()) {
+    create_job->set_num_consumers(num_consumers.value());
   }
   TF_RETURN_IF_ERROR(Apply(update));
   TF_RETURN_IF_ERROR(state_.JobFromId(job_id, job));
@@ -565,8 +579,6 @@ Status DataServiceDispatcherImpl::CreateTask(std::shared_ptr<const Job> job,
   CreateTaskUpdate* create_task = update.mutable_create_task();
   create_task->set_task_id(task_id);
   create_task->set_job_id(job->job_id);
-  create_task->set_dataset_id(job->dataset_id);
-  create_task->set_processing_mode(ProcessingModeDef(job->processing_mode));
   create_task->set_worker_address(worker_address);
   TF_RETURN_IF_ERROR(Apply(update));
   TF_RETURN_IF_ERROR(state_.TaskFromId(task_id, task));
@@ -614,12 +626,12 @@ Status DataServiceDispatcherImpl::AssignTask(std::shared_ptr<const Task> task)
   grpc::ClientContext client_ctx;
   ProcessTaskRequest req;
   TaskDef* task_def = req.mutable_task();
-  task_def->set_dataset_id(task->dataset_id);
-  task_def->set_job_id(task->job_id);
+  task_def->set_dataset_id(task->job->dataset_id);
+  task_def->set_job_id(task->job->job_id);
   {
     mutex_lock l(mu_);
     std::shared_ptr<const Dataset> dataset;
-    TF_RETURN_IF_ERROR(state_.DatasetFromId(task->dataset_id, dataset));
+    TF_RETURN_IF_ERROR(state_.DatasetFromId(task->job->dataset_id, dataset));
     std::string dataset_key =
         DatasetKey(dataset->dataset_id, dataset->fingerprint);
     if (config_.work_dir().empty()) {
@@ -633,7 +645,7 @@ Status DataServiceDispatcherImpl::AssignTask(std::shared_ptr<const Task> task)
     }
   }
   task_def->set_task_id(task->task_id);
-  task_def->set_processing_mode(ProcessingModeDef(task->processing_mode));
+  task_def->set_processing_mode(ProcessingModeDef(task->job->processing_mode));
   ProcessTaskResponse resp;
   WorkerService::Stub* stub;
   TF_RETURN_IF_ERROR(GetOrCreateWorkerStub(task->worker_address, stub));

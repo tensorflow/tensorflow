@@ -879,7 +879,12 @@ class OptimizerV2(trackable.Trackable):
     if weight is None:
       if isinstance(initializer, six.string_types) or callable(initializer):
         initializer = initializers.get(initializer)
-        slot_shape = var.shape if shape is None else shape
+        if isinstance(
+            initializer,
+            trackable.CheckpointInitialValueCallable) or (shape is not None):
+          slot_shape = shape
+        else:
+          slot_shape = var.shape
         initial_value = functools.partial(
             initializer, shape=slot_shape, dtype=var.dtype)
       else:
@@ -1370,6 +1375,7 @@ class OptimizerV2(trackable.Trackable):
              self._distribution_strategy)):
       initializer = trackable.CheckpointInitialValueCallable(
           checkpoint_position=slot_variable_position)
+      # Shape is unknown until we read the checkpoint value.
       slot_variable = self.add_slot(
           var=variable,
           initializer=initializer,

@@ -990,6 +990,10 @@ table SegmentSumOptions {
 table BatchMatMulOptions {
   adj_x:bool;
   adj_y:bool;
+  // Parameters for BatchMatMul version 4 or above.
+  // If set to true, then weights-only op will use asymmetric quantization for
+  // inputs.
+  asymmetric_quantize_inputs: bool;
 }
 
 table CumsumOptions {

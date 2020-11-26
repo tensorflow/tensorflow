@@ -133,8 +133,13 @@ dependencies {
 
 #### Using CocoaPods
 
-We provide nightly prebuilt select TF ops CocoaPods, which you can depend on
-alongside the `TensorFlowLiteSwift` or `TensorFlowLiteObjC` CocoaPods.
+We provide nightly prebuilt select TF ops CocoaPods for `armv7` and `arm64`,
+which you can depend on alongside the `TensorFlowLiteSwift` or
+`TensorFlowLiteObjC` CocoaPods.
+
+*Note*: If you need to use select TF ops in an `x86_64` simulator, you can build
+the select ops framework yourself. See [Using Bazel + Xcode](#using_bazel_xcode)
+section for more details.
 
 ```ruby
 # In your Podfile target:

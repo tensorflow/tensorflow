@@ -4830,20 +4830,23 @@ TEST_F(SpmdPartitioningTest, MixWithManualPartitioning) {
 HloModule module
 
 ENTRY entry {
-  param = f32[8,2] parameter(0), sharding={devices=[2,1]0,1}
-  to_shard = f32[4,2] custom-call(param), custom_call_target="SPMDFullToShardShape", sharding={replicated}
-  add = f32[4,2] add(to_shard, to_shard), sharding={replicated}
+  param = (f32[8,2], f32[4,2]) parameter(0), sharding={{devices=[2,1]0,1},{manual}}
+  param0 = f32[8,2] get-tuple-element(param), index=0, sharding={devices=[2,1]0,1}
+  param1 = f32[4,2] get-tuple-element(param), index=1, sharding={manual}
+  to_shard = f32[4,2] custom-call(param0), custom_call_target="SPMDFullToShardShape", sharding={manual}
+  add = f32[4,2] add(to_shard, param1), sharding={manual}
   to_full = f32[8,2] custom-call(add), custom_call_target="SPMDShardToFullShape", sharding={devices=[2,1]0,1}
-  ROOT mul = f32[8,2] multiply(to_full, param), sharding={devices=[2,1]0,1}
+  ROOT mul = f32[8,2] multiply(to_full, param0), sharding={devices=[2,1]0,1}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
   VLOG(1) << module->ToString();
   HloInstruction* root = module->entry_computation()->root_instruction();
-  auto to_shard = op::Copy(op::Parameter(0));
+  auto p0 = op::GetTupleElement(op::Parameter(0));
+  auto to_shard = op::Copy(p0);
+  auto p1 = op::GetTupleElement(op::Parameter(0));
   EXPECT_THAT(root, AllOf(op::Shape("f32[4,2]"),
-                          op::Multiply(op::Copy(op::Add(to_shard, to_shard)),
-                                       op::Parameter(0))));
+                          op::Multiply(op::Copy(op::Add(to_shard, p1)), p0)));
 }
 
 TEST_F(SpmdPartitioningTest, SubgroupAllToAllReshard) {

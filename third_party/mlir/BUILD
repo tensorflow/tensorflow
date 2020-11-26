@@ -788,6 +788,7 @@ cc_library(
         ":OpenMPToLLVM",
         ":PDLToPDLInterp",
         ":SCFToGPUPass",
+        ":SCFToOpenMP",
         ":SCFToStandard",
         ":SPIRVToLLVM",
         ":ShapeToStandard",
@@ -2797,6 +2798,27 @@ cc_library(
 )
 
 cc_library(
+    name = "SCFToOpenMP",
+    srcs = [
+        "lib/Conversion/PassDetail.h",
+        "lib/Conversion/SCFToOpenMP/SCFToOpenMP.cpp",
+    ],
+    hdrs = [
+        "include/mlir/Conversion/SCFToOpenMP/SCFToOpenMP.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":ConversionPassIncGen",
+        ":IR",
+        ":OpenMPDialect",
+        ":Pass",
+        ":SCFDialect",
+        ":Support",
+        ":Transforms",
+    ],
+)
+
+cc_library(
     name = "SCFToStandard",
     srcs = [
         "lib/Conversion/PassDetail.h",
@@ -4306,6 +4328,16 @@ cc_library(
         ":VectorOps",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
+    ],
+)
+
+filegroup(
+    name = "TosaDialectTdFiles",
+    srcs = glob(["include/mlir/Dialect/Tosa/IR/*.td"]) + [
+        "include/mlir/Interfaces/LoopLikeInterface.td",
+        ":OpBaseTdFiles",
+        ":QuantizationOpsTdFiles",
+        ":SideEffectTdFiles",
     ],
 )
 

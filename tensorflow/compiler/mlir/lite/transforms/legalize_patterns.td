@@ -477,10 +477,14 @@ def LegalizeReshape : Pat<
   (TF_ReshapeOp $input, $shape),
   (TFL_ReshapeOp $input, (CreateTFCastToInt32Op $shape))>;
 
+def ZeroIntAttr
+  : AttrConstraint<CPred<"$_self.cast<::mlir::IntegerAttr>().getInt() == 0">>;
+
+// ellipsis_mask and new_axis_mask should be zero.
 def LegalizeStridedSlice : Pat<
   (TF_StridedSliceOp
-    $input, $begin, $end, $strides, $begin_mask, $end_mask, $ellipsis_mask,
-    $new_axis_mask, $shrink_axis_mask),
+    $input, $begin, $end, $strides, $begin_mask, $end_mask,
+    ZeroIntAttr:$ellipsis_mask, ZeroIntAttr:$new_axis_mask, $shrink_axis_mask),
   (TFL_StridedSliceOp $input,
     (CreateTFCastToInt32Op $begin), (CreateTFCastToInt32Op $end),
     (CreateTFCastToInt32Op $strides), (convertIntAttrTo32Bit $begin_mask),

@@ -259,7 +259,7 @@ class CollectiveReplicaLauncher(object):
 
   _prefer_scoped_allocator = True
   _prefer_collective_v2 = True
-  _prefer_ordering_token = False
+  _prefer_ordering_token = True
 
   def __init__(self,
                group_key,

@@ -465,7 +465,7 @@ cc_library(
 
 config_setting(
     name = "enable_gpu",
-    values = {"define": "xla_python_enable_gpu=true"},
+    define_values = {"xla_python_enable_gpu": "true"},
 )
 
 pybind_extension(
