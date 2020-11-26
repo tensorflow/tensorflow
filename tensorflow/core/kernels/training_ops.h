@@ -47,7 +47,7 @@ struct ApplyAdadelta {
 };
 
 template <typename Device, typename T, typename Tindex>
-struct ResourceSparseApplyAdadelta {
+struct SparseApplyAdadelta {
   void operator()(const Device& d, typename TTypes<T>::Matrix var,
                     typename TTypes<T>::Matrix accum,
                     typename TTypes<T>::Matrix accum_update,
