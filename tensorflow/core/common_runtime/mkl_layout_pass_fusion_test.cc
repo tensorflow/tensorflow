@@ -247,6 +247,11 @@ REGISTER_TEST_ALL_TYPES(NodeMerge_Conv2DWithBias_Negative_AttrMismatch);
           "DMT/_2(Const)|A->D;A:control->DMT/_0:control;A:control->"           \
           "DMT/_1:control;A:control->DMT/_2:control;B->D:1;C->D:2;"            \
           "DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");                              \
+    } else {                                                                   \
+      EXPECT_EQ(                                                               \
+          DoMklLayoutOptimizationPass(),                                       \
+          "A(" #INPUT ");B(Int32Input);C(" #INPUT ");"                         \
+          "D(_MklNativeConv2DBackpropFilterWithBias)|A->D;B->D:1;C->D:2");     \
     }                                                                          \
   }
 REGISTER_TEST_ALL_TYPES(NodeMerge_Conv2DBackpropFilterFusion_Positive);
@@ -282,6 +287,12 @@ REGISTER_TEST_ALL_TYPES(NodeMerge_Conv2DBackpropFilterFusion_Positive);
           "DMT/_2(Const);E(BiasAddGrad)|A->D;A->E;A:control->DMT/_0:control;"  \
           "A:control->DMT/_1:control;A:control->DMT/_2:control;B->D:1;C->D:2;" \
           "DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");                              \
+    } else {                                                                   \
+      EXPECT_EQ(                                                               \
+          DoMklLayoutOptimizationPass(),                                       \
+          "A(" #INPUT ");B(Int32Input);C(" #INPUT ");"                         \
+          "D(_MklNativeConv2DBackpropFilter);E(BiasAddGrad)"                   \
+          "|A->D;A->E;B->D:1;C->D:2");                                         \
     }                                                                          \
   }
 REGISTER_TEST_ALL_TYPES(NodeMerge_Conv2DBackpropFilterFusion_Negative1);
@@ -316,6 +327,12 @@ REGISTER_TEST_ALL_TYPES(NodeMerge_Conv2DBackpropFilterFusion_Negative1);
           "DMT/_2(Const);E(BiasAddGrad)|A->D;A->E;A:control->DMT/_0:control;"  \
           "A:control->DMT/_1:control;A:control->DMT/_2:control;B->D:1;C->D:2;" \
           "DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");                              \
+    } else {                                                                   \
+      EXPECT_EQ(                                                               \
+          DoMklLayoutOptimizationPass(),                                       \
+           "A(" #INPUT ");B(Int32Input);C(" #INPUT ");"                        \
+           "D(_MklNativeConv2DBackpropFilter);E(BiasAddGrad)"                  \
+           "|A->D;A->E;B->D:1;C->D:2");                                        \
     }                                                                          \
   }
 REGISTER_TEST_ALL_TYPES(NodeMerge_Conv2DBackpropFilterFusion_Negative2);
@@ -357,15 +374,13 @@ REGISTER_TEST_ALL_TYPES(NodeMerge_Conv2DBackpropFilterFusion_Negative2);
               " attr { key: 'T'                value { type: " #T " } }"    \
               " attr { key: 'data_format'      value { s: 'NCHW' } }"       \
               " input: ['E'] }");                                           \
-    if (!NativeFormatEnabled()) {                                             \
-      EXPECT_EQ(                                                              \
-          DoMklLayoutOptimizationPass(),                                      \
-          "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");D(_MklConv2DWithBias);"  \
-          "E(Zeta);F(Int32Input);G(_MklConv2DBackpropFilter);H(BiasAddGrad);" \
-          "M(_MklInput);N(_MklInput);O(_MklInput)|A->D;A->E:1;A->G:2;B->D:1;" \
-          "C->D:2;D->E;E->G;E->H;F->G:1;M->D:3;M->G:3;N->D:4;N->G:4;O->D:5;"  \
-          "O->G:5");                                                          \
-    }                                                                         \
+    EXPECT_EQ(                                                              \
+        DoMklLayoutOptimizationPass(),                                      \
+        "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");D(_MklConv2DWithBias);"  \
+        "E(Zeta);F(Int32Input);G(_MklConv2DBackpropFilter);H(BiasAddGrad);" \
+        "M(_MklInput);N(_MklInput);O(_MklInput)|A->D;A->E:1;A->G:2;B->D:1;" \
+        "C->D:2;D->E;E->G;E->H;F->G:1;M->D:3;M->G:3;N->D:4;N->G:4;O->D:5;"  \
+        "O->G:5");                                                          \
   }
 REGISTER_TEST_ALL_TYPES(NodeMerge_Conv2DBackpropFilterFusion_Negative3);
 #undef REGISTER_TEST
