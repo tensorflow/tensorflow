@@ -366,22 +366,6 @@ def gen_unranked_kernel_library(name, types, tile_size, tags = [], unroll_factor
                 static_library = "{name}_{type}.a".format(name = name, type = type),
             )
 
-            # We have to use a sh_test instead of build_test because it doesn't properly find the dependent targets.
-            native.sh_test(
-                name = "{name}_{type}_gen_test".format(name = name, type = type),
-                srcs = ["build_test.sh"],
-                tags = ["no_rocm"],
-                args = [
-                    "$(location //tensorflow/compiler/mlir/tools/kernel_gen:tf_to_kernel)",
-                    "$(location {name}_{type}.mlir)".format(name = name, type = type),
-                ],
-                size = "small",
-                data = [
-                    ":{name}_{type}.mlir".format(name = name, type = type),
-                    "//tensorflow/compiler/mlir/tools/kernel_gen:tf_to_kernel",
-                ],
-            )
-
     native.cc_library(
         name = name + "_kernels",
         compatible_with = get_compatible_with_cloud(),
