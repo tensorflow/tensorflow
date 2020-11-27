@@ -82,11 +82,15 @@ inline void ConvPerChannel(
                 continue;
               }
 
+              int8 *pFilter, *pInput;
+              pFilter = (int8 *)&filter_data[Offset(filter_shape, out_channel, filter_y,
+                                filter_x, 0)];
+              pInput = (int8 *)&input_data[Offset(input_shape, batch, in_y,
+                                in_x, 0)];
+
               for (int in_channel = 0; in_channel < input_depth; ++in_channel) {
-                int32_t input_val = input_data[Offset(input_shape, batch, in_y,
-                                                      in_x, in_channel)];
-                int32_t filter_val = filter_data[Offset(
-                    filter_shape, out_channel, filter_y, filter_x, in_channel)];
+                int32_t input_val = *pInput++;
+                int32_t filter_val = *pFilter++;
                 // Accumulate with 32 bits accumulator.
                 // In the nudging process during model quantization, we force
                 // real value of 0.0 be represented by a quantized value. This
@@ -185,10 +189,15 @@ inline void ConvPerChannel(
                 continue;
               }
 
+              int8 *pFilter, *pInput;
+              pFilter = (int8 *)&filter_data[Offset(filter_shape, out_channel, filter_y,
+                                filter_x, 0)];
+              pInput = (int8 *)&input_data[Offset(input_shape, batch, in_y,
+                                in_x, 0)];
+
               for (int in_channel = 0; in_channel < input_depth; ++in_channel) {
-                int32_t input_val = input_data[Offset(input_shape, batch, in_y,
-                                                      in_x, in_channel)];
-                int32_t filter_val = filter_data[Offset(
+                int32_t input_val = = *pInput++;
+                int32_t filter_val = *pFilter++;
                     filter_shape, out_channel, filter_y, filter_x, in_channel)];
                 // Accumulate with 64 bits accumulator.
                 // int64_t += int8_t * int16_t so the highest value we can
