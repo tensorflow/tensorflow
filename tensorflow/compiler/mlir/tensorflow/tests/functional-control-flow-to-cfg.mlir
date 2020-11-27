@@ -1,7 +1,7 @@
 // RUN: tf-opt %s -tf-functional-control-flow-to-cfg -split-input-file | FileCheck %s
 
-func @testIf1Then(tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-func @testIf1Else(tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+func private @testIf1Then(tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+func private @testIf1Else(tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
 
 // CHECK-LABEL: func @testIf1Result(%arg0: tensor<i1>, %arg1: tensor<*xf32>, %arg2: tensor<*xf32>)
 func @testIf1Result(tensor<i1>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32> {
@@ -25,8 +25,8 @@ func @testIf1Result(tensor<i1>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32> {
 // CHECK:   return [[BBARG0]] : tensor<*xf32>
 }
 
-func @testIf3Then(tensor<*xf32>) -> (tensor<*xf32>, tensor<*xi8>, tensor<*xbf16>)
-func @testIf3Else(tensor<*xf32>) -> (tensor<*xf32>, tensor<*xi8>, tensor<*xbf16>)
+func private @testIf3Then(tensor<*xf32>) -> (tensor<*xf32>, tensor<*xi8>, tensor<*xbf16>)
+func private @testIf3Else(tensor<*xf32>) -> (tensor<*xf32>, tensor<*xi8>, tensor<*xbf16>)
 
 // CHECK-LABEL: func @testIf3Result(%arg0: tensor<i1>, %arg1: tensor<*xf32>)
 func @testIf3Result(tensor<i1>, tensor<*xf32>) -> (tensor<*xf32>, tensor<*xi8>, tensor<*xbf16>) {
@@ -85,8 +85,8 @@ func @testIfCasts(%arg0: tensor<i1>, %arg1: tensor<!tf.variant<tensor<f32>>>) ->
 
 // If with a 4xi1 condition.
 
-func @testIf1Then(tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-func @testIf1Else(tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+func private @testIf1Then(tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+func private @testIf1Else(tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
 
 // CHECK-LABEL: func @testIf1x4
 func @testIf1x4(tensor<4xi1>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32> {
@@ -104,8 +104,8 @@ func @testIf1x4(tensor<4xi1>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32> {
 // -----
 
 
-func @testWhile2Cond(tensor<*xf32>, tensor<*xf32>) -> (tensor<i1>)
-func @testWhile2Body(tensor<*xf32>, tensor<*xf32>) -> (tensor<*xf32>, tensor<*xf32>)
+func private @testWhile2Cond(tensor<*xf32>, tensor<*xf32>) -> (tensor<i1>)
+func private @testWhile2Body(tensor<*xf32>, tensor<*xf32>) -> (tensor<*xf32>, tensor<*xf32>)
 
 // CHECK-LABEL: func @testWhile2Result(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>)
 func @testWhile2Result(tensor<*xf32>, tensor<*xf32>) -> (tensor<*xf32>, tensor<*xf32>) {
@@ -130,8 +130,8 @@ func @testWhile2Result(tensor<*xf32>, tensor<*xf32>) -> (tensor<*xf32>, tensor<*
 }
 
 
-func @testWhile0Cond() -> (tensor<i1>)
-func @testWhile0Body() -> ()
+func private @testWhile0Cond() -> (tensor<i1>)
+func private @testWhile0Body() -> ()
 
 // CHECK-LABEL: func @testWhile0Result() {
 func @testWhile0Result() {

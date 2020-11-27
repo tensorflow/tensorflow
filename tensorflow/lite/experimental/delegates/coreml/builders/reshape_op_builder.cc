@@ -26,11 +26,11 @@ namespace tflite {
 namespace delegates {
 namespace coreml {
 
-const char* ReshapeOpBuilder::DebugName() {
-  if (!str_debug_name_[0]) {
-    GetDebugName("ReshapeOpBuilder", node_id_, str_debug_name_);
+const std::string& ReshapeOpBuilder::DebugName() {
+  if (debug_name_.empty()) {
+    SetDebugName("ReshapeOpBuilder", node_id_);
   }
-  return str_debug_name_;
+  return debug_name_;
 }
 
 CoreML::Specification::NeuralNetworkLayer* ReshapeOpBuilder::Build() {
@@ -126,7 +126,8 @@ bool IsReshapeOpSupported(const TfLiteRegistration* registration,
   }
 
   const int kShapeTensor = 1;
-  const auto* shape = GetInput(context, node, kShapeTensor);
+  const TfLiteTensor* shape;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kShapeTensor, &shape));
   if (shape->allocation_type != kTfLiteMmapRo) {
     TF_LITE_KERNEL_LOG(context, "Reshape has non-const shape.");
     return false;

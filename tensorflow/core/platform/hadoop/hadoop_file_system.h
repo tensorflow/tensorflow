@@ -16,7 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_HADOOP_HADOOP_FILE_SYSTEM_H_
 #define TENSORFLOW_CORE_PLATFORM_HADOOP_HADOOP_FILE_SYSTEM_H_
 
+#include <map>
+
 #include "tensorflow/core/platform/env.h"
+#include "third_party/hadoop/hdfs.h"
 
 extern "C" {
 struct hdfs_internal;
@@ -74,6 +77,8 @@ class HadoopFileSystem : public FileSystem {
   string TranslateName(const string& name) const override;
 
  private:
+  mutex mu_;
+  std::map<std::string, hdfsFS> connectionCache_ TF_GUARDED_BY(mu_);
   Status Connect(StringPiece fname, hdfsFS* fs);
 };
 

@@ -30,6 +30,7 @@ from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.layers.preprocessing import image_preprocessing
 from tensorflow.python.keras.utils.generic_utils import CustomObjectScope
 from tensorflow.python.ops import gen_stateful_random_ops
+from tensorflow.python.ops import gen_stateless_random_ops_v2
 from tensorflow.python.ops import image_ops_impl as image_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -1237,11 +1238,14 @@ class RandomHeightTest(keras_parameterized.TestCase):
     mock_factor = 0
     with test.mock.patch.object(
         gen_stateful_random_ops, 'stateful_uniform', return_value=mock_factor):
-      with testing_utils.use_gpu():
-        img = np.random.random((12, 5, 8, 3))
-        layer = image_preprocessing.RandomHeight(.4)
-        img_out = layer(img, training=True)
-        self.assertEqual(img_out.shape[1], 3)
+      with test.mock.patch.object(
+          gen_stateless_random_ops_v2, 'stateless_random_uniform_v2',
+          return_value=mock_factor):
+        with testing_utils.use_gpu():
+          img = np.random.random((12, 5, 8, 3))
+          layer = image_preprocessing.RandomHeight(.4)
+          img_out = layer(img, training=True)
+          self.assertEqual(img_out.shape[1], 3)
 
   def test_random_height_longer_numeric(self):
     for dtype in (np.int64, np.float32):
@@ -1328,11 +1332,14 @@ class RandomWidthTest(keras_parameterized.TestCase):
     mock_factor = 0
     with test.mock.patch.object(
         gen_stateful_random_ops, 'stateful_uniform', return_value=mock_factor):
-      with testing_utils.use_gpu():
-        img = np.random.random((12, 8, 5, 3))
-        layer = image_preprocessing.RandomWidth(.4)
-        img_out = layer(img, training=True)
-        self.assertEqual(img_out.shape[2], 3)
+      with test.mock.patch.object(
+          gen_stateless_random_ops_v2, 'stateless_random_uniform_v2',
+          return_value=mock_factor):
+        with testing_utils.use_gpu():
+          img = np.random.random((12, 8, 5, 3))
+          layer = image_preprocessing.RandomWidth(.4)
+          img_out = layer(img, training=True)
+          self.assertEqual(img_out.shape[2], 3)
 
   def test_random_width_longer_numeric(self):
     for dtype in (np.int64, np.float32):

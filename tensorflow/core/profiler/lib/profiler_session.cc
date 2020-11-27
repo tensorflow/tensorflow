@@ -18,25 +18,25 @@ limitations under the License.
 #include <memory>
 
 #include "absl/memory/memory.h"
-#include "tensorflow/core/platform/env_time.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/internal/profiler_interface.h"
+#include "tensorflow/core/profiler/lib/profiler_interface.h"
 #include "tensorflow/core/profiler/profiler_options.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
-#include "tensorflow/core/profiler/internal/profiler_factory.h"
-#include "tensorflow/core/profiler/lib/profiler_utils.h"
-#include "tensorflow/core/profiler/utils/derived_timeline.h"
-#include "tensorflow/core/profiler/utils/group_events.h"
-#include "tensorflow/core/profiler/utils/xplane_schema.h"
-#include "tensorflow/core/profiler/utils/xplane_utils.h"
+#include "tensorflow/core/profiler/convert/post_process_single_host_xplane.h"
+#include "tensorflow/core/profiler/lib/profiler_factory.h"
+#include "tensorflow/core/profiler/lib/profiler_lock.h"
+#include "tensorflow/core/profiler/utils/time_utils.h"
 #endif
 
 namespace tensorflow {
@@ -64,6 +64,7 @@ tensorflow::Status ProfilerSession::Status() {
 Status ProfilerSession::CollectData(profiler::XSpace* space) {
   mutex_lock l(mutex_);
   if (!status_.ok()) return status_;
+  LOG(INFO) << "Profiler session collecting data.";
   for (auto& profiler : profilers_) {
     profiler->Stop().IgnoreError();
   }
@@ -81,42 +82,7 @@ Status ProfilerSession::CollectData(profiler::XSpace* space) {
   }
 
 #if !defined(IS_MOBILE_PLATFORM)
-  // Post processing the collected XSpace without hold profiler lock.
-  // 1. Merge plane of host events with plane of CUPTI driver api.
-  const profiler::XPlane* cupti_driver_api_plane =
-      profiler::FindPlaneWithName(*space, profiler::kCuptiDriverApiPlaneName);
-  const profiler::XPlane* python_tracer_plane =
-      profiler::FindPlaneWithName(*space, profiler::kPythonTracerPlaneName);
-  if (cupti_driver_api_plane || python_tracer_plane) {
-    profiler::XPlane* host_plane = profiler::FindOrAddMutablePlaneWithName(
-        space, profiler::kHostThreadsPlaneName);
-    if (cupti_driver_api_plane) {
-      profiler::MergePlanes(*cupti_driver_api_plane, host_plane);
-    }
-    if (python_tracer_plane) {
-      profiler::MergePlanes(*python_tracer_plane, host_plane);
-    }
-    profiler::SortXLinesBy(host_plane, profiler::XLinesComparatorByName());
-    // NOTE: RemovePlaneWithName might invalidate plane pointers. so do these
-    // at the last step.
-    if (cupti_driver_api_plane) {
-      profiler::RemovePlaneWithName(space, profiler::kCuptiDriverApiPlaneName);
-    }
-    if (python_tracer_plane) {
-      profiler::RemovePlaneWithName(space, profiler::kPythonTracerPlaneName);
-    }
-  }
-
-  // 2. Normalize all timestamps by shifting timeline to profiling start time.
-  // NOTE: this have to be done before sorting XSpace due to timestamp overflow.
-  profiler::NormalizeTimestamps(space, start_time_ns_);
-  // 3. Sort each plane of the XSpace
-  profiler::SortXSpace(space);
-  // 4. Grouping (i.e. marking step number) events in the XSpace.
-  profiler::GroupMetadataMap group_metadata_map;
-  profiler::GroupTfEvents(space, &group_metadata_map);
-  // 5. Generated miscellaneous derived time lines for device planes.
-  profiler::GenerateDerivedTimeLines(group_metadata_map, space);
+  PostProcessSingleHostXSpace(space, start_time_ns_);
 #endif
 
   return Status::OK();
@@ -150,7 +116,6 @@ ProfilerSession::ProfilerSession(ProfileOptions options)
 #else
     : active_(false),
 #endif
-      start_time_ns_(EnvTime::NowNanos()),
       options_(std::move(options)) {
   if (!active_) {
 #if !defined(IS_MOBILE_PLATFORM)
@@ -164,9 +129,27 @@ ProfilerSession::ProfilerSession(ProfileOptions options)
     return;
   }
 
-  LOG(INFO) << "Profiler session started.";
+  LOG(INFO) << "Profiler session initializing.";
+  // Sleep until it is time to start profiling.
+  const bool delayed_start = options_.start_timestamp_ns() > 0;
+  if (delayed_start) {
+    absl::Time scheduled_start =
+        absl::FromUnixNanos(options_.start_timestamp_ns());
+    auto now = absl::Now();
+    if (scheduled_start < now) {
+      LOG(WARNING) << "Profiling is late (" << now
+                   << ") for the scheduled start (" << scheduled_start
+                   << ") and will start immediately.";
+    } else {
+      absl::Duration sleep_duration = scheduled_start - now;
+      LOG(INFO) << "Delaying start of profiler session by " << sleep_duration;
+      absl::SleepFor(sleep_duration);
+    }
+  }
 
+  LOG(INFO) << "Profiler session started.";
 #if !defined(IS_MOBILE_PLATFORM)
+  start_time_ns_ = profiler::GetCurrentTimeNanos();
   CreateProfilers(options_, &profilers_);
 #endif
   status_ = Status::OK();
@@ -181,6 +164,7 @@ ProfilerSession::ProfilerSession(ProfileOptions options)
 }
 
 ProfilerSession::~ProfilerSession() {
+  LOG(INFO) << "Profiler session tear down.";
   for (auto& profiler : profilers_) {
     profiler->Stop().IgnoreError();
   }

@@ -282,11 +282,8 @@ bool CommonInitDecode(StringPiece png_string, int desired_channels,
   }
 
   // convert palette to rgb(a) if needs be.
-  // Note if desired_channels=1 then the original palette indices
-  // will be presented.
-  if (context->color_type == PNG_COLOR_TYPE_PALETTE && desired_channels != 1) {
+  if (context->color_type == PNG_COLOR_TYPE_PALETTE)
     png_set_palette_to_rgb(context->png_ptr);
-  }
 
   // handle grayscale case for source or destination
   const bool want_gray = (context->channels < 3);
@@ -297,9 +294,7 @@ bool CommonInitDecode(StringPiece png_string, int desired_channels,
     }
   }
   if (want_gray) {  // output is grayscale
-    // Note if color type is palette and context->channels < 3,
-    // then the original palette indices will be presented.
-    if (!is_gray && context->color_type != PNG_COLOR_TYPE_PALETTE)
+    if (!is_gray)
       png_set_rgb_to_gray(context->png_ptr, 1, 0.299, 0.587);  // 601, JPG
   } else {  // output is rgb(a)
     if (is_gray)

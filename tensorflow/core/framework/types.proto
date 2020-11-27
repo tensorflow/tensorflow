@@ -74,3 +74,16 @@ enum DataType {
 //    https://www.tensorflow.org/code/tensorflow/core/framework/types.cc,
 //    https://www.tensorflow.org/code/tensorflow/python/framework/dtypes.py,
 //    https://www.tensorflow.org/code/tensorflow/python/framework/function.py)
+
+// For identifying the underlying type of a variant. For variants, the types
+// listed here are a subset of the types in the variant type registry,
+// corresponding to commonly used variants which must occasionally be
+// special-cased.
+enum SpecializedType {
+  // Invalid/unknown specialized type.
+  ST_INVALID = 0;
+  // "tensorflow::TensorList" in the variant type registry.
+  ST_TENSOR_LIST = 1;
+  // "tensorflow::data::Optional" in the variant type registry.
+  ST_OPTIONAL = 2;
+}

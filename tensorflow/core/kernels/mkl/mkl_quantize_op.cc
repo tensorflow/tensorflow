@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/core/graph/mkl_graph_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/util/mkl_types.h"
 #include "tensorflow/core/util/mkl_util.h"
 
 using mkldnn::primitive_attr;
@@ -77,7 +76,7 @@ class MklReorderWithScalePrimitive : public MklPrimitive {
  public:
   explicit MklReorderWithScalePrimitive(
       const MklReorderWithScaleFwdParams& fwdParams)
-      : MklPrimitive(engine(ENGINE_CPU, 0)) {
+      : MklPrimitive(engine(engine::kind::cpu, 0)) {
     // Create reorder primitive
     Setup(fwdParams);
   }
@@ -95,11 +94,7 @@ class MklReorderWithScalePrimitive : public MklPrimitive {
     context_.src_mem->set_data_handle(src_data);
     context_.dst_mem->set_data_handle(dst_data);
 #endif  // ENABLE_MKLDNN_THREADPOOL
-#ifndef ENABLE_MKLDNN_V1
-    reorder_stream->submit(context_.net);
-#else
     context_.reorder_prim->execute(*reorder_stream, context_.prim_args);
-#endif  // !ENABLE_MKLDNN_V1
     // After execution, set data handle back.
     context_.src_mem->set_data_handle(DummyData);
     context_.dst_mem->set_data_handle(DummyData);
@@ -119,11 +114,7 @@ class MklReorderWithScalePrimitive : public MklPrimitive {
     // Stream and primitive vector
     std::shared_ptr<mkldnn::stream> reorder_stream;
 
-#ifndef ENABLE_MKLDNN_V1
-    std::vector<mkldnn::primitive> net;
-#else
     std::unordered_map<int, mkldnn::memory> prim_args;
-#endif  // !ENABLE_MKLDNN_V1
 
     ReorderContext()
         : src_mem(nullptr),
@@ -135,10 +126,10 @@ class MklReorderWithScalePrimitive : public MklPrimitive {
   // Reorder primitive setup
   void Setup(const MklReorderWithScaleFwdParams& fwdParams) {
     // Create memory descriptors for reorder data with specified format
-    context_.src_mem.reset(new MEMORY_CONSTRUCTOR_USING_MD(
-        fwdParams.src_md, cpu_engine_, DummyData));
-    context_.dst_mem.reset(new MEMORY_CONSTRUCTOR_USING_MD(
-        fwdParams.dst_md, cpu_engine_, DummyData));
+    context_.src_mem.reset(
+        new memory(fwdParams.src_md, cpu_engine_, DummyData));
+    context_.dst_mem.reset(
+        new memory(fwdParams.dst_md, cpu_engine_, DummyData));
 
     // Check if there is any fusion as post-ops
     auto const& post_op_params = fwdParams.post_op_params;
@@ -150,21 +141,14 @@ class MklReorderWithScalePrimitive : public MklPrimitive {
     scales.push_back(post_op_params.param[0]);
     post_ops_attr.set_output_scales(0, scales);
 
-    context_.reorder_pd.reset(new REORDER_PD_CONSTRUCTOR_WITH_ATTR(
-        GET_MEMORY_PRIMITIVE_DESC_FROM_MEM_PTR(context_.src_mem),
-        GET_MEMORY_PRIMITIVE_DESC_FROM_MEM_PTR(context_.dst_mem), cpu_engine_,
-        post_ops_attr));
+    context_.reorder_pd.reset(
+        new ReorderPd(cpu_engine_, context_.src_mem->get_desc(), cpu_engine_,
+                      context_.dst_mem->get_desc(), post_ops_attr));
 
-// Create reorder primitive
-#ifndef ENABLE_MKLDNN_V1
-    context_.reorder_prim.reset(new reorder(
-        *context_.reorder_pd, *context_.src_mem, *context_.dst_mem));
-    context_.net.push_back(*context_.reorder_prim);
-#else
+    // Create reorder primitive
     context_.reorder_prim.reset(new reorder(*context_.reorder_pd));
     context_.prim_args.insert({MKLDNN_ARG_FROM, *context_.src_mem});
     context_.prim_args.insert({MKLDNN_ARG_TO, *context_.dst_mem});
-#endif  // !ENABLE_MKLDNN_V1
   }
 };
 
@@ -278,7 +262,7 @@ class MklQuantizeV2Op : public OpKernel {
                     "Scalar calculation in MKL is supported only for"
                     "MIN_FIRST mode for now."));
 
-    auto cpu_engine = engine(ENGINE_CPU, 0);
+    auto cpu_engine = engine(engine::kind::cpu, 0);
     const Tensor& input = ctx->input(0);
     const unsigned int src_idx = 0;
     const Tensor& src_tensor = MklGetInput(ctx, src_idx);
@@ -344,7 +328,7 @@ class MklQuantizeV2Op : public OpKernel {
     max_range = std::max(input_max_range, min_range + epsilon);
     // Clamping the max_range to zero since max_range can also be negative.
     max_range = std::max(0.0f, max_range);
-    auto cpu_engine = engine(ENGINE_CPU, 0);
+    auto cpu_engine = engine(engine::kind::cpu, 0);
     const Tensor& src_tensor = MklGetInput(ctx, src_idx);
     MklDnnShape src_mkl_shape;
     GetMklShape(ctx, src_idx, &src_mkl_shape);
@@ -355,25 +339,25 @@ class MklQuantizeV2Op : public OpKernel {
                         : TFShapeToMklDnnDims(src_tensor.shape());
     auto output_dims = src_dims;
     // Set the dst layout to be the best mkl layout based on dims and type.
-    MEMORY_FORMAT dst_layout_type;
+    memory::format_tag dst_layout_type;
     switch (src_tf_shape.dims()) {
       case 0:
         ComputeScalar(ctx, min_range, max_range);
         return;
       case 1:
-        dst_layout_type = MEMORY_FORMAT::x;
+        dst_layout_type = memory::format_tag::x;
         break;
       case 2:
-        dst_layout_type = MEMORY_FORMAT::nc;
+        dst_layout_type = memory::format_tag::nc;
         break;
       case 3:
-        dst_layout_type = MEMORY_FORMAT::tnc;
+        dst_layout_type = memory::format_tag::tnc;
         break;
       case 4:
-        dst_layout_type = MEMORY_FORMAT::nhwc;
+        dst_layout_type = memory::format_tag::nhwc;
         break;
       case 5:
-        dst_layout_type = MEMORY_FORMAT::ndhwc;
+        dst_layout_type = memory::format_tag::ndhwc;
         break;
       default:
         OP_REQUIRES_OK(ctx,
@@ -417,9 +401,7 @@ class MklQuantizeV2Op : public OpKernel {
 
     memory::desc dst_md =
         memory::desc(src_dims, MklDnnType<T>(), dst_layout_type);
-#ifndef ENABLE_MKLDNN_V1
-    auto dst_pd = memory::primitive_desc(dst_md, cpu_engine);
-#endif  // !ENABLE_MKLDNN_V1
+
     // Standard shape assignments for layout pass
     MklDnnShape output_mkl_shape;
     TensorShape output_tf_shape;

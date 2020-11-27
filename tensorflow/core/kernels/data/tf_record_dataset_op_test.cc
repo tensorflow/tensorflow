@@ -126,7 +126,7 @@ TFRecordDatasetParams TFRecordDatasetParams3() {
       absl::StrCat(testing::TmpDir(), "/tf_record_UNCOMPRESSED_2")};
   std::vector<std::vector<string>> contents = {{"1", "22", "333"},
                                                {"a", "bb", "ccc"}};
-  CompressionType compression_type = CompressionType::GZIP;
+  CompressionType compression_type = CompressionType::UNCOMPRESSED;
   if (!CreateTestFiles(filenames, contents, compression_type).ok()) {
     VLOG(WARNING) << "Failed to create the test files: "
                   << absl::StrJoin(filenames, ", ");

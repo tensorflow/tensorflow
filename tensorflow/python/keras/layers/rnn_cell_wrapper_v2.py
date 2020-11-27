@@ -26,8 +26,8 @@ from __future__ import print_function
 
 
 from tensorflow.python.keras.layers import recurrent
-from tensorflow.python.ops import rnn_cell_wrapper_impl
-from tensorflow.python.util import tf_inspect
+from tensorflow.python.keras.layers.legacy_rnn import rnn_cell_wrapper_impl
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
 
 

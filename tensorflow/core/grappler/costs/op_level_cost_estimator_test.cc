@@ -56,6 +56,13 @@ class TestOpLevelCostEstimator : public OpLevelCostEstimator {
   DeviceInfo device_info_;
 };
 
+void ExpectZeroCost(const Costs& cost) {
+  EXPECT_TRUE(cost.inaccurate);
+  EXPECT_EQ(cost.compute_time, Costs::Duration::zero());
+  EXPECT_EQ(cost.execution_time, Costs::Duration::zero());
+  EXPECT_EQ(cost.memory_time, Costs::Duration::zero());
+}
+
 // Wrangles the minimum number of proto fields to set up a matrix.
 void DescribeMatrix(int rows, int columns, OpInfo* op_info) {
   auto input = op_info->add_inputs();
@@ -2082,10 +2089,27 @@ TEST_F(OpLevelCostEstimatorTest, PureMemoryOpExecutionTime) {
     EXPECT_EQ(cost.persistent_memory, 0);
   }
 }
+
 TEST_F(OpLevelCostEstimatorTest, ResizeBilinearExecutionTime) {
   const int kImageDim = 255;
   const int kChannelSize = 10;
   const int kComputeLerpCost = 9;
+  {
+    OpContext op_context;
+    SetCpuDevice(&op_context.op_info);
+    op_context.op_info.set_op("ResizeBilinear");
+    DescribeTensor4D(1, kImageDim, kImageDim, kChannelSize,
+                     op_context.op_info.add_inputs());
+    // Test with no output.
+    auto cost = PredictCosts(op_context);
+    ExpectZeroCost(cost);
+    op_context.op_info.clear_inputs();
+
+    DescribeTensor4D(0, 0, 0, 0, op_context.op_info.add_outputs());
+    // Test with no input.
+    cost = PredictCosts(op_context);
+    ExpectZeroCost(cost);
+  }
   {
     // Test with size 0 output.
     OpContext op_context;
@@ -2210,6 +2234,72 @@ TEST_F(OpLevelCostEstimatorTest, ResizeBilinearExecutionTime) {
     EXPECT_EQ(cost.memory_time, Costs::Duration(expected_memory_time));
     EXPECT_EQ(cost.execution_time,
               Costs::Duration(expected_memory_time + expected_compute_time));
+    EXPECT_FALSE(cost.inaccurate);
+    EXPECT_EQ(cost.num_ops_with_unknown_shapes, 0);
+  }
+}
+
+TEST_F(OpLevelCostEstimatorTest, CropAndResizeExecutionTime) {
+  const int kImageDim = 255;
+  const int kChannelSize = 10;
+  const int kOutputImageDim = 100;
+  const int kNumBoxes = 10;
+  const int kOutputElements =
+      kNumBoxes * kOutputImageDim * kOutputImageDim * kChannelSize;
+  OpContext op_context;
+  SetCpuDevice(&op_context.op_info);
+  op_context.op_info.set_op("CropAndResize");
+  DescribeTensor4D(1, kImageDim, kImageDim, kChannelSize,
+                   op_context.op_info.add_inputs());
+  DescribeArbitraryRankInput({kNumBoxes, 4}, DT_INT64, &op_context.op_info);
+  DescribeTensor4D(kNumBoxes, kOutputImageDim, kOutputImageDim, kChannelSize,
+                   op_context.op_info.add_outputs());
+
+  const int kExpectedMemoryTime =
+      (kImageDim * kImageDim + kNumBoxes * kOutputImageDim * kOutputImageDim) *
+      4;
+
+  {
+    // Cost of CropAndResize with bilinear interpolation.
+    AttrValue method;
+    method.set_s("bilinear");
+    (*op_context.op_info.mutable_attr())["method"] = method;
+    int num_ops = 28 * kNumBoxes + 4 * kNumBoxes * kOutputImageDim +
+                  4 * kNumBoxes * kOutputImageDim * kOutputImageDim +
+                  3 * kNumBoxes * kOutputImageDim +
+                  3 * kNumBoxes * kOutputImageDim * kOutputImageDim +
+                  13 * kOutputElements;
+    const int expected_compute_time = std::ceil(
+        num_ops /
+        estimator_.GetDeviceInfo(op_context.op_info.device()).gigaops);
+
+    const auto cost = PredictCosts(op_context);
+    EXPECT_EQ(cost.compute_time, Costs::Duration(expected_compute_time));
+    EXPECT_EQ(cost.memory_time, Costs::Duration(kExpectedMemoryTime));
+    EXPECT_EQ(cost.execution_time,
+              Costs::Duration(kExpectedMemoryTime + expected_compute_time));
+    EXPECT_FALSE(cost.inaccurate);
+    EXPECT_EQ(cost.num_ops_with_unknown_shapes, 0);
+  }
+
+  {
+    // Cost of CropAndResize when nearest pixel is taken.
+    AttrValue method;
+    method.set_s("nearest");
+    (*op_context.op_info.mutable_attr())["method"] = method;
+    int num_ops = 28 * kNumBoxes + 4 * kNumBoxes * kOutputImageDim +
+                  4 * kNumBoxes * kOutputImageDim * kOutputImageDim +
+                  2 * kNumBoxes * kOutputImageDim * kOutputImageDim +
+                  kOutputElements;
+    const int expected_compute_time = std::ceil(
+        num_ops /
+        estimator_.GetDeviceInfo(op_context.op_info.device()).gigaops);
+
+    const auto cost = PredictCosts(op_context);
+    EXPECT_EQ(cost.compute_time, Costs::Duration(expected_compute_time));
+    EXPECT_EQ(cost.memory_time, Costs::Duration(kExpectedMemoryTime));
+    EXPECT_EQ(cost.execution_time,
+              Costs::Duration(kExpectedMemoryTime + expected_compute_time));
     EXPECT_FALSE(cost.inaccurate);
     EXPECT_EQ(cost.num_ops_with_unknown_shapes, 0);
   }

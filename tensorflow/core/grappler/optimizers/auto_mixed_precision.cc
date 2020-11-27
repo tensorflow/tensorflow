@@ -965,6 +965,7 @@ class AutoMixedPrecisionImpl {
   bool NodeImplicitlyReadsNonResourceVariable(const NodeDef& node) const;
   void ConvertBatchNormOpsToV2();
   bool SupportsF16(const NodeTypeId& node_type) const;
+  bool SupportsF16DataType(const NodeTypeId& node_type) const;
   const NodeTypeId* GetTensorListFloat32NodeTypeId(const NodeDef& node) const;
   bool IsSourceOrSinkOp(const string& op) const;
   void FindFloat32TensorListOpClustersAndDenylistUnsafe(
@@ -974,6 +975,7 @@ class AutoMixedPrecisionImpl {
       const absl::flat_hash_set<const NodeDef*>& tensor_list_nodes,
       std::vector<NodeTypeIdEdge>* implicit_data_edges) const;
   void AddAllowlistOps(absl::flat_hash_set<int>* allow_set) const;
+  void RemoveAllowsetWithFp32(absl::flat_hash_set<int>* allow_set) const;
   void PropagateDenyFwdThroughClearAndInfer(
       absl::flat_hash_set<int>* deny_set) const;
   void ForceColorMatchBetweenTensorListOps(
@@ -1200,6 +1202,15 @@ bool AutoMixedPrecisionImpl::SupportsF16(const NodeTypeId& node_type) const {
          NodeHasF16KernelForTypeAttr(*node_type.node, node_type.type_attr);
 }
 
+bool AutoMixedPrecisionImpl::SupportsF16DataType(
+    const NodeTypeId& node_type) const {
+  const OpDef* op_def;
+  Status status =
+      OpRegistry::Global()->LookUpOpDef(node_type.node->op(), &op_def);
+  if (!status.ok()) return false;
+  return AllowedDataTypes(*op_def, node_type.type_attr).Contains(target_dtype_);
+}
+
 // TODO(mconley): Make this change the node's name (to aid debugging). Need to
 // make sure that doing this won't break anything.
 void AutoMixedPrecisionImpl::ConvertBatchNormOpsToV2() {
@@ -1365,6 +1376,12 @@ Status AutoMixedPrecisionImpl::Optimize() {
              "clearlist ops";
   PropagateAllowThroughClear(deny_set, &allow_set);
   VLOG(2) << "Finished pass 4";
+
+  VLOG(2) << "Beginning pass 5 to remove some nodes which could not be changed "
+             "to F16"
+             "from allow set";
+  RemoveAllowsetWithFp32(&allow_set);
+  VLOG(2) << "Finished pass 5";
 
   VLOG(2) << "Forcing color match between data structure ops";
   for (const auto& cluster : tensor_list_clusters) {
@@ -1681,6 +1698,25 @@ void AutoMixedPrecisionImpl::PropagateAllowThroughClear(
                     << item.node->name() << " ALLOW";
           }
         }));
+  }
+}
+
+// If ops have one or more type_attr, But this type_attr could not be converted
+// to F16. Such as FusedBatchNormV2/FusedBatchNormV3, its type_attr 'U' only
+// support float. So we will remove this node from allow_set.
+void AutoMixedPrecisionImpl::RemoveAllowsetWithFp32(
+    absl::flat_hash_set<int>* allow_set) const {
+  for (int root_idx = 0; root_idx < graph_type_view_.num_nodes(); ++root_idx) {
+    const NodeTypeId& root = *graph_type_view_.GetNode(root_idx);
+    if (f16_allowlist_.count(root.node->op()) && allow_set->count(root_idx) &&
+        !SupportsF16DataType(root)) {
+      auto erased = allow_set->erase(root_idx);
+      if (VLOG_IS_ON(2) && erased) {
+        VLOG(2) << "UnPainting type " << root.type_attr.DebugString()
+                << " of node " << root.node->name() << " ALLOW because its op "
+                << root.node->op() << " is not support F16 DataType";
+      }
+    }
   }
 }
 

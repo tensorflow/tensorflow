@@ -392,6 +392,10 @@ def cuda_rdc_library(name, hdrs = None, copts = None, linkstatic = True, **kwarg
     merged = name + "_merged"
     _merge_archive(
         name = merged,
+
+        # TODO(b/166662245): We're deliberately not using `pruned` here.
+        # Pruning __nv_relfatbin also seems to prune out the PTX shipped with
+        # NCCL.
         srcs = [lib, dlink],
     )
 

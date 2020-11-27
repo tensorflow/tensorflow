@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_PYTHON_TF_TFL_FLATBUFFER_HELPERS_H_
 
 #include <ostream>
+#include <unordered_set>
 #include <utility>
 
 #include "llvm/ADT/Optional.h"
@@ -40,7 +41,7 @@ Status PopulateQuantizationSpecs(
     const toco::ModelFlags& model_flags, const toco::TocoFlags& toco_flags,
     mlir::TFL::QuantizationSpecs* quant_specs, std::vector<string>* node_names,
     std::vector<string>* node_dtypes,
-    std::vector<std::vector<int>>* node_shapes,
+    std::vector<llvm::Optional<std::vector<int>>>* node_shapes,
     std::vector<llvm::Optional<double>>* node_mins,
     std::vector<llvm::Optional<double>>* node_maxs);
 
@@ -48,7 +49,8 @@ Status PopulateQuantizationSpecs(
 // This will also run relevant passes as well.
 Status ConvertMLIRToTFLiteFlatBuffer(
     const toco::TocoFlags& toco_flags, mlir::OwningModuleRef module,
-    const mlir::TFL::PassConfig& pass_config, string* result,
+    const mlir::TFL::PassConfig& pass_config,
+    const std::unordered_set<std::string>& saved_model_tags, string* result,
     llvm::Optional<tensorflow::Session*> session);
 
 // Give a warning for any unused flags that have been specified.

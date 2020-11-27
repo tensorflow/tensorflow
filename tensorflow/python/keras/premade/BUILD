@@ -1,6 +1,6 @@
 # Description:
 #   Contains the Keras Premade Models (internal TensorFlow version).
-load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 package(
     default_visibility = [
@@ -8,8 +8,6 @@ package(
     ],
     licenses = ["notice"],  # Apache 2.0
 )
-
-exports_files(["LICENSE"])
 
 filegroup(
     name = "all_py_srcs",
@@ -35,7 +33,7 @@ py_library(
     ],
 )
 
-py_test(
+tf_py_test(
     name = "linear_test",
     size = "medium",
     srcs = ["linear_test.py"],
@@ -49,7 +47,7 @@ py_test(
     ],
 )
 
-py_test(
+tf_py_test(
     name = "wide_deep_test",
     size = "medium",
     srcs = ["wide_deep_test.py"],

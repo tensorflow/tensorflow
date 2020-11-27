@@ -23,7 +23,7 @@ limitations under the License.
 #include "pybind11/stl.h"
 #include "tensorflow/core/data/service/server_lib.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/protobuf/data/experimental/service_config.pb.h"
+#include "tensorflow/core/protobuf/service_config.pb.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
 
@@ -50,7 +50,14 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
       .def("stop", &tensorflow::data::WorkerGrpcDataServer::Stop)
       .def("join", &tensorflow::data::WorkerGrpcDataServer::Join,
            py::call_guard<py::gil_scoped_release>())
-      .def("bound_port", &tensorflow::data::WorkerGrpcDataServer::BoundPort);
+      .def("bound_port", &tensorflow::data::WorkerGrpcDataServer::BoundPort)
+      .def("num_tasks",
+           [](tensorflow::data::WorkerGrpcDataServer* server) -> int {
+             int num_tasks;
+             tensorflow::Status status = server->NumTasks(&num_tasks);
+             tensorflow::MaybeRaiseFromStatus(status);
+             return num_tasks;
+           });
 
   m.def(
       "TF_DATA_NewDispatchServer",

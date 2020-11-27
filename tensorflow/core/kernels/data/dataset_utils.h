@@ -105,26 +105,6 @@ Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
 Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
                               const std::vector<Tensor>& received);
 
-// Returns a stable hash of the subgraph rooted at the given node.
-//
-// NOTE: There is currently no guarantee that the hash of a subgraph will stay
-// the same between TensorFlow builds.
-Status HashNode(const GraphDef& graph, const NodeDef& node, uint64* hash);
-Status HashNode(const GraphDef& graph, const NodeDef& node,
-                const FunctionLibraryDefinition& flib_def, uint64* hash);
-
-// Returns a stable hash of the given tensor.
-//
-// NOTE: There is currently no guarantee that the hash of a subgraph will stay
-// the same between TensorFlow builds.
-Status HashTensor(const Tensor& tensor, uint64* hash);
-
-// Returns a stable hash of the given graph.
-//
-// NOTE: There is currently no guarantee that the hash of a subgraph will stay
-// the same between TensorFlow builds.
-Status HashGraph(const GraphDef& graph, uint64* hash);
-
 // Writes dataset elements to the checkpoint writer using the given key prefix.
 // The elements can be read back by passing the same key prefix to
 // ReadElementsFromCheckpoint. Only one list of elements can be written under
@@ -191,24 +171,28 @@ class VariantTensorDataReader : public IteratorStateReader {
   explicit VariantTensorDataReader(
       const std::vector<const VariantTensorData*>& data);
 
-  Status ReadScalar(StringPiece key, int64* val) override;
-  Status ReadScalar(StringPiece key, tstring* val) override;
-  Status ReadTensor(StringPiece key, Tensor* val) override;
-  bool Contains(StringPiece key) override;
+  Status ReadScalar(StringPiece key, int64* val) const override;
+  Status ReadScalar(StringPiece key, tstring* val) const override;
+  Status ReadTensor(StringPiece key, Tensor* val) const override;
+  bool Contains(StringPiece key) const override;
 
-  Status ReadScalar(StringPiece name, StringPiece key, int64* val) override;
-  Status ReadScalar(StringPiece name, StringPiece key, tstring* val) override;
-  Status ReadTensor(StringPiece name, StringPiece key, Tensor* val) override;
-  bool Contains(StringPiece name, StringPiece key) override;
+  Status ReadScalar(StringPiece name, StringPiece key,
+                    int64* val) const override;
+  Status ReadScalar(StringPiece name, StringPiece key,
+                    tstring* val) const override;
+  Status ReadTensor(StringPiece name, StringPiece key,
+                    Tensor* val) const override;
+  bool Contains(StringPiece name, StringPiece key) const override;
 
  private:
   template <typename T>
-  Status ReadScalarInternal(StringPiece key, T* val);
-  Status ReadTensorInternal(StringPiece key, Tensor* val);
+  Status ReadScalarInternal(StringPiece key, T* val) const;
+  Status ReadTensorInternal(StringPiece key, Tensor* val) const;
 
   template <typename T>
-  Status ReadScalarInternal(StringPiece name, StringPiece key, T* val);
-  Status ReadTensorInternal(StringPiece name, StringPiece key, Tensor* val);
+  Status ReadScalarInternal(StringPiece name, StringPiece key, T* val) const;
+  Status ReadTensorInternal(StringPiece name, StringPiece key,
+                            Tensor* val) const;
 
   std::map<string, std::map<string, size_t>> map_;
   std::map<string, const VariantTensorData*> data_;  // Not owned.
@@ -314,6 +298,9 @@ std::vector<tstring> SelectOptimizations(
     const std::vector<tstring>& optimizations_disabled,
     const std::vector<tstring>& optimizations_default,
     std::function<uint64(const string&)> hash_func);
+
+// Removes device placements from the ops of all functions in `library`.
+void StripDevicePlacement(FunctionDefLibrary* library);
 
 }  // namespace data
 }  // namespace tensorflow

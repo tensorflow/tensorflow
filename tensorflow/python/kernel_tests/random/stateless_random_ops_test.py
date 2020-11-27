@@ -22,17 +22,46 @@ import functools
 
 from absl.testing import parameterized
 import numpy as np
+from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_stateless_random_ops_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import stateless_random_ops as stateless
 from tensorflow.python.platform import test
+
+
+# Note that in theory each test will reset the eager context and may choose to
+# hide some devices, so we shouldn't cache this transient info. Tests in this
+# file don't make those config changes, so caching is fine. It provides a good
+# speed-up.
+_cached_device = None
+
+
+def get_device():
+  global _cached_device
+  if _cached_device is not None:
+    return _cached_device
+  # Precedence from high to low
+  for device_type in ('XLA_GPU', 'GPU', 'XLA_CPU', 'CPU'):
+    devices = config.list_logical_devices(device_type)
+    if devices:
+      _cached_device = devices[0]
+      return _cached_device
+  raise ValueError('Cannot find any suitable device. Available devices: %s' %
+                   config.list_logical_devices())
+
+
+BEFORE_EXPIRE = (2020, 10, 24)
+AFTER_EXPIRE = (2020, 10, 26)
 
 
 def invert_philox(key, value):
@@ -59,47 +88,71 @@ SEED_TYPES = [dtypes.int32, dtypes.int64]
 def float_cases(shape_dtypes=(None,)):
   cases = (
       # Uniform distribution, with and without range
-      (stateless.stateless_random_uniform, random_ops.random_uniform, {}),
-      (stateless.stateless_random_uniform, random_ops.random_uniform,
-       dict(minval=2.2, maxval=7.1)),
+      ('uniform', stateless.stateless_random_uniform, random_ops.random_uniform,
+       {}),
+      ('uniform2', stateless.stateless_random_uniform,
+       random_ops.random_uniform, dict(minval=2.2, maxval=7.1)),
       # Normal distribution, with and without mean+stddev
-      (stateless.stateless_random_normal, random_ops.random_normal, {}),
-      (stateless.stateless_random_normal, random_ops.random_normal,
+      ('normal', stateless.stateless_random_normal, random_ops.random_normal,
+       {}),
+      ('normal2', stateless.stateless_random_normal, random_ops.random_normal,
        dict(mean=2, stddev=3)),
       # Truncated normal distribution, with and without mean+stddev
-      (stateless.stateless_truncated_normal, random_ops.truncated_normal, {}),
-      (stateless.stateless_truncated_normal, random_ops.truncated_normal,
-       dict(mean=3, stddev=4)),
+      ('trnorm', stateless.stateless_truncated_normal,
+       random_ops.truncated_normal, {}),
+      ('trnorm2', stateless.stateless_truncated_normal,
+       random_ops.truncated_normal, dict(mean=3, stddev=4)),
   )
   # Explicitly passing in params because capturing cell variable from loop is
   # problematic in Python
   def wrap(op, dtype, shape, shape_dtype, kwds, seed):
+    device_type = get_device().device_type
+    # Some dtypes are not supported on some devices
+    if (dtype == dtypes.float16 and device_type in ('XLA_GPU', 'XLA_CPU') or
+        dtype == dtypes.bfloat16 and device_type == 'GPU'):
+      dtype = dtypes.float32
     shape_ = (constant_op.constant(shape, dtype=shape_dtype)
               if shape_dtype is not None else shape)
     return op(seed=seed, shape=shape_, dtype=dtype, **kwds)
-  for dtype in dtypes.float16, dtypes.float32, dtypes.float64:
+
+  def _name(a):
+    if hasattr(a, 'name'):
+      return a.name
+    else:
+      return a
+
+  for dtype in dtypes.float16, dtypes.bfloat16, dtypes.float32, dtypes.float64:
     for shape_dtype in shape_dtypes:
       for shape in (), (3,), (2, 5):
-        for stateless_op, stateful_op, kwds in cases:
-          yield (functools.partial(wrap, stateless_op, dtype, shape,
+        for name, stateless_op, stateful_op, kwds in cases:
+          yield (('%s_%s_%s_%s' %
+                  (name, _name(dtype), shape, _name(shape_dtype))).replace(
+                      ' ', ''),
+                 functools.partial(wrap, stateless_op, dtype, shape,
                                    shape_dtype, kwds),
-                 functools.partial(wrap, stateful_op, dtype, shape,
-                                   shape_dtype, kwds))
+                 functools.partial(wrap, stateful_op, dtype, shape, shape_dtype,
+                                   kwds))
 
 
-def int_cases(shape_dtypes=(None,)):
-  def wrap(op, shape, shape_dtype, dtype, seed):
+def int_cases(shape_dtypes=(None,), minval_maxval=None):
+
+  def wrap(op, minval, maxval, shape, shape_dtype, dtype, seed):
     shape_ = (constant_op.constant(shape, dtype=shape_dtype)
               if shape_dtype is not None else shape)
-    return op(seed=seed, shape=shape_, minval=2, maxval=11111,
-              dtype=dtype)
-  for shape_dtype in shape_dtypes:
-    for shape in (), (3,), (2, 5):
-      for dtype in dtypes.int32, dtypes.int64:
-        yield (functools.partial(wrap, stateless.stateless_random_uniform,
-                                 shape, shape_dtype, dtype),
-               functools.partial(wrap, random_ops.random_uniform,
-                                 shape, shape_dtype, dtype))
+    return op(
+        seed=seed, shape=shape_, minval=minval, maxval=maxval, dtype=dtype)
+
+  if minval_maxval is None:
+    minval_maxval = ((2, 11111),)
+  for minval, maxval in minval_maxval:
+    for shape_dtype in shape_dtypes:
+      for shape in (), (3,), (2, 5):
+        for dtype in dtypes.int32, dtypes.int64:
+          yield ('uniform_%s_%s' % (minval, maxval),
+                 functools.partial(wrap, stateless.stateless_random_uniform,
+                                   minval, maxval, shape, shape_dtype, dtype),
+                 functools.partial(wrap, random_ops.random_uniform, minval,
+                                   maxval, shape, shape_dtype, dtype))
 
 
 def multinomial_cases():
@@ -112,7 +165,8 @@ def multinomial_cases():
     for output_dtype in dtypes.int32, dtypes.int64:
       for logits in ([[0.1, 0.25, 0.5, 0.15]], [[0.5, 0.5], [0.8, 0.2],
                                                 [0.25, 0.75]]):
-        yield (functools.partial(wrap, stateless.stateless_multinomial, logits,
+        yield ('multinomial',
+               functools.partial(wrap, stateless.stateless_multinomial, logits,
                                  logits_dtype, output_dtype),
                functools.partial(wrap, random_ops.multinomial, logits,
                                  logits_dtype, output_dtype))
@@ -124,10 +178,11 @@ def gamma_cases():
               alpha=constant_op.constant(alpha, dtype=dtype), dtype=dtype)
   for dtype in np.float16, np.float32, np.float64:
     for alpha in ([[.5, 1., 2.]], [[0.5, 0.5], [0.8, 0.2], [0.25, 0.75]]):
-      yield (functools.partial(wrap, stateless.stateless_random_gamma, alpha,
+      yield ('gamma',
+             functools.partial(wrap, stateless.stateless_random_gamma, alpha,
                                dtype, (10,) + tuple(np.shape(alpha))),
-             functools.partial(wrap, random_ops.random_gamma, alpha,
-                               dtype, (10,)))
+             functools.partial(wrap, random_ops.random_gamma, alpha, dtype,
+                               (10,)))
 
 
 def poisson_cases():
@@ -138,7 +193,8 @@ def poisson_cases():
   for lam_dtype in np.float16, np.float32, np.float64, np.int32, np.int64:
     for out_dtype in np.float16, np.float32, np.float64, np.int32, np.int64:
       for lam in ([[5.5, 1., 2.]], [[7.5, 10.5], [3.8, 8.2], [1.25, 9.75]]):
-        yield (functools.partial(wrap, stateless.stateless_random_poisson, lam,
+        yield ('poisson',
+               functools.partial(wrap, stateless.stateless_random_poisson, lam,
                                  lam_dtype, out_dtype,
                                  (10,) + tuple(np.shape(lam))),
                functools.partial(wrap, random_ops.random_poisson, lam,
@@ -153,22 +209,28 @@ class StatelessOpsTest(test.TestCase, parameterized.TestCase):
     key = 0x3ec8f720, 0x02461e29
     preseed = invert_philox(key, (seed[0], 0, seed[1], 0)).astype(np.uint64)
     preseed = preseed[::2] | preseed[1::2] << 32
-    random_seed.set_random_seed(seed[0])
-    with test_util.use_gpu():
-      stateless_op, stateful_op = case
-      if context.executing_eagerly():
-        # Call set_random_seed in order to clear kernel cache, to prevent
-        # kernel reusing for the stateful op
-        random_seed.set_random_seed(seed[0])
+    with ops.device(get_device().name):
+      _, stateless_op, stateful_op = case
+      random_seed.set_random_seed(seed[0])
       stateful = stateful_op(seed=seed[1])
       pure = stateless_op(seed=preseed)
       self.assertAllEqual(stateful, pure)
 
+  def _test_old_and_new_stateless_match(self, case, seed):
+    """Tests that the new stateless ops match the old stateless ones."""
+    with ops.device(get_device().name):
+      _, stateless_op, _ = case
+      with compat.forward_compatibility_horizon(*BEFORE_EXPIRE):
+        old = stateless_op(seed=seed)
+      with compat.forward_compatibility_horizon(*AFTER_EXPIRE):
+        new = stateless_op(seed=seed)
+      self.assertAllClose(old, new)
+
   def _test_determinism(self, case, seed_type):
     # Stateless values should be equal iff the seeds are equal (roughly)
     seeds = [(x, y) for x in range(5) for y in range(5)] * 3  # pylint: disable=g-complex-comprehension
-    with self.test_session(use_gpu=True), test_util.use_gpu():
-      stateless_op, _ = case
+    with self.test_session(use_gpu=True), ops.device(get_device().name):
+      _, stateless_op, _ = case
       if context.executing_eagerly():
         values = [
             (seed, stateless_op(seed=constant_op.constant(seed, seed_type)))
@@ -183,89 +245,183 @@ class StatelessOpsTest(test.TestCase, parameterized.TestCase):
         ]
       for s0, v0 in values:
         for s1, v1 in values:
-          self.assertEqual(s0 == s1, np.all(v0 == v1))
+          if dtypes.as_dtype(v0.dtype) != dtypes.bfloat16:
+            self.assertEqual(s0 == s1, np.all(v0 == v1))
+          elif s0 == s1:
+            # Skip the s0 != s1 case because v0 and v1 can be either equal or
+            # unequal in that case due to bfloat16's low precision
+            self.assertAllEqual(v0, v1)
 
   @parameterized.named_parameters(
-      ('_%s_%s' % (case_id, seed_id), case, seed)  # pylint: disable=g-complex-comprehension
+      ('_%s_%s_%s' % (case[0], case_id, seed_id), case, seed)  # pylint: disable=g-complex-comprehension
       for seed_id, seed in enumerate(SEEDS)
       for case_id, case in enumerate(float_cases()))
   @test_util.disable_tfrt('tensorflow::DirectSession::Run crashes. b/156187396')
   def testMatchFloat(self, case, seed):
+    if get_device().device_type in ('XLA_GPU', 'XLA_CPU'):
+      # This test was passing before because soft placement silently picked the
+      # CPU kernels.
+      self.skipTest('Skip on XLA because XLA kernels do not support int64 '
+                    'seeds needed by this test.')
     self._test_match(case, seed)
 
   @parameterized.named_parameters(
-      ('_%s_%s' % (case_id, seed_id), case, seed)  # pylint: disable=g-complex-comprehension
+      ('_%s_%s_%s' % (case[0], case_id, seed_id), case, seed)  # pylint: disable=g-complex-comprehension
       for seed_id, seed in enumerate(SEEDS)
       for case_id, case in enumerate(int_cases()))
   @test_util.disable_tfrt('tensorflow::DirectSession::Run crashes. b/156187396')
   def testMatchInt(self, case, seed):
+    if get_device().device_type in ('XLA_GPU', 'XLA_CPU'):
+      # This test was passing before because soft placement silently picked the
+      # CPU kernels.
+      self.skipTest('Skip on XLA because XLA kernels do not support int64 '
+                    'seeds needed by this test.')
     self._test_match(case, seed)
 
   @parameterized.named_parameters(
-      ('_%s_%s' % (case_id, seed_id), case, seed)  # pylint: disable=g-complex-comprehension
+      ('_%s_%s_%s' % (case[0], case_id, seed_id), case, seed)  # pylint: disable=g-complex-comprehension
       for seed_id, seed in enumerate(SEEDS)
       for case_id, case in enumerate(multinomial_cases()))
   @test_util.disable_tfrt('tensorflow::DirectSession::Run crashes. b/156187396')
   def testMatchMultinomial(self, case, seed):
+    if get_device().device_type in ('XLA_GPU', 'XLA_CPU'):
+      # This test was passing before because soft placement silently picked the
+      # CPU kernels.
+      self.skipTest('Lacking XLA kernel')
     self._test_match(case, seed)
 
   @parameterized.named_parameters(
-      ('_%s_%s' % (case_id, seed_id), case, seed)  # pylint: disable=g-complex-comprehension
+      ('_%s_%s_%s' % (case[0], case_id, seed_id), case, seed)  # pylint: disable=g-complex-comprehension
       for seed_id, seed in enumerate(SEEDS)
       for case_id, case in enumerate(gamma_cases()))
   @test_util.disable_tfrt('tensorflow::DirectSession::Run crashes. b/156187396')
   def testMatchGamma(self, case, seed):
+    if get_device().device_type == 'GPU':
+      # This test was passing before because soft placement silently picked the
+      # CPU kernels.
+      self.skipTest('Lacking GPU kernel')
+    if get_device().device_type in ('XLA_GPU', 'XLA_CPU'):
+      # This test was passing before because soft placement silently picked the
+      # CPU kernels.
+      self.skipTest('Lacking XLA kernel')
     self._test_match(case, seed)
 
   @parameterized.named_parameters(
-      ('_%s_%s' % (case_id, seed_id), case, seed)  # pylint: disable=g-complex-comprehension
+      ('_%s_%s_%s' % (case[0], case_id, seed_id), case, seed)  # pylint: disable=g-complex-comprehension
       for seed_id, seed in enumerate(SEEDS)
       for case_id, case in enumerate(poisson_cases()))
   @test_util.disable_tfrt('tensorflow::DirectSession::Run crashes. b/156187396')
   def testMatchPoisson(self, case, seed):
+    if get_device().device_type == 'GPU':
+      # This test was passing before because soft placement silently picked the
+      # CPU kernels.
+      self.skipTest('Lacking GPU kernel')
+    if get_device().device_type in ('XLA_GPU', 'XLA_CPU'):
+      # This test was passing before because soft placement silently picked the
+      # CPU kernels.
+      self.skipTest('Lacking XLA kernel')
     self._test_match(case, seed)
 
   @parameterized.named_parameters(
-      ('_%s_%s' % (case_id, type_id), case, seed_type)  # pylint: disable=g-complex-comprehension
-      for type_id, seed_type in enumerate(SEED_TYPES)
-      for case_id, case in enumerate(float_cases(
-          shape_dtypes=(dtypes.int32, dtypes.int64))))
+      ('_%s_%s_%s' % (case[0], case_id, seed_id), case, seed)  # pylint: disable=g-complex-comprehension
+      for seed_id, seed in enumerate(SEEDS)
+      for case_id, case in enumerate(float_cases()))
+  @test_util.disable_tfrt('tensorflow::DirectSession::Run crashes. b/156187396')
+  def testOldAndNewStatelessMatchFloat(self, case, seed):
+    self._test_old_and_new_stateless_match(case, seed)
+
+  @parameterized.named_parameters(
+      ('_%s_%s_%s' % (case[0], case_id, seed_id), case, seed)  # pylint: disable=g-complex-comprehension
+      for seed_id, seed in enumerate(SEEDS)
+      for case_id, case in enumerate(
+          int_cases(minval_maxval=((2, 11111), (None, None)))))
+  @test_util.disable_tfrt('tensorflow::DirectSession::Run crashes. b/156187396')
+  def testOldAndNewStatelessMatchInt(self, case, seed):
+    self._test_old_and_new_stateless_match(case, seed)
+
+  @parameterized.named_parameters(
+      ('_%s_%s_%s' % (case[0], seed_type.name, case_id), case, seed_type)  # pylint: disable=g-complex-comprehension
+      for seed_type in SEED_TYPES
+      for case_id, case in enumerate(
+          float_cases(shape_dtypes=(dtypes.int32, dtypes.int64))))
   @test_util.disable_tfrt('tensorflow::DirectSession::Run crashes. b/156187396')
   def testDeterminismFloat(self, case, seed_type):
+    if seed_type == dtypes.int64 and get_device().device_type in ('XLA_GPU',
+                                                                  'XLA_CPU'):
+      # This test was passing before because soft placement silently picked the
+      # CPU kernels.
+      self.skipTest(
+          'Skip on XLA because XLA kernels do not support int64 seeds.')
     self._test_determinism(case, seed_type)
 
   @parameterized.named_parameters(
-      ('_%s_%s' % (case_id, type_id), case, seed_type)  # pylint: disable=g-complex-comprehension
-      for type_id, seed_type in enumerate(SEED_TYPES)
-      for case_id, case in enumerate(int_cases(
-          shape_dtypes=(dtypes.int32, dtypes.int64))))
+      ('_%s_%s_%s' % (case[0], seed_type.name, case_id), case, seed_type)  # pylint: disable=g-complex-comprehension
+      for seed_type in SEED_TYPES
+      for case_id, case in enumerate(
+          int_cases(shape_dtypes=(dtypes.int32, dtypes.int64))))
   @test_util.disable_tfrt('tensorflow::DirectSession::Run crashes. b/156187396')
   def testDeterminismInt(self, case, seed_type):
+    if seed_type == dtypes.int64 and get_device().device_type in ('XLA_GPU',
+                                                                  'XLA_CPU'):
+      # This test was passing before because soft placement silently picked the
+      # CPU kernels.
+      self.skipTest(
+          'Skip on XLA because XLA kernels do not support int64 seeds.')
     self._test_determinism(case, seed_type)
 
   @parameterized.named_parameters(
-      ('_%s_%s' % (case_id, type_id), case, seed_type)  # pylint: disable=g-complex-comprehension
-      for type_id, seed_type in enumerate(SEED_TYPES)
+      ('_%s_%s_%s' % (case[0], seed_type.name, case_id), case, seed_type)  # pylint: disable=g-complex-comprehension
+      for seed_type in SEED_TYPES
       for case_id, case in enumerate(multinomial_cases()))
   @test_util.disable_tfrt('tensorflow::DirectSession::Run crashes. b/156187396')
   def testDeterminismMultinomial(self, case, seed_type):
+    if get_device().device_type in ('XLA_GPU', 'XLA_CPU'):
+      # This test was passing before because soft placement silently picked the
+      # CPU kernels.
+      self.skipTest('Lacking XLA kernel')
     self._test_determinism(case, seed_type)
 
   @parameterized.named_parameters(
-      ('_%s_%s' % (case_id, type_id), case, seed_type)  # pylint: disable=g-complex-comprehension
-      for type_id, seed_type in enumerate(SEED_TYPES)
+      ('_%s_%s_%s' % (case[0], seed_type.name, case_id), case, seed_type)  # pylint: disable=g-complex-comprehension
+      for seed_type in SEED_TYPES
       for case_id, case in enumerate(gamma_cases()))
   @test_util.disable_tfrt('tensorflow::DirectSession::Run crashes. b/156187396')
   def testDeterminismGamma(self, case, seed_type):
+    if get_device().device_type == 'GPU':
+      # This test was passing before because soft placement silently picked the
+      # CPU kernels.
+      self.skipTest('Lacking GPU kernel')
+    if get_device().device_type in ('XLA_GPU', 'XLA_CPU'):
+      # This test was passing before because soft placement silently picked the
+      # CPU kernels.
+      self.skipTest('Lacking XLA kernel')
     self._test_determinism(case, seed_type)
 
   @parameterized.named_parameters(
-      ('_%s_%s' % (case_id, type_id), case, seed_type)  # pylint: disable=g-complex-comprehension
-      for type_id, seed_type in enumerate(SEED_TYPES)
+      ('_%s_%s_%s' % (case[0], seed_type.name, case_id), case, seed_type)  # pylint: disable=g-complex-comprehension
+      for seed_type in SEED_TYPES
       for case_id, case in enumerate(poisson_cases()))
   @test_util.disable_tfrt('tensorflow::DirectSession::Run crashes. b/156187396')
   def testDeterminismPoisson(self, case, seed_type):
+    if get_device().device_type == 'GPU':
+      # This test was passing before because soft placement silently picked the
+      # CPU kernels.
+      self.skipTest('Lacking GPU kernel')
+    if get_device().device_type in ('XLA_GPU', 'XLA_CPU'):
+      # This test was passing before because soft placement silently picked the
+      # CPU kernels.
+      self.skipTest('Lacking XLA kernel')
     self._test_determinism(case, seed_type)
+
+  @test_util.run_v2_only
+  def testGetKeyCounterAlg(self):
+    seed = [1, 2]
+    key, counter = gen_stateless_random_ops_v2.stateless_random_get_key_counter(
+        seed)
+    self.assertAllEqual(key.shape, [1])
+    self.assertAllEqual(counter.shape, [2])
+    alg = gen_stateless_random_ops_v2.stateless_random_get_alg()
+    self.assertAllEqual(alg.shape, [])
 
   def assertDTypeEqual(self, a, b):
     self.assertEqual(dtypes.as_dtype(a), dtypes.as_dtype(b))
@@ -327,4 +483,6 @@ class StatelessOpsTest(test.TestCase, parameterized.TestCase):
 
 
 if __name__ == '__main__':
+  config.set_soft_device_placement(False)
+  context.context().enable_xla_devices()
   test.main()

@@ -25,8 +25,10 @@ import six
 from tensorflow.python import _pywrap_utils
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("__internal__.CompositeTensor", v1=[])
 @six.add_metaclass(abc.ABCMeta)
 class CompositeTensor(object):
   """Abstract base class for Tensor-like objects that are composed from Tensors.

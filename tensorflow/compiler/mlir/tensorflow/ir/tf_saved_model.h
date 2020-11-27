@@ -40,9 +40,15 @@ class TensorFlowSavedModelDialect : public Dialect {
   static StringRef getDialectNamespace() { return "tf_saved_model"; }
 };
 
+}  // namespace tf_saved_model
+}  // namespace mlir
+
 // Declares the operations for this dialect using the generated header.
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h.inc"
+
+namespace mlir {
+namespace tf_saved_model {
 
 // Returns the list of exported names for `op`.
 // An empty list means `op` is not exported.
@@ -75,7 +81,7 @@ Type GetBoundInputArgTypeFor(mlir::Operation *op);
 SessionInitializerOp GetSessionInitializerOp(mlir::ModuleOp op);
 
 // Returns the exported name for the session initializer function.
-llvm::Optional<StringRef> GetSessionInitializerExportedName(mlir::ModuleOp op);
+SmallVector<StringRef, 2> GetSessionInitializerExportedName(mlir::ModuleOp op);
 
 }  // namespace tf_saved_model
 }  // namespace mlir

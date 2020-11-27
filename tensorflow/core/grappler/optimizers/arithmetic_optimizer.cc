@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/graph_topology_view.h"
 #include "tensorflow/core/grappler/grappler_item.h"
@@ -666,7 +667,8 @@ class AddOpsRewriteStage : public ArithmeticNodesGroupOptimizerStage {
 
     // add new Add node
     NodeDef* node = AddEmptyNode(node_name);
-    node->set_op("Add");
+    node->set_op((dtype == DT_STRING || dtype == DT_STRING_REF) ? "Add"
+                                                                : "AddV2");
     node->set_device(root_node.device());
     (*node->mutable_attr())["T"].set_type(dtype);
     node->add_input(left.input);
@@ -783,7 +785,7 @@ class HoistCommonFactorOutOfAggregation : public ArithmeticOptimizerStage {
   // Get a name new inner Add node
   string InnerAddNodeName(const NodeDef* node) const {
     auto scope_and_name = ParseNodeScopeAndName(node->name());
-    return OptimizedNodeName(scope_and_name, "Add");
+    return OptimizedNodeName(scope_and_name, "AddV2");
   }
 
   // Determine the set of common factors if the input nodes are all Mul or
@@ -1361,7 +1363,7 @@ class RemoveNegationStage : public ArithmeticOptimizerStage {
       // a - (-b) = a + b or  a + (-b) = a - b
       ForwardControlDependencies(node, {y});
       ctx().node_map->UpdateInput(node->name(), node->input(1), y->input(0));
-      node->set_op(IsAdd(*node) ? "Sub" : "Add");
+      node->set_op(IsAdd(*node) ? "Sub" : "AddV2");
       node->set_input(1, y->input(0));
       updated = true;
     } else if (IsAdd(*node) && IsNeg(*x)) {
@@ -1956,7 +1958,7 @@ class RemoveRedundantReshapeOrBroadcastTo : public ArithmeticOptimizerStage {
     TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &input));
 
     // 1. Bypass reshape followed by reshape.
-    if (IsReshape(*node) && IsReshape(*input)) {
+    if (IsReshape(*node) && IsReshape(*input) && !IsInPreserveSet(*input)) {
       ForwardControlDependencies(node, {input});
       node->set_input(0, input->input(0));
       ctx().node_map->UpdateInput(node->name(), input->name(), input->input(0));

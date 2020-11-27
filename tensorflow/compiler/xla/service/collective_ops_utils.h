@@ -82,22 +82,6 @@ struct RendezvousKey {
         collective_op_kind(collective_op_kind),
         op_id(op_id) {}
 
-  static RendezvousKey FromInstruction(
-      const RunId& run_id, std::vector<GlobalDeviceId> global_devices,
-      int num_local_participants, const HloInstruction* instr) {
-    CollectiveOpKind collective_op_kind;
-    int64 op_id;
-
-    std::tie(collective_op_kind, op_id) =
-        instr->channel_id().has_value()
-            ? std::make_pair(kCrossModule, instr->channel_id().value())
-            : std::make_pair(
-                  kCrossReplica,
-                  static_cast<int64>(instr->GetModule()->unique_id()));
-    return RendezvousKey(run_id, std::move(global_devices),
-                         num_local_participants, collective_op_kind, op_id);
-  }
-
   template <typename H>
   friend H AbslHashValue(H h, const RendezvousKey& k) {
     return H::combine(std::move(h), k.run_id, k.global_devices,
@@ -181,7 +165,7 @@ struct AllReduceParticipantData : ParticipantData {
     PrimitiveType primitive_type;
   };
   std::vector<Buffer> buffers;
-  const NcclUniqueIdCallback* nccl_unique_id_callback = nullptr;
+  const gpu::NcclUniqueIdCallback* nccl_unique_id_callback = nullptr;
 
   ReductionKind reduction_kind;
 

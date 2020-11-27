@@ -53,6 +53,37 @@ struct QuantizeAndDequantizePerChannelFunctor<GPUDevice, T> {
   }
 };
 
+template <typename T>
+struct QuantizeAndDequantizeOneScaleGradientFunctor<GPUDevice, T> {
+  void operator()(const GPUDevice& d, typename TTypes<T>::ConstFlat gradient,
+                  typename TTypes<T>::ConstFlat input,
+                  typename TTypes<T>::ConstScalar input_min_tensor,
+                  typename TTypes<T>::ConstScalar input_max_tensor,
+                  typename TTypes<T>::Flat input_backprop,
+                  typename TTypes<T>::Scalar input_min_backprop,
+                  typename TTypes<T>::Scalar input_max_backprop) {
+    QuantizeAndDequantizeOneScaleGradientImpl<GPUDevice, T>::Compute(
+        d, gradient, input, input_min_tensor, input_max_tensor, input_backprop,
+        input_min_backprop, input_max_backprop);
+  }
+};
+
+template <typename T>
+struct QuantizeAndDequantizePerChannelGradientFunctor<GPUDevice, T> {
+  void operator()(const GPUDevice& d,
+                  typename TTypes<T, 3>::ConstTensor gradient,
+                  typename TTypes<T, 3>::ConstTensor input,
+                  const Tensor* input_min_tensor,
+                  const Tensor* input_max_tensor,
+                  typename TTypes<T, 3>::Tensor input_backprop,
+                  typename TTypes<T>::Flat input_min_backprop,
+                  typename TTypes<T>::Flat input_max_backprop) {
+    QuantizeAndDequantizePerChannelGradientImpl<GPUDevice, T>::Compute(
+        d, gradient, input, input_min_tensor, input_max_tensor, input_backprop,
+        input_min_backprop, input_max_backprop);
+  }
+};
+
 }  // end namespace functor
 
 // Instantiate the GPU implementation for float and double.
@@ -64,6 +95,15 @@ template struct functor::QuantizeAndDequantizePerChannelFunctor<GPUDevice,
                                                                 float>;
 template struct functor::QuantizeAndDequantizePerChannelFunctor<GPUDevice,
                                                                 double>;
+
+template struct functor::QuantizeAndDequantizeOneScaleGradientFunctor<GPUDevice,
+                                                                      float>;
+template struct functor::QuantizeAndDequantizeOneScaleGradientFunctor<GPUDevice,
+                                                                      double>;
+template struct functor::QuantizeAndDequantizePerChannelGradientFunctor<
+    GPUDevice, float>;
+template struct functor::QuantizeAndDequantizePerChannelGradientFunctor<
+    GPUDevice, double>;
 
 }  // end namespace tensorflow
 

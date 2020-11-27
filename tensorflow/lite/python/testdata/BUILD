@@ -1,5 +1,6 @@
 load("//tensorflow/lite:build_def.bzl", "tf_to_tflite")
-load("//tensorflow:tensorflow.bzl", "pybind_extension")
+load("//tensorflow:tensorflow.bzl", "pybind_extension", "tf_custom_op_py_library")
+load("//tensorflow:tensorflow.bzl", "tf_custom_op_library", "tf_gen_op_wrapper_py")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -26,7 +27,7 @@ tf_to_tflite(
         "--input_arrays=input",
         "--output_arrays=output",
         "--inference_type=QUANTIZED_UINT8",
-        "--std_values=1",
+        "--std_dev_values=1",
         "--mean_values=0",
         "--default_ranges_min=0",
         "--default_ranges_max=255",
@@ -43,11 +44,22 @@ tf_to_tflite(
     ],
 )
 
+tf_to_tflite(
+    name = "gather_string_0d",
+    src = "gather_0d.pbtxt",
+    out = "gather_string_0d.tflite",
+    options = [
+        "--input_arrays=input,indices",
+        "--output_arrays=output",
+    ],
+)
+
 filegroup(
     name = "interpreter_test_data",
     srcs = [
         "pc_conv.bin",
         ":gather_string",
+        ":gather_string_0d",
         ":permute_float",
         ":permute_uint8",
     ],
@@ -72,6 +84,43 @@ cc_binary(
     linkstatic = 1,
     deps = [
         ":test_delegate",
+    ],
+)
+
+cc_library(
+    name = "double_op_and_kernels",
+    testonly = 1,
+    srcs = ["double_op.cc"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+    alwayslink = 1,
+)
+
+tf_custom_op_library(
+    name = "_double_op.so",
+    testonly = 1,
+    srcs = ["double_op.cc"],
+)
+
+tf_gen_op_wrapper_py(
+    name = "gen_double_op_wrapper",
+    testonly = 1,
+    out = "double_op_wrapper.py",
+    deps = [":double_op_and_kernels"],
+)
+
+tf_custom_op_py_library(
+    name = "double_op",
+    testonly = 1,
+    srcs = ["double_op.py"],
+    dso = [":_double_op.so"],
+    kernels = [":double_op_and_kernels"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":gen_double_op_wrapper",
+        "//tensorflow/python:framework_for_generated_wrappers",
     ],
 )
 

@@ -19,9 +19,11 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/process_util.h"
+#include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/cancellable_call.h"
 #include "tensorflow/core/distributed_runtime/request_id.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/platform/protobuf_internal.h"
 #include "tensorflow/core/protobuf/transport_options.pb.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
@@ -78,12 +80,12 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
     const string& key, Device* to_device, DeviceContext* to_device_ctx,
     const AllocatorAttributes& to_alloc_attr, Tensor* to_tensor,
     const DeviceLocality& client_locality, int dev_to_dev_stream_index,
-    const StatusCallback& done) {
+    CancellationManager* cancellation_manager, const StatusCallback& done) {
   if (peer_is_local) {
     CollectiveRemoteAccessLocal::RecvFromPeer(
         peer_device, peer_task, peer_is_local, key, to_device, to_device_ctx,
         to_alloc_attr, to_tensor, client_locality, dev_to_dev_stream_index,
-        done);
+        cancellation_manager, done);
     return;
   }
 
@@ -160,30 +162,33 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
     done(s);
   };
 
-  // Logic to execute once we have the device attributes for the server-side
-  // device.
-  auto dev_attributes_callback = [this, state, peer_device, peer_task, key,
-                                  to_device, to_device_ctx, to_alloc_attr,
-                                  to_tensor, client_locality,
-                                  recv_buf_callback](const Status& s) {
-    if (!s.ok()) {
-      recv_buf_callback(s);
-    } else {
-      state->call.reset(new RecvBufCall(
-          step_id_, peer_device, peer_task, key, to_device, to_device_ctx,
-          to_alloc_attr, to_tensor, client_locality, state->server_attributes,
-          &cancel_mgr_, worker_cache_));
-      state->call->Start(recv_buf_callback);
-    }
-  };
-
-  dev_resolver_->GetDeviceAttributesAsync(peer_device, peer_task,
-                                          &state->server_attributes,
-                                          dev_attributes_callback);
+  Status s = dev_resolver_->GetDeviceAttributes(peer_device,
+                                                &state->server_attributes);
+  if (!s.ok()) {
+    recv_buf_callback(s);
+    return;
+  }
+  state->call.reset(new RecvBufCall(
+      step_id_, peer_device, peer_task, key, to_device, to_device_ctx,
+      to_alloc_attr, to_tensor, client_locality, state->server_attributes,
+      cancellation_manager, worker_cache_));
+  CancellationToken abortion_token =
+      abortion_cancel_mgr_.get_cancellation_token();
+  bool already_aborted = !abortion_cancel_mgr_.RegisterCallback(
+      abortion_token, [state] { state->call->Cancel(); });
+  if (already_aborted) {
+    recv_buf_callback(errors::Cancelled("collective ops already aborted"));
+  } else {
+    state->call->Start([this, abortion_token,
+                        done = std::move(recv_buf_callback)](const Status& s) {
+      abortion_cancel_mgr_.DeregisterCallback(abortion_token);
+      done(s);
+    });
+  }
 }
 
 void CollectiveRemoteAccessDistributed::CheckPeerHealth(
-    const string& peer_task, const StatusCallback& done) {
+    const string& peer_task, int64 timeout_in_ms, const StatusCallback& done) {
   if (peer_task == task_name_) {
     // Fast path if the peer is the worker itself.
     done(Status::OK());
@@ -200,16 +205,19 @@ void CollectiveRemoteAccessDistributed::CheckPeerHealth(
                                  "valid form is /job:xxx/replica:0/task:N"));
     return;
   }
+  auto opts = new CallOptions();
+  opts->SetTimeout(timeout_in_ms);
   auto req = new GetStatusRequest();
   auto resp = new GetStatusResponse();
-  // We're not using Cancellable call because GetStatusAsync doesn't support
-  // cancellation yet.
+  // Note that fail_fast is not always respected, so we set a timeout as well.
+  // We're not using CancellableCall since check health shouldn't need to be
+  // cancelled.
   wi->GetStatusAsync(
-      req, resp, /*fail_fast*/ true,
-      [this, req, resp, wi, peer_task, done](Status s) {
+      opts, req, resp, /*fail_fast*/ true,
+      [this, opts, req, resp, wi, peer_task, done](Status s) {
         std::vector<DeviceAttributes> cached_attrs;
         if (s.ok()) {
-          s = dev_resolver_->GetTaskCached(peer_task, &cached_attrs);
+          s = dev_resolver_->GetAllDeviceAttributes(peer_task, &cached_attrs);
         }
         if (s.ok()) {
           absl::flat_hash_set<uint64> remote_incarnations;
@@ -231,6 +239,7 @@ void CollectiveRemoteAccessDistributed::CheckPeerHealth(
           // first collective.
           s = Status::OK();
         }
+        delete opts;
         delete req;
         delete resp;
         worker_cache_->ReleaseWorker(peer_task, wi);
@@ -240,7 +249,7 @@ void CollectiveRemoteAccessDistributed::CheckPeerHealth(
 
 void CollectiveRemoteAccessDistributed::StartAbort(const Status& s) {
   CollectiveRemoteAccessLocal::StartAbort(s);
-  cancel_mgr_.StartCancel();
+  abortion_cancel_mgr_.StartCancel();
 }
 
 }  // namespace tensorflow

@@ -326,6 +326,28 @@ Status RemoveIdentityNodesForArgRetval(Graph* g) {
   return Status::OK();
 }
 
+// Updates the TPUREPLICATE_MIRRORED_VAR_INDICES_ATTR when
+// 'additional_per_replicate_inputs' are added to the inputs of `xla_node`.
+Status UpdateMirroredVariableIndices(int additional_per_replica_inputs,
+                                     Node* xla_node) {
+  std::vector<int> mirrored_variable_indices;
+  if (xla_node->attrs().Find(TPUREPLICATE_MIRRORED_VAR_INDICES_ATTR) !=
+      nullptr) {
+    TF_RETURN_IF_ERROR(GetNodeAttr(xla_node->def(),
+                                   TPUREPLICATE_MIRRORED_VAR_INDICES_ATTR,
+                                   &mirrored_variable_indices));
+  }
+
+  if (!mirrored_variable_indices.empty()) {
+    for (int i = 0; i < mirrored_variable_indices.size(); ++i)
+      mirrored_variable_indices[i] += additional_per_replica_inputs;
+    xla_node->ClearAttr(TPUREPLICATE_MIRRORED_VAR_INDICES_ATTR);
+    xla_node->AddAttr(TPUREPLICATE_MIRRORED_VAR_INDICES_ATTR,
+                      mirrored_variable_indices);
+  }
+  return Status::OK();
+}
+
 // Move outside compilation nodes at the beginning of XLA computation to host.
 // For XLA computation graph, we will add new _Arg nodes to replace those
 // outside compilation nodes.
@@ -544,6 +566,9 @@ Status MoveHeadOutsideCompilationToHost(
   }
   xla_node->ClearAttr("Tinputs");
   xla_node->AddAttr("Tinputs", new_input_types);
+
+  TF_RETURN_IF_ERROR(UpdateMirroredVariableIndices(
+      /*additional_per_replica_inputs=*/oc_output_edges.size(), xla_node));
 
   int new_variable_start_index =
       num_new_per_replica_input_types / num_replicas + num_distributed_vars +

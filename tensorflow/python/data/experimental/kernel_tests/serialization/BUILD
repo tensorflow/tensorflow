@@ -346,6 +346,7 @@ tf_py_test(
         "no_oss",
         "no_pip",
         "no_windows",
+        "noasan",  # TODO(b/337374867) fails with -fsanitize=null
     ],
     deps = [
         ":dataset_serialization_test_base",

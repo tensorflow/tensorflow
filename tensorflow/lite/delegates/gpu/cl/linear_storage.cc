@@ -23,122 +23,6 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-TensorLinearDescriptor::TensorLinearDescriptor(TensorLinearDescriptor&& desc)
-    : GPUObjectDescriptor(std::move(desc)),
-      storage_type(desc.storage_type),
-      element_type(desc.element_type),
-      memory_type(desc.memory_type),
-      size(desc.size),
-      data(std::move(desc.data)) {}
-
-TensorLinearDescriptor& TensorLinearDescriptor::operator=(
-    TensorLinearDescriptor&& desc) {
-  if (this != &desc) {
-    std::swap(storage_type, desc.storage_type);
-    std::swap(element_type, desc.element_type);
-    std::swap(memory_type, desc.memory_type);
-    std::swap(size, desc.size);
-    data = std::move(desc.data);
-    GPUObjectDescriptor::operator=(std::move(desc));
-  }
-  return *this;
-}
-
-void TensorLinearDescriptor::Release() { data.clear(); }
-
-GPUResources TensorLinearDescriptor::GetGPUResources() const {
-  GPUResources resources;
-  resources.ints.push_back("length");
-  if (storage_type == LinearStorageType::BUFFER) {
-    GPUBufferDescriptor desc;
-    desc.data_type = element_type;
-    desc.access_type = access_type_;
-    desc.element_size = 4;
-    desc.memory_type = memory_type;
-    resources.buffers.push_back({"buffer", desc});
-  } else {
-    GPUImage2DDescriptor desc;
-    desc.data_type = element_type;
-    desc.access_type = access_type_;
-    resources.images2d.push_back({"tex2d", desc});
-  }
-  return resources;
-}
-
-absl::Status TensorLinearDescriptor::PerformSelector(
-    const std::string& selector, const std::vector<std::string>& args,
-    const std::vector<std::string>& template_args, std::string* result) const {
-  if (selector == "Length") {
-    *result = "length";
-    return absl::OkStatus();
-  } else if (selector == "Read") {
-    return PerformReadSelector(args, result);
-  } else if (selector == "GetPtr") {
-    if (storage_type != LinearStorageType::BUFFER) {
-      return absl::InvalidArgumentError(
-          "GetPtr selector supported for LinearStorageType::BUFFER only.");
-    }
-    *result = "buffer";
-    return absl::OkStatus();
-  } else {
-    return absl::NotFoundError(absl::StrCat(
-        "TensorLinearDescriptor don't have selector with name - ", selector));
-  }
-}
-
-absl::Status TensorLinearDescriptor::PerformReadSelector(
-    const std::vector<std::string>& args, std::string* result) const {
-  if (args.size() != 1) {
-    return absl::NotFoundError(
-        absl::StrCat("TensorLinearDescriptor Read require one argument, but ",
-                     args.size(), " was passed"));
-  }
-  if (storage_type == LinearStorageType::BUFFER) {
-    *result = absl::StrCat("buffer[", args[0], "]");
-    return absl::OkStatus();
-  } else {
-    const std::string read =
-        element_type == DataType::FLOAT16 ? "read_imageh" : "read_imagef";
-    *result = absl::StrCat(read, "(tex2d, smp_none, (int2)(", args[0], ", 0))");
-    return absl::OkStatus();
-  }
-}
-
-absl::Status TensorLinearDescriptor::CreateGPUObject(
-    CLContext* context, GPUObjectPtr* result) const {
-  LinearStorage gpu_storage;
-  RETURN_IF_ERROR(gpu_storage.CreateFromTensorLinearDescriptor(*this, context));
-  *result = absl::make_unique<LinearStorage>(std::move(gpu_storage));
-  return absl::OkStatus();
-}
-
-void TensorLinearDescriptor::UploadLinearData(
-    const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& src,
-    int aligned_size) {
-  size = aligned_size == 0 ? DivideRoundUp(src.shape.v, 4) : aligned_size;
-  if (element_type == DataType::FLOAT32) {
-    data.resize(size * sizeof(float) * 4);
-    float* gpu_data = reinterpret_cast<float*>(data.data());
-    for (int i = 0; i < size * 4; ++i) {
-      if (i < src.shape.v) {
-        gpu_data[i] = src.data[i];
-      } else {
-        gpu_data[i] = 0.0f;
-      }
-    }
-  } else {
-    data.resize(size * sizeof(half) * 4);
-    half* gpu_data = reinterpret_cast<half*>(data.data());
-    for (int i = 0; i < size * 4; ++i) {
-      if (i < src.shape.v) {
-        gpu_data[i] = src.data[i];
-      } else {
-        gpu_data[i] = 0.0f;
-      }
-    }
-  }
-}
-
 void LinearStorage::Release() {
   if (memory_) {
     clReleaseMemObject(memory_);
@@ -204,17 +88,9 @@ absl::Status LinearStorage::CreateFromTensorLinearDescriptor(
     return CreateCLBuffer(context->context(), depth_ * float4_size, read_only,
                           data_ptr, &memory_);
   } else {
-    return CreateFloatRGBAImage2D(context->context(), depth_, 1,
-                                  desc.element_type, data_ptr, &memory_);
-  }
-}
-
-LinearStorageType DeduceLinearStorageType(
-    TensorStorageType tensor_storage_type) {
-  if (tensor_storage_type == TensorStorageType::BUFFER) {
-    return LinearStorageType::BUFFER;
-  } else {
-    return LinearStorageType::TEXTURE_2D;
+    return CreateRGBAImage2D(context->context(), depth_, 1,
+                             DataTypeToChannelType(desc.element_type), data_ptr,
+                             &memory_);
   }
 }
 

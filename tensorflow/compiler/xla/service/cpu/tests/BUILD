@@ -1,6 +1,8 @@
 # Description:
 #    Tests for LLVM-based CPU backend for XLA.
 
+load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(

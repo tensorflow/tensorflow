@@ -785,6 +785,10 @@ tf_module {
     argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "size"
+    argspec: "args=[\'x\', \'axis\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "sort"
     argspec: "args=[\'a\', \'axis\', \'kind\', \'order\'], varargs=None, keywords=None, defaults=[\'-1\', \'quicksort\', \'None\'], "
   }

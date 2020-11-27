@@ -64,9 +64,9 @@ limitations under the License.
 #include "tensorflow/core/tpu/graph_rewrite/distributed_tpu_rewrite_pass_internal.h"
 #include "tensorflow/core/tpu/graph_rewrite/host_training_loop_optimization_util.h"
 #include "tensorflow/core/tpu/graph_rewrite/incomplete_nodedef_builder.h"
-#include "tensorflow/core/tpu/kernels/tpu_util_c_api.h"
 #include "tensorflow/core/tpu/tpu_compile_interface.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
+#include "tensorflow/core/tpu/tpu_ops_c_api.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/dump_graph.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
@@ -653,14 +653,75 @@ struct ShardedInputInfo {
   std::vector<NodeOut> sharded_inputs;
 };
 
+// Adds pad node after split node to graph for uneven sharding tiled inputs.
+// |graph| owns the returned Node* instance.
+xla::StatusOr<Node*> CreatePadNode(const int padding, const int num_dims,
+                                   const int split_dim, DataType dtype,
+                                   Node* control_predecessor, Node* split_node,
+                                   const int split_index, Graph* graph) {
+  // Add paddings node.
+  Status s;
+  NodeDef paddings_def;
+  paddings_def.set_name(
+      graph->NewName(absl::StrCat(split_node->name(), "/paddings")));
+  paddings_def.set_op("Const");
+  AddNodeAttr("dtype", DT_INT32, &paddings_def);
+  paddings_def.set_device(split_node->assigned_device_name());
+  TensorProto sizes_tensor_proto;
+  sizes_tensor_proto.set_dtype(DT_INT32);
+  for (int i = 0; i < num_dims; ++i) {
+    sizes_tensor_proto.add_int_val(0);
+    if (i == split_dim) {
+      sizes_tensor_proto.add_int_val(padding);
+    } else {
+      sizes_tensor_proto.add_int_val(0);
+    }
+  }
+  TensorShape sizes_shape({num_dims, 2});
+  sizes_shape.AsProto(sizes_tensor_proto.mutable_tensor_shape());
+  AddNodeAttr("value", sizes_tensor_proto, &paddings_def);
+  Node* paddings_node = graph->AddNode(paddings_def, &s);
+  TF_RETURN_IF_ERROR(s);
+
+  // Add Pad node.
+  NodeDef pad_def;
+  pad_def.set_name(graph->NewName(
+      absl::StrCat(split_node->name(), "/pad_shard_", split_index)));
+  pad_def.set_op("Pad");
+  pad_def.set_device(split_node->assigned_device_name());
+  AddNodeAttr("T", dtype, &pad_def);
+  AddNodeAttr("Tpaddings", DT_INT32, &pad_def);
+  pad_def.add_input(absl::StrCat(split_node->name(), ":", split_index));
+  pad_def.add_input(absl::StrCat(paddings_node->name(), ":0"));
+  Node* pad_node = graph->AddNode(pad_def, &s);
+  pad_node->set_assigned_device_name(split_node->assigned_device_name());
+  TF_RETURN_IF_ERROR(s);
+  // Add edges for pad node.
+  graph->AddEdge(split_node, split_index, pad_node, 0);
+  graph->AddEdge(paddings_node, 0, pad_node, 1);
+  graph->AddControlEdge(control_predecessor, pad_node);
+  return pad_node;
+}
+
 // Adds split node and split dimension node to graph for sharding tiled inputs.
 // |graph| owns the returned Node* instance.
-xla::StatusOr<Node*> CreateSplitNode(int num_splits, int dim,
-                                     int orig_src_output, DataType dtype,
+xla::StatusOr<Node*> CreateSplitNode(const int num_splits, const int dim,
+                                     const int num_dims, const int64 padding,
+                                     const int orig_src_output, DataType dtype,
                                      absl::string_view name_prefix,
                                      Node* control_predecessor, Node* orig_src,
                                      Graph* graph) {
   const std::string input_assigned_device = orig_src->assigned_device_name();
+  Node* to_split_node = orig_src;
+  int to_split_index = orig_src_output;
+  if (padding > 0) {
+    TF_ASSIGN_OR_RETURN(
+        Node * pad_node,
+        CreatePadNode(padding, num_dims, dim, dtype, control_predecessor,
+                      orig_src, orig_src_output, graph));
+    to_split_node = pad_node;
+    to_split_index = 0;
+  }
 
   // Add a split dimension node.
   NodeDef split_dim_def;
@@ -686,28 +747,48 @@ xla::StatusOr<Node*> CreateSplitNode(int num_splits, int dim,
   AddNodeAttr("num_split", num_splits, &split_def);
   AddNodeAttr("T", dtype, &split_def);
   split_def.add_input(absl::StrCat(split_dim_node->name(), ":0"));
-  split_def.add_input(absl::StrCat(orig_src->name(), ":", orig_src_output));
+  split_def.add_input(absl::StrCat(to_split_node->name(), ":", to_split_index));
   Node* split_node = graph->AddNode(split_def, &s);
-  split_node->set_assigned_device_name(input_assigned_device);
   TF_RETURN_IF_ERROR(s);
 
+  split_node->set_assigned_device_name(input_assigned_device);
+
+  // If colocate the newly created split op to source node of input to TPU
+  // computation.
+  split_node->AddAttr(kColocationAttrName,
+                      std::vector<string>{absl::StrCat(kColocationGroupPrefix,
+                                                       orig_src->name())});
+
   graph->AddEdge(split_dim_node, 0, split_node, 0);
-  graph->AddEdge(orig_src, orig_src_output, split_node, 1);
+  graph->AddEdge(to_split_node, to_split_index, split_node, 1);
 
   // Add a control dependency from `control_predecessor` to newly created
   // constant node. This ensures that newly added split/split dim
   // nodes are placed inside correct while loop frames when TPUExecute
   // node is inside a host training loop.
   graph->AddControlEdge(control_predecessor, split_dim_node);
-
   return split_node;
+}
+
+int64 GetPadding(const int split_dim, const int num_splits,
+                 const PartialTensorShape& partial_tensor_shape) {
+  // If dim dimension is not defined, no uneven sharding support.
+  if (partial_tensor_shape.dim_size(split_dim) <= 0) {
+    return 0;
+  }
+  int64 per_split_size = tensorflow::MathUtil::CeilOfRatio<int64>(
+      partial_tensor_shape.dim_size(split_dim), num_splits);
+  int64 total_padding =
+      per_split_size * num_splits - partial_tensor_shape.dim_size(split_dim);
+  return total_padding;
 }
 
 // Creates a set of splits nodes that shards tiled input node in graph.
 xla::StatusOr<ShardedInputInfo> CreateOrGetSplitNodesForInputSharding(
     const xla::OpSharding& sharding, int orig_arg_num, DataType dtype,
-    int replica_id, int orig_src_output, Node* orig_src,
-    Node* control_predecessor, Graph* graph,
+    const PartialTensorShape& partial_tensor_shape, int replica_id,
+    int orig_src_output, Node* orig_src, Node* control_predecessor,
+    Graph* graph,
     std::map<ShardedInputIndex, ShardedInputInfo>*
         arg_index_to_sharded_input_map) {
   ShardedInputIndex input_index{replica_id, orig_arg_num};
@@ -738,6 +819,7 @@ xla::StatusOr<ShardedInputInfo> CreateOrGetSplitNodesForInputSharding(
 
   auto sharding_it = split_dimension_map.begin();
   std::queue<Node*> split_nodes_for_dimension;
+  absl::flat_hash_map<Node*, int> node_to_split_dim;
   int split_dimension = sharding_it->first;
   int num_split = sharding_it->second;
 
@@ -747,13 +829,17 @@ xla::StatusOr<ShardedInputInfo> CreateOrGetSplitNodesForInputSharding(
   // that split the input data at ith dimension.
   TF_ASSIGN_OR_RETURN(
       Node * root_split_node,
-      CreateSplitNode(num_split, split_dimension, orig_src_output, dtype,
-                      absl::StrCat("sharded_input/replica_", replica_id,
-                                   "_dim_", split_dimension),
-                      control_predecessor, orig_src, graph));
+      CreateSplitNode(
+          num_split, split_dimension, partial_tensor_shape.dims(),
+          GetPadding(split_dimension, num_split, partial_tensor_shape),
+          orig_src_output, dtype,
+          absl::StrCat("sharded_input/replica_", replica_id, "_dim_",
+                       split_dimension),
+          control_predecessor, orig_src, graph));
   sharding_it++;
 
   split_nodes_for_dimension.emplace(root_split_node);
+  node_to_split_dim[root_split_node] = split_dimension;
 
   while (sharding_it != split_dimension_map.end()) {
     split_dimension = sharding_it->first;
@@ -767,11 +853,15 @@ xla::StatusOr<ShardedInputInfo> CreateOrGetSplitNodesForInputSharding(
            ++src_output_index) {
         TF_ASSIGN_OR_RETURN(
             Node * split_node,
-            CreateSplitNode(num_split, split_dimension, src_output_index, dtype,
-                            absl::StrCat("sharded_input/replica_", replica_id,
-                                         "_dim_", split_dimension),
-                            control_predecessor, input_split_node, graph));
+            CreateSplitNode(
+                num_split, split_dimension, partial_tensor_shape.dims(),
+                GetPadding(split_dimension, num_split, partial_tensor_shape),
+                src_output_index, dtype,
+                absl::StrCat("sharded_input/replica_", replica_id, "_dim_",
+                             split_dimension),
+                control_predecessor, input_split_node, graph));
         split_nodes_for_dimension.emplace(split_node);
+        node_to_split_dim[split_node] = split_dimension;
       }
     }
     sharding_it++;
@@ -856,18 +946,82 @@ xla::StatusOr<Node*> CreateConcatNode(int dim, int num_splits, DataType dtype,
   return concat_node;
 }
 
+// Adds slice node after concat node to graph for uneven sharding tiled inputs.
+xla::StatusOr<Node*> CreateSliceNode(DataType dtype,
+                                     const PartialTensorShape& shape,
+                                     Node* concat_node,
+                                     const int concat_out_index, Graph* graph,
+                                     absl::string_view device) {
+  Status s;
+  // Add begin node for concat.
+  NodeDef begin_def;
+  begin_def.set_name(
+      graph->NewName(absl::StrCat(concat_node->name(), "/slice_begin")));
+  begin_def.set_op("Const");
+  AddNodeAttr("dtype", DT_INT32, &begin_def);
+  begin_def.set_device(std::string(device));
+  TensorProto begin_tensor_proto;
+  begin_tensor_proto.set_dtype(DT_INT32);
+  for (int i = 0; i < shape.dims(); ++i) {
+    begin_tensor_proto.add_int_val(0);
+  }
+  TensorShape begin_shape({shape.dims()});
+  begin_shape.AsProto(begin_tensor_proto.mutable_tensor_shape());
+  AddNodeAttr("value", begin_tensor_proto, &begin_def);
+  Node* begin_node = graph->AddNode(begin_def, &s);
+  TF_RETURN_IF_ERROR(s);
+
+  // Add size node.
+  NodeDef size_def;
+  size_def.set_name(
+      graph->NewName(absl::StrCat(concat_node->name(), "/slice_size")));
+  size_def.set_op("Const");
+  AddNodeAttr("dtype", DT_INT32, &size_def);
+  size_def.set_device(std::string(device));
+  TensorProto sizes_tensor_proto;
+  sizes_tensor_proto.set_dtype(DT_INT32);
+  for (int i = 0; i < shape.dims(); ++i) {
+    sizes_tensor_proto.add_int_val(shape.dim_size(i));
+  }
+  TensorShape sizes_shape({shape.dims()});
+  sizes_shape.AsProto(sizes_tensor_proto.mutable_tensor_shape());
+  AddNodeAttr("value", sizes_tensor_proto, &size_def);
+  Node* size_node = graph->AddNode(size_def, &s);
+  TF_RETURN_IF_ERROR(s);
+
+  // Add Slice node.
+  NodeDef slice_def;
+  slice_def.set_name(
+      graph->NewName(absl::StrCat(concat_node->name(), "/slice")));
+  slice_def.set_op("Slice");
+  slice_def.set_device(std::string(device));
+  AddNodeAttr("T", dtype, &slice_def);
+  AddNodeAttr("Index", DT_INT32, &slice_def);
+  slice_def.add_input(absl::StrCat(concat_node->name(), ":", concat_out_index));
+  slice_def.add_input(absl::StrCat(begin_node->name(), ":0"));
+  slice_def.add_input(absl::StrCat(size_node->name(), ":0"));
+  Node* slice_node = graph->AddNode(slice_def, &s);
+  TF_RETURN_IF_ERROR(s);
+  // Add edges for slice node.
+  graph->AddEdge(concat_node, concat_out_index, slice_node, 0);
+  graph->AddEdge(begin_node, 0, slice_node, 1);
+  graph->AddEdge(size_node, 0, slice_node, 2);
+  return slice_node;
+}
+
 // Creates a set of Concat nodes that aggregates sharded outputs from TPUExecute
 // nodes into a single output. Sharded outputs are concatenated along row major
 // order. That is, tiled output along 0th dimension will be concatenated last.
 xla::StatusOr<Node*> CreateConcatNodesForRetval(
-    const xla::OpSharding& sharding, DataType dtype, int replica_id,
+    const xla::OpSharding& sharding, DataType dtype,
+    const PartialTensorShape& inferred_shape, int replica_id,
     const std::vector<NodeOut>& orig_inputs, Graph* graph,
     absl::string_view device) {
   std::map<int, int> split_dimension_map;
   TF_RETURN_IF_ERROR(GetDimensionIndicesAndNumSplitsFromSharding(
       sharding, &split_dimension_map));
-
   std::vector<NodeOut> inputs_to_sharded_retval = orig_inputs;
+  bool has_paddings = false;
 
   for (auto it = split_dimension_map.rbegin(); it != split_dimension_map.rend();
        it++) {
@@ -891,12 +1045,21 @@ xla::StatusOr<Node*> CreateConcatNodesForRetval(
               dim, num_splits, dtype,
               absl::StrCat("sharded_output/replica_", replica_id, "_dim_", dim),
               inputs, graph, device));
+      int64 paddings = GetPadding(dim, num_splits, inferred_shape);
+      has_paddings |= paddings > 0;
       new_concat_nodes.emplace_back(NodeOut{concat_node, 0});
     }
     inputs_to_sharded_retval = new_concat_nodes;
   }
 
   TF_RET_CHECK(inputs_to_sharded_retval.size() == 1);
+  if (has_paddings) {
+    TF_ASSIGN_OR_RETURN(Node * slice_node,
+                        CreateSliceNode(dtype, inferred_shape,
+                                        inputs_to_sharded_retval.at(0).node,
+                                        /*concat_out_index*/ 0, graph, device));
+    return slice_node;
+  }
   return inputs_to_sharded_retval.at(0).node;
 }
 
@@ -2759,7 +2922,8 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
               TF_ASSIGN_OR_RETURN(
                   ShardedInputInfo sharded_input_info,
                   CreateOrGetSplitNodesForInputSharding(
-                      sharding, orig_arg_num, dtype, replica,
+                      sharding, orig_arg_num, dtype,
+                      arg_shapes[orig_arg_num].handle_shape, replica,
                       edge->src_output(), edge->src(), control_predecessor,
                       graph, &input_index_to_sharded_inputs));
               NodeOut split_node_and_index =
@@ -2840,7 +3004,8 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
                   ShardedInputInfo sharded_input_info,
                   CreateOrGetSplitNodesForInputSharding(
                       sharding, orig_arg_num,
-                      arg_shapes[orig_arg_num].handle_type, replica,
+                      arg_shapes[orig_arg_num].handle_type,
+                      arg_shapes[orig_arg_num].handle_shape, replica,
                       var_data.index, var_data.node, control_predecessor, graph,
                       &input_index_to_sharded_inputs));
               NodeOut split_node_and_index =
@@ -2927,8 +3092,9 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
           DataType dtype = e->src()->output_type(e->src_output());
           TF_ASSIGN_OR_RETURN(
               Node * concat_node,
-              CreateConcatNodesForRetval(sharding, dtype, replica, orig_inputs,
-                                         graph, /*device=*/""));
+              CreateConcatNodesForRetval(
+                  sharding, dtype, /*inferred_shape*/ PartialTensorShape(),
+                  replica, orig_inputs, graph, /*device=*/""));
 
           const Edge* edge = replicate_output_edges[output_num];
           Node* dst = edge->dst();
@@ -3009,8 +3175,9 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
             TF_ASSIGN_OR_RETURN(
                 Node * concat_node,
                 CreateConcatNodesForRetval(
-                    sharding, arg_shapes[orig_arg_num].handle_type, replica,
-                    orig_inputs, graph, device));
+                    sharding, arg_shapes[orig_arg_num].handle_type,
+                    arg_shapes[orig_arg_num].handle_shape, replica, orig_inputs,
+                    graph, device));
             // Populate VariableWrite.
             VariableWrite& write = variable_writes->at(core_variable_writes[i]);
             write.value = concat_node;

@@ -39,7 +39,9 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/verification_utils.h"
 #include "tensorflow/core/util/matmul_bcast.h"
 
 namespace mlir {
@@ -56,7 +58,7 @@ TF::TransposeOp createTransposeOp(Value value, Location loc,
       {static_cast<int32_t>(permutation.size())}, rewriter->getIntegerType(32));
   auto perm_attr = DenseElementsAttr::get(perm_type, permutation);
   auto perm_op = rewriter->create<ConstantOp>(loc, perm_type, perm_attr);
-  std::vector<int64_t> transposed_shape(shape.begin(), shape.end());
+  SmallVector<int64_t, 4> transposed_shape(shape.begin(), shape.end());
   for (int i = 0, end = shape.size(); i < end; ++i) {
     transposed_shape[i] = shape[permutation[i]];
   }
@@ -97,7 +99,7 @@ llvm::Optional<llvm::SmallDenseMap<char, int64_t>> EquationToMap(
     llvm::StringRef equation) {
   llvm::SmallDenseMap<char, int64_t> map;
   for (int64_t i = 0; i < equation.size(); ++i) {
-    if (!std::islower(equation[i]) && !std::isupper(equation[i])) {
+    if (!std::isalpha(equation[i])) {
       // Unsupported character in the equation.
       return llvm::None;
     }
@@ -135,7 +137,7 @@ llvm::Optional<EinsumDimensionNumbers> GetEinsumDimensionNumbers(
   auto out_map = out_map_or.getValue();
 
   EinsumDimensionNumbers dnums;
-  for (int64_t i = 0; i < lhs.size(); ++i) {
+  for (int64_t i = 0, e = lhs.size(); i < e; ++i) {
     auto rhs_index = rhs_map.find(lhs[i]);
     auto out_index = out_map.find(lhs[i]);
     if (rhs_index == rhs_map.end() && out_index == out_map.end()) {
@@ -148,7 +150,7 @@ llvm::Optional<EinsumDimensionNumbers> GetEinsumDimensionNumbers(
       dnums.lhs_rhs_out.emplace_back(i, rhs_index->second, out_index->second);
     }
   }
-  for (int64_t i = 0; i < rhs.size(); ++i) {
+  for (int64_t i = 0, e = rhs.size(); i < e; ++i) {
     auto lhs_index = lhs_map.find(rhs[i]);
     auto out_index = out_map.find(rhs[i]);
     if (lhs_index == lhs_map.end()) {
@@ -159,7 +161,7 @@ llvm::Optional<EinsumDimensionNumbers> GetEinsumDimensionNumbers(
       }
     }
   }
-  for (int64_t i = 0; i < out.size(); ++i) {
+  for (int64_t i = 0, e = out.size(); i < e; ++i) {
     auto lhs_index = lhs_map.find(out[i]);
     auto rhs_index = rhs_map.find(out[i]);
     if (lhs_index == lhs_map.end() && rhs_index == rhs_map.end()) {
@@ -182,36 +184,45 @@ std::vector<int64_t> inverseTransposeVector(
 // Computes the transpositions required to convert dnums to one supported by
 // tf.BatchMatmulV2 and returns the new set of dimension numbers with them.
 LogicalResult transposeForBatchMatmul(
-    const Location& loc, EinsumDimensionNumbers* dnums, Value* lhs, Value* rhs,
+    const Location& loc, EinsumDimensionNumbers& dnums, Value* lhs, Value* rhs,
     std::vector<int32_t>* out_inverse_transpose, PatternRewriter* rewriter) {
   std::vector<int32_t> lhs_transpose;
   std::vector<int32_t> rhs_transpose;
   std::vector<int32_t> out_transpose;
-  for (int64_t i = 0; i < dnums->lhs_rhs_out.size(); ++i) {
-    lhs_transpose.push_back(std::get<0>(dnums->lhs_rhs_out[i]));
-    rhs_transpose.push_back(std::get<1>(dnums->lhs_rhs_out[i]));
-    out_transpose.push_back(std::get<2>(dnums->lhs_rhs_out[i]));
-    dnums->lhs_rhs_out[i] = {i, i, i};
+  lhs_transpose.reserve(dnums.lhs_rhs_out.size() + dnums.lhs_out.size() +
+                        dnums.lhs_rhs.size());
+  rhs_transpose.reserve(dnums.lhs_rhs_out.size() + dnums.rhs_out.size() +
+                        dnums.lhs_rhs.size());
+  out_transpose.reserve(dnums.lhs_rhs_out.size() + dnums.lhs_out.size() +
+                        dnums.rhs_out.size());
+  for (int64_t i = 0, e = dnums.lhs_rhs_out.size(); i < e; ++i) {
+    lhs_transpose.push_back(std::get<0>(dnums.lhs_rhs_out[i]));
+    rhs_transpose.push_back(std::get<1>(dnums.lhs_rhs_out[i]));
+    out_transpose.push_back(std::get<2>(dnums.lhs_rhs_out[i]));
+    dnums.lhs_rhs_out[i] = std::make_tuple(i, i, i);
   }
 
-  for (int64_t i = 0; i < dnums->lhs_out.size(); ++i) {
-    lhs_transpose.push_back(std::get<0>(dnums->lhs_out[i]));
-    out_transpose.push_back(std::get<1>(dnums->lhs_out[i]));
-    dnums->lhs_out[i] = {lhs_transpose.size() - 1, out_transpose.size() - 1};
+  for (int64_t i = 0, e = dnums.lhs_out.size(); i < e; ++i) {
+    lhs_transpose.push_back(std::get<0>(dnums.lhs_out[i]));
+    out_transpose.push_back(std::get<1>(dnums.lhs_out[i]));
+    dnums.lhs_out[i] =
+        std::make_tuple(lhs_transpose.size() - 1, out_transpose.size() - 1);
   }
-  for (int64_t i = 0; i < dnums->lhs_rhs.size(); ++i) {
-    lhs_transpose.push_back(std::get<0>(dnums->lhs_rhs[i]));
-    rhs_transpose.push_back(std::get<1>(dnums->lhs_rhs[i]));
-    dnums->lhs_rhs[i] = {lhs_transpose.size() - 1, rhs_transpose.size() - 1};
+  for (int64_t i = 0, e = dnums.lhs_rhs.size(); i < e; ++i) {
+    lhs_transpose.push_back(std::get<0>(dnums.lhs_rhs[i]));
+    rhs_transpose.push_back(std::get<1>(dnums.lhs_rhs[i]));
+    dnums.lhs_rhs[i] =
+        std::make_tuple(lhs_transpose.size() - 1, rhs_transpose.size() - 1);
   }
-  for (int64_t i = 0; i < dnums->rhs_out.size(); ++i) {
-    rhs_transpose.push_back(std::get<0>(dnums->rhs_out[i]));
-    out_transpose.push_back(std::get<1>(dnums->rhs_out[i]));
-    dnums->rhs_out[i] = {rhs_transpose.size() - 1, out_transpose.size() - 1};
+  for (int64_t i = 0, e = dnums.rhs_out.size(); i < e; ++i) {
+    rhs_transpose.push_back(std::get<0>(dnums.rhs_out[i]));
+    out_transpose.push_back(std::get<1>(dnums.rhs_out[i]));
+    dnums.rhs_out[i] =
+        std::make_tuple(rhs_transpose.size() - 1, out_transpose.size() - 1);
   }
 
   out_inverse_transpose->resize(out_transpose.size());
-  for (int64_t i = 0; i < out_transpose.size(); ++i) {
+  for (int64_t i = 0, e = out_transpose.size(); i < e; ++i) {
     out_inverse_transpose->at(out_transpose[i]) = i;
   }
 
@@ -224,7 +235,7 @@ LogicalResult transposeForBatchMatmul(
 // respectively while assuming that the initial shape for them is
 // B0,...,Bn,L0,...,Ln,C0,...,Cn and B0,...,Bn,C0,...,Cn,R0,...,Rn respectively.
 LogicalResult reshapeForBatchMatmul(const Location& loc,
-                                    EinsumDimensionNumbers* dnums, Value* lhs,
+                                    EinsumDimensionNumbers& dnums, Value* lhs,
                                     Value* rhs, std::vector<int64_t>* out_shape,
                                     PatternRewriter* rewriter) {
   RankedTensorType lhs_type = lhs->getType().cast<RankedTensorType>();
@@ -232,26 +243,28 @@ LogicalResult reshapeForBatchMatmul(const Location& loc,
 
   std::vector<int64_t> lhs_shape;
   std::vector<int64_t> rhs_shape;
-  for (auto i : dnums->lhs_rhs_out) {
+  lhs_shape.reserve(dnums.lhs_rhs_out.size() + dnums.lhs_out.size() + 1);
+  rhs_shape.reserve(dnums.lhs_rhs_out.size() + 2);
+  for (auto i : dnums.lhs_rhs_out) {
     int64_t b = lhs_type.getShape()[std::get<0>(i)];
     lhs_shape.push_back(b);
     rhs_shape.push_back(b);
     out_shape->push_back(b);
   }
 
-  if (dnums->lhs_out.empty()) {
+  if (dnums.lhs_out.empty()) {
     lhs_shape.push_back(1);
     out_shape->push_back(1);
-    dnums->lhs_out.emplace_back(lhs_shape.size() - 1, out_shape->size() - 1);
-  } else if (dnums->lhs_rhs_out.empty()) {
-    for (auto i : dnums->lhs_out) {
+    dnums.lhs_out.emplace_back(lhs_shape.size() - 1, out_shape->size() - 1);
+  } else if (dnums.lhs_rhs_out.empty()) {
+    for (auto i : dnums.lhs_out) {
       int64_t b = lhs_type.getShape()[std::get<0>(i)];
       lhs_shape.push_back(b);
       out_shape->push_back(b);
     }
   } else {
     int64_t lhs_out_size = 1;
-    for (auto i : dnums->lhs_out) {
+    for (auto i : dnums.lhs_out) {
       lhs_out_size *= lhs_type.getShape()[std::get<0>(i)];
     }
     lhs_shape.push_back(lhs_out_size);
@@ -259,28 +272,34 @@ LogicalResult reshapeForBatchMatmul(const Location& loc,
   }
 
   int64_t lhs_rhs_size = 1;
-  for (auto i : dnums->lhs_rhs) {
+  for (auto i : dnums.lhs_rhs) {
     lhs_rhs_size *= lhs_type.getShape()[std::get<0>(i)];
   }
   lhs_shape.push_back(lhs_rhs_size);
   rhs_shape.push_back(lhs_rhs_size);
 
   int64_t rhs_size = 1;
-  for (auto i : dnums->rhs_out) {
+  for (auto i : dnums.rhs_out) {
     rhs_size *= rhs_type.getShape()[std::get<0>(i)];
   }
   rhs_shape.push_back(rhs_size);
   out_shape->push_back(rhs_size);
+
+  if (failed(VerifyShapeOfReshapeOp(lhs_shape)) ||
+      failed(VerifyShapeOfReshapeOp(rhs_shape)))
+    return failure();
 
   *lhs = createReshapeOp(*lhs, lhs_shape, lhs_type.getElementType(), loc,
                          rewriter);
   *rhs = createReshapeOp(*rhs, rhs_shape, rhs_type.getElementType(), loc,
                          rewriter);
 
-  dnums->lhs_rhs.assign({{dnums->lhs_rhs_out.size() + dnums->lhs_out.size(),
-                          dnums->lhs_rhs_out.size()}});
-  dnums->rhs_out.assign({{dnums->lhs_rhs_out.size() + dnums->lhs_out.size(),
-                          dnums->lhs_rhs_out.size() + dnums->lhs_out.size()}});
+  dnums.lhs_rhs.assign(
+      {std::make_tuple(dnums.lhs_rhs_out.size() + dnums.lhs_out.size(),
+                       dnums.lhs_rhs_out.size())});
+  dnums.rhs_out.assign(
+      {std::make_tuple(dnums.lhs_rhs_out.size() + dnums.lhs_out.size(),
+                       dnums.lhs_rhs_out.size() + dnums.lhs_out.size())});
   return success();
 }
 
@@ -299,14 +318,18 @@ LogicalResult rewriteToBatchMatmul(TF::EinsumOp op,
   if (!original_type) return failure();
 
   std::vector<int32_t> out_transpose;
-  if (failed(transposeForBatchMatmul(op.getLoc(), &dnums, &lhs, &rhs,
+  if (failed(transposeForBatchMatmul(op.getLoc(), dnums, &lhs, &rhs,
                                      &out_transpose, &rewriter)))
     return failure();
 
   std::vector<int64_t> matmul_shape;
-  if (failed(reshapeForBatchMatmul(op.getLoc(), &dnums, &lhs, &rhs,
+  if (failed(reshapeForBatchMatmul(op.getLoc(), dnums, &lhs, &rhs,
                                    &matmul_shape, &rewriter)))
     return failure();
+
+  std::vector<int64_t> reshape_shape =
+      inverseTransposeVector(original_type.getShape(), out_transpose);
+  if (failed(VerifyShapeOfReshapeOp(reshape_shape))) return failure();
 
   auto matmul_type =
       RankedTensorType::get(matmul_shape, original_type.getElementType());
@@ -314,9 +337,8 @@ LogicalResult rewriteToBatchMatmul(TF::EinsumOp op,
       op.getLoc(), matmul_type, lhs, rhs, rewriter.getBoolAttr(false),
       rewriter.getBoolAttr(false));
 
-  out = createReshapeOp(
-      out, inverseTransposeVector(original_type.getShape(), out_transpose),
-      original_type.getElementType(), op.getLoc(), &rewriter);
+  out = createReshapeOp(out, reshape_shape, original_type.getElementType(),
+                        op.getLoc(), &rewriter);
   out = createTransposeOp(out, op.getLoc(), out_transpose, &rewriter);
 
   rewriter.replaceOp(op, out);
@@ -335,12 +357,7 @@ LogicalResult ConvertTFEinsumOp::matchAndRewrite(
       op.getOperand(0).getType().dyn_cast_or_null<RankedTensorType>();
   RankedTensorType rhs =
       op.getOperand(1).getType().dyn_cast_or_null<RankedTensorType>();
-  if (!lhs || !rhs ||
-      lhs.getRank() != dnums.lhs_rhs_out.size() + dnums.lhs_out.size() +
-                           dnums.lhs_rhs.size() + dnums.lhs.size() ||
-      rhs.getRank() != dnums.lhs_rhs_out.size() + dnums.rhs_out.size() +
-                           dnums.lhs_rhs.size() + dnums.rhs.size())
-    return failure();
+  if (!lhs || !rhs) return failure();
 
   return rewriteToBatchMatmul(op, dnums, rewriter);
 }
@@ -356,7 +373,7 @@ void TransformEinsumPass::runOnFunction() {
   auto func = getFunction();
 
   patterns.insert<ConvertTFEinsumOp>(&getContext());
-  applyPatternsAndFoldGreedily(func, patterns);
+  applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
 static PassRegistration<TransformEinsumPass> pass(

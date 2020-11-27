@@ -107,9 +107,6 @@ class Conv(Layer):
         not safe to use when doing asynchronous distributed training.
     bias_constraint: Optional projection function to be applied to the
         bias after being updated by an `Optimizer`.
-    trainable: Boolean, if `True` the weights of this layer will be marked as
-      trainable (and listed in `layer.trainable_weights`).
-    name: A string, the name of the layer.
   """
 
   def __init__(self,
@@ -422,8 +419,8 @@ class Conv1D(Conv):
       Specifying any stride value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
     padding: One of `"valid"`, `"same"` or `"causal"` (case-insensitive).
-      `"valid"` means no padding. `"same"` results in padding evenly to 
-      the left/right or up/down of the input such that output has the same 
+      `"valid"` means no padding. `"same"` results in padding evenly to
+      the left/right or up/down of the input such that output has the same
       height/width dimension as the input.
       `"causal"` results in causal (dilated) convolutions, e.g. `output[t]`
       does not depend on `input[t+1:]`. Useful when modeling temporal data
@@ -527,7 +524,7 @@ class Conv2D(Conv):
 
   When using this layer as the first layer in a model,
   provide the keyword argument `input_shape`
-  (tuple of integers, does not include the sample axis),
+  (tuple of integers or `None`, does not include the sample axis),
   e.g. `input_shape=(128, 128, 3)` for 128x128 RGB pictures
   in `data_format="channels_last"`.
 
@@ -578,8 +575,8 @@ class Conv2D(Conv):
       specify the same value for all spatial dimensions. Specifying any stride
       value != 1 is incompatible with specifying any `dilation_rate` value != 1.
     padding: one of `"valid"` or `"same"` (case-insensitive).
-      `"valid"` means no padding. `"same"` results in padding evenly to 
-      the left/right or up/down of the input such that output has the same 
+      `"valid"` means no padding. `"same"` results in padding evenly to
+      the left/right or up/down of the input such that output has the same
       height/width dimension as the input.
     data_format: A string, one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs. `channels_last` corresponds
@@ -686,7 +683,7 @@ class Conv3D(Conv):
 
   When using this layer as the first layer in a model,
   provide the keyword argument `input_shape`
-  (tuple of integers, does not include the sample axis),
+  (tuple of integers or `None`, does not include the sample axis),
   e.g. `input_shape=(128, 128, 128, 1)` for 128x128x128 volumes
   with a single channel,
   in `data_format="channels_last"`.
@@ -722,8 +719,8 @@ class Conv3D(Conv):
       specify the same value for all spatial dimensions. Specifying any stride
       value != 1 is incompatible with specifying any `dilation_rate` value != 1.
     padding: one of `"valid"` or `"same"` (case-insensitive).
-      `"valid"` means no padding. `"same"` results in padding evenly to 
-      the left/right or up/down of the input such that output has the same 
+      `"valid"` means no padding. `"same"` results in padding evenly to
+      the left/right or up/down of the input such that output has the same
       height/width dimension as the input.
     data_format: A string, one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs. `channels_last` corresponds
@@ -835,7 +832,7 @@ class Conv1DTranspose(Conv1D):
 
   When using this layer as the first layer in a model,
   provide the keyword argument `input_shape`
-  (tuple of integers, does not include the sample axis),
+  (tuple of integers or `None`, does not include the sample axis),
   e.g. `input_shape=(128, 3)` for data with 128 time steps and 3 channels.
 
   Arguments:
@@ -846,8 +843,8 @@ class Conv1DTranspose(Conv1D):
       time dimension. Specifying a stride value != 1 is incompatible with
       specifying a `dilation_rate` value != 1. Defaults to 1.
     padding: one of `"valid"` or `"same"` (case-insensitive).
-      `"valid"` means no padding. `"same"` results in padding evenly to 
-      the left/right or up/down of the input such that output has the same 
+      `"valid"` means no padding. `"same"` results in padding evenly to
+      the left/right or up/down of the input such that output has the same
       height/width dimension as the input.
     output_padding: An integer specifying the amount of padding along
       the time dimension of the output tensor.
@@ -1082,7 +1079,7 @@ class Conv2DTranspose(Conv2D):
 
   When using this layer as the first layer in a model,
   provide the keyword argument `input_shape`
-  (tuple of integers, does not include the sample axis),
+  (tuple of integers or `None`, does not include the sample axis),
   e.g. `input_shape=(128, 128, 3)` for 128x128 RGB pictures
   in `data_format="channels_last"`.
 
@@ -1100,8 +1097,8 @@ class Conv2DTranspose(Conv2D):
       Specifying any stride value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
     padding: one of `"valid"` or `"same"` (case-insensitive).
-      `"valid"` means no padding. `"same"` results in padding evenly to 
-      the left/right or up/down of the input such that output has the same 
+      `"valid"` means no padding. `"same"` results in padding evenly to
+      the left/right or up/down of the input such that output has the same
       height/width dimension as the input.
     output_padding: An integer or tuple/list of 2 integers,
       specifying the amount of padding along the height and width
@@ -1385,7 +1382,7 @@ class Conv3DTranspose(Conv3D):
 
   When using this layer as the first layer in a model,
   provide the keyword argument `input_shape`
-  (tuple of integers, does not include the sample axis),
+  (tuple of integers or `None`, does not include the sample axis),
   e.g. `input_shape=(128, 128, 128, 3)` for a 128x128x128 volume with 3 channels
   if `data_format="channels_last"`.
 
@@ -1404,8 +1401,8 @@ class Conv3DTranspose(Conv3D):
       Specifying any stride value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
     padding: one of `"valid"` or `"same"` (case-insensitive).
-      `"valid"` means no padding. `"same"` results in padding evenly to 
-      the left/right or up/down of the input such that output has the same 
+      `"valid"` means no padding. `"same"` results in padding evenly to
+      the left/right or up/down of the input such that output has the same
       height/width dimension as the input.
     output_padding: An integer or tuple/list of 3 integers,
       specifying the amount of padding along the depth, height, and
@@ -1704,8 +1701,8 @@ class SeparableConv(Conv):
       Specifying any `stride` value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
     padding: One of `"valid"` or `"same"` (case-insensitive).
-      `"valid"` means no padding. `"same"` results in padding evenly to 
-      the left/right or up/down of the input such that output has the same 
+      `"valid"` means no padding. `"same"` results in padding evenly to
+      the left/right or up/down of the input such that output has the same
       height/width dimension as the input.
     data_format: A string, one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
@@ -1747,7 +1744,6 @@ class SeparableConv(Conv):
       bias after being updated by an `Optimizer`.
     trainable: Boolean, if `True` the weights of this layer will be marked as
       trainable (and listed in `layer.trainable_weights`).
-    name: A string, the name of the layer.
   """
 
   def __init__(self,
@@ -1911,9 +1907,9 @@ class SeparableConv1D(SeparableConv):
       Specifying any `stride` value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
     padding: One of `"valid"`, `"same"`, or `"causal"` (case-insensitive).
-      `"valid"` means no padding. `"same"` results in padding evenly to 
-      the left/right or up/down of the input such that output has the same 
-      height/width dimension as the input. `"causal"` results in causal 
+      `"valid"` means no padding. `"same"` results in padding evenly to
+      the left/right or up/down of the input such that output has the same
+      height/width dimension as the input. `"causal"` results in causal
       (dilated) convolutions, e.g. `output[t]` does not depend on `input[t+1:]`.
     data_format: A string, one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
@@ -1960,7 +1956,6 @@ class SeparableConv1D(SeparableConv):
       see `keras.constraints`).
     trainable: Boolean, if `True` the weights of this layer will be marked as
       trainable (and listed in `layer.trainable_weights`).
-    name: A string, the name of the layer.
 
   Input shape:
     3D tensor with shape:
@@ -2029,7 +2024,7 @@ class SeparableConv1D(SeparableConv):
 
   def call(self, inputs):
     if self.padding == 'causal':
-      inputs = array_ops.pad(inputs, self._compute_causal_padding())
+      inputs = array_ops.pad(inputs, self._compute_causal_padding(inputs))
     if self.data_format == 'channels_last':
       strides = (1,) + self.strides * 2 + (1,)
       spatial_start_dim = 1
@@ -2100,8 +2095,8 @@ class SeparableConv2D(SeparableConv):
       Specifying any stride value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
     padding: one of `"valid"` or `"same"` (case-insensitive).
-      `"valid"` means no padding. `"same"` results in padding evenly to 
-      the left/right or up/down of the input such that output has the same 
+      `"valid"` means no padding. `"same"` results in padding evenly to
+      the left/right or up/down of the input such that output has the same
       height/width dimension as the input.
     data_format: A string,
       one of `channels_last` (default) or `channels_first`.
@@ -2263,8 +2258,8 @@ class DepthwiseConv2D(Conv2D):
       Specifying any stride value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
     padding: one of `'valid'` or `'same'` (case-insensitive).
-      `"valid"` means no padding. `"same"` results in padding evenly to 
-      the left/right or up/down of the input such that output has the same 
+      `"valid"` means no padding. `"same"` results in padding evenly to
+      the left/right or up/down of the input such that output has the same
       height/width dimension as the input.
     depth_multiplier: The number of depthwise convolution output channels
       for each input channel.

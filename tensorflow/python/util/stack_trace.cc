@@ -39,23 +39,34 @@ const char* GetPythonString(PyObject* o) {
 
 namespace tensorflow {
 
-std::vector<StackFrame> StackTrace::ToStackFrames() const {
+std::vector<StackFrame> StackTrace::ToStackFrames(
+    const StackTraceMapper& mapper, const StackTraceFilter& filtered) const {
   std::vector<StackFrame> result;
-  result.reserve(size_);
+  result.reserve(code_objs_.size());
 
-  for (int i = size_ - 1; i >= 0; --i) {
+  for (int i = code_objs_.size() - 1; i >= 0; --i) {
     const char* file_name = GetPythonString(code_objs_[i]->co_filename);
     const int line_number =
         PyCode_Addr2Line(code_objs_[i], last_instructions_[i]);
-    result.emplace_back(StackFrame{file_name, line_number,
-                                   GetPythonString(code_objs_[i]->co_name)});
+
+    if (!result.empty() && filtered && filtered(file_name)) {
+      continue;  // Never filter the innermost frame.
+    }
+
+    if (absl::optional<StackFrame> mapped =
+            mapper ? mapper(file_name, line_number) : absl::nullopt) {
+      result.push_back(*mapped);
+    } else {
+      result.emplace_back(StackFrame{file_name, line_number,
+                                     GetPythonString(code_objs_[i]->co_name)});
+    }
   }
 
   return result;
 }
 
 StackTrace* StackTraceManager::Get(int id) {
-  DCheckPyGilState();
+  DCheckPyGilStateForStackTrace();
   if (next_id_ - id > kStackTraceCircularBufferSize) return nullptr;
 
   return &stack_traces_[id & (kStackTraceCircularBufferSize - 1)];

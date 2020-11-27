@@ -359,7 +359,7 @@ TEST_P(UnifiedCAPI, TestBasicGraph) {
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
 
   auto* placeholder_t =
-      TF_AddFunctionParameter(graph_ctx, TF_FLOAT, status.get());
+      TF_AddFunctionParameter(graph_ctx, TF_FLOAT, {-1, nullptr}, status.get());
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
 
   // Build an abstract operation.
@@ -450,7 +450,7 @@ TEST_P(UnifiedCAPI, TestBasicGraphMatMul) {
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
 
   auto* placeholder_t =
-      TF_AddFunctionParameter(graph_ctx, TF_FLOAT, status.get());
+      TF_AddFunctionParameter(graph_ctx, TF_FLOAT, {-1, nullptr}, status.get());
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
 
   // Build an abstract operation.
@@ -553,9 +553,9 @@ TEST_P(UnifiedCAPI, TestMultiOutputGraph) {
   TF_ExecutionContext* graph_ctx = TF_CreateFunction(fn_name.c_str(), s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 
-  auto* arg0 = TF_AddFunctionParameter(graph_ctx, TF_FLOAT, s);
+  auto* arg0 = TF_AddFunctionParameter(graph_ctx, TF_FLOAT, {-1, nullptr}, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
-  auto* arg1 = TF_AddFunctionParameter(graph_ctx, TF_FLOAT, s);
+  auto* arg1 = TF_AddFunctionParameter(graph_ctx, TF_FLOAT, {-1, nullptr}, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 
   // Create a first "Add" computing `arg0 + arg1`.
@@ -709,9 +709,9 @@ TEST_P(UnifiedCAPI, TestMultiOutputGraphMatMul) {
   TF_ExecutionContext* graph_ctx = TF_CreateFunction(fn_name.c_str(), s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 
-  auto* arg0 = TF_AddFunctionParameter(graph_ctx, TF_FLOAT, s);
+  auto* arg0 = TF_AddFunctionParameter(graph_ctx, TF_FLOAT, {-1, nullptr}, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
-  auto* arg1 = TF_AddFunctionParameter(graph_ctx, TF_FLOAT, s);
+  auto* arg1 = TF_AddFunctionParameter(graph_ctx, TF_FLOAT, {-1, nullptr}, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 
   // Create a first "Add" computing `arg0 + arg1`.
@@ -975,7 +975,7 @@ TEST_P(UnifiedCAPI, TF_AbstractTensorGetEagerTensorOnGraphTensorRaises) {
 
   // Add a placeholder to the graph.
   auto placeholder_t =
-      TF_AddFunctionParameter(graph_ctx, TF_FLOAT, status.get());
+      TF_AddFunctionParameter(graph_ctx, TF_FLOAT, {-1, nullptr}, status.get());
   TF_AbstractTensorGetEagerTensor(placeholder_t, status.get());
   ASSERT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(status.get()));
 

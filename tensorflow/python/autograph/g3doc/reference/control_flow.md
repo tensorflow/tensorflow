@@ -264,9 +264,10 @@ for i in tf.stack(l):
 ```
 
 <!-- TODO(mdan): List this under limitations -->
-Caution: A loop in which the type of the condition condition changes across
-iterations, in a way that would influence the way the loop is executed, is not
-allowed in AutoGraph.
+
+Caution: A loop in which the type of the condition changes across iterations, in
+a way that would influence the way the loop is executed, is not allowed in
+AutoGraph.
 
 For example, the loop below will generate an error. After the first iteration,
 `i` becomes a tf.Tensor, because

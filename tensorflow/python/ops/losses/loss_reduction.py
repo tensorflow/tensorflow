@@ -44,13 +44,13 @@ class ReductionV2(object):
        loss_obj = tf.keras.losses.CategoricalCrossentropy(
            reduction=tf.keras.losses.Reduction.NONE)
        ....
-       loss = tf.reduce_sum(loss_object(labels, predictions)) *
+       loss = tf.reduce_sum(loss_obj(labels, predictions)) *
            (1. / global_batch_size)
      ```
 
-  Please see the
-  [custom training guide](https://www.tensorflow.org/tutorials/distribute/custom_training)  # pylint: disable=line-too-long
-  for more details on this.
+  Please see the [custom training guide](
+  https://www.tensorflow.org/tutorials/distribute/custom_training) for more
+  details on this.
   """
 
   AUTO = 'auto'

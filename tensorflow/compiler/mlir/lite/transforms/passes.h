@@ -41,7 +41,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateOptimizePass();
 
 // Creates an instance of the TensorFlow Lite dialect PrepareTF pass.
 std::unique_ptr<OperationPass<FuncOp>> CreatePrepareTFPass(
-    bool unfold_batch_matmul);
+    bool unfold_batch_matmul, bool allow_bf16_type_legalization);
 
 // Creates an instance of the TensorFlow Lite dialect LowerStaticTensorList
 // pass.
@@ -94,6 +94,10 @@ std::unique_ptr<OperationPass<FuncOp>> CreateRuntimeVerifyPass();
 // Creates raise custom ops pass, which legalize custom ops to TFL::CustomOp
 std::unique_ptr<OperationPass<FuncOp>> CreateRaiseCustomOpsPass();
 
+// Inserts an TFL::CallOnce op when the tf_saved_model's session initialzer is
+// given.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateInsertCallOnceOpFromSessionInitializerPass();
 }  // namespace TFL
 
 }  // namespace mlir

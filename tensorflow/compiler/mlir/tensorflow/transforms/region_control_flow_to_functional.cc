@@ -150,7 +150,7 @@ void ExtractSingleBlockRegion(Region& region, StringRef name,
   builder.create<ReturnOp>(terminator->getLoc(), return_values);
   terminator->erase();
 
-  outlined_func.setVisibility(FuncOp::Visibility::Private);
+  outlined_func.setPrivate();
 
   // Add the outlined function to the worklist in case its body has
   // IfRegion or WhileRegion ops that need to converted.
@@ -333,7 +333,7 @@ LogicalResult RegionControlFlowToFunctional::ConvertWhileOp(
     WhileRegionOp while_region) {
   // For While, the arguments of the calls in the body and cond regions match
   // if they are region arguments with the same region argument numbers. If the
-  // 2 calls have the same value (an extern value) used an an argument, we
+  // 2 calls have the same value (an extern value) used as an argument, we
   // cannot do a trivial transformation because post transform, we will need to
   // pass this extern value as an argument to the function, so we cannot use the
   // existing function as is.
@@ -398,7 +398,8 @@ LogicalResult RegionControlFlowToFunctional::ConvertWhileOp(
   OpBuilder builder(while_region);
   auto while_op = builder.create<WhileOp>(
       while_region.getLoc(), new_result_types, new_inputs, cond_name, body_name,
-      while_region.parallel_iterations(), while_region.is_stateless());
+      while_region.parallel_iterations(), while_region.is_stateless(),
+      while_region.shape_invariant());
   CopyDeviceAndUnderscoredAttributes(while_region, while_op);
 
   // Redirect old results to new results.

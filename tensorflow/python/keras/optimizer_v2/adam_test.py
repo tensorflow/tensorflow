@@ -26,7 +26,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import combinations
-from tensorflow.python.keras import optimizers
+from tensorflow.python.keras import optimizer_v1
 from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
 from tensorflow.python.ops import array_ops
@@ -537,7 +537,7 @@ class AdamOptimizerTest(test.TestCase, parameterized.TestCase):
         self.evaluate(opt.variables()[0]), self.evaluate(opt.iterations))
 
   def testSetWeightsFromV1AdamWithoutMinimize(self):
-    keras_v1_adam = optimizers.Adam()
+    keras_v1_adam = optimizer_v1.Adam()
     keras_v2_adam = adam.Adam()
     keras_v2_adam.set_weights(keras_v1_adam.get_weights())
     keras_v1_iteration = keras_v1_adam.iterations

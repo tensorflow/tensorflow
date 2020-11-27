@@ -30,6 +30,7 @@ import numpy as np
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -46,21 +47,28 @@ from tensorflow.python.keras.layers.ops import core as core_ops
 from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.keras.utils import conv_utils
 from tensorflow.python.keras.utils import generic_utils
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
-from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import get_canonical_name_for_symbol
 from tensorflow.python.util.tf_export import get_symbol_from_name
 from tensorflow.python.util.tf_export import keras_export
+
+# TODO(b/168039935): track dropout rate to decide whether/how to make a
+# dropout rate fastpath.
+keras_temporary_dropout_rate = monitoring.BoolGauge(
+    '/tensorflow/api/keras/dropout/temp_rate_is_zero',
+    'Temporarily record if Keras dropout layer was created w/'
+    'constant rate = 0')
 
 
 # pylint: disable=g-classes-have-attributes
@@ -186,6 +194,10 @@ class Dropout(Layer):
   def __init__(self, rate, noise_shape=None, seed=None, **kwargs):
     super(Dropout, self).__init__(**kwargs)
     self.rate = rate
+    if isinstance(rate, (int, float)) and not rate:
+      keras_temporary_dropout_rate.get_cell().set(True)
+    else:
+      keras_temporary_dropout_rate.get_cell().set(False)
     self.noise_shape = noise_shape
     self.seed = seed
     self.supports_masking = True
@@ -659,7 +671,7 @@ class Flatten(Layer):
       # Full static shape is guaranteed to be available.
       # Performance: Using `constant_op` is much faster than passing a list.
       flattened_shape = constant_op.constant([inputs.shape[0], -1])
-      return gen_array_ops.reshape(inputs, flattened_shape)
+      return array_ops.reshape(inputs, flattened_shape)
     else:
       input_shape = inputs.shape
       rank = input_shape.rank
@@ -753,9 +765,10 @@ class Lambda(Layer):
 
   The main reason to subclass `tf.keras.layers.Layer` instead of using a
   `Lambda` layer is saving and inspecting a Model. `Lambda` layers
-  are saved by serializing the Python bytecode, whereas subclassed
-  Layers can be saved via overriding their `get_config` method. Overriding
-  `get_config` improves the portability of Models. Models that rely on
+  are saved by serializing the Python bytecode, which is fundamentally
+  non-portable. They should only be loaded in the same environment where
+  they were saved. Subclassed layers can be saved in a more portable way
+  by overriding their `get_config` method. Models that rely on
   subclassed Layers are also often easier to visualize and reason about.
 
   Examples:
@@ -1292,8 +1305,20 @@ class TFOpLambda(Layer):
                                       api_name='keras',
                                       add_prefix_to_v1_names=True))
     if 'name' not in kwargs:
+      # Generate a name.
+      # TFOpLambda layers avoid already-observed names,
+      # because users cannot easily control the generated names.
+      # Without this avoidance, users would be more likely to run
+      # into unavoidable duplicate layer name collisions.
+      # (For standard layers users could just set `name` when creating the
+      # layer to work around a collision, but they can't do that for
+      # auto-generated layers)
+      if self.symbol:
+        name = 'tf.' + self.symbol
+      else:
+        name = self.function.__name__
       kwargs['name'] = K.unique_object_name(
-          'tf.' + self.symbol, zero_based=True)
+          name, zero_based=True, avoid_observed_names=True)
     kwargs['autocast'] = False
 
     # Decorate the function to produce this layer's call method
@@ -1517,3 +1542,261 @@ for slicing_op in [array_ops._slice_helper,  # pylint: disable=protected-access
                    array_ops.boolean_mask,
                    array_ops.boolean_mask_v2]:
   TFSlicingOpDispatcher(slicing_op).register(slicing_op)
+
+
+class InstanceProperty(Layer):
+  """Wraps an instance property access (e.g. `x.foo`) in a Keras Layer.
+
+  This layer takes an attribute name `attr_name` in the constructor and,
+  when called on input tensor `obj` returns `obj.attr_name`.
+
+  KerasTensors specialized for specific extension types use it to
+  represent instance property accesses on the represented object in the
+  case where the property needs to be dynamically accessed as opposed to
+  being statically computed from the typespec, e.g.
+
+  x = keras.Input(..., ragged=True)
+  out = x.flat_values
+  """
+
+  @trackable.no_automatic_dependency_tracking
+  def __init__(self, attr_name, **kwargs):
+    self.attr_name = attr_name
+
+    if 'name' not in kwargs:
+      kwargs['name'] = K.unique_object_name(
+          'input.' + self.attr_name, zero_based=True, avoid_observed_names=True)
+    kwargs['autocast'] = False
+
+    # Do not individually trace op layers in the SavedModel.
+    self._must_restore_from_config = True
+
+    super(InstanceProperty, self).__init__(**kwargs)
+
+    # Preserve all argument data structures when saving/loading a config
+    # (e.g., don't unnest lists that contain one element)
+    self._preserve_input_structure_in_config = True
+
+  def call(self, obj):
+    return getattr(obj, self.attr_name)
+
+  def get_config(self):
+    config = {
+        'attr_name': self.attr_name
+    }
+    base_config = super(InstanceProperty, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
+
+  @classmethod
+  def from_config(cls, config, custom_objects=None):
+    return cls(**config)
+
+
+class InstanceMethod(InstanceProperty):
+  """Wraps an instance method access (e.g. `x.foo(arg)` in a Keras Layer.
+
+  This layer takes an attribute name `attr_name` in the constructor and,
+  when called on input tensor `obj` with additional arguments `args` and
+  `kwargs` returns `obj.attr_name(*args, **kwargs)`.
+
+  KerasTensors specialized for specific extension types use it to
+  represent dynamic instance method calls on the represented object, e.g.
+
+  x = keras.Input(..., ragged=True)
+  new_values = keras.Input(...)
+  out = x.with_values(new_values)
+  """
+
+  def call(self, obj, args, kwargs):
+    method = getattr(obj, self.attr_name)
+    return method(*args, **kwargs)
+
+
+def _delegate_property(keras_tensor_cls, property_name):  # pylint: disable=invalid-name
+  """Register property on a KerasTensor class.
+
+  Calling this multiple times with the same arguments should be a no-op.
+
+  This method exposes a property on the KerasTensor class that will use an
+  `InstanceProperty` layer to access the property on the represented
+  intermediate values in the model.
+
+  Arguments:
+    keras_tensor_cls: The KerasTensor subclass that should expose the property.
+    property_name: The name of the property to expose and delegate to the
+      represented (Composite)Tensor.
+  """
+  # We use a lambda because we can't create a Keras layer at import time
+  # due to dynamic layer class versioning.
+  property_access = property(lambda self: InstanceProperty(property_name)(self))  # pylint: disable=unnecessary-lambda
+  setattr(keras_tensor_cls, property_name, property_access)
+
+
+def _delegate_method(keras_tensor_cls, method_name):  # pylint: disable=invalid-name
+  """Register method on a KerasTensor class.
+
+  Calling this function times with the same arguments should be a no-op.
+
+  This method exposes an instance method on the KerasTensor class that will use
+  an `InstanceMethod` layer to run the desired method on the represented
+  intermediate values in the model.
+
+  Arguments:
+    keras_tensor_cls: The KerasTensor subclass that should expose the property.
+    method_name: The name of the method to expose and delegate to the
+      represented (Composite)Tensor.
+  """
+  def delegate(self, *args, **kwargs):
+    return InstanceMethod(method_name)(self, args, kwargs)
+  setattr(keras_tensor_cls, method_name, delegate)
+
+# We do not support the `uniform_row_length` property because it
+# returns either `None` or an int tensor, and code that relies on it tends
+# to check `is None` directly. Delegating it here would always return a
+# `KerasTensor`, regardless of what can be statically inferred. This would
+# never equal `None`, breaking code that expects it to be partially-static
+# in unpredictable ways.
+for ragged_property in [
+    'values',
+    'flat_values',
+    'row_splits',
+    'nested_row_splits'
+]:
+  _delegate_property(keras_tensor.RaggedKerasTensor, ragged_property)
+
+for ragged_method_name in [
+    'value_rowids',
+    'nested_value_rowids',
+    'nrows',
+    'row_starts',
+    'row_limits',
+    'row_lengths',
+    'nested_row_lengths',
+    'bounding_shape',
+    'with_values',
+    'with_flat_values',
+    'with_row_splits_dtype',
+    'merge_dims',
+    'to_tensor',
+    'to_sparse',
+]:
+  _delegate_method(keras_tensor.RaggedKerasTensor, ragged_method_name)
+
+for sparse_property in [
+    'indices',
+    'values',
+]:
+  _delegate_property(keras_tensor.SparseKerasTensor, sparse_property)
+
+for sparse_method in [
+    'with_values',
+]:
+  _delegate_method(keras_tensor.SparseKerasTensor, sparse_method)
+
+
+class ClassMethod(Layer):
+  """Wraps a TF API Class's class method  in a `Layer` object.
+
+  It is inserted by the Functional API construction whenever users call
+  a supported TF Class's class method on KerasTensors.
+
+  This is useful in the case where users do something like:
+  x = keras.Input(...)
+  y = keras.Input(...)
+  out = tf.RaggedTensor.from_row_splits(x, y)
+  """
+
+  @trackable.no_automatic_dependency_tracking
+  def __init__(self, cls_ref, method_name, **kwargs):
+    self.cls_ref = cls_ref
+    self.method_name = method_name
+    self.cls_symbol = (
+        get_canonical_name_for_symbol(self.cls_ref,
+                                      add_prefix_to_v1_names=True) or
+        get_canonical_name_for_symbol(self.cls_ref,
+                                      api_name='keras',
+                                      add_prefix_to_v1_names=True))
+    if 'name' not in kwargs:
+      kwargs['name'] = K.unique_object_name(
+          'tf.' + self.cls_symbol + '.' + self.method_name, zero_based=True,
+          avoid_observed_names=True)
+    kwargs['autocast'] = False
+
+    # Do not individually trace op layers in the SavedModel.
+    self._must_restore_from_config = True
+
+    super(ClassMethod, self).__init__(**kwargs)
+
+    # Preserve all argument data structures when saving/loading a config
+    # (e.g., don't unnest lists that contain one element)
+    self._preserve_input_structure_in_config = True
+
+    self._expects_training_arg = False
+    self._expects_mask_arg = False
+
+  def call(self, args, kwargs):
+    return getattr(self.cls_ref, self.method_name)(*args, **kwargs)
+
+  def get_config(self):
+    if not self.cls_symbol:
+      raise ValueError('This Keras class method conversion tried to convert '
+                       'a method belonging to class %s, a class '
+                       'that is not an exposed in the TensorFlow API. '
+                       'To ensure cross-version compatibility of Keras models '
+                       'that use op layers, only op layers produced from '
+                       'exported TF API symbols can be serialized.'
+                       % self.cls_symbol)
+    config = {
+        'cls_symbol': self.cls_symbol,
+        'method_name': self.method_name
+    }
+
+    base_config = super(ClassMethod, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
+
+  @classmethod
+  def from_config(cls, config, custom_objects=None):
+    config = config.copy()
+    symbol_name = config.pop('cls_symbol')
+    cls_ref = get_symbol_from_name(symbol_name)
+    if not cls_ref:
+      raise ValueError(
+          'TF symbol `tf.%s` could not be found.' % symbol_name)
+
+    config['cls_ref'] = cls_ref
+
+    return cls(**config)
+
+
+class TFClassMethodDispatcher(dispatch.OpDispatcher):
+  """A class method dispatcher that allows building a functional model with TF class methods."""
+
+  def __init__(self, cls, method_name):
+    self.cls = cls
+    self.method_name = method_name
+
+  def handle(self, args, kwargs):
+    """Handle the specified operation with the specified arguments."""
+    if any(
+        isinstance(x, keras_tensor.KerasTensor)
+        for x in nest.flatten([args, kwargs])):
+      return ClassMethod(self.cls, self.method_name)(args[1:], kwargs)
+    else:
+      return self.NOT_SUPPORTED
+
+for ragged_class_method in [
+    'from_value_rowids',
+    'from_row_splits',
+    'from_row_lengths',
+    'from_row_starts',
+    'from_row_limits',
+    'from_uniform_row_length',
+    'from_nested_value_rowids',
+    'from_nested_row_splits',
+    'from_nested_row_lengths',
+    'from_tensor',
+    'from_sparse',
+]:
+  TFClassMethodDispatcher(
+      ragged_tensor.RaggedTensor, ragged_class_method).register(
+          getattr(ragged_tensor.RaggedTensor, ragged_class_method))

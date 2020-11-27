@@ -534,7 +534,7 @@ def flip_left_right(image):
 
   Outputs the contents of `image` flipped along the width dimension.
 
-  See also `reverse()`.
+  See also `tf.reverse`.
 
   Usage Example:
 
@@ -2200,6 +2200,10 @@ def adjust_gamma(image, gamma=1, gain=1):
 def convert_image_dtype(image, dtype, saturate=False, name=None):
   """Convert `image` to `dtype`, scaling its values if needed.
 
+  The operation supports data types (for `image` and `dtype`) of
+  `uint8`, `uint16`, `uint32`, `uint64`, `int8`, `int16`, `int32`, `int64`,
+  `float16`, `float32`, `float64`, `bfloat16`.
+
   Images that are represented using floating point values are expected to have
   values in the range [0,1). Image data stored in integer data types are
   expected to have values in the range `[0,MAX]`, where `MAX` is the largest
@@ -2208,6 +2212,97 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
   This op converts between data types, scaling the values appropriately before
   casting.
 
+  Usage Example:
+
+  >>> x = [[[1, 2, 3], [4, 5, 6]],
+  ...      [[7, 8, 9], [10, 11, 12]]]
+  >>> x_int8 = tf.convert_to_tensor(x, dtype=tf.int8)
+  >>> tf.image.convert_image_dtype(x_int8, dtype=tf.float16, saturate=False)
+  <tf.Tensor: shape=(2, 2, 3), dtype=float16, numpy=
+  array([[[0.00787, 0.01575, 0.02362],
+          [0.0315 , 0.03937, 0.04724]],
+         [[0.0551 , 0.063  , 0.07086],
+          [0.07874, 0.0866 , 0.0945 ]]], dtype=float16)>
+
+  Converting integer types to floating point types returns normalized floating
+  point values in the range [0, 1); the values are normalized by the `MAX` value
+  of the input dtype. Consider the following two examples:
+
+  >>> a = [[[1], [2]], [[3], [4]]]
+  >>> a_int8 = tf.convert_to_tensor(a, dtype=tf.int8)
+  >>> tf.image.convert_image_dtype(a_int8, dtype=tf.float32)
+  <tf.Tensor: shape=(2, 2, 1), dtype=float32, numpy=
+  array([[[0.00787402],
+          [0.01574803]],
+         [[0.02362205],
+          [0.03149606]]], dtype=float32)>
+
+  >>> a_int32 = tf.convert_to_tensor(a, dtype=tf.int32)
+  >>> tf.image.convert_image_dtype(a_int32, dtype=tf.float32)
+  <tf.Tensor: shape=(2, 2, 1), dtype=float32, numpy=
+  array([[[4.6566129e-10],
+          [9.3132257e-10]],
+         [[1.3969839e-09],
+          [1.8626451e-09]]], dtype=float32)>
+
+  Despite having identical values of `a` and output dtype of `float32`, the
+  outputs differ due to the different input dtypes (`int8` vs. `int32`). This
+  is, again, because the values are normalized by the `MAX` value of the input
+  dtype.
+
+  Note that converting floating point values to integer type may lose precision.
+  In the example below, an image tensor `b` of dtype `float32` is converted to
+  `int8` and back to `float32`. The final output, howeverm is different from
+  the original input `b` due to precision loss.
+
+  >>> b = [[[0.12], [0.34]], [[0.56], [0.78]]]
+  >>> b_float32 = tf.convert_to_tensor(b, dtype=tf.float32)
+  >>> b_int8 = tf.image.convert_image_dtype(b_float32, dtype=tf.int8)
+  >>> tf.image.convert_image_dtype(b_int8, dtype=tf.float32)
+  <tf.Tensor: shape=(2, 2, 1), dtype=float32, numpy=
+  array([[[0.11811024],
+          [0.33858266]],
+         [[0.5590551 ],
+          [0.77952754]]], dtype=float32)>
+
+  Scaling up from an integer type (input dtype) to another integer type (output
+  dtype) will not map input dtype's `MAX` to output dtype's `MAX` but converting
+  back and forth should result in no change. For example, as shown below, the
+  `MAX` value of int8 (=127) is not mapped to the `MAX` value of int16 (=32,767)
+  but, when scaled back, we get the same, original values of `c`.
+
+  >>> c = [[[1], [2]], [[127], [127]]]
+  >>> c_int8 = tf.convert_to_tensor(c, dtype=tf.int8)
+  >>> c_int16 = tf.image.convert_image_dtype(c_int8, dtype=tf.int16)
+  >>> print(c_int16)
+  tf.Tensor(
+  [[[  256]
+    [  512]]
+   [[32512]
+    [32512]]], shape=(2, 2, 1), dtype=int16)
+  >>> c_int8_back = tf.image.convert_image_dtype(c_int16, dtype=tf.int8)
+  >>> print(c_int8_back)
+  tf.Tensor(
+  [[[  1]
+    [  2]]
+   [[127]
+    [127]]], shape=(2, 2, 1), dtype=int8)
+
+  Scaling down from an integer type to another integer type can be a lossy
+  conversion. Notice in the example below that converting `int16` to `uint8` and
+  back to `int16` has lost precision.
+
+  >>> d = [[[1000], [2000]], [[3000], [4000]]]
+  >>> d_int16 = tf.convert_to_tensor(d, dtype=tf.int16)
+  >>> d_uint8 = tf.image.convert_image_dtype(d_int16, dtype=tf.uint8)
+  >>> d_int16_back = tf.image.convert_image_dtype(d_uint8, dtype=tf.int16)
+  >>> print(d_int16_back)
+  tf.Tensor(
+  [[[ 896]
+    [1920]]
+   [[2944]
+    [3968]]], shape=(2, 2, 1), dtype=int16)
+
   Note that converting from floating point inputs to integer types may lead to
   over/underflow problems. Set saturate to `True` to avoid such problem in
   problematic conversions. If enabled, saturation will clip the output into the
@@ -2215,19 +2310,6 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
   performing such a cast, i.e., when casting from a floating point to an integer
   type, and when casting from a signed to an unsigned type; `saturate` has no
   effect on casts between floats, or on casts that increase the type's range).
-
-  Usage Example:
-
-  >>> x = [[[1.0, 2.0, 3.0],
-  ...       [4.0, 5.0, 6.0]],
-  ...     [[7.0, 8.0, 9.0],
-  ...       [10.0, 11.0, 12.0]]]
-  >>> tf.image.convert_image_dtype(x, dtype=tf.float16, saturate=False)
-  <tf.Tensor: shape=(2, 2, 3), dtype=float16, numpy=
-  array([[[ 1.,  2.,  3.],
-          [ 4.,  5.,  6.]],
-         [[ 7.,  8.,  9.],
-          [10., 11., 12.]]], dtype=float16)>
 
   Args:
     image: An image.
@@ -2963,6 +3045,12 @@ def decode_image(contents,
   and/or PNG files. Alternately, set the `expand_animations` argument of this
   function to `False`, in which case the op will return 3-dimensional tensors
   and will truncate animated GIF files to the first frame.
+
+  NOTE: If the first frame of an animated GIF does not occupy the entire
+  canvas (maximum frame width x maximum frame height), then it fills the
+  unoccupied areas (in the first frame) with zeros (black). For frames after the
+  first frame that does not occupy the entire canvas, it uses the previous
+  frame to fill the unoccupied areas.
 
   Args:
     contents: 0-D `string`. The encoded image bytes.
@@ -3757,7 +3845,10 @@ def rgb_to_yuv(images):
 
   Outputs a tensor of the same shape as the `images` tensor, containing the YUV
   value of the pixels.
-  The output is only well defined if the value in images are in [0,1].
+  The output is only well defined if the value in images are in [0, 1].
+  There are two ways of representing an image: [0, 255] pixel values range or 
+  [0, 1] (as float) pixel values range. Users need to convert the input image 
+  into a float [0, 1] range.
 
   Args:
     images: 2-D or higher rank. Image data to convert. Last dimension must be
@@ -4798,8 +4889,9 @@ def combined_non_max_suppression(boxes,
       representing a single score corresponding to each box (each row of boxes).
     max_output_size_per_class: A scalar integer `Tensor` representing the
       maximum number of boxes to be selected by non-max suppression per class
-    max_total_size: A scalar representing the maximum number of boxes retained
-    over all classes.
+    max_total_size: A int32 scalar representing maximum number of boxes retained
+      over all classes. Note that setting this value to a large number may
+      result in OOM error depending on the system workload.
     iou_threshold: A float representing the threshold for deciding whether boxes
       overlap too much with respect to IOU.
     score_threshold: A float representing the threshold for deciding when to
@@ -4831,6 +4923,17 @@ def combined_non_max_suppression(boxes,
         iou_threshold, dtype=dtypes.float32, name='iou_threshold')
     score_threshold = ops.convert_to_tensor(
         score_threshold, dtype=dtypes.float32, name='score_threshold')
+
+    # Convert `max_total_size` to tensor *without* setting the `dtype` param.
+    # This allows us to catch `int32` overflow case with `max_total_size`
+    # whose expected dtype is `int32` by the op registration. Any number within
+    # `int32` will get converted to `int32` tensor. Anything larger will get
+    # converted to `int64`. Passing in `int64` for `max_total_size` to the op
+    # will throw dtype mismatch exception.
+    # TODO(b/173251596): Once there is a more general solution to warn against
+    # int overflow conversions, revisit this check.
+    max_total_size = ops.convert_to_tensor(max_total_size)
+
     return gen_image_ops.combined_non_max_suppression(
         boxes, scores, max_output_size_per_class, max_total_size, iou_threshold,
         score_threshold, pad_per_class, clip_boxes)
@@ -5045,6 +5148,7 @@ def non_max_suppression_padded(boxes,
     selected_indices = tf.slice(
         selected_indices_padded, tf.constant([0]), num_valid)
     selected_boxes = tf.gather(boxes, selected_indices)
+    ```
 
   Args:
     boxes: a tensor of rank 2 or higher with a shape of [..., num_boxes, 4].
@@ -5533,9 +5637,31 @@ def generate_bounding_box_proposals(scores,
                                     name=None):
   """Generate bounding box proposals from encoded bounding boxes.
 
+  Args:
+    scores: A 4-D float `Tensor` of shape
+     `[num_images, height, width, num_achors]` containing scores of
+      the boxes for given anchors, can be unsorted.
+    bbox_deltas: A 4-D float `Tensor` of shape
+     `[num_images, height, width, 4 x num_anchors]` encoding boxes 
+      with respect to each anchor. Coordinates are given 
+      in the form `[dy, dx, dh, dw]`.
+    image_info: A 2-D float `Tensor` of shape `[num_images, 5]` 
+      containing image information Height, Width, Scale.
+    anchors: A 2-D float `Tensor` of shape `[num_anchors, 4]` 
+      describing the anchor boxes.
+      Boxes are formatted in the form `[y1, x1, y2, x2]`.
+    nms_threshold: A scalar float `Tensor` for non-maximal-suppression
+      threshold. Defaults to 0.7.
+    pre_nms_topn: A scalar int `Tensor` for the number of 
+      top scoring boxes to be used as input. Defaults to 6000.
+    min_size: A scalar float `Tensor`. Any box that has a smaller size
+      than min_size will be discarded. Defaults to 16.
+    post_nms_topn: An integer. Maximum number of rois in the output.
+    name: A name for this operation (optional).
+
   Returns:
     rois: Region of interest boxes sorted by their scores.
-    roi_probabilities: scores of the ROI boxes in the ROIs' tensor.
+    roi_probabilities: scores of the ROI boxes in the ROIs' `Tensor`.
   """
   return gen_image_ops.generate_bounding_box_proposals(
       scores=scores,

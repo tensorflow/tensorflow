@@ -396,25 +396,30 @@ PyTypeObject PyBfloat16_Type = {
 PyArray_ArrFuncs NPyBfloat16_ArrFuncs;
 
 PyArray_Descr NPyBfloat16_Descr = {
-    PyObject_HEAD_INIT(nullptr) & PyBfloat16_Type,  // typeobj
+    PyObject_HEAD_INIT(nullptr)  //
+                                 /*typeobj=*/
+    (&PyBfloat16_Type),
     // We must register bfloat16 with a kind other than "f", because numpy
     // considers two types with the same kind and size to be equal, but
     // float16 != bfloat16.
     // The downside of this is that NumPy scalar promotion does not work with
     // bfloat16 values.
-    'V',  // kind
+    /*kind=*/'V',
     // TODO(phawkins): there doesn't seem to be a way of guaranteeing a type
     // character is unique.
-    'E',                                                  // type
-    '=',                                                  // byteorder
-    NPY_NEEDS_PYAPI | NPY_USE_GETITEM | NPY_USE_SETITEM,  // hasobject
-    0,                                                    // type_num
-    sizeof(bfloat16),                                     // elsize
-    alignof(bfloat16),                                    // alignment
-    nullptr,                                              // subarray
-    nullptr,                                              // fields
-    nullptr,                                              // names
-    &NPyBfloat16_ArrFuncs,                                // f
+    /*type=*/'E',
+    /*byteorder=*/'=',
+    /*flags=*/NPY_NEEDS_PYAPI | NPY_USE_GETITEM | NPY_USE_SETITEM,
+    /*type_num=*/0,
+    /*elsize=*/sizeof(bfloat16),
+    /*alignment=*/alignof(bfloat16),
+    /*subarray=*/nullptr,
+    /*fields=*/nullptr,
+    /*names=*/nullptr,
+    /*f=*/&NPyBfloat16_ArrFuncs,
+    /*metadata=*/nullptr,
+    /*c_metadata=*/nullptr,
+    /*hash=*/-1,  // -1 means "not computed yet".
 };
 
 // Implementations of NumPy array methods.
@@ -592,19 +597,25 @@ struct TypeDescriptor<uint16> {
   static int Dtype() { return NPY_UINT16; }
 };
 
+// We register "int", "long", and "long long" types for portability across
+// Linux, where "int" and "long" are the same type, and Windows, where "long"
+// and "longlong" are the same type.
 template <>
-struct TypeDescriptor<uint32> {
-  typedef uint32 T;
-  static int Dtype() { return NPY_UINT32; }
+struct TypeDescriptor<unsigned int> {
+  typedef unsigned int T;
+  static int Dtype() { return NPY_UINT; }
 };
 
-template <typename Uint64Type>
-struct TypeDescriptor<
-    Uint64Type, typename std::enable_if<std::is_integral<Uint64Type>::value &&
-                                        !std::is_signed<Uint64Type>::value &&
-                                        sizeof(Uint64Type) == 8>::type> {
-  typedef Uint64Type T;
-  static int Dtype() { return NPY_UINT64; }
+template <>
+struct TypeDescriptor<unsigned long> {  // NOLINT
+  typedef unsigned long T;              // NOLINT
+  static int Dtype() { return NPY_ULONG; }
+};
+
+template <>
+struct TypeDescriptor<unsigned long long> {  // NOLINT
+  typedef unsigned long long T;              // NOLINT
+  static int Dtype() { return NPY_ULONGLONG; }
 };
 
 template <>
@@ -620,18 +631,21 @@ struct TypeDescriptor<int16> {
 };
 
 template <>
-struct TypeDescriptor<int32> {
-  typedef int32 T;
-  static int Dtype() { return NPY_INT32; }
+struct TypeDescriptor<int> {
+  typedef int T;
+  static int Dtype() { return NPY_INT; }
 };
 
-template <typename Int64Type>
-struct TypeDescriptor<
-    Int64Type, typename std::enable_if<std::is_integral<Int64Type>::value &&
-                                       std::is_signed<Int64Type>::value &&
-                                       sizeof(Int64Type) == 8>::type> {
-  typedef Int64Type T;
-  static int Dtype() { return NPY_INT64; }
+template <>
+struct TypeDescriptor<long> {  // NOLINT
+  typedef long T;              // NOLINT
+  static int Dtype() { return NPY_LONG; }
+};
+
+template <>
+struct TypeDescriptor<long long> {  // NOLINT
+  typedef long long T;              // NOLINT
+  static int Dtype() { return NPY_LONGLONG; }
 };
 
 template <>
@@ -1349,7 +1363,15 @@ bool Initialize() {
   if (!RegisterBfloat16Cast<uint16>(NPY_UINT16, /*cast_is_safe=*/false)) {
     return false;
   }
-  if (!RegisterBfloat16Cast<uint32>(NPY_UINT32, /*cast_is_safe=*/false)) {
+  if (!RegisterBfloat16Cast<unsigned int>(NPY_UINT, /*cast_is_safe=*/false)) {
+    return false;
+  }
+  if (!RegisterBfloat16Cast<unsigned long>(NPY_ULONG,  // NOLINT
+                                           /*cast_is_safe=*/false)) {
+    return false;
+  }
+  if (!RegisterBfloat16Cast<unsigned long long>(  // NOLINT
+          NPY_ULONGLONG, /*cast_is_safe=*/false)) {
     return false;
   }
   if (!RegisterBfloat16Cast<uint64>(NPY_UINT64, /*cast_is_safe=*/false)) {
@@ -1361,14 +1383,15 @@ bool Initialize() {
   if (!RegisterBfloat16Cast<int16>(NPY_INT16, /*cast_is_safe=*/false)) {
     return false;
   }
-  if (!RegisterBfloat16Cast<int32>(NPY_INT32, /*cast_is_safe=*/false)) {
+  if (!RegisterBfloat16Cast<int>(NPY_INT, /*cast_is_safe=*/false)) {
     return false;
   }
-  if (!RegisterBfloat16Cast<int64>(NPY_INT64, /*cast_is_safe=*/false)) {
+  if (!RegisterBfloat16Cast<long>(NPY_LONG,  // NOLINT
+                                  /*cast_is_safe=*/false)) {
     return false;
   }
-  if (!RegisterBfloat16Cast<npy_longlong>(NPY_LONGLONG,
-                                          /*cast_is_safe=*/false)) {
+  if (!RegisterBfloat16Cast<long long>(  // NOLINT
+          NPY_LONGLONG, /*cast_is_safe=*/false)) {
     return false;
   }
   // Following the numpy convention. imag part is dropped when converting to

@@ -25,9 +25,6 @@ limitations under the License.
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
 
 namespace tflite {
-namespace ops {
-namespace micro {
-namespace activations {
 namespace {
 
 // Softmax parameter data that persists in user_data
@@ -92,8 +89,6 @@ TfLiteStatus CalculateSoftmaxParams(TfLiteContext* context,
   return kTfLiteOk;
 }
 
-}  // namespace
-
 // Takes a tensor and performs softmax along the last dimension.
 void SoftmaxFloat(const TfLiteEvalTensor* input, TfLiteEvalTensor* output,
                   const SoftmaxParams& op_data) {
@@ -143,8 +138,10 @@ TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
   const TfLiteTensor* input = GetInput(context, node, 0);
+  TF_LITE_ENSURE(context, input != nullptr);
   TF_LITE_ENSURE(context, NumDimensions(input) >= 1);
   TfLiteTensor* output = GetOutput(context, node, 0);
+  TF_LITE_ENSURE(context, output != nullptr);
 
   TF_LITE_ENSURE(context, node->user_data != nullptr);
   SoftmaxParams* op_data = static_cast<SoftmaxParams*>(node->user_data);
@@ -210,19 +207,17 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteError;
   }
 }
-}  // namespace activations
+}  // namespace
 
 TfLiteRegistration Register_SOFTMAX() {
-  return {/*init=*/activations::SoftmaxInit,
+  return {/*init=*/SoftmaxInit,
           /*free=*/nullptr,
-          /*prepare=*/activations::SoftmaxPrepare,
-          /*invoke=*/activations::SoftmaxEval,
+          /*prepare=*/SoftmaxPrepare,
+          /*invoke=*/SoftmaxEval,
           /*profiling_string=*/nullptr,
           /*builtin_code=*/0,
           /*custom_name=*/nullptr,
           /*version=*/0};
 }
 
-}  // namespace micro
-}  // namespace ops
 }  // namespace tflite

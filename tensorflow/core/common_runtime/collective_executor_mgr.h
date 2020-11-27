@@ -22,12 +22,15 @@ limitations under the License.
 namespace tensorflow {
 class ConfigProto;
 class DeviceMgr;
+class NcclManager;
 
 class CollectiveExecutorMgr : public CollectiveExecutorMgrInterface {
  public:
-  CollectiveExecutorMgr(const ConfigProto& config, const DeviceMgr* dev_mgr,
-                        std::unique_ptr<DeviceResolverInterface> dev_resolver,
-                        std::unique_ptr<ParamResolverInterface> param_resolver);
+  CollectiveExecutorMgr(
+      const ConfigProto& config, const DeviceMgr* dev_mgr,
+      std::unique_ptr<DeviceResolverInterface> dev_resolver,
+      std::unique_ptr<ParamResolverInterface> param_resolver,
+      std::unique_ptr<NcclCommunicatorInterface> nccl_communicator);
 
   virtual ~CollectiveExecutorMgr();
 
@@ -41,6 +44,10 @@ class CollectiveExecutorMgr : public CollectiveExecutorMgrInterface {
 
   DeviceResolverInterface* GetDeviceResolver() const override {
     return dev_resolver_.get();
+  }
+
+  NcclCommunicatorInterface* GetNcclCommunicator() const override {
+    return nccl_communicator_.get();
   }
 
   void GetStepSequenceAsync(const GetStepSequenceRequest* request,
@@ -64,6 +71,7 @@ class CollectiveExecutorMgr : public CollectiveExecutorMgrInterface {
   std::unique_ptr<DeviceResolverInterface> dev_resolver_;
   std::unique_ptr<ParamResolverInterface> param_resolver_;
   string gpu_ring_order_;
+  std::unique_ptr<NcclCommunicatorInterface> nccl_communicator_;
   // Unbounded work queue for scheduling potentially-blocking work during
   // collective op execution.  Ownership is shared between `this` and
   // `CollectiveRemoteAccessLocal`.

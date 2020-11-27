@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/test_collective_executor_mgr.h"
 #include "tensorflow/core/common_runtime/threadpool_device.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -70,12 +71,13 @@ class FailTestRMA : public CollectiveRemoteAccessLocal {
                     const AllocatorAttributes& to_alloc_attr, Tensor* to_tensor,
                     const DeviceLocality& client_locality,
                     int dev_to_dev_stream_index,
+                    CancellationManager* cancellation_manager,
                     const StatusCallback& done) override {
     if (MaybeFail(done)) return;
     CollectiveRemoteAccessLocal::RecvFromPeer(
         peer_device, peer_task, peer_is_local, key, to_device, to_device_ctx,
         to_alloc_attr, to_tensor, client_locality, dev_to_dev_stream_index,
-        done);
+        cancellation_manager, done);
   }
 
   void PostToPeer(const string& peer_device, const string& peer_task,
@@ -84,11 +86,13 @@ class FailTestRMA : public CollectiveRemoteAccessLocal {
                   const AllocatorAttributes& from_alloc_attr,
                   const Tensor* from_tensor,
                   const DeviceLocality& client_locality,
+                  CancellationManager* cancellation_manager,
                   const StatusCallback& done) override {
     if (MaybeFail(done)) return;
     CollectiveRemoteAccessLocal::PostToPeer(
         peer_device, peer_task, key, from_device, from_device_ctx,
-        from_alloc_attr, from_tensor, client_locality, done);
+        from_alloc_attr, from_tensor, client_locality, cancellation_manager,
+        done);
   }
 
   mutex mu_;
@@ -238,15 +242,15 @@ class RingReducerTest : public ::testing::Test {
     // Set up all of the fake device contexts.
     for (int wi = 0; wi < num_workers; ++wi) {
       string task_name = strings::StrCat("/job:worker/replica:0/task:", wi);
-      col_params_.instance.num_devices_per_task[task_name] = num_devices;
+      col_params_.group.num_devices_per_task[task_name] = num_devices;
       for (int di = 0; di < num_devices; ++di) {
         string dev_name = strings::StrCat(task_name, "/cpu:", di);
         if (device_type == DEVICE_GPU) {
           dev_name =
               strings::StrCat(task_name, "/gpu:", di % gpu_devices_.size());
         }
-        col_params_.instance.device_names.push_back(dev_name);
-        col_params_.instance.task_names.push_back(task_name);
+        col_params_.group.device_names.push_back(dev_name);
+        col_params_.group.task_names.push_back(task_name);
         // Normally each device would set is_local to its own perspective but
         // this test runs in a single process so is_local is always true.
         col_params_.task.is_local.push_back(true);
@@ -263,7 +267,7 @@ class RingReducerTest : public ::testing::Test {
       for (int di = 0; di < num_devices; ++di) {
         int rank = wi * num_devices + di;
         instances_.push_back(new DeviceInstance(
-            rank, col_params_.instance.device_names[rank], device_type_, this));
+            rank, col_params_.group.device_names[rank], device_type_, this));
       }
     }
   }
@@ -414,9 +418,7 @@ class RingReducerTest : public ::testing::Test {
           << "Couldn't find device " << dev_name
           << " existing devices: " << parent_->dev_mgr_->DebugString();
       col_params_.name = parent_->col_params_.name;
-      col_params_.group.group_key = parent_->col_params_.group.group_key;
-      col_params_.group.device_type = parent_->col_params_.group.device_type;
-      col_params_.group.group_size = parent_->col_params_.group.group_size;
+      col_params_.group = parent_->col_params_.group;
       col_params_.instance = parent->col_params_.instance;
       col_params_.task.is_local = parent_->col_params_.task.is_local;
       col_params_.subdiv_rank = parent_->col_params_.subdiv_rank;
@@ -424,7 +426,7 @@ class RingReducerTest : public ::testing::Test {
       int num_subdivs = static_cast<int>(col_params_.subdiv_rank.size());
       int group_size = col_params_.group.group_size;
       CHECK_EQ(group_size,
-               static_cast<int>(col_params_.instance.device_names.size()));
+               static_cast<int>(col_params_.group.device_names.size()));
       // Id of this device is at rank position in first subdiv perm.
       int my_device_id =
           col_params_.instance.impl_details.subdiv_permutations[0][rank];
@@ -464,15 +466,16 @@ class RingReducerTest : public ::testing::Test {
     }
 
     void DoReduce() {
-      col_params_.merge_op =
-          GetAdd(col_params_.instance.data_type, device_type_, device_);
-      col_params_.final_op =
-          GetDiv(col_params_.instance.data_type, device_type_, device_);
+      merge_op_ = GetAdd(col_params_.instance.data_type, device_type_, device_);
+      final_op_ = GetDiv(col_params_.instance.data_type, device_type_, device_);
+      col_params_.merge_op = merge_op_.get();
+      col_params_.final_op = final_op_.get();
 
       // Prepare an OpKernelContext.
       OpKernelContext::Params op_params;
       op_params.step_id = kStepId;
       op_params.device = device_;
+      op_params.cancellation_manager = &parent_->cancellation_manager_;
       gtl::InlinedVector<TensorValue, 4> inputs;
       inputs.push_back(TensorValue(&tensor_));
       op_params.inputs = &inputs;
@@ -510,8 +513,9 @@ class RingReducerTest : public ::testing::Test {
       RingReducer* reducer = new RingReducer;
       core::ScopedUnref unref(reducer);
       auto col_ctx = std::make_shared<CollectiveContext>(
-          parent_->col_exec_, parent_->dev_mgr_.get(), &ctx, &op_params,
-          col_params_, exec_key, kStepId, &tensor_, &tensor_);
+          parent_->col_exec_, /*nccl_communicator*/ nullptr,
+          parent_->dev_mgr_.get(), &ctx, &op_params, col_params_, exec_key,
+          kStepId, &tensor_, &tensor_);
       TF_CHECK_OK(reducer->InitializeCollectiveContext(col_ctx));
 
       // Run the all-reduce.
@@ -532,6 +536,8 @@ class RingReducerTest : public ::testing::Test {
     Tensor tensor_;
     Device* device_;
     CollectiveParams col_params_;
+    std::unique_ptr<OpKernel> merge_op_;
+    std::unique_ptr<OpKernel> final_op_;
     std::unique_ptr<CollectiveAdapter> ca_;
     std::unique_ptr<OpKernelContext> ctx_;
     Status status_;
@@ -551,6 +557,7 @@ class RingReducerTest : public ::testing::Test {
   std::unique_ptr<string> gpu_ring_order_;
   mutex mu_;
   int32 reduce_counter_ TF_GUARDED_BY(mu_) = 0;
+  CancellationManager cancellation_manager_;
 };
 
 CollectiveParams SetUpCollectiveParams(const int num_devs_per_task,
@@ -573,8 +580,8 @@ CollectiveParams SetUpCollectiveParams(const int num_devs_per_task,
     int dev_id = i % num_devs_per_task;
     string task_name = strings::StrCat("/job:worker/replica:0/task:", task_id);
     string device_name = strings::StrCat(task_name, "/device:GPU:", dev_id);
-    cp.instance.task_names.push_back(task_name);
-    cp.instance.device_names.push_back(device_name);
+    cp.group.task_names.push_back(task_name);
+    cp.group.device_names.push_back(device_name);
   }
   return cp;
 }

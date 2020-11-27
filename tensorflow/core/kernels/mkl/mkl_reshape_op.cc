@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/util/mkl_types.h"
 #include "tensorflow/core/util/mkl_util.h"
 
 using mkldnn::stream;
@@ -55,7 +54,8 @@ class MklReshapeOp : public OpKernel {
     // blocking_desc_is_equal() for checking all the stride arrays in
     // mkl-dnn/blob/master/src/common/type_helpers.hpp
     auto input_mkl_md = mkl_shape_input.GetMklLayout();
-    return SKIP_INPUT_REORDER(mkl_shape_input, input_mkl_md);
+    return (mkl_shape_input.GetTfDataFormat() ==
+            MklTensorFormat::FORMAT_BLOCKED);
   }
 
  public:
@@ -138,7 +138,7 @@ class MklReshapeOp : public OpKernel {
         return;
       } else {
         try {
-          auto cpu_engine = engine(ENGINE_CPU, 0);
+          auto cpu_engine = engine(engine::kind::cpu, 0);
           MklDnnData<T> dnn_data_input(&cpu_engine);
           // Reshape is just a logical view change operation for a tensor.
           // It does not change underlying layout. But MKLDNN may maintain
@@ -156,9 +156,6 @@ class MklReshapeOp : public OpKernel {
           dnn_data_input.SetUsrMem(input_mkl_md, &input_tensor);
           // Get expected Tensorflow layout of input tensor.
           auto output_tf_md = mkl_shape_input.GetTfLayout();
-#ifndef ENABLE_MKLDNN_V1
-          auto output_tf_pd = memory::primitive_desc(output_tf_md, cpu_engine);
-#endif  // !ENABLE_MKLDNN_V1
 
           Tensor* output_tensor = nullptr;
           MklDnnShape mkl_shape_output;
@@ -172,7 +169,7 @@ class MklReshapeOp : public OpKernel {
           // shape_from != shape_to), then we just copy input tensor to
           // output tensor with target shape (we cannot forward Mkl layout
           // in such case because shape has changed.)
-          if (dnn_data_input.CheckReorderToOpMem(OUTPUT_TF_MD, output_tensor,
+          if (dnn_data_input.CheckReorderToOpMem(output_tf_md, output_tensor,
                                                  context)) {
           } else {
             OP_REQUIRES(context,

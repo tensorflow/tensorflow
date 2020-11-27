@@ -26,10 +26,9 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "tensorflow/core/util/device_name_utils.h"
 
-namespace mlir {
-
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h.inc"
 
+namespace mlir {
 namespace TF {
 
 // Tensorflow devices available at runtime with corresponding metadata if it is

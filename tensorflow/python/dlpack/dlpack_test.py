@@ -20,9 +20,11 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
+
 from tensorflow.python.dlpack import dlpack
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import test
 from tensorflow.python.ops import array_ops
@@ -104,6 +106,12 @@ class DLPackTest(parameterized.TestCase, test.TestCase):
                            UnsupportedQint16)
     self.assertRaisesRegex(Exception, ".* is not supported by dlpack",
                            UnsupportedComplex64)
+
+  def testMustPassTensorArgumentToDLPack(self):
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "The argument to `to_dlpack` must be a TF tensor, not Python object"):
+      dlpack.to_dlpack([1])
 
 
 if __name__ == "__main__":

@@ -60,20 +60,20 @@ func @batchmatmulv2_dynamic(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) 
   return %0 : tensor<?x?x?xf32>
 }
 
-func @batchmatmulv2_adj_real(%arg0: tensor<5x2xf32>, %arg1: tensor<2x4xf32>) -> tensor<5x4xf32> {
+func @batchmatmulv2_adj_real(%arg0: tensor<2x5xf32>, %arg1: tensor<4x2xf32>) -> tensor<5x4xf32> {
 // CHECK-LABEL:   func @batchmatmulv2_adj_real
 // CHECK:           "mhlo.dot_general"({{.*}}, {{.*}}) {dot_dimension_numbers = {
 // CHECK-SAME:        lhs_batching_dimensions = dense<> : tensor<0xi64>,
 // CHECK-SAME:        lhs_contracting_dimensions = dense<0> : tensor<1xi64>,
 // CHECK-SAME:        rhs_batching_dimensions = dense<> : tensor<0xi64>,
 // CHECK-SAME:        rhs_contracting_dimensions = dense<1> : tensor<1xi64>}}
-  %0 = "tf.BatchMatMulV2"(%arg0, %arg1) {adj_x = true, adj_y = true, device = ""} : (tensor<5x2xf32>, tensor<2x4xf32>) -> tensor<5x4xf32>
+  %0 = "tf.BatchMatMulV2"(%arg0, %arg1) {adj_x = true, adj_y = true, device = ""} : (tensor<2x5xf32>, tensor<4x2xf32>) -> tensor<5x4xf32>
   return %0 : tensor<5x4xf32>
 }
 
-func @batchmatmulv2_adj_complex(%arg0: tensor<5x2xcomplex<f32>>, %arg1: tensor<2x4xcomplex<f32>>) -> tensor<5x4xcomplex<f32>> {
+func @batchmatmulv2_adj_complex(%arg0: tensor<2x5xcomplex<f32>>, %arg1: tensor<4x2xcomplex<f32>>) -> tensor<5x4xcomplex<f32>> {
 // CHECK-LABEL:   func @batchmatmulv2_adj_complex(
-// CHECK-SAME:                                    [[LHS:%.*]]: tensor<5x2xcomplex<f32>>, [[RHS:%.*]]: tensor<2x4xcomplex<f32>>) -> tensor<5x4xcomplex<f32>> {
+// CHECK-SAME:                                    [[LHS:%.*]]: tensor<2x5xcomplex<f32>>, [[RHS:%.*]]: tensor<4x2xcomplex<f32>>) -> tensor<5x4xcomplex<f32>> {
 // CHECK:           [[LHSRE:%.*]] = "mhlo.real"([[LHS]])
 // CHECK:           [[LHSIM:%.*]] = "mhlo.imag"([[LHS]])
 // CHECK:           [[LHSIMNEG:%.*]] = "mhlo.negate"([[LHSIM]])
@@ -84,6 +84,6 @@ func @batchmatmulv2_adj_complex(%arg0: tensor<5x2xcomplex<f32>>, %arg1: tensor<2
 // CHECK:           [[RHSCONJ:%.*]] = "mhlo.complex"([[RHSRE]], [[RHSIMNEG]])
 // CHECK:           shape.shape_of [[LHSCONJ]]
 // CHECK:           shape.shape_of [[RHSCONJ]]
-  %0 = "tf.BatchMatMulV2"(%arg0, %arg1) {adj_x = true, adj_y = true, device = ""} : (tensor<5x2xcomplex<f32>>, tensor<2x4xcomplex<f32>>) -> tensor<5x4xcomplex<f32>>
+  %0 = "tf.BatchMatMulV2"(%arg0, %arg1) {adj_x = true, adj_y = true, device = ""} : (tensor<2x5xcomplex<f32>>, tensor<4x2xcomplex<f32>>) -> tensor<5x4xcomplex<f32>>
   return %0 : tensor<5x4xcomplex<f32>>
 }

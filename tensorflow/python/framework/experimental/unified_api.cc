@@ -22,15 +22,19 @@ limitations under the License.
 #include "tensorflow/c/eager/abstract_function.h"
 #include "tensorflow/c/eager/abstract_operation.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
+#include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/c_api_unified_experimental.h"
 #include "tensorflow/c/eager/c_api_unified_experimental_internal.h"
 #include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
+#include "tensorflow/c/eager/tfe_context_internal.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/python/eager/pywrap_tensor.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
@@ -97,23 +101,13 @@ PYBIND11_MODULE(_unified_api, m) {
     }
     return dyn_cast<TracingContext>(ctx);
   });
-  m.def("NewImmediateExecutionContext", [](bool use_tfrt) {
-    Safe_TF_StatusPtr status = make_safe(TF_NewStatus());
-    TFE_ContextOptions options;
-    options.use_tfrt = use_tfrt;
-    auto* ctx = unwrap(TF_NewEagerExecutionContext(&options, status.get()));
-    MaybeRaiseRegisteredFromTFStatus(status.get());
+  m.def("EagerContextToImmediateExecutionContext", [](py::handle& obj) {
+    TFE_Context* ctx =
+        static_cast<TFE_Context*>(PyCapsule_GetPointer(obj.ptr(), nullptr));
     if (!ctx) {
-      MaybeRaiseRegisteredFromStatus(Internal("Creating eager ctx failed"));
+      MaybeRaiseRegisteredFromStatus(InvalidArgument("TFE_Context is nullptr"));
     }
-    if (!isa<ImmediateExecutionContext>(ctx)) {
-      // TODO(srbs): Add a helper to convert the kind enum to a user-friendly
-      // string.
-      MaybeRaiseRegisteredFromStatus(
-          Internal("TF_NewEagerExecutionContext must return an ",
-                   "ImmediateExecutionContext, found ", ctx->getKind()));
-    }
-    return dyn_cast<ImmediateExecutionContext>(ctx);
+    return unwrap(ctx);
   });
 
   // Unified execution context.
@@ -139,7 +133,9 @@ PYBIND11_MODULE(_unified_api, m) {
       .def("AddParameter",
            [](TracingContext* self, DataType dtype) {
              TracingTensorHandle* handle = nullptr;
-             Status s = self->AddParameter(dtype, &handle);
+             // TODO(srbs): Add shape argument to this function.
+             tensorflow::PartialTensorShape shape;
+             Status s = self->AddParameter(dtype, shape, &handle);
              MaybeRaiseRegisteredFromStatus(s);
              return static_cast<AbstractTensorHandle*>(handle);
            })
@@ -175,14 +171,14 @@ PYBIND11_MODULE(_unified_api, m) {
         return f;
       });
 
-  py::class_<ImmediateExecutionContext, AbstractContext, ImmediateContextPtr>(
-      m, "ImmediateExecutionContext")
-      .def("CreateFloatScalarHandle",
-           [](ImmediateExecutionContext* self, float value) {
-             auto* tensor = self->CreateFloatScalar(value);
-             auto* handle = self->CreateLocalHandle(tensor);
-             return reinterpret_cast<AbstractTensorHandle*>(handle);
-           });
+  // Note: This does not take ownership of the C++ context, the lifetime of
+  // which is managed by the python `Context` and is expected to outlive this
+  // object.
+  // TODO(srbs): Make AbstractContext refcounted so that the above comment is
+  // not needed.
+  py::class_<ImmediateExecutionContext, AbstractContext,
+             std::unique_ptr<ImmediateExecutionContext, py::nodelete>>
+      ImmediateExecutionContext(m, "ImmediateExecutionContext");
 
   // Unified execution operation.
   py::class_<AbstractOperation, AbstractOperationPtr>(m, "AbstractOperation")
@@ -246,5 +242,18 @@ PYBIND11_MODULE(_unified_api, m) {
         MaybeRaiseRegisteredFromStatus(s.status);
         return Pyo(result);
       });
+
+  m.def("EagerTensorToImmediateExecutionTensorHandle", [](py::object handle) {
+    if (!EagerTensor_CheckExact(handle.ptr())) {
+      MaybeRaiseRegisteredFromStatus(
+          InvalidArgument("EagerTensorToImmediateExecutionTensorHandle called "
+                          "with non-EagerTensor."));
+    }
+    TFE_TensorHandle* eager_tensor = EagerTensor_Handle(handle.ptr());
+    auto t = static_cast<AbstractTensorHandle*>(unwrap(eager_tensor));
+    t->Ref();
+    return t;
+  });
+
   py::class_<AbstractFunction> AbstractFunction(m, "AbstractFunction");
 }

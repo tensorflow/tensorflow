@@ -263,7 +263,7 @@ class TensorShapeBase : public TensorShapeRep {
   explicit TensorShapeBase(DataType dt);
 
  private:
-  void RecomputeNumElements();
+  Status RecomputeNumElements();
   void InitDims(gtl::ArraySlice<int64> dim_sizes);
 
   // True for PartialTensorShape, false for TensorShape
@@ -483,7 +483,11 @@ class PartialTensorShapeUtils {
 template <int NDIMS, typename IndexType>
 Eigen::DSizes<IndexType, NDIMS> TensorShape::AsEigenDSizes() const {
   CheckDimsEqual(NDIMS);
-  return AsEigenDSizesWithPadding<NDIMS, IndexType>();
+  Eigen::DSizes<IndexType, NDIMS> dsizes;
+  for (int d = 0; d < NDIMS; d++) {
+    dsizes[d] = static_cast<IndexType>(dim_size(d));
+  }
+  return dsizes;
 }
 
 template <int NDIMS, typename IndexType>

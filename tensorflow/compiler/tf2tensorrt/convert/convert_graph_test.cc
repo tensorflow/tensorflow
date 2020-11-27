@@ -151,7 +151,8 @@ TEST(ConvertGraphTest, GetDeviceAndAllocator) {
 
 class ConvertAfterShapesTest : public ::testing::Test {
  public:
-  Status RunConvertAfterShape(Scope s, GraphDef* output_graph_def) {
+  Status RunConvertAfterShape(Scope s, GraphDef* output_graph_def,
+                              int maximum_batch_size = 1000) {
     // Create GraphProperties.
     grappler::GrapplerItem item;
     TF_EXPECT_OK(s.ToGraphDef(&item.graph));
@@ -162,6 +163,7 @@ class ConvertAfterShapesTest : public ::testing::Test {
     const std::vector<string> output_names{"output"};
     ConversionParams params;
     params.output_names = &output_names;
+    params.max_batch_size = maximum_batch_size;
     params.max_workspace_size_bytes = 8 << 20;
     params.output_graph_def = output_graph_def;
     params.minimum_segment_size = 1;

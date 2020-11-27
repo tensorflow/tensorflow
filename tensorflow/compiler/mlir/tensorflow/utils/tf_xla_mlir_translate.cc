@@ -22,11 +22,15 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringExtras.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/Parser.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
@@ -34,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate_cl.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/utils/string_container_utils.h"
 #include "tensorflow/compiler/mlir/xla/xla_mlir_translate_cl.h"
 #include "tensorflow/compiler/tf2xla/xla_argument.h"
@@ -67,7 +72,7 @@ mlir::LogicalResult PrintHloModuleText(
       compilation_result.computation->proto(), module_config);
   if (!status_or_hlo_module.ok()) {
     LOG(ERROR) << "Conversion to HLO module failed: "
-               << status_or_hlo_module.status().error_message();
+               << status_or_hlo_module.status().ToString();
     return mlir::failure();
   }
 
@@ -112,12 +117,18 @@ Status ParseArgumentShapes(
     absl::string_view input_shapes_str,
     llvm::SmallVectorImpl<TensorOrResourceShape>& arg_shapes) {
   arg_shapes.clear();
-  std::vector<std::vector<int>> input_shapes_vector;
+  std::vector<llvm::Optional<std::vector<int>>> input_shapes_vector;
   TF_RETURN_IF_ERROR(ParseNodeShapes(input_shapes_str, input_shapes_vector));
   arg_shapes.resize(input_shapes_vector.size());
-  for (const auto& shape : llvm::enumerate(input_shapes_vector))
+  for (const auto& shape : llvm::enumerate(input_shapes_vector)) {
+    if (!shape.value().hasValue()) {
+      TF_RETURN_IF_ERROR(TensorShapeUtils::MakeShape(
+          static_cast<int*>(nullptr), 0, &arg_shapes[shape.index()].shape));
+      continue;
+    }
     TF_RETURN_IF_ERROR(TensorShapeUtils::MakeShape(
-        shape.value(), &arg_shapes[shape.index()].shape));
+        shape.value().getValue(), &arg_shapes[shape.index()].shape));
+  }
 
   return Status::OK();
 }
@@ -175,7 +186,7 @@ Status ParseXlaArguments(absl::string_view input_shapes_str,
                          absl::string_view arg_kinds_str,
                          llvm::SmallVectorImpl<XlaArgument>& xla_arguments) {
   xla_arguments.clear();
-  std::vector<std::vector<int>> input_shapes_vector;
+  std::vector<llvm::Optional<std::vector<int>>> input_shapes_vector;
   TF_RETURN_IF_ERROR(
       tensorflow::ParseNodeShapes(input_shapes_str, input_shapes_vector));
   llvm::SmallVector<DataType, 4> dtypes_vector;
@@ -204,8 +215,14 @@ Status ParseXlaArguments(absl::string_view input_shapes_str,
                  arg_kinds_vector)) {
     XlaArgument& arg = std::get<0>(arg_components);
     TensorShape shape;
-    TF_RETURN_IF_ERROR(
-        TensorShapeUtils::MakeShape(std::get<1>(arg_components), &shape));
+    auto input_shapes = std::get<1>(arg_components);
+    if (input_shapes.hasValue()) {
+      TF_RETURN_IF_ERROR(
+          TensorShapeUtils::MakeShape(input_shapes.getValue(), &shape));
+    } else {
+      TF_RETURN_IF_ERROR(
+          TensorShapeUtils::MakeShape(static_cast<int*>(nullptr), 0, &shape));
+    }
     arg.shape = std::move(shape);
     arg.type = std::get<2>(arg_components);
     arg.kind = std::get<3>(arg_components);
@@ -224,18 +241,19 @@ static mlir::LogicalResult MlirTfToHloTextTranslateFunction(
   auto args_status =
       ParseArgumentShapes(mlir::StringRefToView(input_shapes), arg_shapes);
   if (!args_status.ok()) {
-    LOG(ERROR) << args_status.error_message();
+    LOG(ERROR) << args_status.ToString();
     return mlir::failure();
   }
 
   XlaCompilationResult compilation_result;
   auto compilation_status = CompileMlirToXlaHlo(
       module_op, arg_shapes, /*device_type=*/"XLA_CPU_JIT", emit_use_tuple_arg,
-      emit_return_tuple, IdentityShapeRepresentationFn(), &compilation_result,
+      emit_return_tuple, /*use_resource_updates_for_aliases=*/true,
+      IdentityShapeRepresentationFn(), &compilation_result,
       /*custom_legalization_passes=*/{});
   if (!compilation_status.ok()) {
     LOG(ERROR) << "TF/XLA compilation failed: "
-               << compilation_status.error_message();
+               << compilation_status.ToString();
     return mlir::failure();
   }
 
@@ -251,7 +269,7 @@ static mlir::LogicalResult MlirTfGraphToHloTextTranslateFunction(
       mlir::StringRefToView(input_shapes), mlir::StringRefToView(input_dtypes),
       mlir::StringRefToView(input_types), xla_arguments);
   if (!args_status.ok()) {
-    LOG(ERROR) << args_status.error_message();
+    LOG(ERROR) << args_status.ToString();
     return mlir::failure();
   }
 
@@ -262,29 +280,68 @@ static mlir::LogicalResult MlirTfGraphToHloTextTranslateFunction(
       &compilation_result, /*custom_legalization_passes=*/{});
   if (!compilation_status.ok()) {
     LOG(ERROR) << "TF/XLA compilation failed: "
-               << compilation_status.error_message();
+               << compilation_status.ToString();
     return mlir::failure();
   }
 
   return PrintHloModuleText(compilation_result, output);
 }
 
-}  // namespace tensorflow
-
 static void RegisterMlirInputDialects(mlir::DialectRegistry& registry) {
   registry.insert<mlir::StandardOpsDialect, mlir::TF::TensorFlowDialect>();
 }
-
-static mlir::TranslateFromMLIRRegistration MlirTfToHloTextTranslate(
-    "mlir-tf-to-hlo-text", tensorflow::MlirTfToHloTextTranslateFunction,
-    RegisterMlirInputDialects);
 
 static void RegisterGraphInputDialects(mlir::DialectRegistry& registry) {
   RegisterMlirInputDialects(registry);
   registry.insert<mlir::tf_executor::TensorFlowExecutorDialect>();
 }
 
+static mlir::OwningModuleRef SerializedMlirStringAttrToMlirModuleTranslate(
+    llvm::StringRef input, mlir::MLIRContext* context) {
+  mlir::Attribute attr = mlir::parseAttribute(input, context);
+  if (!attr || !attr.isa<mlir::StringAttr>()) {
+    LOG(ERROR) << "Input is not parsable as a MLIR StringAttr.";
+    return nullptr;
+  }
+  auto str_attr = attr.cast<mlir::StringAttr>();
+
+  RegisterMlirInputDialects(context->getDialectRegistry());
+  mlir::OwningModuleRef module_ref;
+  auto status =
+      DeserializeMlirModule(str_attr.getValue().str(), context, &module_ref);
+  if (!status.ok()) {
+    LOG(ERROR) << status.ToString();
+    return nullptr;
+  }
+
+  return module_ref;
+}
+
+static mlir::LogicalResult MlirModuleToSerializedMlirStringAttrTranslate(
+    mlir::ModuleOp module_op, llvm::raw_ostream& output) {
+  output << "\"";
+  std::string serialized_module = SerializeMlirModule(module_op);
+  llvm::printEscapedString(serialized_module, output);
+  output << "\"";
+  return mlir::success();
+}
+
+}  // namespace tensorflow
+
+static mlir::TranslateFromMLIRRegistration MlirTfToHloTextTranslate(
+    "mlir-tf-to-hlo-text", tensorflow::MlirTfToHloTextTranslateFunction,
+    tensorflow::RegisterMlirInputDialects);
+
 static mlir::TranslateFromMLIRRegistration MlirTfGraphToHloTextTranslate(
     "mlir-tf-graph-to-hlo-text",
     tensorflow::MlirTfGraphToHloTextTranslateFunction,
-    RegisterGraphInputDialects);
+    tensorflow::RegisterGraphInputDialects);
+
+static mlir::TranslateToMLIRRegistration SerializedMlirStringAttrToMlirModule(
+    "mlir-tf-str-attr-to-mlir",
+    tensorflow::SerializedMlirStringAttrToMlirModuleTranslate);
+
+static mlir::TranslateFromMLIRRegistration MlirModuleToSerializedMlirStringAttr(
+    "mlir-tf-mlir-to-str-attr",
+    tensorflow::MlirModuleToSerializedMlirStringAttrTranslate,
+    tensorflow::RegisterMlirInputDialects);

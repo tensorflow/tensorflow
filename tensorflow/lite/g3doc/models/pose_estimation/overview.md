@@ -2,39 +2,47 @@
 
 <img src="../images/pose.png" class="attempt-right" />
 
+Pose estimation is the task of using an ML model to estimate the pose of a
+person from an image or a video by estimating the spatial locations of key body
+joints (keypoints).
+
 ## Get started
 
-_PoseNet_ is a vision model that can be used to estimate the pose of a person in
-an image or video by estimating where key body joints are.
-
-<a class="button button-primary" href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/posenet_mobilenet_v1_100_257x257_multi_kpt_stripped.tflite">
-Download starter model</a>
-
-If you want to experiment this on a web browser, check out the
-<a href="https://github.com/tensorflow/tfjs-models/tree/master/posenet">TensorFlow.js
-GitHub repository</a>.
-
-### Example applications and guides
-
-We provide example TensorFlow Lite applications demonstrating the PoseNet model
-for both Android and iOS.
+If you are new to TensorFlow Lite and are working with Android or iOS, explore
+the following example applications that can help you get started.
 
 <a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/posenet/android">
 Android example</a>
 <a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/posenet/ios">
 iOS example</a>
 
-## How it works
+If you are familiar with the
+[TensorFlow Lite APIs](https://www.tensorflow.org/api_docs/python/tf/lite),
+download the starter PoseNet model and supporting files.
+
+<a class="button button-primary" href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/posenet_mobilenet_v1_100_257x257_multi_kpt_stripped.tflite">
+Download starter model</a>
+
+If you want to try pose estimation on a web browser, check out the
+<a href="https://github.com/tensorflow/tfjs-models/tree/master/posenet">
+TensorFlow JS GitHub repository</a>.
+
+## Model description
+
+### How it works
 
 Pose estimation refers to computer vision techniques that detect human figures
 in images and videos, so that one could determine, for example, where someone’s
-elbow shows up in an image.
+elbow shows up in an image. It is important to be aware of the fact that pose
+estimation merely estimates where key body joints are and does not recognize who
+is in an image or video.
 
-To be clear, this technology is not recognizing who is in an image. The
-algorithm is simply estimating where key body joints are.
+The PoseNet model takes a processed camera image as the input and outputs
+information about keypoints. The keypoints detected are indexed by a part ID,
+with a confidence score between 0.0 and 1.0. The confidence score indicates the
+probability that a keypoint exists in that position.
 
-The key points detected are indexed by "Part ID", with a confidence score
-between 0.0 and 1.0, 1.0 being the highest.
+The various body joints detected by the PoseNet model are tabulated below:
 
 <table style="width: 30%;">
   <thead>
@@ -115,7 +123,33 @@ between 0.0 and 1.0, 1.0 being the highest.
   </tbody>
 </table>
 
-## Performance Benchmarks
+An example output is shown below:
+
+<img alt="Animation showing pose estimation" src="https://www.tensorflow.org/images/lite/models/pose_estimation.gif"/>
+
+## Performance benchmarks
+
+Performance varies based on your device and output stride (heatmaps and offset
+vectors). The PoseNet model is image size invariant, which means it can predict
+pose positions in the same scale as the original image regardless of whether the
+image is downscaled. This means that you configure the model to have a higher
+accuracy at the expense of performance.
+
+The output stride determines how much the output is scaled down relative to the
+input image size. It affects the size of the layers and the model outputs.
+
+The higher the output stride, the smaller the resolution of layers in the
+network and the outputs, and correspondingly their accuracy. In this
+implementation, the output stride can have values of 8, 16, or 32. In other
+words, an output stride of 32 will result in the fastest performance but lowest
+accuracy, while 8 will result in the highest accuracy but slowest performance.
+The recommended starting value is 16.
+
+The following image shows how the output stride determines how much the output
+is scaled down relative to the input image size. A higher output stride is
+faster but results in lower accuracy.
+
+<img alt="Output stride and heatmap resolution" src="../images/output_stride.png" >
 
 Performance benchmark numbers are generated with the tool
 [described here](https://www.tensorflow.org/lite/performance/benchmarks).
@@ -157,42 +191,18 @@ Performance benchmark numbers are generated with the tool
 
 \*\* 2 threads used on iPhone for the best performance result.
 
-## Example output
+## Further reading and resources
 
-<img alt="Animation showing pose estimation" src="https://www.tensorflow.org/images/lite/models/pose_estimation.gif"/>
+*   Check out this
+    [blog post](https://medium.com/tensorflow/track-human-poses-in-real-time-on-android-with-tensorflow-lite-e66d0f3e6f9e)
+    to learn more about pose estimation using TensorFlow Lite.
+*   Check out this
+    [blog post](https://medium.com/tensorflow/real-time-human-pose-estimation-in-the-browser-with-tensorflow-js-7dd0bc881cd5)
+    to learn more about pose estimation using TensorFlow JS.
+*   Read the PoseNet paper
+    [here](https://www.cv-foundation.org/openaccess/content_iccv_2015/papers/Kendall_PoseNet_A_Convolutional_ICCV_2015_paper.pdf)
 
-## How it performs
-
-Performance varies based on your device and output stride (heatmaps and offset
-vectors). The PoseNet model is image size invariant, which means it can predict
-pose positions in the same scale as the original image regardless of whether the
-image is downscaled. This means PoseNet can be configured to have a higher
-accuracy at the expense of performance.
-
-The output stride determines how much we’re scaling down the output relative to
-the input image size. It affects the size of the layers and the model outputs.
-The higher the output stride, the smaller the resolution of layers in the
-network and the outputs, and correspondingly their accuracy. In this
-implementation, the output stride can have values of 8, 16, or 32. In other
-words, an output stride of 32 will result in the fastest performance but lowest
-accuracy, while 8 will result in the highest accuracy but slowest performance.
-We recommend starting with 16.
-
-The following image shows how the output stride determines how much we’re
-scaling down the output relative to the input image size. A higher output stride
-is faster but results in lower accuracy.
-
-<img alt="Output stride and heatmap resolution" src="../images/output_stride.png" >
-
-## Read more about pose estimation
-
-<ul>
-  <li><a href="https://medium.com/tensorflow/real-time-human-pose-estimation-in-the-browser-with-tensorflow-js-7dd0bc881cd5">Blog post: Real-time Human Pose Estimation in the Browser with TensorFlow.js</a></li>
-  <li><a href="https://github.com/tensorflow/tfjs-models/tree/master/posenet">TF.js GitHub: Pose Detection in the Browser: PoseNet Model</a></li>
-   <li><a href="https://medium.com/tensorflow/track-human-poses-in-real-time-on-android-with-tensorflow-lite-e66d0f3e6f9e">Blog post: Track human poses in real-time on Android with TensorFlow Lite</a></li>
-</ul>
-
-### Use cases
+Also, check out these use cases of pose estimation.
 
 <ul>
   <li><a href="https://vimeo.com/128375543">‘PomPom Mirror’</a></li>

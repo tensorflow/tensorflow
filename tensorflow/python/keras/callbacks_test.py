@@ -33,20 +33,25 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.framework import summary_pb2
+from tensorflow.core.util import event_pb2
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import readers
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import sequential
+from tensorflow.python.keras.layers import Activation
+from tensorflow.python.keras.layers import Dense
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
 from tensorflow.python.keras.utils import np_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import summary_ops_v2
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import save_options as save_options_lib
@@ -1468,7 +1473,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
         epochs=20)
     loss = history.history['loss']
     self.assertEqual(len(loss), 1)
-    self.assertTrue(np.isnan(loss[0]))
+    self.assertTrue(np.isnan(loss[0]) or np.isinf(loss[0]))
 
   @unittest.skipIf(
       os.name == 'nt',
@@ -1769,6 +1774,28 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     with self.assertRaisesRegexp(ValueError, 'New function '):
       model.predict(x, batch_size=2)
 
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_stop_training_batch_level(self):
+
+    class MyCallback(keras.callbacks.Callback):
+
+      def __init__(self):
+        super(MyCallback, self).__init__()
+        self.batch_counter = 0
+
+      def on_train_batch_end(self, batch, logs=None):
+        self.batch_counter += 1
+        if batch == 2:
+          self.model.stop_training = True
+
+    model = keras.Sequential([keras.layers.Dense(1)])
+    model.compile('sgd', 'mse')
+    x, y = np.ones((10, 10)), np.ones((10, 1))
+    my_cb = MyCallback()
+    # Will run 5 batches if `stop_training` doesn't work.
+    model.fit(x, y, batch_size=2, callbacks=[my_cb])
+    self.assertEqual(my_cb.batch_counter, 3)
+
 
 # A summary that was emitted during a test. Fields:
 #   logdir: str. The logdir of the FileWriter to which the summary was
@@ -1999,6 +2026,37 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
         {
             _ObservedSummary(logdir=self.train_dir, tag='epoch_loss'),
             _ObservedSummary(logdir=self.train_dir, tag='epoch_learning_rate'),
+        },
+    )
+
+  def test_TensorBoard_global_step(self):
+    model = self._get_model(compile_model=False)
+    opt = gradient_descent.SGD(learning_rate_schedule.CosineDecay(0.01, 1))
+    model.compile(opt, 'mse', run_eagerly=testing_utils.should_run_eagerly())
+
+    x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
+
+    model.fit(
+        x,
+        y,
+        batch_size=2,
+        epochs=2,
+        callbacks=[
+            keras.callbacks.TensorBoard(
+                self.logdir, update_freq=1, write_steps_per_second=True)
+        ])
+
+    summary_file = list_summaries(self.logdir)
+    self.assertEqual(
+        summary_file.scalars,
+        {
+            _ObservedSummary(logdir=self.train_dir, tag='epoch_loss'),
+            _ObservedSummary(logdir=self.train_dir, tag='batch_loss'),
+            _ObservedSummary(logdir=self.train_dir, tag='epoch_learning_rate'),
+            _ObservedSummary(
+                logdir=self.train_dir, tag='epoch_steps_per_second'),
+            _ObservedSummary(
+                logdir=self.train_dir, tag='batch_steps_per_second'),
         },
     )
 
@@ -2593,6 +2651,118 @@ class MostRecentlyModifiedFileMatchingPatternTest(test.TestCase):
         keras.callbacks.ModelCheckpoint(None)
         ._get_most_recently_modified_file_matching_pattern(path_pattern),
         ckpt_file_path)
+
+
+class SummaryOpsTest(test.TestCase):
+
+  def tearDown(self):
+    super(SummaryOpsTest, self).tearDown()
+    summary_ops_v2.trace_off()
+
+  def keras_model(self, *args, **kwargs):
+    logdir = self.get_temp_dir()
+    writer = summary_ops_v2.create_file_writer_v2(logdir)
+    with writer.as_default():
+      keras.callbacks.keras_model_summary(*args, **kwargs)
+    writer.close()
+    events = events_from_logdir(logdir)
+    # The first event contains no summary values. The written content goes to
+    # the second event.
+    return events[1]
+
+  @testing_utils.run_v2_only
+  def testKerasModel(self):
+    model = keras.Sequential(
+        [Dense(10, input_shape=(100,)),
+         Activation('relu', name='my_relu')])
+    event = self.keras_model(name='my_name', data=model, step=1)
+    first_val = event.summary.value[0]
+    self.assertEqual(model.to_json(), first_val.tensor.string_val[0].decode())
+
+  @testing_utils.run_v2_only
+  def testKerasModel_usesDefaultStep(self):
+    model = keras.Sequential(
+        [Dense(10, input_shape=(100,)),
+         Activation('relu', name='my_relu')])
+    try:
+      summary_ops_v2.set_step(42)
+      event = self.keras_model(name='my_name', data=model)
+      self.assertEqual(42, event.step)
+    finally:
+      # Reset to default state for other tests.
+      summary_ops_v2.set_step(None)
+
+  @testing_utils.run_v2_only
+  def testKerasModel_subclass(self):
+
+    class SimpleSubclass(keras.Model):
+
+      def __init__(self):
+        super(SimpleSubclass, self).__init__(name='subclass')
+        self.dense = Dense(10, input_shape=(100,))
+        self.activation = Activation('relu', name='my_relu')
+
+      def call(self, inputs):
+        x = self.dense(inputs)
+        return self.activation(x)
+
+    model = SimpleSubclass()
+    with test.mock.patch.object(logging, 'warn') as mock_log:
+      self.assertFalse(
+          keras.callbacks.keras_model_summary(
+              name='my_name', data=model, step=1))
+      self.assertRegex(
+          str(mock_log.call_args), 'Model failed to serialize as JSON.')
+
+  @testing_utils.run_v2_only
+  def testKerasModel_otherExceptions(self):
+    model = keras.Sequential()
+
+    with test.mock.patch.object(model, 'to_json') as mock_to_json:
+      with test.mock.patch.object(logging, 'warn') as mock_log:
+        mock_to_json.side_effect = Exception('oops')
+        self.assertFalse(
+            keras.callbacks.keras_model_summary(
+                name='my_name', data=model, step=1))
+        self.assertRegex(
+            str(mock_log.call_args),
+            'Model failed to serialize as JSON. Ignoring')
+
+
+def events_from_file(filepath):
+  """Returns all events in a single event file.
+
+  Args:
+    filepath: Path to the event file.
+
+  Returns:
+    A list of all tf.Event protos in the event file.
+  """
+  result = []
+  raw_dataset = readers.TFRecordDatasetV2([filepath])
+  for raw_record in raw_dataset.take(10):
+    event = event_pb2.Event()
+    event.ParseFromString(raw_record.numpy())
+    result.append(event)
+  return result
+
+
+def events_from_logdir(logdir):
+  """Returns all events in the single eventfile in logdir.
+
+  Args:
+    logdir: The directory in which the single event file is sought.
+
+  Returns:
+    A list of all tf.Event protos from the single event file.
+
+  Raises:
+    AssertionError: If logdir does not contain exactly one file.
+  """
+  assert gfile.Exists(logdir)
+  files = gfile.ListDirectory(logdir)
+  assert len(files) == 1, 'Found not exactly one file in logdir: %s' % files
+  return events_from_file(os.path.join(logdir, files[0]))
 
 
 if __name__ == '__main__':

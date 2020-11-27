@@ -30,7 +30,7 @@ namespace tpu {
 // Creates a unique compilation cache `key`.
 TpuCompilationCacheKey CreateCompilationCacheKey(
     absl::string_view function_name, uint64 function_library_fingerprint,
-    absl::string_view mlir_module, const OpInputList& guaranteed_constants,
+    uint64 mlir_module_fingerprint, const OpInputList& guaranteed_constants,
     const std::vector<TensorShape>& dynamic_shapes,
     const TPUCompileMetadataProto& metadata,
     const TpuMeshStateInterface& mesh_state);

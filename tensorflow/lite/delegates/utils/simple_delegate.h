@@ -114,8 +114,12 @@ class TfLiteDelegateFactory {
  public:
   // Creates TfLiteDelegate from the provided SimpleDelegateInterface.
   // The returned TfLiteDelegate should be deleted using DeleteSimpleDelegate.
+  // A simple usage of the flags bit mask:
+  // CreateSimpleDelegate(..., kTfLiteDelegateFlagsAllowDynamicTensors |
+  // kTfLiteDelegateFlagsRequirePropagatedShapes)
   static TfLiteDelegate* CreateSimpleDelegate(
-      std::unique_ptr<SimpleDelegateInterface> simple_delegate);
+      std::unique_ptr<SimpleDelegateInterface> simple_delegate,
+      int64_t flags = kTfLiteDelegateFlagsNone);
 
   // Deletes 'delegate' the passed pointer must be the one returned
   // from CreateSimpleDelegate.

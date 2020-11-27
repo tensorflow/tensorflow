@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_C_EAGER_C_API_TEST_UTIL_H_
 
 #include "tensorflow/c/eager/c_api.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 
@@ -27,6 +28,10 @@ TFE_TensorHandle* TestScalarTensorHandle(TFE_Context* ctx, int value);
 
 // Return a tensor handle containing a bool scalar
 TFE_TensorHandle* TestScalarTensorHandle(TFE_Context* ctx, bool value);
+
+// Return a tensor handle containing a tstring scalar
+TFE_TensorHandle* TestScalarTensorHandle(TFE_Context* ctx,
+                                         const tensorflow::tstring& value);
 
 // Return a tensor handle containing a 2x2 matrix of doubles
 TFE_TensorHandle* DoubleTestMatrixTensorHandle(TFE_Context* ctx);

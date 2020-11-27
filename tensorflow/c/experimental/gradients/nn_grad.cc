@@ -14,17 +14,19 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/gradients/nn_grad.h"
 
+#include "absl/types/span.h"
+#include "tensorflow/c/eager/abstract_tensor_handle.h"
+#include "tensorflow/c/eager/immediate_execution_context.h"
+#include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/c/experimental/ops/array_ops.h"
 #include "tensorflow/c/experimental/ops/math_ops.h"
 #include "tensorflow/c/experimental/ops/nn_ops.h"
+#include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
+#include "tensorflow/core/platform/errors.h"
 
 using std::vector;
-using tensorflow::ops::Conj;
-using tensorflow::ops::Identity;
 using tensorflow::ops::Mul;
 using tensorflow::ops::ReluGrad;
-using tensorflow::ops::SparseSoftmaxCrossEntropyLoss;
-using tensorflow::ops::ZerosLike;
 
 namespace tensorflow {
 namespace gradients {
@@ -58,9 +60,31 @@ class ReluGradientFunction : public GradientFunction {
   vector<AbstractTensorHandle*> forward_outputs;
 };
 
-class SparseSoftmaxCrossEntropyLossGradientFunction : public GradientFunction {
+Status BroadcastMul(AbstractContext* ctx, AbstractTensorHandle* vec,
+                    AbstractTensorHandle* mat,
+                    absl::Span<AbstractTensorHandle*> outputs) {
+  if (!isa<ImmediateExecutionContext>(ctx)) {
+    // TODO(b/168850692): Fix this.
+    return errors::Unimplemented(
+        "BroadcastMul is not supported in tracing mode yet.");
+  }
+  auto imm_ctx = dyn_cast<ImmediateExecutionContext>(ctx);
+  AbstractTensorPtr minus_1(imm_ctx->CreateInt32Scalar(-1));
+  ImmediateTensorHandlePtr dim(imm_ctx->CreateLocalHandle(minus_1.get()));
+  vector<AbstractTensorHandle*> expand_dims_outputs(1);
+  TF_RETURN_IF_ERROR(ops::ExpandDims(ctx, {vec, dim.get()},
+                                     absl::MakeSpan(expand_dims_outputs),
+                                     "ExpandDims"));
+  TF_RETURN_IF_ERROR(
+      ops::Mul(ctx, {expand_dims_outputs[0], mat}, outputs, "Mul"));
+  expand_dims_outputs[0]->Unref();
+  return Status::OK();
+}
+
+class SparseSoftmaxCrossEntropyWithLogitsGradientFunction
+    : public GradientFunction {
  public:
-  explicit SparseSoftmaxCrossEntropyLossGradientFunction(
+  explicit SparseSoftmaxCrossEntropyWithLogitsGradientFunction(
       vector<AbstractTensorHandle*> f_outputs)
       : forward_outputs(f_outputs) {}
 
@@ -69,12 +93,10 @@ class SparseSoftmaxCrossEntropyLossGradientFunction : public GradientFunction {
     grad_outputs->resize(2);
 
     // Grad for Softmax Input
-    std::string name = "Mul_Softmax_Grad";
     vector<AbstractTensorHandle*> mul_outputs(1);
-    TF_RETURN_IF_ERROR(
-        ops::Mul(ctx->ctx, {grad_inputs[0], forward_outputs[1]},
-                 absl::MakeSpan(mul_outputs),
-                 name.c_str()));  // upstream_grad * local softmax grad
+    TF_RETURN_IF_ERROR(BroadcastMul(
+        ctx->ctx, grad_inputs[0], forward_outputs[1],
+        absl::MakeSpan(mul_outputs)));  // upstream_grad * local softmax grad
     (*grad_outputs)[0] = mul_outputs[0];
 
     // Grad for labels is null
@@ -82,7 +104,7 @@ class SparseSoftmaxCrossEntropyLossGradientFunction : public GradientFunction {
 
     return Status::OK();
   }
-  ~SparseSoftmaxCrossEntropyLossGradientFunction() override {}
+  ~SparseSoftmaxCrossEntropyWithLogitsGradientFunction() override {}
 
  private:
   vector<AbstractTensorHandle*> forward_outputs;
@@ -99,10 +121,10 @@ BackwardFunction* ReluRegisterer(const ForwardOperation& op) {
   return new BackwardFunction(gradient_function, default_gradients);
 }
 
-BackwardFunction* SparseSoftmaxCrossEntropyLossRegisterer(
+BackwardFunction* SparseSoftmaxCrossEntropyWithLogitsRegisterer(
     const ForwardOperation& op) {
   auto gradient_function =
-      new SparseSoftmaxCrossEntropyLossGradientFunction(op.outputs);
+      new SparseSoftmaxCrossEntropyWithLogitsGradientFunction(op.outputs);
   auto default_gradients = new PassThroughDefaultGradients(op);
   return new BackwardFunction(gradient_function, default_gradients);
 }

@@ -34,6 +34,8 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import tf2
 from tensorflow.python.client import device_lib
 from tensorflow.python.client import session
+from tensorflow.python.data.experimental.ops import cardinality
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as eager_function
@@ -720,23 +722,26 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       # We expect that everything runs on CPU, even if GPU is available.
       self.assertEqual(len(run_metadata.partition_graphs), 1)
 
-  def _count_matching_switch_nodes_on_device(self, run_metadata, device_str):
-    # Returns the number of Switch nodes with type float32 placed on
+  def _count_matching_switch_nodes_on_device(self, run_metadata, device_str,
+                                             dtype):
+    # Returns the number of Switch nodes with type dtype placed on
     # `device_str`.
     device_graphs = [
         g for g in run_metadata.partition_graphs
         if device_str in g.node[0].device
     ]
+    if not device_graphs:
+      return 0
     self.assertLen(device_graphs, 1)
     switch_nodes = [
-        n for n in device_graphs[0].node if n.op == "Switch" and
-        n.attr["T"].type == dtypes.float32.as_datatype_enum
+        n for n in device_graphs[0].node
+        if n.op == "Switch" and n.attr["T"].type == dtype.as_datatype_enum
     ]
     return len(switch_nodes)
 
   @test_util.run_gpu_only
   @test_util.run_deprecated_v1
-  def testCondSwitchColocatedWithInputWhenInputOnCPU(self):
+  def testCondSwitchColocatedWithInputWhenInputExplicitlyPlacedOnCPU(self):
     x = array_ops.placeholder(dtypes.float32)
 
     # `arg` is used in the cond then branch so a Switch node is created for it.
@@ -756,12 +761,45 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       options = config_pb2.RunOptions(output_partition_graphs=True)
       sess.run(
           r, feed_dict={x: -10.}, options=options, run_metadata=run_metadata)
-      self.assertEqual(len(run_metadata.partition_graphs), 2)
       # Check that the Switch for `arg` gets placed on CPU.
       self.assertEqual(
-          self._count_matching_switch_nodes_on_device(run_metadata, "CPU"), 1)
+          self._count_matching_switch_nodes_on_device(run_metadata, "CPU",
+                                                      dtypes.float32), 1)
       self.assertEqual(
-          self._count_matching_switch_nodes_on_device(run_metadata, "GPU"), 0)
+          self._count_matching_switch_nodes_on_device(run_metadata, "GPU",
+                                                      dtypes.float32), 0)
+
+  @test_util.run_gpu_only
+  @test_util.run_deprecated_v1
+  def testCondSwitchColocatedWithInputWhenInputPlacedOnCPU(self):
+    x = array_ops.placeholder(dtypes.float32)
+
+    # `arg` is used in the cond then branch so a Switch node is created for it.
+    # We test that the Switch node gets placed on the same device as `arg`.
+    # Since arg is a dataset (and only has a CPU kernel), it gets placed on CPU
+    # by placer.
+    arg = dataset_ops.Dataset.range(8)
+
+    def true_fn():
+      return cardinality.cardinality(arg)
+
+    r = control_flow_ops.cond(
+        constant_op.constant(True), true_fn,
+        lambda: constant_op.constant(0, dtypes.int64))
+
+    with session.Session() as sess:
+      run_metadata = config_pb2.RunMetadata()
+      options = config_pb2.RunOptions(output_partition_graphs=True)
+      sess.run(
+          r, feed_dict={x: -10.}, options=options, run_metadata=run_metadata)
+      self.assertLen(run_metadata.partition_graphs, 2)
+      # Check that the Switch for `arg` gets placed on CPU.
+      self.assertEqual(
+          self._count_matching_switch_nodes_on_device(run_metadata, "CPU",
+                                                      dtypes.variant), 1)
+      self.assertEqual(
+          self._count_matching_switch_nodes_on_device(run_metadata, "GPU",
+                                                      dtypes.variant), 0)
 
   @test_util.run_gpu_only
   @test_util.run_deprecated_v1
@@ -787,9 +825,11 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(len(run_metadata.partition_graphs), 2)
       # Check that the Switch for `arg` gets placed on GPU.
       self.assertEqual(
-          self._count_matching_switch_nodes_on_device(run_metadata, "CPU"), 0)
+          self._count_matching_switch_nodes_on_device(run_metadata, "CPU",
+                                                      dtypes.float32), 0)
       self.assertEqual(
-          self._count_matching_switch_nodes_on_device(run_metadata, "GPU"), 1)
+          self._count_matching_switch_nodes_on_device(run_metadata, "GPU",
+                                                      dtypes.float32), 1)
 
   def testCondAccessTrueBranchTensorInFalseBranchRaises(self):
 
@@ -4578,6 +4618,14 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       v_f, v_t = control_flow_ops.switch(constant_uint64, cond)
       result = control_flow_ops.merge([v_f, v_t])
       self.evaluate(result)
+
+  def testSwitchEagerMode(self):
+    if not context.executing_eagerly():
+      return
+    input_data = [1, 2, 3, 4]
+    vf, vt = control_flow_ops.switch(input_data, False)
+    self.assertAllEqual(vf, input_data)
+    self.assertAllEqual(vt, [])
 
   @test_util.run_deprecated_v1
   def testQIntArgAndRet(self):

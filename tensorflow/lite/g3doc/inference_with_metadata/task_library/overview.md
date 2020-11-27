@@ -6,7 +6,7 @@ It provides optimized out-of-box model interfaces for popular machine learning
 tasks, such as image classification, question and answer, etc. The model
 interfaces are specifically designed for each task to achieve the best
 performance and usability. Task Library works cross-platform and is supported on
-Java, C++, and Swift (coming soon).
+Java, C++, and Swift.
 
 ## What to expect from the Task Library
 

@@ -33,10 +33,6 @@ from tensorflow.python.autograph.pyct.static_analysis import annos
 from tensorflow.python.autograph.pyct.static_analysis import liveness
 from tensorflow.python.autograph.pyct.static_analysis import reaching_definitions
 from tensorflow.python.autograph.pyct.static_analysis import reaching_fndefs
-from tensorflow.python.autograph.utils import compat_util
-
-
-# TODO(mdan): Refactor functions to make them smaller.
 
 
 class _Function(object):
@@ -200,8 +196,8 @@ class ControlFlowTransformer(converter.Base):
     # it.
     input_only = basic_scope_vars & live_in - live_out
 
-    # Place the outputs first.
-    scope_vars = sorted(scope_vars, key=lambda v: v in input_only)
+    # Place the outputs first, then sort lexicographically.
+    scope_vars = sorted(scope_vars, key=lambda v: (v in input_only, v))
     nouts = len(scope_vars) - len(input_only)
 
     return scope_vars, undefined, nouts
@@ -419,6 +415,3 @@ def transform(node, ctx):
 
   node = ControlFlowTransformer(ctx).visit(node)
   return node
-
-
-compat_util.deprecated_py2_support(__name__)

@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/meta/type_traits.h"
 #include "absl/types/optional.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -664,6 +665,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
             typename std::enable_if<std::is_integral<NativeT>::value>::type* =
                 nullptr>
   Status HandleMinimum(HloInstruction* minimum) {
+    VLOG(2) << "Evaluating minimum\n";
     TF_ASSIGN_OR_RETURN(parent_->evaluated_[minimum],
                         ElementWiseBinaryOp(minimum, [](ElementwiseT lhs_el,
                                                         ElementwiseT rhs_el) {
@@ -1288,7 +1290,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     TF_ASSIGN_OR_RETURN(auto inferred_return_shape,
                         ShapeInference::InferConvolveShape(
                             lhs_shape, rhs_shape, conv->feature_group_count(),
-                            conv->batch_group_count(), window, dnums));
+                            conv->batch_group_count(), window, dnums,
+                            /*preferred_element_type=*/absl::nullopt));
     CHECK(ShapeUtil::Compatible(result_shape, inferred_return_shape))
         << "return shape set to: " << ShapeUtil::HumanString(result_shape)
         << " but is inferred to be: "
@@ -1767,6 +1770,10 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
         TF_ASSIGN_OR_RETURN(parent_->evaluated_[map], MapImpl<uint8>(map));
         break;
       }
+      case U16: {
+        TF_ASSIGN_OR_RETURN(parent_->evaluated_[map], MapImpl<uint16>(map));
+        break;
+      }
       case U32: {
         TF_ASSIGN_OR_RETURN(parent_->evaluated_[map], MapImpl<uint32>(map));
         break;
@@ -1777,6 +1784,10 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       }
       case S8: {
         TF_ASSIGN_OR_RETURN(parent_->evaluated_[map], MapImpl<int8>(map));
+        break;
+      }
+      case S16: {
+        TF_ASSIGN_OR_RETURN(parent_->evaluated_[map], MapImpl<int16>(map));
         break;
       }
       case S32: {
@@ -1932,14 +1943,14 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   }
 
   Status HandleReduceWindow(HloInstruction* reduce_window) override {
-    auto operand = reduce_window->operand(0);
+    auto* reduce_window_instr = Cast<HloReduceWindowInstruction>(reduce_window);
     const Window& window = reduce_window->window();
     HloComputation* function = reduce_window->to_apply();
     TF_ASSIGN_OR_RETURN(
         auto inferred_return_shape,
         ShapeInference::InferReduceWindowShape(
-            /*operand_shape=*/reduce_window->operand(0)->shape(),
-            /*init_value=*/reduce_window->operand(1)->shape(), window,
+            reduce_window_instr->input_array_shapes(),
+            reduce_window_instr->init_value_shapes(), window,
             /*to_apply_shape=*/function->ComputeProgramShape()));
     TF_RET_CHECK(
         ShapeUtil::Compatible(reduce_window->shape(), inferred_return_shape))
@@ -1948,62 +1959,101 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
         << " but is inferred to be: "
         << ShapeUtil::HumanStringWithLayout(inferred_return_shape);
 
-    const Literal& operand_literal =
-        parent_->GetEvaluatedLiteralFor(reduce_window->operand(0));
-    VLOG(3) << "HandleReduceWindow arg_literal: " << operand_literal.ToString();
-    const Literal& init_literal =
-        parent_->GetEvaluatedLiteralFor(reduce_window->operand(1));
-    VLOG(3) << "HandleReduceWindow init_literal: " << init_literal.ToString();
-    TF_RET_CHECK(ShapeUtil::IsScalar(init_literal.shape()));
-    auto init_scalar = init_literal.Get<ReturnT>({});
-
+    absl::InlinedVector<const Literal*, 2> input_literal_vec, init_literal_vec;
+    auto input_arrays = reduce_window_instr->input_arrays();
+    auto init_values = reduce_window_instr->init_values();
+    int64 num_args = input_arrays.size();
+    for (int i = 0; i < num_args; ++i) {
+      const Literal& input_literal =
+          parent_->GetEvaluatedLiteralFor(input_arrays[i]);
+      VLOG(3) << "HandleReduceWindow arg_literal: " << input_literal.ToString();
+      input_literal_vec.push_back(&input_literal);
+      const Literal& init_literal =
+          parent_->GetEvaluatedLiteralFor(init_values[i]);
+      VLOG(3) << "HandleReduceWindow init_literal: " << init_literal.ToString();
+      TF_RET_CHECK(ShapeUtil::IsScalar(init_literal.shape()));
+      init_literal_vec.push_back(&init_literal);
+    }
     // Creates a Shape object from window, for iteration below.
-    std::vector<int64> window_dimension_sizes;
+    absl::InlinedVector<int64, 2> window_dimension_sizes;
     for (const auto& window_dimension : window.dimensions()) {
       window_dimension_sizes.push_back(window_dimension.size());
     }
     const Shape window_shape = ShapeUtil::MakeShape(
-        operand->shape().element_type(), window_dimension_sizes);
-
-    DimensionVector window_index(window.dimensions_size());
-    DimensionVector operand_index(operand_literal.shape().rank());
+        input_arrays[0]->shape().element_type(), window_dimension_sizes);
 
     HloEvaluator embedded_evaluator(parent_->max_loop_iterations_);
-    Literal result(reduce_window->shape());
     // For each resulting dimension, calculate and assign computed value.
-    TF_RETURN_IF_ERROR(
-        result.Populate<ReturnT>([&](absl::Span<const int64> output_index) {
-          ReturnT result_val = init_scalar;
-
-          std::fill(window_index.begin(), window_index.end(), 0);
-          std::fill(operand_index.begin(), operand_index.end(), 0);
-
-          IterateThroughWindow(
-              window_shape, window, operand_literal.shape(), output_index,
-              [&](const std::vector<int64>& operand_index) {
-                auto curr_val = operand_literal.Get<ReturnT>(operand_index);
-
-                // Evaluate computation with specified literal operands.
-                const auto curr_val_literal =
-                    LiteralUtil::CreateR0<ReturnT>(curr_val);
-                const auto result_val_literal =
-                    LiteralUtil::CreateR0<ReturnT>(result_val);
-                Literal computed_result =
-                    embedded_evaluator
-                        .Evaluate(*function,
-                                  {&result_val_literal, &curr_val_literal})
-                        .ConsumeValueOrDie();
-
-                // Clear visit states so that the we can use the evaluate again
-                // on the same computation.
-                embedded_evaluator.ResetVisitStates();
-
-                result_val = computed_result.Get<ReturnT>({});
-              });
-
-          return result_val;
-        }));
-
+    auto evaluate_impl =
+        [&](absl::Span<const int64> output_index) -> std::vector<Literal> {
+      std::vector<Literal> computed_result;
+      computed_result.reserve(init_literal_vec.size());
+      for (const auto* init : init_literal_vec) {
+        computed_result.push_back(init->Clone());
+      }
+      IterateThroughWindow(
+          window_shape, window, input_literal_vec[0]->shape(), output_index,
+          [&](absl::Span<const int64> operand_index) -> void {
+            absl::InlinedVector<const Literal*, 2> args;
+            for (auto& curr_result_val : computed_result) {
+              VLOG(2) << "Pushing:" << curr_result_val.ToString() << "\n";
+              args.push_back(&curr_result_val);
+            }
+            absl::InlinedVector<Literal, 2> curr_val_literal_vec(
+                input_literal_vec.size());
+            for (const auto* input_literal : input_literal_vec) {
+              // Evaluate computation with specified literal operands.
+              curr_val_literal_vec.push_back(Literal(ShapeUtil::MakeShape(
+                  input_literal->shape().element_type(), {})));
+              TF_CHECK_OK(curr_val_literal_vec.back().CopyElementFrom(
+                  *input_literal, operand_index, {}));
+              VLOG(2) << "Pushing:" << curr_val_literal_vec.back().ToString()
+                      << "\n";
+              args.push_back(&curr_val_literal_vec.back());
+            }
+            computed_result[0] = embedded_evaluator.Evaluate(*function, args)
+                                     .ConsumeValueOrDie();
+            VLOG(2) << "Computed result:" << computed_result[0].ToString()
+                    << "\n";
+            // Clear visit states so that the we can use the evaluate again
+            // on the same computation.
+            embedded_evaluator.ResetVisitStates();
+            if (inferred_return_shape.IsTuple()) {
+              computed_result = computed_result[0].DecomposeTuple();
+            }
+          });
+      VLOG(2) << "Final result size:" << computed_result.size() << "\n";
+      for (const auto& res : computed_result) {
+        VLOG(2) << res.ToString() << "\n";
+      }
+      return computed_result;
+    };
+    Literal result(inferred_return_shape);
+    if (inferred_return_shape.IsTuple()) {
+      absl::InlinedVector<Literal, 1> results(num_args);
+      for (int64 i = 0; i < num_args; ++i) {
+        results[i] = Literal(inferred_return_shape.tuple_shapes(i));
+      }
+      TF_RETURN_IF_ERROR(ShapeUtil::ForEachIndexWithStatus(
+          inferred_return_shape.tuple_shapes(0),
+          [&](absl::Span<const int64> output_index) -> StatusOr<bool> {
+            std::vector<Literal> computed_result_vec =
+                evaluate_impl(output_index);
+            for (int i = 0; i < computed_result_vec.size(); ++i) {
+              TF_RETURN_IF_ERROR(results[i].CopyElementFrom(
+                  computed_result_vec[i], {}, output_index));
+            }
+            return true;
+          }));
+      result = Literal::MoveIntoTuple(absl::MakeSpan(results));
+      VLOG(2) << "Final result is:" << result.ToString() << "\n";
+    } else {
+      TF_RETURN_IF_ERROR(
+          result.Populate<ReturnT>([&](absl::Span<const int64> output_index) {
+            return evaluate_impl(output_index)[0].template Get<ReturnT>({});
+          }));
+    }
+    VLOG(2) << "Final result is:" << result.ToString() << "\n";
     parent_->evaluated_[reduce_window] = std::move(result);
     return Status::OK();
   }
@@ -2300,8 +2350,6 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
     std::vector<int64> input_index(operand_shape.dimensions_size());
     std::vector<int64> update_index(updates_shape.dimensions_size());
-    std::vector<int64> input_scatter_index_clamped(
-        operand_shape.dimensions_size());
 
     UpdateScatterIndexToInputIndex update_scatter_index_to_input_index(
         &scatter->scatter_dimension_numbers(), /*input_shape=*/operand_shape,
@@ -2790,7 +2838,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   // bound, call `f` with the base index.
   static void IterateThroughWindow(
       const Shape& window_shape, const Window& window, const Shape& base_shape,
-      const absl::Span<const int64>& window_count_index,
+      const absl::Span<const int64> window_count_index,
       const std::function<void(const std::vector<int64>&)>& f) {
     const int64 rank = base_shape.rank();
     DimensionVector window_index(rank);

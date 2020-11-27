@@ -1,6 +1,7 @@
 # Description:
 #   GPU-platform specific StreamExecutor support code.
 
+load("//tensorflow:tensorflow.bzl", "filegroup")
 load(
     "//tensorflow/stream_executor:build_defs.bzl",
     "if_gpu_is_configured",
@@ -9,8 +10,12 @@ load(
     "//tensorflow/core/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
-load("//tensorflow:tensorflow.bzl", "tf_copts")
+load("//tensorflow:tensorflow.bzl", "if_libtpu", "tf_copts")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
+load(
+    "//tensorflow/core/platform:rules_cc.bzl",
+    "cc_library",
+)
 
 package(
     default_visibility = [
@@ -65,8 +70,10 @@ cc_library(
         "//tensorflow/stream_executor:device_options",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
-        "@local_config_cuda//cuda:cuda_headers",
-    ],
+    ] + if_libtpu(
+        if_false = ["@local_config_cuda//cuda:cuda_headers"],
+        if_true = [],
+    ),
 )
 
 cc_library(
@@ -233,8 +240,8 @@ cc_library(
         ":gpu_driver_header",
         ":gpu_helpers_header",
         "//tensorflow/core:lib",
-        "//tensorflow/core:regexp_internal",
-        "//tensorflow/core:cuda_libdevice_path",
+        "//tensorflow/core/platform:regexp",
+        "//tensorflow/core/platform:cuda_libdevice_path",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
         "@com_google_absl//absl/strings:str_format",
@@ -244,6 +251,7 @@ cc_library(
     ]) + if_cuda_is_configured([
         "//tensorflow/stream_executor/cuda:cuda_driver",
         "//tensorflow/stream_executor/cuda:ptxas_wrapper",
+        "//tensorflow/stream_executor/cuda:fatbinary_wrapper",
     ]),
 )
 
@@ -264,9 +272,9 @@ cc_library(
         "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
-        "//tensorflow/core:allocator",
+        "//tensorflow/core/framework:allocator",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_no_cuda",
+        "//tensorflow/core/platform:stream_executor_no_cuda",
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:device_memory_allocator",
         "//tensorflow/stream_executor:stream_executor_headers",

@@ -182,6 +182,32 @@ class TensorScatterAddOp : public XlaOpKernel {
   }
 };
 
+class TensorScatterMaxOp : public XlaOpKernel {
+ public:
+  explicit TensorScatterMaxOp(OpKernelConstruction* context)
+      : XlaOpKernel(context) {}
+
+  void Compile(XlaOpKernelContext* context) override {
+    CompileTensorScatter(context,
+                         [](xla::XlaOp x, xla::XlaOp y, xla::XlaBuilder*) {
+                           return xla::Max(x, y);
+                         });
+  }
+};
+
+class TensorScatterMinOp : public XlaOpKernel {
+ public:
+  explicit TensorScatterMinOp(OpKernelConstruction* context)
+      : XlaOpKernel(context) {}
+
+  void Compile(XlaOpKernelContext* context) override {
+    CompileTensorScatter(context,
+                         [](xla::XlaOp x, xla::XlaOp y, xla::XlaBuilder*) {
+                           return xla::Min(x, y);
+                         });
+  }
+};
+
 class TensorScatterSubOp : public XlaOpKernel {
  public:
   explicit TensorScatterSubOp(OpKernelConstruction* context)
@@ -207,6 +233,8 @@ class TensorScatterUpdateOp : public XlaOpKernel {
 };
 
 REGISTER_XLA_OP(Name("TensorScatterAdd"), TensorScatterAddOp);
+REGISTER_XLA_OP(Name("TensorScatterMax"), TensorScatterMaxOp);
+REGISTER_XLA_OP(Name("TensorScatterMin"), TensorScatterMinOp);
 REGISTER_XLA_OP(Name("TensorScatterSub"), TensorScatterSubOp);
 REGISTER_XLA_OP(Name("TensorScatterUpdate"), TensorScatterUpdateOp);
 

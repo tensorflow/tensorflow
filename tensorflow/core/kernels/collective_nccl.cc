@@ -74,10 +74,6 @@ Status NcclBase::InitializeCollectiveGroupRuntimeDetails(
   return Status::OK();
 }
 
-const string NcclBase::NcclCollectiveKey(const string& exec_key, int step_id) {
-  return strings::StrCat(exec_key, ":", step_id);
-}
-
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

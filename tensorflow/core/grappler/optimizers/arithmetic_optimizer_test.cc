@@ -44,7 +44,7 @@ constexpr char kHoistFactorOptimizerMul[] =
     "ArithmeticOptimizer/HoistCommonFactor_Mul_";
 
 constexpr char kHoistFactorOptimizerAdd[] =
-    "ArithmeticOptimizer/HoistCommonFactor_Add_";
+    "ArithmeticOptimizer/HoistCommonFactor_AddV2_";
 
 constexpr char kSimplifyAggregationConst[] =
     "ArithmeticOptimizer/SimplifyAggregation_Const_";
@@ -1041,23 +1041,50 @@ TEST_F(ArithmeticOptimizerTest, RemoveRedundantReshapeCombineReshapes) {
       ops::Const(s.WithOpName("flatten_shape"), {8, 28 * 28 * 12}, {2}));
   Output outputs = ops::Identity(s.WithOpName("outputs"), flatten);
 
-  GrapplerItem item;
-  item.fetch = {"outputs"};
-  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  GraphDef graph;
+  TF_CHECK_OK(s.ToGraphDef(&graph));
   auto x_t = GenerateRandomTensor<DT_INT8>(TensorShape({8, 3, 28, 28, 4}));
-  item.feed = {{"nchw_vect_c", x_t}};
-  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
-  ASSERT_EQ(tensors_expected.size(), 1);
+  auto eval = EvaluateNodes(graph, {"outputs", "nhwc"}, {{"nchw_vect_c", x_t}});
 
-  GraphDef output;
-  ArithmeticOptimizer optimizer;
-  EnableOnlyRemoveRedundantReshape(&optimizer);
-  OptimizeTwiceAndPrune(&optimizer, &item, &output);
+  ASSERT_EQ(eval.size(), 2);
+  auto expected_output_t = eval[0];
+  auto nhwc_t = eval[1];
 
-  EXPECT_EQ(CountOpNodes(output, "Reshape"), 1);
-  auto tensors = EvaluateNodes(output, item.fetch, item.feed);
-  ASSERT_EQ(tensors.size(), 1);
-  test::ExpectTensorEqual<int8>(tensors[0], tensors_expected[0]);
+  {
+    GrapplerItem item;
+    item.graph = graph;
+    item.fetch = {"outputs"};
+    item.feed = {{"nchw_vect_c", x_t}};
+
+    GraphDef output;
+    ArithmeticOptimizer optimizer;
+    EnableOnlyRemoveRedundantReshape(&optimizer);
+    OptimizeTwiceAndPrune(&optimizer, &item, &output);
+
+    EXPECT_EQ(CountOpNodes(output, "Reshape"), 1);
+    auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+    ASSERT_EQ(tensors.size(), 1);
+    test::ExpectTensorEqual<int8>(tensors[0], expected_output_t);
+  }
+
+  // Test when the first reshape node output is the feed tensor.
+  // (Expected no reshape removal to happen.)
+  {
+    GrapplerItem item;
+    item.graph = graph;
+    item.fetch = {"outputs"};
+    item.feed = {{"nhwc", nhwc_t}};
+
+    GraphDef output;
+    ArithmeticOptimizer optimizer;
+    EnableOnlyRemoveRedundantReshape(&optimizer);
+    OptimizeTwiceAndPrune(&optimizer, &item, &output);
+
+    EXPECT_EQ(CountOpNodes(output, "Reshape"), 2);
+    auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+    ASSERT_EQ(tensors.size(), 1);
+    test::ExpectTensorEqual<int8>(tensors[0], expected_output_t);
+  }
 }
 
 TEST_F(ArithmeticOptimizerTest, ReorderTransposeCastProducerIsCast) {
@@ -2219,7 +2246,7 @@ TEST_F(ArithmeticOptimizerTest, AddOpsRewriteMinimizeBCast) {
   // Then add results together starting from smaller shapes [a, x] + [b, y]
   const NodeDef* outer_0_node = node_map.GetNode(outer_0_add_name);
   ASSERT_NE(outer_0_node, nullptr);
-  EXPECT_EQ(outer_0_node->op(), "Add");
+  EXPECT_EQ(outer_0_node->op(), "AddV2");
   ASSERT_EQ(outer_0_node->input_size(), 2);
   EXPECT_EQ(outer_0_node->input(0), inner_0_add_name);
   EXPECT_EQ(outer_0_node->input(1), inner_1_add_name);
@@ -2227,7 +2254,7 @@ TEST_F(ArithmeticOptimizerTest, AddOpsRewriteMinimizeBCast) {
   // And finally top level Add node
   const NodeDef* outer_node = node_map.GetNode(outer_add_name);
   ASSERT_NE(outer_node, nullptr);
-  EXPECT_EQ(outer_node->op(), "Add");
+  EXPECT_EQ(outer_node->op(), "AddV2");
   ASSERT_EQ(outer_node->input_size(), 2);
   EXPECT_EQ(outer_node->input(0), outer_0_add_name);
   EXPECT_EQ(outer_node->input(1), inner_2_add_name);
@@ -2299,7 +2326,7 @@ TEST_F(ArithmeticOptimizerTest, AddOpsRewriteMinimizeBCastWithSymbolicShapes) {
   // outer Add node
   const NodeDef* outer_add = node_map.GetNode(outer_add_name);
   ASSERT_NE(outer_add, nullptr);
-  EXPECT_EQ(outer_add->op(), "Add");
+  EXPECT_EQ(outer_add->op(), "AddV2");
   ASSERT_EQ(outer_add->input_size(), 2);
   EXPECT_EQ(outer_add->input(0), inner_add_name);
   EXPECT_EQ(outer_add->input(1), "b");
@@ -2384,7 +2411,7 @@ TEST_F(ArithmeticOptimizerTest, RemoveNegation) {
       EXPECT_EQ(node.input(1), "y");
     } else if (node.name() == "Sub_x_negy") {
       ++found;
-      EXPECT_EQ(node.op(), "Add");
+      EXPECT_EQ(node.op(), "AddV2");
       ASSERT_EQ(node.input_size(), 2);
       EXPECT_EQ(node.input(0), "x");
       EXPECT_EQ(node.input(1), "y");

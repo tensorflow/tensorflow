@@ -2,6 +2,9 @@
 #   Doc generator
 
 load("//tensorflow:tensorflow.bzl", "py_test")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
@@ -12,8 +15,6 @@ package(
     default_visibility = ["//tensorflow:__subpackages__"],
     licenses = ["notice"],  # Apache 2.0
 )
-
-exports_files(["LICENSE"])
 
 tpu_module = [
     "tpu.",
@@ -55,6 +56,8 @@ py_test(
         ":tf_doctest_lib",
         "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",
+        "@absl_py//absl/flags",
+        "@absl_py//absl/testing:absltest",
     ],
 )
 
@@ -75,7 +78,6 @@ tpu_py_test(
     deps = [
         ":tf_doctest_lib",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python/keras/preprocessing",
         "//third_party/py/numpy",
     ],
 )
@@ -103,6 +105,8 @@ py_test(
         ":tf_doctest_lib",
         "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",
+        "@absl_py//absl/flags",
+        "@absl_py//absl/testing:absltest",
     ],
 )
 
@@ -119,88 +123,17 @@ py_test(
     ],
     deps = [
         ":tf_doctest_lib",
+        "@absl_py//absl/testing:absltest",
         "@absl_py//absl/testing:parameterized",
     ],
 )
 
 py_library(
-    name = "doc_generator_visitor",
-    srcs = [
-        "doc_generator_visitor.py",
-    ],
-    srcs_version = "PY2AND3",
-    deps = ["@six_archive//:six"],
-)
-
-py_library(
     name = "doc_controls",
     srcs = ["doc_controls.py"],
+    compatible_with = get_compatible_with_portable(),
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-)
-
-py_test(
-    name = "doc_controls_test",
-    size = "small",
-    srcs = ["doc_controls_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY2AND3",
-    deps = [
-        ":doc_controls",
-        "//tensorflow/python:platform_test",
-    ],
-)
-
-py_library(
-    name = "parser",
-    srcs = ["parser.py"],
-    srcs_version = "PY2AND3",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":doc_controls",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:util",
-        "@astor_archive//:astor",
-        "@six_archive//:six",
-    ],
-)
-
-py_library(
-    name = "pretty_docs",
-    srcs = ["pretty_docs.py"],
-    srcs_version = "PY2AND3",
-    deps = ["@six_archive//:six"],
-)
-
-py_library(
-    name = "generate_lib",
-    srcs = ["generate_lib.py"],
-    srcs_version = "PY2AND3",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":doc_controls",
-        ":doc_generator_visitor",
-        ":parser",
-        ":pretty_docs",
-        ":py_guide_parser",
-        "//tensorflow/python:util",
-        "//tensorflow/tools/common:public_api",
-        "//tensorflow/tools/common:traverse",
-        "@six_archive//:six",
-    ],
-)
-
-py_binary(
-    name = "generate",
-    srcs = ["generate.py"],
-    python_version = "PY3",
-    srcs_version = "PY2AND3",
-    deps = [
-        ":generate_lib",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:util",
-        "//tensorflow/python/debug:debug_py",
-    ],
 )
 
 py_test(
@@ -219,6 +152,8 @@ py_test(
     ],
     deps = [
         ":generate2_lib",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:platform_test",
     ],
 )
 
@@ -247,7 +182,11 @@ py_library(
     deps = [
         ":base_dir_oss",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:tf_export",
         "//tensorflow/python:util",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
     ],
 )
 
@@ -260,11 +199,4 @@ py_binary(
         "@absl_py//absl:app",
         "@absl_py//absl/flags",
     ],
-)
-
-py_library(
-    name = "py_guide_parser",
-    srcs = ["py_guide_parser.py"],
-    srcs_version = "PY2AND3",
-    deps = ["@six_archive//:six"],
 )

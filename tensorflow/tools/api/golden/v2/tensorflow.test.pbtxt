@@ -18,7 +18,7 @@ tf_module {
   }
   member_method {
     name: "compute_gradient"
-    argspec: "args=[\'f\', \'x\', \'delta\'], varargs=None, keywords=None, defaults=[\'0.001\'], "
+    argspec: "args=[\'f\', \'x\', \'delta\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "create_local_cluster"

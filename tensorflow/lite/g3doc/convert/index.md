@@ -18,9 +18,9 @@ Note: In case you encounter any issues during model conversion, create a
 
 ## Python API <a name="python_api"></a>
 
-*Helper code: In Python, to identify the TensorFlow version, run
-`print(tf.__version__)` and to learn more about the API, run
-`print(help(tf.lite.TFLiteConverter))`.*
+*Helper code: To identify the installed TensorFlow version, run
+`print(tf.__version__)` and to learn more about the TensorFlow Lite converter
+API, run `print(help(tf.lite.TFLiteConverter))`.*
 
 If you've
 [installed TensorFlow 2.x](https://www.tensorflow.org/install/pip#tensorflow-2-packages-are-available),
@@ -29,12 +29,13 @@ you have the following two options: (*if you've
 refer to
 [Github](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/r1/convert/python_api.md)*)
 
-*   [`tf.lite.TFLiteConverter`](https://www.tensorflow.org/api_docs/python/tf/lite/TFLiteConverter):
-    Converts TensorFlow 2.x models, which are stored using the SavedModel format
-    and are generated either using the high-level `tf.keras.*` APIs (a Keras
-    model) or the low-level `tf.*` APIs (from which you generate concrete
-    functions). As a result, you have the following three options (detailed
-    examples are in the next few sections):
+*   Convert a TensorFlow 2.x model using
+    [`tf.lite.TFLiteConverter`](https://www.tensorflow.org/api_docs/python/tf/lite/TFLiteConverter).
+    A TensorFlow 2.x model is stored using the SavedModel format and is
+    generated either using the high-level `tf.keras.*` APIs (a Keras model) or
+    the low-level `tf.*` APIs (from which you generate concrete functions). As a
+    result, you have the following three options (examples are in the next few
+    sections):
 
     *   `tf.lite.TFLiteConverter.from_saved_model()` (**recommended**): Converts
         a [SavedModel](https://www.tensorflow.org/guide/saved_model).
@@ -43,8 +44,9 @@ refer to
     *   `tf.lite.TFLiteConverter.from_concrete_functions()`: Converts
         [concrete functions](https://www.tensorflow.org/guide/intro_to_graphs).
 
-*   [`tf.compat.v1.lite.TFLiteConverter`](https://www.tensorflow.org/api_docs/python/tf/compat/v1/lite/TFLiteConverter):
-    Converts TensorFlow 1.x models (detailed examples are on
+*   Convert a TensorFlow 1.x model using
+    [`tf.compat.v1.lite.TFLiteConverter`](https://www.tensorflow.org/api_docs/python/tf/compat/v1/lite/TFLiteConverter)
+    (examples are on
     [Github](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/r1/convert/python_api.md)):
 
     *   `tf.compat.v1.lite.TFLiteConverter.from_saved_model()`: Converts a
@@ -72,7 +74,7 @@ import tensorflow as tf
 
 # Convert the model
 converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir) # path to the SavedModel directory
-tflite_model = converter.convert().
+tflite_model = converter.convert()
 
 # Save the model.
 with open('model.tflite', 'wb') as f:
@@ -90,7 +92,7 @@ import tensorflow as tf
 
 # Create a model using high-level tf.keras.* APIs
 model = tf.keras.models.Sequential([
-    tf.keras.layers.Dense(units=1, input_shape=[1])
+    tf.keras.layers.Dense(units=1, input_shape=[1]),
     tf.keras.layers.Dense(units=16, activation='relu'),
     tf.keras.layers.Dense(units=1)
 ])
@@ -159,17 +161,26 @@ with open('model.tflite', 'wb') as f:
         and then [create the TensorFlow Lite operator](../guide/ops_custom.md).
         If you were unsuccessful at creating the TensorFlow operator or don't
         wish to create one (**not recommended, proceed with caution**), you can
-        still convert using the `custom_opdefs` attribute and then directly
-        [create the TensorFlow Lite operator](../guide/ops_custom.md). The
-        `custom_opdefs` attribute is a string containing an (or a list of)
+        still convert using the `register_custom_opdefs` method and then
+        directly [create the TensorFlow Lite operator](../guide/ops_custom.md).
+        The `register_custom_opdefs` method takes a list of a string containing
+        an
         [OpDef](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/op_def.proto)
-        (s) or operator definition proto(s). Below is an example of a
-        `TFLiteAwesomeCustomOp` with 1 input, 1 output, and 2 attributes:
+        (s). Below is an example of a `TFLiteAwesomeCustomOp` with 1 input, 1
+        output, and 2 attributes:
 
         ```python
-          converter.custom_opdefs="""name: 'TFLiteAwesomeCustomOp' input_arg:
+          import tensorflow as tf
+
+          custom_opdef = """name: 'TFLiteAwesomeCustomOp' input_arg:
           { name: 'In' type: DT_FLOAT } output_arg: { name: 'Out' type: DT_FLOAT }
           attr : { name: 'a1' type: 'float'} attr : { name: 'a2' type: 'list(float)'}"""
+
+          # Register custom opdefs before the invocation of converter API.
+          tf.lite.python.convert.register_custom_opdefs([custom_opdef])
+
+          converter = tf.lite.TFLiteConverter.from_saved_model(...)
+          converter.allow_custom_ops = True
         ```
 
 ## Command Line Tool <a name="cmdline"></a>

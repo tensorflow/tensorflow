@@ -421,8 +421,7 @@ TEST_F(ScopedAllocatorOptimizerTest, UnaryExecute) {
   SetShapes(&graph_def);
   std::vector<Tensor> outputs;
   ExecuteGraph(graph_def,
-               /*output_names=*/{"r1:0", "r2:0", "scoped_allocator_1_2_Abs:0"},
-               &outputs);
+               /*output_names=*/{"r1:0", "r2:0"}, &outputs);
   // a + b == 2, -2, 3, 3
   // b + c == -4, -4, 3, 2
   ValidateValues(outputs, /*expected=*/{{2, 2, 3, 3}, {4, 4, 3, 2}});

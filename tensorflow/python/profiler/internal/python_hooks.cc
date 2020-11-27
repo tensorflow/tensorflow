@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/strings/strip.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/profiler/utils/time_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
@@ -104,8 +105,20 @@ PythonHooks* PythonHooks::GetSingleton() {
 
 void PythonHooks::Start(const PythonHooksOptions& options) {
   if (!Py_IsInitialized()) return;
+
+#if PY_MAJOR_VERSION < 3 || (PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION < 7)
+  // Before Python 3.7, the GIL is created on demand by PyEval_InitThreads().
+  // When a thread was not started by Python (e.g., when starting profiling via
+  // RPC) there might be no GIL. Before Python 3.6, PyGILState_Ensure would
+  // crash. The crash was fixed in Python 3.6 but the fix introduced a race for
+  // GIL creation. Calling PyEval_InitThreads() prevents the race. This is a
+  // no-op when called for a second time so it is innocuous. See
+  // https://vstinner.github.io/python37-gil-change.html for details.
+  PyEval_InitThreads();
+#endif
+
   options_ = options;
-  start_timestamp_ns_ = EnvTime::NowNanos();
+  start_timestamp_ns_ = GetCurrentTimeNanos();
   if (options_.enable_python_traceme || options_.enable_trace_python_function) {
     PyGILState_STATE gil_state = PyGILState_Ensure();
     if (options_.enable_trace_python_function) {
@@ -164,7 +177,7 @@ void PythonHooks::CollectData(XPlane* raw_plane) {
       AddEventToXLine(event, &line, &plane);
     }
     if (options_.include_incomplete_events) {
-      uint64 now = EnvTime::NowNanos();
+      uint64 now = GetCurrentTimeNanos();
       while (!thread_events.active.empty()) {
         auto& event = thread_events.active.top();
         event.end_time_ns = now;
@@ -177,7 +190,7 @@ void PythonHooks::CollectData(XPlane* raw_plane) {
 }
 
 void PythonHooks::Finalize(XSpace* space) {
-  if (space) {
+  if (space && options_.enable_trace_python_function) {
     XPlane* plane =
         FindOrAddMutablePlaneWithName(space, kPythonTracerPlaneName);
     if (options_.end_to_end_mode) {
@@ -226,7 +239,7 @@ void PythonHooks::ProfileSlow(const py::object& frame, const string& event,
 
 void PythonHooks::ProfileFast(PyFrameObject* frame, int what, PyObject* arg) {
   const int64 thread_id = Env::Default()->GetCurrentThreadId();
-  uint64 now = EnvTime::NowNanos();
+  uint64 now = GetCurrentTimeNanos();
   auto& thread_traces = entries_[thread_id];
 
   switch (what) {

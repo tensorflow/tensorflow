@@ -83,6 +83,8 @@ CreateResourceOpInfoMap() {
   add("ResourceScatterSub"                   , kReadWrite, kVariable);
   add("ResourceScatterUpdate"                , kReadWrite, kVariable);
   add("ResourceStridedSliceAssign"           , kReadWrite, kVariable);
+  add("RngReadAndSkip"                       , kReadWrite, kVariable);
+  add("RngSkip"                              , kReadWrite, kVariable);
   add("StatefulStandardNormalV2"             , kReadWrite, kVariable);
   add("StatefulTruncatedNormal"              , kReadWrite, kVariable);
   add("StatefulUniform"                      , kReadWrite, kVariable);

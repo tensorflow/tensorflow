@@ -24,43 +24,11 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
 #include "tensorflow/lite/delegates/gpu/cl/util.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/buffer_desc.h"
 
 namespace tflite {
 namespace gpu {
 namespace cl {
-
-struct BufferDescriptor : public GPUObjectDescriptor {
-  DataType element_type;
-  int element_size;
-  MemoryType memory_type = MemoryType::GLOBAL;
-  std::vector<std::string> attributes;
-
-  // optional
-  int size = 0;
-  std::vector<uint8_t> data;
-
-  BufferDescriptor() = default;
-  BufferDescriptor(const BufferDescriptor&) = default;
-  BufferDescriptor& operator=(const BufferDescriptor&) = default;
-  BufferDescriptor(BufferDescriptor&& desc);
-  BufferDescriptor& operator=(BufferDescriptor&& desc);
-
-  absl::Status PerformSelector(const std::string& selector,
-                               const std::vector<std::string>& args,
-                               const std::vector<std::string>& template_args,
-                               std::string* result) const override;
-
-  GPUResources GetGPUResources() const override;
-  absl::Status PerformReadSelector(const std::vector<std::string>& args,
-                                   std::string* result) const;
-  absl::Status PerformGetPtrSelector(
-      const std::vector<std::string>& args,
-      const std::vector<std::string>& template_args, std::string* result) const;
-
-  absl::Status CreateGPUObject(CLContext* context,
-                               GPUObjectPtr* result) const override;
-  void Release() override;
-};
 
 // Buffer represent linear GPU data storage with arbitrary data format.
 // Buffer is moveable but not copyable.

@@ -19,28 +19,10 @@ from __future__ import division
 from __future__ import print_function
 
 import contextlib
-import threading
 
+from tensorflow.python.framework.experimental import thread_local_stack
 
-# TODO(srbs): Move this to C++.
-class _ThreadLocalStack(threading.local):
-  """A thread-local stack of objects for providing implicit defaults."""
-
-  def __init__(self):
-    super(_ThreadLocalStack, self).__init__()
-    self._stack = []
-
-  def peek(self):
-    return self._stack[-1] if self._stack else None
-
-  def push(self, ctx):
-    return self._stack.append(ctx)
-
-  def pop(self):
-    self._stack.pop()
-
-
-_default_ctx_stack = _ThreadLocalStack()
+_default_ctx_stack = thread_local_stack.ThreadLocalStack()
 
 
 def get_default():

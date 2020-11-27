@@ -45,7 +45,9 @@ struct OpContext {
 
 TfLiteStatus UseDynamicOutputTensors(TfLiteContext* context, TfLiteNode* node) {
   for (int i = 0; i < NumOutputs(node); ++i) {
-    SetTensorToDynamic(GetOutput(context, node, i));
+    TfLiteTensor* tensor;
+    TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, i, &tensor));
+    SetTensorToDynamic(tensor);
   }
   return kTfLiteOk;
 }
@@ -113,7 +115,8 @@ TfLiteStatus ResizeOutputTensors(TfLiteContext* context, TfLiteNode* node,
   for (int i = 0; i < NumOutputs(node); ++i) {
     TfLiteIntArray* output_dims = TfLiteIntArrayCopy(input->dims);
     output_dims->data[axis_value] = size_splits_vector.at(i);
-    TfLiteTensor* output = GetOutput(context, node, i);
+    TfLiteTensor* output;
+    TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, i, &output));
     TF_LITE_ENSURE_STATUS(context->ResizeTensor(context, output, output_dims));
   }
 
@@ -133,7 +136,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                      input_type == kTfLiteInt16 || input_type == kTfLiteInt32 ||
                      input_type == kTfLiteInt64 || input_type == kTfLiteInt8);
   for (int i = 0; i < NumOutputs(node); ++i) {
-    GetOutput(context, node, i)->type = input_type;
+    TfLiteTensor* tensor;
+    TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, i, &tensor));
+    tensor->type = input_type;
   }
 
   auto size_splits = op_context.size_splits;

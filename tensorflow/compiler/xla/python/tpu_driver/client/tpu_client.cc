@@ -37,7 +37,7 @@ namespace xla {
 
 TpuDevice::TpuDevice(int id, int host_id, const std::array<int, 3>& coords,
                      int core_on_chip)
-    : xla::PjRtDevice(id, /*local_device_state=*/nullptr, kTpuPlatform,
+    : xla::PjRtDevice(id, /*local_device_state=*/nullptr,
                       /*device_kind=*/"Cloud TPU", host_id),
       coords_(coords),
       core_on_chip_(core_on_chip) {}
@@ -427,7 +427,12 @@ StatusOr<std::unique_ptr<PyTpuBuffer>> PyTpuBuffer::CopyToDevice(
 
 Status PyTpuBuffer::BlockHostUntilReady() {
   tensorflow::profiler::TraceMe traceme("PyTpuBuffer::BlockHostUntilReady");
-  return DeviceBuffer()->handle->OnReady()->Await();
+  std::shared_ptr<TpuSharedBuffer> device_buffer = DeviceBuffer();
+  if (!device_buffer) {
+    return InvalidArgument(
+        "BlockHostUntilReady() called on deleted or donated buffer");
+  }
+  return device_buffer->handle->OnReady()->Await();
 }
 
 /* static */
@@ -588,7 +593,7 @@ PyTpuExecutable::ExecuteResult PyTpuExecutable::ExecuteHelper(
 static const absl::Duration kWarnExecutionDelay = absl::Seconds(10);
 
 // Delay before terminating a stalled execute call.
-static const absl::Duration kMaxExecutionDelay = absl::Seconds(120);
+static const absl::Duration kMaxExecutionDelay = absl::Minutes(60);
 
 Status WaitForExecuteEvent(tpu_driver::Event* event) {
   absl::optional<Status> opt_status;

@@ -193,7 +193,8 @@ struct LaunchBatchBandedTriangularSolve {
 
     Shard(worker_threads.num_threads, worker_threads.workers, batch_size,
           cost_per_unit,
-          [&in_x, &in_y, adjoint, lower, &bcast, out](int start, int limit) {
+          [&in_x, &in_y, adjoint, lower, &bcast, out](int64 start,
+                                                      int64 limit) {
             SequentialBandedTriangularSolveKernel<Scalar>::Run(
                 in_x, in_y, lower, adjoint, bcast, out, start, limit);
           });

@@ -25,12 +25,12 @@ namespace tflite {
 namespace delegates {
 namespace coreml {
 
-const char* PadOpBuilder::DebugName() {
-  if (str_debug_name_[0]) return str_debug_name_;
-  GetDebugName(padding_type_ == PadType::kPad ? "PadOpBuilder (PAD)"
+const std::string& PadOpBuilder::DebugName() {
+  if (!debug_name_.empty()) return debug_name_;
+  SetDebugName(padding_type_ == PadType::kPad ? "PadOpBuilder (PAD)"
                                               : "PadOpBuilder (MIRROR_PAD)",
-               node_id_, str_debug_name_);
-  return str_debug_name_;
+               node_id_);
+  return debug_name_;
 }
 
 CoreML::Specification::NeuralNetworkLayer* PadOpBuilder::Build() {
@@ -97,7 +97,8 @@ OpBuilder* CreateMirrorPadOpBuilder(GraphBuilder* graph_builder) {
 bool IsPadOpSupported(const TfLiteRegistration* registration,
                       const TfLiteNode* node, TfLiteContext* context) {
   // padding is d x 2 tensor, where d is the dimension of input.
-  const TfLiteTensor* padding = GetInput(context, node, 1);
+  const TfLiteTensor* padding;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 1, &padding));
   if (!IsConstantTensor(padding)) {
     TF_LITE_KERNEL_LOG(context,
                        "%s: Only constant padding is supported for PAD.",

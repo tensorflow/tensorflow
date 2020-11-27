@@ -368,6 +368,74 @@ py_test(
     ],
 )
 
+py_binary(
+    name = "make_aot_compile_models",
+    srcs = ["make_aot_compile_models.py"],
+    python_version = "PY3",
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/saved_model",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
+        "@six_archive//:six",
+    ],
+)
+
+EMITTED_AOT_SAVE_MODEL_OBJECTS = [
+    "x_matmul_y_large/saved_model.pb",
+    "x_matmul_y_large/variables/variables.index",
+    "x_matmul_y_small/saved_model.pb",
+    "x_matmul_y_small/variables/variables.index",
+]
+
+genrule(
+    name = "create_models_for_aot_compile",
+    outs = EMITTED_AOT_SAVE_MODEL_OBJECTS,
+    cmd = (
+        "$(location :make_aot_compile_models) --out_dir $(@D)"
+    ),
+    tags = ["no_rocm"],
+    tools = [":make_aot_compile_models"],
+)
+
+filegroup(
+    name = "aot_saved_models",
+    srcs = EMITTED_AOT_SAVE_MODEL_OBJECTS,
+)
+
+saved_model_compile_aot(
+    name = "aot_compiled_x_matmul_y_large",
+    cpp_class = "XMatmulYLarge",
+    directory = "//tensorflow/python/tools:x_matmul_y_large",
+    filegroups = [":aot_saved_models"],
+    force_without_xla_support_flag = False,
+    tags = ["no_rocm"],
+)
+
+saved_model_compile_aot(
+    name = "aot_compiled_x_matmul_y_large_multithreaded",
+    cpp_class = "XMatmulYLargeMultithreaded",
+    directory = "//tensorflow/python/tools:x_matmul_y_large",
+    filegroups = [":aot_saved_models"],
+    force_without_xla_support_flag = False,
+    multithreading = True,
+    tags = ["no_rocm"],
+)
+
+saved_model_compile_aot(
+    name = "aot_compiled_x_matmul_y_small",
+    cpp_class = "XMatmulYSmall",
+    directory = "//tensorflow/python/tools:x_matmul_y_small",
+    filegroups = [":aot_saved_models"],
+    force_without_xla_support_flag = False,
+    tags = ["no_rocm"],
+)
+
 saved_model_compile_aot(
     name = "aot_compiled_x_plus_y",
     cpp_class = "XPlusY",
@@ -402,6 +470,34 @@ saved_model_compile_aot(
     variables_to_feed = "variable_x",
 )
 
+sh_test(
+    name = "large_matmul_no_multithread_test",
+    srcs = if_xla_available(
+        ["no_xla_multithread_symbols_test.sh"],
+        if_false = ["skip_test.sh"],
+    ),
+    args = if_xla_available(["$(location :aot_compiled_x_matmul_y_large.o)"]),
+    data = if_xla_available([":aot_compiled_x_matmul_y_large.o"]),
+    tags = ["no_windows"],  # TODO(b/171875345)
+)
+
+sh_test(
+    name = "large_matmul_yes_multithread_test",
+    srcs = if_xla_available(
+        [
+            "xla_multithread_symbols_test.sh",
+        ],
+        if_false = ["skip_test.sh"],
+    ),
+    args = if_xla_available(
+        ["$(location :aot_compiled_x_matmul_y_large_multithreaded.o)"],
+    ),
+    data = if_xla_available(
+        [":aot_compiled_x_matmul_y_large_multithreaded.o"],
+    ),
+    tags = ["no_windows"],  # TODO(b/171875345)
+)
+
 tf_cc_test(
     name = "aot_compiled_test",
     srcs = if_xla_available([
@@ -413,8 +509,12 @@ tf_cc_test(
     ] + if_xla_available([
         ":aot_compiled_vars_and_arithmetic",
         ":aot_compiled_vars_and_arithmetic_frozen",
+        ":aot_compiled_x_matmul_y_large",
+        ":aot_compiled_x_matmul_y_large_multithreaded",
+        ":aot_compiled_x_matmul_y_small",
         ":aot_compiled_x_plus_y",
         "//tensorflow/core:test",
+        "//third_party/eigen3",
         "//tensorflow/core/platform:logging",
     ]),
 )

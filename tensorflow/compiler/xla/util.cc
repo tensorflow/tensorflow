@@ -367,14 +367,16 @@ string SanitizeFileName(string file_name) {
 //     precision, Numerische Mathematik, vol. 18, pp. 224–242, 1971.
 std::pair<float, float> SplitF64ToF32(double x) {
   const float x_f32 = static_cast<float>(x);
+
   // Early return if x is an infinity or NaN.
-  if (!std::isfinite(x)) {
+  if (!std::isfinite(x_f32)) {
+    // Only values within the range of F32 are supported, unless it is infinity.
+    // Small values with large negative exponents would be rounded to zero.
+    if (std::isfinite(x)) {
+      LOG(WARNING) << "Out of range F64 constant detected: " << x;
+    }
     return std::make_pair(x_f32, 0.0f);
   }
-
-  // Only values within the range of F32 are supported, unless it is infinity.
-  // Small values with large negative exponents would be rounded to zero.
-  CHECK(std::isfinite(x_f32)) << x;
 
   // The high float is simply the double rounded to the nearest float. Because
   // we are rounding to nearest with ties to even, the error introduced in

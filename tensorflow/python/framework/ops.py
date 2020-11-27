@@ -371,7 +371,7 @@ class Tensor(internal.NativeObject, core_tf_types.Tensor):
       TypeError: If the op is not an `Operation`.
     """
     if not isinstance(op, Operation):
-      raise TypeError("op needs to be an Operation: %s" % op)
+      raise TypeError("op needs to be an Operation: %s" % (op,))
     self._op = op
     self._value_index = value_index
     self._dtype = dtypes.as_dtype(dtype)
@@ -595,12 +595,12 @@ class Tensor(internal.NativeObject, core_tf_types.Tensor):
 
     In some cases, the inferred shape may have unknown dimensions. If
     the caller has additional information about the values of these
-    dimensions, `Tensor.set_shape()` can be used to augment the
-    inferred shape.
+    dimensions, `tf.ensure_shape` or `Tensor.set_shape()` can be used to augment
+    the inferred shape.
 
     >>> @tf.function
     ... def my_fun(a):
-    ...   a.set_shape([5, 5])
+    ...   a = tf.ensure_shape(a, [5, 5])
     ...   # the `print` executes during tracing.
     ...   print("Result shape: ", a.shape)
     ...   return a
@@ -617,6 +617,11 @@ class Tensor(internal.NativeObject, core_tf_types.Tensor):
 
   def set_shape(self, shape):
     """Updates the shape of this tensor.
+
+    Note: It is recommended to use `tf.ensure_shape` instead of
+    `Tensor.set_shape`, because `tf.ensure_shape` provides better checking for
+    programming errors and can create guarantees for compiler
+    optimization.
 
     With eager execution this operates as a shape assertion.
     Here the shapes match:
@@ -1256,7 +1261,10 @@ class _EagerTensorBase(Tensor):
 
 # This call creates an EagerTensor class, as a subclass of _EagerTensorBase, and
 # registers it with the current module.
-EagerTensor = pywrap_tfe.TFE_Py_InitEagerTensor(_EagerTensorBase)
+# It is exposed as an __internal__ api for now (b/171081052), though we
+# expect it to be eventually covered by tf Tensor types and typing.
+EagerTensor = tf_export("__internal__.EagerTensor", v1=[])(
+    pywrap_tfe.TFE_Py_InitEagerTensor(_EagerTensorBase))
 
 
 @tf_export(v1=["convert_to_tensor"])
@@ -1797,6 +1805,7 @@ _VALID_OP_NAME_REGEX = re.compile(r"^[A-Za-z0-9.][A-Za-z0-9_.\\/>-]*$")
 _VALID_SCOPE_NAME_REGEX = re.compile(r"^[A-Za-z0-9_.\\/>-]*$")
 
 
+@tf_export("__internal__.create_c_op", v1=[])
 def _create_c_op(graph, node_def, inputs, control_inputs, op_def=None):
   """Creates a TF_Operation.
 
@@ -1941,19 +1950,19 @@ class Operation(object):
       assert op_def is None
       c_op = node_def
     else:
-      raise TypeError("node_def needs to be a NodeDef: %s" % node_def)
+      raise TypeError("node_def needs to be a NodeDef: %s" % (node_def,))
 
     if not isinstance(g, Graph):
-      raise TypeError("g needs to be a Graph: %s" % g)
+      raise TypeError("g needs to be a Graph: %s" % (g,))
     self._graph = g
 
     if inputs is None:
       inputs = []
     elif not isinstance(inputs, list):
-      raise TypeError("inputs needs to be a list of Tensors: %s" % inputs)
+      raise TypeError("inputs needs to be a list of Tensors: %s" % (inputs,))
     for a in inputs:
       if not isinstance(a, Tensor):
-        raise TypeError("input needs to be a Tensor: %s" % a)
+        raise TypeError("input needs to be a Tensor: %s" % (a,))
     if input_types is None:
       input_types = [i.dtype.base_dtype for i in inputs]
     else:
@@ -4327,12 +4336,16 @@ class Graph(object):
   def _colocate_with_for_gradient(self, op, gradient_uid,
                                   ignore_existing=False):
     with self.colocate_with(op, ignore_existing):
-      if gradient_uid is not None and self._control_flow_context is not None:
-        self._control_flow_context.EnterGradientColocation(op, gradient_uid)
-        try:
+      if gradient_uid is not None:
+        ctx = _get_enclosing_context(self)
+        if ctx is not None:
+          ctx.EnterGradientColocation(op, gradient_uid)
+          try:
+            yield
+          finally:
+            ctx.ExitGradientColocation(op, gradient_uid)
+        else:
           yield
-        finally:
-          self._control_flow_context.ExitGradientColocation(op, gradient_uid)
       else:
         yield
 
@@ -5171,42 +5184,6 @@ class Graph(object):
   def _global_distribute_strategy_scope(self, distribute_strategy_scope):
     self._thread_local.distribute_strategy_scope = (distribute_strategy_scope)
 
-  @property
-  def _auto_cast_variable_read_dtype(self):
-    """The dtype that instances of `AutoCastVariable` will be casted to.
-
-    This is None if `AutoCastVariables` should not be casted.
-
-    See `AutoCastVariable` for more information.
-
-    Returns:
-      The dtype that instances of `AutoCastVariable` will be casted to.
-    """
-    dtype = getattr(self._thread_local, "_auto_cast_variable_read_dtype", None)
-    if dtype is None:
-      self._thread_local._auto_cast_variable_read_dtype = None  # pylint: disable=protected-access
-    return dtype
-
-  @_auto_cast_variable_read_dtype.setter
-  def _auto_cast_variable_read_dtype(self, dtype):
-    self._thread_local._auto_cast_variable_read_dtype = dtype  # pylint: disable=protected-access
-
-  def _enable_auto_casting_variables(self, dtype):
-    """Returns a context manager to automatically cast AutoCastVariables.
-
-    If an AutoCastVariable `var` is used under this context manager, it will be
-    casted to `dtype` before being used.
-
-    See `AutoCastVariable` for more information.
-
-    Args:
-      dtype: The dtype that AutoCastVariables should be casted to.
-
-    Returns:
-      Context manager.
-    """
-    return enable_auto_cast_variables(dtype, graph=self)
-
   def _mutation_lock(self):
     """Returns a lock to guard code that creates & mutates ops.
 
@@ -5220,38 +5197,6 @@ class Graph(object):
     See the comment for self._group_lock for more info.
     """
     return self._group_lock.group(_SESSION_RUN_LOCK_GROUP)
-
-
-class enable_auto_cast_variables(object):
-  """Enables the autocasting of `AutoCastVariable`s.
-
-  Under this context manager, `AutoCastVariable`s will be cast to `dtype` if
-  `dtype` is floating-point. Otherwise, `AutoCastVariable`s will not be cast.
-  """
-
-  __slots__ = ["_dtype", "_graph", "_prev_read_dtype"]
-
-  def __init__(self, dtype, graph=None):
-    if dtype and not dtype.is_floating:
-      self._dtype = None
-    else:
-      self._dtype = dtype
-    if graph is None:
-      self._graph = get_default_graph()
-    else:
-      self._graph = graph
-
-  def __enter__(self):
-    # For performance, access `_thread_local` attr directly rather than
-    # @property wrappers.
-    graph_thread_local = self._graph._thread_local
-    self._prev_read_dtype = getattr(graph_thread_local,
-                                    "_auto_cast_variable_read_dtype", None)
-    graph_thread_local._auto_cast_variable_read_dtype = self._dtype
-
-  def __exit__(self, type_arg, value_arg, traceback_arg):
-    self._graph._thread_local._auto_cast_variable_read_dtype = (
-        self._prev_read_dtype)
 
 
 # TODO(agarwal): currently device directives in an outer eager scope will not
@@ -6086,6 +6031,8 @@ def has_default_graph():
   return len(_default_graph_stack.stack) >= 1
 
 
+# Exported due to b/171079555
+@tf_export("__internal__.get_name_scope", v1=[])
 def get_name_scope():
   """Returns the current name scope in the default_graph.
 
@@ -6162,7 +6109,7 @@ def _get_graph_from_inputs(op_input_list, graph=None):
 
   op_input_list = tuple(op_input_list)  # Handle generators correctly
   if graph and not isinstance(graph, Graph):
-    raise TypeError("Input graph needs to be a Graph: %s" % graph)
+    raise TypeError("Input graph needs to be a Graph: %s" % (graph,))
 
   # 1. We validate that all of the inputs are from the same graph. This is
   #    either the supplied graph parameter, or the first one selected from one
@@ -7018,3 +6965,15 @@ def set_int_list_attr(op, attr_name, ints):
   """TF internal method used to set a list(int) attribute in the node_def."""
   ints_list = attr_value_pb2.AttrValue.ListValue(i=ints)
   op._set_attr(attr_name, attr_value_pb2.AttrValue(list=ints_list))  # pylint:disable=protected-access
+
+
+def _get_enclosing_context(graph):
+  # pylint: disable=protected-access
+  if graph is None:
+    return None
+
+  if graph._control_flow_context is not None:
+    return graph._control_flow_context
+
+  if graph.building_function and hasattr(graph, "outer_graph"):
+    return _get_enclosing_context(graph.outer_graph)

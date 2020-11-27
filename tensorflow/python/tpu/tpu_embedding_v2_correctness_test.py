@@ -427,7 +427,7 @@ class TPUEmbeddingCorrectness(parameterized.TestCase, test.TestCase):
     strategy, mid_level_api, _ = self._create_strategy_and_mid_level('sgd')
 
     input_fn = self._create_dense_input_fn(strategy)
-    dist = strategy.experimental_distribute_datasets_from_function(
+    dist = strategy.distribute_datasets_from_function(
         input_fn,
         options=distribute_lib.InputOptions(
             experimental_prefetch_to_device=False))
@@ -516,7 +516,7 @@ class TPUEmbeddingCorrectness(parameterized.TestCase, test.TestCase):
     # In general this means that after the update, if we lookup feature 0 and 1
     # the values will be 0.3*num_replicas lower per entry and for feature 2 they
     # will be 0.1*num_replicas lower.
-    # The one issue that that these lookups contain padding values.
+    # The one issue is that these lookups contain padding values.
     # For core 0, we get the first 2 elements of the 4 element batch.
     # For feature 0, the indices are [[0, 0], [1, 0], [1, 1]] with max sequence
     # length of 2, which means that [0, 1] will be 0s.
