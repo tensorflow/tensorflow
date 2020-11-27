@@ -348,3 +348,9 @@ def plot_model(model,
       return display.Image(filename=to_file)
     except ImportError:
       pass
+  else:
+    try:
+      import subprocess
+      return subprocess.Popen([to_file], shell=True)
+    except ImportError:
+      pass
