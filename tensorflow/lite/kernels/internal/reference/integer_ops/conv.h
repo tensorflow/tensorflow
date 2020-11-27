@@ -97,38 +97,39 @@ inline void ConvPerChannel(
                 const int in_y =
                     in_y_origin + dilation_height_factor * filter_y;
 
-                int8 *pFilter, *pInput;
-                pFilter = (int8 *)&filter_data[Offset(filter_shape, out_channel, filter_y,
-                                  filter_x, 0)];
-                pInput = (int8 *)&input_data[Offset(input_shape, batch, in_y,
-                                  in_x, 0)];
+                const bool is_point_inside_image =
+                    (in_x >= 0) && (in_x < input_width) && (in_y >= 0) &&
+                    (in_y < input_height);
 
-                for (int in_channel = 0; in_channel < input_depth; ++in_channel) {
-                  // Zero padding by omitting the areas outside the image.
-                  const bool is_point_inside_image =
-                      (in_x >= 0) && (in_x < input_width) && (in_y >= 0) &&
-                      (in_y < input_height);
-                  if (is_point_inside_image) {
-                    int32 input_val = *pInput++;
-                    int32 filter_val = *pFilter++;
-                    // Accumulate with 32 bits accumulator.
-                    // In the nudging process during model quantization, we force
-                    // real value of 0.0 be represented by a quantized value. This
-                    // guarantees that the input_offset is a int8, even though it
-                    // is represented using int32.
-                    // int32 += int8 * (int8 - int8) so the highest value we can
-                    // get from each accumulation is [-127, 127] * ([-128, 127] -
-                    // [-128, 127]), which is [-32512, 32512]. log2(32512)
-                    // = 14.98, which means we can accumulate at least 2^16
-                    // multiplications without overflow. The accumulator is
-                    // applied to a filter so the accumulation logic will hold as
-                    // long as the filter size (filter_y * filter_x * in_channel)
-                    // does not exceed 2^16, which is the case in all the models
-                    // we have seen so far.
-                    // TODO(jianlijianli): Add a check to make sure the
-                    // accumulator depth is smaller than 2^16.
-                    acc += filter_val * (input_val + input_offset);
-                  }
+                if (is_point_inside_image) {
+                  int8 *pFilter, *pInput;
+                  pFilter = (int8 *)&filter_data[Offset(filter_shape, out_channel, filter_y,
+                                    filter_x, 0)];
+                  pInput = (int8 *)&input_data[Offset(input_shape, batch, in_y,
+                                    in_x, 0)];
+
+                  for (int in_channel = 0; in_channel < input_depth; ++in_channel) {
+                    // Zero padding by omitting the areas outside the image.
+                      int32 input_val = *pInput++;
+                      int32 filter_val = *pFilter++;
+                      // Accumulate with 32 bits accumulator.
+                      // In the nudging process during model quantization, we force
+                      // real value of 0.0 be represented by a quantized value. This
+                      // guarantees that the input_offset is a int8, even though it
+                      // is represented using int32.
+                      // int32 += int8 * (int8 - int8) so the highest value we can
+                      // get from each accumulation is [-127, 127] * ([-128, 127] -
+                      // [-128, 127]), which is [-32512, 32512]. log2(32512)
+                      // = 14.98, which means we can accumulate at least 2^16
+                      // multiplications without overflow. The accumulator is
+                      // applied to a filter so the accumulation logic will hold as
+                      // long as the filter size (filter_y * filter_x * in_channel)
+                      // does not exceed 2^16, which is the case in all the models
+                      // we have seen so far.
+                      // TODO(jianlijianli): Add a check to make sure the
+                      // accumulator depth is smaller than 2^16.
+                      acc += filter_val * (input_val + input_offset);
+                    }
                 }
               }
             }
