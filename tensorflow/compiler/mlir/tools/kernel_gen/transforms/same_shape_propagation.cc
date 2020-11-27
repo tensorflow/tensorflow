@@ -166,6 +166,17 @@ class ShapeEqualityKnowledge {
         registerAssociation(ShapeValue{reshape.shape()}, reshape.result());
         return;
       }
+      if (auto cast = dyn_cast<MemRefReinterpretCastOp>(op)) {
+        // Only support fully dynamic sizes for now.
+        // TODO(herhut): Fix once the op has canonicalizers that break this.
+        for (unsigned int p = 0, e = cast.getResultRank(); p < e; ++p) {
+          if (cast.isDynamicSize(p)) {
+            return;
+          }
+        }
+        registerAssociation(ShapeValue{cast.sizes()}, cast.result());
+        return;
+      }
       if (auto alloc = dyn_cast<AllocOp>(op)) {
         SmallVector<ValueOrConst, 4> shape;
         ShapedType type = alloc.getResult().getType().cast<ShapedType>();
