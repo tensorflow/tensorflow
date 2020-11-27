@@ -69,6 +69,24 @@ using xla::StatusOr;
 
 constexpr llvm::StringRef kGpuBinaryAttrName = "gpu.binary";
 
+// TODO(herhut): Remove this once leftover tensor_to_memref are handled in core.
+namespace {
+struct RemoveUnusedTensorToMemrefOperations
+    : public mlir::PassWrapper<RemoveUnusedTensorToMemrefOperations,
+                               mlir::FunctionPass> {
+  void runOnFunction() override {
+    getFunction().walk([](mlir::TensorToMemrefOp op) {
+      // Drop all tensor_to_memref that have no more users. Currently this will
+      // not happen, as tensor_to_memref has a side-effect. See
+      // https://reviews.llvm.org/D91967 for a dicsussion.
+      if (op.memref().getUsers().empty()) {
+        op.erase();
+      }
+    });
+  }
+};
+}  // end anonymous namespace
+
 Status LowerTFtoGPU(mlir::ModuleOp module, bool gpu_binary_only,
                     llvm::ArrayRef<uint32_t> tile_sizes,
                     llvm::ArrayRef<uint32_t> unroll_factors,
@@ -166,9 +184,16 @@ Status LowerTFtoGPU(mlir::ModuleOp module, bool gpu_binary_only,
   pm.addNestedPass<mlir::FuncOp>(mlir::createStdExpandOpsPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::kernel_gen::transforms::CreateShapeToDescriptorsPass());
+  // Before bufferizing further, remove unused tensor_to_memref, so that we do
+  // not create allocations for tensor computations that are not actually
+  // needed.
+  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addNestedPass<mlir::FuncOp>(
+      std::make_unique<RemoveUnusedTensorToMemrefOperations>());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
   pm.addPass(mlir::kernel_gen::transforms::CreateFinalBufferizePass());
+  // TODO(herhut) Remove once handled in mlir core.
   pm.addNestedPass<mlir::FuncOp>(mlir::createPromoteBuffersToStackPass(64));
   // TODO(herhut): Enabled this to avoid leaks once fixed.
   // pm.addNestedPass<mlir::FuncOp>(::mlir::createBufferDeallocationPass());
