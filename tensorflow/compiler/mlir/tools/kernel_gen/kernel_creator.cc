@@ -94,8 +94,7 @@ Status LowerTFtoGPU(mlir::ModuleOp module, bool gpu_binary_only,
   // Partial bufferization: Transforms inparticular HLO operation to their
   // corresponding LHLO operations and converts the function signature. Leaves
   // shape operations untouched.
-  pm.addPass(mlir::kernel_gen::transforms::CreateBufferizePass(
-      /*allow_partial_bufferization=*/true));
+  pm.addPass(mlir::kernel_gen::transforms::CreateHloBufferizePass());
   // Run CSE to ensure that loads and stores to the same location get recognized
   // as such.
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
@@ -169,7 +168,7 @@ Status LowerTFtoGPU(mlir::ModuleOp module, bool gpu_binary_only,
   pm.addPass(mlir::kernel_gen::transforms::CreateShapeToDescriptorsPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
-  pm.addPass(mlir::kernel_gen::transforms::CreateBufferizePass());
+  pm.addPass(mlir::kernel_gen::transforms::CreateFinalBufferizePass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createPromoteBuffersToStackPass(64));
   // TODO(herhut): Enabled this to avoid leaks once fixed.
   // pm.addNestedPass<mlir::FuncOp>(::mlir::createBufferDeallocationPass());
@@ -202,9 +201,6 @@ Status LowerTFtoGPU(mlir::ModuleOp module, bool gpu_binary_only,
   // Constraints are removed as late as possible and before lowering to CFG.
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createConvertShapeConstraintsPass());
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
-  // TODO(herhut): Remove this pass once the LowerToCFG pass can handle it.
-  pm.addNestedPass<mlir::FuncOp>(
-      mlir::kernel_gen::transforms::CreateParallelLoopsToSequential());
   pm.addPass(::mlir::createLowerToCFGPass());
   // Map allocs, asserts, etc. to the tensorflow framework.
   pm.addPass(mlir::kernel_gen::tf_framework::CreateEmbedTFFrameworkPass());
