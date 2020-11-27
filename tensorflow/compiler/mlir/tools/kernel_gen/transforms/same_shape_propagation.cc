@@ -24,9 +24,11 @@ limitations under the License.
 #include "llvm/ADT/EquivalenceClasses.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Debug.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/AsmState.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -34,6 +36,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
+
+#define DEBUG_TYPE "kernel-gen-shapes"
 
 namespace {
 
@@ -84,6 +88,19 @@ bool operator==(ValueOrConst lhs, ValueOrConst rhs) {
   }
 }
 
+inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
+                                     const ValueOrConst &value) {
+  if (value.isConstant()) {
+    os << value.constant();
+  } else {
+    Value val = value.value();
+    mlir::AsmState asm_state(
+        val.getParentRegion()->getParentOfType<mlir::FuncOp>());
+    val.printAsOperand(os, asm_state);
+  }
+  return os;
+}
+
 /// Represents a shape, as either a single SSA value that represents the entire
 /// shape vector or as a vector of SSA values representing scalars.
 struct ShapeValue {
@@ -124,6 +141,25 @@ bool operator==(ShapeValue lhs, ShapeValue rhs) {
   } else {
     return !rhs.isVector() && lhs.scalars() == rhs.scalars();
   }
+}
+
+inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
+                                     const ShapeValue &shape) {
+  if (shape.isVector()) {
+    os << shape.vector();
+    return os;
+  }
+  os << "[";
+  bool first = true;
+  for (auto scalar : shape.scalars()) {
+    if (!first) {
+      os << ", ";
+    }
+    first = false;
+    os << scalar;
+  }
+  os << "]";
+  return os;
 }
 
 }  // namespace
@@ -170,7 +206,7 @@ class ShapeEqualityKnowledge {
         // Only support fully dynamic sizes for now.
         // TODO(herhut): Fix once the op has canonicalizers that break this.
         for (unsigned int p = 0, e = cast.getResultRank(); p < e; ++p) {
-          if (cast.isDynamicSize(p)) {
+          if (!cast.isDynamicSize(p)) {
             return;
           }
         }
@@ -220,8 +256,10 @@ class ShapeEqualityKnowledge {
   /// equivalence class. Otherwise register `value` as an equivalence class of
   /// its own.
   void registerAssociation(ShapeValue shape, Value value) {
+    LLVM_DEBUG({ llvm::dbgs() << "Processing " << value << "\n"; });
     auto insert_symbolic = symbolic_shapes_.insert({shape, value});
     if (insert_symbolic.second) {
+      LLVM_DEBUG({ llvm::dbgs() << "New symbolic shape " << shape << "\n"; });
       equal_shapes_.insert(value.getAsOpaquePointer());
       // We have seen this symbolic shape for the first time. Try to match it
       // with a vector or shape we already know and alias classes if possible.
@@ -229,9 +267,10 @@ class ShapeEqualityKnowledge {
       // lowering.
       tryEvaluateShapeToRoot(shape, value);
     } else {
-      equal_shapes_.unionSets(
-          insert_symbolic.first->second.getAsOpaquePointer(),
-          value.getAsOpaquePointer());
+      auto rep = insert_symbolic.first->second;
+      LLVM_DEBUG({ llvm::dbgs() << "Aliasing with rep " << rep << "\n"; });
+      equal_shapes_.unionSets(rep.getAsOpaquePointer(),
+                              value.getAsOpaquePointer());
     }
   }
 
@@ -314,9 +353,11 @@ struct PropagateShapeKnowledgeToKernels
                                    .take_front(args_to_replace);
           auto current_args = kernel.getArguments()
                                   .drop_front(kernel_p + 3)
-                                  .take_back(args_to_replace);
+                                  .take_front(args_to_replace);
           for (auto pair : llvm::zip(previous_args, current_args)) {
-            std::get<1>(pair).replaceAllUsesWith(std::get<0>(pair));
+            mlir::BlockArgument prev, curr;
+            std::tie(prev, curr) = pair;
+            curr.replaceAllUsesWith(prev);
           }
           break;
         }
