@@ -22,6 +22,7 @@ import collections
 import functools
 import gc
 import os
+import sys
 
 from absl import logging
 from tensorflow.core.framework import versions_pb2
@@ -719,6 +720,9 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
   for signature_key, signature in signatures.items():
     meta_graph_def.signature_def[signature_key].CopyFrom(signature)
   meta_graph.strip_graph_default_valued_attrs(meta_graph_def)
+  # store tensor_content in litle endian format
+  if sys.byteorder == 'big':
+    utils_impl.swap_function_tensor_content(meta_graph_def, "big", "little")
   return asset_info, exported_graph
 
 
