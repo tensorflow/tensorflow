@@ -225,6 +225,107 @@ TEST(ElementWise, Rsqrt) {
   EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
 }
 
+TEST(ElementWise, RsqrtInt8) {
+  std::vector<float> data = {15., 46., 78., 142., 1., 17., 49., 113.};
+  std::vector<float> rsqrt_data(data.size());
+  for (int i = 0; i < rsqrt_data.size(); i++) {
+    rsqrt_data[i] = 1.f / std::sqrt(data[i]);
+  }
+  float kInputScale = 142.0 / 255.0;
+  float kOutputScale = 1.0 / 255.0;
+  int32_t zero_point = -128;
+  ElementWiseOpQuantizedModel m(BuiltinOperator_RSQRT,
+                                {TensorType_INT8,
+                                 {1, 8},
+                                 0,
+                                 142.0,
+                                 kInputScale,
+                                 zero_point,
+                                 true,
+                                 {kInputScale},
+                                 {zero_point}},
+                                {TensorType_INT8,
+                                 {1, 8},
+                                 0,
+                                 1.0,
+                                 kOutputScale,
+                                 zero_point,
+                                 true,
+                                 {kOutputScale},
+                                 {zero_point}});
+  m.QuantizeAndPopulate<int8_t>(m.input(), data);
+  m.Invoke();
+  EXPECT_THAT(m.ExtractDequantVector<int8_t>(m.output()),
+              ElementsAreArray(ArrayFloatNear(rsqrt_data, kInputScale)));
+}
+
+TEST(ElementWise, RsqrtCloseTo0Int8) {
+  std::vector<float> data = {15., 46., 78., 142., 0.1, 1., 49., 113.};
+  std::vector<float> rsqrt_data(data.size());
+  for (int i = 0; i < rsqrt_data.size(); i++) {
+    rsqrt_data[i] = 1.f / std::sqrt(data[i]);
+  }
+  float kInputScale = 142.0 / 255.0;
+  float kOutputScale = 3.16 / 255.0;
+  int32_t zero_point = -128;
+  ElementWiseOpQuantizedModel m(BuiltinOperator_RSQRT,
+                                {TensorType_INT8,
+                                 {1, 8},
+                                 0,
+                                 142.0,
+                                 kInputScale,
+                                 zero_point,
+                                 true,
+                                 {kInputScale},
+                                 {zero_point}},
+                                {TensorType_INT8,
+                                 {1, 8},
+                                 0,
+                                 3.16,
+                                 kOutputScale,
+                                 zero_point,
+                                 true,
+                                 {kOutputScale},
+                                 {zero_point}});
+  m.QuantizeAndPopulate<int8_t>(m.input(), data);
+  m.Invoke();
+  EXPECT_THAT(m.ExtractDequantVector<int8_t>(m.output()),
+              ElementsAreArray(ArrayFloatNear(rsqrt_data, kInputScale)));
+}
+
+TEST(ElementWise, RsqrtNanInt8) {
+  std::vector<float> data = {15., 46., 78., 142., 1., 17., -49., 113.};
+  std::vector<float> rsqrt_data(data.size());
+  for (int i = 0; i < rsqrt_data.size(); i++) {
+    rsqrt_data[i] = 1.f / std::sqrt(data[i]);
+  }
+  float kInputScale = 142.0 / 127.0;
+  float kOutputScale = 1.0 / 255.0;
+  int32_t input_zero_point = 0;
+  int32_t output_zero_point = -128;
+  ElementWiseOpQuantizedModel m(BuiltinOperator_RSQRT,
+                                {TensorType_INT8,
+                                 {1, 8},
+                                 0,
+                                 142.0,
+                                 kInputScale,
+                                 input_zero_point,
+                                 true,
+                                 {kInputScale},
+                                 {input_zero_point}},
+                                {TensorType_INT8,
+                                 {1, 8},
+                                 0,
+                                 1.0,
+                                 kOutputScale,
+                                 output_zero_point,
+                                 true,
+                                 {kOutputScale},
+                                 {output_zero_point}});
+  m.QuantizeAndPopulate<int8_t>(m.input(), data);
+  EXPECT_THAT(m.InvokeUnchecked(), kTfLiteError);
+}
+
 TEST(ElementWise, Square) {
   ElementWiseOpFloatModel m(BuiltinOperator_SQUARE, {1, 1, 4, 1});
   m.PopulateTensor<float>(m.input(), {1, 2, 0.5, -3.0});

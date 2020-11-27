@@ -25,11 +25,7 @@ limitations under the License.
 
 #if defined(INTEL_MKL)
 
-#ifdef ENABLE_MKLDNN_V1
 #include "mkldnn.hpp"
-#else
-#include "mkl_cblas.h"
-#endif  // ENABLE_MKLDNN_V1
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -156,7 +152,6 @@ class MklMatMulOp : public OpKernel {
     // 1.0 and 0.0 respectively.
     const float alpha = 1.0f;
     const float beta = 0.0f;
-#ifdef ENABLE_MKLDNN_V1
     char char_transa = transa ? 'T' : 'N';
     char char_transb = transb ? 'T' : 'N';
     VLOG(2) << "MKL DNN SGEMM called";
@@ -170,12 +165,6 @@ class MklMatMulOp : public OpKernel {
     dnnl_sgemm(char_transa, char_transb, m, n, k, alpha, a, lda, b, ldb, beta,
                c, ldc);
 #endif  // ENABLE_MKLDNN_THREADPOOL
-#else
-    // TODO(intel-tf): Remove this after TF2.3 fork.
-    cblas_sgemm(CblasRowMajor, transa ? CblasTrans : CblasNoTrans,
-                transb ? CblasTrans : CblasNoTrans, m, n, k, alpha, a, lda, b,
-                ldb, beta, c, ldc);
-#endif  // ENABLE_MKLDNN_V1
   }
 
 #ifdef ENABLE_INTEL_MKL_BFLOAT16
@@ -188,24 +177,9 @@ class MklMatMulOp : public OpKernel {
     const int index_transa = transa ? 1 : 0;
     const int index_transb = transb ? 1 : 0;
 
-#ifdef ENABLE_MKLDNN_V1
     const char ftrans[] = {'N', 'T', 'C'};
     dnnl_gemm<bfloat16>(ftrans[index_transa], ftrans[index_transb], m, n, k,
                         alpha, a, lda, b, ldb, beta, c, ldc, ctx);
-#else
-    Tensor c_float;
-    OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_FLOAT, {m, n}, &c_float));
-    const char* const ftrans[] = {"N", "T", "C"};
-
-    // MKL-DNN only supports the Fortran API and requires column major while
-    // Tensorflow uses row major so we reverse the order of A and B.
-    mkldnn_gemm_bf16bf16f32(ftrans[index_transb], ftrans[index_transa], &n, &m,
-                            &k, &alpha,
-                            reinterpret_cast<const mkldnn_bfloat16_t*>(b), &ldb,
-                            reinterpret_cast<const mkldnn_bfloat16_t*>(a), &lda,
-                            &beta, c_float.flat<float>().data(), &ldc);
-    FloatToBFloat16(c_float.flat<float>().data(), c, c_float.NumElements());
-#endif  // ENABLE_MKLDNN_V1
   }
 #endif  // ENABLE_INTEL_MKL_BFLOAT16
 };

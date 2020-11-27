@@ -1037,7 +1037,7 @@ cc_library(
 # This flag enables experimental MLIR GPU support.
 config_setting(
     name = "with_mlir_gpu_support",
-    values = {"define": "with_mlir_gpu_support=true"},
+    define_values = {"with_mlir_gpu_support": "true"},
     visibility = ["//visibility:public"],
 )
 

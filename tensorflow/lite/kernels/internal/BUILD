@@ -661,7 +661,6 @@ cc_library(
         ":common",
         ":compatibility",
         ":cppmath",
-        "//tensorflow/lite/c:common",
         "@gemmlowp",
     ],
 )
@@ -683,7 +682,6 @@ cc_library(
         ":cppmath",
         ":cpu_check",
         ":portable_tensor_utils",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:cpu_backend_gemm",
         "@ruy//ruy",

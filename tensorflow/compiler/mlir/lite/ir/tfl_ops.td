@@ -3303,14 +3303,14 @@ def TFL_ResizeBilinearOp: TFL_Op<"resize_bilinear", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, QI8, QUI8, TFL_Quint8]>:$input,
+    TFL_TensorOf<[F32, TFL_Quint8, QUI8, QI8, QI16]>:$input,
     TFL_I32Tensor:$size,
     BoolAttr:$align_corners,
     DefaultValuedAttr<BoolAttr, "false">:$half_pixel_centers
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, QI8, QUI8, TFL_Quint8]>:$output
+    TFL_TensorOf<[F32, TFL_Quint8, QUI8, QI8, QI16]>:$output
   );
 
   let hasOptions = 1;

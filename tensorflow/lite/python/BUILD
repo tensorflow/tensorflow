@@ -433,9 +433,9 @@ py_binary(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
-        ":lite",
         ":util",
-        "@six_archive//:six",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
     ],
 )
 

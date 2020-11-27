@@ -315,6 +315,24 @@ gen_kernel_library(
     unroll_factors = "4",
 )
 
+gen_kernel_library(
+    name = "equal",
+    generate_ranked = False,
+    generate_unranked = True,
+    tile_size = "256,1,1",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+        "i1",
+        "i8",
+        "i16",
+        "i32",
+        "i64",
+    ],
+    unroll_factors = "4",
+)
+
 [
     gen_kernel_library(
         name = name,
