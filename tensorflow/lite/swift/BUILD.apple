@@ -12,12 +12,12 @@ package(
 
 config_setting(
     name = "use_coreml_delegate",
-    values = {"define": "use_coreml_delegate=1"},
+    define_values = {"use_coreml_delegate": "1"},
 )
 
 config_setting(
     name = "use_metal_delegate",
-    values = {"define": "use_metal_delegate=1"},
+    define_values = {"use_metal_delegate": "1"},
 )
 
 # By default this builds with no delegates.
