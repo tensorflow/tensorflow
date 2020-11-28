@@ -113,6 +113,11 @@ filegroup(
 )
 
 cc_library(
+    name = "model_factory_helper",
+    hdrs = ["model_factory_helper.h"],
+)
+
+cc_library(
     name = "grad_test_helper",
     testonly = True,
     srcs = ["grad_test_helper.cc"],
@@ -139,6 +144,7 @@ tf_cuda_cc_test(
     tags = tf_cuda_tests_tags() + ["nomac"],
     deps = [
         ":grad_test_helper",
+        ":model_factory_helper",
         ":nn_grad",
         "//tensorflow/c/eager:c_api_test_util",
         "//tensorflow/c/experimental/gradients/tape:tape_context",

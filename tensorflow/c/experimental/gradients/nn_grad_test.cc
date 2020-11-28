@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "tensorflow/c/eager/c_api_test_util.h"
 #include "tensorflow/c/experimental/gradients/grad_test_helper.h"
+#include "tensorflow/c/experimental/gradients/model_factory_helper.h"
 #include "tensorflow/c/experimental/gradients/tape/tape_context.h"
 #include "tensorflow/core/platform/test.h"
 
