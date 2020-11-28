@@ -2130,6 +2130,10 @@ StatusOr<Literal> ExtractFromIndexPositions(const Literal& from,
       return ExtractLiteralFromIndexPositions<double>(from, indices,
                                                       extract_as_scalar);
     }
+    case C64: {
+      return ExtractLiteralFromIndexPositions<std::complex<float>>(
+          from, indices, extract_as_scalar);
+    }
     case U64: {
       return ExtractLiteralFromIndexPositions<uint64>(from, indices,
                                                       extract_as_scalar);
@@ -2137,6 +2141,10 @@ StatusOr<Literal> ExtractFromIndexPositions(const Literal& from,
     case S64: {
       return ExtractLiteralFromIndexPositions<int64>(from, indices,
                                                      extract_as_scalar);
+    }
+    case C128: {
+      return ExtractLiteralFromIndexPositions<std::complex<double>>(
+          from, indices, extract_as_scalar);
     }
     default:
       return InvalidArgument("Unsupported type for Sort: %s",
