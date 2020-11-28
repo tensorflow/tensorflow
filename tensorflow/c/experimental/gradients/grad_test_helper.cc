@@ -23,23 +23,20 @@ namespace internal {
 
 void CompareWithGradientsCheckers(Model model, Model grad_model,
                                   AbstractContext* ctx,
-                                  std::vector<AbstractTensorHandle*> inputs,
+                                  absl::Span<AbstractTensorHandle*> inputs,
                                   bool use_function,
                                   const GradientRegistry& registry) {
   auto num_inputs = inputs.size();
   std::vector<AbstractTensorHandle*> outputs(num_inputs);
-  auto s =
-      RunModel(grad_model, ctx, absl::MakeSpan(inputs), absl::MakeSpan(outputs),
-               /*use_function=*/use_function, registry);
+  auto s = RunModel(grad_model, ctx, inputs, absl::MakeSpan(outputs),
+                    /*use_function=*/use_function, registry);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   for (int i = 0; i < num_inputs; ++i) {
     if (!outputs[i]) continue;
-    std::vector<AbstractTensorHandle*> numerical_inputs{inputs};
 
     AbstractTensorHandle* g;  // Will contain numerical approximation data.
-    // TODO(vnvo2409): `CalcNumericalGrad` should not modify `inputs`.
-    s = CalcNumericalGrad(ctx, model, absl::MakeSpan(numerical_inputs),
+    s = CalcNumericalGrad(ctx, model, inputs,
                           /*input_index=*/i,
                           /*use_function=*/use_function, &g);
     ASSERT_EQ(errors::OK, s.code()) << s.error_message();

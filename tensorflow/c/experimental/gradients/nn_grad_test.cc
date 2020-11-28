@@ -83,8 +83,10 @@ TEST_P(CppGradients, TestBiasAddGrad) {
   AbstractTensorHandlePtr Bias =
       GetTensorHandleUtilFloat(ctx_.get(), Bias_vals, Bias_dims, 1);
 
+  std::vector<AbstractTensorHandle*> inputs{A.get(), Bias.get()};
+
   ASSERT_NO_FATAL_FAILURE(CompareWithGradientsCheckers(
-      BiasAddModel, BiasAddGradModel, ctx_.get(), {A.get(), Bias.get()},
+      BiasAddModel, BiasAddGradModel, ctx_.get(), absl::MakeSpan(inputs),
       /*use_function=*/!std::get<2>(GetParam()), registry_));
 }
 

@@ -103,7 +103,7 @@ namespace internal {
 
 void CompareWithGradientsCheckers(Model model, Model grad_model,
                                   AbstractContext* ctx,
-                                  std::vector<AbstractTensorHandle*> inputs,
+                                  absl::Span<AbstractTensorHandle*> inputs,
                                   bool use_function,
                                   const GradientRegistry& registry);
 

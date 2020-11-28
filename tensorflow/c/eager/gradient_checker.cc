@@ -99,8 +99,8 @@ Status RunAndMaybeSum(AbstractContext* ctx, Model forward,
   sum_inputs[0] = model_out;
   sum_inputs[1] = sum_dims.get();
 
-  TF_RETURN_IF_ERROR(ops::Sum(ctx, absl::MakeSpan(sum_inputs),
-                              absl::MakeSpan(model_outputs), "sum_output"));
+  TF_RETURN_IF_ERROR(
+      ops::Sum(ctx, sum_inputs, absl::MakeSpan(model_outputs), "sum_output"));
   outputs[0] = model_outputs[0];
   return Status::OK();
 }
@@ -191,6 +191,8 @@ Status CalcNumericalGrad(AbstractContext* ctx, Model forward,
     dtheta_approx[i] = grad_data[0];
   }
 
+  // Restore the inputs
+  inputs[input_index] = theta;
   // Populate *numerical_grad with the data from dtheta_approx.
   TF_RETURN_IF_ERROR(TensorHandleWithDimsFloat(
       ctx, dtheta_approx.data(), theta_dims.data(), num_dims, numerical_grad));

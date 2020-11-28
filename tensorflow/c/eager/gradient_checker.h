@@ -43,6 +43,9 @@ namespace gradients {
  *
  * `numerical_grad` is the pointer to the AbstractTensorHandle* which will
  * hold the numerical gradient data at the end of the function.
+ *
+ * Note that this function will modify `inputs` and restore it to the original
+ * data before returning.
  */
 Status CalcNumericalGrad(AbstractContext* ctx, Model forward,
                          absl::Span<AbstractTensorHandle*> inputs,
