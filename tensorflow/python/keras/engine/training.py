@@ -19,15 +19,15 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
-import itertools
 from io import BytesIO
+import itertools
+import json
+import os
+import tempfile
+import warnings
 import zipfile
 
-import json
 import numpy as np
-import os
-import warnings
-
 import six
 
 from tensorflow.python.autograph.lang import directives
@@ -69,13 +69,14 @@ from tensorflow.python.keras.utils import version_utils
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.keras.utils.io_utils import path_to_string
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
-from tensorflow.python.lib import io as tf_io
+from tensorflow.python.lib.io import file_io as io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.platform.gfile import GFile
 from tensorflow.python.profiler import trace
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import py_checkpoint_reader
@@ -138,6 +139,28 @@ def is_functional_model_init_params(args, kwargs):
   return (len(args) == 2 or
           len(args) == 1 and 'outputs' in kwargs or
           'inputs' in kwargs and 'outputs' in kwargs)
+
+
+def unpack_keras_model(packed_keras_model):
+  """Reconstruct a model from the result of __reduce__
+  """
+  b = BytesIO(packed_keras_model)
+  with tempfile.TemporaryDirectory() as tmpdirname:
+    # use tmpdirname to create directory name that
+    # avoids race conditions and other issues
+    temp_dir = "ram://{}".format(tmpdirname)
+    with zipfile.ZipFile(b, "r") as zf:
+      for path in zf.namelist():
+        dest = os.path.join(temp_dir, path)
+        io.create_dir_v2(os.path.dirname(dest))
+        with GFile(dest, "wb") as f:
+          f.write(zf.read(path))
+    model = save.load_model(temp_dir)
+    for root, _, filenames in io.walk_v2(temp_dir):
+      for filename in filenames:
+        dest = os.path.join(root, filename)
+        io.delete_file_v2(dest)
+    return model
 
 
 @keras_export('keras.Model', 'keras.models.Model')
@@ -227,6 +250,28 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       return functional.Functional(skip_init=True, *args, **kwargs)
     else:
       return super(Model, cls).__new__(cls, *args, **kwargs)
+
+  def __reduce__(self):
+    """Support for Pythons's Pickle protocol.
+    """
+    with tempfile.TemporaryDirectory() as tmpdirname:
+      # use tmpdirname to create directory name that
+      # avoids race conditions and other issues
+      temp_dir = "ram://{}".format(tmpdirname)
+      b = BytesIO()
+      self.save(temp_dir)
+      with zipfile.ZipFile(b, "w") as zf:
+        for root, _, filenames in io.walk_v2(temp_dir):
+          for filename in filenames:
+            dest = os.path.join(root, filename)
+            with GFile(dest, "rb") as f:
+              zf.writestr(os.path.relpath(dest, temp_dir), f.read())
+            io.delete_file_v2(dest)
+      b.seek(0)
+      return (
+        unpack_keras_model,
+        (np.asarray(memoryview(b.read())), ),
+      )
 
   @trackable.no_automatic_dependency_tracking
   def __init__(self, *args, **kwargs):
@@ -2300,38 +2345,6 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         'backend': backend.backend()
     }
     return model_config
-
-  def __reduce_ex__(self, protocol):
-    """Support for Pythons's Pickle protocol.
-    """
-    save_folder = f"tmp/saving/{id(self)}"
-    ram_prefix = "ram://"
-    temp_ram_location = os.path.join(ram_prefix, save_folder)
-    self.save(temp_ram_location)
-    b = BytesIO()
-    with zipfile.ZipFile(b, "w", zipfile.ZIP_DEFLATED) as zf:
-        for _, _, filenames in tf_io.file_io.walk_v2(temp_ram_location):
-            for filename in filenames:
-                with gfile.GFile(filename, "rb") as f:
-                    zf.writestr(os.path.relpath(filename, temp_ram_location), f.read())
-    b.seek(0)
-    return self._reconstruct_pickle, (np.asarray(memoryview(b.read())), )
-
-  @classmethod
-  def _reconstruct_pickle(cls, obj):
-    """Reconstruct a model from the result of __reduce_ex__
-    """
-    save_folder = f"tmp/saving/{id(obj)}"
-    ram_prefix = "ram://"
-    temp_ram_location = os.path.join(ram_prefix, save_folder)
-    b = BytesIO(obj)
-    with zipfile.ZipFile(b, "r", zipfile.ZIP_DEFLATED) as zf:
-        for path in zf.namelist():
-            if not tf_io.file_io.file_exists_v2(os.path.dirname(os.path.join(temp_ram_location, path))):
-                tf_io.file_io.recursive_create_dir_v2(os.path.dirname(os.path.join(temp_ram_location, path)))
-            with gfile.GFile(os.path.join(temp_ram_location, path), "wb+") as f:
-                f.write(zf.read(path))
-    return save.load_model(temp_ram_location)
 
   def get_config(self):
     raise NotImplementedError

@@ -3780,7 +3780,7 @@ class PickleProtocolTests(keras_parameterized.TestCase):
     # test without compiling
     model = roundtest(model)
     # compile
-    model.compile('rmsprop', loss='mse')
+    model.compile(oprimizer='sgd', loss='mse')
     # test without training
     model = roundtest(model)
     # train
