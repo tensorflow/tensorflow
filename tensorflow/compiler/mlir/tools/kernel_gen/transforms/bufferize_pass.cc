@@ -48,52 +48,55 @@ namespace kernel_gen {
 namespace transforms {
 namespace {
 
-// TODO(herhut) : This could become a real pattern in bufferize pass. What we
-// would need to do is insert a copy to model the semantics correctly. The same
-// is true for the TensorLoad pattern that is already in there.  Then buffer
-// assignment free insertion and copy removal should clean this up for us.
-//
-// This patten erases `tensor_store(src_unranked_tensor, dst_unranked_memref)`
-// op and replaces the result of the defining op produced `dst_unranked_memref`
-// with the rewritten `src_unranked_tensor`.
-class UnrankedTensorStoreTestOnlyPattern
-    : public OpConversionPattern<mlir::TensorStoreOp> {
- public:
-  using OpConversionPattern<mlir::TensorStoreOp>::OpConversionPattern;
-
-  LogicalResult matchAndRewrite(
-      mlir::TensorStoreOp op, ArrayRef<Value> operands,
-      ConversionPatternRewriter& rewriter) const final {
-    rewriter.replaceOp(op.memref().getDefiningOp(), op.tensor());
-    rewriter.replaceOp(op, {});
-    return success();
-  }
-};
-
-// TODO(frgossen): Move this upstream to `populateFuncOpTypeConversionPattern`
-// This pattern is merely needed to materialize type casts for return values so
-// that they match the function signature conversion.
-class ReturnOpTypeConversionPattern
-    : public OpConversionPattern<mlir::ReturnOp> {
- public:
-  using OpConversionPattern<mlir::ReturnOp>::OpConversionPattern;
-
-  LogicalResult matchAndRewrite(
-      ReturnOp op, ArrayRef<Value> operands,
-      ConversionPatternRewriter& rewriter) const final {
-    rewriter.replaceOpWithNewOp<ReturnOp>(op, operands);
-    return success();
-  }
-};
-
 #define GEN_PASS_CLASSES
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
-struct BufferizePass : public BufferizePassBase<BufferizePass> {
-  explicit BufferizePass(bool allow_partial_bufferization) {
-    allow_partial_bufferization_ = allow_partial_bufferization;
+struct HloBufferizePass : public HloBufferizePassBase<HloBufferizePass> {
+  // TODO(b/173201243): Move to tablegen.
+  void getDependentDialects(DialectRegistry& registry) const override {
+    registry.insert<lmhlo::LmhloDialect>();
   }
 
+ public:
+  void runOnOperation() override {
+    OwningRewritePatternList patterns;
+    auto& context = getContext();
+    ConversionTarget target(context);
+    target.addLegalDialect<lmhlo::LmhloDialect>();
+    target.addLegalDialect<StandardOpsDialect>();
+    target.addIllegalDialect<mhlo::MhloDialect>();
+
+    BufferizeTypeConverter converter;
+    // Configure bufferize pattern for functions and lhlo.
+    mhlo::populateHLOToLHLOConversionPattern(&context, &converter, &patterns);
+    populateFuncOpTypeConversionPattern(patterns, &context, converter);
+    populateCallOpTypeConversionPattern(patterns, &context, converter);
+    populateBranchOpInterfaceAndReturnOpTypeConversionPattern(
+        patterns, &context, converter);
+
+    // Configure legality and structural patterns.
+    populateBufferizeMaterializationLegality(target);
+    populateShapeStructuralTypeConversionsAndLegality(&context, converter,
+                                                      patterns, target);
+    scf::populateSCFStructuralTypeConversionsAndLegality(&context, converter,
+                                                         patterns, target);
+    // TODO(herhut): Move this legality configuration to bufferize itself?
+    target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
+      auto inputs = op.getType().getInputs();
+      auto results = op.getType().getResults();
+      return converter.isLegal(inputs) && converter.isLegal(results) &&
+             converter.isLegal(&op.getBody());
+    });
+    target.addDynamicallyLegalOp<CallOp, ReturnOp>(
+        [&converter](Operation* op) { return converter.isLegal(op); });
+
+    if (failed(applyPartialConversion(getOperation(), target,
+                                      std::move(patterns))))
+      signalPassFailure();
+  }
+};
+
+struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
   // TODO(b/173201243): Move to tablegen.
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<AffineDialect, scf::SCFDialect, shape::ShapeDialect,
@@ -107,44 +110,27 @@ struct BufferizePass : public BufferizePassBase<BufferizePass> {
     target.addLegalDialect<scf::SCFDialect, StandardOpsDialect,
                            tf_framework::TFFrameworkDialect, AffineDialect,
                            shape::ShapeDialect, lmhlo::LmhloDialect>();
-    target.addLegalOp<ModuleOp, ModuleTerminatorOp>();
+    target.addLegalOp<FuncOp, ModuleOp, ModuleTerminatorOp>();
 
     target.addIllegalDialect<mhlo::MhloDialect>();
     target.addIllegalOp<DynamicTensorFromElementsOp, ExtractElementOp,
-                        TensorFromElementsOp, TensorCastOp>();
-
-    if (!allow_partial_bufferization_) {
-      target.addIllegalOp<TensorLoadOp, TensorToMemrefOp>();
-    }
-
+                        TensorFromElementsOp, TensorCastOp, TensorLoadOp,
+                        TensorToMemrefOp>();
     // Certain operations are no longer legal on tensors but otherwise are.
     target.addDynamicallyLegalOp<ConstantOp, SelectOp>([&](Operation* op) {
       return llvm::none_of(op->getResultTypes(),
                            [](Type t) { return t.isa<TensorType>(); });
     });
-    target.addDynamicallyLegalOp<TensorStoreOp>([&](TensorStoreOp op) {
-      return !op.tensor().getType().isa<UnrankedTensorType>();
-    });
 
     BufferizeTypeConverter converter;
-    // TODO(herhut): Move this legality configuration to bufferize itself?
     auto typesAreLegal = [&converter](Operation* op) {
       return converter.isLegal(op->getOperandTypes()) &&
              converter.isLegal(op->getResultTypes());
     };
-    target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
-      auto inputs = op.getType().getInputs();
-      auto results = op.getType().getResults();
-      return converter.isLegal(inputs) && converter.isLegal(results) &&
-             converter.isLegal(&op.getBody());
-    });
-    target.addDynamicallyLegalOp<CallOp, ConstantOp, DimOp, RankOp, SelectOp,
-                                 ReturnOp>(typesAreLegal);
+    target.addDynamicallyLegalOp<ConstantOp, DimOp, RankOp, SelectOp>(
+        typesAreLegal);
 
     OwningRewritePatternList patterns;
-    mhlo::populateHLOToLHLOConversionPattern(&context, &converter, &patterns);
-    populateFuncOpTypeConversionPattern(patterns, &context, converter);
-    populateCallOpTypeConversionPattern(patterns, &context, converter);
     populateStdBufferizePatterns(&context, converter, patterns);
     populateEliminateBufferizeMaterializationsPatterns(&context, converter,
                                                        patterns);
@@ -153,28 +139,22 @@ struct BufferizePass : public BufferizePassBase<BufferizePass> {
                                                       patterns, target);
     scf::populateSCFStructuralTypeConversionsAndLegality(&context, converter,
                                                          patterns, target);
-    patterns.insert<UnrankedTensorStoreTestOnlyPattern>(&context);
-    patterns.insert<ReturnOpTypeConversionPattern>(converter, &context);
 
     auto module = getOperation();
-    if (allow_partial_bufferization_) {
-      if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
-        signalPassFailure();
-      }
-    } else {
-      if (failed(
-              mlir::applyFullConversion(module, target, std::move(patterns)))) {
-        signalPassFailure();
-      }
+    if (failed(applyFullConversion(module, target, std::move(patterns)))) {
+      signalPassFailure();
     }
   }
 };
 
 }  // namespace
 
-std::unique_ptr<OperationPass<ModuleOp> > CreateBufferizePass(
-    bool allow_partial_bufferization) {
-  return std::make_unique<BufferizePass>(allow_partial_bufferization);
+std::unique_ptr<OperationPass<ModuleOp> > CreateHloBufferizePass() {
+  return std::make_unique<HloBufferizePass>();
+}
+
+std::unique_ptr<OperationPass<ModuleOp> > CreateFinalBufferizePass() {
+  return std::make_unique<FinalBufferizePass>();
 }
 
 }  // namespace transforms

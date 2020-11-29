@@ -581,6 +581,9 @@ struct HloLegalizeToLhlo
     populateHLOToLHLOConversionPattern(&context, &converter, &patterns);
     populateFuncOpTypeConversionPattern(patterns, &context, converter);
     populateCallOpTypeConversionPattern(patterns, &context, converter);
+    populateBranchOpInterfaceAndReturnOpTypeConversionPattern(
+        patterns, &context, converter);
+
     populateShapeStructuralTypeConversionsAndLegality(&context, converter,
                                                       patterns, target);
     if (failed(applyPartialConversion(getOperation(), target,

@@ -75,8 +75,6 @@ class NcclAllReduceThunk : public Thunk {
   // clear how you *could* use it for anything other than tests.)
   static absl::flat_hash_set<GlobalDeviceId> DevicesWithOpenNcclChannels();
 
-  // TODO(b/125951860): Support all-reduces with replica groups, i.e.
-  // all-reduces that compute multiple sums across subsets of all replicas.
   struct Buffer {
     int64 element_count;
     BufferAllocation::Slice source_buffer;

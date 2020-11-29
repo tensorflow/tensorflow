@@ -1370,7 +1370,7 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
 
     // Fetch operand and result tensor indices.
     std::vector<int32_t> results;
-    results.reserve(inst.getNumOperands());
+    results.reserve(inst.getNumResults());
     for (auto result : inst.getResults()) {
       results.push_back(tensor_index_map.lookup(result));
     }
