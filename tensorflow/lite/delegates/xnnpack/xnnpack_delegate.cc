@@ -2915,8 +2915,8 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
       if (input_tensor.allocation_type == kTfLiteMmapRo &&
           input_tensor.type == kTfLiteFloat16 &&
           output_tensor.type == kTfLiteFloat32) {
-        static_unpack_nodes_.insert(i);
-        quasi_static_tensors_producers[node->outputs->data[0]] = i;
+        static_unpack_nodes_.insert(node_index);
+        quasi_static_tensors_producers[node->outputs->data[0]] = node_index;
         quasi_static_tensors.insert(node->outputs->data[0]);
 
         // Skip this node for now. If output of the node is consumed only by
@@ -2940,8 +2940,8 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
           input_tensor.sparsity != nullptr &&
           input_tensor.type == kTfLiteFloat32 &&
           output_tensor.type == kTfLiteFloat32) {
-        static_unpack_nodes_.insert(i);
-        quasi_static_tensors_producers[node->outputs->data[0]] = i;
+        static_unpack_nodes_.insert(node_index);
+        quasi_static_tensors_producers[node->outputs->data[0]] = node_index;
         quasi_static_tensors.insert(node->outputs->data[0]);
 
         // Skip this node for now. If output of the node is consumed only by
