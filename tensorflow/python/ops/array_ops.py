@@ -6129,33 +6129,29 @@ def extract_image_patches_v2(images, sizes, strides, rates, padding, name=None):
   starting point is inside the input are included, and areas outside the input
   default to zero.
 
-  Example:
+  Usage Example:
 
-  ```
-    n = 10
+  >>> n = 10
     # images is a 1 x 10 x 10 x 1 array that contains the numbers 1 through 100
-    images = [[[[x * n + y + 1] for y in range(n)] for x in range(n)]]
-
+  >>> images = [[[[x * n + y + 1] for y in range(n)] for x in range(n)]]
     # We generate two outputs as follows:
     # 1. 3x3 patches with stride length 5
     # 2. Same as above, but the rate is increased to 2
-    tf.image.extract_patches(images=images,
-                             sizes=[1, 3, 3, 1],
-                             strides=[1, 5, 5, 1],
-                             rates=[1, 1, 1, 1],
-                             padding='VALID')
+  >>> tf.image.extract_patches(images=images,
+  ...                          sizes=[1, 3, 3, 1],
+  ...                          strides=[1, 5, 5, 1],
+  ...                          rates=[1, 1, 1, 1],
+  ...                          padding='VALID')
+  <tf.Tensor: shape=(1, 2, 2, 9), dtype=int32, numpy=
+  array([[[[ 1,  2,  3, 11, 12, 13, 21, 22, 23],
+         [ 6,  7,  8, 16, 17, 18, 26, 27, 28]],
 
-    # Yields:
-    [[[[ 1  2  3 11 12 13 21 22 23]
-       [ 6  7  8 16 17 18 26 27 28]]
-      [[51 52 53 61 62 63 71 72 73]
-       [56 57 58 66 67 68 76 77 78]]]]
-  ```
+        [[51, 52, 53, 61, 62, 63, 71, 72, 73],
+         [56, 57, 58, 66, 67, 68, 76, 77, 78]]]], dtype=int32)>
 
   If we mark the pixels in the input image which are taken for the output with
   `*`, we see the pattern:
 
-  ```
      *  *  *  4  5  *  *  *  9 10
      *  *  * 14 15  *  *  * 19 20
      *  *  * 24 25  *  *  * 29 30
@@ -6166,27 +6162,22 @@ def extract_image_patches_v2(images, sizes, strides, rates, padding, name=None):
      *  *  * 74 75  *  *  * 79 80
     81 82 83 84 85 86 87 88 89 90
     91 92 93 94 95 96 97 98 99 100
-  ```
 
-  ```
-    tf.image.extract_patches(images=images,
-                             sizes=[1, 3, 3, 1],
-                             strides=[1, 5, 5, 1],
-                             rates=[1, 2, 2, 1],
-                             padding='VALID')
+   >>> tf.image.extract_patches(images=images,
+   ...                          sizes=[1, 3, 3, 1],
+   ...                          strides=[1, 5, 5, 1],
+   ...                          rates=[1, 2, 2, 1],
+   ...                          padding='VALID')
+   <tf.Tensor: shape=(1, 2, 2, 9), dtype=int32, numpy=
+   array([[[[  1,   3,   5,  21,  23,  25,  41,  43,  45],
+         [  6,   8,  10,  26,  28,  30,  46,  48,  50]],
 
-    # Yields:
-    [[[[  1   3   5  21  23  25  41  43  45]
-       [  6   8  10  26  28  30  46  48  50]]
+        [[ 51,  53,  55,  71,  73,  75,  91,  93,  95],
+         [ 56,  58,  60,  76,  78,  80,  96,  98, 100]]]], dtype=int32)>
 
-      [[ 51  53  55  71  73  75  91  93  95]
-       [ 56  58  60  76  78  80  96  98 100]]]]
-  ```
+   We can again draw the effect, this time using the symbols `*`, `x`, `+` and
+   `o` to distinguish the patches:
 
-  We can again draw the effect, this time using the symbols `*`, `x`, `+` and
-  `o` to distinguish the patches:
-
-  ```
      *  2  *  4  *  x  7  x  9  x
     11 12 13 14 15 16 17 18 19 20
      * 22  * 24  *  x 27  x 29  x
@@ -6197,7 +6188,6 @@ def extract_image_patches_v2(images, sizes, strides, rates, padding, name=None):
      + 72  + 74  +  o 77  o 79  o
     81 82 83 84 85 86 87 88 89 90
      + 92  + 94  +  o 97  o 99  o
-  ```
 
   Args:
     images: A 4-D Tensor with shape `[batch, in_rows, in_cols, depth]`.
