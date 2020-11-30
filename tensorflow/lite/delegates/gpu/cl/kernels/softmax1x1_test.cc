@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/cl/kernels/softmax1x1.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/softmax1x1.h"
 
 #include <cmath>
 #include <cstdlib>

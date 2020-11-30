@@ -49,10 +49,12 @@ filegroup(
         if_true = [
             "unranked_op_gpu_abs.cc",
             "unranked_op_gpu_ceil.cc",
+            "unranked_op_gpu_conj.cc",
             "unranked_op_gpu_cos.cc",
             "unranked_op_gpu_exp.cc",
             "unranked_op_gpu_floor.cc",
             "unranked_op_gpu_imag.cc",
+            "unranked_op_gpu_is_inf.cc",
             "unranked_op_gpu_log.cc",
             "unranked_op_gpu_logical_not.cc",
             "unranked_op_gpu_real.cc",
@@ -104,10 +106,12 @@ tf_kernel_library(
         if_true = [
             ":abs_unranked_kernels",
             ":ceil_unranked_kernels",
+            ":conj_unranked_kernels",
             ":cos_unranked_kernels",
             ":exp_unranked_kernels",
             ":floor_unranked_kernels",
             ":imag_unranked_kernels",
+            ":is_inf_unranked_kernels",
             ":log_unranked_kernels",
             ":logical_not_unranked_kernels",
             ":real_unranked_kernels",
@@ -170,6 +174,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/common_runtime:device_factory",
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:ops_testutil",
+        "@com_google_absl//absl/container:inlined_vector",
     ],
 )
 
@@ -232,10 +237,11 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "conj",
+    generate_unranked = True,
     tile_size = "256",
     types = [
-        "c64",
-        "c128",
+        "f32",
+        "f64",
     ],
     unroll_factors = "4",
 )
@@ -260,6 +266,19 @@ gen_kernel_library(
         "i16",
         "i32",
         "i64",
+    ],
+    unroll_factors = "4",
+)
+
+gen_kernel_library(
+    name = "is_inf",
+    generate_ranked = False,
+    generate_unranked = True,
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
     ],
     unroll_factors = "4",
 )
@@ -307,6 +326,24 @@ gen_kernel_library(
         "f16",
         "f32",
         "f64",
+        "i64",
+    ],
+    unroll_factors = "4",
+)
+
+gen_kernel_library(
+    name = "equal",
+    generate_ranked = False,
+    generate_unranked = True,
+    tile_size = "256,1,1",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+        "i1",
+        "i8",
+        "i16",
+        "i32",
         "i64",
     ],
     unroll_factors = "4",

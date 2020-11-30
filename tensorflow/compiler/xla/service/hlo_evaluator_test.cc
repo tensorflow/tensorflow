@@ -4652,5 +4652,30 @@ TEST_F(HloEvaluatorTest, DotUpcast) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
+TEST_F(HloEvaluatorTest, SortC64) {
+  const absl::string_view hlo_text = R"(
+  HloModule m
+
+  sort_lt_comparator {
+    parameter.0 = c64[] parameter(0)
+    real.0 = f32[] real(parameter.0)
+    parameter.1 = c64[] parameter(1)
+    real.1 = f32[] real(parameter.1)
+    ROOT compare = pred[] compare(real.0, real.1), direction=LT
+  }
+
+  ENTRY main {
+    c = c64[3] constant({(2, 0), (4, 0), (6, 0)})
+    ROOT sort = c64[3]{0} sort(c), dimensions={0}, to_apply=sort_lt_comparator
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal expected =
+      LiteralUtil::CreateR1<std::complex<float>>({2.f, 4.f, 6.f});
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result, HloEvaluator().Evaluate(*m_->entry_computation(), {}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
 }  // namespace
 }  // namespace xla

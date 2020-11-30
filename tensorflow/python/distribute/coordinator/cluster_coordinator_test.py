@@ -17,8 +17,8 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
 import collections
+import contextlib
 import functools
 import os
 import platform
@@ -677,6 +677,47 @@ class ClusterCoordinatorTest(TestCaseWithErrorReportingThread):
         coordinator_lib.InputError,
         'error message is Failed copying input tensor from'):
       self.coordinator.join()
+
+  def testRunNotUsedWithClusterCoordinatorSchedule(self):
+
+    @def_function.function
+    def input_fn():
+      return dataset_ops.DatasetV2.range(1, 10)
+
+    with self.strategy.scope():
+      v = variables.Variable(initial_value=1, dtype=dtypes.int64)
+
+      def replica_fn(input_tensor):
+        return input_tensor + v, input_tensor - v
+
+      @def_function.function
+      def worker_fn(iterator):
+        return self.strategy.run(replica_fn, args=(next(iterator),))
+
+    per_worker_dataset = self.coordinator.create_per_worker_dataset(input_fn)
+
+    @contextlib.contextmanager
+    def _assert_raises_usage_error():
+      with self.assertRaisesRegexp(
+          NotImplementedError,
+          "`tf.distribute.experimental.ParameterServerStrategy`'s `run` or "
+          '`reduce` must be used within a function passed to '
+          '`tf.distribute.experimental.coordinator.ClusterCoordinator.schedule`'
+          '.'):
+        yield
+
+    with _assert_raises_usage_error():
+      # Invoking `run` without `coordinator.schedule` should error.
+      self.strategy.run(replica_fn, args=(next(iter(input_fn())),))
+
+    # A proper `schedule` should succeed.
+    rv = self.coordinator.schedule(worker_fn, args=(iter(per_worker_dataset),))
+
+    with _assert_raises_usage_error():
+      # Invoking `run` without `coordinator.schedule` again should error.
+      self.strategy.run(replica_fn, args=(next(iter(input_fn())),))
+
+    self.assertEqual((2, 0), rv.fetch())
 
 
 class LimitedClosureQueueSizeBasicTest(ClusterCoordinatorTest):

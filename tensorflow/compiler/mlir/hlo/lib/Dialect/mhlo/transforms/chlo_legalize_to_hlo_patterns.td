@@ -60,6 +60,11 @@ def : Pat<(HLOClient_AtanOp $input),
     (HLO_ConstantLike<"1"> $input)
   )>;
 
+// Express `conj` as
+//   conj(x) = (re(x), -im(x)).
+def : Pat<(HLOClient_ConjOp $v),
+          (HLO_ComplexOp (HLO_RealOp $v), (HLO_NegOp (HLO_ImagOp $v)))>;
+
 // Express `sinh` as
 //   sinh(x) = (e^x - e^-x) / 2                     if |x| < 1
 //           = e^(x + log(1/2)) - e^(-x + log(1/2)) otherwise.

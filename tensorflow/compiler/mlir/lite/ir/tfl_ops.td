@@ -172,6 +172,8 @@ def TFL_FpTensor : TFL_TensorOf<[F32]>;
 def TFL_I32OrI64Tensor : TFL_TensorOf<[TFL_Int32Or64]>;
 def TFL_I32Tensor : TFL_TensorOf<[I32]>;
 def TFL_I64Tensor : TFL_TensorOf<[I64]>;
+def TFL_Complex64Tensor : TFL_TensorOf<[Complex<F<32>>]>;
+
 // TODO(jpienaar): Expand to all int types.
 def TFL_IntTensor : TypeAlias<TFL_I32Tensor, "tensor of any integer type">;
 
@@ -3303,14 +3305,14 @@ def TFL_ResizeBilinearOp: TFL_Op<"resize_bilinear", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, QI8, QUI8, TFL_Quint8]>:$input,
+    TFL_TensorOf<[F32, TFL_Quint8, QUI8, QI8, QI16]>:$input,
     TFL_I32Tensor:$size,
     BoolAttr:$align_corners,
     DefaultValuedAttr<BoolAttr, "false">:$half_pixel_centers
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, QI8, QUI8, TFL_Quint8]>:$output
+    TFL_TensorOf<[F32, TFL_Quint8, QUI8, QI8, QI16]>:$output
   );
 
   let hasOptions = 1;
@@ -4478,6 +4480,33 @@ subsequent operation and then be optimized away, however.)
 
   let results = (outs
     TFL_TensorOf<[F32, I32, I1, I8, QI8, UI8, QUI8, I16, QI16, I64, Complex<F<32>>]>:$output
+  );
+}
+
+def TFL_RFFT2dOp : TFL_Op<"RFFT2D", [NoSideEffect, NoQuantizableResult]> {
+  let summary = "2D real-valued fast Fourier transform.";
+
+  let description = [{
+Computes the 2-dimensional discrete Fourier transform of a real-valued signal
+over the inner-most 2 dimensions of `input`.
+
+Since the DFT of a real signal is Hermitian-symmetric, `RFFT2D` only returns the
+`fft_length / 2 + 1` unique components of the FFT for the inner-most dimension
+of `output`: the zero-frequency term, followed by the `fft_length / 2`
+positive-frequency terms.
+
+Along each axis `RFFT2D` is computed on, if `fft_length` is smaller than the
+corresponding dimension of `input`, the dimension is cropped. If it is larger,
+the dimension is padded with zeros.
+  }];
+
+  let arguments = (ins
+    TFL_FpTensor:$input,
+    TFL_I32Tensor:$fft_length
+  );
+
+  let results = (outs
+    TFL_Complex64Tensor:$output
   );
 }
 

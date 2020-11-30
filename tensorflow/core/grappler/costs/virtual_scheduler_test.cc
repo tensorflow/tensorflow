@@ -2547,7 +2547,7 @@ TEST_F(VirtualSchedulerTest, MemoryUsageForStreamingOps) {
       node.set_device(kCPU1);
     }
     if (node.name() == "z" || node.name() == "w")
-      (*node.mutable_attr())["_streaming"].mutable_list()->add_b(true);
+      (*node.mutable_attr())[kStreaming].mutable_list()->add_b(true);
   }
 
   InitScheduler();

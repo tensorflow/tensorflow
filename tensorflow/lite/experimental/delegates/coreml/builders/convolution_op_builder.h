@@ -33,7 +33,7 @@ class ConvolutionOpBuilder : public OpBuilder {
                                 ConvolutionType conv_type)
       : OpBuilder(graph_builder), conv_type_(conv_type) {}
 
-  const char* DebugName() override;
+  const std::string& DebugName() override;
 
   CoreML::Specification::NeuralNetworkLayer* Build() override;
 

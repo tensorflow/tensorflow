@@ -1,4 +1,4 @@
-// RUN: tf-opt %s --test-tf-lower-tf --xla-legalize-tf | mlir-hlo-opt --transform-unranked-hlo | kernel-gen-opt -allow-unregistered-dialect --canonicalize --shape-to-descriptors --canonicalize --bufferize | FileCheck %s
+// RUN: tf-opt %s --test-tf-lower-tf --xla-legalize-tf | mlir-hlo-opt --transform-unranked-hlo | kernel-gen-opt -allow-unregistered-dialect --hlo-bufferize --canonicalize --shape-to-descriptors --canonicalize --final-bufferize | FileCheck %s
 
 // Test whether all shape computations required for isinf can be lowered to
 // the standard dialect, scf and descriptors.

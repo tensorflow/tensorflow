@@ -695,6 +695,28 @@ func @matrix_diag_part_align_7d(%arg0: tensor<3x5x7x9x11x13x17xf32>) -> tensor<3
 }
 
 //===----------------------------------------------------------------------===//
+// Erf
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func @erf
+func @erf(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
+  // CHECK: chlo.erf %arg0 : tensor<2x3xf32>
+  %0 = "tf.Erf"(%arg0) : (tensor<2x3xf32>) -> tensor<2x3xf32>
+  return %0 : tensor<2x3xf32>
+}
+
+//===----------------------------------------------------------------------===//
+// Erfc
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func @erfc
+func @erfc(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
+  // CHECK: chlo.erfc %arg0 : tensor<2x3xf32>
+  %0 = "tf.Erfc"(%arg0) : (tensor<2x3xf32>) -> tensor<2x3xf32>
+  return %0 : tensor<2x3xf32>
+}
+
+//===----------------------------------------------------------------------===//
 // Einsum.
 //===----------------------------------------------------------------------===//
 
@@ -916,16 +938,6 @@ func @real(%arg0: tensor<3xcomplex<f32>>) -> tensor<3xf32> {
   // CHECK: "mhlo.real"
   %1 = "tf.Real"(%arg0) : (tensor<3xcomplex<f32>>) -> tensor<3xf32>
   return %1 : tensor<3xf32>
-}
-
-// CHECK-LABEL: func @conj
-func @conj(%arg0: tensor<3xcomplex<f32>>) -> tensor<3xcomplex<f32>> {
-  // CHECK-DAG: [[R1:%.*]] = "mhlo.real"(%arg0)
-  // CHECK-DAG: [[R2:%.*]] = "mhlo.imag"(%arg0)
-  // CHECK-DAG: [[R3:%.*]] = "mhlo.negate"([[R2]])
-  // CHECK: [[R4:%.*]] = "mhlo.complex"([[R1]], [[R3]])
-  %1 = "tf.Conj"(%arg0) : (tensor<3xcomplex<f32>>) -> tensor<3xcomplex<f32>>
-  return %1 : tensor<3xcomplex<f32>>
 }
 
 //===----------------------------------------------------------------------===//

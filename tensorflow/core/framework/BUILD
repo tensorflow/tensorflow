@@ -1251,6 +1251,31 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "extension_type_variant",
+    srcs = ["extension_type_variant.cc"],
+    hdrs = ["extension_type_variant.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_cc_test(
+    name = "extension_type_variant_test",
+    size = "small",
+    srcs = ["extension_type_variant_test.cc"],
+    deps = [
+        ":extension_type_variant",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 # All framewrok protos are self-contained, i.e. they only import other
 # protos from the same package, so we can build the protos here and then
 # link them from core:protos_all without circular dependencies.

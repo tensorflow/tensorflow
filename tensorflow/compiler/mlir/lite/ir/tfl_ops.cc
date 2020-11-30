@@ -494,6 +494,8 @@ Attribute ConstFoldUnaryOp(Type result_type, Attribute operand,
   assert(IsF32ShapedType(result_type) || IsBF16ShapedType(result_type));
   auto result_shape_type = result_type.cast<ShapedType>();
 
+  if (!result_shape_type.hasStaticShape()) return {};
+
   if (auto dense_elements = operand.dyn_cast_or_null<DenseElementsAttr>()) {
     SmallVector<APFloat, 16> new_values;
     const int num_elements = result_shape_type.getNumElements();
@@ -1740,7 +1742,8 @@ static LogicalResult Verify(LSTMOp op) {
           op.forget_layer_norm_coefficients().getType().cast<ShapedType>();
       // If this lstm has layer normalization, this input value,
       // "forget_layer_norm_coefficients" should be a 1D tensor.
-      if (forget_layer_norm_coefficients.getRank() != 1 ||
+      if (!forget_layer_norm_coefficients.hasRank() ||
+          forget_layer_norm_coefficients.getRank() != 1 ||
           forget_layer_norm_coefficients.getDimSize(0) != n_cell)
         return op.emitOpError(
             "coefficient inputs have more than 2 dimensions or "

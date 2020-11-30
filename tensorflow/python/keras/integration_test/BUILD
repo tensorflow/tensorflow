@@ -111,6 +111,7 @@ tf_py_test(
     python_version = "PY3",
     shard_count = 3,
     tags = [
+        "no_tfrt",  # TODO(b/171765113)
         "noasan",  # TODO(b/156029134)
         "nomsan",  # TODO(b/156029134)
         "notsan",  # TODO(b/156029134)

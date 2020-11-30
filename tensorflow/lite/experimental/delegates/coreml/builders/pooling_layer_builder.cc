@@ -25,26 +25,25 @@ namespace tflite {
 namespace delegates {
 namespace coreml {
 
-const char* PoolingLayerBuilder::DebugName() {
-  if (str_debug_name_[0]) return str_debug_name_;
+const std::string& PoolingLayerBuilder::DebugName() {
+  if (!debug_name_.empty()) return debug_name_;
   switch (pooling_type_) {
     case kTfLiteBuiltinAveragePool2d:
-      GetDebugName("PoolingLayerBuilder (AVERAGE)", node_id_, str_debug_name_);
+      SetDebugName("PoolingLayerBuilder (AVERAGE)", node_id_);
       break;
     case kTfLiteBuiltinMaxPool2d:
-      GetDebugName("PoolingLayerBuilder (MAX)", node_id_, str_debug_name_);
+      SetDebugName("PoolingLayerBuilder (MAX)", node_id_);
       break;
     case kTfLiteBuiltinL2Pool2d:
-      GetDebugName("PoolingLayerBuilder (L2, unsupported)", node_id_,
-                   str_debug_name_);
+      SetDebugName("PoolingLayerBuilder (L2, unsupported)", node_id_);
       break;
     case kTfLiteBuiltinMean:
-      GetDebugName("PoolingLayerBuilder (MEAN)", node_id_, str_debug_name_);
+      SetDebugName("PoolingLayerBuilder (MEAN)", node_id_);
       break;
     default:
-      GetDebugName("PoolingLayerBuilder (ERROR)", node_id_, str_debug_name_);
+      SetDebugName("PoolingLayerBuilder (ERROR)", node_id_);
   }
-  return str_debug_name_;
+  return debug_name_;
 }
 
 CoreML::Specification::NeuralNetworkLayer* PoolingLayerBuilder::Build() {

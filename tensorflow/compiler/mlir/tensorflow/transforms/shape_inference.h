@@ -35,8 +35,6 @@ LogicalResult InferModuleShape(ModuleOp module, int64_t max_iterations = 10);
 // If arg_shapes are empty, then argument shapes will be left unchanged.
 // Note: This affects the entire module, and changes are not just scoped to the
 // function being inferred.
-// TODO(b/154065712): Remove propagate_caller_callee_constants once using
-// SCCP pass instead.
 LogicalResult InferShapeForFunction(FuncOp func,
                                     ArrayRef<ArrayRef<int64_t>> arg_shapes,
                                     int64_t graph_version,

@@ -16,12 +16,12 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/selectors/convolution_selector.h"
 
 #include "absl/memory/memory.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/conv_buffer_1x1.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/conv_constants.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/conv_powervr.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/conv_weights_converter.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
+#include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/conv_buffer_1x1.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/conv_constants.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/conv_powervr.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/conv_weights_converter.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 
 namespace tflite {

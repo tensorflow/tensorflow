@@ -139,6 +139,7 @@ def _find_rocblas_config(rocm_install_path):
 
   def rocblas_version_numbers(path):
     possible_version_files = [
+<<<<<<< HEAD
       "rocblas/include/rocblas-version.h", # ROCm 3.7 and prior
       "rocblas/include/internal/rocblas-version.h", # ROCm 3.8
     ]
@@ -148,8 +149,21 @@ def _find_rocblas_config(rocm_install_path):
       if  os.path.exists(version_file):
         break
     if not os.path.exists(version_file):
+=======
+        "rocblas/include/rocblas-version.h",  # ROCm 3.7 and prior
+        "rocblas/include/internal/rocblas-version.h",  # ROCm 3.8
+    ]
+    version_file = None
+    for f in possible_version_files:
+      path = os.path.join(path, f)
+      if os.path.exists(path):
+        version_file = path
+        break
+    if not version_file:
+>>>>>>> upstream/master
       raise ConfigError(
-          'rocblas version file "{}" not found'.format(version_file))
+          "rocblas version file not found in {}".format(
+              possible_version_files))
     major = _get_header_version(version_file, "ROCBLAS_VERSION_MAJOR")
     minor = _get_header_version(version_file, "ROCBLAS_VERSION_MINOR")
     patch = _get_header_version(version_file, "ROCBLAS_VERSION_PATCH")
