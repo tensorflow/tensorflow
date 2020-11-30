@@ -183,7 +183,8 @@ class Subgraph {
   // Mutable form of tensors (TEMPORARY for refactor).
   // TODO(b/119495520): remove when refactoring complete.
   std::vector<TfLiteTensor>& tensors() { return tensors_; }
-  // Mutable form of tensors (TEMPORARY for refactor).
+
+  // Mutable form of nodes_and_registration (TEMPORARY for refactor).
   // TODO(b/119495520): remove when refactoring complete.
   std::vector<std::pair<TfLiteNode, TfLiteRegistration>>&
   nodes_and_registration() {

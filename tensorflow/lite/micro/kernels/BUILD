@@ -77,6 +77,22 @@ cc_library(
 )
 
 cc_library(
+    name = "ethosu",
+    srcs = [
+        "ethosu.cc",
+    ],
+    hdrs = ["ethosu.h"],
+    copts = micro_copts(),
+    visibility = [
+        # Kernel variants need to be visible to the examples and benchmarks.
+        ":micro",
+    ],
+    deps = [
+        "//tensorflow/lite/c:common",
+    ],
+)
+
+cc_library(
     name = "micro_ops",
     srcs = [
         "activations.cc",
@@ -90,7 +106,6 @@ cc_library(
         "dequantize.cc",
         "detection_postprocess.cc",
         "elementwise.cc",
-        "ethosu.cc",
         "floor.cc",
         "l2norm.cc",
         "logical.cc",
