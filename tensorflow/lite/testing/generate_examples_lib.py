@@ -124,7 +124,6 @@ from tensorflow.lite.testing.op_tests.resize_nearest_neighbor import make_resize
 from tensorflow.lite.testing.op_tests.resolve_constant_strided_slice import make_resolve_constant_strided_slice_tests
 from tensorflow.lite.testing.op_tests.reverse_sequence import make_reverse_sequence_tests
 from tensorflow.lite.testing.op_tests.reverse_v2 import make_reverse_v2_tests
-from tensorflow.lite.testing.op_tests.rfft2d import make_rfft2d_tests
 from tensorflow.lite.testing.op_tests.round import make_round_tests
 from tensorflow.lite.testing.op_tests.scatter_nd import make_scatter_nd_tests
 from tensorflow.lite.testing.op_tests.shape import make_shape_tests
