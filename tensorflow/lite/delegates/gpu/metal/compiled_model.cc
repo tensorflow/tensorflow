@@ -424,10 +424,7 @@ ComputeTaskDescriptorPtr NonLinkableStub(int operation_id, ValueId input_id,
       {input_id, "device FLT4* const input_buffer"},
   };
 
-  desc->output_buffer = {output_id, "device FLT4* output_buffer",
-                         [input_id](const std::map<ValueId, BHWC>& buffers) {
-                           return buffers.find(input_id)->second;
-                         }};
+  desc->output_buffer = {output_id, "device FLT4* output_buffer"};
 
   desc->uniform_buffers = {
       {"constant int2& size",
@@ -549,13 +546,7 @@ ComputeTaskDescriptorPtr FuseChain(const FusionSequence& chain) {
   fused_descriptor->shader_source =
       absl::Substitute(non_linkable->shader_source, function_code + "$0",
                        buffer_declarations + "$1", call_code);
-  std::vector<ValueId> alias;
-  alias.reserve(chain.size() - 1);
-  for (int i = 0; i < chain.size() - 1; i++) {
-    alias.push_back(chain[i]->output_buffer.id);
-  }
-  fused_descriptor->output_buffer = {
-      fused_id, "", non_linkable->output_buffer.dimensions_function, alias};
+  fused_descriptor->output_buffer = {fused_id, ""};
   fused_descriptor->resize_function = non_linkable->resize_function;
   for (const auto& desc : sequence) {
     fused_descriptor->description += desc->description + "_";

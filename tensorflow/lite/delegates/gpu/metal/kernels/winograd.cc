@@ -475,22 +475,7 @@ std::vector<ComputeTaskDescriptorPtr> Winograd4x4To36(
       {input_id, "device FLT4* const src_buffer"},
   };
 
-  desc->output_buffer = {
-      output_id, "device FLT4* dst_buffer",
-      [input_id, attr](const std::map<ValueId, BHWC>& buffers) {
-        const auto src_shape = buffers.find(input_id)->second;
-        int new_width = src_shape.w + attr.padding.prepended.w +
-                        attr.padding.appended.w - 2;
-        int new_height = src_shape.h + attr.padding.prepended.h +
-                         attr.padding.appended.h - 2;
-        BHWC dst_shape;
-        dst_shape.b = src_shape.b;
-        dst_shape.h = 36;
-        dst_shape.w =
-            DivideRoundUp(new_width, 4) * DivideRoundUp(new_height, 4);
-        dst_shape.c = src_shape.c;
-        return dst_shape;
-      }};
+  desc->output_buffer = {output_id, "device FLT4* dst_buffer"};
 
   desc->uniform_buffers = {
       {"constant uniforms& U",
@@ -552,22 +537,7 @@ std::vector<ComputeTaskDescriptorPtr> Winograd4x4To36TileX6(
       {input_id, "device FLT4* const src_buffer"},
   };
 
-  desc->output_buffer = {
-      output_id, "device FLT4* dst_buffer",
-      [input_id, attr](const std::map<ValueId, BHWC>& buffers) {
-        const auto src_shape = buffers.find(input_id)->second;
-        int new_width = src_shape.w + attr.padding.prepended.w +
-                        attr.padding.appended.w - 2;
-        int new_height = src_shape.h + attr.padding.prepended.h +
-                         attr.padding.appended.h - 2;
-        BHWC dst_shape;
-        dst_shape.b = src_shape.b;
-        dst_shape.h = 36;
-        dst_shape.w =
-            DivideRoundUp(new_width, 4) * DivideRoundUp(new_height, 4);
-        dst_shape.c = src_shape.c;
-        return dst_shape;
-      }};
+  desc->output_buffer = {output_id, "device FLT4* dst_buffer"};
 
   std::vector<float> bt_aligned(6 * 8);
   auto bt_mat = BtMatrixForWinograd4x4To6x6();
@@ -639,17 +609,7 @@ std::vector<ComputeTaskDescriptorPtr> Winograd36To4x4(
       {input_id, "device FLT4* const src_buffer"},
   };
 
-  desc->output_buffer = {
-      output_id, "device FLT4* dst_buffer",
-      [input_id, attr](const std::map<ValueId, BHWC>& buffers) {
-        const auto src_shape = buffers.find(input_id)->second;
-        BHWC dst_shape;
-        dst_shape.b = src_shape.b;
-        dst_shape.h = attr.output_shape.h;
-        dst_shape.w = attr.output_shape.w;
-        dst_shape.c = src_shape.c;
-        return dst_shape;
-      }};
+  desc->output_buffer = {output_id, "device FLT4* dst_buffer"};
 
   desc->immutable_buffers = {
       {"device FLT4* const biases",
@@ -697,17 +657,7 @@ std::vector<ComputeTaskDescriptorPtr> Winograd36To4x4Tile4x1(
       {input_id, "device FLT4* const src_buffer"},
   };
 
-  desc->output_buffer = {
-      output_id, "device FLT4* dst_buffer",
-      [input_id, attr](const std::map<ValueId, BHWC>& buffers) {
-        const auto src_shape = buffers.find(input_id)->second;
-        BHWC dst_shape;
-        dst_shape.b = src_shape.b;
-        dst_shape.h = attr.output_shape.h;
-        dst_shape.w = attr.output_shape.w;
-        dst_shape.c = src_shape.c;
-        return dst_shape;
-      }};
+  desc->output_buffer = {output_id, "device FLT4* dst_buffer"};
 
   std::vector<float> at_aligned(4 * 8);
   auto at_mat = AtMatrixForWinograd4x4To6x6();

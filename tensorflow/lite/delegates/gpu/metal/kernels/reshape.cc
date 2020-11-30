@@ -128,13 +128,7 @@ std::vector<ComputeTaskDescriptorPtr> Reshape(int id, ValueId input_id,
       {input_id, "device FLT4* const src_buffer"},
   };
 
-  desc->output_buffer = {
-      output_id, "device FLT4* dst_buffer",
-      [input_id, attr](const std::map<ValueId, BHWC>& buffers) {
-        int batch = buffers.find(input_id)->second.b;
-        return BHWC{batch, attr.new_shape.h, attr.new_shape.w,
-                    attr.new_shape.c};
-      }};
+  desc->output_buffer = {output_id, "device FLT4* dst_buffer"};
 
   desc->uniform_buffers = {
       {"constant uniforms& params",
@@ -182,13 +176,7 @@ std::vector<ComputeTaskDescriptorPtr> Reshapex4(int id, ValueId input_id,
       {input_id, "device FLT4* const src_buffer"},
   };
 
-  desc->output_buffer = {
-      output_id, "device FLT4* dst_buffer",
-      [input_id, attr](const std::map<ValueId, BHWC>& buffers) {
-        int batch = buffers.find(input_id)->second.b;
-        return BHWC{batch, attr.new_shape.h, attr.new_shape.w,
-                    attr.new_shape.c};
-      }};
+  desc->output_buffer = {output_id, "device FLT4* dst_buffer"};
 
   desc->uniform_buffers = {
       {"constant uniforms& params",

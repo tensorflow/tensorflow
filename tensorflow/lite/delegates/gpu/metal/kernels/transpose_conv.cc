@@ -479,11 +479,7 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed(
       {input_id, "device FLT4* const src_buffer"},
   };
 
-  desc->output_buffer = {
-      output_id, "device FLT4* dst_buffer",
-      [input_id, params](const std::map<ValueId, BHWC>& buffers) {
-        return CalculateOutputShape(buffers.find(input_id)->second, params);
-      }};
+  desc->output_buffer = {output_id, "device FLT4* dst_buffer"};
 
   const int src_ch_aligned = AlignByN(params.weights.shape.i, 4);
   const int dst_ch_aligned = AlignByN(params.weights.shape.o, 4);
@@ -627,13 +623,7 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed4x4(
       {input_id, "device FLT4* const src_buffer"},
   };
 
-  desc->output_buffer = {
-      output_id, "device FLT4* dst_buffer",
-      [input_id, params](const std::map<ValueId, BHWC>& buffers) {
-        const auto& src_shape = buffers.find(input_id)->second;
-        BHWC dst_shape = CalculateOutputShape(src_shape, params);
-        return BHWC{src_shape.b, dst_shape.h, dst_shape.w, dst_shape.c};
-      }};
+  desc->output_buffer = {output_id, "device FLT4* dst_buffer"};
 
   desc->immutable_buffers = {
       {"device FLT4* const filters", filters},

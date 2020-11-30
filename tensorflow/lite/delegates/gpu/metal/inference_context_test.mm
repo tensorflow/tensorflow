@@ -78,10 +78,7 @@ static std::vector<ComputeTaskDescriptorPtr> Add(int id, ValueId input_id, Value
       {input_id, "device FLT4* const input_buffer"},
   };
 
-  desc->output_buffer = {output_id, "device FLT4* output_buffer",
-                         [input_id, output_id](const std::map<ValueId, BHWC>& buffers) {
-                           return buffers.find(input_id)->second;
-                         }};
+  desc->output_buffer = {output_id, "device FLT4* output_buffer"};
 
   desc->uniform_buffers = {
       {"constant int2& size",

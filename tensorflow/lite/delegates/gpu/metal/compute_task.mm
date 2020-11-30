@@ -50,8 +50,6 @@ struct InputBuffer {
 struct OutputBuffer {
   ValueId uid;
   id<MTLBuffer> metalHandle;
-  OutputDimensions dimensionsFunction;
-  std::vector<ValueId> alias;
 };
 
 struct UniformBuffer {
@@ -138,9 +136,7 @@ struct UniformBuffer {
   for (auto& uniform : desc->uniform_buffers) {
     _uniformBuffers.emplace_back(UniformBuffer{{}, uniform.data_function});
   }
-  _outputBuffers.emplace_back(OutputBuffer{desc->output_buffer.id, nil,
-                                           desc->output_buffer.dimensions_function,
-                                           desc->output_buffer.alias});
+  _outputBuffers.emplace_back(OutputBuffer{desc->output_buffer.id, nil});
   for (auto& immutable : desc->immutable_buffers) {
     int padding =
         4 * (options.storage_precision == RuntimeOptions::Precision::FP32 ? sizeof(float)

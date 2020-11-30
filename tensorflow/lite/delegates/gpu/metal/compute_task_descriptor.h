@@ -59,13 +59,6 @@ struct ComputeTaskDescriptor {
     // Example for non-linkable task: "device FLT4* output_buffer"
     // Example for linkable: "device FLT4*"
     std::string declaration;
-    // Multiple outputs are allowed from a linkable operation so after fusion
-    // each buffer's dimensions are calculated separately from different
-    // operations.
-    OutputDimensions dimensions_function;
-    // Fusion absorbs intermediate tensors. Keep this ids to properly store
-    // output dimensions.
-    std::vector<ValueId> alias;
   };
   struct ImmutableBufferDescriptor {
     std::string declaration;

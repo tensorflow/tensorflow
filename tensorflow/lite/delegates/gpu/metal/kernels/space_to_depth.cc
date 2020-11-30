@@ -69,15 +69,7 @@ kernel void ComputeFunction($1 uint3 gid[[thread_position_in_grid]]) {
 
   desc->input_buffers = {{input_id, "device FLT4* const src_buffer"}};
 
-  desc->output_buffer = {
-      output_id, "device FLT4* dst_buffer",
-      [input_id, attr](const std::map<ValueId, BHWC>& buffers) -> BHWC {
-        const BHWC& input_shape = buffers.find(input_id)->second;
-        return BHWC(input_shape.b,  //
-                    input_shape.h / attr.block_size,
-                    input_shape.w / attr.block_size,
-                    input_shape.c * attr.block_size * attr.block_size);
-      }};
+  desc->output_buffer = {output_id, "device FLT4* dst_buffer"};
 
   desc->uniform_buffers = {
       {"constant uniforms& params",

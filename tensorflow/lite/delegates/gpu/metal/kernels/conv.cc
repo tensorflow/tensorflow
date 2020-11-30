@@ -1060,13 +1060,7 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionGeneric(
       {input_id, "device FLT4* const src_buffer"},
   };
 
-  desc->output_buffer = {
-      output_id, "device FLT4* dst_buffer",
-      [input_id, attr](const std::map<ValueId, BHWC>& buffers) {
-        auto out_shape =
-            CalculateOutputShape(buffers.find(input_id)->second, attr);
-        return out_shape;
-      }};
+  desc->output_buffer = {output_id, "device FLT4* dst_buffer"};
 
   auto weights_reordered = ReorderWeightsForConv(attr.weights, params);
   std::string addr_space =
@@ -1152,13 +1146,7 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionWino4x4To6x6(
       {input_id, "device FLT4* const src_buffer"},
   };
 
-  desc->output_buffer = {
-      output_id, "device FLT4* dst_buffer",
-      [input_id, attr](const std::map<ValueId, BHWC>& buffers) {
-        const auto src_shape = buffers.find(input_id)->second;
-        return BHWC(src_shape.b, src_shape.h, src_shape.w,
-                    attr.weights.shape.o);
-      }};
+  desc->output_buffer = {output_id, "device FLT4* dst_buffer"};
 
   ::tflite::gpu::Tensor<OHWI, DataType::FLOAT32> wino_weights;
   RearrangeWeightsToWinograd4x4To6x6Weights(attr.weights, &wino_weights);

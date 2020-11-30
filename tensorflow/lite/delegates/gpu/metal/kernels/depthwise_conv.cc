@@ -560,13 +560,7 @@ std::vector<ComputeTaskDescriptorPtr> DepthWiseConvolution(
       {input_id, "device FLT4* const src_buffer"},
   };
 
-  desc->output_buffer = {
-      output_id, "device FLT4* dst_buffer",
-      [input_id, attr](const std::map<ValueId, BHWC>& buffers) {
-        auto out_shape =
-            CalculateOutputShape(buffers.find(input_id)->second, attr);
-        return out_shape;
-      }};
+  desc->output_buffer = {output_id, "device FLT4* dst_buffer"};
 
   const int output_channels_count = attr.weights.shape.i * attr.weights.shape.o;
   desc->immutable_buffers = {
@@ -634,13 +628,7 @@ std::vector<ComputeTaskDescriptorPtr> DepthWiseConv3x3Stride1x1(
       {input_id, "device FLT4* const src_buffer"},
   };
 
-  desc->output_buffer = {
-      output_id, "device FLT4* dst_buffer",
-      [input_id, attr](const std::map<ValueId, BHWC>& buffers) {
-        auto out_shape =
-            CalculateOutputShape(buffers.find(input_id)->second, attr);
-        return out_shape;
-      }};
+  desc->output_buffer = {output_id, "device FLT4* dst_buffer"};
 
   // For this operation we keep weights and biases in one buffer
   auto weights_reordered = ReorderWeightsDepthWiseConv3x3Stride1x1(attr);
@@ -698,13 +686,7 @@ std::vector<ComputeTaskDescriptorPtr> DepthWiseConv3x3Stride2(
       {input_id, "device FLT4* const src_buffer"},
   };
 
-  desc->output_buffer = {
-      output_id, "device FLT4* dst_buffer",
-      [input_id, attr](const std::map<ValueId, BHWC>& buffers) {
-        auto out_shape =
-            CalculateOutputShape(buffers.find(input_id)->second, attr);
-        return out_shape;
-      }};
+  desc->output_buffer = {output_id, "device FLT4* dst_buffer"};
 
   // For this operation we keep weights and biases in one buffer
   auto weights_reordered = ReorderWeightsDepthWiseConv3x3Stride2(attr);

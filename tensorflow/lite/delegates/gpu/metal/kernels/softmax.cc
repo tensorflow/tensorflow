@@ -152,10 +152,7 @@ std::vector<ComputeTaskDescriptorPtr> Softmax(int id, ValueId input_id,
       {input_id, "device FLT4* const input_buffer"},
   };
 
-  desc->output_buffer = {output_id, "device FLT4* output_buffer",
-                         [input_id](const std::map<ValueId, BHWC>& buffers) {
-                           return buffers.find(input_id)->second;
-                         }};
+  desc->output_buffer = {output_id, "device FLT4* output_buffer"};
 
   desc->uniform_buffers = {
       {"constant int2& size",
@@ -190,10 +187,7 @@ std::vector<ComputeTaskDescriptorPtr> Softmax1x1(int id, ValueId input_id,
       {input_id, "device FLT4* const src_buffer"},
   };
 
-  desc->output_buffer = {output_id, "device FLT4* dst_buffer",
-                         [input_id](const std::map<ValueId, BHWC>& buffers) {
-                           return buffers.find(input_id)->second;
-                         }};
+  desc->output_buffer = {output_id, "device FLT4* dst_buffer"};
 
   desc->uniform_buffers = {
       {"constant uniforms& params",
