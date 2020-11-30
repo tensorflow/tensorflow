@@ -77,9 +77,18 @@ namespace {
 // Returns whether type can be further refined.
 bool CanBeRefined(Type type) {
   auto shape_type = type.dyn_cast<ShapedType>();
-  return shape_type &&
-         (!shape_type.hasStaticShape() ||
-          shape_type.getElementType().isa<TF::TensorFlowTypeWithSubtype>());
+  if (!shape_type) return false;
+
+  // Returns whether type with subtypes can be further refined.
+  auto can_refine_subtypes = [](TF::TensorFlowTypeWithSubtype tws) {
+    return tws.GetSubtypes().empty() ||
+           llvm::any_of(tws.GetSubtypes(), CanBeRefined);
+  };
+  auto type_with_subtype =
+      shape_type.getElementType().dyn_cast<TF::TensorFlowTypeWithSubtype>();
+  if (type_with_subtype && can_refine_subtypes(type_with_subtype)) return true;
+
+  return !shape_type.hasStaticShape();
 }
 
 // Returns whether `original_type` type can be refined with

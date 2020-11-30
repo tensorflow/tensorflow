@@ -788,6 +788,7 @@ cc_library(
         ":OpenMPToLLVM",
         ":PDLToPDLInterp",
         ":SCFToGPUPass",
+        ":SCFToOpenMP",
         ":SCFToStandard",
         ":SPIRVToLLVM",
         ":ShapeToStandard",
@@ -2797,6 +2798,27 @@ cc_library(
 )
 
 cc_library(
+    name = "SCFToOpenMP",
+    srcs = [
+        "lib/Conversion/PassDetail.h",
+        "lib/Conversion/SCFToOpenMP/SCFToOpenMP.cpp",
+    ],
+    hdrs = [
+        "include/mlir/Conversion/SCFToOpenMP/SCFToOpenMP.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":ConversionPassIncGen",
+        ":IR",
+        ":OpenMPDialect",
+        ":Pass",
+        ":SCFDialect",
+        ":Support",
+        ":Transforms",
+    ],
+)
+
+cc_library(
     name = "SCFToStandard",
     srcs = [
         "lib/Conversion/PassDetail.h",
@@ -3257,6 +3279,7 @@ cc_library(
         "@llvm-project//mlir/test:TestPass",
         "@llvm-project//mlir/test:TestReducer",
         "@llvm-project//mlir/test:TestSPIRV",
+        "@llvm-project//mlir/test:TestShapeDialect",
         "@llvm-project//mlir/test:TestTransforms",
         "@llvm-project//mlir/test:TestTypeDialect",
     ],
@@ -3477,7 +3500,9 @@ cc_binary(
         ":AllPassesAndDialectsNoRegistration",
         ":ExecutionEngineUtils",
         ":MlirJitRunner",
+        "@llvm-project//llvm:AsmParser",
         "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:X86AsmParser",
     ],
 )
 
@@ -4309,6 +4334,16 @@ cc_library(
     ],
 )
 
+filegroup(
+    name = "TosaDialectTdFiles",
+    srcs = glob(["include/mlir/Dialect/Tosa/IR/*.td"]) + [
+        "include/mlir/Interfaces/LoopLikeInterface.td",
+        ":OpBaseTdFiles",
+        ":QuantizationOpsTdFiles",
+        ":SideEffectTdFiles",
+    ],
+)
+
 gentbl(
     name = "TosaDialectIncGen",
     strip_include_prefix = "include",
@@ -4423,6 +4458,7 @@ filegroup(
 
 exports_files(
     [
+        "include/mlir/Bindings/Python/Attributes.td",
         "include/mlir/Interfaces/CallInterfaces.h",
         "include/mlir/Interfaces/CallInterfaces.td",
         "include/mlir/Interfaces/ControlFlowInterfaces.h",
@@ -4443,7 +4479,6 @@ exports_files(
         "include/mlir/Transforms/InliningUtils.h",
         "include/mlir/Interfaces/InferTypeOpInterface.td",
         "include/mlir/Interfaces/LoopLikeInterface.td",
-        "lib/Bindings/Python/Attributes.td",
     ],
     visibility = [":friends"],
 )

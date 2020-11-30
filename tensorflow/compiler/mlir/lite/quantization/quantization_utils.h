@@ -19,6 +19,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_QUANTIZATION_UTILS_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_QUANTIZATION_UTILS_H_
 
+#include <string>
 #include <unordered_map>
 
 #include "llvm/ADT/SmallVector.h"
@@ -103,8 +104,11 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
       if (!stats) return failure();
 
       for (auto it = stats.begin(), e = stats.end(); it != e; ++it) {
-        mins.push_back(FloatAttr::getValueAsDouble(*it++));
-        maxs.push_back(FloatAttr::getValueAsDouble(*it));
+        double min = FloatAttr::getValueAsDouble(*it++);
+        double max = FloatAttr::getValueAsDouble(*it);
+        TensorRangeSanityCheck(op, min, max);
+        mins.push_back(min);
+        maxs.push_back(max);
       }
       quant_type =
           quant::fakeQuantAttrsToType(op.getLoc(), num_bits, *op.axis(), mins,
@@ -112,6 +116,7 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
     } else if (auto stats = op.layerStats().dyn_cast<DenseFPElementsAttr>()) {
       double rmin = FloatAttr::getValueAsDouble(stats.getValue<APFloat>({0}));
       double rmax = FloatAttr::getValueAsDouble(stats.getValue<APFloat>({1}));
+      TensorRangeSanityCheck(op, rmin, rmax);
       quant_type =
           quant::fakeQuantAttrsToType(op.getLoc(), num_bits, rmin, rmax,
                                       narrow_range, expressed, is_signed);
@@ -134,6 +139,19 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
   int num_bits;
   bool narrow_range;
   bool is_signed;
+
+  // Emits an op warning message if the calibrated range is larger than 10.0 and
+  // the storage type is less than or equal to 8 bits.
+  void TensorRangeSanityCheck(quant::StatisticsOp op, double min,
+                              double max) const {
+    double range = std::fabs(max - min);
+    if (num_bits <= 8 && range >= 10.0) {
+      op.emitWarning(
+          "Tensor range is too wide to be quantized. Use tf.clip_by_value or "
+          "tf.relu6 to narrow the tensor range. Range: " +
+          std::to_string(range) + ", bit width: " + std::to_string(num_bits));
+    }
+  }
 };
 
 // A base rewrite pattern which matches any N-in-M-out operations with
@@ -467,7 +485,7 @@ ElementsAttr Quantize(Attribute real_value, Type tensor_type);
 // are adjusted to be symmetric if `symmetric` flag is set to True. And
 // `symmetric` can only be set to true when it is signed and narrow_range.
 Type GetUniformQuantizedTypeForWeight(ElementsAttr attr, bool symmetric,
-                                      unsigned num_bits, bool is_sign,
+                                      unsigned num_bits, bool is_signed,
                                       bool narrow_range);
 
 // Returns the per channel quantized type for an element attribute.
@@ -476,7 +494,7 @@ Type GetUniformQuantizedTypeForWeight(ElementsAttr attr, bool symmetric,
 // be set to true when it is signed and narrow_range.
 Type GetUniformQuantizedPerAxisTypeForWeight(ElementsAttr attr, int quant_dim,
                                              bool symmetric, unsigned num_bits,
-                                             bool is_sign, bool narrow_range);
+                                             bool is_signed, bool narrow_range);
 
 // Returns the quantized type of a bias input, given the quantized types of
 // other operands which are multiply-accumulated (the bias is added to the

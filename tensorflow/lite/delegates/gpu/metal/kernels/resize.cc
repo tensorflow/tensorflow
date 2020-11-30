@@ -139,11 +139,7 @@ std::vector<ComputeTaskDescriptorPtr> Resize(int id, ValueId input_id,
       {input_id, "device FLT4* const src_buffer"},
   };
 
-  desc->output_buffer = {
-      output_id, "device FLT4* output_buffer",
-      [input_id, attr](const std::map<ValueId, BHWC>& buffers) {
-        return CalculateOutputShape(buffers.find(input_id)->second, attr);
-      }};
+  desc->output_buffer = {output_id, "device FLT4* output_buffer"};
 
   desc->uniform_buffers = {
       {"constant int4& size",

@@ -122,12 +122,7 @@ std::vector<ComputeTaskDescriptorPtr> Mean(int id, ValueId input_id,
       {input_id, "device FLT4* const src_buffer"},
   };
 
-  desc->output_buffer = {output_id, "device FLT4* dst_buffer",
-                         [input_id](const std::map<ValueId, BHWC>& buffers) {
-                           const auto& input_dimension =
-                               buffers.find(input_id)->second;
-                           return BHWC(1, 1, 1, input_dimension.c);
-                         }};
+  desc->output_buffer = {output_id, "device FLT4* dst_buffer"};
   desc->uniform_buffers = {
       {"constant uniforms& params",
        [input_id, work_group_size](const std::map<ValueId, BHWC>& buffers) {

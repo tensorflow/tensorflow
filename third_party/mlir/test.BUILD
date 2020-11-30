@@ -273,6 +273,20 @@ cc_library(
 )
 
 cc_library(
+    name = "TestShapeDialect",
+    srcs = [
+        "lib/Dialect/Shape/TestShapeFunctions.cpp",
+    ],
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Shape",
+    ],
+)
+
+cc_library(
     name = "TestSPIRV",
     srcs = glob([
         "lib/Dialect/SPIRV/*.cpp",

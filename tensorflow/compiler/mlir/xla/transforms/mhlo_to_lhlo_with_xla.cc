@@ -359,8 +359,7 @@ StatusOr<lmhlo::FusionOp> LhloDialectEmitter::EmitFusionOp(
 
   auto* fusion_instr = ::xla::Cast<::xla::HloFusionInstruction>(instr);
 
-  auto fusion = builder_.create<lmhlo::FusionOp>(getLocation(instr),
-                                                 ArrayRef<NamedAttribute>{});
+  auto fusion = builder_.create<lmhlo::FusionOp>(getLocation(instr));
   auto after_fusion = builder_.saveInsertionPoint();
   builder_ = mlir::OpBuilder(fusion);
 

@@ -50,8 +50,6 @@ struct InputBuffer {
 struct OutputBuffer {
   ValueId uid;
   id<MTLBuffer> metalHandle;
-  OutputDimensions dimensionsFunction;
-  std::vector<ValueId> alias;
 };
 
 struct UniformBuffer {
@@ -138,9 +136,7 @@ struct UniformBuffer {
   for (auto& uniform : desc->uniform_buffers) {
     _uniformBuffers.emplace_back(UniformBuffer{{}, uniform.data_function});
   }
-  _outputBuffers.emplace_back(OutputBuffer{desc->output_buffer.id, nil,
-                                           desc->output_buffer.dimensions_function,
-                                           desc->output_buffer.alias});
+  _outputBuffers.emplace_back(OutputBuffer{desc->output_buffer.id, nil});
   for (auto& immutable : desc->immutable_buffers) {
     int padding =
         4 * (options.storage_precision == RuntimeOptions::Precision::FP32 ? sizeof(float)
@@ -158,26 +154,15 @@ struct UniformBuffer {
   return absl::OkStatus();
 }
 
-- (absl::Status)setInputDimensionsWithDevice:(id<MTLDevice>)device
-                                  dimensions:
-                                      (std::map<::tflite::gpu::ValueId, ::tflite::gpu::BHWC>*)
-                                          dimensions {
-  // Re-calculate output buffers dimensions
-  for (auto& buffer : _outputBuffers) {
-    auto outputDimensions = buffer.dimensionsFunction(*dimensions);
-    for (ValueId duplicate : buffer.alias) {
-      (*dimensions)[duplicate] = outputDimensions;
-    }
-    // Store buffer dimensions
-    (*dimensions)[buffer.uid] = outputDimensions;
-  }
-
+- (absl::Status)
+    updateParamsWithDevice:(id<MTLDevice>)device
+              tensorShapes:(const std::map<tflite::gpu::ValueId, tflite::gpu::BHWC>&)tensorShapes {
   for (auto& uniform : _uniformBuffers) {
-    uniform.data = uniform.dataFunction(*dimensions);
+    uniform.data = uniform.dataFunction(tensorShapes);
   }
 
   // Dispatch parameters re-calculation
-  auto workGroups = _resizeFunction(*dimensions);
+  auto workGroups = _resizeFunction(tensorShapes);
   _groupsSize = workGroups.first;
   MTLSize threadsPerGroup = [device maxThreadsPerThreadgroup];
   if (_groupsSize.x > threadsPerGroup.width || _groupsSize.y > threadsPerGroup.height ||
@@ -277,6 +262,22 @@ struct UniformBuffer {
   MTLSize groupsCount = MTLSizeMake(_groupsCount.x, _groupsCount.y, _groupsCount.z);
   MTLSize groupsSize = MTLSizeMake(_groupsSize.x, _groupsSize.y, _groupsSize.z);
   [encoder dispatchThreadgroups:groupsCount threadsPerThreadgroup:groupsSize];
+}
+
+- (std::vector<tflite::gpu::ValueId>)getOutputIds {
+  std::vector<tflite::gpu::ValueId> result;
+  for (auto& buffer : _outputBuffers) {
+    result.push_back(buffer.uid);
+  }
+  return result;
+}
+
+- (std::vector<tflite::gpu::ValueId>)getInputIds {
+  std::vector<tflite::gpu::ValueId> result;
+  for (auto& buffer : _inputBuffers) {
+    result.push_back(buffer.uid);
+  }
+  return result;
 }
 
 @end

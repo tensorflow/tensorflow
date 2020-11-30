@@ -153,6 +153,30 @@ func @layernormalizedlstmcellsimple(%arg0: tensor<1x?xf32>, %arg1: tensor<3x4xf3
 
 // -----
 
+module{
+
+// expected-warning @+1 {{we cannot fuse this lstm func because all the inputs have not ranked tensor type.}}
+func @lstmcellsimple(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>, %arg2: tensor<*xf32>, %arg3: tensor<*xf32>, %arg4: tensor<*xf32>) -> tensor<*xf32> attributes  {tf._implements = "LSTMCellSimple", tf._reference = "mlir"} {
+    %0 = "tf.BatchMatMulV2"(%arg3, %arg1) {adj_x = false, adj_y = false} : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+    %1 = constant dense<[[2.3, 3.4, 4.5, 5.5]]> : tensor<1x4xf32>
+    %2 = "tf.Add"(%0, %1) : (tensor<*xf32>, tensor<1x4xf32>) -> tensor<*xf32>
+    %3 = tensor_cast %2 : tensor<*xf32> to tensor<*xf32>
+    return %3 : tensor<*xf32>
+}
+
+// expected-warning @+1 {{we cannot fuse this lstm func because all the inputs have not ranked tensor type.}}
+func @layernormalizedlstmcellsimple(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>, %arg2: tensor<*xf32>, %arg3: tensor<*xf32>, %arg4: tensor<*xf32>) -> tensor<*xf32> attributes  {tf._implements = "LayerNormalizedLstmCellSimple", tf._reference = "mlir"} {
+    %0 = "tf.BatchMatMulV2"(%arg3, %arg1) {adj_x = false, adj_y = false} : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+    %1 = constant dense<[[2.3, 3.4, 4.5, 5.5]]> : tensor<1x4xf32>
+    %2 = "tf.Add"(%0, %1) : (tensor<*xf32>, tensor<1x4xf32>) -> tensor<*xf32>
+    %3 = tensor_cast %2 : tensor<*xf32> to tensor<*xf32>
+    return %3 : tensor<*xf32>
+}
+
+}
+
+// -----
+
 module {
 func @inference_standard_lstm_time_major(%arg0: tensor<?x8x8xf32>, %arg1: tensor<8x10xf32>, %arg2: tensor<8x10xf32>, %arg3: tensor<8x40xf32>, %arg4: tensor<10x40xf32>, %arg5: tensor<40xf32>) -> (tensor<8x10xf32>, tensor<?x8x10xf32>, tensor<8x10xf32>, tensor<8x10xf32>, tensor<f32>) attributes {tf._input_shapes = ["tfshape$dim { size: -1 } dim { size: 8 } dim { size: 8 }", "tfshape$dim { size: 8 } dim { size: 10 }", "tfshape$dim { size: 8 } dim { size: 10 }", "tfshape$unknown_rank: true", "tfshape$unknown_rank: false", "tfshape$unknown_rank: false"], tf.api_implements = "lstm_b4e9f0e7-ac55-42bc-8ef2-8496419a608c", tf.api_preferred_device = "CPU", tf.go_backwards = false, tf.time_major = true} {
   %0 = "tf.BatchMatMulV2"(%arg0, %arg3) {adj_x = false, adj_y = false} : (tensor<?x8x8xf32>, tensor<8x40xf32>) -> tensor<?x8x40xf32>

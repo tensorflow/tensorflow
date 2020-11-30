@@ -66,7 +66,7 @@ class Benchmark {
   // This function is deprecated. Use the overload that takes
   // `benchmark::State&`
   // instead.
-  void Run(int iters);
+  [[deprecated("use `Run(benchmark::State&)` instead.")]] void Run(int iters);
 
   void Run(::testing::benchmark::State& state);
 
@@ -77,9 +77,10 @@ class Benchmark {
   // graph.
   // This function is deprecated. Use the overload that takes
   // `benchmark::State&` instead.
-  void RunWithRendezvousArgs(
-      const std::vector<std::pair<string, Tensor>>& inputs,
-      const std::vector<string>& outputs, int iters);
+  [[deprecated(
+      "use `RunWithRendezvousArgs(...,benchmark::State&)` instead.")]] void
+  RunWithRendezvousArgs(const std::vector<std::pair<string, Tensor>>& inputs,
+                        const std::vector<string>& outputs, int iters);
 
   void RunWithRendezvousArgs(
       const std::vector<std::pair<string, Tensor>>& inputs,

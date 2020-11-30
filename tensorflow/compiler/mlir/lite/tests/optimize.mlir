@@ -343,6 +343,18 @@ func @fuseAddIntoFollowingFullyConnected(%arg0: tensor<4x2xf32>) -> tensor<4x2xf
 // CHECK-NEXT: return %[[fc]] : tensor<4x2xf32>
 }
 
+// CHECK-LABEL: @doNotFuseAddIntoFollowingFullyConnected
+func @doNotFuseAddIntoFollowingFullyConnected(%arg0: tensor<4x2xf32>, %arg1: tensor<*xf32>) -> tensor<4x2xf32> {
+  %cst1 = constant dense<1.5> : tensor<f32>
+  %0 = "tfl.add"(%arg0, %cst1) {fused_activation_function = "NONE"} : (tensor<4x2xf32>, tensor<f32>) -> tensor<4x2xf32>
+  %cst = constant dense<2.0> : tensor<2xf32>
+  %1 = "tfl.fully_connected"(%0, %arg1, %cst) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<4x2xf32>, tensor<*xf32>, tensor<2xf32>) -> tensor<4x2xf32>
+  return %1 : tensor<4x2xf32>
+
+// CHECK: "tfl.add"
+// CHECK: "tfl.fully_connected"
+}
+
 // CHECK-LABEL: @fuseMulIntoFollowingFullyConnected
 func @fuseMulIntoFollowingFullyConnected(%arg0: tensor<4x2xf32>) -> tensor<4x2xf32> {
   %cst2 = constant dense<1.5> : tensor<f32>

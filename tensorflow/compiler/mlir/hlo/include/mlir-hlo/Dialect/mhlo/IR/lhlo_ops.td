@@ -654,8 +654,46 @@ def FusionOp : LHLO_Op<"fusion", [SingleBlockImplicitTerminator<"TerminatorOp">]
 
   let skipDefaultBuilders = 1;
   let builders = [
-     OpBuilderDAG<(ins "ArrayRef<NamedAttribute>":$attributes)>
+     OpBuilderDAG<(ins CArg<"ArrayRef<NamedAttribute>", "{}">:$attributes)>
   ];
+
+  let extraClassDeclaration = [{
+    SmallVector<Value, 4> getInputBuffers() {
+      SmallVector<Value, 4> buffers;
+      this->region().walk([&](TensorLoadOp load) {
+        if (load.memref().getParentRegion()->isProperAncestor(&region()))
+          buffers.push_back(load.memref());
+      });
+      return buffers;
+    }
+
+    SmallVector<Value, 4> getOutputBuffers() {
+      SmallVector<Value, 4> buffers;
+      this->region().walk([&](TensorStoreOp store) {
+        if (store.memref().getParentRegion()->isProperAncestor(&region()))
+          buffers.push_back(store.memref());
+      });
+      return buffers;
+    }
+
+    SmallVector<Value, 4> getFusionParameters() {
+      SmallVector<Value, 4> buffers;
+      this->region().walk([&](TensorLoadOp load) {
+        if (load.memref().getParentRegion()->isProperAncestor(&region()))
+          buffers.push_back(load);
+      });
+      return buffers;
+    }
+
+    SmallVector<Value, 4> getFusionResults() {
+      SmallVector<Value, 4> buffers;
+      this->region().walk([&](TensorStoreOp store) {
+        if (store.memref().getParentRegion()->isProperAncestor(&region()))
+          buffers.push_back(store.tensor());
+      });
+      return buffers;
+    }
+  }];
 }
 
 def TerminatorOp :

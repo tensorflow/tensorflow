@@ -277,6 +277,7 @@ cuda_py_test(
     srcs = ["collective_ops_test.py"],
     tags = [
         "multi_and_single_gpu",
+        "no_tfrt",  # TODO(b/171765113)
     ],
     deps = [
         "//tensorflow/python:array_ops",
@@ -302,6 +303,7 @@ tf_py_test(
     python_version = "PY3",
     tags = [
         "no_rocm",
+        "no_tfrt",  # TODO(b/171765113)
         "notsan",  # TODO(b/171435192)
     ],
     deps = [

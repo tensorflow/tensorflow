@@ -148,17 +148,7 @@ std::vector<ComputeTaskDescriptorPtr> ConcatZ(
     desc->input_buffers.push_back({input_ids[i], buffer_name});
   }
 
-  desc->output_buffer = {
-      output_id, "device FLT4* dst_buffer",
-      [input_ids, attr](const std::map<ValueId, BHWC>& buffers) {
-        std::vector<BHWC> src_shapes(input_ids.size());
-        for (int i = 0; i < input_ids.size(); ++i) {
-          src_shapes[i] = buffers.find(input_ids[i])->second;
-        }
-        BHWC dst_shape;
-        CalculateOutputShape(src_shapes, attr, &dst_shape).IgnoreError();
-        return dst_shape;
-      }};
+  desc->output_buffer = {output_id, "device FLT4* dst_buffer"};
 
   desc->uniform_buffers = {
       {"constant uniforms& U",
@@ -248,17 +238,7 @@ std::vector<ComputeTaskDescriptorPtr> ConcatX(
     desc->input_buffers.push_back({input_ids[i], buffer_name});
   }
 
-  desc->output_buffer = {
-      output_id, "device FLT4* dst_buffer",
-      [input_ids, attr](const std::map<ValueId, BHWC>& buffers) {
-        std::vector<BHWC> src_shapes(input_ids.size());
-        for (int i = 0; i < input_ids.size(); ++i) {
-          src_shapes[i] = buffers.find(input_ids[i])->second;
-        }
-        BHWC dst_shape;
-        CalculateOutputShape(src_shapes, attr, &dst_shape).IgnoreError();
-        return dst_shape;
-      }};
+  desc->output_buffer = {output_id, "device FLT4* dst_buffer"};
 
   desc->uniform_buffers = {
       {"constant int3& size",
@@ -339,17 +319,7 @@ std::vector<ComputeTaskDescriptorPtr> ConcatY(
     desc->input_buffers.push_back({input_ids[i], buffer_name});
   }
 
-  desc->output_buffer = {
-      output_id, "device FLT4* dst_buffer",
-      [input_ids, attr](const std::map<ValueId, BHWC>& buffers) {
-        std::vector<BHWC> src_shapes(input_ids.size());
-        for (int i = 0; i < input_ids.size(); ++i) {
-          src_shapes[i] = buffers.find(input_ids[i])->second;
-        }
-        BHWC dst_shape;
-        CalculateOutputShape(src_shapes, attr, &dst_shape).IgnoreError();
-        return dst_shape;
-      }};
+  desc->output_buffer = {output_id, "device FLT4* dst_buffer"};
 
   desc->uniform_buffers = {
       {"constant int3& size",

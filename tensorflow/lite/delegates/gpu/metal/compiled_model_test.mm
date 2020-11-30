@@ -69,10 +69,7 @@ static std::vector<ComputeTaskDescriptorPtr> Add(int id, ValueId input_id, Value
       {input_id, "device FLT4* const input_buffer"},
   };
 
-  desc->output_buffer = {output_id, "device FLT4* output_buffer",
-                         [input_id, output_id](const std::map<ValueId, BHWC>& buffers) {
-                           return buffers.find(input_id)->second;
-                         }};
+  desc->output_buffer = {output_id, "device FLT4* output_buffer"};
 
   desc->uniform_buffers = {
       {"constant int2& size",
@@ -125,10 +122,7 @@ static std::vector<ComputeTaskDescriptorPtr> Add2(int id, ValueId input_id1, Val
       {input_id2, "device FLT4* const input_buffer2"},
   };
 
-  desc->output_buffer = {output_id, "device FLT4* output_buffer",
-                         [input_id1](const std::map<ValueId, BHWC>& buffers) {
-                           return buffers.find(input_id1)->second;
-                         }};
+  desc->output_buffer = {output_id, "device FLT4* output_buffer"};
 
   desc->uniform_buffers = {
       {"constant int2& size",
@@ -183,16 +177,20 @@ static std::vector<ComputeTaskDescriptorPtr> Add2Linkable(int id, ValueId input_
 
 - (void)testSingleOperationSuccess {
   auto nodes = MulLinkable(1, 1, 2);
-  std::vector<ComputeTaskDescriptorPtr> model;
-  auto status = ValidateOptimizeModel({1}, {2}, nodes, &model);
+  tflite::gpu::metal::CompiledModel model;
+  tflite::gpu::metal::CompiledModel raw_model;
+  raw_model.tasks = nodes;
+  auto status = ValidateOptimizeModel({1}, {2}, raw_model, &model);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
 // Outputs: one missing, one unused.
 - (void)testSingleOperationErrorWrongOutput {
   auto nodes = MulLinkable(1, 1, 2);
-  std::vector<ComputeTaskDescriptorPtr> model;
-  auto status = ValidateOptimizeModel({1}, {3}, nodes, &model);
+  tflite::gpu::metal::CompiledModel model;
+  tflite::gpu::metal::CompiledModel raw_model;
+  raw_model.tasks = nodes;
+  auto status = ValidateOptimizeModel({1}, {3}, raw_model, &model);
   XCTAssertFalse(status.ok());
   std::vector<std::string> errorMessages = {"Input operations count 1", "Unused operations 1",
                                             "Unused inputs 1", "Missing output buffers 1"};
@@ -205,16 +203,20 @@ static std::vector<ComputeTaskDescriptorPtr> Add2Linkable(int id, ValueId input_
 // Outputs: one ok, one missing.
 - (void)testSingleOperationWarningExtraOutput {
   auto nodes = MulLinkable(1, 1, 2);
-  std::vector<ComputeTaskDescriptorPtr> model;
-  auto status = ValidateOptimizeModel({1}, {2, 3}, nodes, &model);
+  tflite::gpu::metal::CompiledModel model;
+  tflite::gpu::metal::CompiledModel raw_model;
+  raw_model.tasks = nodes;
+  auto status = ValidateOptimizeModel({1}, {2, 3}, raw_model, &model);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
 // Unused input => empty graph, missing output.
 - (void)testSingleOperationErrorWrongInput {
   auto nodes = MulLinkable(1, 1, 2);
-  std::vector<ComputeTaskDescriptorPtr> model;
-  auto status = ValidateOptimizeModel({3}, {2}, nodes, &model);
+  tflite::gpu::metal::CompiledModel model;
+  tflite::gpu::metal::CompiledModel raw_model;
+  raw_model.tasks = nodes;
+  auto status = ValidateOptimizeModel({3}, {2}, raw_model, &model);
   std::vector<std::string> errorMessages = {"Input operations count 1", "Unused operations 0",
                                             "Unused inputs 1", "Missing output buffers 1"};
   for (const std::string& message : errorMessages) {
@@ -228,8 +230,10 @@ static std::vector<ComputeTaskDescriptorPtr> Add2Linkable(int id, ValueId input_
   auto nodes = MulLinkable(1, 1, 2);
   auto nodes2 = MulLinkable(2, 2, 3);
   nodes.insert(nodes.end(), nodes2.begin(), nodes2.end());
-  std::vector<ComputeTaskDescriptorPtr> model;
-  auto status = ValidateOptimizeModel({1}, {3}, nodes, &model);
+  tflite::gpu::metal::CompiledModel model;
+  tflite::gpu::metal::CompiledModel raw_model;
+  raw_model.tasks = nodes;
+  auto status = ValidateOptimizeModel({1}, {3}, raw_model, &model);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
@@ -238,15 +242,19 @@ static std::vector<ComputeTaskDescriptorPtr> Add2Linkable(int id, ValueId input_
   auto nodes = Add(1, 1, 2);
   auto nodes2 = Add(2, 2, 3);
   nodes.insert(nodes.end(), nodes2.begin(), nodes2.end());
-  std::vector<ComputeTaskDescriptorPtr> model;
-  auto status = ValidateOptimizeModel({1}, {3}, nodes, &model);
+  tflite::gpu::metal::CompiledModel model;
+  tflite::gpu::metal::CompiledModel raw_model;
+  raw_model.tasks = nodes;
+  auto status = ValidateOptimizeModel({1}, {3}, raw_model, &model);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
 - (void)testAddOperationSuccess {
   auto nodes = Add2(1, 1, 2, 3);
-  std::vector<ComputeTaskDescriptorPtr> model;
-  auto status = ValidateOptimizeModel({1, 2}, {3}, nodes, &model);
+  tflite::gpu::metal::CompiledModel model;
+  tflite::gpu::metal::CompiledModel raw_model;
+  raw_model.tasks = nodes;
+  auto status = ValidateOptimizeModel({1, 2}, {3}, raw_model, &model);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
@@ -256,10 +264,12 @@ static std::vector<ComputeTaskDescriptorPtr> Add2Linkable(int id, ValueId input_
   auto graph3 = Add2Linkable(2, 4, 3, 5);
   graph.insert(graph.end(), graph2.begin(), graph2.end());
   graph.insert(graph.end(), graph3.begin(), graph3.end());
-  std::vector<ComputeTaskDescriptorPtr> model;
-  auto status = ValidateOptimizeModel({1, 2}, {5}, graph, &model);
+  tflite::gpu::metal::CompiledModel model;
+  tflite::gpu::metal::CompiledModel raw_model;
+  raw_model.tasks = graph;
+  auto status = ValidateOptimizeModel({1, 2}, {5}, raw_model, &model);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
-  XCTAssertTrue(model.size() <= 2, @"Not fused, more than two task descriptors.");
+  XCTAssertTrue(model.tasks.size() <= 2, @"Not fused, more than two task descriptors.");
 }
 
 - (void)testBinaryOperationSuccess {
@@ -268,8 +278,10 @@ static std::vector<ComputeTaskDescriptorPtr> Add2Linkable(int id, ValueId input_
   graph.insert(graph.end(), graph2.begin(), graph2.end());
   auto graph3 = Add2Linkable(3, 3, 4, 5);
   graph.insert(graph.end(), graph3.begin(), graph3.end());
-  std::vector<ComputeTaskDescriptorPtr> model;
-  auto status = ValidateOptimizeModel({1, 2}, {5}, graph, &model);
+  tflite::gpu::metal::CompiledModel model;
+  tflite::gpu::metal::CompiledModel raw_model;
+  raw_model.tasks = graph;
+  auto status = ValidateOptimizeModel({1, 2}, {5}, raw_model, &model);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 

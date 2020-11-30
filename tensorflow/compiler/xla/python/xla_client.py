@@ -608,7 +608,7 @@ def make_convolution_dimension_numbers(
 class OpSharding(object):
   """Python representation of a xla.OpSharding protobuf."""
   __slots__ = ('type', 'tile_assignment_dimensions', 'tile_assignment_devices',
-               'tuple_shardings')
+               'tuple_shardings', 'replicate_on_last_tile_dim')
 
   Type = _xla.OpSharding_Type
 
@@ -617,6 +617,7 @@ class OpSharding(object):
     self.tile_assignment_dimensions = []
     self.tile_assignment_devices = []
     self.tuple_shardings = []
+    self.replicate_on_last_tile_dim = False
 
 
 class PrecisionConfig(object):

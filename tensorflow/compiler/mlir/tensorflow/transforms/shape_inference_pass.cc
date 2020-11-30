@@ -17,10 +17,9 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/shape_inference.h"
 #include "tensorflow/core/framework/shape_inference.h"
-
-#define DEBUG_TYPE "tf-shape-inference"
 
 namespace mlir {
 namespace TF {
@@ -29,25 +28,12 @@ namespace {
 
 // This transformation pass propagate shapes on the TensorFlow graph.
 // It is a ModulePass in order to be able to change function types.
-class ShapeInference
-    : public PassWrapper<ShapeInference, OperationPass<ModuleOp>> {
+class ShapeInference : public TensorFlowShapeInferencePassBase<ShapeInference> {
  public:
-  ShapeInference() = default;
-  ShapeInference(const ShapeInference &) {}
-  explicit ShapeInference(int64_t max_iterations) {
-    max_iterations_ = max_iterations;
-  }
   void runOnOperation() override {
-    if (failed(InferModuleShape(getOperation(), max_iterations_))) {
+    if (failed(InferModuleShape(getOperation(), max_iterations_)))
       return signalPassFailure();
-    }
   }
-
- private:
-  Option<int64_t> max_iterations_{
-      *this, "max-iterations",
-      llvm::cl::desc("Maximum shape inference iterations."),
-      llvm::cl::init(10)};
 };
 
 PassRegistration<ShapeInference> pass(

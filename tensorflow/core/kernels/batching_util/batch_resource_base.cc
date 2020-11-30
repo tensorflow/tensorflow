@@ -64,15 +64,15 @@ void RecordProcessedBatchSize(int32 batch_size, const string& model_name) {
   cell->GetCell(model_name)->Add(static_cast<double>(batch_size));
 }
 
-void RecordBatchDelayMs(int64 batch_delay_ms, const string& model_name) {
+void RecordBatchDelayUs(int64 batch_delay_us, const string& model_name) {
   static auto* cell = monitoring::PercentileSampler<1>::New(
-      {"/tensorflow/serving/batching/batch_delay_ms",
-       "Tracks the batching delay for inputs by model_name (if "
-       "available).",
+      {"/tensorflow/serving/batching/batch_delay_us",
+       "Tracks the batching delay (in microseconds) for inputs by model_name "
+       "(if available).",
        "model_name"},
       /*percentiles=*/{25.0, 50.0, 75.0, 90.0, 95.0, 99.0},
       /*max_samples=*/1024, monitoring::UnitOfMeasure::kTime);
-  cell->GetCell(model_name)->Add(static_cast<double>(batch_delay_ms));
+  cell->GetCell(model_name)->Add(static_cast<double>(batch_delay_us));
 }
 
 void RecordBatchParamBatchTimeoutMicros(int64 batch_timeout_micros,
@@ -567,7 +567,7 @@ void BatchResourceBase::ProcessFuncBatch(std::unique_ptr<BatchT> batch) const {
   uint64 current_time = EnvTime::NowNanos();
   const string& model_name = GetModelName(last_task_context);
   for (int i = 0; i < batch->num_tasks(); ++i) {
-    RecordBatchDelayMs((current_time - batch->task(i).start_time) * 1e-6,
+    RecordBatchDelayUs((current_time - batch->task(i).start_time) * 1e-3,
                        model_name);
   }
   // Releases the cleanup method here, because the callback of the function

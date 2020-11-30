@@ -134,11 +134,7 @@ std::vector<ComputeTaskDescriptorPtr> FullyConnected(
       {input_id, "device FLT4* const vector"},
   };
 
-  desc->output_buffer = {
-      output_id, "device FLT4* result",
-      [input_id, attr](const std::map<ValueId, BHWC>& buffers) {
-        return CalculateOutputShape(buffers.find(input_id)->second, attr);
-      }};
+  desc->output_buffer = {output_id, "device FLT4* result"};
 
   bool shared_memory = gpu_info.IsApple() &&
                        gpu_info.apple_info.IsLocalMemoryPreferredOverGlobal();

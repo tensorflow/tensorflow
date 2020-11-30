@@ -363,6 +363,12 @@ def random_crop(value, size, seed=None, name=None):
   For example, RGB images can be cropped with
   `size = [crop_height, crop_width, 3]`.
 
+  For producing deterministic results given a `seed` value, use
+  `tf.image.stateless_random_crop`. Unlike using the `seed` param with
+  `tf.image.random_*` ops, `tf.image.stateless_random_*` ops guarantee the same
+  results given the same seed independent of how many times the function is
+  called, and independent of global seed settings (e.g. tf.random.set_seed).
+
   Args:
     value: Input tensor to crop.
     size: 1-D tensor with size the rank of `value`.

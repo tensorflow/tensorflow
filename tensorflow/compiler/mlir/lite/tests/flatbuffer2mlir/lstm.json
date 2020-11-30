@@ -1,10 +1,10 @@
 // RUN: json_to_flatbuffer %p/test_schema.fbs %s | flatbuffer_translate --tflite-flatbuffer-to-mlir -o - | FileCheck %s
 
-// CHECK: effective_hidden_scale_intermediate = tensor<!quant.calibrated<f32<-5.000000e-01, 5.000000e-01>>>
-// CHECK: input_to_cell_intermediate = tensor<!quant.calibrated<f32<-4.000000e+00, 4.000000e+00>>>
-// CHECK: input_to_forget_intermediate = tensor<!quant.calibrated<f32<-1.600000e+01, 1.600000e+01>>>
-// CHECK: input_to_input_intermediate = tensor<!quant.calibrated<f32<-3.200000e+01, 3.200000e+01>>>
-// CHECK: input_to_output_intermediate = tensor<!quant.calibrated<f32<-1.000000e+00, 1.000000e+00>>>
+// CHECK: effective_hidden_scale_intermediate = tensor<!quant.calibrated<f32<-5.000000e-01:5.000000e-01>>>
+// CHECK: input_to_cell_intermediate = tensor<!quant.calibrated<f32<-4.000000e+00:4.000000e+00>>>
+// CHECK: input_to_forget_intermediate = tensor<!quant.calibrated<f32<-1.600000e+01:1.600000e+01>>>
+// CHECK: input_to_input_intermediate = tensor<!quant.calibrated<f32<-3.200000e+01:3.200000e+01>>>
+// CHECK: input_to_output_intermediate = tensor<!quant.calibrated<f32<-1.000000e+00:1.000000e+00>>>
 
 {
   "version": 3,

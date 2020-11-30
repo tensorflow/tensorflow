@@ -930,7 +930,8 @@ def tf_gen_op_wrapper_py(
         op_whitelist = [],
         cc_linkopts = lrt_if_needed(),
         api_def_srcs = [],
-        compatible_with = []):
+        compatible_with = [],
+        testonly = False):
     _ = require_shape_functions  # Unused.
 
     if (hidden or hidden_file) and op_whitelist:
@@ -950,6 +951,7 @@ def tf_gen_op_wrapper_py(
             clean_dep("//tensorflow/core:framework"),
             clean_dep("//tensorflow/python:python_op_gen_main"),
         ] + deps),
+        testonly = testonly,
     )
 
     # Invoke the previous cc_binary to generate a python file.
@@ -992,6 +994,7 @@ def tf_gen_op_wrapper_py(
             cmd = ("$(location " + tool_name + ") " + api_def_args_str +
                    " @$(location " + hidden_file + ") > $@"),
             compatible_with = compatible_with,
+            testonly = testonly,
         )
     else:
         native.genrule(
@@ -1003,6 +1006,7 @@ def tf_gen_op_wrapper_py(
                    op_list_arg + " " +
                    ("1" if op_list_is_whitelist else "0") + " > $@"),
             compatible_with = compatible_with,
+            testonly = testonly,
         )
 
     # Make a py_library out of the generated python file.
@@ -1021,6 +1025,7 @@ def tf_gen_op_wrapper_py(
         # that wraps this one.
         tags = ["avoid_dep"],
         compatible_with = compatible_with,
+        testonly = testonly,
     )
 
 # Define a bazel macro that creates cc_test for tensorflow.
@@ -1825,7 +1830,8 @@ def tf_custom_op_py_library(
         kernels = [],
         srcs_version = "PY2AND3",
         visibility = None,
-        deps = []):
+        deps = [],
+        **kwargs):
     _ignore = [kernels]
     native.py_library(
         name = name,
@@ -1834,6 +1840,7 @@ def tf_custom_op_py_library(
         srcs_version = srcs_version,
         visibility = visibility,
         deps = deps,
+        **kwargs
     )
 
 # In tf_py_wrap_cc_opensource generated libraries

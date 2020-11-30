@@ -223,7 +223,7 @@ def copy_sharding(from_tensor, to_tensor, use_sharding_op=False):
     return to_tensor
 
   if use_sharding_op:
-    to_tensor = tf2xla.sharding(from_tensor)
+    to_tensor = tf2xla.sharding(to_tensor)
   attr_value = attr_value_pb2.AttrValue(s=sharding)
   # pylint: disable=protected-access
   to_tensor.op._set_attr('_XlaSharding', attr_value)

@@ -152,6 +152,10 @@ string HloSharding::ToString() const {
   if (replicated_) {
     return "{replicated}";
   }
+
+  if (manual_) {
+    return "{manual}";
+  }
   if (maximal_) {
     return StrCat(
         "{maximal device=", static_cast<int64>(*tile_assignment_.begin()), "}");
@@ -169,7 +173,7 @@ bool HloSharding::UsesDevice(int64 device) const {
     });
   }
   const auto& devices = tile_assignment_;
-  return replicated_ || absl::c_linear_search(devices, device);
+  return replicated_ || manual_ || absl::c_linear_search(devices, device);
 }
 
 std::map<int64, int64> HloSharding::UsedDevices(int64* count) const {
@@ -197,6 +201,7 @@ std::map<int64, int64> HloSharding::UsedDevices(int64* count) const {
 
 std::vector<int64> HloSharding::TileIndexForDevice(int64 device) const {
   CHECK(!maximal_);
+  CHECK(!manual_);
   CHECK(!IsTuple());
   std::vector<int64> ret_index;
   tile_assignment_.Each([&](absl::Span<const int64> index, int64 d) {
@@ -213,6 +218,7 @@ std::vector<int64> HloSharding::TileIndexForDevice(int64 device) const {
 
 int64 HloSharding::DeviceForTileIndex(absl::Span<const int64> index) const {
   CHECK(!replicated_);
+  CHECK(!manual_);
   CHECK(!IsTuple());
   if (maximal_) {
     return *tile_assignment_.begin();
@@ -229,6 +235,7 @@ int64 HloSharding::DeviceForTileIndex(absl::Span<const int64> index) const {
 std::vector<int64> HloSharding::TileOffsetForDevice(const Shape& shape,
                                                     int64 device) const {
   CHECK(!IsTuple());
+  CHECK(!manual_);
 
   if (maximal_) {
     return std::vector<int64>(shape.dimensions_size(), 0);
@@ -250,6 +257,7 @@ std::vector<int64> HloSharding::TileOffsetForDevice(const Shape& shape,
 std::vector<int64> HloSharding::TileLimitForDevice(const Shape& shape,
                                                    int64 device) const {
   CHECK(!IsTuple());
+  CHECK(!manual_);
 
   if (maximal_) {
     return std::vector<int64>(shape.dimensions().begin(),
@@ -410,7 +418,7 @@ Status HloSharding::ValidateNonTuple(const Shape& shape,
     return status;
   }
 
-  if (IsTileMaximal()) {
+  if (IsTileMaximal() || IsManual()) {
     return Status::OK();
   }
 
@@ -447,6 +455,8 @@ Status HloSharding::ValidateNonTuple(const Shape& shape,
     return HloSharding(tuple_shardings);
   } else if (proto.type() == OpSharding::REPLICATED) {
     return Replicate();
+  } else if (proto.type() == OpSharding::MANUAL) {
+    return Manual();
   } else if (proto.tile_assignment_devices().size() == 1) {
     return HloSharding(proto.tile_assignment_devices(0));
   }
@@ -503,6 +513,8 @@ OpSharding HloSharding::ToProto() const {
     result.set_type(OpSharding::REPLICATED);
   } else if (IsTileMaximal()) {
     result.set_type(OpSharding::MAXIMAL);
+  } else if (IsManual()) {
+    result.set_type(OpSharding::MANUAL);
   } else {
     result.set_type(OpSharding::OTHER);
     result.set_replicate_on_last_tile_dim(ReplicateOnLastTileDim());
@@ -511,7 +523,7 @@ OpSharding HloSharding::ToProto() const {
 }
 
 Shape HloSharding::TileShape(const Shape& shape) const {
-  if (IsTileMaximal()) {
+  if (IsTileMaximal() || IsManual()) {
     return shape;
   }
   Shape result_shape = shape;
@@ -523,7 +535,7 @@ Shape HloSharding::TileShape(const Shape& shape) const {
 }
 
 Shape HloSharding::TileShape(const Shape& shape, int64 device) const {
-  if (IsTileMaximal()) {
+  if (IsTileMaximal() || IsManual()) {
     return shape;
   }
 
@@ -545,6 +557,7 @@ int64 HloSharding::NumTiles() const {
   if (IsTileMaximal()) {
     return 1;
   }
+  CHECK(!IsManual());
   if (ReplicateOnLastTileDim()) {
     return tile_assignment().num_elements() /
            tile_assignment().dimensions().back();
@@ -599,6 +612,9 @@ size_t HloSharding::Hash() const {
   }
   if (replicated_) {
     return 0;
+  }
+  if (manual_) {
+    return 1;
   }
   size_t h = 0;
   for (uint32 v : tile_assignment_) {

@@ -55,16 +55,16 @@ NCCL_LIB_PATHS = [
 
 # List of files to configure when building Bazel on Apple platforms.
 APPLE_BAZEL_FILES = [
-    'tensorflow/lite/experimental/ios/BUILD',
-    'tensorflow/lite/experimental/objc/BUILD',
-    'tensorflow/lite/experimental/swift/BUILD',
+    'tensorflow/lite/ios/BUILD',
+    'tensorflow/lite/objc/BUILD',
+    'tensorflow/lite/swift/BUILD',
     'tensorflow/lite/tools/benchmark/experimental/ios/BUILD'
 ]
 
 # List of files to move when building for iOS.
 IOS_FILES = [
-    'tensorflow/lite/experimental/objc/TensorFlowLiteObjC.podspec',
-    'tensorflow/lite/experimental/swift/TensorFlowLiteSwift.podspec',
+    'tensorflow/lite/objc/TensorFlowLiteObjC.podspec',
+    'tensorflow/lite/swift/TensorFlowLiteSwift.podspec',
 ]
 
 

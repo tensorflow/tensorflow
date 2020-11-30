@@ -39,8 +39,8 @@ limitations under the License.
 namespace tflite {
 namespace {
 
-// Build a kernel registration for an op that copies its one input
-// to an output
+// Build a kernel registration for a custom addition op that adds its two
+// tensor inputs to produce a tensor output.
 TfLiteRegistration AddOpRegistration() {
   TfLiteRegistration reg = {nullptr, nullptr, nullptr, nullptr};
 
@@ -48,7 +48,6 @@ TfLiteRegistration AddOpRegistration() {
   reg.builtin_code = tflite::BuiltinOperator_CUSTOM;
 
   reg.prepare = [](TfLiteContext* context, TfLiteNode* node) {
-    // Set output size to input size
     const TfLiteTensor* input1;
     TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input1));
     const TfLiteTensor* input2;
@@ -56,18 +55,19 @@ TfLiteRegistration AddOpRegistration() {
     TfLiteTensor* output;
     TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
 
+    // Verify that the two inputs have the same shape.
     TF_LITE_ENSURE_EQ(context, input1->dims->size, input2->dims->size);
     for (int i = 0; i < input1->dims->size; ++i) {
       TF_LITE_ENSURE_EQ(context, input1->dims->data[i], input2->dims->data[i]);
     }
 
+    // Set output shape to match input shape.
     TF_LITE_ENSURE_STATUS(context->ResizeTensor(
         context, output, TfLiteIntArrayCopy(input1->dims)));
     return kTfLiteOk;
   };
 
   reg.invoke = [](TfLiteContext* context, TfLiteNode* node) {
-    // Copy input data to output data.
     const TfLiteTensor* a0;
     TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &a0));
     TF_LITE_ENSURE(context, a0);
@@ -80,6 +80,7 @@ TfLiteRegistration AddOpRegistration() {
     TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &out));
     TF_LITE_ENSURE(context, out);
     TF_LITE_ENSURE(context, out->data.f);
+    // Set output data to element-wise sum of input data.
     int num = a0->dims->data[0];
     for (int i = 0; i < num; i++) {
       out->data.f[i] = a0->data.f[i] + a1->data.f[i];

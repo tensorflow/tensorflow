@@ -208,6 +208,7 @@ objc_library(
     copts = DEFAULT_COPTS,
     sdk_frameworks = ["Metal"],
     deps = [
+        ":compiled_model",
         ":compute_task",
         ":compute_task_descriptor",
         ":runtime_options",

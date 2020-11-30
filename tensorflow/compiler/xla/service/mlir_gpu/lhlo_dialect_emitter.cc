@@ -282,8 +282,7 @@ Status LhloDialectEmitter::HandleConcatenate(HloInstruction* instr) {
 Status LhloDialectEmitter::HandleFusion(HloInstruction* instr) {
   TF_ASSIGN_OR_RETURN(auto function, CreateFunction(*instr));
   OpBuilder func_builder(function.getBody());
-  auto fusion_op =
-      func_builder.create<lhlo::FusionOp>(getLocation(instr), llvm::None);
+  auto fusion_op = func_builder.create<lhlo::FusionOp>(getLocation(instr));
 
   // Load the HLO argument tensors from the corresponding buffers. The last
   // argument is for the result, so no need to load it.

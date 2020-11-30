@@ -16,18 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 
 #include "absl/algorithm/container.h"
-#include "absl/strings/str_join.h"
 
 namespace xla {
-
-std::string GlobalDeviceIdsToString(absl::Span<GlobalDeviceId const> ids) {
-  std::vector<int64> values;
-  values.reserve(ids.size());
-  for (GlobalDeviceId id : ids) {
-    values.push_back(id.value());
-  }
-  return absl::StrJoin(values, ",");
-}
+namespace gpu {
 
 NcclCliqueKey::NcclCliqueKey(std::vector<GlobalDeviceId> devices)
     : devices_(std::move(devices)) {
@@ -63,4 +54,5 @@ const NcclUniqueIdCallback& GpuExecutableRunOptions::nccl_unique_id_callback()
   return nccl_unique_id_callback_;
 }
 
+}  // namespace gpu
 }  // namespace xla

@@ -335,9 +335,6 @@ struct GpuInfo {
   GpuVendor vendor = GpuVendor::kUnknown;
   GpuApi gpu_api = GpuApi::kUnknown;
 
-  // Temporary
-  std::vector<int> max_work_group_size;
-
   std::vector<int> supported_subgroup_sizes;
 
   AdrenoInfo adreno_info;

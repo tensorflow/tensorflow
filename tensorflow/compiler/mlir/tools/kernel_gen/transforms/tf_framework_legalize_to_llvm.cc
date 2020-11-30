@@ -70,10 +70,10 @@ class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
   using ConvertToLLVMCallOpPattern<TFAllocOp>::ConvertToLLVMCallOpPattern;
 
   LogicalResult matchAndRewrite(
-      Operation *op, ArrayRef<Value> operands,
+      TFAllocOp tf_alloc_op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
+    mlir::Operation *op = tf_alloc_op.getOperation();
     Location loc = op->getLoc();
-    TFAllocOp tf_alloc_op = cast<TFAllocOp>(op);
     TFAllocOp::Adaptor transformed(operands);
 
     MemRefType memref_type = tf_alloc_op.getType();
@@ -222,14 +222,14 @@ class TFDeallocOpConverter : public ConvertToLLVMCallOpPattern<TFDeallocOp> {
   using ConvertToLLVMCallOpPattern<TFDeallocOp>::ConvertToLLVMCallOpPattern;
 
   LogicalResult matchAndRewrite(
-      Operation *op, ArrayRef<Value> operands,
+      TFDeallocOp op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
     TFDeallocOp::Adaptor transformed(operands);
     MemRefDescriptor memref(transformed.memref());
 
     Value allocated_bytes_ptr = rewriter.create<LLVM::BitcastOp>(
-        op->getLoc(), getVoidPtrType(),
-        memref.allocatedPtr(rewriter, op->getLoc()));
+        op.getLoc(), getVoidPtrType(),
+        memref.allocatedPtr(rewriter, op.getLoc()));
 
     // Insert function call.
     FlatSymbolRefAttr tf_func_ref = getOrInsertTFFunction(rewriter, op);
@@ -254,12 +254,13 @@ class ReportErrorOpConverter
   using ConvertToLLVMCallOpPattern<ReportErrorOp>::ConvertToLLVMCallOpPattern;
 
   LogicalResult matchAndRewrite(
-      Operation *op, ArrayRef<Value> operands,
+      ReportErrorOp op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
-    ReportErrorOp::Adaptor transformed(operands, op->getAttrDictionary());
+    ReportErrorOp::Adaptor transformed(operands,
+                                       op.getOperation()->getAttrDictionary());
 
-    Location loc = op->getLoc();
-    auto module = op->getParentOfType<ModuleOp>();
+    Location loc = op.getLoc();
+    auto module = op.getParentOfType<ModuleOp>();
     Value message_constant = GenerateErrorMessageConstant(
         loc, module, transformed.msg().getValue(), rewriter);
 
@@ -326,7 +327,7 @@ class NullContextOpConverter : public ConvertOpToLLVMPattern<NullContextOp> {
   using ConvertOpToLLVMPattern<NullContextOp>::ConvertOpToLLVMPattern;
 
   LogicalResult matchAndRewrite(
-      Operation *op, ArrayRef<Value> operands,
+      NullContextOp op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
     rewriter.replaceOpWithNewOp<LLVM::NullOp>(op, getVoidPtrType());
     return success();
@@ -338,9 +339,9 @@ class NullMemRefOpConverter : public ConvertOpToLLVMPattern<NullMemRefOp> {
   using ConvertOpToLLVMPattern<NullMemRefOp>::ConvertOpToLLVMPattern;
 
   LogicalResult matchAndRewrite(
-      Operation *op, ArrayRef<Value> operands,
+      NullMemRefOp null_memref_op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
-    auto null_memref_op = cast<NullMemRefOp>(op);
+    mlir::Operation *op = null_memref_op.getOperation();
 
     Location loc = op->getLoc();
     auto result_type = null_memref_op.getType().cast<UnrankedMemRefType>();

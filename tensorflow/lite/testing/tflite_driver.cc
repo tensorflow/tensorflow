@@ -369,8 +369,6 @@ TfLiteDriver::TfLiteDriver(DelegateType delegate_type, bool reference_kernel)
         new ops::builtin::BuiltinOpResolverWithoutDefaultDelegates());
     ops::builtin::BuiltinOpResolver* buildinop_resolver_ =
         reinterpret_cast<ops::builtin::BuiltinOpResolver*>(resolver_.get());
-    buildinop_resolver_->AddCustom("RFFT2D",
-                                   tflite::ops::custom::Register_RFFT2D());
     tflite::ops::custom::AddHashtableOps(buildinop_resolver_);
   }
 
