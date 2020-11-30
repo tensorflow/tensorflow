@@ -78,11 +78,9 @@ cc_library(
 
 cc_library(
     name = "ethosu",
-    srcs = select({
-        "//conditions:default": [
-            "ethosu.cc",
-        ],
-    }),
+    srcs = [
+        "ethosu.cc",
+    ],
     hdrs = ["ethosu.h"],
     copts = micro_copts(),
     visibility = [
@@ -91,9 +89,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/lite/c:common",
-    ] + select({
-        "//conditions:default": [],
-    }),
+    ],
 )
 
 cc_library(
@@ -109,7 +105,6 @@ cc_library(
         "concatenation.cc",
         "dequantize.cc",
         "elementwise.cc",
-        "ethosu.cc",
         "floor.cc",
         "l2norm.cc",
         "logical.cc",
