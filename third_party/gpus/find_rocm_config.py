@@ -144,9 +144,9 @@ def _find_rocblas_config(rocm_install_path):
     ]
     version_file = None
     for f in possible_version_files:
-      path = os.path.join(path, f)
-      if os.path.exists(path):
-        version_file = path
+      version_path = os.path.join(path, f)
+      if os.path.exists(version_path):
+        version_file = version_path
         break
     if not version_file:
       raise ConfigError(
