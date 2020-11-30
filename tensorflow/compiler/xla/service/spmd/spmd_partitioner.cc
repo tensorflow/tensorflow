@@ -1768,7 +1768,10 @@ Status SpmdPartitioningVisitor::HandleSlice(HloInstruction* hlo) {
           shard_shape, reshard_operand->sharded_input, start_indices,
           limit_indices, strides));
     }
-    return reshard_operand->sharded_input;
+    auto data = reshard_operand->sharded_input;
+    // Create a copy so that it will not share the resharding cache.
+    return b_.AddInstruction(
+        HloInstruction::CreateUnary(data->shape(), HloOpcode::kCopy, data));
   });
 
   return Status::OK();

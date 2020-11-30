@@ -6570,6 +6570,27 @@ ENTRY entry {
                           op::Shape("f32[2000, 1000]")));
 }
 
+TEST_F(SpmdPartitioningTest, ConstantSliceReshard) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %constant.785 = f32[1,8] constant({{0,1,2,3,4,5,6,7}}),
+    sharding={devices=[1,8]0,1,2,3,4,5,6,7}
+  %slice.62 = f32[1,1] slice(%constant.785), slice={[0:1], [0:1]},
+    sharding={devices=[1,8]0,1,2,3,4,5,6,7}
+  ROOT %reshape.779 = f32[] reshape(%slice.62), sharding={replicated}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  auto root = module->entry_computation()->root_instruction();
+  VLOG(1) << module->ToString();
+  auto slice = AllOf(op::Shape("f32[1,1]"),
+                     op::Copy(op::DynamicSlice(op::Constant(), _, _)));
+  EXPECT_THAT(root, op::Reshape(op::Slice(op::AllReduce(op::DynamicUpdateSlice(
+                        op::Broadcast(), slice, _, _)))));
+}
+
 }  // namespace
 }  // namespace spmd
 }  // namespace xla
