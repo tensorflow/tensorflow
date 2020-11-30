@@ -12,16 +12,17 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#ifndef TENSORFLOW_LITE_MICRO_KERNELS_ETHOSU_H_
+#define TENSORFLOW_LITE_MICRO_KERNELS_ETHOSU_H_
 
-//
-// This is a stub file for non-Ethos platforms
-//
 #include "tensorflow/lite/c/common.h"
 
 namespace tflite {
 
-TfLiteRegistration* Register_ETHOSU() { return nullptr; }
+TfLiteRegistration* Register_ETHOSU();
 
-const char* GetString_ETHOSU() { return ""; }
+const char* GetString_ETHOSU();
 
 }  // namespace tflite
+
+#endif  // TENSORFLOW_LITE_MICRO_KERNELS_ETHOSU_H_
