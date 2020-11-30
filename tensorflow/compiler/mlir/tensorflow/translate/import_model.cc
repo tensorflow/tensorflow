@@ -3396,6 +3396,7 @@ Status SavedModelSignatureDefImporterLite::ConvertInitializer(
     TensorInfo tensor_info;
     tensor_info.set_name(asset.tensor_name);
     tensor_info.set_dtype(DT_STRING);
+    tensor_info.mutable_tensor_shape();
     inputs.push_back({asset.tensor_name, tensor_info});
   }
 
@@ -3514,7 +3515,14 @@ SavedModelSignatureDefImporterLite::ParseInputArrays(
 
     ArrayInfo array_info;
     array_info.imported_dtype = tensor_info.dtype();
-    array_info.shape = tensor_info.tensor_shape();
+
+    if (tensor_info.has_tensor_shape()) {
+      array_info.shape = tensor_info.tensor_shape();
+    } else {
+      // If there is no tensor shape in the tensor info, conservatively set
+      // unknown_rank to true.
+      array_info.shape.set_unknown_rank(true);
+    }
 
     results.insert(std::pair<std::string, ArrayInfo>(tensor_info.name(),
                                                      std::move(array_info)));
