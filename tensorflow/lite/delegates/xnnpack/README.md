@@ -154,6 +154,11 @@ Below is the list of current operators and limitations:
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
 
+### `DEPTH_TO_SPACE`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+* Block size must be greater than 1.
+
 ### `DEPTHWISE_CONV_2D`
 
 * Inputs and outputs must be in 32-bit floating-point format.

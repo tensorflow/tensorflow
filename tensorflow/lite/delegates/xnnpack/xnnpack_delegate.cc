@@ -1420,6 +1420,13 @@ class Subgraph {
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
         logging_context, output_tensor, node->outputs->data[0], node_index));
 
+    if (depth_to_space_params->block_size <= 1) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          logging_context, "invalid block size (%d) in DEPTH_TO_SPACE node #%d",
+          depth_to_space_params->block_size, node_index);
+      return kTfLiteError;
+    }
+
     if (subgraph != nullptr) {
       const xnn_status status = xnn_define_depth_to_space(
           subgraph,
