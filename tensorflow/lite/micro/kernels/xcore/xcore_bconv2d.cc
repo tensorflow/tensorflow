@@ -16,6 +16,21 @@ namespace micro {
 namespace xcore {
 namespace bconv {
 
+struct BConv2DJob : RowColRegion {
+  BConv2DJob *next = nullptr;
+};
+
+enum class BConv2DKernelType {
+  BITPACKED,
+  BITPACKED_DI,
+  INT8,
+  INT8_DIDO,
+};
+
+// -------------------------------------------------------------------- //
+// kernel argument types and mappings
+// -------------------------------------------------------------------- //
+
 template <typename Tout>
 struct BConv2DArguments {
   Tout *Y;
@@ -39,18 +54,24 @@ struct BConv2DInt8Arguments : BConv2DArguments<int8_t> {
   const int final_shr;
 };
 
-struct BConv2DJob : RowColRegion {
-  BConv2DJob *next = nullptr;
-};
+template <BConv2DKernelType kernel_type>
+struct BConv2DKernelTypeToArgsType;
 
-enum class BConv2DKernelType {
-  BITPACKED,
-  BITPACKED_DI,
-  INT8,
-  INT8_DIDO,
-};
+#define KERNEL_TYPE_TO_ARGS_TYPE(KernelType, ArgsType)                \
+  template <>                                                         \
+  struct BConv2DKernelTypeToArgsType<BConv2DKernelType::KernelType> { \
+    typedef ArgsType type;                                            \
+  };
 
-// These are the bconv2d properties unique to each thread
+KERNEL_TYPE_TO_ARGS_TYPE(BITPACKED, BConv2DBitpackedArguments)
+KERNEL_TYPE_TO_ARGS_TYPE(BITPACKED_DI, BConv2DBitpackedArguments)
+KERNEL_TYPE_TO_ARGS_TYPE(INT8, BConv2DInt8Arguments)
+KERNEL_TYPE_TO_ARGS_TYPE(INT8_DIDO, BConv2DInt8Arguments)
+
+// -------------------------------------------------------------------- //
+// thread data types, worker functions, and mappings
+// -------------------------------------------------------------------- //
+
 template <typename Targs>
 struct BConv2DThreadData {
   Targs *args;
@@ -60,7 +81,7 @@ struct BConv2DThreadData {
 };
 
 extern "C" {
-ATTRIBUTE_THREAD_FUNCTION void bconv2d_bitpacked_deepin_thread_generator(
+ATTRIBUTE_THREAD_FUNCTION void bconv2d_bitpacked_deepin_thread_worker(
     void *context) {
   auto *td =
       static_cast<BConv2DThreadData<BConv2DBitpackedArguments> *>(context);
@@ -74,8 +95,7 @@ ATTRIBUTE_THREAD_FUNCTION void bconv2d_bitpacked_deepin_thread_generator(
   }
 }
 
-ATTRIBUTE_THREAD_FUNCTION void bconv2d_bitpacked_thread_generator(
-    void *context) {
+ATTRIBUTE_THREAD_FUNCTION void bconv2d_bitpacked_thread_worker(void *context) {
   auto *td =
       static_cast<BConv2DThreadData<BConv2DBitpackedArguments> *>(context);
   auto *job = td->job;
@@ -116,11 +136,13 @@ ATTRIBUTE_THREAD_FUNCTION void bconv2d_int8_thread_worker(void *context) {
 }
 }
 
-/*
-This is a struct that describes the memory required to configure the operator.
-*/
-template <typename Targs>
+// -------------------------------------------------------------------- //
+// op data types
+// -------------------------------------------------------------------- //
+
+template <BConv2DKernelType kernel_type>
 struct BConv2DOpData {
+  using Targs = typename BConv2DKernelTypeToArgsType<kernel_type>::type;
   // Data that is args to all threads processing the bconv2d
   Targs args;
 
@@ -152,8 +174,13 @@ struct BConv2DOpData {
   int bias_scratch_index = 0;
 };
 
+// -------------------------------------------------------------------- //
+// op function implementations
+// -------------------------------------------------------------------- //
+
+template <BConv2DKernelType kernel_type>
 void *Init(TfLiteContext *context, const char *buffer, size_t length) {
-  using OpDataType = BConv2DOpData<BConv2DBitpackedArguments>;
+  using OpDataType = BConv2DOpData<kernel_type>;
   auto *op_data = reinterpret_cast<OpDataType *>(
       context->AllocatePersistentBuffer(context, sizeof(OpDataType)));
 
@@ -215,8 +242,8 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  using OpDataType = BConv2DOpData<BConv2DBitpackedArguments>;
-  auto *op_data = reinterpret_cast<OpDataType *>(node->user_data);
+  auto *op_data =
+      reinterpret_cast<BConv2DOpData<kernel_type> *>(node->user_data);
 
   const TfLiteTensor *input = GetInput(context, node, 0);
   const TfLiteTensor *kernel = GetInput(context, node, 1);
@@ -254,10 +281,10 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
   // allocate the stack for thread workers
   if (kernel_type == BConv2DKernelType::BITPACKED_DI) {
     GET_THREAD_FUNCTION_STACKSIZE(op_data->stack_size,
-                                  bconv2d_bitpacked_deepin_thread_generator);
+                                  bconv2d_bitpacked_deepin_thread_worker);
   } else if (kernel_type == BConv2DKernelType::BITPACKED) {
     GET_THREAD_FUNCTION_STACKSIZE(op_data->stack_size,
-                                  bconv2d_bitpacked_thread_generator);
+                                  bconv2d_bitpacked_thread_worker);
     int thread_scratch_size =
         4 * (op_data->args.k.shape.height * op_data->args.k.shape.width *
                  op_data->args.x.channels / 32 +
@@ -282,8 +309,8 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
 
 template <BConv2DKernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
-  using OpDataType = BConv2DOpData<BConv2DBitpackedArguments>;
-  auto *op_data = reinterpret_cast<OpDataType *>(node->user_data);
+  auto *op_data =
+      reinterpret_cast<BConv2DOpData<kernel_type> *>(node->user_data);
 
   Dispatcher *dispatcher = GetDispatcher();
 
@@ -324,10 +351,10 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
   TF_LITE_ENSURE(context, stack);
 
   if (kernel_type == BConv2DKernelType::BITPACKED_DI) {
-    dispatcher->InitializeTasks(bconv2d_bitpacked_deepin_thread_generator,
-                                stack, op_data->stack_size);
+    dispatcher->InitializeTasks(bconv2d_bitpacked_deepin_thread_worker, stack,
+                                op_data->stack_size);
   } else if (kernel_type == BConv2DKernelType::BITPACKED) {
-    dispatcher->InitializeTasks(bconv2d_bitpacked_thread_generator, stack,
+    dispatcher->InitializeTasks(bconv2d_bitpacked_thread_worker, stack,
                                 op_data->stack_size);
   } else {
     TF_LITE_KERNEL_LOG(context, "Kernel type not supported by BConv2D.");
@@ -354,7 +381,7 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
 
 TfLiteRegistration *Register_BConv2D_Bitpacked_Deepin() {
   static TfLiteRegistration r = {
-      bconv::Init, nullptr,
+      bconv::Init<bconv::BConv2DKernelType::BITPACKED_DI>, nullptr,
       bconv::Prepare<bconv::BConv2DKernelType::BITPACKED_DI>,
       bconv::Eval<bconv::BConv2DKernelType::BITPACKED_DI>};
   return &r;
@@ -362,7 +389,8 @@ TfLiteRegistration *Register_BConv2D_Bitpacked_Deepin() {
 
 TfLiteRegistration *Register_BConv2D_Bitpacked() {
   static TfLiteRegistration r = {
-      bconv::Init, nullptr, bconv::Prepare<bconv::BConv2DKernelType::BITPACKED>,
+      bconv::Init<bconv::BConv2DKernelType::BITPACKED>, nullptr,
+      bconv::Prepare<bconv::BConv2DKernelType::BITPACKED>,
       bconv::Eval<bconv::BConv2DKernelType::BITPACKED>};
   return &r;
 }
