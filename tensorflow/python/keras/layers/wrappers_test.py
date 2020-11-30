@@ -965,6 +965,31 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
       y_np_3 = model.predict([x_np, s_fw_np, s_bk_np, c_np])
       self.assertAllClose(y_np, y_np_3, atol=1e-4)
 
+  @parameterized.parameters([keras.layers.LSTM, keras.layers.GRU])
+  def test_Bidirectional_output_shape(self, rnn):
+    input_shape = [None, 2, 1]
+    num_state = 4 if rnn == keras.layers.LSTM else 2
+
+    wrapper = keras.layers.Bidirectional(rnn(3))
+    output_shape = wrapper.compute_output_shape(input_shape)
+    self.assertEqual(output_shape.as_list(), [None, 6])
+
+    wrapper = keras.layers.Bidirectional(rnn(3, return_state=True))
+    output_shape = wrapper.compute_output_shape(input_shape)
+    # 1 for output and the rest for forward and backward states
+    self.assertLen(output_shape, 1 + num_state)
+    self.assertEqual(output_shape[0].as_list(), [None, 6])
+    for shape in output_shape[1:]:
+      self.assertEqual(shape.as_list(), [None, 3])
+
+    wrapper = keras.layers.Bidirectional(rnn(3, return_state=True),
+                                         merge_mode=None)
+    output_shape = wrapper.compute_output_shape(input_shape)
+    # 1 for forward output and 1 for backward output,  and the rest for states
+    self.assertLen(output_shape, 2 + num_state)
+    for shape in output_shape:
+      self.assertEqual(shape.as_list(), [None, 3])
+
   def test_Bidirectional_output_shape_return_types(self):
 
     class TestLayer(keras.layers.SimpleRNN):
