@@ -578,8 +578,7 @@ Status IrEmitterUnnested::DefaultActionForMlir(MlirEmitterInput input) {
 
   mlir::Location loc = input.op->getLoc();
   mlir::lmhlo::FusionOp fusion =
-      mlir::OpBuilder(input.op).create<mlir::lmhlo::FusionOp>(
-          loc, llvm::ArrayRef<mlir::NamedAttribute>());
+      mlir::OpBuilder(input.op).create<mlir::lmhlo::FusionOp>(loc);
   Shape output_shape;
   mlir::OpBuilder b(&fusion.region());
 
@@ -4395,8 +4394,7 @@ std::vector<int64> FilterInputsForShmemTranspose(mlir::lmhlo::FusionOp fusion,
 
 StatusOr<bool> IrEmitterUnnested::CheckAndEmitHloWithTile021(
     MlirEmitterInput input) {
-  CHECK(mlir::isa<mlir::lmhlo::FusionOp>(input.op) ||
-        mlir::isa<mlir::lmhlo::CopyOp>(input.op));
+  CHECK((mlir::isa<mlir::lmhlo::FusionOp, mlir::lmhlo::CopyOp>(input.op)));
 
   MlirEmitterContext context;
   context.SetOperation(input.op);
