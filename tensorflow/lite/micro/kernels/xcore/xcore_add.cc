@@ -16,7 +16,7 @@ namespace xcore {
 namespace add {
 
 struct AddOpData {
-  ExecutionPlan execution_plan;
+  // ExecutionPlan execution_plan;
   int stack_scratch_index;
   size_t stack_size;
 };
@@ -45,14 +45,14 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   op->stack_size = 0;
 
   // parse custom options
-  TFLITE_DCHECK(buffer != nullptr);
-  parse_custom_options(context, buffer, length, &op->execution_plan);
+  // TFLITE_DCHECK(buffer != nullptr);
+  // parse_custom_options(context, buffer, length, &op->execution_plan);
 
   return op;
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-  TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
+  TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
   AddOpData* op = reinterpret_cast<AddOpData*>(node->user_data);
