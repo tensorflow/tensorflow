@@ -255,7 +255,7 @@ TfLiteStatus PopulateQuantizedLstmParams8x8_16(
       intermediate_zp.push_back(0);
     }
   }
-  // In the absense of projection, hidden becomes otuput and this intermediate
+  // In the absence of projection, hidden becomes output and this intermediate
   // is ignored.
   TfLiteTensor* hidden;
   TF_LITE_ENSURE_OK(context, GetIntermediatesSafe(context, node, 4, &hidden));
