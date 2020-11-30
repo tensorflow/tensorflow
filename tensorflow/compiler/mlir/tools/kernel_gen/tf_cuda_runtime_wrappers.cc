@@ -81,6 +81,28 @@ extern "C" void mgpuStreamSynchronize(CUstream stream) {
   CUDA_REPORT_IF_ERROR(cuStreamSynchronize(stream));
 }
 
+extern "C" void mgpuStreamWaitEvent(CUstream stream, CUevent event) {
+  CUDA_REPORT_IF_ERROR(cuStreamWaitEvent(stream, event, /*flags=*/0));
+}
+
+extern "C" CUevent mgpuEventCreate() {
+  CUevent event = nullptr;
+  CUDA_REPORT_IF_ERROR(cuEventCreate(&event, CU_EVENT_DISABLE_TIMING));
+  return event;
+}
+
+extern "C" void mgpuEventDestroy(CUevent event) {
+  CUDA_REPORT_IF_ERROR(cuEventDestroy(event));
+}
+
+extern "C" void mgpuEventSynchronize(CUevent event) {
+  CUDA_REPORT_IF_ERROR(cuEventSynchronize(event));
+}
+
+extern "C" void mgpuEventRecord(CUevent event, CUstream stream) {
+  CUDA_REPORT_IF_ERROR(cuEventRecord(event, stream));
+}
+
 /// Helper functions for writing mlir example code
 
 // Allows to register byte array with the CUDA runtime. Helpful until we have

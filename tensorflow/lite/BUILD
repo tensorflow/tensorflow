@@ -466,12 +466,12 @@ cc_library(
 # WARNING: This build flag is experimental and subject to change.
 config_setting(
     name = "tflite_with_xnnpack_explicit_true",
-    values = {"define": "tflite_with_xnnpack=true"},
+    define_values = {"tflite_with_xnnpack": "true"},
 )
 
 config_setting(
     name = "tflite_with_xnnpack_explicit_false",
-    values = {"define": "tflite_with_xnnpack=false"},
+    define_values = {"tflite_with_xnnpack": "false"},
 )
 
 cc_library(

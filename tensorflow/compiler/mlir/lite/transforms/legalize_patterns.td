@@ -491,3 +491,7 @@ def LegalizeStridedSlice : Pat<
     (convertIntAttrTo32Bit $end_mask), (convertIntAttrTo32Bit $ellipsis_mask),
     (convertIntAttrTo32Bit $new_axis_mask),
     (convertIntAttrTo32Bit $shrink_axis_mask))>;
+
+def LegalizeRfft2d : Pat<
+  (TF_RFFT2DOp $input, $fft_length),
+  (TFL_RFFT2dOp $input, $fft_length)>;

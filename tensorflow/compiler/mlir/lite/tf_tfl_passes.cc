@@ -182,6 +182,7 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     // to match 'kTFLiteDataLayout'
     mlir::TF::LayoutOptimizationPipelineOptions layout_optimization_options;
     layout_optimization_options.force_data_format = kTFLiteDataLayout;
+    layout_optimization_options.skip_fold_transpose_in_ops = true;
     mlir::TF::CreateLayoutOptimizationPipeline(
         pass_manager->nest<mlir::FuncOp>(), layout_optimization_options);
     // Prepare for TFLite dialect, rerun canonicalization, and then legalize to
