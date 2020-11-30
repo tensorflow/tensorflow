@@ -139,17 +139,6 @@ def _find_rocblas_config(rocm_install_path):
 
   def rocblas_version_numbers(path):
     possible_version_files = [
-<<<<<<< HEAD
-      "rocblas/include/rocblas-version.h", # ROCm 3.7 and prior
-      "rocblas/include/internal/rocblas-version.h", # ROCm 3.8
-    ]
-    version_file = None
-    for f in possible_version_files:
-      version_file = os.path.join(path, f)
-      if  os.path.exists(version_file):
-        break
-    if not os.path.exists(version_file):
-=======
         "rocblas/include/rocblas-version.h",  # ROCm 3.7 and prior
         "rocblas/include/internal/rocblas-version.h",  # ROCm 3.8
     ]
@@ -160,7 +149,6 @@ def _find_rocblas_config(rocm_install_path):
         version_file = path
         break
     if not version_file:
->>>>>>> upstream/master
       raise ConfigError(
           "rocblas version file not found in {}".format(
               possible_version_files))
