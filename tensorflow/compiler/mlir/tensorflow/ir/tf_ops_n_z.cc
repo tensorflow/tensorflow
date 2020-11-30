@@ -2128,7 +2128,8 @@ class ToBoolOfRankedTensor : public OpRewritePattern<ToBoolOp> {
     // If the input is an unranked tensor, cannpt rewrite.
     if (!type) return failure();
 
-    // Expected return type of the ToBool operation.
+    // Expected return type of the ToBool operation. The return type of ToBool
+    // operation is always 0D tensor of bool type.
     auto result_type = op.getResult().getType().cast<RankedTensorType>();
 
     // If input is already a tensor<i1>, it can be folded into an identity.
