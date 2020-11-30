@@ -149,7 +149,7 @@ class FaultToleranceTest(test.TestCase):  # pylint: disable=missing-docstring
     return restart_thread
 
   def testOneWorkerPreemption(self):
-    # A blackbox test to make sure the model can still train when there is
+    # A closedbox test to make sure the model can still train when there is
     # worker preemption.
     model = Model(self.cluster_coord)
     model.schedule_training_functions(10)
