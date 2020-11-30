@@ -191,28 +191,29 @@ std::string GetAveragePoolingCode(const HW& kernel_size) {
   return absl::Substitute(shader_source, kernel_size.w, kernel_size.h);
 }
 
-ComputeTaskDescriptorPtr PoolingInternal(int id, ValueId input_id,
-                                         ValueId output_id,
-                                         const Pooling2DAttributes& params,
-                                         bool generate_indices) {
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = false;
+}  // namespace
+
+ComputeTaskDescriptor Pooling(int id, ValueId input_id, ValueId output_id,
+                              const Pooling2DAttributes& params,
+                              bool generate_indices) {
+  ComputeTaskDescriptor desc;
+  desc.id = id;
+  desc.is_linkable = false;
   if (params.type == PoolingType::MAX) {
-    desc->shader_source = generate_indices
-                              ? GetMaxPoolingIndicesCode(params.kernel)
-                              : GetMaxPoolingCode(params.kernel);
+    desc.shader_source = generate_indices
+                             ? GetMaxPoolingIndicesCode(params.kernel)
+                             : GetMaxPoolingCode(params.kernel);
   } else if (params.type == PoolingType::AVERAGE) {
-    desc->shader_source = GetAveragePoolingCode(params.kernel);
+    desc.shader_source = GetAveragePoolingCode(params.kernel);
   }
 
-  desc->input_buffers = {
+  desc.input_buffers = {
       {input_id, "device FLT4* const src_buffer"},
   };
 
-  desc->output_buffer = {output_id, "device FLT4* output_buffer"};
+  desc.output_buffer = {output_id, "device FLT4* output_buffer"};
 
-  desc->uniform_buffers = {
+  desc.uniform_buffers = {
       {"constant uniforms& params",
        [input_id, output_id, params](const std::map<ValueId, BHWC>& buffers) {
          const auto& dimension = buffers.find(input_id)->second;
@@ -235,7 +236,7 @@ ComputeTaskDescriptorPtr PoolingInternal(int id, ValueId input_id,
        }},
   };
 
-  desc->resize_function = [output_id](const std::map<ValueId, BHWC>& buffers) {
+  desc.resize_function = [output_id](const std::map<ValueId, BHWC>& buffers) {
     BHWC dst_shape = buffers.find(output_id)->second;
     const uint3 grid =
         uint3(dst_shape.w, dst_shape.h, DivideRoundUp(dst_shape.c, 4));
@@ -247,21 +248,6 @@ ComputeTaskDescriptorPtr PoolingInternal(int id, ValueId input_id,
   };
 
   return desc;
-}
-
-}  // namespace
-
-std::vector<ComputeTaskDescriptorPtr> Pooling(
-    int id, ValueId input_id, const std::vector<ValueId>& output_ids,
-    const Pooling2DAttributes& params) {
-  std::vector<ComputeTaskDescriptorPtr> descriptors;
-  descriptors.push_back(
-      PoolingInternal(id, input_id, output_ids[0], params, false));
-  if (params.type == PoolingType::MAX && params.output_indices) {
-    descriptors.push_back(
-        PoolingInternal(id, input_id, output_ids[1], params, true));
-  }
-  return descriptors;
 }
 
 }  // namespace metal

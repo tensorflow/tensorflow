@@ -116,21 +116,20 @@ kernel void ComputeFunction(
 
 }  // namespace
 
-std::vector<ComputeTaskDescriptorPtr> Reshape(int id, ValueId input_id,
-                                              ValueId output_id,
-                                              const ReshapeAttributes& attr) {
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = false;
-  desc->shader_source = GetReshapeCode();
+ComputeTaskDescriptor Reshape(int id, ValueId input_id, ValueId output_id,
+                              const ReshapeAttributes& attr) {
+  ComputeTaskDescriptor desc;
+  desc.id = id;
+  desc.is_linkable = false;
+  desc.shader_source = GetReshapeCode();
 
-  desc->input_buffers = {
+  desc.input_buffers = {
       {input_id, "device FLT4* const src_buffer"},
   };
 
-  desc->output_buffer = {output_id, "device FLT4* dst_buffer"};
+  desc.output_buffer = {output_id, "device FLT4* dst_buffer"};
 
-  desc->uniform_buffers = {
+  desc.uniform_buffers = {
       {"constant uniforms& params",
        [input_id, output_id](const std::map<ValueId, BHWC>& buffers) {
          const auto& src_dim = buffers.find(input_id)->second;
@@ -151,7 +150,7 @@ std::vector<ComputeTaskDescriptorPtr> Reshape(int id, ValueId input_id,
        }},
   };
 
-  desc->resize_function = [attr](const std::map<ValueId, BHWC>& buffers) {
+  desc.resize_function = [attr](const std::map<ValueId, BHWC>& buffers) {
     const uint3 grid = uint3(attr.new_shape.w, attr.new_shape.h,
                              DivideRoundUp(attr.new_shape.c, 4));
     const uint3 groups_size = GetWorkGroupSizeForGrid(grid);
@@ -161,24 +160,23 @@ std::vector<ComputeTaskDescriptorPtr> Reshape(int id, ValueId input_id,
     return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
   };
 
-  return {desc};
+  return desc;
 }
 
-std::vector<ComputeTaskDescriptorPtr> Reshapex4(int id, ValueId input_id,
-                                                ValueId output_id,
-                                                const ReshapeAttributes& attr) {
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = false;
-  desc->shader_source = GetReshapex4Code();
+ComputeTaskDescriptor Reshapex4(int id, ValueId input_id, ValueId output_id,
+                                const ReshapeAttributes& attr) {
+  ComputeTaskDescriptor desc;
+  desc.id = id;
+  desc.is_linkable = false;
+  desc.shader_source = GetReshapex4Code();
 
-  desc->input_buffers = {
+  desc.input_buffers = {
       {input_id, "device FLT4* const src_buffer"},
   };
 
-  desc->output_buffer = {output_id, "device FLT4* dst_buffer"};
+  desc.output_buffer = {output_id, "device FLT4* dst_buffer"};
 
-  desc->uniform_buffers = {
+  desc.uniform_buffers = {
       {"constant uniforms& params",
        [input_id, output_id](const std::map<ValueId, BHWC>& buffers) {
          const auto& src_dim = buffers.find(input_id)->second;
@@ -204,7 +202,7 @@ std::vector<ComputeTaskDescriptorPtr> Reshapex4(int id, ValueId input_id,
        }},
   };
 
-  desc->resize_function = [attr](const std::map<ValueId, BHWC>& buffers) {
+  desc.resize_function = [attr](const std::map<ValueId, BHWC>& buffers) {
     const uint3 grid = uint3(attr.new_shape.w, attr.new_shape.h,
                              DivideRoundUp(attr.new_shape.c, 4));
     const uint3 groups_size = GetWorkGroupSizeForGrid(grid);
@@ -214,7 +212,7 @@ std::vector<ComputeTaskDescriptorPtr> Reshapex4(int id, ValueId input_id,
     return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
   };
 
-  return {desc};
+  return desc;
 }
 
 }  // namespace metal

@@ -117,31 +117,30 @@ std::string GetResizeNearestCode(const Resize2DAttributes& attr) {
   return code;
 }
 
-std::vector<ComputeTaskDescriptorPtr> Resize(int id, ValueId input_id,
-                                             ValueId output_id,
-                                             const Resize2DAttributes& attr) {
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = false;
+ComputeTaskDescriptor Resize(int id, ValueId input_id, ValueId output_id,
+                             const Resize2DAttributes& attr) {
+  ComputeTaskDescriptor desc;
+  desc.id = id;
+  desc.is_linkable = false;
   switch (attr.type) {
     case SamplingType::BILINEAR:
-      desc->shader_source = GetResizeBilinearCode(attr);
+      desc.shader_source = GetResizeBilinearCode(attr);
       break;
     case SamplingType::NEAREST:
-      desc->shader_source = GetResizeNearestCode(attr);
+      desc.shader_source = GetResizeNearestCode(attr);
       break;
     default:
       // Unknown sampling type
       return {};
   }
 
-  desc->input_buffers = {
+  desc.input_buffers = {
       {input_id, "device FLT4* const src_buffer"},
   };
 
-  desc->output_buffer = {output_id, "device FLT4* output_buffer"};
+  desc.output_buffer = {output_id, "device FLT4* output_buffer"};
 
-  desc->uniform_buffers = {
+  desc.uniform_buffers = {
       {"constant int4& size",
        [input_id, output_id](const std::map<ValueId, BHWC>& buffers) {
          const auto& dimension = buffers.find(input_id)->second;
@@ -168,7 +167,7 @@ std::vector<ComputeTaskDescriptorPtr> Resize(int id, ValueId input_id,
        }},
   };
 
-  desc->resize_function = [output_id](const std::map<ValueId, BHWC>& buffers) {
+  desc.resize_function = [output_id](const std::map<ValueId, BHWC>& buffers) {
     const uint3 groups_size{16, 16, 1};
     const auto& dst_dim = buffers.find(output_id)->second;
     int groups_x = DivideRoundUp(dst_dim.w, groups_size.x);
@@ -177,7 +176,7 @@ std::vector<ComputeTaskDescriptorPtr> Resize(int id, ValueId input_id,
     int groups_z = DivideRoundUp(dst_layers, groups_size.z);
     return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
   };
-  return {desc};
+  return desc;
 }
 
 }  // namespace metal

@@ -28,12 +28,12 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 
-std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed(
+ComputeTaskDescriptor ConvolutionTransposed(
     int id, ValueId input_id, ValueId output_id,
     const ConvolutionTransposedAttributes& params, const GpuInfo& gpu_info,
     const RuntimeOptions& options);
 
-std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed4x4(
+ComputeTaskDescriptor ConvolutionTransposed4x4(
     int id, ValueId input_id, ValueId output_id,
     const ConvolutionTransposedAttributes& params, const GpuInfo& gpu_info,
     const RuntimeOptions& options);

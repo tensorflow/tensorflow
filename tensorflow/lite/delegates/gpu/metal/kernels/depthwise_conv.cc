@@ -464,14 +464,14 @@ static std::vector<uint8_t> GetUniformBufferDepthWiseConv3x3Stride2(
 
 }  // namespace
 
-std::vector<ComputeTaskDescriptorPtr> DepthWiseConvolution(
+ComputeTaskDescriptor DepthWiseConvolution(
     int id, ValueId input_id, ValueId output_id,
     const DepthwiseConvolution2DAttributes& attr,
     const RuntimeOptions& options) {
   int channels_multiplier = attr.weights.shape.o;
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = false;
+  ComputeTaskDescriptor desc;
+  desc.id = id;
+  desc.is_linkable = false;
   std::string shader_source = R"(
     #include <metal_stdlib>
     using namespace metal;
@@ -554,16 +554,16 @@ std::vector<ComputeTaskDescriptorPtr> DepthWiseConvolution(
       dst_buffer[linear_index] = value;
     }
   )";
-  desc->shader_source = shader_source;
+  desc.shader_source = shader_source;
 
-  desc->input_buffers = {
+  desc.input_buffers = {
       {input_id, "device FLT4* const src_buffer"},
   };
 
-  desc->output_buffer = {output_id, "device FLT4* dst_buffer"};
+  desc.output_buffer = {output_id, "device FLT4* dst_buffer"};
 
   const int output_channels_count = attr.weights.shape.i * attr.weights.shape.o;
-  desc->immutable_buffers = {
+  desc.immutable_buffers = {
       {"device FLT4* const filters",
        GetByteBufferConverted(ConvertToPIOHW4(attr.weights),
                               options.storage_precision)},
@@ -572,7 +572,7 @@ std::vector<ComputeTaskDescriptorPtr> DepthWiseConvolution(
                                      output_channels_count)},
   };
 
-  desc->uniform_buffers = {
+  desc.uniform_buffers = {
       {"constant uniforms& U",
        [input_id, output_id, attr](const std::map<ValueId, BHWC>& buffers) {
          const auto& dimension = buffers.find(input_id)->second;
@@ -603,7 +603,7 @@ std::vector<ComputeTaskDescriptorPtr> DepthWiseConvolution(
        }},
   };
 
-  desc->resize_function = [output_id](const std::map<ValueId, BHWC>& buffers) {
+  desc.resize_function = [output_id](const std::map<ValueId, BHWC>& buffers) {
     const auto& dimension = buffers.find(output_id)->second;
     uint3 groups_size{8, 4, 1};
     uint3 groups_count{DivideRoundUp(dimension.w, groups_size.x),
@@ -612,32 +612,32 @@ std::vector<ComputeTaskDescriptorPtr> DepthWiseConvolution(
     return std::make_pair(groups_size, groups_count);
   };
 
-  return {desc};
+  return desc;
 }
 
-std::vector<ComputeTaskDescriptorPtr> DepthWiseConv3x3Stride1x1(
+ComputeTaskDescriptor DepthWiseConv3x3Stride1x1(
     int id, ValueId input_id, ValueId output_id,
     const DepthwiseConvolution2DAttributes& attr,
     const RuntimeOptions& options) {
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = false;
-  desc->shader_source = GetKernelDepthWiseConv3x3Stride1x1();
+  ComputeTaskDescriptor desc;
+  desc.id = id;
+  desc.is_linkable = false;
+  desc.shader_source = GetKernelDepthWiseConv3x3Stride1x1();
 
-  desc->input_buffers = {
+  desc.input_buffers = {
       {input_id, "device FLT4* const src_buffer"},
   };
 
-  desc->output_buffer = {output_id, "device FLT4* dst_buffer"};
+  desc.output_buffer = {output_id, "device FLT4* dst_buffer"};
 
   // For this operation we keep weights and biases in one buffer
   auto weights_reordered = ReorderWeightsDepthWiseConv3x3Stride1x1(attr);
-  desc->immutable_buffers = {
+  desc.immutable_buffers = {
       {"device FLT4* const filters",
        GetByteBufferConverted(weights_reordered, options.storage_precision)},
   };
 
-  desc->uniform_buffers = {
+  desc.uniform_buffers = {
       {"constant uniforms& params",
        [input_id, output_id, attr](const std::map<ValueId, BHWC>& buffers) {
          const auto& input_dimensions = buffers.find(input_id)->second;
@@ -647,7 +647,7 @@ std::vector<ComputeTaskDescriptorPtr> DepthWiseConv3x3Stride1x1(
        }},
   };
 
-  desc->resize_function = [output_id](const std::map<ValueId, BHWC>& buffers) {
+  desc.resize_function = [output_id](const std::map<ValueId, BHWC>& buffers) {
     const auto& dimension = buffers.find(output_id)->second;
     const int grid_x = DivideRoundUp(dimension.w, 2);
     const int grid_y = DivideRoundUp(dimension.h, 2);
@@ -663,7 +663,7 @@ std::vector<ComputeTaskDescriptorPtr> DepthWiseConv3x3Stride1x1(
     return std::make_pair(group_size, uint3(groups_x, groups_y, groups_z));
   };
 
-  return {desc};
+  return desc;
 }
 
 bool CheckDepthWiseConv3x3Stride1x1Support(
@@ -673,29 +673,29 @@ bool CheckDepthWiseConv3x3Stride1x1Support(
          attr.strides.w == 1 && attr.dilations.h == 1 && attr.dilations.w == 1;
 }
 
-std::vector<ComputeTaskDescriptorPtr> DepthWiseConv3x3Stride2(
+ComputeTaskDescriptor DepthWiseConv3x3Stride2(
     int id, ValueId input_id, ValueId output_id,
     const DepthwiseConvolution2DAttributes& attr,
     const RuntimeOptions& options) {
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = false;
-  desc->shader_source = GetKernelDepthWiseConv3x3Stride2();
+  ComputeTaskDescriptor desc;
+  desc.id = id;
+  desc.is_linkable = false;
+  desc.shader_source = GetKernelDepthWiseConv3x3Stride2();
 
-  desc->input_buffers = {
+  desc.input_buffers = {
       {input_id, "device FLT4* const src_buffer"},
   };
 
-  desc->output_buffer = {output_id, "device FLT4* dst_buffer"};
+  desc.output_buffer = {output_id, "device FLT4* dst_buffer"};
 
   // For this operation we keep weights and biases in one buffer
   auto weights_reordered = ReorderWeightsDepthWiseConv3x3Stride2(attr);
-  desc->immutable_buffers = {
+  desc.immutable_buffers = {
       {"device FLT4* const filters",
        GetByteBufferConverted(weights_reordered, options.storage_precision)},
   };
 
-  desc->uniform_buffers = {
+  desc.uniform_buffers = {
       {"constant uniforms& params",
        [input_id, output_id, attr](const std::map<ValueId, BHWC>& buffers) {
          const auto& input_dimensions = buffers.find(input_id)->second;
@@ -705,7 +705,7 @@ std::vector<ComputeTaskDescriptorPtr> DepthWiseConv3x3Stride2(
        }},
   };
 
-  desc->resize_function = [output_id](const std::map<ValueId, BHWC>& buffers) {
+  desc.resize_function = [output_id](const std::map<ValueId, BHWC>& buffers) {
     const auto& dimension = buffers.find(output_id)->second;
     const int grid_x = dimension.w;
     const int grid_y = DivideRoundUp(dimension.h, 2);
@@ -717,7 +717,7 @@ std::vector<ComputeTaskDescriptorPtr> DepthWiseConv3x3Stride2(
     return std::make_pair(group_size, uint3(groups_x, groups_y, groups_z));
   };
 
-  return {desc};
+  return desc;
 }
 
 bool CheckDepthWiseConv3x3Stride2Support(

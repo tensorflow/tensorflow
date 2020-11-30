@@ -129,28 +129,28 @@ std::string GetConcatZCode(const std::vector<int> channels) {
 }
 }  // namespace
 
-std::vector<ComputeTaskDescriptorPtr> ConcatZ(
-    int id, std::vector<ValueId> input_ids, ValueId output_id,
-    const ConcatAttributes& attr, const std::vector<BHWC>& input_shapes) {
+ComputeTaskDescriptor ConcatZ(int id, std::vector<ValueId> input_ids,
+                              ValueId output_id, const ConcatAttributes& attr,
+                              const std::vector<BHWC>& input_shapes) {
   std::vector<int> channels;
   channels.reserve(input_shapes.size());
   for (const auto& shape : input_shapes) {
     channels.push_back(shape.c);
   }
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = false;
-  desc->shader_source = GetConcatZCode(channels);
+  ComputeTaskDescriptor desc;
+  desc.id = id;
+  desc.is_linkable = false;
+  desc.shader_source = GetConcatZCode(channels);
 
   for (int i = 0; i < input_ids.size(); ++i) {
     const std::string buffer_name =
         "device FLT4* const src_buffer" + std::to_string(i);
-    desc->input_buffers.push_back({input_ids[i], buffer_name});
+    desc.input_buffers.push_back({input_ids[i], buffer_name});
   }
 
-  desc->output_buffer = {output_id, "device FLT4* dst_buffer"};
+  desc.output_buffer = {output_id, "device FLT4* dst_buffer"};
 
-  desc->uniform_buffers = {
+  desc.uniform_buffers = {
       {"constant uniforms& U",
        [input_ids, output_id](const std::map<ValueId, BHWC>& buffers) {
          const auto& src_shape = buffers.find(input_ids[0])->second;
@@ -169,7 +169,7 @@ std::vector<ComputeTaskDescriptorPtr> ConcatZ(
        }},
   };
 
-  desc->resize_function = [output_id](const std::map<ValueId, BHWC>& buffers) {
+  desc.resize_function = [output_id](const std::map<ValueId, BHWC>& buffers) {
     const auto& dst_shape = buffers.find(output_id)->second;
     uint3 grid(dst_shape.w, dst_shape.h, 1);
     uint3 group_size{8u, 4u, 1u};
@@ -180,15 +180,15 @@ std::vector<ComputeTaskDescriptorPtr> ConcatZ(
     return std::make_pair(group_size, groups);
   };
 
-  return {desc};
+  return desc;
 }
 
-std::vector<ComputeTaskDescriptorPtr> ConcatX(
-    int id, std::vector<ValueId> input_ids, ValueId output_id,
-    const ConcatAttributes& attr, const std::vector<BHWC>& input_shapes) {
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = false;
+ComputeTaskDescriptor ConcatX(int id, std::vector<ValueId> input_ids,
+                              ValueId output_id, const ConcatAttributes& attr,
+                              const std::vector<BHWC>& input_shapes) {
+  ComputeTaskDescriptor desc;
+  desc.id = id;
+  desc.is_linkable = false;
 
   std::string code = R"(
     #include <metal_stdlib>
@@ -230,17 +230,17 @@ std::vector<ComputeTaskDescriptorPtr> ConcatX(
       dst_buffer[linear_index] = value;
     }
   )";
-  desc->shader_source = code;
+  desc.shader_source = code;
 
   for (int i = 0; i < input_ids.size(); ++i) {
     const std::string buffer_name =
         "device FLT4* const src_buffer" + std::to_string(i);
-    desc->input_buffers.push_back({input_ids[i], buffer_name});
+    desc.input_buffers.push_back({input_ids[i], buffer_name});
   }
 
-  desc->output_buffer = {output_id, "device FLT4* dst_buffer"};
+  desc.output_buffer = {output_id, "device FLT4* dst_buffer"};
 
-  desc->uniform_buffers = {
+  desc.uniform_buffers = {
       {"constant int3& size",
        [output_id](const std::map<ValueId, BHWC>& buffers) {
          const auto& dimension = buffers.find(output_id)->second;
@@ -251,7 +251,7 @@ std::vector<ComputeTaskDescriptorPtr> ConcatX(
        }},
   };
 
-  desc->resize_function = [output_id](const std::map<ValueId, BHWC>& buffers) {
+  desc.resize_function = [output_id](const std::map<ValueId, BHWC>& buffers) {
     const auto& output_dims = buffers.find(output_id)->second;
     const uint3 groups_size{8, 4, 1};
     int groups_x = DivideRoundUp(output_dims.w, groups_size.x);
@@ -260,15 +260,15 @@ std::vector<ComputeTaskDescriptorPtr> ConcatX(
     return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
   };
 
-  return {desc};
+  return desc;
 }
 
-std::vector<ComputeTaskDescriptorPtr> ConcatY(
-    int id, std::vector<ValueId> input_ids, ValueId output_id,
-    const ConcatAttributes& attr, const std::vector<BHWC>& input_shapes) {
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = false;
+ComputeTaskDescriptor ConcatY(int id, std::vector<ValueId> input_ids,
+                              ValueId output_id, const ConcatAttributes& attr,
+                              const std::vector<BHWC>& input_shapes) {
+  ComputeTaskDescriptor desc;
+  desc.id = id;
+  desc.is_linkable = false;
 
   std::string code = R"(
     #include <metal_stdlib>
@@ -311,17 +311,17 @@ std::vector<ComputeTaskDescriptorPtr> ConcatY(
       dst_buffer[linear_index] = value;
     }
   )";
-  desc->shader_source = code;
+  desc.shader_source = code;
 
   for (int i = 0; i < input_ids.size(); ++i) {
     const std::string buffer_name =
         "device FLT4* const src_buffer" + std::to_string(i);
-    desc->input_buffers.push_back({input_ids[i], buffer_name});
+    desc.input_buffers.push_back({input_ids[i], buffer_name});
   }
 
-  desc->output_buffer = {output_id, "device FLT4* dst_buffer"};
+  desc.output_buffer = {output_id, "device FLT4* dst_buffer"};
 
-  desc->uniform_buffers = {
+  desc.uniform_buffers = {
       {"constant int3& size",
        [output_id](const std::map<ValueId, BHWC>& buffers) {
          const auto& dimension = buffers.find(output_id)->second;
@@ -332,7 +332,7 @@ std::vector<ComputeTaskDescriptorPtr> ConcatY(
        }},
   };
 
-  desc->resize_function = [output_id](const std::map<ValueId, BHWC>& buffers) {
+  desc.resize_function = [output_id](const std::map<ValueId, BHWC>& buffers) {
     const auto& output_dims = buffers.find(output_id)->second;
     const uint3 groups_size{8, 4, 1};
     int groups_x = DivideRoundUp(output_dims.w, groups_size.x);
@@ -341,12 +341,12 @@ std::vector<ComputeTaskDescriptorPtr> ConcatY(
     return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
   };
 
-  return {desc};
+  return desc;
 }
 
-std::vector<ComputeTaskDescriptorPtr> Concat(
-    int id, std::vector<ValueId> input_ids, ValueId output_id,
-    const ConcatAttributes& attr, const std::vector<BHWC>& input_shapes) {
+ComputeTaskDescriptor Concat(int id, std::vector<ValueId> input_ids,
+                             ValueId output_id, const ConcatAttributes& attr,
+                             const std::vector<BHWC>& input_shapes) {
   if (attr.axis == Axis::CHANNELS) {
     return ConcatZ(id, input_ids, output_id, attr, input_shapes);
   } else if (attr.axis == Axis::WIDTH) {

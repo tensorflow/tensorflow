@@ -86,22 +86,22 @@ std::string GetMaxUnpoolingCode(const HW& kernel_size) {
 }
 }  // namespace
 
-std::vector<ComputeTaskDescriptorPtr> MaxUnpooling(
-    int id, ValueId input_id, ValueId input_indices_id, ValueId output_id,
-    const MaxUnpooling2DAttributes& params) {
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = false;
-  desc->shader_source = GetMaxUnpoolingCode(params.kernel);
+ComputeTaskDescriptor MaxUnpooling(int id, ValueId input_id,
+                                   ValueId input_indices_id, ValueId output_id,
+                                   const MaxUnpooling2DAttributes& params) {
+  ComputeTaskDescriptor desc;
+  desc.id = id;
+  desc.is_linkable = false;
+  desc.shader_source = GetMaxUnpoolingCode(params.kernel);
 
-  desc->input_buffers = {
+  desc.input_buffers = {
       {input_id, "device FLT4* const src_buffer"},
       {input_indices_id, "device FLT4* const src_indices_buffer"},
   };
 
-  desc->output_buffer = {output_id, "device FLT4* output_buffer"};
+  desc.output_buffer = {output_id, "device FLT4* output_buffer"};
 
-  desc->uniform_buffers = {
+  desc.uniform_buffers = {
       {"constant uniforms& params",
        [input_id, output_id, params](const std::map<ValueId, BHWC>& buffers) {
          const auto& dimension = buffers.find(input_id)->second;
@@ -120,8 +120,8 @@ std::vector<ComputeTaskDescriptorPtr> MaxUnpooling(
        }},
   };
 
-  desc->resize_function = [input_id,
-                           params](const std::map<ValueId, BHWC>& buffers) {
+  desc.resize_function = [input_id,
+                          params](const std::map<ValueId, BHWC>& buffers) {
     const auto& src_shape = buffers.find(input_id)->second;
     BHWC dst_shape = CalculateOutputShape(src_shape, params);
     const uint3 groups_size{16, 16, 1};
@@ -131,7 +131,7 @@ std::vector<ComputeTaskDescriptorPtr> MaxUnpooling(
     return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
   };
 
-  return {desc};
+  return desc;
 }
 
 }  // namespace metal

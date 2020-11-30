@@ -26,9 +26,9 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 
-std::vector<ComputeTaskDescriptorPtr> Pooling(
-    int id, ValueId input_id, const std::vector<ValueId>& output_id,
-    const Pooling2DAttributes& params);
+ComputeTaskDescriptor Pooling(int id, ValueId input_id, ValueId output_id,
+                              const Pooling2DAttributes& params,
+                              bool generate_indices);
 
 }  // namespace metal
 }  // namespace gpu

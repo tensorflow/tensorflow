@@ -27,9 +27,8 @@ namespace gpu {
 namespace metal {
 
 // creates TaskDescriptor for Padding operation
-std::vector<ComputeTaskDescriptorPtr> Padding(int id, ValueId input_id,
-                                              ValueId output_id,
-                                              const PadAttributes& attr);
+ComputeTaskDescriptor Padding(int id, ValueId input_id, ValueId output_id,
+                              const PadAttributes& attr);
 
 }  // namespace metal
 }  // namespace gpu

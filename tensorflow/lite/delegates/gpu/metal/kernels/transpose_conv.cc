@@ -452,13 +452,13 @@ std::string GetDeconvolution4x4(const int2& block_size,
 
 }  // namespace
 
-std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed(
+ComputeTaskDescriptor ConvolutionTransposed(
     int id, ValueId input_id, ValueId output_id,
     const ConvolutionTransposedAttributes& params, const GpuInfo& gpu_info,
     const RuntimeOptions& options) {
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = false;
+  ComputeTaskDescriptor desc;
+  desc.id = id;
+  desc.is_linkable = false;
 
   const int src_local_size_x =
       (kThreadGroupWidth + params.weights.shape.w) / params.stride.w;
@@ -469,17 +469,17 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed(
       sizeof(float) * 4 * src_depth * src_local_size_x * src_local_size_y;
   if (shared_size < 1000 * 16 &&
       gpu_info.apple_info.IsLocalMemoryPreferredOverGlobal()) {
-    desc->shader_source =
+    desc.shader_source =
         GetDeconvolutionShared(params, kThreadGroupWidth, kThreadGroupHeight);
   } else {
-    desc->shader_source = GetDeconvolution(params);
+    desc.shader_source = GetDeconvolution(params);
   }
 
-  desc->input_buffers = {
+  desc.input_buffers = {
       {input_id, "device FLT4* const src_buffer"},
   };
 
-  desc->output_buffer = {output_id, "device FLT4* dst_buffer"};
+  desc.output_buffer = {output_id, "device FLT4* dst_buffer"};
 
   const int src_ch_aligned = AlignByN(params.weights.shape.i, 4);
   const int dst_ch_aligned = AlignByN(params.weights.shape.o, 4);
@@ -511,7 +511,7 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed(
 
   auto filters =
       GetByteBufferConverted(filters_reordered, options.storage_precision);
-  desc->immutable_buffers = {
+  desc.immutable_buffers = {
       {"device FilterStripe* const filters", filters},
       {"device FLT4* const biases",
        GetByteBufferConvertedResized(params.bias.data,
@@ -519,7 +519,7 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed(
                                      params.weights.shape.o)},
   };
 
-  desc->uniform_buffers = {
+  desc.uniform_buffers = {
       {"constant uniforms& params",
        [input_id, output_id](const std::map<ValueId, BHWC>& buffers) {
          const auto& dimension = buffers.find(input_id)->second;
@@ -534,8 +534,8 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed(
        }},
   };
 
-  desc->resize_function = [input_id,
-                           params](const std::map<ValueId, BHWC>& buffers) {
+  desc.resize_function = [input_id,
+                          params](const std::map<ValueId, BHWC>& buffers) {
     const uint3 groups_size{kThreadGroupWidth, kThreadGroupHeight, 1};
     BHWC dst_shape =
         CalculateOutputShape(buffers.find(input_id)->second, params);
@@ -545,10 +545,10 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed(
     return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
   };
 
-  return {desc};
+  return desc;
 }
 
-std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed4x4(
+ComputeTaskDescriptor ConvolutionTransposed4x4(
     int id, ValueId input_id, ValueId output_id,
     const ConvolutionTransposedAttributes& params, const GpuInfo& gpu_info,
     const RuntimeOptions& options) {
@@ -600,9 +600,9 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed4x4(
   auto biases = GetByteBufferConvertedResized(
       params.bias.data, options.storage_precision, params.weights.shape.o);
 
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = false;
+  ComputeTaskDescriptor desc;
+  desc.id = id;
+  desc.is_linkable = false;
 
   bool recommended_2x = false;
   if (gpu_info.IsApple()) {
@@ -617,20 +617,20 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed4x4(
   }
 
   const int2 block_size(recommended_2x ? 2 : 1, 1);
-  desc->shader_source = GetDeconvolution4x4(block_size, gpu_info);
+  desc.shader_source = GetDeconvolution4x4(block_size, gpu_info);
 
-  desc->input_buffers = {
+  desc.input_buffers = {
       {input_id, "device FLT4* const src_buffer"},
   };
 
-  desc->output_buffer = {output_id, "device FLT4* dst_buffer"};
+  desc.output_buffer = {output_id, "device FLT4* dst_buffer"};
 
-  desc->immutable_buffers = {
+  desc.immutable_buffers = {
       {"device FLT4* const filters", filters},
       {"device FLT4* const biases", biases},
   };
 
-  desc->uniform_buffers = {
+  desc.uniform_buffers = {
       {"constant uniforms& params",
        [input_id, output_id, params](const std::map<ValueId, BHWC>& buffers) {
          const auto& src_shape = buffers.find(input_id)->second;
@@ -654,8 +654,8 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed4x4(
        }},
   };
 
-  desc->resize_function = [output_id, block_size,
-                           params](const std::map<ValueId, BHWC>& buffers) {
+  desc.resize_function = [output_id, block_size,
+                          params](const std::map<ValueId, BHWC>& buffers) {
     const auto& dst_shape = buffers.find(output_id)->second;
     const int grid_x = DivideRoundUp(dst_shape.w + 2, 2 * block_size.x);
     const int grid_y = DivideRoundUp(dst_shape.h + 2, 2 * block_size.y);
@@ -667,7 +667,7 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed4x4(
     return std::make_pair(group_size, uint3{groups_z, groups_x, groups_y});
   };
 
-  return {desc};
+  return desc;
 }
 
 bool CheckConvolutionTransposed4x4Support(

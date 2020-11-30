@@ -30,13 +30,12 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 
-std::vector<ComputeTaskDescriptorPtr> SpaceToDepth(
-    int id, ValueId input_id, ValueId output_id,
-    const SpaceToDepthAttributes& attr) {
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = false;
-  desc->shader_source = R"(
+ComputeTaskDescriptor SpaceToDepth(int id, ValueId input_id, ValueId output_id,
+                                   const SpaceToDepthAttributes& attr) {
+  ComputeTaskDescriptor desc;
+  desc.id = id;
+  desc.is_linkable = false;
+  desc.shader_source = R"(
 #include <metal_stdlib>
 using namespace metal;
 struct uniforms {
@@ -67,11 +66,11 @@ kernel void ComputeFunction($1 uint3 gid[[thread_position_in_grid]]) {
   dst_buffer[gid.x + dst_size.x * (gid.y + dst_size.y * gid.z)] = value;
 })";
 
-  desc->input_buffers = {{input_id, "device FLT4* const src_buffer"}};
+  desc.input_buffers = {{input_id, "device FLT4* const src_buffer"}};
 
-  desc->output_buffer = {output_id, "device FLT4* dst_buffer"};
+  desc.output_buffer = {output_id, "device FLT4* dst_buffer"};
 
-  desc->uniform_buffers = {
+  desc.uniform_buffers = {
       {"constant uniforms& params",
        [input_id, output_id, attr](const std::map<ValueId, BHWC>& buffers) {
          const BHWC& input_shape = buffers.find(input_id)->second;
@@ -97,7 +96,7 @@ kernel void ComputeFunction($1 uint3 gid[[thread_position_in_grid]]) {
        }},
   };
 
-  desc->resize_function =
+  desc.resize_function =
       [input_id, attr](
           const std::map<ValueId, BHWC>& buffers) -> std::pair<uint3, uint3> {
     const BHWC& input_shape = buffers.find(input_id)->second;
@@ -113,7 +112,7 @@ kernel void ComputeFunction($1 uint3 gid[[thread_position_in_grid]]) {
     const int groups_z = DivideRoundUp(grid.z, groups_size.z);
     return std::make_pair(groups_size, uint3(groups_x, groups_y, groups_z));
   };
-  return {desc};
+  return desc;
 }
 
 }  // namespace metal

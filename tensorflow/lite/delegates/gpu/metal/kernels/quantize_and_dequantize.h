@@ -39,7 +39,7 @@ namespace metal {
 //
 // NOTE: We do not need to nudge min/max values in this op, since they would
 // already be adjusted while generating the quantized model.
-std::vector<ComputeTaskDescriptorPtr> QuantizeAndDequantize(
+ComputeTaskDescriptor QuantizeAndDequantize(
     int id, ValueId input_id, ValueId output_id,
     const QuantizeAndDequantizeAttributes& attr);
 
