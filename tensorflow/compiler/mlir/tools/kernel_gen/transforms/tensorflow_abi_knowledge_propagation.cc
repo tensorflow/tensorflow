@@ -147,6 +147,13 @@ struct PropagateTfAbiKnowledgeToKernelsPass
             worklist.push_back(reshape.result());
           }
         }
+        if (auto cast = dyn_cast<MemRefReinterpretCastOp>(user)) {
+          // Check that we have offset 0.
+          if (cast.getStaticOffset(0) != 0) continue;
+          if (allocated_by_runtime.insert(cast.result()).second) {
+            worklist.push_back(cast.result());
+          }
+        }
       }
     }
   }

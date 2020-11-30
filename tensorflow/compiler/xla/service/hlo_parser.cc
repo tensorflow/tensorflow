@@ -2252,7 +2252,7 @@ bool HloParserImpl::ParseFrontendAttributes(
                     "expects '}' at the end of frontend attributes");
 }
 
-//  ::= '{' 'replicated'? 'maximal'? ('device=' int)? shape?
+//  ::= '{' 'replicated'? 'manual'? 'maximal'? ('device=' int)? shape?
 //          ('devices=' ('[' dims ']')* device_list)? '}'
 // dims ::= int_list device_list ::= int_list
 bool HloParserImpl::ParseSingleSharding(OpSharding* sharding,
@@ -2266,6 +2266,7 @@ bool HloParserImpl::ParseSingleSharding(OpSharding* sharding,
   LocTy loc = lexer_.GetLoc();
   bool maximal = false;
   bool replicated = false;
+  bool manual = false;
   bool last_tile_dim_replicate = false;
   std::vector<int64> devices;
   std::vector<int64> tile_assignment_dimensions;
@@ -2277,6 +2278,10 @@ bool HloParserImpl::ParseSingleSharding(OpSharding* sharding,
         break;
       case TokKind::kw_replicated:
         replicated = true;
+        lexer_.Lex();
+        break;
+      case TokKind::kw_manual:
+        manual = true;
         lexer_.Lex();
         break;
       case TokKind::kAttributeName: {
@@ -2342,6 +2347,12 @@ bool HloParserImpl::ParseSingleSharding(OpSharding* sharding,
     }
     sharding->set_type(OpSharding::MAXIMAL);
     sharding->add_tile_assignment_devices(devices[0]);
+  } else if (manual) {
+    if (!devices.empty()) {
+      return Error(loc,
+                   "manual shardings should not have any devices assigned");
+    }
+    sharding->set_type(OpSharding::MANUAL);
   } else {
     if (devices.size() <= 1) {
       return Error(

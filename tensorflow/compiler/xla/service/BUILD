@@ -1037,7 +1037,7 @@ cc_library(
 # This flag enables experimental MLIR GPU support.
 config_setting(
     name = "with_mlir_gpu_support",
-    values = {"define": "with_mlir_gpu_support=true"},
+    define_values = {"with_mlir_gpu_support": "true"},
     visibility = ["//visibility:public"],
 )
 
@@ -3776,7 +3776,6 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
@@ -5261,5 +5260,28 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "convert_operand_folding",
+    srcs = ["convert_operand_folding.cc"],
+    hdrs = ["convert_operand_folding.h"],
+    deps = [
+        ":hlo",
+        ":op_expander_pass",
+    ],
+)
+
+tf_cc_test(
+    name = "convert_operand_folding_test",
+    srcs = ["convert_operand_folding_test.cc"],
+    deps = [
+        ":convert_operand_folding",
+        ":hlo_matchers",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/strings",
     ],
 )

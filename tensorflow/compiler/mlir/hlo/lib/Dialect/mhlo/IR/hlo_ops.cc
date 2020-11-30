@@ -1268,8 +1268,8 @@ class DynamicReshapeOpNotActuallyDynamic
 
 void DynamicReshapeOp::getCanonicalizationPatterns(
     OwningRewritePatternList& results, MLIRContext* context) {
-  results.insert<DynamicReshapeOpNotActuallyDynamic, ShapeOfDynamicReshape>(
-      context);
+  results.insert<DynamicReshapeOpNotActuallyDynamic,
+                 RemoveRedundantDynamicReshape, ShapeOfDynamicReshape>(context);
 }
 
 //===----------------------------------------------------------------------===//

@@ -833,6 +833,10 @@ gentbl(
             "-gen-pass-decls -name TensorFlow",
             "transforms/tf_passes.h.inc",
         ),
+        (
+            "-gen-pass-doc",
+            "g3doc/includes/tf_passes.md",
+        ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/tf_passes.td",
@@ -852,6 +856,7 @@ cc_library(
         "transforms/cluster_outlining.cc",
         "transforms/cluster_tf_ops_pass.cc",
         "transforms/collection_ops_util.cc",
+        "transforms/constant_op_device_assignment.cc",
         "transforms/contraction_fusion.cc",
         "transforms/decompose_resource_ops_pass.cc",
         "transforms/device_index_selector.cc",

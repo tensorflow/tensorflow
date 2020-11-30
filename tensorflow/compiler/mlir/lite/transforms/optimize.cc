@@ -351,10 +351,10 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
         // to properly broadcast the scalar to `{num_channels}` shape.
 
         // Get the number of channels if possible.
-        auto filter_type = filter.getType().cast<ShapedType>();
+        auto filter_type = filter.getType().dyn_cast<RankedTensorType>();
         // Filter must be a `2D` tensor with `{num_channels, num_features}`
         // shape. The following check is rejecting unknown rank (-1).
-        if (filter_type.getRank() != 2) {
+        if (filter_type == nullptr || filter_type.getRank() != 2) {
           return failure();
         }
         int num_channels = filter_type.getShape()[0];

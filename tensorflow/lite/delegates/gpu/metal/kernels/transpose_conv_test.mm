@@ -233,7 +233,7 @@ using ::tflite::gpu::metal::SingleOpModel;
   TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 3;
-  output.shape = BHWC(1, 5, 5, 1);
+  output.shape = BHWC(1, 6, 6, 1);
 
   SingleOpModel model({ToString(OperationType::CONVOLUTION_TRANSPOSED), std::move(attr)}, {input},
                       {output});
@@ -271,7 +271,7 @@ using ::tflite::gpu::metal::SingleOpModel;
   TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 3;
-  output.shape = BHWC(1, 4, 4, 1);
+  output.shape = BHWC(1, 4, 4, 2);
 
 
   SingleOpModel model({ToString(OperationType::CONVOLUTION_TRANSPOSED), std::move(attr)}, {input},

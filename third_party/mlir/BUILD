@@ -3279,6 +3279,7 @@ cc_library(
         "@llvm-project//mlir/test:TestPass",
         "@llvm-project//mlir/test:TestReducer",
         "@llvm-project//mlir/test:TestSPIRV",
+        "@llvm-project//mlir/test:TestShapeDialect",
         "@llvm-project//mlir/test:TestTransforms",
         "@llvm-project//mlir/test:TestTypeDialect",
     ],
@@ -3499,7 +3500,9 @@ cc_binary(
         ":AllPassesAndDialectsNoRegistration",
         ":ExecutionEngineUtils",
         ":MlirJitRunner",
+        "@llvm-project//llvm:AsmParser",
         "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:X86AsmParser",
     ],
 )
 
@@ -4328,6 +4331,16 @@ cc_library(
         ":VectorOps",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
+    ],
+)
+
+filegroup(
+    name = "TosaDialectTdFiles",
+    srcs = glob(["include/mlir/Dialect/Tosa/IR/*.td"]) + [
+        "include/mlir/Interfaces/LoopLikeInterface.td",
+        ":OpBaseTdFiles",
+        ":QuantizationOpsTdFiles",
+        ":SideEffectTdFiles",
     ],
 )
 

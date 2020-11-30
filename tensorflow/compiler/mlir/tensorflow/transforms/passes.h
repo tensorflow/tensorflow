@@ -93,6 +93,10 @@ struct LayoutOptimizationPipelineOptions
   Option<std::string> force_data_format{
       *this, "force-data-format",
       llvm::cl::desc("Force data format for all layout sensitive ops")};
+  Option<bool> skip_fold_transpose_in_ops{
+      *this, "skip-fold-transpose-in-ops",
+      llvm::cl::desc("Skip folding transpose operands in Ops which can support "
+                     "different layouts.")};
 };
 
 // Layout optimization assigns optimal data layout for layout sensitive
@@ -190,6 +194,13 @@ std::unique_ptr<OperationPass<FuncOp>> CreateInitTextFileToImportPass();
 // function will have a "tf.device" attribute which specifies the device
 // assignment of the result.
 std::unique_ptr<FunctionPass> CreateClusterTFOpsByHostPass();
+
+// Creates a pass that adds the device attribute to every tf.Const op based on
+// the device attribute of the operations that read its result. If the result of
+// a tf.Const op is read by operations placed on multiple devices, then the pass
+// will replicate the tf.Const op once for each device.
+std::unique_ptr<OperationPass<ModuleOp>> CreateConstantOpDeviceAssignmentPass();
+
 }  // namespace TF
 
 namespace tf_executor {

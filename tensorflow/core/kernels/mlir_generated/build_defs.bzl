@@ -192,7 +192,17 @@ def _gen_kernel_image_hdr(name, mlir_op, gpu_archs, tile_size, unroll_factors = 
         symbol = "k%s" % name.replace("_", " ").title().replace(" ", ""),
     )
 
+type_to_mlir = {
+    "c64": "complex<f32>",
+    "c128": "complex<f64>",
+}
+
 def _gen_mlir_op_impl(ctx):
+    # Map attr.type to MLIR type.
+    mlir_type = ctx.attr.type
+    if mlir_type in type_to_mlir:
+        mlir_type = type_to_mlir[mlir_type]
+
     # In order to generate a ranked kernel we change *xelem_type to ?xelem_type
     # and remove element type from the entry function name.
     convert_to_ranked = ""
@@ -202,11 +212,11 @@ def _gen_mlir_op_impl(ctx):
         inputs = [ctx.file.template],
         outputs = [ctx.outputs.out],
         command = (
-            ("cat %s | %s sed s/elem_type/%s/g | sed 's/c64/complex<f32>/g'" +
-             " | sed 's/c128/complex<f64>/g' > %s") % (
+            ("cat %s | %s sed 's/_elem_type/_%s/g' | sed 's/elem_type/%s/g' > %s") % (
                 ctx.file.template.path,
                 convert_to_ranked,
                 ctx.attr.type,
+                mlir_type,
                 ctx.outputs.out.path,
             )
         ),
@@ -354,6 +364,22 @@ def gen_unranked_kernel_library(name, types, tile_size, tags = [], unroll_factor
             native.cc_import(
                 name = "{name}_{type}_kernel".format(name = name, type = type),
                 static_library = "{name}_{type}.a".format(name = name, type = type),
+            )
+
+            # We have to use a sh_test instead of build_test because it doesn't properly find the dependent targets.
+            native.sh_test(
+                name = "{name}_{type}_gen_test".format(name = name, type = type),
+                srcs = ["build_test.sh"],
+                tags = ["no_rocm"],
+                args = [
+                    "$(location //tensorflow/compiler/mlir/tools/kernel_gen:tf_to_kernel)",
+                    "$(location {name}_{type}.mlir)".format(name = name, type = type),
+                ],
+                size = "small",
+                data = [
+                    ":{name}_{type}.mlir".format(name = name, type = type),
+                    "//tensorflow/compiler/mlir/tools/kernel_gen:tf_to_kernel",
+                ],
             )
 
     native.cc_library(

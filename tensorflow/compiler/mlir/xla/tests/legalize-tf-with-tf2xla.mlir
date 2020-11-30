@@ -321,6 +321,27 @@ func @ndtri(%input: tensor<4xf32>) -> tensor<4xf32> {
   return %0 : tensor<4xf32>
 }
 
+// CHECK-LABEL: @fake_param
+func @fake_param() -> tensor<4xf32> {
+  // CHECK-NOT: tf.FakeParam
+  %0 = "tf.FakeParam"() {shape = #tf.shape<4>} : () -> tensor<4xf32>
+  return %0 : tensor<4xf32>
+}
+
+// CHECK-LABEL: @parameterized_truncated_normal
+func @parameterized_truncated_normal(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<f32>, %arg3: tensor<f32>) -> tensor<10000000xf32> {
+  %0 = "tf.Const"() {value = dense<10000000> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK-NOT: tf.ParameterizedTruncatedNormal
+  %1 = "tf.ParameterizedTruncatedNormal"(%0, %arg0, %arg1, %arg2, %arg3) {seed = 0 : i64, seed2 = 0 : i64} : (tensor<1xi32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<10000000xf32>
+  return %1 : tensor<10000000xf32>
+}
+
+// CHECK-LABEL: @xla_svd
+func @xla_svd(%arg0: tensor<1x1xf32>) -> (tensor<1xf32>, tensor<1x1xf32>, tensor<1x1xf32>) {
+  // CHECK-NOT: XlaSvd
+  %s, %u, %v = "tf.XlaSvd"(%arg0) {max_iter = 1, epsilon = 1.0E-09 : f32, precision_config = ""} : (tensor<1x1xf32>) -> (tensor<1xf32>, tensor<1x1xf32>, tensor<1x1xf32>)
+  return %s, %u, %v : tensor<1xf32>, tensor<1x1xf32>, tensor<1x1xf32>
+}
 
 // TODO(hinsu): Add a test with a valid TF op for which tf2xla kernel is
 // available but doesn't support this instance.

@@ -221,7 +221,7 @@ using ::tflite::gpu::metal::CompareVectors;
   auto status = RunGraph(tasks, device, inputs, &outputs);
   XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 
-  status = CompareVectors(dst_tensor.data, outputs[1].data, 1e-6f);
+  status = CompareVectors(dst_tensor.data, outputs[1].data, 1e-5f);
   XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 

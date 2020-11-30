@@ -1531,7 +1531,9 @@ def function(func=None,
       This can either be specified as just the string name of the function or
       a NameAttrList corresponding to a list of key-value attributes associated
       with the function name. The name of the function will be in the 'name'
-      field of the NameAttrList.
+      field of the NameAttrList. To define a formal TF op for this function
+      implements, try the experimental [composite TF](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/mlir/tfr)
+      project.
     experimental_autograph_options: Optional tuple of
       `tf.autograph.experimental.Feature` values.
     experimental_relax_shapes: When True, `tf.function` may generate fewer,

@@ -4889,9 +4889,9 @@ def combined_non_max_suppression(boxes,
       representing a single score corresponding to each box (each row of boxes).
     max_output_size_per_class: A scalar integer `Tensor` representing the
       maximum number of boxes to be selected by non-max suppression per class
-    max_total_size: A scalar representing maximum number of boxes retained over
-      all classes. Note that setting this value to a large number may result in
-      OOM error depending on the system workload.
+    max_total_size: A int32 scalar representing maximum number of boxes retained
+      over all classes. Note that setting this value to a large number may
+      result in OOM error depending on the system workload.
     iou_threshold: A float representing the threshold for deciding whether boxes
       overlap too much with respect to IOU.
     score_threshold: A float representing the threshold for deciding when to
@@ -4923,6 +4923,17 @@ def combined_non_max_suppression(boxes,
         iou_threshold, dtype=dtypes.float32, name='iou_threshold')
     score_threshold = ops.convert_to_tensor(
         score_threshold, dtype=dtypes.float32, name='score_threshold')
+
+    # Convert `max_total_size` to tensor *without* setting the `dtype` param.
+    # This allows us to catch `int32` overflow case with `max_total_size`
+    # whose expected dtype is `int32` by the op registration. Any number within
+    # `int32` will get converted to `int32` tensor. Anything larger will get
+    # converted to `int64`. Passing in `int64` for `max_total_size` to the op
+    # will throw dtype mismatch exception.
+    # TODO(b/173251596): Once there is a more general solution to warn against
+    # int overflow conversions, revisit this check.
+    max_total_size = ops.convert_to_tensor(max_total_size)
+
     return gen_image_ops.combined_non_max_suppression(
         boxes, scores, max_output_size_per_class, max_total_size, iou_threshold,
         score_threshold, pad_per_class, clip_boxes)
