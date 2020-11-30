@@ -194,6 +194,13 @@ std::unique_ptr<OperationPass<FuncOp>> CreateInitTextFileToImportPass();
 // function will have a "tf.device" attribute which specifies the device
 // assignment of the result.
 std::unique_ptr<FunctionPass> CreateClusterTFOpsByHostPass();
+
+// Creates a pass that adds the device attribute to every tf.Const op based on
+// the device attribute of the operations that read its result. If the result of
+// a tf.Const op is read by operations placed on multiple devices, then the pass
+// will replicate the tf.Const op once for each device.
+std::unique_ptr<OperationPass<ModuleOp>> CreateConstantOpDeviceAssignmentPass();
+
 }  // namespace TF
 
 namespace tf_executor {
