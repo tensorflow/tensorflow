@@ -220,6 +220,10 @@ class Shape {
       ignore_dynamic_dimension_ = true;
       return *this;
     }
+    Equal& IgnoreDimensions() {
+      ignore_dimensions_ = true;
+      return *this;
+    }
 
    private:
     bool ignore_layout_ = false;
@@ -229,6 +233,7 @@ class Shape {
     bool ignore_element_type_ = false;
     bool ignore_fp_precision_ = false;
     bool ignore_dynamic_dimension_ = false;
+    bool ignore_dimensions_ = false;
   };
 
   // Test that all fields of the shape are the same, equivalent to Equal().

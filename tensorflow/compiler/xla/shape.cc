@@ -141,9 +141,11 @@ bool Shape::Equal::operator()(const Shape& lhs, const Shape& rhs) {
     }
   }
 
-  if (!ShapeUtil::SameDimensions(lhs, rhs)) {
-    VLOG(3) << "CompareShapes: lhs dimensions != rhs dimensions";
-    return false;
+  if (!ignore_dimensions_) {
+    if (!ShapeUtil::SameDimensions(lhs, rhs)) {
+      VLOG(3) << "CompareShapes: lhs dimensions != rhs dimensions";
+      return false;
+    }
   }
 
   if (!ignore_layout_) {
