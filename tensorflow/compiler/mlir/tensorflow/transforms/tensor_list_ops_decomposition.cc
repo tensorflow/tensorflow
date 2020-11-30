@@ -545,14 +545,33 @@ LogicalResult GetConstShapeValue(Value shape_value,
   return success();
 }
 
+// Checks the result Variant type to infer the element shape if fully defined.
+// If the Variant type has multiple subtypes or does not have static shape,
+// return error.
+LogicalResult GetElementShapeFromResultType(
+    Type type, llvm::SmallVector<int64_t, 8>* shape) {
+  auto variant_type = getElementTypeOrSelf(type).dyn_cast<TF::VariantType>();
+  if (!variant_type || variant_type.getSubtypes().size() != 1) return failure();
+  TensorType tensor_type = variant_type.getSubtypes().front();
+  if (!tensor_type.hasStaticShape()) return failure();
+  for (auto d : tensor_type.getShape()) shape->push_back(d);
+  return success();
+}
+
 LogicalResult HandleEmptyTensorListOp(
     TF::EmptyTensorListOp list,
     llvm::SmallDenseMap<Value, SizeInfo>* buffer_to_size) {
   Value buffer;
   OpBuilder builder(list);
   llvm::SmallVector<int64_t, 8> element_shape;
-  if (failed(GetConstShapeValue(list.element_shape(), &element_shape))) {
-    return list.emitOpError("unknown tensor list element shape");
+  // Infer TensorList element shape from the return type first, and then from
+  // the const element shape operand. We first check the return type because
+  // shape inference might have successfully inferred the element shape from
+  // write operations on the TensorList.
+  if (failed(GetElementShapeFromResultType(list.getType(), &element_shape))) {
+    if (failed(GetConstShapeValue(list.element_shape(), &element_shape))) {
+      return list.emitOpError("unknown tensor list element shape");
+    }
   }
   if (failed(cutil::CreateInitBufferValue(
           element_shape, list.max_num_elements(), list, list.element_dtype(),
@@ -572,8 +591,14 @@ LogicalResult HandleTensorListReserveOp(
   Value buffer;
   OpBuilder builder(list);
   llvm::SmallVector<int64_t, 8> element_shape;
-  if (failed(GetConstShapeValue(list.element_shape(), &element_shape))) {
-    return list.emitOpError("unknown tensor list element shape");
+  // Infer TensorList element shape from the return type first, and then from
+  // the const element shape operand. We first check the return type because
+  // shape inference might have successfully inferred the element shape from
+  // write operations on the TensorList.
+  if (failed(GetElementShapeFromResultType(list.getType(), &element_shape))) {
+    if (failed(GetConstShapeValue(list.element_shape(), &element_shape))) {
+      return list.emitOpError("unknown tensor list element shape");
+    }
   }
   if (failed(cutil::CreateInitBufferValue(element_shape, list.num_elements(),
                                           list, list.element_dtype(), builder,
