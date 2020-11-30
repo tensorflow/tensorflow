@@ -96,6 +96,8 @@
   * `tf.quantization.quantize_and_dequantize_v2` has been introduced, which updates the gradient definition for quantization which is outside the range
      to be 0. To simulate the V1 the behavior of `tf.quantization.quantize_and_dequantize(...)` use             `tf.grad_pass_through(tf.quantization.quantize_and_dequantize_v2)(...)`.
 
+* Building TensorFlow:
+  * Windows platform builds: TensorFlow on Windows under MSVC is now built with `--copt=/experimental:preprocessor --host_copt=/experimental:preprocessor` (see `.bazelrc` for more details). Builds including TensorFlow may fail with unexpected syntax errors if these flags are absent. See also [this thread on SIG Build](https://groups.google.com/a/tensorflow.org/g/build/c/LbAw8RILvTg/m/ttnuhYU2BgAJ).
 
 ## Bug Fixes and Other Changes
 
