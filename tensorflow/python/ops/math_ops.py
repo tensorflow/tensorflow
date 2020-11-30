@@ -916,6 +916,12 @@ def cast(x, dtype, name=None):
   For example:
 
   >>> x = tf.constant([1.8, 2.2], dtype=tf.float32)
+  >>> tf.cast(x, tf.int32)
+  <tf.Tensor: shape=(2,), dtype=int32, numpy=array([1, 2], dtype=int32)>
+
+  Notice `tf.cast` has an alias `tf.dtypes.cast`:
+
+  >>> x = tf.constant([1.8, 2.2], dtype=tf.float32)
   >>> tf.dtypes.cast(x, tf.int32)
   <tf.Tensor: shape=(2,), dtype=int32, numpy=array([1, 2], dtype=int32)>
 
