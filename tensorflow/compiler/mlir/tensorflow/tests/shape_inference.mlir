@@ -479,6 +479,16 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     return
   }
 
+  // CHECK-LABEL: do_not_unrefine_fully_defined_subtypes
+  func @do_not_unrefine_fully_defined_subtypes() {
+    %elem_shape = "tf.Const"() {value = dense<[-1, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
+    %size = "tf.Const"() {value = dense<2> : tensor<i32>} : () -> tensor<i32>
+    // CHECK: "tf.TensorListReserve"
+    // CHECK-SAME: tensor<!tf.variant<tensor<16x1xf32>>>
+    %tl_0 = "tf.TensorListReserve"(%elem_shape, %size) : (tensor<2xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<16x1xf32>>>
+    return
+  }
+
   // CHECK-LABEL: dont_update_for_ref
   func @dont_update_for_ref() -> () {
     // CHECK: () -> tensor<4x!tf.f32ref>
