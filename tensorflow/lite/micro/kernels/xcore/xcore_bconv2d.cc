@@ -14,7 +14,18 @@ namespace tflite {
 namespace ops {
 namespace micro {
 namespace xcore {
-namespace conv {
+namespace bconv {
+
+template <typename Tout>
+struct BConv2DArguments {
+  Tout *Y;
+  const bnn_b32_t *X;
+  const bnn_b32_t *K;
+
+  nn_image_params_t x;
+  nn_image_params_t y;
+  nn_window_params_t k;
+};
 
 //**************************************
 //**************************************
@@ -30,16 +41,9 @@ enum class BConv2DKernelType {
   DEEPIN,
 };
 
-// These are the bconv2d properties common to all threads
-struct BConv2DThreadDataCommon {
-  bnn_b32_t *Y;
-  const bnn_b32_t *X;
-  const bnn_b32_t *K;
+// These are the bconv2d properties args to all threads
+struct BConv2DBitpackedArguments : BConv2DArguments<bnn_b32_t> {
   const int32_t *thresholds;
-
-  nn_image_params_t x;
-  nn_image_params_t y;
-  nn_window_params_t k;
 };
 
 struct BConv2DJob : RowColRegion {
@@ -48,7 +52,7 @@ struct BConv2DJob : RowColRegion {
 
 // These are the bconv2d properties unique to each thread
 struct BConv2DThreadData {
-  BConv2DThreadDataCommon *common;
+  BConv2DBitpackedArguments *args;
   BConv2DJob *job;  // This describes the region that that thread will process
   int thread_scratch_idx;
   bnn_b32_t *thread_scratch;  // size should be K_h * K_w * C_in / 32 + 8
@@ -60,10 +64,10 @@ ATTRIBUTE_THREAD_FUNCTION void bconv2d_bitpacked_deepin_thread_generator(
   auto *td = static_cast<BConv2DThreadData *>(context);
   auto *job = td->job;
   while (job) {
-    bconv2d_bin_DI_valid(
-        td->common->Y, (bnn_b256_t *)td->common->X, (bnn_b256_t *)td->common->K,
-        td->common->thresholds, &td->common->x, &td->common->y, &td->common->k,
-        job->left, job->top, job->cols, job->rows);
+    bconv2d_bin_DI_valid(td->args->Y, (bnn_b256_t *)td->args->X,
+                         (bnn_b256_t *)td->args->K, td->args->thresholds,
+                         &td->args->x, &td->args->y, &td->args->k, job->left,
+                         job->top, job->cols, job->rows);
     job = job->next;
   }
 }
@@ -73,10 +77,10 @@ ATTRIBUTE_THREAD_FUNCTION void bconv2d_bitpacked_thread_generator(
   auto *td = static_cast<BConv2DThreadData *>(context);
   auto *job = td->job;
   while (job) {
-    bconv2d_bin_valid(
-        td->common->Y, td->common->X, td->common->K, td->common->thresholds,
-        td->thread_scratch, &td->common->x, &td->common->y, &td->common->k,
-        job->left, job->top, job->cols, job->rows);
+    bconv2d_bin_valid(td->args->Y, td->args->X, td->args->K,
+                      td->args->thresholds, td->thread_scratch, &td->args->x,
+                      &td->args->y, &td->args->k, job->left, job->top,
+                      job->cols, job->rows);
     job = job->next;
   }
 }
@@ -86,8 +90,8 @@ ATTRIBUTE_THREAD_FUNCTION void bconv2d_bitpacked_thread_generator(
 This is a struct that describes the memory required to configure the operator.
 */
 struct BConv2DBitpackedOpData {
-  // Data that is common to all threads processing the bconv2d
-  BConv2DThreadDataCommon common;
+  // Data that is args to all threads processing the bconv2d
+  BConv2DBitpackedArguments args;
 
   // These are the head pointers to the thread data a thread will have to use.
   BConv2DThreadData *threads;
@@ -128,18 +132,18 @@ void *Init(TfLiteContext *context, const char *buffer, size_t length) {
 
   flexbuffers::Vector Kshape =
       get_named_uint32_custom_option_vector(context, buffer, length, "K");
-  op_data->common.y.channels = Kshape[0].AsUInt32();
-  op_data->common.k.shape.height = Kshape[1].AsUInt32();
-  op_data->common.k.shape.width = Kshape[2].AsUInt32();
-  op_data->common.x.channels = Kshape[3].AsUInt32();
+  op_data->args.y.channels = Kshape[0].AsUInt32();
+  op_data->args.k.shape.height = Kshape[1].AsUInt32();
+  op_data->args.k.shape.width = Kshape[2].AsUInt32();
+  op_data->args.x.channels = Kshape[3].AsUInt32();
 
   flexbuffers::Vector strides =
       get_named_uint32_custom_option_vector(context, buffer, length, "stride");
-  op_data->common.k.stride.vertical = strides[0].AsInt32();
-  op_data->common.k.stride.horizontal = strides[1].AsInt32();
+  op_data->args.k.stride.vertical = strides[0].AsInt32();
+  op_data->args.k.stride.horizontal = strides[1].AsInt32();
 
-  op_data->common.k.dilation.horizontal = 1;
-  op_data->common.k.dilation.vertical = 1;
+  op_data->args.k.dilation.horizontal = 1;
+  op_data->args.k.dilation.vertical = 1;
 
   // TODO
   // parse_custom_options(context, buffer, length, &op_data->execution_plan);
@@ -148,10 +152,10 @@ void *Init(TfLiteContext *context, const char *buffer, size_t length) {
 
   TFLITE_DCHECK(op_data->n_threads > 0);
   TFLITE_DCHECK(op_data->n_jobs > 0);
-  TFLITE_DCHECK(op_data->common.k.stride.horizontal > 0);
-  TFLITE_DCHECK(op_data->common.k.stride.vertical > 0);
-  TFLITE_DCHECK(op_data->common.k.dilation.horizontal > 0);
-  TFLITE_DCHECK(op_data->common.k.dilation.vertical > 0);
+  TFLITE_DCHECK(op_data->args.k.stride.horizontal > 0);
+  TFLITE_DCHECK(op_data->args.k.stride.vertical > 0);
+  TFLITE_DCHECK(op_data->args.k.dilation.horizontal > 0);
+  TFLITE_DCHECK(op_data->args.k.dilation.vertical > 0);
 
   // Allocate the jobs (one pointer per thread)
   op_data->threads =
@@ -169,7 +173,7 @@ void *Init(TfLiteContext *context, const char *buffer, size_t length) {
   job.left = 0;
   auto &td = op_data->threads[0];
   td.job = &job;
-  td.common = &op_data->common;
+  td.args = &op_data->args;
 
   return op_data;
 }
@@ -187,21 +191,21 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
   const TfLiteTensor *output = GetOutput(context, node, 0);
 
   // setup runtime parameters
-  op_data->common.x.height = (uint32_t)input->dims->data[1];
-  op_data->common.x.width = (uint32_t)input->dims->data[2];
+  op_data->args.x.height = (uint32_t)input->dims->data[1];
+  op_data->args.x.width = (uint32_t)input->dims->data[2];
   // FIXME *32
-  TF_LITE_ENSURE_EQ(context, op_data->common.x.channels,
+  TF_LITE_ENSURE_EQ(context, op_data->args.x.channels,
                     (uint32_t)input->dims->data[3] * 32);
 
-  op_data->common.y.height = (uint32_t)output->dims->data[1];
-  op_data->common.y.width = (uint32_t)output->dims->data[2];
+  op_data->args.y.height = (uint32_t)output->dims->data[1];
+  op_data->args.y.width = (uint32_t)output->dims->data[2];
   // FIXME *32
-  TF_LITE_ENSURE_EQ(context, op_data->common.y.channels,
+  TF_LITE_ENSURE_EQ(context, op_data->args.y.channels,
                     (uint32_t)output->dims->data[3] * 32);
 
   // TODO: remove this when parallelization is done
-  op_data->jobs[0].cols = op_data->common.y.width;
-  op_data->jobs[0].rows = op_data->common.y.height;
+  op_data->jobs[0].cols = op_data->args.y.width;
+  op_data->jobs[0].rows = op_data->args.y.height;
 
   // TODO: fix this this when parallelization is done
   // allocate scratch buffers for weights and biases (if necessary)
@@ -222,8 +226,8 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
     GET_THREAD_FUNCTION_STACKSIZE(op_data->stack_size,
                                   bconv2d_bitpacked_thread_generator);
     int thread_scratch_size =
-        4 * (op_data->common.k.shape.height * op_data->common.k.shape.width *
-                 op_data->common.x.channels / 32 +
+        4 * (op_data->args.k.shape.height * op_data->args.k.shape.width *
+                 op_data->args.x.channels / 32 +
              8);  // FIXME *32
     for (int thread_idx = 0; thread_idx < op_data->n_threads; thread_idx++) {
       TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
@@ -254,30 +258,30 @@ TfLiteStatus EvalCommon(TfLiteContext *context, TfLiteNode *node) {
   TfLiteTensor *output = GetOutput(context, node, 0);
 
   // setup runtime pointers
-  op_data->common.X = GetTensorData<bnn_b32_t>(input);
-  op_data->common.Y = GetTensorData<bnn_b32_t>(output);
+  op_data->args.X = GetTensorData<bnn_b32_t>(input);
+  op_data->args.Y = GetTensorData<bnn_b32_t>(output);
 
   // load weights & bias scratch buffers (if necessary)
   if (op_data->weights_scratch_index >= 0) {
-    op_data->common.K = static_cast<const bnn_b32_t *>(
+    op_data->args.K = static_cast<const bnn_b32_t *>(
         context->GetScratchBuffer(context, op_data->weights_scratch_index));
-    dispatcher->FetchBuffer((int8_t **)&op_data->common.K,
+    dispatcher->FetchBuffer((int8_t **)&op_data->args.K,
                             GetTensorData<int8_t>(kernel), kernel->bytes);
   } else {
-    op_data->common.K = GetTensorData<bnn_b32_t>(kernel);
+    op_data->args.K = GetTensorData<bnn_b32_t>(kernel);
   }
-  TF_LITE_ENSURE(context, op_data->common.K);
+  TF_LITE_ENSURE(context, op_data->args.K);
 
   if (op_data->bias_scratch_index >= 0) {
-    op_data->common.thresholds = static_cast<const int32_t *>(
+    op_data->args.thresholds = static_cast<const int32_t *>(
         context->GetScratchBuffer(context, op_data->bias_scratch_index));
-    dispatcher->FetchBuffer((int8_t **)&op_data->common.thresholds,
+    dispatcher->FetchBuffer((int8_t **)&op_data->args.thresholds,
                             GetTensorData<int8_t>(thresholds),
                             thresholds->bytes);
   } else {
-    op_data->common.thresholds = GetTensorData<int32_t>(thresholds);
+    op_data->args.thresholds = GetTensorData<int32_t>(thresholds);
   }
-  TF_LITE_ENSURE(context, op_data->common.thresholds);
+  TF_LITE_ENSURE(context, op_data->args.thresholds);
 
   return kTfLiteOk;
 }
@@ -323,21 +327,21 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
 
 }  // namespace bitpacked
 
-}  // namespace conv
+}  // namespace bconv
 
 TfLiteRegistration *Register_BConv2D_Bitpacked_Deepin() {
   static TfLiteRegistration r = {
-      conv::bitpacked::Init, nullptr,
-      conv::bitpacked::Prepare<conv::bitpacked::BConv2DKernelType::DEEPIN>,
-      conv::bitpacked::Eval<conv::bitpacked::BConv2DKernelType::DEEPIN>};
+      bconv::bitpacked::Init, nullptr,
+      bconv::bitpacked::Prepare<bconv::bitpacked::BConv2DKernelType::DEEPIN>,
+      bconv::bitpacked::Eval<bconv::bitpacked::BConv2DKernelType::DEEPIN>};
   return &r;
 }
 
 TfLiteRegistration *Register_BConv2D_Bitpacked() {
   static TfLiteRegistration r = {
-      conv::bitpacked::Init, nullptr,
-      conv::bitpacked::Prepare<conv::bitpacked::BConv2DKernelType::GENERIC>,
-      conv::bitpacked::Eval<conv::bitpacked::BConv2DKernelType::GENERIC>};
+      bconv::bitpacked::Init, nullptr,
+      bconv::bitpacked::Prepare<bconv::bitpacked::BConv2DKernelType::GENERIC>,
+      bconv::bitpacked::Eval<bconv::bitpacked::BConv2DKernelType::GENERIC>};
   return &r;
 }
 
