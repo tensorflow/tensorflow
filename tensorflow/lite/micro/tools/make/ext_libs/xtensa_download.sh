@@ -19,6 +19,9 @@
 # Called with four arguments:
 # 1 - Path to the downloads folder which is typically
 #     tensorflow/lite/micro/tools/make/downloads
+# 2 - URL to downoad external library
+# 3 - Name of the library directory once it is unzipped.
+# 4 - MD5 checksum for library
 #
 # This script is called from the Makefile and uses the following convention to
 # enable determination of sucess/failure:
@@ -39,28 +42,28 @@ if [ ! -d ${DOWNLOADS_DIR} ]; then
   exit 1
 fi
 
-# Name of the xa_nnlib directory once it is unzipped.
-HIFI4_XA_NNLIB_DIRNAME="xa_nnlib_hifi4"
+# URL to downoad external library
+LIBRARY_URL=${2}
+# Name of the library directory once it is unzipped.
+LIBRARY_DIRNAME=${3}
+# MD5 checksum
+LIBRARY_MD5=${4}
 
-HIFI4_PATH=${DOWNLOADS_DIR}/${HIFI4_XA_NNLIB_DIRNAME}
-if [ -d ${HIFI4_PATH} ]; then
-  echo >&2 "${HIFI4_PATH} already exists, skipping the download."
+LIBRARY_INSTALL_PATH=${DOWNLOADS_DIR}/${LIBRARY_DIRNAME}
+if [ -d ${LIBRARY_INSTALL_PATH} ]; then
+  echo >&2 "${LIBRARY_INSTALL_PATH} already exists, skipping the download."
 else
+  TMP_ZIP_ARCHIVE_NAME="xtensa_library.zip"
+  wget ${LIBRARY_URL} -O /tmp/${TMP_ZIP_ARCHIVE_NAME} >&2
+  MD5=`md5sum /tmp/${TMP_ZIP_ARCHIVE_NAME} | awk '{print $1}'`
 
-  ZIP_ARCHIVE_NAME="xa_nnlib_06_27.zip"
-  HIFI4_URL="http://mirror.tensorflow.org/github.com/foss-xtensa/nnlib-hifi4/raw/master/archive/${ZIP_ARCHIVE_NAME}"
-  HIFI4_MD5="45fdc1209a8da62ab568aa6040f7eabf"
-
-  wget ${HIFI4_URL} -O /tmp/${ZIP_ARCHIVE_NAME} >&2
-  MD5=`md5sum /tmp/${ZIP_ARCHIVE_NAME} | awk '{print $1}'`
-
-  if [[ ${MD5} != ${HIFI4_MD5} ]]
+  if [[ ${MD5} != ${LIBRARY_MD5} ]]
   then
-    echo "Bad checksum. Expected: ${HIFI4_MD5}, Got: ${MD5}"
+    echo "Bad checksum. Expected: ${LIBRARY_MD5}, Got: ${MD5}"
     exit 1
   fi
 
-  unzip -qo /tmp/${ZIP_ARCHIVE_NAME} -d ${DOWNLOADS_DIR} >&2
+  unzip -qo /tmp/${TMP_ZIP_ARCHIVE_NAME} -d ${DOWNLOADS_DIR} >&2
 fi
 
 echo "SUCCESS"
