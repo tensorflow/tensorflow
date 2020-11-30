@@ -534,7 +534,14 @@ struct type_caster<xla::OpSharding> {
       std::copy(devices.begin(), devices.end(),
                 tensorflow::protobuf::RepeatedFieldBackInserter(
                     sharding->mutable_tile_assignment_devices()));
+
+      sharding->set_replicate_on_last_tile_dim(
+          getattr(tuple_sharding, "replicate_on_last_tile_dim").cast<bool>());
     }
+
+    // Sets `replicate_on_last_tile_dim` field.
+    value.set_replicate_on_last_tile_dim(
+        getattr(handle_obj, "replicate_on_last_tile_dim").cast<bool>());
 
     return true;
   }
