@@ -3774,7 +3774,9 @@ dimensions of `input`.
   TF_DerivedOperandTypeAttr Tcomplex = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_FakeParamOp : TF_Op<"FakeParam", [NoSideEffect]> {
+// Disable constant folding of this op as the op doesn't provide any valid
+// output.
+def TF_FakeParamOp : TF_Op<"FakeParam", [NoSideEffect, TF_NoConstantFold]> {
   let summary = [{
   This op is used as a placeholder in If branch functions. It doesn't provide a
   valid output when run, so must either be removed (e.g. replaced with a
