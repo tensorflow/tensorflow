@@ -111,7 +111,7 @@ if 'tf_nightly' in project_name:
     if 'tensorboard' in pkg:
       REQUIRED_PACKAGES[i] = 'tb-nightly ~= 2.5.0.a'
     elif 'tensorflow_estimator' in pkg:
-      REQUIRED_PACKAGES[i] = 'tf-estimator-nightly ~= 2.4.0.dev'
+      REQUIRED_PACKAGES[i] = 'tf-estimator-nightly ~= 2.5.0.dev'
 
 
 # grpcio does not build correctly on big-endian machines due to lack of
