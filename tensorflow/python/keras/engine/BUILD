@@ -80,6 +80,8 @@ py_library(
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/ops/ragged:ragged_util",
         "//tensorflow/python/profiler:trace",
+        "//tensorflow/python/saved_model:constants",
+        "//tensorflow/python/saved_model:loader",
         "//tensorflow/python/tpu:tpu_lib",
         "//tensorflow/python/training/tracking:data_structures",
         "//tensorflow/tools/docs:doc_controls",
