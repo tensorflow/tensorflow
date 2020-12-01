@@ -55,7 +55,6 @@ from tensorflow.python.keras.mixed_precision import loss_scale_optimizer as lso
 from tensorflow.python.keras.mixed_precision import policy
 from tensorflow.python.keras.saving import hdf5_format
 from tensorflow.python.keras.saving import save
-from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.saving.saved_model import json_utils
 from tensorflow.python.keras.saving.saved_model import model_serialization
 from tensorflow.python.keras.utils import generic_utils
@@ -73,8 +72,6 @@ from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import trace
-from tensorflow.python.saved_model import constants as sm_constants
-from tensorflow.python.saved_model import loader_impl as sm_loader
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import py_checkpoint_reader
 from tensorflow.python.training.tracking import base as trackable
@@ -2117,7 +2114,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     """
     self._assert_weights_created()
     filepath = path_to_string(filepath)
-    filepath_is_h5 = saving_utils.is_hdf5_filepath(filepath)
+    filepath_is_h5 = _is_hdf5_filepath(filepath)
     if save_format is None:
       if filepath_is_h5:
         save_format = 'h5'
@@ -2205,8 +2202,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     Arguments:
         filepath: String, path to the weights file to load. For weight files in
             TensorFlow format, this is the file prefix (the same as was passed
-            to `save_weights`). This can also be a path to a SavedModel
-            saved from `model.save`.
+            to `save_weights`).
         by_name: Boolean, whether to load weights by name or by topological
             order. Only topological loading is supported for weight files in
             TensorFlow format.
@@ -2233,7 +2229,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     """
     if dist_utils.is_tpu_strategy(self._distribution_strategy):
       if (self._distribution_strategy.extended.steps_per_run > 1 and
-          (not saving_utils.is_hdf5_filepath(filepath))):
+          (not _is_hdf5_filepath(filepath))):
         raise ValueError('Load weights is not yet supported with TPUStrategy '
                          'with steps_per_run greater than 1.')
     if skip_mismatch and not by_name:
@@ -2241,7 +2237,16 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
           'When calling model.load_weights, skip_mismatch can only be set to '
           'True when by_name is True.')
 
-    filepath, save_format = _detect_save_format(filepath)
+    filepath = path_to_string(filepath)
+    if _is_hdf5_filepath(filepath):
+      save_format = 'h5'
+    else:
+      try:
+        py_checkpoint_reader.NewCheckpointReader(filepath)
+        save_format = 'tf'
+      except errors_impl.DataLossError:
+        # The checkpoint is not readable in TensorFlow format. Try HDF5.
+        save_format = 'h5'
     if save_format == 'tf':
       status = self._trackable_saver.restore(filepath, options)
       if by_name:
@@ -2846,40 +2851,6 @@ def _disallow_inside_tf_function(method_name):
     raise RuntimeError(error_msg)
 
 
-def _detect_save_format(filepath):
-  """Returns path to weights file and save format."""
-
-  filepath = path_to_string(filepath)
-  if saving_utils.is_hdf5_filepath(filepath):
-    return filepath, 'h5'
-
-  # Filepath could be a TensorFlow checkpoint file prefix or SavedModel
-  # directory. It's possible for filepath to be both a prefix and directory.
-  # Prioritize checkpoint over SavedModel.
-  if _is_readable_tf_checkpoint(filepath):
-    save_format = 'tf'
-  elif sm_loader.contains_saved_model(filepath):
-    ckpt_path = os.path.join(filepath, sm_constants.VARIABLES_DIRECTORY,
-                             sm_constants.VARIABLES_FILENAME)
-    if _is_readable_tf_checkpoint(ckpt_path):
-      filepath = ckpt_path
-      save_format = 'tf'
-    else:
-      raise ValueError('Unable to load weights. filepath {} appears to be a '
-                       'SavedModel directory, but checkpoint either doesn\'t '
-                       'exist, or is incorrectly formatted.'.format(filepath))
-  else:
-    # Not a TensorFlow checkpoint. This filepath is likely an H5 file that
-    # doesn't have the hdf5/keras extensions.
-    save_format = 'h5'
-  return filepath, save_format
-
-
-def _is_readable_tf_checkpoint(filepath):
-  try:
-    py_checkpoint_reader.NewCheckpointReader(filepath)
-    return True
-  except errors_impl.DataLossError:
-    # The checkpoint is not readable in TensorFlow format.
-    return False
-
+def _is_hdf5_filepath(filepath):
+  return (filepath.endswith('.h5') or filepath.endswith('.keras') or
+          filepath.endswith('.hdf5'))

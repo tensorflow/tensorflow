@@ -31,8 +31,6 @@
 *   `tf.keras`:
     *   Improvements to Keras preprocessing layers:
         *   Discretization combiner implemented, with additional arg `epsilon`.
-    *   Improvements to model saving/loading:
-        *   `model.load_weights` now accepts paths to saved models.
 
 *   `tf.data`:
     *   Exposing `tf.data.experimental.ExternalStatePolicy`, which can be used

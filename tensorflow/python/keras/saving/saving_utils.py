@@ -321,8 +321,3 @@ def try_build_compiled_arguments(model):
           'Compiled the loaded model, but the compiled metrics have yet to '
           'be built. `model.compile_metrics` will be empty until you train '
           'or evaluate the model.')
-
-
-def is_hdf5_filepath(filepath):
-  return (filepath.endswith('.h5') or filepath.endswith('.keras') or
-          filepath.endswith('.hdf5'))
