@@ -105,16 +105,16 @@ class WorkerTrainingStateTest(test.TestCase, parameterized.TestCase):
       num_workers = 3
       self._cluster_spec = test_base.create_cluster_spec(
           num_workers=num_workers)
-      pool = mp.Pool(num_workers)
+      with mp.get_context("spawn").Pool() as pool:
 
-      backup_dir = tempfile.mkdtemp(dir=googletest.GetTempDir())
-      with mp.Manager() as man:
-        create_barrier = man.Barrier(num_workers)
-        args = [(self._cluster_spec, x, backup_dir, create_barrier)
-                for x in range(num_workers)]
-        pool.starmap(testWorkerTrainingState, args)
+        backup_dir = tempfile.mkdtemp(dir=googletest.GetTempDir())
+        with mp.Manager() as man:
+          create_barrier = man.Barrier(num_workers)
+          args = [(self._cluster_spec, x, backup_dir, create_barrier)
+                  for x in range(num_workers)]
+          pool.starmap(testWorkerTrainingState, args)
     except Exception as e:
-      print(e, flush=True)
+      #propagate error
       raise e
 
 
