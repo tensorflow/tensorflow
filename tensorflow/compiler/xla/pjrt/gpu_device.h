@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_PJRT_NVIDIA_GPU_DEVICE_H_
-#define TENSORFLOW_COMPILER_XLA_PJRT_NVIDIA_GPU_DEVICE_H_
+#ifndef TENSORFLOW_COMPILER_XLA_PJRT_GPU_DEVICE_H_
+#define TENSORFLOW_COMPILER_XLA_PJRT_GPU_DEVICE_H_
 
 #include <memory>
 
@@ -54,10 +54,10 @@ struct GpuAllocatorConfig {
 // distributed_client may be nullptr in non-distributed settings.
 // distributed_client should be in the connected state before calling this
 // function.
-StatusOr<std::unique_ptr<PjRtClient>> GetNvidiaGpuClient(
+StatusOr<std::unique_ptr<PjRtClient>> GetGpuClient(
     bool asynchronous, const GpuAllocatorConfig& allocator_config,
     std::shared_ptr<DistributedRuntimeClient> distributed_client, int node_id);
 
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_PJRT_NVIDIA_GPU_DEVICE_H_
+#endif  // TENSORFLOW_COMPILER_XLA_PJRT_GPU_DEVICE_H_
