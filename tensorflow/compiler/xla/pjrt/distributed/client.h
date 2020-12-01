@@ -134,6 +134,10 @@ class DistributedRuntimeClient {
     // connection is healthy.
     kConnected,
 
+    // The client is in the process of shutting down, i.e., Shutdown() has been
+    // called.
+    kShuttingDown,
+
     // The client has shut down its server connection, either due to an error
     // or due to an explicit shutdown.
     kClosed,
@@ -141,7 +145,10 @@ class DistributedRuntimeClient {
 
   static absl::string_view StateToString(State state);
 
-  State state_ = State::kNotConnected;
+  // state_ is protected by a mutex because the heartbeat thread needs to look
+  // at it.
+  absl::Mutex mu_;
+  State state_ GUARDED_BY(mu_) = State::kNotConnected;
 
   // A unique session ID, assigned by the server during Connect().
   uint64 session_id_;

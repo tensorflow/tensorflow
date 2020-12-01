@@ -5699,6 +5699,513 @@ idx ==> [1, 3, 5]
   TF_DerivedResultTypeAttr out_idx = TF_DerivedResultTypeAttr<1>;
 }
 
+def TF_LoadTPUEmbeddingADAMParametersOp : TF_Op<"LoadTPUEmbeddingADAMParameters", []> {
+  let summary = "Load ADAM embedding parameters.";
+
+  let description = [{
+An op that loads optimization parameters into HBM for embedding. Must be
+preceded by a ConfigureTPUEmbeddingHost op that sets up the correct
+embedding table configuration. For example, this op is used to install
+parameters that are loaded from a checkpoint before a training loop is
+executed.
+  }];
+
+  let arguments = (ins
+    TF_Float32Tensor:$parameters,
+    TF_Float32Tensor:$momenta,
+    TF_Float32Tensor:$velocities,
+
+    DefaultValuedAttr<I64Attr, "-1">:$table_id,
+    StrAttr:$table_name,
+    I64Attr:$num_shards,
+    I64Attr:$shard_id,
+    StrAttr:$config
+  );
+
+  let results = (outs);
+}
+
+def TF_LoadTPUEmbeddingADAMParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingADAMParametersGradAccumDebug", []> {
+  let summary = "Load ADAM embedding parameters with debug support.";
+
+  let description = [{
+An op that loads optimization parameters into HBM for embedding. Must be
+preceded by a ConfigureTPUEmbeddingHost op that sets up the correct
+embedding table configuration. For example, this op is used to install
+parameters that are loaded from a checkpoint before a training loop is
+executed.
+  }];
+
+  let arguments = (ins
+    TF_Float32Tensor:$parameters,
+    TF_Float32Tensor:$momenta,
+    TF_Float32Tensor:$velocities,
+    TF_Float32Tensor:$gradient_accumulators,
+
+    DefaultValuedAttr<I64Attr, "-1">:$table_id,
+    StrAttr:$table_name,
+    I64Attr:$num_shards,
+    I64Attr:$shard_id,
+    StrAttr:$config
+  );
+
+  let results = (outs);
+}
+
+def TF_LoadTPUEmbeddingAdadeltaParametersOp : TF_Op<"LoadTPUEmbeddingAdadeltaParameters", []> {
+  let summary = "Load Adadelta embedding parameters.";
+
+  let description = [{
+An op that loads optimization parameters into HBM for embedding. Must be
+preceded by a ConfigureTPUEmbeddingHost op that sets up the correct
+embedding table configuration. For example, this op is used to install
+parameters that are loaded from a checkpoint before a training loop is
+executed.
+  }];
+
+  let arguments = (ins
+    TF_Float32Tensor:$parameters,
+    TF_Float32Tensor:$accumulators,
+    TF_Float32Tensor:$updates,
+
+    DefaultValuedAttr<I64Attr, "-1">:$table_id,
+    StrAttr:$table_name,
+    I64Attr:$num_shards,
+    I64Attr:$shard_id,
+    StrAttr:$config
+  );
+
+  let results = (outs);
+}
+
+def TF_LoadTPUEmbeddingAdadeltaParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingAdadeltaParametersGradAccumDebug", []> {
+  let summary = "Load Adadelta parameters with debug support.";
+
+  let description = [{
+An op that loads optimization parameters into HBM for embedding. Must be
+preceded by a ConfigureTPUEmbeddingHost op that sets up the correct
+embedding table configuration. For example, this op is used to install
+parameters that are loaded from a checkpoint before a training loop is
+executed.
+  }];
+
+  let arguments = (ins
+    TF_Float32Tensor:$parameters,
+    TF_Float32Tensor:$accumulators,
+    TF_Float32Tensor:$updates,
+    TF_Float32Tensor:$gradient_accumulators,
+
+    DefaultValuedAttr<I64Attr, "-1">:$table_id,
+    StrAttr:$table_name,
+    I64Attr:$num_shards,
+    I64Attr:$shard_id,
+    StrAttr:$config
+  );
+
+  let results = (outs);
+}
+
+def TF_LoadTPUEmbeddingAdagradParametersOp : TF_Op<"LoadTPUEmbeddingAdagradParameters", []> {
+  let summary = "Load Adagrad embedding parameters.";
+
+  let description = [{
+An op that loads optimization parameters into HBM for embedding. Must be
+preceded by a ConfigureTPUEmbeddingHost op that sets up the correct
+embedding table configuration. For example, this op is used to install
+parameters that are loaded from a checkpoint before a training loop is
+executed.
+  }];
+
+  let arguments = (ins
+    TF_Float32Tensor:$parameters,
+    TF_Float32Tensor:$accumulators,
+
+    DefaultValuedAttr<I64Attr, "-1">:$table_id,
+    StrAttr:$table_name,
+    I64Attr:$num_shards,
+    I64Attr:$shard_id,
+    StrAttr:$config
+  );
+
+  let results = (outs);
+}
+
+def TF_LoadTPUEmbeddingAdagradParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingAdagradParametersGradAccumDebug", []> {
+  let summary = "Load Adagrad embedding parameters with debug support.";
+
+  let description = [{
+An op that loads optimization parameters into HBM for embedding. Must be
+preceded by a ConfigureTPUEmbeddingHost op that sets up the correct
+embedding table configuration. For example, this op is used to install
+parameters that are loaded from a checkpoint before a training loop is
+executed.
+  }];
+
+  let arguments = (ins
+    TF_Float32Tensor:$parameters,
+    TF_Float32Tensor:$accumulators,
+    TF_Float32Tensor:$gradient_accumulators,
+
+    DefaultValuedAttr<I64Attr, "-1">:$table_id,
+    StrAttr:$table_name,
+    I64Attr:$num_shards,
+    I64Attr:$shard_id,
+    StrAttr:$config
+  );
+
+  let results = (outs);
+}
+
+def TF_LoadTPUEmbeddingCenteredRMSPropParametersOp : TF_Op<"LoadTPUEmbeddingCenteredRMSPropParameters", []> {
+  let summary = "Load centered RMSProp embedding parameters.";
+
+  let description = [{
+An op that loads optimization parameters into HBM for embedding. Must be
+preceded by a ConfigureTPUEmbeddingHost op that sets up the correct
+embedding table configuration. For example, this op is used to install
+parameters that are loaded from a checkpoint before a training loop is
+executed.
+  }];
+
+  let arguments = (ins
+    TF_Float32Tensor:$parameters,
+    TF_Float32Tensor:$ms,
+    TF_Float32Tensor:$mom,
+    TF_Float32Tensor:$mg,
+
+    DefaultValuedAttr<I64Attr, "-1">:$table_id,
+    StrAttr:$table_name,
+    I64Attr:$num_shards,
+    I64Attr:$shard_id,
+    StrAttr:$config
+  );
+
+  let results = (outs);
+}
+
+def TF_LoadTPUEmbeddingFTRLParametersOp : TF_Op<"LoadTPUEmbeddingFTRLParameters", []> {
+  let summary = "Load FTRL embedding parameters.";
+
+  let description = [{
+An op that loads optimization parameters into HBM for embedding. Must be
+preceded by a ConfigureTPUEmbeddingHost op that sets up the correct
+embedding table configuration. For example, this op is used to install
+parameters that are loaded from a checkpoint before a training loop is
+executed.
+  }];
+
+  let arguments = (ins
+    TF_Float32Tensor:$parameters,
+    TF_Float32Tensor:$accumulators,
+    TF_Float32Tensor:$linears,
+
+    DefaultValuedAttr<I64Attr, "-1">:$table_id,
+    StrAttr:$table_name,
+    I64Attr:$num_shards,
+    I64Attr:$shard_id,
+    StrAttr:$config
+  );
+
+  let results = (outs);
+}
+
+def TF_LoadTPUEmbeddingFTRLParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingFTRLParametersGradAccumDebug", []> {
+  let summary = "Load FTRL embedding parameters with debug support.";
+
+  let description = [{
+An op that loads optimization parameters into HBM for embedding. Must be
+preceded by a ConfigureTPUEmbeddingHost op that sets up the correct
+embedding table configuration. For example, this op is used to install
+parameters that are loaded from a checkpoint before a training loop is
+executed.
+  }];
+
+  let arguments = (ins
+    TF_Float32Tensor:$parameters,
+    TF_Float32Tensor:$accumulators,
+    TF_Float32Tensor:$linears,
+    TF_Float32Tensor:$gradient_accumulators,
+
+    DefaultValuedAttr<I64Attr, "-1">:$table_id,
+    StrAttr:$table_name,
+    I64Attr:$num_shards,
+    I64Attr:$shard_id,
+    StrAttr:$config
+  );
+
+  let results = (outs);
+}
+
+def TF_LoadTPUEmbeddingMDLAdagradLightParametersOp : TF_Op<"LoadTPUEmbeddingMDLAdagradLightParameters", []> {
+  let summary = "Load MDL Adagrad Light embedding parameters.";
+
+  let description = [{
+An op that loads optimization parameters into HBM for embedding. Must be
+preceded by a ConfigureTPUEmbeddingHost op that sets up the correct
+embedding table configuration. For example, this op is used to install
+parameters that are loaded from a checkpoint before a training loop is
+executed.
+  }];
+
+  let arguments = (ins
+    TF_Float32Tensor:$parameters,
+    TF_Float32Tensor:$accumulators,
+    TF_Float32Tensor:$weights,
+    TF_Float32Tensor:$benefits,
+
+    DefaultValuedAttr<I64Attr, "-1">:$table_id,
+    StrAttr:$table_name,
+    I64Attr:$num_shards,
+    I64Attr:$shard_id,
+    StrAttr:$config
+  );
+
+  let results = (outs);
+}
+
+def TF_LoadTPUEmbeddingMomentumParametersOp : TF_Op<"LoadTPUEmbeddingMomentumParameters", []> {
+  let summary = "Load Momentum embedding parameters.";
+
+  let description = [{
+An op that loads optimization parameters into HBM for embedding. Must be
+preceded by a ConfigureTPUEmbeddingHost op that sets up the correct
+embedding table configuration. For example, this op is used to install
+parameters that are loaded from a checkpoint before a training loop is
+executed.
+  }];
+
+  let arguments = (ins
+    TF_Float32Tensor:$parameters,
+    TF_Float32Tensor:$momenta,
+
+    DefaultValuedAttr<I64Attr, "-1">:$table_id,
+    StrAttr:$table_name,
+    I64Attr:$num_shards,
+    I64Attr:$shard_id,
+    StrAttr:$config
+  );
+
+  let results = (outs);
+}
+
+def TF_LoadTPUEmbeddingMomentumParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingMomentumParametersGradAccumDebug", []> {
+  let summary = "Load Momentum embedding parameters with debug support.";
+
+  let description = [{
+An op that loads optimization parameters into HBM for embedding. Must be
+preceded by a ConfigureTPUEmbeddingHost op that sets up the correct
+embedding table configuration. For example, this op is used to install
+parameters that are loaded from a checkpoint before a training loop is
+executed.
+  }];
+
+  let arguments = (ins
+    TF_Float32Tensor:$parameters,
+    TF_Float32Tensor:$momenta,
+    TF_Float32Tensor:$gradient_accumulators,
+
+    DefaultValuedAttr<I64Attr, "-1">:$table_id,
+    StrAttr:$table_name,
+    I64Attr:$num_shards,
+    I64Attr:$shard_id,
+    StrAttr:$config
+  );
+
+  let results = (outs);
+}
+
+def TF_LoadTPUEmbeddingProximalAdagradParametersOp : TF_Op<"LoadTPUEmbeddingProximalAdagradParameters", []> {
+  let summary = "Load proximal Adagrad embedding parameters.";
+
+  let description = [{
+An op that loads optimization parameters into HBM for embedding. Must be
+preceded by a ConfigureTPUEmbeddingHost op that sets up the correct
+embedding table configuration. For example, this op is used to install
+parameters that are loaded from a checkpoint before a training loop is
+executed.
+  }];
+
+  let arguments = (ins
+    TF_Float32Tensor:$parameters,
+    TF_Float32Tensor:$accumulators,
+
+    DefaultValuedAttr<I64Attr, "-1">:$table_id,
+    StrAttr:$table_name,
+    I64Attr:$num_shards,
+    I64Attr:$shard_id,
+    StrAttr:$config
+  );
+
+  let results = (outs);
+}
+
+def TF_LoadTPUEmbeddingProximalAdagradParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingProximalAdagradParametersGradAccumDebug", []> {
+  let summary = [{
+Load proximal Adagrad embedding parameters with debug support.
+  }];
+
+  let description = [{
+An op that loads optimization parameters into HBM for embedding. Must be
+preceded by a ConfigureTPUEmbeddingHost op that sets up the correct
+embedding table configuration. For example, this op is used to install
+parameters that are loaded from a checkpoint before a training loop is
+executed.
+  }];
+
+  let arguments = (ins
+    TF_Float32Tensor:$parameters,
+    TF_Float32Tensor:$accumulators,
+    TF_Float32Tensor:$gradient_accumulators,
+
+    DefaultValuedAttr<I64Attr, "-1">:$table_id,
+    StrAttr:$table_name,
+    I64Attr:$num_shards,
+    I64Attr:$shard_id,
+    StrAttr:$config
+  );
+
+  let results = (outs);
+}
+
+def TF_LoadTPUEmbeddingProximalYogiParametersOp : TF_Op<"LoadTPUEmbeddingProximalYogiParameters", []> {
+  let summary = "";
+
+  let arguments = (ins
+    TF_Float32Tensor:$parameters,
+    TF_Float32Tensor:$v,
+    TF_Float32Tensor:$m,
+
+    DefaultValuedAttr<I64Attr, "-1">:$table_id,
+    StrAttr:$table_name,
+    I64Attr:$num_shards,
+    I64Attr:$shard_id,
+    StrAttr:$config
+  );
+
+  let results = (outs);
+}
+
+def TF_LoadTPUEmbeddingProximalYogiParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingProximalYogiParametersGradAccumDebug", []> {
+  let summary = "";
+
+  let arguments = (ins
+    TF_Float32Tensor:$parameters,
+    TF_Float32Tensor:$v,
+    TF_Float32Tensor:$m,
+    TF_Float32Tensor:$gradient_accumulators,
+
+    DefaultValuedAttr<I64Attr, "-1">:$table_id,
+    StrAttr:$table_name,
+    I64Attr:$num_shards,
+    I64Attr:$shard_id,
+    StrAttr:$config
+  );
+
+  let results = (outs);
+}
+
+def TF_LoadTPUEmbeddingRMSPropParametersOp : TF_Op<"LoadTPUEmbeddingRMSPropParameters", []> {
+  let summary = "Load RMSProp embedding parameters.";
+
+  let description = [{
+An op that loads optimization parameters into HBM for embedding. Must be
+preceded by a ConfigureTPUEmbeddingHost op that sets up the correct
+embedding table configuration. For example, this op is used to install
+parameters that are loaded from a checkpoint before a training loop is
+executed.
+  }];
+
+  let arguments = (ins
+    TF_Float32Tensor:$parameters,
+    TF_Float32Tensor:$ms,
+    TF_Float32Tensor:$mom,
+
+    DefaultValuedAttr<I64Attr, "-1">:$table_id,
+    StrAttr:$table_name,
+    I64Attr:$num_shards,
+    I64Attr:$shard_id,
+    StrAttr:$config
+  );
+
+  let results = (outs);
+}
+
+def TF_LoadTPUEmbeddingRMSPropParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingRMSPropParametersGradAccumDebug", []> {
+  let summary = "Load RMSProp embedding parameters with debug support.";
+
+  let description = [{
+An op that loads optimization parameters into HBM for embedding. Must be
+preceded by a ConfigureTPUEmbeddingHost op that sets up the correct
+embedding table configuration. For example, this op is used to install
+parameters that are loaded from a checkpoint before a training loop is
+executed.
+  }];
+
+  let arguments = (ins
+    TF_Float32Tensor:$parameters,
+    TF_Float32Tensor:$ms,
+    TF_Float32Tensor:$mom,
+    TF_Float32Tensor:$gradient_accumulators,
+
+    DefaultValuedAttr<I64Attr, "-1">:$table_id,
+    StrAttr:$table_name,
+    I64Attr:$num_shards,
+    I64Attr:$shard_id,
+    StrAttr:$config
+  );
+
+  let results = (outs);
+}
+
+def TF_LoadTPUEmbeddingStochasticGradientDescentParametersOp : TF_Op<"LoadTPUEmbeddingStochasticGradientDescentParameters", []> {
+  let summary = "Load SGD embedding parameters.";
+
+  let description = [{
+An op that loads optimization parameters into HBM for embedding. Must be
+preceded by a ConfigureTPUEmbeddingHost op that sets up the correct
+embedding table configuration. For example, this op is used to install
+parameters that are loaded from a checkpoint before a training loop is
+executed.
+  }];
+
+  let arguments = (ins
+    TF_Float32Tensor:$parameters,
+
+    DefaultValuedAttr<I64Attr, "-1">:$table_id,
+    StrAttr:$table_name,
+    I64Attr:$num_shards,
+    I64Attr:$shard_id,
+    StrAttr:$config
+  );
+
+  let results = (outs);
+}
+
+def TF_LoadTPUEmbeddingStochasticGradientDescentParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingStochasticGradientDescentParametersGradAccumDebug", []> {
+  let summary = "Load SGD embedding parameters.";
+
+  let description = [{
+An op that loads optimization parameters into HBM for embedding. Must be
+preceded by a ConfigureTPUEmbeddingHost op that sets up the correct
+embedding table configuration. For example, this op is used to install
+parameters that are loaded from a checkpoint before a training loop is
+executed.
+  }];
+
+  let arguments = (ins
+    TF_Float32Tensor:$parameters,
+    TF_Float32Tensor:$gradient_accumulators,
+
+    DefaultValuedAttr<I64Attr, "-1">:$table_id,
+    StrAttr:$table_name,
+    I64Attr:$num_shards,
+    I64Attr:$shard_id,
+    StrAttr:$config
+  );
+
+  let results = (outs);
+}
+
 def TF_LogOp : TF_Op<"Log", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes natural logarithm of x element-wise.";
 

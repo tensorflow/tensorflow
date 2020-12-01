@@ -226,6 +226,10 @@ if(TFLITE_ENABLE_GPU)
     FILTER "(_test)\\.(cc|h)$"
   )
   populate_tflite_source_vars(
+    "delegates/gpu/cl/selectors/default" TFLITE_DELEGATES_GPU_CL_SELECTORS_DEFAULT_SRCS
+    FILTER "(_test)\\.(cc|h)$"
+  )
+  populate_tflite_source_vars(
     "delegates/gpu/common" TFLITE_DELEGATES_GPU_COMMON_SRCS
     FILTER "(_test)\\.(cc|h)$"
   )
@@ -260,7 +264,7 @@ if(TFLITE_ENABLE_GPU)
     ${TFLITE_DELEGATES_GPU_CL_KERNELS_SRCS}
     ${TFLITE_DELEGATES_GPU_CL_KERNELS_SPECIAL_SRCS}
     ${TFLITE_DELEGATES_GPU_CL_SELECTORS_SRCS}
-    ${TFLITE_SOURCE_DIR}/delegates/gpu/cl/selectors/default/default_selector.cc
+    ${TFLITE_DELEGATES_GPU_CL_SELECTORS_DEFAULT_SRCS}
     ${TFLITE_DELEGATES_GPU_COMMON_SRCS}
     ${TFLITE_DELEGATES_GPU_COMMON_DEFAULT_SRCS}
     ${TFLITE_DELEGATES_GPU_COMMON_MEMORY_MANAGEMENT_SRCS}

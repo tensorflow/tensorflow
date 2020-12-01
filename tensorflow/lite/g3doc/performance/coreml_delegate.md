@@ -70,7 +70,7 @@ The Core ML delegate uses C API for Objective-C codes.
 #### Step 1. Include `coreml_delegate.h`.
 
 ```c
-#include "tensorflow/lite/experimental/delegates/coreml/coreml_delegate.h"
+#include "tensorflow/lite/delegates/coreml/coreml_delegate.h"
 ```
 
 #### Step 2. Create a delegate and initialize a TensorFlow Lite Interpreter
@@ -168,7 +168,7 @@ if (delegate == NULL) {
 
 The delegate creation logic reads device's machine id (e.g. iPhone11,1) to
 determine its Neural Engine availability. See the
-[code](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/delegates/coreml/coreml_delegate.mm)
+[code](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/coreml/coreml_delegate.mm)
 for more detail. Alternatively, you can implement your own set of denylist
 devices using other libraries such as
 [DeviceKit](https://github.com/devicekit/DeviceKit).
@@ -248,5 +248,5 @@ issue with all the necessary details to reproduce.
 ## APIs
 
 *   [Core ML delegate Swift API](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/swift/Sources/CoreMLDelegate.swift)
-*   [Core ML delegate C API](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/delegates/coreml/coreml_delegate.h)
+*   [Core ML delegate C API](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/coreml/coreml_delegate.h)
     *   This can be used for Objective-C codes.

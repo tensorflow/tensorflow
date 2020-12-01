@@ -104,18 +104,15 @@ kernel void ComputeFunction($1
 }
 }  // namespace
 
-std::vector<ComputeTaskDescriptorPtr> Softmax(int id, ValueId input_id,
-                                              ValueId output_id,
-                                              int channels_count) {
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = false;
-  desc->shader_source = R"(
+ComputeTaskDescriptor Softmax(ValueId input_id, ValueId output_id,
+                              int channels_count) {
+  ComputeTaskDescriptor desc;
+  desc.shader_source = R"(
     #include <metal_stdlib>
     using namespace metal;
     constant int src_channels = )";
-  desc->shader_source += std::to_string(channels_count);
-  desc->shader_source += R"(;
+  desc.shader_source += std::to_string(channels_count);
+  desc.shader_source += R"(;
     $0
     kernel void ComputeFunction(
                                 $1
@@ -148,56 +145,47 @@ std::vector<ComputeTaskDescriptorPtr> Softmax(int id, ValueId input_id,
     }
   )";
 
-  desc->input_buffers = {
+  desc.input_buffers = {
       {input_id, "device FLT4* const input_buffer"},
   };
 
-  desc->output_buffer = {output_id, "device FLT4* output_buffer",
-                         [input_id](const std::map<ValueId, BHWC>& buffers) {
-                           return buffers.find(input_id)->second;
-                         }};
+  desc.output_buffer = {output_id, "device FLT4* output_buffer"};
 
-  desc->uniform_buffers = {
+  desc.uniform_buffers = {
       {"constant int2& size",
-       [output_id](const std::map<ValueId, BHWC>& buffers) {
-         const auto& dimension = buffers.find(output_id)->second;
-         std::vector<int> sizes{dimension.w, dimension.h};
+       [](const std::vector<BHWC>& src_shapes,
+          const std::vector<BHWC>& dst_shapes) {
+         std::vector<int> sizes{dst_shapes[0].w, dst_shapes[0].h};
          return GetByteBuffer(sizes);
        }},
   };
 
-  desc->resize_function = [output_id](const std::map<ValueId, BHWC>& buffers) {
+  desc.resize_function = [](const std::vector<BHWC>& src_shapes,
+                            const std::vector<BHWC>& dst_shapes) {
     uint3 groups_size{8, 4, 1};
-    const auto& dimension = buffers.find(output_id)->second;
-    uint3 groups_count{DivideRoundUp(dimension.w, groups_size.x),
-                       DivideRoundUp(dimension.h, groups_size.y), 1};
+    uint3 groups_count{DivideRoundUp(dst_shapes[0].w, groups_size.x),
+                       DivideRoundUp(dst_shapes[0].h, groups_size.y), 1};
     return std::make_pair(groups_size, groups_count);
   };
 
-  return {desc};
+  return desc;
 }
 
-std::vector<ComputeTaskDescriptorPtr> Softmax1x1(int id, ValueId input_id,
-                                                 ValueId output_id,
-                                                 const GpuInfo& gpu_info,
-                                                 int channels_count) {
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = false;
-  desc->shader_source = GetSoftmax1x1Code(gpu_info);
+ComputeTaskDescriptor Softmax1x1(ValueId input_id, ValueId output_id,
+                                 const GpuInfo& gpu_info, int channels_count) {
+  ComputeTaskDescriptor desc;
+  desc.shader_source = GetSoftmax1x1Code(gpu_info);
 
-  desc->input_buffers = {
+  desc.input_buffers = {
       {input_id, "device FLT4* const src_buffer"},
   };
 
-  desc->output_buffer = {output_id, "device FLT4* dst_buffer",
-                         [input_id](const std::map<ValueId, BHWC>& buffers) {
-                           return buffers.find(input_id)->second;
-                         }};
+  desc.output_buffer = {output_id, "device FLT4* dst_buffer"};
 
-  desc->uniform_buffers = {
+  desc.uniform_buffers = {
       {"constant uniforms& params",
-       [channels_count](const std::map<ValueId, BHWC>& buffers) {
+       [channels_count](const std::vector<BHWC>& src_shapes,
+                        const std::vector<BHWC>& dst_shapes) {
          const int src_depth = DivideRoundUp(channels_count, 4);
          struct uniforms {
            int4 size;
@@ -215,11 +203,12 @@ std::vector<ComputeTaskDescriptorPtr> Softmax1x1(int id, ValueId input_id,
        }},
   };
 
-  desc->resize_function = [](const std::map<ValueId, BHWC>& buffers) {
+  desc.resize_function = [](const std::vector<BHWC>& src_shapes,
+                            const std::vector<BHWC>& dst_shapes) {
     return std::make_pair(uint3{32u, 1u, 1u}, uint3{1u, 1u, 1u});
   };
 
-  return {desc};
+  return desc;
 }
 
 }  // namespace metal

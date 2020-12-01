@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
@@ -190,6 +191,25 @@ PYBIND11_MODULE(xla_extension, m) {
   py::class_<GpuDevice, PjRtDevice, ClientAndPtr<GpuDevice>>(m, "GpuDevice")
       .def("__repr__", [](const GpuDevice& device) {
         return absl::StrFormat("GpuDevice(id=%i)", device.id());
+      });
+
+  py::class_<PjRtTpuDevice, PjRtDevice, ClientAndPtr<PjRtTpuDevice>>(
+      m, "TpuDevice")
+      .def_property_readonly("host_id", &PjRtTpuDevice::host_id)
+      .def_property_readonly(
+          "coords",
+          [](const PjRtTpuDevice& device) -> pybind11::tuple {
+            return IntSpanToTuple(device.coords());
+          },
+          "The coordinates of this TpuDevice's chip in the TPU mesh network.")
+      .def_property_readonly(
+          "core_on_chip", &PjRtTpuDevice::core_on_chip,
+          "The index of this TpuDevice's core on the TPU chip.")
+      .def("__repr__", [](const PjRtTpuDevice& device) {
+        return absl::StrFormat(
+            "TpuDevice(id=%i, host=%i, coords=(%s), core_on_chip=%i)",
+            device.id(), device.host_id(), absl::StrJoin(device.coords(), ","),
+            device.core_on_chip());
       });
 
   // Local XLA client methods.

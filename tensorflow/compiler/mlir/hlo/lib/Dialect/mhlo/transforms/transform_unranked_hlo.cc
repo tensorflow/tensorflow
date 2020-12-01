@@ -21,7 +21,7 @@ limitations under the License.
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
-#include "mlir/IR/Function.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
@@ -400,7 +400,7 @@ struct ConvertUnrankedDynamicBroadcastBinaryOp
         rewriter.create<SelectOp>(loc, greater_rank_lhs, lhs_rank, rhs_rank);
 
     // Generate a list of nested if/else statements to handle rank
-    // specializations from 1-6.
+    // specializations from 1 to `kMaxRankSpecialization`.
     scf::IfOp if_op = createIfOpForRankSpecializedBroadcastAndOp(
         rewriter, op, greater_rank, 1);
     OpBuilder if_builder = if_op.getThenBodyBuilder(rewriter.getListener());
@@ -419,13 +419,13 @@ struct ConvertUnrankedDynamicBroadcastBinaryOp
       else_builder = inner_if.getElseBodyBuilder(rewriter.getListener());
     }
     // Fire an assertion if none of the rank specializations applied (one of
-    // the ranks was greater than 6).
+    // the ranks was greater than `kMaxRankSpecialization`).
     else_builder.create<AssertOp>(
         loc,
         GreaterRankIsN(else_builder, op.getLoc(), greater_rank,
                        kMaxRankSpecialization),
-        "Input for dynamic binary op lowering was of a rank greater than "
-        "6");
+        "Input for dynamic binary op lowering was of a rank greater than " +
+            std::to_string(kMaxRankSpecialization));
     // Add the rank 6 specialization to the innermost else block.
     createRankSpecializedBroadcastAndOp(else_builder, op, lhs, rhs,
                                         kMaxRankSpecialization);

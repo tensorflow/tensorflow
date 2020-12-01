@@ -391,6 +391,16 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
+# portable_flex_with_custom_ops_tests includes files for testing Flex delegate
+# with models containing user's defined ops.
+filegroup(
+    name = "portable_flex_with_custom_ops_tests",
+    srcs = [
+        "src/test/java/org/tensorflow/lite/InterpreterFlexWithCustomOpsTest.java",
+    ],
+    visibility = ["//visibility:public"],
+)
+
 # portable_test_utils include utilities for loading files and processing images.
 filegroup(
     name = "portable_test_utils",

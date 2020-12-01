@@ -44,9 +44,9 @@ limitations under the License.
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -2128,7 +2128,8 @@ class ToBoolOfRankedTensor : public OpRewritePattern<ToBoolOp> {
     // If the input is an unranked tensor, cannpt rewrite.
     if (!type) return failure();
 
-    // Expected return type of the ToBool operation.
+    // Expected return type of the ToBool operation. The return type of ToBool
+    // operation is always 0D tensor of bool type.
     auto result_type = op.getResult().getType().cast<RankedTensorType>();
 
     // If input is already a tensor<i1>, it can be folded into an identity.
@@ -2533,21 +2534,20 @@ OpFoldResult VariableShapeOp::fold(ArrayRef<Attribute> operands) {
 
 static LogicalResult VerifyWhileTypes(Operation *op, TypeRange cond_input,
                                       TypeRange body_input,
-                                      TypeRange body_result) {
-  // Collect all the type lists for the op so that different pairs of type lists
-  // can be compared for the compatibility.
-  constexpr int kNumTypeLists = 5;
-  const std::array<TypeRangeWithDesc, kNumTypeLists> type_lists = {{
-      {op->getOperandTypes(), "input"},
+                                      TypeRange body_result,
+                                      bool shape_invariant) {
+  const TypeRangeWithDesc input_type = {op->getOperandTypes(), "input"};
+  const TypeRangeWithDesc result_type = {op->getResultTypes(), "result"};
+  constexpr int kNumRegionTypeLists = 3;
+  const std::array<TypeRangeWithDesc, kNumRegionTypeLists> region_types = {{
       {body_result, "body result"},
-      {op->getResultTypes(), "result"},
       {cond_input, "condition input"},
       {body_input, "body input"},
   }};
 
   // A pair of type lists should be cast compatible with each other if one is
   // converted to the another for a function call or assignment or there is a
-  // common source of inputs for both.  Therefore, the While op requires the
+  // common source of inputs for both. Therefore, the While op requires the
   // following pairs of type lists to be cast compatible for the tensor_cast
   // operation:
   //
@@ -2556,7 +2556,8 @@ static LogicalResult VerifyWhileTypes(Operation *op, TypeRange cond_input,
   // * Operands and body inputs to call the body function for the first
   //   iteration if the cond functions returns True or equivalent result.
   // * Operands and results to assign cond function arguments to op results if
-  //   the cond function returns False or equivalent result.
+  //   the cond function returns False or equivalent result. If the op is shape
+  //   invariant, this does not hold as shapes can differ.
   // * All three pairs using cond inputs, body inputs and results as operand is
   //   a common source for all three.
   // * Body result and cond inputs to call the cond function for the subsequent
@@ -2565,17 +2566,28 @@ static LogicalResult VerifyWhileTypes(Operation *op, TypeRange cond_input,
   //
   // Note that the operands and body results need not be compatible as they are
   // never converted from one to the another nor there is a common source
-  // tensors.  Compatibility requirement is not transitive.
+  // tensors. Compatibility requirement is not transitive.
 
-  for (int i = 0; i < kNumTypeLists; ++i) {
-    // Skip the first pair as the While op operands and body function results
-    // does not need to be compatible with each other.
-    for (int j = std::max(2, i + 1); j < kNumTypeLists; ++j) {
-      auto &a = type_lists[i];
-      auto &b = type_lists[j];
-      if (failed(VerifyTypeRangesAreCompatible(op, a, b))) return failure();
-    }
-  }
+  if (!shape_invariant &&
+      failed(VerifyTypeRangesAreCompatible(op, input_type, result_type)))
+    return failure();
+
+  // Skip the first pair as the While op operands and body function results does
+  // not need to be compatible with each other.
+  for (int i = 1; i < kNumRegionTypeLists; ++i)
+    if (failed(VerifyTypeRangesAreCompatible(op, input_type, region_types[i])))
+      return failure();
+
+  for (int i = 0; i < kNumRegionTypeLists; ++i)
+    if (failed(VerifyTypeRangesAreCompatible(op, result_type, region_types[i])))
+      return failure();
+
+  for (int i = 0; i < kNumRegionTypeLists; ++i)
+    for (int j = i + 1; j < kNumRegionTypeLists; ++j)
+      if (failed(VerifyTypeRangesAreCompatible(op, region_types[i],
+                                               region_types[j])))
+        return failure();
+
   return success();
 }
 
@@ -2600,7 +2612,8 @@ static LogicalResult Verify(WhileOp op) {
 
   if (failed(VerifyWhileTypes(op, /*cond_input=*/cond_fn_type.getInputs(),
                               /*body_input=*/body_fn_type.getInputs(),
-                              /*body_result=*/body_fn_type.getResults())))
+                              /*body_result=*/body_fn_type.getResults(),
+                              op.shape_invariant())))
     return failure();
   return success();
 }
@@ -2625,7 +2638,8 @@ static LogicalResult Verify(WhileRegionOp op) {
   Operation *body_yield = op.body().front().getTerminator();
   if (failed(VerifyWhileTypes(op, /*cond_input=*/op.cond().getArgumentTypes(),
                               /*body_input=*/op.body().getArgumentTypes(),
-                              /*body_result=*/body_yield->getOperandTypes())))
+                              /*body_result=*/body_yield->getOperandTypes(),
+                              op.shape_invariant())))
     return failure();
   return success();
 }

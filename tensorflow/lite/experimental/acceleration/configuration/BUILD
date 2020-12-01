@@ -78,14 +78,12 @@ flatbuffer_java_library(
 cc_library(
     name = "proto_to_flatbuffer",
     srcs = [
-        "configuration_fbs_contents-inl.h",
         "proto_to_flatbuffer.cc",
     ],
     hdrs = ["proto_to_flatbuffer.h"],
     deps = [
         ":configuration_cc_proto",
         ":configuration_fbs",
-        "//tensorflow/core/platform:protobuf",
         "//tensorflow/lite:minimal_logging",
         "@flatbuffers",
     ],

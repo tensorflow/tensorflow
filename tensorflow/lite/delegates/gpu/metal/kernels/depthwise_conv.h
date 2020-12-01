@@ -27,8 +27,8 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 
-std::vector<ComputeTaskDescriptorPtr> DepthWiseConvolution(
-    int id, ValueId input_id, ValueId output_id,
+ComputeTaskDescriptor DepthWiseConvolution(
+    ValueId input_id, ValueId output_id,
     const DepthwiseConvolution2DAttributes& attr,
     const RuntimeOptions& options);
 
@@ -38,8 +38,8 @@ std::vector<ComputeTaskDescriptorPtr> DepthWiseConvolution(
 //   kernel_size = 3x3;
 //   dilation = 1x1;
 //   stride = 1x1;
-std::vector<ComputeTaskDescriptorPtr> DepthWiseConv3x3Stride1x1(
-    int id, ValueId input_id, ValueId output_id,
+ComputeTaskDescriptor DepthWiseConv3x3Stride1x1(
+    ValueId input_id, ValueId output_id,
     const DepthwiseConvolution2DAttributes& attr,
     const RuntimeOptions& options);
 
@@ -53,8 +53,8 @@ bool CheckDepthWiseConv3x3Stride1x1Support(
 //   kernel_size = 3x3;
 //   dilation.y = 1;
 //   stride.y = 2;
-std::vector<ComputeTaskDescriptorPtr> DepthWiseConv3x3Stride2(
-    int id, ValueId input_id, ValueId output_id,
+ComputeTaskDescriptor DepthWiseConv3x3Stride2(
+    ValueId input_id, ValueId output_id,
     const DepthwiseConvolution2DAttributes& attr,
     const RuntimeOptions& options);
 

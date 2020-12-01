@@ -49,22 +49,19 @@ std::string GetAddTableCodeFused(int src_count) {
 }
 }  // namespace
 
-std::vector<ComputeTaskDescriptorPtr> Add(int id,
-                                          const std::vector<ValueId> input_ids,
-                                          ValueId output_id,
-                                          const RuntimeOptions& options) {
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = true;
-  desc->is_associative_op = true;
-  desc->shader_source = GetAddTableCodeFused(input_ids.size() - 1);
+ComputeTaskDescriptor Add(const std::vector<ValueId> input_ids,
+                          ValueId output_id, const RuntimeOptions& options) {
+  ComputeTaskDescriptor desc;
+  desc.is_linkable = true;
+  desc.is_associative_op = true;
+  desc.shader_source = GetAddTableCodeFused(input_ids.size() - 1);
 
   for (int i = 0; i < input_ids.size(); ++i) {
-    desc->input_buffers.push_back({input_ids[i], "device FLT4* const"});
+    desc.input_buffers.push_back({input_ids[i], "device FLT4* const"});
   }
-  desc->output_buffer = {output_id};
+  desc.output_buffer = {output_id};
 
-  return {desc};
+  return desc;
 }
 
 }  // namespace metal
