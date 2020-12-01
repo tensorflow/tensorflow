@@ -3521,17 +3521,39 @@ void IrEmitterUnnested::EmitTileElementForFusion(
   }
 }
 
+static HloInstruction* GetReduceFromUnnested(HloInstruction* unnested_hlo,
+                                             int index) {
+  if (unnested_hlo->opcode() == HloOpcode::kReduce) {
+    CHECK_EQ(0, index);
+    return unnested_hlo;
+  }
+  if (unnested_hlo->opcode() == HloOpcode::kFusion) {
+    auto root = unnested_hlo->fused_expression_root();
+    if (root->opcode() == HloOpcode::kReduce) {
+      CHECK_EQ(0, index);
+      return root;
+    }
+    if (root->opcode() == HloOpcode::kTuple) {
+      return root->mutable_operand(index);
+    }
+  }
+  return nullptr;
+}
+
 void IrEmitterUnnested::EmitPrologueForReduction(
-    HloInstruction* unnested_hlo, ReductionCodegenInfo* reduction_info,
-    absl::Span<HloInstruction* const> reduce_instructions,
-    llvm::Type* index_type) {
+    HloInstruction* unnested_hlo, absl::Span<const int> instr_index_group,
+    ReductionCodegenInfo* reduction_info, llvm::Type* index_type) {
   VLOG(10) << "Emit prologue for reduction: " << unnested_hlo->ToString();
   GpuElementalIrEmitter elemental_emitter(hlo_module_config_,
                                           ir_emitter_context_->llvm_module(),
                                           &b_, GetNestedComputer());
   const HloInstruction* first_reduce = nullptr;
-  for (int i = 0; i < reduce_instructions.size(); i++) {
-    HloInstruction* reduce_inst = reduce_instructions[i];
+  for (int index : instr_index_group) {
+    HloInstruction* reduce_inst = GetReduceFromUnnested(unnested_hlo, index);
+    if (!IsReductionFromOrToContiguousDimensions(*reduce_inst)) {
+      continue;
+    }
+
     VLOG(10) << "Emit prologue for reduction: " << reduce_inst->ToString();
     if (first_reduce == nullptr) {
       first_reduce = reduce_inst;
@@ -3555,7 +3577,7 @@ void IrEmitterUnnested::EmitPrologueForReduction(
     llvm::AllocaInst* partial_result_address =
         llvm_ir::EmitAllocaAtFunctionEntryWithCount(
             element_type, /*ArraySize=*/b_.getInt32(num_partial_results),
-            ("partial_reduction_result." + llvm::Twine(i)).str(), &b_);
+            ("partial_reduction_result." + llvm::Twine(index)).str(), &b_);
     partial_result_addresses->push_back(partial_result_address);
 
     // Initialize the partial result with the initial value of the reduction.
@@ -3606,7 +3628,7 @@ void IrEmitterUnnested::EmitPrologueForReduction(
     llvm::GlobalVariable* shared_cache_per_reduce =
         llvm_ir::AllocateSharedMemoryTile(b_.GetInsertBlock()->getModule(),
                                           buffer_type,
-                                          absl::StrCat("shared_cache_", i));
+                                          absl::StrCat("shared_cache_", index));
     reduction_info->GetMutableSharedCache()->push_back(shared_cache_per_reduce);
   }
 }
@@ -3669,9 +3691,8 @@ static llvm::Value* GetUntransposedOutputLinearAddress(
 
 void IrEmitterUnnested::EmitEpilogueForReduction(
     llvm::Type* index_ty, HloInstruction* unnested_hlo,
+    absl::Span<const int> instr_index_group,
     const ReductionCodegenInfo& reduction_info,
-    absl::Span<const HloInstruction* const> reduce_instructions,
-    absl::Span<const int> reduction_output_indices,
     absl::Span<HloComputation* const> reducers,
     const TilingKernelInfo& tiling_kernel_info) {
   const KernelMappingScheme& mapping_scheme =
@@ -3696,7 +3717,6 @@ void IrEmitterUnnested::EmitEpilogueForReduction(
         .AddOffsetToDim(start_offset_x, kDimX, &b_);
   }();
 
-  int num_reduces = reducers.size();
   absl::Span<llvm::AllocaInst* const> partial_result_addresses =
       reduction_info.GetPartialResultAddresses();
 
@@ -3705,8 +3725,18 @@ void IrEmitterUnnested::EmitEpilogueForReduction(
   // Emit an atomic operation that accumulates the partial reduction to the
   // output element. For row reduction, this is only for lane 0 due to the
   // if-statement emitted above.
-  for (int i = 0; i != num_reduces; ++i) {
-    const HloInstruction* reduce_hlo = reduce_instructions[i];
+  //
+  // `i` is the compacted index for contiguous-dimension reductions. It's used
+  // for accessing `reduction_info` and `reducers`, which are also compacted.
+  int i = -1;
+  for (int index : instr_index_group) {
+    const HloInstruction* reduce_hlo =
+        GetReduceFromUnnested(unnested_hlo, index);
+    if (!IsReductionFromOrToContiguousDimensions(*reduce_hlo)) {
+      continue;
+    }
+    i++;
+
     Shape reduction_kept_element_shape = ShapeUtil::FilterDimensions(
         [&](int64 dim) {
           return !absl::c_linear_search(reduce_hlo->dimensions(), dim);
@@ -3726,13 +3756,13 @@ void IrEmitterUnnested::EmitEpilogueForReduction(
       // At this point in the function we have a "partial sum" of input elements
       // (stored in partial_result_addresses), and we need to accumulate it into
       // the correct output element.
-      ShapeIndex index;
+      ShapeIndex shape_index;
       if (unnested_hlo->IsMultiOutputFusion()) {
-        index.push_back(reduction_output_indices[i]);
+        shape_index.push_back(index);
       } else {
-        CHECK_EQ(0, reduction_output_indices[i]);
+        CHECK_EQ(0, index);
       }
-      auto output_array = GetIrArray(*unnested_hlo, *unnested_hlo, index);
+      auto output_array = GetIrArray(*unnested_hlo, *unnested_hlo, shape_index);
       IrArray::Index element_index(
           /*linear=*/untransposed_output_linear_address,
           reduction_kept_element_shape, &b_);
@@ -3873,25 +3903,6 @@ void IrEmitterUnnested::EmitPrintfWithThreadId(
     ::xla::gpu::EmitPrintf(absl::StrCat("[TID=%d,BID=%d] ", fmt, "\n"),
                            updated_arguments, &b_);
   });
-}
-
-static HloInstruction* GetReduceFromUnnested(HloInstruction* unnested_hlo,
-                                             int index) {
-  if (unnested_hlo->opcode() == HloOpcode::kReduce) {
-    CHECK_EQ(0, index);
-    return unnested_hlo;
-  }
-  if (unnested_hlo->opcode() == HloOpcode::kFusion) {
-    auto root = unnested_hlo->fused_expression_root();
-    if (root->opcode() == HloOpcode::kReduce) {
-      CHECK_EQ(0, index);
-      return root;
-    }
-    if (root->opcode() == HloOpcode::kTuple) {
-      return root->mutable_operand(index);
-    }
-  }
-  return nullptr;
 }
 
 void IrEmitterUnnested::EmitTileElementForReduction(
@@ -4692,8 +4703,6 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
 void IrEmitterUnnested::EmitIRForReduction(
     HloInstruction* unnested_hlo, absl::Span<const int> instr_index_group,
     ReductionCodegenInfo* reduction_info, const Shape& input_shape) {
-  std::vector<HloInstruction*> reduce_instructions;
-  InlinedVector<int, 1> reduction_output_indices;
   InlinedVector<HloComputation*, 1> reducers;
   for (int index : instr_index_group) {
     HloInstruction* output_instruction =
@@ -4702,12 +4711,9 @@ void IrEmitterUnnested::EmitIRForReduction(
       continue;
     }
 
-    reduce_instructions.push_back(output_instruction);
-    reduction_output_indices.push_back(index);
     reducers.push_back(output_instruction->to_apply());
   }
-  CHECK(reduce_instructions.size() != 0)
-      << " expect at least one reduce instructions.";
+  CHECK(!reducers.empty()) << " expect at least one reduce instructions.";
 
   const KernelMappingScheme& mapping_scheme =
       reduction_info->GetKernelMappingScheme();
@@ -4715,7 +4721,7 @@ void IrEmitterUnnested::EmitIRForReduction(
                                      mapping_scheme.GetThreadsPerBlock());
   llvm::Type* index_ty = GetIndexTypeForKernel(
       unnested_hlo, launch_dimensions.launch_bound(), &b_);
-  EmitPrologueForReduction(unnested_hlo, reduction_info, reduce_instructions,
+  EmitPrologueForReduction(unnested_hlo, instr_index_group, reduction_info,
                            index_ty);
   EmitElementFunction emit_reduction_tile =
       [&](const llvm_ir::IrArray::Index& index, llvm::Value* y_loc,
@@ -4734,9 +4740,8 @@ void IrEmitterUnnested::EmitIRForReduction(
                  ksl, thread_id_info, tile_height, tile_width,
                  emit_reduction_tile);
       });
-  EmitEpilogueForReduction(index_ty, unnested_hlo, *reduction_info,
-                           reduce_instructions, reduction_output_indices,
-                           reducers, tiling_kernel_info);
+  EmitEpilogueForReduction(index_ty, unnested_hlo, instr_index_group,
+                           *reduction_info, reducers, tiling_kernel_info);
 }
 
 namespace {
