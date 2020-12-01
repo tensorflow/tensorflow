@@ -108,7 +108,6 @@ filegroup(
         "ptr_util.h",
         "ragged_to_dense_util.cc",
         "ragged_to_dense_util.h",
-        "ragged_to_dense_util_common.cc",
         "ragged_to_dense_util_common.h",
         "reffed_status_callback.h",
         "saved_tensor_slice_util.cc",
@@ -388,9 +387,6 @@ cc_library(
 
 cc_library(
     name = "ragged_to_dense_util_common",
-    srcs = [
-        "ragged_to_dense_util_common.cc",
-    ],
     hdrs = [
         "ragged_to_dense_util_common.h",
     ],
