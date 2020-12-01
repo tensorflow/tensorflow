@@ -104,11 +104,9 @@ kernel void ComputeFunction($1
 }
 }  // namespace
 
-ComputeTaskDescriptor Softmax(int id, ValueId input_id, ValueId output_id,
+ComputeTaskDescriptor Softmax(ValueId input_id, ValueId output_id,
                               int channels_count) {
   ComputeTaskDescriptor desc;
-  desc.id = id;
-  desc.is_linkable = false;
   desc.shader_source = R"(
     #include <metal_stdlib>
     using namespace metal;
@@ -173,11 +171,9 @@ ComputeTaskDescriptor Softmax(int id, ValueId input_id, ValueId output_id,
   return desc;
 }
 
-ComputeTaskDescriptor Softmax1x1(int id, ValueId input_id, ValueId output_id,
+ComputeTaskDescriptor Softmax1x1(ValueId input_id, ValueId output_id,
                                  const GpuInfo& gpu_info, int channels_count) {
   ComputeTaskDescriptor desc;
-  desc.id = id;
-  desc.is_linkable = false;
   desc.shader_source = GetSoftmax1x1Code(gpu_info);
 
   desc.input_buffers = {

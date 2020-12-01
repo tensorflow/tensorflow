@@ -1045,8 +1045,7 @@ std::pair<uint3, uint3> GetDispatchSizes(const ConvParams& params,
 
 }  // namespace
 
-ComputeTaskDescriptor ConvolutionGeneric(int id, ValueId input_id,
-                                         ValueId output_id,
+ComputeTaskDescriptor ConvolutionGeneric(ValueId input_id, ValueId output_id,
                                          const BHWC& dst_shape,
                                          const Convolution2DAttributes& attr,
                                          const GpuInfo& gpu_info,
@@ -1054,8 +1053,6 @@ ComputeTaskDescriptor ConvolutionGeneric(int id, ValueId input_id,
   ConvParams params = GetConvParams(gpu_info, attr, options, dst_shape);
 
   ComputeTaskDescriptor desc;
-  desc.id = id;
-  desc.is_linkable = false;
   desc.shader_source = GenerateConvolution(params);
 
   desc.input_buffers = {
@@ -1097,7 +1094,7 @@ ComputeTaskDescriptor ConvolutionGeneric(int id, ValueId input_id,
 }
 
 ComputeTaskDescriptor ConvolutionWino4x4To6x6(
-    int id, ValueId input_id, ValueId output_id, const BHWC& dst_shape,
+    ValueId input_id, ValueId output_id, const BHWC& dst_shape,
     const Convolution2DAttributes& attr, const GpuInfo& gpu_info,
     const RuntimeOptions& options) {
   const int dst_slices = DivideRoundUp(attr.weights.shape.o, 4);
@@ -1140,8 +1137,6 @@ ComputeTaskDescriptor ConvolutionWino4x4To6x6(
   }
 
   ComputeTaskDescriptor desc;
-  desc.id = id;
-  desc.is_linkable = false;
   desc.shader_source = GenerateConvolution(params);
 
   desc.input_buffers = {

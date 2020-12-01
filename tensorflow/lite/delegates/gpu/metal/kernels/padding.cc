@@ -149,11 +149,9 @@ std::string GetPaddingCode(const PadAttributes& attr) {
 }
 }  // namespace
 
-ComputeTaskDescriptor Padding(int id, ValueId input_id, ValueId output_id,
+ComputeTaskDescriptor Padding(ValueId input_id, ValueId output_id,
                               const PadAttributes& attr) {
   ComputeTaskDescriptor desc;
-  desc.id = id;
-  desc.is_linkable = false;
   desc.shader_source = GetPaddingCode(attr);
 
   desc.input_buffers = {

@@ -24,10 +24,9 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 ComputeTaskDescriptor QuantizeAndDequantize(
-    int id, ValueId input_id, ValueId output_id,
+    ValueId input_id, ValueId output_id,
     const QuantizeAndDequantizeAttributes& attr) {
   ComputeTaskDescriptor desc;
-  desc.id = id;
   desc.is_linkable = true;
   desc.shader_source = R"(
     FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid, float3 params) {

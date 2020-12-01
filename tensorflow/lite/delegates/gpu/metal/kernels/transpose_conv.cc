@@ -453,12 +453,10 @@ std::string GetDeconvolution4x4(const int2& block_size,
 }  // namespace
 
 ComputeTaskDescriptor ConvolutionTransposed(
-    int id, ValueId input_id, ValueId output_id,
+    ValueId input_id, ValueId output_id,
     const ConvolutionTransposedAttributes& params, const GpuInfo& gpu_info,
     const RuntimeOptions& options) {
   ComputeTaskDescriptor desc;
-  desc.id = id;
-  desc.is_linkable = false;
 
   const int src_local_size_x =
       (kThreadGroupWidth + params.weights.shape.w) / params.stride.w;
@@ -549,7 +547,7 @@ ComputeTaskDescriptor ConvolutionTransposed(
 }
 
 ComputeTaskDescriptor ConvolutionTransposed4x4(
-    int id, ValueId input_id, ValueId output_id,
+    ValueId input_id, ValueId output_id,
     const ConvolutionTransposedAttributes& params, const GpuInfo& gpu_info,
     const RuntimeOptions& options) {
   const int src_depth = DivideRoundUp(params.weights.shape.i, 4);
@@ -601,8 +599,6 @@ ComputeTaskDescriptor ConvolutionTransposed4x4(
       params.bias.data, options.storage_precision, params.weights.shape.o);
 
   ComputeTaskDescriptor desc;
-  desc.id = id;
-  desc.is_linkable = false;
 
   bool recommended_2x = false;
   if (gpu_info.IsApple()) {

@@ -116,11 +116,9 @@ kernel void ComputeFunction(
 
 }  // namespace
 
-ComputeTaskDescriptor Reshape(int id, ValueId input_id, ValueId output_id,
+ComputeTaskDescriptor Reshape(ValueId input_id, ValueId output_id,
                               const ReshapeAttributes& attr) {
   ComputeTaskDescriptor desc;
-  desc.id = id;
-  desc.is_linkable = false;
   desc.shader_source = GetReshapeCode();
 
   desc.input_buffers = {
@@ -163,11 +161,9 @@ ComputeTaskDescriptor Reshape(int id, ValueId input_id, ValueId output_id,
   return desc;
 }
 
-ComputeTaskDescriptor Reshapex4(int id, ValueId input_id, ValueId output_id,
+ComputeTaskDescriptor Reshapex4(ValueId input_id, ValueId output_id,
                                 const ReshapeAttributes& attr) {
   ComputeTaskDescriptor desc;
-  desc.id = id;
-  desc.is_linkable = false;
   desc.shader_source = GetReshapex4Code();
 
   desc.input_buffers = {

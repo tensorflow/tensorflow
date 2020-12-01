@@ -66,6 +66,8 @@ limitations under the License.
 - (std::vector<tflite::gpu::ValueId>)getOutputIds;
 - (std::vector<tflite::gpu::ValueId>)getInputIds;
 
+- (void)setDescription:(const std::string&)description;
+
 @end
 
 #endif  // TENSORFLOW_LITE_DELEGATES_GPU_METAL_COMPUTE_TASK_H_

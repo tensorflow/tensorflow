@@ -29,6 +29,9 @@ namespace metal {
 
 struct NodeDescriptor {
   ComputeTaskDescriptorPtr task;
+  // Unique ID to match the graph compilation errors.
+  int id;
+  std::string description;
 };
 
 struct CompiledModel {

@@ -465,13 +465,11 @@ static std::vector<uint8_t> GetUniformBufferDepthWiseConv3x3Stride2(
 }  // namespace
 
 ComputeTaskDescriptor DepthWiseConvolution(
-    int id, ValueId input_id, ValueId output_id,
+    ValueId input_id, ValueId output_id,
     const DepthwiseConvolution2DAttributes& attr,
     const RuntimeOptions& options) {
   int channels_multiplier = attr.weights.shape.o;
   ComputeTaskDescriptor desc;
-  desc.id = id;
-  desc.is_linkable = false;
   std::string shader_source = R"(
     #include <metal_stdlib>
     using namespace metal;
@@ -616,12 +614,10 @@ ComputeTaskDescriptor DepthWiseConvolution(
 }
 
 ComputeTaskDescriptor DepthWiseConv3x3Stride1x1(
-    int id, ValueId input_id, ValueId output_id,
+    ValueId input_id, ValueId output_id,
     const DepthwiseConvolution2DAttributes& attr,
     const RuntimeOptions& options) {
   ComputeTaskDescriptor desc;
-  desc.id = id;
-  desc.is_linkable = false;
   desc.shader_source = GetKernelDepthWiseConv3x3Stride1x1();
 
   desc.input_buffers = {
@@ -674,12 +670,10 @@ bool CheckDepthWiseConv3x3Stride1x1Support(
 }
 
 ComputeTaskDescriptor DepthWiseConv3x3Stride2(
-    int id, ValueId input_id, ValueId output_id,
+    ValueId input_id, ValueId output_id,
     const DepthwiseConvolution2DAttributes& attr,
     const RuntimeOptions& options) {
   ComputeTaskDescriptor desc;
-  desc.id = id;
-  desc.is_linkable = false;
   desc.shader_source = GetKernelDepthWiseConv3x3Stride2();
 
   desc.input_buffers = {

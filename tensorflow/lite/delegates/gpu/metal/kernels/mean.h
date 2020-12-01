@@ -25,7 +25,7 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 
-ComputeTaskDescriptor Mean(int id, ValueId input_id, ValueId output_id,
+ComputeTaskDescriptor Mean(ValueId input_id, ValueId output_id,
                            const MeanAttributes& attr);
 
 }  // namespace metal

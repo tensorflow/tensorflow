@@ -26,7 +26,7 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 
-ComputeTaskDescriptor SpaceToDepth(int id, ValueId input_id, ValueId output_id,
+ComputeTaskDescriptor SpaceToDepth(ValueId input_id, ValueId output_id,
                                    const SpaceToDepthAttributes& attr);
 
 }  // namespace metal

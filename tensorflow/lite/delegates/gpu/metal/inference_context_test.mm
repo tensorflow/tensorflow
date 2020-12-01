@@ -39,10 +39,9 @@ using ::tflite::gpu::uint3;
 using ::tflite::gpu::ValueId;
 
 // This is an example of simple linkable operation performing multiplication by a constant.
-static std::vector<ComputeTaskDescriptorPtr> MulLinkable(int id, ValueId input_id,
+static std::vector<ComputeTaskDescriptorPtr> MulLinkable(ValueId input_id,
                                                          ValueId output_id) {
   auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
   desc->is_linkable = true;
   desc->shader_source = R"(FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid) {
     return value * 1.1f;
@@ -53,9 +52,8 @@ static std::vector<ComputeTaskDescriptorPtr> MulLinkable(int id, ValueId input_i
 }
 
 // This is an example of simple non-linkable operation performing add with a constant.
-static std::vector<ComputeTaskDescriptorPtr> Add(int id, ValueId input_id, ValueId output_id) {
+static std::vector<ComputeTaskDescriptorPtr> Add(ValueId input_id, ValueId output_id) {
   auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
   desc->is_linkable = false;
   desc->shader_source = R"(
     #include <metal_stdlib>
@@ -105,9 +103,8 @@ static std::vector<ComputeTaskDescriptorPtr> Add(int id, ValueId input_id, Value
 
 // This is an example of simple linkable operation performing multiplication by a uniform
 static std::vector<ComputeTaskDescriptorPtr> AddUniformLinkable(
-    int id, ValueId input_id, ValueId output_id, const std::vector<float>& channel_multipliers) {
+    ValueId input_id, ValueId output_id, const std::vector<float>& channel_multipliers) {
   auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
   desc->is_linkable = true;
   desc->shader_source = R"(FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid, FLT4 multiplier)
   {
@@ -126,9 +123,8 @@ static std::vector<ComputeTaskDescriptorPtr> AddUniformLinkable(
 
 // This is an example of simple linkable operation performing multiplication by a constant.
 static std::vector<ComputeTaskDescriptorPtr> MulArrayLinkable(
-    int id, ValueId input_id, ValueId output_id, const std::vector<float>& channel_multipliers) {
+    ValueId input_id, ValueId output_id, const std::vector<float>& channel_multipliers) {
   auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
   desc->is_linkable = true;
   desc->shader_source = R"(FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid,
     device FLT4* const multiplier) {
@@ -159,8 +155,8 @@ static std::vector<ComputeTaskDescriptorPtr> MulArrayLinkable(
 - (void)testTwoInputsShaderOutput {
   ValueId inputBufferID = 1;
   ValueId outputBufferID = 3;
-  auto graph = Add(1, inputBufferID, 2);
-  auto graph2 = MulLinkable(2, 2, outputBufferID);
+  auto graph = Add(inputBufferID, 2);
+  auto graph2 = MulLinkable(2, outputBufferID);
   graph.insert(graph.end(), graph2.begin(), graph2.end());
   TensorFloat32 input;
   input.shape = BHWC(1, 1, 1, 3);
@@ -179,7 +175,7 @@ static std::vector<ComputeTaskDescriptorPtr> MulArrayLinkable(
 - (void)testImmutableShaderOutput {
   ValueId inputBufferID = 1;
   ValueId outputBufferID = 2;
-  auto graph = MulArrayLinkable(1, inputBufferID, outputBufferID,
+  auto graph = MulArrayLinkable(inputBufferID, outputBufferID,
                                 {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
   TensorFloat32 input;
   input.shape = BHWC(1, 1, 1, 7);
@@ -198,7 +194,7 @@ static std::vector<ComputeTaskDescriptorPtr> MulArrayLinkable(
 - (void)testUniformShaderOutput {
   ValueId inputBufferID = 1;
   ValueId outputBufferID = 2;
-  auto graph = AddUniformLinkable(1, inputBufferID, outputBufferID, {1.0f, 2.0f, 3.0f, 4.0f});
+  auto graph = AddUniformLinkable(inputBufferID, outputBufferID, {1.0f, 2.0f, 3.0f, 4.0f});
   TensorFloat32 input;
   input.shape = BHWC(1, 1, 1, 3);
   input.id = inputBufferID;
@@ -217,8 +213,8 @@ static std::vector<ComputeTaskDescriptorPtr> MulArrayLinkable(
   ValueId inputBufferID = 1;
   ValueId outputBufferID = 3;
   auto graph =
-      MulArrayLinkable(1, inputBufferID, 2, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
-  auto graph2 = AddUniformLinkable(2, 2, outputBufferID, {1.0f, 2.0f, 3.0f, 4.0f});
+      MulArrayLinkable(inputBufferID, 2, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
+  auto graph2 = AddUniformLinkable(2, outputBufferID, {1.0f, 2.0f, 3.0f, 4.0f});
   graph.insert(graph.end(), graph2.begin(), graph2.end());
   TensorFloat32 input;
   input.shape = BHWC(1, 1, 1, 7);

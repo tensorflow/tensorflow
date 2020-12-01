@@ -86,12 +86,10 @@ std::string GetMaxUnpoolingCode(const HW& kernel_size) {
 }
 }  // namespace
 
-ComputeTaskDescriptor MaxUnpooling(int id, ValueId input_id,
-                                   ValueId input_indices_id, ValueId output_id,
+ComputeTaskDescriptor MaxUnpooling(ValueId input_id, ValueId input_indices_id,
+                                   ValueId output_id,
                                    const MaxUnpooling2DAttributes& params) {
   ComputeTaskDescriptor desc;
-  desc.id = id;
-  desc.is_linkable = false;
   desc.shader_source = GetMaxUnpoolingCode(params.kernel);
 
   desc.input_buffers = {

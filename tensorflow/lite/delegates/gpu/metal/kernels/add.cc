@@ -49,10 +49,9 @@ std::string GetAddTableCodeFused(int src_count) {
 }
 }  // namespace
 
-ComputeTaskDescriptor Add(int id, const std::vector<ValueId> input_ids,
+ComputeTaskDescriptor Add(const std::vector<ValueId> input_ids,
                           ValueId output_id, const RuntimeOptions& options) {
   ComputeTaskDescriptor desc;
-  desc.id = id;
   desc.is_linkable = true;
   desc.is_associative_op = true;
   desc.shader_source = GetAddTableCodeFused(input_ids.size() - 1);

@@ -34,7 +34,7 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 
-ComputeTaskDescriptor PReLU(int id, ValueId input_id, ValueId output_id,
+ComputeTaskDescriptor PReLU(ValueId input_id, ValueId output_id,
                             const PReLUAttributes& attr,
                             const RuntimeOptions& options) {
   auto alpha_buffer =
@@ -43,7 +43,6 @@ ComputeTaskDescriptor PReLU(int id, ValueId input_id, ValueId output_id,
     return {};
   }
   ComputeTaskDescriptor desc;
-  desc.id = id;
   desc.is_linkable = true;
   if (attr.clip != 0) {
     desc.shader_source =
@@ -77,7 +76,7 @@ ComputeTaskDescriptor PReLU(int id, ValueId input_id, ValueId output_id,
   return desc;
 }
 
-ComputeTaskDescriptor PReLUFull(int id, ValueId input_id, ValueId output_id,
+ComputeTaskDescriptor PReLUFull(ValueId input_id, ValueId output_id,
                                 const PReLUAttributes& attr,
                                 const RuntimeOptions& options) {
   auto alpha = absl::get_if<Tensor<HWC, DataType::FLOAT32>>(&attr.alpha);
@@ -85,7 +84,6 @@ ComputeTaskDescriptor PReLUFull(int id, ValueId input_id, ValueId output_id,
     return {};
   }
   ComputeTaskDescriptor desc;
-  desc.id = id;
   desc.is_linkable = true;
   if (attr.clip != 0) {
     desc.shader_source =

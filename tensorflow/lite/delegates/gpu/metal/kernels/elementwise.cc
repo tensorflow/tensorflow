@@ -83,13 +83,11 @@ std::string TwoInputFunctor(OperationType op_type, const std::string& value0,
 
 }  // namespace
 
-ComputeTaskDescriptor ElementwiseWithTwoInputs(int id,
-                                               std::vector<ValueId> input_ids,
+ComputeTaskDescriptor ElementwiseWithTwoInputs(std::vector<ValueId> input_ids,
                                                ValueId output_id,
                                                const BHWC& second_shape,
                                                OperationType op_type) {
   ComputeTaskDescriptor desc;
-  desc.id = id;
   desc.is_linkable = true;
   const std::string x_coord = second_shape.w == 1 ? "0" : "int(gid.x)";
   const std::string y_coord = second_shape.h == 1 ? "0" : "int(gid.y)";
@@ -130,11 +128,10 @@ ComputeTaskDescriptor ElementwiseWithTwoInputs(int id,
   return desc;
 }
 
-ComputeTaskDescriptor ElementwiseWithOneInput(int id, ValueId input_id,
+ComputeTaskDescriptor ElementwiseWithOneInput(ValueId input_id,
                                               ValueId output_id,
                                               OperationType op_type) {
   ComputeTaskDescriptor desc;
-  desc.id = id;
   desc.is_linkable = true;
   desc.shader_source =
       "FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid) {\n";
@@ -148,10 +145,9 @@ ComputeTaskDescriptor ElementwiseWithOneInput(int id, ValueId input_id,
 }
 
 ComputeTaskDescriptor ElementwiseWithOneInputAndConstantArguent(
-    int id, ValueId input_id, ValueId output_id, const RuntimeOptions& options,
+    ValueId input_id, ValueId output_id, const RuntimeOptions& options,
     OperationType op_type, const TensorOrScalar& attr) {
   ComputeTaskDescriptor desc;
-  desc.id = id;
   desc.is_linkable = true;
   auto scalar = absl::get_if<float>(&attr);
   auto linear_buf = absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&attr);

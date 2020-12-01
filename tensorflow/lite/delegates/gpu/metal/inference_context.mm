@@ -64,6 +64,7 @@ using ::tflite::gpu::TensorUsageRecord;
     RETURN_IF_ERROR([task compileWithDevice:_device
                              taskDescriptor:node.task
                              runtimeOptions:_options]);
+    [task setDescription:node.description];
     _computeTasks.emplace_back(task);
   }
   _tensorShapes = compiledModel.tensor_shapes;

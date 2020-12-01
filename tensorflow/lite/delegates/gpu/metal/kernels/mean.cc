@@ -102,7 +102,7 @@ std::string GetMeanCode(const int3& work_group_size) {
   return c;
 }
 
-ComputeTaskDescriptor Mean(int id, ValueId input_id, ValueId output_id,
+ComputeTaskDescriptor Mean(ValueId input_id, ValueId output_id,
                            const MeanAttributes& attr) {
   if (attr.dims != std::set<Axis>({Axis::HEIGHT, Axis::WIDTH})) {
     // Mean calculation is supported only for height and width
@@ -112,8 +112,6 @@ ComputeTaskDescriptor Mean(int id, ValueId input_id, ValueId output_id,
   const int3 work_group_size = int3(16, 16, 1);
 
   ComputeTaskDescriptor desc;
-  desc.id = id;
-  desc.is_linkable = false;
   std::string code = GetMeanCode(work_group_size);
   desc.shader_source = code;
 

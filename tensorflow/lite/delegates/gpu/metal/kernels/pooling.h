@@ -26,7 +26,7 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 
-ComputeTaskDescriptor Pooling(int id, ValueId input_id, ValueId output_id,
+ComputeTaskDescriptor Pooling(ValueId input_id, ValueId output_id,
                               const Pooling2DAttributes& params,
                               bool generate_indices);
 

@@ -193,12 +193,10 @@ std::string GetAveragePoolingCode(const HW& kernel_size) {
 
 }  // namespace
 
-ComputeTaskDescriptor Pooling(int id, ValueId input_id, ValueId output_id,
+ComputeTaskDescriptor Pooling(ValueId input_id, ValueId output_id,
                               const Pooling2DAttributes& params,
                               bool generate_indices) {
   ComputeTaskDescriptor desc;
-  desc.id = id;
-  desc.is_linkable = false;
   if (params.type == PoolingType::MAX) {
     desc.shader_source = generate_indices
                              ? GetMaxPoolingIndicesCode(params.kernel)

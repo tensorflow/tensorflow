@@ -129,11 +129,9 @@ std::string GetSliceCode(const SliceAttributes& attr) {
 }
 }  // namespace
 
-ComputeTaskDescriptor Slice(int id, ValueId input_id, ValueId output_id,
+ComputeTaskDescriptor Slice(ValueId input_id, ValueId output_id,
                             const SliceAttributes& attr) {
   ComputeTaskDescriptor desc;
-  desc.id = id;
-  desc.is_linkable = false;
   desc.shader_source = GetSliceCode(attr);
 
   desc.input_buffers = {

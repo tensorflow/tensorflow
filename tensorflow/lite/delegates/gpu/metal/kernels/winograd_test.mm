@@ -84,7 +84,7 @@ using ::tflite::gpu::metal::CompareVectors;
   tflite::gpu::metal::Winograd4x4To36Attributes attr;
   attr.padding.prepended = tflite::gpu::HW(1, 1);
   attr.padding.appended = tflite::gpu::HW(1, 1);
-  auto gpu_op = tflite::gpu::metal::Winograd4x4To36(0, 0, 1, attr);
+  auto gpu_op = tflite::gpu::metal::Winograd4x4To36(0, 1, attr);
   std::vector<tflite::gpu::metal::ComputeTaskDescriptorPtr> tasks =
     {std::make_shared<tflite::gpu::metal::ComputeTaskDescriptor>(std::move(gpu_op))};
 
@@ -148,7 +148,7 @@ using ::tflite::gpu::metal::CompareVectors;
   tflite::gpu::metal::Winograd4x4To36Attributes attr;
   attr.padding.prepended = tflite::gpu::HW(1, 1);
   attr.padding.appended = tflite::gpu::HW(1, 1);
-  auto gpu_op = tflite::gpu::metal::Winograd4x4To36TileX6(0, 0, 1, attr, options);
+  auto gpu_op = tflite::gpu::metal::Winograd4x4To36TileX6(0, 1, attr, options);
   std::vector<tflite::gpu::metal::ComputeTaskDescriptorPtr> tasks =
     {std::make_shared<tflite::gpu::metal::ComputeTaskDescriptor>(std::move(gpu_op))};
 
@@ -213,7 +213,7 @@ using ::tflite::gpu::metal::CompareVectors;
   options.storage_precision = tflite::gpu::metal::RuntimeOptions::Precision::FP32;
   options.accumulator_precision = tflite::gpu::metal::RuntimeOptions::Precision::FP32;
 
-  auto gpu_op = tflite::gpu::metal::Winograd36To4x4(0, 0, 1, options, attr);
+  auto gpu_op = tflite::gpu::metal::Winograd36To4x4(0, 1, options, attr);
   std::vector<tflite::gpu::metal::ComputeTaskDescriptorPtr> tasks =
     {std::make_shared<tflite::gpu::metal::ComputeTaskDescriptor>(std::move(gpu_op))};
 
@@ -278,7 +278,7 @@ using ::tflite::gpu::metal::CompareVectors;
   options.storage_precision = tflite::gpu::metal::RuntimeOptions::Precision::FP32;
   options.accumulator_precision = tflite::gpu::metal::RuntimeOptions::Precision::FP32;
 
-  auto gpu_op = tflite::gpu::metal::Winograd36To4x4Tile4x1(0, 0, 1, options, attr);
+  auto gpu_op = tflite::gpu::metal::Winograd36To4x4Tile4x1(0, 1, options, attr);
   std::vector<tflite::gpu::metal::ComputeTaskDescriptorPtr> tasks =
     {std::make_shared<tflite::gpu::metal::ComputeTaskDescriptor>(std::move(gpu_op))};
 

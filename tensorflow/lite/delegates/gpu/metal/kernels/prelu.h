@@ -28,11 +28,11 @@ namespace gpu {
 namespace metal {
 
 // Parametric Rectified Linear Unit.
-ComputeTaskDescriptor PReLU(int id, ValueId input_id, ValueId output_id,
+ComputeTaskDescriptor PReLU(ValueId input_id, ValueId output_id,
                             const PReLUAttributes& attr,
                             const RuntimeOptions& options);
 // Parametric Rectified 3D Linear Unit.
-ComputeTaskDescriptor PReLUFull(int id, ValueId input_id, ValueId output_id,
+ComputeTaskDescriptor PReLUFull(ValueId input_id, ValueId output_id,
                                 const PReLUAttributes& attr,
                                 const RuntimeOptions& options);
 

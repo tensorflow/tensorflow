@@ -81,8 +81,6 @@ struct ComputeTaskDescriptor {
   ComputeTaskDescriptor& operator=(const ComputeTaskDescriptor&) = delete;
 
   Arguments args;
-  // Unique ID to match the graph compilation errors.
-  int id;
   bool is_linkable = false;
   // A linkable function or a full shader source with 3 parameters $ for
   // substitute function. Example of linkable: "(FLT4 linkable$0(FLT4 value, int
@@ -115,7 +113,6 @@ struct ComputeTaskDescriptor {
   // calculate new parameters for GPU compute task dispatching. A leading
   // unlinkable task must provide this.
   DispatchParamsFunction resize_function;
-  std::string description;
 };
 
 using ComputeTaskDescriptorPtr = std::shared_ptr<ComputeTaskDescriptor>;

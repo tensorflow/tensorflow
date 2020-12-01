@@ -150,7 +150,6 @@ struct UniformBuffer {
   }
   _resizeFunction = desc->resize_function;
   _program = program;
-  _description = desc->description;
   return absl::OkStatus();
 }
 
@@ -278,6 +277,10 @@ struct UniformBuffer {
     result.push_back(buffer.uid);
   }
   return result;
+}
+
+- (void)setDescription:(const std::string&)description {
+  _description = description;
 }
 
 @end

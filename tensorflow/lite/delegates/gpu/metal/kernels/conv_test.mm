@@ -299,7 +299,7 @@ using ::tflite::gpu::metal::SingleOpModel;
   std::string device_name = std::string([[device name] UTF8String]);
   tflite::gpu::GpuInfo gpu_info;
   tflite::gpu::GetGpuInfoFromDeviceDescription(device_name, tflite::gpu::GpuApi::kMetal, &gpu_info);
-  auto gpu_op0 = ConvolutionGeneric(0, 0, 1, dst_shape, attr, gpu_info, options);
+  auto gpu_op0 = ConvolutionGeneric(0, 1, dst_shape, attr, gpu_info, options);
   std::vector<tflite::gpu::metal::ComputeTaskDescriptorPtr> tasks_v0 =
     {std::make_shared<tflite::gpu::metal::ComputeTaskDescriptor>(std::move(gpu_op0))};
 
@@ -308,18 +308,18 @@ using ::tflite::gpu::metal::SingleOpModel;
 
   tflite::gpu::metal::Winograd4x4To36Attributes wino_up_attr;
   wino_up_attr.padding = attr.padding;
-  auto gpu_op1 = tflite::gpu::metal::Winograd4x4To36(0, 0, 2, wino_up_attr);
+  auto gpu_op1 = tflite::gpu::metal::Winograd4x4To36(0, 2, wino_up_attr);
   std::vector<tflite::gpu::metal::ComputeTaskDescriptorPtr> tasks_v1 =
     {std::make_shared<tflite::gpu::metal::ComputeTaskDescriptor>(std::move(gpu_op1))};
 
-  auto gpu_op2 = ConvolutionWino4x4To6x6(1, 2, 3, conv_shape, attr, gpu_info, options);
+  auto gpu_op2 = ConvolutionWino4x4To6x6(2, 3, conv_shape, attr, gpu_info, options);
   std::vector<tflite::gpu::metal::ComputeTaskDescriptorPtr> tasks_v2 =
     {std::make_shared<tflite::gpu::metal::ComputeTaskDescriptor>(std::move(gpu_op2))};
 
   tflite::gpu::metal::Winograd36To4x4Attributes wino_down_attr;
   wino_down_attr.output_shape = dst_shape;
   wino_down_attr.biases = attr.bias;
-  auto gpu_op3 = tflite::gpu::metal::Winograd36To4x4(2, 3, 1, options, wino_down_attr);
+  auto gpu_op3 = tflite::gpu::metal::Winograd36To4x4(3, 1, options, wino_down_attr);
   std::vector<tflite::gpu::metal::ComputeTaskDescriptorPtr> tasks_v3 =
     {std::make_shared<tflite::gpu::metal::ComputeTaskDescriptor>(std::move(gpu_op3))};
 

@@ -24,7 +24,7 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 
-ComputeTaskDescriptor Resize(int id, ValueId input_id, ValueId output_id,
+ComputeTaskDescriptor Resize(ValueId input_id, ValueId output_id,
                              const Resize2DAttributes& attr);
 
 }  // namespace metal

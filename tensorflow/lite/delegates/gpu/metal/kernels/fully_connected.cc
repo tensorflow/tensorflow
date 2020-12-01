@@ -115,14 +115,11 @@ std::string GetFullyConnectedCode(const GpuInfo& gpu_info, int src_channels,
 }
 }  // namespace
 
-ComputeTaskDescriptor FullyConnected(int id, ValueId input_id,
-                                     ValueId output_id,
+ComputeTaskDescriptor FullyConnected(ValueId input_id, ValueId output_id,
                                      const FullyConnectedAttributes& attr,
                                      const GpuInfo& gpu_info,
                                      const RuntimeOptions& options) {
   ComputeTaskDescriptor desc;
-  desc.id = id;
-  desc.is_linkable = false;
   desc.shader_source = GetFullyConnectedCode(gpu_info, attr.weights.shape.i,
                                              attr.weights.shape.o);
 

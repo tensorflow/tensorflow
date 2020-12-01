@@ -129,8 +129,8 @@ std::string GetConcatZCode(const std::vector<int> channels) {
 }
 }  // namespace
 
-ComputeTaskDescriptor ConcatZ(int id, std::vector<ValueId> input_ids,
-                              ValueId output_id, const ConcatAttributes& attr,
+ComputeTaskDescriptor ConcatZ(std::vector<ValueId> input_ids, ValueId output_id,
+                              const ConcatAttributes& attr,
                               const std::vector<BHWC>& input_shapes) {
   std::vector<int> channels;
   channels.reserve(input_shapes.size());
@@ -138,8 +138,6 @@ ComputeTaskDescriptor ConcatZ(int id, std::vector<ValueId> input_ids,
     channels.push_back(shape.c);
   }
   ComputeTaskDescriptor desc;
-  desc.id = id;
-  desc.is_linkable = false;
   desc.shader_source = GetConcatZCode(channels);
 
   for (int i = 0; i < input_ids.size(); ++i) {
@@ -183,13 +181,10 @@ ComputeTaskDescriptor ConcatZ(int id, std::vector<ValueId> input_ids,
   return desc;
 }
 
-ComputeTaskDescriptor ConcatX(int id, std::vector<ValueId> input_ids,
-                              ValueId output_id, const ConcatAttributes& attr,
+ComputeTaskDescriptor ConcatX(std::vector<ValueId> input_ids, ValueId output_id,
+                              const ConcatAttributes& attr,
                               const std::vector<BHWC>& input_shapes) {
   ComputeTaskDescriptor desc;
-  desc.id = id;
-  desc.is_linkable = false;
-
   std::string code = R"(
     #include <metal_stdlib>
     using namespace metal;
@@ -263,13 +258,10 @@ ComputeTaskDescriptor ConcatX(int id, std::vector<ValueId> input_ids,
   return desc;
 }
 
-ComputeTaskDescriptor ConcatY(int id, std::vector<ValueId> input_ids,
-                              ValueId output_id, const ConcatAttributes& attr,
+ComputeTaskDescriptor ConcatY(std::vector<ValueId> input_ids, ValueId output_id,
+                              const ConcatAttributes& attr,
                               const std::vector<BHWC>& input_shapes) {
   ComputeTaskDescriptor desc;
-  desc.id = id;
-  desc.is_linkable = false;
-
   std::string code = R"(
     #include <metal_stdlib>
     using namespace metal;
@@ -344,15 +336,15 @@ ComputeTaskDescriptor ConcatY(int id, std::vector<ValueId> input_ids,
   return desc;
 }
 
-ComputeTaskDescriptor Concat(int id, std::vector<ValueId> input_ids,
-                             ValueId output_id, const ConcatAttributes& attr,
+ComputeTaskDescriptor Concat(std::vector<ValueId> input_ids, ValueId output_id,
+                             const ConcatAttributes& attr,
                              const std::vector<BHWC>& input_shapes) {
   if (attr.axis == Axis::CHANNELS) {
-    return ConcatZ(id, input_ids, output_id, attr, input_shapes);
+    return ConcatZ(input_ids, output_id, attr, input_shapes);
   } else if (attr.axis == Axis::WIDTH) {
-    return ConcatX(id, input_ids, output_id, attr, input_shapes);
+    return ConcatX(input_ids, output_id, attr, input_shapes);
   } else {
-    return ConcatY(id, input_ids, output_id, attr, input_shapes);
+    return ConcatY(input_ids, output_id, attr, input_shapes);
   }
 }
 

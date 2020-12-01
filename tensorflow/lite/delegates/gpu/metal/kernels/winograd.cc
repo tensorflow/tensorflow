@@ -463,12 +463,9 @@ kernel void ComputeFunction($1
 }
 }  // namespace
 
-ComputeTaskDescriptor Winograd4x4To36(int id, ValueId input_id,
-                                      ValueId output_id,
+ComputeTaskDescriptor Winograd4x4To36(ValueId input_id, ValueId output_id,
                                       const Winograd4x4To36Attributes& attr) {
   ComputeTaskDescriptor desc;
-  desc.id = id;
-  desc.is_linkable = false;
   desc.shader_source = GetKernelWinograd4x4To36();
 
   desc.input_buffers = {
@@ -526,11 +523,9 @@ ComputeTaskDescriptor Winograd4x4To36(int id, ValueId input_id,
 }
 
 ComputeTaskDescriptor Winograd4x4To36TileX6(
-    int id, ValueId input_id, ValueId output_id,
-    const Winograd4x4To36Attributes& attr, const RuntimeOptions& options) {
+    ValueId input_id, ValueId output_id, const Winograd4x4To36Attributes& attr,
+    const RuntimeOptions& options) {
   ComputeTaskDescriptor desc;
-  desc.id = id;
-  desc.is_linkable = false;
   desc.shader_source = GetKernelWinograd4x4To36TileX6();
 
   desc.input_buffers = {
@@ -597,13 +592,10 @@ ComputeTaskDescriptor Winograd4x4To36TileX6(
   return desc;
 }
 
-ComputeTaskDescriptor Winograd36To4x4(int id, ValueId input_id,
-                                      ValueId output_id,
+ComputeTaskDescriptor Winograd36To4x4(ValueId input_id, ValueId output_id,
                                       const RuntimeOptions& options,
                                       const Winograd36To4x4Attributes& attr) {
   ComputeTaskDescriptor desc;
-  desc.id = id;
-  desc.is_linkable = false;
   desc.shader_source = GetKernelWinograd36To4x4();
 
   desc.input_buffers = {
@@ -647,11 +639,9 @@ ComputeTaskDescriptor Winograd36To4x4(int id, ValueId input_id,
 }
 
 ComputeTaskDescriptor Winograd36To4x4Tile4x1(
-    int id, ValueId input_id, ValueId output_id, const RuntimeOptions& options,
+    ValueId input_id, ValueId output_id, const RuntimeOptions& options,
     const Winograd36To4x4Attributes& attr) {
   ComputeTaskDescriptor desc;
-  desc.id = id;
-  desc.is_linkable = false;
   desc.shader_source = GetKernelWinograd36To4x4Tile4x1();
 
   desc.input_buffers = {

@@ -30,10 +30,9 @@ using ::tflite::gpu::uint3;
 using ::tflite::gpu::ValueId;
 
 // This is an example of simple linkable operation performing multiplication by a constant.
-static std::vector<tflite::gpu::metal::NodeDescriptor> MulLinkable(int id, ValueId input_id,
+static std::vector<tflite::gpu::metal::NodeDescriptor> MulLinkable(ValueId input_id,
                                                          ValueId output_id) {
   auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
   desc->is_linkable = true;
   desc->shader_source = R"(FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid) {
     return value * 1.1f;
@@ -47,9 +46,8 @@ static std::vector<tflite::gpu::metal::NodeDescriptor> MulLinkable(int id, Value
 
 // This is an example of simple non-linkable operation performing add with a constant.
 static std::vector<tflite::gpu::metal::NodeDescriptor> Add(
-    int id, ValueId input_id, ValueId output_id) {
+    ValueId input_id, ValueId output_id) {
   auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
   desc->is_linkable = false;
   desc->shader_source = R"(
     #include <metal_stdlib>
@@ -101,9 +99,8 @@ static std::vector<tflite::gpu::metal::NodeDescriptor> Add(
 
 // An example of linkable operation performing summing of two tensors.
 static std::vector<tflite::gpu::metal::NodeDescriptor> Add2(
-    int id, ValueId input_id1, ValueId input_id2, ValueId output_id) {
+    ValueId input_id1, ValueId input_id2, ValueId output_id) {
   auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
   desc->is_linkable = false;
   desc->shader_source = R"(
     #include <metal_stdlib>
@@ -155,10 +152,9 @@ static std::vector<tflite::gpu::metal::NodeDescriptor> Add2(
 }
 
 // An example of linkable operation performing summing of two tensors.
-static std::vector<tflite::gpu::metal::NodeDescriptor> Add2Linkable(int id, ValueId input_id1,
+static std::vector<tflite::gpu::metal::NodeDescriptor> Add2Linkable(ValueId input_id1,
                                                           ValueId input_id2, ValueId output_id) {
   auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
   desc->is_linkable = true;
   desc->is_associative_op = true;
   desc->shader_source = R"(
@@ -182,7 +178,7 @@ FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid, device FLT4* const buff
 @implementation CompiledModelTest
 
 - (void)testSingleOperationSuccess {
-  auto nodes = MulLinkable(1, 1, 2);
+  auto nodes = MulLinkable(1, 2);
   tflite::gpu::metal::CompiledModel model;
   tflite::gpu::metal::CompiledModel raw_model;
   raw_model.nodes = nodes;
@@ -192,7 +188,7 @@ FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid, device FLT4* const buff
 
 // Outputs: one missing, one unused.
 - (void)testSingleOperationErrorWrongOutput {
-  auto nodes = MulLinkable(1, 1, 2);
+  auto nodes = MulLinkable(1, 2);
   tflite::gpu::metal::CompiledModel model;
   tflite::gpu::metal::CompiledModel raw_model;
   raw_model.nodes = nodes;
@@ -208,7 +204,7 @@ FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid, device FLT4* const buff
 
 // Outputs: one ok, one missing.
 - (void)testSingleOperationWarningExtraOutput {
-  auto nodes = MulLinkable(1, 1, 2);
+  auto nodes = MulLinkable(1, 2);
   tflite::gpu::metal::CompiledModel model;
   tflite::gpu::metal::CompiledModel raw_model;
   raw_model.nodes = nodes;
@@ -218,7 +214,7 @@ FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid, device FLT4* const buff
 
 // Unused input => empty graph, missing output.
 - (void)testSingleOperationErrorWrongInput {
-  auto nodes = MulLinkable(1, 1, 2);
+  auto nodes = MulLinkable(1, 2);
   tflite::gpu::metal::CompiledModel model;
   tflite::gpu::metal::CompiledModel raw_model;
   raw_model.nodes = nodes;
@@ -233,8 +229,8 @@ FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid, device FLT4* const buff
 
 // Two sequential operations.
 - (void)testTwoOperationsSuccess {
-  auto nodes = MulLinkable(1, 1, 2);
-  auto nodes2 = MulLinkable(2, 2, 3);
+  auto nodes = MulLinkable(1, 2);
+  auto nodes2 = MulLinkable(2, 3);
   nodes.insert(nodes.end(), nodes2.begin(), nodes2.end());
   tflite::gpu::metal::CompiledModel model;
   tflite::gpu::metal::CompiledModel raw_model;
@@ -245,8 +241,8 @@ FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid, device FLT4* const buff
 
 // Two sequential operations. Not fused.
 - (void)testTwoOperationsNotFusedSuccess {
-  auto nodes = Add(1, 1, 2);
-  auto nodes2 = Add(2, 2, 3);
+  auto nodes = Add(1, 2);
+  auto nodes2 = Add(2, 3);
   nodes.insert(nodes.end(), nodes2.begin(), nodes2.end());
   tflite::gpu::metal::CompiledModel model;
   tflite::gpu::metal::CompiledModel raw_model;
@@ -256,7 +252,7 @@ FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid, device FLT4* const buff
 }
 
 - (void)testAddOperationSuccess {
-  auto nodes = Add2(1, 1, 2, 3);
+  auto nodes = Add2(1, 2, 3);
   tflite::gpu::metal::CompiledModel model;
   tflite::gpu::metal::CompiledModel raw_model;
   raw_model.nodes = nodes;
@@ -265,9 +261,9 @@ FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid, device FLT4* const buff
 }
 
 - (void)testAddOperationFused {
-  auto graph = Add(1, 1, 3);
-  auto graph2 = Add(1, 2, 4);
-  auto graph3 = Add2Linkable(2, 4, 3, 5);
+  auto graph = Add(1, 3);
+  auto graph2 = Add(2, 4);
+  auto graph3 = Add2Linkable(4, 3, 5);
   graph.insert(graph.end(), graph2.begin(), graph2.end());
   graph.insert(graph.end(), graph3.begin(), graph3.end());
   tflite::gpu::metal::CompiledModel model;
@@ -279,10 +275,10 @@ FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid, device FLT4* const buff
 }
 
 - (void)testBinaryOperationSuccess {
-  auto graph = Add(1, 1, 3);
-  auto graph2 = Add(2, 2, 4);
+  auto graph = Add(1, 3);
+  auto graph2 = Add(2, 4);
   graph.insert(graph.end(), graph2.begin(), graph2.end());
-  auto graph3 = Add2Linkable(3, 3, 4, 5);
+  auto graph3 = Add2Linkable(3, 4, 5);
   graph.insert(graph.end(), graph3.begin(), graph3.end());
   tflite::gpu::metal::CompiledModel model;
   tflite::gpu::metal::CompiledModel raw_model;
