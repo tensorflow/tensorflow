@@ -19,9 +19,7 @@
 # Called with four arguments:
 # 1 - Path to the downloads folder which is typically
 #     tensorflow/lite/micro/tools/make/downloads
-# 2 - URL to downoad external library
-# 3 - Name of the library directory once it is unzipped.
-# 4 - MD5 checksum for library
+# 2 - Xtensa variant to download for (e.g. hifi4)
 #
 # This script is called from the Makefile and uses the following convention to
 # enable determination of sucess/failure:
@@ -42,18 +40,21 @@ if [ ! -d ${DOWNLOADS_DIR} ]; then
   exit 1
 fi
 
-# URL to downoad external library
-LIBRARY_URL=${2}
-# Name of the library directory once it is unzipped.
-LIBRARY_DIRNAME=${3}
-# MD5 checksum
-LIBRARY_MD5=${4}
+if [[ ${2} == "hifi4" ]]; then
+  LIBRARY_URL="http://mirror.tensorflow.org/github.com/foss-xtensa/nnlib-hifi4/raw/master/archive/xa_nnlib_06_27.zip"
+  LIBRARY_DIRNAME="xa_nnlib_hifi4"
+  LIBRARY_MD5="45fdc1209a8da62ab568aa6040f7eabf"
+else
+  echo "Attempting to download an unsupported xtensa variant: ${2}"
+  exit 1
+fi
 
 LIBRARY_INSTALL_PATH=${DOWNLOADS_DIR}/${LIBRARY_DIRNAME}
+
 if [ -d ${LIBRARY_INSTALL_PATH} ]; then
   echo >&2 "${LIBRARY_INSTALL_PATH} already exists, skipping the download."
 else
-  TMP_ZIP_ARCHIVE_NAME="xtensa_library.zip"
+  TMP_ZIP_ARCHIVE_NAME="${LIBRARY_DIRNAME}.zip"
   wget ${LIBRARY_URL} -O /tmp/${TMP_ZIP_ARCHIVE_NAME} >&2
   MD5=`md5sum /tmp/${TMP_ZIP_ARCHIVE_NAME} | awk '{print $1}'`
 

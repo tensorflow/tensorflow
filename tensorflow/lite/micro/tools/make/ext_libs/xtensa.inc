@@ -1,15 +1,11 @@
 ifeq ($(TARGET_ARCH), hifi4)
 
-  LIBRARY_URL := "http://mirror.tensorflow.org/github.com/foss-xtensa/nnlib-hifi4/raw/master/archive/xa_nnlib_06_27.zip"
-  LIBRARY_DIRNAME := "xa_nnlib_hifi4"
-  LIBRARY_MD5 := "45fdc1209a8da62ab568aa6040f7eabf"
-
-  DOWNLOAD_RESULT := $(shell $(MAKEFILE_DIR)/ext_libs/xtensa_download.sh ${MAKEFILE_DIR}/downloads $(LIBRARY_URL) $(LIBRARY_DIRNAME) $(LIBRARY_MD5))
+  DOWNLOAD_RESULT := $(shell $(MAKEFILE_DIR)/ext_libs/xtensa_download.sh ${MAKEFILE_DIR}/downloads hifi4)
   ifneq ($(DOWNLOAD_RESULT), SUCCESS)
     $(error Something went wrong with the xtensa download: $(DOWNLOAD_RESULT))
   endif
 
-  NNLIB_PATH := $(MAKEFILE_DIR)/downloads/$(LIBRARY_DIRNAME)
+  NNLIB_PATH := $(MAKEFILE_DIR)/downloads/xa_nnlib_hifi4
 
   THIRD_PARTY_CC_SRCS += \
     $(shell find $(NNLIB_PATH) -name "*.c")
