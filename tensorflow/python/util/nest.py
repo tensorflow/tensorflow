@@ -274,6 +274,37 @@ is_sequence_or_composite = _pywrap_utils.IsSequenceOrComposite
 def is_nested(seq):
   """Returns true if its input is a collections.abc.Sequence (except strings).
 
+    >>> tf.nest.is_nested("1234")
+    False
+
+    >>> tf.nest.is_nested([1, 3, [4, 5]])
+    True
+
+    >>> tf.nest.is_nested(((7, 8), (5, 6)))
+    True
+
+    >>> tf.nest.is_nested([])
+    True
+
+    >>> tf.nest.is_nested({"a": 1, "b": 2})
+    True
+
+    >>> tf.nest.is_nested({"a": 1, "b": 2}.keys())
+    True
+
+    >>> tf.nest.is_nested({"a": 1, "b": 2}.values())
+    True
+
+    >>> tf.nest.is_nested({"a": 1, "b": 2}.items())
+    True
+
+    >>> tf.nest.is_nested(set([1, 2]))
+    False
+
+    >>> ones = tf.ones([2, 3])
+    >>> tf.nest.is_nested(ones)
+    False
+
   Args:
     seq: an input sequence.
 
