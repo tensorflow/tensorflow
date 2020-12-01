@@ -287,6 +287,15 @@ func @const_paddings_space_to_batch_nd(%arg0: tensor<1x8x2xf32>) -> (tensor<3x5x
   return %2 : tensor<3x5x2xf32>
 }
 
+// CHECK-LABEL: avoid_lowering_space_to_batch_nd
+func @avoid_lowering_space_to_batch_nd(%arg0: tensor<1x8x2xf32>, %arg1: tensor<*xi32>) -> (tensor<3x5x2xf32>) {
+  %0 = "tf.Const"() {value = dense<3> : tensor<1xi32>} : () -> tensor<1xi32>
+  %1 = "tf.SpaceToBatchND"(%arg0, %0, %arg1) : (tensor<1x8x2xf32>, tensor<1xi32>, tensor<*xi32>) -> tensor<3x5x2xf32>
+  return %1 : tensor<3x5x2xf32>
+
+  // CHECK: "tf.SpaceToBatchND"
+}
+
 // %input has 1 batch dimension then 3 block dimensions then 2 remainder
 // dimensions. This checks only ops that are specific to the case with 3 block
 // dimension and 2 remainder dimensions.

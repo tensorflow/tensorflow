@@ -1122,9 +1122,15 @@ void ShapeInference::InferShapeForFunctionReturnType(FuncOp func) {
         arg_op.set(input);
       } else {
         OpBuilder b(return_op.getOperation());
-        auto type = RankedTensorType::get(
-            input.getType().cast<TensorType>().getShape(),
-            result.getType().cast<TensorType>().getElementType());
+        TensorType type;
+        if (input.getType().cast<TensorType>().hasRank()) {
+          type = RankedTensorType::get(
+              input.getType().cast<TensorType>().getShape(),
+              result.getType().cast<TensorType>().getElementType());
+        } else {
+          type = UnrankedTensorType::get(
+              result.getType().cast<TensorType>().getElementType());
+        }
         auto new_cast_op =
             b.create<TF::CastOp>(return_op.getLoc(), type, input,
                                  /*truncate=*/b.getBoolAttr(false));
