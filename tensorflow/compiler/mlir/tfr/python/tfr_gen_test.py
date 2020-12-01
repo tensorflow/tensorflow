@@ -211,6 +211,20 @@ def _tfr_shapes(x):
   return x
 
 
+#--- test fn for nested functions ---
+
+
+@composite.Composite('TestIdentityNOp')
+def _tfr_temp_op(x):
+  return x
+
+
+@composite.Composite('TestIdentityOp')
+def _tfr_temp_use_op(x):
+  y = _tfr_temp_op([x])
+  return y[0]
+
+
 class TFRGenTestBase(test.TestCase):
 
   def _check_code(self, tfr_code, exp_tfr_code):
@@ -554,6 +568,17 @@ class TFRGenTensorTest(TFRGenTestBase):
       CHECK-NEXT:   %{{.*}} = constant true
       CHECK-NEXT:   tfr.return %x : !tfr.tensor
       CHECK-NEXT: }
+    """
+    self._check_code(mlir_code, mlir_code_exp)
+
+  def test_temp_function(self):
+    mlir_code = tfr_gen(sys.modules[__name__], '_tfr_temp', [test_ops])
+    mlir_code_exp = r"""
+      CHECK-LABEL: tfr.func @tf__test_identity_n_op(%x: !tfr.tensor_list) -> (!tfr.tensor_list)
+
+      CHECK-LABEL: tfr.func @tf__test_identity_op(%x: !tfr.tensor) -> (!tfr.tensor) {
+      CHECK-NEXT:   %[[list:.*]] = "tfr.build_list"(%x) : (!tfr.tensor) -> !tfr.tensor_list
+      CHECK-NEXT:   %[[call:.*]] = tfr.call @tf__test_identity_n_op(%[[list]]) : (!tfr.tensor_list)
     """
     self._check_code(mlir_code, mlir_code_exp)
 

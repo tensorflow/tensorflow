@@ -431,6 +431,15 @@ class TFRTypeResolver(type_inference.Resolver):
       return ({tuple(_get_type_from_proto(arg) for arg in op_def.output_arg)},
               None)
 
+    elif f_type == (types.FunctionType,):
+      # A composition Python function name is used directly.
+      op_name = name.qn[0]
+      op_def, _ = self._op_defs.lookup(op_name)
+      if len(op_def.output_arg) == 1:
+        return {_get_type_from_proto(op_def.output_arg[0])}, None
+      return ({tuple(_get_type_from_proto(arg) for arg in op_def.output_arg)},
+              None)
+
     elif f_type == (TFRTypes.PY_BUILTIN_FUNC,):
       assert name.is_simple()
       if name == QN('range'):
@@ -809,6 +818,9 @@ class TFRGen(transformer.CodeGenerator):
     if func_type == TFRTypes.TF_RAW_OP:
       return self._visit_tf_op(func_name, node.args, node.keywords, node)
 
+    if func_type == types.FunctionType:
+      return self._visit_tf_op(func_name, node.args, node.keywords, node)
+
     if func_type == TFRTypes.TF_TENSOR_SHAPE_FUNC:
       return (func_name, TFRTypes.TF_TENSOR_SHAPE_LIST)
 
@@ -1184,7 +1196,13 @@ class TFRGen(transformer.CodeGenerator):
     raise NotImplementedError('If not supported.')
 
   def visit_Name(self, node):
-    val, lookup_type = self.symbol_table.lookup(node.id)
+    val_and_lookup_type = self.symbol_table.lookup(node.id)
+    if val_and_lookup_type:
+      (val, lookup_type) = val_and_lookup_type
+    else:
+      op_def, _ = self._op_defs.lookup(node.id)
+      val = op_def.name
+      lookup_type = anno.getanno(node, anno.Static.TYPES, types.FunctionType)
     type_ = self._get_inferred_type(node, lookup_type)
     return val, type_
 
