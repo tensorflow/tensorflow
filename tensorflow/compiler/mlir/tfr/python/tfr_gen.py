@@ -1368,10 +1368,16 @@ def tfr_gen_from_module(source, method_prefix=None, op_libraries=None):
         logging.info('load file: ' + lib_path)
         load_library.load_op_library(lib_path)
 
-  mlir_funcs = [
-      tfr_gen(func, op_defs)
+  py_funcs = [
+      func
       for name, func in tf_inspect.getmembers(source, tf_inspect.isfunction)
       if not method_prefix or name.startswith(method_prefix)
   ]
+  # Sort the methods by the line number, to make sure the definitions are
+  # processed before the usages.
+  # TODO(fengliuai): Use type inference resolver to recursively process any
+  # functions called.
+  py_funcs = sorted(py_funcs, key=lambda x: x.__code__.co_firstlineno)
+  mlir_funcs = [tfr_gen(func, op_defs) for func in py_funcs]
 
   return '\n'.join(mlir_funcs + op_defs.mlir_external_funcs())
