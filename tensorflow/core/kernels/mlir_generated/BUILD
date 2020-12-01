@@ -328,7 +328,8 @@ gen_kernel_library(
         "f64",
         "i64",
     ],
-    unroll_factors = "4",
+    # TODO(b/174543802): Enable once fusion heursitics is better.
+    # unroll_factors = "4",
 )
 
 gen_kernel_library(
@@ -346,7 +347,8 @@ gen_kernel_library(
         "i32",
         "i64",
     ],
-    unroll_factors = "4",
+    # TODO(b/174543802): Enable once fusion heursitics is better.
+    # unroll_factors = "4",
 )
 
 [
