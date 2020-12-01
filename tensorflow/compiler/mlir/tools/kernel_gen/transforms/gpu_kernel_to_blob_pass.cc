@@ -53,10 +53,11 @@ class GpuKernelToBlobPass
  public:
   GpuKernelToBlobPass(mlir::StringRef blob_annotation,
                       llvm::ArrayRef<std::string> architectures,
-                      bool generate_fatbin) {
+                      bool generate_fatbin, bool print_ptx) {
     blob_annotation_ = blob_annotation.str();
     architectures_ = architectures;
     generate_fatbin_ = generate_fatbin;
+    print_ptx_ = print_ptx;
   }
 
   void runOnOperation() override {
@@ -182,7 +183,14 @@ class GpuKernelToBlobPass
           xla::gpu::nvptx::CompileToPtx(llvm_module_copy.get(),
                                         std::make_pair(cc_major, cc_minor),
                                         config, libdevice_dir, enable_fusion));
-      VLOG(1) << ptx;
+
+      if (print_ptx_) {
+        llvm::dbgs() << "Generated PTX code for module '"
+                     << gpu_module.getName() << "' on architecture sm_" << arch
+                     << ":\n";
+        llvm::dbgs() << ptx << "\n";
+      }
+
       TF_ASSIGN_OR_RETURN(std::vector<uint8_t> gpu_asm,
                           tensorflow::se::CompileGpuAsm(
                               cc_major, cc_minor, ptx.c_str(), gpu_asm_opts));
@@ -237,9 +245,9 @@ class GpuKernelToBlobPass
 
 std::unique_ptr<OperationPass<gpu::GPUModuleOp>> CreateGpuKernelToBlobPass(
     mlir::StringRef blob_annotation, ArrayRef<std::string> architectures,
-    bool generate_fatbin) {
+    bool generate_fatbin, bool print_ptx) {
   return std::make_unique<GpuKernelToBlobPass>(blob_annotation, architectures,
-                                               generate_fatbin);
+                                               generate_fatbin, print_ptx);
 }
 
 }  // namespace transforms

@@ -64,7 +64,8 @@ std::unique_ptr<FunctionPass> CreateParallelLoopsToSequential();
 // Pass to annotate GPU Module with its PTX.
 std::unique_ptr<OperationPass<gpu::GPUModuleOp>> CreateGpuKernelToBlobPass(
     mlir::StringRef blob_annotation = "",
-    ArrayRef<std::string> architectures = {}, bool generate_fatbin = true);
+    ArrayRef<std::string> architectures = {}, bool generate_fatbin = true,
+    bool print_ptx = false);
 
 // Pass to unfuse batch norm.
 std::unique_ptr<FunctionPass> CreateUnfuseBatchNormPass();
