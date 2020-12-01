@@ -149,7 +149,6 @@ upper_tabs:
         path: /lite/performance/hexagon_delegate
       - title: "Core ML delegate"
         path: /lite/performance/coreml_delegate
-        status: experimental
       - title: "Implementing a delegate"
         path: /lite/performance/implementing_delegate
         status: experimental

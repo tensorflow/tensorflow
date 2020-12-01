@@ -272,10 +272,6 @@ tensorflow/third_party/toolchains/remote/BUILD
 tensorflow/third_party/toolchains/remote/BUILD.tpl
 tensorflow/third_party/toolchains/remote/configure.bzl
 tensorflow/third_party/toolchains/remote/execution.bzl.tpl
-tensorflow/third_party/toolchains/remote_config/BUILD
-tensorflow/third_party/toolchains/remote_config/configs.bzl
-tensorflow/third_party/toolchains/remote_config/containers.bzl
-tensorflow/third_party/toolchains/remote_config/rbe_config.bzl
 tensorflow/third_party/typing_extensions.BUILD
 tensorflow/third_party/wrapt.BUILD
 tensorflow/third_party/zlib.BUILD

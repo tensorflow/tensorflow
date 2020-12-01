@@ -44,11 +44,6 @@ Status NcclAllReduceThunk::ExecuteOnStream(const ExecuteParams& params) {
       "compiler, which is necessary to build the NCCL source library.");
 }
 
-/*static*/ absl::flat_hash_set<GlobalDeviceId>
-NcclAllReduceThunk::DevicesWithOpenNcclChannels() {
-  return {};
-}
-
 NcclAllReduceThunk::NcclAllReduceThunk(
     ThunkInfo thunk_info, NcclAllReduceConfig &&config,
     std::vector<NcclAllReduceThunk::Buffer> buffers)

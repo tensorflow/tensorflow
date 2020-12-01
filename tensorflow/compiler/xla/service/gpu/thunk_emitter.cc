@@ -306,17 +306,23 @@ Status ThunkEmitter::HandleCustomCall(HloInstruction* custom_call) {
     for (const auto* operand : custom_call->operands()) {
       operand_slices.push_back(GetAllocationSlice(*operand));
     }
-    auto tuple_result_slice = GetAllocationSlice(*custom_call);
     auto conv_result_slice = GetAllocationSlice(*custom_call, {0});
     auto scratch_slice = GetAllocationSlice(*custom_call, {1});
+
+    // Assert that the tuple slice is not used by anyone directly. That is, all
+    // users of the tuple output are get-tuple-element. Also assert that the
+    // second element of the tuple (the scratch buffer) is not used by anyone.
+    for (const HloInstruction* user : custom_call->users()) {
+      TF_RET_CHECK(user->opcode() == HloOpcode::kGetTupleElement &&
+                   user->tuple_index() == 0);
+    }
 
     TF_ASSIGN_OR_RETURN(
         GpuConvConfig config,
         GetGpuConvConfig(Cast<HloCustomCallInstruction>(custom_call)));
     AddThunkToThunkSequence(absl::make_unique<ConvolutionThunk>(
         context_->GetThunkInfo(custom_call), std::move(config),
-        std::move(operand_slices), conv_result_slice, scratch_slice,
-        tuple_result_slice));
+        std::move(operand_slices), conv_result_slice, scratch_slice));
     return Status::OK();
   }
 

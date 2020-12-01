@@ -35,7 +35,6 @@ import six
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import collective_all_reduce_strategy
-from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.eager import context
@@ -1603,7 +1602,6 @@ class BackupAndRestore(Callback):
     self.backup_dir = backup_dir
     self._supports_tf_logs = True
     self._supported_strategies = (
-        distribute_lib._DefaultDistributionStrategy,
         mirrored_strategy.MirroredStrategy,
         collective_all_reduce_strategy.CollectiveAllReduceStrategy,
         tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV2)
@@ -1631,8 +1629,8 @@ class BackupAndRestore(Callback):
     # failure-recovery of a worker in training.
     # pylint: disable=protected-access
 
-    if not isinstance(self.model.distribute_strategy,
-                      self._supported_strategies):
+    if self.model._distribution_strategy and not isinstance(
+        self.model.distribute_strategy, self._supported_strategies):
       raise NotImplementedError(
           '%s is not supported yet. '
           'Currently BackupAndRestore callback only supports empty strategy, '

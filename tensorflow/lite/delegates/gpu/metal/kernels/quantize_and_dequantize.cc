@@ -23,13 +23,12 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace metal {
-std::vector<ComputeTaskDescriptorPtr> QuantizeAndDequantize(
-    int id, ValueId input_id, ValueId output_id,
+ComputeTaskDescriptor QuantizeAndDequantize(
+    ValueId input_id, ValueId output_id,
     const QuantizeAndDequantizeAttributes& attr) {
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = true;
-  desc->shader_source = R"(
+  ComputeTaskDescriptor desc;
+  desc.is_linkable = true;
+  desc.shader_source = R"(
     FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid, float3 params) {
       value = clamp(value, FLT4(params.x), FLT4(params.y));
       value = (value - FLT4(params.x)) / FLT4(params.z);
@@ -37,16 +36,17 @@ std::vector<ComputeTaskDescriptorPtr> QuantizeAndDequantize(
     }
   )";
 
-  desc->input_buffers = {{input_id}};
-  desc->output_buffer = {output_id};
-  desc->uniform_buffers = {
+  desc.input_buffers = {{input_id}};
+  desc.output_buffer = {output_id};
+  desc.uniform_buffers = {
       {"constant float3&",
-       [attr](const std::map<ValueId, BHWC>& buffers) {
+       [attr](const std::vector<BHWC>& src_shapes,
+              const std::vector<BHWC>& dst_shapes) {
          return GetByteBuffer(
              std::vector<float>{attr.min, attr.max, attr.scale});
        }},
   };
-  return {desc};
+  return desc;
 }
 
 }  // namespace metal

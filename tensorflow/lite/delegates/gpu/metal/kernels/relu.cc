@@ -30,33 +30,32 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 
-std::vector<ComputeTaskDescriptorPtr> ReLU(int id, ValueId input_id,
-                                           ValueId output_id,
-                                           const ReLUAttributes& attr) {
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = true;
+ComputeTaskDescriptor ReLU(ValueId input_id, ValueId output_id,
+                           const ReLUAttributes& attr) {
+  ComputeTaskDescriptor desc;
+  desc.is_linkable = true;
   const std::string min_func =
       attr.alpha == 0 ? "FLT4(0.0f)" : "min(value * params.x, 0.0f)";
   const std::string parameters =
       "FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid, float2 params) "
       "{\n";
   if (attr.clip != 0.0) {
-    desc->shader_source = parameters + "  return FLT4(clamp(value, " +
-                          min_func + ", FLT4(params.y)));\n}";
+    desc.shader_source = parameters + "  return FLT4(clamp(value, " + min_func +
+                         ", FLT4(params.y)));\n}";
   } else {
-    desc->shader_source =
+    desc.shader_source =
         parameters + "  return FLT4(max(value, " + min_func + "));\n}";
   }
-  desc->input_buffers = {{input_id}};
-  desc->output_buffer = {output_id};
-  desc->uniform_buffers = {
+  desc.input_buffers = {{input_id}};
+  desc.output_buffer = {output_id};
+  desc.uniform_buffers = {
       {"constant float2&",
-       [attr](const std::map<ValueId, BHWC>& buffers) {
+       [attr](const std::vector<BHWC>& src_shapes,
+              const std::vector<BHWC>& dst_shapes) {
          return GetByteBuffer(std::vector<float>{attr.alpha, attr.clip});
        }},
   };
-  return {desc};
+  return desc;
 }
 
 }  // namespace metal

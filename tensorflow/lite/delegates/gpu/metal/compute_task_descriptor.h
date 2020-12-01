@@ -33,12 +33,10 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 
-using OutputDimensions =
-    std::function<BHWC(const std::map<ValueId, BHWC>& buffers)>;
-using UniformsFunction =
-    std::function<std::vector<uint8_t>(const std::map<ValueId, BHWC>& buffers)>;
+using UniformsFunction = std::function<std::vector<uint8_t>(
+    const std::vector<BHWC>& src_shapes, const std::vector<BHWC>& dst_shapes)>;
 using DispatchParamsFunction = std::function<std::pair<uint3, uint3>(
-    const std::map<ValueId, BHWC>& buffers)>;
+    const std::vector<BHWC>& src_shapes, const std::vector<BHWC>& dst_shapes)>;
 
 // Compute task descriptor contains a linkable shader code or a code for
 // complete shader to which other linkable can be attached or not. An operation
@@ -73,10 +71,15 @@ struct ComputeTaskDescriptor {
     UniformsFunction data_function;
   };
 
+  ComputeTaskDescriptor() = default;
+  // Move only
+  ComputeTaskDescriptor(ComputeTaskDescriptor&& task) = default;
+  ComputeTaskDescriptor& operator=(ComputeTaskDescriptor&& task) = default;
+  ComputeTaskDescriptor(const ComputeTaskDescriptor&) = delete;
+  ComputeTaskDescriptor& operator=(const ComputeTaskDescriptor&) = delete;
+
   Arguments args;
-  // Unique ID to match the graph compilation errors.
-  int id;
-  bool is_linkable;
+  bool is_linkable = false;
   // A linkable function or a full shader source with 3 parameters $ for
   // substitute function. Example of linkable: "(FLT4 linkable$0(FLT4 value, int
   // linear_index) { return value; })" Example of non-linkable function:
@@ -108,7 +111,6 @@ struct ComputeTaskDescriptor {
   // calculate new parameters for GPU compute task dispatching. A leading
   // unlinkable task must provide this.
   DispatchParamsFunction resize_function;
-  std::string description;
 };
 
 using ComputeTaskDescriptorPtr = std::shared_ptr<ComputeTaskDescriptor>;

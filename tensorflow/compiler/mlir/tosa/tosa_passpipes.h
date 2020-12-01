@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TOSA_TOSA_PASSES_H
 
 #include "mlir/Dialect/Tosa/Transforms/Passes.h"
-#include "mlir/IR/Module.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/PassManager.h"
 #include "llvm/ADT/Optional.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/passes.h"

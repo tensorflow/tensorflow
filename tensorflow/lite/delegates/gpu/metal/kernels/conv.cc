@@ -1045,29 +1045,28 @@ std::pair<uint3, uint3> GetDispatchSizes(const ConvParams& params,
 
 }  // namespace
 
-std::vector<ComputeTaskDescriptorPtr> ConvolutionGeneric(
-    int id, ValueId input_id, ValueId output_id, const BHWC& dst_shape,
-    const Convolution2DAttributes& attr, const GpuInfo& gpu_info,
-    const metal::RuntimeOptions& options) {
+ComputeTaskDescriptor ConvolutionGeneric(ValueId input_id, ValueId output_id,
+                                         const BHWC& dst_shape,
+                                         const Convolution2DAttributes& attr,
+                                         const GpuInfo& gpu_info,
+                                         const metal::RuntimeOptions& options) {
   ConvParams params = GetConvParams(gpu_info, attr, options, dst_shape);
 
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = false;
-  desc->shader_source = GenerateConvolution(params);
+  ComputeTaskDescriptor desc;
+  desc.shader_source = GenerateConvolution(params);
 
-  desc->input_buffers = {
+  desc.input_buffers = {
       {input_id, "device FLT4* const src_buffer"},
   };
 
-  desc->output_buffer = {output_id, "device FLT4* dst_buffer"};
+  desc.output_buffer = {output_id, "device FLT4* dst_buffer"};
 
   auto weights_reordered = ReorderWeightsForConv(attr.weights, params);
   std::string addr_space =
       params.weights_upload_type == WeightsUploadType::CONSTANT_MEM ? "constant"
                                                                     : "device";
   const int dst_depth = DivideRoundUp(attr.weights.shape.o, 4);
-  desc->immutable_buffers = {
+  desc.immutable_buffers = {
       {addr_space + " FLT4* const filters",
        GetByteBufferConverted(weights_reordered, options.storage_precision)},
       {addr_space + " FLT4* const biases",
@@ -1076,26 +1075,24 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionGeneric(
            AlignByN(dst_depth, params.block_size.z) * 4)},
   };
 
-  desc->uniform_buffers = {
+  desc.uniform_buffers = {
       {"constant uniforms& params",
-       [input_id, output_id, attr,
-        params](const std::map<ValueId, BHWC>& buffers) {
-         const auto& src_shape = buffers.find(input_id)->second;
-         const auto& dst_shape = buffers.find(output_id)->second;
-         return GetUniformBuffer(src_shape, dst_shape, attr, params);
+       [attr, params](const std::vector<BHWC>& src_shapes,
+                      const std::vector<BHWC>& dst_shapes) {
+         return GetUniformBuffer(src_shapes[0], dst_shapes[0], attr, params);
        }},
   };
 
-  desc->resize_function = [output_id,
-                           params](const std::map<ValueId, BHWC>& buffers) {
-    return GetDispatchSizes(params, buffers.find(output_id)->second);
+  desc.resize_function = [params](const std::vector<BHWC>& src_shapes,
+                                  const std::vector<BHWC>& dst_shapes) {
+    return GetDispatchSizes(params, dst_shapes[0]);
   };
 
-  return {desc};
+  return desc;
 }
 
-std::vector<ComputeTaskDescriptorPtr> ConvolutionWino4x4To6x6(
-    int id, ValueId input_id, ValueId output_id, const BHWC& dst_shape,
+ComputeTaskDescriptor ConvolutionWino4x4To6x6(
+    ValueId input_id, ValueId output_id, const BHWC& dst_shape,
     const Convolution2DAttributes& attr, const GpuInfo& gpu_info,
     const RuntimeOptions& options) {
   const int dst_slices = DivideRoundUp(attr.weights.shape.o, 4);
@@ -1137,44 +1134,42 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionWino4x4To6x6(
     params.block_size = int3(2, 1, 4);
   }
 
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = false;
-  desc->shader_source = GenerateConvolution(params);
+  ComputeTaskDescriptor desc;
+  desc.shader_source = GenerateConvolution(params);
 
-  desc->input_buffers = {
+  desc.input_buffers = {
       {input_id, "device FLT4* const src_buffer"},
   };
 
-  desc->output_buffer = {output_id, "device FLT4* dst_buffer"};
+  desc.output_buffer = {output_id, "device FLT4* dst_buffer"};
 
   ::tflite::gpu::Tensor<OHWI, DataType::FLOAT32> wino_weights;
   RearrangeWeightsToWinograd4x4To6x6Weights(attr.weights, &wino_weights);
   auto weights_reordered = ReorderWeightsForConv(wino_weights, params);
   std::vector<float> dummy_biases(AlignByN(dst_slices, params.block_size.z) * 4,
                                   0.0f);
-  desc->immutable_buffers = {
+  desc.immutable_buffers = {
       {"device FLT4* const filters",
        GetByteBufferConverted(weights_reordered, options.storage_precision)},
       {"device FLT4* const biases",
        GetByteBufferConverted(dummy_biases, options.storage_precision)},
   };
 
-  desc->uniform_buffers = {
+  desc.uniform_buffers = {
       {"constant uniforms& params",
-       [input_id, output_id, params](const std::map<ValueId, BHWC>& buffers) {
-         const auto& src_shape = buffers.find(input_id)->second;
-         const auto& dst_shape = buffers.find(output_id)->second;
-         return GetUniformBufferForWinograd(src_shape, dst_shape, params);
+       [params](const std::vector<BHWC>& src_shapes,
+                const std::vector<BHWC>& dst_shapes) {
+         return GetUniformBufferForWinograd(src_shapes[0], dst_shapes[0],
+                                            params);
        }},
   };
 
-  desc->resize_function = [output_id,
-                           params](const std::map<ValueId, BHWC>& buffers) {
-    return GetDispatchSizes(params, buffers.find(output_id)->second);
+  desc.resize_function = [params](const std::vector<BHWC>& src_shapes,
+                                  const std::vector<BHWC>& dst_shapes) {
+    return GetDispatchSizes(params, dst_shapes[0]);
   };
 
-  return {desc};
+  return desc;
 }
 
 }  // namespace metal

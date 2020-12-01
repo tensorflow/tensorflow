@@ -84,10 +84,11 @@ struct PythonBufferTree {
 StatusOr<PythonBufferTree> GetPythonBufferTree(
     const pybind11::object& argument);
 
-// Converts a sequence of int64s to a Python tuple of ints.
-// Pybind11 by default converts a std::vector<int64> to a Python list; for
-// shapes we frequently want a tuple instead.
+// Converts a sequence of C++ ints to a Python tuple of ints.
+// Pybind11 by default converts a std::vector<int64> to a Python list;
+// we frequently want a tuple instead e.g. for shapes.
 pybind11::tuple IntSpanToTuple(absl::Span<int64 const> xs);
+pybind11::tuple IntSpanToTuple(absl::Span<int const> xs);
 
 // Converts a Python sequence of integers to a std::vector<int64>
 std::vector<int64> IntSequenceToVector(const pybind11::object& sequence);

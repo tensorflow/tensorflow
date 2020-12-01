@@ -33,9 +33,9 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
@@ -1122,9 +1122,15 @@ void ShapeInference::InferShapeForFunctionReturnType(FuncOp func) {
         arg_op.set(input);
       } else {
         OpBuilder b(return_op.getOperation());
-        auto type = RankedTensorType::get(
-            input.getType().cast<TensorType>().getShape(),
-            result.getType().cast<TensorType>().getElementType());
+        TensorType type;
+        if (input.getType().cast<TensorType>().hasRank()) {
+          type = RankedTensorType::get(
+              input.getType().cast<TensorType>().getShape(),
+              result.getType().cast<TensorType>().getElementType());
+        } else {
+          type = UnrankedTensorType::get(
+              result.getType().cast<TensorType>().getElementType());
+        }
         auto new_cast_op =
             b.create<TF::CastOp>(return_op.getLoc(), type, input,
                                  /*truncate=*/b.getBoolAttr(false));

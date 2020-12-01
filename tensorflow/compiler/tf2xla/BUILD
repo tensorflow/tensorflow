@@ -350,6 +350,7 @@ cc_library(
         ":xla_helpers",
         ":xla_op_registry",
         ":xla_resource",
+        "//tensorflow/compiler/mlir:mlir_bridge_rollout_policy",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",

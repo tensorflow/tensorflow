@@ -86,10 +86,15 @@ void NcclCommunicator::Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
     participant->done_callback = std::move(done);
   } else {
     CancellationToken cancel_token = cancel_mgr->get_cancellation_token();
-    cancel_mgr->RegisterCallback(cancel_token, [this]() {
-      nccl_manager_.StartAbort(errors::Cancelled("op cancelled"));
-      nccl_manager_.Reset();
-    });
+    bool already_cancelled =
+        !cancel_mgr->RegisterCallback(cancel_token, [this]() {
+          nccl_manager_.StartAbort(errors::Cancelled("op cancelled"));
+          nccl_manager_.Reset();
+        });
+    if (already_cancelled) {
+      done(errors::Cancelled("op cancelled"));
+      return;
+    }
     participant->done_callback = [cancel_mgr, cancel_token,
                                   done = std::move(done)](const Status& s) {
       // Do not block on deregistration since this can be invoked by

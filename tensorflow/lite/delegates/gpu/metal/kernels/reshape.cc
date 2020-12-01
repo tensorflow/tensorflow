@@ -116,44 +116,41 @@ kernel void ComputeFunction(
 
 }  // namespace
 
-std::vector<ComputeTaskDescriptorPtr> Reshape(int id, ValueId input_id,
-                                              ValueId output_id,
-                                              const ReshapeAttributes& attr) {
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = false;
-  desc->shader_source = GetReshapeCode();
+ComputeTaskDescriptor Reshape(ValueId input_id, ValueId output_id,
+                              const ReshapeAttributes& attr) {
+  ComputeTaskDescriptor desc;
+  desc.shader_source = GetReshapeCode();
 
-  desc->input_buffers = {
+  desc.input_buffers = {
       {input_id, "device FLT4* const src_buffer"},
   };
 
-  desc->output_buffer = {output_id, "device FLT4* dst_buffer"};
+  desc.output_buffer = {output_id, "device FLT4* dst_buffer"};
 
-  desc->uniform_buffers = {
+  desc.uniform_buffers = {
       {"constant uniforms& params",
-       [input_id, output_id](const std::map<ValueId, BHWC>& buffers) {
-         const auto& src_dim = buffers.find(input_id)->second;
-         const auto& dst_dim = buffers.find(output_id)->second;
+       [](const std::vector<BHWC>& src_shapes,
+          const std::vector<BHWC>& dst_shapes) {
          std::vector<int> uniform_params{
              // int4 src_size
-             src_dim.w,
-             src_dim.h,
-             src_dim.c,
-             src_dim.c * src_dim.w,
+             src_shapes[0].w,
+             src_shapes[0].h,
+             src_shapes[0].c,
+             src_shapes[0].c * src_shapes[0].w,
              // int4 dst_size
-             dst_dim.w,
-             dst_dim.h,
-             dst_dim.c,
-             dst_dim.c * dst_dim.w,
+             dst_shapes[0].w,
+             dst_shapes[0].h,
+             dst_shapes[0].c,
+             dst_shapes[0].c * dst_shapes[0].w,
          };
          return GetByteBuffer(uniform_params);
        }},
   };
 
-  desc->resize_function = [attr](const std::map<ValueId, BHWC>& buffers) {
-    const uint3 grid = uint3(attr.new_shape.w, attr.new_shape.h,
-                             DivideRoundUp(attr.new_shape.c, 4));
+  desc.resize_function = [attr](const std::vector<BHWC>& src_shapes,
+                                const std::vector<BHWC>& dst_shapes) {
+    const uint3 grid = uint3(dst_shapes[0].w, dst_shapes[0].h,
+                             DivideRoundUp(dst_shapes[0].c, 4));
     const uint3 groups_size = GetWorkGroupSizeForGrid(grid);
     int groups_x = DivideRoundUp(grid.x, groups_size.x);
     int groups_y = DivideRoundUp(grid.y, groups_size.y);
@@ -161,38 +158,36 @@ std::vector<ComputeTaskDescriptorPtr> Reshape(int id, ValueId input_id,
     return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
   };
 
-  return {desc};
+  return desc;
 }
 
-std::vector<ComputeTaskDescriptorPtr> Reshapex4(int id, ValueId input_id,
-                                                ValueId output_id,
-                                                const ReshapeAttributes& attr) {
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = false;
-  desc->shader_source = GetReshapex4Code();
+ComputeTaskDescriptor Reshapex4(ValueId input_id, ValueId output_id,
+                                const ReshapeAttributes& attr) {
+  ComputeTaskDescriptor desc;
+  desc.shader_source = GetReshapex4Code();
 
-  desc->input_buffers = {
+  desc.input_buffers = {
       {input_id, "device FLT4* const src_buffer"},
   };
 
-  desc->output_buffer = {output_id, "device FLT4* dst_buffer"};
+  desc.output_buffer = {output_id, "device FLT4* dst_buffer"};
 
-  desc->uniform_buffers = {
+  desc.uniform_buffers = {
       {"constant uniforms& params",
-       [input_id, output_id](const std::map<ValueId, BHWC>& buffers) {
-         const auto& src_dim = buffers.find(input_id)->second;
-         const auto& dst_dim = buffers.find(output_id)->second;
+       [](const std::vector<BHWC>& src_shapes,
+          const std::vector<BHWC>& dst_shapes) {
          std::vector<int32_t> uniform_params{
              // int4 src_size
-             src_dim.w, src_dim.h, DivideRoundUp(src_dim.c, 4),
-             src_dim.w * src_dim.h,
+             src_shapes[0].w, src_shapes[0].h,
+             DivideRoundUp(src_shapes[0].c, 4),
+             src_shapes[0].w * src_shapes[0].h,
              // int4 dst_size
-             dst_dim.w, dst_dim.h, DivideRoundUp(dst_dim.c, 4),
-             dst_dim.w * dst_dim.h,
+             dst_shapes[0].w, dst_shapes[0].h,
+             DivideRoundUp(dst_shapes[0].c, 4),
+             dst_shapes[0].w * dst_shapes[0].h,
              // int2 plane_xz
-             src_dim.w * DivideRoundUp(src_dim.c, 4),
-             dst_dim.w * DivideRoundUp(dst_dim.c, 4),
+             src_shapes[0].w * DivideRoundUp(src_shapes[0].c, 4),
+             dst_shapes[0].w * DivideRoundUp(dst_shapes[0].c, 4),
              0,  // dummy, for alignment
              0,  // dummy, for alignment
              0,  // dummy, for alignment
@@ -204,9 +199,10 @@ std::vector<ComputeTaskDescriptorPtr> Reshapex4(int id, ValueId input_id,
        }},
   };
 
-  desc->resize_function = [attr](const std::map<ValueId, BHWC>& buffers) {
-    const uint3 grid = uint3(attr.new_shape.w, attr.new_shape.h,
-                             DivideRoundUp(attr.new_shape.c, 4));
+  desc.resize_function = [attr](const std::vector<BHWC>& src_shapes,
+                                const std::vector<BHWC>& dst_shapes) {
+    const uint3 grid = uint3(dst_shapes[0].w, dst_shapes[0].h,
+                             DivideRoundUp(dst_shapes[0].c, 4));
     const uint3 groups_size = GetWorkGroupSizeForGrid(grid);
     int groups_x = DivideRoundUp(grid.x, groups_size.x);
     int groups_y = DivideRoundUp(grid.y, groups_size.y);
@@ -214,7 +210,7 @@ std::vector<ComputeTaskDescriptorPtr> Reshapex4(int id, ValueId input_id,
     return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
   };
 
-  return {desc};
+  return desc;
 }
 
 }  // namespace metal

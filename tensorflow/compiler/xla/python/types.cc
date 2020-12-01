@@ -276,12 +276,20 @@ StatusOr<PythonBufferTree> GetPythonBufferTree(const py::object& argument) {
   return tree;
 }
 
-py::tuple IntSpanToTuple(absl::Span<int64 const> xs) {
+template <typename IntType>
+static py::tuple IntSpanToTupleHelper(absl::Span<IntType const> xs) {
   py::tuple out(xs.size());
   for (int i = 0; i < xs.size(); ++i) {
     out[i] = py::int_(xs[i]);
   }
   return out;
+}
+
+py::tuple IntSpanToTuple(absl::Span<int64 const> xs) {
+  return IntSpanToTupleHelper(xs);
+}
+py::tuple IntSpanToTuple(absl::Span<int const> xs) {
+  return IntSpanToTupleHelper(xs);
 }
 
 std::vector<int64> IntSequenceToVector(const py::object& sequence) {

@@ -256,7 +256,7 @@ Status AmendKernelLLVMIRWithStaticKnowledge(mlir::ModuleOp module) {
 Status GenerateDeviceCode(mlir::ModuleOp module,
                           llvm::StringRef gpu_binary_attr_name,
                           llvm::ArrayRef<std::string> architectures,
-                          bool generate_fatbin) {
+                          bool generate_fatbin, bool print_ptx) {
   mlir::PassManager pm(module.getContext());
   applyTensorflowAndCLOptions(pm);
 
@@ -264,7 +264,7 @@ Status GenerateDeviceCode(mlir::ModuleOp module,
   // Remove debug information to ensure we do not create debug PTX.
   kernel_pm.addPass(mlir::createStripDebugInfoPass());
   kernel_pm.addPass(mlir::kernel_gen::transforms::CreateGpuKernelToBlobPass(
-      gpu_binary_attr_name, architectures, generate_fatbin));
+      gpu_binary_attr_name, architectures, generate_fatbin, print_ptx));
 
   return failed(pm.run(module))
              ? InternalError("Generating device code failed.")
@@ -291,7 +291,7 @@ StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
     llvm::ArrayRef<std::string> architectures,
     llvm::ArrayRef<uint32_t> tile_sizes,
     llvm::ArrayRef<uint32_t> unroll_factors, bool embed_memref_prints,
-    bool generate_fatbin) {
+    bool generate_fatbin, bool print_ptx) {
   mlir::RegisterAllTensorFlowDialects(context.getDialectRegistry());
   mlir::OwningModuleRef module = mlir::parseSourceString(tf_code, &context);
   TF_RETURN_IF_ERROR(LowerTFtoGPU(module.get(), gpu_binary_only, tile_sizes,
@@ -309,7 +309,8 @@ StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
 #endif
   TF_RETURN_IF_ERROR(AmendKernelLLVMIRWithStaticKnowledge(module.get()));
   TF_RETURN_IF_ERROR(GenerateDeviceCode(module.get(), kGpuBinaryAttrName,
-                                        architectures, generate_fatbin));
+                                        architectures, generate_fatbin,
+                                        print_ptx));
   if (!gpu_binary_only) {
     TF_RETURN_IF_ERROR(LowerHostSideToFinalForm(module.get()));
   }
