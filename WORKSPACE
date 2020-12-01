@@ -12,6 +12,16 @@ http_archive(
     ],
 )
 
+http_archive(
+    name = "tf_toolchains",
+    sha256 = "d60f9637c64829e92dac3f4477a2c45cdddb9946c5da0dd46db97765eb9de08e",
+    strip_prefix = "toolchains-1.1.5",
+    urls = [
+        "http://mirror.tensorflow.org/github.com/tensorflow/toolchains/archive/v1.1.5.tar.gz",
+        "https://github.com/tensorflow/toolchains/archive/v1.1.5.tar.gz",
+    ],
+)
+
 # Load tf_repositories() before loading dependencies for other repository so
 # that dependencies like com_google_protobuf won't be overridden.
 load("//tensorflow:workspace.bzl", "tf_repositories")
@@ -121,4 +131,3 @@ grpc_extra_deps()
 load("//third_party/googleapis:repository_rules.bzl", "config_googleapis")
 
 config_googleapis()
-
