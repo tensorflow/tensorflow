@@ -58,8 +58,11 @@ namespace operator_property = ::tflite::optimize::operator_property;
 template <typename SourceOp, typename Q, typename DQ>
 struct ConvertLstmStatsToQDQs : public OpRewritePattern<SourceOp> {
  public:
-  explicit ConvertLstmStatsToQDQs(MLIRContext* context)
-      : OpRewritePattern<SourceOp>(context, /*benefit=*/2) {}
+  ConvertLstmStatsToQDQs(MLIRContext* context,
+                         const QuantizationSpecs& quant_specs)
+
+      : OpRewritePattern<SourceOp>(context, /*benefit=*/2),
+        quant_specs(quant_specs) {}
   LogicalResult matchAndRewrite(SourceOp op,
                                 PatternRewriter& rewriter) const override {
     operator_property::OpVariant lstm_variant;
@@ -137,7 +140,7 @@ struct ConvertLstmStatsToQDQs : public OpRewritePattern<SourceOp> {
             op.getLoc(), tensor_property.number_of_bits,
             calibrated_type.getMin(), calibrated_type.getMax(),
             /*narrowRange=*/false, calibrated_type.getExpressedType(),
-            /*isSigned=*/false);
+            /*isSigned=*/quant_specs.IsSignedInferenceType());
       } else if (tensor_property.number_of_bits == 16) {
         double max = std::max(std::abs(calibrated_type.getMin()),
                               std::abs(calibrated_type.getMax()));
@@ -185,6 +188,9 @@ struct ConvertLstmStatsToQDQs : public OpRewritePattern<SourceOp> {
     rewriter.replaceOpWithNewOp<DQ>(stats_op, stats_op.getType(), q);
     return success();
   }
+
+ private:
+  QuantizationSpecs quant_specs;
 };
 
 }  // namespace TFL

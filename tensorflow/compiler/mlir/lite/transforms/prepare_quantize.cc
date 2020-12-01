@@ -60,6 +60,12 @@ static llvm::cl::opt<bool> quantize_signed(
     llvm::cl::init(false));
 
 // NOLINTNEXTLINE
+static llvm::cl::opt<bool> post_training_quantize(
+    "tfl-test-post-training-quantize", llvm::cl::value_desc("bool"),
+    llvm::cl::desc("enable post training quantization. Only used in tests"),
+    llvm::cl::init(false));
+
+// NOLINTNEXTLINE
 static llvm::cl::opt<bool> disable_per_channel(
     "tfl-disable-per-channel", llvm::cl::value_desc("bool"),
     llvm::cl::desc("Whether disable per-channel quantized weights."),
@@ -89,10 +95,9 @@ class PrepareQuantizePass
   // Constructor used by the PassRegistration and enforce uint8 quantization.
   // This is only used by test.
   explicit PrepareQuantizePass() {
-    if (quantize_signed)
-      quant_specs_.inference_type = tensorflow::DT_QINT8;
-    else
-      quant_specs_.inference_type = tensorflow::DT_QUINT8;
+    quant_specs_.inference_type =
+        quantize_signed ? tensorflow::DT_QINT8 : tensorflow::DT_QUINT8;
+    quant_specs_.post_training_quantization = post_training_quantize;
   }
 
   // Constructor used by manually creating the pass.
@@ -362,7 +367,7 @@ void PrepareQuantizePass::runOnFunction() {
     // Currently, only activation stats are imported, so narrow_range = false.
     patterns.insert<PrepareQuantStats>(bit_width, false, false, ctx);
   }
-  patterns.insert<PrepareLstmQuantStats>(ctx);
+  patterns.insert<PrepareLstmQuantStats>(ctx, quant_specs_);
   applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   SanityCheckAndAdjustment(func);
