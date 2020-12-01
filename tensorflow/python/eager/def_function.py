@@ -105,10 +105,12 @@ class _FrequentTracingDetector(object):
       counter = self._get_counter(key)
       counter.called_without_tracing()
 
-  def called_with_tracing(self, key, function_name):
+  def called_with_tracing(self, key, function_name, omit_warning):
     with self._lock:
       counter = self._get_counter(key)
       counter.called_with_tracing()
+      if omit_warning:
+        return
       if counter.get_tracing_count() >= FREQUENT_TRACING_WARNING_THRESHOLD:
         logging.warning(
             "{} out of the last {} calls to {} triggered tf.function "
@@ -514,6 +516,7 @@ class Function(object):
     self._name = name
     self._input_signature = input_signature
     self._key_for_call_stats = self._get_key_for_call_stats()
+    self._omit_frequent_tracing_warning = False
     ops._tf_function_api_guage.get_cell().set(True)  # pylint: disable=protected-access
 
   def __getstate__(self):
@@ -794,8 +797,9 @@ class Function(object):
         _frequent_tracing_detector.called_without_tracing(
             self._key_for_call_stats)
       else:
-        _frequent_tracing_detector.called_with_tracing(self._key_for_call_stats,
-                                                       self._python_function)
+        _frequent_tracing_detector.called_with_tracing(
+            self._key_for_call_stats, self._python_function,
+            self._omit_frequent_tracing_warning)
 
     return result
 
