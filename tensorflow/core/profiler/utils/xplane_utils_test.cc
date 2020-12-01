@@ -38,19 +38,6 @@ XEvent CreateEvent(int64 offset_ps, int64 duration_ps) {
   return event;
 }
 
-// Tests IsNested.
-TEST(XPlaneUtilsTest, IsNestedTest) {
-  XEvent event = CreateEvent(100, 100);
-  XEvent parent = CreateEvent(50, 200);
-  EXPECT_TRUE(IsNested(event, parent));
-  // Returns false if there is no overlap.
-  XEvent not_parent = CreateEvent(30, 50);
-  EXPECT_FALSE(IsNested(event, not_parent));
-  // Returns false if they overlap only partially.
-  not_parent = CreateEvent(50, 100);
-  EXPECT_FALSE(IsNested(event, not_parent));
-}
-
 TEST(XPlaneUtilsTest, AddAndRemovePlanes) {
   XSpace space;
 
