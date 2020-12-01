@@ -82,9 +82,9 @@ struct ResourceHandle {
   // Make ResourceHandle hashable.
   friend ::llvm::hash_code hash_value(const ResourceHandle& resource_handle);
 
-  std::string container;
-  std::string name;
-  std::string device;
+  StringRef container;
+  StringRef name;
+  StringRef device;
   Operation* op = nullptr;
 };
 
