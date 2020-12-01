@@ -240,7 +240,6 @@ cc_library(
         ":xla_data_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:numbers",
-        "//third_party/eigen3",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -249,6 +248,7 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -361,6 +361,7 @@ tf_cc_test(
         ":util",
         ":xla_data_proto_cc",
         "//tensorflow/core:lib",
+        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/strings",
     ],
@@ -939,6 +940,7 @@ cc_library(
     name = "refcounting_hash_map",
     hdrs = ["refcounting_hash_map.h"],
     deps = [
+        ":statusor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/memory",
@@ -954,6 +956,7 @@ tf_cc_test(
         ":test",
         ":types",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:errors",
     ],
 )
 

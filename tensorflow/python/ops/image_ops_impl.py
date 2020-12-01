@@ -354,6 +354,12 @@ def random_flip_up_down(image, seed=None):
   >>> tf.image.random_flip_up_down(images, 4).numpy().tolist()
   [[[[3], [4]], [[1], [2]]], [[[5], [6]], [[7], [8]]]]
 
+  For producing deterministic results given a `seed` value, use
+  `tf.image.stateless_random_flip_up_down`. Unlike using the `seed` param
+  with `tf.image.random_*` ops, `tf.image.stateless_random_*` ops guarantee the
+  same results given the same seed independent of how many times the function is
+  called, and independent of global seed settings (e.g. tf.random.set_seed).
+
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
       of shape `[height, width, channels]`.
@@ -394,6 +400,12 @@ def random_flip_left_right(image, seed=None):
   ... ])
   >>> tf.image.random_flip_left_right(images, 6).numpy().tolist()
   [[[[2], [1]], [[4], [3]]], [[[5], [6]], [[7], [8]]]]
+
+  For producing deterministic results given a `seed` value, use
+  `tf.image.stateless_random_flip_left_right`. Unlike using the `seed` param
+  with `tf.image.random_*` ops, `tf.image.stateless_random_*` ops guarantee the
+  same results given the same seed independent of how many times the function is
+  called, and independent of global seed settings (e.g. tf.random.set_seed).
 
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
@@ -1860,6 +1872,12 @@ def random_brightness(image, max_delta, seed=None):
   Equivalent to `adjust_brightness()` using a `delta` randomly picked in the
   interval `[-max_delta, max_delta)`.
 
+  For producing deterministic results given a `seed` value, use
+  `tf.image.stateless_random_brightness`. Unlike using the `seed` param
+  with `tf.image.random_*` ops, `tf.image.stateless_random_*` ops guarantee the
+  same results given the same seed independent of how many times the function is
+  called, and independent of global seed settings (e.g. tf.random.set_seed).
+
   Args:
     image: An image or images to adjust.
     max_delta: float, must be non-negative.
@@ -1941,6 +1959,12 @@ def random_contrast(image, lower, upper, seed=None):
 
   Equivalent to `adjust_contrast()` but uses a `contrast_factor` randomly
   picked in the interval `[lower, upper)`.
+
+  For producing deterministic results given a `seed` value, use
+  `tf.image.stateless_random_contrast`. Unlike using the `seed` param
+  with `tf.image.random_*` ops, `tf.image.stateless_random_*` ops guarantee the
+  same results given the same seed independent of how many times the function is
+  called, and independent of global seed settings (e.g. tf.random.set_seed).
 
   Args:
     image: An image tensor with 3 or more dimensions.
@@ -2469,6 +2493,12 @@ def random_hue(image, max_delta, seed=None):
   >>> tf.image.random_hue(x, 0.2)
   <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=...>
 
+  For producing deterministic results given a `seed` value, use
+  `tf.image.stateless_random_hue`. Unlike using the `seed` param with
+  `tf.image.random_*` ops, `tf.image.stateless_random_*` ops guarantee the same
+  results given the same seed independent of how many times the function is
+  called, and independent of global seed settings (e.g. tf.random.set_seed).
+
   Args:
     image: RGB image or images. The size of the last dimension must be 3.
     max_delta: float. The maximum value for the random delta.
@@ -2630,6 +2660,12 @@ def random_jpeg_quality(image, min_jpeg_quality, max_jpeg_quality, seed=None):
   >>> tf.image.random_jpeg_quality(x, 75, 95)
   <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=...>
 
+  For producing deterministic results given a `seed` value, use
+  `tf.image.stateless_random_jpeg_quality`. Unlike using the `seed` param
+  with `tf.image.random_*` ops, `tf.image.stateless_random_*` ops guarantee the
+  same results given the same seed independent of how many times the function is
+  called, and independent of global seed settings (e.g. tf.random.set_seed).
+
   Args:
     image: 3D image. Size of the last dimension must be 1 or 3.
     min_jpeg_quality: Minimum jpeg encoding quality to use.
@@ -2788,6 +2824,12 @@ def random_saturation(image, lower, upper, seed=None):
           [ 0. ,  3. ,  6. ]],
          [[ 0. ,  4.5,  9. ],
           [ 0. ,  6. , 12. ]]], dtype=float32)>
+
+  For producing deterministic results given a `seed` value, use
+  `tf.image.stateless_random_saturation`. Unlike using the `seed` param
+  with `tf.image.random_*` ops, `tf.image.stateless_random_*` ops guarantee the
+  same results given the same seed independent of how many times the function is
+  called, and independent of global seed settings (e.g. tf.random.set_seed).
 
   Args:
     image: RGB image or images. The size of the last dimension must be 3.
@@ -3288,6 +3330,13 @@ def sample_distorted_bounding_box_v2(image_size,
   `use_image_if_no_bounding_boxes = true` will assume there is a single implicit
   bounding box covering the whole image. If `use_image_if_no_bounding_boxes` is
   false and no bounding boxes are supplied, an error is raised.
+
+  For producing deterministic results given a `seed` value, use
+  `tf.image.stateless_sample_distorted_bounding_box`. Unlike using the `seed`
+  param with `tf.image.random_*` ops, `tf.image.stateless_random_*` ops
+  guarantee the same results given the same seed independent of how many times
+  the function is called, and independent of global seed settings
+  (e.g. tf.random.set_seed).
 
   Args:
     image_size: A `Tensor`. Must be one of the following types: `uint8`, `int8`,
@@ -4889,9 +4938,9 @@ def combined_non_max_suppression(boxes,
       representing a single score corresponding to each box (each row of boxes).
     max_output_size_per_class: A scalar integer `Tensor` representing the
       maximum number of boxes to be selected by non-max suppression per class
-    max_total_size: A scalar representing maximum number of boxes retained over
-      all classes. Note that setting this value to a large number may result in
-      OOM error depending on the system workload.
+    max_total_size: A int32 scalar representing maximum number of boxes retained
+      over all classes. Note that setting this value to a large number may
+      result in OOM error depending on the system workload.
     iou_threshold: A float representing the threshold for deciding whether boxes
       overlap too much with respect to IOU.
     score_threshold: A float representing the threshold for deciding when to
@@ -4923,6 +4972,17 @@ def combined_non_max_suppression(boxes,
         iou_threshold, dtype=dtypes.float32, name='iou_threshold')
     score_threshold = ops.convert_to_tensor(
         score_threshold, dtype=dtypes.float32, name='score_threshold')
+
+    # Convert `max_total_size` to tensor *without* setting the `dtype` param.
+    # This allows us to catch `int32` overflow case with `max_total_size`
+    # whose expected dtype is `int32` by the op registration. Any number within
+    # `int32` will get converted to `int32` tensor. Anything larger will get
+    # converted to `int64`. Passing in `int64` for `max_total_size` to the op
+    # will throw dtype mismatch exception.
+    # TODO(b/173251596): Once there is a more general solution to warn against
+    # int overflow conversions, revisit this check.
+    max_total_size = ops.convert_to_tensor(max_total_size)
+
     return gen_image_ops.combined_non_max_suppression(
         boxes, scores, max_output_size_per_class, max_total_size, iou_threshold,
         score_threshold, pad_per_class, clip_boxes)
@@ -5137,6 +5197,7 @@ def non_max_suppression_padded(boxes,
     selected_indices = tf.slice(
         selected_indices_padded, tf.constant([0]), num_valid)
     selected_boxes = tf.gather(boxes, selected_indices)
+    ```
 
   Args:
     boxes: a tensor of rank 2 or higher with a shape of [..., num_boxes, 4].

@@ -49,12 +49,11 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
@@ -3396,6 +3395,7 @@ Status SavedModelSignatureDefImporterLite::ConvertInitializer(
     TensorInfo tensor_info;
     tensor_info.set_name(asset.tensor_name);
     tensor_info.set_dtype(DT_STRING);
+    tensor_info.mutable_tensor_shape();
     inputs.push_back({asset.tensor_name, tensor_info});
   }
 
@@ -3514,7 +3514,14 @@ SavedModelSignatureDefImporterLite::ParseInputArrays(
 
     ArrayInfo array_info;
     array_info.imported_dtype = tensor_info.dtype();
-    array_info.shape = tensor_info.tensor_shape();
+
+    if (tensor_info.has_tensor_shape()) {
+      array_info.shape = tensor_info.tensor_shape();
+    } else {
+      // If there is no tensor shape in the tensor info, conservatively set
+      // unknown_rank to true.
+      array_info.shape.set_unknown_rank(true);
+    }
 
     results.insert(std::pair<std::string, ArrayInfo>(tensor_info.name(),
                                                      std::move(array_info)));
@@ -3693,23 +3700,16 @@ StatusOr<mlir::OwningModuleRef> ConvertGraphToMlir(
 }
 
 stream_executor::port::StatusOr<mlir::OwningModuleRef> ConvertFunctionToMlir(
-    mlir::StringRef name, const FunctionLibraryDefinition& flib_def,
+    const FunctionBody* fbody, const FunctionLibraryDefinition& flib_def,
     mlir::MLIRContext* context) {
-  const tensorflow::FunctionDef* fdef = flib_def.Find(name.str());
-  if (fdef == nullptr)
-    return tensorflow::errors::NotFound("Cannot find function ", name.str());
-
-  std::unique_ptr<tensorflow::FunctionBody> fbody;
-  TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(*fdef, tensorflow::AttrSlice(),
-                                             &flib_def, &fbody));
-
   tensorflow::GraphDebugInfo dummy_debug_info;
   tensorflow::GraphImportConfig specs;
   specs.graph_as_function = true;
   for (const auto* control_ret_node : fbody->control_ret_nodes)
     specs.control_outputs.push_back(control_ret_node->name());
   return GraphDefImporter::Convert(context, *fbody->graph, dummy_debug_info,
-                                   flib_def, specs, name);
+                                   flib_def, specs,
+                                   fbody->fdef.signature().name());
 }
 
 StatusOr<mlir::OwningModuleRef> ConvertSavedModelToMlir(

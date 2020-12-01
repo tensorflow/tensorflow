@@ -85,6 +85,7 @@ enum PrimitiveType {
   // Next = 19
 }
 // LINT.ThenChange(
+//   https://www.tensorflow.org/code/tensorflow/compiler/xla/shape_util.cc,
 //   https://www.tensorflow.org/code/tensorflow/compiler/xla/tools/driver.cc
 // )
 
@@ -625,6 +626,9 @@ message OpSharding {
     TUPLE = 2;
     // None of the above; tile_shape and tile_assignment are both used.
     OTHER = 3;
+    // This op is manually sharded: the shapes are already partitioned and the
+    // partitioner should not change this op.
+    MANUAL = 4;
   }
   Type type = 1;
   // The shape of the sharded tile.

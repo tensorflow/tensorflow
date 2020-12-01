@@ -680,6 +680,23 @@ bool InferShardingFromOperands(HloInstruction* instruction,
   if (!CanPropagateThroughAtAgressiveLevel(*instruction, aggressiveness)) {
     return false;
   }
+  // Do not change manual sharding.
+  if (instruction->has_sharding() && instruction->sharding().IsManual()) {
+    return false;
+  }
+  // Propagate manual sharding. Avoid tuple shaped HLOs that group independent
+  // together. Reduce and Sort can be tuples but the elements are correlated, so
+  // we propagate manual sharding through them.
+  if (!instruction->has_sharding() &&
+      (instruction->shape().IsArray() ||
+       instruction->opcode() == HloOpcode::kReduce ||
+       instruction->opcode() == HloOpcode::kSort) &&
+      absl::c_any_of(instruction->operands(), [](const HloInstruction* op) {
+        return op->has_sharding() && op->sharding().IsManual();
+      })) {
+    instruction->set_sharding(HloSharding::Manual());
+    return true;
+  }
   const bool may_combine_partial_sharding = is_spmd && aggressiveness > 0;
   if (!SupportSpatialPartitioning(instruction, computation_map, is_spmd)) {
     // If an array shaped HLO doesn't support spatial partitioning but at least
@@ -1456,6 +1473,19 @@ bool InferShardingFromUsers(HloInstruction* instruction,
                             int64 aggressiveness, bool is_spmd) {
   if (aggressiveness < 2 && instruction->opcode() == HloOpcode::kBroadcast) {
     return false;
+  }
+  // Do not change manual sharding.
+  if (instruction->has_sharding() && instruction->sharding().IsManual()) {
+    return false;
+  }
+  // Propagate manual sharding.
+  if (!instruction->has_sharding() && instruction->shape().IsArray() &&
+      absl::c_any_of(instruction->users(), [](const HloInstruction* user) {
+        return user->has_sharding() && user->sharding().IsManual() &&
+               !user->IsCustomCall("SPMDFullToShardShape");
+      })) {
+    instruction->set_sharding(HloSharding::Manual());
+    return true;
   }
   if (!SupportSpatialPartitioning(instruction, computation_map, is_spmd)) {
     return false;

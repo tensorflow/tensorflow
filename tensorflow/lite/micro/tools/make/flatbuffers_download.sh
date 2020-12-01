@@ -52,9 +52,12 @@ function patch_to_avoid_strtod() {
   head -n ${case_string_line} ${input_flexbuffers_path} > ${temp_flexbuffers_path}
 
   echo "#if 1" >> ${temp_flexbuffers_path}
+  echo "#pragma GCC diagnostic push" >> ${temp_flexbuffers_path}
+  echo "#pragma GCC diagnostic ignored \"-Wnull-dereference\"" >> ${temp_flexbuffers_path}
   echo "          // TODO(b/173239141): Patched via micro/tools/make/flexbuffers_download.sh" >> ${temp_flexbuffers_path}
   echo "          // Introduce a segfault for an unsupported code path for TFLM." >> ${temp_flexbuffers_path}
   echo "          return *(static_cast<double*>(nullptr));" >> ${temp_flexbuffers_path}
+  echo "#pragma GCC diagnostic pop" >> ${temp_flexbuffers_path}
   echo "#else" >> ${temp_flexbuffers_path}
   echo "          // This is the original code" >> ${temp_flexbuffers_path}
   sed -n -e $((${string_to_num_line} -  1)),$((${string_to_num_line} + 1))p ${input_flexbuffers_path} >> ${temp_flexbuffers_path}

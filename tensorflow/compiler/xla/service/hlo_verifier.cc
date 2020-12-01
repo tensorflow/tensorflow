@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
@@ -1743,6 +1744,31 @@ Status CheckElementwiseInstruction(HloInstruction* instruction) {
           "output: %s\noperand: %s\n",
           HloOpcodeString(instruction->opcode()),
           ShapeUtil::HumanString(out_shape),
+          ShapeUtil::HumanString(operand_shape));
+    }
+  }
+  if (auto* comparison = DynCast<HloCompareInstruction>(instruction)) {
+    const Shape& operand_shape = comparison->operand(1)->shape();
+    PrimitiveType operand_element_type = operand_shape.element_type();
+    Comparison::Type default_comparison_type =
+        Comparison::DefaultComparisonType(operand_element_type);
+    if (primitive_util::IsFloatingPointType(operand_element_type)) {
+      if (comparison->type() != Comparison::Type::kFloat &&
+          comparison->type() != Comparison::Type::kFloatTotalOrder) {
+        return FailedPrecondition(
+            "Expected comparison type %s or %s.\n"
+            "actual: %s\noperand: %s\n",
+            ComparisonTypeToString(Comparison::Type::kFloat),
+            ComparisonTypeToString(Comparison::Type::kFloatTotalOrder),
+            ComparisonTypeToString(comparison->type()),
+            ShapeUtil::HumanString(operand_shape));
+      }
+    } else if (comparison->type() != default_comparison_type) {
+      return FailedPrecondition(
+          "Expected comparison type %s.\n"
+          "actual: %s\noperand: %s\n",
+          ComparisonTypeToString(default_comparison_type),
+          ComparisonTypeToString(comparison->type()),
           ShapeUtil::HumanString(operand_shape));
     }
   }

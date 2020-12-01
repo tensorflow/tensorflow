@@ -22,11 +22,9 @@ from __future__ import print_function
 import abc
 import collections
 import functools
-import getpass
 import os
 import re
 import threading
-import time
 
 import six
 
@@ -561,58 +559,6 @@ def create_file_writer(logdir,
             max_queue=max_queue,
             flush_millis=flush_millis,
             filename_suffix=filename_suffix))
-
-
-def create_db_writer(db_uri,
-                     experiment_name=None,
-                     run_name=None,
-                     user_name=None,
-                     name=None):
-  """Creates a summary database writer in the current context.
-
-  This can be used to write tensors from the execution graph directly
-  to a database. Only SQLite is supported right now. This function
-  will create the schema if it doesn't exist. Entries in the Users,
-  Experiments, and Runs tables will be created automatically if they
-  don't already exist.
-
-  Args:
-    db_uri: For example "file:/tmp/foo.sqlite".
-    experiment_name: Defaults to YYYY-MM-DD in local time if None.
-      Empty string means the Run will not be associated with an
-      Experiment. Can't contain ASCII control characters or <>. Case
-      sensitive.
-    run_name: Defaults to HH:MM:SS in local time if None. Empty string
-      means a Tag will not be associated with any Run. Can't contain
-      ASCII control characters or <>. Case sensitive.
-    user_name: Defaults to system username if None. Empty means the
-      Experiment will not be associated with a User. Must be valid as
-      both a DNS label and Linux username.
-    name: Shared name for this SummaryWriter resource stored to default
-      `tf.Graph`.
-
-  Returns:
-    A `tf.summary.SummaryWriter` instance.
-  """
-  with ops.device("cpu:0"):
-    if experiment_name is None:
-      experiment_name = time.strftime("%Y-%m-%d", time.localtime(time.time()))
-    if run_name is None:
-      run_name = time.strftime("%H:%M:%S", time.localtime(time.time()))
-    if user_name is None:
-      user_name = getpass.getuser()
-    experiment_name = _cleanse_string(
-        "experiment_name", _EXPERIMENT_NAME_PATTERNS, experiment_name)
-    run_name = _cleanse_string("run_name", _RUN_NAME_PATTERNS, run_name)
-    user_name = _cleanse_string("user_name", _USER_NAME_PATTERNS, user_name)
-    return ResourceSummaryWriter(
-        shared_name=name,
-        init_op_fn=functools.partial(
-            gen_summary_ops.create_summary_db_writer,
-            db_uri=db_uri,
-            experiment_name=experiment_name,
-            run_name=run_name,
-            user_name=user_name))
 
 
 @tf_export("summary.create_noop_writer", v1=[])
@@ -1385,4 +1331,7 @@ def trace_off():
     context.context().disable_run_metadata()
 
   if profiler:
-    _profiler.stop()
+    try:
+      _profiler.stop()
+    except _profiler.ProfilerNotRunningError:
+      pass

@@ -22,7 +22,7 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
@@ -282,8 +282,7 @@ Status LhloDialectEmitter::HandleConcatenate(HloInstruction* instr) {
 Status LhloDialectEmitter::HandleFusion(HloInstruction* instr) {
   TF_ASSIGN_OR_RETURN(auto function, CreateFunction(*instr));
   OpBuilder func_builder(function.getBody());
-  auto fusion_op =
-      func_builder.create<lhlo::FusionOp>(getLocation(instr), llvm::None);
+  auto fusion_op = func_builder.create<lhlo::FusionOp>(getLocation(instr));
 
   // Load the HLO argument tensors from the corresponding buffers. The last
   // argument is for the result, so no need to load it.
@@ -345,7 +344,9 @@ Status LhloDialectEmitter::HandleReduce(HloInstruction* instr) {
       CreateDenseIntElementsAttrFromVector(instr->dimensions(), builder_);
   auto reduce_op = builder.create<lhlo::ReduceOp>(loc, inputs, init_values,
                                                   results, dimensions_attr);
-  reduce_op.ensureTerminator(reduce_op.body(), builder, getLocation(instr));
+  builder.createBlock(&reduce_op.body());
+  OpBuilder::atBlockEnd(&reduce_op.body().front())
+      .create<lhlo::TerminatorOp>(getLocation(instr));
   return SpliceHloComputation(OpBuilder{&reduce_op.body()}, loc,
                               *instr->to_apply(), emission_context_);
 }

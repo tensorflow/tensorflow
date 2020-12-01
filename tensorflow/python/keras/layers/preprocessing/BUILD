@@ -152,6 +152,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":category_encoding",
         ":table_utils",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:lookup_ops",

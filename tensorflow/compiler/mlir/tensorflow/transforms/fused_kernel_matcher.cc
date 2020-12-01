@@ -18,8 +18,8 @@ limitations under the License.
 
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -166,6 +166,12 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
     attrs.push_back(
         NamedAttribute(Identifier::get("epsilon", context), epsilon));
 
+    // Insert fused operation right before the BiasAdd operation to guarantee
+    // that bias value dominates the fused operation. We already verified that
+    // original operation has a single use, so this is safe to do.
+    auto *bias_add_op = bias_add.getOperation();
+    if (bias_add_op) rewriter.setInsertionPoint(bias_add_op);
+
     Value fused_op = rewriter.create<FusedOpT>(fused_loc, result_type,
                                                ValueRange(operands), attrs);
     auto op_to_replace = fuse_activation ? activation : bias_add;
@@ -200,7 +206,17 @@ class FuseConv2DBiasAdd
 
 // Performs a fusion of the following pattern(s), if possible:
 //   MatMulOp + BiasAdd + <Activation> -> _FusedMatMulOp
-using FuseMatMulBiasAdd = FuseContractionWithBiasAdd<MatMulOp, _FusedMatMulOp>;
+class FuseMatMulBiasAdd
+    : public FuseContractionWithBiasAdd<MatMulOp, _FusedMatMulOp> {
+  using FuseContractionWithBiasAdd<MatMulOp,
+                                   _FusedMatMulOp>::FuseContractionWithBiasAdd;
+
+  bool AreFuseCompatible(MatMulOp matmul, BiasAddOp bias_add,
+                         PatternRewriter &rewriter) const override {
+    // FusedMatMul kernel supports limited set of data types.
+    return matmul.T().isF32() || matmul.T().isBF16();
+  }
+};
 
 void FusedKernelMatcherPass::runOnFunction() {
   OwningRewritePatternList patterns;

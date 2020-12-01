@@ -258,7 +258,15 @@ func @equal_incompatible_shape_both_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<
 // CHECK-LABEL: func @equal_unranked
 func @equal_unranked(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>) -> tensor<*xi1> {
   // CHECK: "tf.Equal"
+  // CHLO: chlo.broadcast_compare %arg0, %arg1 {comparison_direction = "EQ"}
   %0 = "tf.Equal"(%arg0, %arg1) { incompatible_shape_error = false } : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi1>
+  return %0: tensor<*xi1>
+}
+
+// CHECK-LABEL: func @equal_unsupported_type
+func @equal_unsupported_type(%arg0: tensor<*x!tf.string>, %arg1: tensor<*x!tf.string>) -> tensor<*xi1> {
+  // CHECK: "tf.Equal"
+  %0 = "tf.Equal"(%arg0, %arg1) { incompatible_shape_error = false } : (tensor<*x!tf.string>, tensor<*x!tf.string>) -> tensor<*xi1>
   return %0: tensor<*xi1>
 }
 
@@ -310,6 +318,7 @@ func @greater_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<?xi32>) -> tensor<?xi1
 // CHECK-LABEL: func @greater_uranked
 func @greater_uranked(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>) -> tensor<*xi1> {
   // CHECK:  "tf.Greater"
+  // CHLO: chlo.broadcast_compare %arg0, %arg1 {comparison_direction = "GT"}
   %0 = "tf.Greater"(%arg0, %arg1) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi1>
   return %0: tensor<*xi1>
 }

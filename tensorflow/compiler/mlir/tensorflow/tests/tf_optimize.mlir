@@ -120,3 +120,15 @@ func @avoidSimplifyBroadcastReshapeUnknownDims(%arg0: tensor<1x?x1x1x1x1x1x?xbf1
   // CHECK: "tf.BroadcastTo"
   // CHECK: "tf.Reshape"
 }
+
+// CHECK-LABEL: avoidSimplifyBroadcastReshapeUnknownRanks
+func @avoidSimplifyBroadcastReshapeUnknownRanks(%arg0: tensor<*xbf16>) -> tensor<8x6x6x18xbf16> {
+  %cst_1 = constant dense<[1, 8, 6, 1, 6, 1, 1, 18]> : tensor<8xi64>
+  %97 = "tf.BroadcastTo"(%arg0, %cst_1) : (tensor<*xbf16>, tensor<8xi64>) -> tensor<*xbf16>
+  %cst_2 = constant dense<[8, 6, 6, 18]> : tensor<4xi64>
+  %98 = "tf.Reshape"(%97, %cst_2) : (tensor<*xbf16>, tensor<4xi64>) -> tensor<8x6x6x18xbf16>
+  return %98 : tensor<8x6x6x18xbf16>
+
+  // CHECK: "tf.BroadcastTo"
+  // CHECK: "tf.Reshape"
+}

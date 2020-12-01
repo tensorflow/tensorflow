@@ -16,47 +16,13 @@ exports_files(["LICENSE"])
 py_library(
     name = "distribute_test_lib_pip",
     deps = [
-        ":all_reduce",
         ":combinations",
         ":multi_worker_test_base",
         ":single_loss_example",
         ":strategy_combinations",
         ":strategy_test_lib",
         ":test_util",
-    ],
-)
-
-py_library(
-    name = "all_reduce",
-    srcs = [
-        "all_reduce.py",
-    ],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:nccl_ops",
-    ],
-)
-
-tf_py_test(
-    name = "all_reduce_test",
-    srcs = ["all_reduce_test.py"],
-    deps = [
-        ":all_reduce",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python:state_ops",
-        "//third_party/py/numpy",
+        "//tensorflow/python/distribute/v1:all_reduce",
     ],
 )
 
@@ -147,7 +113,6 @@ py_library(
     name = "distribute",
     srcs_version = "PY2AND3",
     deps = [
-        ":all_reduce",
         ":cross_device_ops",
         ":distribute_lib",
         ":mirrored_strategy",
@@ -1065,6 +1030,7 @@ cuda_py_test(
     name = "cross_device_ops_test",
     srcs = ["cross_device_ops_test.py"],
     python_version = "PY3",
+    shard_count = 2,
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out

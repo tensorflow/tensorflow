@@ -299,37 +299,54 @@ using ::tflite::gpu::metal::SingleOpModel;
   std::string device_name = std::string([[device name] UTF8String]);
   tflite::gpu::GpuInfo gpu_info;
   tflite::gpu::GetGpuInfoFromDeviceDescription(device_name, tflite::gpu::GpuApi::kMetal, &gpu_info);
-  auto tasks_v0 = ConvolutionGeneric(0, 0, 1, dst_shape, attr, gpu_info, options);
+  auto gpu_op0 = ConvolutionGeneric(0, 1, dst_shape, attr, gpu_info, options);
+  std::vector<tflite::gpu::metal::ComputeTaskDescriptorPtr> tasks_v0 =
+    {std::make_shared<tflite::gpu::metal::ComputeTaskDescriptor>(std::move(gpu_op0))};
 
   auto status = RunGraph(tasks_v0, device, inputs_v0, &outputs_v0);
   XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 
-  std::map<ValueId, TensorFloat32> inputs_v1;
-  inputs_v1[0] = src_tensor;
-  std::map<ValueId, TensorFloat32> outputs_v1;
-  outputs_v1[1].shape = dst_shape;
-  outputs_v1[1].data.resize(outputs_v1[1].shape.DimensionsProduct());
-
   tflite::gpu::metal::Winograd4x4To36Attributes wino_up_attr;
   wino_up_attr.padding = attr.padding;
-  auto tasks_v1 = tflite::gpu::metal::Winograd4x4To36(0, 0, 2, wino_up_attr);
+  auto gpu_op1 = tflite::gpu::metal::Winograd4x4To36(0, 2, wino_up_attr);
+  std::vector<tflite::gpu::metal::ComputeTaskDescriptorPtr> tasks_v1 =
+    {std::make_shared<tflite::gpu::metal::ComputeTaskDescriptor>(std::move(gpu_op1))};
 
-  auto tasks_v2 = ConvolutionWino4x4To6x6(1, 2, 3, conv_shape, attr, gpu_info, options);
+  auto gpu_op2 = ConvolutionWino4x4To6x6(2, 3, conv_shape, attr, gpu_info, options);
+  std::vector<tflite::gpu::metal::ComputeTaskDescriptorPtr> tasks_v2 =
+    {std::make_shared<tflite::gpu::metal::ComputeTaskDescriptor>(std::move(gpu_op2))};
 
   tflite::gpu::metal::Winograd36To4x4Attributes wino_down_attr;
   wino_down_attr.output_shape = dst_shape;
   wino_down_attr.biases = attr.bias;
-  auto tasks_v3 = tflite::gpu::metal::Winograd36To4x4(2, 3, 1, options, wino_down_attr);
+  auto gpu_op3 = tflite::gpu::metal::Winograd36To4x4(3, 1, options, wino_down_attr);
+  std::vector<tflite::gpu::metal::ComputeTaskDescriptorPtr> tasks_v3 =
+    {std::make_shared<tflite::gpu::metal::ComputeTaskDescriptor>(std::move(gpu_op3))};
 
-  std::vector<tflite::gpu::metal::ComputeTaskDescriptorPtr> tasks;
-  tasks.insert(tasks.end(), tasks_v1.begin(), tasks_v1.end());
-  tasks.insert(tasks.end(), tasks_v2.begin(), tasks_v2.end());
-  tasks.insert(tasks.end(), tasks_v3.begin(), tasks_v3.end());
+  std::map<ValueId, TensorFloat32> inputs_v1;
+  inputs_v1[0] = src_tensor;
+  std::map<ValueId, TensorFloat32> outputs_v1;
+  outputs_v1[2].shape = conv_shape;
+  outputs_v1[2].shape.c = src_shape.c;
+  outputs_v1[2].data.resize(outputs_v1[2].shape.DimensionsProduct());
+  status = RunGraph(tasks_v1, device, inputs_v1, &outputs_v1);
 
-  status = RunGraph(tasks, device, inputs_v1, &outputs_v1);
+  std::map<ValueId, TensorFloat32> inputs_v2;
+  inputs_v2[2] = outputs_v1[2];
+  std::map<ValueId, TensorFloat32> outputs_v2;
+  outputs_v2[3].shape = conv_shape;
+  outputs_v2[3].data.resize(outputs_v2[3].shape.DimensionsProduct());
+  status = RunGraph(tasks_v2, device, inputs_v2, &outputs_v2);
+
+  std::map<ValueId, TensorFloat32> inputs_v3;
+  inputs_v3[3] = outputs_v2[3];
+  std::map<ValueId, TensorFloat32> outputs_v3;
+  outputs_v3[1].shape = dst_shape;
+  outputs_v3[1].data.resize(outputs_v3[1].shape.DimensionsProduct());
+  status = RunGraph(tasks_v3, device, inputs_v3, &outputs_v3);
   XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 
-  status = CompareVectors(outputs_v0[1].data, outputs_v1[1].data, 1e-4f);
+  status = CompareVectors(outputs_v0[1].data, outputs_v3[1].data, 1e-4f);
   XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 

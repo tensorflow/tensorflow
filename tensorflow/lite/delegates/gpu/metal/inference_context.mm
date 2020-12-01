@@ -42,71 +42,75 @@ using ::tflite::gpu::TensorUsageRecord;
   std::vector<TFLComputeTask*> _computeTasks;
   // contains indexes of _computeTasks
   std::vector<int> _taskIdsWithInOutBuffers;
+  std::vector<ValueId> _inputIds;
   std::vector<ValueId> _outputIds;
   id<MTLDevice> _device;
   RuntimeOptions _options;
+  std::map<ValueId, BHWC> _tensorShapes;
 }
 
 - (absl::Status)compileModelWithDevice:(id<MTLDevice>)device
-                       taskDescriptors:(const std::vector<ComputeTaskDescriptorPtr>&)taskDescriptors
-                       outputBufferIDs:(const std::vector<ValueId>&)requestedOutputBufferIDs
+                                 model:(const tflite::gpu::metal::CompiledModel&) compiledModel
+                        inputBufferIDs:(const std::vector<tflite::gpu::ValueId>&)inputBufferIDs
+                       outputBufferIDs:(const std::vector<tflite::gpu::ValueId>&)outputBufferIDs
                         runtimeOptions:(const RuntimeOptions&)options {
   _device = device;
-  _outputIds = requestedOutputBufferIDs;
+  _inputIds = inputBufferIDs;
+  _outputIds = outputBufferIDs;
   _options = options;
   // Metal resources are created here.
-  for (const auto& node : taskDescriptors) {
+  for (const auto& node : compiledModel.nodes) {
     TFLComputeTask* task = [[TFLComputeTask alloc] init];
-    RETURN_IF_ERROR([task compileWithDevice:_device taskDescriptor:node runtimeOptions:_options]);
+    RETURN_IF_ERROR([task compileWithDevice:_device
+                             taskDescriptor:node.task
+                             runtimeOptions:_options]);
+    [task setDescription:node.description];
     _computeTasks.emplace_back(task);
   }
+  _tensorShapes = compiledModel.tensor_shapes;
+  [self allocateTensors];
   return absl::OkStatus();
 }
 
-- (absl::Status)setInputDimensions:(const std::map<ValueId, BHWC>&)inputDimensions
-                  outputDimensions:(std::map<ValueId, BHWC>*)outputDimensions
-                   taskDescriptors:(const std::vector<ComputeTaskDescriptorPtr>&)taskDescriptors {
+- (absl::Status)allocateTensors {
   // These maps contain all input/output/intermediate buffers shared across model.
-  std::map<ValueId, BHWC> dimensions = inputDimensions;
   std::map<ValueId, id<MTLBuffer>> buffers;
   std::set<ValueId> preallocatedIds;
   // Insert uninitialized input buffers. This buffers will be set externally.
-  for (auto dimension : dimensions) {
-    buffers[dimension.first] = nil;
-    preallocatedIds.insert(dimension.first);
+  for (auto tensor_id : _inputIds) {
+    buffers[tensor_id] = nil;
+    preallocatedIds.insert(tensor_id);
   }
   for (const auto& outputId : _outputIds) {
     preallocatedIds.insert(outputId);
   }
   for (auto& task : _computeTasks) {
     // The same device must be used here as well as on shader compilation stage.
-    RETURN_IF_ERROR([task setInputDimensionsWithDevice:_device dimensions:&dimensions]);
-  }
-  for (auto id : _outputIds) {
-    (*outputDimensions)[id] = dimensions[id];
+    RETURN_IF_ERROR([task updateParamsWithDevice:_device tensorShapes:_tensorShapes]);
   }
 
   // TODO(ypisarchyk): it make sense to move it to separate function
   // Generate usage records for each intermediate tensor in order of their first_task
   std::vector<TensorUsageRecord<size_t>> usageRecords;
   std::map<ValueId, size_t> usageRecordIds;
-  for (uint32_t i = 0; i < taskDescriptors.size(); ++i) {
-    auto outputId = taskDescriptors[i]->output_buffer.id;
-    if (!preallocatedIds.count(outputId)) {
-      if (!usageRecordIds.count(outputId)) {
-        const auto it = dimensions.find(outputId);
-        if (it == dimensions.end()) {
-          return absl::InternalError("Dimensions for intermediate tensor not found.");
+  for (uint32_t i = 0; i < _computeTasks.size(); ++i) {
+    for (const auto tensor_id : [_computeTasks[i] getOutputIds]) {
+      if (!preallocatedIds.count(tensor_id)) {
+        if (!usageRecordIds.count(tensor_id)) {
+          const auto it = _tensorShapes.find(tensor_id);
+          if (it == _tensorShapes.end()) {
+            return absl::InternalError("Dimensions for intermediate tensor not found.");
+          }
+          usageRecordIds[tensor_id] = usageRecords.size();
+          usageRecords.emplace_back(it->second.w * it->second.h * AlignByN(it->second.c, 4), i, i);
+        } else {
+          usageRecords[usageRecordIds[tensor_id]].last_task = i;
         }
-        usageRecordIds[outputId] = usageRecords.size();
-        usageRecords.emplace_back(it->second.w * it->second.h * AlignByN(it->second.c, 4), i, i);
-      } else {
-        usageRecords[usageRecordIds[outputId]].last_task = i;
       }
     }
-    for (auto& buffer : taskDescriptors[i]->input_buffers) {
-      if (!preallocatedIds.count(buffer.id)) {
-        usageRecords[usageRecordIds[buffer.id]].last_task = i;
+    for (const auto tensor_id : [_computeTasks[i] getInputIds]) {
+      if (!preallocatedIds.count(tensor_id)) {
+        usageRecords[usageRecordIds[tensor_id]].last_task = i;
       }
     }
   }

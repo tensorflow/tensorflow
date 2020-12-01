@@ -274,6 +274,37 @@ is_sequence_or_composite = _pywrap_utils.IsSequenceOrComposite
 def is_nested(seq):
   """Returns true if its input is a collections.abc.Sequence (except strings).
 
+    >>> tf.nest.is_nested("1234")
+    False
+
+    >>> tf.nest.is_nested([1, 3, [4, 5]])
+    True
+
+    >>> tf.nest.is_nested(((7, 8), (5, 6)))
+    True
+
+    >>> tf.nest.is_nested([])
+    True
+
+    >>> tf.nest.is_nested({"a": 1, "b": 2})
+    True
+
+    >>> tf.nest.is_nested({"a": 1, "b": 2}.keys())
+    True
+
+    >>> tf.nest.is_nested({"a": 1, "b": 2}.values())
+    True
+
+    >>> tf.nest.is_nested({"a": 1, "b": 2}.items())
+    True
+
+    >>> tf.nest.is_nested(set([1, 2]))
+    False
+
+    >>> ones = tf.ones([2, 3])
+    >>> tf.nest.is_nested(ones)
+    False
+
   Args:
     seq: an input sequence.
 
@@ -317,7 +348,7 @@ def flatten(structure, expand_composites=False):
 
   2. For a nested python tuple:
 
-    >>> tuple = ((1.0, 2.0), (3.0, 4.0, 5.0), (6.0))
+    >>> tuple = ((1.0, 2.0), (3.0, 4.0, 5.0), 6.0)
     >>> tf.nest.flatten(tuple)
         [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
 
@@ -348,20 +379,18 @@ def flatten(structure, expand_composites=False):
   of a flattened list of 'values' and a list of 'row_splits' which indicate how
   to chop up the flattened list into different rows. For more details on
   `tf.RaggedTensor`, please visit
-  https://www.tensorflow.org/api_docs/python/tf/RaggedTensor
+  https://www.tensorflow.org/api_docs/python/tf/RaggedTensor.
 
   with `expand_composites=False`, we just return the RaggedTensor as is.
 
-    >>> tensor = tf.RaggedTensor.from_row_splits(values=[3, 1, 4, 1, 5, 9, 2],
-    ... row_splits=[0, 4, 4, 7])
+    >>> tensor = tf.ragged.constant([[3, 1, 4, 1], [], [5, 9, 2]])
     >>> tf.nest.flatten(tensor, expand_composites=False)
     [<tf.RaggedTensor [[3, 1, 4, 1], [], [5, 9, 2]]>]
 
   with `expand_composites=True`, we return the component Tensors that make up
   the RaggedTensor representation (the values and row_splits tensors)
 
-    >>> tensor = tf.RaggedTensor.from_row_splits(values=[3, 1, 4, 1, 5, 9, 2],
-    ... row_splits=[0, 4, 4, 7])
+    >>> tensor = tf.ragged.constant([[3, 1, 4, 1], [], [5, 9, 2]])
     >>> tf.nest.flatten(tensor, expand_composites=True)
     [<tf.Tensor: shape=(7,), dtype=int32, numpy=array([3, 1, 4, 1, 5, 9, 2],
                                                       dtype=int32)>,
@@ -602,6 +631,83 @@ def pack_sequence_as(structure, flat_sequence, expand_composites=False):
   flattened, and also allows flattening an `OrderedDict` and then repacking it
   back using a corresponding plain dict, or vice-versa.
   Dictionaries with non-sortable keys cannot be flattened.
+
+  Examples:
+
+  1. Python dict:
+
+    >>> structure = { "key3": "", "key1": "", "key2": "" }
+    >>> flat_sequence = ["value1", "value2", "value3"]
+    >>> tf.nest.pack_sequence_as(structure, flat_sequence)
+    {'key3': 'value3', 'key1': 'value1', 'key2': 'value2'}
+
+  2. For a nested python tuple:
+
+    >>> structure = (('a','b'), ('c','d','e'), 'f')
+    >>> flat_sequence = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+    >>> tf.nest.pack_sequence_as(structure, flat_sequence)
+    ((1.0, 2.0), (3.0, 4.0, 5.0), 6.0)
+
+  3. For a nested dictionary of dictionaries:
+
+    >>> structure = { "key3": {"c": ('alpha', 'beta'), "a": ('gamma')},
+    ...               "key1": {"e": "val1", "d": "val2"} }
+    >>> flat_sequence = ['val2', 'val1', 3.0, 1.0, 2.0]
+    >>> tf.nest.pack_sequence_as(structure, flat_sequence)
+    {'key3': {'c': (1.0, 2.0), 'a': 3.0}, 'key1': {'e': 'val1', 'd': 'val2'}}
+
+  4. Numpy array (considered a scalar):
+
+    >>> structure = ['a']
+    >>> flat_sequence = [np.array([[1, 2], [3, 4]])]
+    >>> tf.nest.pack_sequence_as(structure, flat_sequence)
+    [array([[1, 2],
+           [3, 4]])]
+
+  5. tf.Tensor (considered a scalar):
+
+    >>> structure = ['a']
+    >>> flat_sequence = [tf.constant([[1., 2., 3.], [4., 5., 6.]])]
+    >>> tf.nest.pack_sequence_as(structure, flat_sequence)
+    [<tf.Tensor: shape=(2, 3), dtype=float32,
+     numpy= array([[1., 2., 3.], [4., 5., 6.]], dtype=float32)>]
+
+  6. `tf.RaggedTensor`: This is a composite tensor thats representation consists
+  of a flattened list of 'values' and a list of 'row_splits' which indicate how
+  to chop up the flattened list into different rows. For more details on
+  `tf.RaggedTensor`, please visit
+  https://www.tensorflow.org/api_docs/python/tf/RaggedTensor.
+
+  With `expand_composites=False`, we treat RaggedTensor as a scalar.
+
+    >>> structure = { "foo": tf.ragged.constant([[1, 2], [3]]),
+    ...               "bar": tf.constant([[5]]) }
+    >>> flat_sequence = [ "one", "two" ]
+    >>> tf.nest.pack_sequence_as(structure, flat_sequence,
+    ... expand_composites=False)
+    {'foo': 'two', 'bar': 'one'}
+
+  With `expand_composites=True`, we expect that the flattened input contains
+  the tensors making up the ragged tensor i.e. the values and row_splits
+  tensors.
+
+    >>> structure = { "foo": tf.ragged.constant([[1., 2.], [3.]]),
+    ...               "bar": tf.constant([[5.]]) }
+    >>> tensors = tf.nest.flatten(structure, expand_composites=True)
+    >>> print(tensors)
+    [<tf.Tensor: shape=(1, 1), dtype=float32, numpy=array([[5.]],
+     dtype=float32)>,
+     <tf.Tensor: shape=(3,), dtype=float32, numpy=array([1., 2., 3.],
+     dtype=float32)>,
+     <tf.Tensor: shape=(3,), dtype=int64, numpy=array([0, 2, 3])>]
+    >>> verified_tensors = [tf.debugging.check_numerics(t, 'invalid tensor: ')
+    ...                     if t.dtype==tf.float32 else t
+    ...                     for t in tensors]
+    >>> tf.nest.pack_sequence_as(structure, verified_tensors,
+    ...                          expand_composites=True)
+    {'foo': <tf.RaggedTensor [[1.0, 2.0], [3.0]]>,
+     'bar': <tf.Tensor: shape=(1, 1), dtype=float32, numpy=array([[5.]],
+     dtype=float32)>}
 
   Args:
     structure: Nested structure, whose structure is given by nested lists,

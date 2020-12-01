@@ -79,6 +79,7 @@ def cycle(obj, cycles, signatures=None):
     with test_util.use_gpu():
       save.save(to_save, path, signatures)
       loaded = load.load(path)
+      signatures = loaded.signatures
     to_save = loaded
   return loaded
 
@@ -1016,8 +1017,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root = Root()
     self.assertIn(root.v.handle,
                   root.use_v.get_concrete_function().graph.external_captures)
-    for _ in range(cycles):
-      root = cycle(root, 1, signatures=root.use_v.get_concrete_function())
+    root = cycle(root, cycles, signatures=root.use_v.get_concrete_function())
     func_captures = root.use_v.get_concrete_function().graph.external_captures
     self.assertLen(func_captures, 2)
     self.assertTrue(any(root.v.handle is t for t in func_captures))
@@ -1297,11 +1297,9 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     exported = Exported()
     imported = cycle(
         exported,
-        cycles=1,
+        cycles,
         signatures=exported.do.get_concrete_function(
             tensor_spec.TensorSpec(None, dtypes.float32)))
-    for _ in range(cycles - 1):
-      imported = cycle(imported, cycles=1, signatures=imported.signatures)
     self.assertEqual(["serving_default"], list(imported.signatures.keys()))
     imported_function = imported.signatures["serving_default"]
     two = constant_op.constant(2.)
@@ -1351,11 +1349,9 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     exported = Exported()
     imported = cycle(
-        exported, cycles=1, signatures=exported.do.get_concrete_function(
+        exported, cycles, signatures=exported.do.get_concrete_function(
             tensor_spec.TensorSpec(None, dtypes.float32),
             tensor_spec.TensorSpec(None, dtypes.float32)))
-    for _ in range(cycles - 1):
-      imported = cycle(imported, cycles=1, signatures=imported.signatures)
     with self.assertRaises(TypeError):
       imported.signatures["serving_default"](
           constant_op.constant(1.),
@@ -1785,8 +1781,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root.f = def_function.function(
         lambda: (array_ops.ones([]), array_ops.zeros([])),
         input_signature=())
-    for _ in range(cycles):
-      root = cycle(root, 1, signatures=root.f)
+    root = cycle(root, cycles, signatures=root.f)
     self.assertEqual(({"output_0": 1., "output_1": 0.}),
                      self.evaluate(root.signatures["serving_default"]()))
 

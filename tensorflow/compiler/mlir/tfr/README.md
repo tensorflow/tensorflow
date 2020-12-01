@@ -7,7 +7,7 @@ composition in the authoring language.
 
 The set of standard TF ops is currently open. New ops are defined for special
 purposes but it is hard to make them work end-to-end: The op
-needs to be handled separately by a several backends (tf2xla bridge, tflite
+needs to be handled separately by several backends (tf2xla bridge, tflite
 converter, CPU kernels, etc.). Writing shape functions and gradients for these
 ops is extremely difficult. `tf.function` makes some parts of the implementation
 simpler, but it introduces runtime overhead and it cannot easily be used to
@@ -110,10 +110,10 @@ def _my_op_c(ins):
 Utilities have been built to compile the Python composition functions down to
 the backend IR. The project also provides a set of graph optimization passes to
 expand the composite ops in the graph by using the input backend IR. These
-passes have been added to the TF [common runtime]
-(https://github.com/tensorflow/tensorflow/tree/master/tensorflow/core/common_runtime)
-for graph execution and [eager_runtime]
-(https://github.com/tensorflow/tensorflow/tree/master/tensorflow/core/common_runtime/eager)
+passes have been added to the TF
+[common runtime](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/common_runtime)
+for graph execution and
+[eager runtime](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/common_runtime/eager)
 for eager execution.
 
 ## Compiling Op Composition
@@ -140,7 +140,7 @@ gen_op_libraries(
 ```
 
 More composite op definitions and usages are here included in the
-[examples](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/compiler/mlir/tfr/examples)
+[examples](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/mlir/tfr/examples)
 directory.
 
 ### Just-In-Time (JIT) mode
@@ -150,6 +150,12 @@ directory.
 
 * `while` statement
 * condition of `if` statement couldn't be a tensor
+
+## RFC
+This project is an alternative implementaion of [RFC:Standardizing composite ops in tensorflow to support efficient inference](https://github.com/tensorflow/community/blob/master/rfcs/20190610-standardizing-composite_ops.md).
+This project doesn't rely on the tracing functionality provided by `tf.function`
+to avoid all its pitfalls and it helps to build more general transformations in
+the backends.
 
 ## Team
 

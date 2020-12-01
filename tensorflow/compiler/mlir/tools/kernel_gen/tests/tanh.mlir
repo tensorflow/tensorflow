@@ -1,4 +1,4 @@
-// RUN: tf-opt %s --xla-legalize-tf | mlir-hlo-opt --transform-unranked-hlo | kernel-gen-opt -allow-unregistered-dialect --shape-to-descriptors --canonicalize --hlo-bufferize --std-bufferize --scf-bufferize --func-bufferize | FileCheck %s
+// RUN: tf-opt %s --xla-legalize-tf | mlir-hlo-opt --transform-unranked-hlo | kernel-gen-opt -allow-unregistered-dialect --hlo-bufferize --shape-to-descriptors --canonicalize --final-bufferize | FileCheck %s
 
 // Test whether all shape computations required for tanh can be lowered to
 // the standard dialect, scf and descriptors. We check for a sparse pattern here,

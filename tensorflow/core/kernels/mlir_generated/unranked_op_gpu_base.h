@@ -56,15 +56,22 @@ template <typename ElemType>
 }
 
 template <typename ElemType>
+TensorShape ExtractShapeFromDescriptor(
+    ::UnrankedMemRefType<ElemType> unranked_descriptor) {
+  TensorShape shape;
+  intptr_t* pointers = static_cast<intptr_t*>(unranked_descriptor.descriptor);
+  for (int i = 0; i < unranked_descriptor.rank; ++i) {
+    shape.AddDim(pointers[3 + i]);
+  }
+  return shape;
+}
+
+template <typename ElemType>
 Tensor ConvertDescriptorToTensor(
     ::UnrankedMemRefType<ElemType> unranked_descriptor, DataType TfDataType,
     Allocator* allocator) {
   void* base_ptr = static_cast<void**>(unranked_descriptor.descriptor)[0];
-  TensorShape result_shape;
-  intptr_t* pointers = static_cast<intptr_t*>(unranked_descriptor.descriptor);
-  for (int i = 0; i < unranked_descriptor.rank; ++i) {
-    result_shape.AddDim(pointers[3 + i]);
-  }
+  TensorShape result_shape = ExtractShapeFromDescriptor(unranked_descriptor);
   TensorBuffer* buffer = GetMlirTensorBuffer(
       base_ptr, sizeof(ElemType) * result_shape.num_elements(), allocator);
 
@@ -98,14 +105,22 @@ class MlirUnrankedOp : public OpKernel {
     }
     void* result_data_ptr = static_cast<void**>(result_desc.descriptor)[0];
 
+    // Detect input buffer reuse.
     for (int i = 0, end = ctx->num_inputs(); i < end; ++i) {
       const Tensor& input = ctx->input(i);
       if (input.data() == result_data_ptr) {
-        ctx->set_output(0, input);
+        // Run a bitcast in case the output type is different.
+        Tensor output;
+        TensorShape result_shape = ExtractShapeFromDescriptor(result_desc);
+        OP_REQUIRES_OK(ctx,
+                       output.BitcastFrom(input, TfDataType, result_shape));
+
+        ctx->set_output(0, output);
         free(result_desc.descriptor);
         return;
       }
     }
+
     tensorflow::AllocatorAttributes attrs;
     auto* allocator = ctx->get_allocator(attrs);
     Tensor result_tensor = ConvertDescriptorToTensor<OutputDataType>(

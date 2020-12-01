@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "llvm/ADT/BitVector.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
@@ -35,7 +35,7 @@ bool IsResource(Value value) {
 bool IsCastOfResource(Operation &op) {
   auto cast = dyn_cast<TF::CastOp>(op);
   if (!cast) return false;
-  return IsResource(cast.x()) && cast.x().getType() == cast.y().getType();
+  return IsResource(cast.x());
 }
 
 // Removes passthrough ops in the block. The device computation does not need

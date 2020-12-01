@@ -46,10 +46,9 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
@@ -387,19 +386,23 @@ class Translator {
   // internal error.
   static Optional<std::string> Translate(
       ModuleOp module, bool emit_builtin_tflite_ops, bool emit_select_tf_ops,
-      bool emit_custom_ops, const std::unordered_set<std::string>& tags,
+      bool emit_custom_ops,
+      const std::unordered_set<std::string>& select_user_tf_ops,
+      const std::unordered_set<std::string>& tags,
       OpOrArgNameMapper* op_or_arg_name_mapper);
 
  private:
   enum class OpType : char { kTfliteBuiltin, kSelectTf, kCustomOp };
   explicit Translator(ModuleOp module, bool emit_builtin_tflite_ops,
                       bool emit_select_tf_ops, bool emit_custom_ops,
+                      const std::unordered_set<std::string>& select_user_tf_ops,
                       const std::unordered_set<std::string>& saved_model_tags,
                       OpOrArgNameMapper* op_or_arg_name_mapper)
       : module_(module),
         name_mapper_(*op_or_arg_name_mapper),
         builder_(kInitialBufferSize),
-        saved_model_tags_(saved_model_tags) {
+        saved_model_tags_(saved_model_tags),
+        select_user_tf_ops_(select_user_tf_ops) {
     // The first buffer must be empty according to the schema definition.
     empty_buffer_ = tflite::CreateBuffer(builder_);
     buffers_.push_back(empty_buffer_);
@@ -575,6 +578,8 @@ class Translator {
 
   // Set of saved model tags, if any.
   const std::unordered_set<std::string> saved_model_tags_;
+  // User's defined ops allowed with Flex.
+  const std::unordered_set<std::string> select_user_tf_ops_;
 };
 
 std::string Translator::UniqueName(mlir::Value val) {
@@ -1104,12 +1109,15 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
       resource_ops_.insert(node_def->op());
     }
 
+    const bool is_allowed_flex_op =
+        IsAllowlistedFlexOp(node_def->op()) ||
+        ((select_user_tf_ops_.count(node_def->op()) != 0) &&
+         (tensorflow::OpRegistry::Global()->LookUp(node_def->op()) != nullptr));
     // Flex op case
     // Eventually, the allowlist will go away and we will rely on some TF op
     // trait (e.g. No side effect) to determine if it is a supported "Flex"
     // op or not.
-    if (enabled_op_types_.contains(OpType::kSelectTf) &&
-        IsAllowlistedFlexOp(node_def->op())) {
+    if (is_allowed_flex_op && enabled_op_types_.contains(OpType::kSelectTf)) {
       // Construct ops as flex op encoding TensorFlow node definition
       // as custom options.
       // Flex ops are named with the kFlexOpNamePrefix prefix to the actual
@@ -1160,7 +1168,7 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
       }
 
       // Insert failed op to `flex_ops` or `custom_ops`.
-      if (IsAllowlistedFlexOp(node_def->op())) {
+      if (is_allowed_flex_op) {
         failed_flex_ops_.insert(os.str());
       } else {
         failed_custom_ops_.insert(os.str());
@@ -1361,7 +1369,7 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
 
     // Fetch operand and result tensor indices.
     std::vector<int32_t> results;
-    results.reserve(inst.getNumOperands());
+    results.reserve(inst.getNumResults());
     for (auto result : inst.getResults()) {
       results.push_back(tensor_index_map.lookup(result));
     }
@@ -1620,12 +1628,15 @@ bool UpdateEntryFunction(ModuleOp module) {
 
 Optional<std::string> Translator::Translate(
     ModuleOp module, bool emit_builtin_tflite_ops, bool emit_select_tf_ops,
-    bool emit_custom_ops, const std::unordered_set<std::string>& tags,
+    bool emit_custom_ops,
+    const std::unordered_set<std::string>& select_user_tf_ops,
+    const std::unordered_set<std::string>& tags,
     OpOrArgNameMapper* op_or_arg_name_mapper) {
   if (!UpdateEntryFunction(module)) return llvm::None;
   if (!IsValidTFLiteMlirModule(module)) return llvm::None;
   Translator translator(module, emit_builtin_tflite_ops, emit_select_tf_ops,
-                        emit_custom_ops, tags, op_or_arg_name_mapper);
+                        emit_custom_ops, select_user_tf_ops, tags,
+                        op_or_arg_name_mapper);
   return translator.TranslateInternal();
 }
 
@@ -1877,9 +1888,22 @@ bool tflite::MlirToFlatBufferTranslateFunction(
     bool emit_builtin_tflite_ops, bool emit_select_tf_ops, bool emit_custom_ops,
     const std::unordered_set<std::string>& saved_model_tags,
     OpOrArgNameMapper* op_or_arg_name_mapper) {
+  std::unordered_set<std::string> select_user_tf_ops;
+  return MlirToFlatBufferTranslateFunction(
+      module, serialized_flatbuffer, emit_builtin_tflite_ops,
+      emit_select_tf_ops, emit_custom_ops, select_user_tf_ops, saved_model_tags,
+      op_or_arg_name_mapper);
+}
+
+bool tflite::MlirToFlatBufferTranslateFunction(
+    ModuleOp module, std::string* serialized_flatbuffer,
+    bool emit_builtin_tflite_ops, bool emit_select_tf_ops, bool emit_custom_ops,
+    const std::unordered_set<std::string>& select_user_tf_ops,
+    const std::unordered_set<std::string>& saved_model_tags,
+    tensorflow::OpOrArgNameMapper* op_or_arg_name_mapper) {
   auto maybe_translated = Translator::Translate(
       module, emit_builtin_tflite_ops, emit_select_tf_ops, emit_custom_ops,
-      saved_model_tags, op_or_arg_name_mapper);
+      select_user_tf_ops, saved_model_tags, op_or_arg_name_mapper);
   if (!maybe_translated) return true;
   *serialized_flatbuffer = std::move(*maybe_translated);
   return false;

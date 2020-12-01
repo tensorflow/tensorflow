@@ -71,10 +71,8 @@ Status Concat(OpKernelContext* context, const gtl::ArraySlice<Tensor> inputs,
 
   TensorShape output_shape(input_shape);
   output_shape.set_dim(0, output_dim0);
-  AllocatorAttributes attr;
-  attr.set_on_host(true);
-  TF_RETURN_IF_ERROR(context->allocate_temp(DataTypeToEnum<T>::value,
-                                            output_shape, output, attr));
+  TF_RETURN_IF_ERROR(
+      context->allocate_temp(DataTypeToEnum<T>::value, output_shape, output));
   if (output->NumElements() > 0) {
     auto output_flat = output->shaped<T, 2>({1, output->NumElements()});
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
@@ -169,10 +167,8 @@ Status SplitCPU(OpKernelContext* context, const Tensor& input,
     TensorShape output_shape = input.shape();
     output_shape.set_dim(0, size);
     Tensor output;
-    AllocatorAttributes attr;
-    attr.set_on_host(true);
     TF_RETURN_IF_ERROR(
-        context->allocate_temp(input.dtype(), output_shape, &output, attr));
+        context->allocate_temp(input.dtype(), output_shape, &output));
     auto output_shaped = output.shaped<T, 2>({size, suffix_dim_size});
 
     Eigen::DSizes<Eigen::DenseIndex, 2> slice_indices{

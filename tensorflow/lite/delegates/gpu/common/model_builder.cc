@@ -871,8 +871,13 @@ class FullyConnectedOperationParser : public TFLiteOperationParser {
           "FullyConnected doesn't support more than 2 runtime inputs.");
     }
     if (tf_options->keep_num_dims == true) {
-      return absl::UnimplementedError(
-          "FullyConnected doesn't support keep_num_dims.");
+      const auto* input = context->tensors + tflite_node->inputs->data[0];
+      const auto* output = context->tensors + tflite_node->outputs->data[0];
+      if (input->dims->size != output->dims->size) {
+        return absl::UnimplementedError(
+            "Input and output dimensions different and FullyConnected doesn't "
+            "support keep_num_dims.");
+      }
     }
     // TODO(eignasheva): check input shape
     return absl::OkStatus();

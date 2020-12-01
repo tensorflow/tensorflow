@@ -197,10 +197,11 @@ def LHLO_XorOp : LHLO_BinaryElementwiseOp<"xor", LHLO_PredOrIntBuffer>, BASE_HLO
 //===----------------------------------------------------------------------===//
 
 // TODO(b/139813999): specify required function signature in a type-safe way.
-def LHLO_ReduceOp: LHLO_Op<"reduce", [
-      SameVariadicOperandSize,
-      SingleBlockImplicitTerminator<"TerminatorOp">
-    ]>, BASE_HLO_ReduceOp {
+//
+// The region `body` may return lmhlo.TerminatorOp or mhlo.ReturnOp. We are
+// moving towards mhlo.ReturnOp, but some code that needs cleanup still assumes lmhlo.TerminatorOp.
+// TODO(timshen): cleanup lmhlo.TerminatorOp.
+def LHLO_ReduceOp: LHLO_Op<"reduce", [SameVariadicOperandSize]>, BASE_HLO_ReduceOp {
   let arguments = (ins
     Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$operands,
     Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$init_values,
@@ -653,8 +654,46 @@ def FusionOp : LHLO_Op<"fusion", [SingleBlockImplicitTerminator<"TerminatorOp">]
 
   let skipDefaultBuilders = 1;
   let builders = [
-     OpBuilderDAG<(ins "ArrayRef<NamedAttribute>":$attributes)>
+     OpBuilderDAG<(ins CArg<"ArrayRef<NamedAttribute>", "{}">:$attributes)>
   ];
+
+  let extraClassDeclaration = [{
+    SmallVector<Value, 4> getInputBuffers() {
+      SmallVector<Value, 4> buffers;
+      this->region().walk([&](TensorLoadOp load) {
+        if (load.memref().getParentRegion()->isProperAncestor(&region()))
+          buffers.push_back(load.memref());
+      });
+      return buffers;
+    }
+
+    SmallVector<Value, 4> getOutputBuffers() {
+      SmallVector<Value, 4> buffers;
+      this->region().walk([&](TensorStoreOp store) {
+        if (store.memref().getParentRegion()->isProperAncestor(&region()))
+          buffers.push_back(store.memref());
+      });
+      return buffers;
+    }
+
+    SmallVector<Value, 4> getFusionParameters() {
+      SmallVector<Value, 4> buffers;
+      this->region().walk([&](TensorLoadOp load) {
+        if (load.memref().getParentRegion()->isProperAncestor(&region()))
+          buffers.push_back(load);
+      });
+      return buffers;
+    }
+
+    SmallVector<Value, 4> getFusionResults() {
+      SmallVector<Value, 4> buffers;
+      this->region().walk([&](TensorStoreOp store) {
+        if (store.memref().getParentRegion()->isProperAncestor(&region()))
+          buffers.push_back(store.tensor());
+      });
+      return buffers;
+    }
+  }];
 }
 
 def TerminatorOp :

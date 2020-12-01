@@ -1849,7 +1849,7 @@ func private @testWhileBody(tensor<*xf32>) -> (tensor<*xi32>)
 // Test invalid 'While' operation
 func @testWhileResult(tensor<*xf32>) -> (tensor<*xf32>) {
 ^bb0(%arg0: tensor<*xf32>):
-  // expected-error @+1 {{'tf.While' op body result type tensor<*xi32> is incompatible with result type tensor<*xf32> at index 0}}
+  // expected-error @+1 {{'tf.While' op result type tensor<*xf32> is incompatible with body result type tensor<*xi32> at index 0}}
   %1 = "tf.While"(%arg0) {
     cond = @testWhileCond,
     body = @testWhileBody,
@@ -1931,6 +1931,19 @@ func @testWhileResult(tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<!tf.res
   } : (tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<!tf.resource>)
 
   return %1 : tensor<!tf.resource>
+}
+
+// -----
+
+func private @cond(tensor<1x?x3xf32>) -> tensor<i1>
+func private @body(tensor<1x?x3xf32>) -> tensor<1x?x3xf32>
+
+// Test shape invariant 'While' operation verifier with different operand and
+// result shapes.
+// CHECK-LABEL: func @testShapeInvariantWhile
+func @testShapeInvariantWhile(%arg0: tensor<1x2x3xf32>) -> tensor<1x8x3xf32> {
+  %0 = "tf.While"(%arg0) {cond = @cond, body = @body, is_stateless = false, shape_invariant} : (tensor<1x2x3xf32>) -> tensor<1x8x3xf32>
+  return %0 : tensor<1x8x3xf32>
 }
 
 // -----
@@ -2084,7 +2097,7 @@ func @testInvalidWhileRegion_I_BI_TypeMismatch(%arg0 : tensor<i32>) -> (tensor<i
 // -----
 
 func @testInvalidWhileRegion_O_BO_CountMismatch(%arg0 : tensor<i32>) -> (tensor<i32>) {
-  // expected-error @+1 {{'tf.WhileRegion' op body results (size = 2) should have the same number of values as results (size = 1)}}
+  // expected-error @+1 {{'tf.WhileRegion' op results (size = 1) should have the same number of values as body results (size = 2)}}
   %0 = "tf.WhileRegion"(%arg0) (
     {
      ^bb0(%carg: tensor<i32>):
@@ -2102,7 +2115,7 @@ func @testInvalidWhileRegion_O_BO_CountMismatch(%arg0 : tensor<i32>) -> (tensor<
 // -----
 
 func @testInvalidWhileRegionMismatch_O_BO_TypeMismatch(%arg0 : tensor<i32>, %arg1: tensor<f32>) -> (tensor<i32>) {
-  // expected-error @+1 {{'tf.WhileRegion' op body result type tensor<f32> is incompatible with result type tensor<i32> at index 0}}
+  // expected-error @+1 {{'tf.WhileRegion' op result type tensor<i32> is incompatible with body result type tensor<f32> at index 0}}
   %0 = "tf.WhileRegion"(%arg0) (
     {
      ^bb0(%carg: tensor<i32>):
@@ -2207,6 +2220,23 @@ func @testInvalidWhileRegionConditionOutputType(%arg : tensor<i32>) -> (tensor<i
   return %0 : tensor<i32>
 }
 
+// -----
+
+// Test shape invariant 'WhileRegion' operation verifier with different operand
+// and result shapes.
+// CHECK-LABEL: func @testShapeInvariantWhileRegion
+func @testShapeInvariantWhileRegion(%arg0: tensor<1x2x3xf32>) -> tensor<1x8x3xf32> {
+  %0 = "tf.WhileRegion"(%arg0) ( {
+  ^cond(%carg0: tensor<1x?x3xf32>):
+    %1 = "tf.SomeCondOp"(%carg0) : (tensor<1x?x3xf32>) -> tensor<i1>
+    "tf.Yield"(%1) : (tensor<i1>) -> ()
+  }, {
+  ^body(%barg0: tensor<1x?x3xf32>):
+    %1 = "tf.SomeBodyOp"(%barg0) : (tensor<1x?x3xf32>) -> tensor<1x?x3xf32>
+    "tf.Yield"(%1) : (tensor<1x?x3xf32>) -> ()
+  }) {is_stateless = false, shape_invariant} : (tensor<1x2x3xf32>) -> tensor<1x8x3xf32>
+  return %0 : tensor<1x8x3xf32>
+}
 
 // -----
 

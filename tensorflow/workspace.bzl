@@ -39,7 +39,7 @@ load("//third_party/psimd:workspace.bzl", psimd = "repo")
 load("//third_party/ruy:workspace.bzl", ruy = "repo")
 load("//third_party/sobol_data:workspace.bzl", sobol_data = "repo")
 load("//third_party/vulkan_headers:workspace.bzl", vulkan_headers = "repo")
-load("//third_party/toolchains/remote_config:configs.bzl", "initialize_rbe_configs")
+load("@tf_toolchains//toolchains/remote_config:configs.bzl", "initialize_rbe_configs")
 
 def initialize_third_party():
     """ Load third party repositories.  See above load() statements. """
@@ -135,11 +135,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     # and update the sha256 with the result.
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "22c065f68df9a7a6321c4e9ee1f2d3cbfb471785804fb4fffa0fb2858d847e7f",
-        strip_prefix = "XNNPACK-bbe85068bb7aa6249a4e915462014016373c945f",
+        sha256 = "eb087959b684d2d3965f8914075032e3995e4726ac8ce9c09a367863ff184b99",
+        strip_prefix = "XNNPACK-0a9c1200ccb49bba0170a46a62044b13714f39a3",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/bbe85068bb7aa6249a4e915462014016373c945f.zip",
-            "https://github.com/google/XNNPACK/archive/bbe85068bb7aa6249a4e915462014016373c945f.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/0a9c1200ccb49bba0170a46a62044b13714f39a3.zip",
+            "https://github.com/google/XNNPACK/archive/0a9c1200ccb49bba0170a46a62044b13714f39a3.zip",
         ],
     )
 
@@ -203,11 +203,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         name = "eigen_archive",
         build_file = clean_dep("//third_party:eigen.BUILD"),
         patch_file = clean_dep("//third_party/eigen3:gpu_packet_math.patch"),
-        sha256 = "cce3143f6ed22dadff4ef0b43ce31c9632ace8e75bf41e401b6ec4668968d4c9",  # SHARED_EIGEN_SHA
-        strip_prefix = "eigen-41d5d5334b8a4e364dfd88dcd91f6cd38834b8ed",
+        sha256 = "306f15c04fbd514b4adc3a327a2c6f63521ea6805cab75691fa30c30fea55193",  # SHARED_EIGEN_SHA
+        strip_prefix = "eigen-fd1dcb6b45a2c797ad4c4d6cc7678ee70763b4ed",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/gitlab.com/libeigen/eigen/-/archive/41d5d5334b8a4e364dfd88dcd91f6cd38834b8ed/eigen-41d5d5334b8a4e364dfd88dcd91f6cd38834b8ed.tar.gz",
-            "https://gitlab.com/libeigen/eigen/-/archive/41d5d5334b8a4e364dfd88dcd91f6cd38834b8ed/eigen-41d5d5334b8a4e364dfd88dcd91f6cd38834b8ed.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/gitlab.com/libeigen/eigen/-/archive/fd1dcb6b45a2c797ad4c4d6cc7678ee70763b4ed/eigen-fd1dcb6b45a2c797ad4c4d6cc7678ee70763b4ed.tar.gz",
+            "https://gitlab.com/libeigen/eigen/-/archive/fd1dcb6b45a2c797ad4c4d6cc7678ee70763b4ed/eigen-fd1dcb6b45a2c797ad4c4d6cc7678ee70763b4ed.tar.gz",
         ],
     )
 
@@ -631,12 +631,12 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "pcre",
         build_file = clean_dep("//third_party:pcre.BUILD"),
-        sha256 = "69acbc2fbdefb955d42a4c606dfde800c2885711d2979e356c0636efde9ec3b5",
-        strip_prefix = "pcre-8.42",
+        sha256 = "aecafd4af3bd0f3935721af77b889d9024b2e01d96b58471bd91a3063fb47728",
+        strip_prefix = "pcre-8.44",
         system_build_file = clean_dep("//third_party/systemlibs:pcre.BUILD"),
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/ftp.exim.org/pub/pcre/pcre-8.42.tar.gz",
-            "https://ftp.exim.org/pub/pcre/pcre-8.42.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/ftp.exim.org/pub/pcre/pcre-8.44.tar.gz",
+            "https://ftp.exim.org/pub/pcre/pcre-8.44.tar.gz",
         ],
     )
 
@@ -686,8 +686,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     # Check out LLVM and MLIR from llvm-project.
-    LLVM_COMMIT = "95ce9fbc235a467b84b2ffa2571f1d1a45af9427"
-    LLVM_SHA256 = "2ac5f4f751b909e6d65ba51208453f0268e51195840f7f1b35da2b88691df247"
+    LLVM_COMMIT = "bb993b1d9de34b8e47511a746bf4422ba206123b"
+    LLVM_SHA256 = "ab4cd0ce81fac6769130eaf00826eb9ee0502048dfb93da37e0e72b590e3671b"
     LLVM_URLS = [
         "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
         "https://github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
@@ -1135,17 +1135,6 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         urls = [
             "http://mirror.tensorflow.org/github.com/apple/coremltools/archive/3.3.zip",
             "https://github.com/apple/coremltools/archive/3.3.zip",
-        ],
-    )
-
-    tf_http_archive(
-        name = "tf_toolchains",
-        sha256 = "eb175afa73e5a33d2b5d2aabcfde6c8c3395fd7001eb5ba765a5cd98cce714ba",
-        strip_prefix = "toolchains-0.0.2",
-        build_file = clean_dep("//third_party:tf_toolchains.BUILD"),
-        urls = [
-            "http://mirror.tensorflow.org/github.com/tensorflow/toolchains/archive/v0.0.2.tar.gz",
-            "https://github.com/tensorflow/toolchains/archive/v0.0.2.tar.gz",
         ],
     )
 

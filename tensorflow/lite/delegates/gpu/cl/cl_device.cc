@@ -162,7 +162,8 @@ GpuInfo GpuInfoFromDeviceID(cl_device_id id) {
   const auto vendor_name = GetDeviceInfo<std::string>(id, CL_DEVICE_VENDOR);
   const auto opencl_c_version =
       GetDeviceInfo<std::string>(id, CL_DEVICE_OPENCL_C_VERSION);
-  info.gpu_vendor = ParseVendor(device_name, vendor_name);
+  info.gpu_api = GpuApi::kOpenCl;
+  info.vendor = ParseVendor(device_name, vendor_name);
   if (info.IsAdreno()) {
     info.adreno_info = AdrenoInfo(opencl_c_version);
   } else if (info.IsMali()) {
@@ -243,6 +244,8 @@ GpuInfo GpuInfoFromDeviceID(cl_device_id id) {
   info.opencl_info.max_work_group_size_x = max_work_group_sizes.x;
   info.opencl_info.max_work_group_size_y = max_work_group_sizes.y;
   info.opencl_info.max_work_group_size_z = max_work_group_sizes.z;
+  info.opencl_info.max_work_group_total_size =
+      GetDeviceInfo<size_t>(id, CL_DEVICE_MAX_WORK_GROUP_SIZE);
 
   if (info.IsIntel()) {
     if (info.SupportsExtension("cl_intel_required_subgroup_size")) {

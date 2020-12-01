@@ -28,6 +28,16 @@ tf_fuzz_target(
 )
 
 tf_fuzz_target(
+    name = "parseURI_fuzz",
+    srcs = ["parseURI_fuzz.cc"],
+    deps = [
+        "//tensorflow/core/platform:path",
+        "//tensorflow/core/platform:stringpiece",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_fuzz_target(
     name = "cleanpath_fuzz",
     srcs = ["cleanpath_fuzz.cc"],
     deps = [

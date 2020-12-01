@@ -2019,7 +2019,45 @@ func PreventGradient(scope *Scope, input tf.Output, optional ...PreventGradientA
 // taken into account for computing gradients.
 //
 // This is useful any time you want to compute a value with TensorFlow but need
-// to pretend that the value was a constant. Some examples include:
+// to pretend that the value was a constant. For example, the softmax function
+// for a vector x can be written as
+//
+// ```python
+//
+//   def softmax(x):
+//     numerator = tf.exp(x)
+//     denominator = tf.reduce_sum(numerator)
+//     return numerator / denominator
+// ```
+//
+// This however is susceptible to overflow if the values in x are large. An
+// alternative more stable way is to subtract the maximum of x from each of the
+// values.
+//
+// ```python
+//
+//   def stable_softmax(x):
+//     z = x - tf.reduce_max(x)
+//     numerator = tf.exp(z)
+//     denominator = tf.reduce_sum(numerator)
+//     return numerator / denominator
+// ```
+//
+// However, when we backprop through the softmax to x, we dont want to backprop
+// through the `tf.reduce_max(x)` (if the max values are not unique then the
+// gradient could flow to the wrong input) calculation and treat that as a
+// constant. Therefore, we should write this out as
+//
+// ```python
+//
+//   def stable_softmax(x):
+//     z = x - tf.stop_gradient(tf.reduce_max(x))
+//     numerator = tf.exp(z)
+//     denominator = tf.reduce_sum(numerator)
+//     return numerator / denominator
+// ```
+//
+// Some other examples include:
 //
 // *  The *EM* algorithm where the *M-step* should not involve backpropagation
 //    through the output of the *E-step*.
@@ -20644,9 +20682,9 @@ func CombinedNonMaxSuppressionClipBoxes(value bool) CombinedNonMaxSuppressionAtt
 // representing a single score corresponding to each box (each row of boxes).
 //	max_output_size_per_class: A scalar integer tensor representing the maximum number of
 // boxes to be selected by non max suppression per class
-//	max_total_size: A scalar representing maximum number of boxes retained over all classes. Note
-// that setting this value to a large number may result in OOM error depending on
-// the system workload.
+//	max_total_size: An int32 scalar representing the maximum number of boxes retained over all
+// classes. Note that setting this value to a large number may result in OOM error
+// depending on the system workload.
 //	iou_threshold: A 0-D float tensor representing the threshold for deciding whether
 // boxes overlap too much with respect to IOU.
 //	score_threshold: A 0-D float tensor representing the threshold for deciding when to remove

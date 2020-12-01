@@ -45,8 +45,8 @@ def HloBufferizePass : Pass<"hlo-bufferize", "ModuleOp"> {
 }
 
 def FinalBufferizePass : Pass<"final-bufferize", "ModuleOp"> {
-  let summary = "Pass to transform operations from all non-hlo dialects on "
-                "values to buffer-based ones.";
+  let summary = "Pass to transform late operations on values to buffer based "
+                "ones.";
   let constructor = "transforms::CreateFinalBufferizePass()";
 }
 
@@ -69,6 +69,8 @@ def GpuKernelToBlobPass : Pass<"gpu-kernel-to-blob", "gpu::GPUModuleOp"> {
     Option<"generate_fatbin_", "generate-fatbin", "bool", /*default=*/"true",
            "Bundle machine code for the different architectures in one "
            "fatbin.">,
+    Option<"print_ptx_", "print-ptx", "bool", /*default=*/"false",
+           "Print generated PTX code per target architecture.">,
   ];
   let constructor = "transforms::CreateGpuKernelToBlobPass()";
 }
