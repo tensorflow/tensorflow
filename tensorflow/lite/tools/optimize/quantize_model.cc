@@ -890,7 +890,7 @@ TfLiteStatus QuantizeSharedRange(ModelT* model, ErrorReporter* error_reporter) {
             continue;
           }
           // Currently only support pair of twos.
-          // TODO(jianlijianli): extend to arbitrary number of tensors.
+          // TODO(b/174534943): extend to arbitrary number of tensors.
           if (input.size() != 2) {
             return kTfLiteError;
           }
