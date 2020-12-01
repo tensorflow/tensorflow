@@ -30,7 +30,7 @@ using ::tflite::gpu::uint3;
 using ::tflite::gpu::ValueId;
 
 // This is an example of simple linkable operation performing multiplication by a constant.
-static std::vector<ComputeTaskDescriptorPtr> MulLinkable(int id, ValueId input_id,
+static std::vector<tflite::gpu::metal::NodeDescriptor> MulLinkable(int id, ValueId input_id,
                                                          ValueId output_id) {
   auto desc = std::make_shared<ComputeTaskDescriptor>();
   desc->id = id;
@@ -40,11 +40,14 @@ static std::vector<ComputeTaskDescriptorPtr> MulLinkable(int id, ValueId input_i
   })";
   desc->input_buffers = {{input_id}};
   desc->output_buffer = {output_id};
-  return {desc};
+  tflite::gpu::metal::NodeDescriptor node_desc;
+  node_desc.task = desc;
+  return {node_desc};
 }
 
 // This is an example of simple non-linkable operation performing add with a constant.
-static std::vector<ComputeTaskDescriptorPtr> Add(int id, ValueId input_id, ValueId output_id) {
+static std::vector<tflite::gpu::metal::NodeDescriptor> Add(
+    int id, ValueId input_id, ValueId output_id) {
   auto desc = std::make_shared<ComputeTaskDescriptor>();
   desc->id = id;
   desc->is_linkable = false;
@@ -91,12 +94,14 @@ static std::vector<ComputeTaskDescriptorPtr> Add(int id, ValueId input_id, Value
     return std::make_pair(groups_size, groups_count);
   };
 
-  return {desc};
+  tflite::gpu::metal::NodeDescriptor node_desc;
+  node_desc.task = desc;
+  return {node_desc};
 }
 
 // An example of linkable operation performing summing of two tensors.
-static std::vector<ComputeTaskDescriptorPtr> Add2(int id, ValueId input_id1, ValueId input_id2,
-                                                  ValueId output_id) {
+static std::vector<tflite::gpu::metal::NodeDescriptor> Add2(
+    int id, ValueId input_id1, ValueId input_id2, ValueId output_id) {
   auto desc = std::make_shared<ComputeTaskDescriptor>();
   desc->id = id;
   desc->is_linkable = false;
@@ -144,29 +149,30 @@ static std::vector<ComputeTaskDescriptorPtr> Add2(int id, ValueId input_id1, Val
     return std::make_pair(groups_size, groups_count);
   };
 
-  return {desc};
+  tflite::gpu::metal::NodeDescriptor node_desc;
+  node_desc.task = desc;
+  return {node_desc};
 }
 
 // An example of linkable operation performing summing of two tensors.
-static std::vector<ComputeTaskDescriptorPtr> Add2Linkable(int id, ValueId input_id1,
+static std::vector<tflite::gpu::metal::NodeDescriptor> Add2Linkable(int id, ValueId input_id1,
                                                           ValueId input_id2, ValueId output_id) {
-  std::vector<ComputeTaskDescriptorPtr> descriptors;
-  descriptors.push_back(ComputeTaskDescriptorPtr(new ComputeTaskDescriptor({
-      {},  // args
-      id,
-      true,  // linkable
-      true,  // associative_op
-      R"(FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid, device FLT4* const buffer2) {
-           return value + buffer2[linear_index];
-         }
-      )",
-      {
-          {input_id1, "device FLT4* const"},
-          {input_id2, "device FLT4* const"},
-      },
-      {output_id},
-  })));
-  return descriptors;
+  auto desc = std::make_shared<ComputeTaskDescriptor>();
+  desc->id = id;
+  desc->is_linkable = true;
+  desc->is_associative_op = true;
+  desc->shader_source = R"(
+FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid, device FLT4* const buffer2) {
+  return value + buffer2[linear_index];
+})";
+  desc->input_buffers = {
+      {input_id1, "device FLT4* const"},
+      {input_id2, "device FLT4* const"},
+  };
+  desc->output_buffer = {output_id};
+  tflite::gpu::metal::NodeDescriptor node_desc;
+  node_desc.task = desc;
+  return {node_desc};
 }
 
 @interface CompiledModelTest : XCTestCase
@@ -179,7 +185,7 @@ static std::vector<ComputeTaskDescriptorPtr> Add2Linkable(int id, ValueId input_
   auto nodes = MulLinkable(1, 1, 2);
   tflite::gpu::metal::CompiledModel model;
   tflite::gpu::metal::CompiledModel raw_model;
-  raw_model.tasks = nodes;
+  raw_model.nodes = nodes;
   auto status = ValidateOptimizeModel({1}, {2}, raw_model, &model);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
@@ -189,7 +195,7 @@ static std::vector<ComputeTaskDescriptorPtr> Add2Linkable(int id, ValueId input_
   auto nodes = MulLinkable(1, 1, 2);
   tflite::gpu::metal::CompiledModel model;
   tflite::gpu::metal::CompiledModel raw_model;
-  raw_model.tasks = nodes;
+  raw_model.nodes = nodes;
   auto status = ValidateOptimizeModel({1}, {3}, raw_model, &model);
   XCTAssertFalse(status.ok());
   std::vector<std::string> errorMessages = {"Input operations count 1", "Unused operations 1",
@@ -205,7 +211,7 @@ static std::vector<ComputeTaskDescriptorPtr> Add2Linkable(int id, ValueId input_
   auto nodes = MulLinkable(1, 1, 2);
   tflite::gpu::metal::CompiledModel model;
   tflite::gpu::metal::CompiledModel raw_model;
-  raw_model.tasks = nodes;
+  raw_model.nodes = nodes;
   auto status = ValidateOptimizeModel({1}, {2, 3}, raw_model, &model);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
@@ -215,7 +221,7 @@ static std::vector<ComputeTaskDescriptorPtr> Add2Linkable(int id, ValueId input_
   auto nodes = MulLinkable(1, 1, 2);
   tflite::gpu::metal::CompiledModel model;
   tflite::gpu::metal::CompiledModel raw_model;
-  raw_model.tasks = nodes;
+  raw_model.nodes = nodes;
   auto status = ValidateOptimizeModel({3}, {2}, raw_model, &model);
   std::vector<std::string> errorMessages = {"Input operations count 1", "Unused operations 0",
                                             "Unused inputs 1", "Missing output buffers 1"};
@@ -232,7 +238,7 @@ static std::vector<ComputeTaskDescriptorPtr> Add2Linkable(int id, ValueId input_
   nodes.insert(nodes.end(), nodes2.begin(), nodes2.end());
   tflite::gpu::metal::CompiledModel model;
   tflite::gpu::metal::CompiledModel raw_model;
-  raw_model.tasks = nodes;
+  raw_model.nodes = nodes;
   auto status = ValidateOptimizeModel({1}, {3}, raw_model, &model);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
@@ -244,7 +250,7 @@ static std::vector<ComputeTaskDescriptorPtr> Add2Linkable(int id, ValueId input_
   nodes.insert(nodes.end(), nodes2.begin(), nodes2.end());
   tflite::gpu::metal::CompiledModel model;
   tflite::gpu::metal::CompiledModel raw_model;
-  raw_model.tasks = nodes;
+  raw_model.nodes = nodes;
   auto status = ValidateOptimizeModel({1}, {3}, raw_model, &model);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
@@ -253,7 +259,7 @@ static std::vector<ComputeTaskDescriptorPtr> Add2Linkable(int id, ValueId input_
   auto nodes = Add2(1, 1, 2, 3);
   tflite::gpu::metal::CompiledModel model;
   tflite::gpu::metal::CompiledModel raw_model;
-  raw_model.tasks = nodes;
+  raw_model.nodes = nodes;
   auto status = ValidateOptimizeModel({1, 2}, {3}, raw_model, &model);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
@@ -266,10 +272,10 @@ static std::vector<ComputeTaskDescriptorPtr> Add2Linkable(int id, ValueId input_
   graph.insert(graph.end(), graph3.begin(), graph3.end());
   tflite::gpu::metal::CompiledModel model;
   tflite::gpu::metal::CompiledModel raw_model;
-  raw_model.tasks = graph;
+  raw_model.nodes = graph;
   auto status = ValidateOptimizeModel({1, 2}, {5}, raw_model, &model);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
-  XCTAssertTrue(model.tasks.size() <= 2, @"Not fused, more than two task descriptors.");
+  XCTAssertTrue(model.nodes.size() <= 2, @"Not fused, more than two task descriptors.");
 }
 
 - (void)testBinaryOperationSuccess {
@@ -280,7 +286,7 @@ static std::vector<ComputeTaskDescriptorPtr> Add2Linkable(int id, ValueId input_
   graph.insert(graph.end(), graph3.begin(), graph3.end());
   tflite::gpu::metal::CompiledModel model;
   tflite::gpu::metal::CompiledModel raw_model;
-  raw_model.tasks = graph;
+  raw_model.nodes = graph;
   auto status = ValidateOptimizeModel({1, 2}, {5}, raw_model, &model);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }

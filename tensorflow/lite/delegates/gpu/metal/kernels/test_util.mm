@@ -181,7 +181,11 @@ absl::Status RunGraph(const std::vector<ComputeTaskDescriptorPtr>& nodes, id<MTL
   }
   std::map<ValueId, BHWC> outputDimensions;
   CompiledModel raw_model;
-  raw_model.tasks = nodes;
+  for (auto& node : nodes) {
+    NodeDescriptor node_desc;
+    node_desc.task = node;
+    raw_model.nodes.push_back(node_desc);
+  }
   for(const auto& input : inputs) {
     raw_model.tensor_shapes[input.first] = input.second.shape;
   }

@@ -543,8 +543,11 @@ absl::Status Compile(const GraphFloat32& graph, const GpuInfo& gpu_info,
     for (const auto& task : tasks) {
       task->description = node->operation.type + "_" + std::to_string(node->id);
     }
-    compiled_model->tasks.insert(compiled_model->tasks.end(), tasks.begin(),
-                                 tasks.end());
+    for (auto& task : tasks) {
+      NodeDescriptor node;
+      node.task = task;
+      compiled_model->nodes.push_back(node);
+    }
   }
   return absl::OkStatus();
 }
