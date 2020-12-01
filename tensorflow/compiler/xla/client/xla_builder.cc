@@ -3557,6 +3557,10 @@ StatusOr<XlaComputation> XlaBuilder::BuildDynamicInferenceGraph(XlaOp root_op) {
       // visit operands and we say the all result values are dynamic.
       should_visit_operand = constant_indices;
     }
+    if (opcode == HloOpcode::kGetDimensionSize && next_operand == 0) {
+      // Always rewrite get dimension size into constant.
+      item.need_rewrite = true;
+    }
     if (next_operand >= instr_proto->operand_ids_size() ||
         !should_visit_operand || InstrIsSetBound(instr_proto)) {
       // No more operands to process, process self.
@@ -3568,8 +3572,11 @@ StatusOr<XlaComputation> XlaBuilder::BuildDynamicInferenceGraph(XlaOp root_op) {
       seen[item_key] = stacktop_id;
       worklist.pop_back();
     } else {
-      // Visit and process operand.
-      WorkItem next_item(instr_proto->operand_ids(next_operand), true);
+      // Visit and process operand.  If an operand doesn't need rewrite
+      // (predicate of kSelect, or indices of kGather), we also don't rewrite
+      // its ancestors.
+      WorkItem next_item(instr_proto->operand_ids(next_operand),
+                         item.need_rewrite);
       if (opcode == HloOpcode::kSelect && next_operand == 0) {
         next_item.need_rewrite = false;
       }
