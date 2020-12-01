@@ -221,6 +221,8 @@ bool IsScalarInputSupported(int builtin_code) {
     case kTfLiteBuiltinPow:
     case kTfLiteBuiltinMaximum:
     case kTfLiteBuiltinMinimum:
+    case kTfLiteBuiltinPrelu:
+    case kTfLiteBuiltinLeakyRelu:
       return true;
     default:
       return false;
@@ -2448,6 +2450,7 @@ bool NNAPIDelegateKernel::Validate(
             &val_ctx);
       }
     } break;
+    case kTfLiteBuiltinLeakyRelu:
     case kTfLiteBuiltinPrelu: {
       ExpectOpVersion(version, 1, &val_ctx);
       ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
@@ -3356,6 +3359,27 @@ TfLiteStatus NNAPIDelegateKernel::Map(
     } break;
     case kTfLiteBuiltinCast: {
       *nn_op_type = ANEURALNETWORKS_CAST;
+    } break;
+    case kTfLiteBuiltinLeakyRelu: {
+      auto builtin = reinterpret_cast<TfLiteLeakyReluParams*>(
+          mapping_args.node->builtin_data);
+
+      TfLiteTensor alpha_tensor;
+
+      alpha_tensor.type = kTfLiteFloat32;
+      alpha_tensor.allocation_type = kTfLiteDynamic;
+      alpha_tensor.dims = TfLiteIntArrayCreate(1);
+      alpha_tensor.dims->data[0] = 1;
+      alpha_tensor.params.scale = 0;
+      alpha_tensor.params.zero_point = 0;
+      std::vector<float> dims_float(1);
+      std::fill(dims_float.begin(), dims_float.end(), builtin->alpha);
+
+      int new_tensor_index = -1;
+      mapping_args.builder->AddNewInputConstantTensor(
+          ANEURALNETWORKS_TENSOR_FLOAT32, kTfLiteFloat32, alpha_tensor.dims,
+          dims_float, alpha_tensor.params, &new_tensor_index);
+      *nn_op_type = ANEURALNETWORKS_PRELU;
     } break;
     case kTfLiteBuiltinPrelu: {
       *nn_op_type = ANEURALNETWORKS_PRELU;
