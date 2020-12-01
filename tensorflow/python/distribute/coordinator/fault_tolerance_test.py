@@ -375,7 +375,7 @@ class FaultToleranceTest(test.TestCase):  # pylint: disable=missing-docstring
     model.join_training_functions()
     self.assertGreaterEqual(model.iterations.numpy(), 10)
 
-  def testNumpyFetchedAfterWorkerFaiulre(self):
+  def testNumpyFetchedAfterWorkerFailure(self):
 
     with self.strategy.scope():
       v = variables.Variable(initial_value=0, dtype=dtypes.int32)
