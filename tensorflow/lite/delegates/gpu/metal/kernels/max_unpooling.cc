@@ -101,14 +101,13 @@ ComputeTaskDescriptor MaxUnpooling(ValueId input_id, ValueId input_indices_id,
 
   desc.uniform_buffers = {
       {"constant uniforms& params",
-       [input_id, output_id, params](const std::map<ValueId, BHWC>& buffers) {
-         const auto& dimension = buffers.find(input_id)->second;
-         const auto& output_dimension = buffers.find(output_id)->second;
+       [params](const std::vector<BHWC>& src_shapes,
+                const std::vector<BHWC>& dst_shapes) {
          std::vector<int> uniform_params{
-             dimension.w,
-             dimension.h,
-             output_dimension.w,
-             output_dimension.h,
+             src_shapes[0].w,
+             src_shapes[0].h,
+             dst_shapes[0].w,
+             dst_shapes[0].h,
              params.strides.w,
              params.strides.h,
              params.padding.prepended.w,
@@ -118,14 +117,12 @@ ComputeTaskDescriptor MaxUnpooling(ValueId input_id, ValueId input_indices_id,
        }},
   };
 
-  desc.resize_function = [input_id,
-                          params](const std::map<ValueId, BHWC>& buffers) {
-    const auto& src_shape = buffers.find(input_id)->second;
-    BHWC dst_shape = CalculateOutputShape(src_shape, params);
+  desc.resize_function = [params](const std::vector<BHWC>& src_shapes,
+                                  const std::vector<BHWC>& dst_shapes) {
     const uint3 groups_size{16, 16, 1};
-    int groups_x = DivideRoundUp(dst_shape.w, groups_size.x);
-    int groups_y = DivideRoundUp(dst_shape.h, groups_size.y);
-    int groups_z = DivideRoundUp(dst_shape.c, 4);
+    int groups_x = DivideRoundUp(dst_shapes[0].w, groups_size.x);
+    int groups_y = DivideRoundUp(dst_shapes[0].h, groups_size.y);
+    int groups_z = DivideRoundUp(dst_shapes[0].c, 4);
     return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
   };
 

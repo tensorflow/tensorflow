@@ -153,18 +153,18 @@ ComputeTaskDescriptor Softmax(ValueId input_id, ValueId output_id,
 
   desc.uniform_buffers = {
       {"constant int2& size",
-       [output_id](const std::map<ValueId, BHWC>& buffers) {
-         const auto& dimension = buffers.find(output_id)->second;
-         std::vector<int> sizes{dimension.w, dimension.h};
+       [](const std::vector<BHWC>& src_shapes,
+          const std::vector<BHWC>& dst_shapes) {
+         std::vector<int> sizes{dst_shapes[0].w, dst_shapes[0].h};
          return GetByteBuffer(sizes);
        }},
   };
 
-  desc.resize_function = [output_id](const std::map<ValueId, BHWC>& buffers) {
+  desc.resize_function = [](const std::vector<BHWC>& src_shapes,
+                            const std::vector<BHWC>& dst_shapes) {
     uint3 groups_size{8, 4, 1};
-    const auto& dimension = buffers.find(output_id)->second;
-    uint3 groups_count{DivideRoundUp(dimension.w, groups_size.x),
-                       DivideRoundUp(dimension.h, groups_size.y), 1};
+    uint3 groups_count{DivideRoundUp(dst_shapes[0].w, groups_size.x),
+                       DivideRoundUp(dst_shapes[0].h, groups_size.y), 1};
     return std::make_pair(groups_size, groups_count);
   };
 
@@ -184,7 +184,8 @@ ComputeTaskDescriptor Softmax1x1(ValueId input_id, ValueId output_id,
 
   desc.uniform_buffers = {
       {"constant uniforms& params",
-       [channels_count](const std::map<ValueId, BHWC>& buffers) {
+       [channels_count](const std::vector<BHWC>& src_shapes,
+                        const std::vector<BHWC>& dst_shapes) {
          const int src_depth = DivideRoundUp(channels_count, 4);
          struct uniforms {
            int4 size;
@@ -202,7 +203,8 @@ ComputeTaskDescriptor Softmax1x1(ValueId input_id, ValueId output_id,
        }},
   };
 
-  desc.resize_function = [](const std::map<ValueId, BHWC>& buffers) {
+  desc.resize_function = [](const std::vector<BHWC>& src_shapes,
+                            const std::vector<BHWC>& dst_shapes) {
     return std::make_pair(uint3{32u, 1u, 1u}, uint3{1u, 1u, 1u});
   };
 

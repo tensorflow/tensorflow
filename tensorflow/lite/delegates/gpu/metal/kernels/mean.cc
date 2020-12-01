@@ -122,8 +122,9 @@ ComputeTaskDescriptor Mean(ValueId input_id, ValueId output_id,
   desc.output_buffer = {output_id, "device FLT4* dst_buffer"};
   desc.uniform_buffers = {
       {"constant uniforms& params",
-       [input_id, work_group_size](const std::map<ValueId, BHWC>& buffers) {
-         const auto& src_shape = buffers.find(input_id)->second;
+       [work_group_size](const std::vector<BHWC>& src_shapes,
+                         const std::vector<BHWC>& dst_shapes) {
+         const auto& src_shape = src_shapes[0];
          const int src_slices = DivideRoundUp(src_shape.c, 4);
          struct uniforms {
            int4 src_size;
@@ -141,13 +142,13 @@ ComputeTaskDescriptor Mean(ValueId input_id, ValueId output_id,
        }},
   };
 
-  desc.resize_function =
-      [output_id, work_group_size](const std::map<ValueId, BHWC>& buffers) {
-        BHWC dst_shape = buffers.find(output_id)->second;
-        const int dst_slices = DivideRoundUp(dst_shape.c, 4);
-        const int groups_z = DivideRoundUp(dst_slices, work_group_size.z);
-        return std::make_pair(work_group_size, uint3{1, 1, groups_z});
-      };
+  desc.resize_function = [work_group_size](
+                             const std::vector<BHWC>& src_shapes,
+                             const std::vector<BHWC>& dst_shapes) {
+    const int dst_slices = DivideRoundUp(dst_shapes[0].c, 4);
+    const int groups_z = DivideRoundUp(dst_slices, work_group_size.z);
+    return std::make_pair(work_group_size, uint3{1, 1, groups_z});
+  };
   return desc;
 }
 

@@ -428,18 +428,19 @@ NodeDescriptor NonLinkableStub(int operation_id, ValueId input_id,
 
   desc->uniform_buffers = {
       {"constant int2& size",
-       [input_id](const std::map<ValueId, BHWC>& buffers) {
-         const auto& dimension = buffers.find(input_id)->second;
-         return GetByteBuffer(std::vector<int>{dimension.w, dimension.h});
+       [](const std::vector<BHWC>& src_shapes,
+          const std::vector<BHWC>& dst_shapes) {
+         return GetByteBuffer(
+             std::vector<int>{src_shapes[0].w, src_shapes[0].h});
        }},
   };
 
-  desc->resize_function = [input_id](const std::map<ValueId, BHWC>& buffers) {
-    const auto& dimension = buffers.find(input_id)->second;
+  desc->resize_function = [](const std::vector<BHWC>& src_shapes,
+                             const std::vector<BHWC>& dst_shapes) {
     uint3 groups_size{16, 16, 1};
-    uint3 groups_count{DivideRoundUp(dimension.w, groups_size.x),
-                       DivideRoundUp(dimension.h, groups_size.y),
-                       DivideRoundUp(dimension.c, 4)};
+    uint3 groups_count{DivideRoundUp(dst_shapes[0].w, groups_size.x),
+                       DivideRoundUp(dst_shapes[0].h, groups_size.y),
+                       DivideRoundUp(dst_shapes[0].c, 4)};
     return std::make_pair(groups_size, groups_count);
   };
 

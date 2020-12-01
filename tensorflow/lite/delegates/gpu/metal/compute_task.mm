@@ -34,7 +34,6 @@ using ::tflite::gpu::HalfBits;
 using ::tflite::gpu::metal::ComputeTaskDescriptorPtr;
 using ::tflite::gpu::metal::CreateComputeProgram;
 using ::tflite::gpu::metal::DispatchParamsFunction;
-using ::tflite::gpu::metal::OutputDimensions;
 using ::tflite::gpu::metal::RuntimeOptions;
 using ::tflite::gpu::metal::UniformsFunction;
 using ::tflite::gpu::uint3;
@@ -156,12 +155,28 @@ struct UniformBuffer {
 - (absl::Status)
     updateParamsWithDevice:(id<MTLDevice>)device
               tensorShapes:(const std::map<tflite::gpu::ValueId, tflite::gpu::BHWC>&)tensorShapes {
+  std::vector<BHWC> src_shapes;
+  std::vector<BHWC> dst_shapes;
+  for (const auto& in_buf : _inputBuffers) {
+    auto it = tensorShapes.find(in_buf.uid);
+    if (it == tensorShapes.end()) {
+      return absl::InvalidArgumentError("Missing tensor shape");
+    }
+    src_shapes.push_back(it->second);
+  }
+  for (const auto& out_buf : _outputBuffers) {
+    auto it = tensorShapes.find(out_buf.uid);
+    if (it == tensorShapes.end()) {
+      return absl::InvalidArgumentError("Missing tensor shape");
+    }
+    dst_shapes.push_back(it->second);
+  }
   for (auto& uniform : _uniformBuffers) {
-    uniform.data = uniform.dataFunction(tensorShapes);
+    uniform.data = uniform.dataFunction(src_shapes, dst_shapes);
   }
 
   // Dispatch parameters re-calculation
-  auto workGroups = _resizeFunction(tensorShapes);
+  auto workGroups = _resizeFunction(src_shapes, dst_shapes);
   _groupsSize = workGroups.first;
   MTLSize threadsPerGroup = [device maxThreadsPerThreadgroup];
   if (_groupsSize.x > threadsPerGroup.width || _groupsSize.y > threadsPerGroup.height ||

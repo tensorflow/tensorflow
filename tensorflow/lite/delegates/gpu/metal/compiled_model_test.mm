@@ -74,21 +74,22 @@ static std::vector<tflite::gpu::metal::NodeDescriptor> Add(
 
   desc->uniform_buffers = {
       {"constant int2& size",
-       [output_id](const std::map<ValueId, BHWC>& buffers) {
+       [](const std::vector<BHWC>& src_shapes,
+          const std::vector<BHWC>& dst_shapes) {
          std::vector<uint8_t> data;
-         const auto& dimension = buffers.find(output_id)->second;
-         const int temp[] = {dimension.w, dimension.h};
+         const int temp[] = {dst_shapes[0].w, dst_shapes[0].h};
          data.insert(data.begin(), reinterpret_cast<const uint8_t*>(temp),
                      reinterpret_cast<const uint8_t*>(temp) + sizeof(temp));
          return data;
        }},
   };
 
-  desc->resize_function = [output_id](const std::map<ValueId, BHWC>& buffers) {
-    const auto& dimension = buffers.find(output_id)->second;
+  desc->resize_function = [](const std::vector<BHWC>& src_shapes,
+                             const std::vector<BHWC>& dst_shapes) {
     uint3 groups_size{16, 16, 1};
-    uint3 groups_count{AlignByN(dimension.w, groups_size.x), AlignByN(dimension.h, groups_size.y),
-                       AlignByN(dimension.c, 4)};
+    uint3 groups_count{AlignByN(dst_shapes[0].w, groups_size.x),
+                       AlignByN(dst_shapes[0].h, groups_size.y),
+                       AlignByN(dst_shapes[0].c, 4)};
     return std::make_pair(groups_size, groups_count);
   };
 
@@ -128,21 +129,22 @@ static std::vector<tflite::gpu::metal::NodeDescriptor> Add2(
 
   desc->uniform_buffers = {
       {"constant int2& size",
-       [input_id1](const std::map<ValueId, BHWC>& buffers) {
+       [](const std::vector<BHWC>& src_shapes,
+          const std::vector<BHWC>& dst_shapes) {
          std::vector<uint8_t> data;
-         const auto& dimension = buffers.find(input_id1)->second;
-         const int temp[] = {dimension.w, dimension.h};
+         const int temp[] = {src_shapes[0].w, src_shapes[0].h};
          data.insert(data.begin(), reinterpret_cast<const uint8_t*>(temp),
                      reinterpret_cast<const uint8_t*>(temp) + sizeof(temp));
          return data;
        }},
   };
 
-  desc->resize_function = [input_id1](const std::map<ValueId, BHWC>& buffers) {
-    const auto& dimension = buffers.find(input_id1)->second;
+  desc->resize_function = [](const std::vector<BHWC>& src_shapes,
+                             const std::vector<BHWC>& dst_shapes) {
     uint3 groups_size{16, 16, 1};
-    uint3 groups_count{AlignByN(dimension.w, groups_size.x), AlignByN(dimension.h, groups_size.y),
-                       AlignByN(dimension.c, 4)};
+    uint3 groups_count{AlignByN(dst_shapes[0].w, groups_size.x),
+                       AlignByN(dst_shapes[0].h, groups_size.y),
+                       AlignByN(dst_shapes[0].c, 4)};
     return std::make_pair(groups_size, groups_count);
   };
 

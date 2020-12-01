@@ -40,7 +40,8 @@ ComputeTaskDescriptor QuantizeAndDequantize(
   desc.output_buffer = {output_id};
   desc.uniform_buffers = {
       {"constant float3&",
-       [attr](const std::map<ValueId, BHWC>& buffers) {
+       [attr](const std::vector<BHWC>& src_shapes,
+              const std::vector<BHWC>& dst_shapes) {
          return GetByteBuffer(
              std::vector<float>{attr.min, attr.max, attr.scale});
        }},

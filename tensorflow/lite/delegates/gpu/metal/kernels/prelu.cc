@@ -66,7 +66,8 @@ ComputeTaskDescriptor PReLU(ValueId input_id, ValueId output_id,
   if (attr.clip != 0) {
     desc.uniform_buffers = {
         {"constant float&",
-         [attr](const std::map<ValueId, BHWC>& buffers) {
+         [attr](const std::vector<BHWC>& src_shapes,
+                const std::vector<BHWC>& dst_shapes) {
            std::vector<uint8_t> attr_clip =
                GetByteBuffer(std::vector<float>{attr.clip});
            return attr_clip;
@@ -107,7 +108,8 @@ ComputeTaskDescriptor PReLUFull(ValueId input_id, ValueId output_id,
   if (attr.clip != 0) {
     desc.uniform_buffers = {
         {"constant float&",
-         [attr](const std::map<ValueId, BHWC>& buffers) {
+         [attr](const std::vector<BHWC>& src_shapes,
+                const std::vector<BHWC>& dst_shapes) {
            std::vector<uint8_t> attr_clip =
                GetByteBuffer(std::vector<float>{attr.clip});
            return attr_clip;

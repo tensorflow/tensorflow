@@ -33,12 +33,10 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 
-using OutputDimensions =
-    std::function<BHWC(const std::map<ValueId, BHWC>& buffers)>;
-using UniformsFunction =
-    std::function<std::vector<uint8_t>(const std::map<ValueId, BHWC>& buffers)>;
+using UniformsFunction = std::function<std::vector<uint8_t>(
+    const std::vector<BHWC>& src_shapes, const std::vector<BHWC>& dst_shapes)>;
 using DispatchParamsFunction = std::function<std::pair<uint3, uint3>(
-    const std::map<ValueId, BHWC>& buffers)>;
+    const std::vector<BHWC>& src_shapes, const std::vector<BHWC>& dst_shapes)>;
 
 // Compute task descriptor contains a linkable shader code or a code for
 // complete shader to which other linkable can be attached or not. An operation

@@ -519,26 +519,23 @@ ComputeTaskDescriptor ConvolutionTransposed(
 
   desc.uniform_buffers = {
       {"constant uniforms& params",
-       [input_id, output_id](const std::map<ValueId, BHWC>& buffers) {
-         const auto& dimension = buffers.find(input_id)->second;
-         const auto& output_dimension = buffers.find(output_id)->second;
+       [](const std::vector<BHWC>& src_shapes,
+          const std::vector<BHWC>& dst_shapes) {
          std::vector<int> uniform_params{
-             dimension.w,
-             dimension.h,
-             output_dimension.w,
-             output_dimension.h,
+             src_shapes[0].w,
+             src_shapes[0].h,
+             dst_shapes[0].w,
+             dst_shapes[0].h,
          };
          return GetByteBuffer(uniform_params);
        }},
   };
 
-  desc.resize_function = [input_id,
-                          params](const std::map<ValueId, BHWC>& buffers) {
+  desc.resize_function = [](const std::vector<BHWC>& src_shapes,
+                            const std::vector<BHWC>& dst_shapes) {
     const uint3 groups_size{kThreadGroupWidth, kThreadGroupHeight, 1};
-    BHWC dst_shape =
-        CalculateOutputShape(buffers.find(input_id)->second, params);
-    int groups_x = DivideRoundUp(dst_shape.w, groups_size.x);
-    int groups_y = DivideRoundUp(dst_shape.h, groups_size.y);
+    int groups_x = DivideRoundUp(dst_shapes[0].w, groups_size.x);
+    int groups_y = DivideRoundUp(dst_shapes[0].h, groups_size.y);
     int groups_z = 1;
     return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
   };
@@ -628,18 +625,17 @@ ComputeTaskDescriptor ConvolutionTransposed4x4(
 
   desc.uniform_buffers = {
       {"constant uniforms& params",
-       [input_id, output_id, params](const std::map<ValueId, BHWC>& buffers) {
-         const auto& src_shape = buffers.find(input_id)->second;
-         const auto& dst_shape = buffers.find(output_id)->second;
-         const int src_depth = DivideRoundUp(src_shape.c, 4);
+       [params](const std::vector<BHWC>& src_shapes,
+                const std::vector<BHWC>& dst_shapes) {
+         const int src_depth = DivideRoundUp(src_shapes[0].c, 4);
          std::vector<int> uniform_params{
-             src_shape.w,
-             src_shape.h,
+             src_shapes[0].w,
+             src_shapes[0].h,
              src_depth,
-             src_shape.w * src_shape.h,
-             dst_shape.w,
-             dst_shape.h,
-             DivideRoundUp(dst_shape.c, 4),
+             src_shapes[0].w * src_shapes[0].h,
+             dst_shapes[0].w,
+             dst_shapes[0].h,
+             DivideRoundUp(dst_shapes[0].c, 4),
              0,
              4 * 16 * src_depth,
              0,
@@ -650,12 +646,11 @@ ComputeTaskDescriptor ConvolutionTransposed4x4(
        }},
   };
 
-  desc.resize_function = [output_id, block_size,
-                          params](const std::map<ValueId, BHWC>& buffers) {
-    const auto& dst_shape = buffers.find(output_id)->second;
-    const int grid_x = DivideRoundUp(dst_shape.w + 2, 2 * block_size.x);
-    const int grid_y = DivideRoundUp(dst_shape.h + 2, 2 * block_size.y);
-    const int grid_z = DivideRoundUp(dst_shape.c, 4);
+  desc.resize_function = [block_size](const std::vector<BHWC>& src_shapes,
+                                      const std::vector<BHWC>& dst_shapes) {
+    const int grid_x = DivideRoundUp(dst_shapes[0].w + 2, 2 * block_size.x);
+    const int grid_y = DivideRoundUp(dst_shapes[0].h + 2, 2 * block_size.y);
+    const int grid_z = DivideRoundUp(dst_shapes[0].c, 4);
     const uint3 group_size{8, 4, 1};
     int groups_x = DivideRoundUp(grid_x, group_size.x);
     int groups_y = DivideRoundUp(grid_y, group_size.y);

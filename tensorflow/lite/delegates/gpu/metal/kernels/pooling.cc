@@ -213,18 +213,17 @@ ComputeTaskDescriptor Pooling(ValueId input_id, ValueId output_id,
 
   desc.uniform_buffers = {
       {"constant uniforms& params",
-       [input_id, output_id, params](const std::map<ValueId, BHWC>& buffers) {
-         const auto& dimension = buffers.find(input_id)->second;
-         const auto& output_dimension = buffers.find(output_id)->second;
+       [params](const std::vector<BHWC>& src_shapes,
+                const std::vector<BHWC>& dst_shapes) {
          std::vector<int> uniform_params = {
-             dimension.w,
-             dimension.h,
-             DivideRoundUp(dimension.c, 4),
-             dimension.w * dimension.h,
-             output_dimension.w,
-             output_dimension.h,
-             DivideRoundUp(dimension.c, 4),
-             output_dimension.w * output_dimension.h,
+             src_shapes[0].w,
+             src_shapes[0].h,
+             DivideRoundUp(src_shapes[0].c, 4),
+             src_shapes[0].w * src_shapes[0].h,
+             dst_shapes[0].w,
+             dst_shapes[0].h,
+             DivideRoundUp(dst_shapes[0].c, 4),
+             dst_shapes[0].w * dst_shapes[0].h,
              params.strides.w,
              params.strides.h,
              params.padding.prepended.w,
@@ -234,10 +233,10 @@ ComputeTaskDescriptor Pooling(ValueId input_id, ValueId output_id,
        }},
   };
 
-  desc.resize_function = [output_id](const std::map<ValueId, BHWC>& buffers) {
-    BHWC dst_shape = buffers.find(output_id)->second;
-    const uint3 grid =
-        uint3(dst_shape.w, dst_shape.h, DivideRoundUp(dst_shape.c, 4));
+  desc.resize_function = [](const std::vector<BHWC>& src_shapes,
+                            const std::vector<BHWC>& dst_shapes) {
+    const uint3 grid = uint3(dst_shapes[0].w, dst_shapes[0].h,
+                             DivideRoundUp(dst_shapes[0].c, 4));
     const uint3 groups_size = GetWorkGroupSizeForGrid(grid);
     int groups_x = DivideRoundUp(grid.x, groups_size.x);
     int groups_y = DivideRoundUp(grid.y, groups_size.y);

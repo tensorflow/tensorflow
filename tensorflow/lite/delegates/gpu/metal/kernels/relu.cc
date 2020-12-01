@@ -50,7 +50,8 @@ ComputeTaskDescriptor ReLU(ValueId input_id, ValueId output_id,
   desc.output_buffer = {output_id};
   desc.uniform_buffers = {
       {"constant float2&",
-       [attr](const std::map<ValueId, BHWC>& buffers) {
+       [attr](const std::vector<BHWC>& src_shapes,
+              const std::vector<BHWC>& dst_shapes) {
          return GetByteBuffer(std::vector<float>{attr.alpha, attr.clip});
        }},
   };

@@ -140,37 +140,33 @@ ComputeTaskDescriptor Resize(ValueId input_id, ValueId output_id,
 
   desc.uniform_buffers = {
       {"constant int4& size",
-       [input_id, output_id](const std::map<ValueId, BHWC>& buffers) {
-         const auto& dimension = buffers.find(input_id)->second;
-         const auto& output_dimension = buffers.find(output_id)->second;
+       [](const std::vector<BHWC>& src_shapes,
+          const std::vector<BHWC>& dst_shapes) {
          std::vector<int> sizes = {
-             dimension.w,
-             dimension.h,
-             output_dimension.w,
-             output_dimension.h,
+             src_shapes[0].w,
+             src_shapes[0].h,
+             dst_shapes[0].w,
+             dst_shapes[0].h,
          };
          return GetByteBuffer(sizes);
        }},
       {"constant float2& scale",
-       [input_id, output_id, attr](const std::map<ValueId, BHWC>& buffers) {
-         const auto& input_dimensions = buffers.find(input_id)->second;
-         const auto& output_dimensions = buffers.find(output_id)->second;
+       [attr](const std::vector<BHWC>& src_shapes,
+              const std::vector<BHWC>& dst_shapes) {
          std::vector<float> sizes = {
-             CalculateResizeScale(input_dimensions.w, output_dimensions.w,
-                                  attr),
-             CalculateResizeScale(input_dimensions.h, output_dimensions.h,
-                                  attr),
+             CalculateResizeScale(src_shapes[0].w, dst_shapes[0].w, attr),
+             CalculateResizeScale(src_shapes[0].h, dst_shapes[0].h, attr),
          };
          return GetByteBuffer(sizes);
        }},
   };
 
-  desc.resize_function = [output_id](const std::map<ValueId, BHWC>& buffers) {
+  desc.resize_function = [](const std::vector<BHWC>& src_shapes,
+                            const std::vector<BHWC>& dst_shapes) {
     const uint3 groups_size{16, 16, 1};
-    const auto& dst_dim = buffers.find(output_id)->second;
-    int groups_x = DivideRoundUp(dst_dim.w, groups_size.x);
-    int groups_y = DivideRoundUp(dst_dim.h, groups_size.y);
-    const int dst_layers = DivideRoundUp(dst_dim.c, 4);
+    int groups_x = DivideRoundUp(dst_shapes[0].w, groups_size.x);
+    int groups_y = DivideRoundUp(dst_shapes[0].h, groups_size.y);
+    const int dst_layers = DivideRoundUp(dst_shapes[0].c, 4);
     int groups_z = DivideRoundUp(dst_layers, groups_size.z);
     return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
   };

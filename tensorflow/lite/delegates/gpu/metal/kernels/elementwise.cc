@@ -116,11 +116,11 @@ ComputeTaskDescriptor ElementwiseWithTwoInputs(std::vector<ValueId> input_ids,
 
   desc.uniform_buffers = {
       {"constant int2&",
-       [input_ids](const std::map<ValueId, BHWC>& buffers) {
-         const auto& input_dim_1 = buffers.find(input_ids[1])->second;
+       [](const std::vector<BHWC>& src_shapes,
+          const std::vector<BHWC>& dst_shapes) {
          std::vector<int> uniform_params{
-             input_dim_1.w,
-             input_dim_1.h,
+             src_shapes[1].w,
+             src_shapes[1].h,
          };
          return GetByteBuffer(uniform_params);
        }},
@@ -193,7 +193,8 @@ ComputeTaskDescriptor ElementwiseWithOneInputAndConstantArguent(
         GetByteBuffer(std::vector<float>{*scalar});
     desc.uniform_buffers = {
         {"constant float&",
-         [scalar_bits](const std::map<ValueId, BHWC>& buffers) {
+         [scalar_bits](const std::vector<BHWC>& src_shapes,
+                       const std::vector<BHWC>& dst_shapes) {
            return scalar_bits;
          }},
     };
@@ -207,7 +208,8 @@ ComputeTaskDescriptor ElementwiseWithOneInputAndConstantArguent(
         GetByteBuffer(std::vector<int>{hwc_buf->shape.w, hwc_buf->shape.h});
     desc.uniform_buffers = {
         {"constant int2&",
-         [size_bits](const std::map<ValueId, BHWC>& buffers) {
+         [size_bits](const std::vector<BHWC>& src_shapes,
+                     const std::vector<BHWC>& dst_shapes) {
            return size_bits;
          }},
     };

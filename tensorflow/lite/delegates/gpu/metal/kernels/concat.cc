@@ -150,26 +150,25 @@ ComputeTaskDescriptor ConcatZ(std::vector<ValueId> input_ids, ValueId output_id,
 
   desc.uniform_buffers = {
       {"constant uniforms& U",
-       [input_ids, output_id](const std::map<ValueId, BHWC>& buffers) {
-         const auto& src_shape = buffers.find(input_ids[0])->second;
-         const auto& dst_shape = buffers.find(output_id)->second;
+       [](const std::vector<BHWC>& src_shapes,
+          const std::vector<BHWC>& dst_shapes) {
          std::vector<int> uniform_params{
-             src_shape.w,
-             src_shape.h,
-             DivideRoundUp(src_shape.c, 4),
-             src_shape.w * src_shape.h,
-             dst_shape.w,
-             dst_shape.h,
-             DivideRoundUp(dst_shape.c, 4),
-             dst_shape.w * dst_shape.h,
+             src_shapes[0].w,
+             src_shapes[0].h,
+             DivideRoundUp(src_shapes[0].c, 4),
+             src_shapes[0].w * src_shapes[0].h,
+             dst_shapes[0].w,
+             dst_shapes[0].h,
+             DivideRoundUp(dst_shapes[0].c, 4),
+             dst_shapes[0].w * dst_shapes[0].h,
          };
          return GetByteBuffer(uniform_params);
        }},
   };
 
-  desc.resize_function = [output_id](const std::map<ValueId, BHWC>& buffers) {
-    const auto& dst_shape = buffers.find(output_id)->second;
-    uint3 grid(dst_shape.w, dst_shape.h, 1);
+  desc.resize_function = [](const std::vector<BHWC>& src_shapes,
+                            const std::vector<BHWC>& dst_shapes) {
+    uint3 grid(dst_shapes[0].w, dst_shapes[0].h, 1);
     uint3 group_size{8u, 4u, 1u};
     uint3 groups;
     groups.x = DivideRoundUp(grid.x, group_size.x);
@@ -237,21 +236,21 @@ ComputeTaskDescriptor ConcatX(std::vector<ValueId> input_ids, ValueId output_id,
 
   desc.uniform_buffers = {
       {"constant int3& size",
-       [output_id](const std::map<ValueId, BHWC>& buffers) {
-         const auto& dimension = buffers.find(output_id)->second;
-         std::vector<int> uniform_params{dimension.w, dimension.h,
-                                         DivideRoundUp(dimension.c, 4),
+       [](const std::vector<BHWC>& src_shapes,
+          const std::vector<BHWC>& dst_shapes) {
+         std::vector<int> uniform_params{dst_shapes[0].w, dst_shapes[0].h,
+                                         DivideRoundUp(dst_shapes[0].c, 4),
                                          /*padding=*/0};
          return GetByteBuffer(uniform_params);
        }},
   };
 
-  desc.resize_function = [output_id](const std::map<ValueId, BHWC>& buffers) {
-    const auto& output_dims = buffers.find(output_id)->second;
+  desc.resize_function = [](const std::vector<BHWC>& src_shapes,
+                            const std::vector<BHWC>& dst_shapes) {
     const uint3 groups_size{8, 4, 1};
-    int groups_x = DivideRoundUp(output_dims.w, groups_size.x);
-    int groups_y = DivideRoundUp(output_dims.h, groups_size.y);
-    int groups_z = DivideRoundUp(output_dims.c, 4);
+    int groups_x = DivideRoundUp(dst_shapes[0].w, groups_size.x);
+    int groups_y = DivideRoundUp(dst_shapes[0].h, groups_size.y);
+    int groups_z = DivideRoundUp(dst_shapes[0].c, 4);
     return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
   };
 
@@ -315,21 +314,21 @@ ComputeTaskDescriptor ConcatY(std::vector<ValueId> input_ids, ValueId output_id,
 
   desc.uniform_buffers = {
       {"constant int3& size",
-       [output_id](const std::map<ValueId, BHWC>& buffers) {
-         const auto& dimension = buffers.find(output_id)->second;
-         std::vector<int> uniform_params{dimension.w, dimension.h,
-                                         DivideRoundUp(dimension.c, 4),
+       [](const std::vector<BHWC>& src_shapes,
+          const std::vector<BHWC>& dst_shapes) {
+         std::vector<int> uniform_params{dst_shapes[0].w, dst_shapes[0].h,
+                                         DivideRoundUp(dst_shapes[0].c, 4),
                                          /*padding=*/0};
          return GetByteBuffer(uniform_params);
        }},
   };
 
-  desc.resize_function = [output_id](const std::map<ValueId, BHWC>& buffers) {
-    const auto& output_dims = buffers.find(output_id)->second;
+  desc.resize_function = [](const std::vector<BHWC>& src_shapes,
+                            const std::vector<BHWC>& dst_shapes) {
     const uint3 groups_size{8, 4, 1};
-    int groups_x = DivideRoundUp(output_dims.w, groups_size.x);
-    int groups_y = DivideRoundUp(output_dims.h, groups_size.y);
-    int groups_z = DivideRoundUp(output_dims.c, 4);
+    int groups_x = DivideRoundUp(dst_shapes[0].w, groups_size.x);
+    int groups_y = DivideRoundUp(dst_shapes[0].h, groups_size.y);
+    int groups_z = DivideRoundUp(dst_shapes[0].c, 4);
     return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
   };
 

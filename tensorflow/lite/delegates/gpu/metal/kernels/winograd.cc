@@ -476,23 +476,22 @@ ComputeTaskDescriptor Winograd4x4To36(ValueId input_id, ValueId output_id,
 
   desc.uniform_buffers = {
       {"constant uniforms& U",
-       [input_id, output_id, attr](const std::map<ValueId, BHWC>& buffers) {
-         const auto& src_shape = buffers.find(input_id)->second;
-         const auto& dst_shape = buffers.find(output_id)->second;
-         int new_width = src_shape.w + attr.padding.prepended.w +
+       [attr](const std::vector<BHWC>& src_shapes,
+              const std::vector<BHWC>& dst_shapes) {
+         int new_width = src_shapes[0].w + attr.padding.prepended.w +
                          attr.padding.appended.w - 2;
-         int new_height = src_shape.h + attr.padding.prepended.h +
+         int new_height = src_shapes[0].h + attr.padding.prepended.h +
                           attr.padding.appended.h - 2;
          int tiles_x = DivideRoundUp(new_width, 4);
          int tiles_y = DivideRoundUp(new_height, 4);
          std::vector<int> sizes = {
-             src_shape.w,
-             src_shape.h,
-             DivideRoundUp(src_shape.c, 4),
+             src_shapes[0].w,
+             src_shapes[0].h,
+             DivideRoundUp(src_shapes[0].c, 4),
              0,
-             dst_shape.w,
-             dst_shape.h,
-             DivideRoundUp(dst_shape.c, 4),
+             dst_shapes[0].w,
+             dst_shapes[0].h,
+             DivideRoundUp(dst_shapes[0].c, 4),
              0,
              -attr.padding.prepended.w,
              -attr.padding.prepended.h,
@@ -503,17 +502,16 @@ ComputeTaskDescriptor Winograd4x4To36(ValueId input_id, ValueId output_id,
        }},
   };
 
-  desc.resize_function = [input_id,
-                          attr](const std::map<ValueId, BHWC>& buffers) {
+  desc.resize_function = [attr](const std::vector<BHWC>& src_shapes,
+                                const std::vector<BHWC>& dst_shapes) {
     const uint3 groups_size{8, 4, 1};
-    const auto& src_shape = buffers.find(input_id)->second;
-    int new_width =
-        src_shape.w + attr.padding.prepended.w + attr.padding.appended.w - 2;
-    int new_height =
-        src_shape.h + attr.padding.prepended.h + attr.padding.appended.h - 2;
+    int new_width = src_shapes[0].w + attr.padding.prepended.w +
+                    attr.padding.appended.w - 2;
+    int new_height = src_shapes[0].h + attr.padding.prepended.h +
+                     attr.padding.appended.h - 2;
     int grid_x = DivideRoundUp(new_width, 4);
     int grid_y = DivideRoundUp(new_height, 4);
-    int grid_z = DivideRoundUp(src_shape.c, 4);
+    int grid_z = DivideRoundUp(src_shapes[0].c, 4);
     int groups_x = DivideRoundUp(grid_x, groups_size.x);
     int groups_y = DivideRoundUp(grid_y, groups_size.y);
     int groups_z = DivideRoundUp(grid_z, groups_size.z);
@@ -551,23 +549,22 @@ ComputeTaskDescriptor Winograd4x4To36TileX6(
 
   desc.uniform_buffers = {
       {"constant uniforms& U",
-       [input_id, output_id, attr](const std::map<ValueId, BHWC>& buffers) {
-         const auto& src_shape = buffers.find(input_id)->second;
-         const auto& dst_shape = buffers.find(output_id)->second;
-         int new_width = src_shape.w + attr.padding.prepended.w +
+       [attr](const std::vector<BHWC>& src_shapes,
+              const std::vector<BHWC>& dst_shapes) {
+         int new_width = src_shapes[0].w + attr.padding.prepended.w +
                          attr.padding.appended.w - 2;
-         int new_height = src_shape.h + attr.padding.prepended.h +
+         int new_height = src_shapes[0].h + attr.padding.prepended.h +
                           attr.padding.appended.h - 2;
          int tiles_x = DivideRoundUp(new_width, 4);
          int tiles_y = DivideRoundUp(new_height, 4);
          std::vector<int> sizes = {
-             src_shape.w,
-             src_shape.h,
-             DivideRoundUp(src_shape.c, 4),
+             src_shapes[0].w,
+             src_shapes[0].h,
+             DivideRoundUp(src_shapes[0].c, 4),
              0,
-             dst_shape.w,
-             dst_shape.h,
-             DivideRoundUp(dst_shape.c, 4),
+             dst_shapes[0].w,
+             dst_shapes[0].h,
+             DivideRoundUp(dst_shapes[0].c, 4),
              0,
              -attr.padding.prepended.w,
              -attr.padding.prepended.h,
@@ -578,12 +575,12 @@ ComputeTaskDescriptor Winograd4x4To36TileX6(
        }},
   };
 
-  desc.resize_function = [output_id](const std::map<ValueId, BHWC>& buffers) {
+  desc.resize_function = [](const std::vector<BHWC>& src_shapes,
+                            const std::vector<BHWC>& dst_shapes) {
     const uint3 groups_size{4, 6, 1};
-    const auto& dst_shape = buffers.find(output_id)->second;
-    int grid_x = dst_shape.w;
+    int grid_x = dst_shapes[0].w;
     int grid_y = 6;
-    int grid_z = DivideRoundUp(dst_shape.c, 4);
+    int grid_z = DivideRoundUp(dst_shapes[0].c, 4);
     int groups_x = DivideRoundUp(grid_x, groups_size.x);
     int groups_y = DivideRoundUp(grid_y, groups_size.y);
     int groups_z = DivideRoundUp(grid_z, groups_size.z);
@@ -613,23 +610,28 @@ ComputeTaskDescriptor Winograd36To4x4(ValueId input_id, ValueId output_id,
 
   desc.uniform_buffers = {
       {"constant uniforms& U",
-       [input_id, output_id](const std::map<ValueId, BHWC>& buffers) {
-         const auto& src_shape = buffers.find(input_id)->second;
-         const auto& dst_shape = buffers.find(output_id)->second;
+       [](const std::vector<BHWC>& src_shapes,
+          const std::vector<BHWC>& dst_shapes) {
          std::vector<int> sizes = {
-             src_shape.w, src_shape.h, DivideRoundUp(src_shape.c, 4), 0,
-             dst_shape.w, dst_shape.h, DivideRoundUp(dst_shape.c, 4), 0,
+             src_shapes[0].w,
+             src_shapes[0].h,
+             DivideRoundUp(src_shapes[0].c, 4),
+             0,
+             dst_shapes[0].w,
+             dst_shapes[0].h,
+             DivideRoundUp(dst_shapes[0].c, 4),
+             0,
          };
          return GetByteBuffer(sizes);
        }},
   };
 
-  desc.resize_function = [input_id](const std::map<ValueId, BHWC>& buffers) {
+  desc.resize_function = [](const std::vector<BHWC>& src_shapes,
+                            const std::vector<BHWC>& dst_shapes) {
     const uint3 groups_size{32, 1, 1};
-    const auto& src_shape = buffers.find(input_id)->second;
-    int grid_x = src_shape.w;
+    int grid_x = src_shapes[0].w;
     int grid_y = 1;
-    int grid_z = DivideRoundUp(src_shape.c, 4);
+    int grid_z = DivideRoundUp(src_shapes[0].c, 4);
     int groups_x = DivideRoundUp(grid_x, groups_size.x);
     int groups_y = DivideRoundUp(grid_y, groups_size.y);
     int groups_z = DivideRoundUp(grid_z, groups_size.z);
@@ -671,19 +673,18 @@ ComputeTaskDescriptor Winograd36To4x4Tile4x1(
 
   desc.uniform_buffers = {
       {"constant uniforms& U",
-       [input_id, output_id](const std::map<ValueId, BHWC>& buffers) {
-         const auto& src_shape = buffers.find(input_id)->second;
-         const auto& dst_shape = buffers.find(output_id)->second;
-         const int tiles_x = DivideRoundUp(dst_shape.w, 4);
-         const int tiles_y = DivideRoundUp(dst_shape.h, 4);
+       [](const std::vector<BHWC>& src_shapes,
+          const std::vector<BHWC>& dst_shapes) {
+         const int tiles_x = DivideRoundUp(dst_shapes[0].w, 4);
+         const int tiles_y = DivideRoundUp(dst_shapes[0].h, 4);
          std::vector<int> sizes = {
-             src_shape.w,
-             src_shape.h,
-             DivideRoundUp(src_shape.c, 4),
+             src_shapes[0].w,
+             src_shapes[0].h,
+             DivideRoundUp(src_shapes[0].c, 4),
              0,
-             dst_shape.w,
-             dst_shape.h,
-             DivideRoundUp(dst_shape.c, 4),
+             dst_shapes[0].w,
+             dst_shapes[0].h,
+             DivideRoundUp(dst_shapes[0].c, 4),
              0,
              tiles_x,
              tiles_y,
@@ -694,14 +695,14 @@ ComputeTaskDescriptor Winograd36To4x4Tile4x1(
        }},
   };
 
-  desc.resize_function = [output_id](const std::map<ValueId, BHWC>& buffers) {
+  desc.resize_function = [](const std::vector<BHWC>& src_shapes,
+                            const std::vector<BHWC>& dst_shapes) {
     const uint3 groups_size{8, 4, 1};
-    const auto& dst_shape = buffers.find(output_id)->second;
-    const int tiles_x = DivideRoundUp(dst_shape.w, 4);
-    const int tiles_y = DivideRoundUp(dst_shape.h, 4);
+    const int tiles_x = DivideRoundUp(dst_shapes[0].w, 4);
+    const int tiles_y = DivideRoundUp(dst_shapes[0].h, 4);
     int grid_x = tiles_x * tiles_y;
     int grid_y = 4;
-    int grid_z = DivideRoundUp(dst_shape.c, 4);
+    int grid_z = DivideRoundUp(dst_shapes[0].c, 4);
     int groups_x = DivideRoundUp(grid_x, groups_size.x);
     int groups_y = DivideRoundUp(grid_y, groups_size.y);
     int groups_z = DivideRoundUp(grid_z, groups_size.z);

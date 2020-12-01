@@ -162,20 +162,19 @@ ComputeTaskDescriptor Padding(ValueId input_id, ValueId output_id,
 
   desc.uniform_buffers = {
       {"constant uniforms& params",
-       [input_id, output_id, attr](const std::map<ValueId, BHWC>& buffers) {
-         const auto& dimension = buffers.find(input_id)->second;
-         const auto& output_dimension = buffers.find(output_id)->second;
+       [attr](const std::vector<BHWC>& src_shapes,
+              const std::vector<BHWC>& dst_shapes) {
          std::vector<int> uniform_params{
              // int4 src_size
-             dimension.w,
-             dimension.h,
-             dimension.c,
-             DivideRoundUp(dimension.c, 4),
+             src_shapes[0].w,
+             src_shapes[0].h,
+             src_shapes[0].c,
+             DivideRoundUp(src_shapes[0].c, 4),
              // int4 dst_size
-             output_dimension.w,
-             output_dimension.h,
-             output_dimension.c,
-             DivideRoundUp(output_dimension.c, 4),
+             dst_shapes[0].w,
+             dst_shapes[0].h,
+             dst_shapes[0].c,
+             DivideRoundUp(dst_shapes[0].c, 4),
              // int4 prepended padding
              attr.prepended.w,
              attr.prepended.h,
@@ -186,14 +185,12 @@ ComputeTaskDescriptor Padding(ValueId input_id, ValueId output_id,
        }},
   };
 
-  desc.resize_function = [input_id,
-                          attr](const std::map<ValueId, BHWC>& buffers) {
+  desc.resize_function = [attr](const std::vector<BHWC>& src_shapes,
+                                const std::vector<BHWC>& dst_shapes) {
     const uint3 groups_size{16, 16, 1};
-    const auto& src_shape = buffers.find(input_id)->second;
-    BHWC dst_shape = CalculateOutputShape(src_shape, attr);
-    const int dst_layers = DivideRoundUp(dst_shape.c, 4);
-    int groups_x = DivideRoundUp(dst_shape.w, groups_size.x);
-    int groups_y = DivideRoundUp(dst_shape.h, groups_size.y);
+    const int dst_layers = DivideRoundUp(dst_shapes[0].c, 4);
+    int groups_x = DivideRoundUp(dst_shapes[0].w, groups_size.x);
+    int groups_y = DivideRoundUp(dst_shapes[0].h, groups_size.y);
     int groups_z = DivideRoundUp(dst_layers, groups_size.z);
     return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
   };

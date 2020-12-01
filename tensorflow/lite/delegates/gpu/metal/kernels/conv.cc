@@ -1077,17 +1077,15 @@ ComputeTaskDescriptor ConvolutionGeneric(ValueId input_id, ValueId output_id,
 
   desc.uniform_buffers = {
       {"constant uniforms& params",
-       [input_id, output_id, attr,
-        params](const std::map<ValueId, BHWC>& buffers) {
-         const auto& src_shape = buffers.find(input_id)->second;
-         const auto& dst_shape = buffers.find(output_id)->second;
-         return GetUniformBuffer(src_shape, dst_shape, attr, params);
+       [attr, params](const std::vector<BHWC>& src_shapes,
+                      const std::vector<BHWC>& dst_shapes) {
+         return GetUniformBuffer(src_shapes[0], dst_shapes[0], attr, params);
        }},
   };
 
-  desc.resize_function = [output_id,
-                          params](const std::map<ValueId, BHWC>& buffers) {
-    return GetDispatchSizes(params, buffers.find(output_id)->second);
+  desc.resize_function = [params](const std::vector<BHWC>& src_shapes,
+                                  const std::vector<BHWC>& dst_shapes) {
+    return GetDispatchSizes(params, dst_shapes[0]);
   };
 
   return desc;
@@ -1159,16 +1157,16 @@ ComputeTaskDescriptor ConvolutionWino4x4To6x6(
 
   desc.uniform_buffers = {
       {"constant uniforms& params",
-       [input_id, output_id, params](const std::map<ValueId, BHWC>& buffers) {
-         const auto& src_shape = buffers.find(input_id)->second;
-         const auto& dst_shape = buffers.find(output_id)->second;
-         return GetUniformBufferForWinograd(src_shape, dst_shape, params);
+       [params](const std::vector<BHWC>& src_shapes,
+                const std::vector<BHWC>& dst_shapes) {
+         return GetUniformBufferForWinograd(src_shapes[0], dst_shapes[0],
+                                            params);
        }},
   };
 
-  desc.resize_function = [output_id,
-                          params](const std::map<ValueId, BHWC>& buffers) {
-    return GetDispatchSizes(params, buffers.find(output_id)->second);
+  desc.resize_function = [params](const std::vector<BHWC>& src_shapes,
+                                  const std::vector<BHWC>& dst_shapes) {
+    return GetDispatchSizes(params, dst_shapes[0]);
   };
 
   return desc;
