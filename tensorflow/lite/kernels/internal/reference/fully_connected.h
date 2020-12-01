@@ -31,7 +31,7 @@ inline void FullyConnected(
     float* output_data) {
   const float output_activation_min = params.float_activation_min;
   const float output_activation_max = params.float_activation_max;
-  // TODO(benoitjacob): This really should be:
+  // TODO(b/62193649): This really should be:
   //     const int batches = ArraySize(output_dims, 1);
   // but the current --variable_batch hack consists in overwriting the 3rd
   // dimension with the runtime batch size, as we don't keep track for each
@@ -76,7 +76,7 @@ inline void FullyConnected(
   TFLITE_DCHECK_GE(output_shape.DimensionsCount(), 1);
 
   TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
-  // TODO(benoitjacob): This really should be:
+  // TODO(b/62193649): This really should be:
   //     const int batches = ArraySize(output_dims, 1);
   // but the current --variable_batch hack consists in overwriting the 3rd
   // dimension with the runtime batch size, as we don't keep track for each
@@ -123,7 +123,7 @@ inline void FullyConnected(
 
   TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
   TFLITE_DCHECK_EQ(output_offset, 0);
-  // TODO(benoitjacob): This really should be:
+  // TODO(b/62193649): This really should be:
   //     const int batches = ArraySize(output_dims, 1);
   // but the current --variable_batch hack consists in overwriting the 3rd
   // dimension with the runtime batch size, as we don't keep track for each
@@ -176,7 +176,7 @@ inline void ShuffledFullyConnected(
   TFLITE_DCHECK_GE(input_shape.DimensionsCount(), 1);
   TFLITE_DCHECK_GE(weights_shape.DimensionsCount(), 2);
   TFLITE_DCHECK_GE(output_shape.DimensionsCount(), 1);
-  // TODO(benoitjacob): This really should be:
+  // TODO(b/62193649): This really should be:
   //     const int batches = ArraySize(output_dims, 1);
   // but the current --variable_batch hack consists in overwriting the 3rd
   // dimension with the runtime batch size, as we don't keep track for each

@@ -504,8 +504,6 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
     self.assertAllEqual(struct4.field_value("s"), struct2)
 
   def testPartitionOuterDims(self):
-    if not context.executing_eagerly():
-      return  # TESTING
     a = dict(x=1, y=[1, 2])
     b = dict(x=2, y=[3, 4])
     c = dict(x=3, y=[5, 6])

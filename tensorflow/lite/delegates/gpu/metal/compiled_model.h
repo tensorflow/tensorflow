@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_METAL_COMPILED_MODEL_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_METAL_COMPILED_MODEL_H_
 
+#include <map>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/model.h"
@@ -26,15 +27,18 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 
-using CompiledModel = std::vector<ComputeTaskDescriptorPtr>;
+struct CompiledModel {
+  std::vector<ComputeTaskDescriptorPtr> tasks;
+  std::map<ValueId, BHWC> tensor_shapes;
+};
 
 // Receives input CompiledModel, validates, optimizes it and returns output
 // CompiledModel. No shader compilation or memory allocation happen here, this
 // function just does high-level operations fusion.
 absl::Status ValidateOptimizeModel(const std::vector<ValueId>& input_buffers,
                                    const std::vector<ValueId>& output_buffers,
-                                   const CompiledModel& input,
-                                   CompiledModel* output);
+                                   const CompiledModel& input_model,
+                                   CompiledModel* output_model);
 
 }  // namespace metal
 }  // namespace gpu

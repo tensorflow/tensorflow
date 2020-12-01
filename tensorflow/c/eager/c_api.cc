@@ -102,8 +102,11 @@ void TFE_DeleteContextOptions(TFE_ContextOptions* options) { delete options; }
 TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
   if (opts->use_tfrt) {
 #if defined(PLATFORM_GOOGLE) && !defined(LIBTPU_ON_GCE)
-    tfrt::tf::ContextInterface* tfrt_context =
-        new tfrt::tf::ContextInterface(opts->async);
+    tfrt::tf::ContextInterface* tfrt_context = new tfrt::tf::ContextInterface(
+        opts->session_options.options,
+        static_cast<tensorflow::ContextDevicePlacementPolicy>(
+            opts->device_placement_policy),
+        opts->async);
 #if !defined(IS_MOBILE_PLATFORM)
     tfrt_context->SetDistributedManager(
         std::make_unique<tfrt::tf::DistributedManagerContextInterface>(

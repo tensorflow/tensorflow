@@ -2239,5 +2239,71 @@ TEST_F(OpLevelCostEstimatorTest, ResizeBilinearExecutionTime) {
   }
 }
 
+TEST_F(OpLevelCostEstimatorTest, CropAndResizeExecutionTime) {
+  const int kImageDim = 255;
+  const int kChannelSize = 10;
+  const int kOutputImageDim = 100;
+  const int kNumBoxes = 10;
+  const int kOutputElements =
+      kNumBoxes * kOutputImageDim * kOutputImageDim * kChannelSize;
+  OpContext op_context;
+  SetCpuDevice(&op_context.op_info);
+  op_context.op_info.set_op("CropAndResize");
+  DescribeTensor4D(1, kImageDim, kImageDim, kChannelSize,
+                   op_context.op_info.add_inputs());
+  DescribeArbitraryRankInput({kNumBoxes, 4}, DT_INT64, &op_context.op_info);
+  DescribeTensor4D(kNumBoxes, kOutputImageDim, kOutputImageDim, kChannelSize,
+                   op_context.op_info.add_outputs());
+
+  const int kExpectedMemoryTime =
+      (kImageDim * kImageDim + kNumBoxes * kOutputImageDim * kOutputImageDim) *
+      4;
+
+  {
+    // Cost of CropAndResize with bilinear interpolation.
+    AttrValue method;
+    method.set_s("bilinear");
+    (*op_context.op_info.mutable_attr())["method"] = method;
+    int num_ops = 28 * kNumBoxes + 4 * kNumBoxes * kOutputImageDim +
+                  4 * kNumBoxes * kOutputImageDim * kOutputImageDim +
+                  3 * kNumBoxes * kOutputImageDim +
+                  3 * kNumBoxes * kOutputImageDim * kOutputImageDim +
+                  13 * kOutputElements;
+    const int expected_compute_time = std::ceil(
+        num_ops /
+        estimator_.GetDeviceInfo(op_context.op_info.device()).gigaops);
+
+    const auto cost = PredictCosts(op_context);
+    EXPECT_EQ(cost.compute_time, Costs::Duration(expected_compute_time));
+    EXPECT_EQ(cost.memory_time, Costs::Duration(kExpectedMemoryTime));
+    EXPECT_EQ(cost.execution_time,
+              Costs::Duration(kExpectedMemoryTime + expected_compute_time));
+    EXPECT_FALSE(cost.inaccurate);
+    EXPECT_EQ(cost.num_ops_with_unknown_shapes, 0);
+  }
+
+  {
+    // Cost of CropAndResize when nearest pixel is taken.
+    AttrValue method;
+    method.set_s("nearest");
+    (*op_context.op_info.mutable_attr())["method"] = method;
+    int num_ops = 28 * kNumBoxes + 4 * kNumBoxes * kOutputImageDim +
+                  4 * kNumBoxes * kOutputImageDim * kOutputImageDim +
+                  2 * kNumBoxes * kOutputImageDim * kOutputImageDim +
+                  kOutputElements;
+    const int expected_compute_time = std::ceil(
+        num_ops /
+        estimator_.GetDeviceInfo(op_context.op_info.device()).gigaops);
+
+    const auto cost = PredictCosts(op_context);
+    EXPECT_EQ(cost.compute_time, Costs::Duration(expected_compute_time));
+    EXPECT_EQ(cost.memory_time, Costs::Duration(kExpectedMemoryTime));
+    EXPECT_EQ(cost.execution_time,
+              Costs::Duration(kExpectedMemoryTime + expected_compute_time));
+    EXPECT_FALSE(cost.inaccurate);
+    EXPECT_EQ(cost.num_ops_with_unknown_shapes, 0);
+  }
+}
+
 }  // end namespace grappler
 }  // end namespace tensorflow

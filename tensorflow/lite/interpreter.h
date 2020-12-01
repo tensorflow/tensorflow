@@ -464,7 +464,7 @@ class Interpreter {
   /// parts of the graph themselves. After this is called, the graph may
   /// contain new nodes that replace 1 more nodes.
   /// 'delegate' must outlive the interpreter.
-  /// Returns one of the following three status codes:
+  /// Returns one of the following four status codes:
   /// 1. kTfLiteOk: Success.
   /// 2. kTfLiteDelegateError: Delegation failed due to an error in the
   /// delegate. The Interpreter has been restored to its pre-delegation state.

@@ -31,7 +31,13 @@ class DummyOpBuilder : public OpBuilder {
       : OpBuilder(graph_builder) {}
   CoreML::Specification::NeuralNetworkLayer* Build() override;
   TfLiteStatus PopulateSubgraph(TfLiteContext* context) override;
-  const char* DebugName() override;
+  const std::string& DebugName() override;
+
+  TfLiteStatus RegisterInputs(const TfLiteIntArray* inputs,
+                              TfLiteContext* context) override;
+
+  TfLiteStatus RegisterOutputs(const TfLiteIntArray* outputs,
+                               TfLiteContext* context) override;
 };
 
 }  // namespace coreml

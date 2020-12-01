@@ -66,8 +66,8 @@ namespace {
 
 using python_utils::PyDecrefDeleter;
 
-std::unique_ptr<tflite_api_dispatcher::Interpreter> CreateInterpreter(
-    const tflite_api_dispatcher::TfLiteModel* model,
+std::unique_ptr<Interpreter> CreateInterpreter(
+    const InterpreterWrapper::Model* model,
     const tflite::ops::builtin::BuiltinOpResolver& resolver) {
   if (!model) {
     return nullptr;
@@ -75,9 +75,8 @@ std::unique_ptr<tflite_api_dispatcher::Interpreter> CreateInterpreter(
 
   ::tflite::python::ImportNumpy();
 
-  std::unique_ptr<tflite_api_dispatcher::Interpreter> interpreter;
-  if (tflite_api_dispatcher::InterpreterBuilder(
-          *model, resolver)(&interpreter) != kTfLiteOk) {
+  std::unique_ptr<Interpreter> interpreter;
+  if (InterpreterBuilder(*model, resolver)(&interpreter) != kTfLiteOk) {
     return nullptr;
   }
   return interpreter;
@@ -167,7 +166,7 @@ bool RegisterCustomOpByName(const char* registerer_name,
 }  // namespace
 
 InterpreterWrapper* InterpreterWrapper::CreateInterpreterWrapper(
-    std::unique_ptr<tflite_api_dispatcher::TfLiteModel> model,
+    std::unique_ptr<InterpreterWrapper::Model> model,
     std::unique_ptr<PythonErrorReporter> error_reporter,
     const std::vector<std::string>& registerers_by_name,
     const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
@@ -198,10 +197,10 @@ InterpreterWrapper* InterpreterWrapper::CreateInterpreterWrapper(
 }
 
 InterpreterWrapper::InterpreterWrapper(
-    std::unique_ptr<tflite_api_dispatcher::TfLiteModel> model,
+    std::unique_ptr<InterpreterWrapper::Model> model,
     std::unique_ptr<PythonErrorReporter> error_reporter,
     std::unique_ptr<tflite::ops::builtin::BuiltinOpResolver> resolver,
-    std::unique_ptr<tflite_api_dispatcher::Interpreter> interpreter)
+    std::unique_ptr<Interpreter> interpreter)
     : model_(std::move(model)),
       error_reporter_(std::move(error_reporter)),
       resolver_(std::move(resolver)),
@@ -537,9 +536,8 @@ namespace {
 
 // Checks to see if a tensor access can succeed (returns nullptr on error).
 // Otherwise returns Py_None.
-PyObject* CheckGetTensorArgs(tflite_api_dispatcher::Interpreter* interpreter_,
-                             int tensor_index, TfLiteTensor** tensor,
-                             int* type_num) {
+PyObject* CheckGetTensorArgs(Interpreter* interpreter_, int tensor_index,
+                             TfLiteTensor** tensor, int* type_num) {
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
   TFLITE_PY_TENSOR_BOUNDS_CHECK(tensor_index);
 
@@ -665,9 +663,8 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromFile(
     const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
     std::string* error_msg) {
   std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
-  std::unique_ptr<tflite_api_dispatcher::TfLiteModel> model =
-      tflite_api_dispatcher::TfLiteModel::BuildFromFile(model_path,
-                                                        error_reporter.get());
+  std::unique_ptr<InterpreterWrapper::Model> model =
+      Model::BuildFromFile(model_path, error_reporter.get());
   return CreateInterpreterWrapper(std::move(model), std::move(error_reporter),
                                   registerers_by_name, registerers_by_func,
                                   error_msg);
@@ -690,9 +687,8 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
   if (python_utils::ConvertFromPyString(data, &buf, &length) == -1) {
     return nullptr;
   }
-  std::unique_ptr<tflite_api_dispatcher::TfLiteModel> model =
-      tflite_api_dispatcher::TfLiteModel::BuildFromBuffer(buf, length,
-                                                          error_reporter.get());
+  std::unique_ptr<InterpreterWrapper::Model> model =
+      Model::BuildFromBuffer(buf, length, error_reporter.get());
   return CreateInterpreterWrapper(std::move(model), std::move(error_reporter),
                                   registerers_by_name, registerers_by_func,
                                   error_msg);

@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package tensorflow;
+
+import "tensorflow/core/protobuf/struct.proto";
+
+// Metadata for ExtensionTypeVariant, used when serializing as Variant.
+//
+// We define a new message here (rather than directly using TypeSpecProto for
+// the metadata string) to retain flexibility to change the metadata encoding
+// to support additional features.
+message ExtensionTypeVariantMetadata {
+  TypeSpecProto type_spec_proto = 1;
+}

@@ -48,8 +48,10 @@ tensorflow/lite/micro/tools/ci_build/test_x86.sh PRESUBMIT
 echo "Running bluepill tests at `date`"
 tensorflow/lite/micro/tools/ci_build/test_bluepill.sh
 
-echo "Running mbed tests at `date`"
-tensorflow/lite/micro/tools/ci_build/test_mbed.sh PRESUBMIT
+# TODO(b/174189223): Skipping mbed tests due to:
+# https://github.com/tensorflow/tensorflow/issues/45164
+# echo "Running mbed tests at `date`"
+# tensorflow/lite/micro/tools/ci_build/test_mbed.sh PRESUBMIT
 
 echo "Running Sparkfun tests at `date`"
 tensorflow/lite/micro/tools/ci_build/test_sparkfun.sh

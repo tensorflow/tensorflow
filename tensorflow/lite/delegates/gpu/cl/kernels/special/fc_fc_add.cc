@@ -20,11 +20,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/linear_storage.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
+#include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 
 namespace tflite {
@@ -81,7 +80,7 @@ std::string FCFCAdd::GetFCFCAddKernelCode(const OperationDef& op_def,
 
   const bool weights_are_buffer = UseBufferForWeights(gpu_info);
 
-  std::string c = GetCommonDefines(op_def.precision);
+  std::string c;
   switch (op_def.precision) {
     case CalculationsPrecision::F32:
       c += "#define FLT16 float16\n";

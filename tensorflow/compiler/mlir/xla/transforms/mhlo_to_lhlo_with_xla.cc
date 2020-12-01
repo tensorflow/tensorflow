@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/xla/transforms/mhlo_to_lhlo_with_xla.h"
 
+#include <climits>
 #include <memory>
 #include <tuple>
 
@@ -38,6 +39,7 @@ limitations under the License.
 #include "mlir/Pass/PassOptions.h"  // from @llvm-project
 #include "mlir/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/hlo_function_importer.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
@@ -46,6 +48,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
+#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -59,6 +62,7 @@ limitations under the License.
 using xla::BufferAllocation;
 using xla::BufferAssignment;
 using xla::HloComputation;
+using xla::HloCustomCallInstruction;
 using xla::HloInstruction;
 using xla::HloModule;
 using xla::HloModuleProto;
@@ -141,8 +145,9 @@ Status ConvertModule(std::unique_ptr<HloModule> hlo_module, ModuleOp module,
 class XlaHloToLhloPass
     : public PassWrapper<XlaHloToLhloPass, OperationPass<ModuleOp>> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<mlir::StandardOpsDialect, mlir::mhlo::MhloDialect,
-                    mlir::lmhlo::LmhloDialect>();
+    registry
+        .insert<mlir::StandardOpsDialect, mlir::mhlo::MhloDialect,
+                mlir::lmhlo::LmhloDialect, mlir::lmhlo_gpu::LmhloGpuDialect>();
   }
 
  public:
@@ -490,13 +495,18 @@ StatusOr<lmhlo::SelectAndScatterOp> LhloDialectEmitter::EmitSelectAndScatterOp(
   return select_and_scatter;
 }
 
-StatusOr<lmhlo::CustomCallOp> LhloDialectEmitter::EmitCustomCallOp(
+StatusOr<mlir::Operation*> LhloDialectEmitter::EmitCustomCallOp(
     HloInstruction* instr) {
+  auto* custom_call_instr = ::xla::Cast<::xla::HloCustomCallInstruction>(instr);
+
+  if (xla::gpu::IsCustomCallToCusolver(*instr)) {
+    return EmitCholesky(custom_call_instr);
+  }
+
   size_t num_arguments, num_results;
   TF_ASSIGN_OR_RETURN(auto custom_call,
                       CreateOpWithoutAttrs<lmhlo::CustomCallOp>(
                           instr, num_arguments, num_results));
-  auto* custom_call_instr = ::xla::Cast<::xla::HloCustomCallInstruction>(instr);
   custom_call.call_target_nameAttr(
       builder_.getStringAttr(custom_call_instr->custom_call_target()));
   custom_call.backend_configAttr(
@@ -505,7 +515,17 @@ StatusOr<lmhlo::CustomCallOp> LhloDialectEmitter::EmitCustomCallOp(
                                static_cast<int32_t>(num_results)};
   custom_call.setAttr(lmhlo::CustomCallOp::getOperandSegmentSizeAttr(),
                       builder_.getI32VectorAttr(segments));
-  return custom_call;
+  return custom_call.getOperation();
+}
+
+StatusOr<lmhlo_gpu::CholeskyOp> LhloDialectEmitter::EmitCholesky(
+    HloCustomCallInstruction* custom_call) {
+  TF_ASSIGN_OR_RETURN(auto cholesky_op,
+                      CreateOpWithoutAttrs<lmhlo_gpu::CholeskyOp>(custom_call));
+  TF_ASSIGN_OR_RETURN(xla::CholeskyOptions options,
+                      custom_call->backend_config<xla::CholeskyOptions>());
+  cholesky_op.is_lowerAttr(builder_.getBoolAttr(options.lower()));
+  return cholesky_op;
 }
 
 // Convert an XLA HLO constant to a global_memref + get_global_memref pair.
@@ -773,8 +793,8 @@ std::unique_ptr<OperationPass<ModuleOp>> createXlaHloToLhloWithXlaPass() {
 Status HloToLhloModule(const BufferAssignment& assignment,
                        const HloModule& hlo_module, ModuleOp module) {
   module.getContext()
-      ->loadDialect<StandardOpsDialect, mhlo::MhloDialect,
-                    lmhlo::LmhloDialect>();
+      ->loadDialect<StandardOpsDialect, mhlo::MhloDialect, lmhlo::LmhloDialect,
+                    lmhlo_gpu::LmhloGpuDialect>();
   HloComputation* computation = hlo_module.entry_computation();
 
   LhloDialectEmitter emitter(assignment, *computation, module);

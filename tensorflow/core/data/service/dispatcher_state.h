@@ -103,11 +103,13 @@ class DispatcherState {
   // A job for processing a dataset.
   struct Job {
     explicit Job(int64 job_id, int64 dataset_id, ProcessingMode processing_mode,
-                 absl::optional<NamedJobKey> named_job_key)
+                 absl::optional<NamedJobKey> named_job_key,
+                 absl::optional<int64> num_consumers)
         : job_id(job_id),
           dataset_id(dataset_id),
           processing_mode(processing_mode),
-          named_job_key(named_job_key) {
+          named_job_key(named_job_key),
+          num_consumers(num_consumers) {
       if (processing_mode == ProcessingMode::DISTRIBUTED_EPOCH) {
         distributed_epoch_state = DistributedEpochState();
       }
@@ -118,25 +120,19 @@ class DispatcherState {
     const ProcessingMode processing_mode;
     const absl::optional<NamedJobKey> named_job_key;
     absl::optional<DistributedEpochState> distributed_epoch_state;
+    absl::optional<int64> num_consumers;
     int64 num_clients = 0;
     int64 last_client_released_micros = -1;
     bool finished = false;
   };
 
   struct Task {
-    explicit Task(int64 task_id, int64 job_id, int64 dataset_id,
-                  ProcessingMode processing_mode,
+    explicit Task(int64 task_id, const std::shared_ptr<Job>& job,
                   const std::string& worker_address)
-        : task_id(task_id),
-          job_id(job_id),
-          dataset_id(dataset_id),
-          processing_mode(processing_mode),
-          worker_address(worker_address) {}
+        : task_id(task_id), job(job), worker_address(worker_address) {}
 
     const int64 task_id;
-    const int64 job_id;
-    const int64 dataset_id;
-    const ProcessingMode processing_mode;
+    const std::shared_ptr<Job> job;
     const std::string worker_address;
     bool finished = false;
   };

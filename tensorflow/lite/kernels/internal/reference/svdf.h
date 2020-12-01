@@ -251,8 +251,9 @@ inline void EvalHybridSVDF(
     state[i * memory_size + memory_size - 1] = scratch[i];
   }
 
-  // TODO(alanchiao): can optimize hybrid case ~5% by unrolling loop in applying
-  // time weights so that the inner loop multiplies eight elements at a time.
+  // TODO(b/174275776): can optimize hybrid case ~5% by unrolling loop in
+  // applying time weights so that the inner loop multiplies eight elements at
+  // a time.
   ApplyTimeWeightsBiasAndActivation(
       batch_size, memory_size, num_filters, num_units, rank, weights_time_data,
       bias_data, params->activation, state, scratch, output_data);

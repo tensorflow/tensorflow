@@ -247,7 +247,7 @@ called.
 
 `TFLGpuDelegateCreate()` accepts a `struct` of options.
 ([C API](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/gpu/metal_delegate.h),
-[Swift API](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/swift/Sources/MetalDelegate.swift))
+[Swift API](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/swift/Sources/MetalDelegate.swift))
 
 Passing `nullptr`(C API) or nothing (Swift API) to the initializer sets the
 default options (which are explicated in the Basic Usage example above).

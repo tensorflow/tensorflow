@@ -28,7 +28,7 @@ limitations under the License.
 #include "absl/base/optimization.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/types/optional.h"
-#include "tensorflow/core/util/abstract_stack_trace.h"
+#include "tensorflow/core/util/managed_stack_trace.h"
 
 namespace tensorflow {
 
@@ -40,10 +40,17 @@ inline void DCheckPyGilStateForStackTrace() {
 #endif
 }
 
+// Maps filename/line_no combination into a stack frame.
+using StackTraceMapper =
+    std::function<absl::optional<StackFrame>(std::string, int)>;
+
+// Returns "true" for filenames which should be skipped.
+using StackTraceFilter = std::function<bool(std::string)>;
+
 // A class for capturing Python stack trace.
 class StackTrace final {
  public:
-  static constexpr int kDefaultStackTraceInitialSize = 10;
+  static constexpr int kStackTraceInitialSize = 10;
 
   StackTrace() {}
 
@@ -93,11 +100,16 @@ class StackTrace final {
   }
 
   // Returns a structured representation of the captured stack trace.
-  std::vector<StackFrame> ToStackFrames() const;
+  // `mapper` provides a custom mapping for translating stack frames, `filter`
+  // returns `true` for the stack frames which should be omitted, and if
+  // `drop_last` is set, the last stack frame is dropped.
+  std::vector<StackFrame> ToStackFrames(
+      const StackTraceMapper& mapper = {},
+      const StackTraceFilter& filtered = {}) const;
 
  private:
-  absl::InlinedVector<PyCodeObject*, kDefaultStackTraceInitialSize> code_objs_;
-  absl::InlinedVector<int, kDefaultStackTraceInitialSize> last_instructions_;
+  absl::InlinedVector<PyCodeObject*, kStackTraceInitialSize> code_objs_;
+  absl::InlinedVector<int, kStackTraceInitialSize> last_instructions_;
 
   // Python GIL must be acquired beforehand.
   ABSL_ATTRIBUTE_HOT
@@ -146,9 +158,9 @@ extern StackTraceManager* const stack_trace_manager;
 // Note that the actual stack trace is kept in a circular buffer for string
 // conversion could fail if it's evicted before.
 // Python GIL must be acquired beforehand.
-inline AbstractStackTrace GetStackTrace(int limit) {
+inline ManagedStackTrace GetStackTrace(int limit) {
   DCheckPyGilStateForStackTrace();
-  return AbstractStackTrace(stack_trace_manager->Capture(limit), [](int id) {
+  return ManagedStackTrace(stack_trace_manager->Capture(limit), [](int id) {
     PyGILState_STATE gstate = PyGILState_Ensure();
     std::vector<StackFrame> result =
         stack_trace_manager->Get(id)->ToStackFrames();

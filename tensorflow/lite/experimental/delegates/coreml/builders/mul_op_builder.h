@@ -25,7 +25,7 @@ class MulOpBuilder : public OpBuilder {
  public:
   explicit MulOpBuilder(GraphBuilder* graph_builder)
       : OpBuilder(graph_builder) {}
-  const char* DebugName() override;
+  const std::string& DebugName() override;
 
   CoreML::Specification::NeuralNetworkLayer* Build() override;
 

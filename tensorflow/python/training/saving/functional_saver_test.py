@@ -128,6 +128,7 @@ class SaverTest(test.TestCase):
     second_saver.restore(save_path)
     self.assertEqual(2., self.evaluate(v2))
 
+  @test_util.disable_tfrt("b/171765113: server is not supported in TFRT yet.")
   def test_checkpoint_is_sharded_by_task(self):
     servers = [server_lib.Server.create_local_server() for _ in range(3)]
     cluster_spec = server_lib.ClusterSpec({

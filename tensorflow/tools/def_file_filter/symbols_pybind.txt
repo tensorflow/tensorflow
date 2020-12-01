@@ -391,3 +391,7 @@ tensorflow::PythonTensorConverter
 
 [//tensorflow/python:python_api_info] # python_api_info
 tensorflow::PythonAPIInfo
+
+[//tensorflow/python:python_api_parameter_converter] # python_api_parameter_converter
+tensorflow::ConvertPythonAPIParameters
+tensorflow::CopyPythonAPITensorLists
