@@ -13,17 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/cl/kernels/special/fc_fc_add.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/special/fc_fc_add.h"
 
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/memory/memory.h"
-#include "tensorflow/lite/delegates/gpu/cl/linear_storage.h"
-#include "tensorflow/lite/delegates/gpu/cl/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
+#include "tensorflow/lite/delegates/gpu/common/task/tensor_linear_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 
 namespace tflite {
