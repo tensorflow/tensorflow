@@ -329,10 +329,13 @@ TEST_F(GpuUnaryOpTest, DISABLED_IsInfFloat) {
 }
 
 TEST_F(GpuUnaryOpTest, DISABLED_IsInfDouble) {
-  Run<double, double, bool, bool>(DefaultInputShape(), DefaultInput<double>(),
-                                  /*op_name=*/"IsInf",
-                                  /*expected_callback=*/std::isinf,
-                                  /*expect_equal=*/true);
+  // Workaround for gcc bug, it would fail with "unresolved overloaded function
+  // type" if passing std::isinf with type double. So we use type float for
+  // comparing expected values.
+  Run<double, float, bool, bool>(DefaultInputShape(), DefaultInput<double>(),
+                                 /*op_name=*/"IsInf",
+                                 /*expected_callback=*/std::isinf,
+                                 /*expect_equal=*/true);
 }
 
 TEST_F(GpuUnaryOpTest, DISABLED_IsInfHalf) {
