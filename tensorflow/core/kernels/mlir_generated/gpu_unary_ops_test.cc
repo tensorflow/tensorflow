@@ -329,10 +329,13 @@ TEST_F(GpuUnaryOpTest, DISABLED_IsInfFloat) {
 }
 
 TEST_F(GpuUnaryOpTest, DISABLED_IsInfDouble) {
-  Run<double, double, bool, bool>(DefaultInputShape(), DefaultInput<double>(),
-                                  /*op_name=*/"IsInf",
-                                  /*expected_callback=*/std::isinf,
-                                  /*expect_equal=*/true);
+  // Workaround for gcc bug, it would fail with "unresolved overloaded function
+  // type" if passing std::isinf with type double. So we use type float for
+  // comparing expected values.
+  Run<double, float, bool, bool>(DefaultInputShape(), DefaultInput<double>(),
+                                 /*op_name=*/"IsInf",
+                                 /*expected_callback=*/std::isinf,
+                                 /*expect_equal=*/true);
 }
 
 TEST_F(GpuUnaryOpTest, DISABLED_IsInfHalf) {
@@ -373,7 +376,6 @@ TEST_F(GpuUnaryOpTest, LogHalf) {
 /// Reference implementation.
 template <typename T>
 T expected_neg(T x) {
-  if (x == 0) return 0;
   return -x;
 }
 
@@ -381,21 +383,21 @@ TEST_F(GpuUnaryOpTest, NegFloat) {
   Run<float>(DefaultInputShape(), DefaultInput<float>(),
              /*op_name=*/"Neg",
              /*expected_callback=*/expected_neg,
-             /*expect_equal=*/true);
+             /*expect_equal=*/false);
 }
 
 TEST_F(GpuUnaryOpTest, NegDouble) {
   Run<double>(DefaultInputShape(), DefaultInput<double>(),
               /*op_name=*/"Neg",
               /*expected_callback=*/expected_neg,
-              /*expect_equal=*/true);
+              /*expect_equal=*/false);
 }
 
 TEST_F(GpuUnaryOpTest, NegHalf) {
   Run<Eigen::half, float>(DefaultInputShape(), DefaultInput<Eigen::half>(),
                           /*op_name=*/"Neg",
                           /*expected_callback=*/expected_neg,
-                          /*expect_equal=*/true);
+                          /*expect_equal=*/false);
 }
 
 /// Test `tf.Real`.

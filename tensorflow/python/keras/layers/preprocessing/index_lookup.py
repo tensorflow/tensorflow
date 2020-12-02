@@ -343,6 +343,7 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     if insert_special_tokens and num_special_tokens > 0:
       special_token_values = np.arange(num_special_tokens, dtype=np.int64)
       self._table_handler.insert(special_tokens, special_token_values)
+    return total_vocab_size
 
   def _set_inverse_vocabulary(self, vocab):
     """Sets vocabulary data for this layer when inverse is True."""
@@ -382,6 +383,7 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     if insert_special_tokens and num_special_tokens > 0:
       special_token_values = np.arange(num_special_tokens, dtype=np.int64)
       self._table_handler.insert(special_token_values, special_tokens)
+    return total_vocab_size
 
   def set_vocabulary(self, vocab):
     """Sets vocabulary data for this layer.
@@ -399,15 +401,10 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
         input data is missing.
     """
     if self.invert:
-      self._set_inverse_vocabulary(vocab)
+      vocab_size = self._set_inverse_vocabulary(vocab)
     else:
-      self._set_forward_vocabulary(vocab)
-
-    # TODO(b/174593928): Use an op (such as `lookup_table_size_v2`) for the
-    # table size.
-    if (self._table_handler.use_v1_apis or
-        hasattr(self._table_handler.table.size(), "numpy")):
-      self.max_tokens = int(self._table_handler.vocab_size())
+      vocab_size = self._set_forward_vocabulary(vocab)
+    self.max_tokens = vocab_size
 
   def _set_state_variables(self, updates):
     if not self.built:
@@ -415,17 +412,15 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     self.set_vocabulary(updates[_VOCAB_NAME])
 
   def call(self, inputs):
+    if not self.max_tokens:
+      raise ValueError("You must set the layer's vocabulary before calling it. "
+                       "Either pass a `vocabulary` argument to the layer, or "
+                       "call `layer.adapt(dataset)` with some sample data.")
     if self._key_dtype == dtypes.int64 and inputs.dtype == dtypes.int32:
       inputs = math_ops.cast(inputs, dtypes.int64)
     lookup_result = self._table_handler.lookup(inputs)
     if self.output_mode == INT:
       return lookup_result
-
-    # TODO(b/174593928): Apply the check for `INT` `output_mode` as well.
-    if not self.max_tokens:
-      raise ValueError("You must set the layer's vocabulary before calling it. "
-                       "Either pass a `vocabulary` argument to the layer, or "
-                       "call `layer.adapt(dataset)` with some sample data.")
 
     binary_output = (self.output_mode == BINARY)
     if self.sparse:

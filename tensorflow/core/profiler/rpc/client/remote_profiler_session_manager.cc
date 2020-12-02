@@ -50,9 +50,9 @@ RemoteProfilerSessionManager::Create(
 RemoteProfilerSessionManager::RemoteProfilerSessionManager(
     RemoteProfilerSessionManagerOptions options, ProfileRequest request,
     AddressResolver resolver)
-    : options_(std::move(options)), request_(std::move(request)) {
+    : options_(options), request_(request) {
   if (resolver) {
-    resolver_ = std::move(resolver);
+    resolver_ = resolver;
   } else {
     resolver_ = [](absl::string_view addr) { return std::string(addr); };
   }
@@ -82,14 +82,14 @@ Status RemoteProfilerSessionManager::Init() {
   // Prepare a list of clients.
   clients_.reserve(options_.service_addresses_size());
 
+  ProfileRequest request = request_;
   for (auto& service_address : options_.service_addresses()) {
     std::string resolved_service_address = resolver_(service_address);
-    ProfileRequest request = request_;
     request.set_host_name(resolved_service_address);
 
     // Creation also issues Profile RPC asynchronously.
-    auto client = RemoteProfilerSession::Create(
-        std::move(resolved_service_address), deadline, std::move(request));
+    auto client = RemoteProfilerSession::Create(resolved_service_address,
+                                                deadline, request);
     clients_.push_back(std::move(client));
   }
 

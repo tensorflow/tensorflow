@@ -31,6 +31,10 @@ PLATFORM_FLAGS = \
   -DMAX_RFFT_PWR=9 \
   -DMIN_RFFT_PWR=MAX_RFFT_PWR
 
+ifeq ($(BUILD_TYPE), release)
+  PLATFORM_FLAGS += -Wno-unused-private-field
+endif
+
 
 export PATH := $(XTENSA_BASE)/tools/$(XTENSA_TOOLS_VERSION)/XtensaTools/bin:$(PATH)
 TARGET_TOOLCHAIN_PREFIX := xt-

@@ -21,6 +21,11 @@ limitations under the License.
 
 #include "llvm/IR/IntrinsicsNVPTX.h"
 #include "llvm/IR/Module.h"
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
+#include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -513,6 +518,56 @@ bool IsFusedReductionOutputConsistent(const HloInstruction* inst,
              first_reduce->operand(0)->shape(), inst->shape()) &&
          LayoutUtil::Equal(first_reduce->operand(0)->shape().layout(),
                            inst->shape().layout());
+}
+
+std::vector<mlir::Value> GetHloOperands(mlir::Operation* op) {
+  if (auto fusion = mlir::dyn_cast<mlir::lmhlo::FusionOp>(op)) {
+    return ToStdVector(fusion.getInputBuffers());
+  }
+  if (op->getDialect() == op->getContext()->getLoadedDialect("lmhlo")) {
+    std::vector<mlir::Value> operands;
+    for (auto buffer : op->getOperands()) {
+      if (!WritesMlirBuffer(op, buffer)) {
+        operands.push_back(buffer);
+      }
+    }
+    return operands;
+  }
+  if (op->getDialect() == op->getContext()->getLoadedDialect("mhlo")) {
+    return std::vector<mlir::Value>(op->getOperands().begin(),
+                                    op->getOperands().end());
+  }
+  LOG(FATAL) << "Unexpected op: " << MlirToString(op);
+}
+
+std::vector<mlir::Value> GetHloOutputs(mlir::Operation* op) {
+  if (auto fusion = mlir::dyn_cast<mlir::lmhlo::FusionOp>(op)) {
+    return ToStdVector(fusion.getOutputBuffers());
+  }
+  if (op->getDialect() == op->getContext()->getLoadedDialect("lmhlo")) {
+    std::vector<mlir::Value> outputs;
+    for (auto buffer : op->getOperands()) {
+      if (WritesMlirBuffer(op, buffer)) {
+        outputs.push_back(buffer);
+      }
+    }
+    return outputs;
+  }
+  if (op->getDialect() == op->getContext()->getLoadedDialect("mhlo")) {
+    return std::vector<mlir::Value>(op->getResults().begin(),
+                                    op->getResults().end());
+  }
+  LOG(FATAL) << "Unexpected op: " << MlirToString(op);
+}
+
+bool WritesMlirBuffer(mlir::Operation* op, mlir::Value operand) {
+  llvm::SmallVector<mlir::MemoryEffects::EffectInstance, 2> effects;
+  mlir::cast<mlir::MemoryEffectOpInterface>(op).getEffectsOnValue(operand,
+                                                                  effects);
+  return absl::c_any_of(
+      effects, [](const mlir::MemoryEffects::EffectInstance& instance) {
+        return mlir::isa<mlir::MemoryEffects::Write>(instance.getEffect());
+      });
 }
 
 }  // namespace gpu

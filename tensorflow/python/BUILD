@@ -2730,7 +2730,7 @@ tf_py_test(
 
 tf_py_test(
     name = "framework_importer_test",
-    size = "large",
+    size = "small",
     srcs = ["framework/importer_test.py"],
     main = "framework/importer_test.py",
     python_version = "PY3",

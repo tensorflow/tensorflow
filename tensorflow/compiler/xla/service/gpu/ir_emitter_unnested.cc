@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/APInt.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Function.h"
@@ -60,6 +61,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/copy_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/for_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/gemm_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_to_ir_bindings.h"
@@ -181,14 +183,52 @@ static int64_t GetMemRefSizeInBytes(mlir::MemRefType type) {
   }
 }
 
-static bool WritesMlirBuffer(mlir::Operation* op, mlir::Value operand) {
-  llvm::SmallVector<mlir::MemoryEffects::EffectInstance, 2> effects;
-  mlir::cast<mlir::MemoryEffectOpInterface>(op).getEffectsOnValue(operand,
-                                                                  effects);
-  return absl::c_any_of(
-      effects, [](const mlir::MemoryEffects::EffectInstance& instance) {
-        return mlir::isa<mlir::MemoryEffects::Write>(instance.getEffect());
-      });
+StatusOr<BufferAllocation::Slice> GetAllocationSliceForMlir(
+    mlir::Value v, absl::Span<const BufferAllocation> allocations) {
+  int64 size = GetMemRefSizeInBytes(v.getType().cast<mlir::MemRefType>());
+
+  if (auto arg = v.dyn_cast<mlir::BlockArgument>()) {
+    return BufferAllocation::Slice(&allocations[GetAllocationIndex(arg)], 0,
+                                   size);
+  }
+
+  // We match the following patterns here:
+  //  base := ViewOp(arg) | get_global_memref (global_memref)
+  //  root := base | MemRefReinterpretCastOp(base)
+
+  if (mlir::Operation* op = v.getDefiningOp()) {
+    if (auto cast = mlir::dyn_cast<mlir::MemRefReinterpretCastOp>(op)) {
+      mlir::Value source = cast.getViewSource();
+      op = source.getDefiningOp();
+      if (!op) {
+        return Unimplemented("MemRefReinterpretCastOp has to wrap an op");
+      }
+    }
+    if (auto view = mlir::dyn_cast<mlir::ViewOp>(op)) {
+      return BufferAllocation::Slice(
+          &allocations[GetAllocationIndex(
+              view.source().cast<mlir::BlockArgument>())],
+          mlir::cast<mlir::ConstantOp>(view.byte_shift().getDefiningOp())
+              .value()
+              .cast<mlir::IntegerAttr>()
+              .getValue()
+              .getSExtValue(),
+          size);
+    } else if (mlir::isa<mlir::GetGlobalMemrefOp>(op)) {
+      int64_t index =
+          op->getAttrOfType<mlir::IntegerAttr>("lmhlo.alloc").getInt();
+      int64_t offset =
+          op->getAttrOfType<mlir::IntegerAttr>("lmhlo.slice_offset").getInt();
+      int64_t size =
+          op->getAttrOfType<mlir::IntegerAttr>("lmhlo.slice_size").getInt();
+      return BufferAllocation::Slice(&allocations[index], offset, size);
+    }
+    return Unimplemented("MemRefReinterpretCastOp has to wrap a ViewOp");
+  }
+
+  return Unimplemented(
+      "Operand has to be in the form of ViewOp(arg) or "
+      "StaticMemRefCastOp(ViewOp(arg))");
 }
 
 bool BinarySearchDenseElementsAttr(::mlir::DenseIntElementsAttr elements,
@@ -914,6 +954,11 @@ Status IrEmitterUnnested::HandleCustomCall(HloInstruction* custom_call) {
     return ThunkEmitter(this).HandleCustomCall(custom_call);
   }
 
+  if (mlir::isa<mlir::lmhlo_gpu::GEMMOp, mlir::lmhlo_gpu::GEMM_BiasOp>(
+          input.op)) {
+    return EmitGemmThunkFromMlir(input);
+  }
+
 #if GOOGLE_CUDA
   if (mlir::isa<mlir::lmhlo_gpu::CholeskyOp>(input.op)) {
     return EmitCholeskyThunkFromMlir(input);
@@ -922,6 +967,82 @@ Status IrEmitterUnnested::HandleCustomCall(HloInstruction* custom_call) {
 
   return Unimplemented("No registered implementation for custom call to \"%s\"",
                        custom_call->custom_call_target());
+}
+
+Status IrEmitterUnnested::EmitGemmThunkFromMlir(MlirEmitterInput input) {
+  auto build_gemm_config = [](auto op) {
+    GpuGemmConfig config;
+    GemmBackendConfig& backend = config.backend_config;
+    config.output_shape = TypeToShape(op.output().getType());
+    config.lhs_shape = TypeToShape(op.lhs().getType());
+    config.rhs_shape = TypeToShape(op.rhs().getType());
+    backend.Clear();
+    if (op.algorithm()) {
+      backend.set_selected_algorithm(*op.algorithm());
+    }
+    backend.set_alpha_real(op.alpha_real().convertToDouble());
+    backend.set_alpha_imag(op.alpha_imag().convertToDouble());
+    backend.set_batch_size(op.batch_size());
+
+    auto& dims = *backend.mutable_dot_dimension_numbers();
+    auto mlir_dims = op.dot_dimension_numbers();
+
+    auto fill_dims = [](mlir::DenseElementsAttr mlir_dim, auto* config_attrs) {
+      for (llvm::APInt e : mlir_dim.getIntValues())
+        config_attrs->Add(e.getSExtValue());
+    };
+    fill_dims(mlir_dims.lhs_batching_dimensions(),
+              dims.mutable_lhs_batch_dimensions());
+    fill_dims(mlir_dims.rhs_batching_dimensions(),
+              dims.mutable_rhs_batch_dimensions());
+    fill_dims(mlir_dims.lhs_contracting_dimensions(),
+              dims.mutable_lhs_contracting_dimensions());
+    fill_dims(mlir_dims.rhs_contracting_dimensions(),
+              dims.mutable_rhs_contracting_dimensions());
+    return config;
+  };
+
+  GpuGemmConfig config;
+  BufferAllocation::Slice lhs, rhs, bias, output;
+
+  if (auto gemm = mlir::dyn_cast<mlir::lmhlo_gpu::GEMMOp>(input.op)) {
+    config = build_gemm_config(gemm);
+    TF_ASSIGN_OR_RETURN(lhs, GetAllocationSliceForMlir(gemm.lhs()));
+    TF_ASSIGN_OR_RETURN(rhs, GetAllocationSliceForMlir(gemm.rhs()));
+    TF_ASSIGN_OR_RETURN(output, GetAllocationSliceForMlir(gemm.output()));
+  } else if (auto gemm_bias =
+                 mlir::dyn_cast<mlir::lmhlo_gpu::GEMM_BiasOp>(input.op)) {
+    config = build_gemm_config(gemm_bias);
+    config.backend_config.set_beta(gemm_bias.beta().convertToDouble());
+    TF_ASSIGN_OR_RETURN(lhs, GetAllocationSliceForMlir(gemm_bias.lhs()));
+    TF_ASSIGN_OR_RETURN(rhs, GetAllocationSliceForMlir(gemm_bias.rhs()));
+    TF_ASSIGN_OR_RETURN(bias, GetAllocationSliceForMlir(gemm_bias.bias()));
+    TF_ASSIGN_OR_RETURN(output, GetAllocationSliceForMlir(gemm_bias.output()));
+
+    // The bias is passed inside the output buffer. If those buffers are shared
+    // we can just use it, otherwise copy the bias values into the output buffer
+    // first.
+    if (bias != output) {
+      std::vector<std::unique_ptr<Thunk>> thunks;
+
+      thunks.push_back(absl::make_unique<DeviceToDeviceCopyThunk>(
+          Thunk::ThunkInfo(),
+          /*source_buffer=*/bias,
+          /*destination_buffer=*/output,
+          /*mem_size=*/ShapeUtil::ByteSizeOf(config.output_shape)));
+      thunks.push_back(absl::make_unique<GemmThunk>(
+          input.thunk_info, std::move(config), lhs, rhs, output,
+          /*implements_whole_instruction=*/false));
+      AddThunkToThunkSequence(absl::make_unique<SequentialThunk>(
+          input.thunk_info, std::move(thunks)));
+      return Status::OK();
+    }
+  }
+
+  AddThunkToThunkSequence(absl::make_unique<GemmThunk>(
+      input.thunk_info, std::move(config), lhs, rhs, output,
+      /*implements_whole_instruction=*/true));
+  return Status::OK();
 }
 
 #if GOOGLE_CUDA
@@ -2692,16 +2813,6 @@ std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunkForMlirImpl(
       });
 }
 
-static void GetFusionOperandsAndOutputs(mlir::lmhlo::FusionOp fusion,
-                                        std::vector<mlir::Value>* operands,
-                                        std::vector<mlir::Value>* outputs) {
-  auto input_buffers = fusion.getInputBuffers();
-  auto output_buffers = fusion.getOutputBuffers();
-
-  operands->assign(input_buffers.begin(), input_buffers.end());
-  outputs->assign(output_buffers.begin(), output_buffers.end());
-}
-
 StatusOr<std::unique_ptr<KernelThunk>>
 IrEmitterUnnested::BuildKernelThunkForMlir(
     mlir::Operation* op, mlir::ValueRange operands, Thunk::ThunkInfo thunk_info,
@@ -2728,8 +2839,8 @@ IrEmitterUnnested::BuildKernelThunkForMlir(
     absl::optional<MlirBufferSlice> extra_slice,
     std::vector<llvm_ir::IrArray>* ir_arrays) {
   if (auto fusion = mlir::dyn_cast<mlir::lmhlo::FusionOp>(op)) {
-    std::vector<mlir::Value> operands, outputs;
-    GetFusionOperandsAndOutputs(fusion, &operands, &outputs);
+    auto operands = GetHloOperands(op);
+    auto outputs = GetHloOutputs(op);
 
     std::vector<MlirBufferSlice> slices;
     for (auto operand : operands) {
@@ -4303,7 +4414,7 @@ bool IsInstructionSafeForShmemTranspose(mlir::Operation* op) {
   if (mlir::isa<mlir::TensorLoadOp>(op)) {
     opcode = HloOpcode::kParameter;
   } else {
-    opcode = *mlir::MhloToHloOpcode(op);
+    opcode = *MhloToHloOpcode(op);
   }
   if (HloInstruction::IsOpElementwise(opcode)) {
     for (mlir::Value v : op->getResults()) {
@@ -5016,18 +5127,8 @@ Thunk::ThunkInfo IrEmitterUnnested::GetThunkInfo(
 void MlirEmitterContext::SetOperation(mlir::Operation* op) {
   this->name = mlir::GetNameFromLoc(op->getLoc());
 
-  std::vector<mlir::Value> operands, outputs;
-  if (auto fusion = mlir::dyn_cast<mlir::lmhlo::FusionOp>(op)) {
-    GetFusionOperandsAndOutputs(fusion, &operands, &outputs);
-  } else {
-    for (auto buffer : op->getOperands()) {
-      if (WritesMlirBuffer(op, buffer)) {
-        outputs.push_back(buffer);
-      } else {
-        operands.push_back(buffer);
-      }
-    }
-  }
+  auto operands = GetHloOperands(op);
+  auto outputs = GetHloOutputs(op);
   for (auto operand : operands) {
     operand_shapes.push_back(TypeToShape(operand.getType()));
   }

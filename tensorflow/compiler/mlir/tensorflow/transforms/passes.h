@@ -272,11 +272,6 @@ std::unique_ptr<OperationPass<FuncOp>> CreateReplicateToIslandPass();
 // `tf_device.parallel_execute` island.
 std::unique_ptr<OperationPass<FuncOp>> CreateParallelExecuteToIslandsPass();
 
-// Create a pass to parallelize TPU embedding params assigned to different
-// shards using the parallel_execte op.
-std::unique_ptr<OperationPass<FuncOp>>
-CreateParallelizeEmbeddingParamsOpsPass();
-
 // Creates a pass that annotates whether a LaunchFuncOp's parameters have the
 // same data across replicas.
 std::unique_ptr<OperationPass<ModuleOp>>

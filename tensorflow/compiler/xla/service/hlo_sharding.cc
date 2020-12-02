@@ -511,10 +511,12 @@ OpSharding HloSharding::ToProto() const {
   }
   if (IsReplicated()) {
     result.set_type(OpSharding::REPLICATED);
+    result.clear_tile_assignment_dimensions();
   } else if (IsTileMaximal()) {
     result.set_type(OpSharding::MAXIMAL);
   } else if (IsManual()) {
     result.set_type(OpSharding::MANUAL);
+    result.clear_tile_assignment_dimensions();
   } else {
     result.set_type(OpSharding::OTHER);
     result.set_replicate_on_last_tile_dim(ReplicateOnLastTileDim());
