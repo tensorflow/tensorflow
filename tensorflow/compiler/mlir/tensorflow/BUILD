@@ -815,6 +815,7 @@ cc_library(
     deps = [
         ":tensorflow",
         ":tensorflow_op_interfaces",
+        ":tensorflow_side_effects",
         ":tensorflow_types",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
@@ -883,7 +884,6 @@ cc_library(
         "transforms/optimize.cc",
         "transforms/outside_compiled_to_host_launch.cc",
         "transforms/parallel_execute_to_islands.cc",
-        "transforms/parallelize_embedding_params_ops_pass.cc",
         "transforms/promote_resources_to_args.cc",
         "transforms/readonly_references_to_resources.cc",
         "transforms/region_control_flow_to_functional.cc",
