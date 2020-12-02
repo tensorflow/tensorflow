@@ -65,7 +65,6 @@ StatusOr<LocalClient*> GetGpuXlaClient() {
   if (platform->VisibleDeviceCount() <= 0) {
     return FailedPrecondition("No visible GPU devices.");
   }
-
   LocalClientOptions options;
   options.set_platform(platform);
   return ClientLibrary::GetOrCreateLocalClient(options);
