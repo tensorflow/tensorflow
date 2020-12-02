@@ -322,6 +322,8 @@ class IrEmitterUnnested : public IrEmitter,
     return MaybeGetAllocationSlice(hlo, index).ConsumeValueOrDie();
   }
 
+  StatusOr<BufferAllocation::Slice> GetAllocationSliceForMlir(mlir::Value v);
+
   int64 ByteSizeOf(const Shape& shape) const override {
     return llvm_ir::ByteSizeOf(
         shape, ir_emitter_context_->llvm_module()->getDataLayout());

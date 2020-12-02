@@ -4836,7 +4836,9 @@ ENTRY entry {
   to_shard = f32[4,2] custom-call(param0), custom_call_target="SPMDFullToShardShape", sharding={manual}
   add = f32[4,2] add(to_shard, param1), sharding={manual}
   to_full = f32[8,2] custom-call(add), custom_call_target="SPMDShardToFullShape", sharding={devices=[2,1]0,1}
-  ROOT mul = f32[8,2] multiply(to_full, param0), sharding={devices=[2,1]0,1}
+  mul = f32[8,2] multiply(to_full, param0), sharding={devices=[2,1]0,1}
+  to_shard2 = f32[4,2] custom-call(mul), custom_call_target="SPMDFullToShardShape", sharding={manual}
+  ROOT tuple = (f32[4,2]) tuple(to_shard2), sharding={{manual}}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
@@ -4845,8 +4847,9 @@ ENTRY entry {
   auto p0 = op::GetTupleElement(op::Parameter(0));
   auto to_shard = op::Copy(p0);
   auto p1 = op::GetTupleElement(op::Parameter(0));
-  EXPECT_THAT(root, AllOf(op::Shape("f32[4,2]"),
-                          op::Multiply(op::Copy(op::Add(to_shard, p1)), p0)));
+  auto mul = AllOf(op::Shape("f32[4,2]"),
+                   op::Multiply(op::Copy(op::Add(to_shard, p1)), p0));
+  EXPECT_THAT(root, op::Tuple(op::Copy(mul)));
 }
 
 TEST_F(SpmdPartitioningTest, SubgroupAllToAllReshard) {

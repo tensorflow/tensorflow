@@ -154,6 +154,7 @@ class StringLookupVocabularyTest(keras_parameterized.TestCase,
     self.assertAllEqual(expected_output, output_data)
 
   def test_no_vocab(self):
+    self.skipTest("b/174593928")
     with self.assertRaisesRegex(
         ValueError, "You must set the layer's vocabulary"):
       layer = get_layer_class()()
