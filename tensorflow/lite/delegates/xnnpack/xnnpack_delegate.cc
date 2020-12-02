@@ -858,6 +858,9 @@ class Subgraph {
         return VisitDivNode(subgraph, logging_context, node_index, node,
                             context->tensors, div_params, xnnpack_tensors);
       }
+      case kTfLiteBuiltinElu:
+        return VisitEluNode(subgraph, logging_context, node_index, node,
+                            context->tensors, xnnpack_tensors);
       case kTfLiteBuiltinFullyConnected: {
         // FullyConnected with sparse weight has version 8, which cannot be
         // delegated to XNNPack.
@@ -1420,6 +1423,13 @@ class Subgraph {
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
         logging_context, output_tensor, node->outputs->data[0], node_index));
 
+    if (depth_to_space_params->block_size <= 1) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          logging_context, "invalid block size (%d) in DEPTH_TO_SPACE node #%d",
+          depth_to_space_params->block_size, node_index);
+      return kTfLiteError;
+    }
+
     if (subgraph != nullptr) {
       const xnn_status status = xnn_define_depth_to_space(
           subgraph,
@@ -1481,6 +1491,41 @@ class Subgraph {
           /*output_id=*/xnnpack_tensors[node->outputs->data[0]], /*flags=*/0);
       if (status != xnn_status_success) {
         TF_LITE_KERNEL_LOG(logging_context, "failed to delegate DIV node #%d",
+                           node_index);
+        return kTfLiteError;
+      }
+    }
+
+    return kTfLiteOk;
+  }
+
+  static TfLiteStatus VisitEluNode(
+      xnn_subgraph_t subgraph, TfLiteContext* logging_context, int node_index,
+      TfLiteNode* node, const TfLiteTensor* tensors,
+      const std::vector<uint32_t>& xnnpack_tensors) {
+    TF_LITE_ENSURE_STATUS(
+        CheckNumInputsAndOutputs(logging_context, node, 1, 1, node_index));
+
+    const TfLiteTensor& input_tensor = tensors[node->inputs->data[0]];
+    TF_LITE_ENSURE_STATUS(CheckTensorFloatType(
+        logging_context, input_tensor, node->inputs->data[0], node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+        logging_context, input_tensor, node->inputs->data[0], node_index));
+
+    const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
+    TF_LITE_ENSURE_STATUS(CheckTensorFloatType(
+        logging_context, output_tensor, node->outputs->data[0], node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+        logging_context, output_tensor, node->outputs->data[0], node_index));
+
+    if (subgraph != nullptr) {
+      const xnn_status status =
+          xnn_define_elu(subgraph, /*alpha=*/1.0f,
+                         /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
+                         /*output_id=*/xnnpack_tensors[node->outputs->data[0]],
+                         /*flags=*/0);
+      if (status != xnn_status_success) {
+        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate ELU node #%d",
                            node_index);
         return kTfLiteError;
       }
@@ -2905,12 +2950,17 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
           context->tensors[node->inputs->data[0]];
       const TfLiteTensor& output_tensor =
           context->tensors[node->outputs->data[0]];
-      if (input_tensor.allocation_type == kTfLiteMmapRo &&
+      if ((input_tensor.allocation_type == kTfLiteMmapRo ||
+           quasi_static_tensors.count(node->inputs->data[0]) != 0) &&
           input_tensor.type == kTfLiteFloat16 &&
           output_tensor.type == kTfLiteFloat32) {
-        static_unpack_nodes_.insert(i);
-        quasi_static_tensors_producers[node->outputs->data[0]] = i;
+        static_unpack_nodes_.insert(node_index);
+        quasi_static_tensors_producers[node->outputs->data[0]] = node_index;
         quasi_static_tensors.insert(node->outputs->data[0]);
+
+        if (input_tensor.allocation_type != kTfLiteMmapRo) {
+          quasi_static_tensors_to_unpack.insert(node->inputs->data[0]);
+        }
 
         // Skip this node for now. If output of the node is consumed only by
         // delegated nodes, it will be added to nodes_to_delegate in the end.
@@ -2931,10 +2981,11 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
           context->tensors[node->outputs->data[0]];
       if (input_tensor.allocation_type == kTfLiteMmapRo &&
           input_tensor.sparsity != nullptr &&
-          input_tensor.type == kTfLiteFloat32 &&
-          output_tensor.type == kTfLiteFloat32) {
-        static_unpack_nodes_.insert(i);
-        quasi_static_tensors_producers[node->outputs->data[0]] = i;
+          (input_tensor.type == kTfLiteFloat16 ||
+           input_tensor.type == kTfLiteFloat32) &&
+          output_tensor.type == input_tensor.type) {
+        static_unpack_nodes_.insert(node_index);
+        quasi_static_tensors_producers[node->outputs->data[0]] = node_index;
         quasi_static_tensors.insert(node->outputs->data[0]);
 
         // Skip this node for now. If output of the node is consumed only by
@@ -2969,8 +3020,22 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
     nodes_to_delegate->data[nodes_to_delegate->size++] = node_index;
   }
 
+  // Sort quasi-static tensors to be unpacked by the node index the produced
+  // them. This ensures that in situations where quasi-static tensor is
+  // produced from another quasi-static tensor, the tensors are unpacked in
+  // the original execution plan order.
+  std::vector<int> sorted_quasi_static_tensors_to_unpack(
+      quasi_static_tensors_to_unpack.cbegin(),
+      quasi_static_tensors_to_unpack.cend());
+  std::sort(sorted_quasi_static_tensors_to_unpack.begin(),
+            sorted_quasi_static_tensors_to_unpack.end(),
+            [&quasi_static_tensors_producers](int t1, int t2) {
+              return quasi_static_tensors_producers[t1] <
+                     quasi_static_tensors_producers[t2];
+            });
+
   // Unpack static data of all tensors
-  for (int t : quasi_static_tensors_to_unpack) {
+  for (int t : sorted_quasi_static_tensors_to_unpack) {
     const int producer_index = quasi_static_tensors_producers[t];
     // Check if TFLite nodes can be delegated to XNNPACK
     TfLiteNode* node = nullptr;
@@ -3000,24 +3065,40 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
     }
 
     const TfLiteTensor& input_tensor = context->tensors[node->inputs->data[0]];
-    if (input_tensor.allocation_type != kTfLiteMmapRo) {
-      TF_LITE_KERNEL_LOG(context,
-                         "unexpected allocation type in tensor %d in node %d",
-                         node->inputs->data[0], producer_index);
-      TfLiteIntArrayFree(nodes_to_delegate);
-      return nullptr;  // Hard error.
+
+    // Consider the case when the input to unpacking node is quasi-static.
+    const auto static_unpacked_input_it_ =
+        static_unpacked_data_map_.find(node->inputs->data[0]);
+    if (static_unpacked_input_it_ == static_unpacked_data_map_.end()) {
+      if (input_tensor.allocation_type != kTfLiteMmapRo) {
+        TF_LITE_KERNEL_LOG(
+            context,
+            "unexpected allocation type (%d) in tensor %d in node %d (%d)",
+            input_tensor.allocation_type, node->inputs->data[0], producer_index,
+            registration->builtin_code);
+        TfLiteIntArrayFree(nodes_to_delegate);
+        return nullptr;  // Hard error.
+      }
     }
 
     const TfLiteTensor& output_tensor = context->tensors[t];
-    if (output_tensor.type != kTfLiteFloat32) {
-      TF_LITE_KERNEL_LOG(context,
-                         "unexpected datatype (%s) in tensor %d in node %d",
-                         TfLiteTypeGetName(output_tensor.type),
-                         node->outputs->data[0], producer_index);
-      TfLiteIntArrayFree(nodes_to_delegate);
-      return nullptr;  // Hard error.
+    size_t tensor_elements = output_tensor.bytes;
+    switch (output_tensor.type) {
+      case kTfLiteFloat32:
+        tensor_elements /= sizeof(float);
+        break;
+      case kTfLiteFloat16:
+        tensor_elements /= sizeof(uint16_t);
+        break;
+      default: {
+        TF_LITE_KERNEL_LOG(context,
+                           "unexpected datatype (%s) in tensor %d in node %d",
+                           TfLiteTypeGetName(output_tensor.type),
+                           node->outputs->data[0], producer_index);
+        TfLiteIntArrayFree(nodes_to_delegate);
+        return nullptr;  // Hard error.
+      }
     }
-    const size_t tensor_elements = output_tensor.bytes / sizeof(float);
 
     // Align to XNN_EXTRA_BYTES bytes
     while (static_unpacked_data_.size() % XNN_EXTRA_BYTES != 0) {
@@ -3026,8 +3107,11 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
     const size_t tensor_offset = static_unpacked_data_.size();
     static_unpacked_data_.resize(tensor_offset + context->tensors[t].bytes);
 
-    float* unpacked_data =
-        reinterpret_cast<float*>(static_unpacked_data_.data() + tensor_offset);
+    char* unpacked_data = static_unpacked_data_.data() + tensor_offset;
+    const char* packed_data =
+        static_unpacked_input_it_ != static_unpacked_data_map_.end()
+            ? static_unpacked_data_.data() + static_unpacked_input_it_->second
+            : static_cast<const char*>(input_tensor.data.data);
     switch (registration->builtin_code) {
       case kTfLiteBuiltinDequantize: {
         if (input_tensor.type != kTfLiteFloat16) {
@@ -3047,23 +3131,16 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
           return nullptr;  // Hard error.
         }
 
-        const uint16_t* packed_data =
-            static_cast<const uint16_t*>(input_tensor.data.data);
+        // Actual data unpacking
+        float* unpacked_fp32_data = reinterpret_cast<float*>(unpacked_data);
+        const uint16_t* packed_fp16_data =
+            reinterpret_cast<const uint16_t*>(packed_data);
         for (size_t i = 0; i < tensor_elements; i++) {
-          unpacked_data[i] = fp16_ieee_to_fp32_value(packed_data[i]);
+          unpacked_fp32_data[i] = fp16_ieee_to_fp32_value(packed_fp16_data[i]);
         }
         break;
       }
       case kTfLiteBuiltinDensify: {
-        if (input_tensor.type != kTfLiteFloat32) {
-          TF_LITE_KERNEL_LOG(
-              context, "unexpected tensor %d data type (%s) in node %d",
-              node->inputs->data[0], TfLiteTypeGetName(input_tensor.type),
-              producer_index);
-          TfLiteIntArrayFree(nodes_to_delegate);
-          return nullptr;  // Hard error.
-        }
-
         if (input_tensor.sparsity == nullptr) {
           TF_LITE_KERNEL_LOG(context, "unexpected dense tensor %d in node %d",
                              node->inputs->data[0], producer_index);
@@ -3077,14 +3154,35 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
           vector_shape[i] = output_tensor.dims->data[i];
         }
 
-        tflite::optimize::sparsity::FormatConverter<float> converter(
-            vector_shape, *input_tensor.sparsity);
-        converter.SparseToDense(input_tensor.data.f);
-        const std::vector<float> out = converter.GetData();
-        for (int i = 0; i < out.size(); i++) {
-          unpacked_data[i] = out[i];
+        switch (input_tensor.type) {
+          case kTfLiteFloat32: {
+            tflite::optimize::sparsity::FormatConverter<float> converter(
+                vector_shape, *input_tensor.sparsity);
+            converter.SparseToDense(
+                static_cast<const float*>(input_tensor.data.data));
+            const std::vector<float> out = converter.GetData();
+            std::memcpy(unpacked_data, out.data(), out.size() * sizeof(float));
+            break;
+          }
+          case kTfLiteFloat16: {
+            tflite::optimize::sparsity::FormatConverter<Eigen::half> converter(
+                vector_shape, *input_tensor.sparsity);
+            converter.SparseToDense(
+                static_cast<const Eigen::half*>(input_tensor.data.data));
+            const std::vector<Eigen::half> out = converter.GetData();
+            std::memcpy(unpacked_data, out.data(),
+                        out.size() * sizeof(Eigen::half));
+            break;
+          }
+          default: {
+            TF_LITE_KERNEL_LOG(
+                context, "unexpected tensor %d data type (%s) in node %d",
+                node->inputs->data[0], TfLiteTypeGetName(input_tensor.type),
+                producer_index);
+            TfLiteIntArrayFree(nodes_to_delegate);
+            return nullptr;  // Hard error.
+          }
         }
-
         break;
       }
       default:
@@ -3170,6 +3268,10 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
   TfLiteIntArray* ops_to_replace =
       static_cast<::tflite::xnnpack::Delegate*>(delegate->data_)
           ->PrepareOpsToDelegate(context);
+  if (ops_to_replace == nullptr) {
+    return kTfLiteError;
+  }
+
   const TfLiteStatus status = context->ReplaceNodeSubsetsWithDelegateKernels(
       context, kSubgraphRegistration, ops_to_replace, delegate);
   TfLiteIntArrayFree(ops_to_replace);

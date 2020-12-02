@@ -2582,7 +2582,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
 
     # Model metrics must be created in the same distribution strategy scope
     # as the model.
-    strategy = self._get_distribution_strategy()
+    strategy = self.distribute_strategy
     for metric in nest.flatten(metrics):
       for v in getattr(metric, 'variables', []):
         if not strategy.extended.variable_created_in_scope(v):
@@ -2712,9 +2712,6 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
 
   def _in_multi_worker_mode(self):
     return self.distribute_strategy.extended._in_multi_worker_mode()  # pylint: disable=protected-access
-
-  def _get_distribution_strategy(self):
-    return self.distribute_strategy
 
   @property
   def _compile_was_called(self):

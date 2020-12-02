@@ -110,7 +110,8 @@ struct OperatorProperty {
 
   // Use same min of min and max of max for each group.
   // Incompatible with restrict_same_input_output_scale and restricted_value.
-  // TODO(jianlijianli): make it compatible with other restrictions when there
+  // Currently it only supports scale pair of {input_index, output_index}.
+  // TODO(b/174534943): make it compatible with other restrictions when there
   // is a use case.
   std::vector<std::vector<int>> restrict_scale = {};
 

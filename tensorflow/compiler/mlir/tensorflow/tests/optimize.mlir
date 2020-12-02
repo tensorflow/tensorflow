@@ -33,3 +33,22 @@ func @convaddv2mul(%arg: tensor<256x32x32x3xf32>) -> tensor<256x30x30x16xf32> {
 // CHECK-NEXT: %[[add:.*]] = "tf.AddV2"(%[[conv]], %[[cst_0]])
 // CHECK-NEXT: return %[[add]] : tensor<256x30x30x16xf32>
 }
+
+// CHECK-LABEL: fold_cast_fft_to_rfft
+func @fold_cast_fft_to_rfft(%arg0: tensor<10x20x30xf32>) -> tensor<10x20x30xcomplex<f32>> {
+  %0 = "tf.Cast"(%arg0) : (tensor<10x20x30xf32>) -> tensor<10x20x30xcomplex<f32>>
+  %1 = "tf.FFT"(%0) : (tensor<10x20x30xcomplex<f32>>) -> tensor<10x20x30xcomplex<f32>>
+  return %1: tensor<10x20x30xcomplex<f32>>
+
+// CHECK:  %[[cst:.*]] = constant dense<30> : tensor<1xi32>
+// CHECK:  %[[rff:.*]] = "tf.RFFT"(%arg0, %[[cst]]) : (tensor<10x20x30xf32>, tensor<1xi32>) -> tensor<10x20x30xcomplex<f32>>
+}
+
+// CHECK-LABEL: not_fold_cast_fft_to_rfft
+func @not_fold_cast_fft_to_rfft(%arg0: tensor<10x20x30xcomplex<f64>>) -> tensor<10x20x30xcomplex<f32>> {
+  %0 = "tf.Cast"(%arg0) : (tensor<10x20x30xcomplex<f64>>) -> tensor<10x20x30xcomplex<f32>>
+  %1 = "tf.FFT"(%0) : (tensor<10x20x30xcomplex<f32>>) -> tensor<10x20x30xcomplex<f32>>
+  return %1: tensor<10x20x30xcomplex<f32>>
+
+// CHECK: %[[fft:.*]] = "tf.FFT"(%0) : (tensor<10x20x30xcomplex<f32>>) -> tensor<10x20x30xcomplex<f32>>
+}

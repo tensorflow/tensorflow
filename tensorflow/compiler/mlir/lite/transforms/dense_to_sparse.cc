@@ -175,6 +175,9 @@ InspectResult InspectWeight(
   } else if (auto cst = dyn_cast<QConstOp>(inst)) {
     attr = cst.value();
     type = cst.getType().cast<ShapedType>();
+  } else {
+    result.can_compress = false;
+    return result;
   }
 
   // Currently we only support compressing weights of ops:
@@ -222,6 +225,8 @@ std::vector<T> BuildSparsityParameterAttribute(
   } else if (auto cst = dyn_cast<QConstOp>(inst)) {
     attr = cst.value();
     type = cst.getType().cast<ShapedType>();
+  } else {
+    assert(false && "Expected a constant-like op");
   }
   const int dims_count = type.getRank();
   std::vector<int> shape(dims_count);

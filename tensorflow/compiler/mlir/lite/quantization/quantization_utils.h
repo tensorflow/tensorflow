@@ -32,7 +32,7 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -485,7 +485,7 @@ ElementsAttr Quantize(Attribute real_value, Type tensor_type);
 // are adjusted to be symmetric if `symmetric` flag is set to True. And
 // `symmetric` can only be set to true when it is signed and narrow_range.
 Type GetUniformQuantizedTypeForWeight(ElementsAttr attr, bool symmetric,
-                                      unsigned num_bits, bool is_sign,
+                                      unsigned num_bits, bool is_signed,
                                       bool narrow_range);
 
 // Returns the per channel quantized type for an element attribute.
@@ -494,7 +494,7 @@ Type GetUniformQuantizedTypeForWeight(ElementsAttr attr, bool symmetric,
 // be set to true when it is signed and narrow_range.
 Type GetUniformQuantizedPerAxisTypeForWeight(ElementsAttr attr, int quant_dim,
                                              bool symmetric, unsigned num_bits,
-                                             bool is_sign, bool narrow_range);
+                                             bool is_signed, bool narrow_range);
 
 // Returns the quantized type of a bias input, given the quantized types of
 // other operands which are multiply-accumulated (the bias is added to the

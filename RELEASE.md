@@ -50,6 +50,8 @@
     *   Added support for saved model's session initializer through
          `TFLiteConverter.from_saved_model`.
     *   Added dynamic range quantization support for the BatchMatMul op.
+    *  Add `RFFT2D` as builtin op. (`RFFT2D` also supports `RFFTD`.) Currently
+       only supports float32 input.
 
 *   TF Core:
     *   Corrected higher-order gradients of control flow constructs (`tf.cond`,

@@ -228,11 +228,12 @@ class State {
 
  protected:
   friend class tensorflow::testing::Benchmark;
-  State(size_t max_iterations, const std::vector<int>& args);
+  State(size_t max_iterations, int formal_arg_count, std::vector<int> args);
 
  private:
   size_t completed_iterations_;
-  std::vector<int> args_;
+  const int formal_arg_count_;
+  const std::vector<int> args_;
 };
 
 inline State::Iterator::Iterator(State* parent) : parent_(parent) {}

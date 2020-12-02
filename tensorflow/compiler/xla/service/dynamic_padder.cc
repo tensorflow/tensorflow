@@ -44,16 +44,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/platform/errors.h"
 
 namespace xla {
 
 namespace {
-
-auto* dynamic_padding_gauge = tensorflow::monitoring::Gauge<bool, 0>::New(
-    "/tensorflow/core/use_dynamic_padding_gauge",
-    "Tracks if dynamic padder is used.");
 
 // ChooseIdentityValue looks at the instruction's operand, returns a
 // identity value which, when padded, doesn't change the result of the
@@ -1804,7 +1799,6 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
               operand, input_dim, operand_dynamic_size, identity_value);
           TF_RETURN_IF_ERROR(inst->ReplaceOperandWith(operand_num, padded));
           operand = inst->mutable_operand(operand_num);
-          dynamic_padding_gauge->GetCell()->Set(true);
           changed = true;
         }
       }
@@ -1851,7 +1845,6 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
 
   VLOG(2) << "Post DynamicPadder HLO:";
   XLA_VLOG_LINES(2, module->ToString());
-  dynamic_padding_gauge->GetCell()->Set(changed);
   return changed;
 }
 

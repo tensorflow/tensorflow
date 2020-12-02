@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/op_macros.h"
 #include "tensorflow/lite/micro/compatibility.h"
+#include "tensorflow/lite/micro/kernels/ethosu.h"
 #include "tensorflow/lite/micro/kernels/fully_connected.h"
 #include "tensorflow/lite/micro/kernels/micro_ops.h"
 #include "tensorflow/lite/micro/micro_op_resolver.h"
@@ -173,6 +174,14 @@ class MicroMutableOpResolver : public MicroOpResolver {
   TfLiteStatus AddEqual() {
     return AddBuiltin(BuiltinOperator_EQUAL,
                       tflite::ops::micro::Register_EQUAL(), ParseEqual);
+  }
+
+  TfLiteStatus AddEthosU() {
+    TfLiteRegistration* registration = tflite::Register_ETHOSU();
+    if (registration) {
+      return AddCustom(tflite::GetString_ETHOSU(), registration);
+    }
+    return kTfLiteOk;
   }
 
   TfLiteStatus AddFloor() {

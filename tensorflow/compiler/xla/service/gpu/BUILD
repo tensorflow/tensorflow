@@ -640,9 +640,12 @@ cc_library(
     srcs = ["ir_emission_utils.cc"],
     hdrs = ["ir_emission_utils.h"],
     deps = [
-        ":backend_configs_cc",
         ":gpu_device_info",
         ":target_util",
+        "//tensorflow/compiler/mlir/hlo",
+        "//tensorflow/compiler/mlir/hlo:lhlo",
+        "//tensorflow/compiler/mlir/xla:mlir_hlo_to_hlo",
+        "//tensorflow/compiler/mlir/xla:type_to_shape",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:window_util",
@@ -652,8 +655,8 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:stream_executor_no_cuda",
         "//tensorflow/stream_executor:device_description",
-        "@com_google_absl//absl/algorithm:container",
         "@llvm-project//llvm:Core",
+        "@llvm-project//mlir:IR",
     ],
 )
 

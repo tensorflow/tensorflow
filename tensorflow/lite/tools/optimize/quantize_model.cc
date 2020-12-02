@@ -890,7 +890,7 @@ TfLiteStatus QuantizeSharedRange(ModelT* model, ErrorReporter* error_reporter) {
             continue;
           }
           // Currently only support pair of twos.
-          // TODO(jianlijianli): extend to arbitrary number of tensors.
+          // TODO(b/174534943): extend to arbitrary number of tensors.
           if (input.size() != 2) {
             return kTfLiteError;
           }
@@ -1044,6 +1044,18 @@ TfLiteStatus QuantizeBiases(ModelT* model,
                 model, input_tensor, weight_tensor, bias_tensor,
                 weight_property.per_axis, weight_property.per_axis_index,
                 activations_type, error_reporter));
+          }
+        } else {
+          // If bias is already quantized, make sure it is quantized to 32 bit.
+          if (bias_tensor->type != TensorType_INT32) {
+            TF_LITE_REPORT_ERROR(
+                error_reporter,
+                "Bias (\"%s\" at global index %d) of op \"%s\" at op_index %d "
+                "in subgraph %d is expected to be quantized to INT32 but it is "
+                "already quantized to %s.\n",
+                bias_tensor->name.c_str(), op->inputs[bias_idx],
+                operator_name.c_str(), op_idx, subgraph_idx,
+                EnumNameTensorType(bias_tensor->type));
           }
         }
       }

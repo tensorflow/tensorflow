@@ -40,13 +40,13 @@ std::vector<const XPlane*> FindPlanesWithPrefix(const XSpace& space,
 std::vector<XPlane*> FindMutablePlanesWithPrefix(XSpace* space,
                                                  absl::string_view prefix);
 
-// Returns true if event is nested by parent.
-bool IsNested(const tensorflow::profiler::XEvent& event,
-              const tensorflow::profiler::XEvent& parent);
+// Returns the plane with the given id or nullptr if not found.
+const XLine* FindLineWithId(const XPlane& plane, int64 id);
 
 XStat* FindOrAddMutableStat(const XStatMetadata& stat_metadata, XEvent* event);
 
 void RemovePlane(XSpace* space, const XPlane* plane);
+void RemoveLine(XPlane* plane, const XLine* line);
 
 void RemoveEmptyPlanes(XSpace* space);
 void RemoveEmptyLines(XPlane* plane);

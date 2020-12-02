@@ -25,9 +25,8 @@ namespace gpu {
 namespace metal {
 
 // Rectified Linear Unit
-std::vector<ComputeTaskDescriptorPtr> ReLU(int id, ValueId input_id,
-                                           ValueId output_id,
-                                           const ReLUAttributes& attr);
+ComputeTaskDescriptor ReLU(ValueId input_id, ValueId output_id,
+                           const ReLUAttributes& attr);
 
 }  // namespace metal
 }  // namespace gpu

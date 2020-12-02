@@ -59,9 +59,12 @@ using ::tflite::gpu::TensorUsageRecord;
   _outputIds = outputBufferIDs;
   _options = options;
   // Metal resources are created here.
-  for (const auto& node : compiledModel.tasks) {
+  for (const auto& node : compiledModel.nodes) {
     TFLComputeTask* task = [[TFLComputeTask alloc] init];
-    RETURN_IF_ERROR([task compileWithDevice:_device taskDescriptor:node runtimeOptions:_options]);
+    RETURN_IF_ERROR([task compileWithDevice:_device
+                             taskDescriptor:node.task
+                             runtimeOptions:_options]);
+    [task setDescription:node.description];
     _computeTasks.emplace_back(task);
   }
   _tensorShapes = compiledModel.tensor_shapes;
