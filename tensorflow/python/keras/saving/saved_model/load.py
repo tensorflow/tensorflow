@@ -174,9 +174,9 @@ def load(path, compile=True, options=None):  # pylint: disable=redefined-builtin
       if isinstance(model.optimizer, optimizer_v2.OptimizerV2):
         if(model.optimizer.get_slot_names()):
           logging.warning('Your optimizer uses solts. '
-                          'Slots cannot be restored from saved_model As a result, '
-                          'your model is starting with a freshly initialized '
-                          'optimizer.')      
+                          'Slots cannot be restored from saved_model, '
+                          'as a result, your model is starting with  '
+                          'a freshly initialized optimizer.')
     else:
       logging.warning('No training configuration found in save file, so the '
                       'model was *not* compiled. Compile it manually.')
