@@ -179,9 +179,10 @@ def LHLOGPU_GEMMOp : LHLOGPU_Op<"gemm"> {
     Arg<LHLO_Buffer, "", [MemRead]>:$rhs,
     Arg<LHLO_Buffer, "", [MemRead]>:$output,
     DotDimensionNumbers:$dot_dimension_numbers,
-    F64Attr:$alpha,
+    F64Attr:$alpha_real,
+    F64Attr:$alpha_imag,
     I64Attr:$batch_size,
-    I64Attr:$algorithm);
+    OptionalAttr<I64Attr>:$algorithm);
 }
 
 // output = alpha(lhs * rhs) + beta * bias
@@ -192,10 +193,11 @@ def LHLOGPU_GEMM_BiasOp : LHLOGPU_Op<"gemm_bias"> {
     Arg<LHLO_Buffer, "", [MemRead]>:$bias,
     Arg<LHLO_Buffer, "", [MemRead]>:$output,
     DotDimensionNumbers:$dot_dimension_numbers,
-    F64Attr:$alpha,
+    F64Attr:$alpha_real,
+    F64Attr:$alpha_imag,
     F64Attr:$beta,
     I64Attr:$batch_size,
-    I64Attr:$algorithm);
+    OptionalAttr<I64Attr>:$algorithm);
 }
 
 def LHLOGPU_CholeskyOp : LHLOGPU_Op<"cholesky"> {

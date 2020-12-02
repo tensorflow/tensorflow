@@ -76,9 +76,12 @@ class HloRunner : public HloRunnerInterface {
                             bool run_hlo_passes,
                             ExecutionProfile* profile) override;
 
+  using HloRunnerInterface::ExecuteWithExecutable;
+
   StatusOr<Literal> ExecuteWithExecutable(
       std::unique_ptr<Executable> executable,
-      absl::Span<const Literal> arguments, ExecutionProfile* profile = nullptr);
+      absl::Span<const Literal* const> arguments,
+      ExecutionProfile* profile) override;
 
   // As Execute(), but accepts and returns device buffers instead of host
   // buffers.

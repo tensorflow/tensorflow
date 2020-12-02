@@ -206,6 +206,19 @@ cc_library(
 )
 
 cc_library(
+    name = "TestRewrite",
+    srcs = [
+        "lib/Rewrite/TestPDLByteCode.cpp",
+    ],
+    deps = [
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+)
+
+cc_library(
     name = "TestReducer",
     srcs = [
         "lib/Reducer/MLIRTestReducer.cpp",

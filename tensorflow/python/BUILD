@@ -2730,7 +2730,7 @@ tf_py_test(
 
 tf_py_test(
     name = "framework_importer_test",
-    size = "large",
+    size = "small",
     srcs = ["framework/importer_test.py"],
     main = "framework/importer_test.py",
     python_version = "PY3",
@@ -6255,10 +6255,8 @@ pywrap_tensorflow_macro(
         ":tf_session_helper",
         "//third_party/python_runtime:headers",
         "//tensorflow/c:c_api",
-        "//tensorflow/c:kernels",
         "//tensorflow/c:ops",
         "//tensorflow/c:c_api_experimental",
-        "//tensorflow/c/experimental/stream_executor:stream_executor",
         "//tensorflow/c:checkpoint_reader",
         "//tensorflow/c:python_api",
         "//tensorflow/c:tf_status_helper",

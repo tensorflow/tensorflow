@@ -343,6 +343,7 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     if insert_special_tokens and num_special_tokens > 0:
       special_token_values = np.arange(num_special_tokens, dtype=np.int64)
       self._table_handler.insert(special_tokens, special_token_values)
+    return total_vocab_size
 
   def _set_inverse_vocabulary(self, vocab):
     """Sets vocabulary data for this layer when inverse is True."""
@@ -382,6 +383,7 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     if insert_special_tokens and num_special_tokens > 0:
       special_token_values = np.arange(num_special_tokens, dtype=np.int64)
       self._table_handler.insert(special_token_values, special_tokens)
+    return total_vocab_size
 
   def set_vocabulary(self, vocab):
     """Sets vocabulary data for this layer.
@@ -399,10 +401,10 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
         input data is missing.
     """
     if self.invert:
-      self._set_inverse_vocabulary(vocab)
+      vocab_size = self._set_inverse_vocabulary(vocab)
     else:
-      self._set_forward_vocabulary(vocab)
-    self.max_tokens = int(self._table_handler.vocab_size())
+      vocab_size = self._set_forward_vocabulary(vocab)
+    self.max_tokens = vocab_size
 
   def _set_state_variables(self, updates):
     if not self.built:

@@ -17,15 +17,13 @@ limitations under the License.
 // Also adds some debugging helpers that are helpful when writing MLIR code to
 // run on GPUs.
 
-#include <cassert>
-#include <numeric>
-
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/driver_types.h"
 
 #define CUDA_REPORT_IF_ERROR(expr)                                      \
   [](CUresult result) {                                                 \
@@ -37,35 +35,18 @@ limitations under the License.
   }(expr)
 
 namespace {
-// Implements a cache for loading modules and creating streams. The assumption
-// is that we never unload modules or delete streams again during the lifetime
-// of a tensorflow runtime process.
+// Implements a cache for loading modules. The assumption is that we never
+// unload modules or delete streams again during the lifetime of a tensorflow
+// runtime process.
 struct CudaRuntimeCache {
  public:
   CUmodule loadModule(void *data) {
     tensorflow::mutex_lock lock(module_handle_mutex);
-    auto &module = module_handles[data];
+    CUmodule &module = module_handles[data];
     if (!module) {
       CUDA_REPORT_IF_ERROR(cuModuleLoadData(&module, data));
     }
     return module;
-  }
-
-  CUstream createStream() {
-    tensorflow::mutex_lock lock(stream_handle_mutex);
-    CUstream stream = nullptr;
-    if (stream_handles.empty()) {
-      CUDA_REPORT_IF_ERROR(cuStreamCreate(&stream, CU_STREAM_NON_BLOCKING));
-    } else {
-      stream = stream_handles.back();
-      stream_handles.pop_back();
-    }
-    return stream;
-  }
-
-  void releaseStream(CUstream stream) {
-    tensorflow::mutex_lock lock(stream_handle_mutex);
-    stream_handles.push_back(stream);
   }
 
   // Returns the runtime cache for the current context.
@@ -87,8 +68,6 @@ struct CudaRuntimeCache {
  private:
   CudaRuntimeCache() = default;
 
-  tensorflow::mutex stream_handle_mutex;
-  std::vector<CUstream> stream_handles TF_GUARDED_BY(stream_handle_mutex);
   tensorflow::mutex module_handle_mutex;
   absl::flat_hash_map<void *, CUmodule> module_handles
       TF_GUARDED_BY(module_handle_mutex);
@@ -123,11 +102,12 @@ extern "C" void mgpuLaunchKernel(CUfunction function, intptr_t gridX,
 }
 
 extern "C" CUstream mgpuStreamCreate() {
-  return CudaRuntimeCache::get()->createStream();
+  // TODO(b/174651582): Remove the default stream and return TFs stream.
+  return reinterpret_cast<CUstream>(cudaStreamLegacy);
 }
 
 extern "C" void mgpuStreamDestroy(CUstream stream) {
-  return CudaRuntimeCache::get()->releaseStream(stream);
+  // We do not release the stream.
 }
 
 extern "C" void mgpuStreamSynchronize(CUstream stream) {

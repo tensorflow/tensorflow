@@ -46,8 +46,7 @@ void AddGraphExportLoweringPasses(OpPassManager &pm) {
     pm.addPass(CreateBreakUpIslandsPass());
   };
 
-  pm.addNestedPass<FuncOp>(CreateFunctionalToExecutorDialectConversionPass());
-  add_pass(TFDevice::CreateParallelizeEmbeddingParamsOpsPass());
+  add_pass(CreateFunctionalToExecutorDialectConversionPass());
   add_pass(TFDevice::CreateReplicateToIslandPass());
   add_pass(TFDevice::CreateParallelExecuteToIslandsPass());
   add_pass(TFDevice::CreateLaunchToDeviceAttributePass());

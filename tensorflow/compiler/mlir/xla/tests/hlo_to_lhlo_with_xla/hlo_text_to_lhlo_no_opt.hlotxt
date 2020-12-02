@@ -108,7 +108,6 @@ ENTRY main {
 
 // -----
 
-
 HloModule Cholesky
 
 // CHECK-LABEL: func @main
@@ -121,3 +120,52 @@ ENTRY main {
                                 operand_layout_constraints={f32[3,3]},
                                 backend_config="{\"lower\":true}"
 }
+
+// -----
+
+HloModule Gemm
+
+// CHECK-LABEL: func @main
+// CHECK: "lmhlo_gpu.gemm"
+// CHECK-SAME: algorithm = 7 : i64
+// CHECK-SAME: alpha_imag = 0.000000e+00 : f64
+// CHECK-SAME: alpha_real = 1.000000e+00 : f64
+// CHECK-SAME: batch_size = 1 : i64
+// CHECK-SAME: lhs_batching_dimensions = dense<> : tensor<0xi64>
+// CHECK-SAME: lhs_contracting_dimensions = dense<1> : tensor<1xi64>
+// CHECK-SAME: rhs_batching_dimensions = dense<> : tensor<0xi64>
+// CHECK-SAME: rhs_contracting_dimensions = dense<0> : tensor<1xi64>
+// CHECK: (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
+ENTRY main {
+  %A = f32[2,2]{1,0} parameter(0)
+  %B = f32[2,2]{1,0} parameter(1)
+  ROOT %sgemm = f32[2,2]{1,0} custom-call(f32[2,2]{1,0} %A, f32[2,2]{1,0} %B),
+                              custom_call_target="__cublas$gemm",
+  backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"batch_size\":\"1\",\"selected_algorithm\":\"7\"}"
+}
+
+// -----
+
+HloModule GemmBias
+
+// CHECK-LABEL: func @main
+// CHECK: "lmhlo_gpu.gemm_bias"
+// CHECK-SAME: algorithm = 0 : i64
+// CHECK-SAME: alpha_imag = 0.000000e+00 : f64
+// CHECK-SAME: alpha_real = 1.000000e+00 : f64
+// CHECK-SAME: batch_size = 1 : i64
+// CHECK-SAME: beta = 1.000000e+00 : f64
+// CHECK-SAME: lhs_batching_dimensions = dense<> : tensor<0xi64>
+// CHECK-SAME: lhs_contracting_dimensions = dense<1> : tensor<1xi64>
+// CHECK-SAME: rhs_batching_dimensions = dense<> : tensor<0xi64>
+// CHECK-SAME: rhs_contracting_dimensions = dense<0> : tensor<1xi64>
+// CHECK: (memref<1x1xf32>, memref<1x4xf32>, memref<1x4xf32>, memref<1x4xf32>)
+ENTRY main {
+  %A = f32[1,1]{1,0} parameter(0)
+  %B = f32[1,4]{1,0} parameter(1)
+  %C = f32[1,4]{1,0} parameter(2)
+  ROOT %sgemm_add = f32[1,4]{1,0} custom-call(f32[1,1]{0,1} %A, f32[1,4]{1,0} %B, f32[1,4]{1,0} %C),
+                                  custom_call_target="__cublas$gemm",
+  backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":1,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"batch_size\":\"1\",\"selected_algorithm\":\"0\"}"
+}
+

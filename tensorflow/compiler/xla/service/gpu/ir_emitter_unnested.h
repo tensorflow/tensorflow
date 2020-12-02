@@ -168,6 +168,7 @@ class IrEmitterUnnested : public IrEmitter,
   Status HandleConditional(HloInstruction* conditional) override;
   Status HandleConvolution(HloInstruction* convolution) override;
   Status HandleCustomCall(HloInstruction* custom_call) override;
+  Status EmitGemmThunkFromMlir(MlirEmitterInput input);
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
   Status EmitCholeskyThunkFromMlir(MlirEmitterInput input);
 #endif  // (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
@@ -321,6 +322,8 @@ class IrEmitterUnnested : public IrEmitter,
       const HloInstruction& hlo, const ShapeIndex& index = {}) const {
     return MaybeGetAllocationSlice(hlo, index).ConsumeValueOrDie();
   }
+
+  StatusOr<BufferAllocation::Slice> GetAllocationSliceForMlir(mlir::Value v);
 
   int64 ByteSizeOf(const Shape& shape) const override {
     return llvm_ir::ByteSizeOf(
