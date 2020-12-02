@@ -49,6 +49,7 @@ class GpuAddTest : public OpsTestBase {
                      .Finalize(node_def()));
 
     TF_ASSERT_OK(InitOp());
+    inputs_.clear();
     AddInputFromArray<T>(shape_1, input_1);
     AddInputFromArray<T>(shape_2, input_2);
   }
@@ -191,6 +192,20 @@ class GpuAddTest : public OpsTestBase {
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
   }
+
+  template <typename T, typename BaselineType = T>
+  void TestEmptyShapeWithBroadcastingAddOp() {
+    TensorShape input_shape_a{2, 0, 1};
+    TensorShape input_shape_b{2, 0, 5};
+    TensorShape expected_shape{2, 0, 5};
+    std::vector<T> empty_input = {};
+    RunAndCompareAddOp<T, BaselineType>(empty_input, input_shape_a, empty_input,
+                                        input_shape_b, empty_input,
+                                        expected_shape);
+    RunAndCompareAddOp<T, BaselineType>(empty_input, input_shape_b, empty_input,
+                                        input_shape_a, empty_input,
+                                        expected_shape);
+  }
 };
 
 TEST_F(GpuAddTest, AddFloat) { RunAddOp<float>(); }
@@ -242,6 +257,13 @@ TEST_F(GpuAddTest, BCastAddHalf) {
 TEST_F(GpuAddTest, BCastAddInt64) { TestBroadcastingAddOp<int64>(); }
 
 TEST_F(GpuAddTest, IncompatibleShapes) { TestIncompatibleShapes<float>(); }
+
+TEST_F(GpuAddTest, EmptyShapeBCastAddFloat) {
+  TestEmptyShapeWithBroadcastingAddOp<float>();
+}
+TEST_F(GpuAddTest, EmptyShapeBCastAddDouble) {
+  TestEmptyShapeWithBroadcastingAddOp<double>();
+}
 
 // TEST_F(GpuAddTest, AddV2Half) { RunAddOp<Eigen::half, float>(); }
 }  // namespace
