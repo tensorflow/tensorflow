@@ -1991,6 +1991,7 @@ class Operation(object):
 
     # pylint: disable=protected-access
     self._original_op = original_op
+    self._traceback = tf_stack.extract_stack()
 
     # List of _UserDevSpecs holding code location of device context manager
     # invocations and the users original argument to them.
@@ -2018,9 +2019,6 @@ class Operation(object):
       self._c_op = _create_c_op(self._graph, node_def, inputs,
                                 control_input_ops, op_def)
       name = compat.as_str(node_def.name)
-
-    self._traceback = tf_stack.extract_stack_for_node(self.graph._c_graph, name)
-
     # pylint: enable=protected-access
 
     self._is_stateful = op_def.is_stateful

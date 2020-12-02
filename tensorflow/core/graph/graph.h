@@ -702,27 +702,6 @@ class Graph {
     return construction_context_;
   }
 
-  // Get mutable stack traces dictionary in order to set debug info.
-  StackTracesMap& GetMutableStackTraces() { return stack_traces_; }
-
-  const StackTracesMap& GetStackTraces() const { return stack_traces_; }
-
-  // Returns a stack trace for a node with name `node_name`. Returns an empty
-  // span if no such stack trace found.
-  //
-  // NOTE: This method will *always* return an empty list for an *instantiated*
-  // graph (the one you can access from a ConcreteFunction after a function
-  // call). In order to access the debug information, the user needs to get the
-  // uninstantiated graph, which can be obtained from FunctionLibraryDefinition
-  // using the `GetGraphForDebugInfo` mapping.
-  AbstractStackTrace* StackTraceForNode(string node_name) const {
-    auto it = stack_traces_.find(node_name);
-    if (it == stack_traces_.end()) {
-      return nullptr;
-    }
-    return it->second.get();
-  }
-
   // TODO(josh11b): uint64 hash() const;
 
  private:
@@ -795,10 +774,6 @@ class Graph {
   // nested loops). The stored contexts are usually accessed via
   // AddWhileContext() or Node::while_ctx(), but this manages the lifetime.
   std::map<string, WhileContext> while_ctxs_;
-
-  // Mapping from node name to a corresponding stack trace used to generate that
-  // node.
-  StackTracesMap stack_traces_;
 
   // Cache of the indices of the arguments which need to be constant for the XLA
   // compilation.

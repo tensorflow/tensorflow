@@ -141,40 +141,14 @@ def extract_stack(limit=-1):
     limit: A limit on the number of frames to return.
 
   Returns:
-    An object wrapping the sequence of StackFrame objects (filename, lineno,
-    name, line) corresponding to the call stack of the current thread. The
-    returned object can be indexed as a Python list.
+    A sequence of StackFrame objects (filename, lineno, name, line)
+    corresponding to the call stack of the current thread.
   """
   # N.B ExtractStack in tf_stack.cc will drop this frame prior to
   # traversing the stack.
-  # TODO(cheshire): Remove this function, use extract_stack_for_node or Python
-  # traceback module.
   thread_key = _get_thread_key()
   return _tf_stack.extract_stack(limit, _source_mapper_stacks[thread_key],
                                  _source_filter_stacks[thread_key])
-
-
-def extract_stack_for_node(graph, node_name, limit=-1):
-  """Same as extract_stack, but also saves the retrieved stack in the `graph`.
-
-  Args:
-    graph: Pointer to the C TF_Graph object.
-    node_name: String representing the node name which is associated with the
-      Python backtrace.
-    limit: A limit on the number of frames to return.
-
-  Returns:
-    An object wrapping the sequence of StackFrame objects (filename, lineno,
-    name, line) corresponding to the call stack of the current thread. The
-    returned object can be indexed as a Python list.
-  """
-  # N.B ExtractStack in tf_stack.cc will drop this frame prior to
-  # traversing the stack.
-  thread_key = _get_thread_key()
-  return _tf_stack.extract_stack_for_node(limit,
-                                          _source_mapper_stacks[thread_key],
-                                          _source_filter_stacks[thread_key],
-                                          graph, node_name)
 
 
 StackSummary = _tf_stack.StackTraceWrapper

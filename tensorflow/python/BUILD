@@ -18,6 +18,9 @@ load("//tensorflow:tensorflow.bzl", "tf_monitoring_python_deps")
 load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
 
 # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "pybind_extension")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "pywrap_tensorflow_macro")
 
 # buildifier: disable=same-origin-load
@@ -5765,28 +5768,17 @@ py_strict_library(
     ],
 )
 
-tf_python_pybind_extension(
+pybind_extension(
     name = "_tf_stack",
     srcs = ["util/tf_stack.cc"],
-    hdrs = [
-        "//tensorflow/c:headers",
-        "//tensorflow/c/eager:headers",
-    ],
     # TODO(b/138203821): change to "util._tf_stack" once the bug is fixed.
     module_name = "_tf_stack",
     deps = [
         ":stack_trace",
-        "//tensorflow/c:pywrap_required_hdrs",
-        "//tensorflow/core/common_runtime:core_cpu_headers_lib",
-        "//tensorflow/core/framework:pywrap_required_hdrs",
-        "//tensorflow/core/platform:path",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@pybind11",
     ],
@@ -5813,8 +5805,6 @@ cc_library(
         "//tensorflow/core/util:abstract_stack_trace",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/types:optional",
     ],

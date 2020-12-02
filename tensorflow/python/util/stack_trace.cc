@@ -40,8 +40,7 @@ const char* GetPythonString(PyObject* o) {
 namespace tensorflow {
 
 std::vector<StackFrame> StackTrace::ToStackFrames(
-    const StackTraceMap& mapper, const StackTraceFilter& filtered) const {
-  DCheckPyGilStateForStackTrace();
+    const StackTraceMapper& mapper, const StackTraceFilter& filtered) const {
   std::vector<StackFrame> result;
   result.reserve(code_objs_.size());
 
@@ -50,14 +49,13 @@ std::vector<StackFrame> StackTrace::ToStackFrames(
     const int line_number =
         PyCode_Addr2Line(code_objs_[i], last_instructions_[i]);
 
-    if (!result.empty() && filtered.count(file_name)) {
+    if (!result.empty() && filtered && filtered(file_name)) {
       continue;  // Never filter the innermost frame.
     }
 
-    auto it = mapper.find(std::make_pair(file_name, line_number));
-
-    if (it != mapper.end()) {
-      result.push_back(it->second);
+    if (absl::optional<StackFrame> mapped =
+            mapper ? mapper(file_name, line_number) : absl::nullopt) {
+      result.push_back(*mapped);
     } else {
       result.emplace_back(StackFrame{file_name, line_number,
                                      GetPythonString(code_objs_[i]->co_name)});

@@ -26,8 +26,6 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/base/optimization.h"
-#include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/util/managed_stack_trace.h"
@@ -43,11 +41,11 @@ inline void DCheckPyGilStateForStackTrace() {
 }
 
 // Maps filename/line_no combination into a stack frame.
-using StackTraceMap =
-    absl::flat_hash_map<std::pair<std::string, int>, StackFrame>;
+using StackTraceMapper =
+    std::function<absl::optional<StackFrame>(std::string, int)>;
 
-// Contains filenames which should be skipped.
-using StackTraceFilter = absl::flat_hash_set<std::string>;
+// Returns "true" for filenames which should be skipped.
+using StackTraceFilter = std::function<bool(std::string)>;
 
 // A class for capturing Python stack trace.
 class StackTrace final {
@@ -94,8 +92,10 @@ class StackTrace final {
   ABSL_ATTRIBUTE_HOT
   StackTrace& operator=(StackTrace&& other) {
     Clear();
-    std::swap(code_objs_, other.code_objs_);
-    std::swap(last_instructions_, other.last_instructions_);
+
+    code_objs_ = other.code_objs_;
+    last_instructions_ = other.last_instructions_;
+    other.code_objs_ = {};
     return *this;
   }
 
@@ -104,21 +104,19 @@ class StackTrace final {
   // returns `true` for the stack frames which should be omitted, and if
   // `drop_last` is set, the last stack frame is dropped.
   std::vector<StackFrame> ToStackFrames(
-      const StackTraceMap& mapper = {},
+      const StackTraceMapper& mapper = {},
       const StackTraceFilter& filtered = {}) const;
-
-  // Python GIL must be acquired beforehand.
-  ABSL_ATTRIBUTE_HOT
-  void Clear() {
-    if (!code_objs_.empty()) DCheckPyGilStateForStackTrace();
-    for (PyCodeObject* obj : code_objs_) Py_DECREF(obj);
-    code_objs_.clear();
-    last_instructions_.clear();
-  }
 
  private:
   absl::InlinedVector<PyCodeObject*, kStackTraceInitialSize> code_objs_;
   absl::InlinedVector<int, kStackTraceInitialSize> last_instructions_;
+
+  // Python GIL must be acquired beforehand.
+  ABSL_ATTRIBUTE_HOT
+  void Clear() {
+    DCheckPyGilStateForStackTrace();
+    for (PyCodeObject* obj : code_objs_) Py_DECREF(obj);
+  }
 
   StackTrace(const StackTrace&) = delete;
   StackTrace& operator=(const StackTrace&) = delete;
