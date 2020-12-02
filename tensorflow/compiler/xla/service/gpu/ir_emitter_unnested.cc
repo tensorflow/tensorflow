@@ -4303,7 +4303,7 @@ bool IsInstructionSafeForShmemTranspose(mlir::Operation* op) {
   if (mlir::isa<mlir::TensorLoadOp>(op)) {
     opcode = HloOpcode::kParameter;
   } else {
-    opcode = *mlir::MhloToHloOpcode(op);
+    opcode = *MhloToHloOpcode(op);
   }
   if (HloInstruction::IsOpElementwise(opcode)) {
     for (mlir::Value v : op->getResults()) {
