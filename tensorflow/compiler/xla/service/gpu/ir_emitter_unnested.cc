@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/APInt.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Function.h"
@@ -60,6 +61,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/copy_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/for_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/gemm_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_to_ir_bindings.h"
@@ -952,6 +954,11 @@ Status IrEmitterUnnested::HandleCustomCall(HloInstruction* custom_call) {
     return ThunkEmitter(this).HandleCustomCall(custom_call);
   }
 
+  if (mlir::isa<mlir::lmhlo_gpu::GEMMOp, mlir::lmhlo_gpu::GEMM_BiasOp>(
+          input.op)) {
+    return EmitGemmThunkFromMlir(input);
+  }
+
 #if GOOGLE_CUDA
   if (mlir::isa<mlir::lmhlo_gpu::CholeskyOp>(input.op)) {
     return EmitCholeskyThunkFromMlir(input);
@@ -960,6 +967,82 @@ Status IrEmitterUnnested::HandleCustomCall(HloInstruction* custom_call) {
 
   return Unimplemented("No registered implementation for custom call to \"%s\"",
                        custom_call->custom_call_target());
+}
+
+Status IrEmitterUnnested::EmitGemmThunkFromMlir(MlirEmitterInput input) {
+  auto build_gemm_config = [](auto op) {
+    GpuGemmConfig config;
+    GemmBackendConfig& backend = config.backend_config;
+    config.output_shape = TypeToShape(op.output().getType());
+    config.lhs_shape = TypeToShape(op.lhs().getType());
+    config.rhs_shape = TypeToShape(op.rhs().getType());
+    backend.Clear();
+    if (op.algorithm()) {
+      backend.set_selected_algorithm(*op.algorithm());
+    }
+    backend.set_alpha_real(op.alpha_real().convertToDouble());
+    backend.set_alpha_imag(op.alpha_imag().convertToDouble());
+    backend.set_batch_size(op.batch_size());
+
+    auto& dims = *backend.mutable_dot_dimension_numbers();
+    auto mlir_dims = op.dot_dimension_numbers();
+
+    auto fill_dims = [](mlir::DenseElementsAttr mlir_dim, auto* config_attrs) {
+      for (llvm::APInt e : mlir_dim.getIntValues())
+        config_attrs->Add(e.getSExtValue());
+    };
+    fill_dims(mlir_dims.lhs_batching_dimensions(),
+              dims.mutable_lhs_batch_dimensions());
+    fill_dims(mlir_dims.rhs_batching_dimensions(),
+              dims.mutable_rhs_batch_dimensions());
+    fill_dims(mlir_dims.lhs_contracting_dimensions(),
+              dims.mutable_lhs_contracting_dimensions());
+    fill_dims(mlir_dims.rhs_contracting_dimensions(),
+              dims.mutable_rhs_contracting_dimensions());
+    return config;
+  };
+
+  GpuGemmConfig config;
+  BufferAllocation::Slice lhs, rhs, bias, output;
+
+  if (auto gemm = mlir::dyn_cast<mlir::lmhlo_gpu::GEMMOp>(input.op)) {
+    config = build_gemm_config(gemm);
+    TF_ASSIGN_OR_RETURN(lhs, GetAllocationSliceForMlir(gemm.lhs()));
+    TF_ASSIGN_OR_RETURN(rhs, GetAllocationSliceForMlir(gemm.rhs()));
+    TF_ASSIGN_OR_RETURN(output, GetAllocationSliceForMlir(gemm.output()));
+  } else if (auto gemm_bias =
+                 mlir::dyn_cast<mlir::lmhlo_gpu::GEMM_BiasOp>(input.op)) {
+    config = build_gemm_config(gemm_bias);
+    config.backend_config.set_beta(gemm_bias.beta().convertToDouble());
+    TF_ASSIGN_OR_RETURN(lhs, GetAllocationSliceForMlir(gemm_bias.lhs()));
+    TF_ASSIGN_OR_RETURN(rhs, GetAllocationSliceForMlir(gemm_bias.rhs()));
+    TF_ASSIGN_OR_RETURN(bias, GetAllocationSliceForMlir(gemm_bias.bias()));
+    TF_ASSIGN_OR_RETURN(output, GetAllocationSliceForMlir(gemm_bias.output()));
+
+    // The bias is passed inside the output buffer. If those buffers are shared
+    // we can just use it, otherwise copy the bias values into the output buffer
+    // first.
+    if (bias != output) {
+      std::vector<std::unique_ptr<Thunk>> thunks;
+
+      thunks.push_back(absl::make_unique<DeviceToDeviceCopyThunk>(
+          Thunk::ThunkInfo(),
+          /*source_buffer=*/bias,
+          /*destination_buffer=*/output,
+          /*mem_size=*/ShapeUtil::ByteSizeOf(config.output_shape)));
+      thunks.push_back(absl::make_unique<GemmThunk>(
+          input.thunk_info, std::move(config), lhs, rhs, output,
+          /*implements_whole_instruction=*/false));
+      AddThunkToThunkSequence(absl::make_unique<SequentialThunk>(
+          input.thunk_info, std::move(thunks)));
+      return Status::OK();
+    }
+  }
+
+  AddThunkToThunkSequence(absl::make_unique<GemmThunk>(
+      input.thunk_info, std::move(config), lhs, rhs, output,
+      /*implements_whole_instruction=*/true));
+  return Status::OK();
 }
 
 #if GOOGLE_CUDA

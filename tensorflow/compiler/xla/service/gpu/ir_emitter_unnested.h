@@ -168,6 +168,7 @@ class IrEmitterUnnested : public IrEmitter,
   Status HandleConditional(HloInstruction* conditional) override;
   Status HandleConvolution(HloInstruction* convolution) override;
   Status HandleCustomCall(HloInstruction* custom_call) override;
+  Status EmitGemmThunkFromMlir(MlirEmitterInput input);
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
   Status EmitCholeskyThunkFromMlir(MlirEmitterInput input);
 #endif  // (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
