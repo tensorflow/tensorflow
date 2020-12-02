@@ -70,7 +70,7 @@ struct TF_Library {
 struct TF_Graph {
   TF_Graph();
 
-  tensorflow::mutex mu;
+  mutable tensorflow::mutex mu;
   tensorflow::Graph graph TF_GUARDED_BY(mu);
 
   // Runs shape inference.
@@ -157,6 +157,9 @@ struct TF_DeviceList {
 
 struct TF_Function {
   tensorflow::FunctionDef fdef;
+
+  // Stack traces mapping for the function.
+  const tensorflow::StackTracesMap* stack_traces = nullptr;
 };
 
 struct TF_ApiDefMap {
