@@ -63,5 +63,7 @@ Another example with two arrays of different dimension.
 >>> tf.add(x, y).shape.as_list()
 [1, 2, 3, 4]
 
+The reduction version of this elementwise operation is `tf.math.reduce_sum`
+
 END
 }
