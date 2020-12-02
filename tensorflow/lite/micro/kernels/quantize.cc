@@ -62,16 +62,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, affine_quantization->scale);
   TF_LITE_ENSURE(context, affine_quantization->scale->size == 1);
 
-  TF_LITE_ENSURE(context, input->type == kTfLiteFloat32 ||
-                              input->type == kTfLiteInt16 ||
-                              input->type == kTfLiteInt8);
-  TF_LITE_ENSURE(context, output->type == kTfLiteUInt8 ||
-                              output->type == kTfLiteInt8 ||
-                              output->type == kTfLiteInt16 ||
-                              output->type == kTfLiteInt32);
-
   if ((input->type == kTfLiteInt16 && output->type == kTfLiteInt8) ||
       (input->type == kTfLiteInt8 && output->type == kTfLiteInt8) ||
+      (input->type == kTfLiteUInt8 && output->type == kTfLiteInt8) ||
       (input->type == kTfLiteInt16 && output->type == kTfLiteInt16) ||
       (input->type == kTfLiteInt16 && output->type == kTfLiteInt32)) {
     double effective_scale = static_cast<double>(input->params.scale) /
