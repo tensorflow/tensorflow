@@ -26,7 +26,6 @@ limitations under the License.
 #include <memory>
 #include <type_traits>
 
-#include "third_party/eigen3/Eigen/Core"
 #include "fixedpoint/fixedpoint.h"
 #include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/c/common.h"
@@ -74,10 +73,12 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/string_comparisons.h"
 #include "tensorflow/lite/kernels/internal/reference/sub.h"
 #include "tensorflow/lite/kernels/internal/reference/tanh.h"
+#include "tensorflow/lite/kernels/internal/reference/transpose.h"
 #include "tensorflow/lite/kernels/internal/reference/transpose_conv.h"
 #include "tensorflow/lite/kernels/internal/strided_slice_logic.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/types.h"
+#include "third_party/eigen3/Eigen/Core"
 namespace tflite {
 
 namespace reference_ops {
@@ -158,9 +159,8 @@ inline void ReluX(const tflite::ActivationParams& params,
   const T min_value = params.quantized_activation_min;
   for (int i = 0; i < flat_size; ++i) {
     const T val = input_data[i];
-    const T clamped = val > max_value   ? max_value
-                      : val < min_value ? min_value
-                                        : val;
+    const T clamped =
+        val > max_value ? max_value : val < min_value ? min_value : val;
     output_data[i] = clamped;
   }
 }
@@ -1519,89 +1519,6 @@ inline void ArgMax(const RuntimeShape& input1_shape, const T1* input1_data,
                    const RuntimeShape& output_shape, T2* output_data) {
   // Drop shape of second input: not needed.
   ArgMax(input1_shape, input1_data, input2_data, output_shape, output_data);
-}
-
-template <typename T, int N>
-void TransposeImpl(const TransposeParams& params,
-                   const RuntimeShape& unextended_input_shape,
-                   const T* input_data,
-                   const RuntimeShape& unextended_output_shape,
-                   T* output_data) {
-  const int unextended_input_size = unextended_input_shape.DimensionsCount();
-  const int unextended_output_size = unextended_output_shape.DimensionsCount();
-  TFLITE_DCHECK_LE(unextended_input_size, N);
-  TFLITE_DCHECK_LE(unextended_output_size, N);
-  TFLITE_DCHECK_EQ(unextended_output_size, params.perm_count);
-  const int input_ext_size = N - unextended_input_size;
-  const int output_ext_size = N - unextended_output_size;
-  NdArrayDesc<N> input_desc;
-  NdArrayDesc<N> output_desc;
-  CopyDimsToDesc(RuntimeShape::ExtendedShape(N, unextended_input_shape),
-                 &input_desc);
-  CopyDimsToDesc(RuntimeShape::ExtendedShape(N, unextended_output_shape),
-                 &output_desc);
-
-  // The perm data is extended to match the output, each index incremented by
-  // the amount of front padding of the input shape.
-  int extended_perm[N];
-  for (int i = 0; i < N; ++i) {
-    extended_perm[i] = i < output_ext_size
-                           ? i
-                           : params.perm[i - output_ext_size] + input_ext_size;
-  }
-
-  // Permutes the input shape so we don't need to permute the indexes inside
-  // the loop. Check to make sure output_dims is matching input_dims.
-  NdArrayDesc<N> perm_input_desc;
-  for (int k = 0; k < N; ++k) {
-    TFLITE_DCHECK_EQ(input_desc.extents[extended_perm[k]],
-                     output_desc.extents[k]);
-    perm_input_desc.extents[k] = input_desc.extents[extended_perm[k]];
-    perm_input_desc.strides[k] = input_desc.strides[extended_perm[k]];
-  }
-
-  // Naive transpose loop (iterate on output index and compute input index).
-  auto tranpose_func = [&](int indexes[N]) {
-    output_data[SubscriptToIndex(output_desc, indexes)] =
-        input_data[SubscriptToIndex(perm_input_desc, indexes)];
-  };
-  NDOpsHelper<N>(output_desc, tranpose_func);
-}
-
-template <typename T, int N = 5>
-void Transpose(const TransposeParams& params,
-               const RuntimeShape& unextended_input_shape, const T* input_data,
-               const RuntimeShape& unextended_output_shape, T* output_data) {
-  // Transpose kernel only does rearranging values not numeric evaluations on
-  // each cell. It's safe to implement per size of scalar type and this trick
-  // keeps the total code size in a reasonable range.
-  switch (sizeof(T)) {
-    case 1:
-      TransposeImpl<int8_t, N>(params, unextended_input_shape,
-                               reinterpret_cast<const int8_t*>(input_data),
-                               unextended_output_shape,
-                               reinterpret_cast<int8_t*>(output_data));
-      break;
-    case 2:
-      TransposeImpl<int16_t, N>(params, unextended_input_shape,
-                                reinterpret_cast<const int16_t*>(input_data),
-                                unextended_output_shape,
-                                reinterpret_cast<int16_t*>(output_data));
-      break;
-
-    case 4:
-      TransposeImpl<int32_t, N>(params, unextended_input_shape,
-                                reinterpret_cast<const int32_t*>(input_data),
-                                unextended_output_shape,
-                                reinterpret_cast<int32_t*>(output_data));
-      break;
-    case 8:
-      TransposeImpl<int64_t, N>(params, unextended_input_shape,
-                                reinterpret_cast<const int64_t*>(input_data),
-                                unextended_output_shape,
-                                reinterpret_cast<int64_t*>(output_data));
-      break;
-  }
 }
 
 template <typename D, typename T>

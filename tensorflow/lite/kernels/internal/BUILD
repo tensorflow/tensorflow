@@ -508,6 +508,7 @@ cc_library(
         "reference/svdf.h",
         "reference/tanh.h",
         "reference/transpose_conv.h",
+        "reference/transpose.h",
     ] + select({
         "//tensorflow/lite:tf_lite_static_memory": [],
         "//conditions:default": [
@@ -613,6 +614,7 @@ cc_library(
         "reference/sub.h",
         "reference/tanh.h",
         "reference/transpose_conv.h",
+        "reference/transpose.h",
     ],
     copts = tflite_copts(),
     # We are disabling parse_headers for this header-only target so that the
