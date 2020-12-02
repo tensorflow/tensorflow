@@ -173,11 +173,16 @@ def build_docs(output_dir, code_url_prefix, search_hints, gen_report):
     if not name.startswith("_"):
       doc_controls.hide_from_search(obj)
 
-  for cls in [tf.Module, tf.keras.layers.Layer]:
+  for cls in [tf.Module, tf.keras.layers.Layer, tf.keras.optimizers.Optimizer]:
     doc_controls.decorate_all_class_attributes(
         decorator=doc_controls.do_not_doc_in_subclasses,
         cls=cls,
         skip=["__init__"])
+
+  try:
+    doc_controls.do_not_generate_docs(tf.__internal__)
+  except AttributeError:
+    pass
 
   try:
     doc_controls.do_not_generate_docs(tf.__operators__)
@@ -234,6 +239,8 @@ def build_docs(output_dir, code_url_prefix, search_hints, gen_report):
           "python/ops/nn_impl.py",
       "tf/keras/Model.md":
           "tensorflow/python/keras/engine/training.py",
+      "tf/keras/preprocessing/image/random_brightness.md":
+          "keras_preprocessing/image/affine_transformations.py"
   }
 
   all_passed = True

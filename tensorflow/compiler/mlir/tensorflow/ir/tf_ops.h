@@ -22,10 +22,9 @@ limitations under the License.
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
@@ -43,6 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_traits.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_verifiers.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tfrt_ops.h"
 
 namespace mlir {
 namespace TF {
@@ -103,7 +103,7 @@ class TensorFlowDialect : public Dialect {
   // operations to the dialect. Hooks will only apply to subsequent
   // instantations of the Dialect/MLIRContext.
   static void RegisterAdditionalOperationHook(AdditionalOpFunction fn) {
-    additional_operation_hooks_->push_back(std::move(fn));
+    GetAdditionalOperationHooks()->push_back(std::move(fn));
   }
 
   // Re-define publicly the protected addOperations() method from the Dialect
@@ -112,8 +112,7 @@ class TensorFlowDialect : public Dialect {
   // same interface.
   template <typename... Args>
   void addOperations() {
-    (void)std::initializer_list<int>{
-        0, (addOperation(AbstractOperation::get<Args>(*this)), 0)...};
+    Dialect::addOperations<Args...>();
   }
 
   using ConstantFoldHook = LogicalResult (*)(Operation *, ArrayRef<Attribute>,
@@ -141,7 +140,7 @@ class TensorFlowDialect : public Dialect {
  private:
   // Hook functions which may add additional operations to the dialect.
   // These are invoked at construction time.
-  static std::vector<AdditionalOpFunction> *additional_operation_hooks_;
+  static std::vector<AdditionalOpFunction> *GetAdditionalOperationHooks();
 
   static ConstantFoldHook constant_fold_hook_;
   static DecodeConstantHook decode_constant_hook_;

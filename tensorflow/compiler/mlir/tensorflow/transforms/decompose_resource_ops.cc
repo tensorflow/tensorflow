@@ -73,7 +73,7 @@ static Type GetResourceSubtype(Value resource) {
 
 void PopulateDecomposeResourceOpsPatterns(MLIRContext *context,
                                           OwningRewritePatternList *patterns) {
-  populateWithGenerated(context, patterns);
+  populateWithGenerated(context, *patterns);
 }
 
 }  // namespace TF

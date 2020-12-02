@@ -120,6 +120,15 @@ TF_LITE_MICRO_TEST(FloatFormatShouldPrintFractionCorrectly) {
   TF_LITE_MICRO_EXPECT_STRING_EQ(golden, buffer);
 }
 
+TF_LITE_MICRO_TEST(FloatFormatShouldPrintFractionCorrectlyNoLeadingZeros) {
+  const int kBufferLen = 24;
+  char buffer[kBufferLen];
+  const char golden[] = "Float: 1.6332993*2^-1";
+  int bytes_written = MicroSnprintf(buffer, kBufferLen, "Float: %f", 0.816650);
+  TF_LITE_MICRO_EXPECT_EQ(static_cast<int>(sizeof(golden)), bytes_written);
+  TF_LITE_MICRO_EXPECT_STRING_EQ(golden, buffer);
+}
+
 TF_LITE_MICRO_TEST(StringFormatOverrunShouldTruncate) {
   const int kBufferLen = 10;
   char buffer[kBufferLen];

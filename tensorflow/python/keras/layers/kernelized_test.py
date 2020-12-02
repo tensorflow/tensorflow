@@ -37,6 +37,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.keras import backend as keras_backend
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import initializers
+from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.engine import training
@@ -71,21 +72,22 @@ class RandomFourierFeaturesTest(test.TestCase, parameterized.TestCase):
     else:
       self.assertAllClose(expected, actual, atol=atol)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def test_state_saving_and_loading(self):
-    input_data = np.random.random((1, 2))
-    rff_layer = kernel_layers.RandomFourierFeatures(output_dim=10, scale=3.0)
-    inputs = input_layer.Input((2,))
-    outputs = rff_layer(inputs)
-    model = training.Model(inputs, outputs)
-    output_data = model.predict(input_data)
-    temp_dir = self.get_temp_dir()
-    self.addCleanup(shutil.rmtree, temp_dir)
-    saved_model_dir = os.path.join(temp_dir, 'rff_model')
-    model.save(saved_model_dir)
-    new_model = save.load_model(saved_model_dir)
-    new_output_data = new_model.predict(input_data)
-    self.assertAllClose(output_data, new_output_data, atol=1e-4)
+    with self.cached_session():
+      input_data = np.random.random((1, 2))
+      rff_layer = kernel_layers.RandomFourierFeatures(output_dim=10, scale=3.0)
+      inputs = input_layer.Input((2,))
+      outputs = rff_layer(inputs)
+      model = training.Model(inputs, outputs)
+      output_data = model.predict(input_data)
+      temp_dir = self.get_temp_dir()
+      self.addCleanup(shutil.rmtree, temp_dir)
+      saved_model_dir = os.path.join(temp_dir, 'rff_model')
+      model.save(saved_model_dir)
+      new_model = save.load_model(saved_model_dir)
+      new_output_data = new_model.predict(input_data)
+      self.assertAllClose(output_data, new_output_data, atol=1e-4)
 
   def test_invalid_output_dim(self):
     with self.assertRaisesRegex(

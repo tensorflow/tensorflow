@@ -25,6 +25,7 @@ from absl.testing import parameterized
 from tensorflow.python.data.experimental.ops import io
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations
 from tensorflow.python.platform import test
 
@@ -81,6 +82,22 @@ class IOTest(test_base.DatasetTestBase, parameterized.TestCase):
     for i in range(7):
       expected.extend(range(i, 42, 7))
     self.assertDatasetProduces(dataset2, expected)
+
+  @combinations.generate(
+      combinations.times(test_base.eager_only_combinations(),
+                         combinations.combine(compression=[None, "GZIP"])))
+  def testSaveInsideFunction(self, compression):
+
+    dataset = dataset_ops.Dataset.range(42)
+
+    @def_function.function
+    def save_fn():
+      io.save(dataset, self._test_dir, compression=compression)
+
+    save_fn()
+    dataset = io.load(
+        self._test_dir, dataset.element_spec, compression=compression)
+    self.assertDatasetProduces(dataset, range(42))
 
 
 if __name__ == "__main__":

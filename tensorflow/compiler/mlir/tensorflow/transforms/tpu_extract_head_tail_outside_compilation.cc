@@ -23,11 +23,10 @@ limitations under the License.
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
@@ -37,6 +36,7 @@ limitations under the License.
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
@@ -115,6 +115,14 @@ tf_device::LaunchOp CreateLaunchForBlock(OpBuilder* builder, Operation* op,
   return launch;
 }
 
+// Checks if an operation is a supported TPU embedding op.
+bool IsEmbeddingOp(Operation* op) {
+  return isa<TF::EnqueueTPUEmbeddingRaggedTensorBatchOp,
+             TF::EnqueueTPUEmbeddingSparseTensorBatchOp,
+             TF::RecvTPUEmbeddingActivationsOp,
+             TF::SendTPUEmbeddingGradientsOp>(op);
+}
+
 // Returns a set of ops that are outside compiled and can be extracted to before
 // the TPU computation. These ops are either connected to the inputs of the TPU
 // computation or other ops that can be extracted, and have no operands from
@@ -136,10 +144,19 @@ llvm::SmallVector<Operation*, 4> FindOutsideCompiledOpsAtHead(
     // Check if the side effecting op right before this side effecting op, if
     // it is side effecting, can be head extracted. Because of op ordering due
     // to side effects, if this is not true, this op cannot be head extracted.
+    // TODO(lyandy): Remove special handling of embedding ops. Currently the IR
+    // is in a topological sort order and depending on that ordering, embedding
+    // ops may prevent other ops from being head extracted.
     auto predecessors = analysis.DirectControlPredecessors(&cluster_op);
-    if (!predecessors.empty() &&
-        !head_outside_compiled_ops.contains(predecessors.back()))
-      continue;
+    if (!predecessors.empty() && !IsEmbeddingOp(&cluster_op)) {
+      bool skip = false;
+      for (Operation* predecessor : llvm::reverse(predecessors)) {
+        if (IsEmbeddingOp(predecessor)) continue;
+        skip = !head_outside_compiled_ops.contains(predecessor);
+        break;
+      }
+      if (skip) continue;
+    }
 
     auto walk_result = cluster_op.walk([&](Operation* op) {
       for (Value operand : op->getOperands()) {
@@ -225,11 +242,20 @@ void FindOutsideCompiledOpsAtTailAndClusterResults(
     // Check if the side effecting op right after this side effecting op, if
     // it is side effecting, can be tail extracted. Because of op ordering due
     // to side effects, if this is not true, this op cannot be tail extracted.
+    // TODO(lyandy): Remove special handling of embedding ops. Currently the IR
+    // is in a topological sort order and depending on that ordering, embedding
+    // ops may prevent other ops from being tail extracted.
     auto successors = analysis.DirectControlSuccessors(
         &cluster_op, [&terminator](Operation* op) { return op != terminator; });
-    if (!successors.empty() &&
-        !tail_outside_compiled_ops_set.contains(successors.front()))
-      continue;
+    if (!successors.empty() && !IsEmbeddingOp(&cluster_op)) {
+      bool skip = false;
+      for (Operation* successor : successors) {
+        if (IsEmbeddingOp(successor)) continue;
+        skip = !tail_outside_compiled_ops_set.contains(successor);
+        break;
+      }
+      if (skip) continue;
+    }
 
     llvm::SmallVector<int, 4> results_to_forward;
     bool can_be_extracted =

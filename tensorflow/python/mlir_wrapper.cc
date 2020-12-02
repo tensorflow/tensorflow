@@ -31,6 +31,17 @@ PYBIND11_MODULE(_pywrap_mlir, m) {
           return output;
         });
 
+  m.def("ImportFunction", [](const std::string &functiondef,
+                             const std::string &functiondef_library,
+                             const std::string &pass_pipeline) {
+    tensorflow::Safe_TF_StatusPtr status =
+        tensorflow::make_safe(TF_NewStatus());
+    std::string output = tensorflow::ImportFunction(
+        functiondef, functiondef_library, pass_pipeline, status.get());
+    tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+    return output;
+  });
+
   m.def("ExperimentalConvertSavedModelToMlir",
         [](const std::string &saved_model_path,
            const std::string &exported_names, bool show_debug_info) {
@@ -38,6 +49,19 @@ PYBIND11_MODULE(_pywrap_mlir, m) {
               tensorflow::make_safe(TF_NewStatus());
           std::string output = tensorflow::ExperimentalConvertSavedModelToMlir(
               saved_model_path, exported_names, show_debug_info, status.get());
+          tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+          return output;
+        });
+
+  m.def("ExperimentalConvertSavedModelV1ToMlirLite",
+        [](const std::string &saved_model_path, const std::string &tags,
+           bool upgrade_legacy, bool show_debug_info) {
+          tensorflow::Safe_TF_StatusPtr status =
+              tensorflow::make_safe(TF_NewStatus());
+          std::string output =
+              tensorflow::ExperimentalConvertSavedModelV1ToMlirLite(
+                  saved_model_path, tags, upgrade_legacy, show_debug_info,
+                  status.get());
           tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
           return output;
         });

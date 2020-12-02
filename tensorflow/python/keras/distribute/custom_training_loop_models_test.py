@@ -25,14 +25,16 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import combinations as ds_combinations
+from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import reduce_util
-from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import test
+from tensorflow.python.framework import test_combinations as combinations
+from tensorflow.python.keras.distribute import strategy_combinations
 from tensorflow.python.module import module
 from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import test
 from tensorflow.python.util import nest
 
 
@@ -52,7 +54,7 @@ class CustomModel(module.Module):
     return x
 
 
-@combinations.generate(
+@ds_combinations.generate(
     combinations.combine(
         distribution=(strategy_combinations.all_strategies +
                       strategy_combinations.multiworker_strategies),
@@ -203,8 +205,7 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
 
     train_step(input_iterator)
 
-  # TODO(b/165912857): Re-enable.
-  def DISABLED_test_lstm(self, distribution):
+  def test_lstm(self, distribution):
 
     batch_size = 32
 
@@ -415,10 +416,10 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
 
 class KerasModelsXLATest(test.TestCase, parameterized.TestCase):
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.combine(
           distribution=strategy_combinations.tpu_strategies, mode=["eager"]))
-  def test_tf_function_experimental_compile(self, distribution):
+  def test_tf_function_jit_compile(self, distribution):
     dataset = _get_dataset()
     input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
 
@@ -432,7 +433,7 @@ class KerasModelsXLATest(test.TestCase, parameterized.TestCase):
         self.kernel = self.add_variable(
             "kernel", shape=[int(input_shape[-1]), self.num_outputs])
 
-      @def_function.function(experimental_compile=True)
+      @def_function.function(jit_compile=True)
       def call(self, inputs):
         return math_ops.matmul(inputs, self.kernel)
 
@@ -475,4 +476,4 @@ def _get_model():
 
 
 if __name__ == "__main__":
-  combinations.main()
+  multi_process_runner.test_main()

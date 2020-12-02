@@ -28,6 +28,7 @@ from __future__ import print_function
 import copy
 import os
 import random
+import re
 
 import flatbuffers
 from tensorflow.lite.python import schema_py_generated as schema_fb
@@ -81,7 +82,7 @@ def read_model_with_mutable_tensors(input_tflite_file):
 
 
 def convert_object_to_bytearray(model_object):
-  """Converts a tflite model from an object to a bytearray."""
+  """Converts a tflite model from an object to a immutable bytearray."""
   # Initial size of the buffer, which will grow automatically if needed
   builder = flatbuffers.Builder(1024)
   model_offset = model_object.Pack(builder)
@@ -120,11 +121,11 @@ def strip_strings(model):
 
   """
 
-  model.description = ''
+  model.description = None
   for subgraph in model.subgraphs:
-    subgraph.name = ''
+    subgraph.name = None
     for tensor in subgraph.tensors:
-      tensor.name = ''
+      tensor.name = None
 
 
 def randomize_weights(model, random_seed=0):
@@ -153,3 +154,59 @@ def randomize_weights(model, random_seed=0):
     # end up as denormalized or NaN/Inf floating point numbers.
     for j in range(buffer_i_size):
       buffer_i_data[j] = random.randint(0, 255)
+
+
+def xxd_output_to_bytes(input_cc_file):
+  """Converts xxd output C++ source file to bytes (immutable)
+
+  Args:
+    input_cc_file: Full path name to th C++ source file dumped by xxd
+
+  Raises:
+    RuntimeError: If input_cc_file path is invalid.
+    IOError: If input_cc_file cannot be opened.
+
+  Returns:
+    A bytearray corresponding to the input cc file array.
+  """
+  # Match hex values in the string with comma as separator
+  pattern = re.compile(r'\W*(0x[0-9a-fA-F,x ]+).*')
+
+  model_bytearray = bytearray()
+
+  with open(input_cc_file) as file_handle:
+    for line in file_handle:
+      values_match = pattern.match(line)
+
+      if values_match is None:
+        continue
+
+      # Match in the parentheses (hex array only)
+      list_text = values_match.group(1)
+
+      # Extract hex values (text) from the line
+      # e.g. 0x1c, 0x00, 0x00, 0x00, 0x54, 0x46, 0x4c,
+      values_text = filter(None, list_text.split(','))
+
+      # Convert to hex
+      values = [int(x, base=16) for x in values_text]
+      model_bytearray.extend(values)
+
+  return bytes(model_bytearray)
+
+
+def xxd_output_to_object(input_cc_file):
+  """Converts xxd output C++ source file to object
+
+  Args:
+    input_cc_file: Full path name to th C++ source file dumped by xxd
+
+  Raises:
+    RuntimeError: If input_cc_file path is invalid.
+    IOError: If input_cc_file cannot be opened.
+
+  Returns:
+    A python object corresponding to the input tflite file.
+  """
+  model_bytes = xxd_output_to_bytes(input_cc_file)
+  return convert_bytearray_to_object(model_bytes)

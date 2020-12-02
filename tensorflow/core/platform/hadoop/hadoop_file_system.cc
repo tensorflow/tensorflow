@@ -154,9 +154,8 @@ Status SplitArchiveNameAndPath(StringPiece& path, string& nn) {
   return Status::OK();
 }
 
-// We rely on HDFS connection caching here. The HDFS client calls
-// org.apache.hadoop.fs.FileSystem.get(), which caches the connection
-// internally.
+// We implement connection caching in Tensorflow, which can significantly
+// improve performance. Fixes #43187
 Status HadoopFileSystem::Connect(StringPiece fname, hdfsFS* fs) {
   TF_RETURN_IF_ERROR(libhdfs()->status());
 
@@ -164,9 +163,9 @@ Status HadoopFileSystem::Connect(StringPiece fname, hdfsFS* fs) {
   io::ParseURI(fname, &scheme, &namenode, &path);
   string nn(namenode);
 
-  hdfsBuilder* builder = libhdfs()->hdfsNewBuilder();
+  string cacheKey(scheme.data(), scheme.size());
   if (scheme == "file") {
-    libhdfs()->hdfsBuilderSetNameNode(builder, nullptr);
+    nn = "";
   } else if (scheme == "viewfs") {
     char* defaultFS = nullptr;
     libhdfs()->hdfsConfGetStr("fs.defaultFS", &defaultFS);
@@ -181,17 +180,28 @@ Status HadoopFileSystem::Connect(StringPiece fname, hdfsFS* fs) {
     // The default NameNode configuration will be used (from the XML
     // configuration files). See:
     // https://github.com/tensorflow/tensorflow/blob/v1.0.0/third_party/hadoop/hdfs.h#L259
-    libhdfs()->hdfsBuilderSetNameNode(builder, "default");
+    nn = "default";
   } else if (scheme == "har") {
     TF_RETURN_IF_ERROR(SplitArchiveNameAndPath(path, nn));
-    libhdfs()->hdfsBuilderSetNameNode(builder, nn.c_str());
   } else {
-    libhdfs()->hdfsBuilderSetNameNode(builder,
-                                      nn.empty() ? "default" : nn.c_str());
+    if (nn.empty()) {
+      nn = "default";
+    }
   }
-  *fs = libhdfs()->hdfsBuilderConnect(builder);
-  if (*fs == nullptr) {
-    return errors::NotFound(strerror(errno));
+  cacheKey += nn;
+  {
+    mutex_lock lock(mu_);
+    if (connectionCache_.find(cacheKey) == connectionCache_.end()) {
+      hdfsBuilder* builder = libhdfs()->hdfsNewBuilder();
+      libhdfs()->hdfsBuilderSetNameNode(builder,
+                                        nn.empty() ? nullptr : nn.c_str());
+      hdfsFS cacheFs = libhdfs()->hdfsBuilderConnect(builder);
+      if (cacheFs == nullptr) {
+        return errors::Aborted(strerror(errno));
+      }
+      connectionCache_[cacheKey] = cacheFs;
+    }
+    *fs = connectionCache_[cacheKey];
   }
   return Status::OK();
 }
@@ -209,7 +219,14 @@ class HDFSRandomAccessFile : public RandomAccessFile {
       : filename_(filename),
         hdfs_filename_(hdfs_filename),
         fs_(fs),
-        file_(file) {}
+        file_(file) {
+    const char* disable_eof_retried = getenv("HDFS_DISABLE_READ_EOF_RETRIED");
+    if (disable_eof_retried && disable_eof_retried[0] == '1') {
+      disable_eof_retried_ = true;
+    } else {
+      disable_eof_retried_ = false;
+    }
+  }
 
   ~HDFSRandomAccessFile() override {
     if (file_ != nullptr) {
@@ -228,6 +245,10 @@ class HDFSRandomAccessFile : public RandomAccessFile {
     Status s;
     char* dst = scratch;
     bool eof_retried = false;
+    if (disable_eof_retried_) {
+      // eof_retried = true, avoid calling hdfsOpenFile in Read, Fixes #42597
+      eof_retried = true;
+    }
     while (n > 0 && s.ok()) {
       // We lock inside the loop rather than outside so we don't block other
       // concurrent readers.
@@ -274,6 +295,7 @@ class HDFSRandomAccessFile : public RandomAccessFile {
   string filename_;
   string hdfs_filename_;
   hdfsFS fs_;
+  bool disable_eof_retried_;
 
   mutable mutex mu_;
   mutable hdfsFile file_ TF_GUARDED_BY(mu_);

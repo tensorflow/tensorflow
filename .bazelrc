@@ -5,6 +5,7 @@
 # Android options:
 #    android:
 #    android_arm:
+#    android_arm64:
 #    android_x86:
 #    android_x86_64:
 #
@@ -46,13 +47,8 @@
 #     using_cuda:   CUDA is available to build system.
 #     cuda:         Build with full cuda support.
 #     rocm:         Build with AMD GPU support (rocm).
-#     sycl:         Build with SYCL support.
-#     sycl_nodouble:
-#     sycl_asan:
-#     sycl_trisycl:
 #     mkl:          Enable full mkl support.
 #     tensorrt:     Enable Tensorrt support.
-#     ngraph:       Enable ngraph support.
 #     numa:         Enable numa using hwloc.
 #     noaws:        Disable AWS S3 storage support
 #     nogcp:        Disable GCS support.
@@ -89,6 +85,7 @@
 #     release_cpu_linux:    Toolchain and CUDA options for Linux CPU builds.
 #     release_cpu_macos:    Toolchain and CUDA options for MacOS CPU builds.
 #     release_gpu_linux:    Toolchain and CUDA options for Linux GPU builds.
+#     release_gpu_linux_cuda_10_1:    Toolchain and CUDA options for CUDA 10.1 Linux GPU builds.
 #     release_cpu_windows:    Toolchain and CUDA options for Windows CPU builds.
 #     release_gpu_windows:    Toolchain and CUDA options for Windows GPU builds.
 
@@ -161,13 +158,12 @@ build --host_java_toolchain=//third_party/toolchains/java:tf_java_toolchain
 # environment variable "TF_MKL_ROOT" every time before build.
 build:mkl --define=build_with_mkl=true --define=enable_mkl=true
 build:mkl --define=tensorflow_mkldnn_contraction_kernel=0
-build:mkl --define=build_with_mkl_dnn_v1_only=true
+build:mkl --define=build_with_openmp=true
 build:mkl -c opt
 
 # config to build OneDNN backend with a user specified threadpool.
 build:mkl_threadpool --define=build_with_mkl=true --define=enable_mkl=true
 build:mkl_threadpool --define=tensorflow_mkldnn_contraction_kernel=0
-build:mkl_threadpool --define=build_with_mkl_dnn_v1_only=true
 build:mkl_threadpool --define=build_with_mkl_opensource=true
 build:mkl_threadpool --define=build_with_mkldnn_threadpool=true
 build:mkl_threadpool -c opt
@@ -175,9 +171,15 @@ build:mkl_threadpool -c opt
 # Config setting to build with oneDNN and without the binary blob
 build:mkl_opensource_only --define=build_with_mkl=true --define=enable_mkl=true
 build:mkl_opensource_only --define=tensorflow_mkldnn_contraction_kernel=0
-build:mkl_opensource_only --define=build_with_mkl_dnn_v1_only=true
 build:mkl_opensource_only --define=build_with_mkl_opensource=true
+build:mkl_opensource_only --define=build_with_openmp=true
 build:mkl_opensource_only -c opt
+
+# Config setting to build with oneDNN for Arm.
+build:mkl_aarch64 --define=build_with_mkl_aarch64=true --define=enable_mkl=true
+build:mkl_aarch64 --define=tensorflow_mkldnn_contraction_kernel=0
+build:mkl_aarch64 --define=build_with_mkl_opensource=true
+build:mkl_aarch64 -c opt
 
 # This config refers to building with CUDA available. It does not necessarily
 # mean that we build CUDA op kernels.
@@ -216,21 +218,7 @@ build:rocm --crosstool_top=@local_config_rocm//crosstool:toolchain
 build:rocm --define=using_rocm=true --define=using_rocm_hipcc=true
 build:rocm --action_env TF_NEED_ROCM=1
 
-build:sycl --crosstool_top=@local_config_sycl//crosstool:toolchain
-build:sycl --define=using_sycl=true
-build:sycl --action_env TF_NEED_OPENCL_SYCL=1
-
-build:sycl_nodouble --config=sycl
-build:sycl_nodouble --cxxopt -DTENSORFLOW_SYCL_NO_DOUBLE
-
-build:sycl_nodouble --config=sycl
-build:sycl_asan --copt -fno-omit-frame-pointer --copt -fsanitize-coverage=3 --copt -DGPR_NO_DIRECT_SYSCALLS --linkopt -fPIC --linkopt -fsanitize=address
-
-build:sycl_nodouble --config=sycl
-build:sycl_trisycl --define=using_trisycl=true
-
 # Options extracted from configure script
-build:ngraph --define=with_ngraph_support=true
 build:numa --define=with_numa_support=true
 
 # Options to disable default on features
@@ -293,8 +281,9 @@ build:ios --noenable_platform_specific_config
 build:android --copt=-w
 build:ios --copt=-w
 build:linux --copt=-w
+build:linux --host_copt=-w
 build:macos --copt=-w
-build:windows --copt=/w
+build:windows --copt=/W0
 
 # Tensorflow uses M_* math constants that only get defined by MSVC headers if
 # _USE_MATH_DEFINES is defined.
@@ -305,9 +294,11 @@ build:windows --host_copt=/D_USE_MATH_DEFINES
 build:linux --define=PREFIX=/usr
 build:linux --define=LIBDIR=$(PREFIX)/lib
 build:linux --define=INCLUDEDIR=$(PREFIX)/include
+build:linux --define=PROTOBUF_INCLUDE_PATH=$(PREFIX)/include
 build:macos --define=PREFIX=/usr
 build:macos --define=LIBDIR=$(PREFIX)/lib
 build:macos --define=INCLUDEDIR=$(PREFIX)/include
+build:macos --define=PROTOBUF_INCLUDE_PATH=$(PREFIX)/include
 # TF_SYSTEM_LIBS do not work on windows.
 
 # By default, build TF in C++ 14 mode.
@@ -334,6 +325,11 @@ build:windows --host_copt=-DWIN32_LEAN_AND_MEAN
 build:windows --copt=-DNOGDI
 build:windows --host_copt=-DNOGDI
 
+# MSVC (Windows): Standards-conformant preprocessor mode
+# See https://docs.microsoft.com/en-us/cpp/preprocessor/preprocessor-experimental-overview
+build:windows --copt=/experimental:preprocessor
+build:windows --host_copt=/experimental:preprocessor
+
 # Misc build options we need for windows.
 build:windows --linkopt=/DEBUG
 build:windows --host_linkopt=/DEBUG
@@ -358,6 +354,7 @@ build --config=short_logs
 # TODO(gunan): Create a feature in toolchains for avx/avx2 to
 #   avoid having to define linux/win separately.
 build:avx_linux --copt=-mavx
+build:avx_linux --host_copt=-mavx
 build:avx2_linux --copt=-mavx2
 build:native_arch_linux --copt=-march=native
 build:avx_win --copt=/arch=AVX
@@ -411,9 +408,12 @@ build:rbe_linux --config=avx_linux
 build:rbe_linux --config=short_logs
 # TODO(gunan): Check why we need this specified in rbe, but not in other builds.
 build:rbe_linux --linkopt=-lrt
+build:rbe_linux --host_linkopt=-lrt
 build:rbe_linux --linkopt=-lm
+build:rbe_linux --host_linkopt=-lm
 
 build:rbe_cpu_linux --config=rbe_linux
+build:rbe_cpu_linux --host_crosstool_top="//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010:toolchain"
 build:rbe_cpu_linux --crosstool_top="//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010:toolchain"
 build:rbe_cpu_linux --extra_toolchains="//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010:cc-toolchain-k8"
 build:rbe_cpu_linux --extra_execution_platforms="@ubuntu16.04-manylinux2010-py3_config_platform//:platform"
@@ -431,6 +431,7 @@ test:rbe_linux_cuda_base --test_env=LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/
 
 build:rbe_linux_cuda10.1_nvcc_base --config=rbe_linux_cuda_base
 build:rbe_linux_cuda10.1_nvcc_base --define=using_cuda_nvcc=true
+build:rbe_linux_cuda10.1_nvcc_base --host_crosstool_top="@ubuntu18.04-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_cuda//crosstool:toolchain"
 build:rbe_linux_cuda10.1_nvcc_base --crosstool_top="@ubuntu18.04-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_cuda//crosstool:toolchain"
 build:rbe_linux_cuda10.1_nvcc_base --extra_toolchains="@ubuntu18.04-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_cuda//crosstool:toolchain-linux-x86_64"
 build:rbe_linux_cuda10.1_nvcc_base --extra_execution_platforms="@ubuntu18.04-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_platform//:platform"
@@ -447,6 +448,7 @@ build:rbe_linux_cuda10.1_nvcc_py3.8 --config=rbe_linux_cuda10.1_nvcc_base --repo
 
 build:rbe_linux_cuda11.0_nvcc_base --config=rbe_linux_cuda_base
 build:rbe_linux_cuda11.0_nvcc_base --define=using_cuda_nvcc=true
+build:rbe_linux_cuda11.0_nvcc_base --host_crosstool_top="@ubuntu18.04-gcc7_manylinux2010-cuda11.0-cudnn8-tensorrt7.1_config_cuda//crosstool:toolchain"
 build:rbe_linux_cuda11.0_nvcc_base --crosstool_top="@ubuntu18.04-gcc7_manylinux2010-cuda11.0-cudnn8-tensorrt7.1_config_cuda//crosstool:toolchain"
 build:rbe_linux_cuda11.0_nvcc_base --extra_toolchains="@ubuntu18.04-gcc7_manylinux2010-cuda11.0-cudnn8-tensorrt7.1_config_cuda//crosstool:toolchain-linux-x86_64"
 build:rbe_linux_cuda11.0_nvcc_base --extra_execution_platforms="@ubuntu18.04-gcc7_manylinux2010-cuda11.0-cudnn8-tensorrt7.1_config_platform//:platform"
@@ -587,7 +589,7 @@ build:release_gpu_common --action_env CUDA_TOOLKIT_PATH="/usr/local/cuda-11.0"
 build:release_gpu_common --action_env=TF_CUDA_VERSION="11"
 build:release_gpu_common --action_env=TF_CUDNN_VERSION="8"
 build:release_gpu_common --action_env=TF_NEED_TENSORRT="1"
-build:release_gpu_common --action_env=TF_CUDA_COMPUTE_CAPABILITIES="sm_35,sm_37,sm_52,sm_60,sm_61,compute_70"
+build:release_gpu_common --action_env=TF_CUDA_COMPUTE_CAPABILITIES="sm_35,sm_50,sm_60,sm_70,sm_75,compute_80"
 build:release_gpu_common --action_env=TENSORRT_INSTALL_PATH="/usr/local/tensorrt"
 build:release_gpu_common --action_env=LD_LIBRARY_PATH="/usr/local/cuda:/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:/usr/local/tensorrt/lib"
 build:release_gpu_common --action_env=GCC_HOST_COMPILER_PATH="/usr/bin/gcc-5"
@@ -600,6 +602,15 @@ build:release_windows_common --config=release_common
 build:release_windows_common --define=no_tensorflow_py_deps=true
 build:release_windows_common --announce_rc
 
+# First available in VS 16.4. Speeds Windows compile times by a lot. See
+# https://groups.google.com/a/tensorflow.org/d/topic/build/SsW98Eo7l3o/discussion
+build:release_windows_common --copt=/d2ReducedOptimizeHugeFunctions --host_copt=/d2ReducedOptimizeHugeFunctions
+
 build:release_cpu_windows --config=release_windows_common
 
 build:release_gpu_windows --config=release_windows_common
+
+build:release_gpu_linux_cuda_10_1 --config=release_gpu_linux
+build:release_gpu_linux_cuda_10_1 --action_env CUDA_TOOLKIT_PATH="/usr/local/cuda-10.1"
+build:release_gpu_linux_cuda_10_1 --action_env=TF_CUDA_VERSION="10"
+build:release_gpu_linux_cuda_10_1 --action_env=TF_CUDNN_VERSION="7"

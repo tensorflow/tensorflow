@@ -463,54 +463,32 @@ kernel void ComputeFunction($1
 }
 }  // namespace
 
-std::vector<ComputeTaskDescriptorPtr> Winograd4x4To36(
-    int id, ValueId input_id, ValueId output_id,
-    const Winograd4x4To36Attributes& attr) {
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = false;
-  desc->shader_source = GetKernelWinograd4x4To36();
+ComputeTaskDescriptor Winograd4x4To36(ValueId input_id, ValueId output_id,
+                                      const Winograd4x4To36Attributes& attr) {
+  ComputeTaskDescriptor desc;
+  desc.shader_source = GetKernelWinograd4x4To36();
 
-  desc->input_buffers = {
-      {input_id, "device FLT4* const src_buffer"},
-  };
+  desc.AddSrcTensor("src_buffer");
+  desc.AddDstTensor("dst_buffer");
 
-  desc->output_buffer = {
-      output_id, "device FLT4* dst_buffer",
-      [input_id, attr](const std::map<ValueId, BHWC>& buffers) {
-        const auto src_shape = buffers.find(input_id)->second;
-        int new_width = src_shape.w + attr.padding.prepended.w +
-                        attr.padding.appended.w - 2;
-        int new_height = src_shape.h + attr.padding.prepended.h +
-                         attr.padding.appended.h - 2;
-        BHWC dst_shape;
-        dst_shape.b = src_shape.b;
-        dst_shape.h = 36;
-        dst_shape.w =
-            DivideRoundUp(new_width, 4) * DivideRoundUp(new_height, 4);
-        dst_shape.c = src_shape.c;
-        return dst_shape;
-      }};
-
-  desc->uniform_buffers = {
+  desc.uniform_buffers = {
       {"constant uniforms& U",
-       [input_id, output_id, attr](const std::map<ValueId, BHWC>& buffers) {
-         const auto& src_shape = buffers.find(input_id)->second;
-         const auto& dst_shape = buffers.find(output_id)->second;
-         int new_width = src_shape.w + attr.padding.prepended.w +
+       [attr](const std::vector<BHWC>& src_shapes,
+              const std::vector<BHWC>& dst_shapes) {
+         int new_width = src_shapes[0].w + attr.padding.prepended.w +
                          attr.padding.appended.w - 2;
-         int new_height = src_shape.h + attr.padding.prepended.h +
+         int new_height = src_shapes[0].h + attr.padding.prepended.h +
                           attr.padding.appended.h - 2;
          int tiles_x = DivideRoundUp(new_width, 4);
          int tiles_y = DivideRoundUp(new_height, 4);
          std::vector<int> sizes = {
-             src_shape.w,
-             src_shape.h,
-             DivideRoundUp(src_shape.c, 4),
+             src_shapes[0].w,
+             src_shapes[0].h,
+             DivideRoundUp(src_shapes[0].c, 4),
              0,
-             dst_shape.w,
-             dst_shape.h,
-             DivideRoundUp(dst_shape.c, 4),
+             dst_shapes[0].w,
+             dst_shapes[0].h,
+             DivideRoundUp(dst_shapes[0].c, 4),
              0,
              -attr.padding.prepended.w,
              -attr.padding.prepended.h,
@@ -521,53 +499,32 @@ std::vector<ComputeTaskDescriptorPtr> Winograd4x4To36(
        }},
   };
 
-  desc->resize_function = [input_id,
-                           attr](const std::map<ValueId, BHWC>& buffers) {
+  desc.resize_function = [attr](const std::vector<BHWC>& src_shapes,
+                                const std::vector<BHWC>& dst_shapes) {
     const uint3 groups_size{8, 4, 1};
-    const auto& src_shape = buffers.find(input_id)->second;
-    int new_width =
-        src_shape.w + attr.padding.prepended.w + attr.padding.appended.w - 2;
-    int new_height =
-        src_shape.h + attr.padding.prepended.h + attr.padding.appended.h - 2;
+    int new_width = src_shapes[0].w + attr.padding.prepended.w +
+                    attr.padding.appended.w - 2;
+    int new_height = src_shapes[0].h + attr.padding.prepended.h +
+                     attr.padding.appended.h - 2;
     int grid_x = DivideRoundUp(new_width, 4);
     int grid_y = DivideRoundUp(new_height, 4);
-    int grid_z = DivideRoundUp(src_shape.c, 4);
+    int grid_z = DivideRoundUp(src_shapes[0].c, 4);
     int groups_x = DivideRoundUp(grid_x, groups_size.x);
     int groups_y = DivideRoundUp(grid_y, groups_size.y);
     int groups_z = DivideRoundUp(grid_z, groups_size.z);
     return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
   };
-  return {desc};
+  return desc;
 }
 
-std::vector<ComputeTaskDescriptorPtr> Winograd4x4To36TileX6(
-    int id, ValueId input_id, ValueId output_id,
-    const Winograd4x4To36Attributes& attr, const RuntimeOptions& options) {
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = false;
-  desc->shader_source = GetKernelWinograd4x4To36TileX6();
+ComputeTaskDescriptor Winograd4x4To36TileX6(
+    ValueId input_id, ValueId output_id, const Winograd4x4To36Attributes& attr,
+    const RuntimeOptions& options) {
+  ComputeTaskDescriptor desc;
+  desc.shader_source = GetKernelWinograd4x4To36TileX6();
 
-  desc->input_buffers = {
-      {input_id, "device FLT4* const src_buffer"},
-  };
-
-  desc->output_buffer = {
-      output_id, "device FLT4* dst_buffer",
-      [input_id, attr](const std::map<ValueId, BHWC>& buffers) {
-        const auto src_shape = buffers.find(input_id)->second;
-        int new_width = src_shape.w + attr.padding.prepended.w +
-                        attr.padding.appended.w - 2;
-        int new_height = src_shape.h + attr.padding.prepended.h +
-                         attr.padding.appended.h - 2;
-        BHWC dst_shape;
-        dst_shape.b = src_shape.b;
-        dst_shape.h = 36;
-        dst_shape.w =
-            DivideRoundUp(new_width, 4) * DivideRoundUp(new_height, 4);
-        dst_shape.c = src_shape.c;
-        return dst_shape;
-      }};
+  desc.AddSrcTensor("src_buffer");
+  desc.AddDstTensor("dst_buffer");
 
   std::vector<float> bt_aligned(6 * 8);
   auto bt_mat = BtMatrixForWinograd4x4To6x6();
@@ -579,30 +536,29 @@ std::vector<ComputeTaskDescriptorPtr> Winograd4x4To36TileX6(
     bt_aligned[y * 8 + 7] = 0.0f;
   }
 
-  desc->immutable_buffers = {
+  desc.immutable_buffers = {
       {"device FLT4* const bt_arr",
        GetByteBufferConverted(bt_aligned, options.storage_precision)},
   };
 
-  desc->uniform_buffers = {
+  desc.uniform_buffers = {
       {"constant uniforms& U",
-       [input_id, output_id, attr](const std::map<ValueId, BHWC>& buffers) {
-         const auto& src_shape = buffers.find(input_id)->second;
-         const auto& dst_shape = buffers.find(output_id)->second;
-         int new_width = src_shape.w + attr.padding.prepended.w +
+       [attr](const std::vector<BHWC>& src_shapes,
+              const std::vector<BHWC>& dst_shapes) {
+         int new_width = src_shapes[0].w + attr.padding.prepended.w +
                          attr.padding.appended.w - 2;
-         int new_height = src_shape.h + attr.padding.prepended.h +
+         int new_height = src_shapes[0].h + attr.padding.prepended.h +
                           attr.padding.appended.h - 2;
          int tiles_x = DivideRoundUp(new_width, 4);
          int tiles_y = DivideRoundUp(new_height, 4);
          std::vector<int> sizes = {
-             src_shape.w,
-             src_shape.h,
-             DivideRoundUp(src_shape.c, 4),
+             src_shapes[0].w,
+             src_shapes[0].h,
+             DivideRoundUp(src_shapes[0].c, 4),
              0,
-             dst_shape.w,
-             dst_shape.h,
-             DivideRoundUp(dst_shape.c, 4),
+             dst_shapes[0].w,
+             dst_shapes[0].h,
+             DivideRoundUp(dst_shapes[0].c, 4),
              0,
              -attr.padding.prepended.w,
              -attr.padding.prepended.h,
@@ -613,101 +569,76 @@ std::vector<ComputeTaskDescriptorPtr> Winograd4x4To36TileX6(
        }},
   };
 
-  desc->resize_function = [output_id](const std::map<ValueId, BHWC>& buffers) {
+  desc.resize_function = [](const std::vector<BHWC>& src_shapes,
+                            const std::vector<BHWC>& dst_shapes) {
     const uint3 groups_size{4, 6, 1};
-    const auto& dst_shape = buffers.find(output_id)->second;
-    int grid_x = dst_shape.w;
+    int grid_x = dst_shapes[0].w;
     int grid_y = 6;
-    int grid_z = DivideRoundUp(dst_shape.c, 4);
+    int grid_z = DivideRoundUp(dst_shapes[0].c, 4);
     int groups_x = DivideRoundUp(grid_x, groups_size.x);
     int groups_y = DivideRoundUp(grid_y, groups_size.y);
     int groups_z = DivideRoundUp(grid_z, groups_size.z);
     return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
   };
-  return {desc};
+  return desc;
 }
 
-std::vector<ComputeTaskDescriptorPtr> Winograd36To4x4(
-    int id, ValueId input_id, ValueId output_id, const RuntimeOptions& options,
-    const Winograd36To4x4Attributes& attr) {
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = false;
-  desc->shader_source = GetKernelWinograd36To4x4();
+ComputeTaskDescriptor Winograd36To4x4(ValueId input_id, ValueId output_id,
+                                      const RuntimeOptions& options,
+                                      const Winograd36To4x4Attributes& attr) {
+  ComputeTaskDescriptor desc;
+  desc.shader_source = GetKernelWinograd36To4x4();
 
-  desc->input_buffers = {
-      {input_id, "device FLT4* const src_buffer"},
-  };
+  desc.AddSrcTensor("src_buffer");
+  desc.AddDstTensor("dst_buffer");
 
-  desc->output_buffer = {
-      output_id, "device FLT4* dst_buffer",
-      [input_id, attr](const std::map<ValueId, BHWC>& buffers) {
-        const auto src_shape = buffers.find(input_id)->second;
-        BHWC dst_shape;
-        dst_shape.b = src_shape.b;
-        dst_shape.h = attr.output_shape.h;
-        dst_shape.w = attr.output_shape.w;
-        dst_shape.c = src_shape.c;
-        return dst_shape;
-      }};
-
-  desc->immutable_buffers = {
+  desc.immutable_buffers = {
       {"device FLT4* const biases",
        GetByteBufferConvertedResized(attr.biases.data,
                                      options.storage_precision,
                                      AlignByN(attr.output_shape.c, 4))},
   };
 
-  desc->uniform_buffers = {
+  desc.uniform_buffers = {
       {"constant uniforms& U",
-       [input_id, output_id](const std::map<ValueId, BHWC>& buffers) {
-         const auto& src_shape = buffers.find(input_id)->second;
-         const auto& dst_shape = buffers.find(output_id)->second;
+       [](const std::vector<BHWC>& src_shapes,
+          const std::vector<BHWC>& dst_shapes) {
          std::vector<int> sizes = {
-             src_shape.w, src_shape.h, DivideRoundUp(src_shape.c, 4), 0,
-             dst_shape.w, dst_shape.h, DivideRoundUp(dst_shape.c, 4), 0,
+             src_shapes[0].w,
+             src_shapes[0].h,
+             DivideRoundUp(src_shapes[0].c, 4),
+             0,
+             dst_shapes[0].w,
+             dst_shapes[0].h,
+             DivideRoundUp(dst_shapes[0].c, 4),
+             0,
          };
          return GetByteBuffer(sizes);
        }},
   };
 
-  desc->resize_function = [input_id](const std::map<ValueId, BHWC>& buffers) {
+  desc.resize_function = [](const std::vector<BHWC>& src_shapes,
+                            const std::vector<BHWC>& dst_shapes) {
     const uint3 groups_size{32, 1, 1};
-    const auto& src_shape = buffers.find(input_id)->second;
-    int grid_x = src_shape.w;
+    int grid_x = src_shapes[0].w;
     int grid_y = 1;
-    int grid_z = DivideRoundUp(src_shape.c, 4);
+    int grid_z = DivideRoundUp(src_shapes[0].c, 4);
     int groups_x = DivideRoundUp(grid_x, groups_size.x);
     int groups_y = DivideRoundUp(grid_y, groups_size.y);
     int groups_z = DivideRoundUp(grid_z, groups_size.z);
     return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
   };
-  return {desc};
+  return desc;
 }
 
-std::vector<ComputeTaskDescriptorPtr> Winograd36To4x4Tile4x1(
-    int id, ValueId input_id, ValueId output_id, const RuntimeOptions& options,
+ComputeTaskDescriptor Winograd36To4x4Tile4x1(
+    ValueId input_id, ValueId output_id, const RuntimeOptions& options,
     const Winograd36To4x4Attributes& attr) {
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = false;
-  desc->shader_source = GetKernelWinograd36To4x4Tile4x1();
+  ComputeTaskDescriptor desc;
+  desc.shader_source = GetKernelWinograd36To4x4Tile4x1();
 
-  desc->input_buffers = {
-      {input_id, "device FLT4* const src_buffer"},
-  };
-
-  desc->output_buffer = {
-      output_id, "device FLT4* dst_buffer",
-      [input_id, attr](const std::map<ValueId, BHWC>& buffers) {
-        const auto src_shape = buffers.find(input_id)->second;
-        BHWC dst_shape;
-        dst_shape.b = src_shape.b;
-        dst_shape.h = attr.output_shape.h;
-        dst_shape.w = attr.output_shape.w;
-        dst_shape.c = src_shape.c;
-        return dst_shape;
-      }};
+  desc.AddSrcTensor("src_buffer");
+  desc.AddDstTensor("dst_buffer");
 
   std::vector<float> at_aligned(4 * 8);
   auto at_mat = AtMatrixForWinograd4x4To6x6();
@@ -719,7 +650,7 @@ std::vector<ComputeTaskDescriptorPtr> Winograd36To4x4Tile4x1(
     at_aligned[y * 8 + 7] = 0.0f;
   }
 
-  desc->immutable_buffers = {
+  desc.immutable_buffers = {
       {"device FLT4* const biases",
        GetByteBufferConvertedResized(attr.biases.data,
                                      options.storage_precision,
@@ -728,21 +659,20 @@ std::vector<ComputeTaskDescriptorPtr> Winograd36To4x4Tile4x1(
        GetByteBufferConverted(at_aligned, options.storage_precision)},
   };
 
-  desc->uniform_buffers = {
+  desc.uniform_buffers = {
       {"constant uniforms& U",
-       [input_id, output_id](const std::map<ValueId, BHWC>& buffers) {
-         const auto& src_shape = buffers.find(input_id)->second;
-         const auto& dst_shape = buffers.find(output_id)->second;
-         const int tiles_x = DivideRoundUp(dst_shape.w, 4);
-         const int tiles_y = DivideRoundUp(dst_shape.h, 4);
+       [](const std::vector<BHWC>& src_shapes,
+          const std::vector<BHWC>& dst_shapes) {
+         const int tiles_x = DivideRoundUp(dst_shapes[0].w, 4);
+         const int tiles_y = DivideRoundUp(dst_shapes[0].h, 4);
          std::vector<int> sizes = {
-             src_shape.w,
-             src_shape.h,
-             DivideRoundUp(src_shape.c, 4),
+             src_shapes[0].w,
+             src_shapes[0].h,
+             DivideRoundUp(src_shapes[0].c, 4),
              0,
-             dst_shape.w,
-             dst_shape.h,
-             DivideRoundUp(dst_shape.c, 4),
+             dst_shapes[0].w,
+             dst_shapes[0].h,
+             DivideRoundUp(dst_shapes[0].c, 4),
              0,
              tiles_x,
              tiles_y,
@@ -753,20 +683,20 @@ std::vector<ComputeTaskDescriptorPtr> Winograd36To4x4Tile4x1(
        }},
   };
 
-  desc->resize_function = [output_id](const std::map<ValueId, BHWC>& buffers) {
+  desc.resize_function = [](const std::vector<BHWC>& src_shapes,
+                            const std::vector<BHWC>& dst_shapes) {
     const uint3 groups_size{8, 4, 1};
-    const auto& dst_shape = buffers.find(output_id)->second;
-    const int tiles_x = DivideRoundUp(dst_shape.w, 4);
-    const int tiles_y = DivideRoundUp(dst_shape.h, 4);
+    const int tiles_x = DivideRoundUp(dst_shapes[0].w, 4);
+    const int tiles_y = DivideRoundUp(dst_shapes[0].h, 4);
     int grid_x = tiles_x * tiles_y;
     int grid_y = 4;
-    int grid_z = DivideRoundUp(dst_shape.c, 4);
+    int grid_z = DivideRoundUp(dst_shapes[0].c, 4);
     int groups_x = DivideRoundUp(grid_x, groups_size.x);
     int groups_y = DivideRoundUp(grid_y, groups_size.y);
     int groups_z = DivideRoundUp(grid_z, groups_size.z);
     return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
   };
-  return {desc};
+  return desc;
 }
 
 }  // namespace metal

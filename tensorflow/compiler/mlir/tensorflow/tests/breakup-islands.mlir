@@ -4,8 +4,8 @@
 // All tests also test for idempotence.
 
 // Test that external functions aren't processed (used to crash).
-// CHECK-LABEL: func @unused_external_func
-func @unused_external_func()
+// CHECK-LABEL: func private @unused_external_func
+func private @unused_external_func()
 
 func @multiple_return(%arg0: tensor<*xi32>, %arg1: tensor<i32>) -> (tensor<*xi32>, tensor<*xi32>) {
   %graph:2 = tf_executor.graph {
@@ -371,4 +371,37 @@ func @single_op_island_duplicate_result() -> (tensor<2048xf32>, tensor<2048xf32>
     tf_executor.fetch %outputs#0, %outputs#1 : tensor<2048xf32>, tensor<2048xf32>
   }
   return %0#0, %0#1 : tensor<2048xf32>, tensor<2048xf32>
+}
+
+// CHECK: func @tpu_load_embedding_ops_sink_controls
+// CHECK: {{%.+}}, [[READ0:%.+]] = tf_executor.island wraps "tf.ReadVariableOp"
+// CHECK: {{%.+}}, [[READ1:%.+]] = tf_executor.island wraps "tf.ReadVariableOp"
+// CHECK: {{%.+}}, [[READ2:%.+]] = tf_executor.island wraps "tf.ReadVariableOp"
+// CHECK: [[LOAD0:%.+]] = tf_executor.island wraps "tf.LoadTPUEmbeddingAdagradParameters"
+// CHECK: {{%.+}}, [[READ3:%.+]] = tf_executor.island wraps "tf.ReadVariableOp"
+// CHECK: [[LOAD1:%.+]] = tf_executor.island wraps "tf.LoadTPUEmbeddingAdagradParameters"
+// CHECK: [[UNKNOWN0:%.+]] = tf_executor.island([[READ0]], [[READ1]], [[READ2]], [[LOAD0]], [[READ3]], [[LOAD1]]) wraps "tf.UnknownOp"
+// CHECK: [[UNKNOWN1:%.+]] = tf_executor.island([[UNKNOWN0]]) wraps "tf.UnknownOp"
+// CHECK: [[LOAD2:%.+]] = tf_executor.island([[UNKNOWN1]]) wraps "tf.LoadTPUEmbeddingAdagradParameters"
+// CHECK: [[LOAD3:%.+]] = tf_executor.island([[UNKNOWN1]]) wraps "tf.LoadTPUEmbeddingAdagradParameters"
+// CHECK: [[SINK:%.+]] = tf_executor.island([[LOAD2]], [[LOAD3]]) wraps "tf.NoOp"
+// CHECK: tf_executor.fetch [[SINK]]
+func @tpu_load_embedding_ops_sink_controls(%arg0: tensor<*x!tf.resource<tensor<8xf32>>>, %arg1: tensor<*x!tf.resource<tensor<8xf32>>>, %arg2: tensor<*x!tf.resource<tensor<8xf32>>>, %arg3: tensor<*x!tf.resource<tensor<8xf32>>>) {
+ tf_executor.graph {
+   %control = tf_executor.island {
+     %0 = "tf.ReadVariableOp"(%arg0) {device = ""} : (tensor<*x!tf.resource<tensor<8xf32>>>) -> tensor<8xf32>
+     %1 = "tf.ReadVariableOp"(%arg1) {device = ""} : (tensor<*x!tf.resource<tensor<8xf32>>>) -> tensor<8xf32>
+     %2 = "tf.ReadVariableOp"(%arg2) {device = ""} : (tensor<*x!tf.resource<tensor<8xf32>>>) -> tensor<8xf32>
+     "tf.LoadTPUEmbeddingAdagradParameters"(%0, %1) {config = "", num_shards = 1 : i64, shard_id = 0 : i64, table_id = -1 : i64, table_name = "table1"} : (tensor<8xf32>, tensor<8xf32>) -> ()
+     %3 = "tf.ReadVariableOp"(%arg3) {device = ""} : (tensor<*x!tf.resource<tensor<8xf32>>>) -> tensor<8xf32>
+     "tf.LoadTPUEmbeddingAdagradParameters"(%2, %3) {config = "", num_shards = 1 : i64, shard_id = 0 : i64, table_id = -1 : i64, table_name = "table2"} : (tensor<8xf32>, tensor<8xf32>) -> ()
+     "tf.UnknownOp"() : () -> ()
+     "tf.UnknownOp"() : () -> ()
+     "tf.LoadTPUEmbeddingAdagradParameters"(%0, %1) {config = "", num_shards = 1 : i64, shard_id = 0 : i64, table_id = -1 : i64, table_name = "table3"} : (tensor<8xf32>, tensor<8xf32>) -> ()
+     "tf.LoadTPUEmbeddingAdagradParameters"(%2, %3) {config = "", num_shards = 1 : i64, shard_id = 0 : i64, table_id = -1 : i64, table_name = "table4"} : (tensor<8xf32>, tensor<8xf32>) -> ()
+     tf_executor.yield
+   }
+   tf_executor.fetch %control : !tf_executor.control
+ }
+ return
 }

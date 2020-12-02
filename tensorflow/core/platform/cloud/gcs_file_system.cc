@@ -25,6 +25,7 @@ limitations under the License.
 #include <fstream>
 #include <vector>
 
+#include "tensorflow/core/platform/file_statistics.h"
 #include "tensorflow/core/platform/strcat.h"
 #ifdef _WIN32
 #include <io.h>  // for _mktemp
@@ -405,6 +406,11 @@ typedef std::function<Status(const string& session_uri, uint64 file_size,
                              uint64* uploaded)>
     StatusPoller;
 
+// Function object declaration with params needed to poll upload status.
+typedef std::function<Status(const string& fname, const string& bucket,
+                             const string& object, int64* generation)>
+    GenerationGetter;
+
 /// \brief GCS-based implementation of a writeable file.
 ///
 /// Since GCS objects are immutable, this implementation writes to a local
@@ -417,7 +423,8 @@ class GcsWritableFile : public WritableFile {
                   std::function<void()> file_cache_erase,
                   RetryConfig retry_config, bool compose_append,
                   SessionCreator session_creator,
-                  ObjectUploader object_uploader, StatusPoller status_poller)
+                  ObjectUploader object_uploader, StatusPoller status_poller,
+                  GenerationGetter generation_getter)
       : bucket_(bucket),
         object_(object),
         filesystem_(filesystem),
@@ -429,7 +436,8 @@ class GcsWritableFile : public WritableFile {
         start_offset_(0),
         session_creator_(std::move(session_creator)),
         object_uploader_(std::move(object_uploader)),
-        status_poller_(std::move(status_poller)) {
+        status_poller_(std::move(status_poller)),
+        generation_getter_(std::move(generation_getter)) {
     // TODO: to make it safer, outfile_ should be constructed from an FD
     VLOG(3) << "GcsWritableFile: " << GetGcsPath();
     if (GetTmpFilename(&tmp_content_filename_).ok()) {
@@ -449,7 +457,8 @@ class GcsWritableFile : public WritableFile {
                   std::function<void()> file_cache_erase,
                   RetryConfig retry_config, bool compose_append,
                   SessionCreator session_creator,
-                  ObjectUploader object_uploader, StatusPoller status_poller)
+                  ObjectUploader object_uploader, StatusPoller status_poller,
+                  GenerationGetter generation_getter)
       : bucket_(bucket),
         object_(object),
         filesystem_(filesystem),
@@ -461,7 +470,8 @@ class GcsWritableFile : public WritableFile {
         start_offset_(0),
         session_creator_(std::move(session_creator)),
         object_uploader_(std::move(object_uploader)),
-        status_poller_(std::move(status_poller)) {
+        status_poller_(std::move(status_poller)),
+        generation_getter_(std::move(generation_getter)) {
     VLOG(3) << "GcsWritableFile: " << GetGcsPath() << "with existing file "
             << tmp_content_filename;
     tmp_content_filename_ = tmp_content_filename;
@@ -632,31 +642,39 @@ class GcsWritableFile : public WritableFile {
   /// Appends the data of append_object to the original object and deletes
   /// append_object.
   Status AppendObject(string append_object) {
-    VLOG(3) << "AppendObject: " << GetGcsPathWithObject(append_object) << " to "
-            << GetGcsPath();
-    std::unique_ptr<HttpRequest> request;
-    TF_RETURN_IF_ERROR(filesystem_->CreateHttpRequest(&request));
+    const string append_object_path = GetGcsPathWithObject(append_object);
+    VLOG(3) << "AppendObject: " << append_object_path << " to " << GetGcsPath();
 
-    request->SetUri(strings::StrCat(kGcsUriBase, "b/", bucket_, "/o/",
-                                    request->EscapeString(object_),
-                                    "/compose"));
+    int64 generation = 0;
+    TF_RETURN_IF_ERROR(
+        generation_getter_(GetGcsPath(), bucket_, object_, &generation));
 
-    const string request_body =
-        strings::StrCat("{'sourceObjects': [{'name': '", object_,
-                        "'},{'name': '", append_object, "'}]}");
-    request->SetTimeouts(timeouts_->connect, timeouts_->idle,
-                         timeouts_->metadata);
-    request->AddHeader("content-type", "application/json");
-    request->SetPostFromBuffer(request_body.c_str(), request_body.size());
-    return RetryingUtils::CallWithRetries(
-        [&request, &append_object, this]() {
+    TF_RETURN_IF_ERROR(RetryingUtils::CallWithRetries(
+        [&append_object, &generation, this]() {
+          std::unique_ptr<HttpRequest> request;
+          TF_RETURN_IF_ERROR(filesystem_->CreateHttpRequest(&request));
+
+          request->SetUri(strings::StrCat(kGcsUriBase, "b/", bucket_, "/o/",
+                                          request->EscapeString(object_),
+                                          "/compose"));
+
+          const string request_body = strings::StrCat(
+              "{'sourceObjects': [{'name': '", object_,
+              "','objectPrecondition':{'ifGenerationMatch':", generation,
+              "}},{'name': '", append_object, "'}]}");
+          request->SetTimeouts(timeouts_->connect, timeouts_->idle,
+                               timeouts_->metadata);
+          request->AddHeader("content-type", "application/json");
+          request->SetPostFromBuffer(request_body.c_str(), request_body.size());
           TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(),
                                           " when composing to ", GetGcsPath());
-          TF_RETURN_WITH_CONTEXT_IF_ERROR(
-              filesystem_->DeleteFile(GetGcsPathWithObject(append_object),
-                                      nullptr),
-              " when cleaning up.");
           return Status::OK();
+        },
+        retry_config_));
+
+    return RetryingUtils::DeleteWithRetries(
+        [&append_object_path, this]() {
+          return filesystem_->DeleteFile(append_object_path, nullptr);
         },
         retry_config_);
   }
@@ -712,6 +730,7 @@ class GcsWritableFile : public WritableFile {
   const SessionCreator session_creator_;
   const ObjectUploader object_uploader_;
   const StatusPoller status_poller_;
+  const GenerationGetter generation_getter_;
 };
 
 class GcsReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
@@ -1265,10 +1284,23 @@ Status GcsFileSystem::NewWritableFile(const string& fname,
                                       completed, uploaded);
   };
 
+  auto generation_getter = [this](const string& fname, const string& bucket,
+                                  const string& object, int64* generation) {
+    GcsFileStat stat;
+    TF_RETURN_IF_ERROR(RetryingUtils::CallWithRetries(
+        [&fname, &bucket, &object, &stat, this]() {
+          return UncachedStatForObject(fname, bucket, object, &stat);
+        },
+        retry_config_));
+    *generation = stat.generation_number;
+    return Status::OK();
+  };
+
   result->reset(new GcsWritableFile(
       bucket, object, this, &timeouts_,
       [this, fname]() { ClearFileCaches(fname); }, retry_config_,
-      compose_append_, session_creator, object_uploader, status_poller));
+      compose_append_, session_creator, object_uploader, status_poller,
+      generation_getter));
   return Status::OK();
 }
 
@@ -1294,6 +1326,9 @@ Status GcsFileSystem::NewAppendableFile(const string& fname,
     if (status.ok()) {
       old_content << read_chunk;
       offset += kReadAppendableFileBufferSize;
+    } else if (status.code() == error::NOT_FOUND) {
+      // New file, there is no existing content in it.
+      break;
     } else if (status.code() == error::OUT_OF_RANGE) {
       // Expected, this means we reached EOF.
       old_content << read_chunk;
@@ -1326,13 +1361,26 @@ Status GcsFileSystem::NewAppendableFile(const string& fname,
                                       completed, uploaded);
   };
 
+  auto generation_getter = [this](const string& fname, const string& bucket,
+                                  const string& object, int64* generation) {
+    GcsFileStat stat;
+    TF_RETURN_IF_ERROR(RetryingUtils::CallWithRetries(
+        [&fname, &bucket, &object, &stat, this]() {
+          return UncachedStatForObject(fname, bucket, object, &stat);
+        },
+        retry_config_));
+    *generation = stat.generation_number;
+    return Status::OK();
+  };
+
   // Create a writable file and pass the old content to it.
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
   result->reset(new GcsWritableFile(
       bucket, object, this, old_content_filename, &timeouts_,
       [this, fname]() { ClearFileCaches(fname); }, retry_config_,
-      compose_append_, session_creator, object_uploader, status_poller));
+      compose_append_, session_creator, object_uploader, status_poller,
+      generation_getter));
   return Status::OK();
 }
 

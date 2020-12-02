@@ -129,6 +129,18 @@ TEST(ElementwiseOneArgumentTest, Log) {
               Pointwise(FloatNear(1e-6), {0.0, 1.14473, 0.0, 0.0}));
 }
 
+TEST(ElementwiseOneArgumentTest, Neg) {
+  OperationType op_type = OperationType::NEG;
+  const BHWC shape(1, 2, 2, 1);
+  SingleOpModel model({/*type=*/ToString(op_type), /*attributes=*/{}},
+                      /*inputs=*/{GetTensorRef(0, shape)},
+                      /*outputs=*/{GetTensorRef(1, shape)});
+  ASSERT_TRUE(model.PopulateTensor(0, {1.0, -3.1415926, 0.0, 1.0}));
+  ASSERT_OK(model.Invoke(*NewElementwiseNodeShader(op_type)));
+  EXPECT_THAT(model.GetOutput(0),
+              Pointwise(FloatNear(1e-6), {-1.0, 3.1415926, 0.0, -1.0}));
+}
+
 TEST(ElementwiseOneArgumentTest, Rsqrt) {
   OperationType op_type = OperationType::RSQRT;
   const BHWC shape(1, 2, 2, 1);

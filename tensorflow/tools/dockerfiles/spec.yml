@@ -39,41 +39,43 @@ releases:
             - "{_TAG_PREFIX}{ubuntu}{jupyter}"
     onednn:
         tag_specs:
-            - "{_TAG_PREFIX}{ubuntu-onednn}"
-            - "{_TAG_PREFIX}{ubuntu-onednn}{onednn-jupyter}"
-            - "{_TAG_PREFIX}{ubuntu-devel-onednn}"
-            - "{_TAG_PREFIX}{ubuntu-devel-onednn}{onednn-jupyter}"
-            - "{_TAG_PREFIX}{ubuntu-onednn-mpi-horovod}"
-            - "{_TAG_PREFIX}{ubuntu-onednn-mpi-horovod}{onednn-jupyter}"
-            - "{_TAG_PREFIX}{ubuntu-devel-onednn-mpi-horovod}"
-            - "{_TAG_PREFIX}{ubuntu-devel-onednn-mpi-horovod}{onednn-jupyter}"
-            - "{_TAG_PREFIX}{ubuntu-onednn-mpich-horovod}"
-            - "{_TAG_PREFIX}{ubuntu-onednn-mpich-horovod}{onednn-jupyter}"
-            - "{_TAG_PREFIX}{ubuntu-devel-onednn-mpich-horovod}"
-            - "{_TAG_PREFIX}{ubuntu-devel-onednn-mpich-horovod}{onednn-jupyter}"
+            - "{_TAG_PREFIX}{devel-onednn}"
+            - "{_TAG_PREFIX}{devel-onednn-mpich-horovod}"
+            - "{_TAG_PREFIX}{devel-onednn-mpich-horovod}{onednn-jupyter}"
+            - "{_TAG_PREFIX}{devel-onednn-mpi-horovod}"
+            - "{_TAG_PREFIX}{devel-onednn-mpi-horovod}{onednn-jupyter}"
+            - "{_TAG_PREFIX}{devel-onednn}{onednn-jupyter}"
+            - "{_TAG_PREFIX}{onednn}"
+            - "{_TAG_PREFIX}{onednn-mpich-horovod}"
+            - "{_TAG_PREFIX}{onednn-mpich-horovod}{onednn-jupyter}"
+            - "{_TAG_PREFIX}{onednn-mpi-horovod}"
+            - "{_TAG_PREFIX}{onednn-mpi-horovod}{onednn-jupyter}"
+            - "{_TAG_PREFIX}{onednn}{onednn-jupyter}"
+            - "{_TAG_PREFIX}{onednn}{onednn-jupyter}"
 
     # Dockerfiles stored in the TF repo; not pushed anywhere
     dockerfiles:
         is_dockerfiles: true
         upload_images: false
         tag_specs:
-            - "{ubuntu}{jupyter}"
-            - "{ubuntu-devel}{jupyter}"
-            - "{ubuntu-ppc64le}{jupyter}"
-            - "{ubuntu-devel-ppc64le}{jupyter}"
-            - "{ubuntu-onednn}"
-            - "{ubuntu-onednn}{onednn-jupyter}"
-            - "{ubuntu-devel-onednn}"
-            - "{ubuntu-devel-onednn}{onednn-jupyter}"
-            - "{ubuntu-onednn-mpi-horovod}"
-            - "{ubuntu-devel-onednn-mpi-horovod}"
-            - "{ubuntu-onednn-mpi-horovod}{onednn-jupyter}"
-            - "{ubuntu-devel-onednn-mpi-horovod}{onednn-jupyter}"
-            - "{ubuntu-onednn-mpich-horovod}"
-            - "{ubuntu-devel-onednn-mpich-horovod}"
-            - "{ubuntu-onednn-mpich-horovod}{onednn-jupyter}"
-            - "{ubuntu-devel-onednn-mpich-horovod}{onednn-jupyter}"
+            - "{devel-onednn}"
+            - "{devel-onednn-mpich-horovod}"
+            - "{devel-onednn-mpich-horovod}{onednn-jupyter}"
+            - "{devel-onednn-mpi-horovod}"
+            - "{devel-onednn-mpi-horovod}{onednn-jupyter}"
+            - "{devel-onednn}{onednn-jupyter}"
+            - "{devel-onednn}{onednn-jupyter}"
+            - "{onednn}"
+            - "{onednn-mpich-horovod}"
+            - "{onednn-mpich-horovod}{onednn-jupyter}"
+            - "{onednn-mpi-horovod}"
+            - "{onednn-mpi-horovod}{onednn-jupyter}"
+            - "{onednn}{onednn-jupyter}"
             - "{ubuntu-devel-arm64v8}{jupyter}"
+            - "{ubuntu-devel}{jupyter}"
+            - "{ubuntu-devel-ppc64le}{jupyter}"
+            - "{ubuntu}{jupyter}"
+            - "{ubuntu-ppc64le}{jupyter}"
 
 slice_sets:
 
@@ -87,7 +89,7 @@ slice_sets:
         - add_to_name: ""
         - add_to_name: "-jupyter"
           partials:
-              - onednn/ubuntu/jupyter
+              - onednn/jupyter
 
     ubuntu:
         - add_to_name: ""
@@ -155,9 +157,9 @@ slice_sets:
               - UBUNTU_VERSION=18.04
               - CHECKOUT_TF_SRC=1
 
-    ubuntu-onednn:
-        - add_to_name: "-16.04-onednn"
-          dockerfile_exclusive_name: "ubuntu-16.04-onednn"
+    onednn:
+        - add_to_name: "-16.04"
+          dockerfile_exclusive_name: "ubuntu-16.04"
           dockerfile_subdirectory: "onednn"
           partials:
               - onednn/ubuntu/version
@@ -170,8 +172,8 @@ slice_sets:
           args:
               - TF_PACKAGE=intel-tensorflow
               - UBUNTU_VERSION=16.04
-        - add_to_name: "-18.04-onednn"
-          dockerfile_exclusive_name: "ubuntu-18.04-onednn"
+        - add_to_name: "-18.04"
+          dockerfile_exclusive_name: "ubuntu-18.04"
           dockerfile_subdirectory: "onednn"
           partials:
               - onednn/ubuntu/version
@@ -184,8 +186,8 @@ slice_sets:
           args:
               - TF_PACKAGE=intel-tensorflow
               - UBUNTU_VERSION=18.04
-        - add_to_name: "-20.04-onednn"
-          dockerfile_exclusive_name: "ubuntu-20.04-onednn"
+        - add_to_name: "-20.04"
+          dockerfile_exclusive_name: "ubuntu-20.04"
           dockerfile_subdirectory: "onednn"
           partials:
               - onednn/ubuntu/version
@@ -199,10 +201,25 @@ slice_sets:
               - TF_PACKAGE=intel-tensorflow
               - UBUNTU_VERSION=20.04
               - PYTHON=python3.7
+        - add_to_name: "-8"
+          dockerfile_exclusive_name: "centos-8"
+          dockerfile_subdirectory: "onednn"
+          partials:
+              - onednn/centos/version
+              - onednn/centos/cpu
+              - onednn/centos/python
+              - tensorflow
+              - shell
+          tests:
+              - import-onednn.sh
+          args:
+              - TF_PACKAGE=intel-tensorflow
+              - CENTOS_VERSION=8
+              - PYTHON=python3
 
-    ubuntu-devel-onednn:
-        - add_to_name: "-16.04-devel-onednn"
-          dockerfile_exclusive_name: "ubuntu-16.04-devel-onednn"
+    devel-onednn:
+        - add_to_name: "-16.04-devel"
+          dockerfile_exclusive_name: "ubuntu-16.04-devel"
           dockerfile_subdirectory: "onednn"
           partials:
               - onednn/ubuntu/version
@@ -216,8 +233,8 @@ slice_sets:
               - UBUNTU_VERSION=16.04
               - CHECKOUT_TF_SRC=1
               - TF_BRANCH=master
-        - add_to_name: "-18.04-devel-onednn"
-          dockerfile_exclusive_name: "ubuntu-18.04-devel-onednn"
+        - add_to_name: "-18.04-devel"
+          dockerfile_exclusive_name: "ubuntu-18.04-devel"
           dockerfile_subdirectory: "onednn"
           partials:
               - onednn/ubuntu/version
@@ -231,8 +248,8 @@ slice_sets:
               - UBUNTU_VERSION=18.04
               - CHECKOUT_TF_SRC=1
               - TF_BRANCH=master
-        - add_to_name: "-20.04-devel-onednn"
-          dockerfile_exclusive_name: "ubuntu-20.04-devel-onednn"
+        - add_to_name: "-20.04-devel"
+          dockerfile_exclusive_name: "ubuntu-20.04-devel"
           dockerfile_subdirectory: "onednn"
           partials:
               - onednn/ubuntu/version
@@ -247,10 +264,27 @@ slice_sets:
               - PYTHON=python3.7
               - CHECKOUT_TF_SRC=1
               - TF_BRANCH=master
+        - add_to_name: "-8-devel"
+          dockerfile_exclusive_name: "centos-8-devel"
+          dockerfile_subdirectory: "onednn"
+          partials:
+              - onednn/centos/version
+              - onednn/centos/devel
+              - onednn/centos/python
+              - onednn/centos/bazel
+              - shell
+          tests:
+              - ""
+          args:
+              - CENTOS_VERSION=8
+              - CHECKOUT_TF_SRC=1
+              - TF_BRANCH=master
+              - PYTHON=python3
 
-    ubuntu-onednn-mpi-horovod:
-        - add_to_name: "-16.04-onednn-mpi-horovod"
-          dockerfile_exclusive_name: "ubuntu-16.04-onednn-mpi-horovod"
+
+    onednn-mpi-horovod:
+        - add_to_name: "-16.04-mpi-horovod"
+          dockerfile_exclusive_name: "ubuntu-16.04-mpi-horovod"
           dockerfile_subdirectory: "onednn"
           partials:
               - onednn/ubuntu/version
@@ -266,8 +300,8 @@ slice_sets:
               - UBUNTU_VERSION=16.04
               - DEBIAN_FRONTEND="noninteractive"
               - TF_PACKAGE=intel-tensorflow
-        - add_to_name: "-18.04-onednn-mpi-horovod"
-          dockerfile_exclusive_name: "ubuntu-18.04-onednn-mpi-horovod"
+        - add_to_name: "-18.04-mpi-horovod"
+          dockerfile_exclusive_name: "ubuntu-18.04-mpi-horovod"
           dockerfile_subdirectory: "onednn"
           partials:
               - onednn/ubuntu/version
@@ -283,8 +317,8 @@ slice_sets:
               - UBUNTU_VERSION=18.04
               - DEBIAN_FRONTEND="noninteractive"
               - TF_PACKAGE=intel-tensorflow
-        - add_to_name: "-20.04-onednn-mpi-horovod"
-          dockerfile_exclusive_name: "ubuntu-20.04-onednn-mpi-horovod"
+        - add_to_name: "-20.04-mpi-horovod"
+          dockerfile_exclusive_name: "ubuntu-20.04-mpi-horovod"
           dockerfile_subdirectory: "onednn"
           partials:
               - onednn/ubuntu/version
@@ -301,10 +335,28 @@ slice_sets:
               - PYTHON=python3.7
               - DEBIAN_FRONTEND="noninteractive"
               - TF_PACKAGE=intel-tensorflow
+        - add_to_name: "-8-mpi-horovod"
+          dockerfile_exclusive_name: "centos-8-mpi-horovod"
+          dockerfile_subdirectory: "onednn"
+          partials:
+              - onednn/centos/version
+              - onednn/centos/cpu
+              - onednn/centos/python
+              - tensorflow
+              - onednn/centos/mpi
+              - onednn/centos/horovod
+              - shell
+          tests:
+              - import-onednn-horovod.sh
+          args:
+              - CENTOS_VERSION=8
+              - PYTHON=python3
+              - HOROVOD_VERSION=0.19.5
+              - TF_PACKAGE=intel-tensorflow
 
-    ubuntu-devel-onednn-mpi-horovod:
-        - add_to_name: "-16.04-onednn-devel-mpi-horovod"
-          dockerfile_exclusive_name: "ubuntu-16.04-devel-onednn-mpi-horovod"
+    devel-onednn-mpi-horovod:
+        - add_to_name: "-16.04-devel-mpi-horovod"
+          dockerfile_exclusive_name: "ubuntu-16.04-devel-mpi-horovod"
           dockerfile_subdirectory: "onednn"
           partials:
               - onednn/ubuntu/version
@@ -321,8 +373,8 @@ slice_sets:
               - CHECKOUT_TF_SRC=1
               - CHECKOUT_HOROVOD_SRC=1
               - HOROVOD_BRANCH=master
-        - add_to_name: "-18.04-onednn-devel-mpi-horovod"
-          dockerfile_exclusive_name: "ubuntu-18.04-devel-onednn-mpi-horovod"
+        - add_to_name: "-18.04-devel-mpi-horovod"
+          dockerfile_exclusive_name: "ubuntu-18.04-devel-mpi-horovod"
           dockerfile_subdirectory: "onednn"
           partials:
               - onednn/ubuntu/version
@@ -339,8 +391,8 @@ slice_sets:
               - CHECKOUT_TF_SRC=1
               - CHECKOUT_HOROVOD_SRC=1
               - HOROVOD_BRANCH=master
-        - add_to_name: "-20.04-onednn-devel-mpi-horovod"
-          dockerfile_exclusive_name: "ubuntu-20.04-devel-onednn-mpi-horovod"
+        - add_to_name: "-20.04-devel-mpi-horovod"
+          dockerfile_exclusive_name: "ubuntu-20.04-devel-mpi-horovod"
           dockerfile_subdirectory: "onednn"
           partials:
               - onednn/ubuntu/version
@@ -358,10 +410,29 @@ slice_sets:
               - CHECKOUT_TF_SRC=1
               - CHECKOUT_HOROVOD_SRC=1
               - HOROVOD_BRANCH=master
+        - add_to_name: "-8-devel-mpi-horovod"
+          dockerfile_exclusive_name: "centos-8-devel-mpi-horovod"
+          dockerfile_subdirectory: "onednn"
+          partials:
+              - onednn/centos/version
+              - onednn/centos/devel
+              - onednn/centos/python
+              - onednn/centos/bazel
+              - onednn/centos/mpi
+              - onednn/centos/devel-horovod
+              - shell
+          tests:
+              - ""
+          args:
+              - CENTOS_VERSION=8
+              - PYTHON=python3
+              - CHECKOUT_TF_SRC=1
+              - CHECKOUT_HOROVOD_SRC=1
+              - HOROVOD_BRANCH=master
 
-    ubuntu-onednn-mpich-horovod:
-        - add_to_name: "-16.04-onednn-mpich-horovod"
-          dockerfile_exclusive_name: "ubuntu-16.04-onednn-mpich-horovod"
+    onednn-mpich-horovod:
+        - add_to_name: "-16.04-mpich-horovod"
+          dockerfile_exclusive_name: "ubuntu-16.04-mpich-horovod"
           dockerfile_subdirectory: "onednn"
           partials:
               - onednn/ubuntu/version
@@ -377,8 +448,8 @@ slice_sets:
               - UBUNTU_VERSION=16.04
               - DEBIAN_FRONTEND="noninteractive"
               - TF_PACKAGE=intel-tensorflow
-        - add_to_name: "-18.04-onednn-mpich-horovod"
-          dockerfile_exclusive_name: "ubuntu-18.04-onednn-mpich-horovod"
+        - add_to_name: "-18.04-mpich-horovod"
+          dockerfile_exclusive_name: "ubuntu-18.04-mpich-horovod"
           dockerfile_subdirectory: "onednn"
           partials:
               - onednn/ubuntu/version
@@ -394,8 +465,8 @@ slice_sets:
               - UBUNTU_VERSION=18.04
               - DEBIAN_FRONTEND="noninteractive"
               - TF_PACKAGE=intel-tensorflow
-        - add_to_name: "-20.04-onednn-mpich-horovod"
-          dockerfile_exclusive_name: "ubuntu-20.04-onednn-mpich-horovod"
+        - add_to_name: "-20.04-mpich-horovod"
+          dockerfile_exclusive_name: "ubuntu-20.04-mpich-horovod"
           dockerfile_subdirectory: "onednn"
           partials:
               - onednn/ubuntu/version
@@ -412,10 +483,28 @@ slice_sets:
               - PYTHON=python3.7
               - DEBIAN_FRONTEND="noninteractive"
               - TF_PACKAGE=intel-tensorflow
+        - add_to_name: "-8-mpich-horovod"
+          dockerfile_exclusive_name: "centos-8-mpich-horovod"
+          dockerfile_subdirectory: "onednn"
+          partials:
+              - onednn/centos/version
+              - onednn/centos/cpu
+              - onednn/centos/python
+              - tensorflow
+              - onednn/centos/mpich
+              - onednn/centos/horovod
+              - shell
+          tests:
+              - import-onednn-horovod.sh
+          args:
+              - CENTOS_VERSION=8
+              - PYTHON=python3
+              - HOROVOD_VERSION=0.19.5
+              - TF_PACKAGE=intel-tensorflow
 
-    ubuntu-devel-onednn-mpich-horovod:
-        - add_to_name: "-16.04-onednn-devel-mpich-horovod"
-          dockerfile_exclusive_name: "ubuntu-16.04-devel-onednn-mpich-horovod"
+    devel-onednn-mpich-horovod:
+        - add_to_name: "-16.04-devel-mpich-horovod"
+          dockerfile_exclusive_name: "ubuntu-16.04-devel-mpich-horovod"
           dockerfile_subdirectory: "onednn"
           partials:
               - onednn/ubuntu/version
@@ -432,8 +521,8 @@ slice_sets:
               - CHECKOUT_TF_SRC=1
               - CHECKOUT_HOROVOD_SRC=1
               - HOROVOD_BRANCH=master
-        - add_to_name: "-18.04-onednn-devel-mpich-horovod"
-          dockerfile_exclusive_name: "ubuntu-18.04-devel-onednn-mpich-horovod"
+        - add_to_name: "-18.04-devel-mpich-horovod"
+          dockerfile_exclusive_name: "ubuntu-18.04-devel-mpich-horovod"
           dockerfile_subdirectory: "onednn"
           partials:
               - onednn/ubuntu/version
@@ -450,8 +539,8 @@ slice_sets:
               - CHECKOUT_TF_SRC=1
               - CHECKOUT_HOROVOD_SRC=1
               - HOROVOD_BRANCH=master
-        - add_to_name: "-20.04-onednn-devel-mpich-horovod"
-          dockerfile_exclusive_name: "ubuntu-20.04-devel-onednn-mpich-horovod"
+        - add_to_name: "-20.04-devel-mpich-horovod"
+          dockerfile_exclusive_name: "ubuntu-20.04-devel-mpich-horovod"
           dockerfile_subdirectory: "onednn"
           partials:
               - onednn/ubuntu/version
@@ -469,99 +558,25 @@ slice_sets:
               - CHECKOUT_TF_SRC=1
               - CHECKOUT_HOROVOD_SRC=1
               - HOROVOD_BRANCH=master
-
-    ubuntu-onednn:
-        - add_to_name: "-16.04-onednn"
-          dockerfile_exclusive_name: "ubuntu-16.04-onednn"
+        - add_to_name: "-8-devel-mpich-horovod"
+          dockerfile_exclusive_name: "centos-8-devel-mpich-horovod"
           dockerfile_subdirectory: "onednn"
           partials:
-              - onednn/ubuntu/version
-              - onednn/ubuntu/cpu
-              - onednn/ubuntu/python
-              - tensorflow
-              - shell
-          tests:
-              - import-onednn.sh
-          args:
-              - TF_PACKAGE=intel-tensorflow
-              - UBUNTU_VERSION=16.04
-        - add_to_name: "-18.04-onednn"
-          dockerfile_exclusive_name: "ubuntu-18.04-onednn"
-          dockerfile_subdirectory: "onednn"
-          partials:
-              - onednn/ubuntu/version
-              - onednn/ubuntu/cpu
-              - onednn/ubuntu/python
-              - tensorflow
-              - shell
-          tests:
-              - import-onednn.sh
-          args:
-              - TF_PACKAGE=intel-tensorflow
-              - UBUNTU_VERSION=18.04
-        - add_to_name: "-20.04-onednn"
-          dockerfile_exclusive_name: "ubuntu-20.04-onednn"
-          dockerfile_subdirectory: "onednn"
-          partials:
-              - onednn/ubuntu/version
-              - onednn/ubuntu/cpu
-              - onednn/ubuntu/python3
-              - tensorflow
-              - shell
-          tests:
-              - import-onednn.sh
-          args:
-              - TF_PACKAGE=intel-tensorflow
-              - UBUNTU_VERSION=20.04
-              - PYTHON=python3.7
-
-    ubuntu-devel-onednn:
-        - add_to_name: "-16.04-devel-onednn"
-          dockerfile_exclusive_name: "ubuntu-16.04-devel-onednn"
-          dockerfile_subdirectory: "onednn"
-          partials:
-              - onednn/ubuntu/version
-              - onednn/ubuntu/devel
-              - onednn/ubuntu/python
-              - onednn/ubuntu/bazel
+              - onednn/centos/version
+              - onednn/centos/devel
+              - onednn/centos/python
+              - onednn/centos/bazel
+              - onednn/centos/mpich
+              - onednn/centos/devel-horovod
               - shell
           tests:
               - ""
           args:
-              - UBUNTU_VERSION=16.04
+              - CENTOS_VERSION=8
+              - PYTHON=python3
               - CHECKOUT_TF_SRC=1
-              - TF_BRANCH=master
-        - add_to_name: "-18.04-devel-onednn"
-          dockerfile_exclusive_name: "ubuntu-18.04-devel-onednn"
-          dockerfile_subdirectory: "onednn"
-          partials:
-              - onednn/ubuntu/version
-              - onednn/ubuntu/devel
-              - onednn/ubuntu/python
-              - onednn/ubuntu/bazel
-              - shell
-          tests:
-              - ""
-          args:
-              - UBUNTU_VERSION=18.04
-              - CHECKOUT_TF_SRC=1
-              - TF_BRANCH=master
-        - add_to_name: "-20.04-devel-onednn"
-          dockerfile_exclusive_name: "ubuntu-20.04-devel-onednn"
-          dockerfile_subdirectory: "onednn"
-          partials:
-              - onednn/ubuntu/version
-              - onednn/ubuntu/devel
-              - onednn/ubuntu/python3
-              - onednn/ubuntu/bazel
-              - shell
-          tests:
-              - ""
-          args:
-              - UBUNTU_VERSION=20.04
-              - PYTHON=python3.7
-              - CHECKOUT_TF_SRC=1
-              - TF_BRANCH=master
+              - CHECKOUT_HOROVOD_SRC=1
+              - HOROVOD_BRANCH=master
 
     ubuntu-ppc64le:
         - add_to_name: "-ppc64le"

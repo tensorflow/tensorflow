@@ -28,6 +28,9 @@ double GetFlopMaxThroughputPerSM(const DeviceCapabilities& device_cap);
 
 HardwareType ParseHardwareType(absl::string_view device_type);
 
+// Returns true if the given hardware type has a device.
+bool HasDevice(HardwareType x);
+
 }  // namespace profiler
 }  // namespace tensorflow
 

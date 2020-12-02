@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -104,6 +105,19 @@ TEST_F(DynamismInferenceTest, ScalarInt32Literal) {
   }
 }
 
+TEST_F(DynamismInferenceTest, Iota) {
+  // The output of iota are consistened static.
+  for (ClientType client_type : client_types) {
+    Client* client = ClientOrDie(platform_, client_type);
+    XlaBuilder b(TestName());
+    auto computation = Iota(&b, S32, 2);
+    // Iota is not dynamic.
+    EXPECT_FALSE(ComputeDynamismLiteral(client, computation, &b)
+                     .ValueOrDie()
+                     .Get<bool>({0}));
+  }
+}
+
 TEST_F(DynamismInferenceTest, TupleSimple) {
   for (ClientType client_type : client_types) {
     Client* client = ClientOrDie(platform_, client_type);
@@ -144,8 +158,7 @@ TEST_F(DynamismInferenceTest, PredValueUsedTwice) {
     auto p = Parameter(&b, 0, ShapeUtil::MakeScalarShape(S32), "p0");
     auto pred = Eq(c, p);
     auto result = Select(pred, p, c);
-    EXPECT_EQ(ComputeDynamismScalar(client, result, &b, {}).ValueOrDie(),
-              false);
+    EXPECT_EQ(ComputeDynamismScalar(client, result, &b, {}).ValueOrDie(), true);
   }
 }
 
@@ -235,6 +248,72 @@ TEST_F(DynamismInferenceTest, GetDimensionSize) {
               true);
     EXPECT_EQ(ComputeDynamismScalar(client, tuple_2, &b, {1}).ValueOrDie(),
               false);
+  }
+}
+
+TEST_F(DynamismInferenceTest, GatherWithCommonParent) {
+  for (ClientType client_type : client_types) {
+    Client* client = ClientOrDie(platform_, client_type);
+    XlaBuilder b(TestName());
+    // Test the analysis on a gather where first operand and second operand have
+    // common parents.
+    Shape indices_shape = ShapeUtil::MakeShape(S32, {2});
+
+    auto operand1 = Parameter(&b, 0, indices_shape, "p1");
+    auto operand2 = Parameter(&b, 1, indices_shape, "p2");
+    auto indices = Sub(operand1, operand2);
+    GatherDimensionNumbers dim_numbers;
+    dim_numbers.add_offset_dims(1);
+    dim_numbers.add_start_index_map(0);
+    dim_numbers.set_index_vector_dim(1);
+    auto gather = Gather(operand1, indices, dim_numbers, {1});
+    ASSERT_TRUE(b.first_error().ok()) << b.first_error().error_message();
+    EXPECT_TRUE(ComputeDynamismLiteral(client, gather, &b)
+                    .ValueOrDie()
+                    .Get<bool>({0, 0}));
+  }
+}
+
+TEST_F(DynamismInferenceTest, GatherWithConstantParent) {
+  for (ClientType client_type : client_types) {
+    Client* client = ClientOrDie(platform_, client_type);
+    XlaBuilder b(TestName());
+    // Test the analysis on a gather.
+    Shape indices_shape = ShapeUtil::MakeShape(S32, {2});
+    auto data_operand = ConstantR1<int32>(&b, {1, 2});
+    auto indices = ConstantR1<int32>(&b, {1, 2});
+    GatherDimensionNumbers dim_numbers;
+    dim_numbers.add_offset_dims(1);
+    dim_numbers.add_start_index_map(0);
+    dim_numbers.set_index_vector_dim(1);
+    auto gather = Gather(data_operand, indices, dim_numbers, {1});
+    ASSERT_TRUE(b.first_error().ok()) << b.first_error().error_message();
+    // Everything is constant, result is also contant.
+    EXPECT_FALSE(ComputeDynamismLiteral(client, gather, &b)
+                     .ValueOrDie()
+                     .Get<bool>({0, 0}));
+  }
+}
+
+TEST_F(DynamismInferenceTest, GatherWithSharedConstantParent) {
+  for (ClientType client_type : client_types) {
+    Client* client = ClientOrDie(platform_, client_type);
+    XlaBuilder b(TestName());
+    // Test the analysis on a gather.
+    Shape indices_shape = ShapeUtil::MakeShape(S32, {2});
+    auto operand1 = ConstantR1<int32>(&b, {1, 2});
+    auto operand2 = ConstantR1<int32>(&b, {1, 2});
+    auto indices = Sub(operand1, operand2);
+    GatherDimensionNumbers dim_numbers;
+    dim_numbers.add_offset_dims(1);
+    dim_numbers.add_start_index_map(0);
+    dim_numbers.set_index_vector_dim(1);
+    auto gather = Gather(operand1, indices, dim_numbers, {1});
+    ASSERT_TRUE(b.first_error().ok()) << b.first_error().error_message();
+    // Everything is constant, result is also contant.
+    EXPECT_FALSE(ComputeDynamismLiteral(client, gather, &b)
+                     .ValueOrDie()
+                     .Get<bool>({0, 0}));
   }
 }
 

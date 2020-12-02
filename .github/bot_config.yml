@@ -12,12 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-#
-# THIS IS A GENERATED DOCKERFILE.
-#
-# This file was assembled from multiple pieces, whose use is documented
-# throughout. Please refer to the TensorFlow dockerfiles documentation
-# for more information.
 
 # A list of assignees
 assignees:

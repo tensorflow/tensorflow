@@ -188,6 +188,16 @@ struct SpaceToDepthOpFunctor<CPUDevice, T, FORMAT_NHWC> {
     }
   }
 };
+
+#ifdef WIN32
+template <typename T>
+struct SpaceToDepthOpFunctor<CPUDevice, T, FORMAT_NCHW> {
+  void operator()(const CPUDevice& d, typename TTypes<T, 4>::ConstTensor input,
+                  int block_size, typename TTypes<T, 4>::Tensor output) {
+    LOG(FATAL) << "Trivial implementation to make debug build compile.";
+  }
+};
+#endif
 }  // namespace functor
 
 #define REGISTER(type)                                                \

@@ -325,7 +325,7 @@ def prepare_inputs(data, use_dict, use_dataset, action, input_name):
 @keras_parameterized.run_with_all_model_types
 @keras_parameterized.run_all_keras_modes
 @parameterized.named_parameters(
-    *test_util.generate_combinations_with_testcase_name(
+    *testing_utils.generate_combinations_with_testcase_name(
         use_dict=[True, False],
         use_dataset=[True, False],
         action=["predict", "evaluate", "fit"]))
@@ -490,7 +490,7 @@ class ScipySparseTensorInputTest(keras_parameterized.TestCase,
 @keras_parameterized.run_with_all_model_types
 @keras_parameterized.run_all_keras_modes
 @parameterized.named_parameters(
-    *test_util.generate_combinations_with_testcase_name(
+    *testing_utils.generate_combinations_with_testcase_name(
         use_dict=[True, False],
         use_dataset=[True, False],
         action=["predict", "evaluate", "fit"]))
@@ -537,7 +537,7 @@ class RaggedTensorInputTest(keras_parameterized.TestCase,
 @keras_parameterized.run_with_all_model_types
 @keras_parameterized.run_all_keras_modes
 @parameterized.named_parameters(
-    *test_util.generate_combinations_with_testcase_name(
+    *testing_utils.generate_combinations_with_testcase_name(
         use_dict=[True, False], use_dataset=[True, False]))
 class RaggedTensorInputValidationTest(keras_parameterized.TestCase,
                                       test_util.TensorFlowTestCase):

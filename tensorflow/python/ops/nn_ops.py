@@ -2526,8 +2526,13 @@ def conv2d_transpose_v2(
       value is given it is replicated in the `H` and `W` dimension. By default
       the `N` and `C` dimensions are set to 0. The dimension order is determined
       by the value of `data_format`, see below for details.
-    padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm. See
-      the "returns" section of `tf.nn.convolution` for details.
+    padding: Either the `string `"SAME"` or `"VALID"` indicating the type of
+      padding algorithm to use, or a list indicating the explicit paddings at
+      the start and end of each dimension. When explicit padding is used and
+      data_format is `"NHWC"`, this should be in the form `[[0, 0], [pad_top,
+      pad_bottom], [pad_left, pad_right], [0, 0]]`. When explicit padding used
+      and data_format is `"NCHW"`, this should be in the form `[[0, 0], [0, 0],
+      [pad_top, pad_bottom], [pad_left, pad_right]]`.
     data_format: A string. 'NHWC' and 'NCHW' are supported.
     dilations: An int or list of `ints` that has length `1`, `2` or `4`,
       defaults to 1. The dilation factor for each dimension of`input`. If a
@@ -2561,6 +2566,7 @@ def conv2d_transpose_v2(
 
     strides = _get_sequence(strides, 2, channel_index, "strides")
     dilations = _get_sequence(dilations, 2, channel_index, "dilations")
+    padding, explicit_paddings = convert_padding(padding)
 
     return gen_nn_ops.conv2d_backprop_input(
         input_sizes=output_shape,
@@ -2568,6 +2574,7 @@ def conv2d_transpose_v2(
         out_backprop=input,
         strides=strides,
         padding=padding,
+        explicit_paddings=explicit_paddings,
         data_format=data_format,
         dilations=dilations,
         name=name)
@@ -5136,6 +5143,19 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
     if not x_dtype.is_floating:
       raise ValueError("x has to be a floating point tensor since it's going "
                        "to be scaled. Got a %s tensor instead." % x_dtype)
+    if is_rate_number and rate == 0:
+      # Fast-path: Return the input immediately if rate is non-tensor & is `0`.
+      # We trigger this after all error checking
+      # and after `x` has been converted to a tensor, to prevent inconsistent
+      # tensor conversions/error raising if rate is changed to/from 0.
+      #
+      # We also explicitly call `random_seed.get_seed` to make sure
+      # we don't change the random number generation behavior of
+      # stateful random ops by entering a fastpath,
+      # despite not generating a random tensor in the fastpath
+      random_seed.get_seed(seed)
+      return x
+
     is_executing_eagerly = context.executing_eagerly()
     if not tensor_util.is_tensor(rate):
       if is_rate_number:
@@ -5183,12 +5203,36 @@ def top_k(input, k=1, sorted=True, name=None):  # pylint: disable=redefined-buil
   and outputs their values and indices as vectors.  Thus `values[j]` is the
   `j`-th largest entry in `input`, and its index is `indices[j]`.
 
+  >>> result = tf.math.top_k([1, 2, 98, 1, 1, 99, 3, 1, 3, 96, 4, 1],
+  ...                         k=3)
+  >>> result.values.numpy()
+  array([99, 98, 96], dtype=int32)
+  >>> result.indices.numpy()
+  array([5, 2, 9], dtype=int32)
+
   For matrices (resp. higher rank input), computes the top `k` entries in each
   row (resp. vector along the last dimension).  Thus,
 
-      values.shape = indices.shape = input.shape[:-1] + [k]
+  >>> input = tf.random.normal(shape=(3,4,5,6))
+  >>> k = 2
+  >>> values, indices  = tf.math.top_k(input, k=k)
+  >>> values.shape.as_list()
+  [3, 4, 5, 2]
+  >>>
+  >>> values.shape == indices.shape == input.shape[:-1] + [k]
+  True
+
+  The indices can be used to `gather` from a tensor who's shape matches `input`.
+
+  >>> gathered_values = tf.gather(input, indices, batch_dims=-1)
+  >>> assert tf.reduce_all(gathered_values == values)
 
   If two elements are equal, the lower-index element appears first.
+
+  >>> result = tf.math.top_k([1, 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0],
+  ...                        k=3)
+  >>> result.indices.numpy()
+  array([0, 1, 3], dtype=int32)
 
   Args:
     input: 1-D or higher `Tensor` with last dimension at least `k`.
@@ -5199,6 +5243,7 @@ def top_k(input, k=1, sorted=True, name=None):  # pylint: disable=redefined-buil
     name: Optional name for the operation.
 
   Returns:
+    A tuple with two named fields:
     values: The `k` largest elements along each last dimensional slice.
     indices: The indices of `values` within the last dimension of `input`.
   """
@@ -5395,6 +5440,19 @@ def fractional_max_pool_v2(value,
       [Graham, 2015](https://arxiv.org/abs/1412.6071)
       ([pdf](https://arxiv.org/pdf/1412.6071.pdf))
   """
+  if (isinstance(pooling_ratio, (list, tuple))):
+    if (pooling_ratio[0] != 1.0 or pooling_ratio[-1] != 1.0):
+      raise ValueError(
+          "The first and last elements of pooling ratio must be 1.0.")
+    for element in pooling_ratio:
+      if element < 1.0:
+        raise ValueError("pooling_ratio should be >= 1.0.")
+  elif (isinstance(pooling_ratio, (int, float))):
+    if pooling_ratio < 1.0:
+      raise ValueError("pooling_ratio should be >= 1.0.")
+  else:
+    raise ValueError("pooling_ratio should be an int or a list of ints.")
+
   pooling_ratio = _get_sequence(pooling_ratio, 2, 3, "pooling_ratio")
 
   if seed == 0:
@@ -5596,7 +5654,6 @@ def erosion2d(value, kernel, strides, rates, padding, name=None):
   Returns:
     A `Tensor`. Has the same type as `value`.
     4-D with shape `[batch, out_height, out_width, depth]`.
-
   Raises:
     ValueError: If the `value` depth does not match `kernel`' shape, or if
       padding is other than `'VALID'` or `'SAME'`.

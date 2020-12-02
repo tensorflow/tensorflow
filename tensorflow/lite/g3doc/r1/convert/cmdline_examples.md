@@ -104,8 +104,8 @@ tflite_convert \
   --std_dev_values=127.7
 ```
 
-*If you're setting `--inference_type=QUANTIZED_UINT8` then update
-`--mean_values=128` and `--std_dev_values=127`*
+*If you're setting `--inference_type=UINT8` then update `--mean_values=128` and
+`--std_dev_values=127`*
 
 #### Convert a model with \"dummy-quantization\" into a quantized TensorFlow Lite model
 
@@ -129,13 +129,43 @@ tflite_convert \
   --output_arrays=MobilenetV1/Predictions/Reshape_1 \
   --inference_type=INT8 \
   --mean_values=-0.5 \
-  --std_dev_values=127.7
+  --std_dev_values=127.7 \
   --default_ranges_min=0 \
-  --default_ranges_max=6 \
+  --default_ranges_max=6
 ```
 
-*If you're setting `--inference_type=QUANTIZED_UINT8` then update
-`--mean_values=128` and `--std_dev_values=127`*
+*If you're setting `--inference_type=UINT8` then update `--mean_values=128` and
+`--std_dev_values=127`*
+
+#### Convert a model with select TensorFlow operators.
+
+Since TensorFlow Lite only supports a limited number of TensorFlow operators,
+not every model is convertible. For details, refer to
+[operator compatibility](https://www.tensorflow.org/lite/guide/ops_compatibility).
+To allow conversion, users can enable the usage of
+[certain TensorFlow ops](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/flex/allowlisted_flex_ops.cc)
+in their TensorFlow Lite model, as shown in the following example.
+
+```
+tflite_convert \
+  --graph_def_file=/tmp/foo.pb \
+  --output_file=/tmp/foo.tflite \
+  --input_arrays=input \
+  --output_arrays=MobilenetV1/Predictions/Reshape_1 \
+  --target_ops=TFLITE_BUILTINS,SELECT_TF_OPS
+```
+
+When building and running `tflite_convert` with `bazel`, please pass
+`--define=tflite_convert_with_select_tf_ops=true` as an additional argument.
+
+```
+bazel run --define=tflite_convert_with_select_tf_ops=true tflite_convert -- \
+  --graph_def_file=/tmp/foo.pb \
+  --output_file=/tmp/foo.tflite \
+  --input_arrays=input \
+  --output_arrays=MobilenetV1/Predictions/Reshape_1 \
+  --target_ops=TFLITE_BUILTINS,SELECT_TF_OPS
+```
 
 #### Convert a model with multiple input arrays
 
@@ -206,53 +236,10 @@ function tends to get fused).
 
 ## Visualization <a name="visualization"></a>
 
-The converter can export a model to the Graphviz Dot format for easy
-visualization using either the `--output_format` flag or the
-`--dump_graphviz_dir` flag. The subsections below outline the use cases for
-each.
-
-### Using `--output_format=GRAPHVIZ_DOT` <a name="using_output_format_graphviz_dot"></a>
-
-The first way to get a Graphviz rendering is to pass `GRAPHVIZ_DOT` into
-`--output_format`. This results in a plausible visualization of the model. This
-reduces the requirements that exist during conversion from a TensorFlow GraphDef
-to a TensorFlow Lite model. This may be useful if the conversion to TFLite is
-failing.
-
-```
-tflite_convert \
-  --graph_def_file=/tmp/mobilenet_v1_0.50_128/frozen_graph.pb \
-  --output_file=/tmp/foo.dot \
-  --output_format=GRAPHVIZ_DOT \
-  --input_arrays=input \
-  --input_shape=1,128,128,3 \
-  --output_arrays=MobilenetV1/Predictions/Reshape_1
-
-```
-
-The resulting `.dot` file can be rendered into a PDF as follows:
-
-```
-dot -Tpdf -O /tmp/foo.dot
-```
-
-And the resulting `.dot.pdf` can be viewed in any PDF viewer, but we suggest one
-with a good ability to pan and zoom across a very large page. Google Chrome does
-well in that respect.
-
-```
-google-chrome /tmp/foo.dot.pdf
-```
-
-Example PDF files are viewable online in the next section.
-
 ### Using `--dump_graphviz_dir`
 
-The second way to get a Graphviz rendering is to pass the `--dump_graphviz_dir`
-flag, specifying a destination directory to dump Graphviz rendering to. Unlike
-the previous approach, this one retains the original output format. This
-provides a visualization of the actual model resulting from a specific
-conversion process.
+The first way to get a Graphviz rendering is to pass the `--dump_graphviz_dir`
+flag, specifying a destination directory to dump Graphviz rendering to.
 
 ```
 tflite_convert \
@@ -265,19 +252,28 @@ tflite_convert \
 
 This generates a few files in the destination directory. The two most important
 files are `toco_AT_IMPORT.dot` and `/tmp/toco_AFTER_TRANSFORMATIONS.dot`.
-`toco_AT_IMPORT.dot` represents the original model containing only the
-transformations done at import time. This tends to be a complex visualization
-with limited information about each node. It is useful in situations where a
-conversion command fails.
 
-`toco_AFTER_TRANSFORMATIONS.dot` represents the model after all transformations
-were applied to it, just before it is exported. Typically, this is a much
-smaller model with more information about each node.
+-   `toco_AT_IMPORT.dot` represents the original model containing only the
+    transformations done at import time. This tends to be a complex
+    visualization with limited information about each node. It is useful in
+    situations where a conversion command fails.
 
-As before, these can be rendered to PDFs:
+-   `toco_AFTER_TRANSFORMATIONS.dot` represents the model after all
+    transformations were applied to it, just before it is exported. Typically,
+    this is a much smaller model with more information about each node.
+
+These can be rendered to PDFs:
 
 ```
-dot -Tpdf -O /tmp/toco_*.dot
+dot -Tpdf /tmp/toco_*.dot -O
+```
+
+And the resulting `.dot.pdf` can be viewed in any PDF viewer, but we suggest one
+with a good ability to pan and zoom across a very large page. Google Chrome does
+well in that respect.
+
+```
+google-chrome /tmp/foo.dot.pdf
 ```
 
 Sample output files can be seen here below. Note that it is the same
@@ -297,6 +293,46 @@ Sample output files can be seen here below. Note that it is the same
 </tr>
 <tr><td>before</td><td>after</td></tr>
 </table>
+
+### Using `--output_format=GRAPHVIZ_DOT` <a name="using_output_format_graphviz_dot"></a>
+
+*Note: This only works when you set flag `experimental_new_converter=False`.
+Also, as this format leads to loss of TFLite specific transformations, we
+recommend that you use `--dump_graphviz_dir` instead to get a final
+visualization with all graph transformations.*
+
+The second way to get a Graphviz rendering is to pass `GRAPHVIZ_DOT` into
+`--output_format`. This results in a plausible visualization of the model. This
+reduces the requirements that exist during conversion from a TensorFlow GraphDef
+to a TensorFlow Lite model. This may be useful if the conversion to TFLite is
+failing.
+
+```
+tflite_convert \
+  --experimental_new_converter=False
+  --graph_def_file=/tmp/mobilenet_v1_0.50_128/frozen_graph.pb \
+  --output_format=GRAPHVIZ_DOT \
+  --output_file=/tmp/foo.dot \
+  --output_format=GRAPHVIZ_DOT \
+  --input_arrays=input \
+  --input_shape=1,128,128,3 \
+  --output_arrays=MobilenetV1/Predictions/Reshape_1
+
+```
+
+The resulting `.dot` file can be rendered into a PDF as follows:
+
+```
+dot -Tpdf /tmp/foo.dot -O
+```
+
+And the resulting `.dot.pdf` can be viewed in any PDF viewer, but we suggest one
+with a good ability to pan and zoom across a very large page. Google Chrome does
+well in that respect.
+
+```
+google-chrome /tmp/foo.dot.pdf
+```
 
 ### Video logging
 

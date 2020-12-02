@@ -1,3 +1,4 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
@@ -52,6 +53,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_subcomputation_unification",
         "//tensorflow/compiler/xla/service:layout_assignment",
         "//tensorflow/compiler/xla/service:map_inliner",
+        "//tensorflow/compiler/xla/service:qr_expander",
         "//tensorflow/compiler/xla/service:reshape_mover",
         "//tensorflow/compiler/xla/service:triangular_solve_expander",
         "//tensorflow/compiler/xla/service:while_loop_simplifier",
@@ -119,9 +121,9 @@ cc_library(
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:transfer_manager",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:stream_executor_no_cuda",
         "//tensorflow/core/platform:types",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:span",

@@ -45,6 +45,7 @@ std::string OneInputFunctor(OperationType op_type, const std::string& value) {
        "$0.w < FLT(0.0f) ? exp($0.w) - FLT(1.0f) : $0.w)"},
       {OperationType::EXP, "exp($0)"},
       {OperationType::LOG, "log($0)"},
+      {OperationType::NEG, "-($0)"},
       {OperationType::SQRT, "sqrt($0)"},
       {OperationType::RSQRT, "1.0 / sqrt($0)"},
       {OperationType::SQUARE, "$0 * $0"},
@@ -82,12 +83,12 @@ std::string TwoInputFunctor(OperationType op_type, const std::string& value0,
 
 }  // namespace
 
-std::vector<ComputeTaskDescriptorPtr> ElementwiseWithTwoInputs(
-    int id, std::vector<ValueId> input_ids, ValueId output_id,
-    const BHWC& second_shape, OperationType op_type) {
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = true;
+ComputeTaskDescriptor ElementwiseWithTwoInputs(std::vector<ValueId> input_ids,
+                                               ValueId output_id,
+                                               const BHWC& second_shape,
+                                               OperationType op_type) {
+  ComputeTaskDescriptor desc;
+  desc.is_linkable = true;
   const std::string x_coord = second_shape.w == 1 ? "0" : "int(gid.x)";
   const std::string y_coord = second_shape.h == 1 ? "0" : "int(gid.y)";
   const std::string s_coord = second_shape.c == 1 ? "0" : "int(gid.z)";
@@ -105,50 +106,47 @@ std::vector<ComputeTaskDescriptorPtr> ElementwiseWithTwoInputs(
   code += "  return " + TwoInputFunctor(op_type, "value", "src_1") + ";\n";
   code += "}\n";
 
-  desc->shader_source = code;
+  desc.shader_source = code;
 
-  desc->input_buffers = {
-      {input_ids[0], "device FLT4* const"},
-      {input_ids[1], "device FLT4* const"},
-  };
-  desc->output_buffer = {output_id};
+  desc.AddSrcTensor("");
+  desc.AddSrcTensor("");
+  desc.AddDstTensor("");
 
-  desc->uniform_buffers = {
+  desc.uniform_buffers = {
       {"constant int2&",
-       [input_ids](const std::map<ValueId, BHWC>& buffers) {
-         const auto& input_dim_1 = buffers.find(input_ids[1])->second;
+       [](const std::vector<BHWC>& src_shapes,
+          const std::vector<BHWC>& dst_shapes) {
          std::vector<int> uniform_params{
-             input_dim_1.w,
-             input_dim_1.h,
+             src_shapes[1].w,
+             src_shapes[1].h,
          };
          return GetByteBuffer(uniform_params);
        }},
   };
-  return {desc};
+  return desc;
 }
 
-std::vector<ComputeTaskDescriptorPtr> ElementwiseWithOneInput(
-    int id, ValueId input_id, ValueId output_id, OperationType op_type) {
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = true;
-  desc->shader_source =
+ComputeTaskDescriptor ElementwiseWithOneInput(ValueId input_id,
+                                              ValueId output_id,
+                                              OperationType op_type) {
+  ComputeTaskDescriptor desc;
+  desc.is_linkable = true;
+  desc.shader_source =
       "FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid) {\n";
-  desc->shader_source +=
+  desc.shader_source +=
       "    return " + OneInputFunctor(op_type, "value") + ";\n";
-  desc->shader_source += "  }";
+  desc.shader_source += "  }";
 
-  desc->input_buffers = {{input_id}};
-  desc->output_buffer = {output_id};
-  return {desc};
+  desc.AddSrcTensor("");
+  desc.AddDstTensor("");
+  return desc;
 }
 
-std::vector<ComputeTaskDescriptorPtr> ElementwiseWithOneInputAndConstantArguent(
-    int id, ValueId input_id, ValueId output_id, const RuntimeOptions& options,
+ComputeTaskDescriptor ElementwiseWithOneInputAndConstantArguent(
+    ValueId input_id, ValueId output_id, const RuntimeOptions& options,
     OperationType op_type, const TensorOrScalar& attr) {
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = true;
+  ComputeTaskDescriptor desc;
+  desc.is_linkable = true;
   auto scalar = absl::get_if<float>(&attr);
   auto linear_buf = absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&attr);
   auto hwc_buf = absl::get_if<Tensor<HWC, DataType::FLOAT32>>(&attr);
@@ -162,62 +160,64 @@ std::vector<ComputeTaskDescriptorPtr> ElementwiseWithOneInputAndConstantArguent(
   if (hwc_buf) {
     param_desc += ", device FLT4* const hwc_buf, int2 hwc_size";
   }
-  desc->shader_source =
+  desc.shader_source =
       "FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid" + param_desc +
       ") {\n";
   if (scalar) {
-    desc->shader_source += "     FLT4 second_arg = FLT4(scalar_val);\n";
+    desc.shader_source += "     FLT4 second_arg = FLT4(scalar_val);\n";
   } else if (linear_buf) {
-    desc->shader_source += "     FLT4 second_arg = linear_buf[gid.z];\n";
+    desc.shader_source += "     FLT4 second_arg = linear_buf[gid.z];\n";
   } else if (hwc_buf) {
     const std::string x_coord = hwc_buf->shape.w == 1 ? "0" : "int(gid.x)";
     const std::string y_coord = hwc_buf->shape.h == 1 ? "0" : "int(gid.y)";
     const std::string s_coord = hwc_buf->shape.c == 1 ? "0" : "int(gid.z)";
     std::string index = "(" + s_coord + " * hwc_size.y + " + y_coord +
                         ") * hwc_size.x + " + x_coord;
-    desc->shader_source += "  FLT4 second_arg = hwc_buf[" + index + "];\n";
+    desc.shader_source += "  FLT4 second_arg = hwc_buf[" + index + "];\n";
     if (hwc_buf->shape.c == 1) {
-      desc->shader_source += "  second_arg.y = second_arg.x;\n";
-      desc->shader_source += "  second_arg.z = second_arg.x;\n";
-      desc->shader_source += "  second_arg.w = second_arg.x;\n";
+      desc.shader_source += "  second_arg.y = second_arg.x;\n";
+      desc.shader_source += "  second_arg.z = second_arg.x;\n";
+      desc.shader_source += "  second_arg.w = second_arg.x;\n";
     }
   }
-  desc->shader_source +=
+  desc.shader_source +=
       "    return " + TwoInputFunctor(op_type, "value", "second_arg") + ";\n";
-  desc->shader_source += "  }";
+  desc.shader_source += "  }";
 
-  desc->input_buffers = {{input_id}};
-  desc->output_buffer = {output_id};
+  desc.AddSrcTensor("");
+  desc.AddDstTensor("");
   if (scalar) {
     std::vector<uint8_t> scalar_bits =
         GetByteBuffer(std::vector<float>{*scalar});
-    desc->uniform_buffers = {
+    desc.uniform_buffers = {
         {"constant float&",
-         [scalar_bits](const std::map<ValueId, BHWC>& buffers) {
+         [scalar_bits](const std::vector<BHWC>& src_shapes,
+                       const std::vector<BHWC>& dst_shapes) {
            return scalar_bits;
          }},
     };
   } else if (linear_buf) {
-    desc->immutable_buffers = {
+    desc.immutable_buffers = {
         {"device FLT4* const",
          GetByteBufferConverted(linear_buf->data, options.storage_precision)},
     };
   } else if (hwc_buf) {
     std::vector<uint8_t> size_bits =
         GetByteBuffer(std::vector<int>{hwc_buf->shape.w, hwc_buf->shape.h});
-    desc->uniform_buffers = {
+    desc.uniform_buffers = {
         {"constant int2&",
-         [size_bits](const std::map<ValueId, BHWC>& buffers) {
+         [size_bits](const std::vector<BHWC>& src_shapes,
+                     const std::vector<BHWC>& dst_shapes) {
            return size_bits;
          }},
     };
-    desc->immutable_buffers = {
+    desc.immutable_buffers = {
         {"device FLT4* const",
          GetByteBufferConverted(ConvertToPHWC4(*hwc_buf),
                                 options.storage_precision)},
     };
   }
-  return {desc};
+  return desc;
 }
 
 }  // namespace metal

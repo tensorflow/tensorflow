@@ -29,26 +29,26 @@ uint64_t CalculateProduct(const uint3& value) {
 }
 
 void MaybeShrinkWorkgroup(const GpuInfo& gpu_info, uint3* wg) {
-  while (wg->x > gpu_info.max_work_group_size[0]) {
+  while (wg->x > gpu_info.GetMaxWorkGroupSizeForX()) {
     wg->x /= 2;
   }
 
-  while (wg->y > gpu_info.max_work_group_size[1]) {
+  while (wg->y > gpu_info.GetMaxWorkGroupSizeForY()) {
     wg->y /= 2;
   }
 
-  while (wg->z > gpu_info.max_work_group_size[2]) {
+  while (wg->z > gpu_info.GetMaxWorkGroupSizeForZ()) {
     wg->z /= 2;
   }
 
   // Code below decreases amount of invocations per workgroup in a balanced way.
   // As example, workgroup size is x=16, y=8, z=8 (16x8x8 = 1024), but
-  // max_work_group_invocations = 512. We need to fit this limit and we can
+  // max_work_group_total_size = 512. We need to fit this limit and we can
   // reduce workgroup size in different ways, but we want to use the most
   // balanced way. So code below will find the maximal of three dimensions and
   // reduce it, so the whole workgroup is kept balanced by all dimensions. And
   // the final reduced workgroup will be x=8, y=8, z=8 for the given example.
-  while (CalculateProduct(*wg) > gpu_info.max_work_group_invocations) {
+  while (CalculateProduct(*wg) > gpu_info.GetMaxWorkGroupTotalSize()) {
     unsigned int* max = &wg->x;
     if (wg->y > *max) max = &wg->y;
     if (wg->z > *max) max = &wg->z;

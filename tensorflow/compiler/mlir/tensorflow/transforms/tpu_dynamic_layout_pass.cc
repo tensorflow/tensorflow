@@ -20,7 +20,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -185,7 +185,7 @@ bool HandleReplicatedInputs(
     const TF::ResourceAliasAnalysis::Info& resource_alias_analysis) {
   // We need to know the devices to copy to.
   if (!replicate.devices()) return false;
-  int64_t num_replicas = replicate.n().getZExtValue();
+  int64_t num_replicas = replicate.n();
   auto inputs = replicate.getOperands()
                     .drop_front(replicate_arg_index * num_replicas)
                     .take_front(num_replicas);

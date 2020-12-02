@@ -8,7 +8,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'port\', \'protocol\', \'work_dir\', \'fault_tolerant_mode\', \'start\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'True\'], "
+    argspec: "args=[\'self\', \'config\', \'start\'], varargs=None, keywords=None, defaults=[\'None\', \'True\'], "
   }
   member_method {
     name: "join"

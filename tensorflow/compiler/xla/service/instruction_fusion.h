@@ -1,4 +1,3 @@
-#include "absl/container/flat_hash_map.h"
 /* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,6 +19,8 @@ limitations under the License.
 #include <functional>
 #include <utility>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/service/fusion_queue.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -138,6 +139,11 @@ class InstructionFusion : public HloModulePass {
     return config_collection_mode_;
   }
 
+  // Returns whether 'consumer' may reuse elements of its `operand_index`th
+  // operand.
+  bool ReusesOperandElements(const HloInstruction* consumer,
+                             int64 operand_index);
+
  private:
   // The set of producers whose consumers we cannot fuse into.
   using HloInstructionSet = std::unordered_set<HloInstruction*>;
@@ -171,6 +177,11 @@ class InstructionFusion : public HloModulePass {
 
   // Configuration mode.
   FusionConfigCollection config_collection_mode_;
+
+  // Caches which operands are reused inside fusion computations.
+  absl::flat_hash_map<const HloInstruction*,
+                      absl::flat_hash_set<const HloInstruction*>>
+      reused_fusion_operands_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(InstructionFusion);
 };

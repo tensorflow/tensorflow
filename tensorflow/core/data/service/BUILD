@@ -1,3 +1,4 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 load(
     "//tensorflow/core/platform:build_config.bzl",
@@ -5,10 +6,17 @@ load(
     "tf_proto_library",
     "tf_protos_profiler_service",
 )
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")
 load(
     "//tensorflow:tensorflow.bzl",
-    "cc_header_only_library",
     "tf_cc_test",
 )
 
@@ -18,8 +26,6 @@ package(
     ],
     licenses = ["notice"],  # Apache 2.0
 )
-
-exports_files(["LICENSE"])
 
 tf_proto_library(
     name = "common_proto",
@@ -152,6 +158,7 @@ tf_cc_test(
 cc_grpc_library(
     name = "dispatcher_cc_grpc_proto",
     srcs = [":dispatcher_proto"],
+    compatible_with = get_compatible_with_cloud(),
     generate_mocks = True,
     grpc_only = True,
     deps = [":dispatcher_proto_cc"],
@@ -179,7 +186,9 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/data:standalone",
         "//tensorflow/core/kernels/data:dataset_utils",
+        "//tensorflow/core/kernels/data:hash_utils",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         tf_grpc_cc_dependency(),
@@ -351,6 +360,20 @@ cc_header_only_library(
 )
 
 cc_library(
+    name = "split_provider",
+    srcs = ["split_provider.cc"],
+    hdrs = [
+        "split_provider.h",
+    ],
+    deps = [
+        ":data_service",
+        ":grpc_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
     name = "test_cluster",
     testonly = True,
     srcs = ["test_cluster.cc"],
@@ -370,7 +393,7 @@ cc_library(
     hdrs = [
         "test_util.h",
     ],
-    data = glob(["testdata/*.pbtxt"]),
+    data = ["//tensorflow/core/data/service/testdata"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -422,6 +445,7 @@ tf_cc_test(
 cc_grpc_library(
     name = "worker_cc_grpc_proto",
     srcs = [":worker_proto"],
+    compatible_with = get_compatible_with_cloud(),
     generate_mocks = True,
     grpc_only = True,
     deps = [":worker_proto_cc"],
@@ -440,6 +464,7 @@ cc_library(
         ":dispatcher_cc_grpc_proto",
         ":dispatcher_proto_cc",
         ":grpc_util",
+        ":split_provider",
         ":utils",
         ":worker_proto_cc",
         "//tensorflow/c:c_api_internal",

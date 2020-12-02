@@ -53,6 +53,11 @@ class HloExecutionProfiler {
   // the time that the computation took to execute in the profile.
   void FinishHloComputation(const HloComputation* computation);
 
+  // If profiling is enabled stops the timer for a (sub)computation with the
+  // given profile index and records the time that the computation took to
+  // execute in the profile.
+  void FinishHloComputation(absl::optional<size_t> profile_index);
+
   // If profiling is enabled, starts a per-operation timer.
   void StartHloInstruction();
 

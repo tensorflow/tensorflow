@@ -25,6 +25,8 @@ limitations under the License.
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
 #include "tensorflow/core/platform/errors.h"
@@ -43,22 +45,50 @@ class GraphContext;
 class GraphOperation;
 class GraphTensor;
 
+auto& kUnknownDim = shape_inference::InferenceContext::kUnknownDim;
+auto& kUnknownRank = shape_inference::InferenceContext::kUnknownRank;
+
 // GraphTensor wraps a `TF_Output`, i.e. a pointer to TF_Operation and the index
 // into the list of outputs for the operation.
 class GraphTensor : public TracingTensorHandle {
  public:
-  explicit GraphTensor(TF_Output output)
-      : TracingTensorHandle(kGraph), output_(output) {}
+  explicit GraphTensor(TF_Output output, TF_Graph* graph)
+      : TracingTensorHandle(kGraph), output_(output), graph_(graph) {}
 
   tensorflow::DataType DataType() const override {
     return static_cast<tensorflow::DataType>(TF_OperationOutputType(output_));
   }
+
+  tensorflow::Status Shape(
+      tensorflow::PartialTensorShape* shape) const override {
+    DCHECK(shape != nullptr);
+    TF_Status status;
+    int num_dims = TF_GraphGetTensorNumDims(graph_, output_, &status);
+    DCHECK_GE(num_dims, -1);
+    TF_RETURN_IF_ERROR(StatusFromTF_Status(&status));
+    if (num_dims == kUnknownRank) {
+      return Status::OK();
+    }
+
+    std::vector<int64> dims(num_dims, kUnknownDim);
+    TF_GraphGetTensorShape(graph_, output_,
+                           reinterpret_cast<int64_t*>(dims.data()), num_dims,
+                           &status);
+    TF_RETURN_IF_ERROR(StatusFromTF_Status(&status));
+    TF_RETURN_IF_ERROR(tensorflow::TensorShapeUtils::MakeShape(dims, shape));
+
+    return Status::OK();
+  }
+
   TF_Output output_;
 
   // For LLVM style RTTI.
   static bool classof(const AbstractTensorHandle* ptr) {
     return ptr->getKind() == kGraph;
   }
+
+ private:
+  TF_Graph* graph_;  // For shape inference.
 };
 
 // GraphOperation wraps and populates a TF_OperationDescription.
@@ -135,7 +165,7 @@ class GraphOperation : public TracingOperation {
     TF_DeleteStatus(s);
     *num_retvals = TF_OperationNumOutputs(operation);
     for (int i = 0; i < *num_retvals; ++i) {
-      retvals[i] = new GraphTensor({operation, i});
+      retvals[i] = new GraphTensor({operation, i}, g_);
     }
     return Status::OK();
   }
@@ -326,12 +356,18 @@ class GraphContext : public TracingContext {
     return new GraphOperation(graph_.get());
   }
 
-  Status AddParameter(DataType dtype, TracingTensorHandle** output) override {
+  Status AddParameter(DataType dtype, const PartialTensorShape& shape,
+                      TracingTensorHandle** output) override {
     TracingOperationPtr operation(CreateOperation());
     TF_RETURN_IF_ERROR(operation->Reset("Placeholder", nullptr));
     TF_RETURN_IF_ERROR(
         operation->SetOpName(absl::StrCat("_input_", inputs_.size()).c_str()));
     TF_RETURN_IF_ERROR(operation->SetAttrType("dtype", dtype));
+    if (!shape.unknown_rank()) {
+      TF_RETURN_IF_ERROR(operation->SetAttrShape(
+          "shape", reinterpret_cast<int64_t*>(shape.dim_sizes().data()),
+          shape.dims()));
+    }
     int num_outputs = 1;
     std::vector<AbstractTensorHandle*> outputs(num_outputs);
     TF_RETURN_IF_ERROR(operation->Execute(
@@ -365,9 +401,10 @@ class GraphContext : public TracingContext {
     }
 
     auto s = TF_NewStatus();
-    func->func = TF_GraphToFunction(
-        graph_.get(), name_, 0, -1, nullptr, inputs_.size(), inputs_.data(),
-        graph_outputs.size(), graph_outputs.data(), nullptr, nullptr, name_, s);
+    func->func = TF_GraphToFunction(graph_.get(), name_.data(), 0, -1, nullptr,
+                                    inputs_.size(), inputs_.data(),
+                                    graph_outputs.size(), graph_outputs.data(),
+                                    nullptr, nullptr, name_.data(), s);
     TF_RETURN_IF_ERROR(StatusFromTF_Status(s));
     TF_DeleteStatus(s);
     *f = func.release();
@@ -391,7 +428,7 @@ class GraphContext : public TracingContext {
  private:
   std::unique_ptr<TF_Graph, decltype(&TF_DeleteGraph)> graph_;
   std::vector<TF_Output> inputs_;
-  const char* name_;
+  string name_;
 };
 
 static TracingContext* GraphTracingFactory(const char* name, TF_Status* s) {
@@ -401,7 +438,7 @@ static TracingContext* GraphTracingFactory(const char* name, TF_Status* s) {
 // Register the tracing implemented in this file as the default tracing engine.
 static bool register_tracing = [] {
   RegisterTracingEngineFactory("graphdef", GraphTracingFactory);
-  SetDefaultTracingEngine("graphdef");
+  SetDefaultTracingEngine("graphdef").IgnoreError();
   return true;
 }();
 

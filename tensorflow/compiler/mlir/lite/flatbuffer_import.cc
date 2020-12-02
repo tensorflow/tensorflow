@@ -50,11 +50,10 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
@@ -64,6 +63,7 @@ limitations under the License.
 #include "mlir/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -75,6 +75,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/schema/schema_utils.h"
 
 using llvm::ArrayRef;
 using mlir::Builder;
@@ -91,6 +92,7 @@ using mlir::UnrankedTensorType;
 using mlir::Value;
 using mlir::quant::QuantizedType;
 using tflite::TensorT;
+using xla::Status;
 using xla::StatusOr;
 
 namespace errors = tensorflow::errors;
@@ -147,7 +149,7 @@ StatusOr<QuantizedType> GetQuantizedType(const TensorT& tensor, Builder builder,
 
   int64_t storage_min = QuantizedType::getDefaultMinimumForInteger(
                             is_signed, storage_type.getWidth()) +
-                        is_weight_buffer;
+                        static_cast<int>(is_weight_buffer);
   int64_t storage_max = QuantizedType::getDefaultMaximumForInteger(
       is_signed, storage_type.getWidth());
   uint32_t flags =
@@ -175,18 +177,38 @@ StatusOr<QuantizedType> GetQuantizedType(const TensorT& tensor, Builder builder,
       quant_params.zero_point.at(0), storage_min, storage_max);
 }
 
+// import float tensor with calibration value into calibrated quantized type.
+StatusOr<QuantizedType> GetCalibratedQuantizedType(const TensorT& tensor,
+                                                   Builder builder) {
+  if (tensor.quantization == nullptr) {
+    return errors::InvalidArgument("The tensor is not quantized.");
+  }
+  auto raw_elem_type = ConvertElementType(tensor.type, builder);
+  float min = tensor.quantization->min[0];
+  float max = tensor.quantization->max[0];
+  return mlir::quant::CalibratedQuantizedType::get(raw_elem_type, min, max);
+}
+
 // TODO(b/138222071) Remove shapeless_are_scalars once we can reliably
 // make that distinction and don't have to rely on context
 // (input to main and constants must have static shape)
 StatusOr<mlir::TensorType> GetTensorType(const TensorT& tensor, Builder builder,
                                          bool shapeless_are_scalars = false,
-                                         bool is_constant = false) {
+                                         bool is_constant = false,
+                                         bool is_intermediate = false) {
   mlir::Type elem_type = ConvertElementType(tensor.type, builder);
   // TODO(b/139554398) Store min/max (even for non-quantized tensors) somewhere
   // if it's set
   if (IsQuantized(tensor)) {
     TF_ASSIGN_OR_RETURN(elem_type,
                         GetQuantizedType(tensor, builder, is_constant));
+  }
+
+  // Intermediate tensors with calibration value (but not scale and zero points)
+  // should return calibrated quantized type.
+  if (is_intermediate && tensor.quantization != nullptr &&
+      !IsQuantized(tensor)) {
+    TF_ASSIGN_OR_RETURN(elem_type, GetCalibratedQuantizedType(tensor, builder));
   }
 
   if (IsScalar(tensor) || (shapeless_are_scalars && tensor.shape.empty())) {
@@ -271,18 +293,18 @@ StatusOr<std::string> GetMlirOpName(const tflite::OperatorT& op,
     return std::string("tfl.basic_lstm");
   }
 
-  if (op_code.builtin_code == tflite::BuiltinOperator_CUSTOM) {
+  auto builtin_code = tflite::GetBuiltinCode(&op_code);
+  if (builtin_code == tflite::BuiltinOperator_CUSTOM) {
     return std::string("tfl.custom");
   }
-  if (op_code.builtin_code == tflite::BuiltinOperator_IF) {
+  if (builtin_code == tflite::BuiltinOperator_IF) {
     return std::string("tf.If");
   }
-  if (op_code.builtin_code == tflite::BuiltinOperator_WHILE) {
+  if (builtin_code == tflite::BuiltinOperator_WHILE) {
     return std::string("tf.While");
   }
 
-  llvm::StringRef op_name(
-      tflite::EnumNameBuiltinOperator(op_code.builtin_code));
+  llvm::StringRef op_name(tflite::EnumNameBuiltinOperator(builtin_code));
   return llvm::Twine("tfl.", op_name.lower()).str();
 }
 
@@ -446,13 +468,60 @@ StatusOr<Operation*> BuildExternalConstOp(const tflite::TensorT& tensor,
   return op.getOperation();
 }
 
+// Gets a constant splat for the given value of type. Requires value to be of
+// type static shaped RankedTensorType. `unique_index` is used to get the unique
+// value for the attribute.
+static mlir::ElementsAttr GetSplat(RankedTensorType type, int unique_index,
+                                   OpBuilder builder) {
+  mlir::Type element_ty = getElementTypeOrSelf(type);
+
+  if (element_ty.isSignlessInteger())
+    return DenseElementsAttr::get(
+        type, builder.getIntegerAttr(element_ty, unique_index));
+
+  if (element_ty.isa<mlir::FloatType>())
+    return DenseElementsAttr::get(
+        type, builder.getFloatAttr(element_ty, unique_index));
+
+  if (auto qtype = element_ty.dyn_cast<QuantizedType>()) {
+    mlir::RankedTensorType new_type =
+        RankedTensorType::get(type.getShape(), qtype.getStorageType());
+    return DenseElementsAttr::get(
+        new_type, builder.getIntegerAttr(qtype.getStorageType(), unique_index));
+  }
+  llvm_unreachable("unhandled element type");
+}
+
+// TODO(b/172664358): Creates a new op instead of reusing constant op.
+// Creates a constant op to represent stateful variable. The function static
+// variable `stateful_variable_idx` is used as a unique value for each constant
+// to avoid CSEed. `tensor` is the data structure of flatbuffer. `shaped_type`
+// is the ShapedType for the const op.
+Operation* BuildVariableOp(const tflite::TensorT& tensor,
+                           mlir::RankedTensorType shaped_type,
+                           OpBuilder builder, Location loc) {
+  static int stateful_variable_idx = 0;
+  mlir::ElementsAttr value =
+      GetSplat(shaped_type, stateful_variable_idx++, builder);
+  if (IsQuantized(tensor)) {
+    auto op = builder.create<tfl::QConstOp>(
+        loc, mlir::TypeAttr::get(shaped_type), value);
+    return op.getOperation();
+  }
+  auto op = builder.create<tfl::ConstOp>(loc, value);
+  if (!tensor.quantization->min.empty()) {
+    if (auto stats_op =
+            ConvertMinMaxToStatsOp(tensor, builder, op.getResult())) {
+      return stats_op;
+    }
+  }
+  return op.getOperation();
+}
+
 StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
                                   const std::vector<uint8_t>& buffer,
-                                  OpBuilder builder, Location loc) {
-  if (buffer.empty()) {
-    return errors::InvalidArgument("Constant's buffer may not be empty");
-  }
-
+                                  bool is_variable, OpBuilder builder,
+                                  Location loc) {
   TF_ASSIGN_OR_RETURN(auto type, GetTensorType(tensor, builder,
                                                /*shapeless_are_scalars=*/true,
                                                /*is_constant=*/true));
@@ -464,7 +533,9 @@ StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
   auto elem_type = shaped_type.getElementType();
 
   mlir::ElementsAttr value;
-  if (auto float_type = elem_type.dyn_cast<mlir::FloatType>()) {
+  if (is_variable) {
+    return BuildVariableOp(tensor, shaped_type, builder, loc);
+  } else if (auto float_type = elem_type.dyn_cast<mlir::FloatType>()) {
     TF_ASSIGN_OR_RETURN(value,
                         ConvertFloatBuffer(shaped_type, float_type, buffer));
   } else if (elem_type.isa<mlir::IntegerType, QuantizedType>()) {
@@ -526,6 +597,34 @@ llvm::SmallVector<mlir::NamedAttribute, 4> ConvertSubgraphIdxsToFunctionAttrs(
   return {};
 }
 
+Status AddOpIntermediatesForLstm(
+    const tflite::OperatorT& op,
+    const std::vector<mlir::TensorType>& intermediate_types,
+    OperationState& op_state, Location loc, OpBuilder& builder) {
+  if (!op.intermediates.empty()) {
+    if (op.intermediates.size() != 5) {
+      auto err = errors::InvalidArgument(
+          "operator has intermediate tensors but the number of them is not "
+          "five.");
+      return emitError(loc, err.ToString()), err;
+    }
+    // Create intermediate value
+
+    const llvm::SmallVector<llvm::StringRef, 5> kIntermediateNames = {
+        "input_to_input_intermediate", "input_to_forget_intermediate",
+        "input_to_cell_intermediate", "input_to_output_intermediate",
+        "effective_hidden_scale_intermediate"};
+    for (auto type_and_name :
+         llvm::zip(intermediate_types, kIntermediateNames)) {
+      mlir::TypeAttr type_attr =
+          mlir::TypeAttr::get(std::get<0>(type_and_name));
+      auto named_attr =
+          builder.getNamedAttr(std::get<1>(type_and_name), type_attr);
+      op_state.addAttribute(named_attr.first, named_attr.second);
+    }
+  }
+  return Status::OK();
+}
 
 // TODO(krzysd) Handle function calls
 StatusOr<Operation*> ConvertOp(
@@ -612,32 +711,17 @@ StatusOr<Operation*> ConvertOp(
   if (op_name == "tfl.lstm") {
     // TODO(b/147587779): add the right region if region is empty.
     op_state.addRegion();
-    if (!op.intermediates.empty()) {
-      if (op.intermediates.size() != 5) {
-        auto err = errors::InvalidArgument(
-            "operator has intermediate tensors but the number of them is not "
-            "five.");
-        return emitError(loc, err.ToString()), err;
-      }
-      // Create intermediate value
-
-      const llvm::SmallVector<llvm::StringRef, 5> kIntermediateNames = {
-          "input_to_input_intermediate", "input_to_forget_intermediate",
-          "input_to_cell_intermediate", "input_to_output_intermediate",
-          "effective_hidden_scale_intermediate"};
-      for (auto type_and_name :
-           llvm::zip(intermediate_types, kIntermediateNames)) {
-        mlir::TypeAttr type_attr =
-            mlir::TypeAttr::get(std::get<0>(type_and_name));
-        auto named_attr =
-            builder.getNamedAttr(std::get<1>(type_and_name), type_attr);
-        op_state.addAttribute(named_attr.first, named_attr.second);
-      }
-    }
+    TF_CHECK_OK(AddOpIntermediatesForLstm(op, intermediate_types, op_state, loc,
+                                          builder));
+  }
+  if (op_name == "tfl.unidirectional_sequence_lstm") {
+    TF_CHECK_OK(AddOpIntermediatesForLstm(op, intermediate_types, op_state, loc,
+                                          builder));
   }
 
   llvm::SmallVector<mlir::NamedAttribute, 2> attrs;
-  if (op_code.builtin_code == tflite::BuiltinOperator_CUSTOM) {
+  auto builtin_code = tflite::GetBuiltinCode(&op_code);
+  if (builtin_code == tflite::BuiltinOperator_CUSTOM) {
     auto status = mlir::CustomOptionsToAttributes(
         op_code.custom_code, op.custom_options, builder, loc, &attrs);
     if (!status.ok()) {
@@ -784,7 +868,7 @@ static StatusOr<FuncOp> PostProcessFuncOp(FuncOp func) {
         auto new_output_type = new_qtype.castFromExpressedType(
             mlir::quant::UniformQuantizedType::castToExpressedType(
                 value.getType()));
-        builder.setInsertionPointAfter(cst);
+        builder.setInsertionPointAfter(cst.getOperation());
         auto new_op = builder.create<tfl::QConstOp>(
             cst.getLoc(), new_output_type, mlir::TypeAttr::get(new_output_type),
             cst.valueAttr());
@@ -831,19 +915,8 @@ StatusOr<FuncOp> ConvertSubgraph(
                         GetTensorIndices(subgraph, ordered_input_arrays));
   }
 
-  // Add state variables to inputs.
-  absl::flat_hash_set<int32_t> input_index_set(func_inputs.begin(),
-                                               func_inputs.end());
-  for (int i = 0, end = subgraph.tensors.size(); i < end; i++) {
-    auto& tensor = *subgraph.tensors.at(i);
-    if (tensor.is_variable && !input_index_set.contains(i)) {
-      func_inputs.emplace_back(i);
-      input_index_set.insert(i);
-    }
-  }
-
-  for (auto input_or_variable : func_inputs) {
-    auto& tensor = *subgraph.tensors.at(input_or_variable);
+  for (int input : func_inputs) {
+    auto& tensor = *subgraph.tensors.at(input);
     // TODO(b/138222071) Graph inputs must have static shape per the exporter,
     // but we cannot differentiate scalars from unranked tensors.
     // Here we reverse the default assumption that shape = [] means unranked.
@@ -874,7 +947,8 @@ StatusOr<FuncOp> ConvertSubgraph(
   }
 
   for (auto output : func_outputs) {
-    const bool is_func_input = input_index_set.contains(output);
+    const bool is_func_input = std::find(func_inputs.begin(), func_inputs.end(),
+                                         output) != func_inputs.end();
     bool is_constant = !is_op_output[output] && !is_func_input;
     // There are 2 cases tensor is scalar when it doesn't have a shape in
     // flatbuffer:
@@ -940,7 +1014,7 @@ StatusOr<FuncOp> ConvertSubgraph(
     }
     func.setAttr("tf.entry_function", builder.getDictionaryAttr(attributes));
   } else {
-    func.setVisibility(FuncOp::Visibility::Private);
+    func.setPrivate();
   }
 
   absl::flat_hash_set<const tflite::OperatorT*> pruned_subgraph_ops;
@@ -976,7 +1050,7 @@ StatusOr<FuncOp> ConvertSubgraph(
                 ? BuildExternalConstOp(const_tensor, const_tensor.buffer,
                                        op_builder, const_loc)
                 : BuildConstOp(const_tensor, buffers[const_tensor.buffer]->data,
-                               op_builder, const_loc);
+                               const_tensor.is_variable, op_builder, const_loc);
         if (!op_or_err.ok()) {
           return emitError(const_loc, op_or_err.status().ToString()),
                  op_or_err.status();
@@ -985,7 +1059,7 @@ StatusOr<FuncOp> ConvertSubgraph(
       }
     }
 
-    // Intermediate tensors for tfl.lstm are used to carry quantization range
+    // Intermediate tensors for LSTMs are used to carry quantization range
     // in their types, so we only need and extract their types.
     std::vector<mlir::TensorType> intermediate_types;
     intermediate_types.reserve(5);
@@ -993,7 +1067,8 @@ StatusOr<FuncOp> ConvertSubgraph(
       TF_ASSIGN_OR_RETURN(
           auto type, GetTensorType(*subgraph.tensors[intermediate], builder,
                                    /*shapeless_are_scalars=*/true,
-                                   /*is_constant=*/true));
+                                   /*is_constant=*/false,
+                                   /*is_intermediate=*/true));
       intermediate_types.emplace_back(type);
     }
 
@@ -1036,7 +1111,7 @@ StatusOr<FuncOp> ConvertSubgraph(
               ? BuildExternalConstOp(const_tensor, const_tensor.buffer,
                                      op_builder, const_loc)
               : BuildConstOp(const_tensor, buffers[const_tensor.buffer]->data,
-                             op_builder, const_loc);
+                             const_tensor.is_variable, op_builder, const_loc);
       if (!op_or_err.ok()) {
         return emitError(const_loc, op_or_err.status().ToString()),
                op_or_err.status();
@@ -1086,7 +1161,6 @@ OwningModuleRef tflite::FlatBufferToMlir(
   std::unique_ptr<ModelT> model(model_ptr->GetModel()->UnPack());
 
   auto builder = Builder(context);
-
 
   std::vector<std::string> func_names;
   for (auto& subgraph : model->subgraphs) {

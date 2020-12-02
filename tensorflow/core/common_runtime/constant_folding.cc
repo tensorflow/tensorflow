@@ -219,6 +219,7 @@ bool IsConstantFoldable(
     const std::unordered_map<string, std::vector<PartialTensorShape>>*
         shape_map,
     const std::function<bool(const Node*)>& consider,
+    int64 max_constant_size_in_bytes,
     std::unordered_map<const Node*, std::vector<Tensor>>*
         shape_replacement_map) {
   if (n->IsConstant()) {
@@ -232,6 +233,20 @@ bool IsConstantFoldable(
   }
   if (consider && !consider(n)) {
     return false;
+  }
+  if (shape_map != nullptr) {
+    // We can skip the node if an output is known to be oversized.
+    auto shape_it = shape_map->find(n->name());
+    if (shape_it != shape_map->end()) {
+      for (int64 i = 0; i < shape_it->second.size(); ++i) {
+        const auto& out_shape = shape_it->second[i];
+        if (out_shape.IsFullyDefined() &&
+            out_shape.num_elements() * DataTypeSize(n->output_type(i)) >
+                max_constant_size_in_bytes) {
+          return false;
+        }
+      }
+    }
   }
   if (n->IsControlFlow() || n->IsSend() || n->IsRecv()) {
     return false;
@@ -280,6 +295,7 @@ void ConsiderConstantFoldableNode(
     std::unordered_map<const Node*, std::vector<Tensor>>* shape_replacement_map,
     bool* internal_node_inserted) {
   if (IsConstantFoldable(n, opts.shape_map, opts.consider,
+                         opts.max_constant_size_in_bytes,
                          shape_replacement_map)) {
     // A node is constant provided all of its non-control incoming Tensors come
     // from constant nodes, or it's a shape Op with statically known inputs in

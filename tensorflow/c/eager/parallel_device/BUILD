@@ -1,3 +1,5 @@
+load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
@@ -74,6 +76,7 @@ cc_library(
         "//tensorflow/c:c_api",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",

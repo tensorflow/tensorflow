@@ -49,9 +49,14 @@ TfLiteIntArray* MultiplyShapeDims(const TfLiteIntArray& shape,
 }
 
 TfLiteStatus ResizeOutput(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
-  const TfLiteTensor* multipliers = GetInput(context, node, kInputMultipliers);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
+  const TfLiteTensor* multipliers;
+  TF_LITE_ENSURE_OK(
+      context, GetInputSafe(context, node, kInputMultipliers, &multipliers));
 
   const int num_dimensions = NumDimensions(input);
   const int num_multipliers = NumElements(multipliers);
@@ -208,12 +213,17 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
 
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
   TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
 
-  const TfLiteTensor* multipliers = GetInput(context, node, kInputMultipliers);
+  const TfLiteTensor* multipliers;
+  TF_LITE_ENSURE_OK(
+      context, GetInputSafe(context, node, kInputMultipliers, &multipliers));
   // Only int32 and int64 multipliers type is supported.
   if (multipliers->type != kTfLiteInt32 && multipliers->type != kTfLiteInt64) {
     context->ReportError(context,
@@ -231,9 +241,14 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
-  const TfLiteTensor* multipliers = GetInput(context, node, kInputMultipliers);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
+  const TfLiteTensor* multipliers;
+  TF_LITE_ENSURE_OK(
+      context, GetInputSafe(context, node, kInputMultipliers, &multipliers));
 
   if (IsDynamicTensor(output)) {
     TF_LITE_ENSURE_OK(context, ResizeOutput(context, node));

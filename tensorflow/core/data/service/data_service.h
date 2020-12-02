@@ -26,11 +26,12 @@ namespace data {
 
 // Modes for how a tf.data service job should process a dataset.
 enum class ProcessingMode : int64 {
+  UNSET = 0,
   // Each tf.data worker processes an entire epoch. If a dataset contains 2
   // elements and there are 3 workers, the job will produce 6 elements.
-  PARALLEL_EPOCHS = 0,
+  PARALLEL_EPOCHS = 1,
   // Processing of a single epoch is distributed across all tf.data workers.
-  ONE_EPOCH = 1,
+  DISTRIBUTED_EPOCH = 2,
 };
 
 // Parses a string representing a processing mode and stores the result in
@@ -73,10 +74,15 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
                               const std::string& protocol)
       : DataServiceClientBase(address, protocol) {}
 
-  // Registers a worker with the dispatcher. The dispatcher returns a list of
-  // initial tasks for the worker to run, storing them in `tasks`.
-  Status RegisterWorker(const std::string& worker_address,
-                        std::vector<TaskDef>& tasks);
+  // Sends a heartbeat to the dispatcher. If the worker wasn't already
+  // registered with the dispatcher, this will register the worker. The
+  // dispatcher will report which new tasks the worker should run, and which
+  // tasks it should delete. This is stored into `new_tasks` and
+  // `tasks_to_delete`.
+  Status WorkerHeartbeat(const std::string& worker_address,
+                         const std::vector<int64>& current_tasks,
+                         std::vector<TaskDef>& new_tasks,
+                         std::vector<int64>& tasks_to_delete);
 
   // Updates the dispatcher with information about the worker's state.
   Status WorkerUpdate(const std::string& worker_address,
@@ -86,20 +92,19 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
   // definition in `dataset_def`.
   Status GetDatasetDef(int64 dataset_id, DatasetDef& dataset_def);
 
+  // Gets the next split for the specified job id and repetition.
+  Status GetSplit(int64 job_id, int64 repetition, Tensor& split,
+                  bool& end_of_splits);
+
   // Registers a dataset with the tf.data service, and stores the generated
   // dataset id in `dataset_id`.
   Status RegisterDataset(GraphDef dataset, int64& dataset_id);
-
-  // Creates a new tf.data service job for the specified dataset. The id for the
-  // created job will be stored in `job_client_id`.
-  Status CreateJob(int64 dataset_id, ProcessingMode processing_mode,
-                   int64& job_client_id);
 
   // Gets the job id for the job represented by the tuple
   // (job_name, job_name_index), and stores the id in `job_client_id`. If the
   // job doesn't exist yet, it will be created.
   Status GetOrCreateJob(int64 dataset_id, ProcessingMode processing_mode,
-                        const std::string& job_name, int job_name_index,
+                        const absl::optional<JobKey>& job_key,
                         int64& job_client_id);
 
   // Releases a job client id, indicating that the id will no longer be used to

@@ -155,6 +155,8 @@ def build_mock_flatbuffer_model():
 
   schema_fb.OperatorCodeStart(builder)
   schema_fb.OperatorCodeAddBuiltinCode(builder, schema_fb.BuiltinOperator.ADD)
+  schema_fb.OperatorCodeAddDeprecatedBuiltinCode(builder,
+                                                 schema_fb.BuiltinOperator.ADD)
   schema_fb.OperatorCodeAddVersion(builder, 1)
   code_offset = schema_fb.OperatorCodeEnd(builder)
 

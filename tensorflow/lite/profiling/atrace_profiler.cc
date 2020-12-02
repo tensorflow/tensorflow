@@ -93,6 +93,9 @@ class ATraceProfiler : public tflite::Profiler {
 };
 
 std::unique_ptr<tflite::Profiler> MaybeCreateATraceProfiler() {
+#if defined(TFLITE_ENABLE_DEFAULT_PROFILER)
+  return std::unique_ptr<tflite::Profiler>(new ATraceProfiler());
+#else  // TFLITE_ENABLE_DEFAULT_PROFILER
 #if defined(__ANDROID__)
   constexpr char kTraceProp[] = "debug.tflite.trace";
   char trace_enabled[PROP_VALUE_MAX] = "";
@@ -102,6 +105,7 @@ std::unique_ptr<tflite::Profiler> MaybeCreateATraceProfiler() {
   }
 #endif  // __ANDROID__
   return nullptr;
+#endif  // TFLITE_ENABLE_DEFAULT_PROFILER
 }
 
 }  // namespace profiling

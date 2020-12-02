@@ -19,6 +19,12 @@ message TaskDef {
   int64 dataset_id = 3;
   int64 task_id = 4;
   int64 job_id = 5;
+  ProcessingModeDef processing_mode = 6;
+  // Optional number of consumers. If set, the results of the task will be
+  // provided to consumers round-robin.
+  oneof optional_num_consumers {
+    int64 num_consumers = 7;
+  }
 }
 
 message TaskInfo {
@@ -31,8 +37,9 @@ message TaskInfo {
 }
 
 enum ProcessingModeDef {
+  INVALID = 0;
   // Each tf.data worker processes an entire epoch.
-  PARALLEL_EPOCHS = 0;
+  PARALLEL_EPOCHS = 1;
   // Processing of an epoch is distributed across all tf.data workers.
-  ONE_EPOCH = 1;
+  DISTRIBUTED_EPOCH = 2;
 }

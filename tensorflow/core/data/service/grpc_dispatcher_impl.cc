@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "grpcpp/server_context.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
-#include "tensorflow/core/protobuf/data/experimental/service_config.pb.h"
+#include "tensorflow/core/protobuf/service_config.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -40,11 +40,11 @@ Status GrpcDispatcherImpl::Start() { return impl_.Start(); }
                                           method##Response* response) {   \
     return ToGrpcStatus(impl_.method(request, response));                 \
   }
-HANDLER(RegisterWorker);
+HANDLER(WorkerHeartbeat);
 HANDLER(WorkerUpdate);
 HANDLER(GetDatasetDef);
+HANDLER(GetSplit);
 HANDLER(GetOrRegisterDataset);
-HANDLER(CreateJob);
 HANDLER(ReleaseJobClient);
 HANDLER(GetOrCreateJob);
 HANDLER(GetTasks);

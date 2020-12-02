@@ -28,10 +28,8 @@ load(
     _tf_platform_deps = "tf_platform_deps",
     _tf_portable_deps_no_runtime = "tf_portable_deps_no_runtime",
     _tf_portable_proto_lib = "tf_portable_proto_lib",
-    _tf_profiler_client_deps = "tf_profiler_client_deps",
     _tf_proto_library = "tf_proto_library",
     _tf_proto_library_cc = "tf_proto_library_cc",
-    _tf_proto_library_py = "tf_proto_library_py",
     _tf_protobuf_compiler_deps = "tf_protobuf_compiler_deps",
     _tf_protobuf_deps = "tf_protobuf_deps",
     _tf_protos_all = "tf_protos_all",
@@ -43,6 +41,7 @@ load(
     _tf_py_clif_cc = "tf_py_clif_cc",
     _tf_pyclif_proto_library = "tf_pyclif_proto_library",
     _tf_resource_deps = "tf_resource_deps",
+    _tf_tpu_dependencies = "tf_tpu_dependencies",
     _tf_windows_aware_platform_deps = "tf_windows_aware_platform_deps",
 )
 
@@ -74,7 +73,6 @@ tf_portable_proto_lib = _tf_portable_proto_lib
 tf_portable_deps_no_runtime = _tf_portable_deps_no_runtime
 tf_proto_library = _tf_proto_library
 tf_proto_library_cc = _tf_proto_library_cc
-tf_proto_library_py = _tf_proto_library_py
 tf_protobuf_compiler_deps = _tf_protobuf_compiler_deps
 tf_protobuf_deps = _tf_protobuf_deps
 tf_protos_all = _tf_protos_all
@@ -83,8 +81,8 @@ tf_protos_grappler = _tf_protos_grappler
 tf_protos_grappler_impl = _tf_protos_grappler_impl
 tf_protos_profiler_impl = _tf_protos_profiler_impl
 tf_protos_profiler_service = _tf_protos_profiler_service
-tf_profiler_client_deps = _tf_profiler_client_deps
 tf_py_clif_cc = _tf_py_clif_cc
 tf_pyclif_proto_library = _tf_pyclif_proto_library
 tf_resource_deps = _tf_resource_deps
 tf_windows_aware_platform_deps = _tf_windows_aware_platform_deps
+tf_tpu_dependencies = _tf_tpu_dependencies

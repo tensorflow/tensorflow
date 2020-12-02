@@ -63,8 +63,9 @@ def InceptionV3(
   Note that the data format convention used by the model is
   the one specified in the `tf.keras.backend.image_data_format()`.
 
-  Caution: Be sure to properly pre-process your inputs to the application.
-  Please see `applications.inception_v3.preprocess_input` for an example.
+  Note: each Keras Application expects a specific kind of input preprocessing.
+  For InceptionV3, call `tf.keras.applications.inception_v3.preprocess_input`
+  on your inputs before passing them to the model.
 
   Arguments:
     include_top: Boolean, whether to include the fully-connected

@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
 import os
 import shutil
 
@@ -33,8 +34,6 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import random_seed
-from tensorflow.python.framework import test_util
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
@@ -82,7 +81,7 @@ class GRUV2Test(keras_parameterized.TestCase):
                     reset_after=reset_after)
     self.assertFalse(layer._could_use_gpu_kernel)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def test_use_on_default_activation_with_gpu_kernel(self):
     layer = rnn.GRU(1, activation=nn.tanh)
     self.assertTrue(layer._could_use_gpu_kernel)
@@ -149,7 +148,7 @@ class GRUV2Test(keras_parameterized.TestCase):
       l2 = layer_class.from_config(l1.get_config())
       assert l1.get_config() == l2.get_config()
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def test_gru_v2_feature_parity_with_canonical_gru(self):
     if test.is_built_with_rocm():
       self.skipTest('Skipping the test as ROCm MIOpen does not '
@@ -165,7 +164,7 @@ class GRUV2Test(keras_parameterized.TestCase):
         test_samples=0,
         input_shape=(timestep, input_shape),
         num_classes=rnn_state_size,
-        random_seed=random_seed.DEFAULT_GRAPH_SEED)
+        random_seed=87654321)
     y_train = np_utils.to_categorical(y_train, rnn_state_size)
     # For the last batch item of the test data, we filter out the last
     # timestep to simulate the variable length sequence and masking test.
@@ -366,7 +365,7 @@ class GRUV2Test(keras_parameterized.TestCase):
                 'return_sequences': True},
         input_shape=(num_samples, timesteps, embedding_dim))
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def test_float64_GRU(self):
     if test.is_built_with_rocm():
       self.skipTest('Double type is yet not supported in ROCm')
@@ -566,7 +565,7 @@ class GRUV2Test(keras_parameterized.TestCase):
         run_eagerly=testing_utils.should_run_eagerly())
     model.fit(x, y, epochs=1, shuffle=False)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def test_explicit_device_with_go_backward_and_mask(self):
     if test.is_built_with_rocm():
       self.skipTest('Skipping the test as ROCm MIOpen does not '
@@ -640,6 +639,31 @@ class GRUV2Test(keras_parameterized.TestCase):
     # Make sure it doesn't crash with cudnn kernel.
     model.predict(inputs)
 
+  # TODO (b/169895267): test with xla_gpu is disabled.
+  def test_deepcopy(self):
+    if not context.executing_eagerly():
+      self.skipTest('v2-only test')
+    original_layer = rnn.GRU(5)
+    copied_layer = copy.deepcopy(original_layer)
+    self.assertEqual(copied_layer.units, 5)
+    self.assertEqual(original_layer.get_config(), original_layer.get_config())
+
+    # Copy layer before layer call on inputs without weight initialization.
+    inputs = np.random.normal(size=[32, 10, 8]).astype(np.float32)
+    original_layer = rnn.GRU(4)
+    copied_layer = copy.deepcopy(original_layer)
+    outputs = original_layer(inputs)
+    copied_outputs = copied_layer(inputs)
+    self.assertNotAllClose(
+        self.evaluate(outputs), self.evaluate(copied_outputs))
+
+    # Copy layer after layer call on inputs with weight initialization.
+    original_layer = rnn.GRU(4)
+    outputs = original_layer(inputs)
+    copied_layer = copy.deepcopy(original_layer)
+    copied_outputs = copied_layer(inputs)
+    self.assertAllClose(self.evaluate(outputs), self.evaluate(copied_outputs))
+
 
 class GRULayerGradientTapeTest(keras_parameterized.TestCase):
 
@@ -704,7 +728,7 @@ class GRUGraphRewriteTest(keras_parameterized.TestCase):
     else:
       self.assertEqual(runtime_value[0], rnn._RUNTIME_CPU)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def test_GRU_runtime(self):
     layer = rnn.GRU(self.rnn_state_size, return_runtime=True)
 
@@ -720,7 +744,7 @@ class GRUGraphRewriteTest(keras_parameterized.TestCase):
     model = keras.models.Model(inputs=inputs, outputs=[outputs, runtime])
     self._test_runtime_with_model(model)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def test_GRU_runtime_with_mask(self):
     if test.is_built_with_rocm():
       self.skipTest('Skipping the test as ROCm MIOpen does not '
@@ -779,7 +803,7 @@ class GRUGraphRewriteTest(keras_parameterized.TestCase):
     _, runtime_value = model.predict(x_train)
     self.assertEqual(runtime_value[0], rnn._RUNTIME_CPU)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def test_GRU_runtime_with_cond(self):
     # This test is to demonstrate the graph rewrite of grappler plugin under
     # the condition that the function returns different number of internal

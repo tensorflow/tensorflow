@@ -22,6 +22,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np  # pylint: disable=unused-import
 
+from tensorflow.core.framework import types_pb2
 from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -40,6 +41,7 @@ from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variable_scope as vs
@@ -1423,7 +1425,7 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
         r"Trying to concat list with only uninitialized tensors "
-        r"but element_shape_except_first_dim_ is not fully defined"):
+        r"but element_shape_except_first_dim is not fully defined"):
       t = list_ops.tensor_list_concat(l, element_dtype=dtypes.float32)
       self.evaluate(t)
 
@@ -1600,9 +1602,18 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     def func():
       t = constant_op.constant([1., 2., 3.])
       l = list_ops.tensor_list_from_tensor(t, element_shape=[])
+      handle_data = resource_variable_ops.get_eager_safe_handle_data(l)
+      self.assertTrue(handle_data.is_set)
+      self.assertEqual(types_pb2.ST_TENSOR_LIST,
+                       handle_data.shape_and_type[0].specialized_type)
       return l
 
     tensor_list = func()
+    handle_data = resource_variable_ops.get_eager_safe_handle_data(tensor_list)
+    self.assertTrue(handle_data.is_set)
+    self.assertEqual(dtypes.float32, handle_data.shape_and_type[0].dtype)
+    self.assertEqual(types_pb2.ST_TENSOR_LIST,
+                     handle_data.shape_and_type[0].specialized_type)
     element = list_ops.tensor_list_get_item(
         tensor_list, 0, element_dtype=dtypes.float32)
     self.assertAllEqual(element.shape.as_list(), [])
@@ -1684,6 +1695,35 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       jac = tt.gradient(loss, x)
     hess = t.gradient(jac, x)
     self.assertAllEqual(hess, 6.)
+
+  def testTensorListElementShapeShapeInference(self):
+
+    @def_function.function
+    def f():
+      l = list_ops.empty_tensor_list(
+          element_dtype=dtypes.float32, element_shape=None)
+      l_element_shape = list_ops.tensor_list_element_shape(l, dtypes.int32)
+      self.assertIsNone(l_element_shape.shape.rank)
+      shape_l = list_ops.empty_tensor_list(
+          element_dtype=dtypes.int32, element_shape=l_element_shape.shape)
+      shape_l = list_ops.tensor_list_push_back(shape_l, l_element_shape)
+      return list_ops.tensor_list_pop_back(shape_l, dtypes.int32)[1]
+
+    self.assertAllEqual(f(), -1)
+
+  def testElementShapeArgOfTensorListFromTensor(self):
+
+    @def_function.function
+    def f():
+      t = array_ops.ones([3, 3])
+      l = list_ops.tensor_list_from_tensor(t, element_shape=[-1])
+      l = list_ops.tensor_list_push_back(l, array_ops.ones([4]))
+      read_val = list_ops.tensor_list_get_item(
+          l, 3, element_dtype=dtypes.float32)
+      self.assertAllEqual(read_val.shape.as_list(), [None])
+      return read_val
+
+    self.assertAllEqual(f(), [1.0, 1.0, 1.0, 1.0])
 
 
 if __name__ == "__main__":

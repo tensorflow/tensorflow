@@ -34,58 +34,6 @@ limitations under the License.
 
 namespace xla {
 
-/*static*/ StatusOr<std::unique_ptr<HloModule>>
-HloRunner::CreateModuleFromString(const absl::string_view hlo_string,
-                                  const DebugOptions& debug_options) {
-  HloModuleConfig config;
-  config.set_debug_options(debug_options);
-  return ParseAndReturnUnverifiedModule(hlo_string, config);
-}
-
-namespace {
-
-// Creates an HloModule from the given proto.
-StatusOr<std::unique_ptr<HloModule>> HloProtoToModule(
-    const HloProto& proto, const DebugOptions& debug_options) {
-  TF_ASSIGN_OR_RETURN(HloModuleConfig config,
-                      HloModule::CreateModuleConfigFromProto(proto.hlo_module(),
-                                                             debug_options));
-  TF_ASSIGN_OR_RETURN(auto module,
-                      HloModule::CreateFromProto(proto.hlo_module(), config));
-  return std::move(module);
-}
-
-}  // namespace
-
-/*static*/ StatusOr<std::unique_ptr<HloModule>>
-HloRunner::ReadModuleFromBinaryProtoFile(const std::string& filename,
-                                         const DebugOptions& debug_options) {
-  HloProto proto;
-  TF_RETURN_IF_ERROR(tensorflow::ReadBinaryProto(tensorflow::Env::Default(),
-                                                 filename, &proto));
-  return HloProtoToModule(proto, debug_options);
-}
-
-/*static*/ StatusOr<std::unique_ptr<HloModule>>
-HloRunner::ReadModuleFromTextProtoFile(const std::string& filename,
-                                       const DebugOptions& debug_options) {
-  HloProto proto;
-  TF_RETURN_IF_ERROR(
-      tensorflow::ReadTextProto(tensorflow::Env::Default(), filename, &proto));
-  return HloProtoToModule(proto, debug_options);
-}
-
-/*static*/ StatusOr<std::unique_ptr<HloModule>>
-HloRunner::ReadModuleFromHloTextFile(const std::string& filename,
-                                     const DebugOptions& debug_options) {
-  string hlo_string;
-  TF_RETURN_IF_ERROR(tensorflow::ReadFileToString(tensorflow::Env::Default(),
-                                                  filename, &hlo_string));
-  HloModuleConfig config;
-  config.set_debug_options(debug_options);
-  return ParseAndReturnUnverifiedModule(hlo_string, config);
-}
-
 HloRunner::HloRunner(se::Platform* platform, int intra_op_parallelism_threads) {
   BackendOptions backend_options;
   backend_options.set_platform(platform);
@@ -155,26 +103,9 @@ StatusOr<Literal> HloRunner::Execute(std::unique_ptr<HloModule> module,
   return TransferLiteralFromDevice(result.Result());
 }
 
-StatusOr<Literal> HloRunner::Execute(std::unique_ptr<HloModule> module,
-                                     absl::Span<const Literal> arguments,
-                                     bool run_hlo_passes,
-                                     ExecutionProfile* profile) {
-  // Construct a vector of plain pointers for the arguments.
-  std::vector<const Literal*> argument_pointers;
-  argument_pointers.reserve(arguments.size());
-  for (const auto& argument : arguments) {
-    argument_pointers.push_back(&argument);
-  }
-  return Execute(
-      /*module=*/std::move(module),
-      /*arguments=*/argument_pointers,
-      /*run_hlo_passes=*/run_hlo_passes,
-      /*profile=*/profile);
-}
-
-StatusOr<Literal> HloRunner::Execute(std::unique_ptr<Executable> executable,
-                                     absl::Span<const Literal> arguments,
-                                     ExecutionProfile* profile) {
+StatusOr<Literal> HloRunner::ExecuteWithExecutable(
+    std::unique_ptr<Executable> executable,
+    absl::Span<const Literal* const> arguments, ExecutionProfile* profile) {
   TF_ASSIGN_OR_RETURN(std::vector<ScopedShapedBuffer> argument_buffers,
                       TransferLiteralsToDevice(arguments));
   TF_ASSIGN_OR_RETURN(ExecutionOutput result,
@@ -211,8 +142,7 @@ static std::vector<ExecutionInput> ExecutionInputsFromScopedShapedBuffers(
             *buffer_tree.mutable_element(index) = execution_input_buffer;
           }
         });
-    execution_inputs.emplace_back(std::move(buffer_tree),
-                                  input_buffer.on_host_shape());
+    execution_inputs.emplace_back(std::move(buffer_tree));
   }
   return execution_inputs;
 }

@@ -4,6 +4,8 @@
 # TODO(jlebar): None of these tests actually use the GPU, so they should not
 # need to run on machines with GPUs present.
 
+load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 load(
@@ -220,6 +222,28 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "parallel_reduction_test",
+    srcs = [
+        "parallel_reduction_test.cc",
+    ],
+    tags = tf_cuda_tests_tags() + ["no_rocm"],
+    deps = [
+        ":gpu_codegen_test",
+        "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_module_config",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service/gpu:gpu_executable",
+        "//tensorflow/compiler/xla/tests:filecheck",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:llvm_irgen_test_base",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
     name = "gpu_copy_test",
     srcs = ["gpu_copy_test.cc"],
     tags = tf_cuda_tests_tags(),
@@ -375,6 +399,8 @@ tf_cc_test(
         ":gpu_codegen_test",
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service/gpu:gpu_fusible",
+        "//tensorflow/compiler/xla/service/gpu:instruction_fusion",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

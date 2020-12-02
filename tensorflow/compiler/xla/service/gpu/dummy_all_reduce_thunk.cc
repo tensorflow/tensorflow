@@ -14,9 +14,21 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
 namespace xla {
 namespace gpu {
+
+struct NcclAllReduceConfig::AuxData {};
+
+NcclAllReduceConfig::NcclAllReduceConfig(NcclAllReduceConfig &&) = default;
+NcclAllReduceConfig::~NcclAllReduceConfig() = default;
+
+NcclAllReduceConfig GetNcclAllReduceConfig(const HloInstruction *instr,
+                                           int64 replica_count) {
+  NcclAllReduceConfig config = {};
+  return config;
+}
 
 /* static */ bool NcclAllReduceThunk::NcclIsEnabled() {
   return false;  // Skylark selects this source file if NCCL is disabled.
@@ -32,20 +44,16 @@ Status NcclAllReduceThunk::ExecuteOnStream(const ExecuteParams& params) {
       "compiler, which is necessary to build the NCCL source library.");
 }
 
-NcclAllReduceThunk::~NcclAllReduceThunk() = default;
-
 /*static*/ absl::flat_hash_set<GlobalDeviceId>
 NcclAllReduceThunk::DevicesWithOpenNcclChannels() {
   return {};
 }
 
-struct NcclAllReduceThunk::AuxData {};
-
 NcclAllReduceThunk::NcclAllReduceThunk(
-    ThunkInfo thunk_info, int64 replica_count,
+    ThunkInfo thunk_info, NcclAllReduceConfig &&config,
     std::vector<NcclAllReduceThunk::Buffer> buffers)
     : Thunk(Thunk::kNcclAllReduce, thunk_info),
-      replica_count_(replica_count),
+      config_(std::move(config)),
       buffers_(std::move(buffers)) {}
 
 }  // namespace gpu

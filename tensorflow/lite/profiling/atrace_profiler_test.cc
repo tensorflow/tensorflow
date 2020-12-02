@@ -27,18 +27,26 @@ namespace profiling {
 namespace {
 
 TEST(ATraceProfilerTest, MaybeCreateATraceProfiler) {
-  auto default_profiler = MaybeCreateATraceProfiler();
-  EXPECT_EQ(nullptr, default_profiler.get());
+  auto initial_state_profiler = MaybeCreateATraceProfiler();
+#if !defined(TFLITE_ENABLE_DEFAULT_PROFILER)
+  EXPECT_EQ(nullptr, initial_state_profiler.get());
+#else
+  EXPECT_NE(nullptr, initial_state_profiler.get());
+#endif
 
 #if defined(__ANDROID__)
   if (__system_property_set("debug.tflite.trace", "1") == 0) {
-    auto profiler = MaybeCreateATraceProfiler();
-    EXPECT_NE(nullptr, profiler.get());
+    auto on_state_profiler = MaybeCreateATraceProfiler();
+    EXPECT_NE(nullptr, on_state_profiler.get());
   }
 
   if (__system_property_set("debug.tflite.trace", "0") == 0) {
-    auto no_profiler = MaybeCreateATraceProfiler();
-    EXPECT_EQ(nullptr, no_profiler.get());
+    auto off_state_profiler = MaybeCreateATraceProfiler();
+#if !defined(TFLITE_ENABLE_DEFAULT_PROFILER)
+    EXPECT_EQ(nullptr, off_state_profiler.get());
+#else
+    EXPECT_NE(nullptr, off_state_profiler.get());
+#endif
   }
 #endif  // __ANDROID__
 }

@@ -27,10 +27,8 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 
-std::vector<ComputeTaskDescriptorPtr> Add(int id,
-                                          const std::vector<ValueId> input_ids,
-                                          ValueId output_id,
-                                          const RuntimeOptions& options);
+ComputeTaskDescriptor Add(const std::vector<ValueId> input_ids,
+                          ValueId output_id, const RuntimeOptions& options);
 
 }  // namespace metal
 }  // namespace gpu

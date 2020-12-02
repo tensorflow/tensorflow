@@ -47,6 +47,7 @@ cc_library(
     visibility = ["//visibility:private"],
     deps = [
         ":common",
+        "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core/api",
     ],
@@ -60,13 +61,14 @@ cc_library(
     deps = [
         ":c_api_internal",
         ":common",
+        "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:version",
-        "//tensorflow/lite/core/api",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/kernels/internal:compatibility",
     ],
-    alwayslink = 1,
+    alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
 
 cc_library(
@@ -81,7 +83,7 @@ cc_library(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:kernel_api",
     ],
-    alwayslink = 1,
+    alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
 
 cc_test(
@@ -125,7 +127,8 @@ cc_library(
         "common.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    alwayslink = 1,
+    copts = tflite_copts(),
+    alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
 
 # For use with library targets that can't use relative paths.

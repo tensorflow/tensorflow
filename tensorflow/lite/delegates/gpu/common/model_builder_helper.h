@@ -45,6 +45,9 @@ DataType ToDataType(TfLiteType type);
 
 absl::Status ExtractTensorShape(const TfLiteTensor& tflite_tensor, BHWC* bhwc);
 
+absl::Status ExtractAxisFromIndex(const TfLiteTensor& tflite_tensor, int index,
+                                  Axis* axis);
+
 absl::Status ConvertTfLiteTensorToTensorRef(const TfLiteTensor& tflite_tensor,
                                             TensorRef<BHWC>* tensor_ref);
 

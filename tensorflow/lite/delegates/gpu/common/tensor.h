@@ -72,6 +72,10 @@ struct TensorRef {
   // Opaque reference to a tensor. Upstream component is responsible for
   // resolving this reference into an actual tensor.
   int64_t ref = -1;
+
+  // Specifies if the tensor should be a variable input tensor that must be an
+  // output as well as an input to the graph.
+  bool is_variable_input = false;
 };
 
 template <typename ShapeT, DataType Type>

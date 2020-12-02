@@ -29,7 +29,7 @@ using FusionNodeIndexingEvaluationTest = HloTestBase;
 
 // Subclass of InstructionFusion exposing the protected methods Fuse and
 // FuseInstruction for testing. Also adds the FusionNodeIndexingEvaluation to
-// track the average code duplication due to indexing HloInstructions with
+// track the code duplication due to indexing HloInstructions with
 // different index values.
 class InstructionFusionForTesting : public InstructionFusion {
  public:
@@ -61,8 +61,8 @@ class InstructionFusionForTesting : public InstructionFusion {
     return InstructionFusion::Fuse(producer, consumer);
   }
 
-  int64 EvaluateTotalEmittedInstructions(const HloInstruction* producer,
-                                         const HloInstruction* consumer) {
+  int64 EvaluateEmittedInstructions(const HloInstruction* producer,
+                                    const HloInstruction* consumer) {
     if (consumer->opcode() != HloOpcode::kFusion) {
       return 0;
     }
@@ -71,8 +71,8 @@ class InstructionFusionForTesting : public InstructionFusion {
       fusion_node_evaluations_.emplace(consumer,
                                        FusionNodeIndexingEvaluation(consumer));
     }
-    return fusion_node_evaluations_.at(consumer)
-        .EvaluateTotalEmittedInstructions(producer);
+    return fusion_node_evaluations_.at(consumer).EvaluateEmittedInstructions(
+        producer);
   }
 
  private:
@@ -109,8 +109,7 @@ TEST_F(FusionNodeIndexingEvaluationTest, FuseThreeInstructions) {
   HloInstruction* slice1 = sub->mutable_operand(0);
   HloInstruction* slice2 = sub->mutable_operand(1);
   auto fusion = instruction_fusion.Fuse(slice1, sub);
-  EXPECT_EQ(instruction_fusion.EvaluateTotalEmittedInstructions(slice2, fusion),
-            3);
+  EXPECT_EQ(instruction_fusion.EvaluateEmittedInstructions(slice2, fusion), 1);
   instruction_fusion.Fuse(slice2, fusion);
 }
 
@@ -151,37 +150,31 @@ TEST_F(FusionNodeIndexingEvaluationTest, ExponentialDuplicationPattern) {
   HloInstruction* slice2_1 = add2->mutable_operand(1);
   auto fusion = instruction_fusion.Fuse(slice2_0, add2);
   // So far we have fused add2 and slice2.0. So when we also fuse slice2.1, we
-  // expect to emit 3 instructions.
-  EXPECT_EQ(
-      instruction_fusion.EvaluateTotalEmittedInstructions(slice2_1, fusion), 3);
+  // expect to emit it 1 time.
+  EXPECT_EQ(instruction_fusion.EvaluateEmittedInstructions(slice2_1, fusion),
+            1);
   instruction_fusion.Fuse(slice2_1, fusion);
   HloInstruction* add1 = fusion->mutable_operand(0);
   EXPECT_EQ(add1->opcode(), HloOpcode::kAdd);
-  // If we fuse add1 into 'fusion', it needs to be emitted twice, adding 2 to
-  // the sum.
-  EXPECT_EQ(instruction_fusion.EvaluateTotalEmittedInstructions(add1, fusion),
-            5);
+  // If we fuse add1 into 'fusion', it needs to be emitted twice.
+  EXPECT_EQ(instruction_fusion.EvaluateEmittedInstructions(add1, fusion), 2);
   instruction_fusion.Fuse(add1, fusion);
   HloInstruction* slice1_0 = fusion->mutable_operand(0);
   EXPECT_EQ(slice1_0->opcode(), HloOpcode::kSlice);
-  // If we fuse slice1.0 into 'fusion', it needs to be emitted twice, adding 2
-  // to the sum.
-  EXPECT_EQ(
-      instruction_fusion.EvaluateTotalEmittedInstructions(slice1_0, fusion), 7);
+  // If we fuse slice1.0 into 'fusion', it needs to be emitted twice.
+  EXPECT_EQ(instruction_fusion.EvaluateEmittedInstructions(slice1_0, fusion),
+            2);
   instruction_fusion.Fuse(slice1_0, fusion);
   HloInstruction* slice1_1 = fusion->mutable_operand(0);
   EXPECT_EQ(slice1_1->opcode(), HloOpcode::kSlice);
-  // If we fuse slice1.1 into 'fusion', it needs to be emitted twice, adding 2
-  // to the sum.
-  EXPECT_EQ(
-      instruction_fusion.EvaluateTotalEmittedInstructions(slice1_1, fusion), 9);
+  // If we fuse slice1.1 into 'fusion', it needs to be emitted twice.
+  EXPECT_EQ(instruction_fusion.EvaluateEmittedInstructions(slice1_1, fusion),
+            2);
   instruction_fusion.Fuse(slice1_1, fusion);
   HloInstruction* add0 = fusion->mutable_operand(0);
   EXPECT_EQ(add0->opcode(), HloOpcode::kAdd);
-  // If we fuse add0 into 'fusion', it needs to be emitted twice, adding 4 to
-  // the sum.
-  EXPECT_EQ(instruction_fusion.EvaluateTotalEmittedInstructions(add0, fusion),
-            13);
+  // If we fuse add0 into 'fusion', it needs to be emitted four times.
+  EXPECT_EQ(instruction_fusion.EvaluateEmittedInstructions(add0, fusion), 4);
   instruction_fusion.Fuse(add0, fusion);
 }
 
@@ -212,10 +205,9 @@ ENTRY entry_computation {
   HloInstruction* add0 = fusion->mutable_operand(0);
   EXPECT_EQ(add0->opcode(), HloOpcode::kAdd);
   // Here, the cache for the fusion node needs to be recomputed. Make sure we
-  // still get the same evaluation as before when we incrementally built the
+  // still get the same evaluation as before when we incrementally build the
   // cache.
-  EXPECT_EQ(instruction_fusion.EvaluateTotalEmittedInstructions(add0, fusion),
-            13);
+  EXPECT_EQ(instruction_fusion.EvaluateEmittedInstructions(add0, fusion), 4);
 }
 
 }  // namespace xla

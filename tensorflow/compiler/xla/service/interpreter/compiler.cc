@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/interpreter/executable.h"
 #include "tensorflow/compiler/xla/service/layout_assignment.h"
 #include "tensorflow/compiler/xla/service/map_inliner.h"
+#include "tensorflow/compiler/xla/service/qr_expander.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/triangular_solve_expander.h"
 #include "tensorflow/compiler/xla/service/while_loop_simplifier.h"
@@ -82,6 +83,7 @@ Status InterpreterCompiler::RunHloOptimization(HloModule* hlo_module) {
 
   pipeline.AddPass<DynamicIndexSplitter>();
   pipeline.AddPass<CholeskyExpander>();
+  pipeline.AddPass<QrExpander>();
   pipeline.AddPass<ComparisonExpander>();
   pipeline.AddPass<TriangularSolveExpander>();
   pipeline.AddPass<LayoutAssignment>(

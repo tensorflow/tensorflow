@@ -1,3 +1,9 @@
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//third_party/mlir:tblgen.bzl", "gentbl")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
@@ -16,6 +22,7 @@ filegroup(
 
 gentbl(
     name = "tfjs_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             "-gen-op-decls",
@@ -40,7 +47,7 @@ gentbl(
         "ir/tfjs_ops.td",
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:include/mlir/Interfaces/LoopLikeInterface.td",
-        "@llvm-project//mlir:include/mlir/Interfaces/SideEffectInterfaces.td",
+        "@llvm-project//mlir:SideEffectTdFiles",
     ],
 )
 
@@ -70,6 +77,7 @@ cc_library(
 
 gentbl(
     name = "tfjs_optimize_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             "-gen-rewriters",
@@ -103,6 +111,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
     ],
     alwayslink = 1,
 )
@@ -117,7 +126,6 @@ cc_library(
         ":tfjs_optimize",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:decode_constant_pass",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_dialect_registration",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_graph_optimization_pass",
         "//tensorflow/compiler/mlir/tensorflow:tf_saved_model_passes",
@@ -141,7 +149,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",
         "//tensorflow/compiler/mlir/tensorflow:export_utils",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_dialect_registration",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
@@ -179,7 +186,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",

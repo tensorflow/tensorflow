@@ -97,15 +97,19 @@ absl::Status ExtractTensorShape(const TfLiteTensor& tflite_tensor, BHWC* bhwc) {
   const TfLiteIntArray* dims = tflite_tensor.dims;
   switch (dims->size) {
     case 1:
+      // B layout
       *bhwc = BHWC(dims->data[0], 1, 1, 1);
       return absl::OkStatus();
     case 2:
+      // BC layout
       *bhwc = BHWC(dims->data[0], 1, 1, dims->data[1]);
       return absl::OkStatus();
     case 3:
+      // BWC layout
       *bhwc = BHWC(dims->data[0], 1, dims->data[1], dims->data[2]);
       return absl::OkStatus();
     case 4:
+      // BHWC layout
       *bhwc = BHWC(dims->data[0], dims->data[1], dims->data[2], dims->data[3]);
       return absl::OkStatus();
     default:
@@ -113,6 +117,40 @@ absl::Status ExtractTensorShape(const TfLiteTensor& tflite_tensor, BHWC* bhwc) {
           "Tensor \"", tflite_tensor.name ? tflite_tensor.name : "nullptr",
           "\" has bad input dims size: ", dims->size, "."));
   }
+}
+
+absl::Status ExtractAxisFromIndex(const TfLiteTensor& tflite_tensor, int index,
+                                  Axis* axis) {
+  const TfLiteIntArray* dims = tflite_tensor.dims;
+  if (index == -1) {
+    index = dims->size - 1;
+  }
+  if (index < 0 || index >= dims->size) {
+    return absl::OutOfRangeError("Index for axis out of range");
+  }
+  std::vector<Axis> index_to_axis;
+  switch (dims->size) {
+    case 1:
+      // B layout
+      index_to_axis = {Axis::BATCH};
+      break;
+    case 2:
+      // BC layout
+      index_to_axis = {Axis::BATCH, Axis::CHANNELS};
+      break;
+    case 3:
+      // BWC layout
+      index_to_axis = {Axis::BATCH, Axis::WIDTH, Axis::CHANNELS};
+      break;
+    case 4:
+      // BHWC layout
+      index_to_axis = {Axis::BATCH, Axis::HEIGHT, Axis::WIDTH, Axis::CHANNELS};
+      break;
+    default:
+      return absl::UnavailableError("Unknown layout.");
+  }
+  *axis = index_to_axis[index];
+  return absl::OkStatus();
 }
 
 absl::Status ConvertTfLiteTensorToTensorRef(const TfLiteTensor& tflite_tensor,

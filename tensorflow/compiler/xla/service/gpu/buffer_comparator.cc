@@ -610,13 +610,21 @@ static StatusOr<bool> DeviceCompare(se::Stream* stream,
       executor->GetDeviceDescription().threads_per_block_limit();
   gpu_device_info.threads_per_warp =
       executor->GetDeviceDescription().threads_per_warp();
+  gpu_device_info.shared_memory_per_block =
+      executor->GetDeviceDescription().shared_memory_per_block();
+  gpu_device_info.threads_per_core_limit =
+      executor->GetDeviceDescription().threads_per_core_limit();
+  gpu_device_info.core_count = executor->GetDeviceDescription().core_count();
   LaunchDimensions dim =
       CalculateLaunchDimensions(buffer_shape, gpu_device_info);
 
-  stream->ThenLaunch(se::ThreadDim(dim.threads_per_block()),
-                     se::BlockDim(dim.block_count()), *comparison_kernel,
-                     lhs_typed, rhs_typed, static_cast<float>(kTolerance),
-                     buffer_size, out_param.cref());
+  LaunchDimensions::Dim3D thread_counts = dim.thread_counts_per_block();
+  LaunchDimensions::Dim3D block_counts = dim.block_counts();
+  stream->ThenLaunch(
+      se::ThreadDim(thread_counts.x, thread_counts.y, thread_counts.z),
+      se::BlockDim(block_counts.x, block_counts.y, block_counts.z),
+      *comparison_kernel, lhs_typed, rhs_typed, static_cast<float>(kTolerance),
+      buffer_size, out_param.cref());
 
   uint64 result = -1;
   CHECK_EQ(out_param->size(), sizeof(result));

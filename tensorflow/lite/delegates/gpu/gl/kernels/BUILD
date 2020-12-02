@@ -333,6 +333,7 @@ cc_test(
     srcs = ["mean_test.cc"],
     linkstatic = True,
     tags = [
+        "no_mac",  # TODO(b/171882090)
         "notap",
         "tflite_not_portable_ios",
     ],
@@ -673,6 +674,8 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/gl:request_gpu_info",
         "//tensorflow/lite/delegates/gpu/gl:runtime_options",
         "//tensorflow/lite/delegates/gpu/gl/workgroups:default_calculator",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],

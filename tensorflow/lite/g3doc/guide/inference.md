@@ -46,7 +46,8 @@ TensorFlow Lite inference typically follows the following steps:
 ## Supported platforms
 
 TensorFlow inference APIs are provided for most common mobile/embedded platforms
-such as Android, iOS and Linux, in multiple programming languages.
+such as [Android](#android-platform), [iOS](#ios-platform) and
+[Linux](#linux-platform), in multiple programming languages.
 
 In most cases, the API design reflects a preference for performance over ease of
 use. TensorFlow Lite is designed for fast inference on small devices, so it
@@ -57,20 +58,15 @@ explicit goal and some variance between languages is to be expected.
 Across all libraries, the TensorFlow Lite API enables you to load models, feed
 inputs, and retrieve inference outputs.
 
-## Supported operations
-
-TensorFlow Lite supports a subset of TensorFlow operations with some
-limitations. For full list of operations and limitations see
-[TF Lite Ops page](https://www.tensorflow.org/mlir/tfl_ops).
-
-### Android
+### Android Platform
 
 On Android, TensorFlow Lite inference can be performed using either Java or C++
 APIs. The Java APIs provide convenience and can be used directly within your
 Android Activity classes. The C++ APIs offer more flexibility and speed, but may
 require writing JNI wrappers to move data between Java and C++ layers.
 
-See below for details about using C++ and Java, or follow the
+See below for details about using [C++](#load-and-run-a-model-in-c) and
+[Java](#load-and-run-a-model-in-java), or follow the
 [Android quickstart](android.md) for a tutorial and example code.
 
 #### TensorFlow Lite Android wrapper code generator
@@ -86,24 +82,27 @@ TensorFlow Lite model with typed objects such as `Bitmap` and `Rect`. For more
 information, please refer to the
 [TensorFlow Lite Android wrapper code generator](../inference_with_metadata/codegen.md).
 
-### iOS
+### iOS Platform
 
 On iOS, TensorFlow Lite is available with native iOS libraries written in
-[Swift](https://www.tensorflow.org/code/tensorflow/lite/experimental/swift)
+[Swift](https://www.tensorflow.org/code/tensorflow/lite/swift)
 and
-[Objective-C](https://www.tensorflow.org/code/tensorflow/lite/experimental/objc).
+[Objective-C](https://www.tensorflow.org/code/tensorflow/lite/objc).
 You can also use
 [C API](https://www.tensorflow.org/code/tensorflow/lite/c/c_api.h)
 directly in Objective-C codes.
 
-See below for details about using Swift, Objective-C and C API, or follow the
+See below for details about using [Swift](#load-and-run-a-model-in-swift),
+[Objective-C](#load-and-run-a-model-in-objective-c) and the
+[C API](#using-c-api-in-objective-c-code), or follow the
 [iOS quickstart](ios.md) for a tutorial and example code.
 
-### Linux
+### Linux Platform
 
 On Linux platforms (including [Raspberry Pi](build_rpi.md)), you can run
-inferences using TensorFlow Lite APIs available in C++ and Python, as shown in
-the following sections.
+inferences using TensorFlow Lite APIs available in
+[C++](#load-and-run-a-model-in-c) and [Python](#load-and-run-a-model-in-python),
+as shown in the following sections.
 
 ## Running a model
 
@@ -239,7 +238,7 @@ Java inference API, but planned extensions will make this possible.
 *Platform: iOS*
 
 The
-[Swift API](https://www.tensorflow.org/code/tensorflow/lite/experimental/swift)
+[Swift API](https://www.tensorflow.org/code/tensorflow/lite/swift)
 is available in `TensorFlowLiteSwift` Pod from Cocoapods.
 
 First, you need to import `TensorFlowLite` module.
@@ -293,7 +292,7 @@ do {
 *Platform: iOS*
 
 The
-[Objective-C API](https://www.tensorflow.org/code/tensorflow/lite/experimental/objc)
+[Objective-C API](https://www.tensorflow.org/code/tensorflow/lite/objc)
 is available in `TensorFlowLiteObjC` Pod from Cocoapods.
 
 First, you need to import `TensorFlowLite` module.
@@ -365,7 +364,7 @@ TfLiteInterpreterInvoke(interpreter);
 
 // Extract the output tensor data.
 const TfLiteTensor* output_tensor =
-//      TfLiteInterpreterGetOutputTensor(interpreter, 0);
+    TfLiteInterpreterGetOutputTensor(interpreter, 0);
 TfLiteTensorCopyToBuffer(output_tensor, output.data(),
                          output.size() * sizeof(float));
 
@@ -377,7 +376,9 @@ TfLiteModelDelete(model);
 
 ## Load and run a model in C++
 
-*Platforms: Android and Linux*
+*Platforms: Android, iOS, and Linux*
+
+Note: C++ API on iOS is only available when using bazel.
 
 In C++, the model is stored in
 [`FlatBufferModel`](https://www.tensorflow.org/lite/api_docs/cc/class/tflite/flat-buffer-model.html)
@@ -488,11 +489,11 @@ output_data = interpreter.get_tensor(output_details[0]['index'])
 print(output_data)
 ```
 
-Alternatively to loading the model as a pre-converted `.tflite` file, you can
-combine your code with the
-[TensorFlow Lite Converter Python API](../convert/python_api.md)
+As an alternative to loading the model as a pre-converted `.tflite` file, you
+can combine your code with the
+[TensorFlow Lite Converter Python API](https://www.tensorflow.org/lite/convert/python_api)
 (`tf.lite.TFLiteConverter`), allowing you to convert your TensorFlow model into
-the TensorFlow Lite format and then run an inference:
+the TensorFlow Lite format and then run inference:
 
 ```python
 import numpy as np
@@ -521,103 +522,8 @@ For more Python sample code, see
 Tip: Run `help(tf.lite.Interpreter)` in the Python terminal to get detailed
 documentation about the interpreter.
 
-## Write a custom operator
+## Supported operations
 
-All TensorFlow Lite operators (both custom and builtin) are defined using a
-simple pure-C interface that consists of four functions:
-
-```c++
-typedef struct {
-  void* (*init)(TfLiteContext* context, const char* buffer, size_t length);
-  void (*free)(TfLiteContext* context, void* buffer);
-  TfLiteStatus (*prepare)(TfLiteContext* context, TfLiteNode* node);
-  TfLiteStatus (*invoke)(TfLiteContext* context, TfLiteNode* node);
-} TfLiteRegistration;
-```
-
-Refer to `context.h` for details on `TfLiteContext` and `TfLiteNode`. The former
-provides error reporting facilities and access to global objects, including all
-the tensors. The latter allows implementations to access their inputs and
-outputs.
-
-When the interpreter loads a model, it calls `init()` once for each node in the
-graph. A given `init()` will be called more than once if the op is used multiple
-times in the graph. For custom ops a configuration buffer will be provided,
-containing a flexbuffer that maps parameter names to their values. The buffer is
-empty for builtin ops because the interpreter has already parsed the op
-parameters. Kernel implementations that require state should initialize it here
-and transfer ownership to the caller. For each `init()` call, there will be a
-corresponding call to `free()`, allowing implementations to dispose of the
-buffer they might have allocated in `init()`.
-
-Whenever the input tensors are resized, the interpreter will go through the
-graph notifying implementations of the change. This gives them the chance to
-resize their internal buffer, check validity of input shapes and types, and
-recalculate output shapes. This is all done through `prepare()`, and
-implementations can access their state using `node->user_data`.
-
-Finally, each time inference runs, the interpreter traverses the graph calling
-`invoke()`, and here too the state is available as `node->user_data`.
-
-Custom ops can be implemented in exactly the same way as builtin ops, by defined
-those four functions and a global registration function that usually looks like
-this:
-
-```c++
-namespace tflite {
-namespace ops {
-namespace custom {
-  TfLiteRegistration* Register_MY_CUSTOM_OP() {
-    static TfLiteRegistration r = {my_custom_op::Init,
-                                   my_custom_op::Free,
-                                   my_custom_op::Prepare,
-                                   my_custom_op::Eval};
-    return &r;
-  }
-}  // namespace custom
-}  // namespace ops
-}  // namespace tflite
-```
-
-Note that registration is not automatic and an explicit call to
-`Register_MY_CUSTOM_OP` should be made somewhere. While the standard
-`BuiltinOpResolver` (available from the `:builtin_ops` target) takes care of the
-registration of builtins, custom ops will have to be collected in separate
-custom libraries.
-
-### Customize the kernel library
-
-Behind the scenes the interpreter will load a library of kernels which will be
-assigned to execute each of the operators in the model. While the default
-library only contains builtin kernels, it is possible to replace it with a
-custom library.
-
-The interpreter uses an `OpResolver` to translate operator codes and names into
-actual code:
-
-```c++
-class OpResolver {
-  virtual TfLiteRegistration* FindOp(tflite::BuiltinOperator op) const = 0;
-  virtual TfLiteRegistration* FindOp(const char* op) const = 0;
-  virtual void AddOp(tflite::BuiltinOperator op, TfLiteRegistration* registration) = 0;
-  virtual void AddOp(const char* op, TfLiteRegistration* registration) = 0;
-};
-```
-
-Regular usage requires that you use the `BuiltinOpResolver` and write:
-
-```c++
-tflite::ops::builtin::BuiltinOpResolver resolver;
-```
-
-You can optionally register custom ops (before you pass the resolver to the
-`InterpreterBuilder`):
-
-```c++
-resolver.AddOp("MY_CUSTOM_OP", Register_MY_CUSTOM_OP());
-```
-
-If the set of builtin ops is deemed to be too large, a new `OpResolver` could be
-code-generated based on a given subset of ops, possibly only the ones contained
-in a given model. This is the equivalent of TensorFlow's selective registration
-(and a simple version of it is available in the `tools` directory).
+TensorFlow Lite supports a subset of TensorFlow operations with some
+limitations. For full list of operations and limitations see
+[TF Lite Ops page](https://www.tensorflow.org/mlir/tfl_ops).

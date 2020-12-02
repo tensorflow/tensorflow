@@ -22,13 +22,13 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/Function.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/Operation.h"
-#include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 using mlir::DenseIntElementsAttr;
 using mlir::ElementsAttr;
@@ -38,7 +38,6 @@ using mlir::LogicalResult;
 using mlir::MLIRContext;
 using mlir::OpRewritePattern;
 using mlir::OwningRewritePatternList;
-using mlir::PassRegistration;
 using mlir::PassWrapper;
 using mlir::PatternRewriter;
 using mlir::RankedTensorType;
@@ -155,9 +154,16 @@ struct GeneralDotConvert : public OpRewritePattern<mlir::mhlo::DotGeneralOp> {
                              dot_numbers.rhs_contracting_dimensions(),
                              /*outer_dims_first=*/false, &rewriter);
 
+    // Accept only static shaped types.
+    auto lhs_shape_type = lhs.getType().dyn_cast_or_null<mlir::ShapedType>();
+    auto rhs_shape_type = rhs.getType().dyn_cast_or_null<mlir::ShapedType>();
+    if (!lhs_shape_type || !rhs_shape_type) return failure();
+    if (!lhs_shape_type.hasStaticShape() || !rhs_shape_type.hasStaticShape())
+      return failure();
+
     // Dot resulting shape.
-    auto lhs_shape = lhs.getType().cast<mlir::ShapedType>().getShape();
-    auto rhs_shape = rhs.getType().cast<mlir::ShapedType>().getShape();
+    auto lhs_shape = lhs_shape_type.getShape();
+    auto rhs_shape = rhs_shape_type.getShape();
     auto new_dot_type =
         RankedTensorType::get({lhs_shape[0], rhs_shape[1]}, dot_element_type);
 
@@ -176,7 +182,7 @@ struct LegalizeGeneralDotPass
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     mlir::mhlo::PopulateGeneralDotOpLoweringPatterns(&patterns, &getContext());
-    applyPatternsAndFoldGreedily(getFunction(), patterns);
+    applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
   }
 };
 

@@ -1,14 +1,20 @@
 # Description:
 #   Tensor bundle: a module to efficiently serialize and deserialize tensors.
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
-    "cc_header_only_library",
     "if_not_windows",
     "if_windows",
     "tf_cc_test",
     "tf_copts",
 )
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -72,7 +78,7 @@ cc_library(
 tf_cc_test(
     name = "tensor_bundle_test",
     srcs = ["tensor_bundle_test.cc"],
-    data = glob(["testdata/**"]),
+    data = ["//tensorflow/core/util/tensor_bundle/testdata:old_string_tensors"],
     tags = [
         "nomsan",
         "notsan",
@@ -83,8 +89,8 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensor_testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:tensor_testutil",
     ],
 )

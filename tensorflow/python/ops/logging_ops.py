@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections as py_collections
 import os
 import pprint
 import random
@@ -305,8 +306,21 @@ def print_v2(*inputs, **kwargs):
     # printed input.
     templates = []
     tensors = []
+    # If an input to the print function is of type `OrderedDict`, sort its
+    # elements by the keys for consistency with the ordering of `nest.flatten`.
+    # This is not needed for `dict` types because `pprint.pformat()` takes care
+    # of printing the template in a sorted fashion.
+    inputs_ordered_dicts_sorted = []
+    for input_ in inputs:
+      if isinstance(input_, py_collections.OrderedDict):
+        inputs_ordered_dicts_sorted.append(
+            py_collections.OrderedDict(sorted(input_.items())))
+      else:
+        inputs_ordered_dicts_sorted.append(input_)
     tensor_free_structure = nest.map_structure(
-        lambda x: "" if tensor_util.is_tensor(x) else x, inputs)
+        lambda x: "" if tensor_util.is_tensor(x) else x,
+        inputs_ordered_dicts_sorted)
+
     tensor_free_template = " ".join(
         pprint.pformat(x) for x in tensor_free_structure)
     placeholder = _generate_placeholder_string(tensor_free_template)

@@ -152,7 +152,7 @@ class TPUEmbeddingCheckpointTest(parameterized.TestCase, test.TestCase):
     second_checkpoint = util.Checkpoint(model=self.second_mid_level)
     second_checkpoint.restore(_get_tmpdir('restore', 'save-1'))
 
-    # Call retrieve here as a way to check what the TPU contains contains.
+    # Call retrieve here as a way to check what the TPU contains.
     # Calling the retrieve ops directly might make for a cleaner separation of
     # test and module, though.
     self.second_mid_level._retrieve_variables()
@@ -556,7 +556,7 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
     strategy, mid_level_api, _ = self._create_strategy_and_mid_level('sgd')
 
     input_fn = self._create_dense_input_fn(strategy, include_weights=True)
-    dist = strategy.experimental_distribute_datasets_from_function(
+    dist = strategy.distribute_datasets_from_function(
         input_fn,
         options=distribute_lib.InputOptions(
             experimental_prefetch_to_device=False))
@@ -744,8 +744,7 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
     strategy, mid_level_api, _ = self._create_strategy_and_mid_level('sgd')
 
     input_fn = self._create_dense_input_fn(strategy)
-    sparse_iter = iter(strategy.experimental_distribute_datasets_from_function(
-        input_fn))
+    sparse_iter = iter(strategy.distribute_datasets_from_function(input_fn))
 
     @def_function.function
     def test_fn():
@@ -768,8 +767,7 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
     strategy, mid_level_api, _ = self._create_strategy_and_mid_level('sgd')
 
     input_fn = self._create_dense_input_fn(strategy)
-    sparse_iter = iter(strategy.experimental_distribute_datasets_from_function(
-        input_fn))
+    sparse_iter = iter(strategy.distribute_datasets_from_function(input_fn))
 
     @def_function.function
     def test_fn():
@@ -1127,7 +1125,8 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
     def input_fn(ctx):
       del ctx
       return dataset_ops.DatasetV2.from_tensors(feature).repeat()
-    dist = strategy.experimental_distribute_datasets_from_function(
+
+    dist = strategy.distribute_datasets_from_function(
         input_fn,
         options=distribute_lib.InputOptions(
             experimental_prefetch_to_device=False))

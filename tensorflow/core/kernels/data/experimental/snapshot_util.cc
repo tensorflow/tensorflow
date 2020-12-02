@@ -38,7 +38,7 @@ limitations under the License.
 #include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/core/protobuf/data/experimental/snapshot.pb.h"
+#include "tensorflow/core/protobuf/snapshot.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -363,6 +363,10 @@ class Reader::Dataset : public DatasetBase {
     return "snapshot_util::Reader::Dataset";
   }
 
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    return Status::OK();
+  }
+
   Status CheckExternalState() const override { return Status::OK(); }
 
  protected:
@@ -481,6 +485,11 @@ class Reader::NestedDataset : public DatasetBase {
 
   std::string DebugString() const override {
     return "snapshot_util::Reader::NestedDataset";
+  }
+
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    inputs->clear();
+    return Status::OK();
   }
 
   Status CheckExternalState() const override { return Status::OK(); }

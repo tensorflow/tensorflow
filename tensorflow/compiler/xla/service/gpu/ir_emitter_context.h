@@ -20,14 +20,17 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 
 namespace xla {
 namespace gpu {
+
 // IrEmitterContext encapsulates common (mutable and immutable) data structures
 // used by both IrEmitterNested and IrEmitterUnnested, such as the buffer
 // assignment and the name uniquer.
@@ -48,9 +51,9 @@ class IrEmitterContext {
         profile_index_map_(profile_index_map),
         mlir_context_(mlir_context),
         llvm_module_(llvm_module) {
-    mlir_context_
-        ->loadDialect<mlir::lmhlo::LmhloDialect, mlir::mhlo::MhloDialect,
-                      mlir::StandardOpsDialect>();
+    mlir_context_->loadDialect<
+        mlir::lmhlo::LmhloDialect, mlir::mhlo::MhloDialect,
+        mlir::StandardOpsDialect, mlir::lmhlo_gpu::LmhloGpuDialect>();
   }
   // Disallow copy and assign.
   IrEmitterContext(const IrEmitterContext&) = delete;
@@ -71,6 +74,8 @@ class IrEmitterContext {
   llvm::Module* llvm_module() { return llvm_module_; }
   NameUniquer* name_uniquer() { return &name_uniquer_; }
 
+  std::vector<GpuExecutable::ConstantInfo>& constants() { return constants_; }
+
  private:
   const HloModule* hlo_module_;
   const BufferAssignment* buffer_assignment_;
@@ -81,6 +86,7 @@ class IrEmitterContext {
   mlir::MLIRContext* mlir_context_;
   llvm::Module* llvm_module_;
   NameUniquer name_uniquer_;
+  std::vector<GpuExecutable::ConstantInfo> constants_;
 };
 
 }  // namespace gpu

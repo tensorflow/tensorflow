@@ -8,14 +8,6 @@
 GEMMLOWP_URL := "https://github.com/google/gemmlowp/archive/719139ce755a0f31cbf1c37f7f98adcc7fc9f425.zip"
 GEMMLOWP_MD5 := "7e8191b24853d75de2af87622ad293ba"
 
-ifeq ($(HOST_OS),windows)
-  FLATBUFFERS_URL := "http://mirror.tensorflow.org/github.com/google/flatbuffers/archive/v1.12.0.zip"
-  FLATBUFFERS_MD5 := "a1afdbf114dec01a861c1b8c917d0fc7"
-else
-  FLATBUFFERS_URL := "http://mirror.tensorflow.org/github.com/google/flatbuffers/archive/v1.12.0.tar.gz"
-  FLATBUFFERS_MD5 := "c62ffefb3d4548b127cca14ce047f16c"
-endif
-
 ifeq ($(HOST_OS),osx)
   GCC_EMBEDDED_URL := "http://mirror.tensorflow.org/developer.arm.com/-/media/Files/downloads/gnu-rm/7-2018q2/gcc-arm-none-eabi-7-2018-q2-update-mac.tar.bz2"
   GCC_EMBEDDED_MD5 := "a66be9828cf3c57d7d21178e07cd8904"
@@ -33,8 +25,8 @@ LEON_BCC2_MD5 := "cdf78082be4882da2a92c9baa82fe765"
 TSIM_URL := "http://mirror.tensorflow.org/www.gaisler.com/anonftp/tsim/tsim-eval-2.0.63.tar.gz"
 TSIM_MD5 := "afa0095d3ed989a949e1467f94e41d2f"
 
-CMSIS_URL := "http://mirror.tensorflow.org/github.com/ARM-software/CMSIS_5/archive/9daaa7a34a5627a24009462b8fa8413a00c4fdb1.zip"
-CMSIS_MD5 := "b988dacff8925ffffcb7e5079cc713b7"
+CMSIS_URL := "http://github.com/ARM-software/CMSIS_5/archive/01f5b32badf7b78c85a24a7149b56400fa6a2999.zip"
+CMSIS_MD5 := "823916c6f1749c65fd0bfdeec20b30ed"
 
 AM_SDK_URL := "http://mirror.tensorflow.org/s3.asia.ambiqmicro.com/downloads/AmbiqSuite-Rel2.2.0.zip"
 AM_SDK_MD5 := "7605fa2d4d97e6bb7a1190c92b66b597"
@@ -76,20 +68,17 @@ PERSON_MODEL_MD5 := "55b85f76e2995153e660391d4a209ef1"
 PERSON_MODEL_INT8_URL := "https://storage.googleapis.com/download.tensorflow.org/data/tf_lite_micro_person_data_int8_grayscale_2020_06_23.zip"
 PERSON_MODEL_INT8_MD5 := "9b5b6d4677dd0a91b1bb992d1c4c0417"
 
-EMBARC_MLI_URL := "http://mirror.tensorflow.org/github.com/foss-for-synopsys-dwc-arc-processors/embarc_mli/archive/58284867ca52d1f43b25045e8601999d7359d986.zip"
-EMBARC_MLI_MD5 := "2bf4982a327fdaa9d475803ce014d1ef"
+EMBARC_MLI_URL := "https://github.com/foss-for-synopsys-dwc-arc-processors/embarc_mli/archive/ef7dd3c4e37d74a908f30713a7d0121387d3c678.zip"
+EMBARC_MLI_MD5 := "65c4ff3f4a2963e90fd014f97c69f451"
 
-EMBARC_MLI_PRE_COMPILED_URL := "http://mirror.tensorflow.org/github.com/foss-for-synopsys-dwc-arc-processors/embarc_mli/releases/download/Release_1.1_RC2/embARC_MLI_package.zip"
-EMBARC_MLI_PRE_COMPILED_MD5 := "a95ff9e0370434484f14e7e4114327f6"
+EMBARC_MLI_PRE_COMPILED_URL := "https://github.com/foss-for-synopsys-dwc-arc-processors/embarc_mli/releases/download/Release_1.1/embARC_MLI_package.zip"
+EMBARC_MLI_PRE_COMPILED_MD5 := "173990c2dde4efef6a2c95b92d1f0244"
 
 ZEPHYR_URL := "http://mirror.tensorflow.org/github.com/antmicro/zephyr/archive/55e36b9.zip"
 ZEPHYR_MD5 := "755622eb4812fde918a6382b65d50c3b"
 
-XTENSA_HIFI4_URL :="http://mirror.tensorflow.org/github.com/foss-xtensa/nnlib-hifi4/raw/master/archive/xa_nnlib_06_27.zip"
-XTENSA_HIFI4_MD5 :="45fdc1209a8da62ab568aa6040f7eabf"
+ETHOSU_URL := "https://git.mlplatform.org/ml/ethos-u/ethos-u-core-driver.git/snapshot/ethos-u-core-driver-2b201c340788ac582cec160b7217c2b5405b04f9.tar.gz"
+ETHOSU_MD5 := "0c148b90a1ee01de398892eb3a63e717"
 
-ETHOSU_URL := "http://mirror.tensorflow.org/git.mlplatform.org/ml/ethos-u/ethos-u-core-driver.git/snapshot/ethos-u-core-driver-bcb5aaa99756f1b5c1295b079ebdd60996bc75a5.tar.gz"
-ETHOSU_MD5 := "d2073c8d88fc167fd5c46b5dcda58ea1"
-
-HIMAX_WE1_SDK_URL ="https://www.himax.com.tw/we-i/himax_we1_sdk_v03.zip"
-HIMAX_WE1_SDK_MD5 ="1cd9b17f3fdb3e9a1dfd1cc356694325"
+HIMAX_WE1_SDK_URL ="https://www.himax.com.tw/we-i/himax_we1_sdk_v04.zip"
+HIMAX_WE1_SDK_MD5 ="40b3ccb3c2e41210fe5c970d61e7e7d3"

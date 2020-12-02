@@ -26,13 +26,8 @@ namespace tpu {
 
 namespace {
 TpuPlatformInterface* GetRegisteredPlatformStatic(bool initialize_platform,
-                                                  int tries_left = 5) {
-  if (tries_left <= 0) {
-    LOG(ERROR) << "Unable to find a TPU platform after exhausting all tries. "
-                  "Returning nullptr...";
-    return nullptr;
-  }
-
+                                                  int tries_left) {
+  DCHECK_GT(tries_left, 0);
   // Prefer TpuPlatform if it's registered.
   auto status_or_tpu_platform =
       stream_executor::MultiPlatformManager::PlatformWithName(
@@ -65,7 +60,8 @@ TpuPlatformInterface* GetRegisteredPlatformStatic(bool initialize_platform,
   }
 
   // If we find at least one thing, we return the first thing we see.
-  if (status_or_other_tpu_platforms.ok()) {
+  if (status_or_other_tpu_platforms.ok() &&
+      !status_or_other_tpu_platforms->empty()) {
     auto other_tpu_platforms = status_or_other_tpu_platforms.ValueOrDie();
     LOG(WARNING) << other_tpu_platforms.size()
                  << " TPU platforms registered, selecting "
@@ -73,26 +69,26 @@ TpuPlatformInterface* GetRegisteredPlatformStatic(bool initialize_platform,
     return static_cast<TpuPlatformInterface*>(other_tpu_platforms[0]);
   }
 
-  LOG(WARNING)
+  --tries_left;
+  if (tries_left <= 0) {
+    LOG(INFO) << "No TPU platform found.";
+    return nullptr;
+  }
+  LOG(INFO)
       << "No TPU platform registered. Waiting 1 second and trying again... ("
-      << (tries_left - 1) << " tries left)";
+      << tries_left << " tries left)";
   Env::Default()->SleepForMicroseconds(1000000);  // 1 second
-  return GetRegisteredPlatformStatic(initialize_platform, --tries_left);
+  return GetRegisteredPlatformStatic(initialize_platform, tries_left);
 }
 }  // namespace
 
 /* static */
-TpuPlatformInterface* TpuPlatformInterface::GetRegisteredPlatform() {
-  return GetRegisteredPlatform(/*initialize_platform=*/true);
-}
-
-/* static */
 TpuPlatformInterface* TpuPlatformInterface::GetRegisteredPlatform(
-    bool initialize_platform) {
+    bool initialize_platform, int num_tries) {
   static auto* mu = new mutex;
   static bool requested_initialize_platform = initialize_platform;
   static TpuPlatformInterface* tpu_registered_platform =
-      GetRegisteredPlatformStatic(initialize_platform);
+      GetRegisteredPlatformStatic(initialize_platform, num_tries);
 
   mutex_lock lock(*mu);
   if (!requested_initialize_platform && initialize_platform) {
@@ -100,7 +96,8 @@ TpuPlatformInterface* TpuPlatformInterface::GetRegisteredPlatform(
     // initializing the platform, but the next caller wants the platform
     // initialized, we will call GetRegisteredPlatformStatic again to initialize
     // the platform.
-    tpu_registered_platform = GetRegisteredPlatformStatic(initialize_platform);
+    tpu_registered_platform =
+        GetRegisteredPlatformStatic(initialize_platform, num_tries);
     requested_initialize_platform = true;
   }
 

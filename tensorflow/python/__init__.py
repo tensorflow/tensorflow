@@ -102,7 +102,7 @@ from tensorflow.python.platform import flags
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.platform import resource_loader
-from tensorflow.python.platform import sysconfig
+from tensorflow.python.platform import sysconfig as sysconfig_lib
 from tensorflow.python.platform import test
 
 from tensorflow.python.compat import v2_compat

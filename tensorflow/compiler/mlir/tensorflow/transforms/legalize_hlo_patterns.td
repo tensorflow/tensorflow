@@ -21,10 +21,10 @@ include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.td"
 include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td"
 
-// Check that two values can be broadcasted together
-// TODO(jpienaar): Move somewhere more general
-def AreBroadcastCompatible : Constraint<CPred<"AreBroadcastCompatible($0, $1)">,
-    "types must be broadcastable">;
+// Check if broadcasting is compatible with TF ops.
+def IsLegalNumpyRankedBroadcast :
+    Constraint<CPred<"hlo::IsLegalNumpyRankedBroadcast($0, $1, $2)">,
+    "broadcasting should be compatible with TF ops">;
 
 // Return a constant op that carries the shape of the given value.
 def ShapeToConst : NativeCodeCall<"ShapeToConst($_builder, $0)">;
@@ -49,7 +49,6 @@ def : Pat<(HLO_ConstOp $value), (TF_ConstOp $value)>;
 // context, getting to these ops may require some raising.
 //===----------------------------------------------------------------------===//
 
-// TODO(b/158025719): Properly handle broadcast_dimensions.
 foreach fromToBinPair = [[HLO_AddOp, HLOClient_BroadcastAddOp, TF_AddV2Op],
                          [HLO_DivOp, HLOClient_BroadcastDivOp, TF_DivOp],
                          [HLO_ShiftLeftOp, HLOClient_BroadcastShiftLeftOp, TF_LeftShiftOp],
@@ -61,35 +60,44 @@ foreach fromToBinPair = [[HLO_AddOp, HLOClient_BroadcastAddOp, TF_AddV2Op],
                          [HLO_Atan2Op, HLOClient_BroadcastAtan2Op, TF_Atan2Op],
                          [HLO_RemOp, HLOClient_BroadcastRemOp, TF_ModOp]] in {
   def : Pat<(fromToBinPair[0] $l, $r), (fromToBinPair[2] $l, $r)>;
-  def : Pat<(fromToBinPair[1] $l, $r, $_), (fromToBinPair[2] $l, $r),
-            [(AreBroadcastCompatible $l, $r)]>;
+  def : Pat<(fromToBinPair[1] $l, $r, $broadcast_dimensions),
+            (fromToBinPair[2] $l, $r),
+            [(IsLegalNumpyRankedBroadcast $l, $r, $broadcast_dimensions)]>;
 }
 
 foreach pair  = [[HLO_AndOp, HLOClient_BroadcastAndOp, TF_BitwiseAndOp],
                  [HLO_OrOp, HLOClient_BroadcastOrOp, TF_BitwiseOrOp],
                  [HLO_XorOp, HLOClient_BroadcastXorOp, TF_BitwiseXorOp]] in {
   def : Pat<(pair[0] TF_IntTensor:$l, TF_IntTensor:$r), (pair[2] $l, $r)>;
-  def : Pat<(pair[1] TF_IntTensor:$l, TF_IntTensor:$r, $_), (pair[2] $l, $r),
-            [(AreBroadcastCompatible $l, $r)]>;
+  def : Pat<(pair[1] TF_IntTensor:$l, TF_IntTensor:$r, $broadcast_dimensions),
+            (pair[2] $l, $r),
+            [(IsLegalNumpyRankedBroadcast $l, $r, $broadcast_dimensions)]>;
 }
 
 foreach pair  = [[HLO_AndOp, HLOClient_BroadcastAndOp, TF_LogicalAndOp],
                  [HLO_OrOp, HLOClient_BroadcastOrOp, TF_LogicalOrOp]] in {
   def : Pat<(pair[0] I1Tensor:$l, I1Tensor:$r), (pair[2] $l, $r)>;
-  def : Pat<(pair[1] I1Tensor:$l, I1Tensor:$r, $_), (pair[2] $l, $r),
-            [(AreBroadcastCompatible $l, $r)]>;
+  def : Pat<(pair[1] I1Tensor:$l, I1Tensor:$r, $broadcast_dimensions),
+            (pair[2] $l, $r),
+            [(IsLegalNumpyRankedBroadcast $l, $r, $broadcast_dimensions)]>;
 }
 
 def : Pat<(HLO_ShiftRightArithmeticOp $l, $r), (TF_RightShiftOp $l, $r)>;
-def : Pat<(HLOClient_BroadcastShiftRightArithmeticOp $l, $r, $_), (TF_RightShiftOp $l, $r),
-          [(AreBroadcastCompatible $l, $r)]>;
+def : Pat<(HLOClient_BroadcastShiftRightArithmeticOp $l, $r,
+                                                     $broadcast_dimensions),
+          (TF_RightShiftOp $l, $r),
+          [(IsLegalNumpyRankedBroadcast $l, $r, $broadcast_dimensions)]>;
 def : Pat<(HLO_ShiftRightLogicalOp $l, $r), (TF_RightShiftOp $l, $r)>;
-def : Pat<(HLOClient_BroadcastShiftRightLogicalOp $l, $r, $_), (TF_RightShiftOp $l, $r),
-          [(AreBroadcastCompatible $l, $r)]>;
+def : Pat<(HLOClient_BroadcastShiftRightLogicalOp $l, $r,
+                                                  $broadcast_dimensions),
+          (TF_RightShiftOp $l, $r),
+          [(IsLegalNumpyRankedBroadcast $l, $r, $broadcast_dimensions)]>;
 
 def : Pat<(HLO_FloorOp (HLO_DivOp $l, $r)), (TF_FloorDivOp $l, $r)>;
-def : Pat<(HLO_FloorOp (HLOClient_BroadcastDivOp $l, $r, $_)), (TF_FloorDivOp $l, $r),
-          [(AreBroadcastCompatible $l, $r)]>;
+def : Pat<(HLO_FloorOp (HLOClient_BroadcastDivOp $l, $r,
+                                                 $broadcast_dimensions)),
+          (TF_FloorDivOp $l, $r),
+          [(IsLegalNumpyRankedBroadcast $l, $r, $broadcast_dimensions)]>;
 
 def : Pat<(HLO_ComplexOp $r, $i), (TF_ComplexOp $r, $i)>;
 
@@ -157,6 +165,16 @@ def : Pat<(HLO_SelectOp $cond, $t, $e), (TF_SelectOp $cond, $t, $e)>;
 def : Pat<(HLO_ConcatenateOp $inputs, $dim),
           (TF_ConcatV2Op $inputs, (TF_ConstOp $dim))>;
 
+class HasCompareType<string value> :
+    CPred<"$_self.cast<StringAttr>().getValue() == \"" # value # "\"">;
+
+// Attribute value should be such that it matches the comparison used by
+// TensorFlow, if the attribute is present.
+def IsTFCompareType : AttrConstraint<
+   Or<[CPred<"!$_self">, HasCompareType<"FLOAT">, HasCompareType<"SIGNED">,
+       HasCompareType<"UNSIGNED">]>,
+   "compare type supported by TensorFlow">;
+
 //===----------------------------------------------------------------------===//
 // Compare op patterns.
 // Note that these are legalized from chlo.broadcast_* ops, since those are
@@ -166,18 +184,24 @@ def : Pat<(HLO_ConcatenateOp $inputs, $dim),
 
 foreach p = [[TF_EqualOp, HLO_COMPARISON_DIRECTION_EQ],
              [TF_NotEqualOp, HLO_COMPARISON_DIRECTION_NE]] in {
-  def : Pat<(HLOClient_BroadcastCompareOp $l, $r, $_, p[1]), (p[0] $l, $r, ConstBoolAttrTrue),
-            [(AreBroadcastCompatible $l, $r)]>;
-  def : Pat<(HLO_CompareOp $l, $r, p[1]), (p[0] $l, $r, ConstBoolAttrTrue)>;
+  def : Pat<(HLOClient_BroadcastCompareOp $l, $r, $broadcast_dimensions, p[1],
+                                          IsTFCompareType:$type),
+            (p[0] $l, $r, ConstBoolAttrTrue),
+            [(IsLegalNumpyRankedBroadcast $l, $r, $broadcast_dimensions)]>;
+  def : Pat<(HLO_CompareOp $l, $r, p[1], IsTFCompareType:$type),
+            (p[0] $l, $r, ConstBoolAttrTrue)>;
 }
 
 foreach pair = [[TF_GreaterEqualOp, HLO_COMPARISON_DIRECTION_GE],
                 [TF_GreaterOp, HLO_COMPARISON_DIRECTION_GT],
                 [TF_LessEqualOp, HLO_COMPARISON_DIRECTION_LE],
                 [TF_LessOp, HLO_COMPARISON_DIRECTION_LT]] in {
-  def : Pat<(HLOClient_BroadcastCompareOp $l, $r, $_, pair[1]), (pair[0] $l, $r),
-            [(AreBroadcastCompatible $l, $r)]>;
-  def : Pat<(HLO_CompareOp $l, $r, pair[1]), (pair[0] $l, $r)>;
+  def : Pat<(HLOClient_BroadcastCompareOp $l, $r, $broadcast_dimensions,
+                                          pair[1], IsTFCompareType:$type),
+            (pair[0] $l, $r),
+            [(IsLegalNumpyRankedBroadcast $l, $r, $broadcast_dimensions)]>;
+  def : Pat<(HLO_CompareOp $l, $r, pair[1], IsTFCompareType:$type),
+            (pair[0] $l, $r)>;
 }
 
 def ConvertDotOp : NativeCodeCall<"ConvertDotOp($_builder, "
@@ -192,3 +216,12 @@ def : Pat<(HLO_DotGeneralOp:$old_value AnyStaticShapeTensor:$lhs,
                AnyStaticShapeTensor:$rhs, $dot_dimension_numbers,
                $precision_config),
           (ConvertDotGeneralOp $old_value)>;
+
+def IsZero : Constraint<CPred<
+  "$0.isSplat() && $0.getSplatValue<APInt>() == 0">>;
+def ConvertPadOp : NativeCodeCall<
+  "ConvertPadOp($_builder, $0.getDefiningOp())">;
+def : Pat<(HLO_PadOp:$old_value $input, $pad_value, $pad_low, $pad_high,
+               $pad_interior),
+          (ConvertPadOp $old_value),
+          [(IsZero $pad_interior)]>;

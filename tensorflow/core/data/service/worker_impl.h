@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/protobuf/data/experimental/service_config.pb.h"
+#include "tensorflow/core/protobuf/service_config.pb.h"
 #include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
@@ -50,6 +50,8 @@ class DataServiceWorkerImpl {
   /// Client-facing API.
   Status GetElement(const GetElementRequest* request,
                     GetElementResponse* response);
+  Status GetWorkerTasks(const GetWorkerTasksRequest* request,
+                        GetWorkerTasksResponse* response);
 
  private:
   struct Task {
@@ -58,22 +60,25 @@ class DataServiceWorkerImpl {
     TaskDef task_def;
     mutex mu;
     bool initialized TF_GUARDED_BY(mu) = false;
+    bool finished = false;
     // TODO(aaudibert): Have standalone::Iterator own a reference to
     // standalone::Dataset so that we don't need to store the dataset here.
     std::unique_ptr<standalone::Dataset> dataset;
     std::unique_ptr<standalone::Iterator> iterator;
   };
 
-  // Registers the worker with the dispatcher.
-  Status Register() LOCKS_EXCLUDED(mu_);
   // Sends task status to the dispatcher and checks for dispatcher commands.
-  Status SendTaskUpdates() LOCKS_EXCLUDED(mu_);
+  Status SendTaskUpdates() TF_LOCKS_EXCLUDED(mu_);
   // Creates an iterator to process a task.
-  Status ProcessTaskInternal(const TaskDef& task) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  Status ProcessTaskInternal(const TaskDef& task)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   Status EnsureTaskInitialized(Task& task);
-  // A thread for doing async background processing not associated with a
-  // specific RPC, such as reporting finished tasks.
-  void BackgroundThread() LOCKS_EXCLUDED(mu_);
+  // A thread for notifying the dispatcher when tasks complete.
+  void TaskCompletionThread() TF_LOCKS_EXCLUDED(mu_);
+  // A thread for doing periodic heartbeats to the dispatcher.
+  void HeartbeatThread() TF_LOCKS_EXCLUDED(mu_);
+  // Performs a heartbeat to the dispatcher.
+  Status Heartbeat() TF_LOCKS_EXCLUDED(mu_);
 
   const experimental::WorkerConfig config_;
   // The worker's own address.
@@ -88,9 +93,12 @@ class DataServiceWorkerImpl {
   bool cancelled_ TF_GUARDED_BY(mu_) = false;
   // Whether the worker has registered with the dispatcher yet.
   bool registered_ TF_GUARDED_BY(mu_) = false;
-  // Condition variable for notifying the background thread.
-  condition_variable background_cv_ TF_GUARDED_BY(mu_);
-  std::unique_ptr<Thread> background_thread_;
+  // A thread for notifying the dispatcher when tasks complete.
+  std::unique_ptr<Thread> task_completion_thread_;
+  condition_variable task_completion_cv_ TF_GUARDED_BY(mu_);
+  // A thread for performing regular heartbeats to the dispatcher.
+  std::unique_ptr<Thread> heartbeat_thread_;
+  condition_variable heartbeat_cv_ TF_GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(DataServiceWorkerImpl);
 };

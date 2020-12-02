@@ -84,6 +84,11 @@ class ShardDatasetOp::Dataset : public DatasetBase {
     return n / num_shards_ + (index_ < n % num_shards_ ? 1 : 0);
   }
 
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    inputs->push_back(input_);
+    return Status::OK();
+  }
+
   Status CheckExternalState() const override {
     return input_->CheckExternalState();
   }
@@ -157,14 +162,20 @@ class ShardDatasetOp::Dataset : public DatasetBase {
         Status s = input_impl_->Skip(ctx, dataset()->num_shards_ - next_index_,
                                      end_of_sequence, &num_skipped);
         if (*end_of_sequence || errors::IsOutOfRange(s)) {
+          // `dataset()->require_non_empty_` implies that this transformation
+          // was introduced by auto_sharding rewrite, so it's acceptable
+          // produce an error message that assumes auto-sharding context.
           return errors::InvalidArgument(
-              "There aren't enough elements in this dataset for each shard to "
-              "have at least one element (# elems = ",
-              next_index_, ", ", "# shards = ", dataset()->num_shards_,
-              "). If you are using datasets with distribution strategy, "
-              "considering setting the auto sharding policy to either DATA or "
+              "Could not apply FILE based sharding: the dataset only has ",
+              next_index_, " file(s), which is not enough for the required ",
+              dataset()->num_shards_,
+              " shards/workers."
+              "If you are using datasets with distribution strategy, "
+              "consider setting the auto sharding policy to either DATA or "
               "OFF using the `experimental_distribute.auto_shard_policy` option"
-              "of `tf.data.Options()`.");
+              "of `tf.data.Options()`. Or, split your input files into a "
+              "larger number of small files such that number of files is "
+              "greater than number of shards/workers.");
         } else if (!s.ok()) {
           return s;
         }

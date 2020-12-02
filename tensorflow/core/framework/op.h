@@ -214,124 +214,83 @@ class OpListOpRegistry : public OpRegistryInterface {
 
 namespace register_op {
 
-// OpDefBuilderWrapper is a templated class that is used in the REGISTER_OP
-// calls. This allows the result of REGISTER_OP to be used in chaining, as in
-// REGISTER_OP(a).Attr("...").Input("...");, while still allowing selective
-// registration to turn the entire call-chain into a no-op.
-template <bool should_register>
-class OpDefBuilderWrapper;
-
-// Template specialization that forwards all calls to the contained builder.
-template <>
-class OpDefBuilderWrapper<true> {
+class OpDefBuilderWrapper {
  public:
   explicit OpDefBuilderWrapper(const char name[]) : builder_(name) {}
-  OpDefBuilderWrapper<true>& Attr(std::string spec) {
+  OpDefBuilderWrapper& Attr(std::string spec) {
     builder_.Attr(std::move(spec));
     return *this;
   }
-  OpDefBuilderWrapper<true>& Input(std::string spec) {
+  OpDefBuilderWrapper& Input(std::string spec) {
     builder_.Input(std::move(spec));
     return *this;
   }
-  OpDefBuilderWrapper<true>& Output(std::string spec) {
+  OpDefBuilderWrapper& Output(std::string spec) {
     builder_.Output(std::move(spec));
     return *this;
   }
-  OpDefBuilderWrapper<true>& SetIsCommutative() {
+  OpDefBuilderWrapper& SetIsCommutative() {
     builder_.SetIsCommutative();
     return *this;
   }
-  OpDefBuilderWrapper<true>& SetIsAggregate() {
+  OpDefBuilderWrapper& SetIsAggregate() {
     builder_.SetIsAggregate();
     return *this;
   }
-  OpDefBuilderWrapper<true>& SetIsStateful() {
+  OpDefBuilderWrapper& SetIsStateful() {
     builder_.SetIsStateful();
     return *this;
   }
-  OpDefBuilderWrapper<true>& SetDoNotOptimize() {
+  OpDefBuilderWrapper& SetDoNotOptimize() {
     // We don't have a separate flag to disable optimizations such as constant
     // folding and CSE so we reuse the stateful flag.
     builder_.SetIsStateful();
     return *this;
   }
-  OpDefBuilderWrapper<true>& SetAllowsUninitializedInput() {
+  OpDefBuilderWrapper& SetAllowsUninitializedInput() {
     builder_.SetAllowsUninitializedInput();
     return *this;
   }
-  OpDefBuilderWrapper<true>& Deprecated(int version, std::string explanation) {
+  OpDefBuilderWrapper& Deprecated(int version, std::string explanation) {
     builder_.Deprecated(version, std::move(explanation));
     return *this;
   }
-  OpDefBuilderWrapper<true>& Doc(std::string text) {
+  OpDefBuilderWrapper& Doc(std::string text) {
     builder_.Doc(std::move(text));
     return *this;
   }
-  OpDefBuilderWrapper<true>& SetShapeFn(OpShapeInferenceFn fn) {
+  OpDefBuilderWrapper& SetShapeFn(OpShapeInferenceFn fn) {
     builder_.SetShapeFn(std::move(fn));
     return *this;
   }
+
   const ::tensorflow::OpDefBuilder& builder() const { return builder_; }
+
+  InitOnStartupMarker operator()();
 
  private:
   mutable ::tensorflow::OpDefBuilder builder_;
 };
 
-// Template specialization that turns all calls into no-ops.
-template <>
-class OpDefBuilderWrapper<false> {
- public:
-  explicit constexpr OpDefBuilderWrapper(const char name[]) {}
-  OpDefBuilderWrapper<false>& Attr(StringPiece spec) { return *this; }
-  OpDefBuilderWrapper<false>& Input(StringPiece spec) { return *this; }
-  OpDefBuilderWrapper<false>& Output(StringPiece spec) { return *this; }
-  OpDefBuilderWrapper<false>& SetIsCommutative() { return *this; }
-  OpDefBuilderWrapper<false>& SetIsAggregate() { return *this; }
-  OpDefBuilderWrapper<false>& SetIsStateful() { return *this; }
-  OpDefBuilderWrapper<false>& SetDoNotOptimize() { return *this; }
-  OpDefBuilderWrapper<false>& SetAllowsUninitializedInput() { return *this; }
-  OpDefBuilderWrapper<false>& Deprecated(int, StringPiece) { return *this; }
-  OpDefBuilderWrapper<false>& Doc(StringPiece text) { return *this; }
-  OpDefBuilderWrapper<false>& SetShapeFn(
-      Status (*fn)(shape_inference::InferenceContext*)) {
-    return *this;
-  }
-};
-
-struct OpDefBuilderReceiver {
-  // To call OpRegistry::Global()->Register(...), used by the
-  // REGISTER_OP macro below.
-  // Note: These are implicitly converting constructors.
-  OpDefBuilderReceiver(
-      const OpDefBuilderWrapper<true>& wrapper);  // NOLINT(runtime/explicit)
-  constexpr OpDefBuilderReceiver(const OpDefBuilderWrapper<false>&) {
-  }  // NOLINT(runtime/explicit)
-};
 }  // namespace register_op
 
-#define REGISTER_OP(name) REGISTER_OP_UNIQ_HELPER(__COUNTER__, name)
-#define REGISTER_OP_UNIQ_HELPER(ctr, name) REGISTER_OP_UNIQ(ctr, name)
-#define REGISTER_OP_UNIQ(ctr, name)                                          \
-  TF_ATTRIBUTE_ANNOTATE("tf:op")                                             \
-  static ::tensorflow::register_op::OpDefBuilderReceiver register_op##ctr    \
-      TF_ATTRIBUTE_UNUSED =                                                  \
-          ::tensorflow::register_op::OpDefBuilderWrapper<SHOULD_REGISTER_OP( \
-              name)>(name)
+#define REGISTER_OP_IMPL(ctr, name, is_system_op)                         \
+  static ::tensorflow::InitOnStartupMarker const register_op##ctr         \
+      TF_ATTRIBUTE_UNUSED =                                               \
+          TF_INIT_ON_STARTUP_IF(is_system_op || SHOULD_REGISTER_OP(name)) \
+          << ::tensorflow::register_op::OpDefBuilderWrapper(name)
+
+#define REGISTER_OP(name)        \
+  TF_ATTRIBUTE_ANNOTATE("tf:op") \
+  TF_NEW_ID_FOR_INIT(REGISTER_OP_IMPL, name, false)
 
 // The `REGISTER_SYSTEM_OP()` macro acts as `REGISTER_OP()` except
 // that the op is registered unconditionally even when selective
 // registration is used.
-#define REGISTER_SYSTEM_OP(name) \
-  REGISTER_SYSTEM_OP_UNIQ_HELPER(__COUNTER__, name)
-#define REGISTER_SYSTEM_OP_UNIQ_HELPER(ctr, name) \
-  REGISTER_SYSTEM_OP_UNIQ(ctr, name)
-#define REGISTER_SYSTEM_OP_UNIQ(ctr, name)                                \
-  TF_ATTRIBUTE_ANNOTATE("tf:op")                                          \
-  TF_ATTRIBUTE_ANNOTATE("tf:op:system")                                   \
-  static ::tensorflow::register_op::OpDefBuilderReceiver register_op##ctr \
-      TF_ATTRIBUTE_UNUSED =                                               \
-          ::tensorflow::register_op::OpDefBuilderWrapper<true>(name)
+#define REGISTER_SYSTEM_OP(name)        \
+  TF_ATTRIBUTE_ANNOTATE("tf:op")        \
+  TF_ATTRIBUTE_ANNOTATE("tf:op:system") \
+  TF_NEW_ID_FOR_INIT(REGISTER_OP_IMPL, name, true)
 
 }  // namespace tensorflow
 

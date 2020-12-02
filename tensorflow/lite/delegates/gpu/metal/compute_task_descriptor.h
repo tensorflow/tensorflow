@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
+#include "tensorflow/lite/delegates/gpu/common/task/arguments.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
@@ -32,12 +33,10 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 
-using OutputDimensions =
-    std::function<BHWC(const std::map<ValueId, BHWC>& buffers)>;
-using UniformsFunction =
-    std::function<std::vector<uint8_t>(const std::map<ValueId, BHWC>& buffers)>;
+using UniformsFunction = std::function<std::vector<uint8_t>(
+    const std::vector<BHWC>& src_shapes, const std::vector<BHWC>& dst_shapes)>;
 using DispatchParamsFunction = std::function<std::pair<uint3, uint3>(
-    const std::map<ValueId, BHWC>& buffers)>;
+    const std::vector<BHWC>& src_shapes, const std::vector<BHWC>& dst_shapes)>;
 
 // Compute task descriptor contains a linkable shader code or a code for
 // complete shader to which other linkable can be attached or not. An operation
@@ -45,27 +44,6 @@ using DispatchParamsFunction = std::function<std::pair<uint3, uint3>(
 // building blocks. All required data like immutable operation parameters
 // (weights etc.) is attached to the descriptor.
 struct ComputeTaskDescriptor {
-  struct InputBufferDescriptor {
-    ValueId id;
-    // The declaration is inserted into the compute function arguments list.
-    // Example for non-linkable task: "device FLT4* const input_buffer"
-    // Example for linkable: "device FLT4* const"
-    std::string declaration;
-  };
-  struct OutputBufferDescriptor {
-    ValueId id;
-    // The declaration is inserted into the compute function arguments list.
-    // Example for non-linkable task: "device FLT4* output_buffer"
-    // Example for linkable: "device FLT4*"
-    std::string declaration;
-    // Multiple outputs are allowed from a linkable operation so after fusion
-    // each buffer's dimensions are calculated separately from different
-    // operations.
-    OutputDimensions dimensions_function;
-    // Fusion absorbs intermediate tensors. Keep this ids to properly store
-    // output dimensions.
-    std::vector<ValueId> alias;
-  };
   struct ImmutableBufferDescriptor {
     std::string declaration;
     std::vector<uint8_t> data;
@@ -79,9 +57,15 @@ struct ComputeTaskDescriptor {
     UniformsFunction data_function;
   };
 
-  // Unique ID to match the graph compilation errors.
-  int id;
-  bool is_linkable;
+  ComputeTaskDescriptor() = default;
+  // Move only
+  ComputeTaskDescriptor(ComputeTaskDescriptor&& task) = default;
+  ComputeTaskDescriptor& operator=(ComputeTaskDescriptor&& task) = default;
+  ComputeTaskDescriptor(const ComputeTaskDescriptor&) = delete;
+  ComputeTaskDescriptor& operator=(const ComputeTaskDescriptor&) = delete;
+
+  Arguments args;
+  bool is_linkable = false;
   // A linkable function or a full shader source with 3 parameters $ for
   // substitute function. Example of linkable: "(FLT4 linkable$0(FLT4 value, int
   // linear_index) { return value; })" Example of non-linkable function:
@@ -104,19 +88,29 @@ struct ComputeTaskDescriptor {
   // for example add is associative
   bool is_associative_op = false;
   std::string shader_source;
-  std::vector<InputBufferDescriptor> input_buffers;
-  // A single per-operation output is supported now.
-  OutputBufferDescriptor output_buffer;
+  std::vector<std::string> src_tensors_names;
+  std::vector<std::string> dst_tensors_names;
   std::vector<ImmutableBufferDescriptor> immutable_buffers;
   std::vector<UniformBufferDescriptor> uniform_buffers;
   // Dynamic resizing of input tensor is supported. User-defined functions to
   // calculate new parameters for GPU compute task dispatching. A leading
   // unlinkable task must provide this.
   DispatchParamsFunction resize_function;
-  std::string description;
+
+  void AddSrcTensor(const std::string& tensor_name);
+  void AddDstTensor(const std::string& tensor_name);
 };
 
 using ComputeTaskDescriptorPtr = std::shared_ptr<ComputeTaskDescriptor>;
+
+struct NodeDescriptor {
+  ComputeTaskDescriptorPtr task;
+  // Unique ID to match the graph compilation errors.
+  int id;
+  std::string description;
+  std::vector<ValueId> src_tensors_ids;
+  std::vector<ValueId> dst_tensors_ids;
+};
 
 /// Helper function to convert buffer's content into stream of bytes
 template <typename T>

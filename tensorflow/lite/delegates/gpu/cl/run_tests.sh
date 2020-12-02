@@ -64,11 +64,17 @@ trap "cleanup_device" EXIT
 declare -a BUILD_CONFIG
 abi_version=$(ADB shell getprop ro.product.cpu.abi | tr -d '\r')
 if [[ "$abi_version" == "armeabi-v7a" ]]; then
-#"32 bit"
+#"32 bit ARM"
 BUILD_CONFIG=( --config=android_arm -c opt --copt=-fPIE --linkopt=-pie )
-else
-#"64 bit"
+elif [[ "$abi_version" == "arm64-v8a" ]]; then
+#"64 bit ARM"
 BUILD_CONFIG=( --config=android_arm64 -c opt )
+elif [[ "$abi_version" == "x86_64" ]]; then
+# x86_64
+BUILD_CONFIG=( --config=android_x86_64 -c opt )
+else
+echo "Error: Unknown processor ABI"
+exit 1
 fi
 
 targets=($(bazel query 'tests('$test_target')'))

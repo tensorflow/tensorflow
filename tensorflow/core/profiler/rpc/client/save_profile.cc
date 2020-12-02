@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/rpc/client/save_profile.h"
 
-#include <initializer_list>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -23,6 +22,7 @@ limitations under the License.
 
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
 #include "absl/time/clock.h"
@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/profiler/profiler_service.pb.h"
+#include "tensorflow/core/profiler/utils/file_system_utils.h"
 
 // Windows.h #defines ERROR, but it is also used in
 // tensorflow/core/util/event.proto
@@ -45,40 +46,6 @@ namespace tensorflow {
 namespace profiler {
 namespace {
 
-#ifdef PLATFORM_WINDOWS
-const absl::string_view kPathSep = "\\";
-#else
-const absl::string_view kPathSep = "/";
-#endif
-
-std::string ProfilerJoinPathImpl(
-    std::initializer_list<absl::string_view> paths) {
-  std::string result;
-  for (absl::string_view path : paths) {
-    if (path.empty()) continue;
-
-    if (result.empty()) {
-      result = std::string(path);
-      continue;
-    }
-
-    path = absl::StripPrefix(path, kPathSep);
-    if (absl::EndsWith(result, kPathSep)) {
-      absl::StrAppend(&result, path);
-    } else {
-      absl::StrAppend(&result, kPathSep, path);
-    }
-  }
-
-  return result;
-}
-
-// A local duplication of ::tensorflow::io::JoinPath that supports windows.
-// TODO(b/150699701): revert to use ::tensorflow::io::JoinPath when fixed.
-template <typename... T>
-std::string ProfilerJoinPath(const T&... args) {
-  return ProfilerJoinPathImpl({args...});
-}
 
 constexpr char kProtoTraceFileName[] = "trace";
 constexpr char kTfStatsHelperSuffix[] = "tf_stats_helper_result";
@@ -115,7 +82,7 @@ Status WriteGzippedDataToFile(const std::string& filepath,
 Status GetOrCreateRunDir(const std::string& repository_root,
                          const std::string& run, std::string* run_dir,
                          std::ostream* os) {
-  // Dumps profile data to <repository_root>/<run>/.
+  // Creates a directory to <repository_root>/<run>/.
   *run_dir = ProfilerJoinPath(repository_root, run);
   *os << "Creating directory: " << *run_dir;
   TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(*run_dir));
@@ -149,10 +116,13 @@ Status MaybeCreateEmptyEventFile(const std::string& logdir) {
 Status SaveProfile(const std::string& repository_root, const std::string& run,
                    const std::string& host, const ProfileResponse& response,
                    std::ostream* os) {
+  if (response.tool_data().empty()) return Status::OK();
   std::string run_dir;
   TF_RETURN_IF_ERROR(GetOrCreateRunDir(repository_root, run, &run_dir, os));
+  // Windows file names do not support colons.
+  std::string hostname = absl::StrReplaceAll(host, {{":", "_"}});
   for (const auto& tool_data : response.tool_data()) {
-    TF_RETURN_IF_ERROR(DumpToolData(run_dir, host, tool_data, os));
+    TF_RETURN_IF_ERROR(DumpToolData(run_dir, hostname, tool_data, os));
   }
   return Status::OK();
 }

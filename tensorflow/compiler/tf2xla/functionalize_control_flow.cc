@@ -23,12 +23,12 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/types/optional.h"
-#include "tensorflow/compiler/jit/union_find.h"
 #include "tensorflow/compiler/tf2xla/functionalize_cond.h"
 #include "tensorflow/compiler/tf2xla/functionalize_control_flow_util.h"
 #include "tensorflow/compiler/tf2xla/functionalize_while.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/union_find.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"

@@ -183,7 +183,7 @@ class Exhaustive32BitOrLessUnaryTest
     return end - begin;
   }
 
-  // Generates all the input values for the test. The the range of the bit
+  // Generates all the input values for the test. The range of the bit
   // representation of the input values is described by the test parameter as
   // a pair of int64 representing the starting bit pattern and the ending
   // pattern. Each bit representation is first truncated to the integral type of

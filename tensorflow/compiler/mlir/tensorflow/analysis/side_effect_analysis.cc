@@ -18,30 +18,32 @@ limitations under the License.
 #include <cstdint>
 #include <initializer_list>
 
-#include "absl/strings/str_cat.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_side_effects.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/tf2xla/resource_operation_table.h"
-#include "tensorflow/core/framework/resource_mgr.h"
 
 namespace mlir {
 namespace TF {
@@ -80,38 +82,142 @@ llvm::SmallDenseSet<int64_t, 8> FindAccessedResources(
   return resources;
 }
 
-// Returns an XlaResourceOpInfo (or nullptr if it does not exist) that specifies
-// the resource access type of the op. It tells whether the op is read only,
-// etc.
-//
-// TODO(yuanzx): Define this information in a different place. Currently we use
-// tensorflow/compiler/tf2xla/resource_operation_table.h.
-const tensorflow::XlaResourceOpInfo* GetResourceInfoForOp(Operation* op) {
-  if (op->getName().getDialect() !=
-      TF::TensorFlowDialect::getDialectNamespace()) {
-    return nullptr;
+// Helper struct defining what memory effects are present for a resource.
+struct SideEffects {
+  bool alloc = false;
+  bool free = false;
+  bool read = false;
+  bool write = false;
+
+  bool IsAllocOnly() const { return alloc && !free && !read && !write; }
+  bool IsReadOnly() const { return !alloc && !free && read && !write; }
+};
+
+using ResourceSideEffectsByValue = llvm::SmallDenseMap<Value, SideEffects>;
+
+bool MustExecute(const MemoryEffects::EffectInstance& effect) {
+  if (llvm::isa<ResourceEffects::TPUEmbedding>(effect.getResource())) {
+    assert(!effect.getValue() && !effect.getParameters() &&
+           isa<MemoryEffects::Write>(effect.getEffect()));
+    return true;
   }
-  return tensorflow::GetResourceOpInfoForOp(
-      op->getName().getStringRef().split('.').second.str());
+  return false;
 }
 
-// Returns whether `op` accesses resources and it is known to be read-only.
-bool OpIsReadOnly(Operation* op) {
-  auto resource_op_info = GetResourceInfoForOp(op);
-  return resource_op_info &&
-         resource_op_info->kind() == tensorflow::XlaResourceOpKind::kRead;
+// Collects memory side effects for an operation by value (operands and
+// results).
+void GetResourceInfoForOp(Operation* op,
+                          ResourceSideEffectsByValue& resource_info,
+                          bool& must_execute) {
+  auto interface = dyn_cast<MemoryEffectOpInterface>(op);
+  if (!interface) return;
+
+  llvm::SmallVector<MemoryEffects::EffectInstance, 4> effects;
+  interface.getEffects(effects);
+
+  for (auto& effect : effects) {
+    if (MustExecute(effect)) {
+      must_execute = true;
+      continue;
+    }
+    // TODO(lyandy): Support effects with no value defined.
+    if (!effect.getValue()) {
+      resource_info.clear();
+      must_execute = false;
+      return;
+    }
+    auto it = resource_info.try_emplace(effect.getValue());
+    auto& side_effect = it.first->getSecond();
+    auto* resource_effect = effect.getEffect();
+    if (isa<MemoryEffects::Allocate>(resource_effect)) {
+      side_effect.alloc = true;
+    } else if (isa<MemoryEffects::Free>(resource_effect)) {
+      side_effect.free = true;
+    } else if (isa<MemoryEffects::Read>(resource_effect)) {
+      side_effect.read = true;
+    } else if (isa<MemoryEffects::Write>(resource_effect)) {
+      side_effect.write = true;
+    } else {
+      resource_info.clear();
+      must_execute = false;
+      return;
+    }
+  }
+}
+
+// Checks if a value is a result of `op`.
+bool IsOperationResult(Operation* op, Value value) {
+  return value.getDefiningOp() == op;
+}
+
+// Checks if an operation's resource operands are read only. Operation results
+// are ignored.
+bool IsResourceOpReadOnly(Operation* op,
+                          const ResourceSideEffectsByValue& resource_op_info) {
+  if (resource_op_info.empty()) return false;
+
+  for (const auto& resource_info : resource_op_info) {
+    Value value = resource_info.getFirst();
+    if (IsOperationResult(op, value)) continue;
+    const SideEffects& side_effects = resource_info.getSecond();
+    if (!side_effects.IsReadOnly()) return false;
+  }
+
+  return true;
+}
+
+// Checks if an operation's resource results are alloc only and no side effects
+// are present for its operands.
+bool IsResourceOpAllocOnly(Operation* op,
+                           const ResourceSideEffectsByValue& resource_op_info) {
+  if (resource_op_info.empty()) return false;
+
+  for (const auto& resource_info : resource_op_info) {
+    // Operand with side effect.
+    Value value = resource_info.getFirst();
+    if (!IsOperationResult(op, value)) return false;
+    const SideEffects& side_effects = resource_info.getSecond();
+    if (!side_effects.IsAllocOnly()) return false;
+  }
+
+  return true;
 }
 
 // Returns if `op` is a resource declaration.
 bool OpIsDeclaration(Operation* op,
                      const ResourceAliasAnalysis::Info& alias_analysis) {
-  // TODO(yuanzx): Add other types of resources.
-  return llvm::isa<TF::VarHandleOp>(op) ||
-         (llvm::isa<TF::IdentityNOp, TF::IdentityOp>(op) &&
-          !FindAccessedResources(op, alias_analysis).empty());
+  return llvm::isa<TF::IdentityNOp, TF::IdentityOp>(op) &&
+         !FindAccessedResources(op, alias_analysis).empty();
 }
 
-// Returns if `op` is know to not have any side effect.
+// A vector of resource variable id's with their associated resource value.
+using ResourceIdsByValue =
+    llvm::SmallVector<std::pair<Value, const llvm::SmallSet<int64_t, 8>*>, 4>;
+
+// Collects resource id's by resource value. If operation resource side effects
+// are unknown or a resource is unknown, an empty optional is returned.
+llvm::Optional<ResourceIdsByValue> GetResourceIdsByValue(
+    Operation* op, const ResourceAliasAnalysis::Info& alias_analysis,
+    const ResourceSideEffectsByValue& resource_op_info) {
+  ResourceIdsByValue resource_ids_by_value;
+  if (resource_op_info.empty()) return llvm::None;
+
+  auto collect_ids = [&](ValueRange values) {
+    for (auto value : filter_resources(values)) {
+      if (alias_analysis.IsUnknownResource(value)) return false;
+      const auto& ids = alias_analysis.GetResourceUniqueIds(value);
+      resource_ids_by_value.push_back({value, &ids});
+    }
+    return true;
+  };
+
+  if (collect_ids(op->getOperands()) && collect_ids(op->getResults()))
+    return resource_ids_by_value;
+  else
+    return llvm::None;
+}
+
+// Returns true if `op` is known to not have any side effect.
 bool OpIsKnownToHaveNoSideEffect(Operation* op) {
   // Note: Identity op is really side-effect free, but it is not marked as such
   // in the TF dialect (see comments in definition of Identity op in tf_ops.td)
@@ -240,6 +346,7 @@ void SideEffectAnalysisInfo::AnalyzeRegion(
   // We explicitly iterates through the regions and blocks, in order to handle
   // different nested regions separately.
   for (auto& block : *region) {
+    llvm::SmallPtrSet<Operation*, 8> non_resource_control_predecessors;
     for (auto& op : block) {
       for (Region& child : op.getRegions()) {
         SideEffectAnalysisInfo child_analysis(&child, alias_analysis);
@@ -252,18 +359,29 @@ void SideEffectAnalysisInfo::AnalyzeRegion(
       // We do not need explicit control edges for declaration ops.
       if (OpIsDeclaration(&op, alias_analysis)) continue;
 
-      auto resource_op_info = GetResourceInfoForOp(&op);
-      if (!resource_op_info && OpIsKnownToHaveNoSideEffect(&op)) continue;
+      ResourceSideEffectsByValue resource_op_info;
+      bool must_execute = false;
+      GetResourceInfoForOp(&op, resource_op_info, must_execute);
 
-      llvm::SmallDenseSet<int64_t, 8> resources =
-          resource_op_info ? FindAccessedResources(&op, alias_analysis)
-                           : UnknownResourceSet();
-      assert(!resources.empty());
-      const bool is_unknown = resources.count(kUnknownResourceId) > 0;
-      const bool read_only = OpIsReadOnly(&op);
+      if (resource_op_info.empty() && OpIsKnownToHaveNoSideEffect(&op))
+        continue;
+
+      if (resource_op_info.empty() && must_execute) {
+        // Add unknown resource ops as predecessors of the op that must execute,
+        // to guarantee ordering between unknown resource ops.
+        AddPredecessorsForAccess(kUnknownResourceId, &op, /*read_only=*/false);
+        non_resource_control_predecessors.insert(&op);
+        continue;
+      }
+
+      if (IsResourceOpAllocOnly(&op, resource_op_info)) continue;
+
+      auto resource_ids_by_value =
+          GetResourceIdsByValue(&op, alias_analysis, resource_op_info);
+      const bool read_only = IsResourceOpReadOnly(&op, resource_op_info);
       bool indirectly_tracked_unknown_access = false;
       // First add edges from known resources.
-      if (is_unknown) {
+      if (!resource_ids_by_value.hasValue()) {
         for (auto& entry : per_resource_access_info_) {
           if (entry.getFirst() == kUnknownResourceId) continue;
           AddPredecessorsForAccess(entry.getFirst(), &op, read_only);
@@ -272,22 +390,53 @@ void SideEffectAnalysisInfo::AnalyzeRegion(
                                                             read_only);
         }
       } else {
-        for (int64_t resource : resources) {
-          AddPredecessorsForAccess(resource, &op, read_only);
+        // Collect all resource id's and whether their side effect is read only.
+        llvm::SmallDenseMap<int64_t, bool> read_only_by_resource_id;
+        for (const auto& resource_ids : *resource_ids_by_value) {
+          const bool is_result = resource_ids.first.getDefiningOp() == &op;
+          auto value_resource_info = resource_op_info.find(resource_ids.first);
+          bool resource_read_only = false;
+          if (value_resource_info != resource_op_info.end()) {
+            if (is_result && value_resource_info->getSecond().IsAllocOnly())
+              continue;
+            resource_read_only = value_resource_info->getSecond().IsReadOnly();
+          }
+
+          for (const auto& id : *resource_ids.second) {
+            auto it =
+                read_only_by_resource_id.try_emplace(id, resource_read_only);
+            if (!it.second && !resource_read_only)
+              it.first->getSecond() = resource_read_only;
+          }
+        }
+
+        for (const auto& resource : read_only_by_resource_id) {
+          const auto& resource_id = resource.getFirst();
+          const auto& resource_read_only = resource.getSecond();
+          AddPredecessorsForAccess(resource_id, &op, resource_read_only);
           indirectly_tracked_unknown_access |=
-              unknown_access_indirectly_tracked_by_resource(resource,
-                                                            read_only);
+              unknown_access_indirectly_tracked_by_resource(resource_id,
+                                                            resource_read_only);
           // Update access info for known resources.
-          TrackAccess(resource, &op, read_only);
+          TrackAccess(resource_id, &op, resource_read_only);
         }
       }
+
       // If not indirectly tracked, add edges from the unknown resource.
       if (!indirectly_tracked_unknown_access) {
         AddPredecessorsForAccess(kUnknownResourceId, &op, read_only);
       }
-      if (is_unknown) {
+      if (!resource_ids_by_value.hasValue()) {
         // Update access info for unknown resource.
         TrackAccess(kUnknownResourceId, &op, read_only);
+        // Add ops that must execute to unknown resource op predecessors.
+        auto& control_predecessors = control_predecessors_[&op];
+        control_predecessors.insert(non_resource_control_predecessors.begin(),
+                                    non_resource_control_predecessors.end());
+        // Ops that must execute currently tracked are cleared as transitively
+        // unknown resource ops will allow for such ops to be transitively
+        // reachable.
+        non_resource_control_predecessors.clear();
       }
     }
   }

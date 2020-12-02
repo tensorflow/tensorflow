@@ -1,5 +1,7 @@
 # Contains graph rewrites for TPU runtimes and optimizations.
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+
 package(
     default_visibility = [
         "//tensorflow/core/tpu:__subpackages__",
@@ -156,7 +158,7 @@ cc_library(
         "//tensorflow/core/protobuf/tpu:topology_proto_cc",
         "//tensorflow/core/tpu:tpu_compile_interface",
         "//tensorflow/core/tpu:tpu_defs",
-        "//tensorflow/core/tpu/kernels:tpu_util_c_api_hdrs",
+        "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
         "//tensorflow/stream_executor/tpu:tpu_platform_interface",
         "//tensorflow/stream_executor/tpu:tpu_topology_external",
         "@com_google_absl//absl/algorithm:container",

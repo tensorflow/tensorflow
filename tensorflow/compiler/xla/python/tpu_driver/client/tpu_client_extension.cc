@@ -173,6 +173,7 @@ PYBIND11_MODULE(tpu_client_extension, m) {
              return LiteralToPython(std::move(literal));
            })
       .def("shape", &PyTpuBuffer::on_host_shape)
+      .def("xla_shape", &PyTpuBuffer::on_host_shape)
       .def("device", &PyTpuBuffer::device)
       .def("platform", &PyTpuBuffer::platform_name)
       .def("is_deleted",
@@ -207,6 +208,13 @@ PYBIND11_MODULE(tpu_client_extension, m) {
   py::class_<TpuDevice, PjRtDevice, std::shared_ptr<TpuDevice>>(m, "TpuDevice")
       .def_property_readonly("coords", &TpuDevice::coords)
       .def_property_readonly("core_on_chip", &TpuDevice::core_on_chip)
+      // TODO(skye): this is a horrible hack because falling back to
+      // PjRtDevice::platform_name() segfaults, due to TpuDevice::client_ being
+      // uninitialized. This can be removed when PyTpuClient subclasses
+      // PjRtClient and can be used to set TpuDevice::client_.
+      .def_property_readonly(
+          "platform",
+          [](const TpuDevice& device) -> std::string { return kTpuPlatform; })
       .def("__repr__", [](const TpuDevice& device) {
         return absl::StrFormat(
             "TpuDevice(id=%i, host_id=%i, coords=(%i,%i,%i), core_on_chip=%i)",

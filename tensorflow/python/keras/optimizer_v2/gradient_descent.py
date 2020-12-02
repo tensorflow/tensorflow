@@ -43,7 +43,7 @@ class SGD(optimizer_v2.OptimizerV2):
   w = w + velocity
   ```
 
-  When `nesterov=False`, this rule becomes:
+  When `nesterov=True`, this rule becomes:
 
   ```python
   velocity = momentum * velocity - learning_rate * g

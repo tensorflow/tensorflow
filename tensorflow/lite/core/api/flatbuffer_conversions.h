@@ -45,7 +45,7 @@ class BuiltinDataAllocator {
     // platform targets support that properly.
     static_assert(std::is_pod<T>::value, "Builtin data structure must be POD.");
     void* allocated_memory = this->Allocate(sizeof(T), alignof(T));
-    return new (allocated_memory) T;
+    return new (allocated_memory) T();
   }
 
   virtual ~BuiltinDataAllocator() {}
@@ -205,6 +205,11 @@ TfLiteStatus ParseRelu6(const Operator* op, ErrorReporter* error_reporter,
 TfLiteStatus ParseReshape(const Operator* op, ErrorReporter* error_reporter,
                           BuiltinDataAllocator* allocator, void** builtin_data);
 
+TfLiteStatus ParseResizeBilinear(const Operator* op,
+                                 ErrorReporter* error_reporter,
+                                 BuiltinDataAllocator* allocator,
+                                 void** builtin_data);
+
 TfLiteStatus ParseResizeNearestNeighbor(const Operator* op,
                                         ErrorReporter* error_reporter,
                                         BuiltinDataAllocator* allocator,
@@ -216,6 +221,9 @@ TfLiteStatus ParseRound(const Operator* op, ErrorReporter* error_reporter,
 TfLiteStatus ParseRsqrt(const Operator* op, ErrorReporter* error_reporter,
                         BuiltinDataAllocator* allocator, void** builtin_data);
 
+TfLiteStatus ParseShape(const Operator* op, ErrorReporter* error_reporter,
+                        BuiltinDataAllocator* allocator, void** builtin_data);
+
 TfLiteStatus ParseSin(const Operator* op, ErrorReporter* error_reporter,
                       BuiltinDataAllocator* allocator, void** builtin_data);
 
@@ -224,6 +232,9 @@ TfLiteStatus ParseSoftmax(const Operator* op, ErrorReporter* error_reporter,
 
 TfLiteStatus ParseSplit(const Operator* op, ErrorReporter* error_reporter,
                         BuiltinDataAllocator* allocator, void** builtin_data);
+
+TfLiteStatus ParseSplitV(const Operator* op, ErrorReporter* error_reporter,
+                         BuiltinDataAllocator* allocator, void** builtin_data);
 
 TfLiteStatus ParseSqrt(const Operator* op, ErrorReporter* error_reporter,
                        BuiltinDataAllocator* allocator, void** builtin_data);

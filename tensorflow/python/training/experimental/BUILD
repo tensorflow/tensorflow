@@ -1,3 +1,4 @@
+load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 package(
@@ -10,8 +11,19 @@ py_library(
     srcs = ["loss_scale.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/python:framework",
-        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:tf_export",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:reduce_util",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/training/tracking:base",
+        "@six_archive//:six",
     ],
 )
 
@@ -21,15 +33,40 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":loss_scale",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:smart_cond",
+        "//tensorflow/python:tf_export",
         "//tensorflow/python/distribute:distribute_lib",
-        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python/training:optimizer",
     ],
 )
 
-# The test currently requires visibility only granted to tensorflow/python:__pkg__
-exports_files(
-    ["loss_scale_optimizer_test.py"],
-    visibility = ["//tensorflow/python:__pkg__"],
+py_test(
+    name = "loss_scale_optimizer_test",
+    size = "small",
+    srcs = ["loss_scale_optimizer_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":loss_scale",
+        ":loss_scale_optimizer",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:check_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:mirrored_strategy",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/training:gradient_descent",
+        "//tensorflow/python/training:momentum",
+        "//tensorflow/python/training/tracking:util",
+        "@absl_py//absl/testing:parameterized",
+    ],
 )
 
 py_test(
@@ -70,7 +107,6 @@ cuda_py_test(
     size = "small",
     srcs = ["mixed_precision_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":mixed_precision",
         "//tensorflow/python:client_testlib",

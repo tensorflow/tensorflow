@@ -46,7 +46,7 @@ TEST(MergePaddingWith, Smoke) {
   pad_node->operation.attributes = attr;
 
   auto conv_node = graph.NewNode();
-  Value* temp;
+  Value* temp = nullptr;
   ASSERT_TRUE(ConnectTwoNodes(&graph, pad_node, conv_node, &temp).ok());
   ASSERT_TRUE(AddOutput(&graph, conv_node, &temp).ok());
   conv_node->operation.type = ToString(OperationType::CONVOLUTION_2D);
@@ -83,16 +83,17 @@ TEST(MergePaddingWith, MergeTwo) {
   pad_node1->operation.attributes = attr;
 
   auto pad_node2 = graph.NewNode();
-  Value* temp;
-  ASSERT_TRUE(ConnectTwoNodes(&graph, pad_node1, pad_node2, &temp).ok());
+  Value* temp1 = nullptr;
+  ASSERT_TRUE(ConnectTwoNodes(&graph, pad_node1, pad_node2, &temp1).ok());
   pad_node2->operation.type = ToString(OperationType::PAD);
   attr.prepended = BHWC(0, 0, 0, 0);
   attr.appended = BHWC(0, 2, 2, 0);
   pad_node2->operation.attributes = attr;
 
   auto conv_node = graph.NewNode();
-  ASSERT_TRUE(ConnectTwoNodes(&graph, pad_node2, conv_node, &temp).ok());
-  ASSERT_TRUE(AddOutput(&graph, conv_node, &temp).ok());
+  Value* temp2 = nullptr;
+  ASSERT_TRUE(ConnectTwoNodes(&graph, pad_node2, conv_node, &temp2).ok());
+  ASSERT_TRUE(AddOutput(&graph, conv_node, &temp2).ok());
   conv_node->operation.type = ToString(OperationType::CONVOLUTION_2D);
   Convolution2DAttributes conv_attr;
   conv_attr.padding.appended = HW(0, 0);

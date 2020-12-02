@@ -65,8 +65,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     pflr_.reset(new ProcessFunctionLibraryRuntime(
         device_mgr_.get(), Env::Default(), /*config=*/nullptr,
         TF_GRAPH_DEF_VERSION, lib_def_.get(), opts, default_thread_pool,
-        /*parent=*/nullptr, /*custom_kernel_creator=*/nullptr,
-        /*session_metadata=*/nullptr,
+        /*parent=*/nullptr, /*session_metadata=*/nullptr,
         Rendezvous::Factory{
             [](const int64, const DeviceMgr* device_mgr, Rendezvous** r) {
               *r = new IntraProcessRendezvous(device_mgr);

@@ -1,28 +1,12 @@
 # Description:
-# lmdb test data packages.
+# lmdb test data packages alias.
 
 package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-filegroup(
+alias(
     name = "lmdb_testdata",
-    testonly = 1,
-    srcs = [
-        # A simple key-value store:
-        #   0 : 'b'
-        #   1 : 'b'
-        #    ...
-        #   9 : 'b'
-        # Which is then overwritten with:
-        #   0 : 'a'
-        #   1 : 'b'
-        #    ...
-        #   9 : 'j'
-        "testdata/data.mdb",
-        # LMDB, being a memory-mapped database, uses a different file format on
-        # big-endian systems.
-        "testdata/data_bigendian.mdb",
-    ],
+    actual = "//tensorflow/core/lib/lmdb/testdata:lmdb_testdata",
     visibility = ["//visibility:public"],
 )

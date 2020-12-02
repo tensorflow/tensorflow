@@ -28,7 +28,6 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
@@ -38,7 +37,6 @@ from tensorflow.python.keras.layers.rnn_cell_wrapper_v2 import ResidualWrapper
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops.ragged import ragged_concat_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
@@ -405,7 +403,7 @@ class TimeDistributedTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   @parameterized.named_parameters(
-      *tf_test_util.generate_combinations_with_testcase_name(
+      *testing_utils.generate_combinations_with_testcase_name(
           layer=[keras.layers.LSTM,
                  keras.layers.Dense]))
   def test_TimeDistributed_with_ragged_input(self, layer):
@@ -465,6 +463,69 @@ class TimeDistributedTest(keras_parameterized.TestCase):
     output_ragged = ragged_tensor.convert_to_tensor_or_ragged_tensor(
         output_ragged, name='tensor')
     self.assertAllEqual(output_ragged.to_tensor(), output_dense)
+
+  def test_TimeDistributed_set_static_shape(self):
+    layer = keras.layers.TimeDistributed(keras.layers.Conv2D(16, (3, 3)))
+    inputs = keras.Input(batch_shape=(1, None, 32, 32, 1))
+    outputs = layer(inputs)
+    # Make sure the batch dim is not lost after array_ops.reshape.
+    self.assertListEqual(outputs.shape.as_list(), [1, None, 30, 30, 16])
+
+  @keras_parameterized.run_all_keras_modes
+  def test_TimeDistributed_with_mimo(self):
+    dense_1 = keras.layers.Dense(8)
+    dense_2 = keras.layers.Dense(16)
+
+    class TestLayer(keras.layers.Layer):
+
+      def __init__(self):
+        super(TestLayer, self).__init__()
+        self.dense_1 = dense_1
+        self.dense_2 = dense_2
+
+      def call(self, inputs):
+        return self.dense_1(inputs[0]), self.dense_2(inputs[1])
+
+      def compute_output_shape(self, input_shape):
+        output_shape_1 = self.dense_1.compute_output_shape(input_shape[0])
+        output_shape_2 = self.dense_2.compute_output_shape(input_shape[1])
+        return output_shape_1, output_shape_2
+
+    np.random.seed(100)
+    layer = TestLayer()
+
+    data_1 = array_ops.constant([[[[1.0], [1.0]], [[2.0], [2.0]]],
+                                 [[[4.0], [4.0]], [[5.0], [5.0]]],
+                                 [[[7.0], [7.0]], [[8.0], [8.0]]]])
+
+    data_2 = array_ops.constant([[[[1.0], [1.0]], [[2.0], [2.0]]],
+                                 [[[4.0], [4.0]], [[5.0], [5.0]]],
+                                 [[[7.0], [7.0]], [[8.0], [8.0]]]])
+
+    x1 = keras.Input(shape=(None, 2, 1), dtype='float32')
+    x2 = keras.Input(shape=(None, 2, 1), dtype='float32')
+    y1, y2 = keras.layers.TimeDistributed(layer)([x1, x2])
+    model_1 = keras.models.Model([x1, x2], [y1, y2])
+    model_1.compile(
+        optimizer='rmsprop',
+        loss='mse',
+        run_eagerly=testing_utils.should_run_eagerly())
+    output_1 = model_1.predict((data_1, data_2), steps=1)
+
+    y1 = dense_1(x1)
+    y2 = dense_2(x2)
+    model_2 = keras.models.Model([x1, x2], [y1, y2])
+    output_2 = model_2.predict((data_1, data_2), steps=1)
+
+    self.assertAllClose(output_1, output_2)
+
+    model_1.fit(
+        x=[np.random.random((10, 2, 2, 1)),
+           np.random.random((10, 2, 2, 1))],
+        y=[np.random.random((10, 2, 2, 8)),
+           np.random.random((10, 2, 2, 16))],
+        epochs=1,
+        batch_size=3)
 
 
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))
@@ -904,6 +965,31 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
       y_np_3 = model.predict([x_np, s_fw_np, s_bk_np, c_np])
       self.assertAllClose(y_np, y_np_3, atol=1e-4)
 
+  @parameterized.parameters([keras.layers.LSTM, keras.layers.GRU])
+  def test_Bidirectional_output_shape(self, rnn):
+    input_shape = [None, 2, 1]
+    num_state = 4 if rnn == keras.layers.LSTM else 2
+
+    wrapper = keras.layers.Bidirectional(rnn(3))
+    output_shape = wrapper.compute_output_shape(input_shape)
+    self.assertEqual(output_shape.as_list(), [None, 6])
+
+    wrapper = keras.layers.Bidirectional(rnn(3, return_state=True))
+    output_shape = wrapper.compute_output_shape(input_shape)
+    # 1 for output and the rest for forward and backward states
+    self.assertLen(output_shape, 1 + num_state)
+    self.assertEqual(output_shape[0].as_list(), [None, 6])
+    for shape in output_shape[1:]:
+      self.assertEqual(shape.as_list(), [None, 3])
+
+    wrapper = keras.layers.Bidirectional(rnn(3, return_state=True),
+                                         merge_mode=None)
+    output_shape = wrapper.compute_output_shape(input_shape)
+    # 1 for forward output and 1 for backward output,  and the rest for states
+    self.assertLen(output_shape, 2 + num_state)
+    for shape in output_shape:
+      self.assertEqual(shape.as_list(), [None, 3])
+
   def test_Bidirectional_output_shape_return_types(self):
 
     class TestLayer(keras.layers.SimpleRNN):
@@ -1154,7 +1240,7 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
         epochs=1,
         batch_size=10)
 
-  @tf_test_util.run_v2_only
+  @testing_utils.run_v2_only
   def test_wrapped_rnn_cell(self):
     # See https://github.com/tensorflow/tensorflow/issues/26581.
     batch = 20
@@ -1199,7 +1285,7 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
       if merge_mode == 'ave':
         merge_func = lambda y, y_rev: (y + y_rev) / 2
       elif merge_mode == 'concat':
-        merge_func = lambda y, y_rev: ragged_concat_ops.concat(
+        merge_func = lambda y, y_rev: array_ops.concat(
             (y, y_rev), axis=-1)
       elif merge_mode == 'mul':
         merge_func = lambda y, y_rev: (y * y_rev)

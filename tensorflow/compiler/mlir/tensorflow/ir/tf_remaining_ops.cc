@@ -41,9 +41,9 @@ limitations under the License.
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -70,11 +70,12 @@ limitations under the License.
 
 namespace mlir {
 namespace TF {
-
 namespace {
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_helpers.inc"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/generated_canonicalize.inc"
 }  // namespace
+}  // namespace TF
+}  // namespace mlir
 
 //===----------------------------------------------------------------------===//
 // TableGen'd op method definitions
@@ -82,6 +83,3 @@ namespace {
 
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_remaining_ops.cc.inc"
-
-}  // namespace TF
-}  // namespace mlir

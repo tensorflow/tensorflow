@@ -26,22 +26,12 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
+#include "tensorflow/lite/core/api/verifier.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/stderr_reporter.h"
 
 namespace tflite {
-
-/// Abstract interface that verifies whether a given model is legit.
-/// It facilitates the use-case to verify and build a model without loading it
-/// twice.
-class TfLiteVerifier {
- public:
-  /// Returns true if the model is legit.
-  virtual bool Verify(const char* data, int length,
-                      ErrorReporter* reporter) = 0;
-  virtual ~TfLiteVerifier() {}
-};
 
 /// An RAII object that represents a read-only tflite model, copied from disk,
 /// or mmapped. This uses flatbuffers as the serialization format.

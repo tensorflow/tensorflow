@@ -26,7 +26,8 @@ import os
 import numpy as np
 
 # pylint: disable=g-import-not-at-top
-if not os.path.splitext(__file__)[0].endswith('tflite_runtime/interpreter'):
+if not os.path.splitext(__file__)[0].endswith(
+    os.path.join('tflite_runtime', 'interpreter')):
   # This file is part of tensorflow package.
   from tensorflow.lite.python.interpreter_wrapper import _pywrap_tensorflow_interpreter_wrapper as _interpreter_wrapper
   from tensorflow.python.util.tf_export import tf_export as _tf_export
@@ -344,7 +345,7 @@ class Interpreter(object):
     tensor_sparsity_params = self._interpreter.TensorSparsityParameters(
         tensor_index)
 
-    if not tensor_name or not tensor_type:
+    if not tensor_type:
       raise ValueError('Could not get tensor details')
 
     details = {
@@ -459,7 +460,7 @@ class Interpreter(object):
     ]
 
   def get_tensor(self, tensor_index):
-    """Gets the value of the input tensor (get a copy).
+    """Gets the value of the output tensor (get a copy).
 
     If you wish to avoid the copy, use `tensor()`. This function cannot be used
     to read intermediate results.

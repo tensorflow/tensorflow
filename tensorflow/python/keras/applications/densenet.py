@@ -33,22 +33,22 @@ from tensorflow.python.lib.io import file_io
 from tensorflow.python.util.tf_export import keras_export
 
 
-BASE_WEIGTHS_PATH = ('https://storage.googleapis.com/tensorflow/'
+BASE_WEIGHTS_PATH = ('https://storage.googleapis.com/tensorflow/'
                      'keras-applications/densenet/')
 DENSENET121_WEIGHT_PATH = (
-    BASE_WEIGTHS_PATH + 'densenet121_weights_tf_dim_ordering_tf_kernels.h5')
+    BASE_WEIGHTS_PATH + 'densenet121_weights_tf_dim_ordering_tf_kernels.h5')
 DENSENET121_WEIGHT_PATH_NO_TOP = (
-    BASE_WEIGTHS_PATH +
+    BASE_WEIGHTS_PATH +
     'densenet121_weights_tf_dim_ordering_tf_kernels_notop.h5')
 DENSENET169_WEIGHT_PATH = (
-    BASE_WEIGTHS_PATH + 'densenet169_weights_tf_dim_ordering_tf_kernels.h5')
+    BASE_WEIGHTS_PATH + 'densenet169_weights_tf_dim_ordering_tf_kernels.h5')
 DENSENET169_WEIGHT_PATH_NO_TOP = (
-    BASE_WEIGTHS_PATH +
+    BASE_WEIGHTS_PATH +
     'densenet169_weights_tf_dim_ordering_tf_kernels_notop.h5')
 DENSENET201_WEIGHT_PATH = (
-    BASE_WEIGTHS_PATH + 'densenet201_weights_tf_dim_ordering_tf_kernels.h5')
+    BASE_WEIGHTS_PATH + 'densenet201_weights_tf_dim_ordering_tf_kernels.h5')
 DENSENET201_WEIGHT_PATH_NO_TOP = (
-    BASE_WEIGTHS_PATH +
+    BASE_WEIGHTS_PATH +
     'densenet201_weights_tf_dim_ordering_tf_kernels_notop.h5')
 
 layers = VersionAwareLayers()
@@ -145,8 +145,9 @@ def DenseNet(
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
 
-  Caution: Be sure to properly pre-process your inputs to the application.
-  Please see `applications.densenet.preprocess_input` for an example.
+  Note: each Keras Application expects a specific kind of input preprocessing.
+  For DenseNet, call `tf.keras.applications.densenet.preprocess_input` on your
+  inputs before passing them to the model.
 
   Arguments:
     blocks: numbers of building blocks for the four dense layers.
@@ -382,9 +383,10 @@ DOC = """
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
-  
-  Caution: Be sure to properly pre-process your inputs to the application.
-  Please see `applications.densenet.preprocess_input` for an example.
+
+  Note: each Keras Application expects a specific kind of input preprocessing.
+  For DenseNet, call `tf.keras.applications.densenet.preprocess_input` on your
+  inputs before passing them to the model.
 
   Arguments:
     include_top: whether to include the fully-connected

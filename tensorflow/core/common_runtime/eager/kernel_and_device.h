@@ -47,6 +47,8 @@ limitations under the License.
 
 namespace tensorflow {
 
+static constexpr const char* const kOutputsOnOpDevice = "_OutputsOnOpDevice";
+
 class ProcessFunctionLibraryRuntime;
 class FunctionLibraryRuntime;
 
@@ -199,10 +201,7 @@ class KernelAndDeviceOp final : public KernelAndDevice {
       : KernelAndDevice(flr, runner, std::move(collective_executor),
                         host_cpu_device),
         rendezvous_(rendezvous),
-        log_memory_(log_memory),
-        step_container_(0, [this](const string& name) {
-          device_->resource_manager()->Cleanup(name).IgnoreError();
-        }) {}
+        log_memory_(log_memory) {}
 
   ~KernelAndDeviceOp() override {}
 
@@ -250,7 +249,6 @@ class KernelAndDeviceOp final : public KernelAndDevice {
   Rendezvous* const rendezvous_;
   checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_;
   const bool log_memory_;
-  ScopedStepContainer step_container_;
 };
 
 // Represents a multi-device function. Functions can also be run using
@@ -270,27 +268,21 @@ class KernelAndDeviceFunc : public KernelAndDevice {
       std::function<void(std::function<void()>)>* runner,
       std::unique_ptr<CollectiveExecutor::Handle> collective_executor,
       Device* host_cpu_device, const string& name,
+      const bool outputs_on_op_device,
       std::function<Rendezvous*(const int64)> rendezvous_creator,
       std::function<int64()> get_op_id)
       : KernelAndDevice(flr, runner, std::move(collective_executor),
                         host_cpu_device),
         pflr_(pflr),
         handle_(kInvalidHandle),
+        outputs_on_op_device_(outputs_on_op_device),
         input_devices_(std::move(input_devices)),
         composite_devices_(std::move(composite_devices)),
         input_resource_dtypes_and_shapes_(
             std::move(input_resource_dtypes_and_shapes)),
         name_(name),
         rendezvous_creator_(std::move(rendezvous_creator)),
-        get_op_id_(std::move(get_op_id)),
-        step_container_(0, [this](const string& name) {
-          // TODO(b/139809335): This does not properly clean up remote resources
-          const std::vector<Device*> devices =
-              pflr_->device_mgr()->ListDevices();
-          for (Device* device : devices) {
-            device->resource_manager()->Cleanup(name).IgnoreError();
-          }
-        }) {}
+        get_op_id_(std::move(get_op_id)) {}
 
   ~KernelAndDeviceFunc() override;
 
@@ -336,6 +328,11 @@ class KernelAndDeviceFunc : public KernelAndDevice {
   FunctionLibraryRuntime::Handle handle_;
   // Indicates whether the function needs to execute cross process.
   bool is_cross_process_;
+
+  // If true, function outputs are explicitly assigned to the default device;
+  // if false, the output devices are inferred by pflr_.
+  bool outputs_on_op_device_;
+
   // CPU devices are null. Resource handles' devices are actual backing
   // devices.
   std::vector<Device*> output_devices_;
@@ -353,8 +350,6 @@ class KernelAndDeviceFunc : public KernelAndDevice {
 
   std::function<Rendezvous*(const int64)> rendezvous_creator_;
   std::function<int64()> get_op_id_;
-
-  ScopedStepContainer step_container_;
 };
 
 }  // namespace tensorflow

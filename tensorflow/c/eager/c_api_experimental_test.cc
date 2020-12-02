@@ -411,5 +411,109 @@ TEST(CAPI, TensorHandleOnDeviceMemory) {
   TF_DeleteStatus(status);
 }
 
+TEST(CAPI, TensorHandleNullptr) {
+  TFE_TensorHandle* h = nullptr;
+  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
+      TF_NewStatus(), TF_DeleteStatus);
+
+  const char* device_type = TFE_TensorHandleDeviceType(h, status.get());
+  ASSERT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(status.get()));
+  ASSERT_EQ(device_type, nullptr);
+  ASSERT_EQ("Invalid handle", string(TF_Message(status.get())));
+
+  TF_SetStatus(status.get(), TF_OK, "");
+
+  int device_id = TFE_TensorHandleDeviceID(h, status.get());
+  ASSERT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(status.get()));
+  ASSERT_EQ(device_id, -1);
+  ASSERT_EQ("Invalid handle", string(TF_Message(status.get())));
+}
+
+TEST(CAPI, TensorHandleDevices) {
+  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
+      TF_NewStatus(), TF_DeleteStatus);
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  TFE_Context* ctx = TFE_NewContext(opts, status.get());
+  TFE_DeleteContextOptions(opts);
+  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+
+  TFE_TensorHandle* hcpu = TestMatrixTensorHandle(ctx);
+  const char* device_type = TFE_TensorHandleDeviceType(hcpu, status.get());
+  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+  ASSERT_TRUE(absl::StrContains(device_type, "CPU")) << device_type;
+  int device_id = TFE_TensorHandleDeviceID(hcpu, status.get());
+  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+  ASSERT_EQ(0, device_id) << device_id;
+
+  // Disable the test if no GPU is present.
+  string gpu_device_name;
+  if (GetDeviceName(ctx, &gpu_device_name, "GPU")) {
+    TFE_TensorHandle* hgpu = TFE_TensorHandleCopyToDevice(
+        hcpu, ctx, gpu_device_name.c_str(), status.get());
+    ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+
+    TFE_Op* shape_op = ShapeOp(ctx, hgpu);
+    TFE_OpSetDevice(shape_op, gpu_device_name.c_str(), status.get());
+    ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+    TFE_TensorHandle* retvals[1];
+    int num_retvals = 1;
+    TFE_Execute(shape_op, &retvals[0], &num_retvals, status.get());
+    ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+
+    device_type = TFE_TensorHandleDeviceType(retvals[0], status.get());
+    ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+    ASSERT_TRUE(absl::StrContains(device_type, "GPU")) << device_type;
+
+    device_id = TFE_TensorHandleDeviceID(retvals[0], status.get());
+    ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+    ASSERT_EQ(0, device_id) << device_id;
+
+    TFE_DeleteOp(shape_op);
+    TFE_DeleteTensorHandle(retvals[0]);
+    TFE_DeleteTensorHandle(hgpu);
+  }
+
+  TFE_DeleteTensorHandle(hcpu);
+  TFE_Executor* executor = TFE_ContextGetExecutorForThread(ctx);
+  TFE_ExecutorWaitForAllPendingNodes(executor, status.get());
+  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+  TFE_DeleteExecutor(executor);
+  TFE_DeleteContext(ctx);
+}
+
+TEST(CAPI, TensorHandleDefaults) {
+  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
+      TF_NewStatus(), TF_DeleteStatus);
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  TFE_Context* ctx = TFE_NewContext(opts, status.get());
+  TFE_DeleteContextOptions(opts);
+  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+
+  TFE_TensorHandle* h_default = TestMatrixTensorHandle(ctx);
+  const char* device_type = TFE_TensorHandleDeviceType(h_default, status.get());
+  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+  ASSERT_TRUE(absl::StrContains(device_type, "CPU")) << device_type;
+  int device_id = TFE_TensorHandleDeviceID(h_default, status.get());
+  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+  ASSERT_EQ(0, device_id) << device_id;
+
+  TFE_TensorHandle* h_cpu = TFE_TensorHandleCopyToDevice(
+      h_default, ctx, "/device:CPU:0", status.get());
+  const char* device_type_cpu = TFE_TensorHandleDeviceType(h_cpu, status.get());
+  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+  ASSERT_TRUE(absl::StrContains(device_type_cpu, "CPU")) << device_type_cpu;
+  int device_id_cpu = TFE_TensorHandleDeviceID(h_cpu, status.get());
+  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+  ASSERT_EQ(0, device_id_cpu) << device_id_cpu;
+
+  TFE_DeleteTensorHandle(h_default);
+  TFE_DeleteTensorHandle(h_cpu);
+  TFE_Executor* executor = TFE_ContextGetExecutorForThread(ctx);
+  TFE_ExecutorWaitForAllPendingNodes(executor, status.get());
+  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+  TFE_DeleteExecutor(executor);
+  TFE_DeleteContext(ctx);
+}
+
 }  // namespace
 }  // namespace tensorflow

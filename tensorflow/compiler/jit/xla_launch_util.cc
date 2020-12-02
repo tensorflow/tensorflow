@@ -79,19 +79,22 @@ VariableInfo::~VariableInfo() {
   }
 }
 
-// Returns a vector of VariableInfo instances for the resource variable inputs
-// to the kernel with context `ctx`.  The input indices for the resource
-// variable inputs are in `variable_indices`.
-Status GetVariableInfosFromCtxInputs(OpKernelContext* ctx,
-                                     absl::Span<const int> variable_indices,
-                                     std::vector<VariableInfo>* result) {
+Status GetVariableInfosFromInputs(ResourceMgr* rm, DeviceBase* dev,
+                                  absl::Span<const Tensor* const> inputs,
+                                  absl::Span<const int> variable_indices,
+                                  std::vector<VariableInfo>* result) {
   result->clear();
   result->reserve(variable_indices.size());
   for (int var_idx : variable_indices) {
     Var* variable = nullptr;
-    ResourceHandle handle = HandleFromInput(ctx, var_idx);
-    TF_RETURN_IF_ERROR(
-        LookupOrCreateResource<Var>(ctx, handle, &variable, [&](Var** ptr) {
+    ResourceHandle handle = inputs[var_idx]->flat<ResourceHandle>()(0);
+    if (handle.device() != dev->attributes().name()) {
+      return errors::InvalidArgument(
+          "Trying to access resource ", handle.name(), " located in device ",
+          handle.device(), " from device ", dev->attributes().name());
+    }
+    TF_RETURN_IF_ERROR(rm->LookupOrCreate<Var>(
+        handle.container(), handle.name(), &variable, [](Var** ptr) {
           // This var is uninitialized for now.
           *ptr = new Var(DT_INVALID);
           return Status::OK();
@@ -99,6 +102,15 @@ Status GetVariableInfosFromCtxInputs(OpKernelContext* ctx,
     result->emplace_back(var_idx, handle.name(), variable);
   }
   return Status::OK();
+}
+
+std::vector<const Tensor*> InputsFromContext(OpKernelContext* ctx) {
+  std::vector<const Tensor*> inputs;
+  inputs.reserve(ctx->num_inputs());
+  for (int input_idx = 0; input_idx < ctx->num_inputs(); input_idx++) {
+    inputs.push_back(&ctx->input(input_idx));
+  }
+  return inputs;
 }
 
 Status LockVariables(absl::Span<VariableInfo> variables) {
@@ -352,9 +364,6 @@ static Status SetOutputForConstant(
     ctx->set_output(output_num, const_tensor);
     output_tensor = ctx->mutable_output(output_num);
   }
-  if (XlaTensor* xla_tensor = XlaTensor::FromTensor(output_tensor)) {
-    xla_tensor->set_host_tensor(const_tensor);
-  }
   return Status::OK();
 }
 
@@ -417,7 +426,7 @@ Status XlaComputationLaunchContext::PopulateOutputs(
     ShapedBuffer buffer(
         xla::ShapeUtil::MakeTupleShape({nontuple_buffer.on_host_shape()}),
         xla::ShapeUtil::MakeTupleShape({nontuple_buffer.on_device_shape()}),
-        output.platform(), output.device_ordinal());
+        output.device_ordinal());
     buffer.buffers().CopySubtreeFrom(nontuple_buffer.buffers(),
                                      /*source_base_index=*/{},
                                      /*target_base_index=*/{0});
@@ -440,15 +449,14 @@ Status XlaComputationLaunchContext::PopulateOutputs(
         auto transfer_manager,
         xla::TransferManager::GetForPlatform(stream->parent()->platform()));
 
-    xla::Shape output_host_shape = output.on_host_shape();
     xla::Shape output_device_shape = output.on_device_shape();
     TF_RETURN_IF_ERROR(transfer_manager->ReadDynamicShapes(
-        stream, &output, &output_host_shape, &output_device_shape));
+        stream, &output, &output_device_shape));
 
-    output.set_shapes(output_host_shape, output_device_shape);
+    output.set_shapes(output_device_shape, output_device_shape);
     for (int i = 0; i < ctx->num_outputs(); ++i) {
       const xla::Shape& subshape =
-          xla::ShapeUtil::GetSubshape(output_host_shape, {i});
+          xla::ShapeUtil::GetSubshape(output_device_shape, {i});
       TensorShape shape;
       TF_RETURN_IF_ERROR(XLAShapeToTensorShape(subshape, &shape));
       output_tensor_shapes.push_back(shape);
@@ -551,11 +559,29 @@ Status XlaComputationLaunchContext::PopulateOutputs(
   return Status::OK();
 }
 
-Status XlaComputationLaunchContext::BuildXlaCompilerArguments(
-    const std::map<int, Tensor>& must_be_constant_args,
-    absl::Span<VariableInfo const> variable_args, OpKernelContext* ctx,
-    std::vector<XlaCompiler::Argument>* args) {
-  args->resize(ctx->num_inputs());
+xla::StatusOr<std::vector<XlaCompiler::Argument>>
+XlaComputationLaunchContext::BuildXlaCompilerArguments(
+    absl::Span<int const> must_be_constant_idxs,
+    absl::Span<const Tensor* const> inputs,
+    absl::Span<VariableInfo const> variable_args, Device* device) {
+  CHECK(absl::c_is_sorted(must_be_constant_idxs));
+  std::vector<XlaCompiler::Argument> out;
+  out.resize(inputs.size());
+
+  // TODO(cheshire): Avoid duplication with framework/op_kernel.h
+  DeviceContext* device_context = nullptr;
+  TF_RETURN_IF_ERROR(device->TryGetDeviceContext(&device_context));
+  bool using_default_context = false;
+  auto cleanup = xla::MakeCleanup([&] {
+    if (device_context != nullptr && !using_default_context) {
+      device_context->Unref();
+    }
+  });
+  if (device_context == nullptr) {
+    using_default_context = true;
+    auto* dev_info = device->tensorflow_gpu_device_info();
+    if (dev_info) device_context = dev_info->default_context;
+  }
 
   absl::flat_hash_map<int, const VariableInfo*> variable_info_lookup;
   for (const VariableInfo& info : variable_args) {
@@ -565,33 +591,13 @@ Status XlaComputationLaunchContext::BuildXlaCompilerArguments(
     variable_info_lookup.emplace(info.index(), &info);
   }
 
-  for (int64 input_num = 0; input_num < ctx->num_inputs(); ++input_num) {
-    XlaCompiler::Argument& arg = (*args)[input_num];
+  for (int64 input_num = 0; input_num < inputs.size(); ++input_num) {
+    const Tensor* input = inputs[input_num];
 
-    if (must_be_constant_args.count(input_num) > 0) {
-      // Handles compile-time constants.
-      const Tensor& input = must_be_constant_args.at(input_num);
-      TF_RET_CHECK(input.dtype() != DT_RESOURCE);
-      arg.kind = XlaCompiler::Argument::kConstant;
-      arg.type = input.dtype();
-      arg.shape = input.shape();
-      arg.constant_value = input;
-    } else if (variable_info_lookup.count(input_num) == 0) {
-      // Handles the non-constant arguments.
-      const Tensor& input = ctx->input(input_num);
-      TF_RET_CHECK(input.dtype() != DT_RESOURCE);
-      if (input.NumElements() > 0) {
-        arg.kind = XlaCompiler::Argument::kParameter;
-      } else {
-        arg.kind = XlaCompiler::Argument::kConstant;
-        arg.constant_value = input;
-      }
-      arg.type = input.dtype();
-      arg.shape = input.shape();
-    } else {
+    XlaCompiler::Argument& arg = out[input_num];
+    if (variable_info_lookup.count(input_num)) {
       // Handles resource variables.
-      const Tensor& input = ctx->input(input_num);
-      TF_RET_CHECK(input.dtype() == DT_RESOURCE);
+      TF_RET_CHECK(input->dtype() == DT_RESOURCE);
       const VariableInfo& variable = *variable_info_lookup[input_num];
       arg.name = std::string(variable.name());
       arg.kind = XlaCompiler::Argument::kResource;
@@ -610,10 +616,40 @@ Status XlaComputationLaunchContext::BuildXlaCompilerArguments(
         arg.type = DT_INVALID;
         arg.shape = TensorShape();
       }
+
+      if (absl::c_binary_search(must_be_constant_idxs, input_num)) {
+        TF_RET_CHECK(variable.var() && variable.var()->is_initialized);
+        const Tensor* value = variable.var()->tensor();
+        Tensor value_on_host(value->dtype(), value->shape());
+        if (!device_context) {
+          value_on_host = *value;
+        } else {
+          TF_RETURN_IF_ERROR(device_context->CopyDeviceTensorToCPUSync(
+              value, "", device, &value_on_host));
+        }
+        arg.kind = XlaCompiler::Argument::kConstantResource;
+        arg.constant_value = value_on_host;
+      }
+    } else if (absl::c_binary_search(must_be_constant_idxs, input_num)) {
+      arg.kind = XlaCompiler::Argument::kConstant;
+      arg.type = input->dtype();
+      arg.shape = input->shape();
+      arg.constant_value = *input;
+    } else {
+      // Normal inputs.
+      TF_RET_CHECK(input->dtype() != DT_RESOURCE);
+      if (input->NumElements() > 0) {
+        arg.kind = XlaCompiler::Argument::kParameter;
+      } else {
+        arg.kind = XlaCompiler::Argument::kConstant;
+        arg.constant_value = *input;
+      }
+      arg.type = input->dtype();
+      arg.shape = input->shape();
     }
   }
 
-  return Status::OK();
+  return out;
 }
 
 }  // namespace tensorflow

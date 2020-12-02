@@ -60,13 +60,17 @@ Status ConvertInputInfo(
     GraphImportConfig* specs) {
   std::vector<std::string> array_names;
   std::vector<std::string> data_types;
-  std::vector<std::vector<int>> shapes;
+  std::vector<llvm::Optional<std::vector<int>>> shapes;
   for (const tf2xla::Feed& feed : config.feed()) {
     std::string place_holder_name =
         feed_name_remap.at(TensorIdToString(feed.id()));
     array_names.push_back(place_holder_name);
     data_types.push_back(
         feed.type() == DT_INVALID ? "" : DataType_Name(feed.type()));
+    if (feed.shape().unknown_rank()) {
+      shapes.push_back(llvm::None);
+      continue;
+    }
     std::vector<int> dims;
     dims.reserve(feed.shape().dim_size());
     absl::c_for_each(feed.shape().dim(), [&](const TensorShapeProto::Dim d) {
@@ -88,18 +92,6 @@ Status ConvertOutputInfo(const tf2xla::Config& config,
   }
 
   return ParseOutputArrayInfo(array_names, &specs->outputs);
-}
-
-static void RegisterDialects() {
-  static bool init_once = []() {
-    mlir::registerDialect<mlir::tf_executor::TensorFlowExecutorDialect>();
-    mlir::registerDialect<mlir::TF::TensorFlowDialect>();
-    mlir::registerDialect<mlir::StandardOpsDialect>();
-    mlir::registerDialect<mlir::mhlo::MhloDialect>();
-    mlir::registerDialect<mlir::shape::ShapeDialect>();
-    return true;
-  }();
-  (void)init_once;
 }
 
 }  // namespace
@@ -150,9 +142,7 @@ Status ConvertGraphDefToXlaViaMlir(
     }
   }
 
-  RegisterDialects();
   mlir::MLIRContext context;
-  context.loadAllGloballyRegisteredDialects();
   TF_ASSIGN_OR_RETURN(
       mlir::OwningModuleRef module,
       ConvertGraphdefToMlir(pruned_graph_def, debug_info, specs, &context));
@@ -175,7 +165,7 @@ Status ConvertGraphDefToXlaViaMlir(
   return ConvertMLIRToXlaComputation(*module, /*device_type=*/"XLA_CPU_JIT",
                                      computation,
                                      /*use_tuple_args=*/false,
-                                     /*always_return_tuple=*/true);
+                                     /*return_tuple=*/true);
 }
 
 }  // namespace tensorflow

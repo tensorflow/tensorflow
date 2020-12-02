@@ -37,6 +37,7 @@ ABSL_CONST_INIT extern const char kAttrSrcDevice[];
 ABSL_CONST_INIT extern const char kAttrDstDevice[];
 ABSL_CONST_INIT extern const char kAttrTensorName[];
 ABSL_CONST_INIT extern const char kChannelDevice[];
+ABSL_CONST_INIT extern const char kStreaming[];
 
 struct NodeState {
   // A node (i.e., an op) takes a set of input:port pairs and produces
@@ -324,6 +325,21 @@ class SchedulerState {
   SchedulerState(const bool use_static_shapes,
                  const bool use_aggressive_shape_inference, Cluster* cluster,
                  std::unique_ptr<VirtualPlacer> placer);
+  // Move constructor. Explicitly defined because it otherwise gets implicitly
+  // deleted. SchedulerState is a move-only class, as we have a <unique_ptr>
+  // for it in VirtualScheduler. A derivative of VirtualScheduler can move a
+  // <unique_ptr> SchedulerState to VirtualScheduler when it is constructed,
+  // which is where this move constructor is needed.
+  SchedulerState(SchedulerState&& arg) = default;
+  // We explicitly delete assinment and copy operators, this is done implicitly,
+  // but we state it here explicitly for clarity.
+  SchedulerState& operator=(SchedulerState&& arg) = delete;
+  SchedulerState(const SchedulerState&) = delete;
+  SchedulerState& operator=(const SchedulerState&) = delete;
+  // Destructor. Must be defined such that a derivative class can override it
+  // and allow proper desctruction of the derivative class. If this is not done
+  // properly, memory leaks can occur.
+  virtual ~SchedulerState();
   // Sets up the graph while also performing some necessary transformations
   // initial_nodes is the set of nodes (primary inputs) discovered by Init()
   // which may be added by a ReadyNodeManager (or related/derivative scheduler)
@@ -332,12 +348,14 @@ class SchedulerState {
               std::vector<const NodeDef*>* initial_nodes,
               bool create_explicit_channel_device = true);
 
-  Costs Summary() const;
+  virtual Costs Summary() const;
   // Like the above, but writes detailed stats to RunMetadata.
   // If metadata is nullptr, then just calls and return Summary().
-  Costs Summary(RunMetadata* metadata);
+  virtual Costs Summary(RunMetadata* metadata);
   // Generates RunMetadata's step_stats and partition_graphs fields from results
   // of the virtual execution of the graph.
+  // TODO(rdegruijl) See if we can make this function and caller Summary()
+  // const.
   void GenerateRunMetadata(RunMetadata* metadata);
 
   // Returns per device memory usage.
@@ -357,6 +375,29 @@ class SchedulerState {
   std::vector<const NodeDef*> MarkNodeExecuted(const NodeDef* node,
                                                const Costs& node_costs,
                                                const OpContext& op_context);
+
+  // Some getter functions.
+  const GrapplerItem* GetGrapplerItem() { return grappler_item_; }
+  Costs GetGraphCost() { return graph_costs_; }
+  Cluster* GetCluster() { return cluster_; }
+  bool GetUseStaticShape() { return use_static_shapes_; }
+  bool GetUseAggressiveShapeInference() {
+    return use_aggressive_shape_inference_;
+  }
+  const std::unordered_map<const NodeDef*, NodeState>& GetNodeMap() {
+    return node_map_;
+  }
+
+ protected:
+  // Assigns the time_scheduled in the NodeState of node to the current
+  // execution_time of the device executing this node.
+  void SetNodeStateTimeScheduled(const NodeDef* node);
+
+  // This method can be used by a class derived from SchedulerState to
+  // access the device state map.
+  std::unordered_map<string, DeviceState>* GetMutableDeviceState() {
+    return &device_;
+  }
 
  private:
   // Methods called from Init(). Fails if initialize_ is set.
@@ -398,7 +439,7 @@ class SchedulerState {
   // Auxiliary data structures for constructing NodeState and DeviceState.
   std::unique_ptr<GraphProperties> graph_properties_;  // Initialized in Init().
   Cluster* cluster_;                                   // Not owned.
-  const GrapplerItem* grappler_item_;  // Not owned.
+  const GrapplerItem* grappler_item_;                  // Not owned.
   bool use_static_shapes_;
   bool initialized_;
   bool track_mem_usage_snapshot_;
@@ -415,6 +456,15 @@ class VirtualScheduler {
                    const bool use_aggressive_shape_inference, Cluster* cluster,
                    ReadyNodeManager* ready_nodes,
                    std::unique_ptr<VirtualPlacer> placer);
+  // This constructor can be called by a derivative of VirtualScheduler to
+  // construct the base class. It lets VirtualScheduler take ownership of
+  // a new SchedulerState or a derivative thereof.
+  // Note that this constructor does not set a VirtualPlacer, in this
+  // constructor the VirtialPlacer is passed as a member of the SchedulerState
+  // that is passed as an argument.
+  VirtualScheduler(ReadyNodeManager* ready_nodes,
+                   std::unique_ptr<SchedulerState> scheduler_state);
+  virtual ~VirtualScheduler();
 
   // Initializes the scheduler for the specific grappler item.
   // Should be called immediately after the c'tor or when the scheduler will be
@@ -424,51 +474,51 @@ class VirtualScheduler {
   // This function should be called at least once after the scheduler is
   // constructed. An uninitialized or failed-to-initialize scheduler will cause
   // undefined behavior.
-  Status Init(const GrapplerItem* item);
+  virtual Status Init(const GrapplerItem* item);
 
   // Gets the current scheduled node for execution; the caller of this function
   // can accordingly simulate the execution of the current scheduled node.
-  OpContext GetCurrNode() const;
+  virtual OpContext GetCurrNode();
   // Marks the current scheduled node as executed. Note that we should call this
   // function only after the execution of the node has been simulated;
   // node_costs_ capture the simulated costs of the node.
   // Returns true if there is any node to be scheduled.
-  bool MarkCurrNodeExecuted(const Costs& node_costs);
+  virtual bool MarkCurrNodeExecuted(const Costs& node_costs);
 
   // Prints out summary of execution (timing, memory usage, etc.)
-  Costs Summary() const { return scheduler_state_.Summary(); }
+  Costs Summary() const { return scheduler_state_->Summary(); }
   // Like the above, but writes detailed stats to RunMetadata.
   // If metadata is nullptr, then just calls and return Summary().
   Costs Summary(RunMetadata* metadata) {
-    return scheduler_state_.Summary(metadata);
+    return scheduler_state_->Summary(metadata);
   }
   // Generates RunMetadata's step_stats and partition_graphs fields from results
   // of the virtual execution of the graph.
   void GenerateRunMetadata(RunMetadata* metadata) {
-    scheduler_state_.GenerateRunMetadata(metadata);
+    scheduler_state_->GenerateRunMetadata(metadata);
   }
   // Returns per device memory usage.
   const std::unordered_map<string, int64> GetPeakMemoryUsage() const {
-    return scheduler_state_.GetPeakMemoryUsage();
+    return scheduler_state_->GetPeakMemoryUsage();
   }
   const std::unordered_map<string, int64> GetPersistentMemoryUsage() const {
-    return scheduler_state_.GetPersistentMemoryUsage();
+    return scheduler_state_->GetPersistentMemoryUsage();
   }
   // Returns VirtualScheduler (read only) device and node states.
   const std::unordered_map<string, DeviceState>* GetDeviceStates() const {
-    return scheduler_state_.GetDeviceStates();
+    return scheduler_state_->GetDeviceStates();
   }
   const std::unordered_map<const NodeDef*, NodeState>* GetNodeStates() const {
-    return scheduler_state_.GetNodeStates();
+    return scheduler_state_->GetNodeStates();
   }
   void enable_mem_usage_tracking() {
-    scheduler_state_.enable_mem_usage_tracking();
+    scheduler_state_->enable_mem_usage_tracking();
   }
 
- private:
+ protected:
   // The state of the scheduler and the execution of the graph is encapsulated
   // by the scheduler_state_ object.
-  SchedulerState scheduler_state_;
+  std::unique_ptr<SchedulerState> scheduler_state_;
   // ready_nodes_ is responsible for ordering the traversal of the graph.
   ReadyNodeManager* ready_nodes_;  // Not owned.
 };

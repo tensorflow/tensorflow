@@ -34,16 +34,16 @@ limitations under the License.
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/device_util.h"
 #include "tensorflow/compiler/jit/flags.h"
-#include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/jit/resource_operation_safety_analysis.h"
-#include "tensorflow/compiler/jit/union_find.h"
 #include "tensorflow/compiler/jit/xla_activity.pb.h"
 #include "tensorflow/compiler/jit/xla_activity_listener.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/resource_operation_table.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/service/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/union_find.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
@@ -83,6 +83,60 @@ Status MakeCallNodeFromAttribute(const Node& node, const std::string& attr_name,
   *(node_def->mutable_attr()) = name_attr->attr();
   return Status::OK();
 }
+
+xla::StatusOr<std::vector<NodeDef>> MakeCallNodesFromAttribute(
+    const Node& node, absl::string_view attr_name,
+    absl::string_view call_name) {
+  std::vector<NameAttrList> attr_lists;
+  TF_RETURN_IF_ERROR(GetNodeAttr(node.attrs(), attr_name, &attr_lists));
+
+  std::vector<NodeDef> out;
+  for (int i = 0; i < attr_lists.size(); i++) {
+    out.emplace_back();
+    NodeDef& inserted = out.back();
+    inserted.set_name(absl::StrCat(call_name, "_", i));
+    inserted.set_op(attr_lists[i].name());
+    *inserted.mutable_attr() = attr_lists[i].attr();
+  }
+  return out;
+}
+
+// Utility which searches for values in a sorted list by scanning over it once.
+// No matter how many times ScanForValue is called, the list is scanned at most
+// once. However, if a call to ScanForValue skips over a value, that value is
+// not revisited in future calls to ScanForValue, so callers must take
+// care to order their calls.
+//
+// Useful for merging multiple sorted lists in O(n) time.
+class SinglePassSearch {
+ public:
+  // Creates a SinglePassSearch object that can be used to search in `values`.
+  // Does not take ownership of `values`. `values` must outlive this.
+  // `values` must be sorted.
+  explicit SinglePassSearch(absl::Span<int const> values)
+      : current_index_(0), values_(values) {}
+
+  // Scans forward in the vector looking for "value", updating the internal
+  // position in to the vector.
+  // Returns true iff the vector contains the given value at or after current
+  // position.
+  // Not thread-safe.
+  bool ScanForValue(int value) {
+    while (current_index_ < values_.size() &&
+           values_[current_index_] <= value) {
+      if (values_[current_index_] == value) {
+        current_index_++;
+        return true;
+      }
+      current_index_++;
+    }
+    return false;
+  }
+
+ private:
+  int current_index_;
+  const absl::Span<int const> values_;
+};
 
 }  // anonymous namespace
 
@@ -187,6 +241,30 @@ bool RecursiveCompilabilityChecker::IsCompilableIf(
       if_node, "else_branch", "if_else", encapsulating_function, lib_runtime,
       stack_trace, uncompilable_nodes);
 
+  return is_compilable;
+}
+
+bool RecursiveCompilabilityChecker::IsCompilableCase(
+    const Node& case_node, FunctionLibraryRuntime* lib_runtime,
+    std::vector<StackFrameView>* stack_trace,
+    NameAttrList* encapsulating_function,
+    RecursiveCompilabilityChecker::UncompilableNodesMap* uncompilable_nodes)
+    const {
+  xla::StatusOr<std::vector<NodeDef>> calls =
+      MakeCallNodesFromAttribute(case_node, "branches", "branch");
+  if (!calls.ok()) {
+    VLOG(2) << "Rejecting node " << case_node.name() << ": "
+            << "missing attribute 'branches'";
+    return false;
+  }
+
+  bool is_compilable = true;
+
+  for (const NodeDef& call : *calls) {
+    is_compilable &=
+        IsCompilableCall(call, lib_runtime, stack_trace, encapsulating_function,
+                         uncompilable_nodes);
+  }
   return is_compilable;
 }
 
@@ -380,6 +458,13 @@ bool RecursiveCompilabilityChecker::IsCompilableNode(
     return false;
   }
 
+  if (op_filter_.require_always_compilable && node.IsCaseNode() &&
+      !IsCompilableCase(node, lib_runtime, stack_trace, encapsulating_function,
+                        uncompilable_nodes)) {
+    LogNotCompilable(node, "unsupported case");
+    return false;
+  }
+
   if (!op_filter_.allow_stateful_rng_ops &&
       IsStatefulRandomOp(node.type_string())) {
     absl::string_view uncompilable_reason = "stateful random op";
@@ -530,16 +615,11 @@ bool CanCreateXlaKernel(const NodeDef& node_def) {
 }
 
 Status GetBodyAndConstantsAndResources(FunctionLibraryRuntime* flr,
-                                       const NodeDef& node_def,
+                                       const NameAttrList& function,
                                        const FunctionBody** fbody,
                                        std::vector<int>* constant_arg_indices,
                                        std::vector<int>* resource_arg_indices) {
   FunctionLibraryRuntime::Handle handle;
-  // If node_def is not instantiable, e.g., the function does not exist,
-  // simply bail out.
-  NameAttrList function;
-  TF_RETURN_IF_ERROR(NameAndAttrsFromFunctionCall(node_def, &function));
-
   TF_RETURN_IF_ERROR(
       flr->Instantiate(function.name(), AttrSlice(&function.attr()), &handle));
   *fbody = flr->GetFunctionBody(handle);
@@ -567,6 +647,44 @@ Status GetBodyAndConstantsAndResources(FunctionLibraryRuntime* flr,
   }
 
   return Status::OK();
+}
+
+tensorflow::MemoryTypeVector GetInputMemoryTypes(
+    const tensorflow::FunctionBody* fbody,
+    absl::Span<int const> constant_arg_indices,
+    absl::Span<int const> resource_arg_indices) {
+  // Set input and output memory types.
+  tensorflow::MemoryTypeVector input_memory_types(fbody->arg_types.size(),
+                                                  tensorflow::DEVICE_MEMORY);
+  // These indices are used only for optimization purposes. They allow us
+  // to loop over constant_arg_indices and resource_arg_indices only once
+  // while iterating over all the function arguments checking if it is a
+  // resource or a constant.
+  // The reason we optimized this code is because functions can have a lot of
+  // captured arguments. For example, the backward pass of ResNet50 takes in all
+  // 214 variables and a similar number of activations.
+  SinglePassSearch constants_search(constant_arg_indices);
+  SinglePassSearch resources_search(resource_arg_indices);
+  for (size_t i = 0; i < fbody->arg_types.size(); ++i) {
+    if (resources_search.ScanForValue(i) || constants_search.ScanForValue(i)) {
+      // Compile-time constants and resource handles are expected to be in
+      // host memory.
+      input_memory_types[i] = tensorflow::HOST_MEMORY;
+    }
+  }
+  return input_memory_types;
+}
+
+tensorflow::MemoryTypeVector GetOutputMemoryTypes(
+    const tensorflow::FunctionBody* fbody) {
+  tensorflow::MemoryTypeVector output_memory_types(fbody->ret_types.size(),
+                                                   tensorflow::DEVICE_MEMORY);
+  for (size_t i = 0; i < fbody->ret_types.size(); ++i) {
+    if (fbody->ret_types[i] == tensorflow::DT_RESOURCE) {
+      output_memory_types[i] = tensorflow::HOST_MEMORY;
+    }
+  }
+  return output_memory_types;
 }
 
 static auto const ops_triggering_xla_compilation =

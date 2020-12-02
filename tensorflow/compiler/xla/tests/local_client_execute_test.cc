@@ -732,7 +732,7 @@ XLA_TEST_F(LocalClientExecuteTest, RunOnUninitializedStream) {
               ContainsRegex("stream is uninitialized or in an error state"));
 }
 
-XLA_TEST_F(LocalClientExecuteTest, SelectBetweenTuples) {
+XLA_TEST_F(LocalClientExecuteTest, DISABLED_ON_GPU(SelectBetweenTuples)) {
   XlaBuilder builder(TestName());
 
   std::initializer_list<float> vec1 = {1.f, 2.f, 3.f};
@@ -946,9 +946,7 @@ XLA_TEST_F(LocalClientExecuteTest, DISABLED_ON_INTERPRETER(InfeedOutfeedTest)) {
 
 // Benchmark that measures the overhead of the LocalClient API when running a
 // trivial computation
-void BM_LocalClientOverhead(int num_iters) {
-  tensorflow::testing::StopTiming();
-
+void BM_LocalClientOverhead(::testing::benchmark::State& state) {
   se::Platform* platform = PlatformUtil::GetDefaultPlatform().ValueOrDie();
   auto executors = PlatformUtil::GetStreamExecutors(platform).ValueOrDie();
   se::StreamExecutorMemoryAllocator allocator(platform, executors);
@@ -990,8 +988,7 @@ void BM_LocalClientOverhead(int num_iters) {
     ASSERT_IS_OK(result);
   }
 
-  tensorflow::testing::StartTiming();
-  for (int i = 0; i < num_iters; ++i) {
+  for (auto s : state) {
     auto result = executable->Run({&buffer}, run_options);
     ASSERT_IS_OK(result);
   }

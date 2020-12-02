@@ -40,17 +40,14 @@ std::vector<const XPlane*> FindPlanesWithPrefix(const XSpace& space,
 std::vector<XPlane*> FindMutablePlanesWithPrefix(XSpace* space,
                                                  absl::string_view prefix);
 
-// Returns true if event is nested by parent.
-bool IsNested(const tensorflow::profiler::XEvent& event,
-              const tensorflow::profiler::XEvent& parent);
+// Returns the plane with the given id or nullptr if not found.
+const XLine* FindLineWithId(const XPlane& plane, int64 id);
 
-void AddOrUpdateIntStat(int64 metadata_id, int64 value,
-                        tensorflow::profiler::XEvent* event);
+XStat* FindOrAddMutableStat(const XStatMetadata& stat_metadata, XEvent* event);
 
-void AddOrUpdateStrStat(int64 metadata_id, absl::string_view value,
-                        tensorflow::profiler::XEvent* event);
+void RemovePlane(XSpace* space, const XPlane* plane);
+void RemoveLine(XPlane* plane, const XLine* line);
 
-void RemovePlaneWithName(XSpace* space, absl::string_view name);
 void RemoveEmptyPlanes(XSpace* space);
 void RemoveEmptyLines(XPlane* plane);
 
@@ -109,6 +106,9 @@ void MergePlanes(const XPlane& src_plane, XPlane* dst_plane);
 // Plane's start timestamp is defined as the minimum of all lines' start
 // timestamps. If zero line exists, return 0;
 uint64 GetStartTimestampNs(const XPlane& plane);
+
+// Returns true if there are no XEvents.
+bool IsEmpty(const XSpace& space);
 
 }  // namespace profiler
 }  // namespace tensorflow

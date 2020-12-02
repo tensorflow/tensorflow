@@ -45,6 +45,8 @@ constexpr char kTestFuzzGeneratedNegativeShape[] =
     "cc/saved_model/testdata/fuzz_generated/negative_shape";
 constexpr char kTestFuzzGeneratedConstWithNoValue[] =
     "cc/saved_model/testdata/fuzz_generated/const_with_no_value";
+constexpr char kTestFuzzGeneratedBadNodeAttr[] =
+    "cc/saved_model/testdata/fuzz_generated/bad_node_attr";
 
 class LoaderTest : public ::testing::Test {
  protected:
@@ -308,6 +310,9 @@ TEST_F(LoaderTest, NegativeShapeDimension) {
   Status st = LoadSavedModel(session_options, run_options, export_dir,
                              {kSavedModelTagServe}, &bundle);
   EXPECT_FALSE(st.ok());
+  EXPECT_NE(
+      st.error_message().find("initializes from a tensor with -1 elements"),
+      std::string::npos);
 }
 
 TEST_F(LoaderTest, ConstNoValue) {
@@ -320,6 +325,24 @@ TEST_F(LoaderTest, ConstNoValue) {
   Status st = LoadSavedModel(session_options, run_options, export_dir,
                              {kSavedModelTagServe}, &bundle);
   EXPECT_FALSE(st.ok());
+  EXPECT_NE(
+      st.error_message().find("constant tensor but no value has been provided"),
+      std::string::npos);
+}
+
+TEST_F(LoaderTest, BadNodeAttr) {
+  SavedModelBundle bundle;
+  RunOptions run_options;
+  SessionOptions session_options;
+
+  const string export_dir =
+      io::JoinPath(testing::TensorFlowSrcRoot(), kTestFuzzGeneratedBadNodeAttr);
+  Status st = LoadSavedModel(session_options, run_options, export_dir,
+                             {kSavedModelTagServe}, &bundle);
+  EXPECT_FALSE(st.ok());
+  EXPECT_NE(
+      st.error_message().find("constant tensor but no value has been provided"),
+      std::string::npos);
 }
 
 }  // namespace

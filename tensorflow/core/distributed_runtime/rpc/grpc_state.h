@@ -49,21 +49,43 @@ class RPCState : public GrpcClientCQTag {
       : RPCState(
             stub, cq, method, request, response, std::move(done), call_opts,
             threadpool,
-            // 1) If GRPC_FAIL_FAST is specified, fail_fast=$GRPC_FAIL_FAST.
-            // See b/141948186.
-            // 2) Otherwise, if the platform is Google, use the fail_fast from
-            // the caller. See b/140260119.
-            // 3) Otherwise, use fail_fast=false.
-            [fail_fast]() -> bool {
-              bool x;
+            // 1) If GRPC_FAIL_FAST is set to 'true' or 'false',
+            // fail_fast=$GRPC_FAIL_FAST. See b/141948186.
+            // 2) Otherwise if GRPC_FAIL_FAST is set to 'use_caller', use the
+            // fail_fast from the caller. See b/140260119.
+            //
+            // Current default for PLATFORM_GOOGLE: use caller fail_fast;
+            // Current default for open source: fail_fast=false.
+            //
+            // NOTE: Callers mostly set fail_fast=true to prevent job hanging
+            // on worker task failures, except a few cases such as GetStatus
+            // in cluster initialization and collective param resolution.
+            [fail_fast, &done]() -> bool {
+              string fail_fast_env;
 #if defined(PLATFORM_GOOGLE)
-              TF_CHECK_OK(ReadBoolFromEnvVar("GRPC_FAIL_FAST", fail_fast, &x));
+              TF_CHECK_OK(ReadStringFromEnvVar("GRPC_FAIL_FAST", "use_caller",
+                                               &fail_fast_env));
 #else
-              TF_CHECK_OK(ReadBoolFromEnvVar("GRPC_FAIL_FAST", false, &x));
+              TF_CHECK_OK(ReadStringFromEnvVar("GRPC_FAIL_FAST", "false",
+                                               &fail_fast_env));
 #endif  // PLATFORM_GOOGLE
-              return x;
+              string fail_fast_env_lower = absl::AsciiStrToLower(fail_fast_env);
+              if (fail_fast_env_lower == "true") {
+                return true;
+              } else if (fail_fast_env_lower == "use_caller") {
+                return fail_fast;
+              } else if (fail_fast_env_lower == "false") {
+                return false;
+              } else {
+                string error_message = strings::StrCat(
+                    "Invalid GRPC_FAIL_FAST config: ", fail_fast_env);
+                LOG(WARNING) << error_message;
+                done(errors::InvalidArgument(error_message));
+                return false;
+              }
             }(),
-            /*timeout_in_ms=*/0, max_retries, target) {
+            (call_opts != nullptr ? call_opts->GetTimeout() : 0), max_retries,
+            target) {
   }
 
   template <typename Request>

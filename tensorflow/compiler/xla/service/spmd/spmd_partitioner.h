@@ -21,6 +21,7 @@ limitations under the License.
 #include <unordered_map>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -74,6 +75,16 @@ class SpmdBuilder : public HloComputation::Builder {
 
   HloInstruction* visiting_hlo() const { return visiting_hlo_; }
 
+  // Wrapper of queries to broadcast_dims_.
+  absl::optional<const absl::flat_hash_set<int64>*> BroadcastDimsForCreatedHlo(
+      const HloInstruction* hlo) {
+    auto it = broadcast_dims_.find(hlo);
+    if (it == broadcast_dims_.end()) {
+      return absl::nullopt;
+    }
+    return &it->second;
+  }
+
  private:
   // Currently visiting instruction.
   HloInstruction* visiting_hlo_;
@@ -81,6 +92,12 @@ class SpmdBuilder : public HloComputation::Builder {
   // Map from the currently visiting (old) instruction to new instructions
   // created during SPMD partitioning.
   HloInstructionMap<std::vector<HloInstruction*>> instructions_;
+
+  // Maps from each created instruction to a set of dimensions that are from
+  // broadcasts or elementwise ops over broadcasts. This means elements along
+  // these dimensions have the same value.
+  absl::flat_hash_map<const HloInstruction*, absl::flat_hash_set<int64>>
+      broadcast_dims_;
 };
 
 // A set of functions that create the cross-partition collective ops.
@@ -266,9 +283,9 @@ class PartitionedHlo {
   // unevenly partitioned dimensions are padded on the right, but this function
   // allows specifying left-padded dimensions, which can be used during the
   // handling of kReverse, etc.
-  PartitionedHlo PadWithValue(
-      HloInstruction* pad_value,
-      absl::Span<const int64> left_padded_dims = {}) const;
+  PartitionedHlo PadWithValue(HloInstruction* pad_value,
+                              absl::Span<const int64> left_padded_dims = {},
+                              absl::Span<const int64> skipped_dims = {}) const;
 
   // Returns the SPMD instruction.
   HloInstruction* hlo() const { return hlo_; }
@@ -330,25 +347,9 @@ class PartitionedHlo {
   PartitioningState state_;
 };
 
-struct DotGeneralDimsMapping {
+struct DotConvDimsMapping {
   // The dimension numbers for the operands and output corresponding to a
   // logical dimension (e.g., batch, contracting, non-contracting). If an
-  // operand or the output doesn't have the logical dimension, it is set to
-  // -1.
-  struct DimsMapping {
-    int64 lhs;
-    int64 rhs;
-    int64 output;
-  };
-  std::vector<DimsMapping> batch_dims;
-  std::vector<DimsMapping> contracting_dims;
-  std::vector<DimsMapping> lhs_non_contracting_dims;
-  std::vector<DimsMapping> rhs_non_contracting_dims;
-};
-
-struct ConvolutionDimsMapping {
-  // The dimension numbers for the operands and output corresponding to a
-  // logical dimension (e.g., batch, parallel, non-parallel). If an
   // operand or the output doesn't have the logical dimension, it is set to
   // -1.
   struct DimsMapping {
@@ -358,8 +359,11 @@ struct ConvolutionDimsMapping {
     // input mapped to index in input_spatial_dimensions().
     int64 spatial;
   };
-  std::vector<DimsMapping> parallel_spatial_dims;
-  std::vector<DimsMapping> non_parallel_spatial_dims;
+  std::vector<DimsMapping> batch_dims;
+  std::vector<DimsMapping> contracting_dims;
+  std::vector<DimsMapping> lhs_non_contracting_dims;
+  std::vector<DimsMapping> rhs_non_contracting_dims;
+  std::vector<DimsMapping> conv_spatial_dims;
 };
 
 class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
@@ -378,6 +382,7 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   Status HandleDot(HloInstruction* hlo) override;
   Status HandleDynamicSlice(HloInstruction* hlo) override;
   Status HandleDynamicUpdateSlice(HloInstruction* hlo) override;
+  Status HandleFft(HloInstruction* hlo) override;
   Status HandleGather(HloInstruction* hlo) override;
   Status HandleGetTupleElement(HloInstruction* hlo) override;
   Status HandleInfeed(HloInstruction* hlo) override;
@@ -403,10 +408,11 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   Status HandlePartitionId(HloInstruction* hlo) override;
 
   // Implementation of dot partitioning given DotGeneralDimsMapping.
-  Status HandleDotHelper(
-      HloInstruction* hlo, const DotGeneralDimsMapping& dims_mapping,
-      const std::function<StatusOr<HloInstruction*>(
-          HloInstruction*, HloInstruction*, SpmdBuilder*)>& create_sharded_dot);
+  Status HandleDotHelper(HloInstruction* hlo,
+                         const DotConvDimsMapping& dims_mapping,
+                         const std::function<StatusOr<HloInstruction*>(
+                             HloInstruction*, HloInstruction*, SpmdBuilder*,
+                             const Window& conv_window)>& create_sharded_dot);
 
   // Common handle for elementwise HLOs.
   Status HandleElementwise(HloInstruction* hlo);
@@ -468,6 +474,7 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
     int64 windowed_operand;
     bool windowed_in_contracting_dims;
     bool windowed_in_batch_dims;
+    bool operands_sharded_at_contracting_dims;
   };
 
  private:
@@ -504,6 +511,8 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   SpmdLogger* logger_;
   const SpmdPartitionerOptions options_;
   SpmdPartitioner* partitioner_;
+  std::vector<HloSharding> visiting_hlo_operand_shardings_;
+  absl::optional<HloSharding> visiting_hlo_sharding_;
 };
 
 }  // namespace spmd

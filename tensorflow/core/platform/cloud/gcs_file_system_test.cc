@@ -504,7 +504,7 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_WithLocationConstraintCaching) {
 
   string bucket = "gs://bucket/random_access.txt";
   string another_bucket = "gs://anotherbucket/random_access.txt";
-  // Multiple calls should only cause one request to the location api.
+  // Multiple calls should only cause one request to the location API.
   TF_EXPECT_OK(fs.NewRandomAccessFile(bucket, nullptr, &file));
   TF_EXPECT_OK(fs.NewRandomAccessFile(bucket, nullptr, &file));
 
@@ -780,7 +780,7 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_WithBlockCache_MaxStaleness) {
   // this loop 10 times.  This shows that the underlying FileBlockCache persists
   // across file close/open boundaries.
   for (int i = 0; i < 10; i++) {
-    // Create two files. Since these files have the same name name and the max
+    // Create two files. Since these files have the same name and the max
     // staleness of the filesystem is > 0, they will share the same blocks.
     std::unique_ptr<RandomAccessFile> file1;
     std::unique_ptr<RandomAccessFile> file2;
@@ -1440,6 +1440,37 @@ TEST(GcsFileSystemTest, NewAppendableFile_NoObjectName) {
   std::unique_ptr<WritableFile> file;
   EXPECT_EQ(errors::Code::INVALID_ARGUMENT,
             fs.NewAppendableFile("gs://bucket/", nullptr, &file).code());
+}
+
+TEST(GcsFileSystemTest, NewAppendableFile_ObjectDoesNotExist) {
+  std::vector<HttpRequest*> requests(
+      {new FakeHttpRequest(
+           "Uri: https://storage.googleapis.com/bucket/filename\n"
+           "Auth Token: fake_token\n"
+           "Range: 0-1048575\n"
+           "Timeouts: 5 1 20\n",
+           "", errors::NotFound("404"), 404),
+       new FakeHttpRequest(
+           "Uri: https://www.googleapis.com/upload/storage/v1/b/bucket/o"
+           "?uploadType=resumable&name=filename\n"
+           "Auth Token: fake_token\n"
+           "Header X-Upload-Content-Length: 0\n"
+           "Post: yes\n"
+           "Timeouts: 5 1 10\n",
+           "")});
+  GcsFileSystem fs(
+      std::unique_ptr<AuthProvider>(new FakeAuthProvider),
+      std::unique_ptr<HttpRequest::Factory>(
+          new FakeHttpRequestFactory(&requests)),
+      std::unique_ptr<ZoneProvider>(new FakeZoneProvider), 0 /* block size */,
+      0 /* max bytes */, 0 /* max staleness */, 0 /* stat cache max age */,
+      0 /* stat cache max entries */, 0 /* matching paths cache max age */,
+      0 /* matching paths cache max entries */, kTestRetryConfig,
+      kTestTimeoutConfig, *kAllowedLocationsDefault,
+      nullptr /* gcs additional header */, false /* compose append */);
+
+  std::unique_ptr<WritableFile> file;
+  TF_EXPECT_OK(fs.NewAppendableFile("gs://bucket/filename", nullptr, &file));
 }
 
 TEST(GcsFileSystemTest, NewReadOnlyMemoryRegionFromFile) {
@@ -3851,6 +3882,15 @@ TEST(GcsFileSystemTest, NewAppendableFile_MultipleFlushesWithCompose) {
                           "Put body: ",
                           contents[2], "\n"),
           ""),
+      // Fetch generation
+      new FakeHttpRequest(
+          "Uri: "
+          "https://www.googleapis.com/storage/v1/b/bucket/o/"
+          "some%2Fpath%2Fappendable?fields=size%2Cgeneration%2Cupdated\n"
+          "Auth Token: fake_token\n"
+          "Timeouts: 5 1 10\n",
+          strings::StrCat("{\"size\": \"8\",\"generation\": \"1234\","
+                          "\"updated\": \"2016-04-29T23:15:24.896Z\"}")),
       // Compose the new part at the end of the original object.
       new FakeHttpRequest("Uri: "
                           "https://www.googleapis.com/storage/v1/b/bucket/o/"
@@ -3859,7 +3899,9 @@ TEST(GcsFileSystemTest, NewAppendableFile_MultipleFlushesWithCompose) {
                           "Timeouts: 5 1 10\n"
                           "Header content-type: application/json\n"
                           "Post body: {'sourceObjects': [{'name': "
-                          "'some/path/appendable'},{'name': "
+                          "'some/path/"
+                          "appendable','objectPrecondition':{'"
+                          "ifGenerationMatch':1234}},{'name': "
                           "'some/path/.tmpcompose/appendable.18'}]}\n",
                           ""),
       // Delete the temporary object.
@@ -3887,6 +3929,15 @@ TEST(GcsFileSystemTest, NewAppendableFile_MultipleFlushesWithCompose) {
                           "Put body: ",
                           contents[3], "\n"),
           ""),
+      // Fetch generation
+      new FakeHttpRequest(
+          "Uri: "
+          "https://www.googleapis.com/storage/v1/b/bucket/o/"
+          "some%2Fpath%2Fappendable?fields=size%2Cgeneration%2Cupdated\n"
+          "Auth Token: fake_token\n"
+          "Timeouts: 5 1 10\n",
+          strings::StrCat("{\"size\": \"8\",\"generation\": \"4567\","
+                          "\"updated\": \"2016-04-29T23:15:24.896Z\"}")),
       new FakeHttpRequest("Uri: "
                           "https://www.googleapis.com/storage/v1/b/bucket/o/"
                           "some%2Fpath%2Fappendable/compose\n"
@@ -3894,7 +3945,9 @@ TEST(GcsFileSystemTest, NewAppendableFile_MultipleFlushesWithCompose) {
                           "Timeouts: 5 1 10\n"
                           "Header content-type: application/json\n"
                           "Post body: {'sourceObjects': [{'name': "
-                          "'some/path/appendable'},{'name': "
+                          "'some/path/"
+                          "appendable','objectPrecondition':{'"
+                          "ifGenerationMatch':4567}},{'name': "
                           "'some/path/.tmpcompose/appendable.27'}]}\n",
                           ""),
       new FakeHttpRequest("Uri: "

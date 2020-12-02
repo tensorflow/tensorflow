@@ -24,7 +24,7 @@ limitations under the License.
 #include "llvm/Support/Debug.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -115,9 +115,8 @@ struct TPUSpaceToDepthPass
 
 // Updates func argument type to have the updated input shape.
 void UpdateFuncType(FuncOp func) {
-  auto arg_types = llvm::to_vector<8>(func.front().getArgumentTypes());
-  auto result_types =
-      llvm::to_vector<4>(func.front().getTerminator()->getOperandTypes());
+  auto arg_types = func.front().getArgumentTypes();
+  auto result_types = func.front().getTerminator()->getOperandTypes();
   func.setType(FunctionType::get(arg_types, result_types, func.getContext()));
 }
 
@@ -432,9 +431,8 @@ TF::SpaceToDepthOp BuildSpaceToDepth(tf_device::ClusterFuncOp cluster_func,
       input_shape[3] * block_size * block_size};
   auto transform_result_type =
       RankedTensorType::get(transform_shape, getElementTypeOrSelf(input));
-  return builder.create<TF::SpaceToDepthOp>(cluster_func.getLoc(),
-                                            transform_result_type, input,
-                                            APInt(64, block_size));
+  return builder.create<TF::SpaceToDepthOp>(
+      cluster_func.getLoc(), transform_result_type, input, block_size);
 }
 
 // Performs transformation for a non-replicated input.
@@ -458,7 +456,7 @@ bool HandleHostReplicatedInputs(int64_t index,
   int64_t replicate_arg_index = block_arg.getArgNumber();
   // We need to know the devices to copy to.
   if (!replicate.devices()) return false;
-  int64_t num_replicas = replicate.n().getZExtValue();
+  int64_t num_replicas = replicate.n();
   // Gets inputs at replicate_arg_index for each replica.
   auto inputs = replicate.getOperands()
                     .drop_front(replicate_arg_index * num_replicas)
@@ -669,7 +667,6 @@ void TPUSpaceToDepthPass::runOnOperation() {
   if (!device_func) return;
 
   TF::Conv2DOp first_conv;
-  Optional<ArrayRef<int64_t>> input_shape;
   // A map maps block argument id to the convolutions consumes them.
   llvm::SmallDenseMap<unsigned, std::vector<Conv2DWithBlockSize>>
       argnum_and_convolutions;

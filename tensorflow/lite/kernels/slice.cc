@@ -113,10 +113,15 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  const TfLiteTensor* begin = GetInput(context, node, kBeginTensor);
-  const TfLiteTensor* size = GetInput(context, node, kSizeTensor);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
+  const TfLiteTensor* begin;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kBeginTensor, &begin));
+  const TfLiteTensor* size;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kSizeTensor, &size));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
 
   // Ensure validity of input tensor and its dimension.
   TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
@@ -142,10 +147,15 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
 template <KernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  const TfLiteTensor* begin = GetInput(context, node, kBeginTensor);
-  const TfLiteTensor* size = GetInput(context, node, kSizeTensor);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
+  const TfLiteTensor* begin;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kBeginTensor, &begin));
+  const TfLiteTensor* size;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kSizeTensor, &size));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
 
   if (IsDynamicTensor(output)) {
     TF_LITE_ENSURE_OK(context,
@@ -213,6 +223,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       break;
     case kTfLiteInt8:
       TF_LITE_SLICE(int8_t, kernel_type);
+      break;
+    case kTfLiteInt16:
+      TF_LITE_SLICE(int16_t, kernel_type);
       break;
     case kTfLiteUInt8:
       TF_LITE_SLICE(uint8_t, kernel_type);

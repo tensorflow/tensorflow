@@ -20,6 +20,8 @@ limitations under the License.
 
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
@@ -54,12 +56,6 @@ enum class CudnnConvKind {
 };
 
 StatusOr<CudnnConvKind> GetCudnnConvKind(const HloCustomCallInstruction* instr);
-
-StatusOr<se::dnn::ConvolutionKind> GetDnnConvolutionKind(
-    const HloCustomCallInstruction* instr);
-
-StatusOr<se::dnn::DataType> GetDnnDataType(
-    const HloCustomCallInstruction* conv);
 
 // Converts a CudnnConvKind value to a string.
 string CudnnConvKindToString(CudnnConvKind kind);
@@ -223,10 +219,32 @@ llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
 // block 0 of the kernel.
 llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b);
 
-// Returns whether the outputs of a fusion with reduction are consistent.
-bool AreFusedReductionOutputsConsistent(
+// Returns whether the output of a fusion with reduction are consistent with
+// `first_reduce`.
+bool IsFusedReductionOutputConsistent(const HloInstruction* inst,
+                                      const HloInstruction* first_reduce);
+
+inline bool AreFusedReductionOutputsConsistent(
     absl::Span<const HloInstruction* const> output_instructions,
-    const HloInstruction* first_reduce);
+    const HloInstruction* first_reduce) {
+  return absl::c_all_of(output_instructions, [=](const HloInstruction* inst) {
+    return IsFusedReductionOutputConsistent(inst, first_reduce);
+  });
+}
+
+inline std::string MlirToString(mlir::Operation* op) {
+  std::string s;
+  {
+    llvm::raw_string_ostream os(s);
+    op->print(os);
+  }
+  return s;
+}
+
+std::vector<mlir::Value> GetHloOperands(mlir::Operation* op);
+std::vector<mlir::Value> GetHloOutputs(mlir::Operation* op);
+
+bool WritesMlirBuffer(mlir::Operation* op, mlir::Value operand);
 
 }  // namespace gpu
 }  // namespace xla

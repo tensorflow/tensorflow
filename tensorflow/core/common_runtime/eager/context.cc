@@ -25,6 +25,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/nccl/collective_communicator.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
@@ -40,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #if !defined(IS_MOBILE_PLATFORM)
@@ -75,7 +78,6 @@ EagerContext::EagerContext(
     ContextDevicePlacementPolicy default_device_placement_policy, bool async,
     const bool lazy_copy_function_remote_inputs, const DeviceMgr* device_mgr,
     bool device_mgr_owned, Rendezvous* rendezvous,
-    const CustomKernelCreator* custom_kernel_creator,
     DistributedFunctionLibraryRuntime* cluster_flr)
     : ImmediateExecutionContext(kEager),
       opts_(opts),
@@ -84,11 +86,12 @@ EagerContext::EagerContext(
       host_cpu_device_(device_mgr->HostCPU()),
       rendezvous_(rendezvous),
       thread_pool_(NewThreadPoolFromSessionOptions(opts)),
-      custom_kernel_creator_(custom_kernel_creator),
       cluster_flr_(cluster_flr),
       log_device_placement_(opts.config.log_device_placement()),
       allow_soft_placement_(opts.config.allow_soft_placement()),
       num_active_steps_(0),
+      step_container_(std::make_unique<ScopedStepContainer>(
+          0, [this](const string& name) { ClearResourceContainer(name); })),
       default_executor_(async),
       log_memory_(LogMemory::IsEnabled()),
       env_(opts.env),
@@ -98,7 +101,7 @@ EagerContext::EagerContext(
           "TF_EAGER_ENABLE_SMALL_TENSOR_CPU_PINNING", false)) {
   ResetPFLR(device_mgr, opts.env, &opts.config, TF_GRAPH_DEF_VERSION,
             &func_lib_def_, opts.config.graph_options().optimizer_options(),
-            thread_pool_.get(), cluster_flr, custom_kernel_creator_);
+            thread_pool_.get(), cluster_flr);
   // Starts exporting metrics through a platform-specific monitoring API (if
   // provided). For builds using "tensorflow/core/platform/default", this is
   // currently a no-op.
@@ -107,6 +110,8 @@ EagerContext::EagerContext(
   runner_ = [this](std::function<void()> closure) {
     this->thread_pool_->Schedule(std::move(closure));
   };
+
+  run_metadata_ = std::make_unique<RunMetadata>();
 
 #if !defined(IS_MOBILE_PLATFORM)
   context_id_ = kInvalidContextId;
@@ -120,7 +125,7 @@ EagerContext::EagerContext(
       "/job:localhost/replica:0/task:0"));
   collective_executor_mgr_.Reset(
       new CollectiveExecutorMgr(opts.config, local_device_mgr(), std::move(drl),
-                                std::move(cprl)),
+                                std::move(cprl), MaybeCreateNcclCommunicator()),
       /*owned=*/true);
 }
 
@@ -184,8 +189,7 @@ void EagerContext::ResetPFLR(const DeviceMgr* device_mgr, Env* env,
                              const FunctionLibraryDefinition* lib_def,
                              const OptimizerOptions& optimizer_options,
                              thread::ThreadPool* thread_pool,
-                             DistributedFunctionLibraryRuntime* cluster_flr,
-                             const CustomKernelCreator* custom_kernel_creator) {
+                             DistributedFunctionLibraryRuntime* cluster_flr) {
   Rendezvous::Factory rendezvous_factory{
       [this](const int64 step_id, const DeviceMgr*, Rendezvous** r) {
         *r = CreateRendezvous(step_id);
@@ -193,7 +197,7 @@ void EagerContext::ResetPFLR(const DeviceMgr* device_mgr, Env* env,
       }};
   pflr_.reset(new ProcessFunctionLibraryRuntime(
       device_mgr, env, config, graph_def_version, lib_def, optimizer_options,
-      thread_pool, cluster_flr, custom_kernel_creator,
+      thread_pool, cluster_flr,
       /*session_metadata=*/nullptr, std::move(rendezvous_factory)));
 }
 
@@ -382,6 +386,11 @@ void EagerContext::ClearCachesAndDefaultExecutor() {
   kernel_cache_.clear();
   for (auto& entry : registered_functions_) {
     entry.second->cached_kernel_keys->clear();
+  }
+  {
+    mutex_lock ml(metadata_mu_);
+    step_container_.reset(new ScopedStepContainer(
+        0, [this](const string& name) { ClearResourceContainer(name); }));
   }
 }
 
@@ -574,11 +583,16 @@ Status EagerContext::FindFunctionOpData(
   return func_lib_def_.LookUp(name, op_data);
 }
 
-const FunctionDef* EagerContext::FindFunctionDef(const string& name) {
+const FunctionDef* EagerContext::FindFunctionDef(const string& name) const {
   return func_lib_def_.Find(name);
 }
 
-void EagerContext::ClearRunMetadata() { run_metadata_.Clear(); }
+std::unique_ptr<RunMetadata> EagerContext::ExportRunMetadata() {
+  mutex_lock ml(metadata_mu_);
+  auto result = std::make_unique<RunMetadata>();
+  run_metadata_.swap(result);
+  return result;
+}
 
 bool EagerContext::UsesTFRT() { return false; }
 
@@ -593,29 +607,20 @@ void EagerContext::ListDevices(
 void EagerContext::StartStep() {
   mutex_lock ml(metadata_mu_);
   num_active_steps_++;
-  if (step_container_ == nullptr) {
-    step_container_.reset(
-        new ScopedStepContainer(0, [this](const string& name) {
-          auto local_devices = local_device_mgr()->ListDevices();
-          for (Device* device : local_devices) {
-            device->resource_manager()->Cleanup(name).IgnoreError();
-          }
-        }));
-  }
 }
 
 void EagerContext::EndStep() {
   mutex_lock ml(metadata_mu_);
   num_active_steps_--;
   if (num_active_steps_ == 0) {
-    step_container_.reset();
+    // TODO(b/139809335): This does not properly clean up remote resources
+    // Clean up the previous step container and create a new one.
+    step_container_.reset(new ScopedStepContainer(
+        0, [this](const string& name) { ClearResourceContainer(name); }));
   }
 }
 
 ScopedStepContainer* EagerContext::StepContainer() {
-  if (num_active_steps_.load() == 0) {
-    return nullptr;
-  }
   mutex_lock ml(metadata_mu_);
   return step_container_.get();
 }
@@ -720,6 +725,22 @@ Status EagerContext::AddFunctionDef(const FunctionDef& fdef,
       gtl::InsertOrUpdate(&registered_functions_, fdef.signature().name(),
                           registered_function);
     } else {
+      // The function has been registered before. If the function is the same,
+      // then we take a Ref() otherwise we error out.
+      const FunctionDef* prev_fdef =
+          func_lib_def_.Find(fdef.signature().name());
+      if (prev_fdef == nullptr) {
+        return errors::Internal("Function: ", fdef.signature().name(),
+                                " is in the cache but not in the library");
+      }
+      if (!FunctionDefsEqual(fdef, *prev_fdef)) {
+        return errors::InvalidArgument(
+            "Attempting to add a duplicate function with name: ",
+            fdef.signature().name(), " where the previous and current ",
+            "definitions differ. Previous definition: ",
+            prev_fdef->DebugString(),
+            " and current definition: ", fdef.DebugString());
+      }
       registered_function->Ref();
     }
     is_first_ref = registered_function->RefCountIsOne();
@@ -843,7 +864,7 @@ void EagerContext::SetShouldStoreGraphs(bool value) {
   mutex_lock ml(metadata_mu_);
   should_store_graphs_.store(value);
   if (!value) {
-    run_metadata_.Clear();
+    run_metadata_.reset(new RunMetadata);
   }
 }
 
@@ -963,6 +984,15 @@ Status EagerContext::CPUDeviceOnTask(const Device* device,
       device->name(), &cpu_device_name));
 
   return FindDeviceFromName(cpu_device_name.c_str(), cpu_device);
+}
+
+void EagerContext::ClearResourceContainer(const string& name) {
+  // TODO(b/139809335): This does not properly clean up remote resources
+  auto local_devices = local_device_mgr()->ListDevices();
+  for (Device* device : local_devices) {
+    // Only ignore container not found errors.
+    device->resource_manager()->Cleanup(name).IgnoreError();
+  }
 }
 
 namespace {
@@ -1210,9 +1240,8 @@ Status EagerContext::UpdateRemoteMaster(
     tf_shared_lock l(remote_state_mu_);
     if (context_id != context_id_) {
       return errors::InvalidArgument(
-          "Failed to update remote remote master context due to invalid ",
-          "context id. Request id = ", context_id,
-          " but current id = ", context_id_);
+          "Failed to update remote master context due to invalid context id. ",
+          "Request id = ", context_id, " but current id = ", context_id_);
     }
   }
 
@@ -1327,7 +1356,7 @@ Status EagerContext::SetMasterContextState(
   const auto* config = pflr_->config();
   ResetPFLR(local_device_manager_.Get(), env_, config, TF_GRAPH_DEF_VERSION,
             &func_lib_def_, config->graph_options().optimizer_options(),
-            thread_pool_.get(), cluster_flr_.Get(), custom_kernel_creator_);
+            thread_pool_.get(), cluster_flr_.Get());
 
   keep_alive_secs_ = keep_alive_secs;
   sleep_for_secs_ = std::max(1, keep_alive_secs_ / 2);
@@ -1429,7 +1458,7 @@ Status EagerContext::InitializeRemoteWorker(
   const auto* config = pflr_->config();
   ResetPFLR(local_device_manager_.Get(), env_, config, TF_GRAPH_DEF_VERSION,
             &func_lib_def_, config->graph_options().optimizer_options(),
-            thread_pool_.get(), cluster_flr_.Get(), custom_kernel_creator_);
+            thread_pool_.get(), cluster_flr_.Get());
   InitPrioritizedDeviceTypeList();
 
   ClearCachesAndThreadExecutors();

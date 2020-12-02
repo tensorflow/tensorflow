@@ -117,6 +117,22 @@ TEST_F(AlgebraicSimplifierTest, FactorFpAddition) {
                   m::ConstantScalar(0.125))));
 }
 
+// (Abs(A)) * (Abs(A)) => (A*A)
+TEST_F(AlgebraicSimplifierTest, SquareOfAbs) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p = f32[] parameter(0)
+      a = f32[] abs(p)
+      ROOT z = f32[] multiply(a, a)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Multiply(m::Parameter(0), m::Parameter(0))));
+}
+
 // (A*C1) * (B*C2) => (A*B)*(C1*C2)
 TEST_F(AlgebraicSimplifierTest, MultiplyChain) {
   const char* kModuleStr = R"(
@@ -2319,7 +2335,7 @@ TEST_F(AlgebraicSimplifierTest, ConcatenateOfBroadcastBecomesPad) {
 TEST_F(AlgebraicSimplifierTest, SimplifyConcatenateOfSlices) {
   auto m = CreateNewVerifiedModule();
   Shape r2f32 = ShapeUtil::MakeShape(F32, {100, 99});
-  Shape concat_shape = ShapeUtil::MakeShape(F32, {50, 80});
+  Shape concat_shape = ShapeUtil::MakeShape(F32, {50, 90});
   HloComputation::Builder builder(TestName());
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, r2f32, "param0"));
@@ -2366,10 +2382,15 @@ TEST_F(AlgebraicSimplifierTest, SimplifyConcatenateOfSlices) {
   HloInstruction* slice7 = builder.AddInstruction(HloInstruction::CreateSlice(
       ShapeUtil::MakeShape(F32, {50, 10}), param1, /*start_indices=*/{50, 79},
       /*limit_indices=*/{100, 89}, /*strides=*/{1, 1}));
+  // Can merge 'slice7' and 'slice8'.
+  HloInstruction* slice8 = builder.AddInstruction(HloInstruction::CreateSlice(
+      ShapeUtil::MakeShape(F32, {50, 10}), param1, /*start_indices=*/{50, 89},
+      /*limit_indices=*/{100, 99}, /*strides=*/{1, 1}));
 
   builder.AddInstruction(HloInstruction::CreateConcatenate(
       concat_shape,
-      {slice0, slice1, slice2, slice3, slice4, slice5, slice6, slice7}, 1));
+      {slice0, slice1, slice2, slice3, slice4, slice5, slice6, slice7, slice8},
+      1));
   auto computation = m->AddEntryComputation(builder.Build());
 
   AlgebraicSimplifier simplifier(default_options_);
@@ -2384,6 +2405,12 @@ TEST_F(AlgebraicSimplifierTest, SimplifyConcatenateOfSlices) {
       ShapeUtil::Equal(computation->root_instruction()->operand(3)->shape(),
                        ShapeUtil::MakeShape(F32, {50, 30})));
   EXPECT_EQ(computation->root_instruction()->operand(3)->slice_starts(1), 40);
+
+  // The operand 6 should be  merge of 'slice7' and 'slice8', so its
+  // shape should have dimensions {50, 20}
+  EXPECT_TRUE(
+      ShapeUtil::Equal(computation->root_instruction()->operand(5)->shape(),
+                       ShapeUtil::MakeShape(F32, {50, 20})));
 }
 
 // Test that a simplification which changes layouts is not performed if layout
@@ -3758,9 +3785,11 @@ TEST_P(ConvInputPaddingTest, DoTest) {
       ParseWindow(absl::StrCat("size=3x3 ", testcase.orig_conv_window))
           .ValueOrDie();
   builder.AddInstruction(HloInstruction::CreateConvolve(
-      ShapeInference::InferConvolveShape(lhs_pad->shape(), filter->shape(),
-                                         /*feature_group_count=*/1,
-                                         /*batch_group_count=*/1, window, dnums)
+      ShapeInference::InferConvolveShape(
+          lhs_pad->shape(), filter->shape(),
+          /*feature_group_count=*/1,
+          /*batch_group_count=*/1, window, dnums,
+          /*preferred_element_type=*/absl::nullopt)
           .ValueOrDie(),
       lhs_pad, filter, /*feature_group_count=*/1, /*batch_group_count=*/1,
       window, dnums, DefaultPrecisionConfig(2)));
@@ -3875,9 +3904,11 @@ TEST_P(ConvFilterPaddingTest, DoIt) {
   precision_config.add_operand_precision(PrecisionConfig::HIGHEST);
 
   builder.AddInstruction(HloInstruction::CreateConvolve(
-      ShapeInference::InferConvolveShape(input->shape(), rhs_pad->shape(),
-                                         /*feature_group_count=*/1,
-                                         /*batch_group_count=*/1, window, dnums)
+      ShapeInference::InferConvolveShape(
+          input->shape(), rhs_pad->shape(),
+          /*feature_group_count=*/1,
+          /*batch_group_count=*/1, window, dnums,
+          /*preferred_element_type=*/absl::nullopt)
           .ValueOrDie(),
       input, rhs_pad, /*feature_group_count=*/1, /*batch_group_count=*/1,
       window, dnums, precision_config));
@@ -4023,7 +4054,8 @@ TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
         b.AddInstruction(HloInstruction::CreateParameter(1, f_shape, "filter"));
     Shape out_shape = ShapeInference::InferConvolveShape(
                           in_shape, f_shape, /*feature_group_count=*/1,
-                          /*batch_group_count=*/1, window, dnums)
+                          /*batch_group_count=*/1, window, dnums,
+                          /*preferred_element_type=*/absl::nullopt)
                           .ValueOrDie();
     if (options.output_minor_to_major_layout) {
       out_shape = ShapeUtil::MakeShapeWithLayout(F32, out_shape.dimensions(),
@@ -6625,6 +6657,32 @@ TEST_F(AlgebraicSimplifierTest, AbsEliminationMultiply) {
   ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Multiply(m::Parameter(0), m::Parameter(0))));
+}
+
+TEST_F(AlgebraicSimplifierTest, BroadcastCompareSimplification) {
+  std::string module_string = R"(
+    HloModule m
+    test {
+      a = s32[] parameter(0)
+      b = s32[] parameter(1)
+      x = s32[10]{0} parameter(2)
+      broadcast_a = s32[10]{0} broadcast(a), dimensions={}
+      broadcast_b = s32[10]{0} broadcast(b), dimensions={}
+      add = s32[10]{0} add(broadcast_a, x)
+      ROOT cmp = pred[10]{0} compare(add, broadcast_b), direction=EQ
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_string));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Compare(m::Parameter(2),
+                                    m::Broadcast(m::Subtract(
+                                        m::Parameter(1), m::Parameter(0))))));
+
+  // Numerically unstable transformation shouldn't be applied to floating types.
+  std::string module_string_f32 =
+      absl::StrReplaceAll(module_string, {{"s32", "f32"}});
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
 }
 
 TEST_F(AlgebraicSimplifierTest, AbsEliminationPower2) {

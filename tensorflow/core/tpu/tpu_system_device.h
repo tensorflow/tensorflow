@@ -17,9 +17,11 @@ limitations under the License.
 #define TENSORFLOW_CORE_TPU_TPU_SYSTEM_DEVICE_H_
 
 namespace tensorflow {
+namespace tpu {
 
 void RegisterTpuSystemDevice();
 
+}  // namespace tpu
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_TPU_TPU_SYSTEM_DEVICE_H_

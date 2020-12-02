@@ -859,7 +859,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME: mlir_module
     // CHECK-SAME: func @main
     // CHECK-SAME: tf.B
-    // CHECK-SAME: func @nested_func
+    // CHECK-SAME: func private @nested_func
     // CHECK-SAME: tf.D
     // CHECK-NOT: func = @tpu0_func
     // CHECK: device = "/job:worker/replica:0/task:0/device:CPU:0"
@@ -908,7 +908,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME: mlir_module
     // CHECK-SAME: func @main
     // CHECK-SAME: tf.B
-    // CHECK-SAME: func @referenced_func
+    // CHECK-SAME: func private @referenced_func
     // CHECK-SAME: tf.D
     // CHECK-NOT: func = @tpu0_func
     // CHECK: "tf_device.launch"
@@ -1007,7 +1007,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME: func @main
     // CHECK-SAME: tf.B
     // CHECK-COUNT-2: call @referenced_func
-    // CHECK-COUNT-1: func @referenced_func
+    // CHECK-COUNT-1: func private @referenced_func
     // CHECK-SAME: tf.D
     // CHECK-NOT: func = @tpu0_func
     // CHECK: "tf_device.launch"
@@ -1161,13 +1161,13 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME: mlir_module
     // CHECK-SAME: func @main
     // CHECK-SAME: tf.B
-    // CHECK-SAME: func @referenced_func3
+    // CHECK-SAME: func private @referenced_func3
     // CHECK-SAME: tf.I
-    // CHECK-SAME: func @referenced_func2
+    // CHECK-SAME: func private @referenced_func2
     // CHECK-SAME: tf.H
-    // CHECK-SAME: func @referenced_func1
+    // CHECK-SAME: func private @referenced_func1
     // CHECK-SAME: tf.G
-    // CHECK-SAME: func @referenced_func0
+    // CHECK-SAME: func private @referenced_func0
     // CHECK-SAME: tf.F
     // CHECK: "tf_device.launch"
     // CHECK-NEXT: "tf.TPUCompileSucceededAssert"(%[[COMPILE_OUTPUT]]#0)

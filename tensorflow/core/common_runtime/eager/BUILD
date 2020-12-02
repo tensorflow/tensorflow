@@ -1,3 +1,5 @@
+load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
@@ -78,10 +80,12 @@ tf_cuda_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/c:tf_tensor_internal",
         "//tensorflow/c/eager:immediate_execution_context",
+        "//tensorflow/c/eager:immediate_execution_distributed_manager",
         "//tensorflow/c/eager:immediate_execution_tensor_handle",
         "//tensorflow/c/eager:immediate_execution_operation",
         "//tensorflow/core/distributed_runtime:rendezvous_mgr_interface",
         "//tensorflow/core/distributed_runtime:worker_env",
+        "//tensorflow/core/nccl:collective_communicator",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -106,6 +110,47 @@ tf_cuda_library(
     }),
 )
 
+tf_cuda_library(
+    name = "context_distributed_manager",
+    srcs = [
+        "context_distributed_manager.cc",
+    ],
+    hdrs = [
+        "context_distributed_manager.h",
+    ],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":context",
+        ":eager_executor",
+        "//tensorflow/c/eager:immediate_execution_context",
+        "//tensorflow/c/eager:immediate_execution_distributed_manager",
+        "//tensorflow/core/distributed_runtime:rendezvous_mgr_interface",
+        "//tensorflow/core/distributed_runtime:worker_env",
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:core_cpu_lib",
+            "//tensorflow/core:framework",
+            "//tensorflow/core:framework_internal",
+            "//tensorflow/core:lib",
+            "//tensorflow/core:lib_internal",
+            "//tensorflow/core:protos_all_cc",
+            "//tensorflow/core:session_options",
+            "//tensorflow/core/distributed_runtime:worker_cache",
+            "//tensorflow/core/distributed_runtime:worker_interface",
+            "//tensorflow/core/distributed_runtime:remote_device",
+            "//tensorflow/core/distributed_runtime:server_lib",
+            "//tensorflow/core/distributed_runtime:worker_session",
+            "//tensorflow/core/distributed_runtime/eager:eager_client",
+            "//tensorflow/core/distributed_runtime/eager:cluster_function_library_runtime",
+            "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
+            "//tensorflow/core/distributed_runtime/eager:remote_mgr",
+        ],
+    }),
+)
+
 tf_cc_test(
     name = "context_test",
     srcs = ["context_test.cc"],
@@ -114,9 +159,12 @@ tf_cc_test(
         ":core",
         ":eager_operation",
         ":execute",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/kernels:cast_op",
     ],
 )
 
@@ -309,9 +357,7 @@ KERNEL_AND_DEVICE_DEPS = [
     "//tensorflow/core:lib_internal",
     "//tensorflow/core:protos_all_cc",
     "//tensorflow/core/profiler/lib:annotated_traceme",
-    "//tensorflow/core/profiler/lib:connected_traceme",
     "//tensorflow/core/profiler/lib:traceme",
-    "//tensorflow/core/profiler/lib:traceme_encode",
     "//tensorflow/core/grappler/optimizers:meta_optimizer",
 ]
 
@@ -443,10 +489,11 @@ cc_library(
     copts = tf_copts(allow_exceptions = True),
     deps = [
         ":eager_op_rewrite_registry",
+        "//tensorflow/core:all_kernels",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
-        "//tensorflow/core:mkl_graph_util",
+        "//tensorflow/core/graph:mkl_graph_util",
     ],
     alwayslink = 1,
 )

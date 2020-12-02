@@ -20,6 +20,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "autotune_ram_budget"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "filter_fusion"
     mtype: "<type \'property\'>"
   }

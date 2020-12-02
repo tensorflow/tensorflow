@@ -22,11 +22,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module_group.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
 #include "tensorflow/stream_executor/tpu/c_api_conversions.h"
+#include "tensorflow/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/stream_executor/tpu/proto_helper.h"
 #include "tensorflow/stream_executor/tpu/status_helper.h"
+#include "tensorflow/stream_executor/tpu/tpu_executable_interface.h"
 #include "tensorflow/stream_executor/tpu/tpu_executor.h"
 #include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform.h"
@@ -40,7 +43,7 @@ static SE_ExecutableRunOptions ToC(
   se_options.device_ordinal = options.run_options().device_ordinal();
   if (options.run_options().host_to_device_stream() != nullptr) {
     se_options.host_to_device_stream =
-        static_cast<TpuStream*>(
+        static_cast<tensorflow::tpu::TpuStream*>(
             options.run_options().host_to_device_stream()->implementation())
             ->se_stream();
   } else {
@@ -69,7 +72,8 @@ static SE_ExecutableRunOptions ToC(
 
   auto impl =
       const_cast<stream_executor::Stream*>(options.stream())->implementation();
-  se_options.stream = static_cast<TpuStream*>(impl)->se_stream();
+  se_options.stream =
+      static_cast<tensorflow::tpu::TpuStream*>(impl)->se_stream();
   return se_options;
 }
 }  // namespace ApiConverter
@@ -80,11 +84,11 @@ namespace {
 
 using ::tensorflow::tpu::ExecutorApiFn;
 
-class TpuExecutable : public Executable {
+class TpuExecutable : public TpuExecutableInterface {
  public:
   TpuExecutable(SE_Executable* se_executable,
                 std::shared_ptr<HloModule> hlo_module)
-      : Executable(std::move(hlo_module), nullptr, nullptr),
+      : TpuExecutableInterface(std::move(hlo_module)),
         se_executable_(se_executable) {}
 
   ~TpuExecutable() override {
@@ -105,7 +109,8 @@ class TpuExecutable : public Executable {
       auto* arg_buffers = arg.MutableBuffers();
       absl::InlinedVector<SE_MaybeOwningDeviceMemory, 2> se_buffers;
       for (auto& pair : *arg_buffers) {
-        se_buffers.push_back(ApiConverter::ToC(pair.second));
+        bool aliased = arg.unowned_indices().count(pair.first) > 0;
+        se_buffers.push_back(ApiConverter::ToC(pair.second, aliased));
       }
       se_args[i]->shape_tree.buffers =
           new SE_MaybeOwningDeviceMemory[se_buffers.size()];
@@ -114,7 +119,6 @@ class TpuExecutable : public Executable {
       }
 
       ApiConverter::ToC(arg.shape(), &se_args[i]->dynamic_shape);
-      ApiConverter::ToC(arg.host_shape(), &se_args[i]->host_shape);
       const auto& unowned_indices = arg.unowned_indices();
       se_args[i]->unowned_indices_size = unowned_indices.size();
       se_args[i]->unowned_indices = new XLA_ShapeIndex[unowned_indices.size()];
@@ -130,15 +134,14 @@ class TpuExecutable : public Executable {
         se_executable_, &se_run_options, se_args, arguments.size(), nullptr,
         &se_execution_output, status.c_status);
 
+    if (se_run_options.device_assignment.bytes != nullptr) {
+      stream_executor::tpu::SerializedProto_Free(
+          se_run_options.device_assignment);
+    }
     for (int i = 0; i < arguments.size(); ++i) {
       ApiConverter::Free(&se_args[i]->shape_tree.shape);
       ApiConverter::Free(&se_args[i]->dynamic_shape);
-      ApiConverter::Free(&se_args[i]->host_shape);
-
-      for (int j = 0; j < se_args[i]->unowned_indices_size; ++i) {
-        ApiConverter::Free(&se_args[i]->unowned_indices[j]);
-      }
-
+      delete[] se_args[i]->unowned_indices;
       delete[] se_args[i]->shape_tree.buffers;
       delete se_args[i];
     }
@@ -151,12 +154,14 @@ class TpuExecutable : public Executable {
     xla::ScopedShapedBuffer result(
         ApiConverter::FromC(&se_execution_output.result),
         run_options->stream()->parent()->GetAllocator());
+    ApiConverter::Free(&se_execution_output.result);
 
     ExecutionOutput output(std::move(result));
     for (int i = 0; i < se_execution_output.aliased_indices_size; ++i) {
       output.AddAliasedIndex(
           ApiConverter::FromC(&se_execution_output.aliased_indices[i]));
     }
+    ApiConverter::Free(se_execution_output.aliased_indices);
 
     for (int i = 0; i < se_execution_output.to_be_released_size; ++i) {
       output.AddToBeReleased(
@@ -165,11 +170,36 @@ class TpuExecutable : public Executable {
               .Release()
               .value());
     }
+    delete[] se_execution_output.to_be_released;
 
     return output;
   }
 
+  absl::string_view fingerprint() const override {
+    const char* data;
+    size_t size;
+    ExecutorApiFn()->TpuExecutable_FingerprintFn(se_executable_, &data, &size);
+    return absl::string_view(data, size);
+  }
+
  private:
+  Status LoadProgramAndEnqueueToStream(
+      const ServiceExecutableRunOptions& run_options,
+      absl::Span<const stream_executor::DeviceMemoryBase> arguments,
+      stream_executor::DeviceMemoryBase result,
+      absl::optional<stream_executor::DeviceMemoryBase>
+          cross_program_prefetch_addr) override {
+    LOG(FATAL) << "LoadProgramAndEnqueueToStream unimplemented";
+  }
+
+  Shape HostShapeToDeviceShape(const Shape& host_shape) override {
+    LOG(FATAL) << "HostShapeToDeviceShape unimplemented";
+  }
+
+  int64 ShapeSize(const Shape& shape) override {
+    LOG(FATAL) << "ShapeSize unimplemented";
+  }
+
   SE_Executable* se_executable_;
 };
 
@@ -215,7 +245,7 @@ class TpuCompiler : public Compiler {
   ~TpuCompiler() override { ExecutorApiFn()->TpuCompiler_FreeFn(compiler_); }
 
   stream_executor::Platform::Id PlatformId() const override {
-    return tensorflow::TpuPlatform::kId;
+    return tensorflow::tpu::TpuPlatform::kId;
   }
 
   StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
@@ -223,14 +253,19 @@ class TpuCompiler : public Compiler {
       stream_executor::StreamExecutor* executor,
       stream_executor::DeviceMemoryAllocator* device_allocator) override {
     XLA_HloModule hlo_module;
+    XLA_HloModule result;
+    auto cleanup = xla::MakeCleanup([&hlo_module, &result]() {
+      stream_executor::tpu::SerializedProto_Free(hlo_module.proto);
+      stream_executor::tpu::SerializedProto_Free(result.proto);
+      ApiConverter::Free(&hlo_module.module_config);
+    });
     hlo_module.module_config = HloModuleConfigToC(module->config());
     hlo_module.proto = stream_executor::tpu::SerializeProto(module->ToProto());
     auto allocator = ApiConverter::ToC(device_allocator);
-    XLA_HloModule result;
     StatusHelper status;
     ExecutorApiFn()->TpuCompiler_RunHloPassesFn(
         compiler_, &hlo_module,
-        static_cast<tensorflow::TpuExecutor*>(executor->implementation())
+        static_cast<tensorflow::tpu::TpuExecutor*>(executor->implementation())
             ->se_executor(),
         &allocator, &result, status.c_status);
     if (!status.ok()) {
@@ -238,19 +273,7 @@ class TpuCompiler : public Compiler {
     }
     HloModuleProto result_proto =
         stream_executor::tpu::DeserializeProto<HloModuleProto>(result.proto);
-    stream_executor::tpu::SerializedProto_Free(hlo_module.proto);
-    stream_executor::tpu::SerializedProto_Free(result.proto);
     return HloModule::CreateFromProto(result_proto, module->config());
-  }
-
-  StatusOr<
-      std::tuple<std::unique_ptr<HloModule>, std::unique_ptr<BufferAssignment>>>
-  RunHloPassesAndBufferAssignement(
-      std::unique_ptr<HloModule> module,
-      stream_executor::StreamExecutor* executor,
-      stream_executor::DeviceMemoryAllocator* device_allocator) override {
-    return Unimplemented(
-        "This compiler does not support RunHloPassesAndBufferAssignment.");
   }
 
   StatusOr<std::unique_ptr<Executable>> RunBackend(
@@ -258,15 +281,19 @@ class TpuCompiler : public Compiler {
       stream_executor::StreamExecutor* executor,
       stream_executor::DeviceMemoryAllocator* device_allocator) override {
     XLA_HloModule hlo_module;
+    auto cleanup = xla::MakeCleanup([&hlo_module]() {
+      stream_executor::tpu::SerializedProto_Free(hlo_module.proto);
+      ApiConverter::Free(&hlo_module.module_config);
+    });
+    SE_Executable* result;
     hlo_module.module_config = HloModuleConfigToC(module->config());
     hlo_module.proto = stream_executor::tpu::SerializeProto(module->ToProto());
     auto allocator = ApiConverter::ToC(device_allocator);
 
-    SE_Executable* result;
     StatusHelper status;
     ExecutorApiFn()->TpuCompiler_RunBackendFn(
         compiler_, &hlo_module,
-        static_cast<tensorflow::TpuExecutor*>(executor->implementation())
+        static_cast<tensorflow::tpu::TpuExecutor*>(executor->implementation())
             ->se_executor(),
         &allocator, &result, status.c_status);
     if (!status.ok()) {
@@ -275,7 +302,6 @@ class TpuCompiler : public Compiler {
 
     std::unique_ptr<Executable> exec =
         absl::make_unique<TpuExecutable>(result, std::move(module));
-    stream_executor::tpu::SerializedProto_Free(hlo_module.proto);
     return exec;
   }
 
@@ -288,17 +314,26 @@ class TpuCompiler : public Compiler {
         stream_executor::tpu::SerializeProto(module_group->ToProto());
     se_module_group.module_config =
         new XLA_HloModuleConfig[module_group->size()];
+    int module_group_size = module_group->size();
+    auto cleanup_config =
+        xla::MakeCleanup([&se_module_group, module_group_size]() {
+          for (auto i = 0; i < module_group_size; ++i) {
+            ApiConverter::Free(&se_module_group.module_config[i]);
+          }
+          delete[] se_module_group.module_config;
+        });
     for (int i = 0; i < module_group->size(); ++i) {
       const auto& config = module_group->module(i).config();
       se_module_group.module_config[i] = HloModuleConfigToC(config);
     }
-
-    SE_StreamExecutorList* se_lists =
-        new SE_StreamExecutorList[stream_exec.size()];
+    std::vector<SE_StreamExecutorList> se_lists(stream_exec.size());
+    std::vector<std::vector<SE_StreamExecutor*>> se_lists_storage;
     for (int i = 0; i < stream_exec.size(); ++i) {
-      se_lists[i].exec = new SE_StreamExecutor*[stream_exec[i].size()];
+      se_lists[i].count = stream_exec[i].size();
+      se_lists_storage.emplace_back(stream_exec[i].size());
+      se_lists[i].exec = se_lists_storage.back().data();
       for (int j = 0; j < stream_exec[i].size(); ++j) {
-        se_lists[i].exec[j] = static_cast<tensorflow::TpuExecutor*>(
+        se_lists[i].exec[j] = static_cast<tensorflow::tpu::TpuExecutor*>(
                                   stream_exec[i][j]->implementation())
                                   ->se_executor();
       }
@@ -311,23 +346,32 @@ class TpuCompiler : public Compiler {
     StatusHelper status;
 
     ExecutorApiFn()->TpuCompiler_CompileFn(
-        compiler_, &se_module_group, se_lists, stream_exec.size(), &allocator,
-        se_executables, status.c_status);
+        compiler_, &se_module_group, se_lists.data(), stream_exec.size(),
+        &allocator, se_executables, status.c_status);
 
     if (!status.ok()) {
       return status.status();
     }
 
     std::vector<std::unique_ptr<Executable>> executables;
-    std::vector<std::unique_ptr<HloModule>> modules =
-        module_group->ConsumeModules();
     for (int i = 0; i < module_group->size(); ++i) {
-      executables[i] = absl::make_unique<TpuExecutable>(se_executables[i],
-                                                        std::move(modules[i]));
+      // We get the HloModule from the compiled executable, rather than reusing
+      // the input module from 'module_group', in case the module changed in
+      // some way. For example, if the computation is automatically partitioned
+      // via XLA, the executable's module may have different input/output shapes
+      // than the input module.
+      XLA_HloModule c_module =
+          ExecutorApiFn()->TpuExecutable_HloModuleFn(se_executables[i]);
+      auto cleanup_c_module =
+          xla::MakeCleanup([&c_module]() { ApiConverter::Free(&c_module); });
+      TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                          ApiConverter::FromC(c_module));
+      std::shared_ptr<HloModule> module_shared(module.release());
+      executables.emplace_back(absl::make_unique<TpuExecutable>(
+          se_executables[i], std::move(module_shared)));
     }
 
     stream_executor::tpu::SerializedProto_Free(se_module_group.proto);
-    delete se_module_group.module_config;
     delete[] se_executables;
 
     return executables;
@@ -359,9 +403,9 @@ class TpuCompiler : public Compiler {
 };
 
 static bool InitModule() {
-  xla::Compiler::RegisterCompilerFactory(tensorflow::TpuPlatform::kId, []() {
-    return absl::make_unique<TpuCompiler>();
-  });
+  xla::Compiler::RegisterCompilerFactory(
+      tensorflow::tpu::TpuPlatform::kId,
+      []() { return absl::make_unique<TpuCompiler>(); });
   return true;
 }
 

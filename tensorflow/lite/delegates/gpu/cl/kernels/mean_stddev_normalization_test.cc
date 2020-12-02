@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/cl/kernels/mean_stddev_normalization.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/mean_stddev_normalization.h"
 
 #include <vector>
 
@@ -55,9 +55,11 @@ TEST_P(MeanStddevNormalizationTest, SeparateBatches) {
       op_def.dst_tensors.push_back({data_type, storage, Layout::BHWC});
       TensorFloat32 dst_tensor;
       auto operation =
-          CreateMeanStdDevNormalization(op_def, env_.GetDevicePtr()->info_);
-      ASSERT_OK(ExecuteGPUOperation({src_tensor}, creation_context_, &operation,
-                                    BHWC(1, 1, 1, 4), &dst_tensor));
+          CreateMeanStdDevNormalization(op_def, env_.GetDevicePtr()->info_, 1);
+      ASSERT_OK(ExecuteGPUOperation(
+          {src_tensor}, creation_context_,
+          absl::make_unique<MeanStdDevNormalization>(std::move(operation)),
+          BHWC(1, 1, 1, 4), &dst_tensor));
 
       std::vector<float> expected_output;
       if (diff == 0.0f) {
@@ -88,8 +90,6 @@ INSTANTIATE_TEST_SUITE_P(
         std::make_tuple(100.0f, 100.0f, 2.63e-4f)  // large mean, large variance
         ));
 
-GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(MeanStddevNormalizationTest);
-
 TEST_F(OpenCLOperationTest, MeanStddevNormalizationAllBatches) {
   TensorFloat32 src_tensor;
   src_tensor.shape = BHWC(9, 1, 1, 4);
@@ -106,6 +106,8 @@ TEST_F(OpenCLOperationTest, MeanStddevNormalizationAllBatches) {
   };
   for (auto storage : env_.GetSupportedStorages()) {
     for (auto precision : env_.GetSupportedPrecisions()) {
+      const float eps =
+          precision == CalculationsPrecision::F32 ? 2.53e-05f : 3.57e-4f;
       OperationDef op_def;
       op_def.precision = precision;
       auto data_type = DeduceDataTypeFromPrecision(precision);
@@ -113,9 +115,11 @@ TEST_F(OpenCLOperationTest, MeanStddevNormalizationAllBatches) {
       op_def.dst_tensors.push_back({data_type, storage, Layout::BHWC});
       TensorFloat32 dst_tensor;
       auto operation =
-          CreateMeanStdDevNormalization(op_def, env_.GetDevicePtr()->info_);
-      ASSERT_OK(ExecuteGPUOperation({src_tensor}, creation_context_, &operation,
-                                    BHWC(9, 1, 1, 4), &dst_tensor));
+          CreateMeanStdDevNormalization(op_def, env_.GetDevicePtr()->info_, 1);
+      ASSERT_OK(ExecuteGPUOperation(
+          {src_tensor}, creation_context_,
+          absl::make_unique<MeanStdDevNormalization>(std::move(operation)),
+          BHWC(9, 1, 1, 4), &dst_tensor));
 
       const float ksqrt16 = std::sqrt(1.6f);
       const float ksqrt04 = std::sqrt(0.4f);
@@ -130,8 +134,59 @@ TEST_F(OpenCLOperationTest, MeanStddevNormalizationAllBatches) {
           -ksqrt16, -ksqrt04, ksqrt04, ksqrt16,  // large mean, small variance
           -ksqrt16, -ksqrt04, ksqrt04, ksqrt16,  // large mean, large variance
       };
-      EXPECT_THAT(dst_tensor.data,
-                  Pointwise(FloatNear(3.57e-4f), expected_output));
+      EXPECT_THAT(dst_tensor.data, Pointwise(FloatNear(eps), expected_output))
+          << "Failed using precision " << ToString(precision);
+    }
+  }
+}
+
+TEST_F(OpenCLOperationTest, MeanStddevNormalizationLargeVector) {
+  const float mean = 100.0f;
+  const float diff = 1.0f;
+  // Some large vector that is not a round multiple of any SIMD vector sizes.
+  constexpr int kVectorSize = 16 * 16 + 16 + 1;
+
+  TensorFloat32 src_tensor;
+  src_tensor.shape = BHWC(1, 1, 1, kVectorSize);
+  src_tensor.data.resize(kVectorSize);
+  // First input is mean.
+  src_tensor.data[0] = mean;
+  // Rest is alternating between mean + diff and mean - diff.
+  for (int i = 1; i < kVectorSize - 1; i += 2) {
+    src_tensor.data[i + 0] = mean + diff;
+    src_tensor.data[i + 1] = mean - diff;
+  }
+
+  for (auto storage : env_.GetSupportedStorages()) {
+    for (auto precision : env_.GetSupportedPrecisions()) {
+      const float eps =
+          precision == CalculationsPrecision::F32 ? 0.0f : 8.60e-4f;
+      OperationDef op_def;
+      op_def.precision = precision;
+      auto data_type = DeduceDataTypeFromPrecision(precision);
+      op_def.src_tensors.push_back({data_type, storage, Layout::BHWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::BHWC});
+      TensorFloat32 dst_tensor;
+      auto operation = CreateMeanStdDevNormalization(
+          op_def, env_.GetDevicePtr()->info_, (kVectorSize + 3) / 4);
+      ASSERT_OK(ExecuteGPUOperation(
+          {src_tensor}, creation_context_,
+          absl::make_unique<MeanStdDevNormalization>(std::move(operation)),
+          BHWC(1, 1, 1, kVectorSize), &dst_tensor));
+
+      float expected_output[kVectorSize];
+      // First output should be 0.
+      expected_output[0] = 0.0;
+      // Rest should be alternating between ±√(N/(N-1)).
+      const float expected_elem =
+          std::sqrt(static_cast<double>(kVectorSize) /
+                    static_cast<double>(kVectorSize - 1));
+      for (int i = 1; i < kVectorSize - 1; i += 2) {
+        expected_output[i + 0] = +expected_elem;
+        expected_output[i + 1] = -expected_elem;
+      }
+      EXPECT_THAT(dst_tensor.data, Pointwise(FloatNear(eps), expected_output))
+          << "Failed using precision " << ToString(precision);
     }
   }
 }

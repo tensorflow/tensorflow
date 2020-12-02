@@ -90,7 +90,7 @@ class InterfaceTests(test.TestCase):
 
   def testSaveWithOnlyKerasSession(self):
 
-    with ops.Graph().as_default():
+    with ops.Graph().as_default(), self.cached_session():
       inp = input_layer.Input([1])
       dense = core.Dense(1)(inp)
       model = training.Model(inp, dense)
@@ -100,13 +100,15 @@ class InterfaceTests(test.TestCase):
       checkpoint.save(os.path.join(self.get_temp_dir(), "ckpt"))
 
   def testObjectMetadata(self):
-    with context.eager_mode():
-      checkpoint_directory = self.get_temp_dir()
-      checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
-      dense = core.Dense(1)
-      checkpoint = trackable_utils.Checkpoint(dense=dense)
-      dense(constant_op.constant([[1.]]))
-      save_path = checkpoint.save(checkpoint_prefix)
+    if not context.executing_eagerly():
+      self.skipTest("Run in eager mode only.")
+
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+    dense = core.Dense(1)
+    checkpoint = trackable_utils.Checkpoint(dense=dense)
+    dense(constant_op.constant([[1.]]))
+    save_path = checkpoint.save(checkpoint_prefix)
 
     objects = trackable_utils.object_metadata(save_path)
     all_variable_names = []
@@ -354,6 +356,7 @@ class CheckpointingTests(keras_parameterized.TestCase):
     with self.test_session():
       num_training_steps = 10
       checkpoint_directory = self.get_temp_dir()
+      optimizer = adam.Adam(0.001)
       def _train_fn(model, input_value):
         with backprop.GradientTape() as tape:
           loss = model(input_value)
@@ -363,7 +366,6 @@ class CheckpointingTests(keras_parameterized.TestCase):
       for training_continuation in range(3):
         with testing_utils.device(should_use_gpu=True):
           model = MyModel()
-          optimizer = adam.Adam(0.001)
           root = trackable_utils.Checkpoint(
               optimizer=optimizer, model=model)
           manager = checkpoint_management.CheckpointManager(
@@ -382,30 +384,30 @@ class CheckpointingTests(keras_parameterized.TestCase):
           self.assertEqual(training_continuation + 1,
                            self.evaluate(root.save_counter))
 
+  @combinations.generate(combinations.combine(mode=["eager"]))
   def testPartialRestoreWarningObject(self):
-    with context.eager_mode():
-      optimizer = adam.Adam(0.0)
-      original_root = trackable_utils.Checkpoint(v1=variables_lib.Variable(2.),
-                                                 v2=variables_lib.Variable(3.),
-                                                 optimizer=optimizer)
-      # Create a slot variable to save
-      optimizer.minimize(original_root.v1.read_value, [original_root.v1])
-      prefix = os.path.join(self.get_temp_dir(), "ckpt")
-      save_path = original_root.save(prefix)
-      partial_root = trackable_utils.Checkpoint(v1=variables_lib.Variable(0.))
-      weak_partial_root = weakref.ref(partial_root)
-      weak_v1 = weakref.ref(partial_root.v1)
-      partial_root.restore(save_path)
-      self.assertEqual(2., partial_root.v1.numpy())
-      with test.mock.patch.object(logging, "warning") as mock_log:
-        del partial_root
-        self.assertIsNone(weak_partial_root())
-        self.assertIsNone(weak_v1())
-        messages = str(mock_log.call_args_list)
-      self.assertIn("(root).v2'", messages)
-      self.assertIn("(root).optimizer's state 'm' for (root).v1", messages)
-      self.assertNotIn("(root).v1'", messages)
-      self.assertIn("expect_partial()", messages)
+    optimizer = adam.Adam(0.0)
+    original_root = trackable_utils.Checkpoint(v1=variables_lib.Variable(2.),
+                                               v2=variables_lib.Variable(3.),
+                                               optimizer=optimizer)
+    # Create a slot variable to save
+    optimizer.minimize(original_root.v1.read_value, [original_root.v1])
+    prefix = os.path.join(self.get_temp_dir(), "ckpt")
+    save_path = original_root.save(prefix)
+    partial_root = trackable_utils.Checkpoint(v1=variables_lib.Variable(0.))
+    weak_partial_root = weakref.ref(partial_root)
+    weak_v1 = weakref.ref(partial_root.v1)
+    partial_root.restore(save_path)
+    self.assertEqual(2., partial_root.v1.numpy())
+    with test.mock.patch.object(logging, "warning") as mock_log:
+      del partial_root
+      self.assertIsNone(weak_partial_root())
+      self.assertIsNone(weak_v1())
+      messages = str(mock_log.call_args_list)
+    self.assertIn("(root).v2'", messages)
+    self.assertIn("(root).optimizer's state 'm' for (root).v1", messages)
+    self.assertNotIn("(root).v1'", messages)
+    self.assertIn("expect_partial()", messages)
 
   # pylint: disable=cell-var-from-loop
   @combinations.generate(combinations.combine(mode=["graph", "eager"]))
@@ -450,6 +452,7 @@ class CheckpointingTests(keras_parameterized.TestCase):
                            self.evaluate(root.save_counter))
   # pylint: enable=cell-var-from-loop
 
+  @combinations.generate(combinations.combine(mode=["eager"]))
   def testAnonymousVarsInInit(self):
 
     class Model(training.Model):
@@ -463,21 +466,20 @@ class CheckpointingTests(keras_parameterized.TestCase):
       def call(self, x):
         return x * self.w + self.b
 
-    with context.eager_mode():
-      model = Model()
-      optimizer = adam.Adam(learning_rate=0.05)
-      checkpoint_directory = self.get_temp_dir()
-      checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
-      checkpoint = trackable_utils.Checkpoint(
-          model=model, optimizer=optimizer)
-      for _ in range(2):
-        checkpoint.save(checkpoint_prefix)
-        with backprop.GradientTape() as tape:
-          loss = (constant_op.constant(1.)
-                  - model(constant_op.constant(1.))) ** 2
-        grad = tape.gradient(loss, model.vars)
-        optimizer.apply_gradients(
-            [(g, v) for g, v in zip(grad, model.vars)])
+    model = Model()
+    optimizer = adam.Adam(learning_rate=0.05)
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+    checkpoint = trackable_utils.Checkpoint(
+        model=model, optimizer=optimizer)
+    for _ in range(2):
+      checkpoint.save(checkpoint_prefix)
+      with backprop.GradientTape() as tape:
+        loss = (constant_op.constant(1.)
+                - model(constant_op.constant(1.))) ** 2
+      grad = tape.gradient(loss, model.vars)
+      optimizer.apply_gradients(
+          [(g, v) for g, v in zip(grad, model.vars)])
 
   @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testDeferredSlotRestoration(self):

@@ -164,6 +164,7 @@ XlaLocalLaunchBase::XlaLocalLaunchBase(OpKernelConstruction* ctx,
 static Status CompileToLocalExecutable(
     OpKernelContext* ctx, const NameAttrList& function, bool has_ref_vars,
     const XlaPlatformInfo& platform_info,
+    absl::Span<const Tensor* const> inputs,
     absl::Span<VariableInfo const> variable_infos,
     absl::Span<const int> constants, bool lazy, bool may_alias_resource_update,
     xla::LocalClient** client,
@@ -195,11 +196,6 @@ static Status CompileToLocalExecutable(
       ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr,
       platform_info, has_ref_vars, &tf_allocator_adapter);
 
-  std::map<int, Tensor> constant_args;
-  for (int i : constants) {
-    constant_args.insert({i, ctx->input(i)});
-  }
-
   XlaCompiler::CompileOptions compile_options;
   compile_options.is_entry_computation = true;
   // Optimization: where possible, have the computation return a naked array
@@ -209,10 +205,12 @@ static Status CompileToLocalExecutable(
                                           !platform_info.is_on_xla_device() &&
                                           may_alias_resource_update;
 
-  std::vector<XlaCompiler::Argument> args;
-  TF_RETURN_IF_ERROR(XlaComputationLaunchContext::BuildXlaCompilerArguments(
-      constant_args, variable_infos, ctx, &args));
-  return cache->Compile(options, function, args, compile_options,
+  xla::StatusOr<std::vector<XlaCompiler::Argument>> args =
+      XlaComputationLaunchContext::BuildXlaCompilerArguments(
+          constants, inputs, variable_infos,
+          static_cast<Device*>(ctx->device()));
+  TF_RETURN_IF_ERROR(args.status());
+  return cache->Compile(options, function, *args, compile_options,
                         lazy ? XlaCompilationCache::CompileMode::kLazy
                              : XlaCompilationCache::CompileMode::kStrict,
                         compilation_result, executable);
@@ -222,6 +220,7 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
   VLOG(1) << "XlaLocalLaunchOpBase::Compute "
           << Canonicalize(function_.name(), AttrSlice(&function_.attr()));
 
+  std::vector<const Tensor*> inputs = InputsFromContext(ctx);
   xla::LocalClient* client;
   const XlaCompiler::CompilationResult* compilation_result;
   xla::LocalExecutable* executable;
@@ -229,10 +228,11 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
   std::vector<VariableInfo> variable_infos;
   {
     OP_REQUIRES_OK(
-        ctx, GetVariableInfosFromCtxInputs(ctx, resources_, &variable_infos));
+        ctx, GetVariableInfosFromInputs(ctx->resource_manager(), ctx->device(),
+                                        inputs, resources_, &variable_infos));
     OP_REQUIRES_OK(ctx, LockVariables(absl::MakeSpan(variable_infos)));
     Status s = CompileToLocalExecutable(
-        ctx, function_, /*has_ref_vars=*/has_ref_vars_, platform_info_,
+        ctx, function_, /*has_ref_vars=*/has_ref_vars_, platform_info_, inputs,
         variable_infos, constants_, /*lazy=*/false,
         /*may_alias_resource_update=*/true, &client, &compilation_result,
         &executable);
@@ -246,8 +246,6 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
 
   se::Stream* stream =
       ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr;
-
-  VLOG(1) << "Executing XLA Computation...";
 
   absl::optional<se::TfAllocatorAdapter> tf_allocator_adapter;
   se::DeviceMemoryAllocator* allocator = GetAllocator(
@@ -275,18 +273,6 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
   run_options.set_allocator(allocator);
   run_options.set_intra_op_thread_pool(&ctx->eigen_cpu_device());
   run_options.set_rng_seed(GetXLARandomSeed());
-  xla::ThenExecuteFunction then_execute;
-  if (ctx->op_device_context()) {
-    then_execute = [&](se::Stream* stream, std::function<void()> fn) {
-      Status status = ctx->op_device_context()->ThenExecute(
-          down_cast<Device*>(ctx->device()), stream, std::move(fn));
-      if (!status.ok()) {
-        // This should never happen.
-        LOG(ERROR) << "ThenExecute failed " << status;
-      }
-    };
-    run_options.set_then_execute_function(&then_execute);
-  }
   Env* env = Env::Default();
   auto start_time = env->NowMicros();
 
@@ -389,6 +375,7 @@ void XlaCompileOp::Compute(OpKernelContext* ctx) {
   xla::LocalExecutable* executable;
   ResourceVarsSnapshot variables;
 
+  std::vector<const Tensor*> inputs = InputsFromContext(ctx);
   bool cannot_compile_cluster;
   {
     mutex_lock guard(cannot_compile_cluster_mu_);
@@ -401,13 +388,14 @@ void XlaCompileOp::Compute(OpKernelContext* ctx) {
   } else {
     std::vector<VariableInfo> variable_infos;
     OP_REQUIRES_OK(
-        ctx, GetVariableInfosFromCtxInputs(ctx, resources_, &variable_infos));
+        ctx, GetVariableInfosFromInputs(ctx->resource_manager(), ctx->device(),
+                                        inputs, resources_, &variable_infos));
     OP_REQUIRES_OK(ctx, LockVariables(absl::MakeSpan(variable_infos)));
 
     // Do not alias resource updates as locking variables in XlaCompile and
     // unlocking them in XlaRun may lead to deadlocks.
     Status status = CompileToLocalExecutable(
-        ctx, function_, has_ref_vars_, platform_info_, variable_infos,
+        ctx, function_, has_ref_vars_, platform_info_, inputs, variable_infos,
         constants_,
         /*lazy=*/!must_compile_,
         /*may_alias_resource_update=*/false, &client, &kernel, &executable);
@@ -521,18 +509,6 @@ void XlaRunOp::Compute(OpKernelContext* ctx) {
   run_options.set_allocator(allocator);
   run_options.set_intra_op_thread_pool(&ctx->eigen_cpu_device());
   run_options.set_rng_seed(GetXLARandomSeed());
-  xla::ThenExecuteFunction then_execute;
-  if (ctx->op_device_context()) {
-    then_execute = [&](se::Stream* stream, std::function<void()> fn) {
-      Status status = ctx->op_device_context()->ThenExecute(
-          down_cast<Device*>(ctx->device()), stream, std::move(fn));
-      if (!status.ok()) {
-        // This should never happen.
-        LOG(ERROR) << "ThenExecute failed " << status;
-      }
-    };
-    run_options.set_then_execute_function(&then_execute);
-  }
   Env* env = Env::Default();
   auto start_time = env->NowMicros();
 

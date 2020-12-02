@@ -6,6 +6,7 @@
 #   :python_api_def
 #   :java_api_def
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_binary",
@@ -25,21 +26,21 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-filegroup(
+alias(
     name = "base_api_def",
-    srcs = glob(["base_api/*"]),
+    actual = "//tensorflow/core/api_def/base_api:base_api_def",
     visibility = ["//tensorflow:internal"],
 )
 
-filegroup(
+alias(
     name = "python_api_def",
-    srcs = glob(["python_api/*"]),
+    actual = "//tensorflow/core/api_def/python_api:python_api_def",
     visibility = ["//tensorflow:internal"],
 )
 
-filegroup(
+alias(
     name = "java_api_def",
-    srcs = glob(["java_api/*"]),
+    actual = "//tensorflow/core/api_def/java_api:java_api_def",
     visibility = ["//tensorflow:internal"],
 )
 

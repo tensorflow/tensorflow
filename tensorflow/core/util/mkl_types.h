@@ -18,6 +18,9 @@ limitations under the License.
 #ifdef INTEL_MKL
 
 namespace tensorflow {
+// MKL DNN 0.x will not be supported. So all related macro's have been removed
+// This file will be removed once MKL DNN 0.x related source code is cleaned and
+// all MKL DNN 1.x related macro's have been replaced.
 
 #ifdef ENABLE_MKLDNN_V1
 #define ADD_MD add_md
@@ -116,106 +119,6 @@ namespace tensorflow {
 #define TENSOR_FORMAT_NHWC MKL_TENSOR_FORMAT_NHWC
 #define TENSOR_MAX_DIMS MKLDNN_MAX_NDIMS
 
-#else
-
-#define ADD_MD add_pd
-#define ALGORITHM mkldnn
-#define ALGORITHM_UNDEF ALGORITHM::algorithm_undef
-#define BN_FLAGS mkldnn
-#define CPU_STREAM(engine) stream(stream::kind::eager_nostore)
-#define DATA_WITH_ENGINE(data, engine) data
-#define DST_MD dst_pd
-#define ENGINE_CPU engine::cpu
-#define GET_CHECK_REORDER_MEM_ARGS(md, tensor, net_ptr, net_args, engine) \
-  memory::primitive_desc(md, engine), tensor, &net_ptr
-#define GET_CHECK_REORDER_TO_OP_MEM_ARGS(pd, tensor, net_ptr, net_args, \
-                                         engine)                        \
-  pd, tensor, &net_ptr
-#define GET_DESC get_primitive_desc()
-#define GET_FORMAT_FROM_SHAPE(src_mkl_shape) \
-  static_cast<memory::format>(src_mkl_shape.GetMklLayout().data.format)
-#define GET_BLOCK_STRIDES(strides, idx) strides[(idx)]
-#define GET_MEMORY_DESC_CONSTRUCTOR(dims, type, fm) \
-  { {dims}, MklDnnType<type>(), fm }
-#define GET_MEMORY_SIZE_FROM_MD(md, engine) \
-  memory::primitive_desc(md, engine).get_size()
-#define GET_SRC_DESC_FROM_OP_PD(op_pd) op_pd.get()->src_primitive_desc()
-#define GET_DST_DESC_FROM_OP_PD(op_pd) op_pd.get()->dst_primitive_desc()
-#define GET_BIAS_DESC_FROM_OP_PD(op_pd) op_pd.get()->bias_primitive_desc()
-#define GET_DIFF_DST_DESC_FROM_OP_PD(op_pd) \
-  op_pd.get()->diff_dst_primitive_desc()
-#define GET_WORKSPACE_DESC_FROM_OP_PD(op_pd) \
-  op_pd.get()->workspace_primitive_desc()
-#define GET_TENSOR_FORMAT(fmt) fmt
-#define GET_TF_DATA_FORMAT(shape, mem_desc) mem_desc.data.format
-#define GET_USR_MEM_PRIM_DESC(src) src.GetUsrMemPrimDesc()
-#define GET_WEIGHTS_DESC_FROM_OP_PD(op_pd) op_pd.get()->weights_primitive_desc()
-#define GET_WEIGHTS_FORMAT_FROM_OP_PD(op_pd, op) op->GetFilterMemoryFormat()
-#define IS_DIFF_DST_REORDER_NEEDED(diff_dst_md, op_pd, op) \
-  diff_dst_md.data.format != op->GetDiffDstMemoryFormat()
-#define IS_DIFF_FILTER_REORDER_NEEDED(diff_filter_md, fmt, op_pd, op) \
-  fmt != op->GetDiffFilterMemoryFormat()
-#define IS_FILTER_REORDER_NEEDED(filter_md, op_pd, op) \
-  filter_md.data.format != op->GetFilterMemoryFormat()
-#define IS_SRC_REORDER_NEEDED(src_md, op_pd, op) \
-  src_md.data.format != op->GetSrcMemoryFormat()
-#define IS_WEIGHTS_REORDER_NEEDED(weights_md, op_pd, op) \
-  weights_md.data.format != op->GetWeightMemoryFormat()
-#define GET_MEMORY_DESC_FROM_MEM_PTR(mem_ptr) \
-  mem_ptr->get_primitive_desc().desc()
-#define GET_MEMORY_PRIMITIVE_DESC_FROM_MEM_PTR(mem_ptr) \
-  mem_ptr->get_primitive_desc()
-#define MEMORY_CONSTRUCTOR(mem_pd, engine, data) memory(mem_pd, data)
-#define MEMORY_CONSTRUCTOR_PD(mem_pd, engine, data) memory(mem_pd, data)
-#define MEMORY_CONSTRUCTOR_WITH_MEM_PD(mem_ptr, cpu_engine, data) \
-  memory({GET_MEMORY_DESC_FROM_MEM_PTR(mem_ptr), cpu_engine}, data)
-#define MEMORY_CONSTRUCTOR_USING_MD(md, engine, data) memory({md, engine}, data)
-#define MEMORY_CONSTRUCTOR_USING_MEM_PD(dims, type, fm, engine, data) \
-  memory({GET_MEMORY_DESC_CONSTRUCTOR(dims, type, fm), engine}, data)
-#define MEMORY_CONSTRUCTOR_WITHOUT_DATA(mem_pd, engine) memory(mem_pd)
-#define MEMORY_DATA_TYPE_UNDEF memory::data_type::data_undef
-#define MEMORY_DESC memory::format
-#define MEMORY_FORMAT mkldnn::memory::format
-#define MEMORY_FORMAT_DESC layout_desc
-#define MEMORY_FORMAT_UNDEF mkldnn::memory::format::format_undef
-#define MEMORY_PD_CONSTRUCTOR(dims, type, fm, engine) \
-  memory::primitive_desc(GET_MEMORY_DESC_CONSTRUCTOR(dims, type, fm), engine)
-#define MEMORY_PD_WITHOUT_DATA(pd, engine) pd
-#define MEMORY_PRIMITIVE_DESC memory::primitive_desc
-#define MEMORY_PD_CONSTRUCTOR_2_PARAMS(md, engine) \
-  MEMORY_PRIMITIVE_DESC(md, engine)
-#define MKL_FMT_TAG tf_fmt
-#define MKL_TENSOR_FORMAT memory::format
-#define MKL_TENSOR_FORMAT_BLOCKED memory::format::blocked
-#define MKL_TENSOR_FORMAT_IN_C mkldnn_memory_format_t
-#define MKL_TENSOR_FORMAT_INVALID memory::format::format_undef
-#define MKL_TENSOR_FORMAT_NC memory::format::nc
-#define MKL_TENSOR_FORMAT_NCHW memory::format::nchw
-#define MKL_TENSOR_FORMAT_NCDHW memory::format::ncdhw
-#define MKL_TENSOR_FORMAT_NDHWC memory::format::ndhwc
-#define MKL_TENSOR_FORMAT_NHWC memory::format::nhwc
-#define MKL_TENSOR_FORMAT_TNC memory::format::tnc
-#define MKL_TENSOR_FORMAT_X memory::format::x
-#define MKL_TENSOR_FORMAT_UNDEF MKL_TENSOR_FORMAT_INVALID
-#define NET_ARGS_PTR nullptr
-#define OUTPUT_TF_MD output_tf_pd
-#define PRIMITIVE_DESC_BIAS bias_primitive_desc()
-#define PRIMITIVE_DESC_WEIGHTS weights_primitive_desc()
-#define PRIMITIVE_DESC_DIFF_DST diff_dst_primitive_desc()
-#define PRIMITIVE_DESC_DIFF_SRC diff_src_primitive_desc()
-#define PRIMITIVE_DESC_DIFF_WEIGHTS diff_weights_primitive_desc()
-#define PRIMITIVE_DESC_DST dst_primitive_desc()
-#define PRIMITIVE_DESC_SRC src_primitive_desc()
-#define PRIMITIVE_DESC_WORKSPACE workspace_primitive_desc()
-#define REORDER_PD_CONSTRUCTOR(src_pd, dst_pd, engine) ReorderPd(src_pd, dst_pd)
-#define REORDER_PD_CONSTRUCTOR_WITH_ATTR(src_pd, dst_pd, engine, prim_attr) \
-  ReorderPd(src_pd, dst_pd, prim_attr)
-#define SKIP_INPUT_REORDER(input_mkl_shape, input_md)           \
-  (input_mkl_shape.GetTfDataFormat() == input_md.data.format && \
-   input_mkl_shape.GetTfDataFormat() != MKL_TENSOR_FORMAT_BLOCKED)
-#define SUMMAND_MD summand_pd
-#define TENSOR_FORMAT TensorFormat
-#define TENSOR_FORMAT_NHWC FORMAT_NHWC
 #endif  // ENABLE_MKLDNN_V1
 
 }  // namespace tensorflow

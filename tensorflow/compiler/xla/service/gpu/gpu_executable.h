@@ -49,6 +49,12 @@ namespace gpu {
 // This is an immutable data type after initialization, and thus thread safe.
 class GpuExecutable : public Executable {
  public:
+  struct ConstantInfo {
+    std::string symbol_name;
+    xla::Literal content;
+    int allocation_index = -1;
+  };
+
   // We need to share ownership of hlo_module and assignment with profiler to
   // safely keep a reference to these objects during tracing period, thus they
   // are passed as shared pointers.
@@ -58,7 +64,8 @@ class GpuExecutable : public Executable {
                 std::shared_ptr<HloModule> hlo_module,
                 std::shared_ptr<const BufferAssignment> assignment,
                 std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
-                std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
+                std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
+                std::vector<ConstantInfo> constants);
   ~GpuExecutable() override;
 
   int64 SizeOfGeneratedCodeInBytes() const override;
@@ -168,6 +175,8 @@ class GpuExecutable : public Executable {
       module_handles_ TF_GUARDED_BY(module_handle_mutex_);
   std::map<stream_executor::StreamExecutor*, BufferAllocToDeviceMemoryMap>
       module_globals_ TF_GUARDED_BY(module_handle_mutex_);
+
+  std::vector<ConstantInfo> constants_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GpuExecutable);
 };

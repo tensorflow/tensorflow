@@ -76,6 +76,7 @@ cc_library(
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@FP16",
         "@com_google_googletest//:gtest",
@@ -93,8 +94,26 @@ cc_library(
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@FP16",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+cc_library(
+    name = "depth_to_space_tester",
+    testonly = 1,
+    srcs = ["depth_to_space_tester.cc"],
+    hdrs = ["depth_to_space_tester.h"],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_conversion_utils",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
     ],
@@ -110,6 +129,7 @@ cc_library(
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@FP16",
         "@com_google_googletest//:gtest",
@@ -127,6 +147,7 @@ cc_library(
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@FP16",
         "@com_google_googletest//:gtest",
@@ -144,6 +165,7 @@ cc_library(
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -160,6 +182,7 @@ cc_library(
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -176,6 +199,7 @@ cc_library(
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -192,6 +216,7 @@ cc_library(
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@FP16",
         "@com_google_googletest//:gtest",
@@ -209,6 +234,7 @@ cc_library(
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -225,6 +251,7 @@ cc_library(
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -241,6 +268,7 @@ cc_library(
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -257,6 +285,7 @@ cc_library(
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -273,6 +302,7 @@ cc_library(
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -369,6 +399,21 @@ cc_test(
 )
 
 cc_test(
+    name = "depth_to_space_test",
+    srcs = ["depth_to_space_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":depth_to_space_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "depthwise_conv_2d_test",
     srcs = ["depthwise_conv_2d_test.cc"],
     linkopts = select({
@@ -393,6 +438,21 @@ cc_test(
     deps = [
         ":binary_elementwise_tester",
         ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "elu_test",
+    srcs = ["elu_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":test_main",
+        ":unary_elementwise_tester",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
     ],

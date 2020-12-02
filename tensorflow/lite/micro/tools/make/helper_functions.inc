@@ -1,3 +1,4 @@
+DOWNLOAD_SCRIPT := $(MAKEFILE_DIR)/download_and_extract.sh
 
 # Reverses a space-separated list of words.
 reverse = $(if $(1),$(call reverse,$(wordlist 2,$(words $(1)),$(1)))) $(firstword $(1))
@@ -37,6 +38,7 @@ substitute_specialized_implementation = \
   $(if $(wildcard $(1)),$(firstword $(wildcard $(dir $(1))$(2)/$(notdir $(1))) $(wildcard $(1))),$(1))
 substitute_specialized_implementations = \
   $(foreach source,$(1),$(call substitute_specialized_implementation,$(source),$(2)))
+
 # Here we're first looking for specialized implementations in ref_dir/$(TAG1)
 # and then ref_dir/$(TAG2), etc, before falling back to ref_dir's
 # implementation.
@@ -45,6 +47,7 @@ substitute_specialized_implementations = \
 define specialize_on_tags
 $(if $(2),$(call substitute_specialized_implementations,$(call specialize_on_tags,$(1),$(wordlist 2,$(words $(2)),$(2))),$(firstword $(2))),$(1))
 endef
+
 # The entry point that most targets should use to find implementation-specific
 # versions of their source files. The only argument is a list of file paths.
 specialize = $(call specialize_on_tags,$(1),$(strip $(call reverse,$(ALL_TAGS))))
@@ -161,10 +164,46 @@ $(PRJDIR)$(3)/$(1)/Makefile: tensorflow/lite/micro/tools/make/templates/arc/arc_
 $(PRJDIR)$(3)/$(1)/%: tensorflow/lite/micro/tools/make/templates/arc/%.tpl
 	@cp $$< $$@
 
-$(foreach var,$(ARC_TARGET_FILES_DIRS),$(eval $(call path_changing_copy_file,$(PRJDIR)$(3)/$(1),$(var))))
+$(foreach var,$(ARC_TARGET_COPY_FILES), $(eval $(call path_changing_copy_file,\
+    $(PRJDIR)$(3)/$(1)/$(word 1, $(subst !, ,$(var))),\
+    $(word 2, $(subst !, ,$(var))))))
 
 endif
 endef
+
+
+define generate_ceva_bx1_project
+ifeq ($(TARGET), ceva)
+ifeq ($(TARGET_ARCH), bx1)
+
+$(PRJDIR)$(3)/$(1)/Makefile: tensorflow/lite/micro/tools/make/templates/ceva_bx1/ceva_app_makefile.tpl
+	@mkdir -p $$(dir $$@)
+	@sed -E 's#\%\{SRCS\}\%#$(4)#g' $$< | \
+	sed -E 's#\%\{CC\}\%#$(CC_TOOL)#g' | \
+	sed -E 's#\%\{CXX\}\%#$(CXX_TOOL)#g' | \
+	sed -E 's#\%\{LD\}\%#$(LD_TOOL)#g' | \
+	sed -E 's#\%\{EXECUTABLE\}\%#$(3).elf#g' | \
+	sed -E 's#\%\{LD_FLAGS\}\%#$(6)#g' | \
+	sed -E 's#\%\{CXX_FLAGS\}\%#$(7)#g' | \
+	sed -E 's#\%\{CC_FLAGS\}\%#$(8)#g' | \
+	sed -E 's#\%\{EXTRA_APP_SETTINGS\}\%#$(ARC_EXTRA_APP_SETTINGS)#g' | \
+	sed -E 's#\%\{EXTRA_APP_RULES\}\%#$(ARC_EXTRA_APP_RULES)#g' | \
+	sed -E 's#\%\{BIN_DEPEND\}\%#$(ARC_BIN_DEPEND)#g' | \
+	sed -E 's#\%\{BIN_RULE\}\%#$(ARC_BIN_RULE)#g' | \
+	sed -E 's#\%\{EXTRA_RM_TARGETS\}\%#$(ARC_EXTRA_RM_TARGETS)#g' | \
+	sed -E 's#\%\{APP_RUN_CMD\}\%#$(ARC_APP_RUN_CMD)#g' | \
+	sed -E 's#\%\{APP_DEBUG_CMD\}\%#$(ARC_APP_DEBUG_CMD)#g' | \
+	sed -E 's#\%\{EXTRA_EXECUTE_RULES\}\%#$(ARC_EXTRA_EXECUTE_RULES)#g' > $$@
+
+$(PRJDIR)$(3)/$(1)/%: tensorflow/lite/micro/tools/make/templates/ceva_bx1/%.tpl
+	@cp $$< $$@
+
+$(foreach var,$(CEVA_TARGET_FILES_DIRS),$(eval $(call path_changing_copy_file,$(PRJDIR)$(3)/$(1),$(var))))
+
+endif
+endif
+endef
+
 
 
 
@@ -403,6 +442,7 @@ endef
 define generate_microlite_projects
 $(call generate_project,make,$(MAKE_PROJECT_FILES) $($(1)_MAKE_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(LDFLAGS) $(MICROLITE_LIBS),$(CXXFLAGS) $(GENERATED_PROJECT_INCLUDES), $(CCFLAGS) $(GENERATED_PROJECT_INCLUDES),$(TARGET_TOOLCHAIN_ROOT),$(TARGET_TOOLCHAIN_PREFIX))
 $(call generate_arc_project,make,$(MAKE_PROJECT_FILES) $($(1)_MAKE_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(LDFLAGS) $(GENERATED_PROJECT_LIBS),$(CXXFLAGS) $(GENERATED_PROJECT_INCLUDES), $(CCFLAGS) $(GENERATED_PROJECT_INCLUDES))
+$(call generate_ceva_bx1_project,make,$(MAKE_PROJECT_FILES) $($(1)_MAKE_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(LDFLAGS) $(GENERATED_PROJECT_LIBS),$(CXXFLAGS) $(GENERATED_PROJECT_INCLUDES), $(CCFLAGS) $(GENERATED_PROJECT_INCLUDES))
 $(call generate_project,mbed,$(MBED_PROJECT_FILES) $($(1)_MBED_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(MICROLITE_LIBS),$(CXXFLAGS),$(CCFLAGS),$(TARGET_TOOLCHAIN_ROOT),$(TARGET_TOOLCHAIN_PREFIX))
 $(call generate_project,keil,$(KEIL_PROJECT_FILES) $($(1)_KEIL_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(MICROLITE_LIBS),$(CXXFLAGS),$(CCFLAGS),$(TARGET_TOOLCHAIN_ROOT),$(TARGET_TOOLCHAIN_PREFIX))
 ifeq (,$(findstring _benchmark,$(1)))
@@ -422,27 +462,41 @@ define microlite_test
 ifeq (,$(findstring _test, $(1)))
 	$(eval $(call generate_project_third_party_parsing))
 endif
+
 $(1)_LOCAL_SRCS := $(2)
 $(1)_LOCAL_SRCS := $$(call specialize,$$($(1)_LOCAL_SRCS))
 ALL_SRCS += $$($(1)_LOCAL_SRCS)
 $(1)_LOCAL_HDRS := $(3)
 $(1)_LOCAL_OBJS := $$(addprefix $$(OBJDIR), \
-$$(patsubst %.S,%.o,$$(patsubst %.cc,%.o,$$(patsubst %.c,%.o,$$($(1)_LOCAL_SRCS)))))
+$$(patsubst %.cc,%.o,$$(patsubst %.c,%.o,$$($(1)_LOCAL_SRCS))))
 $(1)_BINARY := $$(BINDIR)$(1)
 $$($(1)_BINARY): $$($(1)_LOCAL_OBJS) $$(MICROLITE_LIB_PATH)
 	@mkdir -p $$(dir $$@)
 	$$(CXX) $$(CXXFLAGS) $$(INCLUDES) \
 	-o $$($(1)_BINARY) $$($(1)_LOCAL_OBJS) \
-	$$(LIBFLAGS) $$(MICROLITE_LIB_PATH) $$(LDFLAGS) $$(MICROLITE_LIBS)
+	$$(MICROLITE_LIB_PATH) $$(LDFLAGS) $$(MICROLITE_LIBS)
 $(1): $$($(1)_BINARY)
 $(1)_bin: $$($(1)_BINARY).bin
 test_$(1): $$($(1)_BINARY)
 	@test -f $$(TEST_SCRIPT) || (echo 'Unable to find the test script. Is the software emulation available in $$(TARGET)?'; exit 1)
 	$$(TEST_SCRIPT) $$($(1)_BINARY) '~~~ALL TESTS PASSED~~~'
+
 ifneq (,$(findstring _test,$(1)))
   MICROLITE_TEST_TARGETS += test_$(1)
   MICROLITE_BUILD_TARGETS += $$($(1)_BINARY)
 endif
+
+# The ifneq can make is seem that the body of the if block is executed when
+# _benchmark is not found in $(1). Actually, the check is saying that if
+# findstring does not return empty, i.e. if _benchmark is found in $(1), we
+# should add something to the MICROLITE_BUILD_TARGETS.
+#
+# This ensures that a `make build` command will builds all the tests and
+# benchmarks, though `make test` will only run the tests.
+ifneq (,$(findstring _benchmark,$(1)))
+  MICROLITE_BUILD_TARGETS += $$($(1)_BINARY)
+endif
+
 $(eval $(call generate_microlite_projects,$(1),$(call specialize,$(2)),$(3)))
 endef
 
@@ -466,7 +520,7 @@ endef
 # 1 - Information about the library, separated by '!'s.
 define create_download_rule
 $(word 3, $(subst !, ,$(1))):
-	tensorflow/lite/micro/tools/make/download_and_extract.sh $(subst !, ,$(1))
+	$(DOWNLOAD_SCRIPT) $(subst !, ,$(1))
 THIRD_PARTY_TARGETS += $(word 3, $(subst !, ,$(1)))
 endef
 

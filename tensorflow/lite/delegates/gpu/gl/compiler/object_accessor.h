@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_GL_COMPILER_OBJECT_ACCESSOR_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_GL_COMPILER_OBJECT_ACCESSOR_H_
 
+#include <map>
 #include <string>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "tensorflow/lite/delegates/gpu/gl/compiler/preprocessor.h"
 #include "tensorflow/lite/delegates/gpu/gl/compiler/variable_accessor.h"
 #include "tensorflow/lite/delegates/gpu/gl/object.h"
@@ -85,7 +85,7 @@ class ObjectAccessor : public InlineRewrite {
   RewriteStatus RewriteWrite(absl::string_view location,
                              absl::string_view value, std::string* output);
 
-  absl::flat_hash_map<std::string, Object> name_to_object_;
+  std::map<std::string, Object> name_to_object_;
 
   const bool is_mali_;
   const bool sampler_textures_;

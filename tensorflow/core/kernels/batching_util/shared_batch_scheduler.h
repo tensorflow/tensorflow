@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/profiler/lib/traceme_encode.h"
 
 namespace tensorflow {
 namespace serving {
@@ -641,7 +642,11 @@ Status Queue<TaskType>::ScheduleWithoutSplit(std::unique_ptr<TaskType>* task) {
       open_batch_start_time_micros_ = env_->NowMicros();
     }
     profiler::TraceMeProducer trace_me(
-        [&] { return strings::StrCat("Schedule:", (*task)->size()); },
+        [task] {
+          return profiler::TraceMeEncode(
+              "ScheduleWithoutSplit",
+              {{"batching_input_task_size", (*task)->size()}});
+        },
         profiler::ContextType::kSharedBatchScheduler,
         batches_.back()->traceme_context_id());
     batches_.back()->AddTask(std::move(*task));
@@ -668,7 +673,8 @@ Status Queue<TaskType>::ScheduleWithoutSplit(std::unique_ptr<TaskType>* task) {
 template <typename TaskType>
 Status Queue<TaskType>::ScheduleWithSplit(std::unique_ptr<TaskType>* task) {
   profiler::TraceMe trace_me([task] {
-    return strings::StrCat("ScheduleWithSplit:", (*task)->size());
+    return profiler::TraceMeEncode(
+        "ScheduleWithSplit", {{"batching_input_task_size", (*task)->size()}});
   });
   if ((*task)->size() > options_.input_batch_size_limit) {
     return errors::InvalidArgument("Task size ", (*task)->size(),
@@ -726,6 +732,13 @@ Status Queue<TaskType>::ScheduleWithSplit(std::unique_ptr<TaskType>* task) {
       if (batches_.back()->empty()) {
         open_batch_start_time_micros_ = env_->NowMicros();
       }
+      profiler::TraceMeProducer trace_me(
+          [&output_tasks, i] {
+            return profiler::TraceMeEncode("ScheduleOutputTask",
+                                           {{"size", output_tasks[i]->size()}});
+          },
+          profiler::ContextType::kSharedBatchScheduler,
+          batches_.back()->traceme_context_id());
       batches_.back()->AddTask(std::move(output_tasks[i]));
     }
 
@@ -795,7 +808,10 @@ std::unique_ptr<Batch<TaskType>> Queue<TaskType>::ScheduleBatch() {
 template <typename TaskType>
 void Queue<TaskType>::ProcessBatch(std::unique_ptr<Batch<TaskType>> batch) {
   profiler::TraceMeConsumer trace_me(
-      [&batch] { return strings::StrCat("ProcessBatch:", batch->size()); },
+      [&] {
+        return profiler::TraceMeEncode(
+            "ProcessBatch", {{"batch_size_before_padding", batch->size()}});
+      },
       profiler::ContextType::kSharedBatchScheduler,
       batch->traceme_context_id());
   process_batch_callback_(std::move(batch));

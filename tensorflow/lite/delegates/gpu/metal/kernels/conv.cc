@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/common/winograd_util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
-#include "tensorflow/lite/delegates/gpu/metal/environment.h"
 #include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
 namespace tflite {
@@ -729,7 +729,7 @@ bool IsKernelYIs1(const Convolution2DAttributes& attr) {
          attr.padding.appended.h == 0;
 }
 
-int GetMaximumPossibleWavesCount(const AppleGPUInfo& apple_info,
+int GetMaximumPossibleWavesCount(const AppleInfo& apple_info,
                                  const BHWC& dst_shape) {
   if (apple_info.IsLocalMemoryPreferredOverGlobal()) {
     return GetGroupsCountForLinearWH(dst_shape, {32, 1, 1}, {1, 1, 1});
@@ -738,7 +738,7 @@ int GetMaximumPossibleWavesCount(const AppleGPUInfo& apple_info,
   }
 }
 
-int GetRecommendedBlockSize(const AppleGPUInfo& apple_info,
+int GetRecommendedBlockSize(const AppleInfo& apple_info,
                             const BHWC& dst_shape) {
   const int max_waves = GetMaximumPossibleWavesCount(apple_info, dst_shape);
   const int cu_count = apple_info.GetComputeUnitsCount();
@@ -753,7 +753,7 @@ int GetRecommendedBlockSize(const AppleGPUInfo& apple_info,
   }
 }
 
-ConvParams GetConvParamsForA7A8(const AppleGPUInfo& apple_info,
+ConvParams GetConvParamsForA7A8(const AppleInfo& apple_info,
                                 const Convolution2DAttributes& attr,
                                 const BHWC& dst_shape) {
   const int dst_slices = DivideRoundUp(dst_shape.c, 4);
@@ -830,7 +830,7 @@ ConvParams GetConvParamsForA7A8(const AppleGPUInfo& apple_info,
   return params;
 }
 
-ConvParams GetConvParamsForA9AndHigher(const AppleGPUInfo& apple_info,
+ConvParams GetConvParamsForA9AndHigher(const AppleInfo& apple_info,
                                        const Convolution2DAttributes& attr,
                                        const BHWC& dst_shape) {
   const int dst_slices = DivideRoundUp(dst_shape.c, 4);
@@ -980,19 +980,18 @@ ConvParams GetConvParamsForAMD(const Convolution2DAttributes& attr,
   return params;
 }
 
-ConvParams GetConvParams(const DeviceInfo& device_info,
+ConvParams GetConvParams(const GpuInfo& gpu_info,
                          const Convolution2DAttributes& attr,
                          const RuntimeOptions& options, const BHWC& dst_shape) {
-  if (device_info.IsAppleGPU()) {
-    if (device_info.apple_info.IsLocalMemoryPreferredOverGlobal()) {
-      return GetConvParamsForA7A8(device_info.apple_info, attr, dst_shape);
+  if (gpu_info.IsApple()) {
+    if (gpu_info.apple_info.IsLocalMemoryPreferredOverGlobal()) {
+      return GetConvParamsForA7A8(gpu_info.apple_info, attr, dst_shape);
     } else {
-      return GetConvParamsForA9AndHigher(device_info.apple_info, attr,
-                                         dst_shape);
+      return GetConvParamsForA9AndHigher(gpu_info.apple_info, attr, dst_shape);
     }
-  } else if (device_info.IsIntelGPU()) {
+  } else if (gpu_info.IsIntel()) {
     return GetConvParamsForIntel(attr, options, dst_shape);
-  } else if (device_info.IsAMDGPU()) {
+  } else if (gpu_info.IsAMD()) {
     return GetConvParamsForAMD(attr, options, dst_shape);
   } else {
     ConvParams params;
@@ -1046,35 +1045,24 @@ std::pair<uint3, uint3> GetDispatchSizes(const ConvParams& params,
 
 }  // namespace
 
-std::vector<ComputeTaskDescriptorPtr> ConvolutionGeneric(
-    int id, ValueId input_id, ValueId output_id, const BHWC& dst_shape,
-    const Convolution2DAttributes& attr, const DeviceInfo& device_info,
-    const metal::RuntimeOptions& options) {
-  ConvParams params = GetConvParams(device_info, attr, options, dst_shape);
+ComputeTaskDescriptor ConvolutionGeneric(ValueId input_id, ValueId output_id,
+                                         const BHWC& dst_shape,
+                                         const Convolution2DAttributes& attr,
+                                         const GpuInfo& gpu_info,
+                                         const metal::RuntimeOptions& options) {
+  ConvParams params = GetConvParams(gpu_info, attr, options, dst_shape);
 
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = false;
-  desc->shader_source = GenerateConvolution(params);
-
-  desc->input_buffers = {
-      {input_id, "device FLT4* const src_buffer"},
-  };
-
-  desc->output_buffer = {
-      output_id, "device FLT4* dst_buffer",
-      [input_id, attr](const std::map<ValueId, BHWC>& buffers) {
-        auto out_shape =
-            CalculateOutputShape(buffers.find(input_id)->second, attr);
-        return out_shape;
-      }};
+  ComputeTaskDescriptor desc;
+  desc.shader_source = GenerateConvolution(params);
+  desc.AddSrcTensor("src_buffer");
+  desc.AddDstTensor("dst_buffer");
 
   auto weights_reordered = ReorderWeightsForConv(attr.weights, params);
   std::string addr_space =
       params.weights_upload_type == WeightsUploadType::CONSTANT_MEM ? "constant"
                                                                     : "device";
   const int dst_depth = DivideRoundUp(attr.weights.shape.o, 4);
-  desc->immutable_buffers = {
+  desc.immutable_buffers = {
       {addr_space + " FLT4* const filters",
        GetByteBufferConverted(weights_reordered, options.storage_precision)},
       {addr_space + " FLT4* const biases",
@@ -1083,27 +1071,25 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionGeneric(
            AlignByN(dst_depth, params.block_size.z) * 4)},
   };
 
-  desc->uniform_buffers = {
+  desc.uniform_buffers = {
       {"constant uniforms& params",
-       [input_id, output_id, attr,
-        params](const std::map<ValueId, BHWC>& buffers) {
-         const auto& src_shape = buffers.find(input_id)->second;
-         const auto& dst_shape = buffers.find(output_id)->second;
-         return GetUniformBuffer(src_shape, dst_shape, attr, params);
+       [attr, params](const std::vector<BHWC>& src_shapes,
+                      const std::vector<BHWC>& dst_shapes) {
+         return GetUniformBuffer(src_shapes[0], dst_shapes[0], attr, params);
        }},
   };
 
-  desc->resize_function = [output_id,
-                           params](const std::map<ValueId, BHWC>& buffers) {
-    return GetDispatchSizes(params, buffers.find(output_id)->second);
+  desc.resize_function = [params](const std::vector<BHWC>& src_shapes,
+                                  const std::vector<BHWC>& dst_shapes) {
+    return GetDispatchSizes(params, dst_shapes[0]);
   };
 
-  return {desc};
+  return desc;
 }
 
-std::vector<ComputeTaskDescriptorPtr> ConvolutionWino4x4To6x6(
-    int id, ValueId input_id, ValueId output_id, const BHWC& dst_shape,
-    const Convolution2DAttributes& attr, const DeviceInfo& device_info,
+ComputeTaskDescriptor ConvolutionWino4x4To6x6(
+    ValueId input_id, ValueId output_id, const BHWC& dst_shape,
+    const Convolution2DAttributes& attr, const GpuInfo& gpu_info,
     const RuntimeOptions& options) {
   const int dst_slices = DivideRoundUp(attr.weights.shape.o, 4);
   ConvParams params;
@@ -1116,9 +1102,9 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionWino4x4To6x6(
   params.different_weights_for_height = true;
   params.x_kernel_is_1 = true;
   params.y_kernel_is_1 = true;
-  if (device_info.IsAppleGPU()) {
+  if (gpu_info.IsApple()) {
     params.weight_layout = WeightsInnerBlockLayout::O4I4;
-    if (device_info.apple_info.IsLocalMemoryPreferredOverGlobal()) {
+    if (gpu_info.apple_info.IsLocalMemoryPreferredOverGlobal()) {
       params.weights_upload_type = WeightsUploadType::LOCAL_MEM_BY_THREADS;
       params.work_group_size = int3(32, 1, 1);
       params.block_size = int3(4, 1, 4);
@@ -1127,12 +1113,12 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionWino4x4To6x6(
       params.work_group_size = int3(8, 4, 1);
       params.block_size = int3(4, 1, 4);
     }
-  } else if (device_info.IsIntelGPU()) {
+  } else if (gpu_info.IsIntel()) {
     params.weight_layout = WeightsInnerBlockLayout::I4O4;
     params.weights_upload_type = WeightsUploadType::PRIVATE_MEM_SIMD8_BROADCAST;
     params.work_group_size = int3(16, 1, 1);
     params.block_size = int3(1, 1, 4);
-  } else if (device_info.IsAMDGPU()) {
+  } else if (gpu_info.IsAMD()) {
     params.weight_layout = WeightsInnerBlockLayout::I4O4;
     params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;
     params.work_group_size = int3(32, 1, 1);
@@ -1144,50 +1130,38 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionWino4x4To6x6(
     params.block_size = int3(2, 1, 4);
   }
 
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = false;
-  desc->shader_source = GenerateConvolution(params);
-
-  desc->input_buffers = {
-      {input_id, "device FLT4* const src_buffer"},
-  };
-
-  desc->output_buffer = {
-      output_id, "device FLT4* dst_buffer",
-      [input_id, attr](const std::map<ValueId, BHWC>& buffers) {
-        const auto src_shape = buffers.find(input_id)->second;
-        return BHWC(src_shape.b, src_shape.h, src_shape.w,
-                    attr.weights.shape.o);
-      }};
+  ComputeTaskDescriptor desc;
+  desc.shader_source = GenerateConvolution(params);
+  desc.AddSrcTensor("src_buffer");
+  desc.AddDstTensor("dst_buffer");
 
   ::tflite::gpu::Tensor<OHWI, DataType::FLOAT32> wino_weights;
   RearrangeWeightsToWinograd4x4To6x6Weights(attr.weights, &wino_weights);
   auto weights_reordered = ReorderWeightsForConv(wino_weights, params);
   std::vector<float> dummy_biases(AlignByN(dst_slices, params.block_size.z) * 4,
                                   0.0f);
-  desc->immutable_buffers = {
+  desc.immutable_buffers = {
       {"device FLT4* const filters",
        GetByteBufferConverted(weights_reordered, options.storage_precision)},
       {"device FLT4* const biases",
        GetByteBufferConverted(dummy_biases, options.storage_precision)},
   };
 
-  desc->uniform_buffers = {
+  desc.uniform_buffers = {
       {"constant uniforms& params",
-       [input_id, output_id, params](const std::map<ValueId, BHWC>& buffers) {
-         const auto& src_shape = buffers.find(input_id)->second;
-         const auto& dst_shape = buffers.find(output_id)->second;
-         return GetUniformBufferForWinograd(src_shape, dst_shape, params);
+       [params](const std::vector<BHWC>& src_shapes,
+                const std::vector<BHWC>& dst_shapes) {
+         return GetUniformBufferForWinograd(src_shapes[0], dst_shapes[0],
+                                            params);
        }},
   };
 
-  desc->resize_function = [output_id,
-                           params](const std::map<ValueId, BHWC>& buffers) {
-    return GetDispatchSizes(params, buffers.find(output_id)->second);
+  desc.resize_function = [params](const std::vector<BHWC>& src_shapes,
+                                  const std::vector<BHWC>& dst_shapes) {
+    return GetDispatchSizes(params, dst_shapes[0]);
   };
 
-  return {desc};
+  return desc;
 }
 
 }  // namespace metal

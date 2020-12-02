@@ -19,6 +19,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+import enum
+
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
@@ -94,6 +97,72 @@ class DeprecationTest(test.TestCase):
     self.assertEqual(1, mock_warning.call_count)
     _fn()
     self.assertEqual(1, mock_warning.call_count)
+
+  @test.mock.patch.object(logging, "warning", autospec=True)
+  def test_deprecated_init_class(self, mock_warning):
+    date = "2016-07-04"
+    instructions = "This is how you update..."
+
+    @deprecation.deprecated(date, instructions, warn_once=True)
+    class MyClass():
+      """A test class."""
+
+      def __init__(self, a):
+        pass
+
+    MyClass("")
+    self.assertEqual(1, mock_warning.call_count)
+    MyClass("")
+    self.assertEqual(1, mock_warning.call_count)
+    self.assertIn("IS DEPRECATED", MyClass.__doc__)
+
+  @test.mock.patch.object(logging, "warning", autospec=True)
+  def test_deprecated_new_class(self, mock_warning):
+    date = "2016-07-04"
+    instructions = "This is how you update..."
+
+    @deprecation.deprecated(date, instructions, warn_once=True)
+    class MyStr(str):
+
+      def __new__(cls, value):
+        return str.__new__(cls, value)
+
+    MyStr("abc")
+    self.assertEqual(1, mock_warning.call_count)
+    MyStr("abc")
+    self.assertEqual(1, mock_warning.call_count)
+    self.assertIn("IS DEPRECATED", MyStr.__doc__)
+
+  @test.mock.patch.object(logging, "warning", autospec=True)
+  def test_deprecated_enum(self, mock_warning):
+    date = "2016-07-04"
+    instructions = "This is how you update..."
+
+    @deprecation.deprecated(date, instructions, warn_once=True)
+    class MyEnum(enum.Enum):
+      a = 1
+      b = 2
+
+    self.assertIs(MyEnum(1), MyEnum.a)
+    self.assertEqual(1, mock_warning.call_count)
+    self.assertIs(MyEnum(2), MyEnum.b)
+    self.assertEqual(1, mock_warning.call_count)
+    self.assertIn("IS DEPRECATED", MyEnum.__doc__)
+
+  @test.mock.patch.object(logging, "warning", autospec=True)
+  def test_deprecated_namedtuple(self, mock_warning):
+    date = "2016-07-04"
+    instructions = "This is how you update..."
+
+    mytuple = deprecation.deprecated(
+        date, instructions, warn_once=True)(
+            collections.namedtuple("my_tuple", ["field1", "field2"]))
+
+    mytuple(1, 2)
+    self.assertEqual(1, mock_warning.call_count)
+    mytuple(3, 4)
+    self.assertEqual(1, mock_warning.call_count)
+    self.assertIn("IS DEPRECATED", mytuple.__doc__)
 
   @test.mock.patch.object(logging, "warning", autospec=True)
   def test_silence(self, mock_warning):

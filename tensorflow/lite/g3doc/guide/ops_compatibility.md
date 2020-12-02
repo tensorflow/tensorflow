@@ -5,12 +5,11 @@ inference models. As they are processed by the TensorFlow Lite Optimizing
 Converter, those operations may be elided or fused, before the supported
 operations are mapped to their TensorFlow Lite counterparts.
 
-Since the set of TensorFlow Lite operations is smaller than TensorFlow's, not
-every model is convertible. Even for supported operations, very specific usage
-patterns are sometimes expected, for performance reasons. We expect to expand
-the set of supported operations in future TensorFlow Lite releases. Additional
-ops can be included by [using select TensorFlow ops](ops_select.md), at the cost
-of binary size.
+Since the TensorFlow Lite builtin operator library only supports a limited
+number of TensorFlow operators, not every model is convertible. Even for
+supported operations, very specific usage patterns are sometimes expected, for
+performance reasons. We expect to expand the set of supported operations in
+future TensorFlow Lite releases.
 
 The best way to understand how to build a TensorFlow model that can be used with
 TensorFlow Lite is to carefully consider how operations are converted and

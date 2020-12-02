@@ -94,12 +94,17 @@ function run_build () {
     --define=allow_oversize_protos=true \
     --define=grpc_no_ares=true \
     -c opt \
+    --host_copt="-w" \
     --copt="-w" \
+    --host_copt=-mavx \
     --copt=-mavx \
+    --host_linkopt=-lrt \
     --linkopt=-lrt \
+    --host_linkopt=-lm \
     --linkopt=-lm \
     --distinct_host_configuration=false \
     --remote_default_exec_properties=build=${CACHE_SILO_VAL} \
+    --host_crosstool_top="${TF_CUDA_CONFIG_REPO}//crosstool:toolchain" \
     --crosstool_top="${TF_CUDA_CONFIG_REPO}//crosstool:toolchain" \
     --host_javabase=@bazel_toolchains//configs/ubuntu16_04_clang/1.1:jdk8 \
     --javabase=@bazel_toolchains//configs/ubuntu16_04_clang/1.0:jdk8 \

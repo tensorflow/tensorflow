@@ -17,9 +17,8 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
-from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import strategy_combinations as strategy_combinations_base
+from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.keras.optimizer_v2 import adadelta as adadelta_keras_v2
 from tensorflow.python.keras.optimizer_v2 import adagrad as adagrad_keras_v2
 from tensorflow.python.keras.optimizer_v2 import adam as adam_keras_v2

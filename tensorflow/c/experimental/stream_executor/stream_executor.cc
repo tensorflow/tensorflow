@@ -24,14 +24,17 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
-#include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/stream_executor/executor_cache.h"
 #include "tensorflow/stream_executor/multi_platform_manager.h"
 #include "tensorflow/stream_executor/platform.h"
+#include "tensorflow/stream_executor/stream.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
 #include "tensorflow/stream_executor/timer.h"
@@ -39,6 +42,9 @@ limitations under the License.
 using tensorflow::StatusFromTF_Status;
 
 namespace stream_executor {
+using tensorflow::StringPiece;
+using OwnedTFStatus = std::unique_ptr<TF_Status, TFStatusDeleter>;
+
 namespace {
 
 #define VALIDATE_STRUCT_SIZE(STRUCT_NAME, STRUCT_OBJ, SIZE_VALUE_NAME) \
@@ -58,11 +64,36 @@ namespace {
     }                                                            \
   } while (0)
 
+port::Status ValidateDeviceType(StringPiece type) {
+  // Validate device type. Device type must start with a capital letter and
+  // consist of capital letters and underscores. Reasoning behind this decision:
+  // * At the minimum we want to disallow '/' and ':' since
+  //   these characters are used in device spec, for e.g.
+  //   /job:foo/replica:12/device:GPU:1.
+  // * Underscores seem useful, for e.g. XLA_GPU uses underscores.
+  // * Allowing lowercase might get confusing. For example, say someone
+  //   registers a new type called "Gpu". It might be confusing for users that
+  //   "Gpu" is not the same device type as "GPU".
+  //   Note that lowercase "cpu" and "gpu" are currently supported only for
+  //   legacy reasons:
+  //   https://cs.opensource.google/tensorflow/tensorflow/+/master:tensorflow/python/framework/device_spec.py;l=46;drc=d3a378f9665d8eee827c74cb9ecbee81e4c288dd
+  static const LazyRE2 kTfDeviceTypeRegEx = {"[A-Z][A-Z_]*"};
+  bool matches = RE2::FullMatch(type, *kTfDeviceTypeRegEx);
+  if (!matches) {
+    return port::FailedPreconditionError(
+        tensorflow::strings::StrCat("Device name/type '", type, "' must match ",
+                                    kTfDeviceTypeRegEx->pattern(), "."));
+  }
+  return port::Status::OK();
+}
+
 port::Status ValidateSPPlatform(const SP_Platform& platform) {
   VALIDATE_STRUCT_SIZE(SP_Platform, platform, SP_PLATFORM_STRUCT_SIZE);
   VALIDATE_MEMBER(SP_Platform, platform, name);
   VALIDATE_MEMBER(SP_Platform, platform, type);
-  VALIDATE_MEMBER(SP_Platform, platform, visible_device_count);
+  TF_RETURN_IF_ERROR(ValidateDeviceType(platform.name));
+  TF_RETURN_IF_ERROR(ValidateDeviceType(platform.type));
+  // `visible_device_count` could be 0 at initialization time.
   return port::Status::OK();
 }
 
@@ -75,6 +106,8 @@ port::Status ValidateSPPlatformFns(const SP_PlatformFns& platform_fns) {
   VALIDATE_MEMBER(SP_PlatformFns, platform_fns, destroy_stream_executor);
   VALIDATE_MEMBER(SP_PlatformFns, platform_fns, create_timer_fns);
   VALIDATE_MEMBER(SP_PlatformFns, platform_fns, destroy_timer_fns);
+  VALIDATE_MEMBER(SP_PlatformFns, platform_fns, create_device_fns);
+  VALIDATE_MEMBER(SP_PlatformFns, platform_fns, destroy_device_fns);
   return port::Status::OK();
 }
 
@@ -99,6 +132,12 @@ port::Status ValidateSPDeviceMemoryBase(const SP_DeviceMemoryBase& mem) {
 
 port::Status ValidateSPDevice(const SP_Device& device) {
   VALIDATE_STRUCT_SIZE(SP_Device, device, SP_DEVICE_STRUCT_SIZE);
+  // All other fields could theoretically be zero/null.
+  return port::Status::OK();
+}
+
+port::Status ValidateSPDeviceFns(const SP_DeviceFns& device_fns) {
+  VALIDATE_STRUCT_SIZE(SP_DeviceFns, device_fns, SP_DEVICE_FNS_STRUCT_SIZE);
   // All other fields could theoretically be zero/null.
   return port::Status::OK();
 }
@@ -149,41 +188,6 @@ port::Status ValidateSEPlatformRegistrationParams(
 }
 #undef VALIDATE_MEMBER
 
-struct TFStatusDeleter {
-  void operator()(TF_Status* s) const { TF_DeleteStatus(s); }
-};
-using OwnedTFStatus = std::unique_ptr<TF_Status, TFStatusDeleter>;
-
-class CStream : public internal::StreamInterface {
- public:
-  CStream(SP_Device* device, SP_StreamExecutor* stream_executor)
-      : device_(device),
-        stream_executor_(stream_executor),
-        stream_handle_(nullptr) {}
-  ~CStream() override { Destroy(); }
-
-  port::Status Create() {
-    OwnedTFStatus c_status(TF_NewStatus());
-    stream_executor_->create_stream(device_, &stream_handle_, c_status.get());
-    port::Status s = StatusFromTF_Status(c_status.get());
-    return s;
-  }
-
-  void Destroy() {
-    if (stream_handle_ != nullptr) {
-      stream_executor_->destroy_stream(device_, stream_handle_);
-      stream_handle_ = nullptr;
-    }
-  }
-
-  SP_Stream Handle() { return stream_handle_; }
-
- private:
-  SP_Device* device_;
-  SP_StreamExecutor* stream_executor_;
-  SP_Stream stream_handle_;
-};
-
 // Converts SE_EventStatus to Event::Status.
 Event::Status SEEventStatusToEventStatus(SE_EventStatus s) {
   switch (s) {
@@ -198,82 +202,6 @@ Event::Status SEEventStatusToEventStatus(SE_EventStatus s) {
   }
 }
 
-class CEvent : public internal::EventInterface {
- public:
-  CEvent(SP_Device* device, SP_StreamExecutor* stream_executor)
-      : device_(device),
-        stream_executor_(stream_executor),
-        event_handle_(nullptr) {}
-  ~CEvent() override { Destroy(); }
-
-  port::Status Create() {
-    OwnedTFStatus c_status(TF_NewStatus());
-    stream_executor_->create_event(device_, &event_handle_, c_status.get());
-    return StatusFromTF_Status(c_status.get());
-  }
-
-  port::Status Record(SP_Stream stream_handle) {
-    OwnedTFStatus c_status(TF_NewStatus());
-    stream_executor_->record_event(device_, stream_handle, event_handle_,
-                                   c_status.get());
-    return StatusFromTF_Status(c_status.get());
-  }
-
-  void Destroy() {
-    if (event_handle_ != nullptr) {
-      stream_executor_->destroy_event(device_, event_handle_);
-      event_handle_ = nullptr;
-    }
-  }
-
-  SP_Event Handle() { return event_handle_; }
-
- private:
-  SP_Device* device_;
-  SP_StreamExecutor* stream_executor_;
-  SP_Event event_handle_;
-};
-
-class CTimer : public internal::TimerInterface {
- public:
-  CTimer(SP_Device* device, SP_StreamExecutor* stream_executor,
-         SP_TimerFns* timer_fns)
-      : device_(device),
-        stream_executor_(stream_executor),
-        timer_handle_(nullptr),
-        timer_fns_(timer_fns) {}
-  ~CTimer() override { Destroy(); }
-
-  port::Status Create() {
-    OwnedTFStatus c_status(TF_NewStatus());
-    stream_executor_->create_timer(device_, &timer_handle_, c_status.get());
-    return StatusFromTF_Status(c_status.get());
-  }
-
-  void Destroy() {
-    if (timer_handle_ != nullptr) {
-      stream_executor_->destroy_timer(device_, timer_handle_);
-      timer_handle_ = nullptr;
-    }
-  }
-
-  SP_Timer Handle() { return timer_handle_; }
-
-  uint64 Microseconds() const override {
-    return timer_fns_->nanoseconds(timer_handle_) / 1000;
-  }
-
-  uint64 Nanoseconds() const override {
-    return timer_fns_->nanoseconds(timer_handle_);
-  }
-
- private:
-  SP_Device* device_;
-  SP_StreamExecutor* stream_executor_;
-  SP_Timer timer_handle_;
-  SP_TimerFns* timer_fns_;
-};
-
 // Converts DeviceMemoryBase to a C struct.
 SP_DeviceMemoryBase DeviceMemoryBaseToC(const DeviceMemoryBase* mem) {
   SP_DeviceMemoryBase device_memory_base{SP_DEVICE_MEMORY_BASE_STRUCT_SIZE};
@@ -282,14 +210,12 @@ SP_DeviceMemoryBase DeviceMemoryBaseToC(const DeviceMemoryBase* mem) {
   device_memory_base.opaque = const_cast<void*>(mem->opaque());
   device_memory_base.size = mem->size();
   device_memory_base.payload = mem->payload();
-  // TODO(annarev): Add `ext` field to DeviceMemoryBase and set it here.
   return device_memory_base;
 }
 
 DeviceMemoryBase DeviceMemoryBaseFromC(const SP_DeviceMemoryBase& mem) {
   DeviceMemoryBase base(mem.opaque, mem.size);
   base.SetPayload(mem.payload);
-  // TODO(annarev): Add `ext` field to DeviceMemoryBase and set it here.
   return base;
 }
 
@@ -310,11 +236,13 @@ void HostCallbackTrampoline(void* ctx, TF_Status* status) {
 
 class CStreamExecutor : public internal::StreamExecutorInterface {
  public:
-  explicit CStreamExecutor(SP_Device device, SP_StreamExecutor* stream_executor,
+  explicit CStreamExecutor(SP_Device device, SP_DeviceFns* device_fns,
+                           SP_StreamExecutor* stream_executor,
                            SP_Platform* platform, SP_PlatformFns* platform_fns,
                            SP_TimerFns* timer_fns, const std::string& name,
                            int visible_device_count)
       : device_(std::move(device)),
+        device_fns_(device_fns),
         stream_executor_(stream_executor),
         platform_(platform),
         platform_fns_(platform_fns),
@@ -385,7 +313,6 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
       LOG(ERROR) << status.error_message();
       return absl::nullopt;
     }
-    // TODO(annarev): validate SP_AllocatorStats.
     ::stream_executor::AllocatorStats stats;
     stats.num_allocs = c_stats.num_allocs;
     stats.bytes_in_use = c_stats.bytes_in_use;
@@ -622,11 +549,19 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
 
   port::Status BlockHostUntilDone(Stream* stream) override {
     OwnedTFStatus c_status(TF_NewStatus());
+    SP_Stream stream_handle =
+        static_cast<CStream*>(stream->implementation())->Handle();
+
+    // If `block_host_until_done` is set, use it.
+    if (stream_executor_->block_host_until_done != nullptr) {
+      stream_executor_->block_host_until_done(&device_, stream_handle,
+                                              c_status.get());
+      return StatusFromTF_Status(c_status.get());
+    }
+    // Create and record an event and then wait for it.
     SP_Event event_handle;
     stream_executor_->create_event(&device_, &event_handle, c_status.get());
     TF_RETURN_IF_ERROR(StatusFromTF_Status(c_status.get()));
-    SP_Stream stream_handle =
-        static_cast<CStream*>(stream->implementation())->Handle();
     stream_executor_->record_event(&device_, stream_handle, event_handle,
                                    c_status.get());
     port::Status s = StatusFromTF_Status(c_status.get());
@@ -669,10 +604,35 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
   // Ownership is transferred to the caller.
   port::StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()
       const override {
-    // TODO(annarev): Figure out if we need to support more description fields.
+    OwnedTFStatus c_status(TF_NewStatus());
+
     internal::DeviceDescriptionBuilder builder;
-    builder.set_name(platform_name_);
-    // TODO(annarev): `Also supports_unified_memory` in DeviceDescription.
+    if (device_.hardware_name != nullptr) {
+      builder.set_name(device_.hardware_name);
+    }
+    if (device_.device_vendor != nullptr) {
+      builder.set_device_vendor(device_.device_vendor);
+    }
+    if (device_.pci_bus_id != nullptr) {
+      builder.set_pci_bus_id(device_.pci_bus_id);
+    }
+
+    if (device_fns_->get_numa_node != nullptr) {
+      int32_t numa_node = device_fns_->get_numa_node(&device_);
+      if (numa_node >= 0) {
+        builder.set_numa_node(numa_node);
+      }
+    }
+
+    if (device_fns_->get_memory_bandwidth != nullptr) {
+      int64_t memory_bandwidth = device_fns_->get_memory_bandwidth(&device_);
+      if (memory_bandwidth >= 0) {
+        builder.set_memory_bandwidth(memory_bandwidth);
+      }
+    }
+    // TODO(annarev): Add gflops field in DeviceDescription and set it here.
+    // TODO(annarev): Perhaps add `supports_unified_memory` in
+    // DeviceDescription.
     return builder.Build();
   }
 
@@ -700,6 +660,7 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
 
  private:
   SP_Device device_;
+  SP_DeviceFns* device_fns_;
   SP_StreamExecutor* stream_executor_;
   SP_Platform* platform_;
   SP_PlatformFns* platform_fns_;
@@ -713,17 +674,20 @@ CPlatform::CPlatform(SP_Platform platform,
                      void (*destroy_platform)(SP_Platform*),
                      SP_PlatformFns platform_fns,
                      void (*destroy_platform_fns)(SP_PlatformFns*),
-                     SP_StreamExecutor stream_executor, SP_TimerFns timer_fns)
+                     SP_DeviceFns device_fns, SP_StreamExecutor stream_executor,
+                     SP_TimerFns timer_fns)
     : platform_(std::move(platform)),
       destroy_platform_(destroy_platform),
       platform_fns_(std::move(platform_fns)),
       destroy_platform_fns_(destroy_platform_fns),
+      device_fns_(std::move(device_fns)),
       stream_executor_(std::move(stream_executor)),
       timer_fns_(std::move(timer_fns)),
       name_(platform.name) {}
 
 CPlatform::~CPlatform() {
   executor_cache_.DestroyAllExecutors();
+  platform_fns_.destroy_device_fns(&platform_, &device_fns_);
   platform_fns_.destroy_stream_executor(&platform_, &stream_executor_);
   platform_fns_.destroy_timer_fns(&platform_, &timer_fns_);
   destroy_platform_(&platform_);
@@ -772,37 +736,34 @@ port::StatusOr<std::unique_ptr<StreamExecutor>> CPlatform::GetUncachedExecutor(
   TF_RETURN_IF_ERROR(ValidateSPDevice(device));
 
   auto executor = absl::make_unique<CStreamExecutor>(
-      std::move(device), &stream_executor_, &platform_, &platform_fns_,
-      &timer_fns_, name_, platform_.visible_device_count);
+      std::move(device), &device_fns_, &stream_executor_, &platform_,
+      &platform_fns_, &timer_fns_, name_, platform_.visible_device_count);
   auto result = absl::make_unique<StreamExecutor>(this, std::move(executor),
                                                   config.ordinal);
   return result;
 }
 
-port::Status RegisterDevicePlugin(const std::string& dso_path) {
-  // Step 1: Load plugin
+port::Status InitStreamExecutorPlugin(void* dso_handle) {
   tensorflow::Env* env = tensorflow::Env::Default();
-  void* dso_handle;
-  TF_RETURN_IF_ERROR(env->LoadDynamicLibrary(dso_path.c_str(), &dso_handle));
 
-  // Step 2: Load symbol for `TF_InitPlugin`
+  // Step 1: Load symbol for `TF_InitPlugin`
   void* dso_symbol;
   TF_RETURN_IF_ERROR(
       env->GetSymbolFromLibrary(dso_handle, "SE_InitPlugin", &dso_symbol));
 
-  // Step 3: Call `TF_InitPlugin`
-  auto init_fn = reinterpret_cast<SEPluginInitFn>(dso_symbol);
-  return RegisterDevicePlugin(init_fn);
+  // Step 2: Call `TF_InitPlugin`
+  auto init_fn = reinterpret_cast<SEInitPluginFn>(dso_symbol);
+  return InitStreamExecutorPlugin(init_fn);
 }
 
-port::Status RegisterDevicePlugin(SEPluginInitFn init_fn) {
+port::Status InitStreamExecutorPlugin(SEInitPluginFn init_fn) {
   SE_PlatformRegistrationParams params{
       SE_PLATFORM_REGISTRATION_PARAMS_STRUCT_SIZE};
   SP_Platform platform{SP_PLATFORM_STRUCT_SIZE};
   SP_PlatformFns platform_fns{SP_PLATFORM_FNS_STRUCT_SIZE};
   params.major_version = SE_MAJOR;
   params.minor_version = SE_MINOR;
-  params.revision_version = SE_REVISION;
+  params.patch_version = SE_PATCH;
   params.platform = &platform;
   params.platform_fns = &platform_fns;
 
@@ -812,6 +773,17 @@ port::Status RegisterDevicePlugin(SEPluginInitFn init_fn) {
   TF_RETURN_IF_ERROR(ValidateSEPlatformRegistrationParams(params));
   TF_RETURN_IF_ERROR(ValidateSPPlatform(platform));
   TF_RETURN_IF_ERROR(ValidateSPPlatformFns(platform_fns));
+
+  // Fill SP_DeviceFns creation params
+  SE_CreateDeviceFnsParams device_fns_params{
+      SE_CREATE_DEVICE_FNS_PARAMS_STRUCT_SIZE};
+  SP_DeviceFns device_fns{SP_DEVICE_FNS_STRUCT_SIZE};
+  device_fns_params.device_fns = &device_fns;
+
+  // Create StreamExecutor
+  platform_fns.create_device_fns(&platform, &device_fns_params, c_status.get());
+  TF_RETURN_IF_ERROR(tensorflow::StatusFromTF_Status(c_status.get()));
+  TF_RETURN_IF_ERROR(ValidateSPDeviceFns(device_fns));
 
   // Fill stream executor creation params
   SE_CreateStreamExecutorParams se_params{
@@ -838,7 +810,8 @@ port::Status RegisterDevicePlugin(SEPluginInitFn init_fn) {
   std::unique_ptr<stream_executor::CPlatform> cplatform(
       new stream_executor::CPlatform(
           std::move(platform), params.destroy_platform, std::move(platform_fns),
-          params.destroy_platform_fns, std::move(se), std::move(timer_fns)));
+          params.destroy_platform_fns, std::move(device_fns), std::move(se),
+          std::move(timer_fns)));
   SE_CHECK_OK(stream_executor::MultiPlatformManager::RegisterPlatform(
       std::move(cplatform)));
 

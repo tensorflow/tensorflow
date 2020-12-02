@@ -59,14 +59,9 @@ void RecordTFDataBytesFetched(int64 num_bytes);
 // Records the number of times tf.data experiment is applied to input pipelines.
 void RecordTFDataExperiment(const string& name);
 
-// Records the time spent in ItertatorResource::GetNext() in microseconds.
+// Records the time (in microseconds) spent in a single invocation of
+// `ItertatorResource::GetNext()`.
 void RecordTFDataGetNextDuration(uint64 duration_us);
-
-// Records the time spent between IteratorResource::GetNext() calls
-// in microseconds. Time is measured from the point of returning data from
-// GetNext() to the point of new data being requested.
-// This elapsed time corresponds to time spent outside the GetNext() function.
-void RecordTFDataGetNextTimeBetween(uint64 duration_us);
 
 // Records the number of times each tf.data fingerprint is used
 // to measure duplicate pre-processing.
@@ -74,6 +69,14 @@ void RecordTFDataGetNextTimeBetween(uint64 duration_us);
 // The `name` argument identifies the Dataset graph fingerprint,
 // created using GraphHash().
 void RecordTFDataFingerprint(const string& name);
+
+// Records the time (in microseconds) during which `IteratorResource` was busy
+// processing at least one `GetNext()` request.
+void RecordTFDataIteratorBusy(uint64 duration_us);
+
+// Records the time (in microseconds) between `IteratorResource` receiving the
+// first `GetNext()` request and responding to the last `GetNext()` request.
+void RecordTFDataIteratorLifetime(uint64 duration_us);
 
 // Records the number of independent graph changes resulting from the
 // application of a tf.data optimization.
@@ -95,6 +98,7 @@ void RecordGraphInputTensors(const size_t size);
 void RecordGraphOutputTensors(const size_t size);
 
 void UpdateGraphExecTime(const uint64 running_time_usecs);
+void UpdateGraphPendingQueueLength(uint64 len);
 
 // Records that one output of an op of type `op_name` was unused.
 void RecordUnusedOutput(const string& op_name);

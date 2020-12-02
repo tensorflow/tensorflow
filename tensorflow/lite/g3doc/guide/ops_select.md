@@ -1,100 +1,43 @@
-# Select TensorFlow operators to use in TensorFlow Lite
+# Select TensorFlow operators
 
 Caution: This feature is experimental.
 
-The TensorFlow Lite builtin op library has grown rapidly and will continue to
-grow, but there remains a long tail of TensorFlow ops that are not yet natively
-supported by TensorFlow Lite. These unsupported ops can be a point of friction
-in the TensorFlow Lite model conversion process. To that end, the team has
-recently been working on an experimental mechanism for reducing this friction.
+Since the TensorFlow Lite builtin operator library only supports a limited
+number of TensorFlow operators, not every model is convertible. For details,
+refer to [operator compatibility](ops_compatibility.md).
 
-This document outlines how to use TensorFlow Lite with select TensorFlow ops.
-*Note that this feature is experimental and is under active development.* As you
-use this feature, keep in mind the [known limitations](#known-limitations), and
-please send feedback about models that work and issues you are facing to
-tflite@tensorflow.org.
+To allow conversion, users can enable the usage of
+[certain TensorFlow ops](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/flex/allowlisted_flex_ops.cc)
+in their TensorFlow Lite model. However, running TensorFlow Lite models with
+TensorFlow ops requires pulling in the core TensorFlow runtime, which increases
+the TensorFlow Lite interpreter binary size. For Android, you can avoid this by
+selectively building only required Tensorflow ops. For the details, refer to
+[reduce binary size](../guide/reduce_binary_size.md).
 
-TensorFlow Lite will continue to have
-[TensorFlow Lite builtin ops](ops_compatibility.md) optimized for mobile and
-embedded devices. However, TensorFlow Lite models can now use a subset of
-TensorFlow ops when TFLite builtin ops are not sufficient.
+This document outlines how to [convert](#convert_a_model) and
+[run](#run_inference) a TensorFlow Lite model containing TensorFlow ops on a
+platform of your choice. It also discusses
+[performance and size metrics](#metrics) and
+[known limitations](#known_limitations).
 
-Models converted with TensorFlow ops will require a TensorFlow Lite interpreter
-that has a larger binary size than the interpreter with only TFLite builtin ops.
-For Android, It is possible to reduce binary size by selectively linking only
-required Tensorflow ops. For the details, please see the
-[Reduce TensorFlow Lite binary size](../guide/reduce_binary_size.md) section.
+## Convert a model
 
-Additionally, performance optimizations will not be available for any TensorFlow
-ops in the TensorFlow Lite model.
-
-This document outlines how to [convert](#converting-the-model) and
-[run](#running-the-model) a TFLite model with TensorFlow ops on your platform of
-choice. It also discusses some [known limitations](#known-limitations), the
-[future plans](#future-plans) for this feature, and basic
-[performance and size metrics](#metrics).
-
-## Converting the model
-
-To convert a TensorFlow model to a TensorFlow Lite model with TensorFlow ops,
-use the `target_spec.supported_ops` argument in the
-[TensorFlow Lite converter](../convert/). The following values are valid options
-for `target_spec.supported_ops`:
-
-*   `TFLITE_BUILTINS` - Converts models using TensorFlow Lite builtin ops.
-*   `SELECT_TF_OPS` - Converts models using TensorFlow ops. The exact subset of
-    supported ops can be found in the allowlist at
-    `lite/delegates/flex/allowlisted_flex_ops.cc`.
-
-Note: `target_spec.supported_ops` was previously `target_ops` in the Python API.
-
-The recommended approach is to convert the model with `TFLITE_BUILTINS`, then
-with both `TFLITE_BUILTINS,SELECT_TF_OPS`, and finally with only
-`SELECT_TF_OPS`. Using both options (i.e. `TFLITE_BUILTINS,SELECT_TF_OPS`)
-creates models with TensorFlow Lite ops where possible. Using only
-`SELECT_TF_OPS` is useful when the model contains TensorFlow ops that are only
-partially supported by TensorFlow Lite, and one would like to avoid those
-limitations.
-
-The following example shows how to use this feature in the
-[`TFLiteConverter`](../convert/python_api.md) Python API.
+The following example shows how to generate a TensorFlow Lite model with select
+TensorFlow ops.
 
 ```python
 import tensorflow as tf
 
 converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
-converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS,
-                                       tf.lite.OpsSet.SELECT_TF_OPS]
+converter.target_spec.supported_ops = [
+  tf.lite.OpsSet.TFLITE_BUILTINS, # enable TensorFlow Lite ops.
+  tf.lite.OpsSet.SELECT_TF_OPS # enable TensorFlow ops.
+]
 tflite_model = converter.convert()
 open("converted_model.tflite", "wb").write(tflite_model)
 ```
 
-The following example shows how to use this feature in the
-[`tflite_convert`](../convert/cmdline.md) command line tool using the
-command line flag `target_ops`.
-
-```sh
-tflite_convert \
-  --output_file=/tmp/foo.tflite \
-  --graph_def_file=/tmp/foo.pb \
-  --input_arrays=input \
-  --output_arrays=MobilenetV1/Predictions/Reshape_1 \
-  --target_ops=TFLITE_BUILTINS,SELECT_TF_OPS
-```
-
-When building and running `tflite_convert` directly with `bazel`, please pass
-`--define=tflite_convert_with_select_tf_ops=true` as an additional argument.
-
-```sh
-bazel run --define=tflite_convert_with_select_tf_ops=true tflite_convert -- \
-  --output_file=/tmp/foo.tflite \
-  --graph_def_file=/tmp/foo.pb \
-  --input_arrays=input \
-  --output_arrays=MobilenetV1/Predictions/Reshape_1 \
-  --target_ops=TFLITE_BUILTINS,SELECT_TF_OPS
-```
-
-## Running the model
+## Run Inference
 
 When using a TensorFlow Lite model that has been converted with support for
 select TensorFlow ops, the client must also use a TensorFlow Lite runtime that
@@ -190,8 +133,13 @@ dependencies {
 
 #### Using CocoaPods
 
-We provide nightly prebuilt select TF ops CocoaPods, which you can depend on
-alongside the `TensorFlowLiteSwift` or `TensorFlowLiteObjC` CocoaPods.
+We provide nightly prebuilt select TF ops CocoaPods for `armv7` and `arm64`,
+which you can depend on alongside the `TensorFlowLiteSwift` or
+`TensorFlowLiteObjC` CocoaPods.
+
+*Note*: If you need to use select TF ops in an `x86_64` simulator, you can build
+the select ops framework yourself. See [Using Bazel + Xcode](#using_bazel_xcode)
+section for more details.
 
 ```ruby
 # In your Podfile target:
@@ -231,12 +179,12 @@ provide the list of target architectures excluding `i386`.
 
 ```sh
 bazel build -c opt --config=ios --ios_multi_cpus=armv7,arm64,x86_64 \
-  //tensorflow/lite/experimental/ios:TensorFlowLiteSelectTfOps_framework
+  //tensorflow/lite/ios:TensorFlowLiteSelectTfOps_framework
 ```
 
-This will generate the framework under
-`bazel-bin/tensorflow/lite/experimental/ios/` directory. You can add this new
-framework to your Xcode project by following similar steps described under the
+This will generate the framework under `bazel-bin/tensorflow/lite/ios/`
+directory. You can add this new framework to your Xcode project by following
+similar steps described under the
 [Xcode project settings](./build_ios.md#modify_xcode_project_settings_directly)
 section in the iOS build guide.
 
@@ -264,28 +212,23 @@ creating the interpreter at runtime as long as the delegate is linked into the
 client library. It is not necessary to explicitly install the delegate instance
 as is typically required with other delegate types.
 
-### Python pip package
+### Python
 
-Flex ops are included in the nightly build of the TensorFlow Python package. You
-can use TFLite models containing Flex ops by the same Python API as normal
-TFLite models. The nightly TensorFlow build can be installed with this command:
+TensorFlow Lite with select TensorFlow ops will be installed automatically with
+the [TensorFlow pip package](https://www.tensorflow.org/install/pip). You can
+also choose to only install the
+[TensorFlow Lite Interpreter pip package](https://www.tensorflow.org/lite/guide/python#install_just_the_tensorflow_lite_interpreter).
 
-```sh
-pip install tf-nightly
-```
-
-Flex ops will be added to the TensorFlow Python package's and the
-`tflite_runtime`
-[package](https://www.tensorflow.org/lite/guide/python#install_just_the_tensorflow_lite_interpreter)
-from version 2.3 for Linux and 2.4 for other environments.
+Note: TensorFlow Lite with select TensorFlow ops are available in the TensorFlow
+pip package version since 2.3 for Linux and 2.4 for other environments.
 
 ## Metrics
 
 ### Performance
 
 When using a mixture of both builtin and select TensorFlow ops, all of the same
-TensorFlow Lite optimizations and optimized builtin kernels will be be available
-and usable with the converted model.
+TensorFlow Lite optimizations and optimized builtin ops will be available and
+usable with the converted model.
 
 The following table describes the average time taken to run inference on
 MobileNet on a Pixel 2. The listed times are an average of 100 runs. These
@@ -314,18 +257,14 @@ TFLite builtin ops and 3 Tensorflow ops. For more details, please see the
 
 ## Known limitations
 
-The following is a list of some of the known limitations:
-
-*   Control flow ops are not yet supported.
-*   The
-    [`post_training_quantization`](https://www.tensorflow.org/performance/post_training_quantization)
-    flag is currently not supported for TensorFlow ops, so it will not quantize
-    weights for any TensorFlow ops. In models with both TensorFlow Lite builtin
-    ops and TensorFlow ops, the weights for the builtin ops will be quantized.
-*   Ops that require explicit initialization from resources, like `HashTableV2`,
-    are not yet supported.
-*   Certain TensorFlow ops may not support the full set of input/output types
-    that are typically available on stock TensorFlow.
+*   Unsupported types: Certain TensorFlow ops may not support the full set of
+    input/output types that are typically available in TensorFlow.
+*   Unsupported ops: Control flow ops and ops that require explicit
+    initialization from resources, like `HashTableV2`, are not yet supported.
+*   Unsupported optimizations: If you apply an optimization known as
+    [post training quantization](../performance/post_training_quantization.md),
+    only the TensorFlow Lite ops will be quantized (or optimized), but the
+    TensorFlow ops will remain as float (or unoptimized).
 
 ## Future plans
 

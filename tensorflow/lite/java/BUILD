@@ -91,9 +91,9 @@ tflite_flex_android_library(
     visibility = ["//visibility:public"],
 )
 
-# EXPERIMENTAL: Android target target for GPU acceleration. Note that this
-# library contains *only* the GPU delegate and its Java wrapper; clients must
-# also include the core `tensorflowlite` runtime.
+# EXPERIMENTAL: Android target for GPU acceleration. Note that this library
+# contains *only* the GPU delegate and its Java wrapper; clients must also
+# include the core `tensorflowlite` runtime.
 android_library(
     name = "tensorflowlite_gpu",
     srcs = ["//tensorflow/lite/delegates/gpu/java/src/main/java/org/tensorflow/lite/gpu:gpu_delegate"],
@@ -364,7 +364,7 @@ java_test(
     test_class = "org.tensorflow.lite.InterpreterCustomizedAndroidBuildTest",
     visibility = ["//visibility:private"],
     deps = [
-        "//tensorflow/lite/testing:customtized_tflite_for_add_ops",
+        "//tensorflow/lite/testing:customized_tflite_for_add_ops",
         "@com_google_truth",
         "@junit",
     ],
@@ -387,6 +387,16 @@ filegroup(
     name = "portable_flex_tests",
     srcs = [
         "src/test/java/org/tensorflow/lite/InterpreterFlexTest.java",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+# portable_flex_with_custom_ops_tests includes files for testing Flex delegate
+# with models containing user's defined ops.
+filegroup(
+    name = "portable_flex_with_custom_ops_tests",
+    srcs = [
+        "src/test/java/org/tensorflow/lite/InterpreterFlexWithCustomOpsTest.java",
     ],
     visibility = ["//visibility:public"],
 )

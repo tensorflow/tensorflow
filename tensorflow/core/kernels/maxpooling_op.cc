@@ -66,7 +66,7 @@ static void SpatialMaxPoolWithArgMaxHelper(
         context, include_batch_in_index,
         errors::Internal(
             "SpatialMaxPoolWithArgMaxHelper requires include_batch_in_index "
-            "to be True when when input_backprop != nullptr"));
+            "to be True when input_backprop != nullptr"));
   }
 
   typedef Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>
@@ -1212,9 +1212,11 @@ class MaxPoolingNoMaskOp<GPUDevice, T> : public OpKernel {
                                data_format_, tensor_in, out_shape,
                                propagate_nans_);
     } else {
+#if !defined(TENSORFLOW_USE_ROCM)
       OP_REQUIRES(context, padding_ != EXPLICIT,
                   errors::Unimplemented("Explicit padding is not supported ",
                                         "when CUDNN is not enabled."));
+#endif
       Tensor* output = nullptr;
       OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &output));
       if (is_int8x4) {

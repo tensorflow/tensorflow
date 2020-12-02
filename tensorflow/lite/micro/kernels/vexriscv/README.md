@@ -20,6 +20,10 @@ the FPGA, please see
 [Tensorflow lite demo running in Zephyr on Litex/VexRiscv SoC](https://github.com/antmicro/litex-vexriscv-tensorflow-lite-demo)
 by Antmicro for more details.
 
+For general utilities, please refer to `utils/` under this directory, see
+[README](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/kernels/vexriscv/utils/README.md)
+for available utilities
+
 ## Info
 
 To use VexRISC-V optimized kernels instead of reference kernel add
@@ -37,3 +41,9 @@ TAGS=vexriscv \
 TARGET=zephyr_vexriscv \
 person_detection_int8_bin
 ```
+
+## Optimized kernels
+
+The following kernels are optimized specific to VexRISCV
+
+*   [DepthwiseConv2D](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/kernels/vexriscv/doc/DepthwiseConv2D_int8.md)

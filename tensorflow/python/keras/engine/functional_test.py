@@ -1972,6 +1972,28 @@ class NestedNetworkTest(keras_parameterized.TestCase):
     # Check that 'b' was used and 'a' was ignored.
     self.assertEqual(res.shape.as_list(), [1, 1])
 
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_nested_dict_mapping(self):
+    a = input_layer_lib.Input(shape=(1,), dtype='int32', name='a')
+    b = input_layer_lib.Input(shape=(1,), dtype='int32', name='b')
+    c = input_layer_lib.Input(shape=(1,), dtype='int32', name='c')
+    d = input_layer_lib.Input(shape=(1,), dtype='int32', name='d')
+    inputs = {'a': (a, b), 'c': (c, d)}
+    outputs = 1000 * a + 100 * b + 10 * c + d
+    model = training_lib.Model(inputs, outputs)
+
+    a_val = array_ops.ones((1, 1), dtype='int32')
+    b_val = 2 * array_ops.ones((1, 1), dtype='int32')
+    c_val = 3 * array_ops.ones((1, 1), dtype='int32')
+    d_val = 4 * array_ops.ones((1, 1), dtype='int32')
+
+    inputs_val = {'a': (a_val, b_val), 'c': (c_val, d_val)}
+    res = model(inputs_val)
+
+    # Check that inputs were flattened in the correct order.
+    self.assertFalse(model._enable_dict_to_input_mapping)
+    self.assertEqual(self.evaluate(res), [1234])
+
 
 @combinations.generate(combinations.keras_mode_combinations())
 class AddLossTest(keras_parameterized.TestCase):
@@ -2449,6 +2471,76 @@ class InputsOutputsErrorTest(keras_parameterized.TestCase):
     with self.assertRaisesRegex(
         ValueError, r'.*expected shape=.*'):
       model({'1': np.zeros((3, 10)), '2': np.zeros((3, 6))})
+
+
+class FunctionalSubclassModel(training_lib.Model):
+
+  def __init__(self, *args, **kwargs):
+    my_input = input_layer_lib.Input(shape=(16,))
+    dense = layers.Dense(32, activation='relu')
+    output = dense(my_input)
+    outputs = {'output': output}
+    super().__init__(inputs=[my_input], outputs=outputs, *args, **kwargs)
+
+
+class MixinClass(object):
+
+  def __init__(self, foo, **kwargs):
+    self._foo = foo
+    super().__init__(**kwargs)
+
+  def get_foo(self):
+    return self._foo
+
+
+class SubclassedModel(training_lib.Model):
+
+  def __init__(self, bar, **kwargs):
+    self._bar = bar
+    super().__init__(**kwargs)
+
+  def get_bar(self):
+    return self._bar
+
+
+class MultipleInheritanceModelTest(keras_parameterized.TestCase):
+
+  def testFunctionalSubclass(self):
+    m = FunctionalSubclassModel()
+    # Some smoke test for the weights and output shape of the model
+    self.assertLen(m.weights, 2)
+    self.assertEqual(m.outputs[0].shape.as_list(), [None, 32])
+
+  def testFunctionalSubclassPreMixin(self):
+    class MixedFunctionalSubclassModel(MixinClass, FunctionalSubclassModel):
+      pass
+
+    m = MixedFunctionalSubclassModel(foo='123')
+    self.assertTrue(m._is_graph_network)
+    self.assertLen(m.weights, 2)
+    self.assertEqual(m.outputs[0].shape.as_list(), [None, 32])
+    self.assertEqual(m.get_foo(), '123')
+
+  def testFunctionalSubclassPostMixin(self):
+    # Make sure the the mixin class is also init correct when the order changed.
+
+    class MixedFunctionalSubclassModel(FunctionalSubclassModel, MixinClass):
+      pass
+
+    m = MixedFunctionalSubclassModel(foo='123')
+    self.assertTrue(m._is_graph_network)
+    self.assertLen(m.weights, 2)
+    self.assertEqual(m.outputs[0].shape.as_list(), [None, 32])
+    self.assertEqual(m.get_foo(), '123')
+
+  def testSubclassModelPreMixin(self):
+    class MixedSubclassModel(MixinClass, SubclassedModel):
+      pass
+
+    m = MixedSubclassModel(foo='123', bar='456')
+    self.assertFalse(m._is_graph_network)
+    self.assertEqual(m.get_foo(), '123')
+    self.assertEqual(m.get_bar(), '456')
 
 
 if __name__ == '__main__':

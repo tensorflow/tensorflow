@@ -62,77 +62,65 @@ class HierarchicalRNNBenchmark(tf.test.Benchmark):
   #   Check more details in `measure_performance()` method of
   #   benchmark_util.
   def benchmark_hrnn_mnist_bs_256(self):
-    """Measure performance with batch_size=256 and run_iters=4."""
+    """Measure performance with batch_size=256."""
     batch_size = 256
-    run_iters = 4
     metrics, wall_time, extras = benchmark_util.measure_performance(
         self._build_model,
         x=self.x_train,
         y=self.y_train,
         batch_size=batch_size,
-        run_iters=run_iters,
         optimizer='rmsprop',
         loss='categorical_crossentropy',
         metrics=['accuracy'])
 
-    self.report_benchmark(
-        iters=run_iters, wall_time=wall_time, metrics=metrics, extras=extras)
+    self.report_benchmark(wall_time=wall_time, metrics=metrics, extras=extras)
 
-  def benchmark_hrnn_mnist_bs_256_gpu_2(self):
-    """Measure performance with batch_size=256, run_iters=4, gpu=2 and
-
-    distribution_strategy='mirrored'
-    """
-    batch_size = 256
-    run_iters = 4
+  def benchmark_hrnn_mnist_bs_512(self):
+    """Measure performance with batch_size=512."""
+    batch_size = 512
     metrics, wall_time, extras = benchmark_util.measure_performance(
         self._build_model,
         x=self.x_train,
         y=self.y_train,
         batch_size=batch_size,
-        run_iters=run_iters,
+        optimizer='rmsprop',
+        loss='categorical_crossentropy',
+        metrics=['accuracy'])
+
+    self.report_benchmark(wall_time=wall_time, metrics=metrics, extras=extras)
+
+  def benchmark_hrnn_mnist_bs_1024(self):
+    """Measure performance with batch_size=1024."""
+    batch_size = 1024
+    metrics, wall_time, extras = benchmark_util.measure_performance(
+        self._build_model,
+        x=self.x_train,
+        y=self.y_train,
+        batch_size=batch_size,
+        optimizer='rmsprop',
+        loss='categorical_crossentropy',
+        metrics=['accuracy'])
+
+    self.report_benchmark(wall_time=wall_time, metrics=metrics, extras=extras)
+
+  def benchmark_hrnn_mnist_bs_1024_gpu_2(self):
+    """Measure performance with batch_size=1024, gpu=2 and
+
+    distribution_strategy='mirrored'
+    """
+    batch_size = 1024
+    metrics, wall_time, extras = benchmark_util.measure_performance(
+        self._build_model,
+        x=self.x_train,
+        y=self.y_train,
+        batch_size=batch_size,
         num_gpus=2,
         distribution_strategy='mirrored',
         optimizer='rmsprop',
         loss='categorical_crossentropy',
         metrics=['accuracy'])
 
-    self.report_benchmark(
-        iters=run_iters, wall_time=wall_time, metrics=metrics, extras=extras)
-
-  def benchmark_hrnn_mnist_bs_512(self):
-    """Measure performance with batch_size=512 and run_iters=5."""
-    batch_size = 512
-    run_iters = 5
-    metrics, wall_time, extras = benchmark_util.measure_performance(
-        self._build_model,
-        x=self.x_train,
-        y=self.y_train,
-        batch_size=batch_size,
-        run_iters=run_iters,
-        optimizer='rmsprop',
-        loss='categorical_crossentropy',
-        metrics=['accuracy'])
-
-    self.report_benchmark(
-        iters=run_iters, wall_time=wall_time, metrics=metrics, extras=extras)
-
-  def benchmark_hrnn_mnist_bs_1024(self):
-    """Measure performance with batch_size=1024 and run_iters=3."""
-    batch_size = 1024
-    run_iters = 3
-    metrics, wall_time, extras = benchmark_util.measure_performance(
-        self._build_model,
-        x=self.x_train,
-        y=self.y_train,
-        batch_size=batch_size,
-        run_iters=run_iters,
-        optimizer='rmsprop',
-        loss='categorical_crossentropy',
-        metrics=['accuracy'])
-
-    self.report_benchmark(
-        iters=run_iters, wall_time=wall_time, metrics=metrics, extras=extras)
+    self.report_benchmark(wall_time=wall_time, metrics=metrics, extras=extras)
 
 
 if __name__ == '__main__':

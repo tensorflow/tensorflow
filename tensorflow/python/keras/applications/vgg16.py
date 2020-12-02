@@ -66,8 +66,9 @@ def VGG16(
 
   The default input size for this model is 224x224.
 
-  Caution: Be sure to properly pre-process your inputs to the application.
-  Please see `applications.vgg16.preprocess_input` for an example.
+  Note: each Keras Application expects a specific kind of input preprocessing.
+  For VGG16, call `tf.keras.applications.vgg16.preprocess_input` on your
+  inputs before passing them to the model.
 
   Arguments:
       include_top: whether to include the 3 fully-connected

@@ -1,3 +1,9 @@
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_native_cc_binary")
 load(
     "//third_party/mlir:tblgen.bzl",
@@ -29,14 +35,15 @@ filegroup(
         "ir/tfl_ops.td",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_td_files",
         "@llvm-project//mlir:OpBaseTdFiles",
+        "@llvm-project//mlir:SideEffectTdFiles",
         "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
         "@llvm-project//mlir:include/mlir/Interfaces/LoopLikeInterface.td",
-        "@llvm-project//mlir:include/mlir/Interfaces/SideEffectInterfaces.td",
     ],
 )
 
 gentbl(
     name = "tensorflow_lite_ops_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             "-gen-op-decls",
@@ -68,6 +75,7 @@ gentbl(
 
 gentbl(
     name = "tensorflow_lite_op_interfaces_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             "-gen-op-interface-decls",
@@ -87,6 +95,7 @@ gentbl(
 
 gentbl(
     name = "tensorflow_lite_prepare_tf_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             "-gen-rewriters",
@@ -105,6 +114,7 @@ gentbl(
 
 gentbl(
     name = "tensorflow_lite_lower_static_tensor_list_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             "-gen-rewriters",
@@ -122,6 +132,7 @@ gentbl(
 
 gentbl(
     name = "tensorflow_lite_legalize_tf_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             "-gen-rewriters",
@@ -139,6 +150,7 @@ gentbl(
 
 gentbl(
     name = "tensorflow_lite_optimize_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             "-gen-rewriters",
@@ -157,6 +169,7 @@ gentbl(
 
 gentbl(
     name = "tensorflow_lite_quantize_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             "-gen-rewriters",
@@ -173,6 +186,7 @@ gentbl(
 
 gentbl(
     name = "tensorflow_lite_post_quantize_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             "-gen-rewriters",
@@ -251,6 +265,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:mangling_util",
+        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:status",
         "//tensorflow/stream_executor/lib",
@@ -375,6 +390,7 @@ cc_library(
         "transforms/generated_legalize_tf.inc",
         "transforms/generated_lower_static_tensor_list.inc",
         "transforms/generated_prepare_tf.inc",
+        "transforms/insert_call_once_op.cc",
         "transforms/legalize_tf.cc",
         "transforms/legalize_tf_while.cc",
         "transforms/lower_static_tensor_list.cc",
@@ -405,11 +421,14 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
+        "//tensorflow/compiler/mlir/tensorflow:lower_tf_lib",
         "//tensorflow/compiler/mlir/tensorflow:mangling_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/mlir/tensorflow:tf_legalize_hlo",
         "//tensorflow/compiler/mlir/tensorflow:unroll_batch_matmul_pass",
+        "//tensorflow/compiler/mlir/tensorflow:verification_utils",
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf_with_tf2xla",
         "//tensorflow/compiler/xla:status",
@@ -447,11 +466,13 @@ cc_library(
         ":validators",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:verification_utils",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
     ],
     alwayslink = 1,
 )
@@ -462,7 +483,6 @@ cc_library(
         "transforms/default_quant_params.cc",
         "transforms/generated_post_quantize.inc",
         "transforms/generated_quantize.inc",
-        "transforms/load_quantization_recipe.cc",
         "transforms/post_quantize.cc",
         "transforms/prepare_quantize.cc",
         "transforms/quantize.cc",
@@ -470,6 +490,7 @@ cc_library(
     ],
     hdrs = [
         "transforms/passes.h",
+        "transforms/prepare_quantize_lstm.h",
     ],
     deps = [
         "convert_type",
@@ -479,6 +500,8 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/lite/quantization/lite:tfl_to_std",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/tools/optimize:operator_property",
         "@com_google_absl//absl/memory",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -486,6 +509,7 @@ cc_library(
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
     ],
     alwayslink = 1,
 )
@@ -521,6 +545,7 @@ filegroup(
 
 gentbl(
     name = "op_quant_spec_getters_inc",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [("", "utils/generated_op_quant_spec_getters.inc")],
     tblgen = "//tensorflow/compiler/mlir/lite/quantization:op_quant_spec_getters_gen",
     td_file = "ir/tfl_ops.td",
@@ -546,6 +571,7 @@ tf_native_cc_binary(
 
 gentbl(
     name = "converter_inc",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             "--gen-operator-converters",
@@ -642,9 +668,9 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
         "//tensorflow/compiler/mlir/tensorflow:export_tf_dialect_op",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_dialect_registration",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:logging",
@@ -653,6 +679,7 @@ cc_library(
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/delegates/flex:allowlisted_flex_ops_lib",
         "//tensorflow/lite/kernels/internal:kernel_utils",
+        "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/tools/versioning",
         "@com_google_absl//absl/base:core_headers",
@@ -681,6 +708,7 @@ cc_library(
         ":convert_type",
         ":flatbuffer_tflite_operator_lib",
         ":tensorflow_lite",
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:mangling_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
@@ -690,6 +718,7 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/schema:schema_utils",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -875,7 +904,6 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/quantization:quantization_passes",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:decode_constant_pass",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_dialect_registration",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_graph_optimization_pass",
         "//tensorflow/compiler/mlir/tensorflow:tf_saved_model_passes",

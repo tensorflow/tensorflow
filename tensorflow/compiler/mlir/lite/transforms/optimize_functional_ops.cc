@@ -19,13 +19,13 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir {
@@ -83,8 +83,8 @@ class FoldIfOp : public OpRewritePattern<TF::IfOp> {
     if (!llvm::hasSingleElement(parent_op)) return failure();
 
     // Find the then and else branch functions.
-    FuncOp then_func = op.then_func();
-    FuncOp else_func = op.else_func();
+    FuncOp then_func = op.then_function();
+    FuncOp else_func = op.else_function();
 
     // If the If has no uses and its functions are side-effect free, then
     // remove.
@@ -150,7 +150,7 @@ void OptimizeFunctionalOpsPass::runOnOperation() {
   patterns.insert<FoldIfOp>(&getContext());
 
   ModuleOp module = getOperation();
-  applyPatternsAndFoldGreedily(module, patterns);
+  applyPatternsAndFoldGreedily(module, std::move(patterns));
 }
 
 PassRegistration<OptimizeFunctionalOpsPass> pass(

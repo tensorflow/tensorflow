@@ -62,20 +62,19 @@ NASNET_LARGE_WEIGHT_PATH_NO_TOP = BASE_WEIGHTS_PATH + 'NASNet-large-no-top.h5'
 layers = VersionAwareLayers()
 
 
-def NASNet(
-    input_shape=None,
-    penultimate_filters=4032,
-    num_blocks=6,
-    stem_block_filters=96,
-    skip_reduction=True,
-    filter_multiplier=2,
-    include_top=True,
-    weights=None,
-    input_tensor=None,
-    pooling=None,
-    classes=1000,
-    default_size=None,
-    classifier_activation='softmax'):
+def NASNet(input_shape=None,
+           penultimate_filters=4032,
+           num_blocks=6,
+           stem_block_filters=96,
+           skip_reduction=True,
+           filter_multiplier=2,
+           include_top=True,
+           weights='imagenet',
+           input_tensor=None,
+           pooling=None,
+           classes=1000,
+           default_size=None,
+           classifier_activation='softmax'):
   """Instantiates a NASNet model.
 
   Reference:
@@ -85,9 +84,6 @@ def NASNet(
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
-
-  Caution: Be sure to properly pre-process your inputs to the application.
-  Please see `applications.nasnet.preprocess_input` for an example.
 
   Arguments:
     input_shape: Optional shape tuple, the input shape
@@ -331,7 +327,7 @@ def NASNetMobile(input_shape=None,
                  pooling=None,
                  classes=1000):
   """Instantiates a Mobile NASNet model in ImageNet mode.
-  
+
   Reference:
   - [Learning Transferable Architectures for Scalable Image Recognition](
       https://arxiv.org/abs/1707.07012) (CVPR 2018)
@@ -339,9 +335,10 @@ def NASNetMobile(input_shape=None,
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
-  
-  Caution: Be sure to properly pre-process your inputs to the application.
-  Please see `applications.nasnet.preprocess_input` for an example.
+
+  Note: each Keras Application expects a specific kind of input preprocessing.
+  For NASNet, call `tf.keras.applications.nasnet.preprocess_input` on your
+  inputs before passing them to the model.
 
   Arguments:
       input_shape: Optional shape tuple, only to be specified
@@ -407,7 +404,7 @@ def NASNetLarge(input_shape=None,
                 pooling=None,
                 classes=1000):
   """Instantiates a NASNet model in ImageNet mode.
-  
+
   Reference:
   - [Learning Transferable Architectures for Scalable Image Recognition](
       https://arxiv.org/abs/1707.07012) (CVPR 2018)
@@ -415,9 +412,10 @@ def NASNetLarge(input_shape=None,
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
-  
-  Caution: Be sure to properly pre-process your inputs to the application.
-  Please see `applications.nasnet.preprocess_input` for an example.
+
+  Note: each Keras Application expects a specific kind of input preprocessing.
+  For NASNet, call `tf.keras.applications.nasnet.preprocess_input` on your
+  inputs before passing them to the model.
 
   Arguments:
       input_shape: Optional shape tuple, only to be specified

@@ -24,12 +24,13 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/substitute.h"
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
+#include "tensorflow/lite/delegates/gpu/common/task/buffer_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
-#include "tensorflow/lite/delegates/gpu/metal/environment.h"
 #include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
 namespace tflite {
@@ -37,12 +38,11 @@ namespace gpu {
 namespace metal {
 namespace {
 
-std::string GetFullyConnectedCode(const DeviceInfo& device_info,
-                                  int src_channels, int dst_channels) {
-  bool shared_memory =
-      device_info.IsAppleGPU() &&
-      device_info.apple_info.IsLocalMemoryPreferredOverGlobal();
-  const std::string barrier = device_info.IsWaveSizeEqualTo32()
+std::string GetFullyConnectedCode(const GpuInfo& gpu_info, int src_channels,
+                                  int dst_channels) {
+  bool shared_memory = gpu_info.IsApple() &&
+                       gpu_info.apple_info.IsLocalMemoryPreferredOverGlobal();
+  const std::string barrier = gpu_info.IsWaveSizeEqualTo32()
                                   ? "SIMDGROUP_BARRIER"
                                   : "threadgroup_barrier";
   const int src_depth = DivideRoundUp(src_channels, 4);
@@ -50,13 +50,6 @@ std::string GetFullyConnectedCode(const DeviceInfo& device_info,
   code << R"(
     #include <metal_stdlib>
     using namespace metal;
-
-    struct uniforms {
-      uint src_depth;
-      uint dst_channels;
-      uint out_channels;
-      uint dummy;
-    };
 
     $$0
     kernel void ComputeFunction(
@@ -71,11 +64,11 @@ std::string GetFullyConnectedCode(const DeviceInfo& device_info,
   float summa = 0.0f;
   threadgroup FLT4 local_vector[32];
   for (int j = 0; j < $0; ++j) {
-    local_vector[tid_index] = j * 32 + tid_index >= params.src_depth ?
+    local_vector[tid_index] = j * 32 + tid_index >= args.src_slices ?
       FLT4(0.0f) : vector[j * 32 + tid_index];
     $1(mem_flags::mem_threadgroup);
     for (uint i = 0, counter = j * 32 + tid.y * 8; i < 8; ++i, ++counter) {
-      summa += dot(local_vector[tid.y * 8 + i], matrix[counter * params.dst_channels + ugid.x]);
+      summa += dot(local_vector[tid.y * 8 + i], args.weights.Read(counter * args.dst_channels_alignedx8 + ugid.x));
     }
     $1(mem_flags::mem_none);
   }
@@ -87,10 +80,10 @@ std::string GetFullyConnectedCode(const DeviceInfo& device_info,
   for (uint i = 0; i < $0; ++i, ++counter) {
     )";
     if (src_depth % 4 != 0) {
-      code << "    if (counter >= params.src_depth) continue;" << std::endl;
+      code << "    if (counter >= args.src_slices) continue;" << std::endl;
     }
-    code << "    summa += dot(vector[counter], matrix[counter * "
-            "params.dst_channels + ugid.x]);"
+    code << "    summa += dot(vector[counter], args.weights.Read(counter * "
+            "args.dst_channels_alignedx8 + ugid.x));"
          << std::endl;
     code << "  }" << std::endl;
   }
@@ -106,10 +99,10 @@ std::string GetFullyConnectedCode(const DeviceInfo& device_info,
     temp[tid.x][0] = summa;
   }
   $1(mem_flags::mem_threadgroup);
-  if (tid.y == 0 && tid.x % 4 == 0 && ugid.x < params.out_channels) {
+  if (tid.y == 0 && tid.x % 4 == 0 && ugid.x < args.dst_channels) {
     const int linear_index = ugid.x / 4;
     FLT4 value = FLT4(temp[tid.x][0], temp[tid.x + 1][0], temp[tid.x + 2][0], temp[tid.x + 3][0]) +
-      biases[linear_index];
+      args.bias.Read(linear_index);
     uint3 gid = uint3(0u, 0u, uint(linear_index));
     $$2
     result[linear_index] = value;
@@ -122,29 +115,23 @@ std::string GetFullyConnectedCode(const DeviceInfo& device_info,
 }
 }  // namespace
 
-std::vector<ComputeTaskDescriptorPtr> FullyConnected(
-    int id, ValueId input_id, ValueId output_id,
-    const FullyConnectedAttributes& attr, const DeviceInfo& device_info,
-    const RuntimeOptions& options) {
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = false;
-  desc->shader_source = GetFullyConnectedCode(device_info, attr.weights.shape.i,
-                                              attr.weights.shape.o);
+ComputeTaskDescriptor FullyConnected(ValueId input_id, ValueId output_id,
+                                     const FullyConnectedAttributes& attr,
+                                     const GpuInfo& gpu_info,
+                                     const RuntimeOptions& options) {
+  ComputeTaskDescriptor desc;
+  desc.shader_source = GetFullyConnectedCode(gpu_info, attr.weights.shape.i,
+                                             attr.weights.shape.o);
 
-  desc->input_buffers = {
-      {input_id, "device FLT4* const vector"},
-  };
+  desc.args.AddInt("dst_channels", attr.weights.shape.o);
+  desc.args.AddInt("src_slices", DivideRoundUp(attr.weights.shape.i, 4));
+  desc.args.AddInt("dst_channels_alignedx8", AlignByN(attr.weights.shape.o, 8));
 
-  desc->output_buffer = {
-      output_id, "device FLT4* result",
-      [input_id, attr](const std::map<ValueId, BHWC>& buffers) {
-        return CalculateOutputShape(buffers.find(input_id)->second, attr);
-      }};
+  desc.AddSrcTensor("vector");
+  desc.AddDstTensor("result");
 
-  bool shared_memory =
-      device_info.IsAppleGPU() &&
-      device_info.apple_info.IsLocalMemoryPreferredOverGlobal();
+  bool shared_memory = gpu_info.IsApple() &&
+                       gpu_info.apple_info.IsLocalMemoryPreferredOverGlobal();
   const int src_depth = DivideRoundUp(attr.weights.shape.i, 4);
   const int src_depth_aligned = AlignByN(src_depth, shared_memory ? 32 : 4);
   const int dst_channels_aligned = AlignByN(attr.weights.shape.o, 8);
@@ -166,35 +153,41 @@ std::vector<ComputeTaskDescriptorPtr> FullyConnected(
     }
   }
 
-  desc->immutable_buffers = {
-      {"device FLT4* const matrix",
-       GetByteBufferConverted(filters_reordered, options.storage_precision)},
-      {"device FLT4* const biases",
-       GetByteBufferConvertedResized(attr.bias.data, options.storage_precision,
-                                     attr.weights.shape.o)},
-  };
+  BufferDescriptor weights_desc;
+  weights_desc.element_type =
+      options.storage_precision == RuntimeOptions::Precision::FP32
+          ? DataType::FLOAT32
+          : DataType::FLOAT16;
+  weights_desc.element_size = 4;
+  weights_desc.data =
+      GetByteBufferConverted(filters_reordered, options.storage_precision);
+  weights_desc.size = weights_desc.data.size();
 
-  desc->uniform_buffers = {
-      {"constant uniforms& params",
-       [attr](const std::map<ValueId, BHWC>& buffers) {
-         std::vector<uint32_t> uniform_params{
-             static_cast<uint32_t>(DivideRoundUp(attr.weights.shape.i, 4)),
-             static_cast<uint32_t>(AlignByN(attr.weights.shape.o, 8)),
-             static_cast<uint32_t>(attr.weights.shape.o),
-             static_cast<uint32_t>(0),
-         };
-         return GetByteBuffer(uniform_params);
-       }},
-  };
+  desc.args.AddObject(
+      "weights", absl::make_unique<BufferDescriptor>(std::move(weights_desc)));
 
-  desc->resize_function = [attr](const std::map<ValueId, BHWC>& buffers) {
+  BufferDescriptor bias_desc;
+  bias_desc.element_type =
+      options.storage_precision == RuntimeOptions::Precision::FP32
+          ? DataType::FLOAT32
+          : DataType::FLOAT16;
+  bias_desc.element_size = 4;
+  bias_desc.data = GetByteBufferConvertedResized(
+      attr.bias.data, options.storage_precision, dst_channels_aligned);
+  bias_desc.size = bias_desc.data.size();
+
+  desc.args.AddObject(
+      "bias", absl::make_unique<BufferDescriptor>(std::move(bias_desc)));
+
+  desc.resize_function = [attr](const std::vector<BHWC>& src_shapes,
+                                const std::vector<BHWC>& dst_shapes) {
     const uint3 groups_size{8, 4, 1};
     const int dst_channels_aligned = AlignByN(attr.weights.shape.o, 8);
     int groups_x = DivideRoundUp(dst_channels_aligned, groups_size.x);
     return std::make_pair(groups_size, uint3{groups_x, 1, 1});
   };
 
-  return {desc};
+  return desc;
 }
 
 }  // namespace metal

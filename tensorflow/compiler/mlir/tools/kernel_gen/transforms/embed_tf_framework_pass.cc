@@ -28,8 +28,6 @@ namespace {
 #define GEN_PASS_CLASSES
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
-static constexpr StringRef kTFEntry = "tf_entry";
-
 // The pass rewrites the function marked with `tf_entry` attribute.
 // * adds tf_framework::OpKernelContextType argument to the function,
 // * std.alloc becomes tf_framework.alloc_raw,
@@ -50,21 +48,24 @@ class EmbedTFFrameworkPass
 
     // Set target.
     ConversionTarget target(getContext());
-    target.addLegalDialect<tf_framework::TFFrameworkDialect>();
+    target.addLegalDialect<tf_framework::TFFrameworkDialect,
+                           StandardOpsDialect>();
 
     target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
-      if (!op.getAttrOfType<UnitAttr>(kTFEntry)) {
+      if (!op.getAttrOfType<UnitAttr>(TFFrameworkDialect::kTFEntryAttrName)) {
         return true;
       }
       FunctionType func_type = op.getType();
       return func_type.getNumInputs() > 0 &&
              func_type.getInput(0).isa<OpKernelContextType>();
     });
-    target.addDynamicallyLegalOp<AllocOp, DeallocOp>([](Operation* op) {
-      return !op->getParentOfType<FuncOp>().getAttrOfType<UnitAttr>(kTFEntry);
-    });
+    target.addDynamicallyLegalOp<AllocOp, AssertOp, DeallocOp>(
+        [](Operation* op) {
+          return !op->getParentOfType<FuncOp>().getAttrOfType<UnitAttr>(
+              TFFrameworkDialect::kTFEntryAttrName);
+        });
 
-    if (failed(applyPartialConversion(m, target, patterns))) {
+    if (failed(applyPartialConversion(m, target, std::move(patterns)))) {
       signalPassFailure();
     }
   }
@@ -72,7 +73,7 @@ class EmbedTFFrameworkPass
 
 }  // namespace
 
-std::unique_ptr<OperationPass<ModuleOp> > createEmbedTFFrameworkPass() {
+std::unique_ptr<OperationPass<ModuleOp> > CreateEmbedTFFrameworkPass() {
   return std::make_unique<EmbedTFFrameworkPass>();
 }
 

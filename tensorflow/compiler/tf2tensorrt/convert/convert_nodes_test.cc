@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 #include <memory>
+#include <type_traits>
 #include <unordered_map>
 #include <vector>
 
@@ -134,20 +135,6 @@ std::ostream& operator<<(std::ostream& os, const std::vector<T>& v) {
   return os;
 }
 
-nvinfer1::DataType TfDataTypeToTrt(DataType tf_type) {
-  nvinfer1::DataType trt_type;
-  Status status = TfTypeToTrtType(tf_type, &trt_type);
-  EXPECT_EQ(status, Status::OK());
-  return trt_type;
-}
-
-DataType TrtDataTypeToTf(nvinfer1::DataType trt_type) {
-  DataType tf_type;
-  Status status = TrtTypeToTfType(trt_type, &tf_type);
-  EXPECT_EQ(status, Status::OK());
-  return tf_type;
-}
-
 NodeDef MakeNodeDef(const string& name, const string& op,
                     const std::vector<string>& inputs,
                     const std::map<string, AttrValue> attrs = {}) {
@@ -201,6 +188,23 @@ void ExpectTrtDimsEqualsArray(const std::vector<int>& lhs,
   EXPECT_TRUE(TrtDimsEqualsArray(lhs, rhs))
       << "expected: " << DebugString(GetTestDims(lhs)) << "\n"
       << "  actual: " << DebugString(rhs);
+}
+
+void ExpectTrtLayerNames(absl::Span<const std::string> names,
+                         nvinfer1::INetworkDefinition* network) {
+  EXPECT_EQ(network->getNbLayers(), names.size());
+
+  for (int i = 0; i < network->getNbLayers(); i++) {
+    auto layer = network->getLayer(i);
+    EXPECT_EQ(layer->getName(), names[i]);
+  }
+}
+
+void VerifyTrtLayerNameNotEmpty(nvinfer1::INetworkDefinition* network) {
+  for (int i = 0; i < network->getNbLayers(); i++) {
+    auto layer = network->getLayer(i);
+    EXPECT_NE(layer->getName(), nullptr);
+  }
 }
 
 Matcher<std::vector<float>> ArrayFloatNear(const std::vector<float>& values,
@@ -803,6 +807,8 @@ TEST_F(ConverterTest, ConvertNode) {
   TF_EXPECT_OK(GetTensorOrWeights("my_op:1", &actual_output_2));
   EXPECT_EQ(&output_tensors[1], actual_output_2.tensor());
   EXPECT_EQ(125, actual_output_2.tensor()->getDimensions().d[0]);
+
+  VerifyTrtLayerNameNotEmpty(converter_->network());
 }
 
 TEST_F(ConverterTest, AddAndGetInputs) {
@@ -832,6 +838,8 @@ TEST_F(ConverterTest, AddAndGetInputs) {
   ExpectTrtDimsEqualsArray({1}, inputs[0].tensor()->getDimensions());
   ExpectTrtDimsEqualsArray({2, 3}, inputs[2].tensor()->getDimensions());
   ExpectTrtDimsEqualsArray({5, 3}, inputs[3].tensor()->getDimensions());
+
+  VerifyTrtLayerNameNotEmpty(converter_->network());
 }
 
 TEST_F(ConverterTest, RenameAndMarkOutputTensors) {
@@ -880,30 +888,33 @@ TEST_F(ConverterTest, RenameAndMarkOutputTensors) {
   }
   EXPECT_EQ("my_output", string(output_tensors[0]->getName()));
   EXPECT_EQ("my_output_1", string(output_tensors[1]->getName()));
+
+  VerifyTrtLayerNameNotEmpty(converter_->network());
 }
 
 TEST_F(ConverterTest, TransposeTensor) {
   nvinfer1::ITensor* input_tensor = converter_->network()->addInput(
       "", nvinfer1::DataType::kFLOAT, GetTestDims({2, 3, 5}));
   nvinfer1::ITensor* output_tensor = nullptr;
-
+  NodeDef dummy_node_def = MakeNodeDef("dummy_op", "DummyOp", {});
   // Rank doesn't match.
   ExpectStatus(
-      converter_->TransposeTensor(input_tensor, {0, 1}, "Bad perm",
-                                  &output_tensor),
+      converter_->TransposeTensor(input_tensor, {0, 1}, &output_tensor,
+                                  dummy_node_def, "sub1"),
       error::INVALID_ARGUMENT,
       "Rank of perm for transpose does not match with that of the input");
 
   // Transpose at batch dimension.
-  ExpectStatus(converter_->TransposeTensor(input_tensor, {1, 0, 2, 3},
-                                           "Batch perm", &output_tensor),
-               error::UNIMPLEMENTED,
-               "Transpose at batch dimension is not supported.");
+  ExpectStatus(
+      converter_->TransposeTensor(input_tensor, {1, 0, 2, 3}, &output_tensor,
+                                  dummy_node_def, "sub2"),
+      error::UNIMPLEMENTED, "Transpose at batch dimension is not supported.");
 
   // OK.
-  TF_EXPECT_OK(converter_->TransposeTensor(input_tensor, {0, 3, 1, 2}, "OK",
-                                           &output_tensor));
+  TF_EXPECT_OK(converter_->TransposeTensor(
+      input_tensor, {0, 3, 1, 2}, &output_tensor, dummy_node_def, "sub3"));
   ExpectTrtDimsEqualsArray({5, 2, 3}, output_tensor->getDimensions());
+  ExpectTrtLayerNames({"dummy_op-sub3"}, converter_->network());
 }
 
 void TestPrepareTensorForShape(
@@ -922,9 +933,11 @@ void TestPrepareTensorForShape(
   }
   nvinfer1::ITensor* output_tensor = nullptr;
 
+  NodeDef dummy_node_def = MakeNodeDef("dummy_op", "DummyOp", {});
   for (bool validation_only : {false, true}) {
-    const Status status = converter->PrepareTensorForShape(
-        input, GetTestDims(reshape_dims), validation_only, &output_tensor);
+    const Status status =
+        PrepareTensorForShape(converter, input, GetTestDims(reshape_dims),
+                              validation_only, &output_tensor, dummy_node_def);
     if (expected_code == error::OK) {
       TF_EXPECT_OK(status);
       if (validation_only) {
@@ -978,6 +991,8 @@ TEST_F(ConverterTest, PrepareTensorForShape) {
                             /*input_is_tensor=*/false, converter_.get(),
                             weight_store_, error::INVALID_ARGUMENT,
                             "Shape is not fully defined");
+
+  VerifyTrtLayerNameNotEmpty(converter_->network());
 }
 
 TEST_F(ConverterTest, MaybeUpdateBatchSize) {
@@ -1019,8 +1034,10 @@ TEST_F(ConverterTest, AddAndGetTensorOrWeights) {
 
 template <typename T>
 void TestGetWeightRange(ConverterTest* test, TrtWeightStore* weight_store) {
-  TRT_ShapedWeights weights = weight_store->GetTempWeights(
-      TfDataTypeToTrt(DataTypeToEnum<T>::v()), GetTestDims({2, 3}));
+  nvinfer1::DataType trt_type;
+  TF_ASSERT_OK(TfTypeToTrtType(DataTypeToEnum<T>::v(), &trt_type));
+  TRT_ShapedWeights weights =
+      weight_store->GetTempWeights(trt_type, GetTestDims({2, 3}));
   const std::vector<T> values = {T(3), T(1), T(2), T(6), T(5), T(4)};
   memcpy(weights.GetValues(), values.data(), weights.size_bytes());
 
@@ -1051,6 +1068,8 @@ TEST_F(ConverterTest, ProvideQuantizationRange) {
   // Symmetric range
   converter_->ProvideQuantizationRange(&fake_tensor, -6.123f, 6.123f);
   EXPECT_EQ(6.123f, quantization_ranges()[&fake_tensor]);
+
+  VerifyTrtLayerNameNotEmpty(converter_->network());
 }
 
 TEST_F(ConverterTest, MaybeApplyQuantizationRanges) {
@@ -1077,6 +1096,8 @@ TEST_F(ConverterTest, MaybeApplyQuantizationRanges) {
   EXPECT_EQ(infer_3.getDynamicRange(), 5.0f);
   EXPECT_EQ(not_infer.getDynamicRange(), 100.0f);
 #endif
+
+  VerifyTrtLayerNameNotEmpty(int8_converter->network());
 }
 
 TEST_F(ConverterTest, PropagateQuantizationRanges) {
@@ -1099,6 +1120,8 @@ TEST_F(ConverterTest, PropagateQuantizationRanges) {
     EXPECT_EQ(5.0f, ranges[&infer[i]]);
   }
   EXPECT_EQ(ranges.count(&not_infer), 0);
+
+  VerifyTrtLayerNameNotEmpty(converter_->network());
 }
 
 TEST_F(ConverterTest, GetTrtBroadcastShape) {
@@ -1202,6 +1225,8 @@ TEST_F(ConverterTest, GetTrtBroadcastShape) {
                  "(tensor #dims 4 vs broadcast #dims 5)");
   symmetric_test({2, 3}, {7, 5}, kIsTensor, kIsTensor, {}, {},
                  error::INVALID_ARGUMENT, "Infeasible broadcast scheme");
+
+  VerifyTrtLayerNameNotEmpty(converter_->network());
 }
 
 TEST_F(ConverterTest, CreateConstantLayer) {
@@ -1216,6 +1241,8 @@ TEST_F(ConverterTest, CreateConstantLayer) {
         << DebugString(tensor->getType());
     ExpectTrtDimsEqualsArray({3, 10}, tensor->getDimensions());
   }
+
+  VerifyTrtLayerNameNotEmpty(converter_->network());
 }
 
 class ConvertGraphDefToEngineTest : public ::testing::Test {
@@ -1406,7 +1433,8 @@ class OpConverterTest : public ::testing::Test {
       ASSERT_NE(-1, input_index);
       const nvinfer1::DataType trt_dtype =
           engine_->getBindingDataType(input_index);
-      const DataType tf_type = TrtDataTypeToTf(trt_dtype);
+      DataType tf_type;
+      TF_ASSERT_OK(TrtTypeToTfType(trt_dtype, &tf_type));
       ASSERT_EQ(data.tensor.dtype(), tf_type)
           << DataTypeString(data.tensor.dtype()) << " vs. "
           << DataTypeString(tf_type);
@@ -1418,8 +1446,9 @@ class OpConverterTest : public ::testing::Test {
     // Mark the output tensor as TRT engine output.
     std::vector<Converter::EngineOutputInfo> output_info;
     for (const auto& data : *output_data) {
-      output_info.push_back(
-          {data.name, data.name, TfDataTypeToTrt(data.tensor.dtype())});
+      nvinfer1::DataType trt_type;
+      TF_RETURN_IF_ERROR(TfTypeToTrtType(data.tensor.dtype(), &trt_type));
+      output_info.push_back({data.name, data.name, trt_type});
     }
     TF_RETURN_IF_ERROR(converter_->RenameAndMarkOutputTensors(output_info));
 
@@ -1480,7 +1509,8 @@ class OpConverterTest : public ::testing::Test {
       const string& name, const std::vector<int32>& dims,
       nvinfer1::DataType trt_type = nvinfer1::DataType::kFLOAT,
       Status add_input_status = Status::OK()) {
-    DataType tf_type = TrtDataTypeToTf(trt_type);
+    DataType tf_type;
+    TF_ASSERT_OK(TrtTypeToTfType(trt_type, &tf_type));
     ops::Placeholder::Attrs attrs;
     TF_EXPECT_OK(TensorShapeUtils::MakeShape(dims, &attrs.shape_));
 
@@ -1527,7 +1557,8 @@ class OpConverterTest : public ::testing::Test {
     node_inputs_[name] = ops::Const(scope_.WithOpName(name), t);
 
     // Add weights for conversion.
-    const nvinfer1::DataType dtype = TfDataTypeToTrt(DataTypeToEnum<T>::v());
+    nvinfer1::DataType dtype;
+    TF_ASSERT_OK(TfTypeToTrtType(DataTypeToEnum<T>::v(), &dtype));
     const nvinfer1::Dims trt_dims = GetTestDims(dims);
     const int64_t num_elements = TrtWeightDimsNumElements(trt_dims);
     QCHECK_EQ(num_elements, values.size())
@@ -1575,6 +1606,9 @@ class OpConverterTest : public ::testing::Test {
                      const char* expected_msg_substr = nullptr) {
     ExpectStatus(converter_->ConvertNode(node->def()), expected_code,
                  expected_msg_substr);
+    if (expected_code == error::OK) {
+      VerifyTrtLayerNameNotEmpty(converter_->network());
+    }
   }
 
   // Helper method to run both validation and conversion, when the expected
@@ -1758,8 +1792,9 @@ class ParameterizedOpConverterTestBase
         partial_shape = dims;
       }
     }
-    AddTestTensorWithTFDims(name, partial_shape, TfDataTypeToTrt(tf_type),
-                            add_input_status);
+    nvinfer1::DataType trt_type;
+    TF_ASSERT_OK(TfTypeToTrtType(tf_type, &trt_type));
+    AddTestTensorWithTFDims(name, partial_shape, trt_type, add_input_status);
     if (!values.empty()) {
       VLOG(2) << "Adding test tensor: " << name << " "
               << DataTypeString(tf_type);
@@ -1990,7 +2025,7 @@ TEST_F(OpConverterTest, ConvertConst) {
     Reset();
     NodeDef node_def = MakeConstNodeDef<double>("my_const", {});
     RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
-                               "Unsupported data type double");
+                               "Unsupported tensorflow data type double");
   }
   {
     Reset();
@@ -2763,8 +2798,9 @@ void TestAddN(OpConverterTest* test) {
     test->Reset();
     DataVec input_data;
     for (const auto name : {"inp1", "inp2", "inp3"}) {
-      test->AddTestTensor(name, /*dims=*/{1, 2}, /*batch_size=*/2,
-                          TfDataTypeToTrt(dtype));
+      nvinfer1::DataType trt_type;
+      TF_ASSERT_OK(TfTypeToTrtType(dtype, &trt_type));
+      test->AddTestTensor(name, /*dims=*/{1, 2}, /*batch_size=*/2, trt_type);
       input_data.push_back({name, test->AsTensor<CType>({CType(1), CType(2),
                                                          CType(3), CType(4)})});
     }
@@ -2786,8 +2822,9 @@ void TestAddN(OpConverterTest* test) {
     test->Reset();
     DataVec input_data;
     for (const auto name : {"inp1", "inp2"}) {
-      test->AddTestTensor(name, /*dims=*/{1, 2}, /*batch_size=*/1,
-                          TfDataTypeToTrt(dtype));
+      nvinfer1::DataType trt_type;
+      TF_ASSERT_OK(TfTypeToTrtType(dtype, &trt_type));
+      test->AddTestTensor(name, /*dims=*/{1, 2}, /*batch_size=*/1, trt_type);
       input_data.push_back({name, test->AsTensor<CType>({CType(1), CType(2)})});
     }
     test->AddTestWeights("inp3", /*dims=*/{1, 1, 2},
@@ -4210,8 +4247,9 @@ TEST_P(OpConverterTest1, ConvertConv2D) {
     Reset();
     NodeDef node_def = get_conv2d_nodedef();
     // Channel dim unknown, should fail.
-    AddTestTensorWithTFDims("input", {-1, -1, -1, -1},
-                            TfDataTypeToTrt(tf_type_));
+    nvinfer1::DataType trt_type;
+    TF_ASSERT_OK(TfTypeToTrtType(tf_type_, &trt_type));
+    AddTestTensorWithTFDims("input", {-1, -1, -1, -1}, trt_type);
     AddTestWeights<float>("weights", {1, 2, 1, 1}, {-1, 1});
     RunValidationAndConversion(
         node_def, error::INVALID_ARGUMENT,
@@ -4233,72 +4271,72 @@ TEST_P(OpConverterTest1, ConvertConv2D) {
 
   // Ok.
   std::vector<TestParams> ok_params = {
-    // Basic
-    TestParams{/*input_dims=*/{1, 1, 2, 3},
-               /*input=*/{0, 1, 2, 3, 3, 4},
-               /*filter_dims=*/{1, 2, 1, 1},
-               /*filter=*/{-1, 1},
-               /*strides=*/{1, 1, 1, 1},
-               /*padding=*/"VALID",
-               /*data_format=*/"NCHW",
-               /*dilations=*/{1, 1, 1, 1},
-               /*expected_output_dims=*/{1, 1, 2, 2},
-               /*expected_output=*/{1, 1, 0, 1}},
-    // SAME padding (Asymmetric)
-    TestParams{/*input_dims=*/{1, 1, 2, 3},
-               /*input=*/{0, 1, 2, 3, 3, 4},
-               /*filter_dims=*/{1, 2, 1, 1},
-               /*filter=*/{-1, 1},
-               /*strides=*/{1, 1, 1, 1},
-               /*padding=*/"SAME",
-               /*data_format=*/"NCHW",
-               /*dilations=*/{1, 1, 1, 1},
-               /*expected_output_dims=*/{1, 1, 2, 3},
-               /*expected_output=*/{1, 1, -2, 0, 1, -4}},
-    // SAME padding (Symmetric)
-    TestParams{/*input_dims=*/{1, 1, 2, 3},
-               /*input=*/{0, 1, 2, 3, 3, 4},
-               /*filter_dims=*/{1, 3, 1, 1},
-               /*filter=*/{-1, 0, 1},
-               /*strides=*/{1, 1, 1, 1},
-               /*padding=*/"SAME",
-               /*data_format=*/"NCHW",
-               /*dilations=*/{1, 1, 1, 1},
-               /*expected_output_dims=*/{1, 1, 2, 3},
-               /*expected_output=*/{1, 2, -1, 3, 1, -3}},
-    // NHWC
-    TestParams{/*input_dims=*/{1, 2, 3, 1},
-               /*input=*/{0, 1, 2, 3, 3, 4},
-               /*filter_dims=*/{1, 2, 1, 1},
-               /*filter=*/{-1, 1},
-               /*strides=*/{1, 1, 1, 1},
-               /*padding=*/"VALID",
-               /*data_format=*/"NHWC",
-               /*dilations=*/{1, 1, 1, 1},
-               /*expected_output_dims=*/{1, 2, 2, 1},
-               /*expected_output=*/{1, 1, 0, 1}},
-    // Dilated
-    TestParams{/*input_dims=*/{1, 1, 2, 3},
-               /*input=*/{0, 1, 2, 3, 3, 4},
-               /*filter_dims=*/{1, 2, 1, 1},
-               /*filter=*/{-1, 1},
-               /*strides=*/{1, 1, 1, 1},
-               /*padding=*/"VALID",
-               /*data_format=*/"NCHW",
-               /*dilations=*/{1, 1, 1, 2},
-               /*expected_output_dims=*/{1, 1, 2, 1},
-               /*expected_output=*/{2, 1}},
-    // Strided
-    TestParams{/*input_dims=*/{1, 1, 2, 4},
-               /*input=*/{0, 1, 2, 2, 3, 4, 4, 7},
-               /*filter_dims=*/{1, 2, 1, 1},
-               /*filter=*/{-1, 1},
-               /*strides=*/{1, 1, 1, 2},
-               /*padding=*/"VALID",
-               /*data_format=*/"NCHW",
-               /*dilations=*/{1, 1, 1, 1},
-               /*expected_output_dims=*/{1, 1, 2, 2},
-               /*expected_output=*/{1, 0, 1, 3}},
+      // Basic
+      TestParams{/*input_dims=*/{1, 1, 2, 3},
+                 /*input=*/{0, 1, 2, 3, 3, 4},
+                 /*filter_dims=*/{1, 2, 1, 1},
+                 /*filter=*/{-1, 1},
+                 /*strides=*/{1, 1, 1, 1},
+                 /*padding=*/"VALID",
+                 /*data_format=*/"NCHW",
+                 /*dilations=*/{1, 1, 1, 1},
+                 /*expected_output_dims=*/{1, 1, 2, 2},
+                 /*expected_output=*/{1, 1, 0, 1}},
+      // SAME padding (Asymmetric)
+      TestParams{/*input_dims=*/{1, 1, 2, 3},
+                 /*input=*/{0, 1, 2, 3, 3, 4},
+                 /*filter_dims=*/{1, 2, 1, 1},
+                 /*filter=*/{-1, 1},
+                 /*strides=*/{1, 1, 1, 1},
+                 /*padding=*/"SAME",
+                 /*data_format=*/"NCHW",
+                 /*dilations=*/{1, 1, 1, 1},
+                 /*expected_output_dims=*/{1, 1, 2, 3},
+                 /*expected_output=*/{1, 1, -2, 0, 1, -4}},
+      // SAME padding (Symmetric)
+      TestParams{/*input_dims=*/{1, 1, 2, 3},
+                 /*input=*/{0, 1, 2, 3, 3, 4},
+                 /*filter_dims=*/{1, 3, 1, 1},
+                 /*filter=*/{-1, 0, 1},
+                 /*strides=*/{1, 1, 1, 1},
+                 /*padding=*/"SAME",
+                 /*data_format=*/"NCHW",
+                 /*dilations=*/{1, 1, 1, 1},
+                 /*expected_output_dims=*/{1, 1, 2, 3},
+                 /*expected_output=*/{1, 2, -1, 3, 1, -3}},
+      // NHWC
+      TestParams{/*input_dims=*/{1, 2, 3, 1},
+                 /*input=*/{0, 1, 2, 3, 3, 4},
+                 /*filter_dims=*/{1, 2, 1, 1},
+                 /*filter=*/{-1, 1},
+                 /*strides=*/{1, 1, 1, 1},
+                 /*padding=*/"VALID",
+                 /*data_format=*/"NHWC",
+                 /*dilations=*/{1, 1, 1, 1},
+                 /*expected_output_dims=*/{1, 2, 2, 1},
+                 /*expected_output=*/{1, 1, 0, 1}},
+      // Dilated
+      TestParams{/*input_dims=*/{1, 1, 2, 3},
+                 /*input=*/{0, 1, 2, 3, 3, 4},
+                 /*filter_dims=*/{1, 2, 1, 1},
+                 /*filter=*/{-1, 1},
+                 /*strides=*/{1, 1, 1, 1},
+                 /*padding=*/"VALID",
+                 /*data_format=*/"NCHW",
+                 /*dilations=*/{1, 1, 1, 2},
+                 /*expected_output_dims=*/{1, 1, 2, 1},
+                 /*expected_output=*/{2, 1}},
+      // Strided
+      TestParams{/*input_dims=*/{1, 1, 2, 4},
+                 /*input=*/{0, 1, 2, 2, 3, 4, 4, 7},
+                 /*filter_dims=*/{1, 2, 1, 1},
+                 /*filter=*/{-1, 1},
+                 /*strides=*/{1, 1, 1, 2},
+                 /*padding=*/"VALID",
+                 /*data_format=*/"NCHW",
+                 /*dilations=*/{1, 1, 1, 1},
+                 /*expected_output_dims=*/{1, 1, 2, 2},
+                 /*expected_output=*/{1, 0, 1, 3}},
   };
 
   for (int i = 0; i < ok_params.size(); i++) {
@@ -4976,8 +5014,9 @@ TEST_F(OpConverterTest, ConvertTopK) {
     {
       // K is a tensor, should fail.
       Reset();
-      AddTestTensor("input", {1, 2, 3}, /*batch_size=*/1,
-                    /*trt_dtype=*/TfDataTypeToTrt(dtype));
+      nvinfer1::DataType trt_type;
+      TF_ASSERT_OK(TfTypeToTrtType(dtype, &trt_type));
+      AddTestTensor("input", {1, 2, 3}, /*batch_size=*/1, trt_type);
       AddTestTensor("weights", {2});
       RunValidationAndConversion(
           node_def, error::UNIMPLEMENTED,
@@ -5548,8 +5587,10 @@ void TestConvertConcat(OpConverterTest* test) {
     NodeDef node_def = get_concat_nodedef(dtype, num_inputs);
     // Create inputs.
     for (int j = 0; j < num_inputs; ++j) {
+      nvinfer1::DataType trt_type;
+      TF_ASSERT_OK(TfTypeToTrtType(dtype, &trt_type));
       test->AddTestTensor(StrCat("values_", j), ok_params[i].input_shapes[j], 1,
-                          TfDataTypeToTrt(dtype));
+                          trt_type);
     }
     test->AddTestWeights<int32>("axis", {1}, {ok_params[i].axis});
     test->RunValidationAndConversion(node_def);
@@ -5710,8 +5751,9 @@ void TestConvertSplit(OpConverterTest* test) {
     NodeDef node_def = get_split_nodedef(dtype, ok_params[i].num_split);
     // Create inputs.
     test->AddTestWeights<int32>("axis", {1}, {ok_params[i].axis});
-    test->AddTestTensor("value", ok_params[i].input_shape, 1,
-                        TfDataTypeToTrt(dtype));
+    nvinfer1::DataType trt_type;
+    TF_ASSERT_OK(TfTypeToTrtType(dtype, &trt_type));
+    test->AddTestTensor("value", ok_params[i].input_shape, 1, trt_type);
     // Convert.
     test->RunValidationAndConversion(node_def);
 
@@ -5887,8 +5929,9 @@ void TestConvertUnpack(OpConverterTest* test) {
     NodeDef node_def =
         get_unpack_nodedef(dtype, ok_params[i].num, ok_params[i].axis);
     // Create inputs.
-    test->AddTestTensor("value", ok_params[i].input_shape, 1,
-                        TfDataTypeToTrt(dtype));
+    nvinfer1::DataType trt_type;
+    TF_ASSERT_OK(TfTypeToTrtType(dtype, &trt_type));
+    test->AddTestTensor("value", ok_params[i].input_shape, 1, trt_type);
     // Convert.
     test->RunValidationAndConversion(node_def);
 
@@ -6230,8 +6273,10 @@ void TestConvertArgMinMax(OpConverterTest* test) {
 
     NodeDef node_def = GetArgMinMaxNodeDef<OpType>(dtype, DT_INT32);
     // Create inputs.
+    nvinfer1::DataType trt_type;
+    TF_ASSERT_OK(TfTypeToTrtType(dtype, &trt_type));
     test->AddTestTensor("input", params[i].input_shape, /*batch_size=*/1,
-                        /*trt_dtype=*/TfDataTypeToTrt(dtype));
+                        /*trt_dtype=*/trt_type);
     test->AddTestWeights<int32>("dimension", {1}, {params[i].axis});
     test->RunValidationAndConversion(node_def);
 
@@ -6332,8 +6377,9 @@ void TestConvertDepthSpaceShuffle(
 
     NodeDef node_def = GetDepthSpaceShuffleNodeDef<OpType>(
         dtype, params[i].block_size, params[i].data_format);
-    test->AddTestTensor("input", params[i].input_dims, 1,
-                        TfDataTypeToTrt(dtype));
+    nvinfer1::DataType trt_type;
+    TF_ASSERT_OK(TfTypeToTrtType(dtype, &trt_type));
+    test->AddTestTensor("input", params[i].input_dims, 1, trt_type);
     test->RunValidationAndConversion(node_def);
 
     TRT_TensorOrWeights output;
@@ -6606,7 +6652,9 @@ void TestConvertClipByValue(OpConverterTest* test) {
     test->Reset();
 
     NodeDef node_def = GetClipByValueNodeDef(dtype);
-    test->AddTestTensor("t", params[i].dims, 1, TfDataTypeToTrt(dtype));
+    nvinfer1::DataType trt_type;
+    TF_ASSERT_OK(TfTypeToTrtType(dtype, &trt_type));
+    test->AddTestTensor("t", params[i].dims, 1, trt_type);
     test->AddTestWeights<CType>("clip_value_min", {1},
                                 {params[i].clip_value_min});
     test->AddTestWeights<CType>("clip_value_max", {1},
@@ -6770,23 +6818,20 @@ template <typename OpType, DataType dtype>
 void TestConvertResize(OpConverterTest* test) {
   typedef typename EnumToDataType<dtype>::Type CType;
 
-  std::vector<ResizeTestParams<CType>> params {
-// TODO(b/162442839): Enable the test parameters for TRT 7.1.3.x.
-#if !IS_TRT_VERSION_GE(7, 1, 3, 0)
-    {
-        /*input_dims=*/{1, 2, 1},       // H, W, C
-        /*output_resize_dims=*/{2, 3},  // H_out, W_out
-        /*input_values=*/CastTestVector<float, CType>({2.0f, -1.0f}),
-        /*align_corners=*/false,
-        /*expected_output_dims=*/{2, 3, 1},  // H, W, C
-        /*expected_nearest_output_values=*/
-        CastTestVector<float, CType>({2.0f, 2.0f, -1.0f, 2.0f, 2.0f, -1.0f}),
-        /*expected_bilinear_output_values=*/
-        CastTestVector<float, CType>({2.0f, 0.f, -1.0f, 2.0f, 0.f, -1.0f}),
-    },
-#endif
-    {
-      /*input_dims=*/{1, 2, 1},           // H, W, C
+  std::vector<ResizeTestParams<CType>> params{
+      {
+          /*input_dims=*/{1, 2, 1},       // H, W, C
+          /*output_resize_dims=*/{2, 3},  // H_out, W_out
+          /*input_values=*/CastTestVector<float, CType>({2.0f, -1.0f}),
+          /*align_corners=*/false,
+          /*expected_output_dims=*/{2, 3, 1},  // H, W, C
+          /*expected_nearest_output_values=*/
+          CastTestVector<float, CType>({2.0f, 2.0f, -1.0f, 2.0f, 2.0f, -1.0f}),
+          /*expected_bilinear_output_values=*/
+          CastTestVector<float, CType>({2.0f, 0.f, -1.0f, 2.0f, 0.f, -1.0f}),
+      },
+      {
+          /*input_dims=*/{1, 2, 1},       // H, W, C
           /*output_resize_dims=*/{2, 3},  // H_out, W_out
           /*input_values=*/CastTestVector<float, CType>({2.0f, -1.0f}),
           /*align_corners=*/true,
@@ -6795,17 +6840,25 @@ void TestConvertResize(OpConverterTest* test) {
           CastTestVector<float, CType>({2.0f, 2.0f, -1.0f, 2.0f, 2.0f, -1.0f}),
           /*expected_bilinear_output_values=*/
           CastTestVector<float, CType>({2.0f, 0.5f, -1.0f, 2.0f, 0.5f, -1.0f}),
-    }
-  };
+      }};
+
+// This use case is not supported as of TRT version 7.1
+#if IS_TRT_VERSION_GE(7, 1, 0, 0)
+  if (std::is_same<OpType, ops::ResizeBilinear>::value) {
+    params.erase(params.begin());
+  }
+#endif
 
   for (int i = 0; i < params.size(); ++i) {
     test->Reset();
     // Create resize node.
     NodeDef node_def =
         MakeResizeNodeDef<OpType>("my_resize", dtype, params[i].align_corners);
+    nvinfer1::DataType trt_type;
+    TF_ASSERT_OK(TfTypeToTrtType(dtype, &trt_type));
     // Create input tensor
     test->AddTestTensor("input", params[i].input_dims, /*batch_size=*/1,
-                        /*trt_dtype=*/TfDataTypeToTrt(dtype));
+                        /*trt_dtype=*/trt_type);
     // Create output size.
     test->AddTestWeights<int32>("size", {2}, params[i].output_resize_dims);
 
@@ -6840,7 +6893,7 @@ TEST_F(OpConverterTest, ConvertResize) {
     // First input is weight, should fail.
     Reset();
     NodeDef node_def =
-        MakeResizeNodeDef<ops::ResizeBilinear>("my_resize", DT_FLOAT, false);
+        MakeResizeNodeDef<ops::ResizeBilinear>("my_resize", DT_FLOAT, true);
     AddTestWeights<float>("input", {1, 2}, {1, 2});
     AddTestWeights<int>("size", {1, 2}, {1, 2});
     RunValidationAndConversion(
@@ -6852,7 +6905,7 @@ TEST_F(OpConverterTest, ConvertResize) {
     // output dimension is a tensor, should fail.
     Reset();
     NodeDef node_def =
-        MakeResizeNodeDef<ops::ResizeBilinear>("my_resize", DT_FLOAT, false);
+        MakeResizeNodeDef<ops::ResizeBilinear>("my_resize", DT_FLOAT, true);
     AddTestTensor("input", {1, 2});
     AddTestTensor("size", {1, 2});
     RunValidationAndConversion(
@@ -6904,8 +6957,10 @@ void TestConvertPad(OpConverterTest* test) {
     // Create pad node.
     NodeDef node_def = MakePadNodeDef("my_pad", dtype);
     // Create input tensor
+    nvinfer1::DataType trt_type;
+    TF_ASSERT_OK(TfTypeToTrtType(dtype, &trt_type));
     test->AddTestTensor("input", params[i].input_dims, /*batch_size=*/1,
-                        /*trt_dtype=*/TfDataTypeToTrt(dtype));
+                        /*trt_dtype=*/trt_type);
     // Create output size.
     test->AddTestWeights<int32>("padding", params[i].pad_dims,
                                 {0, 0, 1, 0, 0, 1, 0, 0});

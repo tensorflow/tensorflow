@@ -25,7 +25,7 @@ namespace tensorflow {
 namespace tpu {
 namespace {
 
-#if defined(LIBTFTPU)
+#if defined(LIBTPU_ON_GCE)
 using ResponseType = GetTpuProgramResponseExternal;
 #else
 using ResponseType = GetTpuProgramResponse;
@@ -160,7 +160,7 @@ Status TpuCompilationCacheRpcLookup::RemoteLookupLocked(
           << " in remote subgraph cache status " << s;
   TF_RETURN_IF_ERROR(s);
 
-  TF_RETURN_IF_ERROR(FillCacheEntryFromGetTpuProgramResponse(
+  TF_RETURN_IF_ERROR(DeserializeRpcResponseToCacheEntry(
       local_proto_key, &response, cache_entry));
   cache_.emplace(local_proto_key, (*cache_entry));
   cache_size_ += (*cache_entry)->size;

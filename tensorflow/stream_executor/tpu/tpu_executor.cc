@@ -26,6 +26,7 @@ limitations under the License.
 using stream_executor::DeviceMemoryBase;
 
 namespace tensorflow {
+namespace tpu {
 
 namespace {
 using ::stream_executor::port::Status;
@@ -62,7 +63,7 @@ bool TpuExecutor::SynchronizeAllActivity() {
 Status TpuExecutor::BlockHostUntilDone(Stream* stream) {
   StatusHelper status;
   tpu::ExecutorApiFn()->TpuExecutor_BlockHostUntilDoneFn(
-      executor_, stream_map().at(stream->implementation()), status.c_status);
+      executor_, get_stream(stream->implementation()), status.c_status);
   return status.status();
 }
 
@@ -76,7 +77,7 @@ Status TpuExecutor::BlockUntilDoneOrFailed() {
 Status TpuExecutor::GetStatus(Stream* stream) {
   StatusHelper status;
   tpu::ExecutorApiFn()->TpuExecutor_GetStatusFn(
-      executor_, stream_map().at(stream->implementation()), status.c_status);
+      executor_, get_stream(stream->implementation()), status.c_status);
   return status.status();
 }
 
@@ -87,19 +88,21 @@ tpu::TpuCoreLocationExternal TpuExecutor::GetCoreLocationExternal() const {
 
 bool TpuExecutor::AllocateStream(Stream* stream) {
   return tpu::ExecutorApiFn()->TpuExecutor_AllocateStreamFn(
-      executor_, stream_map().at(stream->implementation()));
+      executor_, get_stream(stream->implementation()));
 }
 
 void TpuExecutor::DeallocateStream(Stream* stream) {
   tpu::ExecutorApiFn()->TpuExecutor_DeallocateStreamFn(
-      executor_, stream_map().at(stream->implementation()));
+      executor_, get_stream(stream->implementation()));
+  tpu_platform().mutex().lock();
   stream_map().erase(stream->implementation());
+  tpu_platform().mutex().unlock();
 }
 
 bool TpuExecutor::CreateStreamDependency(Stream* dependent, Stream* other) {
   return tpu::ExecutorApiFn()->TpuExecutor_CreateStreamDependencyFn(
-      executor_, stream_map().at(dependent->implementation()),
-      stream_map().at(other->implementation()));
+      executor_, get_stream(dependent->implementation()),
+      get_stream(other->implementation()));
 }
 
 Status TpuExecutor::AllocateEvent(Event* event) { return Status::OK(); }
@@ -116,13 +119,13 @@ void TpuExecutor::DeallocateTimer(Timer* timer) {}
 
 bool TpuExecutor::StartTimer(Stream* stream, ::stream_executor::Timer* timer) {
   return tpu::ExecutorApiFn()->TpuExecutor_StartTimerFn(
-      executor_, stream_map().at(stream->implementation()),
+      executor_, get_stream(stream->implementation()),
       timer_map_.at(timer->implementation()));
 }
 
 bool TpuExecutor::StopTimer(Stream* stream, ::stream_executor::Timer* timer) {
   return tpu::ExecutorApiFn()->TpuExecutor_StopTimerFn(
-      executor_, stream_map().at(stream->implementation()),
+      executor_, get_stream(stream->implementation()),
       timer_map_.at(timer->implementation()));
 }
 
@@ -139,7 +142,7 @@ Status TpuExecutor::RecordEvent(Stream* stream,
   StatusHelper status;
   auto se_event = tpu_platform().LookupEvent(event->implementation());
   tpu::ExecutorApiFn()->TpuExecutor_RecordEventFn(
-      executor_, stream_map().at(stream->implementation()), se_event,
+      executor_, get_stream(stream->implementation()), se_event,
       status.c_status);
   return status.status();
 }
@@ -149,7 +152,7 @@ Status TpuExecutor::WaitForEvent(Stream* stream,
   StatusHelper status;
   auto se_event = tpu_platform().LookupEvent(event->implementation());
   tpu::ExecutorApiFn()->TpuExecutor_WaitForEventFn(
-      executor_, stream_map().at(stream->implementation()), se_event,
+      executor_, get_stream(stream->implementation()), se_event,
       status.c_status);
   return status.status();
 }
@@ -173,7 +176,7 @@ TpuExecutor::GetTimerImplementation() {
 std::unique_ptr<::stream_executor::internal::StreamInterface>
 TpuExecutor::GetStreamImplementation() {
   SE_Stream* tpu_stream = tpu::ExecutorApiFn()->TpuStream_NewFn(executor_);
-  auto ptr = absl::make_unique<TpuStream>(tpu_stream);
+  auto ptr = absl::make_unique<tpu::TpuStream>(tpu_stream);
   tpu_platform().mutex().lock();
   stream_map()[ptr.get()] = tpu_stream;
   tpu_platform().mutex().unlock();
@@ -278,7 +281,7 @@ bool TpuExecutor::Memcpy(Stream* stream, void* host_dst,
                          uint64 size) {
   SE_DeviceMemoryBase se_base = ApiConverter::ToC(device_src);
   return tpu::ExecutorApiFn()->TpuExecutor_MemcpyToHostFn(
-      executor_, stream_map().at(stream->implementation()), host_dst, &se_base,
+      executor_, get_stream(stream->implementation()), host_dst, &se_base,
       size);
 }
 
@@ -287,7 +290,7 @@ bool TpuExecutor::Memcpy(Stream* stream,
                          const void* host_src, uint64 size) {
   SE_DeviceMemoryBase se_base = ApiConverter::ToC(*device_dst);
   return tpu::ExecutorApiFn()->TpuExecutor_MemcpyFromHostFn(
-      executor_, stream_map().at(stream->implementation()), &se_base, host_src,
+      executor_, get_stream(stream->implementation()), &se_base, host_src,
       size);
 }
 
@@ -328,10 +331,10 @@ struct HostCallbackContext {
   std::function<Status()> callback;
 };
 
-SE_Status* HostCallbackTrampoline(void* ctx) {
+TF_Status* HostCallbackTrampoline(void* ctx) {
   HostCallbackContext* host_ctx = reinterpret_cast<HostCallbackContext*>(ctx);
   Status status = host_ctx->callback();
-  SE_Status* c_status = tpu::ExecutorApiFn()->TpuStatus_CreateFn(
+  TF_Status* c_status = tpu::ExecutorApiFn()->TpuStatus_CreateFn(
       status.code(), status.error_message().c_str());
   delete host_ctx;
   return c_status;
@@ -341,8 +344,8 @@ bool TpuExecutor::HostCallback(Stream* stream,
                                std::function<Status()> callback) {
   HostCallbackContext* ctx = new HostCallbackContext{callback};
   return tpu::ExecutorApiFn()->TpuExecutor_HostCallbackFn(
-      executor_, stream_map().at(stream->implementation()),
-      &HostCallbackTrampoline, ctx);
+      executor_, get_stream(stream->implementation()), &HostCallbackTrampoline,
+      ctx);
 }
 
 TpuExecutor::StatusOr<std::unique_ptr<::stream_executor::DeviceDescription>>
@@ -370,4 +373,5 @@ TpuExecutor::CreateDeviceDescription() const {
   return status.status();
 }
 
+}  // namespace tpu
 }  // namespace tensorflow

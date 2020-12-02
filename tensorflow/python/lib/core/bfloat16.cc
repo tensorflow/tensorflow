@@ -387,6 +387,9 @@ PyArray_Descr NPyBfloat16_Descr = {
     nullptr,                                              // fields
     nullptr,                                              // names
     &NPyBfloat16_ArrFuncs,                                // f
+    nullptr,                                              // metadata
+    nullptr,                                              // c_metadata
+    -1,                                                   // hash
 };
 
 // Registered numpy type ID. Global variable populated by the registration code.

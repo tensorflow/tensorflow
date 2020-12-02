@@ -36,6 +36,10 @@ API.
 
 ## Run inference in Java
 
+See the
+[Image Segmentation reference app](https://github.com/tensorflow/examples/tree/master/lite/examples/image_segmentation/android/)
+for an example of how to use `ImageSegmenter` in an Android app.
+
 ### Step 1: Import Gradle dependency and other settings
 
 Copy the `.tflite` model file to the assets directory of the Android module
@@ -130,7 +134,7 @@ The segmentation category mask should looks like:
 <img src="images/segmentation-output.png" alt="segmentation-output" width="30%">
 
 Try out the simple
-[CLI demo tool for ImageClassifier](https://github.com/tensorflow/tflite-support/tree/master/tensorflow_lite_support/examples/task/vision/desktop#image-segmenter)
+[CLI demo tool for ImageSegmenter](https://github.com/tensorflow/tflite-support/tree/master/tensorflow_lite_support/examples/task/vision/desktop#image-segmenter)
 with your own model and test data.
 
 ## Model compatibility requirements

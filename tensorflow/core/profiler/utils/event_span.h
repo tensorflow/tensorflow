@@ -46,14 +46,17 @@ enum EventType {
   HOST_TO_DEVICE = 40,
   // Host is preparing to launch a computation on device.
   HOST_PREPARE = 50,
-  // Host is waiting for input.
-  HOST_WAIT_INPUT = 60,
-  // Device-to-device communication.
-  DEVICE_TO_DEVICE = 70,
-  // Device-to-host communication.
-  DEVICE_TO_HOST = 80,
+  // Assigns a smaller priority to DEVICE_COLLECTIVES than HOST_WAIT_INPUT,
+  // because if an all-reduce event is overlapped with an host-wait-input event,
+  // we want to count it as waiting for input.
   // Collective Ops such as All-Reduce.
-  DEVICE_COLLECTIVES = 90,
+  DEVICE_COLLECTIVES = 60,
+  // Host is waiting for input.
+  HOST_WAIT_INPUT = 70,
+  // Device-to-device communication.
+  DEVICE_TO_DEVICE = 80,
+  // Device-to-host communication.
+  DEVICE_TO_HOST = 90,
   // Device is computing with 32-bit precision.
   DEVICE_COMPUTE_32 = 100,
   // Device is computing with 16-bit precision.
@@ -63,6 +66,30 @@ enum EventType {
   // Device is waiting for host.
   DEVICE_WAIT_HOST = 130,
   LAST_EVENT_TYPE = DEVICE_WAIT_HOST
+};
+
+// Generic event types that shown to the user.
+enum GenericEventType {
+  kFirstGenericEventType = 1,
+  // Device is computing.
+  kDeviceCompute = kFirstGenericEventType,
+  // Device-to-device communication.
+  kDeviceToDevice,
+  // Collective Ops such as All-Reduce and NCCL.
+  kDeviceCollectives,
+  // Host is computing.
+  kHostCompute,
+  // Host is preparing to launch a computation on device.
+  kHostPrepare,
+  // Device waiting for input from the host.
+  kInput,
+  // Device sending output to the host.
+  kOutput,
+  // Host is compling.
+  kCompile,
+  // No recognized event associated with the time.
+  kAllOthers,
+  kLastGenericEventType = kAllOthers,
 };
 
 // Contains the type and timespan of an event.
@@ -194,6 +221,9 @@ EventType ClassifyGpuEvent(absl::string_view event_name,
 // Returns the name of the given EventType.
 std::string PrintEventType(EventType event_type);
 
+// Returns the string of the given GenericEventType.
+absl::string_view GetGenericEventTypeStr(GenericEventType event_type);
+
 // Returns a string that prints the given EventTypeSpan.
 std::string PrintEventTypeSpan(const EventTypeSpan& event_type_span);
 
@@ -205,6 +235,10 @@ std::string PrintStepEvents(const StepEvents& step_events);
 
 // Combines the src StepEvents into dst.
 void CombineStepEvents(const StepEvents& src, StepEvents* dst);
+
+// Converts from overlapped events to non-overlapped events.
+std::vector<EventTypeSpan> ToNonOverlappedEvents(
+    const std::vector<EventTypeSpan>& overlapped_events);
 
 // Converts from overlapped step-events to non-overlapped step events.
 StepEvents ToNonOverlappedStepEvents(const StepEvents& overlapped_step_events);

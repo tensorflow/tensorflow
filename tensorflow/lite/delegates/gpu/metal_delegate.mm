@@ -38,13 +38,12 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/quantization_util.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
-#include "tensorflow/lite/delegates/gpu/common/transformations/general_transformations.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/metal/api.h"
 #include "tensorflow/lite/delegates/gpu/metal/buffer_convert.h"
 #include "tensorflow/lite/delegates/gpu/metal/common.h"
 #include "tensorflow/lite/delegates/gpu/metal/compiled_model.h"
-#include "tensorflow/lite/delegates/gpu/metal/environment.h"
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/metal/inference_context.h"
 #include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -178,10 +177,7 @@ class Delegate {
     if (options) {
       options_ = *options;
     } else {
-      // Default options.
-      options_.allow_precision_loss = false;
-      options_.enable_quantization = false;
-      options_.wait_type = TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypePassive;
+      options_ = TFLGpuDelegateOptionsDefault();
     }
     metal_device_ = MTLCreateSystemDefaultDevice();
     command_queue_ = [metal_device_ newCommandQueue];
@@ -342,13 +338,14 @@ class Delegate {
     }
 
     std::string device_name = std::string([[metal_device_ name] UTF8String]);
-    DeviceInfo device_info(device_name);
+    GpuInfo gpu_info;
+    GetGpuInfoFromDeviceDescription(device_name, GpuApi::kMetal, &gpu_info);
     size_t storage_type_size;
     RuntimeOptions runtime_options;
     if (options_.allow_precision_loss) {
       storage_type_size = sizeof(HalfBits);
       runtime_options.storage_precision = RuntimeOptions::Precision::FP16;
-      if (device_info.IsRoundToNearestSupported()) {
+      if (gpu_info.IsRoundToNearestSupported()) {
         runtime_options.accumulator_precision = RuntimeOptions::Precision::FP16;
       } else {
         runtime_options.accumulator_precision = RuntimeOptions::Precision::FP32;
@@ -441,19 +438,16 @@ class Delegate {
 
     // TODO(impjdi): Merge these.
     CompiledModel compiled_model;
-    RETURN_IF_ERROR(Compile(graph, device_info, runtime_options, &compiled_model));
+    RETURN_IF_ERROR(Compile(graph, gpu_info, runtime_options, &compiled_model));
     CompiledModel optimized_model;
     RETURN_IF_ERROR(ValidateOptimizeModel(input_ids, output_ids, compiled_model, &optimized_model));
 
     inference_context_ = [[TFLInferenceContext alloc] init];
     RETURN_IF_ERROR([inference_context_ compileModelWithDevice:metal_device_
-                                               taskDescriptors:optimized_model
+                                                         model:optimized_model
+                                                inputBufferIDs:input_ids
                                                outputBufferIDs:output_ids
                                                 runtimeOptions:runtime_options]);
-    std::map<::tflite::gpu::ValueId, BHWC> output_dimensions;
-    RETURN_IF_ERROR([inference_context_ setInputDimensions:input_dimensions
-                                          outputDimensions:&output_dimensions
-                                           taskDescriptors:optimized_model]);
     return absl::OkStatus();
   }
 
@@ -632,7 +626,7 @@ class Delegate {
   std::vector<BufferDescriptor> graph_inputs_;
   std::vector<BufferDescriptor> graph_outputs_;
 
-  id<MTLComputeCommandEncoder> external_command_encoder_;
+  id<MTLComputeCommandEncoder> external_command_encoder_ = nil;
   std::function<id<MTLComputeCommandEncoder>(bool is_last)> control_encoder_;
   id<MTLCommandQueue> command_queue_;
   std::unique_ptr<GpuAlarmClock> gpu_alarm_clock_;
@@ -732,4 +726,13 @@ bool TFLGpuDelegateSetCommandEncoder(
   if (!metal_delegate) return false;
   metal_delegate->SetCommandEncoder(encoder, control_encoder);
   return true;
+}
+
+TFLGpuDelegateOptions TFLGpuDelegateOptionsDefault() {
+  TFLGpuDelegateOptions options = {
+      .allow_precision_loss = false,
+      .wait_type = TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypePassive,
+      .enable_quantization = true,
+  };
+  return options;
 }

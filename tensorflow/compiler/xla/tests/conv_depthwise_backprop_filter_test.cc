@@ -45,13 +45,20 @@ class BatchGroupedConvolution2DTest
       public ::testing::WithParamInterface<
           ::testing::tuple<BatchGroupedConvolution2DSpec, bool>> {};
 
-static std::vector<BatchGroupedConvolution2DSpec> GetConv2DTestCases() {
+class BatchGroupedConvolution2DDepthTest
+    : public HloTestBase,
+      public ::testing::WithParamInterface<
+          ::testing::tuple<BatchGroupedConvolution2DSpec, bool>> {};
+
+static std::vector<BatchGroupedConvolution2DSpec> GetConv2DTestCases(
+    bool use_depth_multiplier) {
   std::vector<BatchGroupedConvolution2DSpec> config_set;
   std::vector<std::vector<int64>> config_options = {
-      {8, 5, 3, 2},      {4, 5, 5, 2},    {8, 7, 4, 128},
-      {16, 20, 20, 256}, {256, 7, 5, 4},  {256, 6, 6, 4},
-      {256, 8, 8, 512},  {64, 7, 7, 960}, {64, 14, 14, 576}};
+      {129, 10, 3, 2}, {4, 3, 3, 258}, {8, 4, 2, 128},
+      {8, 3, 2, 256},  {256, 7, 5, 4}, {128, 6, 6, 4},
+      {32, 5, 2, 129}, {16, 4, 3, 2},  {16, 3, 2, 64}};
 
+  int64 counter = 2;
   for (auto option : config_options) {
     int64 feature = option[3];
     int64 activation_size = option[1];
@@ -65,10 +72,16 @@ static std::vector<BatchGroupedConvolution2DSpec> GetConv2DTestCases() {
 
     config.activation_dims = {batch, activation_size, activation_size, feature};
 
-    config.kernel_dims = {batch, kernel_size, kernel_size, feature};
-
+    const int64 depthwise_multiplier = use_depth_multiplier ? counter++ : 1;
+    config.kernel_dims = {batch, kernel_size, kernel_size,
+                          feature * depthwise_multiplier};
+    // Don't let the counter grow too much, else the compute demand will grow.
+    if (counter == 4) {
+      counter = 2;
+    }
     int64 output_space_size = 3 + activation_size - kernel_size;
-    config.output_dims = {output_space_size, output_space_size, feature, 1};
+    config.output_dims = {output_space_size, output_space_size,
+                          feature * depthwise_multiplier, 1};
 
     config.activation_and_kernel_layout = {0, 3, 1, 2};
     config.output_layout = {2, 3, 0, 1};
@@ -123,11 +136,13 @@ string BatchGroupedConvolution2DTestDataToString(
 }
 
 string BuildHloTextBatchGroupedConvolution2D(
-    const BatchGroupedConvolution2DSpec& spec, bool use_bfloat16) {
+    const BatchGroupedConvolution2DSpec& spec, bool use_bfloat16,
+    bool scheduled = false) {
   const string data_type = GetFloatDataType(use_bfloat16);
+  const string scheduled_tag = scheduled ? ",is_scheduled=true" : "";
   return absl::StrFormat(
       R"(
-    HloModule TensorFlowDepthwiseConv, is_scheduled=true
+    HloModule TensorFlowDepthwiseConv %s
 
     ENTRY main {
       activation = %s[%s]{%s} parameter(0)
@@ -137,7 +152,7 @@ string BuildHloTextBatchGroupedConvolution2D(
           batch_group_count=%d
     }
     )",
-      data_type, absl::StrJoin(spec.activation_dims, ","),
+      scheduled_tag, data_type, absl::StrJoin(spec.activation_dims, ","),
       absl::StrJoin(spec.activation_and_kernel_layout, ","), data_type,
       absl::StrJoin(spec.kernel_dims, ","),
       absl::StrJoin(spec.activation_and_kernel_layout, ","), data_type,
@@ -161,23 +176,26 @@ XLA_TEST_P(BatchGroupedConvolution2DTest, DoIt) {
   }
 #endif
 
-  const string hlo_text =
-      BuildHloTextBatchGroupedConvolution2D(spec, use_bfloat16);
+  const string hlo_text = BuildHloTextBatchGroupedConvolution2D(
+      spec, use_bfloat16, /*scheduled=*/false);
 
-  EXPECT_TRUE(RunAndCompareNoHloPasses(
-      hlo_text, ErrorSpec{0.01, 0.01}, [](HloModule* module) -> Status {
-        BFloat16MixedPrecisionRemoval remover;
-        TF_RETURN_IF_ERROR(remover.Run(module).status());
-        Despecializer despecializer;
-        return despecializer.Run(module).status();
-      }));
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{0.01, 0.01}));
 }
 
 INSTANTIATE_TEST_CASE_P(
     BatchGroupedConvolution2DTestWithRandomIndices,
     BatchGroupedConvolution2DTest,
-    ::testing::Combine(::testing::ValuesIn(GetConv2DTestCases()),
-                       ::testing::Bool()),
+    ::testing::Combine(
+        ::testing::ValuesIn(GetConv2DTestCases(/*use_depth_multiplier=*/false)),
+        ::testing::Bool()),
+    BatchGroupedConvolution2DTestDataToString);
+
+INSTANTIATE_TEST_CASE_P(
+    BatchGroupedConvolution2DDepthMultiplierTestWithRandomIndices,
+    BatchGroupedConvolution2DTest,
+    ::testing::Combine(
+        ::testing::ValuesIn(GetConv2DTestCases(/*use_depth_multiplier=*/true)),
+        ::testing::Bool()),
     BatchGroupedConvolution2DTestDataToString);
 
 }  // namespace

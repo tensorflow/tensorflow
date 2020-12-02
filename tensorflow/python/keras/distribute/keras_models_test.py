@@ -22,16 +22,17 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
-from tensorflow.python.distribute import combinations
-from tensorflow.python.distribute import strategy_combinations
-from tensorflow.python.eager import test
+from tensorflow.python.distribute import combinations as ds_combinations
+from tensorflow.python.framework import test_combinations as combinations
+from tensorflow.python.keras.distribute.strategy_combinations import all_strategies
+from tensorflow.python.platform import test
 
 
 class KerasModelsTest(test.TestCase, parameterized.TestCase):
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.combine(
-          distribution=strategy_combinations.all_strategies, mode=["eager"]))
+          distribution=all_strategies, mode=["eager"]))
   def test_lstm_model_with_dynamic_batch(self, distribution):
     input_data = np.random.random([1, 32, 64, 64, 3])
     input_shape = tuple(input_data.shape[1:])

@@ -398,7 +398,7 @@ static void ShowXlaDeviceDeprecationWarning(
     absl::call_once(once, [] {
       LOG(INFO) << "XLA_GPU and XLA_CPU devices are deprecated and will be "
                    "removed in subsequent releases. Instead, use either "
-                   "@tf.function(experimental_compile=True) for must-compile "
+                   "@tf.function(jit_compile=True) for must-compile "
                    "semantics, or run with TF_XLA_FLAGS=--tf_xla_auto_jit=2 "
                    "for auto-clustering best-effort compilation.";
     });
@@ -573,8 +573,7 @@ XlaDeviceOpRegistrations* RegisterXlaDeviceKernels(const char* device,
   // Any op assigned to the device that isn't rewritten by the graph rewriter
   // gets executed by an XlaCompileOnDemandOp, which compiles it and executes
   // it just-in-time.
-  OpKernel* (*factory)(OpKernelConstruction*) =
-      [](OpKernelConstruction* context) -> OpKernel* {
+  auto factory = [](OpKernelConstruction* context) -> OpKernel* {
     return new XlaCompileOnDemandOp(context);
   };
   XlaOpRegistry::RegisterCompilationKernels();
@@ -583,6 +582,13 @@ XlaDeviceOpRegistrations* RegisterXlaDeviceKernels(const char* device,
            jit_device,
            /*include_compilation_only_kernels=*/false)) {
     KernelDef* def = new KernelDef(*jit_def);
+    const std::unordered_set<std::string>* constant_inputs =
+        XlaOpRegistry::CompileTimeConstantInputArgNames(def->op());
+
+    for (const std::string& arg_name : *constant_inputs) {
+      def->add_host_memory_arg(arg_name);
+    }
+
     def->set_device_type(device);
     registrations->op_kernel_registrars.emplace_back(
         new kernel_factory::OpKernelRegistrar(def, "XlaCompileOnDemandOp",

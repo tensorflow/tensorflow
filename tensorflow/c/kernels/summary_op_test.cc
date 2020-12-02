@@ -44,7 +44,7 @@ class DummyDevice : public DeviceBase {
   }
 };
 
-// Helper for comparing ouput and expected output
+// Helper for comparing output and expected output
 void ExpectSummaryMatches(const Summary& actual, const string& expected_str) {
   Summary expected;
   ASSERT_TRUE(protobuf::TextFormat::ParseFromString(expected_str, &expected));

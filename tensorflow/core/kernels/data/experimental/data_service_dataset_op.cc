@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/snappy.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
@@ -53,18 +54,15 @@ namespace data {
 /* static */ constexpr const char* const
     DataServiceDatasetOp::kMaxOutstandingRequests;
 /* static */ constexpr const char* const
+    DataServiceDatasetOp::kTaskRefreshIntervalHintMs;
+/* static */ constexpr const char* const
     DataServiceDatasetOp::kIterationCounter;
 /* static */ constexpr const char* const DataServiceDatasetOp::kOutputTypes;
 /* static */ constexpr const char* const DataServiceDatasetOp::kOutputShapes;
 
 namespace {
-// Once we've spent `kRetryTimeoutMicros` in `GetNextInternal`, we will wait for
-// the current attempt to complete and perform no more retries.
-const int64 kRetryTimeoutMicros = 1000LL * 1000 * 60 * 60;  // 60 minutes.
-
 // Default interval between task list refreshes.
 const int64 kDefaultTaskRefreshIntervalMs = 1000;  // 1 second.
-
 }  // namespace
 
 // Dataset for reading data from the tf.data service non-deterministically.
@@ -200,6 +198,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       for (auto& worker_thread : worker_threads_) {
         worker_thread.reset();
       }
+
+      VLOG(1) << "Destroyed data service dataset iterator for job id "
+              << job_client_id_;
     }
 
     void CancelThreads() TF_LOCKS_EXCLUDED(mu_) {
@@ -219,24 +220,23 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           &deregister_fn_));
       dispatcher_ = absl::make_unique<DataServiceDispatcherClient>(
           dataset()->address_, dataset()->protocol_);
-      int64 deadline_micros = ctx->env()->NowMicros() + kRetryTimeoutMicros;
-      if (dataset()->job_name_.empty()) {
-        TF_RETURN_IF_ERROR(grpc_util::Retry(
-            [&]() {
-              return dispatcher_->CreateJob(dataset()->dataset_id_,
-                                            dataset()->processing_mode_,
-                                            job_client_id_);
-            },
-            "create job", deadline_micros));
-      } else {
-        TF_RETURN_IF_ERROR(grpc_util::Retry(
-            [&]() {
-              return dispatcher_->GetOrCreateJob(
-                  dataset()->dataset_id_, dataset()->processing_mode_,
-                  dataset()->job_name_, iterator_index_, job_client_id_);
-            },
-            "get or create job", deadline_micros));
+      int64 deadline_micros = kint64max;
+      absl::optional<JobKey> key;
+      if (!dataset()->job_name_.empty()) {
+        key.emplace();
+        key.value().set_job_name(std::string(dataset()->job_name_));
+        key.value().set_job_name_index(iterator_index_);
       }
+      TF_RETURN_IF_ERROR(grpc_util::Retry(
+          [&]() {
+            return dispatcher_->GetOrCreateJob(dataset()->dataset_id_,
+                                               dataset()->processing_mode_, key,
+                                               job_client_id_);
+          },
+          /*description=*/
+          strings::StrCat("get or create job with dispatcher at ",
+                          dataset()->address_),
+          deadline_micros));
       initialized_ = true;
       VLOG(1) << "Created data service job with id " << job_client_id_;
       return Status::OK();
@@ -254,8 +254,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             });
       }
 
-      while (results_.empty() && !job_finished_ && !cancelled_ &&
-             status_.ok()) {
+      while (results_.empty() &&
+             !(job_finished_ && num_running_worker_threads_ == 0) &&
+             !cancelled_ && status_.ok()) {
         get_next_cv_.wait(l);
       }
       if (cancelled_) {
@@ -292,6 +293,26 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       return errors::Unimplemented("RestoreInternal is not yet supported");
+    }
+
+    data::TraceMeMetadata GetTraceMeMetadata() const override {
+      data::TraceMeMetadata result;
+      int64 num_tasks = -1;
+      if (mu_.try_lock()) {
+        num_tasks = tasks_.size() - finished_tasks_;
+        mu_.unlock();
+      }
+      std::string num_tasks_string =
+          (num_tasks == -1)
+              ? "unavailable"
+              : strings::Printf("%lld", static_cast<long long>(num_tasks));
+      result.push_back(std::make_pair("num_tasks", num_tasks_string));
+      result.push_back(std::make_pair("job_name", dataset()->job_name_));
+      result.push_back(std::make_pair(
+          "max_outstanding_requests",
+          strings::Printf("%lld", static_cast<long long>(
+                                      dataset()->max_outstanding_requests_))));
+      return result;
     }
 
    private:
@@ -343,7 +364,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       }
     }
 
-    void UpdateTasks() LOCKS_EXCLUDED(mu_) {
+    void UpdateTasks() TF_LOCKS_EXCLUDED(mu_) {
       VLOG(3) << "Updating tasks";
       std::vector<TaskInfo> tasks;
       bool job_finished;
@@ -361,6 +382,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       job_finished_ = job_finished;
       if (job_finished) {
         get_next_cv_.notify_all();
+        worker_thread_cv_.notify_all();
         return;
       }
       for (int i = 0; i < tasks_.size(); ++i) {
@@ -398,7 +420,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       }
     }
 
-    void UpdateWorkerThreads(IteratorContext* ctx) LOCKS_EXCLUDED(mu_) {
+    void UpdateWorkerThreads(IteratorContext* ctx) TF_LOCKS_EXCLUDED(mu_) {
       mutex_lock l(mu_);
       while (num_running_worker_threads_ < max_outstanding_requests_) {
         num_running_worker_threads_++;
@@ -407,6 +429,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           mutex_lock l(mu_);
           num_running_worker_threads_--;
           outstanding_requests_--;
+          get_next_cv_.notify_all();
         };
         worker_threads_.push_back(ctx->StartThread(
             "tf-data-service-task_thread", [this, done = std::move(done)]() {
@@ -431,7 +454,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             worker_thread_cv_.notify_one();
           }
           outstanding_requests_--;
-          while (!cancelled_ && !(SpaceInBuffer() && TaskAvailable())) {
+          while (!cancelled_ && !(SpaceInBuffer() && TaskAvailable()) &&
+                 !job_finished_) {
             if (VLOG_IS_ON(3)) {
               VLOG(3) << "Sleeping with results_.size=" << results_.size()
                       << ", outstanding_requests_=" << outstanding_requests_
@@ -443,7 +467,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             worker_thread_cv_.wait(l);
           }
           outstanding_requests_++;
-          if (cancelled_) {
+          if (cancelled_ || job_finished_) {
             return;
           }
           // Search for a task to update.
@@ -461,15 +485,17 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           DCHECK(task_to_process != nullptr);
           VLOG(3) << "Processing task " << task_to_process->task_id;
         }
-        int64 deadline_micros =
-            Env::Default()->NowMicros() + kRetryTimeoutMicros;
+        int64 deadline_micros = kint64max;
         Status s = GetElement(task_to_process.get(), deadline_micros);
         if (!s.ok()) {
           mutex_lock l(mu_);
-          VLOG(1) << "Failed to get element for task "
-                  << task_to_process->task_id << ": " << s;
+          VLOG(1) << "Failed to get element from worker "
+                  << task_to_process->address << ": " << s;
           task_to_process->in_use = false;
-          status_ = s;
+          status_ = Status(
+              s.code(),
+              absl::StrCat("Failed to get element from worker ",
+                           task_to_process->address, ": ", s.error_message()));
           get_next_cv_.notify_all();
           return;
         }
@@ -520,6 +546,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             (deadline_micros > deadline_with_backoff_micros)
                 ? deadline_with_backoff_micros
                 : deadline_micros;
+        VLOG(1) << "Failed to get an element from worker " << task->address
+                << ": " << s << ". Will retry in "
+                << (backoff_until - now_micros) << " microseconds";
         Env::Default()->SleepForMicroseconds(backoff_until - now_micros);
       }
 
@@ -552,7 +581,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
     const int64 iterator_index_;
 
-    mutex mu_;
+    mutable mutex mu_;
     condition_variable get_next_cv_ TF_GUARDED_BY(mu_);
     condition_variable worker_thread_cv_ TF_GUARDED_BY(mu_);
     condition_variable manager_thread_cv_ TF_GUARDED_BY(mu_);
@@ -590,7 +619,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
     bool job_finished_ = false;
     std::vector<std::unique_ptr<Thread>> worker_threads_ TF_GUARDED_BY(mu_);
-    std::unique_ptr<Thread> task_thread_manager_ GUARDED_BY(mu_);
+    std::unique_ptr<Thread> task_thread_manager_ TF_GUARDED_BY(mu_);
   };
 
   const int64 dataset_id_;

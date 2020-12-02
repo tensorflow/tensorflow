@@ -62,6 +62,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/map_dataset_op.h"
 #include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/kernels/data/range_dataset_op.h"
+#include "tensorflow/core/kernels/data/split_utils.h"
 #include "tensorflow/core/kernels/data/take_dataset_op.h"
 #include "tensorflow/core/kernels/data/tensor_slice_dataset_op.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -401,7 +402,7 @@ Status DatasetOpsTestBase::InitFunctionLibraryRuntime(
   pflr_ = absl::make_unique<ProcessFunctionLibraryRuntime>(
       device_mgr_.get(), Env::Default(), /*config=*/nullptr,
       TF_GRAPH_DEF_VERSION, lib_def_.get(), opts, thread_pool_.get(),
-      /*parent=*/nullptr, /*custom_kernel_creator=*/nullptr,
+      /*parent=*/nullptr,
       /*session_metadata=*/nullptr,
       Rendezvous::Factory{
           [](const int64, const DeviceMgr* device_mgr, Rendezvous** r) {
@@ -606,6 +607,47 @@ Status DatasetOpsTestBase::CheckIteratorGetNext(
   return Status::OK();
 }
 
+Status DatasetOpsTestBase::CheckSplitProviderFullIteration(
+    const DatasetParams& params, const std::vector<Tensor>& expected_outputs) {
+  std::unique_ptr<TestDataset> dataset;
+  TF_RETURN_IF_ERROR(MakeDataset(params, &dataset));
+  std::unique_ptr<SplitProvider> split_provider;
+  TF_RETURN_IF_ERROR(dataset->dataset()->MakeSplitProvider(&split_provider));
+  std::unique_ptr<TestIterator> iterator;
+  TF_RETURN_IF_ERROR(
+      MakeIterator(params, *dataset, std::move(split_provider), &iterator));
+  TF_RETURN_IF_ERROR(CheckIteratorGetNext(iterator.get(), expected_outputs,
+                                          /*compare_order=*/true));
+  return Status::OK();
+}
+
+Status DatasetOpsTestBase::CheckSplitProviderShardedIteration(
+    const DatasetParams& params, int64 num_shards, int64 shard_index,
+    const std::vector<Tensor>& expected_outputs) {
+  std::unique_ptr<TestDataset> dataset;
+  TF_RETURN_IF_ERROR(MakeDataset(params, &dataset));
+  std::unique_ptr<SplitProvider> split_provider;
+  TF_RETURN_IF_ERROR(dataset->dataset()->MakeSplitProvider(&split_provider));
+  split_provider = absl::make_unique<ShardingSplitProvider>(
+      num_shards, shard_index, std::move(split_provider));
+  std::unique_ptr<IteratorContext> iterator_ctx;
+  TF_RETURN_IF_ERROR(
+      CreateIteratorContext(dataset->op_kernel_context(), &iterator_ctx));
+  IteratorContext::Params iterator_params(iterator_ctx.get());
+  iterator_params.split_provider = std::move(split_provider);
+  iterator_ctx = absl::make_unique<IteratorContext>(iterator_params);
+  int mid_breakpoint = expected_outputs.size() / 2;
+  int near_end_breakpoint = expected_outputs.size() - 1;
+  int end_breakpoint = expected_outputs.size();
+  TF_RETURN_IF_ERROR(CheckIteratorSaveAndRestore(
+      dataset->dataset(), iterator_ctx.get(), params.iterator_prefix(),
+      expected_outputs,
+      /*breakpoints=*/
+      {0, mid_breakpoint, near_end_breakpoint, end_breakpoint},
+      /*compare_order=*/true));
+  return Status::OK();
+}
+
 Status DatasetOpsTestBase::CheckDatasetNodeName(
     const string& expected_dataset_node_name) {
   EXPECT_EQ(dataset_->node_name(), expected_dataset_node_name);
@@ -658,11 +700,13 @@ Status DatasetOpsTestBase::CheckIteratorPrefix(
 }
 
 Status DatasetOpsTestBase::CheckIteratorSaveAndRestore(
-    const string& iterator_prefix, const std::vector<Tensor>& expected_outputs,
+    DatasetBase* dataset, IteratorContext* iterator_ctx,
+    const std::string& iterator_prefix,
+    const std::vector<Tensor>& expected_outputs,
     const std::vector<int>& breakpoints, bool compare_order) {
   std::unique_ptr<IteratorBase> iterator;
-  TF_RETURN_IF_ERROR(dataset_->MakeIterator(
-      iterator_ctx_.get(), /*parent=*/nullptr, iterator_prefix, &iterator));
+  TF_RETURN_IF_ERROR(dataset->MakeIterator(iterator_ctx, /*parent=*/nullptr,
+                                           iterator_prefix, &iterator));
   std::unique_ptr<SerializationContext> serialization_ctx;
   TF_RETURN_IF_ERROR(CreateSerializationContext(&serialization_ctx));
   bool end_of_sequence = false;
@@ -674,31 +718,29 @@ Status DatasetOpsTestBase::CheckIteratorSaveAndRestore(
     std::vector<const VariantTensorData*> data;
     writer.GetData(&data);
     VariantTensorDataReader reader(data);
-    TF_EXPECT_OK(RestoreIterator(iterator_ctx_.get(), &reader, iterator_prefix,
-                                 *dataset_, &iterator));
+    TF_EXPECT_OK(RestoreIterator(iterator_ctx, &reader, iterator_prefix,
+                                 *dataset, &iterator));
 
     while (cur_iteration <= breakpoint) {
       std::vector<Tensor> next;
       TF_RETURN_IF_ERROR(
-          iterator->GetNext(iterator_ctx_.get(), &next, &end_of_sequence));
+          iterator->GetNext(iterator_ctx, &next, &end_of_sequence));
       out_tensors.insert(out_tensors.end(), next.begin(), next.end());
       cur_iteration++;
-    }
-
-    if (dataset_->Cardinality() == kUnknownCardinality) {
-      continue;
-    }
-
-    if (dataset_->Cardinality() == kInfiniteCardinality ||
-        breakpoint < dataset_->Cardinality()) {
-      EXPECT_FALSE(end_of_sequence);
-    } else {
-      EXPECT_TRUE(end_of_sequence);
     }
   }
   TF_EXPECT_OK(ExpectEqual(out_tensors, expected_outputs,
                            /*compare_order=*/compare_order));
   return Status::OK();
+}
+
+Status DatasetOpsTestBase::CheckIteratorSaveAndRestore(
+    const std::string& iterator_prefix,
+    const std::vector<Tensor>& expected_outputs,
+    const std::vector<int>& breakpoints, bool compare_order) {
+  return CheckIteratorSaveAndRestore(dataset_, iterator_ctx_.get(),
+                                     iterator_prefix, expected_outputs,
+                                     breakpoints, compare_order);
 }
 
 Status DatasetOpsTestBase::Initialize(const DatasetParams& dataset_params) {
@@ -793,10 +835,14 @@ Status DatasetOpsTestBase::MakeDataset(
 
 Status DatasetOpsTestBase::MakeIterator(
     const DatasetParams& dataset_params, const TestDataset& dataset,
+    std::unique_ptr<SplitProvider> split_provider,
     std::unique_ptr<TestIterator>* iterator) {
   std::unique_ptr<IteratorContext> iterator_ctx;
   TF_RETURN_IF_ERROR(
       CreateIteratorContext(dataset.op_kernel_context(), &iterator_ctx));
+  IteratorContext::Params iterator_params(iterator_ctx.get());
+  iterator_params.split_provider = std::move(split_provider);
+  iterator_ctx = absl::make_unique<IteratorContext>(iterator_params);
   std::unique_ptr<IteratorBase> iterator_base;
   TF_RETURN_IF_ERROR(dataset.dataset()->MakeIterator(
       iterator_ctx.get(), /*parent=*/nullptr, dataset_params.iterator_prefix(),
@@ -804,6 +850,13 @@ Status DatasetOpsTestBase::MakeIterator(
   *iterator = std::make_unique<TestIterator>(std::move(iterator_ctx),
                                              std::move(iterator_base));
   return Status::OK();
+}
+
+Status DatasetOpsTestBase::MakeIterator(
+    const DatasetParams& dataset_params, const TestDataset& dataset,
+    std::unique_ptr<TestIterator>* iterator) {
+  return MakeIterator(dataset_params, dataset, /*split_provider=*/nullptr,
+                      iterator);
 }
 
 Status DatasetOpsTestBase::RunDatasetOp(const DatasetParams& dataset_params,

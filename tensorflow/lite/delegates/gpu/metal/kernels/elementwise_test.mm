@@ -257,6 +257,19 @@ TensorRef<BHWC> GetTensorRef(int ref, const BHWC& shape) {
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
+- (void)testNeg {
+  OperationType op_type = OperationType::NEG;
+  const BHWC shape(1, 2, 2, 1);
+  SingleOpModel model({/*type=*/ToString(op_type), /*attributes=*/{}},
+                      /*inputs=*/{GetTensorRef(0, shape)},
+                      /*outputs=*/{GetTensorRef(1, shape)});
+  XCTAssertTrue(model.PopulateTensor(0, {-1.0, 3.1415926, 0.0, 1.0}));
+  auto status = model.Invoke();
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+  status = CompareVectors({1.0, -3.1415926, 0.0, -1.0}, model.GetOutput(0), 1e-6f);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
 - (void)testPow {
   OperationType op_type = OperationType::POW;
   const BHWC shape(1, 2, 2, 1);

@@ -18,13 +18,14 @@ limitations under the License.
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/hlo_to_mlir_hlo.h"
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
 #include "tensorflow/compiler/mlir/xla/transforms/mhlo_to_lhlo_with_xla.h"
+#include "tensorflow/compiler/mlir/xla/xla_mlir_translate_cl.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
@@ -32,19 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/protobuf.h"
-
-// NOLINTNEXTLINE
-static llvm::cl::opt<bool> emit_use_tuple_arg(
-    "emit-use-tuple-args",
-    llvm::cl::desc(
-        "Emit HLO modules using tuples as args for the entry computation"),
-    llvm::cl::init(false));
-
-// NOLINTNEXTLINE
-static llvm::cl::opt<bool> emit_return_tuple(
-    "emit-return-tuple",
-    llvm::cl::desc("Emit HLO modules with entry computations returning tuple"),
-    llvm::cl::init(false));
 
 namespace xla {
 
@@ -136,13 +124,16 @@ static StatusOr<std::unique_ptr<HloModule>> HloModuleFromProto(
   return HloModule::CreateFromProto(module_proto, module_config);
 }
 
-static mlir::LogicalResult MlirHloToHloTextTranslateFunction(
-    mlir::ModuleOp module, llvm::raw_ostream& output) {
+static mlir::LogicalResult MlirHloToHloTextTranslateFunctionImpl(
+    mlir::ModuleOp module, llvm::raw_ostream& output, bool with_layouts) {
   if (!module) return mlir::failure();
 
   HloProto hloProto;
+  mlir::MlirToHloConversionOptions options;
+  options.propagate_layouts = with_layouts;
   Status status = mlir::ConvertMlirHloToHlo(
-      module, &hloProto, emit_use_tuple_arg, emit_return_tuple);
+      module, &hloProto, emit_use_tuple_arg, emit_return_tuple,
+      /*shape_representation_fn=*/nullptr, options);
   if (!status.ok()) {
     LOG(ERROR) << "Module conversion failed: " << status;
     return mlir::failure();
@@ -158,9 +149,8 @@ static mlir::LogicalResult MlirHloToHloTextTranslateFunction(
 
   HloModule* hlo_module = statusOrHloModule.ValueOrDie().get();
 
-  // We don't interpret or use layouts
   output << hlo_module->ToString(
-      HloPrintOptions().set_include_layout_in_shapes(false));
+      HloPrintOptions().set_include_layout_in_shapes(with_layouts));
 
   // Output alias information as comments in the HLO text.
   hlo_module->input_output_alias_config().ForEachAlias(
@@ -172,6 +162,18 @@ static mlir::LogicalResult MlirHloToHloTextTranslateFunction(
       });
 
   return mlir::success();
+}
+
+static mlir::LogicalResult MlirHloToHloTextTranslateFunction(
+    mlir::ModuleOp module, llvm::raw_ostream& output) {
+  return MlirHloToHloTextTranslateFunctionImpl(module, output,
+                                               /*with_layouts=*/false);
+}
+
+static mlir::LogicalResult MlirHloToHloTextWithLayoutsTranslateFunction(
+    mlir::ModuleOp module, llvm::raw_ostream& output) {
+  return MlirHloToHloTextTranslateFunctionImpl(module, output,
+                                               /*with_layouts=*/true);
 }
 
 }  // namespace xla
@@ -187,6 +189,10 @@ static mlir::TranslateFromMLIRRegistration MlirHloToHloTranslate(
 static mlir::TranslateFromMLIRRegistration MlirHloToHloTextTranslate(
     "mlir-hlo-to-hlo-text", xla::MlirHloToHloTextTranslateFunction,
     RegisterInputDialects);
+
+static mlir::TranslateFromMLIRRegistration MlirHloToHloTextWithLayoutsTranslate(
+    "mlir-hlo-to-hlo-text-with-layouts",
+    xla::MlirHloToHloTextWithLayoutsTranslateFunction, RegisterInputDialects);
 
 static mlir::TranslateToMLIRRegistration HloToHloMlirTranslate(
     "hlo-to-mlir-hlo", xla::HloToMlirHloTranslateFunction);

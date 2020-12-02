@@ -32,9 +32,6 @@ limitations under the License.
 
 namespace Eigen {
 struct ThreadPoolDevice;
-#ifdef TENSORFLOW_USE_SYCL
-struct SyclDevice;
-#endif
 }  // end namespace Eigen
 
 namespace stream_executor {
@@ -117,6 +114,9 @@ class DeviceContext : public core::RefCounted {
                              std::function<void()> func) {
     return errors::Internal("ThenExecute not supported by device");
   }
+
+  // check if device is a pluggable device
+  virtual bool IsPluggableDevice() { return false; }
 };
 
 class DeviceBase {
@@ -176,10 +176,6 @@ class DeviceBase {
   // Does not take ownership.
   void set_eigen_cpu_device(Eigen::ThreadPoolDevice* d);
 
-#ifdef TENSORFLOW_USE_SYCL
-  void set_eigen_sycl_device(Eigen::SyclDevice* d) { eigen_sycl_device_ = d; }
-#endif
-
   // Return the Allocator implementation to use based on the allocator
   // attributes requested.  See allocator.h for more details.
   virtual Allocator* GetAllocator(AllocatorAttributes /*attr*/) {
@@ -209,13 +205,6 @@ class DeviceBase {
   }
 
   virtual const Eigen::ThreadPoolDevice* eigen_cpu_device();
-
-#ifdef TENSORFLOW_USE_SYCL
-  virtual const Eigen::SyclDevice* eigen_sycl_device() const {
-    CHECK(eigen_sycl_device_ != nullptr);
-    return eigen_sycl_device_;
-  }
-#endif
 
   // Caller owns the return value. The OpKernelContext calls this even
   // for devices that do not implement an eigen_gpu_device. Overridden
@@ -290,9 +279,6 @@ class DeviceBase {
   GpuDeviceInfo* gpu_device_info_ = nullptr;
   thread::ThreadPool* device_thread_pool_ = nullptr;
   std::vector<Eigen::ThreadPoolDevice*> eigen_cpu_devices_;
-#ifdef TENSORFLOW_USE_SYCL
-  Eigen::SyclDevice* eigen_sycl_device_ = nullptr;
-#endif
 };
 
 // Methods to create and check for Symbolic execution devices.

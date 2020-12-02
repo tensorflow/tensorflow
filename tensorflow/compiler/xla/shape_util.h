@@ -783,7 +783,20 @@ class ShapeUtil {
   static absl::optional<std::vector<int64>> FindTranspose021(const Shape& a,
                                                              const Shape& b);
 
+  // Strips device-specific information, namely tiling and memory-space
+  // information, from a shape.
+  static Shape DeviceShapeToHostShape(Shape s);
+
+  // Returns true iff integral shape `from` can be safely upcasted to integral
+  // shape `to`.
+  static bool CanUpcastIntegral(const Shape& from, const Shape& to);
+
  private:
+  // Fills *shape. Returns true on success.
+  // REQUIRES: *shape is empty.
+  static bool FillNewShape(PrimitiveType element_type,
+                           absl::Span<const int64> dimensions, Shape* shape);
+
   // Validates the shape size is sane. This makes sure it's safe to do
   // calculations in int64 without overflowing.
   static Status ValidateShapeSize(const Shape& shape);

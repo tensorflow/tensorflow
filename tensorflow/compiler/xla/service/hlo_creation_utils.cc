@@ -92,16 +92,19 @@ StatusOr<HloInstruction*> MakeSliceHlo(HloInstruction* operand,
 
 StatusOr<HloInstruction*> MakeConvolveHlo(
     HloInstruction* lhs, HloInstruction* rhs, int64 feature_group_count,
-    const Window& window, const ConvolutionDimensionNumbers& dimension_numbers,
-    const PrecisionConfig& precision_config) {
+    int64 batch_group_count, const Window& window,
+    const ConvolutionDimensionNumbers& dimension_numbers,
+    const PrecisionConfig& precision_config,
+    absl::optional<PrimitiveType> preferred_element_type) {
   HloComputation* computation = lhs->parent();
   CHECK_EQ(computation, rhs->parent());
-  TF_ASSIGN_OR_RETURN(Shape convolve_shape,
-                      ShapeInference::InferConvolveShape(
-                          lhs->shape(), rhs->shape(), feature_group_count, 1,
-                          window, dimension_numbers));
+  TF_ASSIGN_OR_RETURN(
+      Shape convolve_shape,
+      ShapeInference::InferConvolveShape(
+          lhs->shape(), rhs->shape(), feature_group_count, batch_group_count,
+          window, dimension_numbers, preferred_element_type));
   return computation->AddInstruction(HloInstruction::CreateConvolve(
-      convolve_shape, lhs, rhs, feature_group_count, 1, window,
+      convolve_shape, lhs, rhs, feature_group_count, batch_group_count, window,
       dimension_numbers, precision_config));
 }
 
@@ -247,7 +250,9 @@ StatusOr<HloInstruction*> MakeConcatHlo(
 }
 
 HloInstruction* MakeConvertToHlo(HloInstruction* hlo, PrimitiveType type) {
-  CHECK_NE(hlo->shape().element_type(), type);
+  if (hlo->shape().element_type() == type) {
+    return hlo;
+  }
   Shape shape = ShapeUtil::ChangeElementType(hlo->shape(), type);
   hlo =
       hlo->parent()->AddInstruction(HloInstruction::CreateConvert(shape, hlo));
@@ -257,7 +262,9 @@ HloInstruction* MakeConvertToHlo(HloInstruction* hlo, PrimitiveType type) {
 
 HloInstruction* MakeBitcastConvertToHlo(HloInstruction* hlo,
                                         PrimitiveType type) {
-  CHECK_NE(hlo->shape().element_type(), type);
+  if (hlo->shape().element_type() == type) {
+    return hlo;
+  }
   Shape shape = ShapeUtil::ChangeElementType(hlo->shape(), type);
   // PRED are stored as one byte, PRED have a BitWidth of 1, avoid this problem
   // by using a convert instead of bitcast convert.
@@ -276,14 +283,17 @@ HloInstruction* MakeIotaHlo(HloComputation* computation, const Shape& shape,
       HloInstruction::CreateIota(shape, iota_dimension));
 }
 
-StatusOr<HloInstruction*> MakeDotHlo(HloInstruction* lhs, HloInstruction* rhs,
-                                     const DotDimensionNumbers& dim_numbers,
-                                     const PrecisionConfig& precision_config) {
+StatusOr<HloInstruction*> MakeDotHlo(
+    HloInstruction* lhs, HloInstruction* rhs,
+    const DotDimensionNumbers& dim_numbers,
+    const PrecisionConfig& precision_config,
+    absl::optional<PrimitiveType> preferred_element_type) {
   HloComputation* computation = lhs->parent();
   CHECK_EQ(computation, rhs->parent());
   TF_ASSIGN_OR_RETURN(
       Shape dot_shape,
-      ShapeInference::InferDotOpShape(lhs->shape(), rhs->shape(), dim_numbers));
+      ShapeInference::InferDotOpShape(lhs->shape(), rhs->shape(), dim_numbers,
+                                      preferred_element_type));
   return computation->AddInstruction(HloInstruction::CreateDot(
       dot_shape, lhs, rhs, dim_numbers, precision_config));
 }

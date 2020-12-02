@@ -56,7 +56,7 @@ class TpuCompilationCacheService {
   // Performs the actual cache fetch and serialization.
   void GetTpuProgram(GetTpuProgramCall* call);
 
-  std::atomic<bool> running_ = true;
+  std::atomic<bool> running_;
   tpu::TpuCompilationCacheInterface* cache_;
   ::grpc::ServerBuilder* server_builder_;
   std::unique_ptr<::grpc::Server> server_;

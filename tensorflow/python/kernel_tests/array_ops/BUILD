@@ -23,6 +23,12 @@ cuda_py_test(
     name = "unstack_op_test",
     size = "small",
     srcs = ["unstack_op_test.py"],
+    tags = [
+        "no_cuda_asan",  # b/173806679
+    ],
+    xla_tags = [
+        "no_cuda_asan",  # times out
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -51,6 +57,7 @@ cuda_py_test(
     name = "gather_op_test",
     size = "medium",
     srcs = ["gather_op_test.py"],
+    tags = ["no_cuda_asan"],  # b/173806733
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -72,8 +79,23 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:gradients",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:state_ops",
+        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_test(
+    name = "stack_op_test",
+    size = "medium",
+    srcs = ["stack_op_test.py"],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],

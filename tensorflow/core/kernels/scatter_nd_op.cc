@@ -38,17 +38,11 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/util.h"
 
-#ifdef TENSORFLOW_USE_SYCL
-#include "tensorflow/core/common_runtime/sycl/sycl_util.h"
-#endif  // TENSORFLOW_USE_SYCL
 
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
-#ifdef TENSORFLOW_USE_SYCL
-typedef Eigen::SyclDevice SYCLDevice;
-#endif  // TENSORFLOW_USE_SYCL
 
 // Returns true if the three tensors have valid number of elements
 // If shape_input has 0 elements, then we need to have indices and updates with
@@ -677,28 +671,6 @@ TF_CALL_COMPLEX_TYPES(REGISTER_SCATTER_ND_ALL_GPU);
 
 #undef REGISTER_SCATTER_ND_ALL_GPU
 
-#ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SCATTER_ND_ADD_SUB_SYCL(type) \
-  REGISTER_SCATTER_ND_ADD_SUB(type, SYCL);
-
-#define REGISTER_SCATTER_ND_UPDATE_SYCL(type) \
-  REGISTER_SCATTER_ND_UPDATE(type, SYCL);
-
-#define REGISTER_SCATTER_ND_MIN_MAX_SYCL(type) \
-  REGISTER_SCATTER_ND_MIN_MAX(type, SYCL);
-
-TF_CALL_int32(REGISTER_SCATTER_ND_ADD_SUB_SYCL);
-TF_CALL_int32(REGISTER_SCATTER_ND_UPDATE_SYCL);
-TF_CALL_int32(REGISTER_SCATTER_ND_MIN_MAX_SYCL);
-TF_CALL_bool(REGISTER_SCATTER_ND_UPDATE_SYCL);
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_ADD_SUB_SYCL);
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_UPDATE_SYCL);
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_MIN_MAX_SYCL);
-
-#undef REGISTER_SCATTER_ND_ADD_SUB_SYCL
-#undef REGISTER_SCATTER_ND_MIN_MAX_SYCL
-#undef REGISTER_SCATTER_ND_UPDATE_SYCL
-#endif  // TENSORFLOW_USE_SYCL
 
 #define REGISTER_SCATTER_ND_TENSOR_UPDATE_GPU(type)                    \
   REGISTER_SCATTER_ND_TENSOR_UPDATE_TYPE_INDEX_TYPE(type, int32, GPU); \
@@ -924,30 +896,6 @@ class IndexFlattener {
   }
 };
 
-#ifdef TENSORFLOW_USE_SYCL
-template <typename Index>
-class IndexFlattener<SYCLDevice, Index> {
- public:
-  IndexFlattener() { indices_host_ = nullptr; }
-  ~IndexFlattener() { delete[] indices_host_; }
-
-  inline typename TTypes<Index, 2>::ConstTensor operator()(
-      OpKernelContext* c, const Tensor& indices) {
-    size_t num_indices = indices.NumElements();
-    indices_host_ = new Index[num_indices];
-    auto device = c->eigen_sycl_device();
-    auto size = sizeof(Index) * num_indices;
-    auto src_ptr = GetBase(&indices);
-    device.memcpyDeviceToHost(indices_host_, static_cast<const Index*>(src_ptr),
-                              size);
-    return typename TTypes<Index, 2>::ConstTensor(
-        indices_host_, indices.shape().AsEigenDSizes<2>());
-  }
-
- private:
-  Index* indices_host_;
-};
-#endif
 
 template <typename Device, typename T, typename Index,
           scatter_nd_op::UpdateOp Op>

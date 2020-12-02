@@ -56,8 +56,7 @@ StatusOr<ExecutionOutput> InterpreterExecutableBase::ExecuteAsyncOnStream(
   }
   for (auto& argument : arguments) {
     const ShapeTree<MaybeOwningDeviceMemory>& buffers = argument.Buffers();
-    argument_buffers.push_back(ShapedBuffer(buffers.shape(), buffers.shape(),
-                                            /*platform=*/nullptr,
+    argument_buffers.push_back(ShapedBuffer(buffers.shape(),
                                             /*device_ordinal=*/device_ordinal));
     auto in_it = buffers.begin();
     auto out_it = argument_buffers.back().buffers().begin();

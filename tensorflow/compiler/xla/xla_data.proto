@@ -85,6 +85,7 @@ enum PrimitiveType {
   // Next = 19
 }
 // LINT.ThenChange(
+//   https://www.tensorflow.org/code/tensorflow/compiler/xla/shape_util.cc,
 //   https://www.tensorflow.org/code/tensorflow/compiler/xla/tools/driver.cc
 // )
 
@@ -245,6 +246,14 @@ message ComputationStats {
   double transcendental_count = 2;
 }
 
+// The type optimization profiles in use.
+enum ProfileType {
+  INVALID = 0;
+  WINDOW = 1;
+  FLAG = 2;
+  INTEGER = 3;
+}
+
 // Symbolization metadata for HLO Instructions.
 //
 // This metadata is used for debugging XLA code generation, as well as
@@ -268,6 +277,8 @@ message OpMetadata {
   // e.g. it could be the file and line of user code that generated the op.
   string source_file = 3;
   int32 source_line = 4;
+
+  repeated ProfileType profile_type = 5;
 }
 
 // Profile data from the execution of a computation.
@@ -526,6 +537,12 @@ message ConvolutionDimensionNumbers {
   // Next = 13
 }
 
+enum PaddingType {
+  PADDING_INVALID = 0;
+  PADDING_VALID = 1;  // Only valid portion of the base are covered.
+  PADDING_SAME = 2;  // Extra is added to produce same output size as the input.
+}
+
 enum FftType {
   FFT = 0;    // Forward FFT; complex in, complex out.
   IFFT = 1;   // Inverse FFT; complex in, complex out.
@@ -609,6 +626,9 @@ message OpSharding {
     TUPLE = 2;
     // None of the above; tile_shape and tile_assignment are both used.
     OTHER = 3;
+    // This op is manually sharded: the shapes are already partitioned and the
+    // partitioner should not change this op.
+    MANUAL = 4;
   }
   Type type = 1;
   // The shape of the sharded tile.
@@ -690,4 +710,12 @@ message WhileLoopBackendConfig {
   // This indirection lets us distinguish between known-trip-count == 0 and
   // unknown-trip-count.
   KnownTripCount known_trip_count = 1;
+}
+
+// Specifies a pair of output/operand buffers for kCustomCall that alias each
+// other.
+message CustomCallOutputOperandAliasing {
+  repeated int64 output_shape_index = 1;
+  int64 operand_index = 2;
+  repeated int64 operand_shape_index = 3;
 }

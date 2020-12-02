@@ -21,6 +21,11 @@ limitations under the License.
 
 #include "llvm/IR/IntrinsicsNVPTX.h"
 #include "llvm/IR/Module.h"
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
+#include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -472,39 +477,6 @@ StatusOr<CudnnConvKind> GetCudnnConvKind(
   return InternalError("Unexpected call target: %s", target);
 }
 
-StatusOr<se::dnn::ConvolutionKind> GetDnnConvolutionKind(
-    const HloCustomCallInstruction* instr) {
-  absl::string_view target = instr->custom_call_target();
-  if (target == kCudnnConvForwardCallTarget) {
-    return se::dnn::ConvolutionKind::FORWARD;
-  }
-  if (target == kCudnnConvBackwardInputCallTarget) {
-    return se::dnn::ConvolutionKind::BACKWARD_DATA;
-  }
-  if (target == kCudnnConvBackwardFilterCallTarget) {
-    return se::dnn::ConvolutionKind::BACKWARD_FILTER;
-  }
-  return InternalError("Unexpected call target: %s", target);
-}
-
-StatusOr<se::dnn::DataType> GetDnnDataType(
-    const HloCustomCallInstruction* conv) {
-  PrimitiveType output_primitive_type =
-      conv->shape().tuple_shapes(0).element_type();
-  switch (output_primitive_type) {
-    case F16:
-      return se::dnn::ToDataType<Eigen::half>::value;
-    case F32:
-      return se::dnn::ToDataType<float>::value;
-    case F64:
-      return se::dnn::ToDataType<double>::value;
-    default:
-      break;
-  }
-  return InternalError("Unsupported convolution datatype : %s",
-                       conv->ToString());
-}
-
 string CudnnConvKindToString(CudnnConvKind kind) {
   switch (kind) {
     case CudnnConvKind::kForward:
@@ -519,41 +491,83 @@ string CudnnConvKindToString(CudnnConvKind kind) {
 }
 
 llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b) {
-  return b->CreateAnd(
-      b->CreateICmpEQ(
-          b->getInt32(0),
-          EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b)),
-      b->CreateICmpEQ(
-          b->getInt32(0),
-          EmitCallToTargetIntrinsic(TargetIntrinsicID::kBlockIdx, {}, {}, b)));
+  llvm::Value* is_thread0 = b->CreateICmpEQ(
+      b->getInt32(0),
+      EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b));
+
+  llvm::Value* is_block0 = b->CreateICmpEQ(
+      b->getInt32(0),
+      EmitCallToTargetIntrinsic(TargetIntrinsicID::kBlockIdx, {}, {}, b));
+  return b->CreateAnd(is_thread0, is_block0);
 }
 
-bool AreFusedReductionOutputsConsistent(
-    absl::Span<const HloInstruction* const> output_instructions,
-    const HloInstruction* first_reduce) {
-  for (const HloInstruction* inst : output_instructions) {
-    if (IsReductionFromOrToContiguousDimensions(*inst)) {
-      // Shapes, layouts and dimensions must be the same for all reduces
-      // inside of this fusion.
-      // TODO(tjoerg): Relax the shape constraint. The datatype does not matter.
-      if (!(ShapeUtil::Equal(first_reduce->shape(), inst->shape()) &&
-            ShapeUtil::Equal(first_reduce->operand(0)->shape(),
-                             inst->operand(0)->shape()) &&
-            ShapeUtil::Equal(first_reduce->operand(1)->shape(),
-                             inst->operand(1)->shape()) &&
-            first_reduce->dimensions() == inst->dimensions())) {
-        return false;
-      }
-    } else {
-      if (!(ShapeUtil::CompatibleIgnoringElementType(
-                first_reduce->operand(0)->shape(), inst->shape()) &&
-            LayoutUtil::Equal(first_reduce->operand(0)->shape().layout(),
-                              inst->shape().layout()))) {
-        return false;
+bool IsFusedReductionOutputConsistent(const HloInstruction* inst,
+                                      const HloInstruction* first_reduce) {
+  if (IsReductionFromOrToContiguousDimensions(*inst)) {
+    // Shapes, layouts and dimensions must be the same for all reduces
+    // inside of this fusion.
+    // TODO(tjoerg): Relax the shape constraint. The datatype does not matter.
+    return ShapeUtil::Equal(first_reduce->shape(), inst->shape()) &&
+           ShapeUtil::Equal(first_reduce->operand(0)->shape(),
+                            inst->operand(0)->shape()) &&
+           ShapeUtil::Equal(first_reduce->operand(1)->shape(),
+                            inst->operand(1)->shape()) &&
+           first_reduce->dimensions() == inst->dimensions();
+  }
+  return ShapeUtil::CompatibleIgnoringElementType(
+             first_reduce->operand(0)->shape(), inst->shape()) &&
+         LayoutUtil::Equal(first_reduce->operand(0)->shape().layout(),
+                           inst->shape().layout());
+}
+
+std::vector<mlir::Value> GetHloOperands(mlir::Operation* op) {
+  if (auto fusion = mlir::dyn_cast<mlir::lmhlo::FusionOp>(op)) {
+    return ToStdVector(fusion.getInputBuffers());
+  }
+  if (op->getDialect() == op->getContext()->getLoadedDialect("lmhlo")) {
+    std::vector<mlir::Value> operands;
+    for (auto buffer : op->getOperands()) {
+      if (!WritesMlirBuffer(op, buffer)) {
+        operands.push_back(buffer);
       }
     }
+    return operands;
   }
-  return true;
+  if (op->getDialect() == op->getContext()->getLoadedDialect("mhlo")) {
+    return std::vector<mlir::Value>(op->getOperands().begin(),
+                                    op->getOperands().end());
+  }
+  LOG(FATAL) << "Unexpected op: " << MlirToString(op);
+}
+
+std::vector<mlir::Value> GetHloOutputs(mlir::Operation* op) {
+  if (auto fusion = mlir::dyn_cast<mlir::lmhlo::FusionOp>(op)) {
+    return ToStdVector(fusion.getOutputBuffers());
+  }
+  if (op->getDialect() == op->getContext()->getLoadedDialect("lmhlo")) {
+    std::vector<mlir::Value> outputs;
+    for (auto buffer : op->getOperands()) {
+      if (WritesMlirBuffer(op, buffer)) {
+        outputs.push_back(buffer);
+      }
+    }
+    return outputs;
+  }
+  if (op->getDialect() == op->getContext()->getLoadedDialect("mhlo")) {
+    return std::vector<mlir::Value>(op->getResults().begin(),
+                                    op->getResults().end());
+  }
+  LOG(FATAL) << "Unexpected op: " << MlirToString(op);
+}
+
+bool WritesMlirBuffer(mlir::Operation* op, mlir::Value operand) {
+  llvm::SmallVector<mlir::MemoryEffects::EffectInstance, 2> effects;
+  mlir::cast<mlir::MemoryEffectOpInterface>(op).getEffectsOnValue(operand,
+                                                                  effects);
+  return absl::c_any_of(
+      effects, [](const mlir::MemoryEffects::EffectInstance& instance) {
+        return mlir::isa<mlir::MemoryEffects::Write>(instance.getEffect());
+      });
 }
 
 }  // namespace gpu

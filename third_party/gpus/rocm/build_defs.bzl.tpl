@@ -34,6 +34,10 @@ def rocm_is_configured():
     """Returns true if ROCm was enabled during the configure process."""
     return %{rocm_is_configured}
 
+def rocm_gpu_architectures():
+    """Returns a list of supported GPU architectures."""
+    return %{rocm_gpu_architectures}
+
 def if_rocm_is_configured(x):
     """Tests if the ROCm was enabled during the configure process.
 

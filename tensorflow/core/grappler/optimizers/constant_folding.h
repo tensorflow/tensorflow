@@ -102,6 +102,9 @@ class ConstantFolding : public GraphOptimizer {
 
   bool IsOnes(const NodeDef& node) const;
   bool IsZeros(const NodeDef& node) const;
+  bool ReplaceOperationWithBroadcastTo(int input_to_broadcast,
+                                       const GraphProperties& properties,
+                                       NodeDef* node, GraphDef* graph);
   void ReplaceOperationWithIdentity(int input_to_forward,
                                     const GraphProperties& properties,
                                     NodeDef* node, GraphDef* graph);

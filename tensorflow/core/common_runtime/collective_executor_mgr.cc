@@ -26,12 +26,14 @@ namespace tensorflow {
 CollectiveExecutorMgr::CollectiveExecutorMgr(
     const ConfigProto& config, const DeviceMgr* dev_mgr,
     std::unique_ptr<DeviceResolverInterface> dev_resolver,
-    std::unique_ptr<ParamResolverInterface> param_resolver)
+    std::unique_ptr<ParamResolverInterface> param_resolver,
+    std::unique_ptr<NcclCommunicatorInterface> nccl_communicator)
     : dev_mgr_(dev_mgr),
       dev_resolver_(std::move(dev_resolver)),
       param_resolver_(std::move(param_resolver)),
       gpu_ring_order_(
           config.gpu_options().experimental().collective_ring_order()),
+      nccl_communicator_(std::move(nccl_communicator)),
       work_queue_(std::make_shared<UnboundedWorkQueue>(Env::Default(),
                                                        "collective_ops")) {}
 

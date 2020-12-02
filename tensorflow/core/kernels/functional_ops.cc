@@ -174,12 +174,7 @@ class IfOp : public AsyncOpKernel {
     void Start() {
       FHandle handle = cond_ ? then_handle_ : else_handle_;
       rets_.clear();
-      profiler::TraceMe trace_me(
-          [&] {
-            return absl::StrCat("IfOp #parent_step_id=", ctx_->step_id(),
-                                ",function_step_id=", opts_.step_id, "#");
-          },
-          /*level=*/2);
+      profiler::TraceMe trace_me("IfOp");
       lib_->Run(
           // Evaluate one of the branch.
           opts_, handle, args_, &rets_,
@@ -309,12 +304,7 @@ class CaseOp : public AsyncOpKernel {
         branch = branch_handles_.size() - 1;
       }
       rets_.clear();
-      profiler::TraceMe trace_me(
-          [&] {
-            return absl::StrCat("CaseOp #parent_step_id=", ctx_->step_id(),
-                                ",function_step_id=", opts_.step_id, "#");
-          },
-          /*level=*/2);
+      profiler::TraceMe trace_me("CaseOp");
       lib_->Run(
           // Evaluate one of the branch.
           opts_, branch_handles_[branch], args_, &rets_,
@@ -406,18 +396,6 @@ class WhileOp : public AsyncOpKernel {
   mutex mu_;
   std::unordered_map<FunctionLibraryRuntime*, std::pair<FHandle, FHandle>>
       handles_ GUARDED_BY(mu_);
-
-  static string EvalCondTraceString(
-      OpKernelContext* ctx, const FunctionLibraryRuntime::Options& opts) {
-    return absl::StrCat("WhileOp-EvalCond #parent_step_id=", ctx->step_id(),
-                        ",function_step_id=", opts.step_id, "#");
-  }
-
-  static string StartBodyTraceString(
-      OpKernelContext* ctx, const FunctionLibraryRuntime::Options& opts) {
-    return absl::StrCat("WhileOp-StartBody #parent_step_id=", ctx->step_id(),
-                        ",function_step_id=", opts.step_id, "#");
-  }
 
   static Status CondResultToBool(OpKernelContext* ctx,
                                  const FunctionLibraryRuntime::Options& opts,
@@ -554,9 +532,7 @@ class WhileOp : public AsyncOpKernel {
     std::unique_ptr<BodyFuncCallFrame> body_frame_;
 
     void EvalCond() {
-      profiler::TraceMe trace_me(
-          [&] { return EvalCondTraceString(ctx_, opts_); },
-          /*level=*/2);
+      profiler::TraceMe trace_me("WhileOp-EvalCond");
       lib_->Run(
           // Evaluate the condition.
           opts_, cond_handle_, args_, &rets_,
@@ -592,9 +568,7 @@ class WhileOp : public AsyncOpKernel {
       }
       rets_.clear();
       rets_.resize(args_.size());
-      profiler::TraceMe trace_me(
-          [&] { return StartBodyTraceString(ctx_, opts_); },
-          /*level=*/2);
+      profiler::TraceMe trace_me("WhileOp-StartBody");
       lib_->Run(
           // Evaluate the body.
           opts_, body_handle_, body_frame_.get(),
@@ -649,9 +623,7 @@ class WhileOp : public AsyncOpKernel {
     do {
       // Evaluate the cond function on the current loop variables.
       {
-        profiler::TraceMe trace_me(
-            [&] { return EvalCondTraceString(ctx, opts); },
-            /*level=*/2);
+        profiler::TraceMe trace_me("WhileOp-EvalCond");
         TF_RETURN_IF_ERROR(lib->RunSync(opts, cond_handle, args, &cond_rets));
       }
       if (cond_rets.size() != 1) {
@@ -672,9 +644,7 @@ class WhileOp : public AsyncOpKernel {
       // Evaluate the body function on the current loop variables, to get an
       // updated vector of loop variables.
       {
-        profiler::TraceMe trace_me(
-            [&] { return StartBodyTraceString(ctx, opts); },
-            /*level=*/2);
+        profiler::TraceMe trace_me("WhileOp-StartBody");
         body_rets.resize(num_loop_vars);
         BodyFuncCallFrame call_frame(&args, &body_rets, loop_var_types);
         TF_RETURN_IF_ERROR(lib->RunSync(opts, body_handle, &call_frame));
@@ -854,12 +824,7 @@ class ForOp : public AsyncOpKernel {
         args_[1 + i] = std::move(rets_[i]);
       }
       rets_.clear();
-      profiler::TraceMe trace_me(
-          [&] {
-            return absl::StrCat("ForOp #parent_step_id=", ctx_->step_id(),
-                                ",function_step_id=", opts_.step_id, "#");
-          },
-          /*level=*/2);
+      profiler::TraceMe trace_me("ForOp");
       lib_->Run(opts_, kernel_->body_handle_, args_, &rets_,
                 [this](const Status& s) {
                   if (s.ok()) {

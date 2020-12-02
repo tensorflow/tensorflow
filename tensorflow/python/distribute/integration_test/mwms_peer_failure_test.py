@@ -27,16 +27,18 @@ import os
 import tensorflow as tf
 
 from tensorflow.python.distribute import collective_all_reduce_strategy as mwms_lib
-from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base
+from tensorflow.python.distribute import test_util
 from tensorflow.python.eager import test
 
 
 # Put it in top level so it executes in the child processes as well.
 mwms_lib.CollectiveAllReduceExtended._enable_check_health = True
 mwms_lib.CollectiveAllReduceExtended._check_health_interval = 3
-mwms_lib.CollectiveAllReduceExtended._check_health_initial_timeout = 6
+mwms_lib.CollectiveAllReduceExtended._check_health_initial_timeout = 0
+# This is needed for OSS, which issues all RPCs with fail_fast=false by default.
+mwms_lib.CollectiveAllReduceExtended._check_health_timeout = 1
 
 
 def get_attempt(strategy, attempts):
@@ -213,4 +215,4 @@ class PeerFailureRecoverTest(test.TestCase):
 
 
 if __name__ == "__main__":
-  combinations.main()
+  test_util.main()

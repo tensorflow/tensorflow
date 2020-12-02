@@ -316,12 +316,81 @@ func @main(%value0: tensor<2x2xf32>) -> tensor<2x2xf32> {
 // CHECK: %[[VIEW0:.*]] = std.view %[[ARG2]]{{.*}} : memref<100xi8> to memref<5x5xi32>
 // CHECK: %[[VIEW1:.*]] = std.view %[[ARG3]]{{.*}} : memref<100xi8> to memref<5x5xf32>
 // CHECK: "lmhlo.sort"(%[[ARG0]], %[[ARG1]], %[[VIEW0]], %[[VIEW1]])
-func @main(%key: tensor<5x5xi32>, %value: tensor<5x5xf32>) -> tuple<tensor<5x5xi32>, tensor<5x5xf32>> {
-  %res = "mhlo.sort"(%key, %value) ({
+func @main(%key: tensor<5x5xi32>, %value: tensor<5x5xf32>) -> (tensor<5x5xi32>, tensor<5x5xf32>) {
+  %res:2 = "mhlo.sort"(%key, %value) ({
   ^bb0(%a: tensor<i32>, %b: tensor<i32>, %c: tensor<f32>, %d: tensor<f32>):
     %ret = "mhlo.compare"(%c, %d) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%ret) : (tensor<i1>) -> ()
-  }) {dimension = 1 : i64, is_stable = true}: (tensor<5x5xi32>, tensor<5x5xf32>) -> tuple<tensor<5x5xi32>, tensor<5x5xf32>>
+  }) {dimension = 1 : i64, is_stable = true}: (tensor<5x5xi32>, tensor<5x5xf32>) -> (tensor<5x5xi32>, tensor<5x5xf32>)
 
-  return %res : tuple<tensor<5x5xi32>, tensor<5x5xf32>>
+  return %res#0, %res#1 : tensor<5x5xi32>, tensor<5x5xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @main
+// CHECK-SAME: %[[ARG0:.*]]: memref<f32> {{.*}}lmhlo.params = 0
+// CHECK-SAME: %[[ARG1:.*]]: memref<f32> {{.*}}lmhlo.params = 1
+// CHECK-SAME: %[[ARG2:.*]]: memref<4xi8>
+// CHECK: "lmhlo.fusion"() ( {
+// CHECK:   %[[VAR0:.*]] = tensor_load %[[ARG0]] : memref<f32>
+// CHECK:   %[[VAR1:.*]] = tensor_load %[[ARG1]] : memref<f32>
+// CHECK:   %[[VAR2:.*]] = mhlo.add %[[VAR0]], %[[VAR1]] : tensor<f32>
+// CHECK:   tensor_store %[[VAR2]], %[[MEMREF:.*]] : memref<f32>
+// CHECK:   "lmhlo.terminator"() : () -> ()
+// CHECK: }) : () -> ()
+func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
+  %result = "mhlo.fusion"(%arg0, %arg1) ( {
+    ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+      %result = "mhlo.add"(%arg2, %arg3): (tensor<f32>, tensor<f32>) -> tensor<f32>
+      "mhlo.return"(%result) : (tensor<f32>) -> ()
+    }) { fusion_kind = "kLoop" } : (tensor<f32>, tensor<f32>) -> tensor<f32>
+
+  return %result : tensor<f32>
+}
+
+// -----
+
+// CHECK-LABEL: func @main
+// CHECK: "lmhlo.fusion"() ( {
+// CHECK:   %[[VAL0:.*]] = tensor_load %{{.*}} : memref<f32>
+// CHECK:   %[[VAL1:.*]] = tensor_load %{{.*}} : memref<f32>
+// CHECK:   %[[VAL2:.*]] = tensor_load %{{.*}} : memref<f32>
+// CHECK:   tensor_store %[[VAL0]], %{{.*}} : memref<f32>
+// CHECK:   tensor_store %[[VAL1]], %{{.*}} : memref<f32>
+// CHECK:   tensor_store %[[VAL2]], %{{.*}} : memref<f32>
+// CHECK:   "lmhlo.terminator"() : () -> ()
+// CHECK: }) : () -> ()
+func @main(%arg0: tuple<tuple<tensor<f32>>, tensor<f32>>, %arg1: tuple<tensor<f32>>) -> tuple<tensor<f32>, tensor<f32>, tensor<f32>> {
+  %result = "mhlo.fusion"(%arg0, %arg1) ( {
+    ^bb0(%arg2: tuple<tuple<tensor<f32>>, tensor<f32>>, %arg3: tuple<tensor<f32>>):
+      %0 = "mhlo.get_tuple_element"(%arg2) {index = 0 : i32} : (tuple<tuple<tensor<f32>>, tensor<f32>>) -> tuple<tensor<f32>>
+      %1 = "mhlo.get_tuple_element"(%0) {index = 0 : i32} : (tuple<tensor<f32>>) -> tensor<f32>
+      %2 = "mhlo.get_tuple_element"(%arg2) {index = 1 : i32} : (tuple<tuple<tensor<f32>>, tensor<f32>>) -> tensor<f32>
+      %3 = "mhlo.get_tuple_element"(%arg3) {index = 0 : i32} : (tuple<tensor<f32>>) -> tensor<f32>
+      %4 = "mhlo.tuple"(%1, %2, %3) : (tensor<f32>, tensor<f32>, tensor<f32>) -> tuple<tensor<f32>, tensor<f32>, tensor<f32>>
+      "mhlo.return"(%4) : (tuple<tensor<f32>, tensor<f32>, tensor<f32>>) -> ()
+    }) { fusion_kind = "kLoop" } : (tuple<tuple<tensor<f32>>, tensor<f32>>, tuple<tensor<f32>>) -> tuple<tensor<f32>, tensor<f32>, tensor<f32>>
+
+  return %result : tuple<tensor<f32>, tensor<f32>, tensor<f32>>
+}
+
+// -----
+
+// CHECK-LABEL: func @main
+// CHECK:   "lmhlo.reduce"({{.*}}) ( {
+// CHECK:   ^bb0(%[[VAL1:.*]]: tensor<f32>, %[[VAL2:.*]]: tensor<i32>, %[[VAL3:.*]]: tensor<f32>, %[[VAL4:.*]]: tensor<i32>):  // no predecessors
+// CHECK:     %[[VAL5:.*]] = mhlo.maximum %[[VAL1]], %[[VAL3]] : tensor<f32>
+// CHECK:     %[[VAL6:.*]] = mhlo.maximum %[[VAL2]], %[[VAL4:.*]] : tensor<i32>
+// CHECK:     %[[VAL7:.*]] = "mhlo.tuple"(%[[VAL5]], %[[VAL6:.*]]) : (tensor<f32>, tensor<i32>) -> tuple<tensor<f32>, tensor<i32>>
+// CHECK:     "mhlo.return"(%[[VAL7:.*]]) : (tuple<tensor<f32>, tensor<i32>>) -> ()
+// CHECK:   })
+func @main(%arg0 : tensor<1x10xf32>, %arg1 : tensor<1x10xi32>, %arg2 : tensor<f32>, %arg3 : tensor<i32>) -> (tensor<1xf32>, tensor<1xi32>) {
+  %result0, %result1 = "mhlo.reduce"(%arg0, %arg1, %arg2, %arg3) ( {
+    ^bb0(%fa: tensor<f32>, %ia : tensor<i32>, %fb: tensor<f32>, %ib: tensor<i32>):   // no predecessors
+      %fmax = "mhlo.maximum"(%fa, %fb) {} : (tensor<f32>, tensor<f32>) -> tensor<f32>
+      %imax = "mhlo.maximum"(%ia, %ib) {} : (tensor<i32>, tensor<i32>) -> tensor<i32>
+      "mhlo.return"(%fmax, %imax) : (tensor<f32>, tensor<i32>) -> ()
+    }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<1x10xf32>, tensor<1x10xi32>, tensor<f32>, tensor<i32>) -> (tensor<1xf32>, tensor<1xi32>)
+  return %result0, %result1 : tensor<1xf32>, tensor<1xi32>
 }

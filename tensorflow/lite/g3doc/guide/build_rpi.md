@@ -81,8 +81,8 @@ PATH=../rpi_tools/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/bin:$PATH \
 
 ## Compile natively on Raspberry Pi
 
-The following instructions have been tested on Raspberry Pi Zero, Raspbian
-GNU/Linux 10 (buster), gcc version 8.3.0 (Raspbian 8.3.0-6+rpi1):
+The following instructions have been tested on Raspberry Pi Zero, Raspberry Pi
+OS GNU/Linux 10 (Buster), gcc version 8.3.0 (Raspbian 8.3.0-6+rpi1):
 
 To natively compile TensorFlow Lite follow the steps:
 
@@ -119,7 +119,7 @@ cd tensorflow_src && ./tensorflow/lite/tools/make/download_dependencies.sh
 
 You can use
 [ARM GCC toolchains](https://github.com/tensorflow/tensorflow/tree/master/third_party/toolchains/embedded/arm-linux)
-with Bazel to build an armhf shared library which is compatibile with Raspberry
+with Bazel to build an armhf shared library which is compatible with Raspberry
 Pi 2, 3 and 4.
 
 Note: The generated shared library requires glibc 2.28 or higher to run.
@@ -165,7 +165,7 @@ page for the detail.
 bazel build --config=elinux_armhf -c opt //tensorflow/lite:libtensorflowlite.so
 ```
 
-You can find a shared library library in:
+You can find a shared library in:
 `bazel-bin/tensorflow/lite/libtensorflowlite.so`.
 
 Currently, there is no straightforward way to extract all header files needed,

@@ -602,7 +602,6 @@ tf_py_test(
     tags = [
         "noasan",  # TODO(b/161236904): flaky timeout in trying to start gRPC server
     ],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -624,7 +623,6 @@ tf_py_test(
     srcs = ["server_lib_multiple_containers_test.py"],
     grpc_enabled = True,
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -645,7 +643,6 @@ tf_py_test(
     srcs = ["server_lib_same_variables_clear_container_test.py"],
     grpc_enabled = True,
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -666,7 +663,6 @@ tf_py_test(
     srcs = ["server_lib_same_variables_clear_test.py"],
     grpc_enabled = True,
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -687,7 +683,6 @@ tf_py_test(
     srcs = ["server_lib_same_variables_no_clear_test.py"],
     grpc_enabled = True,
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -708,7 +703,6 @@ tf_py_test(
     srcs = ["server_lib_sparse_job_test.py"],
     grpc_enabled = True,
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -735,7 +729,6 @@ cuda_py_test(
         "no_oss",  # Test flaky due to port collisions.
         "oss_serial",
     ],
-    tfrt_enabled = True,
     deps = [
         ":device_setter",
         "//tensorflow/python:client_testlib",
@@ -762,7 +755,6 @@ tf_py_test(
         "notsan",  # data race due to b/62910646
         "oss_serial",
     ],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -961,7 +953,6 @@ tf_py_test(
         "noasan",  # http://b/30379628
         "notsan",  # http://b/30379628
     ],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client",
@@ -981,7 +972,6 @@ tf_py_test(
         "noasan",  # http://b/30782289
         "notsan",  # http://b/30782289
     ],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
@@ -1049,7 +1039,6 @@ tf_py_test(
     grpc_enabled = True,
     python_version = "PY3",
     tags = ["no_windows"],
-    tfrt_enabled = True,
     deps = [
         ":checkpoint_management",
         ":saver",
@@ -1105,7 +1094,6 @@ tf_py_test(
     size = "small",
     srcs = ["training_util_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":training_util",
         "//tensorflow/python:client_testlib",
@@ -1120,7 +1108,6 @@ cuda_py_test(
     size = "medium",
     srcs = ["adam_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":adam",
         "//tensorflow/python:array_ops",
@@ -1149,7 +1136,9 @@ cuda_py_test(
         "no_windows",  # b/139083295: bfloat16 tests fail on Windows
         "notsan",
     ],
-    tfrt_enabled = True,
+    xla_tags = [
+        "no_cuda_asan",  # times out
+    ],
     deps = [
         ":moving_averages",
         ":saver",
@@ -1235,7 +1224,6 @@ cuda_py_test(
     grpc_enabled = True,
     main = "session_manager_test.py",
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":checkpoint_management",
         ":saver",
@@ -1264,7 +1252,6 @@ tf_py_test(
         "no_windows",
         "notsan",  # intermittent races on a few percent of runs
     ],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client",
@@ -1313,7 +1300,6 @@ tf_py_test(
     size = "small",
     srcs = ["checkpoint_ops_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:checkpoint_ops_gen",
         "//tensorflow/python:client",
@@ -1334,7 +1320,6 @@ tf_py_test(
     size = "medium",
     srcs = ["warm_starting_util_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -1382,7 +1367,6 @@ tf_py_test(
         "no_pip",
         "notsan",  # b/67945581
     ],
-    tfrt_enabled = True,
     deps = [
         ":checkpoint_management",
         ":monitored_session",
@@ -1408,7 +1392,6 @@ tf_py_test(
     size = "medium",
     srcs = ["input_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

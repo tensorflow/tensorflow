@@ -20,7 +20,7 @@ limitations under the License.
 #include "grpcpp/server_builder.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/profiler/rpc/profiler_service_impl.h"
-#include "tensorflow/core/protobuf/data/experimental/service_config.pb.h"
+#include "tensorflow/core/protobuf/service_config.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -97,6 +97,9 @@ class WorkerGrpcDataServer : public GrpcDataServerBase {
  public:
   explicit WorkerGrpcDataServer(const experimental::WorkerConfig& config);
   ~WorkerGrpcDataServer() override;
+
+  // Returns the number of tasks currently being executed by the worker.
+  Status NumTasks(int* num_tasks);
 
  protected:
   void AddDataServiceToBuilder(::grpc::ServerBuilder& builder) override;

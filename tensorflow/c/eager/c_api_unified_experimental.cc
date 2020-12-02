@@ -39,7 +39,7 @@ static FactoriesMap& GetFactories() {
   return *factories;
 }
 
-static const char* default_factory = "<unset>";
+static tracing::FactoryFunction default_factory;
 
 void RegisterTracingEngineFactory(const string& name, FactoryFunction factory) {
   assert((!GetFactories().count(name)) ||
@@ -48,15 +48,15 @@ void RegisterTracingEngineFactory(const string& name, FactoryFunction factory) {
   GetFactories()[name] = factory;
 }
 
-void SetDefaultTracingEngine(const char* name) { default_factory = name; }
-
-static TracingContext* CreateTracingExecutionContext(const char* fn_name,
-                                                     TF_Status* s) {
-  auto entry = GetFactories().find(default_factory);
-  if (entry != GetFactories().end()) return entry->second(fn_name, s);
+Status SetDefaultTracingEngine(const char* name) {
+  auto entry = GetFactories().find(name);
+  if (entry != GetFactories().end()) {
+    default_factory = GetFactories().find(name)->second;
+    return Status::OK();
+  }
   string msg = absl::StrCat(
-      "No tracing engine factory has been registered with the key '",
-      default_factory, "' (available: ");
+      "No tracing engine factory has been registered with the key '", name,
+      "' (available: ");
   // Ensure deterministic (sorted) order in the error message
   std::set<string> factories_sorted;
   for (const auto& factory : GetFactories())
@@ -68,7 +68,16 @@ static TracingContext* CreateTracingExecutionContext(const char* fn_name,
   }
   msg += ")";
 
-  TF_SetStatus(s, TF_INVALID_ARGUMENT, msg.c_str());
+  return errors::InvalidArgument(msg.c_str());
+}
+
+static TracingContext* CreateTracingExecutionContext(const char* fn_name,
+                                                     TF_Status* s) {
+  if (default_factory) {
+    return default_factory(fn_name, s);
+  }
+  Set_TF_Status_from_Status(
+      s, errors::FailedPrecondition("default_factory is nullptr"));
   return nullptr;
 }
 
@@ -99,8 +108,8 @@ using tensorflow::tracing::TracingContext;
 using tensorflow::tracing::TracingOperation;
 using tensorflow::tracing::TracingTensorHandle;
 
-void TF_SetTracingImplementation(const char* name) {
-  SetDefaultTracingEngine(name);
+void TF_SetTracingImplementation(const char* name, TF_Status* s) {
+  Set_TF_Status_from_Status(s, SetDefaultTracingEngine(name));
 }
 
 // Creates a new TensorFlow function, it is an execution context attached to a
@@ -125,7 +134,9 @@ TF_AbstractFunction* TF_FinalizeFunction(TF_ExecutionContext* ctx,
 }
 
 TF_AbstractTensor* TF_AddFunctionParameter(TF_ExecutionContext* func,
-                                           TF_DataType dtype, TF_Status* s) {
+                                           TF_DataType dtype, TF_Shape shape,
+                                           TF_Status* s) {
+  DCHECK_GE(shape.num_dims, -1);
   TracingTensorHandle* t;
   TracingContext* tracing_ctx = dyn_cast<TracingContext>(unwrap(func));
   if (!tracing_ctx) {
@@ -134,8 +145,20 @@ TF_AbstractTensor* TF_AddFunctionParameter(TF_ExecutionContext* func,
                "TF_AddFunctionParameter must be called on a TracingContext."));
     return nullptr;
   }
+  tensorflow::PartialTensorShape partial_shape;
+  if (shape.num_dims != -1) {
+    DCHECK(shape.dim_sizes != nullptr);
+    Status status = tensorflow::PartialTensorShape::MakePartialShape(
+        reinterpret_cast<tensorflow::int64*>(shape.dim_sizes), shape.num_dims,
+        &partial_shape);
+    if (!status.ok()) {
+      Set_TF_Status_from_Status(s, status);
+      return nullptr;
+    }
+  }
   Set_TF_Status_from_Status(
-      s, tracing_ctx->AddParameter(static_cast<DataType>(dtype), &t));
+      s, tracing_ctx->AddParameter(static_cast<DataType>(dtype), partial_shape,
+                                   &t));
   return wrap(t);
 }
 

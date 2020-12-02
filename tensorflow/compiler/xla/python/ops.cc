@@ -23,6 +23,7 @@ limitations under the License.
 #include "pybind11/attr.h"
 #include "pybind11/pybind11.h"
 #include "tensorflow/compiler/xla/client/lib/comparators.h"
+#include "tensorflow/compiler/xla/client/lib/lu_decomposition.h"
 #include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/lib/qr.h"
 #include "tensorflow/compiler/xla/client/lib/self_adjoint_eig.h"
@@ -107,7 +108,8 @@ void BuildOpsSubmodule(py::module* m) {
           py::arg("lhs_dilation"), py::arg("rhs_dilation"),
           py::arg("dimension_numbers"), py::arg("feature_group_count") = 1,
           py::arg("batch_group_count") = 1,
-          py::arg("precision_config") = nullptr);
+          py::arg("precision_config") = nullptr,
+          py::arg("preferred_element_type") = absl::nullopt);
   ops.def("ConvertElementType", &ConvertElementType, py::arg("operand"),
           py::arg("new_element_type"));
   ops.def(
@@ -135,9 +137,11 @@ void BuildOpsSubmodule(py::module* m) {
       py::arg("shape_with_layout"), py::arg("operand_shapes_with_layout"),
       py::arg("opaque") = py::bytes(""), py::arg("has_side_effect") = false);
   ops.def("Dot", &Dot, py::arg("lhs"), py::arg("rhs"),
-          py::arg("precision_config") = nullptr);
+          py::arg("precision_config") = nullptr,
+          py::arg("preferred_element_type") = absl::nullopt);
   ops.def("DotGeneral", &DotGeneral, py::arg("lhs"), py::arg("rhs"),
-          py::arg("dimension_numbers"), py::arg("precision_config") = nullptr);
+          py::arg("dimension_numbers"), py::arg("precision_config") = nullptr,
+          py::arg("preferred_element_type") = absl::nullopt);
   ops.def("DynamicSlice",
           static_cast<XlaOp (*)(XlaOp, absl::Span<const XlaOp>,
                                 absl::Span<const int64>)>(&DynamicSlice),
@@ -186,6 +190,13 @@ void BuildOpsSubmodule(py::module* m) {
         return std::make_pair(qr.q, qr.r);
       },
       py::arg("operand"), py::arg("full_matrices"));
+  ops.def(
+      "LU",
+      [](XlaOp a) -> StatusOr<std::tuple<XlaOp, XlaOp, XlaOp>> {
+        LuDecompositionResult lu = LuDecomposition(a);
+        return std::make_tuple(lu.lu, lu.pivots, lu.permutation);
+      },
+      py::arg("operand"));
   ops.def(
       "Eigh",
       [](XlaOp a, bool lower, int64 max_iter,
@@ -283,6 +294,7 @@ void BuildOpsSubmodule(py::module* m) {
   ops.def("RandomGammaGrad", &RandomGammaGrad, py::arg("a"), py::arg("x"));
   ops.def("RegularizedIncompleteBeta", &RegularizedIncompleteBeta, py::arg("a"),
           py::arg("b"), py::arg("x"));
+  ops.def("Zeta", &Zeta, py::arg("x"), py::arg("q"));
 
 #define BINARY_OP(op)                                                 \
   ops.def(                                                            \

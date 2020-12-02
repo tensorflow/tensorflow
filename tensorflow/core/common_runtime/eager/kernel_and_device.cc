@@ -40,9 +40,7 @@ limitations under the License.
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/setround.h"
 #include "tensorflow/core/profiler/lib/annotated_traceme.h"
-#include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 #if !defined(IS_MOBILE_PLATFORM)
@@ -162,6 +160,17 @@ Status KernelAndDeviceFunc::InstantiateFunc(const Context& ctx,
   }
   options.composite_devices = composite_devices_;
   options.input_resource_dtypes_and_shapes = input_resource_dtypes_and_shapes_;
+  if (outputs_on_op_device_) {
+    const FunctionLibraryDefinition* lib_def =
+        pflr_->GetFunctionLibraryDefinition();
+    const FunctionDef* fdef = lib_def->Find(ndef.op());
+    if (fdef == nullptr) {
+      return errors::InvalidArgument("Failed to find function ", ndef.op());
+    }
+    for (int i = 0; i < fdef->signature().output_arg_size(); ++i) {
+      options.output_devices.push_back(options.target);
+    }
+  }
 
   const auto& it = ndef.attr().find("executor_type");
   if (it != ndef.attr().end()) {
@@ -276,13 +285,7 @@ Status KernelAndDeviceOp::Run(
 
   params.runner = get_runner();
 
-  params.step_container =
-      step_container == nullptr ? &step_container_ : step_container;
-  auto step_container_cleanup = gtl::MakeCleanup([step_container, this] {
-    if (step_container == nullptr) {
-      this->step_container_.CleanUp();
-    }
-  });
+  params.step_container = step_container;
 
   params.collective_executor =
       collective_executor_ ? collective_executor_->get() : nullptr;
@@ -310,7 +313,12 @@ Status KernelAndDeviceOp::Run(
   if (outputs != nullptr) {
     outputs->clear();
     for (int i = 0; i < context.num_outputs(); ++i) {
-      outputs->push_back(Tensor(*context.mutable_output(i)));
+      const auto* output_tensor = context.mutable_output(i);
+      if (output_tensor != nullptr) {
+        outputs->push_back(Tensor(*output_tensor));
+      } else {
+        outputs->push_back(Tensor());
+      }
     }
   }
   return Status::OK();
@@ -378,8 +386,7 @@ void KernelAndDeviceFunc::RunAsync(
     opts->cancellation_manager = local_cm.get();
   }
   opts->allow_dead_tensors = true;
-  opts->step_container =
-      step_container == nullptr ? &step_container_ : step_container;
+  opts->step_container = step_container;
   opts->collective_executor =
       collective_executor_ ? collective_executor_->get() : nullptr;
 
@@ -388,21 +395,10 @@ void KernelAndDeviceFunc::RunAsync(
 
   outputs->clear();
 
-  profiler::TraceMeProducer activity(
-      // To TraceMeConsumers in ExecutorState::Process/Finish.
-      [&] {
-        return profiler::TraceMeEncode(
-            "FunctionRun", {{"id", opts->step_id}, {"_r", 1} /*root_event*/});
-      },
-      profiler::ContextType::kTfExecutor, opts->step_id,
-      profiler::TraceMeLevel::kInfo);
   pflr_->Run(*opts, handle_, inputs, outputs,
              [opts, rendezvous, local_cm, step_container, this,
               done = std::move(done)](const Status& s) {
                rendezvous->Unref();
-               if (step_container == nullptr) {
-                 this->step_container_.CleanUp();
-               }
                done(s);
              });
 }
