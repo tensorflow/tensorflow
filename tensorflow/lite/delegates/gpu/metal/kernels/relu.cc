@@ -46,8 +46,8 @@ ComputeTaskDescriptor ReLU(ValueId input_id, ValueId output_id,
     desc.shader_source =
         parameters + "  return FLT4(max(value, " + min_func + "));\n}";
   }
-  desc.input_buffers = {{input_id}};
-  desc.output_buffer = {output_id};
+  desc.AddSrcTensor("");
+  desc.AddDstTensor("");
   desc.uniform_buffers = {
       {"constant float2&",
        [attr](const std::vector<BHWC>& src_shapes,

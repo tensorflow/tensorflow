@@ -121,11 +121,8 @@ ComputeTaskDescriptor Reshape(ValueId input_id, ValueId output_id,
   ComputeTaskDescriptor desc;
   desc.shader_source = GetReshapeCode();
 
-  desc.input_buffers = {
-      {input_id, "device FLT4* const src_buffer"},
-  };
-
-  desc.output_buffer = {output_id, "device FLT4* dst_buffer"};
+  desc.AddSrcTensor("src_buffer");
+  desc.AddDstTensor("dst_buffer");
 
   desc.uniform_buffers = {
       {"constant uniforms& params",
@@ -166,11 +163,8 @@ ComputeTaskDescriptor Reshapex4(ValueId input_id, ValueId output_id,
   ComputeTaskDescriptor desc;
   desc.shader_source = GetReshapex4Code();
 
-  desc.input_buffers = {
-      {input_id, "device FLT4* const src_buffer"},
-  };
-
-  desc.output_buffer = {output_id, "device FLT4* dst_buffer"};
+  desc.AddSrcTensor("src_buffer");
+  desc.AddDstTensor("dst_buffer");
 
   desc.uniform_buffers = {
       {"constant uniforms& params",

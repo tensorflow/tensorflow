@@ -57,9 +57,9 @@ ComputeTaskDescriptor Add(const std::vector<ValueId> input_ids,
   desc.shader_source = GetAddTableCodeFused(input_ids.size() - 1);
 
   for (int i = 0; i < input_ids.size(); ++i) {
-    desc.input_buffers.push_back({input_ids[i], "device FLT4* const"});
+    desc.AddSrcTensor("");
   }
-  desc.output_buffer = {output_id};
+  desc.AddDstTensor("");
 
   return desc;
 }

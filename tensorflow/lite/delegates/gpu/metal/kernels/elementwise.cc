@@ -108,11 +108,9 @@ ComputeTaskDescriptor ElementwiseWithTwoInputs(std::vector<ValueId> input_ids,
 
   desc.shader_source = code;
 
-  desc.input_buffers = {
-      {input_ids[0], "device FLT4* const"},
-      {input_ids[1], "device FLT4* const"},
-  };
-  desc.output_buffer = {output_id};
+  desc.AddSrcTensor("");
+  desc.AddSrcTensor("");
+  desc.AddDstTensor("");
 
   desc.uniform_buffers = {
       {"constant int2&",
@@ -139,8 +137,8 @@ ComputeTaskDescriptor ElementwiseWithOneInput(ValueId input_id,
       "    return " + OneInputFunctor(op_type, "value") + ";\n";
   desc.shader_source += "  }";
 
-  desc.input_buffers = {{input_id}};
-  desc.output_buffer = {output_id};
+  desc.AddSrcTensor("");
+  desc.AddDstTensor("");
   return desc;
 }
 
@@ -186,8 +184,8 @@ ComputeTaskDescriptor ElementwiseWithOneInputAndConstantArguent(
       "    return " + TwoInputFunctor(op_type, "value", "second_arg") + ";\n";
   desc.shader_source += "  }";
 
-  desc.input_buffers = {{input_id}};
-  desc.output_buffer = {output_id};
+  desc.AddSrcTensor("");
+  desc.AddDstTensor("");
   if (scalar) {
     std::vector<uint8_t> scalar_bits =
         GetByteBuffer(std::vector<float>{*scalar});

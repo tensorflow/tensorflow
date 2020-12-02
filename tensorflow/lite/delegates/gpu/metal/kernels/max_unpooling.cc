@@ -92,12 +92,9 @@ ComputeTaskDescriptor MaxUnpooling(ValueId input_id, ValueId input_indices_id,
   ComputeTaskDescriptor desc;
   desc.shader_source = GetMaxUnpoolingCode(params.kernel);
 
-  desc.input_buffers = {
-      {input_id, "device FLT4* const src_buffer"},
-      {input_indices_id, "device FLT4* const src_indices_buffer"},
-  };
-
-  desc.output_buffer = {output_id, "device FLT4* output_buffer"};
+  desc.AddSrcTensor("src_buffer");
+  desc.AddSrcTensor("src_indices_buffer");
+  desc.AddDstTensor("output_buffer");
 
   desc.uniform_buffers = {
       {"constant uniforms& params",

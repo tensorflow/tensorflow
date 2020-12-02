@@ -145,11 +145,8 @@ ComputeTaskDescriptor Softmax(ValueId input_id, ValueId output_id,
     }
   )";
 
-  desc.input_buffers = {
-      {input_id, "device FLT4* const input_buffer"},
-  };
-
-  desc.output_buffer = {output_id, "device FLT4* output_buffer"};
+  desc.AddSrcTensor("input_buffer");
+  desc.AddDstTensor("output_buffer");
 
   desc.uniform_buffers = {
       {"constant int2& size",
@@ -176,11 +173,8 @@ ComputeTaskDescriptor Softmax1x1(ValueId input_id, ValueId output_id,
   ComputeTaskDescriptor desc;
   desc.shader_source = GetSoftmax1x1Code(gpu_info);
 
-  desc.input_buffers = {
-      {input_id, "device FLT4* const src_buffer"},
-  };
-
-  desc.output_buffer = {output_id, "device FLT4* dst_buffer"};
+  desc.AddSrcTensor("src_buffer");
+  desc.AddDstTensor("dst_buffer");
 
   desc.uniform_buffers = {
       {"constant uniforms& params",

@@ -36,8 +36,8 @@ ComputeTaskDescriptor QuantizeAndDequantize(
     }
   )";
 
-  desc.input_buffers = {{input_id}};
-  desc.output_buffer = {output_id};
+  desc.AddSrcTensor("");
+  desc.AddDstTensor("");
   desc.uniform_buffers = {
       {"constant float3&",
        [attr](const std::vector<BHWC>& src_shapes,

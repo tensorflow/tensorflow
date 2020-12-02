@@ -468,11 +468,8 @@ ComputeTaskDescriptor Winograd4x4To36(ValueId input_id, ValueId output_id,
   ComputeTaskDescriptor desc;
   desc.shader_source = GetKernelWinograd4x4To36();
 
-  desc.input_buffers = {
-      {input_id, "device FLT4* const src_buffer"},
-  };
-
-  desc.output_buffer = {output_id, "device FLT4* dst_buffer"};
+  desc.AddSrcTensor("src_buffer");
+  desc.AddDstTensor("dst_buffer");
 
   desc.uniform_buffers = {
       {"constant uniforms& U",
@@ -526,11 +523,8 @@ ComputeTaskDescriptor Winograd4x4To36TileX6(
   ComputeTaskDescriptor desc;
   desc.shader_source = GetKernelWinograd4x4To36TileX6();
 
-  desc.input_buffers = {
-      {input_id, "device FLT4* const src_buffer"},
-  };
-
-  desc.output_buffer = {output_id, "device FLT4* dst_buffer"};
+  desc.AddSrcTensor("src_buffer");
+  desc.AddDstTensor("dst_buffer");
 
   std::vector<float> bt_aligned(6 * 8);
   auto bt_mat = BtMatrixForWinograd4x4To6x6();
@@ -595,11 +589,8 @@ ComputeTaskDescriptor Winograd36To4x4(ValueId input_id, ValueId output_id,
   ComputeTaskDescriptor desc;
   desc.shader_source = GetKernelWinograd36To4x4();
 
-  desc.input_buffers = {
-      {input_id, "device FLT4* const src_buffer"},
-  };
-
-  desc.output_buffer = {output_id, "device FLT4* dst_buffer"};
+  desc.AddSrcTensor("src_buffer");
+  desc.AddDstTensor("dst_buffer");
 
   desc.immutable_buffers = {
       {"device FLT4* const biases",
@@ -646,11 +637,8 @@ ComputeTaskDescriptor Winograd36To4x4Tile4x1(
   ComputeTaskDescriptor desc;
   desc.shader_source = GetKernelWinograd36To4x4Tile4x1();
 
-  desc.input_buffers = {
-      {input_id, "device FLT4* const src_buffer"},
-  };
-
-  desc.output_buffer = {output_id, "device FLT4* dst_buffer"};
+  desc.AddSrcTensor("src_buffer");
+  desc.AddDstTensor("dst_buffer");
 
   std::vector<float> at_aligned(4 * 8);
   auto at_mat = AtMatrixForWinograd4x4To6x6();

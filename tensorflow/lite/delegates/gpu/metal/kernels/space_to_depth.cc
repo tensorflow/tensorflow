@@ -64,9 +64,8 @@ kernel void ComputeFunction($1 uint3 gid[[thread_position_in_grid]]) {
   dst_buffer[gid.x + dst_size.x * (gid.y + dst_size.y * gid.z)] = value;
 })";
 
-  desc.input_buffers = {{input_id, "device FLT4* const src_buffer"}};
-
-  desc.output_buffer = {output_id, "device FLT4* dst_buffer"};
+  desc.AddSrcTensor("src_buffer");
+  desc.AddDstTensor("dst_buffer");
 
   desc.uniform_buffers = {
       {"constant uniforms& params",

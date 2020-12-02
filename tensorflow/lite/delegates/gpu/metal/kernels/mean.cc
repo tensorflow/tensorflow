@@ -115,11 +115,9 @@ ComputeTaskDescriptor Mean(ValueId input_id, ValueId output_id,
   std::string code = GetMeanCode(work_group_size);
   desc.shader_source = code;
 
-  desc.input_buffers = {
-      {input_id, "device FLT4* const src_buffer"},
-  };
+  desc.AddSrcTensor("src_buffer");
+  desc.AddDstTensor("dst_buffer");
 
-  desc.output_buffer = {output_id, "device FLT4* dst_buffer"};
   desc.uniform_buffers = {
       {"constant uniforms& params",
        [work_group_size](const std::vector<BHWC>& src_shapes,

@@ -205,11 +205,8 @@ ComputeTaskDescriptor Pooling(ValueId input_id, ValueId output_id,
     desc.shader_source = GetAveragePoolingCode(params.kernel);
   }
 
-  desc.input_buffers = {
-      {input_id, "device FLT4* const src_buffer"},
-  };
-
-  desc.output_buffer = {output_id, "device FLT4* output_buffer"};
+  desc.AddSrcTensor("src_buffer");
+  desc.AddDstTensor("output_buffer");
 
   desc.uniform_buffers = {
       {"constant uniforms& params",

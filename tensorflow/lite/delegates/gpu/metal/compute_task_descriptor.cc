@@ -61,6 +61,14 @@ std::vector<uint8_t> GetByteBufferConvertedResized(
   return result;
 }
 
+void ComputeTaskDescriptor::AddSrcTensor(const std::string& tensor_name) {
+  src_tensors_names.push_back("device FLT4* " + tensor_name);
+}
+
+void ComputeTaskDescriptor::AddDstTensor(const std::string& tensor_name) {
+  dst_tensors_names.push_back("device FLT4* " + tensor_name);
+}
+
 }  // namespace metal
 }  // namespace gpu
 }  // namespace tflite

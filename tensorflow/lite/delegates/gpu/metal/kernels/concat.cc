@@ -141,12 +141,9 @@ ComputeTaskDescriptor ConcatZ(std::vector<ValueId> input_ids, ValueId output_id,
   desc.shader_source = GetConcatZCode(channels);
 
   for (int i = 0; i < input_ids.size(); ++i) {
-    const std::string buffer_name =
-        "device FLT4* const src_buffer" + std::to_string(i);
-    desc.input_buffers.push_back({input_ids[i], buffer_name});
+    desc.AddSrcTensor("src_buffer" + std::to_string(i));
   }
-
-  desc.output_buffer = {output_id, "device FLT4* dst_buffer"};
+  desc.AddDstTensor("dst_buffer");
 
   desc.uniform_buffers = {
       {"constant uniforms& U",
@@ -227,12 +224,9 @@ ComputeTaskDescriptor ConcatX(std::vector<ValueId> input_ids, ValueId output_id,
   desc.shader_source = code;
 
   for (int i = 0; i < input_ids.size(); ++i) {
-    const std::string buffer_name =
-        "device FLT4* const src_buffer" + std::to_string(i);
-    desc.input_buffers.push_back({input_ids[i], buffer_name});
+    desc.AddSrcTensor("src_buffer" + std::to_string(i));
   }
-
-  desc.output_buffer = {output_id, "device FLT4* dst_buffer"};
+  desc.AddDstTensor("dst_buffer");
 
   desc.uniform_buffers = {
       {"constant int3& size",
@@ -305,12 +299,9 @@ ComputeTaskDescriptor ConcatY(std::vector<ValueId> input_ids, ValueId output_id,
   desc.shader_source = code;
 
   for (int i = 0; i < input_ids.size(); ++i) {
-    const std::string buffer_name =
-        "device FLT4* const src_buffer" + std::to_string(i);
-    desc.input_buffers.push_back({input_ids[i], buffer_name});
+    desc.AddSrcTensor("src_buffer" + std::to_string(i));
   }
-
-  desc.output_buffer = {output_id, "device FLT4* dst_buffer"};
+  desc.AddDstTensor("dst_buffer");
 
   desc.uniform_buffers = {
       {"constant int3& size",

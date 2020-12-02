@@ -44,20 +44,6 @@ using DispatchParamsFunction = std::function<std::pair<uint3, uint3>(
 // building blocks. All required data like immutable operation parameters
 // (weights etc.) is attached to the descriptor.
 struct ComputeTaskDescriptor {
-  struct InputBufferDescriptor {
-    ValueId id;
-    // The declaration is inserted into the compute function arguments list.
-    // Example for non-linkable task: "device FLT4* const input_buffer"
-    // Example for linkable: "device FLT4* const"
-    std::string declaration;
-  };
-  struct OutputBufferDescriptor {
-    ValueId id;
-    // The declaration is inserted into the compute function arguments list.
-    // Example for non-linkable task: "device FLT4* output_buffer"
-    // Example for linkable: "device FLT4*"
-    std::string declaration;
-  };
   struct ImmutableBufferDescriptor {
     std::string declaration;
     std::vector<uint8_t> data;
@@ -102,18 +88,29 @@ struct ComputeTaskDescriptor {
   // for example add is associative
   bool is_associative_op = false;
   std::string shader_source;
-  std::vector<InputBufferDescriptor> input_buffers;
-  // A single per-operation output is supported now.
-  OutputBufferDescriptor output_buffer;
+  std::vector<std::string> src_tensors_names;
+  std::vector<std::string> dst_tensors_names;
   std::vector<ImmutableBufferDescriptor> immutable_buffers;
   std::vector<UniformBufferDescriptor> uniform_buffers;
   // Dynamic resizing of input tensor is supported. User-defined functions to
   // calculate new parameters for GPU compute task dispatching. A leading
   // unlinkable task must provide this.
   DispatchParamsFunction resize_function;
+
+  void AddSrcTensor(const std::string& tensor_name);
+  void AddDstTensor(const std::string& tensor_name);
 };
 
 using ComputeTaskDescriptorPtr = std::shared_ptr<ComputeTaskDescriptor>;
+
+struct NodeDescriptor {
+  ComputeTaskDescriptorPtr task;
+  // Unique ID to match the graph compilation errors.
+  int id;
+  std::string description;
+  std::vector<ValueId> src_tensors_ids;
+  std::vector<ValueId> dst_tensors_ids;
+};
 
 /// Helper function to convert buffer's content into stream of bytes
 template <typename T>
