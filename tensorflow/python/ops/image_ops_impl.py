@@ -4515,6 +4515,33 @@ def image_gradients(image):
 def sobel_edges(image):
   """Returns a tensor holding Sobel edge maps.
 
+  Example usage:
+
+  For general usage, `image` would be loaded from a file as below:
+
+  ```python
+  image_bytes = tf.io.read_file(path_to_image_file)
+  image = tf.image.decode_image(image_bytes)
+  image = tf.cast(image, tf.float32)
+  image = tf.expand_dims(image, 0)
+  ```
+  But for demo purposes, we are using randomly generated values for `image`:
+
+  >>> image = tf.random.uniform(
+  ...   maxval=255, shape=[1, 28, 28, 3], dtype=tf.float32)
+  >>> sobel = tf.image.sobel_edges(image)
+  >>> sobel_y = np.asarray(sobel[0, :, :, :, 0]) # sobel in y-direction
+  >>> sobel_x = np.asarray(sobel[0, :, :, :, 1]) # sobel in x-direction
+
+  For displaying the sobel results, PIL's [Image Module](
+  https://pillow.readthedocs.io/en/stable/reference/Image.html) can be used:
+
+  ```python
+  # Display edge maps for the first channel (at index 0)
+  Image.fromarray(sobel_y[..., 0] / 4 + 0.5).show()
+  Image.fromarray(sobel_x[..., 0] / 4 + 0.5).show()
+  ```
+
   Arguments:
     image: Image tensor with shape [batch_size, h, w, d] and type float32 or
       float64.  The image(s) must be 2x2 or larger.
