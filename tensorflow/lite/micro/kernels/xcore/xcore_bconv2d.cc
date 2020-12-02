@@ -41,9 +41,9 @@ struct BConv2DArguments {
   // for int8 only
   const int16_t *post_act_mult;
   const int16_t *post_act_bias;
-  const int accu_shr;
-  const int16_t bias_multiplier;
-  const int final_shr;
+  int accu_shr;
+  int16_t bias_multiplier;
+  int final_shr;
 };
 
 // -------------------------------------------------------------------- //
@@ -217,10 +217,8 @@ struct BConv2DKernel {
 // op function implementations
 // -------------------------------------------------------------------- //
 
-void *Init(TfLiteContext *context, const char *buffer, size_t length) {
-  auto *op_data = reinterpret_cast<BConv2DOpData *>(
-      context->AllocatePersistentBuffer(context, sizeof(BConv2DOpData)));
-
+void InitCommon(TfLiteContext *context, const char *buffer, size_t length,
+                BConv2DOpData *op_data) {
   // parse custom options
   TFLITE_DCHECK(buffer != nullptr);
   TFLITE_DCHECK(length > 0);  // in fact it must be at least 6x uint32_t big
@@ -269,6 +267,23 @@ void *Init(TfLiteContext *context, const char *buffer, size_t length) {
   auto &td = op_data->threads[0];
   td.job = &job;
   td.args = &op_data->args;
+}
+
+template <BConv2DKernelType kernel_type>
+void *Init(TfLiteContext *context, const char *buffer, size_t length) {
+  auto *op_data = reinterpret_cast<BConv2DOpData *>(
+      context->AllocatePersistentBuffer(context, sizeof(BConv2DOpData)));
+
+  InitCommon(context, buffer, length, op_data);
+
+  if (kernel_type == BConv2DKernelType::INT8 ||
+      kernel_type == BConv2DKernelType::INT8_DIDO) {
+    flexbuffers::Vector q_params = get_named_uint32_custom_option_vector(
+        context, buffer, length, "q_params");
+    op_data->args.bias_multiplier = q_params[0].AsInt32();
+    op_data->args.accu_shr = q_params[1].AsInt32();
+    op_data->args.final_shr = q_params[2].AsInt32();
+  }
 
   return op_data;
 }
@@ -291,16 +306,10 @@ TfLiteStatus PrepareCommon(TfLiteContext *context, TfLiteNode *node) {
   const TfLiteTensor *input = GetInput(context, node, 0);
   op_data->args.x.height = (uint32_t)input->dims->data[1];
   op_data->args.x.width = (uint32_t)input->dims->data[2];
-  // FIXME *32
-  TF_LITE_ENSURE_EQ(context, op_data->args.x.channels,
-                    (uint32_t)input->dims->data[3] * 32);
 
   const TfLiteTensor *output = GetOutput(context, node, 0);
   op_data->args.y.height = (uint32_t)output->dims->data[1];
   op_data->args.y.width = (uint32_t)output->dims->data[2];
-  // FIXME *32
-  TF_LITE_ENSURE_EQ(context, op_data->args.y.channels,
-                    (uint32_t)output->dims->data[3] * 32);
 
   // TODO: remove this when parallelization is done
   op_data->jobs[0].cols = op_data->args.y.width;
@@ -322,7 +331,7 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
 
   if (kernel_type == BConv2DKernelType::BITPACKED ||
       kernel_type == BConv2DKernelType::BITPACKED_DI) {  // output is bitpacked
-    bitpacked TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
+    TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
     TF_LITE_ENSURE_STATUS(request_scratch_if_needed(
         context, GetInput(context, node, 2), op_data->threshold_scratch_idx));
   } else if (kernel_type == BConv2DKernelType::INT8 ||
@@ -431,7 +440,7 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
 
 TfLiteRegistration *Register_BConv2D_Bitpacked_Deepin() {
   static TfLiteRegistration r = {
-      bconv::Init, nullptr,
+      bconv::Init<bconv::BConv2DKernelType::BITPACKED_DI>, nullptr,
       bconv::Prepare<bconv::BConv2DKernelType::BITPACKED_DI>,
       bconv::Eval<bconv::BConv2DKernelType::BITPACKED_DI>};
   return &r;
@@ -439,14 +448,16 @@ TfLiteRegistration *Register_BConv2D_Bitpacked_Deepin() {
 
 TfLiteRegistration *Register_BConv2D_Bitpacked() {
   static TfLiteRegistration r = {
-      bconv::Init, nullptr, bconv::Prepare<bconv::BConv2DKernelType::BITPACKED>,
+      bconv::Init<bconv::BConv2DKernelType::BITPACKED>, nullptr,
+      bconv::Prepare<bconv::BConv2DKernelType::BITPACKED>,
       bconv::Eval<bconv::BConv2DKernelType::BITPACKED>};
   return &r;
 }
 
 TfLiteRegistration *Register_BConv2D_Int8_Deepin_Deepout() {
   static TfLiteRegistration r = {
-      bconv::Init, nullptr, bconv::Prepare<bconv::BConv2DKernelType::INT8_DIDO>,
+      bconv::Init<bconv::BConv2DKernelType::INT8_DIDO>, nullptr,
+      bconv::Prepare<bconv::BConv2DKernelType::INT8_DIDO>,
       bconv::Eval<bconv::BConv2DKernelType::INT8_DIDO>};
   return &r;
 }
