@@ -14181,6 +14181,8 @@ output. For the internal use of the distributed TPU compiler.
 
   TF_DerivedOperandTypeListAttr Targs = TF_DerivedOperandTypeListAttr<0>;
   TF_DerivedResultTypeListAttr Tresults = TF_DerivedResultTypeListAttr<0>;
+
+  let verifier = [{ return Verify(*this); }];
 }
 
 def TF_TPUGetLayoutOp : TF_Op<"TPUGetLayoutOp", [NoSideEffect]> {
