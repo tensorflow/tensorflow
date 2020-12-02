@@ -282,6 +282,40 @@ TF_LITE_MICRO_TEST(QuantizeOpTestInt8toInt8NoZeroPoint) {
                                   output_zero_point, output_quantized);
 }
 
+TF_LITE_MICRO_TEST(QuantizeOpTestUInt8toInt8) {
+  const int length = 10;
+  const int dims[] = {2, 2, 5};
+  const float values[] = {-64, -62, -60, -58, -56, 54, 56, 58, 60, 62};
+  const float input_scale = 2.f;
+  const int input_zero_point = 0;
+  const float output_scale = 0.5;
+  const int output_zero_point = 32;
+  int8_t output_quantized[length];
+  int8_t values_quantized[length];
+  uint8_t input_quantized[length];
+  tflite::testing::TestRequantize(dims, values, input_quantized, input_scale,
+                                  input_zero_point, dims, values,
+                                  values_quantized, output_scale,
+                                  output_zero_point, output_quantized);
+}
+
+TF_LITE_MICRO_TEST(QuantizeOpTestUInt8toInt8NoZeroPoint) {
+  const int length = 10;
+  const int dims[] = {2, 2, 5};
+  const float values[] = {-32, -31, -30, -29, -28, 27, 28, 29, 30, 31};
+  const float input_scale = 1.f;
+  const int input_zero_point = 0;
+  const float output_scale = 0.5;
+  const int output_zero_point = 0;
+  int8_t output_quantized[length];
+  int8_t values_quantized[length];
+  uint8_t input_quantized[length];
+  tflite::testing::TestRequantize(dims, values, input_quantized, input_scale,
+                                  input_zero_point, dims, values,
+                                  values_quantized, output_scale,
+                                  output_zero_point, output_quantized);
+}
+
 TF_LITE_MICRO_TEST(QuantizeOpTestInt16toInt32) {
   const int length = 10;
   const int dims[] = {2, 2, 5};
