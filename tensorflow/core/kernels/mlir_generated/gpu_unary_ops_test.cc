@@ -373,7 +373,6 @@ TEST_F(GpuUnaryOpTest, LogHalf) {
 /// Reference implementation.
 template <typename T>
 T expected_neg(T x) {
-  if (x == 0) return 0;
   return -x;
 }
 
@@ -381,21 +380,21 @@ TEST_F(GpuUnaryOpTest, NegFloat) {
   Run<float>(DefaultInputShape(), DefaultInput<float>(),
              /*op_name=*/"Neg",
              /*expected_callback=*/expected_neg,
-             /*expect_equal=*/true);
+             /*expect_equal=*/false);
 }
 
 TEST_F(GpuUnaryOpTest, NegDouble) {
   Run<double>(DefaultInputShape(), DefaultInput<double>(),
               /*op_name=*/"Neg",
               /*expected_callback=*/expected_neg,
-              /*expect_equal=*/true);
+              /*expect_equal=*/false);
 }
 
 TEST_F(GpuUnaryOpTest, NegHalf) {
   Run<Eigen::half, float>(DefaultInputShape(), DefaultInput<Eigen::half>(),
                           /*op_name=*/"Neg",
                           /*expected_callback=*/expected_neg,
-                          /*expect_equal=*/true);
+                          /*expect_equal=*/false);
 }
 
 /// Test `tf.Real`.
