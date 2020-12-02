@@ -444,6 +444,21 @@ cc_test(
 )
 
 cc_test(
+    name = "elu_test",
+    srcs = ["elu_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":test_main",
+        ":unary_elementwise_tester",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "fully_connected_test",
     srcs = ["fully_connected_test.cc"],
     linkopts = select({
