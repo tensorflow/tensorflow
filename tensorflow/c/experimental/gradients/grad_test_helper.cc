@@ -21,10 +21,10 @@ namespace tensorflow {
 namespace gradients {
 namespace internal {
 
-void CompareWithGradientsCheckers(
+void CompareNumericalAndAutodiffGradients(
     Model model, Model grad_model, AbstractContext* ctx,
     absl::Span<AbstractTensorHandle* const> inputs, bool use_function,
-    const GradientRegistry& registry) {
+    const GradientRegistry& registry, double abs_error) {
   auto num_inputs = inputs.size();
   std::vector<AbstractTensorHandle*> outputs(num_inputs);
   auto s = RunModel(grad_model, ctx, inputs, absl::MakeSpan(outputs),
@@ -60,7 +60,7 @@ void CompareWithGradientsCheckers(
            TF_TensorByteSize(analytical_tensor));
 
     for (int j = 0; j < num_elem_numerical; j++) {
-      ASSERT_NEAR(dnumerical[j], danalytical[j], /*abs_error=*/1e-2);
+      ASSERT_NEAR(dnumerical[j], danalytical[j], abs_error);
     }
     TF_DeleteTensor(analytical_tensor);
     TF_DeleteTensor(numerical_tensor);
