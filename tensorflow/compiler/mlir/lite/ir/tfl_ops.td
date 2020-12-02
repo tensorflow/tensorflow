@@ -1888,6 +1888,25 @@ def TFL_LogOp: TFL_Op<"log", [
   let hasFolder = 1;
 }
 
+def TFL_TableOp: TFL_Op<"table", [
+    TFL_OperandHasRank<1, 1>,
+    NoSideEffect]> {
+  let summary = "Table lookup operator";
+
+  let description = [{
+    Lookup the inputs into the table. For int16 inputs a 513 entries table is
+    used with interpolation. For int8 a 256 entries table is used.
+  }];
+
+  let arguments = (
+    ins
+    TFL_TensorOf<[QI8, QI16]>:$in,
+    TFL_TensorOf<[QI8, QI16]>:$table
+  );
+
+  let results = (outs TFL_TensorOf<[QI8, QI16]>:$out);
+}
+
 def TFL_LogSoftmaxOp : TFL_Op<"log_softmax", [
     NoSideEffect,
     SameOperandsAndResultShape,

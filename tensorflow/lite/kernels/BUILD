@@ -610,6 +610,7 @@ BUILTIN_KERNEL_SRCS = [
     "strided_slice.cc",
     "sub.cc",
     "svdf.cc",
+    "table.cc",
     "tile.cc",
     "topk_v2.cc",
     "transpose.cc",
@@ -1800,6 +1801,18 @@ cc_test(
     size = "small",
     srcs = ["strided_slice_test.cc"],
     tags = ["tflite_nnapi"],
+    deps = [
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "table_test",
+    size = "small",
+    srcs = ["table_test.cc"],
     deps = [
         ":test_main",
         ":test_util",

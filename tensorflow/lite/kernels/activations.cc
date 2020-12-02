@@ -75,7 +75,7 @@ struct SoftmaxOpData {
   uint8_t uint8_table1[256];
   uint8_t uint8_table2[256];
 #endif
-  static constexpr int kInt16LUTArraySize = 513;
+  static constexpr int kInt16LUTArraySize = lut_size<int16_t>();
   int16_t exp_lut[kInt16LUTArraySize];  // int16 LUT for exp(x), where x uniform
                                         // distributed between [-10.0 , 0.0]
   int16_t one_over_one_plus_x_lut[kInt16LUTArraySize];  // int16 LUT for 1 /
@@ -616,11 +616,13 @@ TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
     data->params.exp_lut = data->exp_lut;
     // exp LUT only used on nagative values
     // we consider exp(-10.0) is insignificant to accumulation
-    gen_lut([](double value) { return std::exp(value); }, -10.0, 0.0,
-            data->params.exp_lut, data->kInt16LUTArraySize);
+    gen_lut<double, int16_t, int16_t>(
+        [](double value) { return std::exp(value); }, -10.0, 0.0, -1.0, 1.0,
+        data->params.exp_lut);
     data->params.one_over_one_plus_x_lut = data->one_over_one_plus_x_lut;
-    gen_lut([](double value) { return 1.0 / (1.0 + value); }, 0.0, 1.0,
-            data->params.one_over_one_plus_x_lut, data->kInt16LUTArraySize);
+    gen_lut<double, int16_t, int16_t>(
+        [](double value) { return 1.0 / (1.0 + value); }, 0.0, 1.0, -1.0, 1.0,
+        data->params.one_over_one_plus_x_lut);
     data->params.zero_point = output->params.zero_point;
     data->params.scale = output->params.scale;
 

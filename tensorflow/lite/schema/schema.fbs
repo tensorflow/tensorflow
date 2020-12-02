@@ -357,6 +357,7 @@ enum BuiltinOperator : int32 {
   CALL_ONCE = 129,
   BROADCAST_TO = 130,
   RFFT2D = 131,
+  TABLE = 132,
 }
 
 
@@ -467,6 +468,7 @@ union BuiltinOptions {
   CallOnceOptions,
   BroadcastToOptions,
   Rfft2dOptions,
+  TableOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -1007,6 +1009,9 @@ table BroadcastToOptions {
 }
 
 table Rfft2dOptions {
+}
+
+table TableOptions {
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a
