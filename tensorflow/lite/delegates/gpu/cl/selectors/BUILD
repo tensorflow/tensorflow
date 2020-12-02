@@ -5,41 +5,27 @@ package(
 
 cc_library(
     name = "convolution_selector",
-    srcs = ["convolution_selector.cc"],
     hdrs = ["convolution_selector.h"],
     deps = [
+        "//tensorflow/lite/delegates/gpu/cl/selectors/default:convolution_selector",  # buildcleaner: keep
         "//tensorflow/lite/delegates/gpu/common:model_hints",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
-        "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
         "//tensorflow/lite/delegates/gpu/common/task:weights_layout",
-        "//tensorflow/lite/delegates/gpu/common/task:work_group_picking",
-        "//tensorflow/lite/delegates/gpu/common/tasks:conv_buffer_1x1",
-        "//tensorflow/lite/delegates/gpu/common/tasks:conv_constants",
-        "//tensorflow/lite/delegates/gpu/common/tasks:conv_powervr",
-        "//tensorflow/lite/delegates/gpu/common/tasks:conv_weights_converter",
-        "@com_google_absl//absl/memory",
     ],
 )
 
 cc_library(
     name = "convolution_transposed_selector",
-    srcs = ["convolution_transposed_selector.cc"],
     hdrs = ["convolution_transposed_selector.h"],
     deps = [
+        "//tensorflow/lite/delegates/gpu/cl/selectors/default:convolution_transposed_selector",  # buildcleaner: keep
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
-        "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
         "//tensorflow/lite/delegates/gpu/common/task:weights_layout",
-        "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed",
-        "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_3x3",
-        "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_3x3_thin",
-        "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_4x4",
-        "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_thin",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -49,7 +35,7 @@ cc_library(
     hdrs = ["default_selector.h"],
     deps = [
         ":subgraph",
-        "//tensorflow/lite/delegates/gpu/cl/selectors/default:default_selector",
+        "//tensorflow/lite/delegates/gpu/cl/selectors/default:default_selector",  # buildcleaner: keep
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:model_hints",
         "//tensorflow/lite/delegates/gpu/common:status",
@@ -60,30 +46,24 @@ cc_library(
 
 cc_library(
     name = "dw_convolution_selector",
-    srcs = ["dw_convolution_selector.cc"],
     hdrs = ["dw_convolution_selector.h"],
     deps = [
-        "//tensorflow/lite/delegates/gpu/cl:cl_device",
+        "//tensorflow/lite/delegates/gpu/cl/selectors/default:dw_convolution_selector",  # buildcleaner: keep
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
-        "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv",
-        "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_3x3",
         "@com_google_absl//absl/memory",
     ],
 )
 
 cc_library(
     name = "fully_connected_selector",
-    srcs = ["fully_connected_selector.cc"],
     hdrs = ["fully_connected_selector.h"],
     deps = [
+        "//tensorflow/lite/delegates/gpu/cl/selectors/default:fully_connected_selector",  # buildcleaner: keep
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
-        "//tensorflow/lite/delegates/gpu/common/tasks:conv_buffer_1x1",
-        "//tensorflow/lite/delegates/gpu/common/tasks:conv_powervr",
-        "//tensorflow/lite/delegates/gpu/common/tasks:fully_connected",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -162,8 +142,6 @@ cc_library(
     deps = [
         ":subgraph",
         "//tensorflow/lite/delegates/gpu/cl:cl_device",
-        "//tensorflow/lite/delegates/gpu/cl/kernels/special:depthwise_conv_plus_1x1_conv",
-        "//tensorflow/lite/delegates/gpu/cl/kernels/special:fc_fc_add",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:operations",
@@ -172,6 +150,8 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:tensor",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
+        "//tensorflow/lite/delegates/gpu/common/tasks/special:depthwise_conv_plus_1x1_conv",
+        "//tensorflow/lite/delegates/gpu/common/tasks/special:fc_fc_add",
         "@com_google_absl//absl/types:any",
     ],
 )

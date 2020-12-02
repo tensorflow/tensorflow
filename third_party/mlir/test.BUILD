@@ -206,6 +206,19 @@ cc_library(
 )
 
 cc_library(
+    name = "TestRewrite",
+    srcs = [
+        "lib/Rewrite/TestPDLByteCode.cpp",
+    ],
+    deps = [
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+)
+
+cc_library(
     name = "TestReducer",
     srcs = [
         "lib/Reducer/MLIRTestReducer.cpp",
@@ -269,6 +282,20 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorOps",
+    ],
+)
+
+cc_library(
+    name = "TestShapeDialect",
+    srcs = [
+        "lib/Dialect/Shape/TestShapeFunctions.cpp",
+    ],
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Shape",
     ],
 )
 

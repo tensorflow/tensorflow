@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
+#include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -121,6 +122,22 @@ class HloRunnerInterface {
                                     absl::Span<const Literal* const> arguments,
                                     bool run_hlo_passes,
                                     ExecutionProfile* profile) = 0;
+
+  // Same as above, but with Executable as input.
+  StatusOr<Literal> ExecuteWithExecutable(
+      std::unique_ptr<Executable> executable,
+      absl::Span<const Literal> arguments, ExecutionProfile* profile = nullptr);
+
+  StatusOr<Literal> ExecuteWithExecutable(
+      std::unique_ptr<Executable> executable,
+      absl::Span<const Literal* const> arguments) {
+    return ExecuteWithExecutable(std::move(executable), arguments, nullptr);
+  }
+
+  virtual StatusOr<Literal> ExecuteWithExecutable(
+      std::unique_ptr<Executable> executable,
+      absl::Span<const Literal* const> arguments,
+      ExecutionProfile* profile) = 0;
 
   // Executes a given HLO module into a set of replicas, and returns a map
   // with the replica number as key, and the corresponding returned literal as

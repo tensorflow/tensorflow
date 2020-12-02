@@ -54,6 +54,7 @@ filegroup(
             "unranked_op_gpu_exp.cc",
             "unranked_op_gpu_floor.cc",
             "unranked_op_gpu_imag.cc",
+            "unranked_op_gpu_is_inf.cc",
             "unranked_op_gpu_log.cc",
             "unranked_op_gpu_logical_not.cc",
             "unranked_op_gpu_real.cc",
@@ -110,6 +111,7 @@ tf_kernel_library(
             ":exp_unranked_kernels",
             ":floor_unranked_kernels",
             ":imag_unranked_kernels",
+            ":is_inf_unranked_kernels",
             ":log_unranked_kernels",
             ":logical_not_unranked_kernels",
             ":real_unranked_kernels",
@@ -172,6 +174,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/common_runtime:device_factory",
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:ops_testutil",
+        "@com_google_absl//absl/container:inlined_vector",
     ],
 )
 
@@ -268,6 +271,19 @@ gen_kernel_library(
 )
 
 gen_kernel_library(
+    name = "is_inf",
+    generate_ranked = False,
+    generate_unranked = True,
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gen_kernel_library(
     name = "logical_not",
     generate_unranked = True,
     tile_size = "256",
@@ -312,7 +328,8 @@ gen_kernel_library(
         "f64",
         "i64",
     ],
-    unroll_factors = "4",
+    # TODO(b/174543802): Enable once fusion heursitics is better.
+    # unroll_factors = "4",
 )
 
 gen_kernel_library(
@@ -330,7 +347,8 @@ gen_kernel_library(
         "i32",
         "i64",
     ],
-    unroll_factors = "4",
+    # TODO(b/174543802): Enable once fusion heursitics is better.
+    # unroll_factors = "4",
 )
 
 [

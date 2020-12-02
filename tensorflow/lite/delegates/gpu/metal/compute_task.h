@@ -33,7 +33,7 @@ limitations under the License.
 
 /// Returns empty string or error if shader can't be compiled.
 - (absl::Status)compileWithDevice:(id<MTLDevice>)device
-                   taskDescriptor:(::tflite::gpu::metal::ComputeTaskDescriptorPtr)desc
+                   taskDescriptor:(const tflite::gpu::metal::NodeDescriptor&)desc
                    runtimeOptions:(const ::tflite::gpu::metal::RuntimeOptions&)options;
 
 /// Updates parameters for inputs/outputs/intermediate tensors
@@ -65,6 +65,8 @@ limitations under the License.
 
 - (std::vector<tflite::gpu::ValueId>)getOutputIds;
 - (std::vector<tflite::gpu::ValueId>)getInputIds;
+
+- (void)setDescription:(const std::string&)description;
 
 @end
 

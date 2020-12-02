@@ -185,7 +185,12 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
   llvm::Optional<ArrayAttr> dilations_attr = ExtractDilationsAttrFromBlockShape(
       stb_op.block_shape(), bts_op.block_shape(), rewriter);
   if (!dilations_attr.hasValue()) return failure();
-  op.setAttr("dilations", dilations_attr.getValue());
+
+  if (expand_op) {
+    if (stb_op.input().getType().dyn_cast<RankedTensorType>() == nullptr) {
+      return failure();
+    }
+  }
 
   // TODO(b/149936532): Check that the input width & height are multiples of
   // dilation rate.
@@ -233,6 +238,9 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
       }
     }
   }
+
+  // Set dilations
+  op.setAttr("dilations", dilations_attr.getValue());
 
   if (expand_op) {
     // If there is `expand_op`, we need to rewire the inputs to bypass the

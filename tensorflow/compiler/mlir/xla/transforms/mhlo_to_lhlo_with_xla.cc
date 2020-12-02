@@ -26,10 +26,10 @@ limitations under the License.
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -48,6 +48,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
+#include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -359,8 +360,7 @@ StatusOr<lmhlo::FusionOp> LhloDialectEmitter::EmitFusionOp(
 
   auto* fusion_instr = ::xla::Cast<::xla::HloFusionInstruction>(instr);
 
-  auto fusion = builder_.create<lmhlo::FusionOp>(getLocation(instr),
-                                                 ArrayRef<NamedAttribute>{});
+  auto fusion = builder_.create<lmhlo::FusionOp>(getLocation(instr));
   auto after_fusion = builder_.saveInsertionPoint();
   builder_ = mlir::OpBuilder(fusion);
 
@@ -503,6 +503,10 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitCustomCallOp(
     return EmitCholesky(custom_call_instr);
   }
 
+  if (xla::gpu::IsCublasGemm(*instr)) {
+    return EmitGemm(custom_call_instr);
+  }
+
   size_t num_arguments, num_results;
   TF_ASSIGN_OR_RETURN(auto custom_call,
                       CreateOpWithoutAttrs<lmhlo::CustomCallOp>(
@@ -526,6 +530,48 @@ StatusOr<lmhlo_gpu::CholeskyOp> LhloDialectEmitter::EmitCholesky(
                       custom_call->backend_config<xla::CholeskyOptions>());
   cholesky_op.is_lowerAttr(builder_.getBoolAttr(options.lower()));
   return cholesky_op;
+}
+
+StatusOr<Operation*> LhloDialectEmitter::EmitGemm(
+    HloCustomCallInstruction* custom_call) {
+  TF_ASSIGN_OR_RETURN(
+      auto const config,
+      custom_call->backend_config<xla::gpu::GemmBackendConfig>());
+
+  auto set_common_attributes = [&](auto op) -> Operation* {
+    auto hlo_dims = config.dot_dimension_numbers();
+    auto mlir_dims = mhlo::DotDimensionNumbers::get(
+        GetI64DenseElementsAttr(hlo_dims.lhs_batch_dimensions()),
+        GetI64DenseElementsAttr(hlo_dims.rhs_batch_dimensions()),
+        GetI64DenseElementsAttr(hlo_dims.lhs_contracting_dimensions()),
+        GetI64DenseElementsAttr(hlo_dims.rhs_contracting_dimensions()),
+        builder_.getContext());
+    op.dot_dimension_numbersAttr(mlir_dims);
+    op.alpha_realAttr(builder_.getF64FloatAttr(config.alpha_real()));
+    op.alpha_imagAttr(builder_.getF64FloatAttr(config.alpha_imag()));
+    op.batch_sizeAttr(builder_.getI64IntegerAttr(config.batch_size()));
+    if (config.algorithm_case() ==
+        xla::gpu::GemmBackendConfig::kSelectedAlgorithm) {
+      op.algorithmAttr(builder_.getI64IntegerAttr(config.selected_algorithm()));
+    }
+    return op.getOperation();
+  };
+
+  if (custom_call->operand_count() == 2) {
+    TF_ASSIGN_OR_RETURN(auto gemm,
+                        CreateOpWithoutAttrs<lmhlo_gpu::GEMMOp>(custom_call));
+    return set_common_attributes(gemm);
+  }
+
+  if (custom_call->operand_count() == 3) {
+    TF_ASSIGN_OR_RETURN(
+        auto gemm_bias,
+        CreateOpWithoutAttrs<lmhlo_gpu::GEMM_BiasOp>(custom_call));
+    gemm_bias.betaAttr(builder_.getF64FloatAttr(config.beta()));
+    return set_common_attributes(gemm_bias);
+  }
+
+  return xla::InvalidArgument("GEMM custom call should have 2 or 3 operands");
 }
 
 // Convert an XLA HLO constant to a global_memref + get_global_memref pair.

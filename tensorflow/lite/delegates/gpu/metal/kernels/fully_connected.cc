@@ -115,30 +115,20 @@ std::string GetFullyConnectedCode(const GpuInfo& gpu_info, int src_channels,
 }
 }  // namespace
 
-std::vector<ComputeTaskDescriptorPtr> FullyConnected(
-    int id, ValueId input_id, ValueId output_id,
-    const FullyConnectedAttributes& attr, const GpuInfo& gpu_info,
-    const RuntimeOptions& options) {
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = false;
-  desc->shader_source = GetFullyConnectedCode(gpu_info, attr.weights.shape.i,
-                                              attr.weights.shape.o);
+ComputeTaskDescriptor FullyConnected(ValueId input_id, ValueId output_id,
+                                     const FullyConnectedAttributes& attr,
+                                     const GpuInfo& gpu_info,
+                                     const RuntimeOptions& options) {
+  ComputeTaskDescriptor desc;
+  desc.shader_source = GetFullyConnectedCode(gpu_info, attr.weights.shape.i,
+                                             attr.weights.shape.o);
 
-  desc->args.AddInt("dst_channels", attr.weights.shape.o);
-  desc->args.AddInt("src_slices", DivideRoundUp(attr.weights.shape.i, 4));
-  desc->args.AddInt("dst_channels_alignedx8",
-                    AlignByN(attr.weights.shape.o, 8));
+  desc.args.AddInt("dst_channels", attr.weights.shape.o);
+  desc.args.AddInt("src_slices", DivideRoundUp(attr.weights.shape.i, 4));
+  desc.args.AddInt("dst_channels_alignedx8", AlignByN(attr.weights.shape.o, 8));
 
-  desc->input_buffers = {
-      {input_id, "device FLT4* const vector"},
-  };
-
-  desc->output_buffer = {
-      output_id, "device FLT4* result",
-      [input_id, attr](const std::map<ValueId, BHWC>& buffers) {
-        return CalculateOutputShape(buffers.find(input_id)->second, attr);
-      }};
+  desc.AddSrcTensor("vector");
+  desc.AddDstTensor("result");
 
   bool shared_memory = gpu_info.IsApple() &&
                        gpu_info.apple_info.IsLocalMemoryPreferredOverGlobal();
@@ -173,7 +163,7 @@ std::vector<ComputeTaskDescriptorPtr> FullyConnected(
       GetByteBufferConverted(filters_reordered, options.storage_precision);
   weights_desc.size = weights_desc.data.size();
 
-  desc->args.AddObject(
+  desc.args.AddObject(
       "weights", absl::make_unique<BufferDescriptor>(std::move(weights_desc)));
 
   BufferDescriptor bias_desc;
@@ -186,17 +176,18 @@ std::vector<ComputeTaskDescriptorPtr> FullyConnected(
       attr.bias.data, options.storage_precision, dst_channels_aligned);
   bias_desc.size = bias_desc.data.size();
 
-  desc->args.AddObject(
+  desc.args.AddObject(
       "bias", absl::make_unique<BufferDescriptor>(std::move(bias_desc)));
 
-  desc->resize_function = [attr](const std::map<ValueId, BHWC>& buffers) {
+  desc.resize_function = [attr](const std::vector<BHWC>& src_shapes,
+                                const std::vector<BHWC>& dst_shapes) {
     const uint3 groups_size{8, 4, 1};
     const int dst_channels_aligned = AlignByN(attr.weights.shape.o, 8);
     int groups_x = DivideRoundUp(dst_channels_aligned, groups_size.x);
     return std::make_pair(groups_size, uint3{groups_x, 1, 1});
   };
 
-  return {desc};
+  return desc;
 }
 
 }  // namespace metal

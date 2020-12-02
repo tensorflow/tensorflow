@@ -511,5 +511,51 @@ REGISTER_OP("RetrieveTPUEmbeddingProximalYogiParametersGradAccumDebug")
     .SetIsStateful()
     .SetShapeFn(RetrieveOpShapeFunction());
 
+REGISTER_OP("LoadTPUEmbeddingFrequencyEstimatorParameters")
+    .Input("parameters: float32")
+    .Input("last_hit_step: float32")
+    .Attr("table_id: int = -1")
+    .Attr("table_name: string = \"\"")
+    .Attr("num_shards: int")
+    .Attr("shard_id: int")
+    .Attr("config: string = \"\"")
+    .SetIsStateful()
+    .SetShapeFn(LoadOpShapeFunction());
+
+REGISTER_OP("LoadTPUEmbeddingFrequencyEstimatorParametersGradAccumDebug")
+    .Input("parameters: float32")
+    .Input("last_hit_step: float32")
+    .Input("gradient_accumulators: float32")
+    .Attr("table_id: int = -1")
+    .Attr("table_name: string = \"\"")
+    .Attr("num_shards: int")
+    .Attr("shard_id: int")
+    .Attr("config: string = \"\"")
+    .SetIsStateful()
+    .SetShapeFn(LoadOpShapeFunction());
+
+REGISTER_OP("RetrieveTPUEmbeddingFrequencyEstimatorParameters")
+    .Output("parameters: float32")
+    .Output("last_hit_step: float32")
+    .Attr("table_id: int = -1")
+    .Attr("table_name: string = \"\"")
+    .Attr("num_shards: int")
+    .Attr("shard_id: int")
+    .Attr("config: string = \"\"")
+    .SetIsStateful()
+    .SetShapeFn(RetrieveOpShapeFunction());
+
+REGISTER_OP("RetrieveTPUEmbeddingFrequencyEstimatorParametersGradAccumDebug")
+    .Output("parameters: float32")
+    .Output("last_hit_step: float32")
+    .Output("gradient_accumulators: float32")
+    .Attr("table_id: int = -1")
+    .Attr("table_name: string = \"\"")
+    .Attr("num_shards: int")
+    .Attr("shard_id: int")
+    .Attr("config: string = \"\"")
+    .SetIsStateful()
+    .SetShapeFn(RetrieveOpShapeFunction());
+
 }  // namespace tpu
 }  // namespace tensorflow

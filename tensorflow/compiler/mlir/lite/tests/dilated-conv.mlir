@@ -283,6 +283,28 @@ func @testDilatedDepthWiseConvWithExpandSqueeze3(%arg0: tensor<1x128x128xf32>, %
   // CHECK-NEXT: return [[RESULT]] : tensor<1x128x128xf32>
 }
 
+func @testAvoidDilatedConvWithExpand(%arg0: tensor<*xf32>, %arg1: tensor<5x5x1x1xf32>, %arg2: tensor<128xf32>) -> tensor<1x128x128xf32> {
+  %cst = constant dense<[2, 2]> : tensor<2xi32>
+  %cst_0 = "tf.Const"() { value = dense<3> : tensor<i32> } : () -> tensor<i32>
+  %cst_1 = constant dense<4> : tensor<2x2xi32>
+  %cst_2 = constant dense<0> : tensor<2x2xi32>
+  %0 = "tf.SpaceToBatchND"(%arg0, %cst, %cst_1) : (tensor<*xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<4x68x68xf32>
+  %1 = "tf.ExpandDims"(%0, %cst_0) : (tensor<4x68x68xf32>, tensor<i32>) -> tensor<4x68x68x1xf32>
+  %2 = "tf.Conv2D"(%1, %arg1) {padding = "VALID", strides = [1, 1, 1, 1]} : (tensor<4x68x68x1xf32>, tensor<5x5x1x1xf32>) -> tensor<4x64x64x1xf32>
+  %3 = "tf.Squeeze"(%2) {squeeze_dims = [3]} : (tensor<4x64x64x1xf32>) -> tensor<4x64x64xf32>
+  %4 = "tf.BatchToSpaceND"(%3, %cst, %cst_2) : (tensor<4x64x64xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<1x128x128xf32>
+  %5 = "tf.BiasAdd"(%4, %arg2) : (tensor<1x128x128xf32>, tensor<128xf32>) -> tensor<1x128x128xf32>
+  return %5 : tensor<1x128x128xf32>
+
+  // CHECK-LABEL: testAvoidDilatedConvWithExpand
+  // CHECK: "tf.SpaceToBatchND"
+  // CHECK: "tf.ExpandDims"
+  // CHECK: "tf.Conv2D"
+  // CHECK: "tf.Squeeze"
+  // CHECK: "tf.BatchToSpaceND"
+  // CHECK: "tf.BiasAdd"
+}
+
 func @testDilatedConvWithDifferentExpandSqueezeAxis(%arg0: tensor<1x128x128xf32>, %arg1: tensor<5x5x1x1xf32>) -> tensor<1x128x128x1xf32> {
   %cst = constant dense<[2, 2]> : tensor<2xi32>
   %cst_0 = "tf.Const"() { value = dense<3> : tensor<i32> } : () -> tensor<i32>

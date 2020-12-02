@@ -63,7 +63,7 @@ absl::Status CompareVectors(const std::vector<float>& reference,
 /// Helper function that compiles previously configured graph (with added
 /// tasks), initializes graph with specified inputs, invokes and fills specified
 /// outputs
-absl::Status RunGraph(const std::vector<ComputeTaskDescriptorPtr>& nodes,
+absl::Status RunGraph(const std::vector<NodeDescriptor>& nodes,
                       id<MTLDevice> device,
                       const std::map<ValueId, TensorFloat32>& inputs,
                       std::map<ValueId, TensorFloat32>* outputs);

@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/time_utils.h"
+#include "tensorflow/core/profiler/utils/timespan.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -197,6 +198,11 @@ class XEventBuilder : public XStatsBuilder<XEvent> {
   void SetEndTimestampNs(int64 end_timestamp_ns) {
     SetDurationPs(NanosToPicos(end_timestamp_ns - line_->timestamp_ns()) -
                   event_->offset_ps());
+  }
+
+  Timespan GetTimespan() const {
+    return Timespan(NanosToPicos(line_->timestamp_ns()) + event_->offset_ps(),
+                    event_->duration_ps());
   }
 
  private:

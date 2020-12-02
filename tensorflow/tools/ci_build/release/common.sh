@@ -130,7 +130,7 @@ function install_ubuntu_16_pip_deps {
   "${PIP_CMD}" install --user 'keras_preprocessing ~= 1.1.2'
   "${PIP_CMD}" install --user 'numpy ~= 1.19.2'
   "${PIP_CMD}" install --user 'opt_einsum ~= 3.3.0'
-  "${PIP_CMD}" install --user 'protobuf ~= 3.13.0'
+  "${PIP_CMD}" install --user 'protobuf >= 3.9.2'
   "${PIP_CMD}" install --user 'six ~= 1.15.0'
   "${PIP_CMD}" install --user 'termcolor ~= 1.1.0'
   "${PIP_CMD}" install --user 'typing_extensions ~= 3.7.4'
@@ -186,7 +186,7 @@ function install_macos_pip_deps {
   ${PIP_CMD} install --user 'keras_preprocessing ~= 1.1.2'
   ${PIP_CMD} install --user 'numpy ~= 1.19.2'
   ${PIP_CMD} install --user 'opt_einsum ~= 3.3.0'
-  ${PIP_CMD} install --user 'protobuf ~= 3.13.0'
+  ${PIP_CMD} install --user 'protobuf >= 3.9.2'
   ${PIP_CMD} install --user 'six ~= 1.15.0'
   ${PIP_CMD} install --user 'termcolor ~= 1.1.0'
   ${PIP_CMD} install --user 'typing_extensions ~= 3.7.4'
@@ -202,6 +202,7 @@ function install_macos_pip_deps {
   ${PIP_CMD} install --user 'grpcio ~= 1.32.0'
   ${PIP_CMD} install --user 'portpicker ~= 1.3.1'
   ${PIP_CMD} install --user 'scipy ~= 1.5.2'
+  ${PIP_CMD} install --user 'twine ~= 3.2.0'
   # LINT.ThenChange(:linux_pip_installations)
 }
 

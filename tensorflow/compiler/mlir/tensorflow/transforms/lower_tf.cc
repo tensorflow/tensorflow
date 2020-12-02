@@ -838,6 +838,9 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
       return failure();
     }
     auto paddings_type = op.paddings().getType().cast<ShapedType>();
+    if (!paddings_type.hasRank()) {
+      return failure();
+    }
 
     int64_t input_rank = input_type.getRank();
     int64_t block_rank = block_shape_type.getNumElements();

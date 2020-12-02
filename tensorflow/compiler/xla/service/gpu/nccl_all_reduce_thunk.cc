@@ -84,8 +84,6 @@ namespace gpu {
 
 namespace {
 
-using tensorflow::BlockingCounter;
-
 bool IsGlobalNcclConfig() {
   static bool global_nccl_config = std::getenv("NCCL_COMM_ID") != nullptr;
   return global_nccl_config;
@@ -629,6 +627,7 @@ Status NcclAllReduceThunk::ExecuteOnStream(const ExecuteParams& params) {
                                config_.op_id);
   if (VLOG_IS_ON(2)) {
     std::vector<std::string> local_participants;
+    local_participants.reserve(local_devices.size());
     for (const auto& entry : local_devices) {
       local_participants.push_back(absl::StrFormat(
           "global=%d/local=%d", entry.first.value(), entry.second));

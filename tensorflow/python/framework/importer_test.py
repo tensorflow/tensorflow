@@ -32,6 +32,7 @@ from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_ops  # pylint: disable=unused-import
+from tensorflow.python.framework import test_util
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -937,6 +938,7 @@ class ImportGraphDefTest(test.TestCase):
           node { name: 'A' op: 'IntOutput' }
           """))
 
+  @test_util.run_v1_only("v1 Tensor doesn't have attribute 'numpy'")
   def testWithExtensionAndAttr(self):
     with ops.Graph().as_default() as g:
       c = constant_op.constant(5.0, dtype=dtypes.float32, name="c")
@@ -1219,6 +1221,8 @@ class ImportGraphDefTest(test.TestCase):
         self.assertEqual(sess.run("external:0"), 11)
         self.assertEqual(sess.run("outer:0"), 21)
 
+  @test_util.run_v1_only("import inside defun not supported when eager "
+                         "execution is enabled.")
   def testImportInsideDefun(self):
     g = ops.Graph()
     with g.as_default():
@@ -1243,6 +1247,8 @@ class ImportGraphDefTest(test.TestCase):
       z_val = self.evaluate(z)
       self.assertEqual(z_val, -2.0)
 
+  @test_util.run_v1_only("_as_tf_output not supported when eager execution "
+                         "is enabled.")
   def testImportGraphWithFunctionTwice(self):
     g = ops.Graph()
     with g.as_default():

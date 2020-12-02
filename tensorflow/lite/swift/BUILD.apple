@@ -62,7 +62,7 @@ swift_library(
         "//tensorflow/lite/ios:tensorflow_lite_c",
     ] + select({
         ":use_coreml_delegate": [
-            "//tensorflow/lite/experimental/delegates/coreml:coreml_delegate",
+            "//tensorflow/lite/delegates/coreml:coreml_delegate",
         ],
         "//conditions:default": [],
     }) + select({
@@ -84,8 +84,8 @@ swift_library(
     module_name = "TensorFlowLite",
     tags = TFL_DEFAULT_TAGS + ["builder_default_ios_arm64"],
     deps = [
+        "//tensorflow/lite/delegates/coreml:coreml_delegate",
         "//tensorflow/lite/delegates/gpu:metal_delegate",
-        "//tensorflow/lite/experimental/delegates/coreml:coreml_delegate",
         "//tensorflow/lite/ios:tensorflow_lite_c",
     ],
 )

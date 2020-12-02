@@ -168,6 +168,7 @@ class IrEmitterUnnested : public IrEmitter,
   Status HandleConditional(HloInstruction* conditional) override;
   Status HandleConvolution(HloInstruction* convolution) override;
   Status HandleCustomCall(HloInstruction* custom_call) override;
+  Status EmitGemmThunkFromMlir(MlirEmitterInput input);
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
   Status EmitCholeskyThunkFromMlir(MlirEmitterInput input);
 #endif  // (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
@@ -321,6 +322,8 @@ class IrEmitterUnnested : public IrEmitter,
       const HloInstruction& hlo, const ShapeIndex& index = {}) const {
     return MaybeGetAllocationSlice(hlo, index).ConsumeValueOrDie();
   }
+
+  StatusOr<BufferAllocation::Slice> GetAllocationSliceForMlir(mlir::Value v);
 
   int64 ByteSizeOf(const Shape& shape) const override {
     return llvm_ir::ByteSizeOf(
@@ -566,20 +569,19 @@ class IrEmitterUnnested : public IrEmitter,
   //
   // Create accumulator alloca's, populate them with initial values, and store
   // inside reduction_info.
-  void EmitPrologueForReduction(
-      HloInstruction* unnested_hlo, ReductionCodegenInfo* reduction_info,
-      absl::Span<HloInstruction* const> reduce_instructions,
-      llvm::Type* index_type);
+  void EmitPrologueForReduction(HloInstruction* unnested_hlo,
+                                absl::Span<const int> instr_index_group,
+                                ReductionCodegenInfo* reduction_info,
+                                llvm::Type* index_type);
 
   // Wraps up the code generation for a tile block of a reduction kernel:
   // write the calculated output into the output tensor.
-  void EmitEpilogueForReduction(
-      llvm::Type* index_ty, HloInstruction* unnested_hlo,
-      const ReductionCodegenInfo& reduction_info,
-      absl::Span<const HloInstruction* const> reduce_instructions,
-      absl::Span<const int> reduction_output_indices,
-      absl::Span<HloComputation* const> reducers,
-      const TilingKernelInfo& tiling_kernel_info);
+  void EmitEpilogueForReduction(llvm::Type* index_ty,
+                                HloInstruction* unnested_hlo,
+                                absl::Span<const int> instr_index_group,
+                                const ReductionCodegenInfo& reduction_info,
+                                absl::Span<HloComputation* const> reducers,
+                                const TilingKernelInfo& tiling_kernel_info);
 
   // Emits code for reductions in the instr_index_group.
   void EmitIRForReduction(HloInstruction* unnested_hlo,

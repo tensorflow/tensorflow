@@ -728,8 +728,8 @@ tf_cc_shared_object(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/c/experimental/filesystem:filesystem_interface",
-        "//tensorflow/c/experimental/stream_executor:stream_executor_hdrs",
-        "//tensorflow/c:kernels_hdrs",
+        "//tensorflow/c/experimental/stream_executor:stream_executor",
+        "//tensorflow/c:kernels",
         "//tensorflow/c:logging",
         "//tensorflow/c:ops_hdrs",
         "//tensorflow/cc/saved_model:loader_lite_impl",

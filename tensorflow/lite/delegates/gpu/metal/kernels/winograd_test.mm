@@ -84,7 +84,11 @@ using ::tflite::gpu::metal::CompareVectors;
   tflite::gpu::metal::Winograd4x4To36Attributes attr;
   attr.padding.prepended = tflite::gpu::HW(1, 1);
   attr.padding.appended = tflite::gpu::HW(1, 1);
-  auto tasks = tflite::gpu::metal::Winograd4x4To36(0, 0, 1, attr);
+  auto gpu_op = tflite::gpu::metal::Winograd4x4To36(0, 1, attr);
+  std::vector<tflite::gpu::metal::NodeDescriptor> nodes(1);
+  nodes[0].task = std::make_shared<tflite::gpu::metal::ComputeTaskDescriptor>(std::move(gpu_op));
+  nodes[0].src_tensors_ids = {0};
+  nodes[0].dst_tensors_ids = {1};
 
   std::map<ValueId, TensorFloat32> inputs;
   inputs[0] = src_tensor;
@@ -93,7 +97,7 @@ using ::tflite::gpu::metal::CompareVectors;
   outputs[1].data.resize(36, 0.0f);
 
   id<MTLDevice> device = MTLCreateSystemDefaultDevice();
-  auto status = RunGraph(tasks, device, inputs, &outputs);
+  auto status = RunGraph(nodes, device, inputs, &outputs);
   XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 
   status = CompareVectors(dst_tensor.data, outputs[1].data, 1e-6f);
@@ -146,7 +150,11 @@ using ::tflite::gpu::metal::CompareVectors;
   tflite::gpu::metal::Winograd4x4To36Attributes attr;
   attr.padding.prepended = tflite::gpu::HW(1, 1);
   attr.padding.appended = tflite::gpu::HW(1, 1);
-  auto tasks = tflite::gpu::metal::Winograd4x4To36TileX6(0, 0, 1, attr, options);
+  auto gpu_op = tflite::gpu::metal::Winograd4x4To36TileX6(0, 1, attr, options);
+  std::vector<tflite::gpu::metal::NodeDescriptor> nodes(1);
+  nodes[0].task = std::make_shared<tflite::gpu::metal::ComputeTaskDescriptor>(std::move(gpu_op));
+  nodes[0].src_tensors_ids = {0};
+  nodes[0].dst_tensors_ids = {1};
 
   std::map<ValueId, TensorFloat32> inputs;
   inputs[0] = src_tensor;
@@ -155,7 +163,7 @@ using ::tflite::gpu::metal::CompareVectors;
   outputs[1].data.resize(36, 0.0f);
 
   id<MTLDevice> device = MTLCreateSystemDefaultDevice();
-  auto status = RunGraph(tasks, device, inputs, &outputs);
+  auto status = RunGraph(nodes, device, inputs, &outputs);
   XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 
   status = CompareVectors(dst_tensor.data, outputs[1].data, 1e-6f);
@@ -209,7 +217,11 @@ using ::tflite::gpu::metal::CompareVectors;
   options.storage_precision = tflite::gpu::metal::RuntimeOptions::Precision::FP32;
   options.accumulator_precision = tflite::gpu::metal::RuntimeOptions::Precision::FP32;
 
-  auto tasks = tflite::gpu::metal::Winograd36To4x4(0, 0, 1, options, attr);
+  auto gpu_op = tflite::gpu::metal::Winograd36To4x4(0, 1, options, attr);
+  std::vector<tflite::gpu::metal::NodeDescriptor> nodes(1);
+  nodes[0].task = std::make_shared<tflite::gpu::metal::ComputeTaskDescriptor>(std::move(gpu_op));
+  nodes[0].src_tensors_ids = {0};
+  nodes[0].dst_tensors_ids = {1};
 
   std::map<ValueId, TensorFloat32> inputs;
   inputs[0] = src_tensor;
@@ -218,7 +230,7 @@ using ::tflite::gpu::metal::CompareVectors;
   outputs[1].data.resize(16, 0.0f);
 
   id<MTLDevice> device = MTLCreateSystemDefaultDevice();
-  auto status = RunGraph(tasks, device, inputs, &outputs);
+  auto status = RunGraph(nodes, device, inputs, &outputs);
   XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 
   status = CompareVectors(dst_tensor.data, outputs[1].data, 1e-5f);
@@ -272,7 +284,11 @@ using ::tflite::gpu::metal::CompareVectors;
   options.storage_precision = tflite::gpu::metal::RuntimeOptions::Precision::FP32;
   options.accumulator_precision = tflite::gpu::metal::RuntimeOptions::Precision::FP32;
 
-  auto tasks = tflite::gpu::metal::Winograd36To4x4Tile4x1(0, 0, 1, options, attr);
+  auto gpu_op = tflite::gpu::metal::Winograd36To4x4Tile4x1(0, 1, options, attr);
+  std::vector<tflite::gpu::metal::NodeDescriptor> nodes(1);
+  nodes[0].task = std::make_shared<tflite::gpu::metal::ComputeTaskDescriptor>(std::move(gpu_op));
+  nodes[0].src_tensors_ids = {0};
+  nodes[0].dst_tensors_ids = {1};
 
   std::map<ValueId, TensorFloat32> inputs;
   inputs[0] = src_tensor;
@@ -281,7 +297,7 @@ using ::tflite::gpu::metal::CompareVectors;
   outputs[1].data.resize(16, 0.0f);
 
   id<MTLDevice> device = MTLCreateSystemDefaultDevice();
-  auto status = RunGraph(tasks, device, inputs, &outputs);
+  auto status = RunGraph(nodes, device, inputs, &outputs);
   XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 
   status = CompareVectors(dst_tensor.data, outputs[1].data, 1e-6f);

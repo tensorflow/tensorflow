@@ -738,14 +738,17 @@ REGISTER_OP("XlaSpmdFullToShardShape")
       }
       string sharding_attr;
       TF_RETURN_IF_ERROR(c->GetAttr("manual_sharding", &sharding_attr));
+      xla::OpSharding sharding;
+      sharding.ParseFromString(sharding_attr);
+      if (sharding.type() != xla::OpSharding::OTHER) {
+        return shape_inference::UnchangedShape(c);
+      }
       std::vector<shape_inference::DimensionHandle> dims;
       for (int64 i = 0; i < c->Rank(input_handle); ++i) {
         auto dim = c->Value(c->Dim(input_handle, i));
-        xla::OpSharding sharding;
-        sharding.ParseFromString(sharding_attr);
         int64 partitions_i = sharding.tile_assignment_dimensions(i);
         if (dim != shape_inference::InferenceContext::kUnknownDim &&
-            sharding.type() == xla::OpSharding::OTHER && partitions_i != 1) {
+            partitions_i != 1) {
           dim = (dim + partitions_i - 1) / partitions_i;
         }
         dims.push_back(c->MakeDim(dim));
