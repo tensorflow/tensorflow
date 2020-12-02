@@ -29,7 +29,7 @@ namespace {
 TEST(GpuMultiStream, Basics) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtClient> client,
-      GetNvidiaGpuClient(/*asynchronous=*/true, GpuAllocatorConfig(),
+      GetGpuClient(/*asynchronous=*/true, GpuAllocatorConfig(),
                          /*distributed_client=*/nullptr, /*node_id=*/0));
 
   PjRtDevice* device = client->local_devices().at(0);
