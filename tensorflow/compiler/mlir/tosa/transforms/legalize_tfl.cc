@@ -23,6 +23,12 @@ limitations under the License.
 #include <numeric>
 #include <unordered_set>
 
+#include "llvm/ADT/APInt.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/Optional.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringSwitch.h"
 #include "mlir/Dialect/Quant/FakeQuantSupport.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"
 #include "mlir/Dialect/Quant/UniformSupport.h"
@@ -43,12 +49,6 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "llvm/ADT/APInt.h"
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/Optional.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringSwitch.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_common.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_utils.h"
@@ -162,29 +162,6 @@ DECL_CONVERT_OP(Quantize);
 DECL_CONVERT_OP(Dequantize);
 DECL_CONVERT_OP(QConst);
 #undef DECL_CONVERT_OP
-
-// TODO: remove macro when replacing common function return types with
-// llvm::Optional<> Helper macros for checking the return value of a common
-// legalization function that returns a single tensor.
-// Packs the result in a list.
-#define TOSA_REPLACE_LOWERED_OP(REWRITER, OP, LOWERED_OP)   \
-  if (LOWERED_OP) {                                         \
-    REWRITER.replaceOp((OP), {(LOWERED_OP)->getResults()}); \
-    return success();                                       \
-  } else {                                                  \
-    return failure();                                       \
-  }
-
-// TODO: remove macro when replacing common function return types with
-// llvm::Optional<> Helper macros for checking the return value of a common
-// legalization function that returns a tensor list.
-#define TOSA_REPLACE_LOWERED_OP_LIST(REWRITER, OP, LOWERED_OP) \
-  if (LOWERED_OP) {                                            \
-    REWRITER.replaceOp((OP), (LOWERED_OP)->getResults());      \
-    return success();                                          \
-  } else {                                                     \
-    return failure();                                          \
-  }
 
 LogicalResult ConvertTFLReluOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
@@ -626,12 +603,13 @@ LogicalResult ConvertTFLAddOp::matchAndRewrite(
   auto fused_activation_fn = tfl_add_op.fused_activation_functionAttr();
 
   if (fused_activation_fn) {
-    auto fused_activation_op =
+    auto fused_activation_val =
         convertFusedActivation(rewriter, op, output, fused_activation_fn);
 
-    if (fused_activation_op) {
-      TOSA_REPLACE_LOWERED_OP(rewriter, op, fused_activation_op);
-    }
+    if (!fused_activation_val) return failure();
+
+    rewriter.replaceOp(op, {fused_activation_val.getValue()});
+    return success();
   }
 
   rewriter.replaceOp(op, {output});
@@ -718,12 +696,13 @@ LogicalResult ConvertTFLSubOp::matchAndRewrite(
   auto fused_activation_fn = tfl_sub_op.fused_activation_functionAttr();
 
   if (fused_activation_fn) {
-    auto fused_activation_op =
+    auto fused_activation_val =
         convertFusedActivation(rewriter, op, output, fused_activation_fn);
 
-    if (fused_activation_op) {
-      TOSA_REPLACE_LOWERED_OP(rewriter, op, fused_activation_op);
-    }
+    if (!fused_activation_val) return failure();
+
+    rewriter.replaceOp(op, {fused_activation_val.getValue()});
+    return success();
   }
 
   rewriter.replaceOp(op, {output});
@@ -734,25 +713,24 @@ LogicalResult ConvertTFLMulOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_mul_op = cast<TFL::MulOp>(op);
 
-  auto lowered_op = convertMultiplyOp(rewriter, op, tfl_mul_op.getResult(),
-                                      tfl_mul_op.lhs(), tfl_mul_op.rhs());
+  auto result = convertMultiplyOp(rewriter, op, tfl_mul_op.getResult(),
+                                  tfl_mul_op.lhs(), tfl_mul_op.rhs());
 
-  if (!lowered_op) {
-    return failure();
-  }
+  if (!result) return failure();
 
   auto fused_activation_fn = tfl_mul_op.fused_activation_functionAttr();
 
   if (fused_activation_fn) {
-    auto fused_activation_op = convertFusedActivation(
-        rewriter, op, lowered_op->getResult(0), fused_activation_fn);
+    auto fused_activation_val = convertFusedActivation(
+        rewriter, op, result.getValue(), fused_activation_fn);
 
-    if (fused_activation_op) {
-      TOSA_REPLACE_LOWERED_OP(rewriter, op, fused_activation_op);
-    }
+    if (!fused_activation_val) return failure();
+
+    rewriter.replaceOp(op, {fused_activation_val.getValue()});
+    return success();
   }
 
-  rewriter.replaceOp(op, {lowered_op->getResult(0)});
+  rewriter.replaceOp(op, {result.getValue()});
   return success();
 }
 
@@ -760,14 +738,12 @@ LogicalResult ConvertTFLSquareOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_square_op = cast<TFL::SquareOp>(op);
 
-  auto lowered_op = convertMultiplyOp(rewriter, op, tfl_square_op.getResult(),
-                                      tfl_square_op.x(), tfl_square_op.x());
+  auto result = convertMultiplyOp(rewriter, op, tfl_square_op.getResult(),
+                                  tfl_square_op.x(), tfl_square_op.x());
 
-  if (!lowered_op) {
-    return failure();
-  }
+  if (!result) return failure();
 
-  rewriter.replaceOp(op, {lowered_op->getResult(0)});
+  rewriter.replaceOp(op, {result.getValue()});
   return success();
 }
 
@@ -775,11 +751,14 @@ LogicalResult ConvertTFLSquaredDifferenceOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_squared_op = cast<TFL::SquaredDifferenceOp>(op);
 
-  auto lowered_op =
+  auto result =
       convertSquaredDifferenceOp(rewriter, op, tfl_squared_op.getResult(),
                                  tfl_squared_op.lhs(), tfl_squared_op.rhs());
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+  return success();
 }
 
 LogicalResult ConvertTFLRoundOp::matchAndRewrite(
@@ -792,10 +771,13 @@ LogicalResult ConvertTFLRoundOp::matchAndRewrite(
   }
 
   if (input_type.getElementType().isa<FloatType>()) {
-    auto lowered_op = convertRoundOp(rewriter, op, tfl_round_op.getResult(),
-                                     tfl_round_op.x());
+    auto result = convertRoundOp(rewriter, op, tfl_round_op.getResult(),
+                                 tfl_round_op.x());
 
-    TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+    if (!result) return failure();
+
+    rewriter.replaceOp(op, {result.getValue()});
+    return success();
 
   } else {
     // Round on int is nonsensical. Instead, replace uses of result with the
@@ -823,12 +805,13 @@ LogicalResult ConvertTFLDivOp::matchAndRewrite(
                                    reciprocal_op.getResult(), 0);
 
   if (fused_activation_fn) {
-    auto fused_activation_op = convertFusedActivation(
+    auto fused_activation_val = convertFusedActivation(
         rewriter, op, mul_op.getResult(), fused_activation_fn);
 
-    if (fused_activation_op) {
-      TOSA_REPLACE_LOWERED_OP(rewriter, op, fused_activation_op);
-    }
+    if (!fused_activation_val) return failure();
+
+    rewriter.replaceOp(op, {fused_activation_val.getValue()});
+    return success();
   }
 
   rewriter.replaceOp(op, {mul_op.getResult()});
@@ -945,22 +928,28 @@ LogicalResult ConvertTFLFloorDivOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_floordiv_op = cast<TFL::FloorDivOp>(op);
 
-  auto lowered_op =
-      convertFloorDivOp(rewriter, op, tfl_floordiv_op.getResult(),
-                        tfl_floordiv_op.lhs(), tfl_floordiv_op.rhs());
+  auto result = convertFloorDivOp(rewriter, op, tfl_floordiv_op.getResult(),
+                                  tfl_floordiv_op.lhs(), tfl_floordiv_op.rhs());
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 LogicalResult ConvertTFLFloorModOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_floormod_op = cast<TFL::FloorModOp>(op);
 
-  auto lowered_op =
-      convertFloorModOp(rewriter, op, tfl_floormod_op.getResult(),
-                        tfl_floormod_op.lhs(), tfl_floormod_op.rhs());
+  auto result = convertFloorModOp(rewriter, op, tfl_floormod_op.getResult(),
+                                  tfl_floormod_op.lhs(), tfl_floormod_op.rhs());
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 LogicalResult ConvertTFLAddNOp::matchAndRewrite(
@@ -1171,12 +1160,13 @@ LogicalResult ConvertTFLConv2DOp::matchAndRewrite(
   auto fused_activation_fn = tfl_conv2d_op.fused_activation_functionAttr();
 
   if (fused_activation_fn) {
-    auto fused_activation_op = convertFusedActivation(
+    auto fused_activation_val = convertFusedActivation(
         rewriter, op, conv2d_output, fused_activation_fn);
 
-    if (fused_activation_op) {
-      TOSA_REPLACE_LOWERED_OP(rewriter, op, fused_activation_op);
-    }
+    if (!fused_activation_val) return failure();
+
+    rewriter.replaceOp(op, {fused_activation_val.getValue()});
+    return success();
   }
 
   rewriter.replaceOp(op, {conv2d_output});
@@ -1412,12 +1402,13 @@ LogicalResult ConvertTFLDepthwiseConv2DOp::matchAndRewrite(
   auto fused_activation_fn = tfl_conv2d_op.fused_activation_functionAttr();
 
   if (fused_activation_fn) {
-    auto fused_activation_op = convertFusedActivation(
+    auto fused_activation_val = convertFusedActivation(
         rewriter, op, conv2d_output, fused_activation_fn);
 
-    if (fused_activation_op) {
-      TOSA_REPLACE_LOWERED_OP(rewriter, op, fused_activation_op);
-    }
+    if (!fused_activation_val) return failure();
+
+    rewriter.replaceOp(op, {fused_activation_val.getValue()});
+    return success();
   }
 
   rewriter.replaceOp(op, {conv2d_output});
@@ -1527,12 +1518,13 @@ LogicalResult ConvertTFLFullyConnectedOp::matchAndRewrite(
   auto fused_activation_fn = tfl_fc_op.fused_activation_functionAttr();
 
   if (fused_activation_fn) {
-    auto fused_activation_op =
+    auto fused_activation_val =
         convertFusedActivation(rewriter, op, fc_output, fused_activation_fn);
 
-    if (fused_activation_op) {
-      TOSA_REPLACE_LOWERED_OP(rewriter, op, fused_activation_op);
-    }
+    if (!fused_activation_val) return failure();
+
+    rewriter.replaceOp(op, {fused_activation_val.getValue()});
+    return success();
   }
 
   rewriter.replaceOp(op, {fc_output});
@@ -1556,10 +1548,13 @@ LogicalResult ConvertTFLConcatenationOp::matchAndRewrite(
   }
   int32_t axis = axis_attr.getInt();
 
-  auto lowered_op =
+  auto result =
       convertConcatV2Op(rewriter, op, tfl_concat_op.getResult(), values, axis);
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+  return success();
 }
 
 LogicalResult ConvertTFLReshapeOp::matchAndRewrite(
@@ -1636,11 +1631,15 @@ LogicalResult ConvertTFLExpandDimsOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_expanddims_op = cast<TFL::ExpandDimsOp>(op);
 
-  auto lowered_op =
+  auto result =
       convertExpandDimsOp(rewriter, op, tfl_expanddims_op.getResult(),
                           tfl_expanddims_op.input(), tfl_expanddims_op.dim());
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 LogicalResult ConvertTFLSqueezeOp::matchAndRewrite(
@@ -1654,10 +1653,14 @@ LogicalResult ConvertTFLSqueezeOp::matchAndRewrite(
     squeeze_dims.emplace_back(squeeze_dim.dyn_cast<IntegerAttr>().getInt());
   }
 
-  auto lowered_op = convertSqueezeOp(rewriter, op, tfl_squeeze_op.getResult(),
-                                     tfl_squeeze_op.input(), squeeze_dims);
+  auto result = convertSqueezeOp(rewriter, op, tfl_squeeze_op.getResult(),
+                                 tfl_squeeze_op.input(), squeeze_dims);
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 LogicalResult ConvertTFLFillOp::matchAndRewrite(
@@ -1724,10 +1727,14 @@ LogicalResult ConvertTFLReduceAnyOp::matchAndRewrite(
   auto keep_dims_attr = tfl_any_op.keep_dimsAttr();
   if (keep_dims_attr) keep_dims = keep_dims_attr.getValue();
 
-  auto lowered_op = convertReduceAnyOp(
-      rewriter, op, output_type, tfl_any_op.input(), axes_elems, keep_dims);
+  auto result = convertReduceAnyOp(rewriter, op, output_type,
+                                   tfl_any_op.input(), axes_elems, keep_dims);
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 LogicalResult ConvertTFLReduceMaxOp::matchAndRewrite(
@@ -1746,10 +1753,14 @@ LogicalResult ConvertTFLReduceMaxOp::matchAndRewrite(
   auto keep_dims_attr = tfl_max_op.keep_dimsAttr();
   if (keep_dims_attr) keep_dims = keep_dims_attr.getValue();
 
-  auto lowered_op = convertReduceMaxOp(
-      rewriter, op, output_type, tfl_max_op.input(), axes_elems, keep_dims);
+  auto result = convertReduceMaxOp(rewriter, op, output_type,
+                                   tfl_max_op.input(), axes_elems, keep_dims);
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 LogicalResult ConvertTFLReduceMinOp::matchAndRewrite(
@@ -1768,10 +1779,14 @@ LogicalResult ConvertTFLReduceMinOp::matchAndRewrite(
   auto keep_dims_attr = tfl_min_op.keep_dimsAttr();
   if (keep_dims_attr) keep_dims = keep_dims_attr.getValue();
 
-  auto lowered_op = convertReduceMinOp(
-      rewriter, op, output_type, tfl_min_op.input(), axes_elems, keep_dims);
+  auto result = convertReduceMinOp(rewriter, op, output_type,
+                                   tfl_min_op.input(), axes_elems, keep_dims);
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 LogicalResult ConvertTFLReduceProdOp::matchAndRewrite(
@@ -1790,10 +1805,14 @@ LogicalResult ConvertTFLReduceProdOp::matchAndRewrite(
   auto keep_dims_attr = tfl_prod_op.keep_dimsAttr();
   if (keep_dims_attr) keep_dims = keep_dims_attr.getValue();
 
-  auto lowered_op = convertReduceProdOp(
-      rewriter, op, output_type, tfl_prod_op.input(), axes_elems, keep_dims);
+  auto result = convertReduceProdOp(rewriter, op, output_type,
+                                    tfl_prod_op.input(), axes_elems, keep_dims);
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 LogicalResult ConvertTFLMeanOp::matchAndRewrite(
@@ -1812,10 +1831,14 @@ LogicalResult ConvertTFLMeanOp::matchAndRewrite(
   auto keep_dims_attr = tfl_mean_op.keep_dimsAttr();
   if (keep_dims_attr) keep_dims = keep_dims_attr.getValue();
 
-  auto lowered_op = convertReduceMeanOp(
-      rewriter, op, output_type, tfl_mean_op.input(), axes_elems, keep_dims);
+  auto result = convertReduceMeanOp(rewriter, op, output_type,
+                                    tfl_mean_op.input(), axes_elems, keep_dims);
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 LogicalResult ConvertTFLSumOp::matchAndRewrite(
@@ -1834,40 +1857,56 @@ LogicalResult ConvertTFLSumOp::matchAndRewrite(
   auto keep_dims_attr = tfl_sum_op.keep_dimsAttr();
   if (keep_dims_attr) keep_dims = keep_dims_attr.getValue();
 
-  auto lowered_op = convertReduceSumOp(
-      rewriter, op, output_type, tfl_sum_op.input(), axes_elems, keep_dims);
+  auto result = convertReduceSumOp(rewriter, op, output_type,
+                                   tfl_sum_op.input(), axes_elems, keep_dims);
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 LogicalResult ConvertTFLEluOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_elu_op = cast<TFL::EluOp>(op);
 
-  auto lowered_op =
+  auto result =
       convertEluOp(rewriter, op, tfl_elu_op.getResult(), tfl_elu_op.x());
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 LogicalResult ConvertTFLSoftmaxOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_softmax_op = cast<TFL::SoftmaxOp>(op);
 
-  auto lowered_op = convertSoftmaxOp(rewriter, op, tfl_softmax_op.getResult(),
-                                     tfl_softmax_op.input());
+  auto result = convertSoftmaxOp(rewriter, op, tfl_softmax_op.getResult(),
+                                 tfl_softmax_op.input());
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 LogicalResult ConvertTFLLogSoftmaxOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_logsoftmax_op = cast<TFL::LogSoftmaxOp>(op);
 
-  auto lowered_op = convertLogSoftmaxOp(
-      rewriter, op, tfl_logsoftmax_op.getResult(), tfl_logsoftmax_op.input());
+  auto result = convertLogSoftmaxOp(rewriter, op, tfl_logsoftmax_op.getResult(),
+                                    tfl_logsoftmax_op.input());
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 LogicalResult ConvertTFLSliceOp::matchAndRewrite(
@@ -1955,10 +1994,14 @@ LogicalResult ConvertTFLPackOp::matchAndRewrite(
   }
   int32_t axis_i32 = axis_attr.getInt();
 
-  auto lowered_op =
+  auto result =
       convertPackOp(rewriter, op, tfl_pack_op.getResult(), inputs, axis_i32);
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 LogicalResult ConvertTFLUnpackOp::matchAndRewrite(
@@ -1973,10 +2016,13 @@ LogicalResult ConvertTFLUnpackOp::matchAndRewrite(
   }
   int32_t axis_i32 = axis_attr.getInt();
 
-  auto lowered_op =
-      convertUnpackOp(rewriter, op, tfl_unpack_op.input(), axis_i32);
+  auto results = convertUnpackOp(rewriter, op, tfl_unpack_op.input(), axis_i32);
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!results) return failure();
+
+  rewriter.replaceOp(op, results.getValue());
+
+  return success();
 }
 
 // Splits in num_split parts along split_dim
@@ -2003,10 +2049,14 @@ LogicalResult ConvertTFLSplitOp::matchAndRewrite(
   // an integer attribute in TFLite MLIR.
   int32_t axis = axisAttrElems.getValue<IntegerAttr>({}).getInt();
 
-  auto lowered_op = convertSplitOp(rewriter, op, tfl_split_op.getResult(0),
-                                   tfl_split_op.value(), num_split, axis);
+  auto results = convertSplitOp(rewriter, op, tfl_split_op.getResult(0),
+                                tfl_split_op.value(), num_split, axis);
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!results) return failure();
+
+  rewriter.replaceOp(op, results.getValue());
+
+  return success();
 }
 
 // Splits in num_split parts along split_dim
@@ -2036,10 +2086,14 @@ LogicalResult ConvertTFLSplitVOp::matchAndRewrite(
   // an integer attribute in TFLite MLIR.
   int32_t axis = axisAttrElems.getValue<IntegerAttr>(0).getInt();
 
-  auto lowered_op = convertSplitVOp(rewriter, op, tfl_splitv_op.getResult(0),
-                                    tfl_splitv_op.value(), size_split, axis);
+  auto results = convertSplitVOp(rewriter, op, tfl_splitv_op.getResult(0),
+                                 tfl_splitv_op.value(), size_split, axis);
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!results) return failure();
+
+  rewriter.replaceOp(op, results.getValue());
+
+  return success();
 }
 
 LogicalResult ConvertTFLLessOp::matchAndRewrite(
@@ -2198,10 +2252,14 @@ LogicalResult ConvertTFLResizeBilinearOp::matchAndRewrite(
   // Not a ranked tensor output
   if (!output_type) return failure();
 
-  auto lowered_op = convertResizeOp(
-      rewriter, op, output_type, tfl_resize_op.input(), StringRef("BILINEAR"));
+  auto result = convertResizeOp(rewriter, op, output_type,
+                                tfl_resize_op.input(), StringRef("BILINEAR"));
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 LogicalResult ConvertTFLResizeNearestNeighborOp::matchAndRewrite(
@@ -2213,49 +2271,71 @@ LogicalResult ConvertTFLResizeNearestNeighborOp::matchAndRewrite(
   // Not a ranked tensor output
   if (!output_type) return failure();
 
-  auto lowered_op = convertResizeOp(
-      rewriter, op, output_type, tfl_resize_op.input(), StringRef("NEAREST"));
+  auto result = convertResizeOp(rewriter, op, output_type,
+                                tfl_resize_op.input(), StringRef("NEAREST"));
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 LogicalResult ConvertTFLSelectOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_sel_op = cast<TFL::SelectOp>(op);
 
-  auto lowered_op =
+  auto result =
       convertSelectOp(rewriter, op, tfl_sel_op.getResult(),
                       tfl_sel_op.condition(), tfl_sel_op.x(), tfl_sel_op.y());
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 LogicalResult ConvertTFLSelectV2Op::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_sel_op = cast<TFL::SelectV2Op>(op);
 
-  auto lowered_op =
+  auto result =
       convertSelectOp(rewriter, op, tfl_sel_op.getResult(),
                       tfl_sel_op.condition(), tfl_sel_op.x(), tfl_sel_op.y());
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 LogicalResult ConvertTFLSpaceToBatchNdOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_s2b_op = cast<TFL::SpaceToBatchNdOp>(op);
-  auto lowered_op = convertSpaceToBatchNDOp(
+  auto result = convertSpaceToBatchNDOp(
       rewriter, op, tfl_s2b_op.getResult(), tfl_s2b_op.input(),
       tfl_s2b_op.block_shape(), tfl_s2b_op.paddings());
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 LogicalResult ConvertTFLBatchToSpaceNdOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_b2s_op = cast<TFL::BatchToSpaceNdOp>(op);
 
-  auto lowered_op = convertBatchToSpaceNDOp(
+  auto result = convertBatchToSpaceNDOp(
       rewriter, op, tfl_b2s_op.getResult(), tfl_b2s_op.input(),
       tfl_b2s_op.block_shape(), tfl_b2s_op.indices());
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 LogicalResult ConvertTFLSpaceToDepthOp::matchAndRewrite(
@@ -2263,11 +2343,15 @@ LogicalResult ConvertTFLSpaceToDepthOp::matchAndRewrite(
   auto tfl_s2d_op = cast<TFL::SpaceToDepthOp>(op);
 
   auto block_size_attr = tfl_s2d_op.block_sizeAttr();
-  auto lowered_op = convertSpaceToDepthOp(rewriter, op, tfl_s2d_op.getResult(),
-                                          tfl_s2d_op.input(), block_size_attr,
-                                          rewriter.getStringAttr("NHWC"));
+  auto result = convertSpaceToDepthOp(rewriter, op, tfl_s2d_op.getResult(),
+                                      tfl_s2d_op.input(), block_size_attr,
+                                      rewriter.getStringAttr("NHWC"));
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 LogicalResult ConvertTFLDepthToSpaceOp::matchAndRewrite(
@@ -2275,33 +2359,46 @@ LogicalResult ConvertTFLDepthToSpaceOp::matchAndRewrite(
   auto tfl_d2s_op = cast<TFL::DepthToSpaceOp>(op);
 
   auto block_size_attr = tfl_d2s_op.block_sizeAttr();
-  auto lowered_op = convertDepthToSpaceOp(rewriter, op, tfl_d2s_op.getResult(),
-                                          tfl_d2s_op.input(), block_size_attr,
-                                          rewriter.getStringAttr("NHWC"));
+  auto result = convertDepthToSpaceOp(rewriter, op, tfl_d2s_op.getResult(),
+                                      tfl_d2s_op.input(), block_size_attr,
+                                      rewriter.getStringAttr("NHWC"));
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 LogicalResult ConvertTFLStridedSliceOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_ss_op = cast<TFL::StridedSliceOp>(op);
 
-  auto lowered_op = convertStridedSliceOp(
+  auto result = convertStridedSliceOp(
       rewriter, op, tfl_ss_op.getResult(), tfl_ss_op.input(), tfl_ss_op.begin(),
       tfl_ss_op.end(), tfl_ss_op.strides(), tfl_ss_op.begin_maskAttr().getInt(),
       tfl_ss_op.end_maskAttr().getInt(), tfl_ss_op.ellipsis_maskAttr().getInt(),
       tfl_ss_op.new_axis_maskAttr().getInt(),
       tfl_ss_op.shrink_axis_maskAttr().getInt());
-  TOSA_REPLACE_LOWERED_OP_LIST(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 LogicalResult ConvertTFLZerosLikeOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_zeroslike_op = cast<TFL::ZerosLikeOp>(op);
 
-  auto lowered_op = convertZerosLikeOp(
-      rewriter, op, tfl_zeroslike_op.getResult(), tfl_zeroslike_op.input());
-  TOSA_REPLACE_LOWERED_OP_LIST(rewriter, op, lowered_op);
+  auto result = convertZerosLikeOp(rewriter, op, tfl_zeroslike_op.getResult(),
+                                   tfl_zeroslike_op.input());
+
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 LogicalResult ConvertTFLHardSwishOp::matchAndRewrite(
@@ -2694,10 +2791,14 @@ LogicalResult ConvertTFLQuantizeOp::matchAndRewrite(
     int64_t num_bits = element_type.getStorageTypeIntegralWidth();
     zp = element_type.isSigned() ? zp : zp - (1 << (num_bits - 1));
 
-    auto lowered_op = convertQuantizeOp(rewriter, op, output_type,
-                                        tfl_quantize_op.input(), scale, zp);
+    auto result = convertQuantizeOp(rewriter, op, output_type,
+                                    tfl_quantize_op.input(), scale, zp);
 
-    TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+    if (!result) return failure();
+
+    rewriter.replaceOp(op, {result.getValue()});
+
+    return success();
   }
 }
 
@@ -2722,10 +2823,14 @@ LogicalResult ConvertTFLDequantizeOp::matchAndRewrite(
   int64_t num_bits = element_type.getStorageTypeIntegralWidth();
   zp = element_type.isSigned() ? zp : zp - (1 << (num_bits - 1));
 
-  auto lowered_op = convertDequantizeOp(rewriter, op, output_type,
-                                        tfl_dequantize_op.input(), scale, zp);
+  auto result = convertDequantizeOp(rewriter, op, output_type,
+                                    tfl_dequantize_op.input(), scale, zp);
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 LogicalResult ConvertTFLQConstOp::matchAndRewrite(

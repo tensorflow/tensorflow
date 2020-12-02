@@ -21,6 +21,11 @@ limitations under the License.
 #include <iterator>
 #include <numeric>
 
+#include "llvm/ADT/APInt.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/Optional.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringSwitch.h"
 #include "mlir/Dialect/Quant/FakeQuantSupport.h"
 #include "mlir/Dialect/Quant/UniformSupport.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
@@ -40,11 +45,6 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "llvm/ADT/APInt.h"
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/Optional.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringSwitch.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_common.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_utils.h"
@@ -70,10 +70,10 @@ class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
 
 #define DECL_CONVERT_OP(tf_op)                                               \
   struct ConvertTF##tf_op##Op : public RewritePattern {                      \
-    explicit ConvertTF##tf_op##Op(MLIRContext *context)                      \
+    explicit ConvertTF##tf_op##Op(MLIRContext* context)                      \
         : RewritePattern(TF::tf_op##Op::getOperationName(), 1, context) {}   \
-    LogicalResult matchAndRewrite(Operation *op,                             \
-                                  PatternRewriter &rewriter) const override; \
+    LogicalResult matchAndRewrite(Operation* op,                             \
+                                  PatternRewriter& rewriter) const override; \
   }
 
 // All the explcitly implemented complex lowerings.
@@ -155,31 +155,8 @@ DECL_CONVERT_OP(FakeQuantWithMinMaxArgs);
 DECL_CONVERT_OP(FakeQuantWithMinMaxVars);
 #undef DECL_CONVERT_OP
 
-// TODO: remove macro when replacing common function return types with
-// llvm::Optional<> Helper macros for checking the return value of a common
-// legalization function that returns a single tensor.
-// Packs the result in a list.
-#define TOSA_REPLACE_LOWERED_OP(REWRITER, OP, LOWERED_OP)   \
-  if (LOWERED_OP) {                                         \
-    REWRITER.replaceOp((OP), {(LOWERED_OP)->getResults()}); \
-    return success();                                       \
-  } else {                                                  \
-    return failure();                                       \
-  }
-
-// TODO: remove macro when replacing common function return types with
-// llvm::Optional<> Helper macros for checking the return value of a common
-// legalization function that returns a tensor list.
-#define TOSA_REPLACE_LOWERED_OP_LIST(REWRITER, OP, LOWERED_OP) \
-  if (LOWERED_OP) {                                            \
-    REWRITER.replaceOp((OP), (LOWERED_OP)->getResults());      \
-    return success();                                          \
-  } else {                                                     \
-    return failure();                                          \
-  }
-
 LogicalResult ConvertTFReluOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_relu_op = cast<TF::ReluOp>(op);
 
   auto output_type =
@@ -201,7 +178,7 @@ LogicalResult ConvertTFReluOp::matchAndRewrite(
 }
 
 LogicalResult ConvertTFRelu6Op::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_relu6_op = cast<TF::Relu6Op>(op);
 
   auto output_type =
@@ -222,7 +199,7 @@ LogicalResult ConvertTFRelu6Op::matchAndRewrite(
 }
 
 LogicalResult ConvertTFEqualOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_equal_op = cast<TF::EqualOp>(op);
 
   auto output_type =
@@ -236,7 +213,7 @@ LogicalResult ConvertTFEqualOp::matchAndRewrite(
 }
 
 LogicalResult ConvertTFNotEqualOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_not_equal_op = cast<TF::NotEqualOp>(op);
 
   auto output_type =
@@ -256,7 +233,7 @@ LogicalResult ConvertTFNotEqualOp::matchAndRewrite(
 }
 
 LogicalResult ConvertTFGreaterOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_greater_op = cast<TF::GreaterOp>(op);
 
   auto output_type =
@@ -270,7 +247,7 @@ LogicalResult ConvertTFGreaterOp::matchAndRewrite(
 }
 
 LogicalResult ConvertTFGreaterEqualOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_greater_equal_op = cast<TF::GreaterEqualOp>(op);
 
   auto output_type =
@@ -283,8 +260,8 @@ LogicalResult ConvertTFGreaterEqualOp::matchAndRewrite(
   return success();
 }
 
-LogicalResult ConvertTFAddOp::matchAndRewrite(Operation *op,
-                                              PatternRewriter &rewriter) const {
+LogicalResult ConvertTFAddOp::matchAndRewrite(Operation* op,
+                                              PatternRewriter& rewriter) const {
   auto tf_add_op = cast<TF::AddOp>(op);
 
   auto output_type =
@@ -298,7 +275,7 @@ LogicalResult ConvertTFAddOp::matchAndRewrite(Operation *op,
 }
 
 LogicalResult ConvertTFAddV2Op::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_addv2_op = cast<TF::AddV2Op>(op);
 
   auto output_type =
@@ -313,7 +290,7 @@ LogicalResult ConvertTFAddV2Op::matchAndRewrite(
 
 // AddN is commutative
 LogicalResult ConvertTFAddNOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_addn_op = cast<TF::AddNOp>(op);
 
   auto output_type =
@@ -337,8 +314,8 @@ LogicalResult ConvertTFAddNOp::matchAndRewrite(
   return success();
 }
 
-LogicalResult ConvertTFSubOp::matchAndRewrite(Operation *op,
-                                              PatternRewriter &rewriter) const {
+LogicalResult ConvertTFSubOp::matchAndRewrite(Operation* op,
+                                              PatternRewriter& rewriter) const {
   auto tf_sub_op = cast<TF::SubOp>(op);
 
   auto output_type =
@@ -351,39 +328,48 @@ LogicalResult ConvertTFSubOp::matchAndRewrite(Operation *op,
   return success();
 }
 
-LogicalResult ConvertTFMulOp::matchAndRewrite(Operation *op,
-                                              PatternRewriter &rewriter) const {
+LogicalResult ConvertTFMulOp::matchAndRewrite(Operation* op,
+                                              PatternRewriter& rewriter) const {
   auto tf_mul_op = cast<TF::MulOp>(op);
 
-  auto lowered_op = convertMultiplyOp(rewriter, op, tf_mul_op.getResult(),
-                                      tf_mul_op.x(), tf_mul_op.y());
+  auto result = convertMultiplyOp(rewriter, op, tf_mul_op.getResult(),
+                                  tf_mul_op.x(), tf_mul_op.y());
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+  return success();
 }
 
 LogicalResult ConvertTFSquareOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_square_op = cast<TF::SquareOp>(op);
 
-  auto lowered_op = convertMultiplyOp(rewriter, op, tf_square_op.getResult(),
-                                      tf_square_op.x(), tf_square_op.x());
+  auto result = convertMultiplyOp(rewriter, op, tf_square_op.getResult(),
+                                  tf_square_op.x(), tf_square_op.x());
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+  return success();
 }
 
 LogicalResult ConvertTFSquaredDifferenceOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_squared_op = cast<TF::SquaredDifferenceOp>(op);
 
-  auto lowered_op =
+  auto result =
       convertSquaredDifferenceOp(rewriter, op, tf_squared_op.getResult(),
                                  tf_squared_op.x(), tf_squared_op.y());
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+  return success();
 }
 
 LogicalResult ConvertTFRoundOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_round_op = cast<TF::RoundOp>(op);
 
   auto input_type = tf_round_op.x().getType().dyn_cast<RankedTensorType>();
@@ -392,10 +378,13 @@ LogicalResult ConvertTFRoundOp::matchAndRewrite(
   }
 
   if (input_type.getElementType().isa<FloatType>()) {
-    auto lowered_op =
+    auto result =
         convertRoundOp(rewriter, op, tf_round_op.getResult(), tf_round_op.x());
 
-    TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+    if (!result) return failure();
+
+    rewriter.replaceOp(op, {result.getValue()});
+    return success();
 
   } else {
     tf_round_op.replaceAllUsesWith(tf_round_op.x());
@@ -404,34 +393,42 @@ LogicalResult ConvertTFRoundOp::matchAndRewrite(
 }
 
 LogicalResult ConvertTFFloorDivOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_floordiv_op = cast<TF::FloorDivOp>(op);
 
-  auto lowered_op = convertFloorDivOp(rewriter, op, tf_floordiv_op.getResult(),
-                                      tf_floordiv_op.x(), tf_floordiv_op.y());
+  auto result = convertFloorDivOp(rewriter, op, tf_floordiv_op.getResult(),
+                                  tf_floordiv_op.x(), tf_floordiv_op.y());
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 LogicalResult ConvertTFFloorModOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_floormod_op = cast<TF::FloorModOp>(op);
 
-  auto lowered_op = convertFloorModOp(rewriter, op, tf_floormod_op.getResult(),
-                                      tf_floormod_op.x(), tf_floormod_op.y());
+  auto result = convertFloorModOp(rewriter, op, tf_floormod_op.getResult(),
+                                  tf_floormod_op.x(), tf_floormod_op.y());
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 LogicalResult ConvertTFAssertOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   op->dropAllReferences();
   op->erase();
   return success();
 }
 
 LogicalResult ConvertTFMaximumOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_maximum_op = cast<TF::MaximumOp>(op);
 
   auto output_type =
@@ -445,7 +442,7 @@ LogicalResult ConvertTFMaximumOp::matchAndRewrite(
 }
 
 LogicalResult ConvertTFMinimumOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_minimum_op = cast<TF::MinimumOp>(op);
 
   auto output_type =
@@ -459,7 +456,7 @@ LogicalResult ConvertTFMinimumOp::matchAndRewrite(
 }
 
 LogicalResult ConvertTFRealDivOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_div_op = cast<TF::RealDivOp>(op);
 
   auto y_type = tf_div_op.y().getType().dyn_cast<RankedTensorType>();
@@ -479,7 +476,7 @@ LogicalResult ConvertTFRealDivOp::matchAndRewrite(
 }
 
 LogicalResult ConvertTFArgMaxOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_argmax_op = cast<TF::ArgMaxOp>(op);
 
   auto input_type = tf_argmax_op.input().getType().dyn_cast<RankedTensorType>();
@@ -509,7 +506,7 @@ LogicalResult ConvertTFArgMaxOp::matchAndRewrite(
   return success();
 }
 LogicalResult ConvertTFAvgPoolOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_avgpool_op = cast<TF::AvgPoolOp>(op);
 
   auto input_type =
@@ -557,7 +554,7 @@ LogicalResult ConvertTFAvgPoolOp::matchAndRewrite(
 
     SmallVector<int64_t, 2> i64array;
 
-    for (auto &elem : tf_avgpool_op.ksize()) {
+    for (auto& elem : tf_avgpool_op.ksize()) {
       int64_t value = elem.dyn_cast<IntegerAttr>().getInt();
       i64array.emplace_back(value);
     }
@@ -579,7 +576,7 @@ LogicalResult ConvertTFAvgPoolOp::matchAndRewrite(
 }
 
 LogicalResult ConvertTFMaxPoolOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_maxpool_op = cast<TF::MaxPoolOp>(op);
 
   auto input_type =
@@ -627,7 +624,7 @@ LogicalResult ConvertTFMaxPoolOp::matchAndRewrite(
 
     SmallVector<int64_t, 4> i64array;
 
-    for (auto &elem : tf_maxpool_op.ksize()) {
+    for (auto& elem : tf_maxpool_op.ksize()) {
       int64_t value = elem.dyn_cast<IntegerAttr>().getInt();
       i64array.emplace_back(value);
     }
@@ -649,7 +646,7 @@ LogicalResult ConvertTFMaxPoolOp::matchAndRewrite(
 }
 
 LogicalResult ConvertTFConcatV2Op::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_concatv2_op = cast<TF::ConcatV2Op>(op);
   SmallVector<Value, 8> values(tf_concatv2_op.values());
 
@@ -659,14 +656,18 @@ LogicalResult ConvertTFConcatV2Op::matchAndRewrite(
 
   int32_t axis = axis_elems.getValue<IntegerAttr>({}).getInt();
 
-  auto lowered_op =
+  auto result =
       convertConcatV2Op(rewriter, op, tf_concatv2_op.getResult(), values, axis);
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 LogicalResult ConvertTFReshapeOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_reshape_op = cast<TF::ReshapeOp>(op);
 
   auto output_type =
@@ -688,7 +689,7 @@ LogicalResult ConvertTFReshapeOp::matchAndRewrite(
 }
 
 LogicalResult ConvertTFRankOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_rank_op = cast<TF::RankOp>(op);
 
   auto input_type = tf_rank_op.input().getType().dyn_cast<RankedTensorType>();
@@ -707,7 +708,7 @@ LogicalResult ConvertTFRankOp::matchAndRewrite(
 }
 
 LogicalResult ConvertTFShapeOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_shape_op = cast<TF::ShapeOp>(op);
 
   auto output_type =
@@ -738,35 +739,43 @@ LogicalResult ConvertTFShapeOp::matchAndRewrite(
 }
 
 LogicalResult ConvertTFExpandDimsOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_expanddims_op = cast<TF::ExpandDimsOp>(op);
 
-  auto lowered_op =
+  auto result =
       convertExpandDimsOp(rewriter, op, tf_expanddims_op.getResult(),
                           tf_expanddims_op.input(), tf_expanddims_op.dim());
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 LogicalResult ConvertTFSqueezeOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_squeeze_op = cast<TF::SqueezeOp>(op);
 
   // Copy squeeze_dims into int32_t array
   auto squeeze_dims_attr = tf_squeeze_op.squeeze_dimsAttr();
   SmallVector<int32_t, 8> squeeze_dims;
-  for (auto &squeeze_dim : squeeze_dims_attr) {
+  for (auto& squeeze_dim : squeeze_dims_attr) {
     squeeze_dims.emplace_back(squeeze_dim.dyn_cast<IntegerAttr>().getInt());
   }
 
-  auto lowered_op = convertSqueezeOp(rewriter, op, tf_squeeze_op.getResult(),
-                                     tf_squeeze_op.input(), squeeze_dims);
+  auto result = convertSqueezeOp(rewriter, op, tf_squeeze_op.getResult(),
+                                 tf_squeeze_op.input(), squeeze_dims);
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 LogicalResult ConvertTFFillOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_fill_op = cast<TF::FillOp>(op);
 
   auto output_type =
@@ -814,7 +823,7 @@ LogicalResult ConvertTFFillOp::matchAndRewrite(
 }
 
 LogicalResult ConvertTFConv2DOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_conv2d_op = cast<TF::Conv2DOp>(op);
 
   auto filter_type =
@@ -830,17 +839,21 @@ LogicalResult ConvertTFConv2DOp::matchAndRewrite(
   auto bias = rewriter.create<tosa::ConstOp>(op->getLoc(), bias_type,
                                              bias_attr.cast<ElementsAttr>());
 
-  auto lowered_op = convertTFConv2DCommon(
+  auto result = convertTFConv2DCommon(
       rewriter, op, output_type, tf_conv2d_op.input(), tf_conv2d_op.filter(),
       bias, tf_conv2d_op.strides(), tf_conv2d_op.dilations(),
       tf_conv2d_op.explicit_paddings(), tf_conv2d_op.padding(),
       tf_conv2d_op.data_format());
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 LogicalResult ConvertTFDepthwiseConv2dNativeOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_dwconv2d_op = cast<TF::DepthwiseConv2dNativeOp>(op);
 
   auto input_type =
@@ -922,7 +935,7 @@ LogicalResult ConvertTFDepthwiseConv2dNativeOp::matchAndRewrite(
 }
 
 LogicalResult ConvertTFConv2DBackpropInputOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_conv_op = cast<TF::Conv2DBackpropInputOp>(op);
 
   auto input_type =
@@ -1024,8 +1037,8 @@ LogicalResult ConvertTFConv2DBackpropInputOp::matchAndRewrite(
   return success();
 }
 
-LogicalResult ConvertTFAllOp::matchAndRewrite(Operation *op,
-                                              PatternRewriter &rewriter) const {
+LogicalResult ConvertTFAllOp::matchAndRewrite(Operation* op,
+                                              PatternRewriter& rewriter) const {
   auto tf_all_op = cast<TF::AllOp>(op);
 
   auto output_type =
@@ -1040,14 +1053,18 @@ LogicalResult ConvertTFAllOp::matchAndRewrite(Operation *op,
   auto keep_dims_attr = tf_all_op.keep_dimsAttr();
   if (keep_dims_attr) keep_dims = keep_dims_attr.getValue();
 
-  auto lowered_op = convertReduceAllOp(
-      rewriter, op, output_type, tf_all_op.input(), axes_elems, keep_dims);
+  auto result = convertReduceAllOp(rewriter, op, output_type, tf_all_op.input(),
+                                   axes_elems, keep_dims);
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
-LogicalResult ConvertTFAnyOp::matchAndRewrite(Operation *op,
-                                              PatternRewriter &rewriter) const {
+LogicalResult ConvertTFAnyOp::matchAndRewrite(Operation* op,
+                                              PatternRewriter& rewriter) const {
   auto tf_any_op = cast<TF::AnyOp>(op);
 
   auto output_type =
@@ -1062,14 +1079,18 @@ LogicalResult ConvertTFAnyOp::matchAndRewrite(Operation *op,
   auto keep_dims_attr = tf_any_op.keep_dimsAttr();
   if (keep_dims_attr) keep_dims = keep_dims_attr.getValue();
 
-  auto lowered_op = convertReduceAnyOp(
-      rewriter, op, output_type, tf_any_op.input(), axes_elems, keep_dims);
+  auto result = convertReduceAnyOp(rewriter, op, output_type, tf_any_op.input(),
+                                   axes_elems, keep_dims);
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
-LogicalResult ConvertTFMaxOp::matchAndRewrite(Operation *op,
-                                              PatternRewriter &rewriter) const {
+LogicalResult ConvertTFMaxOp::matchAndRewrite(Operation* op,
+                                              PatternRewriter& rewriter) const {
   auto tf_max_op = cast<TF::MaxOp>(op);
 
   auto output_type =
@@ -1084,14 +1105,18 @@ LogicalResult ConvertTFMaxOp::matchAndRewrite(Operation *op,
   auto keep_dims_attr = tf_max_op.keep_dimsAttr();
   if (keep_dims_attr) keep_dims = keep_dims_attr.getValue();
 
-  auto lowered_op = convertReduceMaxOp(
-      rewriter, op, output_type, tf_max_op.input(), axes_elems, keep_dims);
+  auto result = convertReduceMaxOp(rewriter, op, output_type, tf_max_op.input(),
+                                   axes_elems, keep_dims);
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
-LogicalResult ConvertTFMinOp::matchAndRewrite(Operation *op,
-                                              PatternRewriter &rewriter) const {
+LogicalResult ConvertTFMinOp::matchAndRewrite(Operation* op,
+                                              PatternRewriter& rewriter) const {
   auto tf_min_op = cast<TF::MinOp>(op);
 
   auto output_type =
@@ -1106,14 +1131,18 @@ LogicalResult ConvertTFMinOp::matchAndRewrite(Operation *op,
   auto keep_dims_attr = tf_min_op.keep_dimsAttr();
   if (keep_dims_attr) keep_dims = keep_dims_attr.getValue();
 
-  auto lowered_op = convertReduceMinOp(
-      rewriter, op, output_type, tf_min_op.input(), axes_elems, keep_dims);
+  auto result = convertReduceMinOp(rewriter, op, output_type, tf_min_op.input(),
+                                   axes_elems, keep_dims);
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 LogicalResult ConvertTFMeanOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_mean_op = cast<TF::MeanOp>(op);
 
   auto output_type =
@@ -1128,14 +1157,18 @@ LogicalResult ConvertTFMeanOp::matchAndRewrite(
   auto keep_dims_attr = tf_mean_op.keep_dimsAttr();
   if (keep_dims_attr) keep_dims = keep_dims_attr.getValue();
 
-  auto lowered_op = convertReduceMeanOp(
-      rewriter, op, output_type, tf_mean_op.input(), axes_elems, keep_dims);
+  auto result = convertReduceMeanOp(rewriter, op, output_type,
+                                    tf_mean_op.input(), axes_elems, keep_dims);
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 LogicalResult ConvertTFProdOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_prod_op = cast<TF::ProdOp>(op);
 
   auto output_type =
@@ -1150,14 +1183,18 @@ LogicalResult ConvertTFProdOp::matchAndRewrite(
   auto keep_dims_attr = tf_prod_op.keep_dimsAttr();
   if (keep_dims_attr) keep_dims = keep_dims_attr.getValue();
 
-  auto lowered_op = convertReduceProdOp(
-      rewriter, op, output_type, tf_prod_op.input(), axes_elems, keep_dims);
+  auto result = convertReduceProdOp(rewriter, op, output_type,
+                                    tf_prod_op.input(), axes_elems, keep_dims);
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
-LogicalResult ConvertTFSumOp::matchAndRewrite(Operation *op,
-                                              PatternRewriter &rewriter) const {
+LogicalResult ConvertTFSumOp::matchAndRewrite(Operation* op,
+                                              PatternRewriter& rewriter) const {
   auto tf_sum_op = cast<TF::SumOp>(op);
 
   auto output_type =
@@ -1172,44 +1209,60 @@ LogicalResult ConvertTFSumOp::matchAndRewrite(Operation *op,
   auto keep_dims_attr = tf_sum_op.keep_dimsAttr();
   if (keep_dims_attr) keep_dims = keep_dims_attr.getValue();
 
-  auto lowered_op = convertReduceSumOp(
-      rewriter, op, output_type, tf_sum_op.input(), axes_elems, keep_dims);
+  auto result = convertReduceSumOp(rewriter, op, output_type, tf_sum_op.input(),
+                                   axes_elems, keep_dims);
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
-LogicalResult ConvertTFEluOp::matchAndRewrite(Operation *op,
-                                              PatternRewriter &rewriter) const {
+LogicalResult ConvertTFEluOp::matchAndRewrite(Operation* op,
+                                              PatternRewriter& rewriter) const {
   auto tf_elu_op = cast<TF::EluOp>(op);
 
-  auto lowered_op =
+  auto result =
       convertEluOp(rewriter, op, tf_elu_op.getResult(), tf_elu_op.features());
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 LogicalResult ConvertTFSoftmaxOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_softmax_op = cast<TF::SoftmaxOp>(op);
 
-  auto lowered_op = convertSoftmaxOp(rewriter, op, tf_softmax_op.getResult(),
-                                     tf_softmax_op.logits());
+  auto result = convertSoftmaxOp(rewriter, op, tf_softmax_op.getResult(),
+                                 tf_softmax_op.logits());
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 LogicalResult ConvertTFLogSoftmaxOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_logsoftmax_op = cast<TF::LogSoftmaxOp>(op);
 
-  auto lowered_op = convertLogSoftmaxOp(
-      rewriter, op, tf_logsoftmax_op.getResult(), tf_logsoftmax_op.logits());
+  auto result = convertLogSoftmaxOp(rewriter, op, tf_logsoftmax_op.getResult(),
+                                    tf_logsoftmax_op.logits());
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 LogicalResult ConvertTFFusedBatchNormOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_batchnorm_op = cast<TF::FusedBatchNormOp>(op);
 
   auto output_type =
@@ -1292,7 +1345,7 @@ LogicalResult ConvertTFFusedBatchNormOp::matchAndRewrite(
 }
 
 LogicalResult ConvertTFFusedBatchNormV3Op::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_batchnorm_op = cast<TF::FusedBatchNormV3Op>(op);
 
   auto output_type =
@@ -1349,7 +1402,7 @@ LogicalResult ConvertTFFusedBatchNormV3Op::matchAndRewrite(
 }
 
 LogicalResult ConvertTFBiasAddOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_biasadd_op = cast<TF::BiasAddOp>(op);
 
   auto output_type =
@@ -1365,7 +1418,7 @@ LogicalResult ConvertTFBiasAddOp::matchAndRewrite(
 }
 
 LogicalResult ConvertTFSliceOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_slice_op = cast<TF::SliceOp>(op);
 
   auto output_type =
@@ -1404,7 +1457,7 @@ LogicalResult ConvertTFSliceOp::matchAndRewrite(
 }
 
 LogicalResult ConvertTFTileOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_tile_op = cast<TF::TileOp>(op);
 
   auto output_type =
@@ -1428,7 +1481,7 @@ LogicalResult ConvertTFTileOp::matchAndRewrite(
 }
 
 LogicalResult ConvertTFTransposeOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_transpose_op = cast<TF::TransposeOp>(op);
 
   auto output_type =
@@ -1445,7 +1498,7 @@ LogicalResult ConvertTFTransposeOp::matchAndRewrite(
 }
 
 LogicalResult ConvertTFPackOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_pack_op = cast<TF::PackOp>(op);
 
   SmallVector<Value, 8> inputs(tf_pack_op.values());
@@ -1460,14 +1513,18 @@ LogicalResult ConvertTFPackOp::matchAndRewrite(
   }
   int32_t axis_i32 = axis_attr.getInt();
 
-  auto lowered_op =
+  auto result =
       convertPackOp(rewriter, op, tf_pack_op.getResult(), inputs, axis_i32);
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 LogicalResult ConvertTFUnpackOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_unpack_op = cast<TF::UnpackOp>(op);
 
   IntegerAttr axis_attr;
@@ -1478,15 +1535,18 @@ LogicalResult ConvertTFUnpackOp::matchAndRewrite(
   }
   int32_t axis_i32 = axis_attr.getInt();
 
-  auto lowered_op =
-      convertUnpackOp(rewriter, op, tf_unpack_op.value(), axis_i32);
+  auto results = convertUnpackOp(rewriter, op, tf_unpack_op.value(), axis_i32);
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!results) return failure();
+
+  rewriter.replaceOp(op, results.getValue());
+
+  return success();
 }
 
 // Splits in num_split parts along split_dim
 LogicalResult ConvertTFSplitOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_split_op = cast<TF::SplitOp>(op);
 
   // Get the number of splits
@@ -1502,15 +1562,19 @@ LogicalResult ConvertTFSplitOp::matchAndRewrite(
     axis = axisAttrElems.getValue<IntegerAttr>({}).getInt();
   }
 
-  auto lowered_op = convertSplitOp(rewriter, op, tf_split_op.getResult(0),
-                                   tf_split_op.value(), num_split, axis);
+  auto results = convertSplitOp(rewriter, op, tf_split_op.getResult(0),
+                                tf_split_op.value(), num_split, axis);
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!results) return failure();
+
+  rewriter.replaceOp(op, results.getValue());
+
+  return success();
 }
 
 // TFSplitV op splits based on a vector of sizes
 LogicalResult ConvertTFSplitVOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_splitv_op = cast<TF::SplitVOp>(op);
 
   // Get the size_splits array
@@ -1533,14 +1597,18 @@ LogicalResult ConvertTFSplitVOp::matchAndRewrite(
 
   int32_t axis = axisAttrElems.getValue<IntegerAttr>(0).getInt();
 
-  auto lowered_op = convertSplitVOp(rewriter, op, tf_splitv_op.getResult(0),
-                                    tf_splitv_op.value(), size_split, axis);
+  auto results = convertSplitVOp(rewriter, op, tf_splitv_op.getResult(0),
+                                 tf_splitv_op.value(), size_split, axis);
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!results) return failure();
+
+  rewriter.replaceOp(op, results.getValue());
+
+  return success();
 }
 
 LogicalResult ConvertTFLessOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_less_op = cast<TF::LessOp>(op);
 
   auto output_type =
@@ -1560,7 +1628,7 @@ LogicalResult ConvertTFLessOp::matchAndRewrite(
 }
 
 LogicalResult ConvertTFLessEqualOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_less_equal_op = cast<TF::LessEqualOp>(op);
 
   auto output_type =
@@ -1579,8 +1647,8 @@ LogicalResult ConvertTFLessEqualOp::matchAndRewrite(
   return success();
 }
 
-LogicalResult ConvertTFPadOp::matchAndRewrite(Operation *op,
-                                              PatternRewriter &rewriter) const {
+LogicalResult ConvertTFPadOp::matchAndRewrite(Operation* op,
+                                              PatternRewriter& rewriter) const {
   auto tf_pad_op = cast<TF::PadOp>(op);
 
   auto output_type =
@@ -1596,7 +1664,7 @@ LogicalResult ConvertTFPadOp::matchAndRewrite(Operation *op,
 }
 
 LogicalResult ConvertTFResizeBilinearOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_resize_op = cast<TF::ResizeBilinearOp>(op);
 
   auto output_type =
@@ -1604,14 +1672,18 @@ LogicalResult ConvertTFResizeBilinearOp::matchAndRewrite(
   // Not a ranked tensor output
   if (!output_type) return failure();
 
-  auto lowered_op = convertResizeOp(
-      rewriter, op, output_type, tf_resize_op.images(), StringRef("BILINEAR"));
+  auto result = convertResizeOp(rewriter, op, output_type,
+                                tf_resize_op.images(), StringRef("BILINEAR"));
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 LogicalResult ConvertTFResizeNearestNeighborOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_resize_op = cast<TF::ResizeNearestNeighborOp>(op);
 
   auto output_type =
@@ -1619,14 +1691,18 @@ LogicalResult ConvertTFResizeNearestNeighborOp::matchAndRewrite(
   // Not a ranked tensor output
   if (!output_type) return failure();
 
-  auto lowered_op = convertResizeOp(
-      rewriter, op, output_type, tf_resize_op.images(), StringRef("NEAREST"));
+  auto result = convertResizeOp(rewriter, op, output_type,
+                                tf_resize_op.images(), StringRef("NEAREST"));
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 LogicalResult ConvertTFMatMulOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_matmul_op = cast<TF::MatMulOp>(op);
 
   auto a_type = tf_matmul_op.a().getType().dyn_cast<RankedTensorType>();
@@ -1648,7 +1724,7 @@ LogicalResult ConvertTFMatMulOp::matchAndRewrite(
 }
 
 LogicalResult ConvertTFGatherOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_gather_op = cast<TF::GatherOp>(op);
 
   auto output_type =
@@ -1667,7 +1743,7 @@ LogicalResult ConvertTFGatherOp::matchAndRewrite(
 }
 
 LogicalResult ConvertTFGatherV2Op::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_gather_op = cast<TF::GatherV2Op>(op);
 
   auto output_type =
@@ -1697,84 +1773,113 @@ LogicalResult ConvertTFGatherV2Op::matchAndRewrite(
 }
 
 LogicalResult ConvertTFSelectV2Op::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_sel_op = cast<TF::SelectV2Op>(op);
 
-  auto lowered_op =
+  auto result =
       convertSelectOp(rewriter, op, tf_sel_op.getResult(),
                       tf_sel_op.condition(), tf_sel_op.t(), tf_sel_op.e());
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 LogicalResult ConvertTFSpaceToDepthOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_s2d_op = cast<TF::SpaceToDepthOp>(op);
 
-  auto lowered_op = convertSpaceToDepthOp(
+  auto result = convertSpaceToDepthOp(
       rewriter, op, tf_s2d_op.getResult(), tf_s2d_op.input(),
       tf_s2d_op.block_sizeAttr(), tf_s2d_op.data_formatAttr());
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 LogicalResult ConvertTFDepthToSpaceOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_d2s_op = cast<TF::DepthToSpaceOp>(op);
 
-  auto lowered_op = convertDepthToSpaceOp(
+  auto result = convertDepthToSpaceOp(
       rewriter, op, tf_d2s_op.getResult(), tf_d2s_op.input(),
       tf_d2s_op.block_sizeAttr(), tf_d2s_op.data_formatAttr());
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 LogicalResult ConvertTFSpaceToBatchNDOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_s2b_op = cast<TF::SpaceToBatchNDOp>(op);
 
-  auto lowered_op = convertSpaceToBatchNDOp(
+  auto result = convertSpaceToBatchNDOp(
       rewriter, op, tf_s2b_op.getResult(), tf_s2b_op.input(),
       tf_s2b_op.block_shape(), tf_s2b_op.paddings());
+  if (!result) return failure();
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 LogicalResult ConvertTFBatchToSpaceNDOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_b2s_op = cast<TF::BatchToSpaceNDOp>(op);
 
-  auto lowered_op = convertBatchToSpaceNDOp(
+  auto result = convertBatchToSpaceNDOp(
       rewriter, op, tf_b2s_op.getResult(), tf_b2s_op.input(),
       tf_b2s_op.block_shape(), tf_b2s_op.crops());
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 LogicalResult ConvertTFStridedSliceOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_ss_op = cast<TF::StridedSliceOp>(op);
 
-  auto lowered_op = convertStridedSliceOp(
+  auto result = convertStridedSliceOp(
       rewriter, op, tf_ss_op.getResult(), tf_ss_op.input(), tf_ss_op.begin(),
       tf_ss_op.end(), tf_ss_op.strides(), tf_ss_op.begin_maskAttr().getInt(),
       tf_ss_op.end_maskAttr().getInt(), tf_ss_op.ellipsis_maskAttr().getInt(),
       tf_ss_op.new_axis_maskAttr().getInt(),
       tf_ss_op.shrink_axis_maskAttr().getInt());
-  TOSA_REPLACE_LOWERED_OP_LIST(rewriter, op, lowered_op);
+
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 LogicalResult ConvertTFZerosLikeOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_zeroslike_op = cast<TF::ZerosLikeOp>(op);
 
-  auto lowered_op = convertZerosLikeOp(
-      rewriter, op, tf_zeroslike_op.getResult(), tf_zeroslike_op.x());
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  auto result = convertZerosLikeOp(rewriter, op, tf_zeroslike_op.getResult(),
+                                   tf_zeroslike_op.x());
+
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 LogicalResult ConvertTFSigmoidOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_sigmoid_op = cast<TF::SigmoidOp>(op);
   auto output_type =
       tf_sigmoid_op.getResult().getType().dyn_cast<RankedTensorType>();
@@ -1787,7 +1892,7 @@ LogicalResult ConvertTFSigmoidOp::matchAndRewrite(
 }
 
 LogicalResult ConvertTFTanhOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_tanh_op = cast<TF::TanhOp>(op);
   auto output_type =
       tf_tanh_op.getResult().getType().dyn_cast<RankedTensorType>();
@@ -1799,7 +1904,7 @@ LogicalResult ConvertTFTanhOp::matchAndRewrite(
 }
 
 LogicalResult ConvertTFLeakyReluOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_leakyrelu_op = cast<TF::LeakyReluOp>(op);
   auto output_type =
       tf_leakyrelu_op.getResult().getType().dyn_cast<RankedTensorType>();
@@ -1810,8 +1915,8 @@ LogicalResult ConvertTFLeakyReluOp::matchAndRewrite(
   return failure();
 }
 
-LogicalResult ConvertTFNegOp::matchAndRewrite(Operation *op,
-                                              PatternRewriter &rewriter) const {
+LogicalResult ConvertTFNegOp::matchAndRewrite(Operation* op,
+                                              PatternRewriter& rewriter) const {
   auto tf_neg_op = cast<TF::NegOp>(op);
   auto output_type =
       tf_neg_op.getResult().getType().dyn_cast<RankedTensorType>();
@@ -1823,7 +1928,7 @@ LogicalResult ConvertTFNegOp::matchAndRewrite(Operation *op,
 }
 
 LogicalResult ConvertTFStopGradientOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_stopgrad_op = cast<TF::StopGradientOp>(op);
   auto output_type =
       tf_stopgrad_op.getResult().getType().dyn_cast<RankedTensorType>();
@@ -1836,7 +1941,7 @@ LogicalResult ConvertTFStopGradientOp::matchAndRewrite(
 }
 
 LogicalResult ConvertTFReverseV2Op::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_reverse_op = cast<TF::ReverseV2Op>(op);
   auto input_type =
       tf_reverse_op.tensor().getType().dyn_cast<RankedTensorType>();
@@ -1872,7 +1977,7 @@ LogicalResult ConvertTFReverseV2Op::matchAndRewrite(
 }
 
 LogicalResult ConvertTFFakeQuantWithMinMaxArgsOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_fakequant_op = cast<TF::FakeQuantWithMinMaxArgsOp>(op);
 
   auto output_type =
@@ -1880,18 +1985,22 @@ LogicalResult ConvertTFFakeQuantWithMinMaxArgsOp::matchAndRewrite(
   // Not a ranked tensor output
   if (!output_type) return failure();
 
-  auto lowered_op =
+  auto result =
       convertFakeQuantOp(rewriter, op, output_type, tf_fakequant_op.inputs(),
                          tf_fakequant_op.minAttr().getValueAsDouble(),
                          tf_fakequant_op.maxAttr().getValueAsDouble(),
                          tf_fakequant_op.num_bitsAttr().getInt(),
                          tf_fakequant_op.narrow_rangeAttr().getValue());
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 LogicalResult ConvertTFFakeQuantWithMinMaxVarsOp::matchAndRewrite(
-    Operation *op, PatternRewriter &rewriter) const {
+    Operation* op, PatternRewriter& rewriter) const {
   auto tf_fakequant_op = cast<TF::FakeQuantWithMinMaxVarsOp>(op);
 
   auto output_type =
@@ -1913,17 +2022,21 @@ LogicalResult ConvertTFFakeQuantWithMinMaxVarsOp::matchAndRewrite(
   int64_t min_val = min_elems.getValue<IntegerAttr>(0).getInt();
   int64_t max_val = max_elems.getValue<IntegerAttr>(0).getInt();
 
-  auto lowered_op = convertFakeQuantOp(
+  auto result = convertFakeQuantOp(
       rewriter, op, output_type, tf_fakequant_op.inputs(), min_val, max_val,
       tf_fakequant_op.num_bitsAttr().getInt(),
       tf_fakequant_op.narrow_rangeAttr().getValue());
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 void LegalizeTF::runOnFunction() {
   OwningRewritePatternList patterns;
-  auto *ctx = &getContext();
+  auto* ctx = &getContext();
   auto func = getFunction();
 
   // Add the generated patterns to the list.
