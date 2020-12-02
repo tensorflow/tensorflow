@@ -28,6 +28,9 @@ cc_library(
     hdrs = [
         "person_detect_model_data.h",
     ],
+    tags = [
+        "no_oss",  # TODO(b/174680668): Exclude python tests from OSS.
+    ],
 )
 
 cc_library(
@@ -40,6 +43,9 @@ cc_library(
         "no_person_image_data.h",
         "person_image_data.h",
     ],
+    tags = [
+        "no_oss",  # TODO(b/174680668): Exclude python tests from OSS.
+    ],
     deps = [
         ":model_settings",
     ],
@@ -48,6 +54,9 @@ cc_library(
 tflite_micro_cc_test(
     name = "person_detection_test",
     srcs = ["person_detection_test.cc"],
+    tags = [
+        "no_oss",  # TODO(b/174680668): Exclude python tests from OSS.
+    ],
     deps = [
         ":model_settings",
         ":person_detect_model_data",
@@ -123,6 +132,9 @@ cc_binary(
         "main.cc",
         "main_functions.cc",
         "main_functions.h",
+    ],
+    tags = [
+        "no_oss",  # TODO(b/174680668): Exclude python tests from OSS.
     ],
     deps = [
         ":detection_responder",
