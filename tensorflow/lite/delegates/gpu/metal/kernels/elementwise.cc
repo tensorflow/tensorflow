@@ -83,9 +83,7 @@ std::string TwoInputFunctor(OperationType op_type, const std::string& value0,
 
 }  // namespace
 
-ComputeTaskDescriptor ElementwiseWithTwoInputs(std::vector<ValueId> input_ids,
-                                               ValueId output_id,
-                                               const BHWC& second_shape,
+ComputeTaskDescriptor ElementwiseWithTwoInputs(const BHWC& second_shape,
                                                OperationType op_type) {
   ComputeTaskDescriptor desc;
   desc.is_linkable = true;
@@ -126,9 +124,7 @@ ComputeTaskDescriptor ElementwiseWithTwoInputs(std::vector<ValueId> input_ids,
   return desc;
 }
 
-ComputeTaskDescriptor ElementwiseWithOneInput(ValueId input_id,
-                                              ValueId output_id,
-                                              OperationType op_type) {
+ComputeTaskDescriptor ElementwiseWithOneInput(OperationType op_type) {
   ComputeTaskDescriptor desc;
   desc.is_linkable = true;
   desc.shader_source =
@@ -143,8 +139,8 @@ ComputeTaskDescriptor ElementwiseWithOneInput(ValueId input_id,
 }
 
 ComputeTaskDescriptor ElementwiseWithOneInputAndConstantArguent(
-    ValueId input_id, ValueId output_id, const RuntimeOptions& options,
-    OperationType op_type, const TensorOrScalar& attr) {
+    const RuntimeOptions& options, OperationType op_type,
+    const TensorOrScalar& attr) {
   ComputeTaskDescriptor desc;
   desc.is_linkable = true;
   auto scalar = absl::get_if<float>(&attr);

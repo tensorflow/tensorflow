@@ -24,7 +24,6 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 ComputeTaskDescriptor QuantizeAndDequantize(
-    ValueId input_id, ValueId output_id,
     const QuantizeAndDequantizeAttributes& attr) {
   ComputeTaskDescriptor desc;
   desc.is_linkable = true;

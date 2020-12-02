@@ -465,7 +465,6 @@ static std::vector<uint8_t> GetUniformBufferDepthWiseConv3x3Stride2(
 }  // namespace
 
 ComputeTaskDescriptor DepthWiseConvolution(
-    ValueId input_id, ValueId output_id,
     const DepthwiseConvolution2DAttributes& attr,
     const RuntimeOptions& options) {
   int channels_multiplier = attr.weights.shape.o;
@@ -609,7 +608,6 @@ ComputeTaskDescriptor DepthWiseConvolution(
 }
 
 ComputeTaskDescriptor DepthWiseConv3x3Stride1x1(
-    ValueId input_id, ValueId output_id,
     const DepthwiseConvolution2DAttributes& attr,
     const RuntimeOptions& options) {
   ComputeTaskDescriptor desc;
@@ -660,7 +658,6 @@ bool CheckDepthWiseConv3x3Stride1x1Support(
 }
 
 ComputeTaskDescriptor DepthWiseConv3x3Stride2(
-    ValueId input_id, ValueId output_id,
     const DepthwiseConvolution2DAttributes& attr,
     const RuntimeOptions& options) {
   ComputeTaskDescriptor desc;

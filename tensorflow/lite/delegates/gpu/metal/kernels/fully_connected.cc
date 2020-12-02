@@ -115,8 +115,7 @@ std::string GetFullyConnectedCode(const GpuInfo& gpu_info, int src_channels,
 }
 }  // namespace
 
-ComputeTaskDescriptor FullyConnected(ValueId input_id, ValueId output_id,
-                                     const FullyConnectedAttributes& attr,
+ComputeTaskDescriptor FullyConnected(const FullyConnectedAttributes& attr,
                                      const GpuInfo& gpu_info,
                                      const RuntimeOptions& options) {
   ComputeTaskDescriptor desc;

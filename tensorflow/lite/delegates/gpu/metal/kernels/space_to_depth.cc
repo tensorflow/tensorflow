@@ -30,8 +30,7 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 
-ComputeTaskDescriptor SpaceToDepth(ValueId input_id, ValueId output_id,
-                                   const SpaceToDepthAttributes& attr) {
+ComputeTaskDescriptor SpaceToDepth(const SpaceToDepthAttributes& attr) {
   ComputeTaskDescriptor desc;
   desc.shader_source = R"(
 #include <metal_stdlib>

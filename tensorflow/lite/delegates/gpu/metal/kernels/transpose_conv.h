@@ -29,12 +29,10 @@ namespace gpu {
 namespace metal {
 
 ComputeTaskDescriptor ConvolutionTransposed(
-    ValueId input_id, ValueId output_id,
     const ConvolutionTransposedAttributes& params, const GpuInfo& gpu_info,
     const RuntimeOptions& options);
 
 ComputeTaskDescriptor ConvolutionTransposed4x4(
-    ValueId input_id, ValueId output_id,
     const ConvolutionTransposedAttributes& params, const GpuInfo& gpu_info,
     const RuntimeOptions& options);
 

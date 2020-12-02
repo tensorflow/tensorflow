@@ -453,7 +453,6 @@ std::string GetDeconvolution4x4(const int2& block_size,
 }  // namespace
 
 ComputeTaskDescriptor ConvolutionTransposed(
-    ValueId input_id, ValueId output_id,
     const ConvolutionTransposedAttributes& params, const GpuInfo& gpu_info,
     const RuntimeOptions& options) {
   ComputeTaskDescriptor desc;
@@ -541,7 +540,6 @@ ComputeTaskDescriptor ConvolutionTransposed(
 }
 
 ComputeTaskDescriptor ConvolutionTransposed4x4(
-    ValueId input_id, ValueId output_id,
     const ConvolutionTransposedAttributes& params, const GpuInfo& gpu_info,
     const RuntimeOptions& options) {
   const int src_depth = DivideRoundUp(params.weights.shape.i, 4);

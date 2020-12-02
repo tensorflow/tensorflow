@@ -193,8 +193,7 @@ std::string GetAveragePoolingCode(const HW& kernel_size) {
 
 }  // namespace
 
-ComputeTaskDescriptor Pooling(ValueId input_id, ValueId output_id,
-                              const Pooling2DAttributes& params,
+ComputeTaskDescriptor Pooling(const Pooling2DAttributes& params,
                               bool generate_indices) {
   ComputeTaskDescriptor desc;
   if (params.type == PoolingType::MAX) {

@@ -49,14 +49,13 @@ std::string GetAddTableCodeFused(int src_count) {
 }
 }  // namespace
 
-ComputeTaskDescriptor Add(const std::vector<ValueId> input_ids,
-                          ValueId output_id, const RuntimeOptions& options) {
+ComputeTaskDescriptor Add(int tensors_count, const RuntimeOptions& options) {
   ComputeTaskDescriptor desc;
   desc.is_linkable = true;
   desc.is_associative_op = true;
-  desc.shader_source = GetAddTableCodeFused(input_ids.size() - 1);
+  desc.shader_source = GetAddTableCodeFused(tensors_count - 1);
 
-  for (int i = 0; i < input_ids.size(); ++i) {
+  for (int i = 0; i < tensors_count; ++i) {
     desc.AddSrcTensor("");
   }
   desc.AddDstTensor("");

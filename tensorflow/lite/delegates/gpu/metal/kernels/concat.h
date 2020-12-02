@@ -27,8 +27,7 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 
-ComputeTaskDescriptor Concat(std::vector<ValueId> input_ids, ValueId output_id,
-                             const ConcatAttributes& attr,
+ComputeTaskDescriptor Concat(const ConcatAttributes& attr,
                              const std::vector<BHWC>& input_shapes);
 
 }  // namespace metal

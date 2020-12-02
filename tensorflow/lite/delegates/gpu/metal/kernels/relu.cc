@@ -30,8 +30,7 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 
-ComputeTaskDescriptor ReLU(ValueId input_id, ValueId output_id,
-                           const ReLUAttributes& attr) {
+ComputeTaskDescriptor ReLU(const ReLUAttributes& attr) {
   ComputeTaskDescriptor desc;
   desc.is_linkable = true;
   const std::string min_func =

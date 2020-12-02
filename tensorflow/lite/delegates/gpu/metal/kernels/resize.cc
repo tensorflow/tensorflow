@@ -117,8 +117,7 @@ std::string GetResizeNearestCode(const Resize2DAttributes& attr) {
   return code;
 }
 
-ComputeTaskDescriptor Resize(ValueId input_id, ValueId output_id,
-                             const Resize2DAttributes& attr) {
+ComputeTaskDescriptor Resize(const Resize2DAttributes& attr) {
   ComputeTaskDescriptor desc;
   switch (attr.type) {
     case SamplingType::BILINEAR:

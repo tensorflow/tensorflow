@@ -463,8 +463,7 @@ kernel void ComputeFunction($1
 }
 }  // namespace
 
-ComputeTaskDescriptor Winograd4x4To36(ValueId input_id, ValueId output_id,
-                                      const Winograd4x4To36Attributes& attr) {
+ComputeTaskDescriptor Winograd4x4To36(const Winograd4x4To36Attributes& attr) {
   ComputeTaskDescriptor desc;
   desc.shader_source = GetKernelWinograd4x4To36();
 
@@ -518,8 +517,7 @@ ComputeTaskDescriptor Winograd4x4To36(ValueId input_id, ValueId output_id,
 }
 
 ComputeTaskDescriptor Winograd4x4To36TileX6(
-    ValueId input_id, ValueId output_id, const Winograd4x4To36Attributes& attr,
-    const RuntimeOptions& options) {
+    const Winograd4x4To36Attributes& attr, const RuntimeOptions& options) {
   ComputeTaskDescriptor desc;
   desc.shader_source = GetKernelWinograd4x4To36TileX6();
 
@@ -583,8 +581,7 @@ ComputeTaskDescriptor Winograd4x4To36TileX6(
   return desc;
 }
 
-ComputeTaskDescriptor Winograd36To4x4(ValueId input_id, ValueId output_id,
-                                      const RuntimeOptions& options,
+ComputeTaskDescriptor Winograd36To4x4(const RuntimeOptions& options,
                                       const Winograd36To4x4Attributes& attr) {
   ComputeTaskDescriptor desc;
   desc.shader_source = GetKernelWinograd36To4x4();
@@ -632,8 +629,7 @@ ComputeTaskDescriptor Winograd36To4x4(ValueId input_id, ValueId output_id,
 }
 
 ComputeTaskDescriptor Winograd36To4x4Tile4x1(
-    ValueId input_id, ValueId output_id, const RuntimeOptions& options,
-    const Winograd36To4x4Attributes& attr) {
+    const RuntimeOptions& options, const Winograd36To4x4Attributes& attr) {
   ComputeTaskDescriptor desc;
   desc.shader_source = GetKernelWinograd36To4x4Tile4x1();
 

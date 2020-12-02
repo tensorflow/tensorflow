@@ -1045,8 +1045,7 @@ std::pair<uint3, uint3> GetDispatchSizes(const ConvParams& params,
 
 }  // namespace
 
-ComputeTaskDescriptor ConvolutionGeneric(ValueId input_id, ValueId output_id,
-                                         const BHWC& dst_shape,
+ComputeTaskDescriptor ConvolutionGeneric(const BHWC& dst_shape,
                                          const Convolution2DAttributes& attr,
                                          const GpuInfo& gpu_info,
                                          const metal::RuntimeOptions& options) {
@@ -1088,9 +1087,8 @@ ComputeTaskDescriptor ConvolutionGeneric(ValueId input_id, ValueId output_id,
 }
 
 ComputeTaskDescriptor ConvolutionWino4x4To6x6(
-    ValueId input_id, ValueId output_id, const BHWC& dst_shape,
-    const Convolution2DAttributes& attr, const GpuInfo& gpu_info,
-    const RuntimeOptions& options) {
+    const BHWC& dst_shape, const Convolution2DAttributes& attr,
+    const GpuInfo& gpu_info, const RuntimeOptions& options) {
   const int dst_slices = DivideRoundUp(attr.weights.shape.o, 4);
   ConvParams params;
   params.work_group_launch_order = int3(2, 0, 1);

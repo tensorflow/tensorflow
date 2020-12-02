@@ -55,50 +55,44 @@ namespace metal {
 namespace {
 
 ComputeTaskDescriptorPtr SelectDepthWiseConv(
-    ValueId input_id, ValueId output_id,
     const DepthwiseConvolution2DAttributes& attr,
     const metal::RuntimeOptions& options) {
   if (CheckDepthWiseConv3x3Stride1x1Support(attr)) {
-    auto gpu_op = DepthWiseConv3x3Stride1x1(input_id, output_id, attr, options);
+    auto gpu_op = DepthWiseConv3x3Stride1x1(attr, options);
     return std::make_shared<ComputeTaskDescriptor>(std::move(gpu_op));
   } else if (CheckDepthWiseConv3x3Stride2Support(attr)) {
-    auto gpu_op = DepthWiseConv3x3Stride2(input_id, output_id, attr, options);
+    auto gpu_op = DepthWiseConv3x3Stride2(attr, options);
     return std::make_shared<ComputeTaskDescriptor>(std::move(gpu_op));
   } else {
-    auto gpu_op = DepthWiseConvolution(input_id, output_id, attr, options);
+    auto gpu_op = DepthWiseConvolution(attr, options);
     return std::make_shared<ComputeTaskDescriptor>(std::move(gpu_op));
   }
 }
 
 ComputeTaskDescriptorPtr SelectConvolutionTransposed(
-    ValueId input_id, ValueId output_id,
     const ConvolutionTransposedAttributes& attr, const GpuInfo& gpu_info,
     const metal::RuntimeOptions& options) {
   if (CheckConvolutionTransposed4x4Support(attr)) {
-    auto gpu_op =
-        ConvolutionTransposed4x4(input_id, output_id, attr, gpu_info, options);
+    auto gpu_op = ConvolutionTransposed4x4(attr, gpu_info, options);
     return std::make_shared<ComputeTaskDescriptor>(std::move(gpu_op));
   } else {
-    auto gpu_op =
-        ConvolutionTransposed(input_id, output_id, attr, gpu_info, options);
+    auto gpu_op = ConvolutionTransposed(attr, gpu_info, options);
     return std::make_shared<ComputeTaskDescriptor>(std::move(gpu_op));
   }
 }
 
 ComputeTaskDescriptorPtr SelectQuantizeAndDequantize(
-    ValueId input_id, ValueId output_id,
     const QuantizeAndDequantizeAttributes& attr) {
-  auto gpu_op = QuantizeAndDequantize(input_id, output_id, attr);
+  auto gpu_op = QuantizeAndDequantize(attr);
   return std::make_shared<ComputeTaskDescriptor>(std::move(gpu_op));
 }
 
-ComputeTaskDescriptorPtr SelectPReLU(const BHWC& src_shape, ValueId input_id,
-                                     ValueId output_id,
+ComputeTaskDescriptorPtr SelectPReLU(const BHWC& src_shape,
                                      const PReLUAttributes& attr,
                                      const metal::RuntimeOptions& options) {
   auto alpha = absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&attr.alpha);
   if (alpha) {
-    auto gpu_op = PReLU(input_id, output_id, attr, options);
+    auto gpu_op = PReLU(attr, options);
     return std::make_shared<ComputeTaskDescriptor>(std::move(gpu_op));
   }
   auto alpha3d = absl::get_if<Tensor<HWC, DataType::FLOAT32>>(&attr.alpha);
@@ -109,60 +103,58 @@ ComputeTaskDescriptorPtr SelectPReLU(const BHWC& src_shape, ValueId input_id,
       alpha3d->shape.c != src_shape.c) {
     return {};
   }
-  auto gpu_op = PReLUFull(input_id, output_id, attr, options);
+  auto gpu_op = PReLUFull(attr, options);
   return std::make_shared<ComputeTaskDescriptor>(std::move(gpu_op));
 }
 
-ComputeTaskDescriptorPtr SelectReshape(const BHWC& src_shape, ValueId input_id,
-                                       ValueId output_id,
+ComputeTaskDescriptorPtr SelectReshape(const BHWC& src_shape,
                                        const ReshapeAttributes& attr) {
   if (src_shape.c % 4 == 0 && attr.new_shape.c % 4 == 0) {
-    auto gpu_op = Reshapex4(input_id, output_id, attr);
+    auto gpu_op = Reshapex4(attr);
     return std::make_shared<ComputeTaskDescriptor>(std::move(gpu_op));
   } else {
-    auto gpu_op = Reshape(input_id, output_id, attr);
+    auto gpu_op = Reshape(attr);
     return std::make_shared<ComputeTaskDescriptor>(std::move(gpu_op));
   }
 }
 
-ComputeTaskDescriptorPtr SelectSoftmax(const BHWC& src_shape, ValueId input_id,
-                                       ValueId output_id,
+ComputeTaskDescriptorPtr SelectSoftmax(const BHWC& src_shape,
                                        const GpuInfo& gpu_info) {
   if (src_shape.w == 1 && src_shape.h == 1) {
-    auto gpu_op = Softmax1x1(input_id, output_id, gpu_info, src_shape.c);
+    auto gpu_op = Softmax1x1(gpu_info, src_shape.c);
     return std::make_shared<ComputeTaskDescriptor>(std::move(gpu_op));
   } else {
-    auto gpu_op = Softmax(input_id, output_id, src_shape.c);
+    auto gpu_op = Softmax(src_shape.c);
     return std::make_shared<ComputeTaskDescriptor>(std::move(gpu_op));
   }
 }
 
 ComputeTaskDescriptorPtr SelectSpaceToDepth(
-    ValueId input_id, ValueId output_id, const SpaceToDepthAttributes& attr) {
-  auto gpu_op = SpaceToDepth(input_id, output_id, attr);
+    const SpaceToDepthAttributes& attr) {
+  auto gpu_op = SpaceToDepth(attr);
   return std::make_shared<ComputeTaskDescriptor>(std::move(gpu_op));
 }
 
 ComputeTaskDescriptorPtr SelectWinograd4x4To36(
-    ValueId input_id, ValueId output_id, const Winograd4x4To36Attributes& attr,
-    const GpuInfo& gpu_info, const metal::RuntimeOptions& options) {
+    const Winograd4x4To36Attributes& attr, const GpuInfo& gpu_info,
+    const metal::RuntimeOptions& options) {
   if (gpu_info.IsApple()) {
-    auto gpu_op = Winograd4x4To36(input_id, output_id, attr);
+    auto gpu_op = Winograd4x4To36(attr);
     return std::make_shared<ComputeTaskDescriptor>(std::move(gpu_op));
   } else {
-    auto gpu_op = Winograd4x4To36TileX6(input_id, output_id, attr, options);
+    auto gpu_op = Winograd4x4To36TileX6(attr, options);
     return std::make_shared<ComputeTaskDescriptor>(std::move(gpu_op));
   }
 }
 
 ComputeTaskDescriptorPtr SelectWinograd36To4x4(
-    ValueId input_id, ValueId output_id, const Winograd36To4x4Attributes& attr,
-    const GpuInfo& gpu_info, const metal::RuntimeOptions& options) {
+    const Winograd36To4x4Attributes& attr, const GpuInfo& gpu_info,
+    const metal::RuntimeOptions& options) {
   if (gpu_info.IsApple()) {
-    auto gpu_op = Winograd36To4x4(input_id, output_id, options, attr);
+    auto gpu_op = Winograd36To4x4(options, attr);
     return std::make_shared<ComputeTaskDescriptor>(std::move(gpu_op));
   } else {
-    auto gpu_op = Winograd36To4x4Tile4x1(input_id, output_id, options, attr);
+    auto gpu_op = Winograd36To4x4Tile4x1(options, attr);
     return std::make_shared<ComputeTaskDescriptor>(std::move(gpu_op));
   }
 }
@@ -211,7 +203,7 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
           auto attr =
               absl::any_cast<ElementwiseAttributes>(node->operation.attributes);
           auto gpu_op = ElementwiseWithOneInputAndConstantArguent(
-              inputs[0], outputs[0], options, op_type, attr.param);
+              options, op_type, attr.param);
           node_desc.task =
               std::make_shared<ComputeTaskDescriptor>(std::move(gpu_op));
         } else {
@@ -221,12 +213,11 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
         }
       } else if (inputs.size() == 2) {
         const auto srcs = graph.FindInputs(node_id);
-        auto gpu_op = ElementwiseWithTwoInputs(inputs, outputs[0],
-                                               srcs[1]->tensor.shape, op_type);
+        auto gpu_op = ElementwiseWithTwoInputs(srcs[1]->tensor.shape, op_type);
         node_desc.task =
             std::make_shared<ComputeTaskDescriptor>(std::move(gpu_op));
       } else {  // more than 2 inputs
-        auto gpu_op = Add(inputs, outputs[0], options);
+        auto gpu_op = Add(inputs.size(), options);
         node_desc.task =
             std::make_shared<ComputeTaskDescriptor>(std::move(gpu_op));
       }
@@ -238,8 +229,7 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
         input_shapes.push_back(input->tensor.shape);
       }
       auto gpu_op =
-          Concat(inputs, outputs[0],
-                 absl::any_cast<ConcatAttributes>(node->operation.attributes),
+          Concat(absl::any_cast<ConcatAttributes>(node->operation.attributes),
                  input_shapes);
       node_desc.task =
           std::make_shared<ComputeTaskDescriptor>(std::move(gpu_op));
@@ -270,13 +260,12 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
         (*nodes)[1].description =
             node->operation.type + std::to_string(node->id);
         (*nodes)[2].description = "winograd_down_" + std::to_string(node->id);
-        (*nodes)[0].task = SelectWinograd4x4To36(
-            inputs[0], value_id, wino_up_attr, gpu_info, options);
+        (*nodes)[0].task =
+            SelectWinograd4x4To36(wino_up_attr, gpu_info, options);
         (*nodes)[0].src_tensors_ids = {inputs[0]};
         (*nodes)[0].dst_tensors_ids = {static_cast<unsigned int>(value_id)};
 
-        auto gpu_op = ConvolutionWino4x4To6x6(value_id, value_id + 1, shape_1,
-                                              attr, gpu_info, options);
+        auto gpu_op = ConvolutionWino4x4To6x6(shape_1, attr, gpu_info, options);
         (*nodes)[1].task =
             std::make_shared<ComputeTaskDescriptor>(std::move(gpu_op));
         (*nodes)[1].src_tensors_ids = {static_cast<unsigned int>(value_id)};
@@ -285,14 +274,13 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
         Winograd36To4x4Attributes wino_down_attr;
         wino_down_attr.output_shape = dst_shape;
         wino_down_attr.biases = attr.bias;
-        (*nodes)[2].task = SelectWinograd36To4x4(
-            value_id + 1, outputs[0], wino_down_attr, gpu_info, options);
+        (*nodes)[2].task =
+            SelectWinograd36To4x4(wino_down_attr, gpu_info, options);
         (*nodes)[2].src_tensors_ids = {static_cast<unsigned int>(value_id + 1)};
         (*nodes)[2].dst_tensors_ids = {outputs[0]};
         (*last_value_id) += 2;
       } else {
-        auto gpu_op = ConvolutionGeneric(inputs[0], outputs[0], dst_shape, attr,
-                                         gpu_info, options);
+        auto gpu_op = ConvolutionGeneric(dst_shape, attr, gpu_info, options);
         node_desc.task =
             std::make_shared<ComputeTaskDescriptor>(std::move(gpu_op));
       }
@@ -305,7 +293,6 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
             "tensor");
       }
       node_desc.task = SelectConvolutionTransposed(
-          inputs[0], outputs[0],
           absl::any_cast<ConvolutionTransposedAttributes>(
               node->operation.attributes),
           gpu_info, options);
@@ -317,14 +304,12 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
             "tensor");
       }
       node_desc.task =
-          SelectDepthWiseConv(inputs[0], outputs[0],
-                              absl::any_cast<DepthwiseConvolution2DAttributes>(
+          SelectDepthWiseConv(absl::any_cast<DepthwiseConvolution2DAttributes>(
                                   node->operation.attributes),
                               options);
       break;
     case OperationType::FULLY_CONNECTED: {
       auto gpu_op = FullyConnected(
-          inputs[0], outputs[0],
           absl::any_cast<FullyConnectedAttributes>(node->operation.attributes),
           gpu_info, options);
       node_desc.task =
@@ -333,7 +318,6 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
     }
     case OperationType::MAX_UNPOOLING_2D: {
       auto gpu_op = MaxUnpooling(
-          inputs[0], inputs[1], outputs[0],
           absl::any_cast<MaxUnpooling2DAttributes>(node->operation.attributes));
       node_desc.task =
           std::make_shared<ComputeTaskDescriptor>(std::move(gpu_op));
@@ -344,7 +328,7 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
       if (attr.dims != std::set<Axis>({Axis::HEIGHT, Axis::WIDTH})) {
         return absl::UnimplementedError("Mean supports HW axis only in Metal");
       }
-      auto gpu_op = Mean(inputs[0], outputs[0], attr);
+      auto gpu_op = Mean(attr);
       node_desc.task =
           std::make_shared<ComputeTaskDescriptor>(std::move(gpu_op));
       break;
@@ -355,7 +339,7 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
           auto attr =
               absl::any_cast<ElementwiseAttributes>(node->operation.attributes);
           auto gpu_op = ElementwiseWithOneInputAndConstantArguent(
-              inputs[0], outputs[0], options, op_type, attr.param);
+              options, op_type, attr.param);
           node_desc.task =
               std::make_shared<ComputeTaskDescriptor>(std::move(gpu_op));
         } else {
@@ -365,8 +349,7 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
         }
       } else if (inputs.size() == 2) {
         const auto srcs = graph.FindInputs(node_id);
-        auto gpu_op = ElementwiseWithTwoInputs(inputs, outputs[0],
-                                               srcs[1]->tensor.shape, op_type);
+        auto gpu_op = ElementwiseWithTwoInputs(srcs[1]->tensor.shape, op_type);
         node_desc.task =
             std::make_shared<ComputeTaskDescriptor>(std::move(gpu_op));
       }
@@ -376,7 +359,7 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
       if (attr.appended.b != 0 || attr.prepended.b != 0) {
         return absl::UnimplementedError("Padding for BATCH is not supported.");
       }
-      auto gpu_op = Padding(inputs[0], outputs[0], attr);
+      auto gpu_op = Padding(attr);
       node_desc.task =
           std::make_shared<ComputeTaskDescriptor>(std::move(gpu_op));
       break;
@@ -384,12 +367,12 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
     case OperationType::POOLING_2D: {
       auto attr =
           absl::any_cast<Pooling2DAttributes>(node->operation.attributes);
-      auto gpu_op = Pooling(inputs[0], outputs[0], attr, false);
+      auto gpu_op = Pooling(attr, false);
       node_desc.task =
           std::make_shared<ComputeTaskDescriptor>(std::move(gpu_op));
       node_desc.dst_tensors_ids = {outputs[0]};
       if (attr.type == PoolingType::MAX && attr.output_indices) {
-        auto gpu_ind_op = Pooling(inputs[0], outputs[1], attr, true);
+        auto gpu_ind_op = Pooling(attr, true);
         nodes->push_back({});
         nodes->back().description =
             node->operation.type + "_indices_" + std::to_string(node->id);
@@ -403,34 +386,31 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
     case OperationType::PRELU: {
       const auto src_shape = graph.FindInputs(node_id)[0]->tensor.shape;
       node_desc.task = SelectPReLU(
-          src_shape, inputs[0], outputs[0],
+          src_shape,
           absl::any_cast<PReLUAttributes>(node->operation.attributes), options);
       break;
     }
     case OperationType::RELU: {
       auto gpu_op =
-          ReLU(inputs[0], outputs[0],
-               absl::any_cast<ReLUAttributes>(node->operation.attributes));
+          ReLU(absl::any_cast<ReLUAttributes>(node->operation.attributes));
       node_desc.task =
           std::make_shared<ComputeTaskDescriptor>(std::move(gpu_op));
       break;
     }
     case OperationType::QUANTIZE_AND_DEQUANTIZE:
       node_desc.task = SelectQuantizeAndDequantize(
-          inputs[0], outputs[0],
           absl::any_cast<QuantizeAndDequantizeAttributes>(
               node->operation.attributes));
       break;
     case OperationType::RESHAPE: {
       const auto src_shape = graph.FindInputs(node_id)[0]->tensor.shape;
       node_desc.task = SelectReshape(
-          src_shape, inputs[0], outputs[0],
+          src_shape,
           absl::any_cast<ReshapeAttributes>(node->operation.attributes));
       break;
     }
     case OperationType::RESIZE: {
       auto gpu_op = Resize(
-          inputs[0], outputs[0],
           absl::any_cast<Resize2DAttributes>(node->operation.attributes));
       node_desc.task =
           std::make_shared<ComputeTaskDescriptor>(std::move(gpu_op));
@@ -438,8 +418,7 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
     }
     case OperationType::SLICE: {
       auto gpu_op =
-          Slice(inputs[0], outputs[0],
-                absl::any_cast<SliceAttributes>(node->operation.attributes));
+          Slice(absl::any_cast<SliceAttributes>(node->operation.attributes));
       node_desc.task =
           std::make_shared<ComputeTaskDescriptor>(std::move(gpu_op));
       break;
@@ -451,13 +430,11 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
             "Softmax supports only CHANNELS dimension");
       }
       const auto src_shape = graph.FindInputs(node_id)[0]->tensor.shape;
-      node_desc.task =
-          SelectSoftmax(src_shape, inputs[0], outputs[0], gpu_info);
+      node_desc.task = SelectSoftmax(src_shape, gpu_info);
       break;
     }
     case OperationType::SPACE_TO_DEPTH:
       node_desc.task = SelectSpaceToDepth(
-          inputs[0], outputs[0],
           absl::any_cast<SpaceToDepthAttributes>(node->operation.attributes));
       break;
     case OperationType::ABS:
@@ -474,7 +451,7 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
     case OperationType::SQRT:
     case OperationType::SQUARE:
     case OperationType::TANH: {
-      auto gpu_op = ElementwiseWithOneInput(inputs[0], outputs[0], op_type);
+      auto gpu_op = ElementwiseWithOneInput(op_type);
       node_desc.task =
           std::make_shared<ComputeTaskDescriptor>(std::move(gpu_op));
       break;
@@ -490,7 +467,7 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
           auto attr =
               absl::any_cast<ElementwiseAttributes>(node->operation.attributes);
           auto gpu_op = ElementwiseWithOneInputAndConstantArguent(
-              inputs[0], outputs[0], options, op_type, attr.param);
+              options, op_type, attr.param);
           node_desc.task =
               std::make_shared<ComputeTaskDescriptor>(std::move(gpu_op));
         } else {
@@ -500,8 +477,7 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
         }
       } else if (inputs.size() == 2) {
         const auto srcs = graph.FindInputs(node_id);
-        auto gpu_op = ElementwiseWithTwoInputs(inputs, outputs[0],
-                                               srcs[1]->tensor.shape, op_type);
+        auto gpu_op = ElementwiseWithTwoInputs(srcs[1]->tensor.shape, op_type);
         node_desc.task =
             std::make_shared<ComputeTaskDescriptor>(std::move(gpu_op));
       }

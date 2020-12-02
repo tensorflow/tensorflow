@@ -32,8 +32,7 @@ namespace metal {
 // FullyConnected is equivalent to matrix-vector multiplication
 // Also this operation can be replaced with convolution 1x1, but it
 //   will be inefficient
-ComputeTaskDescriptor FullyConnected(ValueId input_id, ValueId output_id,
-                                     const FullyConnectedAttributes& attr,
+ComputeTaskDescriptor FullyConnected(const FullyConnectedAttributes& attr,
                                      const GpuInfo& gpu_info,
                                      const RuntimeOptions& options);
 

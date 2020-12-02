@@ -28,7 +28,6 @@ namespace gpu {
 namespace metal {
 
 ComputeTaskDescriptor DepthWiseConvolution(
-    ValueId input_id, ValueId output_id,
     const DepthwiseConvolution2DAttributes& attr,
     const RuntimeOptions& options);
 
@@ -39,7 +38,6 @@ ComputeTaskDescriptor DepthWiseConvolution(
 //   dilation = 1x1;
 //   stride = 1x1;
 ComputeTaskDescriptor DepthWiseConv3x3Stride1x1(
-    ValueId input_id, ValueId output_id,
     const DepthwiseConvolution2DAttributes& attr,
     const RuntimeOptions& options);
 
@@ -54,7 +52,6 @@ bool CheckDepthWiseConv3x3Stride1x1Support(
 //   dilation.y = 1;
 //   stride.y = 2;
 ComputeTaskDescriptor DepthWiseConv3x3Stride2(
-    ValueId input_id, ValueId output_id,
     const DepthwiseConvolution2DAttributes& attr,
     const RuntimeOptions& options);
 

@@ -28,16 +28,14 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 
-ComputeTaskDescriptor ConvolutionGeneric(ValueId input_id, ValueId output_id,
-                                         const BHWC& dst_shape,
+ComputeTaskDescriptor ConvolutionGeneric(const BHWC& dst_shape,
                                          const Convolution2DAttributes& attr,
                                          const GpuInfo& gpu_info,
                                          const RuntimeOptions& options);
 
 ComputeTaskDescriptor ConvolutionWino4x4To6x6(
-    ValueId input_id, ValueId output_id, const BHWC& dst_shape,
-    const Convolution2DAttributes& attr, const GpuInfo& gpu_info,
-    const RuntimeOptions& options);
+    const BHWC& dst_shape, const Convolution2DAttributes& attr,
+    const GpuInfo& gpu_info, const RuntimeOptions& options);
 
 }  // namespace metal
 }  // namespace gpu
