@@ -104,7 +104,7 @@ class StatelessRandomOpsTest(xla_test.XLATestCase):
     # Stateless values should be equal iff the seeds are equal (roughly)
     with self.session(), self.test_scope():
       seed_t = array_ops.placeholder(dtypes.int32, shape=[2])
-      seeds = [(x, y) for x in range(-2, 3) for y in range(-2, 3)] * 3  # pylint: disable=g-complex-comprehension
+      seeds = [(x, y) for x in range(5) for y in range(5)] * 3  # pylint: disable=g-complex-comprehension
       for stateless_op in [
           stateless.stateless_random_uniform, stateless.stateless_random_normal
       ]:

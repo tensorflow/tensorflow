@@ -82,7 +82,9 @@ xla::XlaOp StatelessRngUniform(absl::string_view device_type_string,
 
   xla::XlaOp seed0 = xla::Reshape(xla::Slice(seeds, {0}, {1}, {1}), {});
   xla::XlaOp seed1 = xla::Reshape(xla::Slice(seeds, {1}, {2}, {1}), {});
-  xla::XlaOp key = GetU64FromS32Seeds(seed0, seed1);
+  xla::XlaOp key = ConvertElementType(seed0, xla::U64) |
+                   ShiftLeft(ConvertElementType(seed1, xla::U64),
+                             ConstantR0WithType(builder, xla::U64, 32));
   xla::XlaOp initial_state = xla::ConstantR0WithType(builder, xla::U64, 0);
   xla::PrimitiveType type = shape.element_type();
   switch (type) {
@@ -118,7 +120,9 @@ xla::XlaOp StatelessRngUniformFullInt(absl::string_view device_type_string,
 
   xla::XlaOp seed0 = xla::Reshape(xla::Slice(seeds, {0}, {1}, {1}), {});
   xla::XlaOp seed1 = xla::Reshape(xla::Slice(seeds, {1}, {2}, {1}), {});
-  xla::XlaOp key = GetU64FromS32Seeds(seed0, seed1);
+  xla::XlaOp key = ConvertElementType(seed0, xla::U64) |
+                   ShiftLeft(ConvertElementType(seed1, xla::U64),
+                             ConstantR0WithType(builder, xla::U64, 32));
   xla::XlaOp initial_state = xla::ConstantR0WithType(builder, xla::U64, 0);
   xla::PrimitiveType type = shape.element_type();
   xla::RngOutput output =
@@ -303,8 +307,9 @@ class StatelessRandomNormalOp : public XlaOpKernel {
     xla::XlaOp seed0 = xla::Reshape(xla::Slice(seed, {0}, {1}, {1}), {});
     xla::XlaOp seed1 = xla::Reshape(xla::Slice(seed, {1}, {2}, {1}), {});
     xla::XlaOp initial_state = xla::ConstantR0WithType(builder, xla::U64, 0);
-
-    xla::XlaOp key = GetU64FromS32Seeds(seed0, seed1);
+    xla::XlaOp key = ConvertElementType(seed0, xla::U64) |
+                     ShiftLeft(ConvertElementType(seed1, xla::U64),
+                               ConstantR0WithType(builder, xla::U64, 32));
     xla::XlaOp normal =
         xla::NormalFloatingPointDistribution(
             key, initial_state, GetBitGeneratorForDevice(device_type_string_),
