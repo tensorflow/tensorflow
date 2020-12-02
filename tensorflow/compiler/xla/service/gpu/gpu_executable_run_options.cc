@@ -21,7 +21,12 @@ namespace xla {
 namespace gpu {
 
 NcclCliqueKey::NcclCliqueKey(std::vector<GlobalDeviceId> devices)
-    : devices_(std::move(devices)) {}
+    : devices_(std::move(devices)) {
+  absl::c_sort(devices_);
+  CHECK(absl::c_adjacent_find(devices_) == devices_.end())
+      << "Duplicate devices are not allowed: "
+      << GlobalDeviceIdsToString(devices_);
+}
 
 std::string NcclCliqueKey::ToString() const {
   return GlobalDeviceIdsToString(devices_);

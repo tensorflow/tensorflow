@@ -65,7 +65,8 @@ func @gemm(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>, %output:memref<5x5xf32>
        rhs_batching_dimensions = dense<[1,1]> : tensor<2xi64>,
        lhs_contracting_dimensions = dense<[1,1]> : tensor<2xi64>,
        rhs_contracting_dimensions = dense<[1,1]> : tensor<2xi64>},
-       alpha = 0.5,
+       alpha_real = 0.5,
+       alpha_imag = 0.0,
        batch_size = 1,
        algorithm = 0}
     : (memref<5x4xf32>, memref<4x5xf32>, memref<5x5xf32>) -> ()
@@ -81,7 +82,8 @@ func @gemm_bias(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>,
        rhs_batching_dimensions = dense<[1,1]> : tensor<2xi64>,
        lhs_contracting_dimensions = dense<[1,1]> : tensor<2xi64>,
        rhs_contracting_dimensions = dense<[1,1]> : tensor<2xi64>},
-       alpha = 0.5,
+       alpha_real = 0.5,
+       alpha_imag = 0.0,
        beta = 1.0,
        batch_size = 1,
        algorithm = 0}

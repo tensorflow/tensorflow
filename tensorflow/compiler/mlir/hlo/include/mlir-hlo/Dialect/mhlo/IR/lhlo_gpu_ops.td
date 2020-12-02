@@ -23,8 +23,8 @@ include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops_base.td"
 include "mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_base.td"
+include "mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_enums.td"
 include "mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_structs.td"
-
 
 class LHLOGPU_Op<string mnemonic, list<OpTrait> traits = []> :
   Op<LHLO_GPU_Dialect, mnemonic,
@@ -92,30 +92,16 @@ def LHLOGPU_BatchNormTrainingOp : LHLOGPU_Op<"batch_norm_training">,
 // LMHLO ops representing convolution library functions.
 //===----------------------------------------------------------------------===//
 
-def ActivationModeNone : StrEnumAttrCase<"None">;
-def ActivationModeSigmoid : StrEnumAttrCase<"Sigmoid">;
-def ActivationModeTanh : StrEnumAttrCase<"Relu">;
-def ActivationModeRelu : StrEnumAttrCase<"Relu">;
-def ActivationModeRelu6 : StrEnumAttrCase<"Relu6">;
-def ActivationModeReluX : StrEnumAttrCase<"ReluX">;
-def ActivationModeBandPass : StrEnumAttrCase<"BandPass">;
-
-def ActivationAttr : StrEnumAttr<"Activation",
-    "Activation applied with fused convolution",
-    [ActivationModeNone,  ActivationModeSigmoid, ActivationModeTanh,
-     ActivationModeRelu, ActivationModeRelu6, ActivationModeReluX,
-     ActivationModeBandPass]>;
-
 def GpuConvolutionAttributes {
   dag attributes = !con(
-    ConvolutionAttributes<LHLO_GPU_Dialect>.attributes,
+    ConvolutionAttributes.attributes,
     (ins F64Attr:$result_scale),
     (ins ConvolutionBackendConfigAttr:$backend_config));
 }
 
 def GpuFusedConvolutionAttributes {
   dag attributes = !con(
-    ConvolutionAttributes<LHLO_GPU_Dialect>.attributes,
+    ConvolutionAttributes.attributes,
     (ins F64Attr:$result_scale,
          ActivationAttr:$activation_mode,
          F64Attr:$side_input_scale),
@@ -179,9 +165,10 @@ def LHLOGPU_GEMMOp : LHLOGPU_Op<"gemm"> {
     Arg<LHLO_Buffer, "", [MemRead]>:$rhs,
     Arg<LHLO_Buffer, "", [MemRead]>:$output,
     DotDimensionNumbers:$dot_dimension_numbers,
-    F64Attr:$alpha,
+    F64Attr:$alpha_real,
+    F64Attr:$alpha_imag,
     I64Attr:$batch_size,
-    I64Attr:$algorithm);
+    OptionalAttr<I64Attr>:$algorithm);
 }
 
 // output = alpha(lhs * rhs) + beta * bias
@@ -192,10 +179,11 @@ def LHLOGPU_GEMM_BiasOp : LHLOGPU_Op<"gemm_bias"> {
     Arg<LHLO_Buffer, "", [MemRead]>:$bias,
     Arg<LHLO_Buffer, "", [MemRead]>:$output,
     DotDimensionNumbers:$dot_dimension_numbers,
-    F64Attr:$alpha,
+    F64Attr:$alpha_real,
+    F64Attr:$alpha_imag,
     F64Attr:$beta,
     I64Attr:$batch_size,
-    I64Attr:$algorithm);
+    OptionalAttr<I64Attr>:$algorithm);
 }
 
 def LHLOGPU_CholeskyOp : LHLOGPU_Op<"cholesky"> {

@@ -1948,6 +1948,44 @@ ResourceHandleValueAndId SummaryWriterOp::GetResourceHandleValueAndId(
 }
 
 //===----------------------------------------------------------------------===//
+// TPUExecuteAndUpdateVariablesOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(TPUExecuteAndUpdateVariablesOp op) {
+  int num_resource_args = 0;
+  for (Type arg_type : op.args().getTypes())
+    if (arg_type.cast<TensorType>().getElementType().isa<ResourceType>())
+      ++num_resource_args;
+
+  auto check_attr = [&](ArrayAttr indices, llvm::StringRef name,
+                        int min) -> LogicalResult {
+    if (indices.size() != num_resource_args)
+      return op.emitOpError()
+             << "requires '" << name
+             << "' to be the same size as number of resource handles in 'args' "
+                "("
+             << num_resource_args << "), but got " << indices.size();
+
+    for (auto entry : llvm::enumerate(indices.getValue())) {
+      auto int_attr = entry.value().cast<IntegerAttr>();
+      if (int_attr.getInt() < min)
+        return op.emitOpError()
+               << "requires '" << name << "' to contain values of at least "
+               << min << ", but got " << int_attr.getInt() << " at index "
+               << entry.index();
+    }
+
+    return success();
+  };
+
+  return failure(
+      failed(check_attr(op.device_var_reads_indices(),
+                        /*name=*/"device_var_reads_indices", /*min=*/0)) ||
+      failed(check_attr(op.device_var_updates_indices(),
+                        /*name=*/"device_var_updates_indices", /*min=*/-1)));
+}
+
+//===----------------------------------------------------------------------===//
 // TensorListReserveOp
 //===----------------------------------------------------------------------===//
 
