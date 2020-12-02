@@ -21,11 +21,10 @@ namespace tensorflow {
 namespace gradients {
 namespace internal {
 
-void CompareWithGradientsCheckers(Model model, Model grad_model,
-                                  AbstractContext* ctx,
-                                  absl::Span<AbstractTensorHandle*> inputs,
-                                  bool use_function,
-                                  const GradientRegistry& registry);
+void CompareWithGradientsCheckers(
+    Model model, Model grad_model, AbstractContext* ctx,
+    absl::Span<AbstractTensorHandle* const> inputs, bool use_function,
+    const GradientRegistry& registry);
 
 }  // namespace internal
 }  // namespace gradients

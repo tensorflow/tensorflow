@@ -114,7 +114,7 @@ TEST_P(CppGradients, TestBiasAddGrad) {
   std::vector<AbstractTensorHandle*> inputs{A.get(), Bias.get()};
 
   ASSERT_NO_FATAL_FAILURE(CompareWithGradientsCheckers(
-      BiasAddModel, BiasAddGradModel, ctx_.get(), absl::MakeSpan(inputs),
+      BiasAddModel, BiasAddGradModel, ctx_.get(), {A.get(), Bias.get()},
       /*use_function=*/!std::get<2>(GetParam()), registry_));
 }
 

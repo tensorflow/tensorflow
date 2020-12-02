@@ -21,11 +21,10 @@ namespace tensorflow {
 namespace gradients {
 namespace internal {
 
-void CompareWithGradientsCheckers(Model model, Model grad_model,
-                                  AbstractContext* ctx,
-                                  absl::Span<AbstractTensorHandle*> inputs,
-                                  bool use_function,
-                                  const GradientRegistry& registry) {
+void CompareWithGradientsCheckers(
+    Model model, Model grad_model, AbstractContext* ctx,
+    absl::Span<AbstractTensorHandle* const> inputs, bool use_function,
+    const GradientRegistry& registry) {
   auto num_inputs = inputs.size();
   std::vector<AbstractTensorHandle*> outputs(num_inputs);
   auto s = RunModel(grad_model, ctx, inputs, absl::MakeSpan(outputs),
