@@ -430,7 +430,7 @@ class KerasObjectLoader(object):
       obj = self._revive_metric_from_config(metadata)
     else:
       obj = (
-          self._revive_graph_network(metadata, node_id) or
+          self._revive_graph_network(identifier, metadata, node_id) or
           self._revive_layer_from_config(metadata, node_id))
 
     if obj is None:
@@ -441,7 +441,7 @@ class KerasObjectLoader(object):
         obj, self._proto.nodes[node_id], node_id)
     return obj, setter
 
-  def _revive_graph_network(self, metadata, node_id):
+  def _revive_graph_network(self, identifier, metadata, node_id):
     """Revives a graph network from config."""
     class_name = compat.as_str(metadata['class_name'])
     config = metadata.get('config')
@@ -457,6 +457,11 @@ class KerasObjectLoader(object):
            ) or generic_utils.get_registered_object(class_name) is not None:
       # Model should not be revived as a graph network. Try reviving directly
       # from config or as a custom model.
+      return None
+    # Metadata contains information for reviving a subclassed Sequential layer,
+    # should revive from config.
+    if (class_name != 'Sequential' and
+        identifier == constants.SEQUENTIAL_IDENTIFIER):
       return None
 
     # Revive functional and sequential models as blank model objects for now (
