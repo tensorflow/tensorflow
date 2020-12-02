@@ -18,39 +18,103 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
-
 from tensorflow.python.compiler.tensorrt.test import tf_trt_integration_test_base as trt_test
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-class CastInt32ToFp32Test(trt_test.TfTrtIntegrationTestBase):
-  """Tests cast to FP32 are splitted in FP16 mode."""
+class CastFp32Fp16Test(trt_test.TfTrtIntegrationTestBase):
+  """Tests cast to back and forth between FP16 and FP32."""
 
-  def _ConstOp(self, shape, dtype):
-    return constant_op.constant(np.random.randn(*shape), dtype=dtype)
+  def GraphFn(self, net):
 
-  def GraphFn(self, x):
-    b_f = self._ConstOp((1, 10), dtypes.float32)
-    x_f = math_ops.cast(x, dtypes.float32)
-    x_f = math_ops.mul(x_f, b_f)
-    b_f = self._ConstOp((1, 10), dtypes.float32)
-    x_f = math_ops.add(x_f, b_f)
-    return array_ops.identity(x_f, name="output_0")
+    # Convert FP32 => FP16
+    net = math_ops.cast(net, dtypes.float16, name="cast_fp32_to_fp16_1")
+    net = math_ops.add(net, 1.0, name="add_fp16_1")
+    net = math_ops.add(net, 1.0, name="add_fp16_2")
+
+    # # Convert FP16 => FP32
+    net = math_ops.cast(net, dtypes.float32, name="cast_fp16_to_fp32_1")
+    net = math_ops.mul(net, 1.1, name="mul_fp32_1")
+    net = math_ops.mul(net, 0.9, name="mul_fp32_2")
+
+    # Convert FP32 => FP16
+    net = math_ops.cast(net, dtypes.float16, name="cast_fp32_to_fp16_2")
+    net = math_ops.mul(net, 1.1, name="mul_fp16_1")
+    net = math_ops.mul(net, 0.9, name="mul_fp16_2")
+
+    # Convert FP16 => FP16
+    net = math_ops.cast(net, dtypes.float16, name="cast_fp16_to_fp16")
+
+    # Convert FP16 => FP32
+    net = math_ops.cast(net, dtypes.float32, name="cast_fp16_to_fp32_2")
+    net = math_ops.add(net, 1.0, name="add_fp32_1")
+    net = math_ops.add(net, 1.0, name="add_fp32_2")
+
+    # Convert FP32 => FP32
+    net = math_ops.cast(net, dtypes.float32, name="cast_fp32_to_fp32")
+
+    return array_ops.identity(net, name="output_0")
 
   def GetParams(self):
-    return self.BuildParams(self.GraphFn, dtypes.int32, [[1, 10]], [[1, 10]])
+    return self.BuildParams(self.GraphFn, dtypes.float32, [[1, 10]], [[1, 10]])
+
+  def setUp(self):
+    super(CastFp32Fp16Test, self).setUp()
+    # Disable layout optimizer, since it will convert BiasAdd with NHWC
+    # format to NCHW format under four dimensional input.
+    self.DisableNonTrtOptimizers()
+
+  def ExpectedAbsoluteTolerance(self, run_params):
+      """The absolute tolerance to compare floating point results."""
+      # We increase the tolerance due to the multiple casts back and forth
+      return 5e-03
+
+  def ExpectedRelativeTolerance(self, run_params):
+      """The relative tolerance to compare floating point results."""
+      # We increase the tolerance due to the multiple casts back and forth
+      return 5e-03
 
   def ExpectedEnginesToBuild(self, run_params):
     """Returns the expected engines to build."""
-    if run_params.precision_mode == "FP16":
-      return {"TRTEngineOp_0": ["Cast", "Add", "Mul"]}
+
+    if run_params.precision_mode != "FP32":
+      return {
+        "TRTEngineOp_0": [
+          "cast_fp32_to_fp16_1", "add_fp16_1", "add_fp16_2",
+          "cast_fp16_to_fp32_1", "mul_fp32_1", "mul_fp32_2",
+          "cast_fp32_to_fp16_2", "mul_fp16_1", "mul_fp16_2",
+          "cast_fp16_to_fp16",
+          "cast_fp16_to_fp32_2", "add_fp32_1", "add_fp32_2",
+          "cast_fp32_to_fp32"
+        ]
+      }
     else:
-      return {"TRTEngineOp_0": ["Add", "Mul"]}
+      return {
+        "TRTEngineOp_0": ["add_fp16_1", "add_fp16_2"],
+        "TRTEngineOp_3": ["mul_fp32_1", "mul_fp32_2"],
+        "TRTEngineOp_2": ["mul_fp16_1", "mul_fp16_2"],
+        "TRTEngineOp_1": ["add_fp32_1", "add_fp32_2", "cast_fp32_to_fp32"]
+      }
+
+  def ShouldRunTest(self, run_params):
+    should_run, reason = super().ShouldRunTest(run_params)
+    # Only run for TRT 7.0.0 and above.
+    import os
+    if os.environ.get('TFTRT_CAST_PYTEST_ALLOW_SEGFAULT', 0):
+      # TODO DEKHTIARJonathan: Remove when fixed.
+      return should_run and \
+        trt_test.IsTensorRTVersionGreaterEqual(7), \
+        reason + ' and TRT Version >= 7.0.0'
+    else:
+      return should_run and \
+        not run_params.use_calibration and \
+        trt_test.IsTensorRTVersionGreaterEqual(7), \
+        reason + ' and TRT Version >= 7.0.0 and INT8 Calibration is not used.'
+
 
 if __name__ == "__main__":
   test.main()

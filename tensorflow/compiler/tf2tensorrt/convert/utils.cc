@@ -35,6 +35,9 @@ Status TrtPrecisionModeToName(TrtPrecisionMode mode, string* name) {
     case TrtPrecisionMode::INT8:
       *name = "INT8";
       break;
+    case TrtPrecisionMode::NOT_AVAILABLE:
+      *name = "NOT_AVAILABLE";
+      break;
     default:
       return errors::OutOfRange("Unknown precision mode");
   }
@@ -48,6 +51,8 @@ Status TrtPrecisionModeFromName(const string& name, TrtPrecisionMode* mode) {
     *mode = TrtPrecisionMode::FP16;
   } else if (name == "INT8") {
     *mode = TrtPrecisionMode::INT8;
+  } else if (name == "NOT_AVAILABLE") {
+    *mode = TrtPrecisionMode::NOT_AVAILABLE;
   } else {
     return errors::InvalidArgument("Invalid precision mode name: ", name);
   }
@@ -135,6 +140,142 @@ string DebugString(const std::vector<PartialTensorShape>& shapes) {
   return PartialTensorShapeUtils::PartialShapeListString(shapes);
 }
 
+string DebugString(const nvinfer1::IBuilderConfig& config){
+  // https://docs.nvidia.com/deeplearning/tensorrt/api/c_api/classnvinfer1_1_1_i_builder_config.html
+  auto add_debug_field = [](string* target, string name, string msg,
+                            const int indent_size=1) {;
+    StrAppend(target, (indent_size == 1) ? "\n\t[*] " : "\n\t\t- ", name, ": ",
+              msg);
+  };
+
+  string out = "";
+//  add_debug_field(&out, "Int8Calibrator: " +
+//                        std::to_string(config.getInt8Calibrator()));
+//  add_debug_field(&out, "AlgorithmSelector: " +
+//                        std::to_string(config.getAlgorithmSelector  ()));
+//  add_debug_field(&out, "CalibrationProfile: " +
+//                        std::to_string(config.getCalibrationProfile   ()));
+  add_debug_field(&out, "MinTimingIterations",
+                  std::to_string(config.getMinTimingIterations()));
+  add_debug_field(&out, "AvgTimingIterations",
+                  std::to_string(config.getAvgTimingIterations()));
+  add_debug_field(&out, "MaxWorkspaceSize",
+                  std::to_string(
+                    static_cast<int>(config.getMaxWorkspaceSize())));
+  add_debug_field(&out, "DLACore", std::to_string(config.getDLACore()));
+  add_debug_field(&out, "NbOptimizationProfiles",
+                  std::to_string(config.getNbOptimizationProfiles ()));
+  switch(config.getEngineCapability()) {
+    // https://docs.nvidia.com/deeplearning/tensorrt/api/c_api/namespacenvinfer1.html#a0a816406cdb5bff7c1ab299d8e58e8d2
+    case nvinfer1::EngineCapability::kDEFAULT :
+      add_debug_field(&out, "EngineCapability", "kDEFAULT");
+      break;
+    case nvinfer1::EngineCapability::kSAFE_GPU :
+      add_debug_field(&out, "EngineCapability", "kSAFE_GPU");
+      break;
+    case nvinfer1::EngineCapability::kSAFE_DLA :
+      add_debug_field(&out, "EngineCapability", "kSAFE_DLA");
+      break;
+    default:
+      add_debug_field(&out, "EngineCapability", "Unknown Value");
+  }
+  {
+    // https://docs.nvidia.com/deeplearning/tensorrt/api/c_api/namespacenvinfer1.html#abdc74c40fe7a0c3d05d2caeccfbc29c1
+    string flags_str;
+    if (config.getFlag(nvinfer1::BuilderFlag::kFP16)) {
+      add_debug_field(&flags_str, "BuilderFlag", "kFP16",
+                      /*indent_size=*/2);
+    }
+    if (config.getFlag(nvinfer1::BuilderFlag::kINT8)) {
+      add_debug_field(&flags_str, "BuilderFlag", "kINT8",
+                      /*indent_size=*/2);
+    }
+    if (config.getFlag(nvinfer1::BuilderFlag::kDEBUG)) {
+      add_debug_field(&flags_str, "BuilderFlag", "kDEBUG",
+                      /*indent_size=*/2);
+    }
+    if (config.getFlag(nvinfer1::BuilderFlag::kGPU_FALLBACK)) {
+      add_debug_field(&flags_str, "BuilderFlag", "kGPU_FALLBACK",
+                      /*indent_size=*/2);
+    }
+    if (config.getFlag(nvinfer1::BuilderFlag::kSTRICT_TYPES)) {
+      add_debug_field(&flags_str, "BuilderFlag", "kSTRICT_TYPES",
+                      /*indent_size=*/2);
+    }
+    if (config.getFlag(nvinfer1::BuilderFlag::kREFIT)) {
+      add_debug_field(&flags_str, "BuilderFlag", "kREFIT",
+                      /*indent_size=*/2);
+    }
+    if (config.getFlag(nvinfer1::BuilderFlag::kDISABLE_TIMING_CACHE)) {
+      add_debug_field(&flags_str, "BuilderFlag", "kDISABLE_TIMING_CACHE",
+                      /*indent_size=*/2);
+    }
+    if (config.getFlag(nvinfer1::BuilderFlag::kTF32)) {
+      add_debug_field(&flags_str, "BuilderFlag", "kTF32",
+                      /*indent_size=*/2);
+    }
+    add_debug_field(&out, "BuilderFlags", flags_str.empty() ? "[]" : flags_str);
+  }
+  switch(config.getDefaultDeviceType()) {
+    // https://docs.nvidia.com/deeplearning/tensorrt/api/c_api/namespacenvinfer1.html#a84ea3e63b0cde9d7ec7d526d05ecddf3
+    case nvinfer1::DeviceType::kGPU :
+      add_debug_field(&out, "DefaultDeviceType", "kGPU");
+      break;
+    case nvinfer1::DeviceType::kDLA :
+      add_debug_field(&out, "DefaultDeviceType", "kDLA");
+      break;
+    default:
+      add_debug_field(&out, "DefaultDeviceType", "Unknown Value");
+  }
+  switch(config.getProfilingVerbosity()) {
+    // https://docs.nvidia.com/deeplearning/tensorrt/api/c_api/namespacenvinfer1.html#a994a013de7377b955f8387c7a55d0b2a
+    case nvinfer1::ProfilingVerbosity::kDEFAULT :
+      add_debug_field(&out, "ProfilingVerbosity", "kDEFAULT");
+      break;
+    case nvinfer1::ProfilingVerbosity::kNONE :
+      add_debug_field(&out, "ProfilingVerbosity", "kNONE");
+      break;
+    case nvinfer1::ProfilingVerbosity::kVERBOSE :
+      add_debug_field(&out, "ProfilingVerbosity", "kVERBOSE");
+      break;
+    default:
+      add_debug_field(&out, "ProfilingVerbosity",
+                      absl::StrCat("Unknown Value: ",
+                        config.getProfilingVerbosity()));
+  }
+  {
+    // https://docs.nvidia.com/deeplearning/tensorrt/api/c_api/namespacenvinfer1.html#abdc74c40fe7a0c3d05d2caeccfbc29c1
+    string flags_str;
+    if (config.getQuantizationFlag(
+          nvinfer1::QuantizationFlag::kCALIBRATE_BEFORE_FUSION)) {
+      add_debug_field(&flags_str, "QuantizationFlag", "kCALIBRATE_BEFORE_FUSION",
+                      /*indent_size=*/2);
+    }
+    add_debug_field(&out, "QuantizationFlags", flags_str.empty() ? "[]" : flags_str);
+  }
+  {
+    // https://docs.nvidia.com/deeplearning/tensorrt/api/c_api/namespacenvinfer1.html#abdc74c40fe7a0c3d05d2caeccfbc29c1
+    auto tactics_src = config.getTacticSources();
+    bool kCUBLAS = (tactics_src &
+                    (1U << static_cast<uint32_t>(nvinfer1::TacticSource::kCUBLAS)));
+    bool kCUBLAS_LT = (tactics_src &
+                       (1U << static_cast<uint32_t>(nvinfer1::TacticSource::kCUBLAS_LT)));
+
+    string tactics_src_str;
+    if (kCUBLAS) {
+      add_debug_field(&tactics_src_str, "TacticSource", "kCUBLAS",
+                      /*indent_size=*/2);
+    }
+    if (kCUBLAS_LT) {
+      add_debug_field(&tactics_src_str, "TacticSource", "kCUBLAS_LT",
+                      /*indent_size=*/2);
+    }
+    add_debug_field(&out, "TacticSources",
+                    tactics_src_str.empty() ? "[]" : tactics_src_str);
+  }
+  return out;
+}
+
 // Checks whether actual_shapes are compatible with cached_shapes. This should
 // only be used in implicit batch mode (in explicit batch mode one needs to
 // check the profile ranges). Therefore implicit batch mode is assumed.
@@ -186,6 +327,21 @@ Status TrtDimsToTensorShape(const nvinfer1::Dims trt_dims,
   return Status::OK();
 }
 
+bool isIntTfType(DataType tf_type) {
+  switch (tf_type) {
+    case DT_INT8:
+    case DT_UINT8:
+    case DT_INT16:
+    case DT_UINT16:
+    case DT_UINT32:
+    case DT_INT64:
+    case DT_UINT64:
+      return true;
+    default:
+      return false;
+    }
+}
+
 Status TfTypeToTrtType(DataType tf_type, nvinfer1::DataType* trt_type) {
   switch (tf_type) {
     case DT_FLOAT:
@@ -216,7 +372,8 @@ Status TrtTypeToTfType(nvinfer1::DataType trt_type, DataType* tf_type) {
       *tf_type = DT_INT32;
       break;
     default:
-      return errors::InvalidArgument("Invalid TRT data type");
+      return errors::InvalidArgument("Invalid TRT data type",
+                                     DebugString(trt_type));
   }
   return Status::OK();
 }

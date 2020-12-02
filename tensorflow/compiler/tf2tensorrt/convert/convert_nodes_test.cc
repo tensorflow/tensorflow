@@ -5691,6 +5691,146 @@ TEST_F(OpConverterTest, ConvertConcat) {
   // TestConvertConcat<DT_INT32>(this);
 }
 
+#if IS_TRT_VERSION_GE(7, 0, 0, 11)
+NodeDef MakeCastNodeDef(DataType input_dtype, DataType output_dtype) {
+  Scope s = Scope::NewRootScope();
+  auto input = ops::Placeholder(s.WithOpName("input"), input_dtype);
+  return ops::Cast(s.WithOpName("my_cast"), input, output_dtype)
+      .operation.node()
+      ->def();
+}
+
+template <typename _IN_DTYPE, typename _OUT_DTYPE>
+struct CastTestParams {
+  std::vector<int> tensor_dims;
+  std::vector<_IN_DTYPE> input_tensor;
+  std::vector<_OUT_DTYPE> expected_output_tensor;
+};
+
+
+template <DataType IN_DTYPE, DataType OUT_DTYPE>
+void TestConvertCast(OpConverterTest* test, TrtPrecisionMode precision_mode) {
+
+  typedef typename EnumToDataType<IN_DTYPE>::Type IN_CType;
+  typedef typename EnumToDataType<OUT_DTYPE>::Type OUT_CType;
+
+  std::vector<CastTestParams<IN_CType, OUT_CType>> params{
+      {
+        /*tensor_dims=*/{2},           // 1-D Tensor + Batch Size
+        /*input_tensor=*/
+        CastTestVector<float, IN_CType>(
+          {2.0f, 0.f}
+        ),
+        /*expected_output_tensor=*/
+        CastTestVector<float, OUT_CType>(
+          {2.0f, 0.f}
+        ),
+      },
+      {
+        /*tensor_dims=*/{2, 2},        // 2-D Tensor + Batch Size
+        /*input_tensor=*/
+        CastTestVector<float, IN_CType>(
+          {2.0f, 0.f, -1.0f, 2.0f}
+        ),
+        /*expected_output_tensor=*/
+        CastTestVector<float, OUT_CType>(
+          {2.0f, 0.f, -1.0f, 2.0f}
+        ),
+      },
+      {
+        /*tensor_dims=*/{2, 2, 2},     // 3-D Tensor + Batch Size
+        /*input_tensor=*/
+        CastTestVector<float, IN_CType>(
+          {2.0f, 0.f, -1.0f, 2.0f, 0.f, -1.0f, -1.0f, 2.0f}
+        ),
+        /*expected_output_tensor=*/
+        CastTestVector<float, OUT_CType>(
+          {2.0f, 0.f, -1.0f, 2.0f, 0.f, -1.0f, -1.0f, 2.0f}
+        ),
+      },
+      // TODO: @DEKHTIARJonathan. Reactivate when TRT Bug is fixed
+      // {
+      //   /*tensor_dims=*/{2, 2, 2, 2},  // 4-D Tensor + Batch Size
+      //   /*input_tensor=*/
+      //   CastTestVector<float, IN_CType>(
+      //     {2.0f, 0.f, -1.0f, 2.0f, 0.f, -1.0f, -1.0f, 2.0f, 0.f, -1.0f}
+      //   ),
+      //   /*expected_output_tensor=*/
+      //   CastTestVector<float, OUT_CType>(
+      //     {2.0f, 0.f, -1.0f, 2.0f, 0.f, -1.0f, -1.0f, 2.0f, 0.f, -1.0f}
+      //   ),
+      // },
+      // {
+      //   /*tensor_dims=*/{2, 2, 2, 2, 2},  // 5-D Tensor + Batch Size
+      //   /*input_tensor=*/
+      //   CastTestVector<float, IN_CType>(
+      //     {2.0f, 0.f, 1.f, 2.0f, 0.f, -1.0f, 1.0f, 2.0f, 0.f, -1.0f, 1.0f, 1.0f}
+      //   ),
+      //   /*expected_output_tensor=*/
+      //   CastTestVector<float, OUT_CType>(
+      //     {2.0f, 0.f, 1.f, 2.0f, 0.f, -1.0f, 1.0f, 2.0f, 0.f, -1.0f, 1.0f, 1.0f}
+      //   ),
+      // },
+  };
+
+  for (int i = 0; i < params.size(); ++i) {
+
+    test->Reset(precision_mode);
+
+    // Create cast node.
+    const NodeDef node_def = MakeCastNodeDef(IN_DTYPE, OUT_DTYPE);
+
+    nvinfer1::DataType input_trt_type;
+    TF_ASSERT_OK(TfTypeToTrtType(IN_DTYPE, &input_trt_type));
+    test->AddTestTensor("input", /*dims=*/params[i].tensor_dims, /*batch_size=*/1,
+                        /*trt_dtype=*/input_trt_type);
+
+    // Convert node
+    TRT_TensorOrWeights output;
+    test->RunValidationAndConversion(node_def);
+
+    // Collect output
+    TF_EXPECT_OK(test->GetTensorOrWeights("my_cast", &output));
+
+    // Verify Result
+    ASSERT_TRUE(output.is_tensor());
+    ExpectTrtDimsEqualsArray(params[i].tensor_dims,
+                             output.tensor()->getDimensions());
+
+    nvinfer1::DataType output_trt_type;
+    TF_ASSERT_OK(TfTypeToTrtType(OUT_DTYPE, &output_trt_type));
+
+    EXPECT_EQ(output_trt_type, output.tensor()->getType())
+        << "Expected " << DebugString(output_trt_type) << " vs. actual "
+        << DebugString(output.tensor()->getType());
+
+     // Verify output values are correct.
+     const DataVec input_data{
+          {"input", test->AsTensor<IN_CType>(params[i].input_tensor)}};
+     DataVec output_data{
+          {"my_cast", test->ConstructTensor<OUT_CType>(
+                            params[i].expected_output_tensor.size())}};
+
+     TF_EXPECT_OK(test->BuildAndRun(input_data, &output_data));
+
+     ExpectArrayAlmostEqual(params[i].expected_output_tensor,
+                            GetSpanForData<OUT_CType>(output_data[0]),
+                            OUT_CType(1e-3));
+  }
+}
+
+TEST_F(OpConverterTest, ConvertCast) {
+  // FP32 Precision Tests
+  TestConvertCast<DT_FLOAT, DT_FLOAT>(this, TrtPrecisionMode::FP32);
+
+  // FP16 Precision Tests
+  TestConvertCast<DT_FLOAT, DT_FLOAT>(this, TrtPrecisionMode::FP16);
+  TestConvertCast<DT_FLOAT, DT_HALF>(this, TrtPrecisionMode::FP16);
+  TestConvertCast<DT_HALF, DT_HALF>(this, TrtPrecisionMode::FP16);
+  TestConvertCast<DT_HALF, DT_FLOAT>(this, TrtPrecisionMode::FP16);
+}
+#endif
+
 // Get the NodeDef for Split.
 auto get_split_nodedef = [](DataType dtype, int num_split) -> NodeDef {
   Scope s = Scope::NewRootScope();

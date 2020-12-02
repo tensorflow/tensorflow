@@ -885,11 +885,34 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
       # 2.0, but we still make sure that the converted ops are gone from the
       # graph.
       unexpected_names = set(nest.flatten(expected_engines.values()))
-      self.assertEmpty(
-          [name for name in unexpected_names if name in all_op_names])
-      expected_engines = set(expected_engines.keys())
+      try:
+        self.assertEmpty(
+            [name for name in unexpected_names if name in all_op_names])
+      except AssertionError:
+        raise RuntimeError("""Unexpected TF-TRT Engines returned:,
+All Op Names: {},
+TRT Op Names: {},
+Expected: {}""".format(
+          all_op_names,
+          trt_op_names,
+          unexpected_names,
+        ))
 
-    self.assertEqual(set(expected_engines), trt_op_names)
+      expected_engines = set(expected_engines.keys())
+    else:
+      expected_engines = set(expected_engines)
+
+    try:
+      self.assertEqual(expected_engines, trt_op_names)
+    except AssertionError:
+      raise RuntimeError("""Unexpected TF-TRT Engines returned:,
+        All Op Names: {},
+        TRT Op Names: {},
+        Expected Engines: {}""".format(
+          all_op_names,
+          trt_op_names,
+          expected_engines,
+        ))
 
   def _VerifyGraphDef(self, run_params, original_gdef_or_saved_model_dir,
                       gdef_or_saved_model_dir_to_verify, graph_state):

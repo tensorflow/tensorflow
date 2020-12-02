@@ -49,7 +49,7 @@ struct TrtDestroyer {
 template <typename T>
 using TrtUniquePtrType = std::unique_ptr<T, TrtDestroyer<T>>;
 
-enum class TrtPrecisionMode { FP32, FP16, INT8 };
+enum class TrtPrecisionMode { FP32, FP16, INT8, NOT_AVAILABLE };
 
 Status TrtPrecisionModeToName(TrtPrecisionMode mode, string* name);
 
@@ -81,6 +81,7 @@ string DebugString(const nvinfer1::ITensor& tensor);
 string DebugString(const std::vector<nvinfer1::Dims>& dimvec);
 string DebugString(const std::vector<TensorShape>& shapes);
 string DebugString(const std::vector<PartialTensorShape>& shapes);
+string DebugString(const nvinfer1::IBuilderConfig& config);
 
 inline bool HasStaticShape(const nvinfer1::Dims& dims) {
   if (dims.nbDims < 0) return false;
@@ -113,6 +114,8 @@ Status TrtDimsToTensorShape(const std::vector<int>& trt_dims,
 Status TrtDimsToTensorShape(const nvinfer1::Dims trt_dims,
                             bool use_implicit_batch, int batch_size,
                             TensorShape& shape);
+
+bool isIntTfType(DataType tf_type);
 
 Status TfTypeToTrtType(DataType tf_type, nvinfer1::DataType* trt_type);
 Status TrtTypeToTfType(nvinfer1::DataType trt_type, DataType* tf_type);

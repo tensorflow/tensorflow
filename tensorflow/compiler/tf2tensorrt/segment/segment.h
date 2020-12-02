@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/optional.h"
+#include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/segment/union_find.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/graph.h"
@@ -40,6 +41,7 @@ struct SegmentOptions {
   // Segment must contain at least this many nodes.
   int minimum_segment_size = 2;
   bool use_implicit_batch = true;
+  TrtPrecisionMode precision_mode = TrtPrecisionMode::NOT_AVAILABLE;
   // The maximum batch size used to build the engines in the graph, when
   // use_implicit_batch is true.
   absl::optional<int> maximum_batch_size = absl::nullopt;
