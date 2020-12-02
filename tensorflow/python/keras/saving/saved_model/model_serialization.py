@@ -29,7 +29,7 @@ class ModelSavedModelSaver(layer_serialization.LayerSavedModelSaver):
 
   @property
   def object_identifier(self):
-    return '_tf_keras_model'
+    return constants.MODEL_IDENTIFIER
 
   def _python_properties_internal(self):
     metadata = super(ModelSavedModelSaver, self)._python_properties_internal()
@@ -63,4 +63,4 @@ class SequentialSavedModelSaver(ModelSavedModelSaver):
 
   @property
   def object_identifier(self):
-    return '_tf_keras_sequential'
+    return constants.SEQUENTIAL_IDENTIFIER
