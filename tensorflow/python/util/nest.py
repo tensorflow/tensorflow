@@ -740,18 +740,50 @@ def map_structure(func, *structure, **kwargs):
 
   Examples:
 
-  1. A single Python dict:
+  * A single Python dict:
 
   >>> a = {"hello": 24, "world": 76}
   >>> tf.nest.map_structure(lambda p: p * 2, a)
   {'hello': 48, 'world': 152}
 
-  2. Multiple Python dictionaries:
+  * Multiple Python dictionaries:
 
   >>> d1 = {"hello": 24, "world": 76}
   >>> d2 = {"hello": 36, "world": 14}
   >>> tf.nest.map_structure(lambda p1, p2: p1 + p2, d1, d2)
   {'hello': 60, 'world': 90}
+
+  * A single Python list:
+
+  >>> a = [24, 76, "ab"]
+  >>> tf.nest.map_structure(lambda p: p * 2, a)
+  [48, 152, 'abab']
+
+  * Scalars:
+
+  >>> tf.nest.map_structure(lambda x, y: x + y, 3, 4)
+  7
+
+  * Empty structures:
+
+  >>> tf.nest.map_structure(lambda x: x + 1, ())
+  ()
+
+  *. Check the types of iterables:
+
+  >>> s1 = (((1, 2), 3), 4, (5, 6))
+  >>> s1_list = [[[1, 2], 3], 4, [5, 6]]
+  >>> tf.nest.map_structure(lambda x, y: None, s1, s1_list)
+  Traceback (most recent call last):
+  ...
+  TypeError: The two structures don't have the same nested structure
+
+  * Type check is set to False:
+
+  >>> s1 = (((1, 2), 3), 4, (5, 6))
+  >>> s1_list = [[[1, 2], 3], 4, [5, 6]]
+  >>> tf.nest.map_structure(lambda x, y: None, s1, s1_list, check_types=False)
+  (((None, None), None), None, (None, None))
 
   Args:
     func: A callable that accepts as many arguments as there are structures.
