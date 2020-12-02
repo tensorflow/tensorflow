@@ -23,6 +23,7 @@ limitations under the License.
 #include <tuple>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/algorithm.h"
 #include "absl/algorithm/container.h"
@@ -82,6 +83,20 @@ class ConvolutionVisitor {
   // consumer. Such propagation is only possible when all required operands are
   // space-to-batch'ed.
   bool CanPropagate(HloInstruction* consumer, HloInstruction* producer);
+
+  // Returns true if the op has all its direct and indirect operands being
+  // created via broadcasts. Consumer uses op, and is space-to-batched.
+  // instructions_to_transform returns the reverse post order instruction graph.
+  bool IsBroadcastTree(HloInstruction* op, HloInstruction* consumer,
+                       std::vector<HloInstruction*>& instructions_to_transform);
+
+  // Replicates the broadcast tree with space-to-batched instructions.
+  void RewriteBroadcastTree(
+      HloInstruction* producer,
+      std::vector<HloInstruction*>& instructions_to_transform);
+
+  // Propagate space-to-batch on a broadcast instruction.
+  void PropagateOnBroadcast(HloInstruction* consumer, HloInstruction* producer);
 
   // This function checks if the HLO instrution supports propagation.
   bool SupportedOpForPropagation(HloInstruction* consumer,
@@ -481,10 +496,13 @@ bool ConvolutionVisitor::CanPropagate(HloInstruction* consumer,
     HloInstruction* pivot_operand = nullptr;
     for (int64 i = 0; i < consumer->operand_count(); ++i) {
       auto old_producer = consumer->mutable_operand(i);
+      std::vector<HloInstruction*> to_transform;
       const bool broadcast_or_constant =
           (old_producer->opcode() == HloOpcode::kConstant) ||
           (old_producer->opcode() == HloOpcode::kBroadcast &&
-           IsBroadcastPropagatable(old_producer, producer));
+           IsBroadcastPropagatable(old_producer, producer)) ||
+          (consumer->IsElementwiseBinary() &&
+           IsBroadcastTree(old_producer, producer, to_transform));
 
       if (!old_to_new_instrs_.contains(old_producer) &&
           !broadcast_or_constant) {
@@ -543,7 +561,8 @@ bool ConvolutionVisitor::CanPropagate(HloInstruction* consumer,
   }
 
   if (consumer->opcode() == HloOpcode::kConvolution) {
-    VLOG(1) << "Checking if conv is supported for propagation";
+    VLOG(1) << "Checking if conv is supported for propagation "
+            << consumer->ToString();
     if (IsConvSuitableForSpaceToBatch(consumer)) {
       for (int64 i = 0; i < consumer->operand_count(); ++i) {
         auto old_producer = consumer->mutable_operand(i);
@@ -569,10 +588,15 @@ bool ConvolutionVisitor::CanPropagate(HloInstruction* consumer,
     for (int64 i = 0; i < consumer->operand_count(); ++i) {
       auto old_producer = consumer->mutable_operand(i);
       if (!old_to_new_instrs_.contains(old_producer)) {
+        VLOG(2) << "Backprop filter conv not ready for propagation because all "
+                   "operands are not space-to-batched";
         return false;
       }
       if (!instr_to_dim_permute_map_.contains(
               old_to_new_instrs_[old_producer])) {
+        VLOG(2) << "Backprop filter conv not ready for propagation because the "
+                   "permute map is absent on "
+                << old_producer->ToString();
         return false;
       }
     }
@@ -598,6 +622,8 @@ bool ConvolutionVisitor::CanPropagate(HloInstruction* consumer,
 
     if (first_operand->shape().dimensions(new_batch_dim_operand_0) !=
         second_operand->shape().dimensions(new_batch_dim_operand_1)) {
+      VLOG(2) << "Backprop filter conv not ready for propagation because batch "
+                 "dimensions don't line up";
       return false;
     }
 
@@ -607,6 +633,8 @@ bool ConvolutionVisitor::CanPropagate(HloInstruction* consumer,
     if (first_operand->shape().dimensions(new_space_dim_operand_0) !=
         rhs_dilation *
             second_operand->shape().dimensions(new_space_dim_operand_1)) {
+      VLOG(2) << "Backprop filter conv not ready for propagation because of "
+                 "dilation factor mismatch";
       return false;
     }
 
@@ -687,6 +715,71 @@ bool ConvolutionVisitor::CanPropagate(HloInstruction* consumer,
     VLOG(1) << "Can propagate through select and scatter";
     return true;
   }
+  return true;
+}
+
+void ConvolutionVisitor::PropagateOnBroadcast(HloInstruction* consumer,
+                                              HloInstruction* producer) {
+  auto new_producer = old_to_new_instrs_[producer];
+  auto permute_dims = instr_to_dim_permute_map_[new_producer];
+  auto dim_map_val = instr_to_dim_map_[producer];
+  std::vector<int64> broadcast_dims;
+  for (auto j : consumer->dimensions()) {
+    broadcast_dims.push_back(DimLookUp(permute_dims, j));
+  }
+  auto new_broadcast =
+      MakeBroadcastHlo(consumer->mutable_operand(0), broadcast_dims,
+                       new_producer->shape().dimensions());
+  VLOG(1) << "Created broadcast " << new_broadcast->ToString();
+
+  // Pass on the permutation information from the producer.
+  old_to_new_instrs_[consumer] = new_broadcast;
+  instr_to_dim_map_[consumer] = dim_map_val;
+  instr_to_dim_permute_map_[new_broadcast] = std::vector<int64>(
+      instr_to_dim_permute_map_[old_to_new_instrs_[producer]]);
+}
+
+void ConvolutionVisitor::RewriteBroadcastTree(
+    HloInstruction* producer,
+    std::vector<HloInstruction*>& instructions_to_transform) {
+  CHECK(old_to_new_instrs_.contains(producer));
+  for (auto instr : instructions_to_transform) {
+    if (instr->opcode() == HloOpcode::kBroadcast) {
+      PropagateOnBroadcast(instr, producer);
+    } else if (IsTrivialElementwise(instr)) {
+      Propagate(instr, /*producer=*/instr->mutable_operand(0)).ValueOrDie();
+    } else {
+      LOG(FATAL) << "Unsupported opcode in RewriteBroadcastTree";
+    }
+  }
+}
+
+bool ConvolutionVisitor::IsBroadcastTree(
+    HloInstruction* op, HloInstruction* consumer,
+    std::vector<HloInstruction*>& instructions_to_transform) {
+  if (op->opcode() == HloOpcode::kBroadcast) {
+    // We want to ensure that the broadcast did not happen on the space and
+    // batch dimensions.
+    if (IsBroadcastPropagatable(op, consumer)) {
+      instructions_to_transform.push_back(op);
+      return true;
+    } else {
+      return false;
+    }
+  }
+  if (Match(op, m::ConstantScalar())) {
+    return true;
+  }
+  if (!IsTrivialElementwise(op)) {
+    return false;
+  }
+  for (int64 i = 0; i < op->operand_count(); ++i) {
+    if (!IsBroadcastTree(op->mutable_operand(i), consumer,
+                         instructions_to_transform)) {
+      return false;
+    }
+  }
+  instructions_to_transform.push_back(op);
   return true;
 }
 
@@ -794,45 +887,28 @@ StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
   if (IsTrivialElementwise(consumer)) {
     auto dim_map_val = instr_to_dim_map_[producer];
     auto new_consumer = computation->AddInstruction(consumer->Clone());
-    if (consumer->IsElementwiseBinary()) {
-      for (int64 i = 0; i < 2; ++i) {
-        if (consumer->operand(i)->opcode() == HloOpcode::kBroadcast) {
-          break;
-        }
-        CHECK(old_to_new_instrs_.contains(consumer->mutable_operand(i)));
-        if (i == 1) {
-          // Choose the larger shape to be used as the producer.
-          if (old_to_new_instrs_[consumer->mutable_operand(0)]
-                  ->shape()
-                  .dimensions() >
-              old_to_new_instrs_[consumer->mutable_operand(1)]
-                  ->shape()
-                  .dimensions()) {
-            producer = consumer->mutable_operand(0);
-          } else {
-            producer = consumer->mutable_operand(1);
-          }
-        }
+
+    // For elementwise binary ops, both of whose operands have been space-to-
+    // batched, if their new spatial sizes don't match, choose the bigger one
+    // as the producer.
+    if (consumer->IsElementwiseBinary() &&
+        old_to_new_instrs_.contains(consumer->mutable_operand(0)) &&
+        old_to_new_instrs_.contains(consumer->mutable_operand(1))) {
+      if (old_to_new_instrs_[consumer->mutable_operand(0)]
+              ->shape()
+              .dimensions() > old_to_new_instrs_[consumer->mutable_operand(1)]
+                                  ->shape()
+                                  .dimensions()) {
+        producer = consumer->mutable_operand(0);
+      } else {
+        producer = consumer->mutable_operand(1);
       }
     }
 
     for (int64 i = 0; i < consumer->operand_count(); ++i) {
-      if (consumer->operand(i)->opcode() == HloOpcode::kBroadcast) {
-        CHECK(old_to_new_instrs_.contains(producer));
-        auto new_producer = old_to_new_instrs_[producer];
-        auto permute_dims = instr_to_dim_permute_map_[new_producer];
-        std::vector<int64> broadcast_dims;
-        for (auto j : consumer->operand(i)->dimensions()) {
-          broadcast_dims.push_back(DimLookUp(permute_dims, j));
-        }
-        auto new_broadcast = MakeBroadcastHlo(
-            consumer->mutable_operand(i)->mutable_operand(0), broadcast_dims,
-            new_producer->shape().dimensions());
-        VLOG(1) << "Created broadcast " << new_broadcast->ToString();
-        TF_CHECK_OK(
-            new_consumer->ReplaceOperandWithDifferentShape(i, new_broadcast));
-      } else {
-        CHECK(old_to_new_instrs_.contains(consumer->mutable_operand(i)));
+      std::vector<HloInstruction*> instructions_to_transform;
+
+      if (old_to_new_instrs_.contains(consumer->mutable_operand(i))) {
         HloInstruction* operand_to_use = nullptr;
 
         auto result = instr_to_dim_map_[producer];
@@ -893,6 +969,19 @@ StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
         }
         TF_CHECK_OK(
             new_consumer->ReplaceOperandWithDifferentShape(i, operand_to_use));
+      } else if (consumer->operand(i)->opcode() == HloOpcode::kBroadcast) {
+        if (!old_to_new_instrs_.contains(consumer->operand(i))) {
+          PropagateOnBroadcast(consumer->mutable_operand(i), producer);
+        }
+        auto new_broadcast = old_to_new_instrs_[consumer->mutable_operand(i)];
+        TF_CHECK_OK(
+            new_consumer->ReplaceOperandWithDifferentShape(i, new_broadcast));
+      } else if (consumer->IsElementwiseBinary() &&
+                 IsBroadcastTree(consumer->mutable_operand(i), producer,
+                                 instructions_to_transform)) {
+        RewriteBroadcastTree(producer, instructions_to_transform);
+        TF_CHECK_OK(new_consumer->ReplaceOperandWithDifferentShape(
+            i, old_to_new_instrs_[consumer->mutable_operand(i)]));
       }
     }
     auto old_type = new_consumer->mutable_shape()->element_type();
