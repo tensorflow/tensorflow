@@ -181,14 +181,52 @@ static int64_t GetMemRefSizeInBytes(mlir::MemRefType type) {
   }
 }
 
-static bool WritesMlirBuffer(mlir::Operation* op, mlir::Value operand) {
-  llvm::SmallVector<mlir::MemoryEffects::EffectInstance, 2> effects;
-  mlir::cast<mlir::MemoryEffectOpInterface>(op).getEffectsOnValue(operand,
-                                                                  effects);
-  return absl::c_any_of(
-      effects, [](const mlir::MemoryEffects::EffectInstance& instance) {
-        return mlir::isa<mlir::MemoryEffects::Write>(instance.getEffect());
-      });
+StatusOr<BufferAllocation::Slice> GetAllocationSliceForMlir(
+    mlir::Value v, absl::Span<const BufferAllocation> allocations) {
+  int64 size = GetMemRefSizeInBytes(v.getType().cast<mlir::MemRefType>());
+
+  if (auto arg = v.dyn_cast<mlir::BlockArgument>()) {
+    return BufferAllocation::Slice(&allocations[GetAllocationIndex(arg)], 0,
+                                   size);
+  }
+
+  // We match the following patterns here:
+  //  base := ViewOp(arg) | get_global_memref (global_memref)
+  //  root := base | MemRefReinterpretCastOp(base)
+
+  if (mlir::Operation* op = v.getDefiningOp()) {
+    if (auto cast = mlir::dyn_cast<mlir::MemRefReinterpretCastOp>(op)) {
+      mlir::Value source = cast.getViewSource();
+      op = source.getDefiningOp();
+      if (!op) {
+        return Unimplemented("MemRefReinterpretCastOp has to wrap an op");
+      }
+    }
+    if (auto view = mlir::dyn_cast<mlir::ViewOp>(op)) {
+      return BufferAllocation::Slice(
+          &allocations[GetAllocationIndex(
+              view.source().cast<mlir::BlockArgument>())],
+          mlir::cast<mlir::ConstantOp>(view.byte_shift().getDefiningOp())
+              .value()
+              .cast<mlir::IntegerAttr>()
+              .getValue()
+              .getSExtValue(),
+          size);
+    } else if (mlir::isa<mlir::GetGlobalMemrefOp>(op)) {
+      int64_t index =
+          op->getAttrOfType<mlir::IntegerAttr>("lmhlo.alloc").getInt();
+      int64_t offset =
+          op->getAttrOfType<mlir::IntegerAttr>("lmhlo.slice_offset").getInt();
+      int64_t size =
+          op->getAttrOfType<mlir::IntegerAttr>("lmhlo.slice_size").getInt();
+      return BufferAllocation::Slice(&allocations[index], offset, size);
+    }
+    return Unimplemented("MemRefReinterpretCastOp has to wrap a ViewOp");
+  }
+
+  return Unimplemented(
+      "Operand has to be in the form of ViewOp(arg) or "
+      "StaticMemRefCastOp(ViewOp(arg))");
 }
 
 bool BinarySearchDenseElementsAttr(::mlir::DenseIntElementsAttr elements,
@@ -2692,16 +2730,6 @@ std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunkForMlirImpl(
       });
 }
 
-static void GetFusionOperandsAndOutputs(mlir::lmhlo::FusionOp fusion,
-                                        std::vector<mlir::Value>* operands,
-                                        std::vector<mlir::Value>* outputs) {
-  auto input_buffers = fusion.getInputBuffers();
-  auto output_buffers = fusion.getOutputBuffers();
-
-  operands->assign(input_buffers.begin(), input_buffers.end());
-  outputs->assign(output_buffers.begin(), output_buffers.end());
-}
-
 StatusOr<std::unique_ptr<KernelThunk>>
 IrEmitterUnnested::BuildKernelThunkForMlir(
     mlir::Operation* op, mlir::ValueRange operands, Thunk::ThunkInfo thunk_info,
@@ -2728,8 +2756,8 @@ IrEmitterUnnested::BuildKernelThunkForMlir(
     absl::optional<MlirBufferSlice> extra_slice,
     std::vector<llvm_ir::IrArray>* ir_arrays) {
   if (auto fusion = mlir::dyn_cast<mlir::lmhlo::FusionOp>(op)) {
-    std::vector<mlir::Value> operands, outputs;
-    GetFusionOperandsAndOutputs(fusion, &operands, &outputs);
+    auto operands = GetHloOperands(op);
+    auto outputs = GetHloOutputs(op);
 
     std::vector<MlirBufferSlice> slices;
     for (auto operand : operands) {
@@ -5016,18 +5044,8 @@ Thunk::ThunkInfo IrEmitterUnnested::GetThunkInfo(
 void MlirEmitterContext::SetOperation(mlir::Operation* op) {
   this->name = mlir::GetNameFromLoc(op->getLoc());
 
-  std::vector<mlir::Value> operands, outputs;
-  if (auto fusion = mlir::dyn_cast<mlir::lmhlo::FusionOp>(op)) {
-    GetFusionOperandsAndOutputs(fusion, &operands, &outputs);
-  } else {
-    for (auto buffer : op->getOperands()) {
-      if (WritesMlirBuffer(op, buffer)) {
-        outputs.push_back(buffer);
-      } else {
-        operands.push_back(buffer);
-      }
-    }
-  }
+  auto operands = GetHloOperands(op);
+  auto outputs = GetHloOutputs(op);
   for (auto operand : operands) {
     operand_shapes.push_back(TypeToShape(operand.getType()));
   }

@@ -20,6 +20,8 @@ limitations under the License.
 
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
@@ -229,6 +231,20 @@ inline bool AreFusedReductionOutputsConsistent(
     return IsFusedReductionOutputConsistent(inst, first_reduce);
   });
 }
+
+inline std::string MlirToString(mlir::Operation* op) {
+  std::string s;
+  {
+    llvm::raw_string_ostream os(s);
+    op->print(os);
+  }
+  return s;
+}
+
+std::vector<mlir::Value> GetHloOperands(mlir::Operation* op);
+std::vector<mlir::Value> GetHloOutputs(mlir::Operation* op);
+
+bool WritesMlirBuffer(mlir::Operation* op, mlir::Value operand);
 
 }  // namespace gpu
 }  // namespace xla
