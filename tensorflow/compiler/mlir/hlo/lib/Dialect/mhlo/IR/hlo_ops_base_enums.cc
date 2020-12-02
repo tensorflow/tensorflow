@@ -13,16 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef LHLO_GPU_OPS_STRUCTS
-#define LHLO_GPU_OPS_STRUCTS
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.h"
 
-include "mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_base.td"
-
-def ConvolutionBackendConfigAttr : StructAttr<"ConvolutionBackendConfig",
-                                          LHLO_GPU_Dialect, [
-   StructFieldAttr<"algorithm", I64Attr>,
-   StructFieldAttr<"tensor_ops_enabled", BoolAttr>]> {
-   let description = "GPU Convolution backend configuration";
-}
-
-#endif // LHLO_GPU_OPS_STRUCTS
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.cc.inc"

@@ -23,6 +23,7 @@ def HLO_Dialect : Dialect {
   let cppNamespace = "::mlir::mhlo";
 }
 
+include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.td"
 include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.td"
 
 def HLO_Pred : TypeAlias<I1, "pred (AKA boolean or 1-bit integer)">;
@@ -692,77 +693,7 @@ class BASE_HLO_TupleOp {
    }];
 }
 
-//===----------------------------------------------------------------------===//
-// Precision Config enum definitions.
-//===----------------------------------------------------------------------===//
 
-// These mirror the XLA PrecisionConfig proto enum.
-def HLO_PRECISION_DEFAULT : StrEnumAttrCase<"DEFAULT">;
-def HLO_PRECISION_HIGH    : StrEnumAttrCase<"HIGH">;
-def HLO_PRECISION_HIGHEST : StrEnumAttrCase<"HIGHEST">;
-
-def HLO_PrecisionAttr : StrEnumAttr<"Precision",
-    "XLA precision for an operand. Has backend specific meaning.",
-    [HLO_PRECISION_DEFAULT,  HLO_PRECISION_HIGH, HLO_PRECISION_HIGHEST]>;
-
-// TODO(b/129153247) See if it's possible to also validate the size.
-def HLO_PrecisionConfigAttr:
-    OptionalAttr<
-          TypedArrayAttrBase<HLO_PrecisionAttr, "Precision Config attribute">>;
-
-
-//===----------------------------------------------------------------------===//
-// Fast Fourier Transform Type enum definitions.
-//===----------------------------------------------------------------------===//
-
-// These mirror the XLA FftType proto enum.
-def HLO_FFT_TYPE_FFT : StrEnumAttrCase<"FFT">;
-def HLO_FFT_TYPE_IFFT : StrEnumAttrCase<"IFFT">;
-def HLO_FFT_TYPE_RFFT : StrEnumAttrCase<"RFFT">;
-def HLO_FFT_TYPE_IRFFT : StrEnumAttrCase<"IRFFT">;
-
-def HLO_FftTypeAttr : StrEnumAttr<"FftType",
-    "XLA fast fourier transform type.",
-    [HLO_FFT_TYPE_FFT, HLO_FFT_TYPE_IFFT,
-     HLO_FFT_TYPE_RFFT, HLO_FFT_TYPE_IRFFT]>;
-
-//===----------------------------------------------------------------------===//
-// Comparison op definitions.
-//===----------------------------------------------------------------------===//
-
-// These mirror the XLA ComparisonDirection enum.
-def HLO_COMPARISON_DIRECTION_EQ : StrEnumAttrCase<"EQ">;
-def HLO_COMPARISON_DIRECTION_NE : StrEnumAttrCase<"NE">;
-def HLO_COMPARISON_DIRECTION_GE : StrEnumAttrCase<"GE">;
-def HLO_COMPARISON_DIRECTION_GT : StrEnumAttrCase<"GT">;
-def HLO_COMPARISON_DIRECTION_LE : StrEnumAttrCase<"LE">;
-def HLO_COMPARISON_DIRECTION_LT : StrEnumAttrCase<"LT">;
-
-def HLO_ComparisonDirectionAttr : StrEnumAttr<"ComparisonDirection",
-    "Which comparison operation to perform.",
-    [
-      HLO_COMPARISON_DIRECTION_EQ,
-      HLO_COMPARISON_DIRECTION_NE,
-      HLO_COMPARISON_DIRECTION_GE,
-      HLO_COMPARISON_DIRECTION_GT,
-      HLO_COMPARISON_DIRECTION_LE,
-      HLO_COMPARISON_DIRECTION_LT
-    ]>;
-
-def HLO_DEFAULT_COMPARISON_TYPE : NativeCodeCall<"StringAttr()">;
-def HLO_COMPARISON_TYPE_FLOAT : StrEnumAttrCase<"FLOAT">;
-def HLO_COMPARISON_TYPE_FLOAT_TOTAL_ORDER : StrEnumAttrCase<"TOTALORDER">;
-def HLO_COMPARISON_TYPE_SIGNED : StrEnumAttrCase<"SIGNED">;
-def HLO_COMPARISON_TYPE_UNSIGNED : StrEnumAttrCase<"UNSIGNED">;
-
-def HLO_ComparisonTypeAttr : StrEnumAttr<"ComparisonType",
-    "Which comparison type to use.",
-    [
-      HLO_COMPARISON_TYPE_FLOAT,
-      HLO_COMPARISON_TYPE_FLOAT_TOTAL_ORDER,
-      HLO_COMPARISON_TYPE_SIGNED,
-      HLO_COMPARISON_TYPE_UNSIGNED
-    ]>;
 
 
 class BASE_HLO_CompareOp {
@@ -782,13 +713,6 @@ class BASE_HLO_CompareOp {
 //===----------------------------------------------------------------------===//
 // Quantize op definitions.
 //===----------------------------------------------------------------------===//
-
-// These mirror the XLA ComparisonDirection enum.
-def HLO_MIN_COMBINED : StrEnumAttrCase<"MIN_COMBINED">;
-
-def HLO_DequantizeModeAttr : StrEnumAttr<"DequantizeMode",
-  "Dequantization mode. Only MIN_COMBINED is supported.",
-  [HLO_MIN_COMBINED]>;
 
 class BASE_HLO_DequantizeOp {
   string summary = "Dequantize operator";
@@ -1029,7 +953,12 @@ class BASE_HLO_ConcatenateOp {
 // Common convolution attributes
 //===----------------------------------------------------------------------===//
 
-class ConvolutionAttributes<Dialect dialect> {
+// TODO(b/129153247) See if it's possible to also validate the size.
+def HLO_PrecisionConfigAttr:
+    OptionalAttr<
+          TypedArrayAttrBase<HLO_PrecisionAttr, "Precision Config attribute">>;
+
+def ConvolutionAttributes {
   dag attributes = (ins
     // Default value: one for each of the spatial dimension.
     OptionalAttr<I64ElementsAttr>:$window_strides,
@@ -1269,21 +1198,6 @@ class BASE_HLO_TransposeOp {
     See https://www.tensorflow.org/xla/operation_semantics#transpose.
   }];
 }
-
-// These mirror the XLA Transpose enum in Triangular Solve options.
-def HLO_TRANSPOSE_INVALID : StrEnumAttrCase<"TRANSPOSE_INVALID">;
-def HLO_NO_TRANSPOSE : StrEnumAttrCase<"NO_TRANSPOSE">;
-def HLO_TRANSPOSE : StrEnumAttrCase<"TRANSPOSE">;
-def HLO_ADJOINT : StrEnumAttrCase<"ADJOINT">;
-
-def HLO_TransposeAttr : StrEnumAttr<"Transpose",
-    "Transpose options",
-    [
-      HLO_TRANSPOSE_INVALID,
-      HLO_NO_TRANSPOSE,
-      HLO_TRANSPOSE,
-      HLO_ADJOINT
-    ]>;
 
 class BASE_HLO_TriangularSolveOp {
   string summary = "TriangularSolve operator";

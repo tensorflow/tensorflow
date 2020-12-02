@@ -13,16 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef LHLO_GPU_OPS_STRUCTS
-#define LHLO_GPU_OPS_STRUCTS
+// This file defines enums used in MHLO and LMHLO.
+#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_BASE_ENUMS_H_
+#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_BASE_ENUMS_H_
 
-include "mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_base.td"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/StringSwitch.h"
 
-def ConvolutionBackendConfigAttr : StructAttr<"ConvolutionBackendConfig",
-                                          LHLO_GPU_Dialect, [
-   StructFieldAttr<"algorithm", I64Attr>,
-   StructFieldAttr<"tensor_ops_enabled", BoolAttr>]> {
-   let description = "GPU Convolution backend configuration";
-}
+// Order matters, this .inc header is not self-contained, and relies on the
+// #includes above.
 
-#endif // LHLO_GPU_OPS_STRUCTS
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.h.inc"
+
+#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_BASE_ENUMS_H_
