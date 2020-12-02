@@ -5701,7 +5701,7 @@ idx ==> [1, 3, 5]
   TF_DerivedResultTypeAttr out_idx = TF_DerivedResultTypeAttr<1>;
 }
 
-def TF_LoadTPUEmbeddingADAMParametersOp : TF_Op<"LoadTPUEmbeddingADAMParameters", []> {
+def TF_LoadTPUEmbeddingADAMParametersOp : TF_Op<"LoadTPUEmbeddingADAMParameters", [TF_TPUEmbeddingSideEffect]> {
   let summary = "Load ADAM embedding parameters.";
 
   let description = [{
@@ -5727,7 +5727,7 @@ executed.
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingADAMParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingADAMParametersGradAccumDebug", []> {
+def TF_LoadTPUEmbeddingADAMParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingADAMParametersGradAccumDebug", [TF_TPUEmbeddingSideEffect]> {
   let summary = "Load ADAM embedding parameters with debug support.";
 
   let description = [{
@@ -5754,7 +5754,7 @@ executed.
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingAdadeltaParametersOp : TF_Op<"LoadTPUEmbeddingAdadeltaParameters", []> {
+def TF_LoadTPUEmbeddingAdadeltaParametersOp : TF_Op<"LoadTPUEmbeddingAdadeltaParameters", [TF_TPUEmbeddingSideEffect]> {
   let summary = "Load Adadelta embedding parameters.";
 
   let description = [{
@@ -5780,7 +5780,7 @@ executed.
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingAdadeltaParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingAdadeltaParametersGradAccumDebug", []> {
+def TF_LoadTPUEmbeddingAdadeltaParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingAdadeltaParametersGradAccumDebug", [TF_TPUEmbeddingSideEffect]> {
   let summary = "Load Adadelta parameters with debug support.";
 
   let description = [{
@@ -5807,7 +5807,7 @@ executed.
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingAdagradParametersOp : TF_Op<"LoadTPUEmbeddingAdagradParameters", []> {
+def TF_LoadTPUEmbeddingAdagradParametersOp : TF_Op<"LoadTPUEmbeddingAdagradParameters", [TF_TPUEmbeddingSideEffect]> {
   let summary = "Load Adagrad embedding parameters.";
 
   let description = [{
@@ -5832,7 +5832,7 @@ executed.
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingAdagradParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingAdagradParametersGradAccumDebug", []> {
+def TF_LoadTPUEmbeddingAdagradParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingAdagradParametersGradAccumDebug", [TF_TPUEmbeddingSideEffect]> {
   let summary = "Load Adagrad embedding parameters with debug support.";
 
   let description = [{
@@ -5858,7 +5858,7 @@ executed.
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingCenteredRMSPropParametersOp : TF_Op<"LoadTPUEmbeddingCenteredRMSPropParameters", []> {
+def TF_LoadTPUEmbeddingCenteredRMSPropParametersOp : TF_Op<"LoadTPUEmbeddingCenteredRMSPropParameters", [TF_TPUEmbeddingSideEffect]> {
   let summary = "Load centered RMSProp embedding parameters.";
 
   let description = [{
@@ -5885,7 +5885,7 @@ executed.
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingFTRLParametersOp : TF_Op<"LoadTPUEmbeddingFTRLParameters", []> {
+def TF_LoadTPUEmbeddingFTRLParametersOp : TF_Op<"LoadTPUEmbeddingFTRLParameters", [TF_TPUEmbeddingSideEffect]> {
   let summary = "Load FTRL embedding parameters.";
 
   let description = [{
@@ -5911,7 +5911,7 @@ executed.
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingFTRLParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingFTRLParametersGradAccumDebug", []> {
+def TF_LoadTPUEmbeddingFTRLParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingFTRLParametersGradAccumDebug", [TF_TPUEmbeddingSideEffect]> {
   let summary = "Load FTRL embedding parameters with debug support.";
 
   let description = [{
@@ -5938,7 +5938,7 @@ executed.
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingMDLAdagradLightParametersOp : TF_Op<"LoadTPUEmbeddingMDLAdagradLightParameters", []> {
+def TF_LoadTPUEmbeddingMDLAdagradLightParametersOp : TF_Op<"LoadTPUEmbeddingMDLAdagradLightParameters", [TF_TPUEmbeddingSideEffect]> {
   let summary = "Load MDL Adagrad Light embedding parameters.";
 
   let description = [{
@@ -5965,7 +5965,7 @@ executed.
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingMomentumParametersOp : TF_Op<"LoadTPUEmbeddingMomentumParameters", []> {
+def TF_LoadTPUEmbeddingMomentumParametersOp : TF_Op<"LoadTPUEmbeddingMomentumParameters", [TF_TPUEmbeddingSideEffect]> {
   let summary = "Load Momentum embedding parameters.";
 
   let description = [{
@@ -5990,7 +5990,7 @@ executed.
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingMomentumParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingMomentumParametersGradAccumDebug", []> {
+def TF_LoadTPUEmbeddingMomentumParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingMomentumParametersGradAccumDebug", [TF_TPUEmbeddingSideEffect]> {
   let summary = "Load Momentum embedding parameters with debug support.";
 
   let description = [{
@@ -6016,7 +6016,7 @@ executed.
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingProximalAdagradParametersOp : TF_Op<"LoadTPUEmbeddingProximalAdagradParameters", []> {
+def TF_LoadTPUEmbeddingProximalAdagradParametersOp : TF_Op<"LoadTPUEmbeddingProximalAdagradParameters", [TF_TPUEmbeddingSideEffect]> {
   let summary = "Load proximal Adagrad embedding parameters.";
 
   let description = [{
@@ -6041,7 +6041,7 @@ executed.
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingProximalAdagradParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingProximalAdagradParametersGradAccumDebug", []> {
+def TF_LoadTPUEmbeddingProximalAdagradParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingProximalAdagradParametersGradAccumDebug", [TF_TPUEmbeddingSideEffect]> {
   let summary = [{
 Load proximal Adagrad embedding parameters with debug support.
   }];
@@ -6069,7 +6069,7 @@ executed.
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingProximalYogiParametersOp : TF_Op<"LoadTPUEmbeddingProximalYogiParameters", []> {
+def TF_LoadTPUEmbeddingProximalYogiParametersOp : TF_Op<"LoadTPUEmbeddingProximalYogiParameters", [TF_TPUEmbeddingSideEffect]> {
   let summary = "";
 
   let arguments = (ins
@@ -6087,7 +6087,7 @@ def TF_LoadTPUEmbeddingProximalYogiParametersOp : TF_Op<"LoadTPUEmbeddingProxima
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingProximalYogiParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingProximalYogiParametersGradAccumDebug", []> {
+def TF_LoadTPUEmbeddingProximalYogiParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingProximalYogiParametersGradAccumDebug", [TF_TPUEmbeddingSideEffect]> {
   let summary = "";
 
   let arguments = (ins
@@ -6106,7 +6106,7 @@ def TF_LoadTPUEmbeddingProximalYogiParametersGradAccumDebugOp : TF_Op<"LoadTPUEm
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingRMSPropParametersOp : TF_Op<"LoadTPUEmbeddingRMSPropParameters", []> {
+def TF_LoadTPUEmbeddingRMSPropParametersOp : TF_Op<"LoadTPUEmbeddingRMSPropParameters", [TF_TPUEmbeddingSideEffect]> {
   let summary = "Load RMSProp embedding parameters.";
 
   let description = [{
@@ -6132,7 +6132,7 @@ executed.
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingRMSPropParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingRMSPropParametersGradAccumDebug", []> {
+def TF_LoadTPUEmbeddingRMSPropParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingRMSPropParametersGradAccumDebug", [TF_TPUEmbeddingSideEffect]> {
   let summary = "Load RMSProp embedding parameters with debug support.";
 
   let description = [{
@@ -6159,7 +6159,7 @@ executed.
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingStochasticGradientDescentParametersOp : TF_Op<"LoadTPUEmbeddingStochasticGradientDescentParameters", []> {
+def TF_LoadTPUEmbeddingStochasticGradientDescentParametersOp : TF_Op<"LoadTPUEmbeddingStochasticGradientDescentParameters", [TF_TPUEmbeddingSideEffect]> {
   let summary = "Load SGD embedding parameters.";
 
   let description = [{
@@ -6183,7 +6183,7 @@ executed.
   let results = (outs);
 }
 
-def TF_LoadTPUEmbeddingStochasticGradientDescentParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingStochasticGradientDescentParametersGradAccumDebug", []> {
+def TF_LoadTPUEmbeddingStochasticGradientDescentParametersGradAccumDebugOp : TF_Op<"LoadTPUEmbeddingStochasticGradientDescentParametersGradAccumDebug", [TF_TPUEmbeddingSideEffect]> {
   let summary = "Load SGD embedding parameters.";
 
   let description = [{

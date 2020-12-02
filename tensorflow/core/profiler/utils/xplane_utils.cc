@@ -113,10 +113,6 @@ std::vector<XPlane*> FindMutablePlanesWithPrefix(XSpace* space,
   return result;
 }
 
-bool IsNested(const XEvent& event, const XEvent& parent) {
-  return XEventTimespan(parent).Includes(XEventTimespan(event));
-}
-
 XStat* FindOrAddMutableStat(const XStatMetadata& stat_metadata, XEvent* event) {
   for (auto& stat : *event->mutable_stats()) {
     if (stat.metadata_id() == stat_metadata.id()) {

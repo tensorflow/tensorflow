@@ -139,13 +139,16 @@ StatusOr<absl::optional<std::string>> PjRtTpuClient::ExecutableFingerprint(
         "PjRtTpuClient::ExecutableFingerprint",
         executable.client()->platform_name());
   }
-  if (executable.executables().size() > 1) {
+  if (executable.num_partitions() > 1) {
     LOG(INFO) << "ExecutableFingerprint not fully implemented for MPMD "
                  "executables, fingerprint may not be unique.";
   }
   xla::TpuExecutableInterface* tpu_executable =
       tensorflow::down_cast<xla::TpuExecutableInterface*>(
-          executable.executables()[0]->executable());
+          tensorflow::down_cast<const PjRtStreamExecutorExecutable*>(
+              &executable)
+              ->executables()[0]
+              ->executable());
   return absl::optional<std::string>(tpu_executable->fingerprint());
 }
 

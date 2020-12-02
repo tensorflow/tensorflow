@@ -254,7 +254,9 @@ void Benchmark::Run(int arg1, int arg2, int* run_count, double* run_seconds) {
     } else if (fn2_) {
       (*fn2_)(iters, arg1, arg2);
     } else if (fn_state_) {
-      ::testing::benchmark::State state(iters, std::vector<int>(arg1, arg2));
+      std::vector<int> arg_list = {arg1, arg2};
+      ::testing::benchmark::State state(iters, instantiated_num_args_,
+                                        std::move(arg_list));
       (*fn_state_)(state);
     }
     StopTiming();
@@ -298,8 +300,10 @@ void UseRealTime() {}
 
 namespace testing {
 namespace benchmark {
-State::State(size_t max_iterations, const std::vector<int>& args)
-    : max_iterations(max_iterations), args_(args) {
+State::State(size_t max_iterations, int formal_arg_count, std::vector<int> args)
+    : max_iterations(max_iterations),
+      formal_arg_count_(formal_arg_count),
+      args_(std::move(args)) {
   completed_iterations_ = 0;
 }
 
@@ -320,7 +324,7 @@ void State::SetLabel(absl::string_view label) {
 }
 
 int State::range(size_t i) const {
-  if (i >= args_.size()) {
+  if (i >= formal_arg_count_) {
     LOG(FATAL) << "argument for range " << i << " is not set";
   }
   return args_[i];
