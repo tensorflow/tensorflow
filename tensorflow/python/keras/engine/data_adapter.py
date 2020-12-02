@@ -1141,6 +1141,8 @@ class DataHandler(object):
     self._insufficient_data = False
     self._model = model
 
+    self._steps_per_epoch = steps_per_epoch
+
     # `steps_per_execution_value` is the cached initial value.
     # `steps_per_execution` is mutable and may be changed by the DataAdapter
     # to handle partial executions.
@@ -1204,6 +1206,7 @@ class DataHandler(object):
           break
         if self._adapter.should_recreate_iterator():
           data_iterator = iter(self._dataset)
+          self._inferred_steps = self._infer_steps(self._steps_per_epoch, self._dataset)
         yield epoch, data_iterator
         self._adapter.on_epoch_end()
 
