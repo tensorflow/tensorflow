@@ -179,6 +179,9 @@ upper_tabs:
         path: /lite/guide/build_arm64
       - title: "Build for Raspberry Pi"
         path: /lite/guide/build_rpi
+      - title: "Build with CMake"
+        path: /lite/guide/build_cmake
+        status: experimental
       - title: "Reduce binary size"
         path: /lite/guide/reduce_binary_size
         status: experimental
