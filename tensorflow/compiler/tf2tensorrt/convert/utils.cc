@@ -35,6 +35,9 @@ Status TrtPrecisionModeToName(TrtPrecisionMode mode, string* name) {
     case TrtPrecisionMode::INT8:
       *name = "INT8";
       break;
+    case TrtPrecisionMode::NOT_AVAILABLE:
+      *name = "NOT_AVAILABLE";
+      break;
     default:
       return errors::OutOfRange("Unknown precision mode");
   }
@@ -48,6 +51,8 @@ Status TrtPrecisionModeFromName(const string& name, TrtPrecisionMode* mode) {
     *mode = TrtPrecisionMode::FP16;
   } else if (name == "INT8") {
     *mode = TrtPrecisionMode::INT8;
+  } else if (name == "NOT_AVAILABLE") {
+    *mode = TrtPrecisionMode::NOT_AVAILABLE;
   } else {
     return errors::InvalidArgument("Invalid precision mode name: ", name);
   }
@@ -186,6 +191,21 @@ Status TrtDimsToTensorShape(const nvinfer1::Dims trt_dims,
   return Status::OK();
 }
 
+bool isIntTfType(DataType tf_type) {
+  switch (tf_type) {
+    case DT_INT8:
+    case DT_UINT8:
+    case DT_INT16:
+    case DT_UINT16:
+    case DT_UINT32:
+    case DT_INT64:
+    case DT_UINT64:
+      return true;
+    default:
+      return false;
+    }
+}
+
 Status TfTypeToTrtType(DataType tf_type, nvinfer1::DataType* trt_type) {
   switch (tf_type) {
     case DT_FLOAT:
@@ -216,7 +236,8 @@ Status TrtTypeToTfType(nvinfer1::DataType trt_type, DataType* tf_type) {
       *tf_type = DT_INT32;
       break;
     default:
-      return errors::InvalidArgument("Invalid TRT data type");
+      return errors::InvalidArgument("Invalid TRT data type",
+                                     DebugString(trt_type));
   }
   return Status::OK();
 }

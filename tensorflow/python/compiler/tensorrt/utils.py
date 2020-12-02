@@ -23,6 +23,8 @@ from tensorflow.core.protobuf import rewriter_config_pb2
 
 def disable_non_trt_optimizers_in_rewriter_config(rewriter_config):
   """Modifies rewriter_config to disable all non-TRT optimizations."""
+
+  # Turn off all default Grappler optimizers.
   off = rewriter_config_pb2.RewriterConfig.OFF
 
   rewriter_config.arithmetic_optimization = off
@@ -45,3 +47,7 @@ def disable_non_trt_optimizers_in_rewriter_config(rewriter_config):
   rewriter_config.remapping = off
   rewriter_config.scoped_allocator_optimization = off
   rewriter_config.shape_optimization = off
+
+  # Run only once for each enabled optimizer.
+  rewriter_config.meta_optimizer_iterations = (
+    rewriter_config_pb2.RewriterConfig.ONE)

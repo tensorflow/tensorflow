@@ -4940,44 +4940,105 @@ Status ConvertUnpack(OpConverterParams* params) {
   return ConvertSplitHelper(params, inputs.at(0), tf_axis, num, true);
 }
 
-// Supports cast fp16=>fp32 through IIdentityLayer.
+#if IS_TRT_VERSION_GE(7, 0, 0, 11)
+// Supports cast through IIdentityLayer.
 Status ConvertCast(OpConverterParams* params) {
   const NodeDef& node_def = params->node_def;
   TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"x", false}}));
-  auto unsupport_cast_error = [&]() {
+
+  auto unsupported_cast_error = [&](DataType in_dtype, DataType out_dtype,
+                                    TrtPrecisionMode precision_mode) {
+    string precision_mode_str;
+    TF_RETURN_IF_ERROR(
+      TrtPrecisionModeToName(precision_mode, &precision_mode_str));
+
     return errors::Unimplemented("Cast op: ", node_def.op(),
-                                 " not supported at: ", node_def.name());
+                                 " not supported at: ", node_def.name(),
+                                 ". Input DType: ", DataTypeString(in_dtype),
+                                 ". Output DType: ", DataTypeString(out_dtype),
+                                 ". Precision Mode: ", precision_mode_str);
   };
 
   DataType input_type;
   TF_RETURN_IF_ERROR(GetInputTfType(*params, &input_type, 0));
-  if (input_type != DataType::DT_HALF) {
-    return unsupport_cast_error();
-  }
 
   DataType output_type;
   TF_RETURN_IF_ERROR(GetNodeDefTfType(params->node_def, &output_type,
                                       kCastOutputTypeAttrName));
 
-  if (output_type != DataType::DT_FLOAT) {
-    return unsupport_cast_error();
+  TrtPrecisionMode precision_mode = params->precision_mode;
+
+  if (isIntTfType(input_type) || isIntTfType(output_type)) {
+    return unsupported_cast_error(
+      input_type,
+      output_type,
+      precision_mode
+    );
   }
 
+  if (
+    (precision_mode == TrtPrecisionMode::FP32 ||
+    precision_mode == TrtPrecisionMode::NOT_AVAILABLE) &&
+    (input_type != DataType::DT_FLOAT || output_type != DataType::DT_FLOAT)
+  ) {
+        return unsupported_cast_error(
+          input_type,
+          output_type,
+          precision_mode
+        );
+  }
+
+  // TODO: @DekhtiarJonathan remove when TRT has fixed the issue
+  if (params->inputs.at(0).GetTrtDims().nbDims >= 4) {
+
+    auto trt_dims = params->inputs.at(0).GetTrtDims();
+
+    string trt_dim_str = "[";
+    for (int i = 0; i < nvinfer1::Dims::MAX_DIMS ; ++i) {
+      if (trt_dims.d[i] == 0) {
+        break;
+      }
+      trt_dim_str += std::to_string(trt_dims.d[i]);
+      trt_dim_str += ",";
+    }
+    trt_dim_str = trt_dim_str.substr(0, trt_dim_str.size()-1);
+    trt_dim_str += "]";
+
+    return errors::Unimplemented("Cast op: ", node_def.op(),
+                                 " is not able to support tensors with 4+",
+                                 " dimensions (excluding batch size).",
+                                 " Received: ", trt_dim_str);
+  };
+
   if (params->validation_only) return Status::OK();
+
+  nvinfer1::DataType input_trt_dtype;
+  nvinfer1::DataType output_trt_dtype;
+  TF_CHECK_OK(TfTypeToTrtType(input_type, &input_trt_dtype));
+  TF_CHECK_OK(TfTypeToTrtType(output_type, &output_trt_dtype));
 
   nvinfer1::ITensor* input = params->inputs.at(0).tensor();
   nvinfer1::IIdentityLayer* layer =
       params->converter->network()->addIdentity(*input);
-  SetLayerName(layer, node_def);
-  layer->setPrecision(nvinfer1::DataType::kFLOAT);
 
-  if (layer->getOutput(0)->getType() != nvinfer1::DataType::kFLOAT) {
-    return errors::Internal("IIdentityLayer doesn't work as expected");
+  SetLayerName(layer, node_def);
+
+  layer->setPrecision(input_trt_dtype);  // precision at the input
+  layer->setOutputType(0, output_trt_dtype);  // casting output precision
+  layer->getOutput(0)->setType(output_trt_dtype);  // dtype output of the engine
+
+  if (layer->getOutput(0)->getType() != output_trt_dtype) {
+    return errors::Internal(
+      "IIdentityLayer doesn't work as expected. Expected:",
+      DebugString(output_trt_dtype), " vs. actual ",
+      DebugString(layer->getOutput(0)->getType())
+    );
   }
 
   params->outputs->push_back(TRT_TensorOrWeights(layer->getOutput(0)));
   return Status::OK();
 }
+#endif
 
 Status ConvertConcat(OpConverterParams* params) {
   const auto& inputs = params->inputs;
@@ -6087,7 +6148,9 @@ static void RegisterValidatableOpConverters(
   (*registration)["CombinedNonMaxSuppression"] = ConvertCombinedNMS;
 #endif
   (*registration)["AddN"] = ConvertAddN;
+#if IS_TRT_VERSION_GE(7, 0, 0, 11)
   (*registration)["Cast"] = ConvertCast;
+#endif
   (*registration)["ConcatV2"] = ConvertConcat;
   (*registration)["Const"] = ConvertConst;
   (*registration)["Conv2D"] = ConvertConv2D;
