@@ -534,35 +534,10 @@ _mul.__doc__ = (
 @tf_export("math.subtract", "subtract")
 @dispatch.add_dispatch_support
 def subtract(x, y, name=None):
-  """Returns x - y element-wise.
-
-  *Note*: Subtract supports broadcasting. More about broadcasting
-  [here](https://numpy.org/doc/stable/user/basics.broadcasting.html)
-
-  Both input and output have a range `(-inf, inf)`.
-
-  For example:
-
-  >>> x = tf.constant([1.0, -1.0, 5.0, -2.0, 0.0])
-  >>> y = tf.constant([5.0, 1.0, 3.7, -19.9, float("inf")])
-  >>> tf.subtract(x,y)
-  <tf.Tensor: shape=(5,), dtype=float32,
-  numpy= array([-4. , -2. ,  1.3, 17.9, -inf], dtype=float32)>
-
-  Args:
-    x: A `Tensor`. Must be one of the following types: `bfloat16`, `half`,
-      `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`,
-      `complex64`, `complex128`, `string`.
-    y: A `Tensor`. Must have the same type as x.
-    name: A name for the operation (optional).
-
-  Returns:
-    A `Tensor`. Has the same type as x.
-  """
   return gen_math_ops.sub(x, y, name)
 
 
-subtract.__doc__ = gen_math_ops.sub.__doc__.replace("`Sub`", "`tf.subtract`")
+subtract.__doc__ = gen_math_ops.sub.__doc__
 
 
 # TODO(aselle): put deprecation in after another round of global code changes
