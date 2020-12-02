@@ -27,6 +27,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras.engine import input_spec
+from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.saving.saved_model import constants
 from tensorflow.python.keras.saving.saved_model import json_utils
@@ -129,11 +130,12 @@ def load(path, compile=True, options=None):  # pylint: disable=redefined-builtin
       model.compile(**saving_utils.compile_args_from_training_config(
           training_config))
       saving_utils.try_build_compiled_arguments(model)
-      if(model.optimizer.get_slot_names()):
-        logging.warning(
-              'Your optimizer uses solts. '
-              'Slots cannot be restored from saved_model As a result, '
-              'your model is starting with a freshly initialized optimizer.')
+      if isinstance(model.optimizer, optimizer_v2.OptimizerV2):
+        if(model.optimizer.get_slot_names()):
+          logging.warning('Your optimizer uses solts. '
+                          'Slots cannot be restored from saved_model As a result, '
+                          'your model is starting with a freshly initialized '
+                          'optimizer.')
 
         
     else:
