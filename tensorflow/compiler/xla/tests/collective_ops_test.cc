@@ -339,10 +339,7 @@ XLA_TEST_F(CollectiveOpsTest, AllReduce_AllCombinations) {
 
 // Check that the NCCL data structures in our all-reduce implementation are
 // cached as we expect.
-
-// TODO(b/174588959): Re-enable this on GPU. Currently timing out on guitar.
-XLA_TEST_F(CollectiveOpsTest,
-           DISABLED_ON_CPU(DISABLED_ON_GPU(AllReduce_NcclChannelCaching))) {
+XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllReduce_NcclChannelCaching)) {
   const int64 kNumElems = 1024;
 
   std::vector<float> input_vec(kNumElems);
