@@ -4,6 +4,7 @@
 #include "tensorflow/lite/micro/kernels/xcore/xcore_custom_options.h"
 #include "tensorflow/lite/micro/kernels/xcore/xcore_dispatcher.h"
 #include "tensorflow/lite/micro/kernels/xcore/xcore_ops.h"
+#include "tensorflow/lite/micro/kernels/xcore/xcore_utils.h"
 
 extern "C" {
 #include "lib_nn/api/nn_operator.h"
@@ -26,13 +27,6 @@ struct PoolingThreadParams {
   const nn_window_params_t* window;
   nn_window_op_job_params_t job;
 };
-
-template <int N, class T>
-T unpack(const uint8_t* buffer) {
-  T retval = 0;
-  for (int i = 0; i < N; ++i) retval |= buffer[i] << (8 * i);
-  return retval;
-}
 
 //**************************************
 //**************************************
@@ -315,9 +309,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   AvgPoolGlobalOpData* op =
       reinterpret_cast<AvgPoolGlobalOpData*>(node->user_data);
 
-  op->bias = unpack<4, int32_t>(&bss->data.uint8[0]);
-  op->shift = unpack<2, uint16_t>(&bss->data.uint8[5]);
-  op->scale = unpack<1, int8_t>(&bss->data.uint8[4]);
+  op->bias = unpack<int32_t>(&bss->data.uint8[0]);
+  op->shift = unpack<uint16_t>(&bss->data.uint8[5]);
+  op->scale = unpack<int8_t>(&bss->data.uint8[4]);
 
   TFLITE_DCHECK(op->scale > 0);
 
