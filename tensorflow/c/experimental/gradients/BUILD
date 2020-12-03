@@ -1,12 +1,10 @@
 load("//tensorflow:tensorflow.bzl", "filegroup")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+
+# buildifier: disable=same-origin-load
 load(
     "//tensorflow:tensorflow.bzl",
-    "if_libtpu",
-    "tf_cc_test",
-    "tf_copts",
     "tf_cuda_cc_test",
-    "tf_cuda_library",
 )
 load(
     "//tensorflow/core/platform:build_config.bzl",
