@@ -472,12 +472,6 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
 
   def testFusedBatchNormGradsInference(self):
 
-    if test.is_built_with_rocm():
-      # This test was added recently and has been failing on the ROCm
-      # platform, since it was added.
-      # TODO(rocm): do root cause analysis of test failure and fix it.
-      self.skipTest("Test fails on ROCm platform, needs further analysis")
-
     x_shape = [4, 10, 10, 2]
     increment = 3. / math_ops.reduce_prod(
         constant_op.constant(x_shape, dtype=dtypes.float32))

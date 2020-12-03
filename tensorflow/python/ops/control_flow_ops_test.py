@@ -57,7 +57,6 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 import tensorflow.python.ops.tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import googletest
-from tensorflow.python.platform import test
 from tensorflow.python.training import momentum
 from tensorflow.python.util import nest
 
@@ -1113,9 +1112,6 @@ class IndexedCaseTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     """Verify disjoint branches across while iterations are run in parallel."""
     if control_flow_v2_toggles.control_flow_v2_enabled():
       self.skipTest("b/138870290")
-    if test.is_built_with_rocm():
-      self.skipTest(
-          "Disable subtest on ROCm due to missing Cholesky op support")
 
     with ops.Graph().as_default() as g:
       nbranches = 7
