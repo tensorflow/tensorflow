@@ -131,7 +131,7 @@ class BiasAddGradientFunction : public GradientFunction {
 
     // Recover data format from forward pass for gradient.
     std::string data_format;
-    forward_attrs.Get("data_format", &data_format);
+    TF_RETURN_IF_ERROR(forward_attrs.Get("data_format", &data_format));
 
     // Grad for A
     (*grad_outputs)[0] = upstream_grad;
