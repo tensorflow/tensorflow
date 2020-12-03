@@ -45,8 +45,9 @@ static const int kStrideShift = 1;
 //! @return Error code.
 //
 //*****************************************************************************
-uint32_t hm01b0_blocking_read_oneframe_scaled(
-    hm01b0_cfg_t* psCfg, uint8_t* buffer, int w, int h, int channels) {
+uint32_t hm01b0_blocking_read_oneframe_scaled(hm01b0_cfg_t* psCfg,
+                                              int8_t* buffer, int w, int h,
+                                              int channels) {
   hm01b0_single_frame_capture(psCfg);
 
   // Calculate the number of pixels to crop to get a centered image.
@@ -76,7 +77,9 @@ uint32_t hm01b0_blocking_read_oneframe_scaled(
       if (output_x < w && output_y < h) {
         const int output_idx = (output_y * w + output_x) * channels;
         for (int i=0; i<channels; i++) {
-          buffer[output_idx + i] = value;
+          // See the top of main_functions.cc for an explanation of and
+          // rationale for our unsigned to signed input conversion.
+          buffer[output_idx + i] = value - 128;
         }
       }
 

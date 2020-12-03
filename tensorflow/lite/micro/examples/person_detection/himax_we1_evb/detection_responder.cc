@@ -13,9 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/micro/examples/person_detection_experimental/detection_responder.h"
+#if defined(ARDUINO)
+#define ARDUINO_EXCLUDE_CODE
+#endif  // defined(ARDUINO)
 
-#include "hx_drv_tflm.h"
+#ifndef ARDUINO_EXCLUDE_CODE
+
+#include "tensorflow/lite/micro/examples/person_detection/detection_responder.h"
+
+#include "hx_drv_tflm.h"  // NOLINT
 
 // This dummy implementation writes person and no person scores to the error
 // console. Real applications will want to take some custom action instead, and
@@ -31,3 +37,5 @@ void RespondToDetection(tflite::ErrorReporter* error_reporter,
   TF_LITE_REPORT_ERROR(error_reporter, "person score:%d no person score %d",
                        person_score, no_person_score);
 }
+
+#endif  // ARDUINO_EXCLUDE_CODE

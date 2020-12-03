@@ -65,7 +65,7 @@ quantization only, `dilation_ratio==1` 3. Average Pooling 4. Max Pooling 5.
 Fully Connected
 
 Currently only
-[/tensorflow/lite/micro/examples/person_detection_experimental](/tensorflow/lite/micro/examples/person_detection_experimental)
+[/tensorflow/lite/micro/examples/person_detection](/tensorflow/lite/micro/examples/person_detection)
 is quantized using this specification. Other examples can be executed on
 ARC-based targets, but will only use reference kernels.
 

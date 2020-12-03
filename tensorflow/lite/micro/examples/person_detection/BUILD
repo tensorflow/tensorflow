@@ -135,9 +135,3 @@ cc_binary(
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )
-
-sh_test(
-    name = "person_detection_binary_test",
-    srcs = ["person_detection_binary_test.sh"],
-    data = [":person_detection"],
-)

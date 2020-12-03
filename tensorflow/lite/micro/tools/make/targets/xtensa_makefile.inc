@@ -56,7 +56,6 @@ EXCLUDED_EXAMPLE_TESTS := \
   tensorflow/lite/micro/examples/magic_wand/Makefile.inc \
   tensorflow/lite/micro/examples/micro_speech/Makefile.inc \
   tensorflow/lite/micro/examples/network_tester/Makefile.inc \
-  tensorflow/lite/micro/examples/person_detection/Makefile.inc \
-  tensorflow/lite/micro/examples/person_detection_experimental/Makefile.inc
+  tensorflow/lite/micro/examples/person_detection/Makefile.inc
 MICRO_LITE_EXAMPLE_TESTS := $(filter-out $(EXCLUDED_EXAMPLE_TESTS), $(MICRO_LITE_EXAMPLE_TESTS))
 

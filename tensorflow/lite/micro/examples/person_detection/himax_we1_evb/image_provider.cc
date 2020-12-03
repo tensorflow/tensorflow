@@ -13,14 +13,37 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/micro/examples/person_detection_experimental/image_provider.h"
+#if defined(ARDUINO)
+#define ARDUINO_EXCLUDE_CODE
+#endif  // defined(ARDUINO)
 
-#include "tensorflow/lite/micro/examples/person_detection_experimental/model_settings.h"
+#ifndef ARDUINO_EXCLUDE_CODE
+
+#include "tensorflow/lite/micro/examples/person_detection/image_provider.h"
+
+#include "hx_drv_tflm.h"  // NOLINT
+#include "tensorflow/lite/micro/examples/person_detection/model_settings.h"
+
+hx_drv_sensor_image_config_t g_pimg_config;
 
 TfLiteStatus GetImage(tflite::ErrorReporter* error_reporter, int image_width,
                       int image_height, int channels, int8_t* image_data) {
-  for (int i = 0; i < image_width * image_height * channels; ++i) {
-    image_data[i] = 0;
+  static bool is_initialized = false;
+
+  if (!is_initialized) {
+    if (hx_drv_sensor_initial(&g_pimg_config) != HX_DRV_LIB_PASS) {
+      return kTfLiteError;
+    }
+    is_initialized = true;
   }
+
+  hx_drv_sensor_capture(&g_pimg_config);
+
+  hx_drv_image_rescale((uint8_t*)g_pimg_config.raw_address,
+                       g_pimg_config.img_width, g_pimg_config.img_height,
+                       image_data, image_width, image_height);
+
   return kTfLiteOk;
 }
+
+#endif  // ARDUINO_EXCLUDE_CODE
