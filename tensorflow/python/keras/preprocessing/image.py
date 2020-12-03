@@ -674,13 +674,13 @@ class ImageDataGenerator(image.ImageDataGenerator):
       width_shift_range=0.2,
       height_shift_range=0.2,
       horizontal_flip=True,
-      validation_split = 0.2)
+      validation_split=0.2)
   # compute quantities required for featurewise normalization
   # (std, mean, and principal components if ZCA whitening is applied)
   datagen.fit(x_train)
   # fits the model on batches with real-time data augmentation:
-  model.fit(datagen.flow(x_train, y_train, batch_size=32, subset = 'training'),
-            validation_data = datagen.flow(x_train, y_train, batch_size=8, subset = 'validation'),
+  model.fit(datagen.flow(x_train, y_train, batch_size=32, subset='training'),
+            validation_data=datagen.flow(x_train, y_train, batch_size=8, subset='validation'),
             steps_per_epoch=len(x_train) / 32, epochs=epochs)
   # here's a more "manual" example
   for e in range(epochs):
