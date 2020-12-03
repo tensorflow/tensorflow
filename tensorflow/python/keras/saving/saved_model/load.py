@@ -431,7 +431,7 @@ class KerasObjectLoader(object):
     else:
       obj = (
           self._revive_graph_network(identifier, metadata, node_id) or
-          self._revive_layer_from_config(metadata, node_id))
+          self._revive_layer_or_model_from_config(metadata, node_id))
 
     if obj is None:
       return None, None
@@ -482,8 +482,8 @@ class KerasObjectLoader(object):
       self._models_to_reconstruct.append(node_id)
     return model
 
-  def _revive_layer_from_config(self, metadata, node_id):
-    """Revives a layer from config, or returns None if infeasible."""
+  def _revive_layer_or_model_from_config(self, metadata, node_id):
+    """Revives a layer/custom model from config; returns None if infeasible."""
     # Check that the following requirements are met for reviving from config:
     #    1. Object can be deserialized from config.
     #    2. If the object needs to be built, then the build input shape can be
@@ -521,6 +521,12 @@ class KerasObjectLoader(object):
       obj._set_dtype_policy(metadata['dtype'])
     if metadata.get('stateful') is not None:
       obj.stateful = metadata['stateful']
+    # Restore model save spec for subclassed models. (layers do not store a
+    # SaveSpec)
+    if isinstance(obj, training_lib.Model):
+      save_spec = metadata.get('save_spec')
+      if save_spec is not None:
+        obj._set_save_spec(save_spec)
     # pylint: enable=protected-access
 
     build_input_shape = metadata.get('build_input_shape')
@@ -529,7 +535,6 @@ class KerasObjectLoader(object):
     if not built:
       # If the layer cannot be built, revive a custom layer instead.
       return None
-
     return obj
 
   def _revive_metric_from_config(self, metadata):
