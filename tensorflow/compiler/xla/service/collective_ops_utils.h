@@ -254,8 +254,6 @@ class Rendezvous {
     return false;
   }
 
-  virtual void CleanupImpl(O handle, bool is_primary) {}
-
   tensorflow::mutex mu_;
 
   bool initialized_ TF_GUARDED_BY(mu_) = false;
@@ -296,34 +294,14 @@ class Rendezvous {
           participant.device_ordinal, participant.stream, key_.ToString());
     });
 
-    StatusOr<ParticipantImplOutput> p_or = RunCollectiveOp(participant);
-
-    done_.DecrementCount();
-    if (!p_or.ok()) {
-      return p_or.status();
-    }
-    ParticipantImplOutput p = p_or.ValueOrDie();
-
-    // The primary owns the lock on the NCCL clique.  Hold it until all threads
-    // are done.  (We'll release it when we return from this function.)
-    if (p.is_primary) {
-      WaitAndLogIfStuck(&done_, [&] {
-        return absl::StrFormat(
-            "primary participant waiting for all other participants to "
-            "complete all-reduce %s",
-            key_.ToString());
-      });
-    }
-
-    CleanupImpl(p.custom_output, p.is_primary);
-
+    TF_ASSIGN_OR_RETURN(ParticipantImplOutput p, RunCollectiveOp(participant));
     return std::make_pair(p.custom_output, returned_blocking_counter_);
   }
+
   const RendezvousKey key_;
 
   tensorflow::BlockingCounter all_participants_present_{
       key_.num_local_participants};
-  tensorflow::BlockingCounter done_{key_.num_local_participants};
 
   // tensorflow::BlockingCounter returned by SubmitParticipant.
   std::shared_ptr<tensorflow::BlockingCounter> returned_blocking_counter_{
