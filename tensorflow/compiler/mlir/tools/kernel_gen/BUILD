@@ -184,6 +184,7 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]),
     deps = [
+        "//tensorflow/core:framework",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform/default/build_config:stream_executor_cuda",
@@ -198,8 +199,10 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     copts = if_rocm_is_configured(["-DTENSORFLOW_USE_ROCM=1"]),
     deps = if_rocm_is_configured([
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:mlir_c_runner_utils",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform/default/build_config:stream_executor_rocm",
         "@local_config_rocm//rocm:rocm_headers",
     ]),
