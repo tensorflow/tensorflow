@@ -256,7 +256,7 @@ TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrBool(
 // If the attribute could not be found or could not be interpreted as
 // string, *status is populated with an error.
 TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrString(
-    TF_OpKernelConstruction* ctx, const char* attr_name, void* val,
+    TF_OpKernelConstruction* ctx, const char* attr_name, char* val,
     size_t max_length, TF_Status* status);
 
 // Interprets the named kernel construction attribute as a TF_DataType array and
@@ -318,7 +318,7 @@ TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrBoolList(
 // TF_OpKernelConstruction_GetAttrSize(ctx, attr_name, list_size,
 // total_size).
 TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrStringList(
-    TF_OpKernelConstruction* ctx, const char* attr_name, void** vals,
+    TF_OpKernelConstruction* ctx, const char* attr_name, char** vals,
     size_t* lengths, int max_values, void* storage, size_t storage_size,
     TF_Status* status);
 

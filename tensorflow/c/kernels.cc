@@ -388,7 +388,7 @@ DEFINE_TF_GETATTR(Float, float, float, "float", f)
 DEFINE_TF_GETATTR(Bool, TF_Bool, bool, "bool", b)
 
 void TF_OpKernelConstruction_GetAttrString(TF_OpKernelConstruction* ctx,
-                                           const char* attr_name, void* value,
+                                           const char* attr_name, char* value,
                                            size_t max_length,
                                            TF_Status* status) {
   std::string v;
@@ -406,7 +406,7 @@ void TF_OpKernelConstruction_GetAttrString(TF_OpKernelConstruction* ctx,
 
 void TF_OpKernelConstruction_GetAttrStringList(TF_OpKernelConstruction* ctx,
                                                const char* attr_name,
-                                               void** values, size_t* lengths,
+                                               char** values, size_t* lengths,
                                                int max_values, void* storage,
                                                size_t storage_size,
                                                TF_Status* status) {
