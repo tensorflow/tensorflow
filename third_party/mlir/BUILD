@@ -1533,6 +1533,7 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
+        ":Async",
         ":EDSC",
         ":GPUDialect",
         ":GPUPassIncGen",
