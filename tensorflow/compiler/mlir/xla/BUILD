@@ -354,6 +354,7 @@ cc_library(
         ":mhlo_to_lhlo_with_xla",
         ":mlir_hlo_to_hlo",
         ":translate_cl_options",
+        ":type_to_shape",
         "//tensorflow/compiler/jit:xla_cpu_jit",
         "//tensorflow/compiler/jit:xla_gpu_jit",
         "//tensorflow/compiler/mlir/hlo",
