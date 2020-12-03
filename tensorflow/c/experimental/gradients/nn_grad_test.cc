@@ -25,7 +25,6 @@ namespace internal {
 namespace {
 
 using tensorflow::TF_StatusPtr;
-using tracing::TracingOperation;
 
 Status BiasAddModel(AbstractContext* ctx,
                     absl::Span<AbstractTensorHandle* const> inputs,
@@ -38,30 +37,20 @@ Status BiasAddGradModel(AbstractContext* ctx,
                         absl::Span<AbstractTensorHandle* const> inputs,
                         absl::Span<AbstractTensorHandle*> outputs,
                         const GradientRegistry& registry) {
-  TapeVSpace vspace(ctx);
-  auto tape = new Tape(/*persistent=*/false);
-  tape->Watch(ToId(inputs[0]));  // Watch A.
-  tape->Watch(ToId(inputs[1]));  // Watch Bias.
+  Tape tape(/*persistent=*/false);
+  tape.Watch(inputs[0]);  // Watch A.
+  tape.Watch(inputs[1]);  // Watch Bias.
   std::vector<AbstractTensorHandle*> temp_outputs(1);
-  AbstractContextPtr tape_ctx(new TapeContext(ctx, tape, registry));
+  AbstractContextPtr tape_ctx(new TapeContext(ctx, &tape, registry));
   TF_RETURN_IF_ERROR(ops::BiasAdd(tape_ctx.get(), inputs,
                                   absl::MakeSpan(temp_outputs), "BiasAddGrad"));
-  std::unordered_map<tensorflow::int64, TapeTensor>
-      source_tensors_that_are_targets;
 
-  std::vector<AbstractTensorHandle*> out_grads;
-  TF_RETURN_IF_ERROR(tape->ComputeGradient(
-      vspace, /*target_tensor_ids=*/{ToId(temp_outputs[0])},
-      /*source_tensor_ids=*/{ToId(inputs[0]), ToId(inputs[1])},
-      source_tensors_that_are_targets,
-      /*output_gradients=*/{}, &out_grads,
-      /*build_default_zeros_grads=*/false));
+  TF_RETURN_IF_ERROR(tape.ComputeGradient(ctx, /*targets=*/temp_outputs,
+                                          /*sources=*/inputs,
+                                          /*output_gradients=*/{}, outputs));
   for (auto temp_output : temp_outputs) {
     temp_output->Unref();
   }
-  outputs[0] = out_grads[0];
-  outputs[1] = out_grads[1];
-  delete tape;
   return Status::OK();
 }
 

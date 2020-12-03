@@ -12,18 +12,23 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_C_EXPERIMENTAL_GRADIENTS_NN_GRAD_H_
-#define TENSORFLOW_C_EXPERIMENTAL_GRADIENTS_NN_GRAD_H_
+#ifndef TENSORFLOW_C_EXPERIMENTAL_GRADIENTS_NOT_DIFFERENTIABLE_H_
+#define TENSORFLOW_C_EXPERIMENTAL_GRADIENTS_NOT_DIFFERENTIABLE_H_
 
+#include "tensorflow/c/eager/abstract_context.h"
 #include "tensorflow/c/eager/gradients.h"
 
 namespace tensorflow {
 namespace gradients {
-GradientFunction* ReluRegisterer(const ForwardOperation& op);
-GradientFunction* SparseSoftmaxCrossEntropyWithLogitsRegisterer(
-    const ForwardOperation& op);
-GradientFunction* BiasAddRegisterer(const ForwardOperation& op);
+// Ignores `grad_outputs` and sets all entries in grad_inputs to nullptr.
+class NotDifferentiableGradientFunction : public GradientFunction {
+  Status Compute(AbstractContext* ctx,
+                 absl::Span<AbstractTensorHandle* const> grad_outputs,
+                 absl::Span<AbstractTensorHandle*> grad_inputs) override;
+};
+// Shorthand for registry->Register(op, new NotDifferentiableGradientFunction)
+Status RegisterNotDifferentiable(GradientRegistry* registry, const string& op);
 }  // namespace gradients
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_C_EXPERIMENTAL_GRADIENTS_NN_GRAD_H_
+#endif  // TENSORFLOW_C_EXPERIMENTAL_GRADIENTS_NOT_DIFFERENTIABLE_H_

@@ -30,6 +30,7 @@ cc_library(
         "//tensorflow:internal",
     ],
     deps = [
+        "//tensorflow/c/eager:abstract_context",
         "//tensorflow/c/eager:abstract_operation",
         "//tensorflow/c/eager:abstract_tensor_handle",
         "//tensorflow/c/eager:c_api_unified_internal",
@@ -80,11 +81,28 @@ cc_library(
 )
 
 cc_library(
+    name = "not_differentiable",
+    srcs = ["not_differentiable.cc"],
+    hdrs = [
+        "not_differentiable.h",
+    ],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        "//tensorflow/c/eager:abstract_context",
+        "//tensorflow/c/eager:gradients_internal",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "gradients",
     hdrs = [
         "array_grad.h",
         "math_grad.h",
         "nn_grad.h",
+        "not_differentiable.h",
     ],
     visibility = [
         "//tensorflow:internal",
@@ -93,6 +111,7 @@ cc_library(
         ":array_grad",
         ":math_grad",
         ":nn_grad",
+        ":not_differentiable",
         "//tensorflow/c/eager:gradients_internal",
     ],
 )
@@ -103,6 +122,7 @@ filegroup(
         "array_grad.h",
         "math_grad.h",
         "nn_grad.h",
+        "not_differentiable.h",
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
