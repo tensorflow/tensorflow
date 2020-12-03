@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/pjrt/nvidia_gpu_device.h"
+#include "tensorflow/compiler/xla/pjrt/gpu_device.h"
 
 #include "absl/container/flat_hash_map.h"
 
@@ -60,10 +60,11 @@ xla::StatusOr<xla::DeviceAssignment> GpuClient::GetDefaultDeviceAssignment(
 
 // Builds an xla::LocalClient for the GPU platform.
 StatusOr<LocalClient*> GetGpuXlaClient() {
+  // "gpu" will be substitued by the default defined in platform_util.cc
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
-                      PlatformUtil::GetPlatform("CUDA"));
+                      PlatformUtil::GetPlatform("gpu"));
   if (platform->VisibleDeviceCount() <= 0) {
-    return FailedPrecondition("No visible NVidia GPU devices.");
+    return FailedPrecondition("No visible GPU devices.");
   }
   LocalClientOptions options;
   options.set_platform(platform);
@@ -308,7 +309,7 @@ GpuDevice::GpuDevice(int id,
     : PjRtDevice(id, std::move(local_device_state), std::move(device_kind),
                  node_id) {}
 
-StatusOr<std::unique_ptr<PjRtClient>> GetNvidiaGpuClient(
+StatusOr<std::unique_ptr<PjRtClient>> GetGpuClient(
     bool asynchronous, const GpuAllocatorConfig& allocator_config,
     std::shared_ptr<DistributedRuntimeClient> distributed_client, int node_id) {
   TF_ASSIGN_OR_RETURN(LocalClient * xla_client, GetGpuXlaClient());
