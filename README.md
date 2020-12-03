@@ -54,7 +54,7 @@ A smaller CPU-only package is also available:
 $ pip install tensorflow-cpu
 ```
 
-To update TensorFlow to the latest version, add `--upgrade` flag to the above
+To update the TensorFlow to the latest version, add `--upgrade` flag to the above
 commands.
 
 *Nightly binaries are available for testing using the
