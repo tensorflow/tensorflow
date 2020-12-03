@@ -135,7 +135,7 @@ void BuildFusableChains(const std::vector<ValueId>& input_ids,
   for (auto input_id : input_ids) {
     auto desc = std::make_shared<ComputeTaskDescriptor>();
     desc->is_linkable = true;
-    desc->AddDstTensor("");
+    desc->AddDstTensor("", {});
     NodeDescriptor node;
     node.task = desc;
     node.dst_tensors_ids = {input_id};
@@ -397,14 +397,14 @@ NodeDescriptor NonLinkableStub(int operation_id, ValueId input_id,
         return;
       }
       const int linear_index = (gid.z * size.y + gid.y) * size.x + gid.x;
-      FLT4 value = input_buffer[linear_index];
+      FLT4 value = src_tensor[linear_index];
       $2
-      output_buffer[linear_index] = value;
+      dst_tensor[linear_index] = value;
     }
   )";
 
-  desc->AddSrcTensor("input_buffer");
-  desc->AddDstTensor("output_buffer");
+  desc->AddSrcTensor("src_tensor", {});
+  desc->AddDstTensor("dst_tensor", {});
 
   desc->uniform_buffers = {
       {"constant int2& size",
@@ -491,7 +491,7 @@ NodeDescriptor FuseChain(const FusionSequence& chain) {
                                "[[buffer(" + index + ")]],\n";
         call_arguments += ", buffer" + index;
         input_index++;
-        fused_descriptor->AddSrcTensor("");
+        fused_descriptor->AddSrcTensor("", {});
         node_desc.src_tensors_ids.push_back(desc.src_tensors_ids[i]);
       }
     }
@@ -532,7 +532,7 @@ NodeDescriptor FuseChain(const FusionSequence& chain) {
   fused_descriptor->shader_source =
       absl::Substitute(non_linkable.task->shader_source, function_code + "$0",
                        buffer_declarations + "$1", call_code);
-  fused_descriptor->AddDstTensor("");
+  fused_descriptor->AddDstTensor("", {});
   fused_descriptor->resize_function = non_linkable.task->resize_function;
   node_desc.dst_tensors_ids = {fused_id};
   node_desc.task = fused_descriptor;

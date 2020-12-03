@@ -30,8 +30,9 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 
-ComputeTaskDescriptor SpaceToDepth(const SpaceToDepthAttributes& attr) {
-  ComputeTaskDescriptor desc;
+ComputeTaskDescriptor SpaceToDepth(const OperationDef& definition,
+                                   const SpaceToDepthAttributes& attr) {
+  ComputeTaskDescriptor desc(definition);
   desc.shader_source = R"(
 #include <metal_stdlib>
 using namespace metal;
@@ -56,15 +57,15 @@ kernel void ComputeFunction($1 uint3 gid[[thread_position_in_grid]]) {
     uint src_y = gid.y * block_size + block_id / block_size;
     uint src_c = dst_c % src_size.z;
     value[i] =
-        src_buffer[src_x + src_size.x * (src_y + src_size.y * (src_c / 4))]
+        src_tensor[src_x + src_size.x * (src_y + src_size.y * (src_c / 4))]
                   [src_c % 4];
   }
   $2
-  dst_buffer[gid.x + dst_size.x * (gid.y + dst_size.y * gid.z)] = value;
+  dst_tensor[gid.x + dst_size.x * (gid.y + dst_size.y * gid.z)] = value;
 })";
 
-  desc.AddSrcTensor("src_buffer");
-  desc.AddDstTensor("dst_buffer");
+  desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
+  desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
   desc.uniform_buffers = {
       {"constant uniforms& params",

@@ -37,8 +37,8 @@ static std::vector<tflite::gpu::metal::NodeDescriptor> MulLinkable(ValueId input
   desc->shader_source = R"(FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid) {
     return value * 1.1f;
   })";
-  desc->AddSrcTensor("");
-  desc->AddDstTensor("");
+  desc->AddSrcTensor("", {});
+  desc->AddDstTensor("", {});
   tflite::gpu::metal::NodeDescriptor node_desc;
   node_desc.task = desc;
   node_desc.src_tensors_ids = {input_id};
@@ -68,8 +68,8 @@ static std::vector<tflite::gpu::metal::NodeDescriptor> Add(
     }
   )";
 
-  desc->AddSrcTensor("input_buffer");
-  desc->AddDstTensor("output_buffer");
+  desc->AddSrcTensor("input_buffer", {});
+  desc->AddDstTensor("output_buffer", {});
 
   desc->uniform_buffers = {
       {"constant int2& size",
@@ -121,9 +121,9 @@ static std::vector<tflite::gpu::metal::NodeDescriptor> Add2(
     }
   )";
 
-  desc->AddSrcTensor("input_buffer1");
-  desc->AddSrcTensor("input_buffer2");
-  desc->AddDstTensor("output_buffer");
+  desc->AddSrcTensor("input_buffer1", {});
+  desc->AddSrcTensor("input_buffer2", {});
+  desc->AddDstTensor("output_buffer", {});
 
   desc->uniform_buffers = {
       {"constant int2& size",
@@ -163,9 +163,9 @@ static std::vector<tflite::gpu::metal::NodeDescriptor> Add2Linkable(ValueId inpu
 FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid, device FLT4* const buffer2) {
   return value + buffer2[linear_index];
 })";
-  desc->AddSrcTensor("");
-  desc->AddSrcTensor("");
-  desc->AddDstTensor("");
+  desc->AddSrcTensor("", {});
+  desc->AddSrcTensor("", {});
+  desc->AddDstTensor("", {});
 
   tflite::gpu::metal::NodeDescriptor node_desc;
   node_desc.task = desc;

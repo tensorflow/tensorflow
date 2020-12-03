@@ -27,15 +27,17 @@ namespace gpu {
 namespace metal {
 
 // One input is one runtime tensor
-ComputeTaskDescriptor ElementwiseWithOneInput(OperationType op_type);
+ComputeTaskDescriptor ElementwiseWithOneInput(const OperationDef& definition,
+                                              OperationType op_type);
 
 // Two inputs are two runtime tensors
-ComputeTaskDescriptor ElementwiseWithTwoInputs(const BHWC& second_shape,
+ComputeTaskDescriptor ElementwiseWithTwoInputs(const OperationDef& definition,
+                                               const BHWC& second_shape,
                                                OperationType op_type);
 
 // First input is one runtime tensor and second input is constant argument
 ComputeTaskDescriptor ElementwiseWithOneInputAndConstantArguent(
-    const RuntimeOptions& options, OperationType op_type,
+    const OperationDef& definition, OperationType op_type,
     const TensorOrScalar& attr);
 
 }  // namespace metal

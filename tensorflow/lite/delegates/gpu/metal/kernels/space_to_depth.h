@@ -26,7 +26,8 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 
-ComputeTaskDescriptor SpaceToDepth(const SpaceToDepthAttributes& attr);
+ComputeTaskDescriptor SpaceToDepth(const OperationDef& definition,
+                                   const SpaceToDepthAttributes& attr);
 
 }  // namespace metal
 }  // namespace gpu
