@@ -173,11 +173,13 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
                  type.dyn_cast<mlir::quant::UniformQuantizedType>()) {
     return GetTFLiteType(q_uniform_type.getStorageType(),
                          q_uniform_type.isSigned());
-
   } else if (auto q_peraxis_type =
                  type.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
     return GetTFLiteType(q_peraxis_type.getStorageType(),
                          q_peraxis_type.isSigned());
+  } else if (auto q_calibrated_type =
+                 type.dyn_cast<mlir::quant::CalibratedQuantizedType>()) {
+    return GetTFLiteType(q_calibrated_type.getExpressedType());
   } else if (type.isa<mlir::TF::ResourceType>()) {
     // Treat tf.resource values as integer values in flatbuffer.
     // TODO(b/146131919): Maybe need to have a detailed design for supporting
@@ -652,17 +654,20 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensorFromType(
   auto element_type = tensor_type.getElementType();
   tflite::TensorType tflite_element_type =
       GetTFLiteType(tensor_type.getElementType()).ValueOrDie();
-  BufferOffset<tflite::QuantizationParameters> q_params;
-  auto qtype = element_type.dyn_cast<mlir::quant::UniformQuantizedType>();
-  if (!qtype) {
-    return tflite::CreateTensor(builder_, builder_.CreateVector(shape),
-                                tflite_element_type,
-                                /*buffer=*/0, builder_.CreateString(name));
+  BufferOffset<tflite::QuantizationParameters> q_params = 0;
+  if (auto qtype = element_type.dyn_cast<mlir::quant::UniformQuantizedType>()) {
+    q_params = tflite::CreateQuantizationParameters(
+        builder_, /*min=*/0, /*max=*/0,
+        builder_.CreateVector<float>({static_cast<float>(qtype.getScale())}),
+        builder_.CreateVector<int64_t>({qtype.getZeroPoint()}));
+  } else if (auto qtype =
+                 element_type
+                     .dyn_cast<mlir::quant::CalibratedQuantizedType>()) {
+    q_params = tflite::CreateQuantizationParameters(
+        builder_,
+        builder_.CreateVector<float>({static_cast<float>(qtype.getMin())}),
+        builder_.CreateVector<float>({static_cast<float>(qtype.getMax())}));
   }
-  q_params = tflite::CreateQuantizationParameters(
-      builder_, /*min=*/0, /*max=*/0,
-      builder_.CreateVector<float>({static_cast<float>(qtype.getScale())}),
-      builder_.CreateVector<int64_t>({qtype.getZeroPoint()}));
   return tflite::CreateTensor(
       builder_, builder_.CreateVector(shape), tflite_element_type,
       /*buffer=*/0, builder_.CreateString(name), q_params,
