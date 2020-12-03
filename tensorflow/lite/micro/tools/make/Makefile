@@ -237,13 +237,22 @@ MICRO_LITE_BENCHMARKS := $(wildcard tensorflow/lite/micro/benchmarks/Makefile.in
 MICROLITE_BENCHMARK_SRCS := \
 $(wildcard tensorflow/lite/micro/benchmarks/*benchmark.cc)
 
+MICROLITE_EXCLUDED_TEST_SRCS := \
+end
+
 MICROLITE_TEST_SRCS := \
 $(wildcard tensorflow/lite/micro/*test.cc) \
 $(wildcard tensorflow/lite/micro/kernels/*test.cc) \
 $(wildcard tensorflow/lite/micro/memory_planner/*test.cc)
+MICROLITE_TEST_SRCS := $(filter-out $(MICROLITE_EXCLUDED_TEST_SRCS), $(MICROLITE_TEST_SRCS))
+
+MICROLITE_EXCLUDED_KERNEL_SRCS := \
+end
 
 MICROLITE_CC_KERNEL_SRCS := \
 $(wildcard tensorflow/lite/micro/kernels/*.cc)
+MICROLITE_CC_KERNEL_SRCS := $(filter-out $(MICROLITE_EXCLUDED_KERNEL_SRCS), $(MICROLITE_CC_KERNEL_SRCS))
+MICROLITE_CC_KERNEL_SRCS := $(filter-out $(MICROLITE_EXCLUDED_TEST_SRCS), $(MICROLITE_CC_KERNEL_SRCS))
 MICROLITE_CC_KERNEL_SRCS := $(filter-out $(MICROLITE_TEST_SRCS), $(MICROLITE_CC_KERNEL_SRCS))
 
 MICROLITE_TEST_HDRS := \
