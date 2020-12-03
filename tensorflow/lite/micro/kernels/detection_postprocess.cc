@@ -587,6 +587,8 @@ TfLiteStatus NonMaxSuppressionMultiClassRegularHelper(TfLiteContext* context,
           0.0f;
     }
   }
+
+  TF_LITE_ENSURE(context, num_detections != nullptr);
   tflite::micro::GetTensorData<float>(num_detections)[0] =
       size_of_sorted_indices;
 
@@ -683,6 +685,7 @@ TfLiteStatus NonMaxSuppressionMultiClassFastHelper(TfLiteContext* context,
     }
   }
 
+  TF_LITE_ENSURE(context, num_detections != nullptr);
   tflite::micro::GetTensorData<float>(num_detections)[0] = output_box_index;
   return kTfLiteOk;
 }
