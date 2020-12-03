@@ -179,8 +179,9 @@ def load_model_from_hdf5(filepath, custom_objects=None, compile=True):  # pylint
     model_config = f.attrs.get('model_config')
     if model_config is None:
       raise ValueError('No model found in config file.')
-    model_config_dec = model_config.encode('utf-8').decode('utf-8')
-    model_config = json_utils.decode(model_config_dec)
+    if isinstance(model_config, str):
+      model_config.encode('utf-8')
+    model_config = json_utils.decode(model_config.decode('utf-8'))
     model = model_config_lib.model_from_config(model_config,
                                                custom_objects=custom_objects)
 
