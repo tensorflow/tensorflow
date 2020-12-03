@@ -93,10 +93,14 @@ class CppGradients
 
   GradientRegistry registry_;
   AbstractContextPtr ctx_;
+
+ public:
+  bool UseMlir() const { return strcmp(std::get<0>(GetParam()), "mlir") == 0; }
+  bool UseFunction() const { return std::get<2>(GetParam()); }
 };
 
 TEST_P(CppGradients, TestBiasAddGrad) {
-  if (std::get<0>(GetParam()) == "mlir" && !std::get<2>(GetParam())) {
+  if (!UseFunction() && UseMlir()) {
     GTEST_SKIP() << "SetAttrString has not been implemented yet.\n";
   }
 
