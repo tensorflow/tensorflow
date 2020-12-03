@@ -151,6 +151,38 @@ function install_ubuntu_16_pip_deps {
   "${PIP_CMD}" install --user 'PyYAML ~= 5.3.1'
 }
 
+# TODO(amitpatankar): Move this function logic into install_macos_pip_deps.
+function install_macos_pip_deps_virtualenv {
+  PIP_CMD="pip"
+  ${PIP_CMD} install --upgrade setuptools pip wheel
+  # Now, install the deps, as listed in setup.py
+  ${PIP_CMD} install 'absl-py ~= 0.10'
+  ${PIP_CMD} install 'astunparse ~= 1.6.3'
+  ${PIP_CMD} install 'flatbuffers ~= 1.12.0'
+  ${PIP_CMD} install 'google_pasta ~= 0.2'
+  ${PIP_CMD} install 'h5py ~= 2.10.0'
+  ${PIP_CMD} install 'keras_preprocessing ~= 1.1.2'
+  ${PIP_CMD} install 'numpy ~= 1.19.2'
+  ${PIP_CMD} install 'opt_einsum ~= 3.3.0'
+  ${PIP_CMD} install 'protobuf >= 3.9.2'
+  ${PIP_CMD} install 'six ~= 1.15.0'
+  ${PIP_CMD} install 'termcolor ~= 1.1.0'
+  ${PIP_CMD} install 'typing_extensions ~= 3.7.4'
+  ${PIP_CMD} install 'wheel ~= 0.35'
+  ${PIP_CMD} install 'wrapt ~= 1.12.1'
+  # We need to pin gast dependency exactly
+  ${PIP_CMD} install 'gast == 0.3.3'
+  # Finally, install tensorboard and estimator
+  # Note that here we want the latest version that matches (b/156523241)
+  ${PIP_CMD} install --upgrade --force-reinstall 'tb-nightly ~= 2.4.0.a'
+  ${PIP_CMD} install --upgrade --force-reinstall 'tensorflow_estimator ~= 2.3.0'
+  # Test dependencies
+  ${PIP_CMD} install 'grpcio ~= 1.32.0'
+  ${PIP_CMD} install 'portpicker ~= 1.3.1'
+  ${PIP_CMD} install 'scipy ~= 1.5.2'
+  ${PIP_CMD} install 'twine ~= 3.2.0'
+}
+
 function install_macos_pip_deps {
   # TODO(mihaimaruseac): Remove need for sudo, then this can be merged with
   # above (probably needs to convert to venv too).
@@ -205,6 +237,7 @@ function install_macos_pip_deps {
   ${PIP_CMD} install --user 'twine ~= 3.2.0'
   # LINT.ThenChange(:linux_pip_installations)
 }
+
 
 function maybe_skip_v1 {
   # If we are building with v2 by default, skip tests with v1only tag.
