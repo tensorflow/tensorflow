@@ -96,7 +96,7 @@ class CppGradients
 
  public:
   bool UseMlir() const { return strcmp(std::get<0>(GetParam()), "mlir") == 0; }
-  bool UseFunction() const { return !std::get<2>(GetParam()); }
+  bool UseFunction() const { return std::get<2>(GetParam()); }
 };
 
 TEST_P(CppGradients, TestBiasAddGrad) {
