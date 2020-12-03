@@ -109,7 +109,7 @@ std::string GetSliceCode(const SliceAttributes& attr) {
             "s_c.x;"
          << std::endl;
     code << "      outside = step >= params.dst_size.z;" << std::endl;
-    code << "      tmp = outside ? null_vec : src_buffer[buffer_index];"
+    code << "      tmp = outside ? null_vec : src_tensor[buffer_index];"
          << std::endl;
     code << "      value[" << i << "] = tmp[addr % 4];" << std::endl;
     if (i != 3) {
@@ -121,7 +121,7 @@ std::string GetSliceCode(const SliceAttributes& attr) {
       int linear_index = (gid.z * params.dst_size.y + int(gid.y)) *
         params.dst_size.x + int(gid.x);
       $$2
-      dst_buffer[linear_index] = value;
+      dst_tensor[linear_index] = value;
     })";
   return absl::Substitute(
       code.str(), attr.starts.w, attr.strides.w, attr.ends.w, attr.starts.h,
@@ -129,12 +129,13 @@ std::string GetSliceCode(const SliceAttributes& attr) {
 }
 }  // namespace
 
-ComputeTaskDescriptor Slice(const SliceAttributes& attr) {
-  ComputeTaskDescriptor desc;
+ComputeTaskDescriptor Slice(const OperationDef& definition,
+                            const SliceAttributes& attr) {
+  ComputeTaskDescriptor desc(definition);
   desc.shader_source = GetSliceCode(attr);
 
-  desc.AddSrcTensor("src_buffer");
-  desc.AddDstTensor("dst_buffer");
+  desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
+  desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
   desc.uniform_buffers = {
       {"constant uniforms& params",

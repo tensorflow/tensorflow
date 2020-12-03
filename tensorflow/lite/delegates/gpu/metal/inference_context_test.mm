@@ -45,8 +45,8 @@ static ComputeTaskDescriptorPtr MulLinkable() {
   desc->shader_source = R"(FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid) {
     return value * 1.1f;
   })";
-  desc->AddSrcTensor("");
-  desc->AddDstTensor("");
+  desc->AddSrcTensor("", {});
+  desc->AddDstTensor("", {});
   return desc;
 }
 
@@ -71,8 +71,8 @@ static ComputeTaskDescriptorPtr Add() {
     }
   )";
 
-  desc->AddSrcTensor("input_buffer");
-  desc->AddDstTensor("output_buffer");
+  desc->AddSrcTensor("input_buffer", {});
+  desc->AddDstTensor("output_buffer", {});
 
   desc->uniform_buffers = {
       {"constant int2& size",
@@ -107,8 +107,8 @@ static ComputeTaskDescriptorPtr AddUniformLinkable(
   {
       return value + multiplier;
   })";
-  desc->AddSrcTensor("");
-  desc->AddDstTensor("");
+  desc->AddSrcTensor("", {});
+  desc->AddDstTensor("", {});
   desc->uniform_buffers = {
       {"constant FLT4&",
        [channel_multipliers](const std::vector<BHWC>& src_shapes,
@@ -128,8 +128,8 @@ static ComputeTaskDescriptorPtr MulArrayLinkable(
     device FLT4* const multiplier) {
       return value * multiplier[gid.z];
   })";
-  desc->AddSrcTensor("");
-  desc->AddDstTensor("");
+  desc->AddSrcTensor("", {});
+  desc->AddDstTensor("", {});
   desc->immutable_buffers = {
       {"device FLT4* const", GetByteBuffer(channel_multipliers)},
   };

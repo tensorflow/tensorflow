@@ -27,7 +27,8 @@ namespace gpu {
 namespace metal {
 
 // Extracts a strided slice of a tensor
-ComputeTaskDescriptor Slice(const SliceAttributes& attr);
+ComputeTaskDescriptor Slice(const OperationDef& definition,
+                            const SliceAttributes& attr);
 
 }  // namespace metal
 }  // namespace gpu

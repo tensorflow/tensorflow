@@ -65,8 +65,8 @@ std::string GetMaxUnpoolingCode(const HW& kernel_size) {
       int src_index = (gid.z * params.src_size.y + src_y) * params.src_size.x + src_x;
       int linear_index = (gid.z * params.dst_size.y + Y) * params.dst_size.x + X;
 
-      int4 indexes = outside ? int4(0) : int4(src_indices_buffer[src_index]);
-      FLT4 src_color = outside ? FLT4(0.0f) : src_buffer[src_index];
+      int4 indexes = outside ? int4(0) : int4(src_indices[src_index]);
+      FLT4 src_color = outside ? FLT4(0.0f) : src_tensor[src_index];
 
       int t_x = X - (src_x * params.stride.x - params.offset.x);
       int t_y = Y - (src_y * params.stride.y - params.offset.y);
@@ -79,20 +79,21 @@ std::string GetMaxUnpoolingCode(const HW& kernel_size) {
       value.w = t_index == indexes.w ? src_color.w : 0.0;
 
       $$2
-      output_buffer[linear_index] = value;
+      dst_tensor[linear_index] = value;
     }
   )";
   return absl::Substitute(shader_source, kernel_size.w);
 }
 }  // namespace
 
-ComputeTaskDescriptor MaxUnpooling(const MaxUnpooling2DAttributes& params) {
-  ComputeTaskDescriptor desc;
+ComputeTaskDescriptor MaxUnpooling(const OperationDef& definition,
+                                   const MaxUnpooling2DAttributes& params) {
+  ComputeTaskDescriptor desc(definition);
   desc.shader_source = GetMaxUnpoolingCode(params.kernel);
 
-  desc.AddSrcTensor("src_buffer");
-  desc.AddSrcTensor("src_indices_buffer");
-  desc.AddDstTensor("output_buffer");
+  desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
+  desc.AddSrcTensor("src_indices", definition.src_tensors[1]);
+  desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
   desc.uniform_buffers = {
       {"constant uniforms& params",

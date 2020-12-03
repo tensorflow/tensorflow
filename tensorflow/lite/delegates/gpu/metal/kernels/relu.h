@@ -25,7 +25,8 @@ namespace gpu {
 namespace metal {
 
 // Rectified Linear Unit
-ComputeTaskDescriptor ReLU(const ReLUAttributes& attr);
+ComputeTaskDescriptor ReLU(const OperationDef& definition,
+                           const ReLUAttributes& attr);
 
 }  // namespace metal
 }  // namespace gpu

@@ -83,9 +83,10 @@ std::string TwoInputFunctor(OperationType op_type, const std::string& value0,
 
 }  // namespace
 
-ComputeTaskDescriptor ElementwiseWithTwoInputs(const BHWC& second_shape,
+ComputeTaskDescriptor ElementwiseWithTwoInputs(const OperationDef& definition,
+                                               const BHWC& second_shape,
                                                OperationType op_type) {
-  ComputeTaskDescriptor desc;
+  ComputeTaskDescriptor desc(definition);
   desc.is_linkable = true;
   const std::string x_coord = second_shape.w == 1 ? "0" : "int(gid.x)";
   const std::string y_coord = second_shape.h == 1 ? "0" : "int(gid.y)";
@@ -106,9 +107,9 @@ ComputeTaskDescriptor ElementwiseWithTwoInputs(const BHWC& second_shape,
 
   desc.shader_source = code;
 
-  desc.AddSrcTensor("");
-  desc.AddSrcTensor("");
-  desc.AddDstTensor("");
+  desc.AddSrcTensor("", definition.src_tensors[0]);
+  desc.AddSrcTensor("", definition.src_tensors[1]);
+  desc.AddDstTensor("", definition.dst_tensors[0]);
 
   desc.uniform_buffers = {
       {"constant int2&",
@@ -124,8 +125,9 @@ ComputeTaskDescriptor ElementwiseWithTwoInputs(const BHWC& second_shape,
   return desc;
 }
 
-ComputeTaskDescriptor ElementwiseWithOneInput(OperationType op_type) {
-  ComputeTaskDescriptor desc;
+ComputeTaskDescriptor ElementwiseWithOneInput(const OperationDef& definition,
+                                              OperationType op_type) {
+  ComputeTaskDescriptor desc(definition);
   desc.is_linkable = true;
   desc.shader_source =
       "FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid) {\n";
@@ -133,16 +135,14 @@ ComputeTaskDescriptor ElementwiseWithOneInput(OperationType op_type) {
       "    return " + OneInputFunctor(op_type, "value") + ";\n";
   desc.shader_source += "  }";
 
-  desc.AddSrcTensor("");
-  desc.AddDstTensor("");
+  desc.AddSrcTensor("", definition.src_tensors[0]);
+  desc.AddDstTensor("", definition.dst_tensors[0]);
   return desc;
 }
 
 ComputeTaskDescriptor ElementwiseWithOneInputAndConstantArguent(
-    const RuntimeOptions& options, OperationType op_type,
+    const OperationDef& definition, OperationType op_type,
     const TensorOrScalar& attr) {
-  ComputeTaskDescriptor desc;
-  desc.is_linkable = true;
   auto scalar = absl::get_if<float>(&attr);
   auto linear_buf = absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&attr);
   auto hwc_buf = absl::get_if<Tensor<HWC, DataType::FLOAT32>>(&attr);
@@ -156,6 +156,8 @@ ComputeTaskDescriptor ElementwiseWithOneInputAndConstantArguent(
   if (hwc_buf) {
     param_desc += ", device FLT4* const hwc_buf, int2 hwc_size";
   }
+  ComputeTaskDescriptor desc(definition);
+  desc.is_linkable = true;
   desc.shader_source =
       "FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid" + param_desc +
       ") {\n";
@@ -180,8 +182,9 @@ ComputeTaskDescriptor ElementwiseWithOneInputAndConstantArguent(
       "    return " + TwoInputFunctor(op_type, "value", "second_arg") + ";\n";
   desc.shader_source += "  }";
 
-  desc.AddSrcTensor("");
-  desc.AddDstTensor("");
+  desc.AddSrcTensor("", definition.src_tensors[0]);
+  desc.AddDstTensor("", definition.dst_tensors[0]);
+  auto data_type = DeduceDataTypeFromPrecision(definition.precision);
   if (scalar) {
     std::vector<uint8_t> scalar_bits =
         GetByteBuffer(std::vector<float>{*scalar});
@@ -195,7 +198,7 @@ ComputeTaskDescriptor ElementwiseWithOneInputAndConstantArguent(
   } else if (linear_buf) {
     desc.immutable_buffers = {
         {"device FLT4* const",
-         GetByteBufferConverted(linear_buf->data, options.storage_precision)},
+         GetByteBufferConverted(linear_buf->data, data_type)},
     };
   } else if (hwc_buf) {
     std::vector<uint8_t> size_bits =
@@ -209,8 +212,7 @@ ComputeTaskDescriptor ElementwiseWithOneInputAndConstantArguent(
     };
     desc.immutable_buffers = {
         {"device FLT4* const",
-         GetByteBufferConverted(ConvertToPHWC4(*hwc_buf),
-                                options.storage_precision)},
+         GetByteBufferConverted(ConvertToPHWC4(*hwc_buf), data_type)},
     };
   }
   return desc;

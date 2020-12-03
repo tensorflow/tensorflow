@@ -26,8 +26,8 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/task/arguments.h"
+#include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
-#include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
 namespace tflite {
 namespace gpu {
@@ -58,12 +58,14 @@ struct ComputeTaskDescriptor {
   };
 
   ComputeTaskDescriptor() = default;
+  explicit ComputeTaskDescriptor(const OperationDef& def);
   // Move only
   ComputeTaskDescriptor(ComputeTaskDescriptor&& task) = default;
   ComputeTaskDescriptor& operator=(ComputeTaskDescriptor&& task) = default;
   ComputeTaskDescriptor(const ComputeTaskDescriptor&) = delete;
   ComputeTaskDescriptor& operator=(const ComputeTaskDescriptor&) = delete;
 
+  OperationDef definition;
   Arguments args;
   bool is_linkable = false;
   // A linkable function or a full shader source with 3 parameters $ for
@@ -97,8 +99,10 @@ struct ComputeTaskDescriptor {
   // unlinkable task must provide this.
   DispatchParamsFunction resize_function;
 
-  void AddSrcTensor(const std::string& tensor_name);
-  void AddDstTensor(const std::string& tensor_name);
+  void AddSrcTensor(const std::string& tensor_name,
+                    const TensorDescriptor& desc);
+  void AddDstTensor(const std::string& tensor_name,
+                    const TensorDescriptor& desc);
 };
 
 using ComputeTaskDescriptorPtr = std::shared_ptr<ComputeTaskDescriptor>;
@@ -124,15 +128,16 @@ std::vector<uint8_t> GetByteBuffer(const std::vector<T>& input_vector) {
 }
 
 /// Converts float to destination type (if needed) and stores as bytes array.
+/// supports DataType::FLOAT32 and DataType::FLOAT16
 std::vector<uint8_t> GetByteBufferConverted(
-    const std::vector<float>& input_vector,
-    RuntimeOptions::Precision destination_type);
+    const std::vector<float>& input_vector, DataType data_type);
 
 /// Resizes, Converts float to destination type (if needed) and stores as bytes
 /// array.
+/// supports DataType::FLOAT32 and DataType::FLOAT16
 std::vector<uint8_t> GetByteBufferConvertedResized(
-    const std::vector<float>& input_vector,
-    RuntimeOptions::Precision destination_type, size_t elements_count);
+    const std::vector<float>& input_vector, DataType data_type,
+    size_t elements_count);
 
 }  // namespace metal
 }  // namespace gpu
