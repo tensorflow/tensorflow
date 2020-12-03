@@ -133,7 +133,7 @@ tf_cuda_cc_test(
         "nn_grad_test.cc",
     ],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags(),
+    tags = tf_cuda_tests_tags() + ["no_cuda_asan"],  # b/173654156,
     deps = [
         ":grad_test_helper",
         ":nn_grad",
