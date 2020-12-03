@@ -1042,7 +1042,7 @@ TEST(BidirectionalRNNOpTest, ClosedBoxTestTimeMajorMergeOutputs) {
 
 // Check that if the input sequence is reversed the outputs are the same just
 // forward and backward are swapped (and reversed).
-TEST(BidirectionalRNNOpTest, BClosedBoxTestReverseInputs) {
+TEST(BidirectionalRNNOpTest, ClosedBoxTestReverseInputs) {
   BidirectionalRNNOpModel rnn(/*batches=*/2, /*sequence_len=*/16,
                               /*fw_units=*/16, /*bw_units=*/16,
                               /*input_size=*/8, /*aux_input_size=*/0,
