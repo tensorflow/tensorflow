@@ -132,6 +132,7 @@ tf_cuda_cc_test(
     srcs = [
         "nn_grad_test.cc",
     ],
+    args = ["--heap_check=local"],
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["no_cuda_asan"],  # b/173654156,
     deps = [
