@@ -17,98 +17,83 @@ limitations under the License.
 // Also adds some debugging helpers that are helpful when writing MLIR code to
 // run on GPUs.
 
-#include <cassert>
-#include <numeric>
-
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/Support/raw_ostream.h"
-#include "mlir/ExecutionEngine/CRunnerUtils.h"  // from @llvm-project
-
 #if TENSORFLOW_USE_ROCM
+#include "absl/container/flat_hash_map.h"
 #include "rocm/include/hip/hip_runtime.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/stream_executor/stream.h"
+#include "tensorflow/stream_executor/stream_executor_internal.h"
 
 #define HIP_REPORT_IF_ERROR(expr)                                       \
   [](hipError_t result) {                                               \
     if (!result) return;                                                \
-    const char* name = hipGetErrorName(result);                         \
+    const char *name = hipGetErrorName(result);                         \
     if (!name) name = "<unknown>";                                      \
-    llvm::errs() << "'" << #expr << "' failed with '" << name << "'\n"; \
+    LOG(WARNING) << "'" << #expr << "' failed with '" << name << "'\n"; \
   }(expr)
 
-extern "C" hipModule_t mgpuModuleLoad(void* data) {
-  hipModule_t module = nullptr;
-  HIP_REPORT_IF_ERROR(hipModuleLoadData(&module, data));
-  return module;
-}
+namespace {
+// Implements a cache for loading modules. The assumption is that we never
+// unload modules again during the lifetime of a tensorflow runtime process.
+struct HipRuntimeCache {
+ public:
+  hipModule_t loadModule(void *data) {
+    tensorflow::mutex_lock lock(module_handle_mutex);
+    hipModule_t &module = module_handles[data];
+    if (!module) {
+      HIP_REPORT_IF_ERROR(hipModuleLoadData(&module, data));
+    }
+    return module;
+  }
 
-extern "C" void mgpuModuleUnload(hipModule_t module) {
-  HIP_REPORT_IF_ERROR(hipModuleUnload(module));
-}
+  // Returns the runtime cache for the context associated with stream.
+  static HipRuntimeCache *get(hipStream_t stream) {
+    using CacheWithLock =
+        std::pair<tensorflow::mutex,
+                  absl::flat_hash_map<hipCtx_t, HipRuntimeCache *>>;
+    static auto *cache_with_lock = new CacheWithLock();
+    tensorflow::mutex_lock lock(cache_with_lock->first);
+    hipCtx_t context;
+    // HIP does not support getting the context of a stream. Use the current
+    // context instead.
+    HIP_REPORT_IF_ERROR(hipCtxGetCurrent(&context));
+    auto &runtime_cache = cache_with_lock->second[context];
+    if (!runtime_cache) {
+      runtime_cache = new HipRuntimeCache();
+    }
+    return runtime_cache;
+  }
 
-extern "C" hipFunction_t mgpuModuleGetFunction(hipModule_t module,
-                                               const char* name) {
-  hipFunction_t function = nullptr;
-  HIP_REPORT_IF_ERROR(hipModuleGetFunction(&function, module, name));
-  return function;
-}
+ private:
+  HipRuntimeCache() = default;
 
-// The wrapper uses intptr_t instead of CUDA's unsigned int to match
+  tensorflow::mutex module_handle_mutex;
+  absl::flat_hash_map<void *, hipModule_t> module_handles
+      TF_GUARDED_BY(module_handle_mutex);
+};
+}  // namespace
+
+// The wrapper uses intptr_t instead of HIP's unsigned int to match
 // the type of MLIR's index type. This avoids the need for casts in the
 // generated MLIR code.
-extern "C" void mgpuLaunchKernel(hipFunction_t function, intptr_t gridX,
-                                 intptr_t gridY, intptr_t gridZ,
-                                 intptr_t blockX, intptr_t blockY,
-                                 intptr_t blockZ, int32_t smem,
-                                 hipStream_t stream, void** params,
-                                 void** extra) {
-  HIP_REPORT_IF_ERROR(hipModuleLaunchKernel(function, gridX, gridY, gridZ,
-                                            blockX, blockY, blockZ, smem,
-                                            stream, params, extra));
-}
+extern "C" void tfKernelGenLaunchKernel(tensorflow::OpKernelContext *ctx,
+                                        void *module_blob, char *kernel_name,
+                                        intptr_t gridX, intptr_t gridY,
+                                        intptr_t gridZ, intptr_t blockX,
+                                        intptr_t blockY, intptr_t blockZ,
+                                        void **params) {
+  stream_executor::Stream *se_stream = ctx->op_device_context()->stream();
+  auto stream = reinterpret_cast<hipStream_t>(
+      se_stream->implementation()->GpuStreamHack());
+  hipModule_t module = HipRuntimeCache::get(stream)->loadModule(module_blob);
+  hipFunction_t function;
+  HIP_REPORT_IF_ERROR(hipModuleGetFunction(&function, module, kernel_name));
 
-extern "C" hipStream_t mgpuStreamCreate() {
-  hipStream_t stream = nullptr;
-  HIP_REPORT_IF_ERROR(hipStreamCreateWithFlags(&stream, hipStreamNonBlocking));
-  return stream;
-}
-
-extern "C" void mgpuStreamDestroy(hipStream_t stream) {
-  HIP_REPORT_IF_ERROR(hipStreamDestroy(stream));
-}
-
-extern "C" void mgpuStreamSynchronize(hipStream_t stream) {
-  HIP_REPORT_IF_ERROR(hipStreamSynchronize(stream));
-}
-
-/// Helper functions for writing mlir example code
-
-// Allows to register byte array with the CUDA runtime. Helpful until we have
-// transfer functions implemented.
-extern "C" void mgpuMemHostRegister(void* ptr, uint64_t sizeBytes) {
-  HIP_REPORT_IF_ERROR(hipHostRegister(ptr, sizeBytes, /*flags=*/0));
-}
-
-// Allows to register a MemRef with the ROCm runtime. Helpful until we have
-// transfer functions implemented.
-extern "C" void mgpuMemHostRegisterMemRef(
-    int64_t rank, StridedMemRefType<char, 1>* descriptor,
-    int64_t elementSizeBytes) {
-  llvm::SmallVector<int64_t, 4> denseStrides(rank);
-  llvm::ArrayRef<int64_t> sizes(descriptor->sizes, rank);
-  llvm::ArrayRef<int64_t> strides(sizes.end(), rank);
-
-  std::partial_sum(sizes.rbegin(), sizes.rend(), denseStrides.rbegin(),
-                   std::multiplies<int64_t>());
-  auto sizeBytes = denseStrides.front() * elementSizeBytes;
-
-  // Only densely packed tensors are currently supported.
-  std::rotate(denseStrides.begin(), denseStrides.begin() + 1,
-              denseStrides.end());
-  denseStrides.back() = 1;
-  assert(strides == llvm::makeArrayRef(denseStrides));
-
-  auto ptr = descriptor->data + descriptor->offset * elementSizeBytes;
-  mgpuMemHostRegister(ptr, sizeBytes);
+  HIP_REPORT_IF_ERROR(hipModuleLaunchKernel(
+      function, gridX, gridY, gridZ, blockX, blockY, blockZ,
+      /*sharedMemBytes=*/0, stream, params, nullptr));
 }
 
 #endif  // TENSORFLOW_USE_ROCM

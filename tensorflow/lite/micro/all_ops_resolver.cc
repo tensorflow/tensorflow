@@ -29,6 +29,7 @@ AllOpsResolver::AllOpsResolver() {
   AddCos();
   AddDepthwiseConv2D();
   AddDequantize();
+  AddDetectionPostprocess();
   AddEqual();
   AddEthosU();
   AddFloor();

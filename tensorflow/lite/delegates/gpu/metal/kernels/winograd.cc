@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/common/winograd_util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
-#include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
 namespace tflite {
 namespace gpu {
@@ -90,7 +89,7 @@ kernel void ComputeFunction($1
       c += "      bool in_x = FLT(coord_x >= 0 && coord_x < U.src_size.x);\n";
       c += "      FLT mult = FLT(in_y && in_x);\n";
       c += "      coord_x = clamp(coord_x, 0, U.src_size.x - 1);\n";
-      c += "      FLT4 src = src_buffer[src_adress_y + coord_x] * mult;\n";
+      c += "      FLT4 src = src_tensor[src_adress_y + coord_x] * mult;\n";
       c += "      I[0][" + s_x + "] += Bt[" + std::to_string(y) + "] * src;\n";
       c += "      I[1][" + s_x + "] += Bt[" + std::to_string(y + 6) +
            "] * src;\n";
@@ -111,17 +110,17 @@ kernel void ComputeFunction($1
   int dst_x = ugid.y * U.tiles_count.x + ugid.x;
   int dst_adress = gid.z * U.dst_size.y * U.dst_size.x + dst_x;
   for (int y = 0; y < 6; ++y) {
-    dst_buffer[dst_adress] = I[y][0] + Bt[2] * I[y][2] + Bt[4] * I[y][4];
+    dst_tensor[dst_adress] = I[y][0] + Bt[2] * I[y][2] + Bt[4] * I[y][4];
     dst_adress += U.dst_size.x;
-    dst_buffer[dst_adress] = Bt[7] * I[y][1] + Bt[8] * I[y][2] + Bt[9] * I[y][3] + Bt[10] * I[y][4];
+    dst_tensor[dst_adress] = Bt[7] * I[y][1] + Bt[8] * I[y][2] + Bt[9] * I[y][3] + Bt[10] * I[y][4];
     dst_adress += U.dst_size.x;
-    dst_buffer[dst_adress] = Bt[13] * I[y][1] + Bt[14] * I[y][2] + Bt[15] * I[y][3] + Bt[16] * I[y][4];
+    dst_tensor[dst_adress] = Bt[13] * I[y][1] + Bt[14] * I[y][2] + Bt[15] * I[y][3] + Bt[16] * I[y][4];
     dst_adress += U.dst_size.x;
-    dst_buffer[dst_adress] = Bt[19] * I[y][1] + Bt[20] * I[y][2] + Bt[21] * I[y][3] + Bt[22] * I[y][4];
+    dst_tensor[dst_adress] = Bt[19] * I[y][1] + Bt[20] * I[y][2] + Bt[21] * I[y][3] + Bt[22] * I[y][4];
     dst_adress += U.dst_size.x;
-    dst_buffer[dst_adress] = Bt[25] * I[y][1] + Bt[26] * I[y][2] + Bt[27] * I[y][3] + Bt[28] * I[y][4];
+    dst_tensor[dst_adress] = Bt[25] * I[y][1] + Bt[26] * I[y][2] + Bt[27] * I[y][3] + Bt[28] * I[y][4];
     dst_adress += U.dst_size.x;
-    dst_buffer[dst_adress] = Bt[31] * I[y][1] + Bt[33] * I[y][3] + I[y][5];
+    dst_tensor[dst_adress] = Bt[31] * I[y][1] + Bt[33] * I[y][3] + I[y][5];
     dst_adress += U.dst_size.x;
   }
 }
@@ -179,7 +178,7 @@ kernel void ComputeFunction($1
   bt_ar[5] = t1.y;
 )";
   auto read_src = [&](const std::string& src, const std::string& xs) {
-    c += "    FLT4 " + src + " = src_buffer[src_a_" + xs + " + offset] * m" +
+    c += "    FLT4 " + src + " = src_tensor[src_a_" + xs + " + offset] * m" +
          xs + "_x;\n";
   };
   for (int x = 0; x < 6; ++x) {
@@ -225,32 +224,32 @@ kernel void ComputeFunction($1
   c += R"(
   {
     FLT4 r0 = I0 + Bt[2] * I2 + Bt[4] * I4;
-    dst_buffer[(DST_Z * U.dst_size.y + DST_Y) * U.dst_size.x + DST_X] = r0;
+    dst_tensor[(DST_Z * U.dst_size.y + DST_Y) * U.dst_size.x + DST_X] = r0;
     DST_Y++;
   }
   {
     FLT4 r0 = Bt[7] * I1 + Bt[8] * I2 + Bt[9] * I3 + Bt[10] * I4;
-    dst_buffer[(DST_Z * U.dst_size.y + DST_Y) * U.dst_size.x + DST_X] = r0;
+    dst_tensor[(DST_Z * U.dst_size.y + DST_Y) * U.dst_size.x + DST_X] = r0;
     DST_Y++;
   }
   {
     FLT4 r0 = Bt[13] * I1 + Bt[14] * I2 + Bt[15] * I3 + Bt[16] * I4;
-    dst_buffer[(DST_Z * U.dst_size.y + DST_Y) * U.dst_size.x + DST_X] = r0;
+    dst_tensor[(DST_Z * U.dst_size.y + DST_Y) * U.dst_size.x + DST_X] = r0;
     DST_Y++;
   }
   {
     FLT4 r0 = Bt[19] * I1 + Bt[20] * I2 + Bt[21] * I3 + Bt[22] * I4;
-    dst_buffer[(DST_Z * U.dst_size.y + DST_Y) * U.dst_size.x + DST_X] = r0;
+    dst_tensor[(DST_Z * U.dst_size.y + DST_Y) * U.dst_size.x + DST_X] = r0;
     DST_Y++;
   }
   {
     FLT4 r0 = Bt[25] * I1 + Bt[26] * I2 + Bt[27] * I3 + Bt[28] * I4;
-    dst_buffer[(DST_Z * U.dst_size.y + DST_Y) * U.dst_size.x + DST_X] = r0;
+    dst_tensor[(DST_Z * U.dst_size.y + DST_Y) * U.dst_size.x + DST_X] = r0;
     DST_Y++;
   }
   {
     FLT4 r0 = Bt[31] * I1 + Bt[33] * I3 + I5;
-    dst_buffer[(DST_Z * U.dst_size.y + DST_Y) * U.dst_size.x + DST_X] = r0;
+    dst_tensor[(DST_Z * U.dst_size.y + DST_Y) * U.dst_size.x + DST_X] = r0;
   }
 }
 )";
@@ -301,7 +300,7 @@ kernel void ComputeFunction($1
   }
   for (int y = 0; y < 6; ++y) {
     for (int x = 0; x < 6; ++x, src_adress += U.src_size.x) {
-      FLT4 src = src_buffer[src_adress];
+      FLT4 src = src_tensor[src_adress];
       I[0][x] += src * At[y];
       I[1][x] += src * At[y + 6];
       I[2][x] += src * At[y + 12];
@@ -319,7 +318,7 @@ kernel void ComputeFunction($1
       int linear_index = dst_adress;
       uint3 gid = uint3(tile_x, tile_y + y, global_ids.z);
       $2
-      dst_buffer[linear_index] = value;
+      dst_tensor[linear_index] = value;
     }
     FLT4 t2 = I[y][1] - I[y][2];
     FLT4 t3 = I[y][3] - I[y][4];
@@ -328,21 +327,21 @@ kernel void ComputeFunction($1
       int linear_index = dst_adress + 1;
       uint3 gid = uint3(tile_x + 1, tile_y + y, global_ids.z);
       $2
-      dst_buffer[linear_index] = value;
+      dst_tensor[linear_index] = value;
     }
     if (tile_x + 2 < U.dst_size.x) {
       FLT4 value = t0 * At[13] + t1 * At[15] + bias_val;
       int linear_index = dst_adress + 2;
       uint3 gid = uint3(tile_x + 2, tile_y + y, global_ids.z);
       $2
-      dst_buffer[linear_index] = value;
+      dst_tensor[linear_index] = value;
     }
     if (tile_x + 3 < U.dst_size.x) {
       FLT4 value = t2 * At[19] + t3 * At[21] + I[y][5] + bias_val;
       uint3 gid = uint3(tile_x + 3, tile_y + y, global_ids.z);
       int linear_index = dst_adress + 3;
       $2
-      dst_buffer[linear_index] = value;
+      dst_tensor[linear_index] = value;
     }
     dst_adress += U.dst_size.x;
   }
@@ -405,7 +404,7 @@ kernel void ComputeFunction($1
   for (int x = 0; x < 6; ++x) {
     const std::string yc = std::to_string(x);
     const std::string src = "src" + std::to_string(x);
-    c += "    FLT4 " + src + " = src_buffer[src_adress + U.src_size.x * " + yc +
+    c += "    FLT4 " + src + " = src_tensor[src_adress + U.src_size.x * " + yc +
          "];\n";
     c += "    I" + std::to_string(x) + " = at * " + src + ";\n";
   }
@@ -416,7 +415,7 @@ kernel void ComputeFunction($1
     for (int x = 0; x < 6; ++x) {
       const std::string yc = std::to_string(y * 6 + x);
       const std::string src = "src" + std::to_string(x);
-      c += "    FLT4 " + src + " = src_buffer[src_adress + U.src_size.x * " +
+      c += "    FLT4 " + src + " = src_tensor[src_adress + U.src_size.x * " +
            yc + "];\n";
       c += "    I" + std::to_string(x) + " += at * " + src + ";\n";
     }
@@ -432,7 +431,7 @@ kernel void ComputeFunction($1
     uint3 gid = uint3(tile_x, tile_y, global_ids.z);
     int linear_index = dst_adress;
     $2;
-    dst_buffer[linear_index] = value;
+    dst_tensor[linear_index] = value;
   }
   FLT4 t2 = I1 - I2;
   FLT4 t3 = I3 - I4;
@@ -441,21 +440,21 @@ kernel void ComputeFunction($1
     uint3 gid = uint3(tile_x + 1, tile_y, global_ids.z);
     int linear_index = dst_adress + 1;
     $2;
-    dst_buffer[linear_index] = value;
+    dst_tensor[linear_index] = value;
   }
   if (tile_x + 2 < U.dst_size.x) {
     FLT4 value = t0 * At[13] + t1 * At[15] + bias_val;
     uint3 gid = uint3(tile_x + 2, tile_y, global_ids.z);
     int linear_index = dst_adress + 2;
     $2;
-    dst_buffer[linear_index] = value;
+    dst_tensor[linear_index] = value;
   }
   if (tile_x + 3 < U.dst_size.x) {
     FLT4 value = t2 * At[19] + t3 * At[21] + I5 + bias_val;
     uint3 gid = uint3(tile_x + 3, tile_y, global_ids.z);
     int linear_index = dst_adress + 3;
     $2;
-    dst_buffer[linear_index] = value;
+    dst_tensor[linear_index] = value;
   }
 }
 )";
@@ -463,16 +462,13 @@ kernel void ComputeFunction($1
 }
 }  // namespace
 
-ComputeTaskDescriptor Winograd4x4To36(ValueId input_id, ValueId output_id,
+ComputeTaskDescriptor Winograd4x4To36(const OperationDef& definition,
                                       const Winograd4x4To36Attributes& attr) {
-  ComputeTaskDescriptor desc;
+  ComputeTaskDescriptor desc(definition);
   desc.shader_source = GetKernelWinograd4x4To36();
 
-  desc.input_buffers = {
-      {input_id, "device FLT4* const src_buffer"},
-  };
-
-  desc.output_buffer = {output_id, "device FLT4* dst_buffer"};
+  desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
+  desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
   desc.uniform_buffers = {
       {"constant uniforms& U",
@@ -521,16 +517,12 @@ ComputeTaskDescriptor Winograd4x4To36(ValueId input_id, ValueId output_id,
 }
 
 ComputeTaskDescriptor Winograd4x4To36TileX6(
-    ValueId input_id, ValueId output_id, const Winograd4x4To36Attributes& attr,
-    const RuntimeOptions& options) {
-  ComputeTaskDescriptor desc;
+    const OperationDef& definition, const Winograd4x4To36Attributes& attr) {
+  ComputeTaskDescriptor desc(definition);
   desc.shader_source = GetKernelWinograd4x4To36TileX6();
 
-  desc.input_buffers = {
-      {input_id, "device FLT4* const src_buffer"},
-  };
-
-  desc.output_buffer = {output_id, "device FLT4* dst_buffer"};
+  desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
+  desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
   std::vector<float> bt_aligned(6 * 8);
   auto bt_mat = BtMatrixForWinograd4x4To6x6();
@@ -542,9 +534,10 @@ ComputeTaskDescriptor Winograd4x4To36TileX6(
     bt_aligned[y * 8 + 7] = 0.0f;
   }
 
+  auto data_type = DeduceDataTypeFromPrecision(definition.precision);
   desc.immutable_buffers = {
       {"device FLT4* const bt_arr",
-       GetByteBufferConverted(bt_aligned, options.storage_precision)},
+       GetByteBufferConverted(bt_aligned, data_type)},
   };
 
   desc.uniform_buffers = {
@@ -589,22 +582,18 @@ ComputeTaskDescriptor Winograd4x4To36TileX6(
   return desc;
 }
 
-ComputeTaskDescriptor Winograd36To4x4(ValueId input_id, ValueId output_id,
-                                      const RuntimeOptions& options,
+ComputeTaskDescriptor Winograd36To4x4(const OperationDef& definition,
                                       const Winograd36To4x4Attributes& attr) {
-  ComputeTaskDescriptor desc;
+  ComputeTaskDescriptor desc(definition);
   desc.shader_source = GetKernelWinograd36To4x4();
 
-  desc.input_buffers = {
-      {input_id, "device FLT4* const src_buffer"},
-  };
+  desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
+  desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
-  desc.output_buffer = {output_id, "device FLT4* dst_buffer"};
-
+  auto data_type = DeduceDataTypeFromPrecision(definition.precision);
   desc.immutable_buffers = {
       {"device FLT4* const biases",
-       GetByteBufferConvertedResized(attr.biases.data,
-                                     options.storage_precision,
+       GetByteBufferConvertedResized(attr.biases.data, data_type,
                                      AlignByN(attr.output_shape.c, 4))},
   };
 
@@ -641,16 +630,12 @@ ComputeTaskDescriptor Winograd36To4x4(ValueId input_id, ValueId output_id,
 }
 
 ComputeTaskDescriptor Winograd36To4x4Tile4x1(
-    ValueId input_id, ValueId output_id, const RuntimeOptions& options,
-    const Winograd36To4x4Attributes& attr) {
-  ComputeTaskDescriptor desc;
+    const OperationDef& definition, const Winograd36To4x4Attributes& attr) {
+  ComputeTaskDescriptor desc(definition);
   desc.shader_source = GetKernelWinograd36To4x4Tile4x1();
 
-  desc.input_buffers = {
-      {input_id, "device FLT4* const src_buffer"},
-  };
-
-  desc.output_buffer = {output_id, "device FLT4* dst_buffer"};
+  desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
+  desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
   std::vector<float> at_aligned(4 * 8);
   auto at_mat = AtMatrixForWinograd4x4To6x6();
@@ -662,13 +647,13 @@ ComputeTaskDescriptor Winograd36To4x4Tile4x1(
     at_aligned[y * 8 + 7] = 0.0f;
   }
 
+  auto data_type = DeduceDataTypeFromPrecision(definition.precision);
   desc.immutable_buffers = {
       {"device FLT4* const biases",
-       GetByteBufferConvertedResized(attr.biases.data,
-                                     options.storage_precision,
+       GetByteBufferConvertedResized(attr.biases.data, data_type,
                                      AlignByN(attr.output_shape.c, 4))},
       {"device FLT4* const at_arr",
-       GetByteBufferConverted(at_aligned, options.storage_precision)},
+       GetByteBufferConverted(at_aligned, data_type)},
   };
 
   desc.uniform_buffers = {

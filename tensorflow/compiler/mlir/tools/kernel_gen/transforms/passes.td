@@ -21,6 +21,10 @@ include "mlir/Pass/PassBase.td"
 def TFKernelToLLVMPass : Pass<"tf-kernel-to-llvm", "ModuleOp"> {
   let summary = "Pass for applying LLVM legalization patterns.";
   let constructor = "transforms::CreateTFKernelToLLVMPass()";
+  let options = [
+      Option<"blob_annotation_", "blob-annotation", "std::string",
+           /*default=*/"\"gpu.binary_blob\"", "Blob attribute name">,
+  ];
 }
 
 def EmbedTFFrameworkPass : Pass<"embed-tf-framework", "ModuleOp"> {
@@ -64,7 +68,7 @@ def GpuKernelToBlobPass : Pass<"gpu-kernel-to-blob", "gpu::GPUModuleOp"> {
   let summary = "Pass to annotate GPU Module with its PTX";
   let options = [
     Option<"blob_annotation_", "blob-annotation", "std::string",
-           /*default=*/"", "Blob attribute name">,
+           /*default=*/"\"gpu.binary_blob\"", "Blob attribute name">,
     ListOption<"architectures_", "arch", "std::string", "GPU architectures">,
     Option<"generate_fatbin_", "generate-fatbin", "bool", /*default=*/"true",
            "Bundle machine code for the different architectures in one "

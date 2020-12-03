@@ -69,8 +69,7 @@ def clean_dep(dep):
     return str(Label(dep))
 
 # If TensorFlow is linked as a submodule.
-# path_prefix is no longer used.
-# tf_repo_name is thought to be under consideration.
+# path_prefix and tf_repo_name are no longer used.
 def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_repositories(path_prefix, tf_repo_name)
     tf_bind()
@@ -686,8 +685,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     # Check out LLVM and MLIR from llvm-project.
-    LLVM_COMMIT = "c266c56d545dfecf767b312771f716b394c5d5eb"
-    LLVM_SHA256 = "5a3a780bb5679f8e47c770cd049d9f0c8248cb1c3310db59245ab7475e221625"
+    LLVM_COMMIT = "6627a3c2873fdf7ccba1a1573371079be48b36e8"
+    LLVM_SHA256 = "8f3a85a0fa95fd32910c0fdf6c039e83ce7c63bbe351dfa696f5d4b44ec9e4a2"
     LLVM_URLS = [
         "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
         "https://github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),

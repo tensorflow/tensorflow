@@ -22,9 +22,9 @@ message SavedObject {
   string node_path = 3;
 
   // Identifier to determine loading function.
-  // Currently supported identifiers:
-  //   _tf_keras_layer, _tf_keras_input_layer, _tf_keras_rnn_layer,
-  //   _tf_keras_metric, _tf_keras_network, _tf_keras_model,
+  // Must be one of:
+  //   _tf_keras_input_layer, _tf_keras_layer, _tf_keras_metric,
+  //   _tf_keras_model, _tf_keras_network, _tf_keras_rnn_layer,
   //   _tf_keras_sequential
   string identifier = 4;
   // Metadata containing a JSON-serialized object with the non-TensorFlow

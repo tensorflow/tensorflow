@@ -28,21 +28,19 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
-#include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
 namespace tflite {
 namespace gpu {
 namespace metal {
 
-ComputeTaskDescriptor PReLU(ValueId input_id, ValueId output_id,
-                            const PReLUAttributes& attr,
-                            const RuntimeOptions& options) {
+ComputeTaskDescriptor PReLU(const OperationDef& definition,
+                            const PReLUAttributes& attr) {
   auto alpha_buffer =
       absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&attr.alpha);
   if (!alpha_buffer) {
     return {};
   }
-  ComputeTaskDescriptor desc;
+  ComputeTaskDescriptor desc(definition);
   desc.is_linkable = true;
   if (attr.clip != 0) {
     desc.shader_source =
@@ -57,11 +55,12 @@ ComputeTaskDescriptor PReLU(ValueId input_id, ValueId output_id,
         return FLT4(max(FLT4(0.0f), value) + alphas[gid.z] * min(FLT4(0.0f), value));
     })";
   }
-  desc.input_buffers = {{input_id}};
-  desc.output_buffer = {output_id};
+  desc.AddSrcTensor("", definition.src_tensors[0]);
+  desc.AddDstTensor("", definition.dst_tensors[0]);
+  auto data_type = DeduceDataTypeFromPrecision(definition.precision);
   desc.immutable_buffers = {
       {"device FLT4* const",
-       GetByteBufferConverted(alpha_buffer->data, options.storage_precision)},
+       GetByteBufferConverted(alpha_buffer->data, data_type)},
   };
   if (attr.clip != 0) {
     desc.uniform_buffers = {
@@ -77,14 +76,13 @@ ComputeTaskDescriptor PReLU(ValueId input_id, ValueId output_id,
   return desc;
 }
 
-ComputeTaskDescriptor PReLUFull(ValueId input_id, ValueId output_id,
-                                const PReLUAttributes& attr,
-                                const RuntimeOptions& options) {
+ComputeTaskDescriptor PReLUFull(const OperationDef& definition,
+                                const PReLUAttributes& attr) {
   auto alpha = absl::get_if<Tensor<HWC, DataType::FLOAT32>>(&attr.alpha);
   if (!alpha) {
     return {};
   }
-  ComputeTaskDescriptor desc;
+  ComputeTaskDescriptor desc(definition);
   desc.is_linkable = true;
   if (attr.clip != 0) {
     desc.shader_source =
@@ -99,11 +97,12 @@ ComputeTaskDescriptor PReLUFull(ValueId input_id, ValueId output_id,
         return FLT4(max(FLT4(0.0f), value) + alphas[linear_index] * min(FLT4(0.0f), value));
     })";
   }
-  desc.input_buffers = {{input_id}};
-  desc.output_buffer = {output_id};
+  desc.AddSrcTensor("", definition.src_tensors[0]);
+  desc.AddDstTensor("", definition.dst_tensors[0]);
+  auto data_type = DeduceDataTypeFromPrecision(definition.precision);
   desc.immutable_buffers = {
-      {"device FLT4* const", GetByteBufferConverted(ConvertToPHWC4(*alpha),
-                                                    options.storage_precision)},
+      {"device FLT4* const",
+       GetByteBufferConverted(ConvertToPHWC4(*alpha), data_type)},
   };
   if (attr.clip != 0) {
     desc.uniform_buffers = {

@@ -781,6 +781,7 @@ cc_library(
         "//tensorflow:arm_any": [],
         "//tensorflow:ios": [],
         "//tensorflow:linux_ppc64le": [],
+        "//tensorflow:linux_s390x": [],
         "//conditions:default": [
             "TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL",
             "TENSORFLOW_USE_MKLDNN_CONTRACTION_KERNEL",
@@ -795,6 +796,7 @@ cc_library(
         "//tensorflow:arm_any": [],
         "//tensorflow:ios": [],
         "//tensorflow:linux_ppc64le": [],
+        "//tensorflow:linux_s390x": [],
         "//conditions:default": ["@mkl_dnn//:mkldnn_single_threaded"],
     }),
 )
@@ -2909,6 +2911,7 @@ tf_cc_test(
         "//tensorflow:arm_any": [],
         "//tensorflow:ios": [],
         "//tensorflow:linux_ppc64le": [],
+        "//tensorflow:linux_s390x": [],
         ":no_mkldnn_contraction_kernel": [],
         "//conditions:default": ["eigen_mkldnn_contraction_kernel_test.cc"],
     }),
@@ -5985,6 +5988,7 @@ filegroup(
         "spectrogram.h",
         "stateless_random_ops.h",
         "stateless_random_ops_v2.h",
+        "sparse_fill_empty_rows_op.h",
         "string_util.h",
         "string_to_hash_bucket_op.h",
         "string_to_hash_bucket_fast_op.h",

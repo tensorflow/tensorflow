@@ -115,6 +115,29 @@ TEST(XPlaneUtilsTest, RemoveEmptyLines) {
   EXPECT_EQ(plane.lines(1).name(), "l3");
 }
 
+TEST(XPlaneUtilsTest, RemoveLine) {
+  XPlane plane;
+  const XLine* line1 = plane.add_lines();
+  const XLine* line2 = plane.add_lines();
+  const XLine* line3 = plane.add_lines();
+  RemoveLine(&plane, line2);
+  ASSERT_EQ(plane.lines_size(), 2);
+  EXPECT_EQ(&plane.lines(0), line1);
+  EXPECT_EQ(&plane.lines(1), line3);
+}
+
+TEST(XPlaneUtilsTest, RemoveEvents) {
+  XLine line;
+  const XEvent* event1 = line.add_events();
+  const XEvent* event2 = line.add_events();
+  const XEvent* event3 = line.add_events();
+  const XEvent* event4 = line.add_events();
+  RemoveEvents(&line, {event1, event3});
+  ASSERT_EQ(line.events_size(), 2);
+  EXPECT_EQ(&line.events(0), event2);
+  EXPECT_EQ(&line.events(1), event4);
+}
+
 TEST(XPlaneUtilsTest, SortXPlaneTest) {
   XPlane plane;
   XLine* line = plane.add_lines();

@@ -65,24 +65,3 @@ cc_binary(
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )
-
-cc_binary(
-    name = "person_detection_experimental_benchmark",
-    srcs = ["person_detection_experimental_benchmark.cc"],
-    tags = [
-        "no_oss",  # TODO(b/174680668): Exclude from OSS.
-    ],
-    deps = [
-        ":micro_benchmark",
-        "//tensorflow/lite:version",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_error_reporter",
-        "//tensorflow/lite/micro:micro_framework",
-        "//tensorflow/lite/micro:micro_utils",
-        "//tensorflow/lite/micro:op_resolvers",
-        "//tensorflow/lite/micro/examples/person_detection_experimental:model_settings",
-        "//tensorflow/lite/micro/examples/person_detection_experimental:person_detect_model_data",
-        "//tensorflow/lite/micro/examples/person_detection_experimental:simple_images_test_data",
-        "//tensorflow/lite/schema:schema_fbs",
-    ],
-)

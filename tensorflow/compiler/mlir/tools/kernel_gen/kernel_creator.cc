@@ -275,7 +275,8 @@ Status LowerHostSideToFinalForm(mlir::ModuleOp module) {
   mlir::PassManager pm(module.getContext());
   applyTensorflowAndCLOptions(pm);
 
-  pm.addPass(mlir::kernel_gen::transforms::CreateTFKernelToLLVMPass());
+  pm.addPass(mlir::kernel_gen::transforms::CreateTFKernelToLLVMPass(
+      kGpuBinaryAttrName));
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
 

@@ -190,7 +190,7 @@ TfLiteStatus InitCamera(tflite::ErrorReporter* error_reporter) {
 // Capture single frame.  Frame pointer passed in to reduce memory usage.  This
 // allows the input tensor to be used instead of requiring an extra copy.
 TfLiteStatus GetImage(tflite::ErrorReporter* error_reporter, int frame_width,
-                      int frame_height, int channels, uint8_t* frame) {
+                      int frame_height, int channels, int8_t* frame) {
   if (!g_is_camera_initialized) {
     TfLiteStatus init_status = InitCamera(error_reporter);
     if (init_status != kTfLiteOk) {

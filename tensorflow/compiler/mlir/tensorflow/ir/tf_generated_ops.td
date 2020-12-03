@@ -14181,6 +14181,8 @@ output. For the internal use of the distributed TPU compiler.
 
   TF_DerivedOperandTypeListAttr Targs = TF_DerivedOperandTypeListAttr<0>;
   TF_DerivedResultTypeListAttr Tresults = TF_DerivedResultTypeListAttr<0>;
+
+  let verifier = [{ return Verify(*this); }];
 }
 
 def TF_TPUGetLayoutOp : TF_Op<"TPUGetLayoutOp", [NoSideEffect]> {
@@ -16206,7 +16208,7 @@ https://www.tensorflow.org/performance/xla/operation_semantics#reducewindow .
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_XlaReplicaIdOp : TF_Op<"XlaReplicaId", [NoSideEffect]> {
+def TF_XlaReplicaIdOp : TF_Op<"XlaReplicaId", [NoSideEffect, TF_NoConstantFold]> {
   let summary = "Replica ID.";
 
   let arguments = (ins);
@@ -16214,6 +16216,9 @@ def TF_XlaReplicaIdOp : TF_Op<"XlaReplicaId", [NoSideEffect]> {
   let results = (outs
     TF_Int32Tensor:$id
   );
+
+  // Constant folding is disabled for this op as it is a runtime op and can't
+  // constant folded at the compile time.
 }
 
 def TF_XlaScatterOp : TF_Op<"XlaScatter", [NoSideEffect]> {

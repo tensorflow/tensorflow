@@ -36,8 +36,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/distributed/client.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/distributed.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/service.h"
+#include "tensorflow/compiler/xla/pjrt/gpu_device.h"
 #include "tensorflow/compiler/xla/pjrt/interpreter_device.h"
-#include "tensorflow/compiler/xla/pjrt/nvidia_gpu_device.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/tpu_client.h"
 #include "tensorflow/compiler/xla/python/bfloat16.h"
@@ -270,14 +270,14 @@ PYBIND11_MODULE(xla_extension, m) {
     return std::make_shared<PyClient>(std::move(client));
   });
   m.def(
-      "get_nvidia_gpu_client",
+      "get_gpu_client",
       [](bool asynchronous, const GpuAllocatorConfig& allocator_config,
          std::shared_ptr<DistributedRuntimeClient> distributed_client,
          int node_id) -> StatusOr<std::shared_ptr<PyClient>> {
         TF_ASSIGN_OR_RETURN(
             std::unique_ptr<PjRtClient> client,
-            GetNvidiaGpuClient(asynchronous, allocator_config,
-                               std::move(distributed_client), node_id));
+            GetGpuClient(asynchronous, allocator_config,
+                         std::move(distributed_client), node_id));
         return std::make_shared<PyClient>(std::move(client));
       },
       py::arg("asynchronous") = true,

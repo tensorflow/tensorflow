@@ -22,18 +22,17 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
-#include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
 namespace tflite {
 namespace gpu {
 namespace metal {
 
-ComputeTaskDescriptor Softmax(ValueId input_id, ValueId output_id,
+ComputeTaskDescriptor Softmax(const OperationDef& definition,
                               int channels_count);
 
 // Softmax for case when width = height = 1 and AXIS = CHANNELS
 // We have this case in MobilenetV1/V2.
-ComputeTaskDescriptor Softmax1x1(ValueId input_id, ValueId output_id,
+ComputeTaskDescriptor Softmax1x1(const OperationDef& definition,
                                  const GpuInfo& gpu_info, int channels_count);
 
 }  // namespace metal

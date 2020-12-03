@@ -22,6 +22,7 @@
   * Added `profile_data_directory` to `EmbeddingConfigSpec` in
     `_tpu_estimator_embedding.py`. This allows embedding lookup statistics
     gathered at runtime to be used in embedding layer partitioning decisions.
+* `tf.keras.metrics.AUC` now support logit predictions.
 
 ## Bug Fixes and Other Changes
 

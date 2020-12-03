@@ -41,7 +41,8 @@ namespace transforms {
 std::unique_ptr<FunctionPass> CreateBufferReusePass();
 
 // Pass for applying LLVM legalization patterns.
-std::unique_ptr<OperationPass<ModuleOp> > CreateTFKernelToLLVMPass();
+std::unique_ptr<OperationPass<ModuleOp>> CreateTFKernelToLLVMPass(
+    mlir::StringRef blob_annotation = {});
 
 // Pass to tranform shape computations in shape dialect to standard and scf
 // using memref descriptors.
@@ -63,7 +64,7 @@ std::unique_ptr<FunctionPass> CreateParallelLoopsToSequential();
 
 // Pass to annotate GPU Module with its PTX.
 std::unique_ptr<OperationPass<gpu::GPUModuleOp>> CreateGpuKernelToBlobPass(
-    mlir::StringRef blob_annotation = "",
+    mlir::StringRef blob_annotation = {},
     ArrayRef<std::string> architectures = {}, bool generate_fatbin = true,
     bool print_ptx = false);
 

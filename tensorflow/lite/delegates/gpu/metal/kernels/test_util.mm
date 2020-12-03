@@ -166,7 +166,7 @@ absl::Status CompareVectors(const std::vector<float>& reference, const std::vect
   return absl::OkStatus();
 }
 
-absl::Status RunGraph(const std::vector<ComputeTaskDescriptorPtr>& nodes, id<MTLDevice> device,
+absl::Status RunGraph(const std::vector<NodeDescriptor>& nodes, id<MTLDevice> device,
                       const std::map<ValueId, TensorFloat32>& inputs,
                       std::map<ValueId, TensorFloat32>* outputs) {
   std::vector<ValueId> inputBufferIDs;
@@ -181,11 +181,7 @@ absl::Status RunGraph(const std::vector<ComputeTaskDescriptorPtr>& nodes, id<MTL
   }
   std::map<ValueId, BHWC> outputDimensions;
   CompiledModel raw_model;
-  for (auto& node : nodes) {
-    NodeDescriptor node_desc;
-    node_desc.task = node;
-    raw_model.nodes.push_back(node_desc);
-  }
+  raw_model.nodes = nodes;
   for(const auto& input : inputs) {
     raw_model.tensor_shapes[input.first] = input.second.shape;
   }

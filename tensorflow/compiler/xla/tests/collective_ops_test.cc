@@ -17,7 +17,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/nccl_test_utils.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
@@ -160,7 +160,7 @@ DeviceAssignment MakeDeviceAssn(std::vector<int64> devices) {
 
 // Shorter alias for this function.
 absl::flat_hash_set<GlobalDeviceId> OpenNcclChannels() {
-  return gpu::NcclAllReduceThunk::DevicesWithOpenNcclChannels();
+  return gpu::DevicesWithOpenNcclChannels();
 }
 
 template <typename T>
