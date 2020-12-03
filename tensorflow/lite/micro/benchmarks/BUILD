@@ -1,3 +1,5 @@
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
+
 licenses(["notice"])  # Apache 2.0
 
 package_group(
@@ -48,6 +50,9 @@ cc_binary(
 cc_binary(
     name = "person_detection_benchmark",
     srcs = ["person_detection_benchmark.cc"],
+    tags = [
+        "no_oss",  # TODO(b/174680668): Exclude from OSS.
+    ],
     deps = [
         ":micro_benchmark",
         "//tensorflow/lite:schema_fbs_version",
@@ -61,4 +66,9 @@ cc_binary(
         "//tensorflow/lite/micro/examples/person_detection:simple_images_test_data",
         "//tensorflow/lite/schema:schema_fbs",
     ],
+)
+
+build_test(
+    name = "build_test",
+    targets = [":keyword_benchmark"],
 )
