@@ -1458,13 +1458,14 @@ PjRtStreamExecutorExecutable::PjRtStreamExecutorExecutable(
     std::vector<std::unique_ptr<LocalExecutable>> executables,
     bool parameter_is_tupled_arguments,
     std::shared_ptr<DeviceAssignment> device_assignment,
-    std::vector<std::pair<int, int>> local_logical_device_ids,
-    std::vector<PjRtDevice*> local_devices, PjRtClient* client)
+    std::vector<LogicalDeviceIds> addressable_device_logical_ids,
+    std::vector<PjRtDevice*> addressable_devices, PjRtClient* client)
     : client_(client),
       device_assignment_(std::move(device_assignment)),
       parameter_is_tupled_arguments_(parameter_is_tupled_arguments),
-      local_logical_device_ids_(std::move(local_logical_device_ids)),
-      local_devices_(std::move(local_devices)) {
+      addressable_device_logical_ids_(
+          std::move(addressable_device_logical_ids)),
+      addressable_devices_(std::move(addressable_devices)) {
   executables_.reserve(executables.size());
   for (auto& executable : executables) {
     executables_.emplace_back(std::move(executable));
@@ -1475,13 +1476,13 @@ PjRtStreamExecutorExecutable::PjRtStreamExecutorExecutable(
     // This must go after `executables_` is initialized.
     VLOG(1) << "PjRtStreamExecutorExecutable portable single-core";
     num_partitions = 1;
-    CHECK(local_devices_.empty());
+    CHECK(addressable_devices_.empty());
   } else {
     // This must go after `executables_` is initialized.
     VLOG(1) << "PjRtStreamExecutorExecutable device_assignment:\n"
             << device_assignment_->ToString();
-    CHECK_GE(local_devices_.size(), 1) << device_assignment_->ToString();
-    CHECK_LE(local_devices_.size(), client_->local_device_count())
+    CHECK_GE(addressable_devices_.size(), 1) << device_assignment_->ToString();
+    CHECK_LE(addressable_devices_.size(), client_->local_device_count())
         << "Inconsistent local device count.";
     num_partitions = device_assignment_->computation_count();
   }
@@ -1807,7 +1808,7 @@ PjRtStreamExecutorExecutable::ExecuteHelper(
     CHECK(device_assignment_ == nullptr);
     CHECK_EQ(replica, 0);
     CHECK_EQ(partition, 0);
-    CHECK(local_devices_.empty());
+    CHECK(addressable_devices_.empty());
     device_assignment = std::make_shared<DeviceAssignment>(1, 1);
     (*device_assignment)(0, 0) = device->id();
   }
@@ -1875,94 +1876,52 @@ PjRtStreamExecutorExecutable::ExecuteHelper(
   return outputs;
 }
 
-StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-PjRtStreamExecutorExecutable::Execute(
-    absl::Span<PjRtBuffer* const> argument_handles,
-    const ExecuteOptions& options) const {
-  if (num_replicas() != 1) {
-    return InvalidArgument(
-        "Attempted to execute computation with %d replicas using Execute()",
-        num_replicas());
-  }
-  if (num_partitions() != 1) {
-    return InvalidArgument(
-        "Attempted to execute computation with %d partitions using Execute()",
-        num_partitions());
-  }
-  VLOG(1) << "Executing computation " << name();
-  return ExecuteHelper(argument_handles, /*replica=*/0, /*partition=*/0,
-                       RunId(), options);
-}
-
-StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-PjRtStreamExecutorExecutable::ExecuteOnLocalDevice(
-    absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-    const ExecuteOptions& options) const {
-  if (device_assignment_ == nullptr) {
-    VLOG(1) << "Executing portable single-core program on "
-            << device->DebugString();
-    return ExecuteHelper(argument_handles,
-                         /*replica=*/0,
-                         /*partition=*/0, RunId(), options, device);
-  }
-  for (int i = 0; i < local_devices_.size(); ++i) {
-    if (local_devices_[i] == device) {
-      VLOG(1) << "Executing computation " << name();
-      return ExecuteHelper(argument_handles,
-                           /*replica=*/local_logical_device_ids_[i].first,
-                           /*partition=*/local_logical_device_ids_[i].second,
-                           RunId(), options);
-    }
-  }
-  return InvalidArgument(
-      "Attempted to execute on device id %d which is not a local device",
-      device->id());
-}
-
 StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
-PjRtStreamExecutorExecutable::ExecuteOnLocalDevices(
+PjRtStreamExecutorExecutable::Execute(
     absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
     const ExecuteOptions& options) const {
-  CHECK(device_assignment_ != nullptr);
+  if (device_assignment_ == nullptr) {
+    return InvalidArgument("Execute expects a non-null device_assignment");
+  }
 
   RunId run_id;
   tensorflow::profiler::TraceMeProducer activity(
-      "LocalExecutable::ExecuteOnLocalDevices",
+      "PjRtStreamExecutorExecutable::Execute",
       tensorflow::profiler::ContextType::kPjRt, run_id.ToInt());
 
-  const int num_local_devices = local_devices_.size();
+  const int num_addressable_devices = addressable_devices_.size();
 
-  if (argument_handles.size() != num_local_devices) {
+  if (argument_handles.size() != num_addressable_devices) {
     return InvalidArgument(
         "Attempted to execute with %d argument lists when local device "
         "count is %d (total replica count: %d, partition count: %d)",
-        argument_handles.size(), num_local_devices, num_replicas(),
+        argument_handles.size(), num_addressable_devices, num_replicas(),
         num_partitions());
   }
 
   VLOG(1) << "Executing computation " << name()
           << "; num_replicas=" << num_replicas()
           << " num_partitions=" << num_partitions()
-          << " num_local_devices=" << num_local_devices;
+          << " num_addressable_devices=" << num_addressable_devices;
   std::vector<StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>> results(
-      num_local_devices);
-  if (num_local_devices == 1) {
+      num_addressable_devices);
+  if (num_addressable_devices == 1) {
     // Fast-path if there is only one device — run the computation on the
     // current thread.
-    const int replica = local_logical_device_ids_[0].first;
-    const int partition = local_logical_device_ids_[0].second;
+    const int replica = addressable_device_logical_ids_[0].replica;
+    const int partition = addressable_device_logical_ids_[0].partition;
     results[0] =
         ExecuteHelper(argument_handles[0], replica, partition, run_id, options);
   } else {
     absl::Mutex mu;
-    int running = num_local_devices;
+    int running = num_addressable_devices;
     int failed = 0;
     Status first_failure_status;
 
-    for (int i = 0; i < num_local_devices; ++i) {
-      const int replica = local_logical_device_ids_[i].first;
-      const int partition = local_logical_device_ids_[i].second;
-      PjRtDevice* device = local_devices_[i];
+    for (int i = 0; i < num_addressable_devices; ++i) {
+      const int replica = addressable_device_logical_ids_[i].replica;
+      const int partition = addressable_device_logical_ids_[i].partition;
+      PjRtDevice* device = addressable_devices_[i];
       const LocalDeviceState& device_state = *device->local_device_state();
       device_state.execute_thread()->Schedule([&, replica, partition, i] {
         results[i] = ExecuteHelper(argument_handles[i], replica, partition,
@@ -2008,10 +1967,10 @@ PjRtStreamExecutorExecutable::ExecuteOnLocalDevices(
   VLOG(1) << "Replicated execution complete.";
 
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> wrapped_results(
-      num_local_devices);
-  for (int i = 0; i < num_local_devices; ++i) {
-    const int replica = local_logical_device_ids_[i].first;
-    const int partition = local_logical_device_ids_[i].second;
+      num_addressable_devices);
+  for (int i = 0; i < num_addressable_devices; ++i) {
+    const int replica = addressable_device_logical_ids_[i].replica;
+    const int partition = addressable_device_logical_ids_[i].partition;
     auto& statusor = results[i];
     if (!statusor.ok()) {
       return AppendStatus(
@@ -2024,6 +1983,52 @@ PjRtStreamExecutorExecutable::ExecuteOnLocalDevices(
     wrapped_results[i] = std::move(statusor.ValueOrDie());
   }
   return wrapped_results;
+}
+
+StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+PjRtStreamExecutorExecutable::ExecuteSharded(
+    absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
+    const ExecuteOptions& options) const {
+  if (device_assignment_ == nullptr) {
+    return InvalidArgument("ExecuteShard expects a non-null device_assignment");
+  }
+  for (int i = 0; i < addressable_devices_.size(); ++i) {
+    if (addressable_devices_[i] == device) {
+      VLOG(1) << "ExecuteShard executes computation " << name()
+              << " on assigned replica/partition on device "
+              << device->DebugString();
+      return ExecuteHelper(
+          argument_handles, addressable_device_logical_ids_[i].replica,
+          addressable_device_logical_ids_[i].partition, RunId(), options);
+    }
+  }
+  return InvalidArgument(
+      "ExecuteShard attempted to execute on device id %d which is not "
+      "addressable by this client",
+      device->id());
+}
+
+StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+PjRtStreamExecutorExecutable::ExecutePortable(
+    absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
+    const ExecuteOptions& options) const {
+  if (device_assignment_ != nullptr) {
+    return InvalidArgument("ExecutePortable gets a non-portable executable");
+  }
+  if (num_replicas() != 1 || num_partitions() != 1) {
+    return InvalidArgument(
+        "ExecutePortable expects a single-core executable but gets "
+        "one with %d replica %d partition",
+        num_replicas(), num_partitions());
+  }
+  if (device == nullptr) {
+    return InvalidArgument("ExecutePortable expects a device to be specified");
+  }
+  VLOG(1) << "ExecutePortable executes single-core portable executable "
+          << name();
+  return ExecuteHelper(argument_handles,
+                       /*replica=*/0,
+                       /*partition=*/0, RunId(), options, device);
 }
 
 StatusOr<std::vector<std::shared_ptr<HloModule>>>
@@ -2220,9 +2225,12 @@ StatusOr<std::unique_ptr<PjRtExecutable>> PjRtClient::Compile(
   TF_RETURN_IF_ERROR(assign_layouts(sharded_shapes.second, &result_layout));
   build_options.set_result_layout(result_layout);
 
-  std::vector<std::pair<int, int>> local_logical_device_ids;
-  std::vector<PjRtDevice*> local_devices;
+  // Find devices that are addressable by this client/task.
+  std::vector<PjRtExecutable::LogicalDeviceIds> addressable_device_logical_ids;
+  std::vector<PjRtDevice*> addressable_devices;
   if (device_assignment != nullptr) {
+    addressable_device_logical_ids.reserve(num_replicas * num_partitions);
+    addressable_devices.reserve(num_replicas * num_partitions);
     for (int replica = 0; replica < num_replicas; ++replica) {
       for (int partition = 0; partition < num_partitions; ++partition) {
         int device_id = (*device_assignment)(replica, partition);
@@ -2231,11 +2239,13 @@ StatusOr<std::unique_ptr<PjRtExecutable>> PjRtClient::Compile(
           VLOG(3) << "Non-local device: " << device_id;
           continue;
         }
-        local_logical_device_ids.emplace_back(replica, partition);
-        local_devices.push_back(device);
+        addressable_device_logical_ids.push_back(
+            PjRtExecutable::LogicalDeviceIds{.replica = replica,
+                                             .partition = partition});
+        addressable_devices.push_back(device);
       }
     }
-    if (local_devices.empty()) {
+    if (addressable_devices.empty()) {
       return InvalidArgument(
           "Device assignment (%s) does not have any local devices.",
           device_assignment->ToString());
@@ -2243,7 +2253,7 @@ StatusOr<std::unique_ptr<PjRtExecutable>> PjRtClient::Compile(
 
     if (build_options.device_ordinal() < 0) {
       build_options.set_device_ordinal(
-          local_devices.front()->local_device_state()->device_ordinal());
+          addressable_devices.front()->local_device_state()->device_ordinal());
     }
   }
 
@@ -2253,8 +2263,8 @@ StatusOr<std::unique_ptr<PjRtExecutable>> PjRtClient::Compile(
 
   auto executable = absl::make_unique<PjRtStreamExecutorExecutable>(
       std::move(local_executables), options.parameter_is_tupled_arguments,
-      std::move(device_assignment), std::move(local_logical_device_ids),
-      std::move(local_devices), this);
+      std::move(device_assignment), std::move(addressable_device_logical_ids),
+      std::move(addressable_devices), this);
   TF_RETURN_IF_ERROR(
       executable->SetUpDonation(options.parameter_is_tupled_arguments));
   return std::unique_ptr<PjRtExecutable>(std::move(executable));
