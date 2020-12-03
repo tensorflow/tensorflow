@@ -17,6 +17,7 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
+#include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/gpu_prim.h"
@@ -24,6 +25,12 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+
+#if GOOGLE_CUDA
+#include "tensorflow/core/util/cuda_solvers.h"  // For ScratchSpace
+#elif TENSORFLOW_USE_ROCM
+#include "tensorflow/core/util/rocm_solvers.h"
+#endif
 
 namespace tensorflow {
 
@@ -158,7 +165,8 @@ template <typename T, typename Tindex>
 struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
   Status operator()(OpKernelContext* context, const Tensor& default_value_t,
                     const Tensor& indices_t, const Tensor& values_t,
-                    const Tensor& dense_shape_t) {
+                    const Tensor& dense_shape_t,
+                    typename AsyncOpKernel::DoneCallback done) {
     const int kOutputIndicesOutput = 0;
     const int kOutputValuesOutput = 1;
     const int kEmptyRowIndicatorOutput = 2;
@@ -185,7 +193,9 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
     // 3) Compute empty_row_indicator = (elements_per_row == 0).
     // 4) Compute num_empty_rows_through (the no. empty rows up to and including
     //    each row) by computing the prefix sum of empty_row_indicator.
-    // 5) Synchronize and allocate outputs.
+    // 5) Synchronize and allocate outputs (the sync is done implicitly by
+    //    enqueueing the remainder of the computation onto the stream as a host
+    //    callback).
     // 6) If rows are not ordered:
     //      Compute input_index_map by argsorting row indices.
     // 7) Scatter input elements into output_indices and output_values using
@@ -332,79 +342,120 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
       }
     }
 
-    Tindex num_empty_rows;
+    ScratchSpace<Tindex> num_empty_rows_host(context, 1, /* on_host */ true);
     if (!stream
-             ->ThenMemcpy(&num_empty_rows,
+             ->ThenMemcpy(num_empty_rows_host.mutable_data(),
                           se::DeviceMemoryBase(
                               num_empty_rows_through.data() + (dense_rows - 1),
-                              sizeof(num_empty_rows)),
-                          sizeof(num_empty_rows))
+                              sizeof(*num_empty_rows_host.data())),
+                          sizeof(*num_empty_rows_host.data()))
              .ok()) {
       errors::Internal("Failed to copy num_empty_rows to host");
     }
 
-    int rows_are_not_ordered;
+    ScratchSpace<int> rows_are_not_ordered_host(context, 1, /* on_host */ true);
     if (!stream
-             ->ThenMemcpy(&rows_are_not_ordered,
+             ->ThenMemcpy(rows_are_not_ordered_host.mutable_data(),
                           rows_are_not_ordered_gpu_memory,
-                          sizeof(rows_are_not_ordered))
+                          sizeof(*rows_are_not_ordered_host.data()))
              .ok()) {
       errors::Internal("Failed to copy rows_are_not_ordered to host");
     }
 
-    // Must wait for num_empty_rows and rows_are_not_ordered to be copied.
-    TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+    // We must wait for num_empty_rows and rows_are_not_ordered to be copied to
+    // the host, so we enqueue the remainder of the computation onto the stream
+    // asynchronously to avoid stalling execution.
+    auto async_finish_computation =
+        [this, context, kOutputIndicesOutput, kOutputValuesOutput,
+         kReverseIndexMapOutput, index_type, N, rank, indices, values,
+         default_value, dense_rows, num_empty_rows_host,
+         rows_are_not_ordered_host, num_empty_rows_through_t,
+         num_empty_rows_through, input_row_ends_t, input_row_ends,
+         empty_row_indicator_t, empty_row_indicator, done]() -> void {
+      Tensor* output_indices_t;
+      Tindex num_empty_rows = *num_empty_rows_host.data();
+      const Tindex N_full = N + num_empty_rows;
+      TensorShape output_indices_shape({N_full, rank});
+      OP_REQUIRES_OK_ASYNC(
+          context,
+          context->allocate_output(kOutputIndicesOutput, output_indices_shape,
+                                   &output_indices_t),
+          done);
+      auto output_indices = output_indices_t->matrix<Tindex>();
 
-    Tensor* output_indices_t;
-    const Tindex N_full = N + num_empty_rows;
-    TensorShape output_indices_shape({N_full, rank});
-    TF_RETURN_IF_ERROR(context->allocate_output(
-        kOutputIndicesOutput, output_indices_shape, &output_indices_t));
-    auto output_indices = output_indices_t->matrix<Tindex>();
+      Tensor* output_values_t;
+      OP_REQUIRES_OK_ASYNC(
+          context,
+          context->allocate_output(kOutputValuesOutput, TensorShape({N_full}),
+                                   &output_values_t),
+          done);
+      auto output_values = output_values_t->vec<T>();
 
-    Tensor* output_values_t;
-    TF_RETURN_IF_ERROR(context->allocate_output(
-        kOutputValuesOutput, TensorShape({N_full}), &output_values_t));
-    auto output_values = output_values_t->vec<T>();
+      Tindex* reverse_index_map = nullptr;
+      if (context->output_required(kReverseIndexMapOutput)) {
+        Tensor* reverse_index_map_t = nullptr;
+        OP_REQUIRES_OK_ASYNC(
+            context,
+            context->allocate_output(kReverseIndexMapOutput, TensorShape({N}),
+                                     &reverse_index_map_t),
+            done);
+        reverse_index_map = reverse_index_map_t->vec<Tindex>().data();
+      }
 
-    Tindex* reverse_index_map = nullptr;
-    if (context->output_required(kReverseIndexMapOutput)) {
-      Tensor* reverse_index_map_t = nullptr;
-      TF_RETURN_IF_ERROR(context->allocate_output(
-          kReverseIndexMapOutput, TensorShape({N}), &reverse_index_map_t));
-      reverse_index_map = reverse_index_map_t->vec<Tindex>().data();
-    }
+      const GPUDevice& device = context->eigen_device<GPUDevice>();
 
-    Tindex* input_index_map = nullptr;
-    Tensor input_index_map_t;
-    if (rows_are_not_ordered) {
-      // Extract row indices into separate array for use as keys for sorting.
-      Tensor row_indices_t;
-      TF_RETURN_IF_ERROR(
-          context->allocate_temp(index_type, TensorShape({N}), &row_indices_t));
-      auto row_indices = row_indices_t.flat<Tindex>();
-      TF_RETURN_IF_ERROR(wrap_kernel_call(CopyRowIndicesKernel<Tindex>, device,
-                                          N, rank, indices, row_indices));
-      // Allocate input_index_map.
-      TF_RETURN_IF_ERROR(context->allocate_temp(index_type, TensorShape({N}),
-                                                &input_index_map_t));
-      input_index_map = input_index_map_t.vec<Tindex>().data();
-      // Sort element indices by row indices.
-      TF_RETURN_IF_ERROR(RadixArgSort(context, row_indices_t,
-                                      &input_index_map_t, &row_indices_t,
-                                      &input_index_map_t));
-    }
+      Tindex* input_index_map = nullptr;
+      Tensor input_index_map_t;
+      int rows_are_not_ordered = *rows_are_not_ordered_host.data();
+      if (rows_are_not_ordered) {
+        // Extract row indices into separate array for use as keys for sorting.
+        Tensor row_indices_t;
+        OP_REQUIRES_OK_ASYNC(context,
+                             context->allocate_temp(
+                                 index_type, TensorShape({N}), &row_indices_t),
+                             done);
+        auto row_indices = row_indices_t.flat<Tindex>();
+        OP_REQUIRES_OK_ASYNC(
+            context,
+            wrap_kernel_call(CopyRowIndicesKernel<Tindex>, device, N, rank,
+                             indices, row_indices),
+            done);
+        // Allocate input_index_map.
+        OP_REQUIRES_OK_ASYNC(
+            context,
+            context->allocate_temp(index_type, TensorShape({N}),
+                                   &input_index_map_t),
+            done);
+        input_index_map = input_index_map_t.vec<Tindex>().data();
+        // Sort element indices by row indices.
+        OP_REQUIRES_OK_ASYNC(
+            context,
+            RadixArgSort(context, row_indices_t, &input_index_map_t,
+                         &row_indices_t, &input_index_map_t),
+            done);
+      }
 
-    TF_RETURN_IF_ERROR(wrap_kernel_call(
-        ScatterInputElementsKernel<T, Tindex>, device, N, dense_rows, rank,
-        input_index_map, indices, values, num_empty_rows_through,
-        output_indices, output_values, reverse_index_map));
+      OP_REQUIRES_OK_ASYNC(
+          context,
+          wrap_kernel_call(ScatterInputElementsKernel<T, Tindex>, device, N,
+                           dense_rows, rank, input_index_map, indices, values,
+                           num_empty_rows_through, output_indices,
+                           output_values, reverse_index_map),
+          done);
+      OP_REQUIRES_OK_ASYNC(
+          context,
+          wrap_kernel_call(ScatterNewElementsKernel<T, Tindex>, device,
+                           dense_rows, rank, default_value,
+                           num_empty_rows_through, input_row_ends,
+                           empty_row_indicator, output_indices, output_values),
+          done);
 
-    TF_RETURN_IF_ERROR(wrap_kernel_call(
-        ScatterNewElementsKernel<T, Tindex>, device, dense_rows, rank,
-        default_value, num_empty_rows_through, input_row_ends,
-        empty_row_indicator, output_indices, output_values));
+      CHECK(done);  // Crash OK
+      done();
+    };
 
+    context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
+        stream, async_finish_computation);
     return Status::OK();
   }
 
