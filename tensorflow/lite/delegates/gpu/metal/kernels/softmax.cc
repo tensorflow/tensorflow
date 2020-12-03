@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
+#include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
 namespace tflite {
 namespace gpu {
@@ -56,7 +57,7 @@ kernel void ComputeFunction($1
   do {
     if (offset + tid < params.size.x) {
       float4 mask_temp = offset + tid == params.size.x - 1 ? params.mask : float4(1.0h);
-      float4 src = float4(src_tensor[offset + tid]);
+      float4 src = float4(src_buffer[offset + tid]);
       sum += dot(mask_temp, exp(src));
       offset += 32;
     }
@@ -90,10 +91,10 @@ kernel void ComputeFunction($1
   do {
     if (offset + tid < params.size.x) {
       int linear_index = offset + tid;
-      FLT4 value = FLT4(exp(float4(src_tensor[linear_index])) * sum);
+      FLT4 value = FLT4(exp(float4(src_buffer[linear_index])) * sum);
       uint3 gid = uint3(0, 0, linear_index);
       $2
-      dst_tensor[linear_index] = value;
+      dst_buffer[linear_index] = value;
       offset += 32;
     }
     s++;
@@ -103,9 +104,8 @@ kernel void ComputeFunction($1
 }
 }  // namespace
 
-ComputeTaskDescriptor Softmax(const OperationDef& definition,
-                              int channels_count) {
-  ComputeTaskDescriptor desc(definition);
+ComputeTaskDescriptor Softmax(int channels_count) {
+  ComputeTaskDescriptor desc;
   desc.shader_source = R"(
     #include <metal_stdlib>
     using namespace metal;
@@ -125,11 +125,11 @@ ComputeTaskDescriptor Softmax(const OperationDef& definition,
       float sum = 0.0f;
       for (int d = 0; d < src_channels / 4; ++d) {
         int buffer_index = (d * size.y + gid.y) * size.x + gid.x;
-        sum += dot(float4(1.0f), exp(float4(src_tensor[buffer_index]) - shift));
+        sum += dot(float4(1.0f), exp(float4(input_buffer[buffer_index]) - shift));
       }
       if (remaining_channels > 0) {
         int buffer_index = ((src_channels / 4) * size.y + gid.y) * size.x + gid.x;
-        float4 last_element = float4(src_tensor[buffer_index]);
+        float4 last_element = float4(input_buffer[buffer_index]);
         sum += exp(last_element.x - shift);
         if (remaining_channels > 1) sum += exp(last_element.y - shift);
         if (remaining_channels == 3) sum += exp(last_element.z - shift);
@@ -137,15 +137,15 @@ ComputeTaskDescriptor Softmax(const OperationDef& definition,
 
       for (int d = 0; d < (src_channels + 3) / 4; ++d) {
         const int linear_index = (d * size.y + gid.y) * size.x + gid.x;
-        FLT4 value = FLT4(exp(float4(src_tensor[linear_index]) - shift) / sum);
+        FLT4 value = FLT4(exp(float4(input_buffer[linear_index]) - shift) / sum);
         $2
-        dst_tensor[linear_index] = value;
+        output_buffer[linear_index] = value;
       }
     }
   )";
 
-  desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
-  desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
+  desc.AddSrcTensor("input_buffer");
+  desc.AddDstTensor("output_buffer");
 
   desc.uniform_buffers = {
       {"constant int2& size",
@@ -167,13 +167,12 @@ ComputeTaskDescriptor Softmax(const OperationDef& definition,
   return desc;
 }
 
-ComputeTaskDescriptor Softmax1x1(const OperationDef& definition,
-                                 const GpuInfo& gpu_info, int channels_count) {
-  ComputeTaskDescriptor desc(definition);
+ComputeTaskDescriptor Softmax1x1(const GpuInfo& gpu_info, int channels_count) {
+  ComputeTaskDescriptor desc;
   desc.shader_source = GetSoftmax1x1Code(gpu_info);
 
-  desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
-  desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
+  desc.AddSrcTensor("src_buffer");
+  desc.AddDstTensor("dst_buffer");
 
   desc.uniform_buffers = {
       {"constant uniforms& params",

@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
+#include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
 namespace tflite {
 namespace gpu {
@@ -48,16 +49,16 @@ std::string GetAddTableCodeFused(int src_count) {
 }
 }  // namespace
 
-ComputeTaskDescriptor Add(const OperationDef& definition) {
-  ComputeTaskDescriptor desc(definition);
+ComputeTaskDescriptor Add(int tensors_count, const RuntimeOptions& options) {
+  ComputeTaskDescriptor desc;
   desc.is_linkable = true;
   desc.is_associative_op = true;
-  desc.shader_source = GetAddTableCodeFused(definition.src_tensors.size() - 1);
+  desc.shader_source = GetAddTableCodeFused(tensors_count - 1);
 
-  for (int i = 0; i < definition.src_tensors.size(); ++i) {
-    desc.AddSrcTensor("", definition.src_tensors[i]);
+  for (int i = 0; i < tensors_count; ++i) {
+    desc.AddSrcTensor("");
   }
-  desc.AddDstTensor("", definition.dst_tensors[0]);
+  desc.AddDstTensor("");
 
   return desc;
 }

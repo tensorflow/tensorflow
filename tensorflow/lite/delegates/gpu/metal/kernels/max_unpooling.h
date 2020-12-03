@@ -26,8 +26,7 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 
-ComputeTaskDescriptor MaxUnpooling(const OperationDef& definition,
-                                   const MaxUnpooling2DAttributes& params);
+ComputeTaskDescriptor MaxUnpooling(const MaxUnpooling2DAttributes& params);
 
 }  // namespace metal
 }  // namespace gpu

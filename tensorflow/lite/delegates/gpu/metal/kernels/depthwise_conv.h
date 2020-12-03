@@ -21,14 +21,15 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
+#include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
 namespace tflite {
 namespace gpu {
 namespace metal {
 
 ComputeTaskDescriptor DepthWiseConvolution(
-    const OperationDef& definition,
-    const DepthwiseConvolution2DAttributes& attr);
+    const DepthwiseConvolution2DAttributes& attr,
+    const RuntimeOptions& options);
 
 // Depth Wise Convolution for kernel 3x3
 // require:
@@ -37,8 +38,8 @@ ComputeTaskDescriptor DepthWiseConvolution(
 //   dilation = 1x1;
 //   stride = 1x1;
 ComputeTaskDescriptor DepthWiseConv3x3Stride1x1(
-    const OperationDef& definition,
-    const DepthwiseConvolution2DAttributes& attr);
+    const DepthwiseConvolution2DAttributes& attr,
+    const RuntimeOptions& options);
 
 // TODO(impjdi): Move it inside module.
 bool CheckDepthWiseConv3x3Stride1x1Support(
@@ -51,8 +52,8 @@ bool CheckDepthWiseConv3x3Stride1x1Support(
 //   dilation.y = 1;
 //   stride.y = 2;
 ComputeTaskDescriptor DepthWiseConv3x3Stride2(
-    const OperationDef& definition,
-    const DepthwiseConvolution2DAttributes& attr);
+    const DepthwiseConvolution2DAttributes& attr,
+    const RuntimeOptions& options);
 
 // TODO(impjdi): Move it inside module.
 bool CheckDepthWiseConv3x3Stride2Support(

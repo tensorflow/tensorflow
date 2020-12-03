@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
+#include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
 namespace tflite {
 namespace gpu {
@@ -92,7 +93,7 @@ kernel void ComputeFunction(
   y2 = clamp(y2, 0, params.src_size.y - 1);
   y3 = clamp(y3, 0, params.src_size.y - 1);
 
-  device FLT4* src_loc = src_tensor + gid_z * params.src_size.z;
+  device FLT4* src_loc = src_buffer + gid_z * params.src_size.z;
   device FLT4* filters_loc = filters + gid_z * 10;
 
   FLT4 s0 = src_loc[y0 * params.src_size.x + x0] * FLT(!(x0_out || y0_out));
@@ -174,28 +175,28 @@ kernel void ComputeFunction(
       FLT4 value = FLT4(r0);
       uint3 gid = uint3(gid_x, gid_y, gid_z);
       $2
-      dst_tensor[linear_index] = value;
+      dst_buffer[linear_index] = value;
   }
   if (y1_in && x0_in) {
       int linear_index = offset_1;
       FLT4 value = FLT4(l0);
       uint3 gid = uint3(gid_x, gid_y + 1, gid_z);
       $2
-      dst_tensor[linear_index] = value;
+      dst_buffer[linear_index] = value;
   }
   if (y0_in && x1_in) {
       int linear_index = offset_2;
       FLT4 value = FLT4(t0);
       uint3 gid = uint3(gid_x + 1, gid_y, gid_z);
       $2
-      dst_tensor[linear_index] = value;
+      dst_buffer[linear_index] = value;
   }
   if (y1_in && x1_in) {
       int linear_index = offset_3;
       FLT4 value = FLT4(b0);
       uint3 gid = uint3(gid_x + 1, gid_y + 1, gid_z);
       $2
-      dst_tensor[linear_index] = value;
+      dst_buffer[linear_index] = value;
   }
 }
   )";
@@ -293,7 +294,7 @@ kernel void ComputeFunction(
         return;
     }
 
-    device FLT4* src_loc = src_tensor + gid_z * params.src_size.z;
+    device FLT4* src_loc = src_buffer + gid_z * params.src_size.z;
     device FLT4* filters_loc = filters + gid_z * 10;
 
     ACCUM_FLT4 r0 = ACCUM_FLT4(0.0f, 0.0f, 0.0f, 0.0f);
@@ -383,14 +384,14 @@ kernel void ComputeFunction(
         FLT4 value = FLT4(r0);
         uint3 gid = uint3(gid_x, gid_y, gid_z);
         $2
-        dst_tensor[linear_index] = value;
+        dst_buffer[linear_index] = value;
     }
     if (y1_in) {
         int linear_index = offset_1;
         FLT4 value = FLT4(l0);
         uint3 gid = uint3(gid_x, gid_y, gid_z);
         $2
-        dst_tensor[linear_index] = value;
+        dst_buffer[linear_index] = value;
     }
 }
   )";
@@ -464,9 +465,10 @@ static std::vector<uint8_t> GetUniformBufferDepthWiseConv3x3Stride2(
 }  // namespace
 
 ComputeTaskDescriptor DepthWiseConvolution(
-    const OperationDef& definition,
-    const DepthwiseConvolution2DAttributes& attr) {
+    const DepthwiseConvolution2DAttributes& attr,
+    const RuntimeOptions& options) {
   int channels_multiplier = attr.weights.shape.o;
+  ComputeTaskDescriptor desc;
   std::string shader_source = R"(
     #include <metal_stdlib>
     using namespace metal;
@@ -507,13 +509,13 @@ ComputeTaskDescriptor DepthWiseConvolution(
     shader_source += R"(
         int src_layer = dst_z;
         int src_index = (src_layer * U.src_size.y + yc) * U.src_size.x + xc;
-        FLT4 src_modified = src_tensor[src_index];
+        FLT4 src_modified = src_buffer[src_index];
 )";
   } else if (channels_multiplier == 2) {
     shader_source += R"(
         int src_layer = dst_z / 2;
         int src_index = (src_layer * U.src_size.y + yc) * U.src_size.x + xc;
-        FLT4 src = src_tensor[src_index];
+        FLT4 src = src_buffer[src_index];
         FLT2 t0 = dst_z % 2 == 0 ? src.xy : src.zw;
         FLT4 src_modified = FLT4(t0.x, t0.x, t0.y, t0.y);
 )";
@@ -521,7 +523,7 @@ ComputeTaskDescriptor DepthWiseConvolution(
     shader_source += R"(
         int src_layer = dst_z / 4;
         int src_index = (src_layer * U.src_size.y + yc) * U.src_size.x + xc;
-        FLT4 src = src_tensor[src_index];
+        FLT4 src = src_buffer[src_index];
         FLT t0 = src[dst_z % 4];
         FLT4 src_modified = FLT4(t0, t0, t0, t0);
 )";
@@ -529,7 +531,7 @@ ComputeTaskDescriptor DepthWiseConvolution(
     shader_source += R"(
         int src_layer = dst_z / U.channel_multiplier.x;
         int src_index = (src_layer * U.src_size.y + yc) * U.src_size.x + xc;
-        FLT4 src = src_tensor[src_index];
+        FLT4 src = src_buffer[src_index];
         FLT4 src_modified;
         const int src_layer_offset = (dst_z % U.channel_multiplier.x) * 4;
         src_modified.x = src[(src_layer_offset + 0) / U.channel_multiplier.x];
@@ -546,21 +548,20 @@ ComputeTaskDescriptor DepthWiseConvolution(
       const int linear_index = (dst_z * U.dst_size.y + dst_y) * U.dst_size.x + dst_x;
       FLT4 value = res;
       $2
-      dst_tensor[linear_index] = value;
+      dst_buffer[linear_index] = value;
     }
   )";
-  ComputeTaskDescriptor desc(definition);
   desc.shader_source = shader_source;
-  desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
-  desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
+  desc.AddSrcTensor("src_buffer");
+  desc.AddDstTensor("dst_buffer");
 
-  auto data_type = DeduceDataTypeFromPrecision(definition.precision);
   const int output_channels_count = attr.weights.shape.i * attr.weights.shape.o;
   desc.immutable_buffers = {
       {"device FLT4* const filters",
-       GetByteBufferConverted(ConvertToPIOHW4(attr.weights), data_type)},
+       GetByteBufferConverted(ConvertToPIOHW4(attr.weights),
+                              options.storage_precision)},
       {"device FLT4* const biases",
-       GetByteBufferConvertedResized(attr.bias.data, data_type,
+       GetByteBufferConvertedResized(attr.bias.data, options.storage_precision,
                                      output_channels_count)},
   };
 
@@ -607,19 +608,18 @@ ComputeTaskDescriptor DepthWiseConvolution(
 }
 
 ComputeTaskDescriptor DepthWiseConv3x3Stride1x1(
-    const OperationDef& definition,
-    const DepthwiseConvolution2DAttributes& attr) {
-  ComputeTaskDescriptor desc(definition);
+    const DepthwiseConvolution2DAttributes& attr,
+    const RuntimeOptions& options) {
+  ComputeTaskDescriptor desc;
   desc.shader_source = GetKernelDepthWiseConv3x3Stride1x1();
-  desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
-  desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
+  desc.AddSrcTensor("src_buffer");
+  desc.AddDstTensor("dst_buffer");
 
   // For this operation we keep weights and biases in one buffer
   auto weights_reordered = ReorderWeightsDepthWiseConv3x3Stride1x1(attr);
-  auto data_type = DeduceDataTypeFromPrecision(definition.precision);
   desc.immutable_buffers = {
       {"device FLT4* const filters",
-       GetByteBufferConverted(weights_reordered, data_type)},
+       GetByteBufferConverted(weights_reordered, options.storage_precision)},
   };
 
   desc.uniform_buffers = {
@@ -658,19 +658,19 @@ bool CheckDepthWiseConv3x3Stride1x1Support(
 }
 
 ComputeTaskDescriptor DepthWiseConv3x3Stride2(
-    const OperationDef& definition,
-    const DepthwiseConvolution2DAttributes& attr) {
-  ComputeTaskDescriptor desc(definition);
+    const DepthwiseConvolution2DAttributes& attr,
+    const RuntimeOptions& options) {
+  ComputeTaskDescriptor desc;
   desc.shader_source = GetKernelDepthWiseConv3x3Stride2();
-  desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
-  desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
+
+  desc.AddSrcTensor("src_buffer");
+  desc.AddDstTensor("dst_buffer");
 
   // For this operation we keep weights and biases in one buffer
   auto weights_reordered = ReorderWeightsDepthWiseConv3x3Stride2(attr);
-  auto data_type = DeduceDataTypeFromPrecision(definition.precision);
   desc.immutable_buffers = {
       {"device FLT4* const filters",
-       GetByteBufferConverted(weights_reordered, data_type)},
+       GetByteBufferConverted(weights_reordered, options.storage_precision)},
   };
 
   desc.uniform_buffers = {

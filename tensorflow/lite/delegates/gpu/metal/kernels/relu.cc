@@ -30,9 +30,8 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 
-ComputeTaskDescriptor ReLU(const OperationDef& definition,
-                           const ReLUAttributes& attr) {
-  ComputeTaskDescriptor desc(definition);
+ComputeTaskDescriptor ReLU(const ReLUAttributes& attr) {
+  ComputeTaskDescriptor desc;
   desc.is_linkable = true;
   const std::string min_func =
       attr.alpha == 0 ? "FLT4(0.0f)" : "min(value * params.x, 0.0f)";
@@ -46,8 +45,8 @@ ComputeTaskDescriptor ReLU(const OperationDef& definition,
     desc.shader_source =
         parameters + "  return FLT4(max(value, " + min_func + "));\n}";
   }
-  desc.AddSrcTensor("", definition.src_tensors[0]);
-  desc.AddDstTensor("", definition.dst_tensors[0]);
+  desc.AddSrcTensor("");
+  desc.AddDstTensor("");
   desc.uniform_buffers = {
       {"constant float2&",
        [attr](const std::vector<BHWC>& src_shapes,

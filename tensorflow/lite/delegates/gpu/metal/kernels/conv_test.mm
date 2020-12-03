@@ -296,17 +296,10 @@ using ::tflite::gpu::metal::SingleOpModel;
   outputs_v0[1].shape = dst_shape;
   outputs_v0[1].data.resize(dst_shape.DimensionsProduct());
 
-  tflite::gpu::OperationDef op_def;
-  op_def.precision = tflite::gpu::CalculationsPrecision::F32;
-  tflite::gpu::TensorDescriptor tensor_descriptor = tflite::gpu::TensorDescriptor{
-    DataType::FLOAT32, tflite::gpu::TensorStorageType::BUFFER, tflite::gpu::Layout::HWC};
-  op_def.src_tensors.push_back(tensor_descriptor);
-  op_def.dst_tensors.push_back(tensor_descriptor);
-
   std::string device_name = std::string([[device name] UTF8String]);
   tflite::gpu::GpuInfo gpu_info;
   tflite::gpu::GetGpuInfoFromDeviceDescription(device_name, tflite::gpu::GpuApi::kMetal, &gpu_info);
-  auto gpu_op0 = ConvolutionGeneric(op_def, dst_shape, attr, gpu_info);
+  auto gpu_op0 = ConvolutionGeneric(dst_shape, attr, gpu_info, options);
   std::vector<tflite::gpu::metal::NodeDescriptor> nodes(1);
   nodes[0].task = std::make_shared<tflite::gpu::metal::ComputeTaskDescriptor>(std::move(gpu_op0));
   nodes[0].src_tensors_ids = {0};
@@ -316,14 +309,14 @@ using ::tflite::gpu::metal::SingleOpModel;
 
   tflite::gpu::metal::Winograd4x4To36Attributes wino_up_attr;
   wino_up_attr.padding = attr.padding;
-  auto gpu_op1 = tflite::gpu::metal::Winograd4x4To36(op_def, wino_up_attr);
+  auto gpu_op1 = tflite::gpu::metal::Winograd4x4To36(wino_up_attr);
 
-  auto gpu_op2 = ConvolutionWino4x4To6x6(op_def, conv_shape, attr, gpu_info);
+  auto gpu_op2 = ConvolutionWino4x4To6x6(conv_shape, attr, gpu_info, options);
 
   tflite::gpu::metal::Winograd36To4x4Attributes wino_down_attr;
   wino_down_attr.output_shape = dst_shape;
   wino_down_attr.biases = attr.bias;
-  auto gpu_op3 = tflite::gpu::metal::Winograd36To4x4(op_def, wino_down_attr);
+  auto gpu_op3 = tflite::gpu::metal::Winograd36To4x4(options, wino_down_attr);
 
   std::map<ValueId, TensorFloat32> inputs_v1;
   inputs_v1[0] = src_tensor;

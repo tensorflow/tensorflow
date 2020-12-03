@@ -65,13 +65,13 @@ kernel void ComputeFunction(
       int src_layer = src_z >> 2;
       int src_channel = src_z & 3;
       int src_linear_id = (src_layer * params.src_size.y + src_y) * params.src_size.x + src_x;
-      value[i] = src_tensor[src_linear_id][src_channel];
+      value[i] = src_buffer[src_linear_id][src_channel];
     }
   }
 
   int linear_index = (igid.z * params.dst_size.y + igid.y) * params.dst_size.x + igid.x;
   $2
-  dst_tensor[linear_index] = value;
+  dst_buffer[linear_index] = value;
 })";
   return code;
 }
@@ -107,22 +107,21 @@ kernel void ComputeFunction(
 
   int src_index = src_z * params.src_size.w + src_y * params.src_size.x + src_x;
   int linear_index = Z * params.dst_size.w + Y * params.dst_size.x + X;
-  FLT4 value = src_tensor[src_index];
+  FLT4 value = src_buffer[src_index];
   $2
-  dst_tensor[linear_index] = value;
+  dst_buffer[linear_index] = value;
 })";
   return code;
 }
 
 }  // namespace
 
-ComputeTaskDescriptor Reshape(const OperationDef& definition,
-                              const ReshapeAttributes& attr) {
-  ComputeTaskDescriptor desc(definition);
+ComputeTaskDescriptor Reshape(const ReshapeAttributes& attr) {
+  ComputeTaskDescriptor desc;
   desc.shader_source = GetReshapeCode();
 
-  desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
-  desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
+  desc.AddSrcTensor("src_buffer");
+  desc.AddDstTensor("dst_buffer");
 
   desc.uniform_buffers = {
       {"constant uniforms& params",
@@ -158,13 +157,12 @@ ComputeTaskDescriptor Reshape(const OperationDef& definition,
   return desc;
 }
 
-ComputeTaskDescriptor Reshapex4(const OperationDef& definition,
-                                const ReshapeAttributes& attr) {
-  ComputeTaskDescriptor desc(definition);
+ComputeTaskDescriptor Reshapex4(const ReshapeAttributes& attr) {
+  ComputeTaskDescriptor desc;
   desc.shader_source = GetReshapex4Code();
 
-  desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
-  desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
+  desc.AddSrcTensor("src_buffer");
+  desc.AddDstTensor("dst_buffer");
 
   desc.uniform_buffers = {
       {"constant uniforms& params",

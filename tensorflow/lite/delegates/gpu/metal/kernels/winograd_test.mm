@@ -84,15 +84,7 @@ using ::tflite::gpu::metal::CompareVectors;
   tflite::gpu::metal::Winograd4x4To36Attributes attr;
   attr.padding.prepended = tflite::gpu::HW(1, 1);
   attr.padding.appended = tflite::gpu::HW(1, 1);
-  tflite::gpu::OperationDef op_def;
-  op_def.precision = tflite::gpu::CalculationsPrecision::F32;
-  tflite::gpu::TensorDescriptor tensor_descriptor = tflite::gpu::TensorDescriptor{
-      tflite::gpu::DataType::FLOAT32,
-      tflite::gpu::TensorStorageType::BUFFER,
-      tflite::gpu::Layout::HWC};
-  op_def.src_tensors.push_back(tensor_descriptor);
-  op_def.dst_tensors.push_back(tensor_descriptor);
-  auto gpu_op = tflite::gpu::metal::Winograd4x4To36(op_def, attr);
+  auto gpu_op = tflite::gpu::metal::Winograd4x4To36(attr);
   std::vector<tflite::gpu::metal::NodeDescriptor> nodes(1);
   nodes[0].task = std::make_shared<tflite::gpu::metal::ComputeTaskDescriptor>(std::move(gpu_op));
   nodes[0].src_tensors_ids = {0};
@@ -158,15 +150,7 @@ using ::tflite::gpu::metal::CompareVectors;
   tflite::gpu::metal::Winograd4x4To36Attributes attr;
   attr.padding.prepended = tflite::gpu::HW(1, 1);
   attr.padding.appended = tflite::gpu::HW(1, 1);
-  tflite::gpu::OperationDef op_def;
-  op_def.precision = tflite::gpu::CalculationsPrecision::F32;
-  tflite::gpu::TensorDescriptor tensor_descriptor = tflite::gpu::TensorDescriptor{
-      tflite::gpu::DataType::FLOAT32,
-      tflite::gpu::TensorStorageType::BUFFER,
-      tflite::gpu::Layout::HWC};
-  op_def.src_tensors.push_back(tensor_descriptor);
-  op_def.dst_tensors.push_back(tensor_descriptor);
-  auto gpu_op = tflite::gpu::metal::Winograd4x4To36TileX6(op_def, attr);
+  auto gpu_op = tflite::gpu::metal::Winograd4x4To36TileX6(attr, options);
   std::vector<tflite::gpu::metal::NodeDescriptor> nodes(1);
   nodes[0].task = std::make_shared<tflite::gpu::metal::ComputeTaskDescriptor>(std::move(gpu_op));
   nodes[0].src_tensors_ids = {0};
@@ -233,15 +217,7 @@ using ::tflite::gpu::metal::CompareVectors;
   options.storage_precision = tflite::gpu::metal::RuntimeOptions::Precision::FP32;
   options.accumulator_precision = tflite::gpu::metal::RuntimeOptions::Precision::FP32;
 
-  tflite::gpu::OperationDef op_def;
-  op_def.precision = tflite::gpu::CalculationsPrecision::F32;
-  tflite::gpu::TensorDescriptor tensor_descriptor = tflite::gpu::TensorDescriptor{
-      tflite::gpu::DataType::FLOAT32,
-      tflite::gpu::TensorStorageType::BUFFER,
-      tflite::gpu::Layout::HWC};
-  op_def.src_tensors.push_back(tensor_descriptor);
-  op_def.dst_tensors.push_back(tensor_descriptor);
-  auto gpu_op = tflite::gpu::metal::Winograd36To4x4(op_def, attr);
+  auto gpu_op = tflite::gpu::metal::Winograd36To4x4(options, attr);
   std::vector<tflite::gpu::metal::NodeDescriptor> nodes(1);
   nodes[0].task = std::make_shared<tflite::gpu::metal::ComputeTaskDescriptor>(std::move(gpu_op));
   nodes[0].src_tensors_ids = {0};
@@ -308,15 +284,7 @@ using ::tflite::gpu::metal::CompareVectors;
   options.storage_precision = tflite::gpu::metal::RuntimeOptions::Precision::FP32;
   options.accumulator_precision = tflite::gpu::metal::RuntimeOptions::Precision::FP32;
 
-  tflite::gpu::OperationDef op_def;
-  op_def.precision = tflite::gpu::CalculationsPrecision::F32;
-  tflite::gpu::TensorDescriptor tensor_descriptor = tflite::gpu::TensorDescriptor{
-      tflite::gpu::DataType::FLOAT32,
-      tflite::gpu::TensorStorageType::BUFFER,
-      tflite::gpu::Layout::HWC};
-  op_def.src_tensors.push_back(tensor_descriptor);
-  op_def.dst_tensors.push_back(tensor_descriptor);
-  auto gpu_op = tflite::gpu::metal::Winograd36To4x4Tile4x1(op_def, attr);
+  auto gpu_op = tflite::gpu::metal::Winograd36To4x4Tile4x1(options, attr);
   std::vector<tflite::gpu::metal::NodeDescriptor> nodes(1);
   nodes[0].task = std::make_shared<tflite::gpu::metal::ComputeTaskDescriptor>(std::move(gpu_op));
   nodes[0].src_tensors_ids = {0};

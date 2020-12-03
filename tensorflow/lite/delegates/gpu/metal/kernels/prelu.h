@@ -21,17 +21,18 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
+#include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
 namespace tflite {
 namespace gpu {
 namespace metal {
 
 // Parametric Rectified Linear Unit.
-ComputeTaskDescriptor PReLU(const OperationDef& definition,
-                            const PReLUAttributes& attr);
+ComputeTaskDescriptor PReLU(const PReLUAttributes& attr,
+                            const RuntimeOptions& options);
 // Parametric Rectified 3D Linear Unit.
-ComputeTaskDescriptor PReLUFull(const OperationDef& definition,
-                                const PReLUAttributes& attr);
+ComputeTaskDescriptor PReLUFull(const PReLUAttributes& attr,
+                                const RuntimeOptions& options);
 
 }  // namespace metal
 }  // namespace gpu

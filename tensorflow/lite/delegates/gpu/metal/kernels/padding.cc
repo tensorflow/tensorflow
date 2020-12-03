@@ -73,7 +73,7 @@ std::string GetPaddingCode(const PadAttributes& attr) {
       code +=
           "      int buffer_index = (int(gid.z) * params.src_size.y + s_y) * "
           "params.src_size.x + s_x;\n";
-      code += "      value = src_tensor[buffer_index];\n";
+      code += "      value = src_buffer[buffer_index];\n";
     } else {
       code += "      int start_channel = static_cast<int>(gid.z) * 4;\n";
       for (int i = 0; i < 4; ++i) {
@@ -91,7 +91,7 @@ std::string GetPaddingCode(const PadAttributes& attr) {
         code +=
             "        int buffer_index = ((s_z / 4) * params.src_size.y + s_y) "
             "* params.src_size.x + s_x;\n";
-        code += "        FLT4 t = src_tensor[buffer_index];\n";
+        code += "        FLT4 t = src_buffer[buffer_index];\n";
         code += "        FLT t_ar[4] = {t.x, t.y, t.z, t.w};\n";
         code += "        value" + s + " = t_ar[s_z % 4];\n";
         code += "      }\n";
@@ -109,13 +109,13 @@ std::string GetPaddingCode(const PadAttributes& attr) {
       code +=
           "        int buffer_index = (int(gid.z) * params.src_size.y + s_y) * "
           "params.src_size.x + s_x;\n";
-      code += "        value = src_tensor[buffer_index];\n";
+      code += "        value = src_buffer[buffer_index];\n";
     } else if (attr.prepended.c % 4 == 0) {
       code += R"(
         int s_z = static_cast<int>(gid.z) - params.padding.z / 4;
         if (s_z >= 0 && s_z < params.src_size.w) {
           int buffer_index = (s_z * params.src_size.y + s_y) * params.src_size.x + s_x;
-          value = src_tensor[buffer_index];
+          value = src_buffer[buffer_index];
         })";
     } else {
       for (int i = 0; i < 4; ++i) {
@@ -129,7 +129,7 @@ std::string GetPaddingCode(const PadAttributes& attr) {
             "      int buffer_index = ((s_z / 4) * params.src_size.y + s_y) * "
             "params.src_size.x + "
             "s_x;\n";
-        code += "      FLT4 t = src_tensor[buffer_index];\n";
+        code += "      FLT4 t = src_buffer[buffer_index];\n";
         code += "      FLT t_ar[4] = {t.x, t.y, t.z, t.w};\n";
         code += "      value" + s + " = t_ar[s_z % 4];\n";
         code += "    }\n";
@@ -143,19 +143,18 @@ std::string GetPaddingCode(const PadAttributes& attr) {
       "params.dst_size.x + "
       "int(gid.x);\n";
   code += "  $2\n";
-  code += "  dst_tensor[linear_index] = value;\n";
+  code += "  dst_buffer[linear_index] = value;\n";
   code += "}\n";
   return code;
 }
 }  // namespace
 
-ComputeTaskDescriptor Padding(const OperationDef& definition,
-                              const PadAttributes& attr) {
-  ComputeTaskDescriptor desc(definition);
+ComputeTaskDescriptor Padding(const PadAttributes& attr) {
+  ComputeTaskDescriptor desc;
   desc.shader_source = GetPaddingCode(attr);
 
-  desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
-  desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
+  desc.AddSrcTensor("src_buffer");
+  desc.AddDstTensor("dst_buffer");
 
   desc.uniform_buffers = {
       {"constant uniforms& params",

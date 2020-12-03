@@ -72,13 +72,13 @@ std::string GetConcatZCode(const std::vector<int> channels) {
     // generation.
     for (int i = 0; i < channels.size(); ++i) {
       const int depth = DivideRoundUp(channels[i], 4);
-      const std::string src_tensor = "src_tensor" + std::to_string(i);
+      const std::string src_buffer = "src_buffer" + std::to_string(i);
       c += "  for (int i = 0; i < " + std::to_string(depth) + "; ++i) {\n";
       c += "    int src_index = i * U.src_size.w + xy_offset;\n";
-      c += "    value = " + src_tensor + "[src_index];\n";
+      c += "    value = " + src_buffer + "[src_index];\n";
       c += "    uint3 gid = uint3(ugid.x, ugid.y, uint(Z));\n";
       c += "    $2\n";
-      c += "    dst_tensor[linear_index] = value;\n";
+      c += "    dst_buffer[linear_index] = value;\n";
       c += "    linear_index += U.src_size.w;\n";
       c += "    Z++;\n";
       c += "  }\n";
@@ -89,13 +89,13 @@ std::string GetConcatZCode(const std::vector<int> channels) {
     int z = 0;
     for (int i = 0; i < channels.size(); ++i) {
       const int depth = DivideRoundUp(channels[i], 4);
-      const std::string src_tensor = "src_tensor" + std::to_string(i);
+      const std::string src_buffer = "src_buffer" + std::to_string(i);
       for (int d = 0; d < depth; ++d) {
         const int channels_in_group = std::min(4, channels[i] - d * 4);
         const std::string temp_name = "t" + std::to_string(read_index);
         const std::string src_index =
             std::to_string(d) + " * U.src_size.w + xy_offset";
-        c += "  FLT4 " + temp_name + " = " + src_tensor + "[" + src_index +
+        c += "  FLT4 " + temp_name + " = " + src_buffer + "[" + src_index +
              "];\n";
         for (int ch = 0; ch < channels_in_group; ++ch) {
           c += "  value" + postfix[out_channel] + " = ";
@@ -106,7 +106,7 @@ std::string GetConcatZCode(const std::vector<int> channels) {
             c += "  {\n";
             c += "    uint3 gid = uint3(ugid.x, ugid.y, uint(Z));\n";
             c += "    $2\n";
-            c += "    dst_tensor[linear_index] = value;\n";
+            c += "    dst_buffer[linear_index] = value;\n";
             c += "    linear_index += U.src_size.w;\n";
             c += "    Z++;\n";
             c += "  }\n";
@@ -120,7 +120,7 @@ std::string GetConcatZCode(const std::vector<int> channels) {
       c += "  {\n";
       c += "    uint3 gid = uint3(ugid.x, ugid.y, uint(Z));\n";
       c += "    $2\n";
-      c += "    dst_tensor[linear_index] = value;\n";
+      c += "    dst_buffer[linear_index] = value;\n";
       c += "  }\n";
     }
   }
@@ -129,22 +129,20 @@ std::string GetConcatZCode(const std::vector<int> channels) {
 }
 }  // namespace
 
-ComputeTaskDescriptor ConcatZ(const OperationDef& definition,
-                              const ConcatAttributes& attr,
+ComputeTaskDescriptor ConcatZ(const ConcatAttributes& attr,
                               const std::vector<BHWC>& input_shapes) {
   std::vector<int> channels;
   channels.reserve(input_shapes.size());
   for (const auto& shape : input_shapes) {
     channels.push_back(shape.c);
   }
-  ComputeTaskDescriptor desc(definition);
+  ComputeTaskDescriptor desc;
   desc.shader_source = GetConcatZCode(channels);
 
-  for (int i = 0; i < definition.src_tensors.size(); ++i) {
-    desc.AddSrcTensor("src_tensor" + std::to_string(i),
-                      definition.src_tensors[i]);
+  for (int i = 0; i < input_shapes.size(); ++i) {
+    desc.AddSrcTensor("src_buffer" + std::to_string(i));
   }
-  desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
+  desc.AddDstTensor("dst_buffer");
 
   desc.uniform_buffers = {
       {"constant uniforms& U",
@@ -178,10 +176,9 @@ ComputeTaskDescriptor ConcatZ(const OperationDef& definition,
   return desc;
 }
 
-ComputeTaskDescriptor ConcatX(const OperationDef& definition,
-                              const ConcatAttributes& attr,
+ComputeTaskDescriptor ConcatX(const ConcatAttributes& attr,
                               const std::vector<BHWC>& input_shapes) {
-  ComputeTaskDescriptor desc(definition);
+  ComputeTaskDescriptor desc;
   std::string code = R"(
     #include <metal_stdlib>
     using namespace metal;
@@ -201,12 +198,12 @@ ComputeTaskDescriptor ConcatX(const OperationDef& definition,
     output_width += dims.w;
 
     // Generated shader example:
-    // if (gid.x < 10) value = src_tensor0[(gid.y + gid.z * 3) * 4 + gid.x - 3];
+    // if (gid.x < 10) value = src_buffer0[(gid.y + gid.z * 3) * 4 + gid.x - 3];
     // else
     if (buffer_index < input_shapes.size() - 1) {
       code += "if (gid.x < " + std::to_string(output_width) + ")";
     }
-    code += "value = src_tensor" + std::to_string(buffer_index) +
+    code += "value = src_buffer" + std::to_string(buffer_index) +
             "[(gid.y + gid.z * " + std::to_string(dims.h) + ") * " +
             std::to_string(dims.w) + " + gid.x - " +
             std::to_string(output_width - dims.w) + "];\n";
@@ -219,16 +216,15 @@ ComputeTaskDescriptor ConcatX(const OperationDef& definition,
           std::to_string(output_width) + " + gid.x;";
   code += R"(
       $2
-      dst_tensor[linear_index] = value;
+      dst_buffer[linear_index] = value;
     }
   )";
   desc.shader_source = code;
 
   for (int i = 0; i < input_shapes.size(); ++i) {
-    desc.AddSrcTensor("src_tensor" + std::to_string(i),
-                      definition.src_tensors[i]);
+    desc.AddSrcTensor("src_buffer" + std::to_string(i));
   }
-  desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
+  desc.AddDstTensor("dst_buffer");
 
   desc.uniform_buffers = {
       {"constant int3& size",
@@ -253,10 +249,9 @@ ComputeTaskDescriptor ConcatX(const OperationDef& definition,
   return desc;
 }
 
-ComputeTaskDescriptor ConcatY(const OperationDef& definition,
-                              const ConcatAttributes& attr,
+ComputeTaskDescriptor ConcatY(const ConcatAttributes& attr,
                               const std::vector<BHWC>& input_shapes) {
-  ComputeTaskDescriptor desc(definition);
+  ComputeTaskDescriptor desc;
   std::string code = R"(
     #include <metal_stdlib>
     using namespace metal;
@@ -276,12 +271,12 @@ ComputeTaskDescriptor ConcatY(const OperationDef& definition,
     output_height += dims.h;
 
     // Generated shader example:
-    // if (gid.y < 10) value = src_tensor0[(gid.y - 3 + gid.z * 5) * 4 + gid.x];
+    // if (gid.y < 10) value = src_buffer0[(gid.y - 3 + gid.z * 5) * 4 + gid.x];
     // else
     if (buffer_index < input_shapes.size() - 1) {
       code += "if (gid.y < " + std::to_string(output_height) + ")";
     }
-    code += "value = src_tensor" + std::to_string(buffer_index) + "[(gid.y - " +
+    code += "value = src_buffer" + std::to_string(buffer_index) + "[(gid.y - " +
             std::to_string(output_height - dims.h) + " + gid.z * " +
             std::to_string(dims.h) + ") * " + std::to_string(dims.w) +
             " + gid.x];\n";
@@ -295,16 +290,15 @@ ComputeTaskDescriptor ConcatY(const OperationDef& definition,
           " + gid.x;";
   code += R"(
       $2
-      dst_tensor[linear_index] = value;
+      dst_buffer[linear_index] = value;
     }
   )";
   desc.shader_source = code;
 
   for (int i = 0; i < input_shapes.size(); ++i) {
-    desc.AddSrcTensor("src_tensor" + std::to_string(i),
-                      definition.src_tensors[i]);
+    desc.AddSrcTensor("src_buffer" + std::to_string(i));
   }
-  desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
+  desc.AddDstTensor("dst_buffer");
 
   desc.uniform_buffers = {
       {"constant int3& size",
@@ -329,15 +323,14 @@ ComputeTaskDescriptor ConcatY(const OperationDef& definition,
   return desc;
 }
 
-ComputeTaskDescriptor Concat(const OperationDef& definition,
-                             const ConcatAttributes& attr,
+ComputeTaskDescriptor Concat(const ConcatAttributes& attr,
                              const std::vector<BHWC>& input_shapes) {
   if (attr.axis == Axis::CHANNELS) {
-    return ConcatZ(definition, attr, input_shapes);
+    return ConcatZ(attr, input_shapes);
   } else if (attr.axis == Axis::WIDTH) {
-    return ConcatX(definition, attr, input_shapes);
+    return ConcatX(attr, input_shapes);
   } else {
-    return ConcatY(definition, attr, input_shapes);
+    return ConcatY(attr, input_shapes);
   }
 }
 

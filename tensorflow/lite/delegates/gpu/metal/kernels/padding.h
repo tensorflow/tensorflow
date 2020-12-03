@@ -27,8 +27,7 @@ namespace gpu {
 namespace metal {
 
 // creates TaskDescriptor for Padding operation
-ComputeTaskDescriptor Padding(const OperationDef& definition,
-                              const PadAttributes& attr);
+ComputeTaskDescriptor Padding(const PadAttributes& attr);
 
 }  // namespace metal
 }  // namespace gpu

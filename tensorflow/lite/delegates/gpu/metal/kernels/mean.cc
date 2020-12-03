@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/util.h"
+#include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
 namespace tflite {
 namespace gpu {
@@ -68,7 +69,7 @@ std::string GetMeanCode(const int3& work_group_size) {
   c += "    for (int s_x = local_x; s_x < params.src_size.x; s_x += " + wg_x +
        ") {\n";
   c += "      int src_index = src_offset + s_y * params.src_size.x + s_x;\n";
-  c += "      accum[local_id] += float4(src_tensor[src_index]);\n";
+  c += "      accum[local_id] += float4(src_buffer[src_index]);\n";
   c += "    }\n";
   c += "  }\n";
   c += "  accum[local_id] *= params.inv_multipliers.x;\n";
@@ -95,14 +96,13 @@ std::string GetMeanCode(const int3& work_group_size) {
   c += R"(
   const int linear_index = static_cast<int>(gid.z);
   $2
-  dst_tensor[linear_index] = value;
+  dst_buffer[linear_index] = value;
 }
 )";
   return c;
 }
 
-ComputeTaskDescriptor Mean(const OperationDef& definition,
-                           const MeanAttributes& attr) {
+ComputeTaskDescriptor Mean(const MeanAttributes& attr) {
   if (attr.dims != std::set<Axis>({Axis::HEIGHT, Axis::WIDTH})) {
     // Mean calculation is supported only for height and width
     return {};
@@ -110,12 +110,12 @@ ComputeTaskDescriptor Mean(const OperationDef& definition,
 
   const int3 work_group_size = int3(16, 16, 1);
 
-  ComputeTaskDescriptor desc(definition);
+  ComputeTaskDescriptor desc;
   std::string code = GetMeanCode(work_group_size);
   desc.shader_source = code;
 
-  desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
-  desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
+  desc.AddSrcTensor("src_buffer");
+  desc.AddDstTensor("dst_buffer");
 
   desc.uniform_buffers = {
       {"constant uniforms& params",

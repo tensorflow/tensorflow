@@ -65,7 +65,7 @@ std::string GetMaxPoolingCode(const HW& kernel_size) {
             coords.y >= params.src_size.y;
           const int buffer_index = (gid.z * params.src_size.y + coords.y) *
             params.src_size.x + coords.x;
-          FLT4 src_color = outside ? FLT4(-10000.0) : src_tensor[buffer_index];
+          FLT4 src_color = outside ? FLT4(-10000.0) : src_buffer[buffer_index];
           maximum = max(maximum, src_color);
         }
       }
@@ -73,7 +73,7 @@ std::string GetMaxPoolingCode(const HW& kernel_size) {
         int(gid.x);
       FLT4 value = maximum;
       $$2
-      dst_tensor[linear_index] = value;
+      output_buffer[linear_index] = value;
     }
   )";
   return absl::Substitute(shader_source, kernel_size.w, kernel_size.h);
@@ -112,7 +112,7 @@ std::string GetMaxPoolingIndicesCode(const HW& kernel_size) {
             coords.y >= params.src_size.y;
           const int buffer_index = (gid.z * params.src_size.y + coords.y) *
             params.src_size.x + coords.x;
-          FLT4 src_color = outside ? FLT4(-10000.0) : src_tensor[buffer_index];
+          FLT4 src_color = outside ? FLT4(-10000.0) : src_buffer[buffer_index];
           if (src_color.x > maximum.x) {
             indexes.x = index_counter;
             maximum.x = src_color.x;
@@ -136,7 +136,7 @@ std::string GetMaxPoolingIndicesCode(const HW& kernel_size) {
         int(gid.x);
       FLT4 value = static_cast<FLT4>(indexes);
       $$2
-      dst_tensor[linear_index] = value;
+      output_buffer[linear_index] = value;
     }
   )";
   return absl::Substitute(shader_source, kernel_size.w, kernel_size.h);
@@ -174,7 +174,7 @@ std::string GetAveragePoolingCode(const HW& kernel_size) {
           coords.y >= params.src_size.y;
         const int buffer_index = (gid.z * params.src_size.y + coords.y) *
           params.src_size.x + coords.x;
-        const float4 src_color = outside ? float4(0.0f) : float4(src_tensor[buffer_index]);
+        const float4 src_color = outside ? float4(0.0f) : float4(src_buffer[buffer_index]);
         window_size += outside ? 0.0f : 1.0f;
         sum += src_color;
       }
@@ -185,7 +185,7 @@ std::string GetAveragePoolingCode(const HW& kernel_size) {
     // incorrectly constructed operation. NaNs are expected as output.
     FLT4 value = FLT4(sum / window_size);
     $$2
-    dst_tensor[linear_index] = value;
+    output_buffer[linear_index] = value;
   }
 )";
   return absl::Substitute(shader_source, kernel_size.w, kernel_size.h);
@@ -193,10 +193,9 @@ std::string GetAveragePoolingCode(const HW& kernel_size) {
 
 }  // namespace
 
-ComputeTaskDescriptor Pooling(const OperationDef& definition,
-                              const Pooling2DAttributes& params,
+ComputeTaskDescriptor Pooling(const Pooling2DAttributes& params,
                               bool generate_indices) {
-  ComputeTaskDescriptor desc(definition);
+  ComputeTaskDescriptor desc;
   if (params.type == PoolingType::MAX) {
     desc.shader_source = generate_indices
                              ? GetMaxPoolingIndicesCode(params.kernel)
@@ -205,8 +204,8 @@ ComputeTaskDescriptor Pooling(const OperationDef& definition,
     desc.shader_source = GetAveragePoolingCode(params.kernel);
   }
 
-  desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
-  desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
+  desc.AddSrcTensor("src_buffer");
+  desc.AddDstTensor("output_buffer");
 
   desc.uniform_buffers = {
       {"constant uniforms& params",
