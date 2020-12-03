@@ -12,6 +12,7 @@ load("//third_party/toolchains/clang6:repo.bzl", "clang6_configure")
 load("//third_party/toolchains/cpus/arm:arm_compiler_configure.bzl", "arm_compiler_configure")
 load("//third_party/toolchains/embedded/arm-linux:arm_linux_toolchain_configure.bzl", "arm_linux_toolchain_configure")
 load("//third_party:repo.bzl", "tf_http_archive")
+load("//third_party:rbe_configs.bzl", "initialize_rbe_configs")
 load("//third_party/clang_toolchain:cc_configure_clang.bzl", "cc_download_clang_toolchain")
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 load("@bazel_tools//tools/build_defs/repo:java.bzl", "java_import_external")
@@ -39,7 +40,6 @@ load("//third_party/psimd:workspace.bzl", psimd = "repo")
 load("//third_party/ruy:workspace.bzl", ruy = "repo")
 load("//third_party/sobol_data:workspace.bzl", sobol_data = "repo")
 load("//third_party/vulkan_headers:workspace.bzl", vulkan_headers = "repo")
-load("//:rbe_configs.bzl", "initialize_rbe_configs")
 
 def initialize_third_party():
     """ Load third party repositories.  See above load() statements. """
