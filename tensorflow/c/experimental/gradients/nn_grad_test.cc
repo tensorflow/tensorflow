@@ -96,11 +96,11 @@ class CppGradients
 
  public:
   bool UseMlir() const { return strcmp(std::get<0>(GetParam()), "mlir") == 0; }
-  bool UseFunction() const { return std::get<2>(GetParam()); }
+  bool UseFunction() const { return !std::get<2>(GetParam()); }
 };
 
 TEST_P(CppGradients, TestBiasAddGrad) {
-  if (!UseFunction() && UseMlir()) {
+  if (UseFunction() && UseMlir()) {
     GTEST_SKIP() << "SetAttrString has not been implemented yet.\n";
   }
 
@@ -119,7 +119,7 @@ TEST_P(CppGradients, TestBiasAddGrad) {
 
   ASSERT_NO_FATAL_FAILURE(CompareNumericalAndAutodiffGradients(
       BiasAddModel, BiasAddGradModel, ctx_.get(), {A.get(), Bias.get()},
-      /*use_function=*/!std::get<2>(GetParam()), registry_));
+      /*use_function=*/UseFunction(), registry_));
 }
 
 #ifdef PLATFORM_GOOGLE
@@ -127,13 +127,13 @@ INSTANTIATE_TEST_SUITE_P(
     UnifiedCAPI, CppGradients,
     ::testing::Combine(::testing::Values("graphdef", "mlir"),
                        /*tfrt*/ ::testing::Values(false),
-                       /*executing_eagerly*/ ::testing::Values(true, false)));
+                       /*use_function*/ ::testing::Values(true, false)));
 #else
 INSTANTIATE_TEST_SUITE_P(
     UnifiedCAPI, CppGradients,
     ::testing::Combine(::testing::Values("graphdef", "mlir"),
                        /*tfrt*/ ::testing::Values(false),
-                       /*executing_eagerly*/ ::testing::Values(true, false)));
+                       /*use_function*/ ::testing::Values(true, false)));
 #endif
 }  // namespace
 }  // namespace internal
