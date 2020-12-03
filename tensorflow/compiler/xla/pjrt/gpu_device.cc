@@ -60,6 +60,7 @@ xla::StatusOr<xla::DeviceAssignment> GpuClient::GetDefaultDeviceAssignment(
 
 // Builds an xla::LocalClient for the GPU platform.
 StatusOr<LocalClient*> GetGpuXlaClient() {
+  // "gpu" will be substitued by the default defined in platform_util.cc
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
                       PlatformUtil::GetPlatform("gpu"));
   if (platform->VisibleDeviceCount() <= 0) {
