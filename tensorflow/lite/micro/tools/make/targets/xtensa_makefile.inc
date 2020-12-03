@@ -35,7 +35,6 @@ ifeq ($(BUILD_TYPE), release)
   PLATFORM_FLAGS += -Wno-unused-private-field
 endif
 
-
 export PATH := $(XTENSA_BASE)/tools/$(XTENSA_TOOLS_VERSION)/XtensaTools/bin:$(PATH)
 TARGET_TOOLCHAIN_PREFIX := xt-
 CXX_TOOL := clang++
@@ -49,9 +48,17 @@ CXXFLAGS := $(filter-out -fno-rtti, $(CXXFLAGS))
 
 TEST_SCRIPT := tensorflow/lite/micro/testing/test_xtensa_binary.sh
 
+# TODO(b/158651472): Fix the memory_arena_threshold_test
+# TODO(b/174707181): Fix the micro_interpreter_test
+EXCLUDED_TESTS := \
+  tensorflow/lite/micro/micro_interpreter_test.cc \
+  tensorflow/lite/micro/memory_arena_threshold_test.cc
+MICROLITE_TEST_SRCS := $(filter-out $(EXCLUDED_TESTS), $(MICROLITE_TEST_SRCS))
+
 # TODO(b/156962140): This manually maintained list of excluded examples is
 # quite error prone.
 EXCLUDED_EXAMPLE_TESTS := \
+  tensorflow/lite/micro/examples/hello_world/Makefile.inc \
   tensorflow/lite/micro/examples/image_recognition_experimental/Makefile.inc \
   tensorflow/lite/micro/examples/magic_wand/Makefile.inc \
   tensorflow/lite/micro/examples/micro_speech/Makefile.inc \
