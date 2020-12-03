@@ -201,6 +201,10 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       return ParseDequantize(op, error_reporter, allocator, builtin_data);
     }
 
+    case BuiltinOperator_FILL: {
+      return ParseFill(op, error_reporter, allocator, builtin_data);
+    }
+
     case BuiltinOperator_FLOOR: {
       return ParseFloor(op, error_reporter, allocator, builtin_data);
     }
@@ -808,7 +812,6 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_POW:
     case BuiltinOperator_FLOOR_DIV:
     case BuiltinOperator_ZEROS_LIKE:
-    case BuiltinOperator_FILL:
     case BuiltinOperator_FLOOR_MOD:
     case BuiltinOperator_RANGE:
     case BuiltinOperator_SQUARED_DIFFERENCE:
@@ -1091,6 +1094,14 @@ TfLiteStatus ParseDequantize(const Operator*, ErrorReporter*,
 // selective registration for the OpResolver implementation in micro.
 TfLiteStatus ParseEqual(const Operator*, ErrorReporter*, BuiltinDataAllocator*,
                         void**) {
+  return kTfLiteOk;
+}
+
+// We have this parse function instead of directly returning kTfLiteOk from the
+// switch-case in ParseOpData because this function is used as part of the
+// selective registration for the OpResolver implementation in micro.
+TfLiteStatus ParseFill(const Operator*, ErrorReporter*, BuiltinDataAllocator*,
+                       void**) {
   return kTfLiteOk;
 }
 
