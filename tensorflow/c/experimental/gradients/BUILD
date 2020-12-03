@@ -1,6 +1,20 @@
 load("//tensorflow:tensorflow.bzl", "filegroup")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
+# buildifier: disable=same-origin-load
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_cuda_cc_test",
+)
+load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_kernel_tests_linkstatic",
+)
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "tf_cuda_tests_tags",
+)
+
 # Library of gradient functions.
 package(
     licenses = ["notice"],  # Apache 2.0
@@ -93,5 +107,40 @@ filegroup(
     visibility = [
         "//tensorflow/core:__pkg__",
         "//tensorflow/python:__pkg__",
+    ],
+)
+
+cc_library(
+    name = "grad_test_helper",
+    testonly = True,
+    srcs = ["grad_test_helper.cc"],
+    hdrs = ["grad_test_helper.h"],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        "//tensorflow/c/eager:gradient_checker",
+        "//tensorflow/c/eager:gradients_util",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "nn_grad_test",
+    size = "small",
+    srcs = [
+        "nn_grad_test.cc",
+    ],
+    args = ["--heap_check=local"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags() + ["no_cuda_asan"],  # b/173654156,
+    deps = [
+        ":grad_test_helper",
+        ":nn_grad",
+        "//tensorflow/c/eager:c_api_test_util",
+        "//tensorflow/c/experimental/gradients/tape:tape_context",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )

@@ -45,7 +45,7 @@ namespace gradients {
  * hold the numerical gradient data at the end of the function.
  */
 Status CalcNumericalGrad(AbstractContext* ctx, Model forward,
-                         absl::Span<AbstractTensorHandle*> inputs,
+                         absl::Span<AbstractTensorHandle* const> inputs,
                          int input_index, bool use_function,
                          AbstractTensorHandle** numerical_grad);
 

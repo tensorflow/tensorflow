@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 
 using std::vector;
+using tensorflow::ops::BiasAddGrad;
 using tensorflow::ops::Mul;
 using tensorflow::ops::ReluGrad;
 
@@ -110,6 +111,48 @@ class SparseSoftmaxCrossEntropyWithLogitsGradientFunction
   vector<AbstractTensorHandle*> forward_outputs;
 };
 
+// TODO(vnvo2409): Add python test
+class BiasAddGradientFunction : public GradientFunction {
+ public:
+  explicit BiasAddGradientFunction(AttrBuilder f_attrs)
+      : forward_attrs(f_attrs) {}
+
+  Status Compute(Context* ctx, const IncomingGradients& grad_inputs,
+                 vector<AbstractTensorHandle*>* grad_outputs) override {
+    /* Given upstream grad U and a BiasAdd: A + bias, the gradients are:
+     *
+     *    dA = U
+     *    dbias = reduceSum(U, dims = channel_dim)
+     */
+
+    AbstractTensorHandle* upstream_grad = grad_inputs[0];
+    DCHECK(upstream_grad);
+    grad_outputs->resize(2);
+
+    // Recover data format from forward pass for gradient.
+    std::string data_format;
+    TF_RETURN_IF_ERROR(forward_attrs.Get("data_format", &data_format));
+
+    // Grad for A
+    (*grad_outputs)[0] = upstream_grad;
+    (*grad_outputs)[0]->Ref();
+
+    // Grad for bias
+    vector<AbstractTensorHandle*> bias_add_grad_outputs(1);
+    std::string name = "bias_add_grad";
+    TF_RETURN_IF_ERROR(BiasAddGrad(ctx->ctx, {upstream_grad},
+                                   absl::MakeSpan(bias_add_grad_outputs),
+                                   data_format.c_str(), name.c_str()));
+
+    (*grad_outputs)[1] = bias_add_grad_outputs[0];
+    return Status::OK();
+  }
+  ~BiasAddGradientFunction() override {}
+
+ private:
+  AttrBuilder forward_attrs;
+};
+
 }  // namespace
 
 BackwardFunction* ReluRegisterer(const ForwardOperation& op) {
@@ -125,6 +168,15 @@ BackwardFunction* SparseSoftmaxCrossEntropyWithLogitsRegisterer(
     const ForwardOperation& op) {
   auto gradient_function =
       new SparseSoftmaxCrossEntropyWithLogitsGradientFunction(op.outputs);
+  auto default_gradients = new PassThroughDefaultGradients(op);
+  return new BackwardFunction(gradient_function, default_gradients);
+}
+
+BackwardFunction* BiasAddRegisterer(const ForwardOperation& op) {
+  // For ops with a single output, the gradient function is not called if there
+  // is no incoming gradient. So we do not need to worry about creating zeros
+  // grads in this case.
+  auto gradient_function = new BiasAddGradientFunction(op.attrs);
   auto default_gradients = new PassThroughDefaultGradients(op);
   return new BackwardFunction(gradient_function, default_gradients);
 }

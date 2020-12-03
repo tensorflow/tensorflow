@@ -12,18 +12,22 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_C_EXPERIMENTAL_GRADIENTS_NN_GRAD_H_
-#define TENSORFLOW_C_EXPERIMENTAL_GRADIENTS_NN_GRAD_H_
+#ifndef TENSORFLOW_C_EXPERIMENTAL_GRADIENTS_GRAD_TEST_HELPER_H_
+#define TENSORFLOW_C_EXPERIMENTAL_GRADIENTS_GRAD_TEST_HELPER_H_
 
-#include "tensorflow/c/eager/gradients.h"
+#include "tensorflow/c/eager/gradients_util.h"
 
 namespace tensorflow {
 namespace gradients {
-BackwardFunction* ReluRegisterer(const ForwardOperation& op);
-BackwardFunction* SparseSoftmaxCrossEntropyWithLogitsRegisterer(
-    const ForwardOperation& op);
-BackwardFunction* BiasAddRegisterer(const ForwardOperation& op);
+namespace internal {
+
+void CompareNumericalAndAutodiffGradients(
+    Model model, Model grad_model, AbstractContext* ctx,
+    absl::Span<AbstractTensorHandle* const> inputs, bool use_function,
+    const GradientRegistry& registry, double abs_error = 1e-2);
+
+}  // namespace internal
 }  // namespace gradients
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_C_EXPERIMENTAL_GRADIENTS_NN_GRAD_H_
+#endif  // TENSORFLOW_C_EXPERIMENTAL_GRADIENTS_GRAD_TEST_HELPER_H_
