@@ -233,14 +233,14 @@ MICRO_LITE_EXAMPLE_TESTS := $(shell find tensorflow/lite/micro/examples/ -maxdep
 MICRO_LITE_EXAMPLE_TESTS += $(shell find tensorflow/lite/micro/examples/ -name Makefile_internal.inc)
 MICRO_LITE_BENCHMARKS := $(wildcard tensorflow/lite/micro/benchmarks/Makefile.inc)
 
+# TODO(b/152645559): move all benchmarks to benchmarks directory.
+MICROLITE_BENCHMARK_SRCS := \
+$(wildcard tensorflow/lite/micro/benchmarks/*benchmark.cc)
+
 MICROLITE_TEST_SRCS := \
 $(wildcard tensorflow/lite/micro/*test.cc) \
 $(wildcard tensorflow/lite/micro/kernels/*test.cc) \
 $(wildcard tensorflow/lite/micro/memory_planner/*test.cc)
-
-# TODO(b/152645559): move all benchmarks to benchmarks directory.
-MICROLITE_BENCHMARK_SRCS := \
-$(wildcard tensorflow/lite/micro/benchmarks/*benchmark.cc)
 
 MICROLITE_CC_KERNEL_SRCS := \
 $(wildcard tensorflow/lite/micro/kernels/*.cc)
