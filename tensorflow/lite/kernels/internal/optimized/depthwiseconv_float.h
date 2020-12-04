@@ -1186,22 +1186,59 @@ inline void DepthwiseConvImpl(
 
 #ifdef USE_NEON
         // Handle 16 values at a time
-        // for (; i <= num_output_values - 16; i += 16) {
-        //   float32x4_t acc[4];
-        //   for (int k = 0; k < 4; k++) {
-        //     acc[k] = vld1q_f32(acc_buffer + i + 4 * k);
-        //   }
-        //   for (int k = 0; k < 4; k++) {
-        //     acc[k] = vmaxq_f32(
-        //         vdupq_n_f32(output_activation_min),
-        //         vminq_f32(vdupq_n_f32(output_activation_max), acc[k]));
-        //   }
-        //   for (int k = 0; k < 4; k++) {
-        //     vst1q_f32(output_ptr + 4 * k, acc[k]);
-        //   }
-        //   output_ptr += 16;
-        // }
-        // // Handle 4 values at a time
+        for (; i <= num_output_values - 16; i += 16) {
+          if(remainder <= filter_depth-16){ 
+            float32x4_t acc[4];
+            for (int k = 0; k < 4; k++) {
+              acc[k] = vld1q_f32(acc_buffer + i + 4 * k);
+            }
+            for (int k = 0; k < 4; k++) {
+              acc[k] = vmaxq_f32(
+                  vdupq_n_f32(output_activation_min),
+                  vminq_f32(vdupq_n_f32(output_activation_max), acc[k]));
+            }
+            for (int k = 0; k < 4; k++) {
+              vst1q_f32(output_ptr + 4 * k, acc[k]);
+            }
+            
+            a += 16;
+            remainder += 16;
+          }
+          else{  
+            while (remainder <= filter_depth -4){
+              float32x4_t acc = vld1q_f32(acc_buffer + a);
+              acc = vmaxq_f32(vdupq_n_f32(output_activation_min),
+                              vminq_f32(vdupq_n_f32(output_activation_max), acc));
+              vst1q_f32(output_ptr, acc);
+              a += 4;
+              remainder += 4;
+              output_ptr += 4;
+              i += 4;
+              // TFLITE_LOG(INFO) << i;
+            }
+            int k = filter_depth - remainder; //between 0 to 15
+            for(int j=0; j<k; j++){
+              output_ptr[j] = std::max(output_activation_min, std::min(acc_buffer[a+j], output_activation_max));
+            } 
+            output_ptr += k;
+            a += k;
+            i += k;
+            // float32x4_t inp = vld1q_f32(input_start + i);
+            // vst1q_f32(output_ptr, inp);
+            int num_input_copy = output_depth - filter_depth;
+            // TFLITE_LOG(INFO) << "copy i " << i << " " << filter_depth << remainder;
+            memcpy(output_ptr, input_start+i, num_input_copy*sizeof(float));
+            output_ptr += num_input_copy-16;
+            i += num_input_copy-16;
+            remainder = 0;
+            // for(int j=0; j<4; j++){
+            //   output_ptr[j] = input_start[i+j]; 
+            // } //replace with memcpy
+          }
+          output_ptr += 16;
+
+        }
+        // Handle 4 values at a time
         // for(int j=0; j<16; j++){
         //   TFLITE_LOG(INFO) << "XXXcopy input data/outputt buffer " << j << ": "  << copy_input_data[j] << " " << output_data[j];
         // }
