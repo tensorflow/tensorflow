@@ -1383,9 +1383,4 @@ def _is_worker_failure(error):
         "registered" in str(error)):
       return True
 
-  # This could happen when the iterator is no longer valid on the remote worker
-  # "Resource input tensor contains an invalid device"
-  if isinstance(error, errors.CancelledError):
-    return True
-
   return False
