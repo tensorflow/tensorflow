@@ -144,8 +144,7 @@ class ResizeBilinearOpTestBase
         TensorShape({batch_size, output_width, output_height, channels})));
     ResizeBilinearBaseline(input->tensor<float, 4>(),
                            expected->tensor<float, 4>());
-    // HIP-CLANG requires slightly wider tolerance - investigate
-    test::ExpectClose(*expected, *GetOutput(0), /*atol=*/4e-5);
+    test::ExpectClose(*expected, *GetOutput(0), /*atol=*/3e-5);
   }
 
   void RunManyRandomTests(int channels) {
@@ -544,7 +543,7 @@ INSTANTIATE_TEST_SUITE_P(ResizeBilinearHalfPixelCentersOpTestGpu,
 INSTANTIATE_TEST_SUITE_P(ResizeBilinearOpAlignCornersTestGpu,
                          ResizeBilinearOpAlignCornersTest,
                          ::testing::Values(TestDevice::GPU));
-#endif  // GOOGLE_CUDA  || TENSORFLOW_USE_ROCM
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 class ResizeBM : public ResizeBilinearOpTest {
  public:
