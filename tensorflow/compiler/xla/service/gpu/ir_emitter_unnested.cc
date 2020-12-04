@@ -2955,8 +2955,9 @@ IrEmitterUnnested::TryBuildConstantInitializerThunk(mlir::Value init_value,
         reinterpret_cast<const uint8*>(const_init.getRawData().data()),
         num_bytes);
     auto init_type = init_value.getType().dyn_cast<mlir::ShapedType>();
-    if (init_type.getElementTypeBitWidth() == 1) {
+    if (init_shape.element_type() == PRED) {
       TF_RET_CHECK(num_bytes == 1);
+      TF_RET_CHECK(init_type.getElementTypeBitWidth() == 1);
       bool_init = *const_init.getBoolValues().begin();
       literal_bytes =
           absl::MakeSpan(reinterpret_cast<const uint8_t*>(&bool_init), 1);
