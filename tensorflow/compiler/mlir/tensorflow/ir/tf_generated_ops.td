@@ -15731,6 +15731,22 @@ Checks whether a resource handle-based variable has been initialized.
   let hasCanonicalizer = 1;
 }
 
+def TF_VariableOp : TF_Op<"Variable", []> {
+  let summary = "Use VariableV2 instead.";
+
+  let arguments = (ins
+    TF_ShapeAttr:$shape,
+    StrAttr:$container,
+    StrAttr:$shared_name
+  );
+
+  let results = (outs
+    TF_Tensor:$ref
+  );
+
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
 def TF_VariableShapeOp : TF_Op<"VariableShape", []> {
   let summary = "Returns the shape of the variable pointed to by `resource`.";
 
