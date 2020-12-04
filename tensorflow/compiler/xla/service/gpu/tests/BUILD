@@ -534,11 +534,6 @@ glob_lit_tests(
         "no_pip",
     ],
     driver = "@llvm-project//mlir:run_lit.sh",
-    tags_override = {
-        "scatter.hlo": ["no_rocm"],  # needs ROCm support for hlo_to_llvm_ir
-        "sorting.hlo": ["no_rocm"],  # needs to fix unit test
-        "execute_memzero_thunk.mlir": ["no_rocm"],  # needs ROCm support for xla-thunks-opt
-    },
     test_file_exts = [
         "hlo",
         "mlir",

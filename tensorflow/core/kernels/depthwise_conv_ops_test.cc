@@ -104,15 +104,12 @@ TEST_F(DepthwiseConvOpTest, DepthwiseConvHalfCpu) {
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 TEST_F(DepthwiseConvOpTest, DepthwiseConvFloatGpu) { Run<float>(Device::GPU); }
-
-TEST_F(DepthwiseConvOpTest, DepthwiseConvHalfGpu) {
-  Run<Eigen::half>(Device::GPU);
-}
-#if GOOGLE_CUDA
 TEST_F(DepthwiseConvOpTest, DepthwiseConvDoubleGpu) {
   Run<double>(Device::GPU);
 }
-#endif
+TEST_F(DepthwiseConvOpTest, DepthwiseConvHalfGpu) {
+  Run<Eigen::half>(Device::GPU);
+}
 #endif
 
 }  // namespace
