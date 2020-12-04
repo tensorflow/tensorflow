@@ -158,6 +158,7 @@ filegroup(
 
 cc_library(
     name = "gradient_checker",
+    testonly = 1,
     srcs = [
         "gradient_checker.cc",
     ],
@@ -172,7 +173,7 @@ cc_library(
         "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/c/eager:c_api_unified_internal",
         "//tensorflow/c/eager:gradients_internal",
-        "//tensorflow/c/eager:gradients_util",
+        "//tensorflow/c/experimental/gradients:unified_api_testutil",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "//tensorflow/c:c_api",
@@ -200,7 +201,10 @@ tf_cuda_cc_test(
     ],
     args = ["--heap_check=local"],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags() + ["nomac"],
+    tags = tf_cuda_tests_tags() + [
+        "nomac",
+        "manual", #TODO(vnvo2409): Remove
+    ],
     deps = [
         ":gradient_checker",
         "//tensorflow/c:c_api",
@@ -240,8 +244,8 @@ cc_library(
         "//tensorflow:internal",
     ],
     deps = [
-        "//tensorflow/c/eager:gradients_util",
         "//tensorflow/c/experimental/gradients:gradient_checker",
+        "//tensorflow/c/experimental/gradients:unified_api_testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
@@ -311,8 +315,10 @@ tf_cuda_cc_test(
     deps = [
         ":grad_test_helper",
         ":nn_grad",
+        "//tensorflow/c:tf_status_helper",
         "//tensorflow/c/eager:c_api_test_util",
         "//tensorflow/c/experimental/gradients/tape:tape_context",
+        "//tensorflow/c/experimental/ops:nn_ops",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],

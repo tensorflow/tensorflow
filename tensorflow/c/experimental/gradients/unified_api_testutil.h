@@ -58,6 +58,10 @@ Status TestTensorHandleWithDimsFloat(AbstractContext* ctx, float* data,
                                      int64* dims, int num_dims,
                                      AbstractTensorHandle** tensor);
 
+// Get a TensorHandle with given int values and dimensions
+Status TestTensorHandleWithDimsInt(AbstractContext* ctx, int* data, int64* dims,
+                                   int num_dims, AbstractTensorHandle** tensor);
+
 // Places data from `t` into *result_tensor.
 Status GetValue(AbstractTensorHandle* t, TF_Tensor** result_tensor);
 }  // namespace tensorflow
