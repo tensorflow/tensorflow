@@ -194,23 +194,6 @@ struct BConv2DKernel {
       UNSUPPORTED_KERNEL_TYPE;
     }
   };
-  static inline int calculate_worker_scratch_size(
-      const BConv2DOpData *op_data) {
-    if (kernel_type == BConv2DKernelType::BITPACKED) {
-      return 4 * (op_data->args.k.shape.height * op_data->args.k.shape.width *
-                      op_data->args.x.channels / 32 +
-                  8);
-    } else if (kernel_type == BConv2DKernelType::INT8) {
-      return 4 * (op_data->args.k.shape.height * op_data->args.k.shape.width *
-                      op_data->args.x.channels / 4 +
-                  8);
-    } else if (kernel_type == BConv2DKernelType::BITPACKED_DI ||
-               kernel_type == BConv2DKernelType::INT8_DIDO) {
-      return 0;
-    } else {
-      assert(0);
-    }
-  }
 };
 
 // -------------------------------------------------------------------- //
@@ -352,8 +335,10 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
 
   if (kernel_type == BConv2DKernelType::BITPACKED ||
       kernel_type == BConv2DKernelType::INT8) {
-    auto thread_scratch_size =
-        BConv2DKernel<kernel_type>::calculate_worker_scratch_size(op_data);
+    int thread_scratch_size =
+        4 * (op_data->args.k.shape.height * op_data->args.k.shape.width *
+                 op_data->args.x.channels / 32 +
+             8);
     for (int thread_idx = 0; thread_idx < op_data->n_threads; thread_idx++) {
       TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
           context, thread_scratch_size,
