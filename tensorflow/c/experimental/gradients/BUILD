@@ -4,6 +4,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 # buildifier: disable=same-origin-load
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_libtpu",
     "tf_cuda_cc_test",
 )
 load(
@@ -156,6 +157,81 @@ filegroup(
 )
 
 cc_library(
+    name = "gradient_checker",
+    srcs = [
+        "gradient_checker.cc",
+    ],
+    hdrs = [
+        "gradient_checker.h",
+    ],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        "//tensorflow/c/eager:abstract_tensor_handle",
+        "//tensorflow/c/eager:c_api_experimental",
+        "//tensorflow/c/eager:c_api_unified_internal",
+        "//tensorflow/c/eager:gradients_internal",
+        "//tensorflow/c/eager:gradients_util",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "//tensorflow/c:c_api",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c/experimental/gradients:math_grad",
+        "//tensorflow/c/experimental/gradients:nn_grad",
+        "//tensorflow/c/experimental/ops:array_ops",
+        "//tensorflow/c/experimental/ops:math_ops",
+        "//tensorflow/c/experimental/ops:nn_ops",
+        "//tensorflow/cc/profiler",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/lib/llvm_rtti",
+    ] + if_libtpu(
+        if_false = ["//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration"],
+        if_true = [],
+    ),
+)
+
+tf_cuda_cc_test(
+    name = "gradient_checker_test",
+    size = "small",
+    srcs = [
+        "gradient_checker_test.cc",
+    ],
+    args = ["--heap_check=local"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags() + ["nomac"],
+    deps = [
+        ":gradient_checker",
+        "//tensorflow/c:c_api",
+        "//tensorflow/c:c_test_util",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c/eager:abstract_tensor_handle",
+        "//tensorflow/c/eager:c_api_experimental",
+        "//tensorflow/c/eager:c_api_test_util",
+        "//tensorflow/c/eager:c_api_unified_internal",
+        "//tensorflow/c/eager:gradients_internal",
+        "//tensorflow/c/eager:gradients_util",
+        "//tensorflow/c/eager:mnist_gradients_testutil",
+        "//tensorflow/c/experimental/gradients:math_grad",
+        "//tensorflow/c/experimental/gradients:nn_grad",
+        "//tensorflow/c/experimental/ops:array_ops",
+        "//tensorflow/c/experimental/ops:math_ops",
+        "//tensorflow/c/experimental/ops:nn_ops",
+        "//tensorflow/cc/profiler",
+        "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/lib/llvm_rtti",
+        "//tensorflow/core/platform:tensor_float_32_utils",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "grad_test_helper",
     testonly = True,
     srcs = ["grad_test_helper.cc"],
@@ -164,8 +240,8 @@ cc_library(
         "//tensorflow:internal",
     ],
     deps = [
-        "//tensorflow/c/eager:gradient_checker",
         "//tensorflow/c/eager:gradients_util",
+        "//tensorflow/c/experimental/gradients:gradient_checker",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],

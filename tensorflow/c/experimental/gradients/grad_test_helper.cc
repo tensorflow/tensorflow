@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/gradients/grad_test_helper.h"
 
-#include "tensorflow/c/eager/gradient_checker.h"
+#include "tensorflow/c/experimental/gradients/gradient_checker.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {

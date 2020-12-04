@@ -12,6 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#ifndef TENSORFLOW_C_EXPERIMENTAL_GRADIENT_CHECKER_H_
+#define TENSORFLOW_C_EXPERIMENTAL_GRADIENT_CHECKER_H_
+
 #include <memory>
 
 #include "absl/types/span.h"
@@ -51,3 +54,5 @@ Status CalcNumericalGrad(AbstractContext* ctx, Model forward,
 
 }  // namespace gradients
 }  // namespace tensorflow
+
+#endif  // TENSORFLOW_C_EXPERIMENTAL_GRADIENT_CHECKER_H_
