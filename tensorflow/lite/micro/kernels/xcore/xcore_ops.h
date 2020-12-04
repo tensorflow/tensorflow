@@ -69,6 +69,7 @@ TfLiteRegistration* Register_BSign_8();
 TfLiteRegistration* Register_BConv2D_Bitpacked_Deepin();
 TfLiteRegistration* Register_BConv2D_Bitpacked();
 TfLiteRegistration* Register_BConv2D_Int8_Deepin_Deepout();
+TfLiteRegistration* Register_BConv2D_Int8();
 
 // Under development
 TfLiteRegistration* Register_Pad();

@@ -447,6 +447,14 @@ TfLiteRegistration *Register_BConv2D_Int8_Deepin_Deepout() {
   return &r;
 }
 
+TfLiteRegistration *Register_BConv2D_Int8() {
+  static TfLiteRegistration r = {bconv::Init<bconv::BConv2DKernelType::INT8>,
+                                 nullptr,
+                                 bconv::Prepare<bconv::BConv2DKernelType::INT8>,
+                                 bconv::Eval<bconv::BConv2DKernelType::INT8>};
+  return &r;
+}
+
 }  // namespace xcore
 
 }  // namespace micro
