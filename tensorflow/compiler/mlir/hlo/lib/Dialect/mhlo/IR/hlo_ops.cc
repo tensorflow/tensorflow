@@ -2782,11 +2782,10 @@ OpFoldResult CompareOp::fold(ArrayRef<Attribute> operands) {
   if (!result_ty.hasStaticShape()) return {};
 
   auto direction = comparison_direction();
-  if (lhs() == rhs()) {
+  if (lhs() == rhs() && !getElementTypeOrSelf(lhs()).isa<FloatType>()) {
     if (direction == "LE" || direction == "EQ" || direction == "GE") {
       return DenseIntElementsAttr::get(result_ty, {true});
     }
-
     return DenseIntElementsAttr::get(result_ty, {false});
   }
 
