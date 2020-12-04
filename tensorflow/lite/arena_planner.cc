@@ -323,7 +323,9 @@ TfLiteStatus ArenaPlanner::CalculateAllocations(int first_node, int last_node) {
                           tensor_index, alloc_node_[tensor_index],
                           dealloc_node_[tensor_index], &allocs_[tensor_index]));
     }
-    if (tensor.allocation_type == kTfLiteArenaRwPersistent) {
+    // Check allocs_[].size to prevent from reallocation of persistent tensors.
+    if (tensor.allocation_type == kTfLiteArenaRwPersistent &&
+        allocs_[tensor_index].size == 0) {
       TF_LITE_ENSURE_STATUS(persistent_arena_.Allocate(
           context_, tensor_alignment_, tensor.bytes, tensor_index,
           /*first_node=*/alloc_node_[tensor_index],
