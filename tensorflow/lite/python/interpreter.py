@@ -425,13 +425,6 @@ class Interpreter(object):
   def resize_tensor_input(self, input_index, tensor_size, strict=False):
     """Resizes an input tensor.
 
-    ```
-    interpreter = Interpreter(model_content=tflite_model)
-    interpreter.resize_tensor_input(0, [1, 224, 224, 3], strict=True)
-    interpreter.allocate_tensors()
-    interpreter.invoke()
-    ```
-
     Args:
       input_index: Tensor index of input to set. This value can be gotten from
         the 'index' field in get_input_details.
@@ -442,6 +435,15 @@ class Interpreter(object):
 
     Raises:
       ValueError: If the interpreter could not resize the input tensor.
+
+    Usage:
+    ```
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.resize_tensor_input(0, [num_test_images, 224, 224, 3])
+    interpreter.allocate_tensors()
+    interpreter.set_tensor(0, test_images)
+    interpreter.invoke()
+    ```
     """
     self._ensure_safe()
     # `ResizeInputTensor` now only accepts int32 numpy array as `tensor_size
