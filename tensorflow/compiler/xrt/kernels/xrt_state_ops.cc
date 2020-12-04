@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xrt/xrt_metrics.h"
+#include "tensorflow/core/tpu/tpu_defs.h"
 
 namespace tensorflow {
 namespace {
@@ -67,6 +68,11 @@ REGISTER_KERNEL_BUILDER(Name("XRTAllocate")
                             .HostMemory("allocation")
                             .HostMemory("handle"),
                         XRTAllocateOp<XRTGenericDeviceAccessor>);
+REGISTER_KERNEL_BUILDER(Name("XRTAllocate")
+                            .Device(DEVICE_TPU_NODE)
+                            .HostMemory("allocation")
+                            .HostMemory("handle"),
+                        XRTAllocateOp<XRTTpuDeviceAccessor>);
 
 REGISTER_KERNEL_BUILDER(Name("XRTAllocateUninitialized")
                             .Device(DEVICE_XLA_GPU)
@@ -76,6 +82,10 @@ REGISTER_KERNEL_BUILDER(Name("XRTAllocateUninitialized")
                             .Device(DEVICE_XLA_CPU)
                             .HostMemory("handle"),
                         XRTAllocateUninitializedOp<XRTGenericDeviceAccessor>);
+REGISTER_KERNEL_BUILDER(Name("XRTAllocateUninitialized")
+                            .Device(DEVICE_TPU_NODE)
+                            .HostMemory("handle"),
+                        XRTAllocateUninitializedOp<XRTTpuDeviceAccessor>);
 
 REGISTER_KERNEL_BUILDER(Name("XRTAllocateFromTensor")
                             .Device(DEVICE_XLA_GPU)
@@ -87,6 +97,11 @@ REGISTER_KERNEL_BUILDER(Name("XRTAllocateFromTensor")
                             .HostMemory("inputs")
                             .HostMemory("handle"),
                         XRTAllocateFromTensorOp<XRTGenericDeviceAccessor>);
+REGISTER_KERNEL_BUILDER(Name("XRTAllocateFromTensor")
+                            .Device(DEVICE_TPU_NODE)
+                            .HostMemory("inputs")
+                            .HostMemory("handle"),
+                        XRTAllocateFromTensorOp<XRTTpuDeviceAccessor>);
 
 REGISTER_KERNEL_BUILDER(Name("XRTSubTuple")
                             .Device(DEVICE_XLA_GPU)
@@ -100,6 +115,12 @@ REGISTER_KERNEL_BUILDER(Name("XRTSubTuple")
                             .HostMemory("shape_index")
                             .HostMemory("output_handle"),
                         XRTSubTupleOp<false, XRTGenericDeviceAccessor>);
+REGISTER_KERNEL_BUILDER(Name("XRTSubTuple")
+                            .Device(DEVICE_TPU_NODE)
+                            .HostMemory("base_handle")
+                            .HostMemory("shape_index")
+                            .HostMemory("output_handle"),
+                        XRTSubTupleOp<false, XRTTpuDeviceAccessor>);
 
 REGISTER_KERNEL_BUILDER(Name("XRTSubTupleAndRelease")
                             .Device(DEVICE_XLA_GPU)
@@ -113,6 +134,12 @@ REGISTER_KERNEL_BUILDER(Name("XRTSubTupleAndRelease")
                             .HostMemory("shape_index")
                             .HostMemory("output_handle"),
                         XRTSubTupleOp<true, XRTGenericDeviceAccessor>);
+REGISTER_KERNEL_BUILDER(Name("XRTSubTupleAndRelease")
+                            .Device(DEVICE_TPU_NODE)
+                            .HostMemory("base_handle")
+                            .HostMemory("shape_index")
+                            .HostMemory("output_handle"),
+                        XRTSubTupleOp<true, XRTTpuDeviceAccessor>);
 
 REGISTER_KERNEL_BUILDER(Name("XRTMakeTuple")
                             .Device(DEVICE_XLA_GPU)
@@ -126,6 +153,12 @@ REGISTER_KERNEL_BUILDER(Name("XRTMakeTuple")
                             .HostMemory("input_handles")
                             .HostMemory("output_handle"),
                         XRTMakeTupleOp<XRTGenericDeviceAccessor>);
+REGISTER_KERNEL_BUILDER(Name("XRTMakeTuple")
+                            .Device(DEVICE_TPU_NODE)
+                            .HostMemory("tuple_description")
+                            .HostMemory("input_handles")
+                            .HostMemory("output_handle"),
+                        XRTMakeTupleOp<XRTTpuDeviceAccessor>);
 
 REGISTER_KERNEL_BUILDER(Name("XRTReadLiteral")
                             .Device(DEVICE_XLA_GPU)
@@ -137,6 +170,11 @@ REGISTER_KERNEL_BUILDER(Name("XRTReadLiteral")
                             .HostMemory("handle")
                             .HostMemory("literal"),
                         XRTReadLiteralOp<false, XRTGenericDeviceAccessor>);
+REGISTER_KERNEL_BUILDER(Name("XRTReadLiteral")
+                            .Device(DEVICE_TPU_NODE)
+                            .HostMemory("handle")
+                            .HostMemory("literal"),
+                        XRTReadLiteralOp<false, XRTTpuDeviceAccessor>);
 
 REGISTER_KERNEL_BUILDER(Name("XRTWriteLiteral")
                             .Device(DEVICE_XLA_GPU)
@@ -150,6 +188,12 @@ REGISTER_KERNEL_BUILDER(Name("XRTWriteLiteral")
                             .HostMemory("literal")
                             .HostMemory("output_handle"),
                         XRTWriteLiteralOp<XRTGenericDeviceAccessor>);
+REGISTER_KERNEL_BUILDER(Name("XRTWriteLiteral")
+                            .Device(DEVICE_TPU_NODE)
+                            .HostMemory("handle")
+                            .HostMemory("literal")
+                            .HostMemory("output_handle"),
+                        XRTWriteLiteralOp<XRTTpuDeviceAccessor>);
 
 REGISTER_KERNEL_BUILDER(Name("XRTReadLiteralAndRelease")
                             .Device(DEVICE_XLA_GPU)
@@ -161,6 +205,11 @@ REGISTER_KERNEL_BUILDER(Name("XRTReadLiteralAndRelease")
                             .HostMemory("handle")
                             .HostMemory("literal"),
                         XRTReadLiteralOp<true, XRTGenericDeviceAccessor>);
+REGISTER_KERNEL_BUILDER(Name("XRTReadLiteralAndRelease")
+                            .Device(DEVICE_TPU_NODE)
+                            .HostMemory("handle")
+                            .HostMemory("literal"),
+                        XRTReadLiteralOp<true, XRTTpuDeviceAccessor>);
 
 REGISTER_KERNEL_BUILDER(Name("XRTReadToTensor")
                             .Device(DEVICE_XLA_GPU)
@@ -172,6 +221,11 @@ REGISTER_KERNEL_BUILDER(Name("XRTReadToTensor")
                             .HostMemory("handles")
                             .HostMemory("tensors"),
                         XRTReadToTensorOp<XRTGenericDeviceAccessor>);
+REGISTER_KERNEL_BUILDER(Name("XRTReadToTensor")
+                            .Device(DEVICE_TPU_NODE)
+                            .HostMemory("handles")
+                            .HostMemory("tensors"),
+                        XRTReadToTensorOp<XRTTpuDeviceAccessor>);
 
 REGISTER_KERNEL_BUILDER(Name("XRTReleaseAllocationHandle")
                             .Device(DEVICE_XLA_GPU)
@@ -181,16 +235,25 @@ REGISTER_KERNEL_BUILDER(Name("XRTReleaseAllocationHandle")
                             .Device(DEVICE_XLA_CPU)
                             .HostMemory("handle"),
                         XRTReleaseAllocationOp<XRTGenericDeviceAccessor>);
+REGISTER_KERNEL_BUILDER(Name("XRTReleaseAllocationHandle")
+                            .Device(DEVICE_TPU_NODE)
+                            .HostMemory("handle"),
+                        XRTReleaseAllocationOp<XRTTpuDeviceAccessor>);
 
 REGISTER_KERNEL_BUILDER(Name("XRTReleaseAllAllocations").Device(DEVICE_XLA_GPU),
                         XRTReleaseAllAllocationsOp<XRTGenericDeviceAccessor>);
 REGISTER_KERNEL_BUILDER(Name("XRTReleaseAllAllocations").Device(DEVICE_XLA_CPU),
                         XRTReleaseAllAllocationsOp<XRTGenericDeviceAccessor>);
+REGISTER_KERNEL_BUILDER(
+    Name("XRTReleaseAllAllocations").Device(DEVICE_TPU_NODE),
+    XRTReleaseAllAllocationsOp<XRTTpuDeviceAccessor>);
 
 REGISTER_KERNEL_BUILDER(Name("XRTCompactAllocations").Device(DEVICE_XLA_GPU),
                         XRTCompactAllocationsOp<XRTGenericDeviceAccessor>);
 REGISTER_KERNEL_BUILDER(Name("XRTCompactAllocations").Device(DEVICE_XLA_CPU),
                         XRTCompactAllocationsOp<XRTGenericDeviceAccessor>);
+REGISTER_KERNEL_BUILDER(Name("XRTCompactAllocations").Device(DEVICE_TPU_NODE),
+                        XRTCompactAllocationsOp<XRTTpuDeviceAccessor>);
 
 REGISTER_KERNEL_BUILDER(Name("XRTMetricsCollect").Device(DEVICE_CPU),
                         XRTMetricsCollectOp);
@@ -199,5 +262,7 @@ REGISTER_KERNEL_BUILDER(Name("XRTMemoryInfo").Device(DEVICE_XLA_GPU),
                         XRTMemoryInfoOp<XRTGenericDeviceAccessor>);
 REGISTER_KERNEL_BUILDER(Name("XRTMemoryInfo").Device(DEVICE_XLA_CPU),
                         XRTMemoryInfoOp<XRTGenericDeviceAccessor>);
+REGISTER_KERNEL_BUILDER(Name("XRTMemoryInfo").Device(DEVICE_TPU_NODE),
+                        XRTMemoryInfoOp<XRTTpuDeviceAccessor>);
 
 }  // namespace tensorflow
