@@ -216,10 +216,10 @@ function prepare_src() {
   if [ -d "${TMPDIR}/tensorflow/_api/v1/" ]
   then
     cp -r ${TMPDIR}/tensorflow/python/keras/api/_v1/keras/ ${TMPDIR}/tensorflow/keras/
-    sed -i'.original' -e 's/.python.keras.api._v1/tensorflow/g' ${TMPDIR}/tensorflow/__init__.py
+    find . -type f -maxdepth 0 -exec sed -i'.original' -e 's/.python.keras.api._v1/tensorflow/g' ${TMPDIR}/tensorflow/__init__.py {} +
   else
     cp -r ${TMPDIR}/tensorflow/python/keras/api/_v2/keras/ ${TMPDIR}/tensorflow/keras/
-    sed -i'.original' -e 's/.python.keras.api._v2/tensorflow/g' ${TMPDIR}/tensorflow/__init__.py
+    find . -type f -maxdepth 0 -exec sed -i'.original' -e 's/.python.keras.api._v2/tensorflow/g' ${TMPDIR}/tensorflow/__init__.py {} +
   fi
 }
 

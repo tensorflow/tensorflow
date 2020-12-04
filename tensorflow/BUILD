@@ -178,12 +178,39 @@ config_setting(
 )
 
 config_setting(
-    name = "macos",
+    name = "macos_x86_64",
     values = {
         "apple_platform_type": "macos",
         "cpu": "darwin",
     },
     visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "macos_arm64e",
+    values = {
+        "apple_platform_type": "macos",
+        "cpu": "darwin_arm64e",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "macos_arm64",
+    values = {
+        "apple_platform_type": "macos",
+        "cpu": "darwin_arm64",
+    },
+    visibility = ["//visibility:public"],
+)
+
+selects.config_setting_group(
+    name = "macos",
+    match_any = [
+        ":macos_x86_64",
+        ":macos_arm64",
+        ":macos_arm64e",
+    ],
 )
 
 config_setting(
@@ -391,7 +418,6 @@ config_setting(
     },
     values = {
         "apple_platform_type": "macos",
-        "cpu": "darwin",
     },
     visibility = ["//visibility:public"],
 )
@@ -719,7 +745,9 @@ tf_cc_shared_object(
     name = "tensorflow_framework",
     framework_so = [],
     linkopts = select({
-        "//tensorflow:macos": [],
+        "//tensorflow:macos": [
+            "-Wl,-rename_section,__TEXT,text_env,__TEXT,__text"
+        ],
         "//tensorflow:windows": [],
         "//tensorflow:freebsd": [
             "-Wl,--version-script,$(location //tensorflow:tf_framework_version_script.lds)",

@@ -89,7 +89,10 @@ cc_library(
     ],
     hdrs = ["src/nccl.h"],
     include_prefix = "third_party/nccl",
-    linkopts = ["-lrt"],
+    linkopts = select({
+        "//tensorflow:macos": [],
+        "//conditions:default": ["-lrt"],
+    }),
     strip_include_prefix = "src",
     visibility = ["//visibility:public"],
     deps = [

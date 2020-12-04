@@ -299,10 +299,18 @@ win32_cmake_vars = {
 # TODO(phawkins): use a better method to select the right host triple, rather
 # than hardcoding x86_64.
 llvm_all_cmake_vars = select({
-    "@org_tensorflow//tensorflow:macos": cmake_var_string(
+    "@org_tensorflow//tensorflow:macos_x86_64": cmake_var_string(
         _dict_add(
             cmake_vars,
             llvm_target_cmake_vars("X86", "x86_64-apple-darwin"),
+            posix_cmake_vars,
+            darwin_cmake_vars,
+        ),
+    ),
+    "@org_tensorflow//tensorflow:macos_arm64": cmake_var_string(
+        _dict_add(
+            cmake_vars,
+            llvm_target_cmake_vars("AArch64", "arm64-apple-darwin"),
             posix_cmake_vars,
             darwin_cmake_vars,
         ),

@@ -17,6 +17,9 @@
 #     ios_x86_64:
 #     ios_fat:
 #
+# Macosx options
+#     darwin_arm64:
+#
 # Compiler options:
 #     cuda_clang:             Use clang when building CUDA code.
 #     c++17:                  Build with C++17 options (links with libc++)
@@ -133,6 +136,11 @@ build:ios_x86_64 --config=ios
 build:ios_x86_64 --cpu=ios_x86_64
 build:ios_fat --config=ios
 build:ios_fat --ios_multi_cpus=armv7,arm64,i386,x86_64
+
+# Enables all the macos config options for macos_arm64
+build:macos_arm64 --config=macos
+build:macos_arm64 --apple_platform_type=macos 
+build:macos_arm64 --cpu=darwin_arm64
 
 # Config to use a mostly-static build and disable modular op registration
 # support (this will revert to loading TensorFlow with RTLD_GLOBAL in Python).
@@ -272,6 +280,7 @@ build:c++1z_gcc --config=c++17_gcc
 build --enable_platform_specific_config
 build:android --noenable_platform_specific_config
 build:ios --noenable_platform_specific_config
+build:macos_arm64 --noenable_platform_specific_config
 
 # Suppress C++ compiler warnings, otherwise build logs become 10s of MBs.
 build:android --copt=-w
