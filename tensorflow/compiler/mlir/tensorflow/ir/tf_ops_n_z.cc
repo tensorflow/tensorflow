@@ -2597,6 +2597,15 @@ void VarIsInitializedOp::getCanonicalizationPatterns(
 }
 
 //===----------------------------------------------------------------------===//
+// VariableOp
+//===----------------------------------------------------------------------===//
+
+void VariableOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                             MLIRContext *context) {
+  results.insert<VariableToVariableV2>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // VariableShapeOp
 //===----------------------------------------------------------------------===//
 
