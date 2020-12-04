@@ -105,7 +105,7 @@ cc_library(
         ":linux_mips64": COMMON_SRCS + LINUX_SRCS,
         ":linux_s390x": COMMON_SRCS + LINUX_SRCS,
         ":macos_x86_64": COMMON_SRCS + X86_SRCS + MACH_SRCS + MACH_X86_SRCS,
-        ":darwin_arm64": COMMON_SRCS + MACH_SRCS + MACH_ARM_SRCS,
+        ":macos_arm64": COMMON_SRCS + MACH_SRCS + MACH_ARM_SRCS,
         ":windows_x86_64": COMMON_SRCS + X86_SRCS + WINDOWS_X86_SRCS,
         ":android_armv7": COMMON_SRCS + ARM_SRCS + LINUX_SRCS + LINUX_ARM32_SRCS + ANDROID_ARM_SRCS,
         ":android_arm64": COMMON_SRCS + ARM_SRCS + LINUX_SRCS + LINUX_ARM64_SRCS + ANDROID_ARM_SRCS,
@@ -291,14 +291,6 @@ config_setting(
     values = {
         "apple_platform_type": "ios",
         "cpu": "ios_arm64e",
-    },
-)
-
-config_setting(
-    name = "darwin_arm64",
-    values = {
-        "apple_platform_type": "macos",
-        "cpu": "darwin_arm64",
     },
 )
 
