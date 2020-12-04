@@ -116,6 +116,31 @@ cc_library(
     ],
 )
 
+tf_cuda_cc_test(
+    name = "custom_gradient_test",
+    size = "small",
+    srcs = [
+        "custom_gradient_test.cc",
+    ],
+    args = ["--heap_check=local"],  # TODO(b/174752220): Remove
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c/eager:abstract_context",
+        "//tensorflow/c/eager:c_api",
+        "//tensorflow/c/eager:c_api_experimental",
+        "//tensorflow/c/eager:c_api_unified_internal",
+        "//tensorflow/c/eager:gradients_internal",
+        "//tensorflow/c/eager:unified_api_testutil",
+        "//tensorflow/c/experimental/ops",
+        "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:errors",
+    ],
+)
+
 filegroup(
     name = "pywrap_required_hdrs",
     srcs = [
@@ -152,7 +177,7 @@ tf_cuda_cc_test(
     srcs = [
         "nn_grad_test.cc",
     ],
-    args = ["--heap_check=local"],
+    args = ["--heap_check=local"],  # TODO(b/174752220): Remove
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["no_cuda_asan"],  # b/173654156,
     deps = [
