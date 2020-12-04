@@ -110,15 +110,16 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        ":builtin_ops_impl",
-        "//tensorflow/lite:framework_lib",
+        "//tensorflow/lite:cc_api",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:builtin_ops",
     ],
 )
 
 build_test(
     name = "cc_api_build_test",
     targets = [
+        ":builtin_ops",
         ":cc_api",
         ":framework",
     ],
