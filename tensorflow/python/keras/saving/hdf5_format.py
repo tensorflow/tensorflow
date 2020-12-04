@@ -626,7 +626,7 @@ def save_weights_to_hdf5_group(f, layers):
   from tensorflow.python.keras import __version__ as keras_version  # pylint: disable=g-import-not-at-top
 
   save_attributes_to_hdf5_group(
-      f, 'layer_names', [layer.name for layer in layers])
+      f, 'layer_names', [layer.name.encode('utf8') for layer in layers])
   f.attrs['backend'] = K.backend()
   f.attrs['keras_version'] = str(keras_version)
 
