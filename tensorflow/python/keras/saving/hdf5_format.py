@@ -854,7 +854,9 @@ def load_attributes_from_hdf5_group(group, name):
     data = []
     chunk_id = 0
     while '%s%d' % (name, chunk_id) in group.attrs:
-      data.extend(group.attrs['%s%d' % (name, chunk_id)].tolist())
+      data.extend(
+        np.char.decode(group.attrs['%s%d' % (name, chunk_id)],'utf-8').tolist()
+        )
       chunk_id += 1
   return data
 
