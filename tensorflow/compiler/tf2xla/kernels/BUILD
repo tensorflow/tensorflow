@@ -76,7 +76,6 @@ tf_kernel_library(
         "qr_op.cc",
         "quantize_and_dequantize_op.cc",
         "random_ops.cc",
-        "random_ops_util.cc",
         "random_ops_util.h",
         "reduce_window_op.cc",
         "reduction_ops.cc",
