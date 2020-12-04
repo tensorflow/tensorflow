@@ -3792,6 +3792,10 @@ tf_kernel_library(
     name = "conv_ops",
     srcs = [
         "conv_grad_filter_ops.cc",
+        "conv_grad_input_ops_double.cc",
+        "conv_grad_input_ops_float.cc",
+        "conv_grad_input_ops_half.cc",
+        "conv_grad_input_ops_int32.cc",
         "conv_grad_input_ops.cc",
         "conv_grad_ops_3d.cc",
         "deep_conv2d.cc",
@@ -3802,6 +3806,7 @@ tf_kernel_library(
     hdrs = [
         "fill_functor.h",
         "conv_grad_ops.h",
+        "conv_grad_input_ops.h",
         "deep_conv2d.h",
         "gemm_functors.h",
         "winograd_transform.h",
@@ -3834,6 +3839,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/framework:bounds_check",
+        "//tensorflow/core/protobuf:autotuning_proto_cc",
         "//tensorflow/core/util:image_resizer_state",
         "//tensorflow/core/util/proto:proto_utils",
     ] + select({
@@ -6033,6 +6039,11 @@ filegroup(
         "control_flow_ops.cc",
         "conv_2d.h",
         "conv_grad_filter_ops.cc",
+        "conv_grad_input_ops.h",
+        "conv_grad_input_ops_double.cc",
+        "conv_grad_input_ops_float.cc",
+        "conv_grad_input_ops_half.cc",
+        "conv_grad_input_ops_int32.cc",
         "conv_grad_input_ops.cc",
         "conv_grad_ops.h",
         "conv_grad_ops_3d.cc",
