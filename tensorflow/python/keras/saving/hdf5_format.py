@@ -193,7 +193,7 @@ def load_model_from_hdf5(filepath, custom_objects=None, compile=True):  # pylint
         logging.warning('No training configuration found in the save file, so '
                         'the model was *not* compiled. Compile it manually.')
         return model
-      training_config = json_utils.decode(training_config.decode('utf-8'))
+      training_config = json_utils.decode(training_config)
 
       # Compile model.
       model.compile(**saving_utils.compile_args_from_training_config(
