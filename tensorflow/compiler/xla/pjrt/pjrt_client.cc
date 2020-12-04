@@ -2239,9 +2239,10 @@ StatusOr<std::unique_ptr<PjRtExecutable>> PjRtClient::Compile(
           VLOG(3) << "Non-local device: " << device_id;
           continue;
         }
-        addressable_device_logical_ids.push_back(
-            PjRtExecutable::LogicalDeviceIds{.replica = replica,
-                                             .partition = partition});
+        PjRtExecutable::LogicalDeviceIds logica_device_ids;
+        logica_device_ids.replica = replica;
+        logica_device_ids.partition = partition;
+        addressable_device_logical_ids.push_back(std::move(logica_device_ids));
         addressable_devices.push_back(device);
       }
     }
