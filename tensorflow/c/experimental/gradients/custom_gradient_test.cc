@@ -86,16 +86,6 @@ Status ExpWithPassThroughGrad(AbstractContext* ctx,
   return Status::OK();
 }
 
-Status getValue(AbstractTensorHandle* t, TF_Tensor** result_tensor) {
-  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
-      TF_NewStatus(), TF_DeleteStatus);
-  TFE_TensorHandle* result_t =
-      TF_AbstractTensorGetEagerTensor(wrap(t), status.get());
-  TF_RETURN_IF_ERROR(StatusFromTF_Status(status.get()));
-  *result_tensor = TFE_TensorHandleResolve(result_t, status.get());
-  return Status::OK();
-}
-
 TEST_P(CustomGradientTest, ExpWithPassThroughGrad) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
@@ -128,7 +118,7 @@ TEST_P(CustomGradientTest, ExpWithPassThroughGrad) {
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   TF_Tensor* result_tensor;
-  s = getValue(outputs[0], &result_tensor);
+  s = GetValue(outputs[0], &result_tensor);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
   auto result_value = static_cast<float*>(TF_TensorData(result_tensor));
   EXPECT_EQ(*result_value, 1.0);

@@ -186,6 +186,7 @@ cc_library(
     deps = [
         "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c:tf_tensor",
         "//tensorflow/c/eager:abstract_context",
         "//tensorflow/c/eager:abstract_tensor_handle",
         "//tensorflow/c/eager:c_api_experimental",

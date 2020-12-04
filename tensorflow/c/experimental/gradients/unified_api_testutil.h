@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/c/eager/abstract_context.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
+#include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
@@ -56,6 +57,9 @@ Status TestScalarTensorHandle(AbstractContext* ctx, float value,
 Status TestTensorHandleWithDimsFloat(AbstractContext* ctx, float* data,
                                      int64* dims, int num_dims,
                                      AbstractTensorHandle** tensor);
+
+// Places data from `t` into *result_tensor.
+Status GetValue(AbstractTensorHandle* t, TF_Tensor** result_tensor);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_C_EXPERIMENTAL_UNIFIED_API_TESTUTIL_H_
