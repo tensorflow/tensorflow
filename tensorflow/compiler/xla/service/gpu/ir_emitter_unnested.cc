@@ -607,50 +607,7 @@ StatusOr<BufferAllocation::Slice> IrEmitterUnnested::GetAllocationSliceForMlir(
     ::mlir::Value v) {
   absl::Span<const BufferAllocation> allocations(
       ir_emitter_context_->buffer_assignment().Allocations());
-  int64 size = GetMemRefSizeInBytes(v.getType().cast<mlir::MemRefType>());
-
-  if (auto arg = v.dyn_cast<mlir::BlockArgument>()) {
-    return BufferAllocation::Slice(&allocations[GetAllocationIndex(arg)], 0,
-                                   size);
-  }
-
-  // We match the following patterns here:
-  //  base := ViewOp(arg) | get_global_memref (global_memref)
-  //  root := base | MemRefReinterpretCastOp(base)
-
-  if (mlir::Operation* op = v.getDefiningOp()) {
-    if (auto cast = mlir::dyn_cast<mlir::MemRefReinterpretCastOp>(op)) {
-      mlir::Value source = cast.getViewSource();
-      op = source.getDefiningOp();
-      if (!op) {
-        return Unimplemented("MemRefReinterpretCastOp has to wrap an op");
-      }
-    }
-    if (auto view = mlir::dyn_cast<mlir::ViewOp>(op)) {
-      return BufferAllocation::Slice(
-          &allocations[GetAllocationIndex(
-              view.source().cast<mlir::BlockArgument>())],
-          mlir::cast<mlir::ConstantOp>(view.byte_shift().getDefiningOp())
-              .value()
-              .cast<mlir::IntegerAttr>()
-              .getValue()
-              .getSExtValue(),
-          size);
-    } else if (mlir::isa<mlir::GetGlobalMemrefOp>(op)) {
-      int64_t index =
-          op->getAttrOfType<mlir::IntegerAttr>("lmhlo.alloc").getInt();
-      int64_t offset =
-          op->getAttrOfType<mlir::IntegerAttr>("lmhlo.slice_offset").getInt();
-      int64_t size =
-          op->getAttrOfType<mlir::IntegerAttr>("lmhlo.slice_size").getInt();
-      return BufferAllocation::Slice(&allocations[index], offset, size);
-    }
-    return Unimplemented("MemRefReinterpretCastOp has to wrap a ViewOp");
-  }
-
-  return Unimplemented(
-      "Operand has to be in the form of ViewOp(arg) or "
-      "StaticMemRefCastOp(ViewOp(arg))");
+  return xla::gpu::GetAllocationSliceForMlir(v, allocations);
 }
 
 Status IrEmitterUnnested::DefaultAction(HloInstruction* hlo) {
