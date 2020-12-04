@@ -167,7 +167,7 @@ struct AllToAllParticipantData : xla::ParticipantData {
 
   // Replica ids participating in AllToAll, concatenation happens in the order
   // of appearence.
-  std::vector<xla::int64> replica_ids_to_copy_to;
+  std::vector<int> replica_ids_to_copy_to;
 
   std::string ToString() const override {
     auto addr_formatter = [](std::string* out,
@@ -348,7 +348,7 @@ class CpuAllToAllRendezvous
         replica_id_map[p.replica_id] = pos;
       }
 
-      const std::vector<xla::int64>& replica_ids_to_copy_to =
+      const std::vector<int>& replica_ids_to_copy_to =
           participants_[0].replica_ids_to_copy_to;
 
       // Replica id -> rank
@@ -598,26 +598,19 @@ xla::RendezvousKey GetRendezvousKey(
     xla::int64 op_id) {
   const xla::DeviceAssignment& device_assignment =
       *run_options->device_assignment();
-  xla::int32 replica_count = device_assignment.replica_count();
   int device_ordinal = GetDeviceOrdinal(run_options);
-  CHECK_EQ(device_assignment.computation_count(), 1);
-  std::vector<xla::int64> participating_replicas =
-      xla::GetParticipatingReplicas(xla::GlobalDeviceId(device_ordinal), group,
-                                    replica_count,
-                                    *run_options->device_assignment())
-          .ValueOrDie();
   xla::RendezvousKey::CollectiveOpKind op_kind =
       channel_id_present ? xla::RendezvousKey::kCrossModule
                          : xla::RendezvousKey::kCrossReplica;
-  std::vector<xla::GlobalDeviceId> participating_devices;
-  participating_devices.reserve(participating_replicas.size());
-  for (xla::int64 replica : participating_replicas) {
-    participating_devices.push_back(
-        xla::GlobalDeviceId(device_assignment(replica, 0)));
-  }
-  return xla::RendezvousKey{
-      run_options->run_id(), std::move(participating_devices),
-      static_cast<int>(participating_replicas.size()), op_kind, op_id};
+  std::vector<xla::GlobalDeviceId> participating_devices =
+      xla::GetParticipatingDevices(xla::GlobalDeviceId(device_ordinal),
+                                   device_assignment,
+                                   device_assignment.replica_count(), group)
+          .ValueOrDie();
+  int num_local_participants = participating_devices.size();
+  return xla::RendezvousKey{run_options->run_id(),
+                            std::move(participating_devices),
+                            num_local_participants, op_kind, op_id};
 }
 
 }  // namespace
@@ -644,9 +637,7 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_AllToAll(
   participant.replica_id = replica_id;
   participant.replica_ids_to_copy_to =
       xla::GetParticipatingReplicas(
-          xla::GlobalDeviceId(device_ordinal), group,
-          run_options->device_assignment()->replica_count(),
-          *run_options->device_assignment())
+          replica_id, run_options->device_assignment()->replica_count(), group)
           .ValueOrDie();
   for (int i = 0; i < num_buffers; i++) {
     participant.source_buffers.emplace_back(source_buffers[i], buffer_size);

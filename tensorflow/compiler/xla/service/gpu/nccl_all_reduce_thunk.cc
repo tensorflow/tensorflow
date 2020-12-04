@@ -24,6 +24,8 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_format.h"
+#include "tensorflow/compiler/xla/service/collective_ops_utils.h"
+#include "tensorflow/compiler/xla/service/global_device_id.h"
 #if GOOGLE_CUDA
 #include "third_party/nccl/nccl.h"
 #elif TENSORFLOW_USE_ROCM
@@ -132,26 +134,16 @@ Status NcclAllReduceThunk::ExecuteOnStream(const ExecuteParams& params) {
   int device_ordinal = executor->device_ordinal();
   TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
                       params.GetGlobalDeviceId());
-  // Determines the set of global and local devices that are participating in
-  // the same collective group as the caller.
+
   TF_ASSIGN_OR_RETURN(
-      std::vector<int64> participating_replicas,
-      GetParticipatingReplicas(global_device_id, config_.replica_groups,
-                               config_.replica_count, *params.device_assn));
-  if (IsGlobalNcclConfig() &&
-      participating_replicas.size() != config_.replica_count) {
+      std::vector<GlobalDeviceId> participants,
+      GetParticipatingDevices(global_device_id, *params.device_assn,
+                              config_.replica_count, config_.replica_groups));
+
+  if (IsGlobalNcclConfig() && (participants.size() != config_.replica_count)) {
     return InvalidArgument(
         "Partial replica groups are not allowed when using NCCL_COMM_ID "
         "environment configuration.");
-  }
-
-  TF_RET_CHECK(params.device_assn->computation_count() == 1)
-      << params.device_assn->ToString();
-  std::vector<GlobalDeviceId> participants;
-  participants.reserve(participating_replicas.size());
-  for (int64 replica : participating_replicas) {
-    participants.emplace_back(
-        (*params.device_assn)(replica, /*computation=*/0));
   }
 
   TF_ASSIGN_OR_RETURN(

@@ -21,13 +21,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
+#include "tensorflow/compiler/xla/service/global_device_id.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace xla {
 
@@ -37,11 +37,17 @@ enum class ReductionKind { SUM, PRODUCT, MIN, MAX };
 absl::optional<ReductionKind> MatchReductionComputation(
     const HloComputation* computation);
 
-// Figures out which devices (named by their replica-ids) are participating in
-// the collective subgroup that contains device_id.
-StatusOr<std::vector<int64>> GetParticipatingReplicas(
-    GlobalDeviceId device_id, absl::Span<const ReplicaGroup> replica_groups,
-    int64 total_replica_count, const DeviceAssignment& device_assn);
+// Figures out which replicas are participating in the collective subgroup.
+// An empty `replica_groups` indicates that all replicas are participating.
+StatusOr<std::vector<int>> GetParticipatingReplicas(
+    int replica_id, int total_replica_count,
+    absl::Span<const ReplicaGroup> replica_groups);
+
+// Figures out which devices are participating in the collective subgroup.
+// An empty `replica_groups` indicates that all replicas are participating.
+StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
+    GlobalDeviceId device_id, const DeviceAssignment& device_assignment,
+    int total_replica_count, absl::Span<const ReplicaGroup> replica_groups);
 
 // Key that identifies a particular Rendezvous object in our global hashtable.
 // This determines which calls to ExecuteOnStream communicate with each other.
