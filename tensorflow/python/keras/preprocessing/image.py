@@ -656,8 +656,10 @@ class ImageDataGenerator(image.ImageDataGenerator):
       dtype: Dtype to use for the generated arrays.
       
   Raises:
-    ValueError: If the value of the argument, `data_format` is other than `"channels_last"` or `"channels_first"`.
-    ValueError: If the value of the argument, `validation_split` > 1 or `validation_split` < 0.
+    ValueError: If the value of the argument, `data_format` is other than
+          `"channels_last"` or `"channels_first"`.
+    ValueError: If the value of the argument, `validation_split` > 1
+          or `validation_split` < 0.
     
   Examples: 
 
@@ -679,9 +681,11 @@ class ImageDataGenerator(image.ImageDataGenerator):
   # (std, mean, and principal components if ZCA whitening is applied)
   datagen.fit(x_train)
   # fits the model on batches with real-time data augmentation:
-  model.fit(datagen.flow(x_train, y_train, batch_size=32, subset='training'),
-            validation_data=datagen.flow(x_train, y_train, batch_size=8, subset='validation'),
-            steps_per_epoch=len(x_train) / 32, epochs=epochs)
+  model.fit(datagen.flow(x_train, y_train, batch_size=32, 
+           subset='training'), 
+           validation_data=datagen.flow(x_train, y_train, 
+           batch_size=8, subset='validation'),
+           steps_per_epoch=len(x_train) / 32, epochs=epochs)
   # here's a more "manual" example
   for e in range(epochs):
       print('Epoch', e)
@@ -841,7 +845,8 @@ class ImageDataGenerator(image.ImageDataGenerator):
           generated (useful for visualizing what you are doing).
         save_prefix: Str (default: `''`). Prefix to use for filenames of saved
           pictures (only relevant if `save_to_dir` is set).
-        save_format: one of "png", "jpeg", "bmp", "pdf", "ppm", "gif", "tif", "jpg"
+        save_format: one of "png", "jpeg", "bmp", "pdf", "ppm", "gif", 
+            "tif", "jpg"
             (only relevant if `save_to_dir` is set). Default: "png".
         subset: Subset of data (`"training"` or `"validation"`) if
           `validation_split` is set in `ImageDataGenerator`.
@@ -856,7 +861,8 @@ class ImageDataGenerator(image.ImageDataGenerator):
             the yielded tuples are of the form `(x, y, sample_weight)`.
             If `y` is None, only the numpy array `x` is returned.
     Raises:
-      ValueError: If the Value of the argument, `subset` is other than "training" or "validation".
+      ValueError: If the Value of the argument, `subset` is other than 
+            "training" or "validation".
 
     """
     return NumpyArrayIterator(
@@ -929,7 +935,8 @@ class ImageDataGenerator(image.ImageDataGenerator):
           generated (useful for visualizing what you are doing).
         save_prefix: Str. Prefix to use for filenames of saved pictures (only
           relevant if `save_to_dir` is set).
-        save_format: one of "png", "jpeg", "bmp", "pdf", "ppm", "gif", "tif", "jpg" 
+        save_format: one of "png", "jpeg", "bmp", "pdf", "ppm", "gif", 
+            "tif", "jpg" 
             (only relevant if `save_to_dir` is set). Default: "png".
         follow_links: Whether to follow symlinks inside
             class subdirectories (default: False).
@@ -1044,7 +1051,8 @@ class ImageDataGenerator(image.ImageDataGenerator):
           generated (useful for visualizing what you are doing).
         save_prefix: str. Prefix to use for filenames of saved pictures (only
           relevant if `save_to_dir` is set).
-        save_format: one of "png", "jpeg", "bmp", "pdf", "ppm", "gif", "tif", "jpg" 
+        save_format: one of "png", "jpeg", "bmp", "pdf", "ppm", "gif", 
+            "tif", "jpg" 
             (only relevant if `save_to_dir` is set). Default: "png".
         subset: Subset of data (`"training"` or `"validation"`) if
           `validation_split` is set in `ImageDataGenerator`.
