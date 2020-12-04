@@ -588,7 +588,7 @@ def save_optimizer_weights_to_hdf5_group(hdf5_group, optimizer):
   symbolic_weights = getattr(optimizer, 'weights')
   if symbolic_weights:
     weights_group = hdf5_group.create_group('optimizer_weights')
-    weight_names = [w.name for w in symbolic_weights]
+    weight_names = [str(w.name) for w in symbolic_weights]
     save_attributes_to_hdf5_group(weights_group, 'weight_names', weight_names)
     weight_values = K.batch_get_value(symbolic_weights)
     for name, val in zip(weight_names, weight_values):
@@ -628,7 +628,7 @@ def save_weights_to_hdf5_group(f, layers):
   save_attributes_to_hdf5_group(
       f, 'layer_names', [layer.name for layer in layers])
   f.attrs['backend'] = K.backend()
-  f.attrs['keras_version'] = keras_version
+  f.attrs['keras_version'] = str(keras_version)
 
   # Sort model layers by layer name to ensure that group names are strictly
   # growing to avoid prefix issues.
@@ -636,7 +636,7 @@ def save_weights_to_hdf5_group(f, layers):
     g = f.create_group(layer.name)
     weights = _legacy_weights(layer)
     weight_values = K.batch_get_value(weights)
-    weight_names = [str(w.name) for w in weights]
+    weight_names = [w.name for w in weights]
     save_attributes_to_hdf5_group(g, 'weight_names', weight_names)
     for name, val in zip(weight_names, weight_values):
       param_dset = g.create_dataset(name, val.shape, dtype=val.dtype)
@@ -849,13 +849,12 @@ def load_attributes_from_hdf5_group(group, name):
       data: Attributes data.
   """
   if name in group.attrs:
-    data = [group.attrs[name]]
+    data = group.attrs[name].tolist()
   else:
     data = []
     chunk_id = 0
     while '%s%d' % (name, chunk_id) in group.attrs:
-      data.extend(
-          [group.attrs['%s%d' % (name, chunk_id)]])
+      data.extend(group.attrs['%s%d' % (name, chunk_id)].tolist())
       chunk_id += 1
   return data
 
