@@ -1243,7 +1243,12 @@ class Context(object):
     self._thread_local_data.invoking_op_callbacks = value
 
   def _initialize_physical_devices(self, reinitialize=False):
-    """Get local devices visible to the system."""
+    """Get local devices visible to the system.
+    
+    Args:
+      reinitialize: This flag will reinitialize self._physical_devices so that
+        dynamic registered devices will also be visible to the python front-end.
+    """
     # We lazy initialize self._physical_devices since we do not want to do this
     # the constructor since the backend may not be initialized yet.
     with self._device_lock:

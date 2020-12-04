@@ -305,7 +305,9 @@ TF_ImportGraphDefOptionsSetValidateColocationConstraints(
     TF_ImportGraphDefOptions* opts, unsigned char enable);
 
 // Load the library specified by library_filename and register the pluggable
-// device and related kernels present in that library.
+// device and related kernels present in that library. This function should work
+// on all the platforms supported by TensorFlow, apart from embedded/mobile
+// platforms.
 //
 // Pass "library_filename" to a platform-specific mechanism for dynamically
 // loading a library. The rules for determining the exact location of the
@@ -314,7 +316,7 @@ TF_ImportGraphDefOptionsSetValidateColocationConstraints(
 // On success, place OK in status and return the newly created library handle.
 // The caller owns the library handle.
 //
-// On failure, place an error status in status and return NULL.
+// On failure, return nullptr and places an error status in status.
 TF_CAPI_EXPORT extern TF_Library* TF_LoadPluggableDeviceLibrary(
     const char* library_filename, TF_Status* status);
 
