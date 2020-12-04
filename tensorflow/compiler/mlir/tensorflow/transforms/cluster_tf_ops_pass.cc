@@ -41,6 +41,7 @@ namespace {
 using DeviceNameUtils = ::tensorflow::DeviceNameUtils;
 using ParsedName = ::tensorflow::DeviceNameUtils::ParsedName;
 
+constexpr const char *kHostAttr = "host";
 constexpr const char *kDeviceAttr = "device";
 constexpr const char *kTFDeviceAttr = "tf.device";
 // TODO(donglin): Handle the case where the address of localhost is different
@@ -207,6 +208,7 @@ void CreateFunctions(ModuleOp module_op,
           StringAttr::get(metadata.result_devices[i], context));
     }
 
+    func_op.setAttr(kHostAttr, StringAttr::get(host, context));
     func_op.setPublic();
     Block *block = func_op.addEntryBlock();
 
