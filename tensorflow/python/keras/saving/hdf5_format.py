@@ -849,7 +849,7 @@ def load_attributes_from_hdf5_group(group, name):
       data: Attributes data.
   """
   if name in group.attrs:
-    data = [n.de for n in group.attrs[name]]
+    data = [group.attrs[name]]
   else:
     data = []
     chunk_id = 0
