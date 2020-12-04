@@ -499,4 +499,10 @@ REGISTER_OP("StringToNumber")
     .Attr("out_type: {float, double, int32, int64} = DT_FLOAT")
     .SetShapeFn(shape_inference::UnchangedShape);
 
+REGISTER_OP("NumberToString")
+    .Input("input: in_type")
+    .Output("string_tensor: string")
+    .Attr("in_type: {float, double, int32, int64} = DT_FLOAT")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
 }  // namespace tensorflow
