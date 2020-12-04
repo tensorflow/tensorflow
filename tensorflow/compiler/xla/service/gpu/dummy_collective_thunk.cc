@@ -13,38 +13,33 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
 namespace xla {
 namespace gpu {
 
-NcclAllReduceConfig GetNcclAllReduceConfig(const HloInstruction* hlo,
-                                           int64 replica_count) {
-  return NcclAllReduceConfig();
+struct NcclCollectiveConfig::AuxData {};
+
+NcclCollectiveConfig::NcclCollectiveConfig() = default;
+NcclCollectiveConfig::NcclCollectiveConfig(NcclCollectiveConfig &&) = default;
+NcclCollectiveConfig::~NcclCollectiveConfig() = default;
+NcclCollectiveConfig &NcclCollectiveConfig::operator=(NcclCollectiveConfig &&) =
+    default;
+
+NcclCollectiveConfig GetNcclCollectiveConfig(const HloInstruction *hlo,
+                                             int64 replica_count) {
+  return NcclCollectiveConfig();
 }
 
-NcclAllReduceThunk::NcclAllReduceThunk(
-    ThunkInfo thunk_info, NcclAllReduceConfig config,
-    std::vector<NcclAllReduceThunk::Buffer> buffers)
-    : NcclCollectiveThunk(Thunk::kNcclAllReduce, thunk_info),
-      config_(std::move(config)),
-      buffers_(std::move(buffers)) {}
-
-/* static */ bool NcclAllReduceThunk::CanImplement(const HloInstruction* hlo) {
-  return false;
+/* static */ bool NcclCollectiveThunk::NcclIsEnabled() {
+  return false;  // Skylark selects this source file if NCCL is disabled.
 }
 
-Status NcclAllReduceThunk::RunNcclCollective(const ExecuteParams&, ncclComm_t) {
+Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams &) {
   return Unimplemented(
       "NCCL support is not available: this binary was not built with a CUDA "
       "compiler, which is necessary to build the NCCL source library.");
-}
-
-const NcclCollectiveConfig& NcclAllReduceThunk::config() const {
-  // This function will never be called.
-  const NcclCollectiveConfig* config = nullptr;
-  return *config;
 }
 
 }  // namespace gpu
