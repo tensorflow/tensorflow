@@ -627,7 +627,7 @@ def save_weights_to_hdf5_group(f, layers):
 
   save_attributes_to_hdf5_group(
       f, 'layer_names', [layer.name.encode('utf8') for layer in layers])
-  f.attrs['backend'] = K.backend().encode('utf8')
+  f.attrs['backend'] = K.backend()
   f.attrs['keras_version'] = keras_version
 
   # Sort model layers by layer name to ensure that group names are strictly
@@ -663,7 +663,7 @@ def load_weights_from_hdf5_group(f, layers):
   else:
     original_keras_version = '1'
   if 'backend' in f.attrs:
-    original_backend = f.attrs['backend'].decode('utf8')
+    original_backend = f.attrs['backend']
   else:
     original_backend = None
 
@@ -734,7 +734,7 @@ def load_weights_from_hdf5_group_by_name(
   else:
     original_keras_version = '1'
   if 'backend' in f.attrs:
-    original_backend = f.attrs['backend'].decode('utf8')
+    original_backend = f.attrs['backend']
   else:
     original_backend = None
 
