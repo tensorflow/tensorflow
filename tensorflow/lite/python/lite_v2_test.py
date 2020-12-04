@@ -27,6 +27,7 @@ from six.moves import range
 from six.moves import zip
 import tensorflow as tf
 
+from tensorflow.lite.kernels.hashtable import pywrap_hashtable_ops as hashtable_ops_registerer
 from tensorflow.lite.python import lite
 from tensorflow.lite.python import lite_v2_test_util
 from tensorflow.lite.python.convert import mlir_quantize
@@ -799,7 +800,8 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
 
     # Check values from converted model.
     interpreter = InterpreterWithCustomOps(
-        model_content=tflite_model, custom_op_registerers=['AddHashtableOps'])
+        model_content=tflite_model,
+        custom_op_registerers=[hashtable_ops_registerer.HashtableOpsRegisterer])
     input_details = interpreter.get_input_details()
     output_details = interpreter.get_output_details()
 

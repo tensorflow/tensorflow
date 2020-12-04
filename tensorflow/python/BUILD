@@ -248,6 +248,18 @@ py_library(
     ],
 )
 
+py_strict_library(
+    name = "core",
+    visibility = [
+        "//tensorflow:__pkg__",
+    ],
+    deps = [
+        ":tf_decorator",
+        ":tf_stack",
+        "//tensorflow/python/types",
+    ],
+)
+
 # This target should only be used for API generation.
 py_library(
     name = "modules_with_exports",

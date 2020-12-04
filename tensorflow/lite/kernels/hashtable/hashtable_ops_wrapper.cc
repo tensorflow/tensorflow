@@ -12,18 +12,23 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_C_EXPERIMENTAL_GRADIENTS_NN_GRAD_H_
-#define TENSORFLOW_C_EXPERIMENTAL_GRADIENTS_NN_GRAD_H_
+#include "pybind11/pybind11.h"
+#include "pybind11/pytypes.h"
+#include "tensorflow/lite/kernels/hashtable/hashtable_ops.h"
 
-#include "tensorflow/c/eager/gradients.h"
-
-namespace tensorflow {
-namespace gradients {
-GradientFunction* ReluRegisterer(const ForwardOperation& op);
-GradientFunction* SparseSoftmaxCrossEntropyWithLogitsRegisterer(
-    const ForwardOperation& op);
-GradientFunction* BiasAddRegisterer(const ForwardOperation& op);
-}  // namespace gradients
-}  // namespace tensorflow
-
-#endif  // TENSORFLOW_C_EXPERIMENTAL_GRADIENTS_NN_GRAD_H_
+PYBIND11_MODULE(pywrap_hashtable_ops, m) {
+  m.doc() = R"pbdoc(
+    pywrap_hashtable_ops
+    -----
+  )pbdoc";
+  m.def(
+      "HashtableOpsRegisterer",
+      [](uintptr_t resolver) {
+        tflite::ops::custom::AddHashtableOps(
+            reinterpret_cast<tflite::MutableOpResolver*>(resolver));
+      },
+      R"pbdoc(
+        Hashtable op registerer function with the correct signature. Registers
+        hashtable custom ops.
+      )pbdoc");
+}

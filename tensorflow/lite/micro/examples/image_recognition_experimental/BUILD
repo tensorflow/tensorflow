@@ -19,11 +19,17 @@ cc_library(
         "image_recognition_model.h",
         "util.h",
     ],
+    tags = [
+        "no_oss",  # TODO(b/174680668): Exclude from OSS.
+    ],
 )
 
 tflite_micro_cc_test(
     name = "image_recognition_test",
     srcs = ["image_recognition_test.cc"],
+    tags = [
+        "no_oss",  # TODO(b/174680668): Exclude from OSS.
+    ],
     deps = [
         ":image_model_data",
         "//tensorflow/lite:schema_fbs_version",

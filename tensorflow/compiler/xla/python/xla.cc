@@ -377,8 +377,18 @@ PYBIND11_MODULE(xla_extension, m) {
   py::class_<PyExecutable, std::shared_ptr<PyExecutable>> executable(
       m, "Executable");
   executable.def_property_readonly("client", &PyExecutable::client)
-      .def("local_logical_device_ids", &PyExecutable::local_logical_device_ids)
-      .def("local_devices", &PyExecutable::LocalDevices)
+      .def("local_logical_device_ids",
+           [](PyExecutable* exec) {
+             auto span = exec->addressable_device_logical_ids();
+             // Not on dispatch critical path, so ok to have heap allocation.
+             std::vector<std::pair<int, int>> addressable_device_logical_ids;
+             addressable_device_logical_ids.reserve(span.size());
+             for (const auto& logical_device_id : span) {
+               addressable_device_logical_ids.push_back(std::make_pair(
+                   logical_device_id.replica, logical_device_id.partition));
+             }
+           })
+      .def("local_devices", &PyExecutable::AddressableDevices)
       .def("size_of_generated_code_in_bytes",
            &PyExecutable::SizeOfGeneratedCodeInBytes)
       .def("delete", &PyExecutable::Delete)

@@ -781,7 +781,7 @@ CacheEntry* CompiledFunction::AddCacheEntry(const py::args& args,
 
   cache_entry->executable = std::move(executable);
   int num_devices =
-      cache_entry->executable->pjrt_executable().local_devices().size();
+      cache_entry->executable->pjrt_executable().addressable_devices().size();
   // The presence of jit(pmap) is detected from Python.
   CHECK_EQ(num_devices, 1);
 

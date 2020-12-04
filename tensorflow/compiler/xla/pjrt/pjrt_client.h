@@ -781,41 +781,43 @@ class PjRtExecutable {
 
   // The replica and partition indices of device_assignment to be run by this
   // client. On single-host platforms without partitioning, this is all replicas
-  // (i.e. local_logical_device_ids_[i] = (i, 0)), but this may not be the case
-  // on multi-host platforms. If there are 4 replicas and 2 partitions on a
-  // single host platform, size of local_logical_device_ids_ is 4*2 = 8.
-  // TODO(zhangqiaorjc): Add a struct for the pair and return a span.
-  virtual const std::vector<std::pair<int, int>>& local_logical_device_ids()
+  // (i.e. addressable_device_logical_ids_[i] = (i, 0)), but this may not be the
+  // case on multi-host platforms. If there are 4 replicas and 2 partitions on a
+  // single host platform, size of addressable_device_logical_ids_ is 4*2 = 8.
+  struct LogicalDeviceIds {
+    int replica;
+    int partition;
+  };
+  virtual absl::Span<const LogicalDeviceIds> addressable_device_logical_ids()
       const = 0;
 
-  // local_devices()[i] is the Device to which local_logical_device_ids()[i] is
-  // assigned.
-  virtual const std::vector<PjRtDevice*>& local_devices() const = 0;
+  // addressable_devices()[i] is the Device to which
+  // addressable_device_logical_ids()[i] is assigned.
+  virtual absl::Span<PjRtDevice* const> addressable_devices() const = 0;
 
   // Return an HloModule (optimized) per partition.
   virtual StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
       const = 0;
 
-  // Execute on replica 0 and partition 0 with the requirement that there's a
-  // single replica and partition.
-  // TODO(zhangqiaorjc): Merge with ExecuteOnLocalDevice. Remove "local".
-  virtual StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> Execute(
-      absl::Span<PjRtBuffer* const> argument_handles,
+  // Executes on devices addressable by the client. Requires executable has a
+  // device_assignment and all devices in the device_assignment are addressable
+  // by the client.
+  virtual StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
+  Execute(absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
+          const ExecuteOptions& options) const = 0;
+
+  // Execute the assigned replica/partition on a given `device`. Requires
+  // executable has a device_assignment, `device` is present in the
+  // device_assignment and addressable by the client.
+  virtual StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
+      absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options) const = 0;
 
-  // Execute on a given local device.
-  virtual StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-  ExecuteOnLocalDevice(absl::Span<PjRtBuffer* const> argument_handles,
-                       PjRtDevice* device,
-                       const ExecuteOptions& options) const = 0;
-
-  // Execute on local devices. Takes a sequence of argument lists (one argument
-  // list per local device) and returns a tuple of results (one result per local
-  // device). The number of argument lists must be equal to the local device
-  // count.
-  virtual StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
-  ExecuteOnLocalDevices(
-      absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
+  // Execute on a given `device`. Requires `device` to be addressable by client.
+  // Requires executable has exactly 1 replica and 1 partition and no
+  // device_assignment (thus portable).
+  virtual StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
+      absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options) const = 0;
 
   // Asynchronously free resources after the last execution completes.
@@ -830,8 +832,8 @@ class PjRtStreamExecutorExecutable : public PjRtExecutable {
       std::vector<std::unique_ptr<LocalExecutable>> executables,
       bool parameter_is_tupled_arguments,
       std::shared_ptr<DeviceAssignment> device_assignment,
-      std::vector<std::pair<int, int>> local_logical_device_ids,
-      std::vector<PjRtDevice*> local_devices, PjRtClient* client);
+      std::vector<LogicalDeviceIds> addressable_device_logical_ids,
+      std::vector<PjRtDevice*> addressable_devices, PjRtClient* client);
 
   ~PjRtStreamExecutorExecutable() override = default;
 
@@ -859,39 +861,34 @@ class PjRtStreamExecutorExecutable : public PjRtExecutable {
     return *device_assignment_;
   }
 
-  const std::vector<std::pair<int, int>>& local_logical_device_ids()
+  absl::Span<const LogicalDeviceIds> addressable_device_logical_ids()
       const override {
-    return local_logical_device_ids_;
+    return addressable_device_logical_ids_;
   }
 
-  const std::vector<PjRtDevice*>& local_devices() const override {
-    return local_devices_;
+  absl::Span<PjRtDevice* const> addressable_devices() const override {
+    return addressable_devices_;
   }
 
   // Return an HloModule per partition.
   StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
       const override;
 
-  StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> Execute(
-      absl::Span<PjRtBuffer* const> argument_handles,
+  StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
+      absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
       const ExecuteOptions& options) const override;
 
-  StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteOnLocalDevice(
+  StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options) const override;
 
-  // Execute on local devices. Takes a sequence of argument lists (one argument
-  // list per local device) and returns a tuple of results (one result per local
-  // device). The number of argument lists must be equal to the local device
-  // count.
-  StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
-  ExecuteOnLocalDevices(
-      absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
+  StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
+      absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options) const override;
 
   void Delete() override { executables_.clear(); }
 
-  const std::vector<std::shared_ptr<LocalExecutable>>& executables() const {
+  absl::Span<const std::shared_ptr<LocalExecutable>> executables() const {
     return executables_;
   }
 
@@ -950,17 +947,15 @@ class PjRtStreamExecutorExecutable : public PjRtExecutable {
 
   // The replica and partition indices of device_assignment_ to be run by this
   // client. On single-host platforms without partitioning, this is all replicas
-  // (i.e. local_logical_device_ids_[i] = (i, 0)), but this may not be the case
-  // on multi-host platforms.
-  // If there are 4 replicas and 2 partitions on a single host platform, size of
-  // local_logical_device_ids_ is 4*2 = 8.
-  std::vector<std::pair<int, int>> local_logical_device_ids_;
+  // (i.e. addressable_device_logical_ids_[i] = (i, 0)), but this may not be the
+  // case on multi-host platforms. If there are 4 replicas and 2 partitions on a
+  // single host platform, size of addressable_device_logical_ids_ is 4*2 = 8.
+  std::vector<LogicalDeviceIds> addressable_device_logical_ids_;
 
-  // local_devices_[i] is the Device to which local_logical_device_ids_[i] is
-  // assigned.
-  // shared_ptrs instead of unique_ptrs to play well with the Python bindings
-  // (see xla.cc).
-  std::vector<PjRtDevice*> local_devices_;
+  // addressable_devices_[i] is the Device to which
+  // addressable_device_logical_ids_[i] is assigned. shared_ptrs instead of
+  // unique_ptrs to play well with the Python bindings (see xla.cc).
+  std::vector<PjRtDevice*> addressable_devices_;
 };
 
 // Executables can donate buffers so that buffers can be aliased from inputs
