@@ -207,7 +207,13 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
       output_shape = '?'
     name = layer.name
     cls_name = layer.__class__.__name__
-    fields = [name + ' (' + cls_name + ')', output_shape, layer.count_params()]
+    if not layer.built and not getattr(layer, '_is_graph_network', False):
+      # If a subclassed model has a layer that is not called in Model.call, the
+      # layer will not be built and we cannot call layer.count_params().
+      params = '0 (unused)'
+    else:
+      params = layer.count_params()
+    fields = [name + ' (' + cls_name + ')', output_shape, params]
     print_row(fields, positions)
 
   def print_layer_summary_with_connections(layer):

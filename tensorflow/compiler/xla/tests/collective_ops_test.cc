@@ -17,7 +17,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/nccl_test_utils.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
@@ -160,7 +160,7 @@ DeviceAssignment MakeDeviceAssn(std::vector<int64> devices) {
 
 // Shorter alias for this function.
 absl::flat_hash_set<GlobalDeviceId> OpenNcclChannels() {
-  return gpu::NcclAllReduceThunk::DevicesWithOpenNcclChannels();
+  return gpu::DevicesWithOpenNcclChannels();
 }
 
 template <typename T>
@@ -598,16 +598,22 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_GPU(AllToAll_EmptyReplicaGroups)) {
   const char* const kModuleStr = R"(
   HloModule test
   ENTRY test_computation {
-    a = f32[2] constant({10, 10})
-    b = f32[2] constant({20, 20})
-    c = f32[2] constant({30, 30})
-    d = f32[2] constant({40, 40})
-    all2all = (f32[2], f32[2], f32[2], f32[2]) all-to-all(a, b, c, d), replica_groups={}
-    a_prime = f32[2] get-tuple-element(all2all), index=0
-    b_prime = f32[2] get-tuple-element(all2all), index=1
-    c_prime = f32[2] get-tuple-element(all2all), index=2
-    d_prime = f32[2] get-tuple-element(all2all), index=3
-    ROOT out = f32[8] concatenate(a_prime, b_prime, c_prime, d_prime), dimensions={0}
+    id = u32[] replica-id()
+    id2 = u32[2] broadcast(id), dimensions={}
+    a0 = u32[2] constant({10, 15})
+    b0 = u32[2] constant({20, 25})
+    c0 = u32[2] constant({30, 35})
+    d0 = u32[2] constant({40, 45})
+    a1 = u32[2] add(id2, a0)
+    b1 = u32[2] add(id2, b0)
+    c1 = u32[2] add(id2, c0)
+    d1 = u32[2] add(id2, d0)
+    all2all = (u32[2], u32[2], u32[2], u32[2]) all-to-all(a1, b1, c1, d1), replica_groups={}
+    a_prime = u32[2] get-tuple-element(all2all), index=0
+    b_prime = u32[2] get-tuple-element(all2all), index=1
+    c_prime = u32[2] get-tuple-element(all2all), index=2
+    d_prime = u32[2] get-tuple-element(all2all), index=3
+    ROOT out = u32[8] concatenate(a_prime, b_prime, c_prime, d_prime), dimensions={0}
   }
   )";
   const int64 kNumReplicas = 4;
@@ -619,27 +625,36 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_GPU(AllToAll_EmptyReplicaGroups)) {
                           ExecuteReplicated(std::move(module), {}, kNumReplicas,
                                             /*use_threads=*/true));
   ASSERT_EQ(results.size(), kNumReplicas);
-  for (int i = 0; i < kNumReplicas; i++) {
-    EXPECT_TRUE(LiteralTestUtil::NearOrEqual(
-        LiteralUtil::CreateR1<float>({10, 10, 20, 20, 30, 30, 40, 40}),
-        results[i], ErrorSpec{1e-5, 1e-5}));
-  }
+  LiteralTestUtil::ExpectR1Equal<uint32>({10, 15, 11, 16, 12, 17, 13, 18},
+                                         results[0]);
+  LiteralTestUtil::ExpectR1Equal<uint32>({20, 25, 21, 26, 22, 27, 23, 28},
+                                         results[1]);
+  LiteralTestUtil::ExpectR1Equal<uint32>({30, 35, 31, 36, 32, 37, 33, 38},
+                                         results[2]);
+  LiteralTestUtil::ExpectR1Equal<uint32>({40, 45, 41, 46, 42, 47, 43, 48},
+                                         results[3]);
 }
 
 XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_GPU(AllToAll_OrderedReplicaGroups)) {
   const char* const kModuleStr = R"(
   HloModule test
   ENTRY test_computation {
-    a = f32[2] constant({10, 10})
-    b = f32[2] constant({20, 20})
-    c = f32[2] constant({30, 30})
-    d = f32[2] constant({40, 40})
-    all2all = (f32[2], f32[2], f32[2], f32[2]) all-to-all(a, b, c, d), replica_groups={{3,2,1,0}}
-    a_prime = f32[2] get-tuple-element(all2all), index=0
-    b_prime = f32[2] get-tuple-element(all2all), index=1
-    c_prime = f32[2] get-tuple-element(all2all), index=2
-    d_prime = f32[2] get-tuple-element(all2all), index=3
-    ROOT out = f32[8] concatenate(a_prime, b_prime, c_prime, d_prime), dimensions={0}
+    id = u32[] replica-id()
+    id2 = u32[2] broadcast(id), dimensions={}
+    a0 = u32[2] constant({10, 15})
+    b0 = u32[2] constant({20, 25})
+    c0 = u32[2] constant({30, 35})
+    d0 = u32[2] constant({40, 45})
+    a1 = u32[2] add(id2, a0)
+    b1 = u32[2] add(id2, b0)
+    c1 = u32[2] add(id2, c0)
+    d1 = u32[2] add(id2, d0)
+    all2all = (u32[2], u32[2], u32[2], u32[2]) all-to-all(a1, b1, c1, d1), replica_groups={{3,2,1,0}}
+    a_prime = u32[2] get-tuple-element(all2all), index=0
+    b_prime = u32[2] get-tuple-element(all2all), index=1
+    c_prime = u32[2] get-tuple-element(all2all), index=2
+    d_prime = u32[2] get-tuple-element(all2all), index=3
+    ROOT out = u32[8] concatenate(a_prime, b_prime, c_prime, d_prime), dimensions={0}
   }
   )";
   const int64 kNumReplicas = 4;
@@ -651,23 +666,30 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_GPU(AllToAll_OrderedReplicaGroups)) {
                           ExecuteReplicated(std::move(module), {}, kNumReplicas,
                                             /*use_threads=*/true));
   ASSERT_EQ(results.size(), kNumReplicas);
-  for (int i = 0; i < kNumReplicas; i++) {
-    EXPECT_TRUE(LiteralTestUtil::NearOrEqual(
-        LiteralUtil::CreateR1<float>({40, 40, 30, 30, 20, 20, 10, 10}),
-        results[i], ErrorSpec{1e-5, 1e-5}));
-  }
+  LiteralTestUtil::ExpectR1Equal<uint32>({43, 48, 42, 47, 41, 46, 40, 45},
+                                         results[0]);
+  LiteralTestUtil::ExpectR1Equal<uint32>({33, 38, 32, 37, 31, 36, 30, 35},
+                                         results[1]);
+  LiteralTestUtil::ExpectR1Equal<uint32>({23, 28, 22, 27, 21, 26, 20, 25},
+                                         results[2]);
+  LiteralTestUtil::ExpectR1Equal<uint32>({13, 18, 12, 17, 11, 16, 10, 15},
+                                         results[3]);
 }
 
 XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_GPU(AllToAll_TwoReplicaGroups)) {
   const char* const kModuleStr = R"(
   HloModule test
   ENTRY test_computation {
-    a = f32[2] constant({10, 10})
-    b = f32[2] constant({20, 20})
-    all2all = (f32[2], f32[2]) all-to-all(a, b), replica_groups={{2,1},{3,0}}
-    a_prime = f32[2] get-tuple-element(all2all), index=0
-    b_prime = f32[2] get-tuple-element(all2all), index=1
-    ROOT out = f32[4] concatenate(a_prime, b_prime), dimensions={0}
+    id = u32[] replica-id()
+    id2 = u32[2] broadcast(id), dimensions={}
+    a0 = u32[2] constant({10, 15})
+    b0 = u32[2] constant({20, 25})
+    a1 = u32[2] add(id2, a0)
+    b1 = u32[2] add(id2, b0)
+    all2all = (u32[2], u32[2]) all-to-all(a1, b1), replica_groups={{2,1},{3,0}}
+    a_prime = u32[2] get-tuple-element(all2all), index=0
+    b_prime = u32[2] get-tuple-element(all2all), index=1
+    ROOT out = u32[4] concatenate(a_prime, b_prime), dimensions={0}
   }
   )";
   const int64 kNumReplicas = 4;
@@ -679,11 +701,10 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_GPU(AllToAll_TwoReplicaGroups)) {
                           ExecuteReplicated(std::move(module), {}, kNumReplicas,
                                             /*use_threads=*/true));
   ASSERT_EQ(results.size(), kNumReplicas);
-  for (int i = 0; i < kNumReplicas; i++) {
-    EXPECT_TRUE(LiteralTestUtil::NearOrEqual(
-        LiteralUtil::CreateR1<float>({20, 20, 10, 10}), results[i],
-        ErrorSpec{1e-5, 1e-5}));
-  }
+  LiteralTestUtil::ExpectR1Equal<uint32>({23, 28, 20, 25}, results[0]);
+  LiteralTestUtil::ExpectR1Equal<uint32>({22, 27, 21, 26}, results[1]);
+  LiteralTestUtil::ExpectR1Equal<uint32>({12, 17, 11, 16}, results[2]);
+  LiteralTestUtil::ExpectR1Equal<uint32>({13, 18, 10, 15}, results[3]);
 }
 
 XLA_TEST_F(CollectiveOpsTest, AllReduce_TupleAllReduce) {

@@ -16,17 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NCCL_ALL_REDUCE_THUNK_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NCCL_ALL_REDUCE_THUNK_H_
 
-#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
-#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -66,14 +61,6 @@ class NcclAllReduceThunk : public Thunk {
   // When this is false, the ExecuteOnStream() call will simply return a status
   // error.
   static bool NcclIsEnabled();
-
-  // Gets the set of devices that have a NCCL channel open.  This is primarily
-  // for testing.
-  //
-  // (Indeed, because the NCCL channels are a global variable, in the real
-  // world, the value returned here is stale as soon as you read it, so it's not
-  // clear how you *could* use it for anything other than tests.)
-  static absl::flat_hash_set<GlobalDeviceId> DevicesWithOpenNcclChannels();
 
   struct Buffer {
     int64 element_count;

@@ -65,13 +65,13 @@ kernel void ComputeFunction(
       int src_layer = src_z >> 2;
       int src_channel = src_z & 3;
       int src_linear_id = (src_layer * params.src_size.y + src_y) * params.src_size.x + src_x;
-      value[i] = src_buffer[src_linear_id][src_channel];
+      value[i] = src_tensor[src_linear_id][src_channel];
     }
   }
 
   int linear_index = (igid.z * params.dst_size.y + igid.y) * params.dst_size.x + igid.x;
   $2
-  dst_buffer[linear_index] = value;
+  dst_tensor[linear_index] = value;
 })";
   return code;
 }
@@ -107,25 +107,22 @@ kernel void ComputeFunction(
 
   int src_index = src_z * params.src_size.w + src_y * params.src_size.x + src_x;
   int linear_index = Z * params.dst_size.w + Y * params.dst_size.x + X;
-  FLT4 value = src_buffer[src_index];
+  FLT4 value = src_tensor[src_index];
   $2
-  dst_buffer[linear_index] = value;
+  dst_tensor[linear_index] = value;
 })";
   return code;
 }
 
 }  // namespace
 
-ComputeTaskDescriptor Reshape(ValueId input_id, ValueId output_id,
+ComputeTaskDescriptor Reshape(const OperationDef& definition,
                               const ReshapeAttributes& attr) {
-  ComputeTaskDescriptor desc;
+  ComputeTaskDescriptor desc(definition);
   desc.shader_source = GetReshapeCode();
 
-  desc.input_buffers = {
-      {input_id, "device FLT4* const src_buffer"},
-  };
-
-  desc.output_buffer = {output_id, "device FLT4* dst_buffer"};
+  desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
+  desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
   desc.uniform_buffers = {
       {"constant uniforms& params",
@@ -161,16 +158,13 @@ ComputeTaskDescriptor Reshape(ValueId input_id, ValueId output_id,
   return desc;
 }
 
-ComputeTaskDescriptor Reshapex4(ValueId input_id, ValueId output_id,
+ComputeTaskDescriptor Reshapex4(const OperationDef& definition,
                                 const ReshapeAttributes& attr) {
-  ComputeTaskDescriptor desc;
+  ComputeTaskDescriptor desc(definition);
   desc.shader_source = GetReshapex4Code();
 
-  desc.input_buffers = {
-      {input_id, "device FLT4* const src_buffer"},
-  };
-
-  desc.output_buffer = {output_id, "device FLT4* dst_buffer"};
+  desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
+  desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
   desc.uniform_buffers = {
       {"constant uniforms& params",

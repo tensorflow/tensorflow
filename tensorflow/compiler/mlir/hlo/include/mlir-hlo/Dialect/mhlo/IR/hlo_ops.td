@@ -41,7 +41,9 @@ def HLO_OUTPUT_FUSION : StrEnumAttrCase<"kOutput">;
 def HLO_CUSTOM_FUSION : StrEnumAttrCase<"kCustom">;
 def HLO_FusionKindAttr : StrEnumAttr<"FusionKind", "fusion kind", [
     HLO_LOOP_FUSION, HLO_INPUT_FUSION, HLO_OUTPUT_FUSION, HLO_CUSTOM_FUSION
-]>;
+]> {
+  let cppNamespace = "::mlir::mhlo";
+}
 
 //===----------------------------------------------------------------------===//
 // MHLO nullary op definitions.
@@ -896,7 +898,7 @@ def HLO_ConvOp : HLO_Op<"convolution", [NoSideEffect]>, BASE_HLO_ConvOp {
     (ins
        HLO_Tensor:$lhs,
        HLO_Tensor:$rhs),
-    ConvolutionAttributes<HLO_Dialect>.attributes);
+    ConvolutionAttributes.attributes);
 
   let results = (outs HLO_Tensor);
 }

@@ -19,9 +19,10 @@ limitations under the License.
 
 namespace tensorflow {
 namespace gradients {
-BackwardFunction* ReluRegisterer(const ForwardOperation& op);
-BackwardFunction* SparseSoftmaxCrossEntropyWithLogitsRegisterer(
+GradientFunction* ReluRegisterer(const ForwardOperation& op);
+GradientFunction* SparseSoftmaxCrossEntropyWithLogitsRegisterer(
     const ForwardOperation& op);
+GradientFunction* BiasAddRegisterer(const ForwardOperation& op);
 }  // namespace gradients
 }  // namespace tensorflow
 

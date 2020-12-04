@@ -240,10 +240,14 @@ class StringLookup(index_lookup.IndexLookup):
     if self._table_handler.vocab_size() == 0:
       return []
 
-    keys, values = self._table_handler.data()
+    if self.invert:
+      ids, strings = self._table_handler.data()
+    else:
+      strings, ids = self._table_handler.data()
+
     # This is required because the MutableHashTable doesn't preserve insertion
     # order, but we rely on the order of the array to assign indices.
-    return [x.decode(self.encoding) for _, x in sorted(zip(values, keys))]
+    return [x.decode(self.encoding) for _, x in sorted(zip(ids, strings))]
 
   def set_vocabulary(self, vocab):
     if isinstance(vocab, str):

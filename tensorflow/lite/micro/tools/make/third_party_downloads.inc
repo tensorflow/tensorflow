@@ -65,8 +65,8 @@ IMAGE_RECOGNITION_MODEL_MD5 := "1f4607b05ac45b8a6146fb883dbc2d7b"
 PERSON_MODEL_URL := "https://storage.googleapis.com/download.tensorflow.org/data/tf_lite_micro_person_data_grayscale_2020_05_27.zip"
 PERSON_MODEL_MD5 := "55b85f76e2995153e660391d4a209ef1"
 
-PERSON_MODEL_INT8_URL := "https://storage.googleapis.com/download.tensorflow.org/data/tf_lite_micro_person_data_int8_grayscale_2020_06_23.zip"
-PERSON_MODEL_INT8_MD5 := "9b5b6d4677dd0a91b1bb992d1c4c0417"
+PERSON_MODEL_INT8_URL := "https://storage.googleapis.com/download.tensorflow.org/data/tf_lite_micro_person_data_int8_grayscale_2020_12_1.zip"
+PERSON_MODEL_INT8_MD5 := "e765cc76889db8640cfe876a37e4ec00"
 
 EMBARC_MLI_URL := "https://github.com/foss-for-synopsys-dwc-arc-processors/embarc_mli/archive/ef7dd3c4e37d74a908f30713a7d0121387d3c678.zip"
 EMBARC_MLI_MD5 := "65c4ff3f4a2963e90fd014f97c69f451"

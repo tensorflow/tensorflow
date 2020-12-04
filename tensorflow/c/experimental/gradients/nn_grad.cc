@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 
 using std::vector;
+using tensorflow::ops::BiasAddGrad;
 using tensorflow::ops::Mul;
 using tensorflow::ops::ReluGrad;
 
@@ -35,29 +36,37 @@ namespace {
 class ReluGradientFunction : public GradientFunction {
  public:
   explicit ReluGradientFunction(vector<AbstractTensorHandle*> f_outputs)
-      : forward_outputs(f_outputs) {}
+      : forward_outputs_(f_outputs) {
+    for (auto output : forward_outputs_) {
+      if (output) {
+        output->Ref();
+      }
+    }
+  }
 
-  Status Compute(Context* ctx, const IncomingGradients& grad_inputs,
-                 vector<AbstractTensorHandle*>* grad_outputs) override {
-    AbstractTensorHandle* upstream_grad = grad_inputs[0];
-    AbstractTensorHandle* activations = forward_outputs[0];
-    grad_outputs->resize(1);
-    vector<AbstractTensorHandle*> relugrad_outputs(1);
+  Status Compute(AbstractContext* ctx,
+                 absl::Span<AbstractTensorHandle* const> grad_outputs,
+                 absl::Span<AbstractTensorHandle*> grad_inputs) override {
+    AbstractTensorHandle* upstream_grad = grad_outputs[0];
+    AbstractTensorHandle* activations = forward_outputs_[0];
 
     // Calculate Grad
     std::string name = "relu_grad";
-
-    TF_RETURN_IF_ERROR(ReluGrad(ctx->ctx, {upstream_grad, activations},
-                                absl::MakeSpan(relugrad_outputs),
-                                name.c_str()));
-    (*grad_outputs)[0] = relugrad_outputs[0];
-
+    TF_RETURN_IF_ERROR(
+        ReluGrad(ctx, {upstream_grad, activations}, grad_inputs, name.c_str()));
     return Status::OK();
   }
-  ~ReluGradientFunction() override {}
+  ~ReluGradientFunction() override {
+    for (auto output : forward_outputs_) {
+      if (output) {
+        output->Unref();
+      }
+    }
+  }
 
  private:
-  vector<AbstractTensorHandle*> forward_outputs;
+  // TODO(b/174778737): Only hold needed outputs.
+  vector<AbstractTensorHandle*> forward_outputs_;
 };
 
 Status BroadcastMul(AbstractContext* ctx, AbstractTensorHandle* vec,
@@ -86,47 +95,79 @@ class SparseSoftmaxCrossEntropyWithLogitsGradientFunction
  public:
   explicit SparseSoftmaxCrossEntropyWithLogitsGradientFunction(
       vector<AbstractTensorHandle*> f_outputs)
-      : forward_outputs(f_outputs) {}
+      : forward_outputs_(f_outputs) {}
 
-  Status Compute(Context* ctx, const IncomingGradients& grad_inputs,
-                 vector<AbstractTensorHandle*>* grad_outputs) override {
-    grad_outputs->resize(2);
-
+  Status Compute(AbstractContext* ctx,
+                 absl::Span<AbstractTensorHandle* const> grad_outputs,
+                 absl::Span<AbstractTensorHandle*> grad_inputs) override {
     // Grad for Softmax Input
-    vector<AbstractTensorHandle*> mul_outputs(1);
     TF_RETURN_IF_ERROR(BroadcastMul(
-        ctx->ctx, grad_inputs[0], forward_outputs[1],
-        absl::MakeSpan(mul_outputs)));  // upstream_grad * local softmax grad
-    (*grad_outputs)[0] = mul_outputs[0];
+        ctx, grad_outputs[0], forward_outputs_[1],
+        grad_inputs.subspan(0, 1)));  // upstream_grad * local softmax grad
 
     // Grad for labels is null
-    (*grad_outputs)[1] = nullptr;
-
+    grad_inputs[1] = nullptr;
     return Status::OK();
   }
   ~SparseSoftmaxCrossEntropyWithLogitsGradientFunction() override {}
 
  private:
-  vector<AbstractTensorHandle*> forward_outputs;
+  vector<AbstractTensorHandle*> forward_outputs_;
+};
+
+// TODO(vnvo2409): Add python test
+class BiasAddGradientFunction : public GradientFunction {
+ public:
+  explicit BiasAddGradientFunction(AttrBuilder f_attrs)
+      : forward_attrs_(f_attrs) {}
+
+  Status Compute(AbstractContext* ctx,
+                 absl::Span<AbstractTensorHandle* const> grad_outputs,
+                 absl::Span<AbstractTensorHandle*> grad_inputs) override {
+    /* Given upstream grad U and a BiasAdd: A + bias, the gradients are:
+     *
+     *    dA = U
+     *    dbias = reduceSum(U, dims = channel_dim)
+     */
+
+    AbstractTensorHandle* upstream_grad = grad_outputs[0];
+    DCHECK(upstream_grad);
+
+    // Recover data format from forward pass for gradient.
+    std::string data_format;
+    TF_RETURN_IF_ERROR(forward_attrs_.Get("data_format", &data_format));
+
+    // Grad for A
+    grad_inputs[0] = upstream_grad;
+    grad_inputs[0]->Ref();
+
+    // Grad for bias
+    std::string name = "bias_add_grad";
+    TF_RETURN_IF_ERROR(BiasAddGrad(ctx, {upstream_grad},
+                                   grad_inputs.subspan(1, 1),
+                                   data_format.c_str(), name.c_str()));
+
+    return Status::OK();
+  }
+  ~BiasAddGradientFunction() override {}
+
+ private:
+  AttrBuilder forward_attrs_;
 };
 
 }  // namespace
 
-BackwardFunction* ReluRegisterer(const ForwardOperation& op) {
-  auto gradient_function = new ReluGradientFunction(op.outputs);
-  // For ops with a single output, the gradient function is not called if there
-  // is no incoming gradient. So we do not need to worry about creating zeros
-  // grads in this case.
-  auto default_gradients = new PassThroughDefaultGradients(op);
-  return new BackwardFunction(gradient_function, default_gradients);
+GradientFunction* ReluRegisterer(const ForwardOperation& op) {
+  return new ReluGradientFunction(op.outputs);
 }
 
-BackwardFunction* SparseSoftmaxCrossEntropyWithLogitsRegisterer(
+GradientFunction* SparseSoftmaxCrossEntropyWithLogitsRegisterer(
     const ForwardOperation& op) {
-  auto gradient_function =
-      new SparseSoftmaxCrossEntropyWithLogitsGradientFunction(op.outputs);
-  auto default_gradients = new PassThroughDefaultGradients(op);
-  return new BackwardFunction(gradient_function, default_gradients);
+  return new SparseSoftmaxCrossEntropyWithLogitsGradientFunction(op.outputs);
+}
+
+GradientFunction* BiasAddRegisterer(const ForwardOperation& op) {
+  return new BiasAddGradientFunction(op.attrs);
 }
 
 }  // namespace gradients

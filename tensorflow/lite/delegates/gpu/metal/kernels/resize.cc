@@ -59,16 +59,16 @@ std::string GetResizeBilinearCode(const Resize2DAttributes& attr) {
       const int src_index1 = (gid.z * size.y + st.y) * size.x + st.z;
       const int src_index2 = (gid.z * size.y + st.w) * size.x + st.x;
       const int src_index3 = (gid.z * size.y + st.w) * size.x + st.z;
-      FLT4 tex11 = src_buffer[src_index0];
-      FLT4 tex21 = src_buffer[src_index1];
-      FLT4 tex12 = src_buffer[src_index2];
-      FLT4 tex22 = src_buffer[src_index3];
+      FLT4 tex11 = src_tensor[src_index0];
+      FLT4 tex21 = src_tensor[src_index1];
+      FLT4 tex12 = src_tensor[src_index2];
+      FLT4 tex22 = src_tensor[src_index3];
       // bilinear interpolation
       FLT4 value = mix(mix(tex11, tex21, static_cast<FLT>(t.x)),
                        mix(tex12, tex22, static_cast<FLT>(t.x)), static_cast<FLT>(t.y));
       const int linear_index = (gid.z * size.w + gid.y) * size.z + gid.x;
       $2
-      output_buffer[linear_index] = value;
+      dst_tensor[linear_index] = value;
     }
   )";
   return code;
@@ -108,18 +108,18 @@ std::string GetResizeNearestCode(const Resize2DAttributes& attr) {
   code += "  coord.y = min(coord.y, size.y - 1);\n";
   code += R"(
       const int src_index = (gid.z * size.y + coord.y) * size.x + coord.x;
-      FLT4 value = src_buffer[src_index];
+      FLT4 value = src_tensor[src_index];
       const int linear_index = (gid.z * size.w + gid.y) * size.z + gid.x;
       $2
-      output_buffer[linear_index] = value;
+      dst_tensor[linear_index] = value;
     }
   )";
   return code;
 }
 
-ComputeTaskDescriptor Resize(ValueId input_id, ValueId output_id,
+ComputeTaskDescriptor Resize(const OperationDef& definition,
                              const Resize2DAttributes& attr) {
-  ComputeTaskDescriptor desc;
+  ComputeTaskDescriptor desc(definition);
   switch (attr.type) {
     case SamplingType::BILINEAR:
       desc.shader_source = GetResizeBilinearCode(attr);
@@ -132,11 +132,8 @@ ComputeTaskDescriptor Resize(ValueId input_id, ValueId output_id,
       return {};
   }
 
-  desc.input_buffers = {
-      {input_id, "device FLT4* const src_buffer"},
-  };
-
-  desc.output_buffer = {output_id, "device FLT4* output_buffer"};
+  desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
+  desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
   desc.uniform_buffers = {
       {"constant int4& size",

@@ -58,26 +58,29 @@ PyExecutable::~PyExecutable() {
   }
 }
 
-std::vector<ClientAndPtr<PjRtDevice>> PyExecutable::LocalDevices() const {
+std::vector<ClientAndPtr<PjRtDevice>> PyExecutable::AddressableDevices() const {
   std::vector<ClientAndPtr<PjRtDevice>> devices;
-  devices.reserve(executable_->local_devices().size());
-  for (PjRtDevice* device : executable_->local_devices()) {
+  devices.reserve(executable_->addressable_devices().size());
+  for (PjRtDevice* device : executable_->addressable_devices()) {
     devices.push_back(WrapWithClient(client_, device));
   }
   return devices;
 }
 
+// Used by JAX JIT which has C++ PjRtBuffers as inputs (Numpy to PjRtBuffer is
+// faster and simpler than Numpy to PyBuffer to PjRtBuffer) and requires
+// PyBuffer as outputs as it will return to Python.
 StatusOr<std::vector<std::unique_ptr<PyBuffer>>> PyExecutable::PjRtExecute(
-    absl::Span<PjRtBuffer* const> args) {
-  std::vector<std::unique_ptr<PjRtBuffer>> output_buffers;
+    const std::vector<PjRtBuffer*>& args) {
+  std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers;
   {
     py::gil_scoped_release gil_release;
-    TF_ASSIGN_OR_RETURN(output_buffers, executable_->Execute(args, options_));
+    TF_ASSIGN_OR_RETURN(output_buffers, executable_->Execute({args}, options_));
   }
   auto traceback = Traceback::Get();
   std::vector<std::unique_ptr<PyBuffer>> outputs;
-  outputs.reserve(output_buffers.size());
-  for (auto& buffer : output_buffers) {
+  outputs.reserve(output_buffers[0].size());
+  for (auto& buffer : output_buffers[0]) {
     outputs.push_back(
         std::make_unique<PyBuffer>(client_, std::move(buffer), traceback));
   }
@@ -86,19 +89,19 @@ StatusOr<std::vector<std::unique_ptr<PyBuffer>>> PyExecutable::PjRtExecute(
 
 StatusOr<std::vector<std::unique_ptr<PyBuffer>>> PyExecutable::Execute(
     absl::Span<PyBuffer* const> args) {
-  std::vector<std::unique_ptr<PjRtBuffer>> output_buffers;
+  std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers;
   {
     py::gil_scoped_release gil_release;
     std::vector<PjRtBuffer*> arg_buffers(args.size());
     absl::c_transform(args, arg_buffers.begin(),
                       [](PyBuffer* buf) { return buf->buffer(); });
     TF_ASSIGN_OR_RETURN(output_buffers,
-                        executable_->Execute(arg_buffers, options_));
+                        executable_->Execute({arg_buffers}, options_));
   }
   auto traceback = Traceback::Get();
   std::vector<std::unique_ptr<PyBuffer>> outputs;
-  outputs.reserve(output_buffers.size());
-  for (auto& buffer : output_buffers) {
+  outputs.reserve(output_buffers[0].size());
+  for (auto& buffer : output_buffers[0]) {
     outputs.push_back(
         std::make_unique<PyBuffer>(client_, std::move(buffer), traceback));
   }
@@ -117,8 +120,8 @@ PyExecutable::ExecuteOnLocalDevices(
       absl::c_transform(args[computation], arg_buffers[computation].begin(),
                         [](PyBuffer* buf) { return buf->buffer(); });
     }
-    TF_ASSIGN_OR_RETURN(output_buffers, executable_->ExecuteOnLocalDevices(
-                                            arg_buffers, options_));
+    TF_ASSIGN_OR_RETURN(output_buffers,
+                        executable_->Execute(arg_buffers, options_));
   }
   auto traceback = Traceback::Get();
   std::vector<std::vector<std::unique_ptr<PyBuffer>>> outputs;

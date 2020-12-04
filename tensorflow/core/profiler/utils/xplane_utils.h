@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
@@ -47,6 +48,8 @@ XStat* FindOrAddMutableStat(const XStatMetadata& stat_metadata, XEvent* event);
 
 void RemovePlane(XSpace* space, const XPlane* plane);
 void RemoveLine(XPlane* plane, const XLine* line);
+void RemoveEvents(XLine* line,
+                  const absl::flat_hash_set<const XEvent*>& events);
 
 void RemoveEmptyPlanes(XSpace* space);
 void RemoveEmptyLines(XPlane* plane);

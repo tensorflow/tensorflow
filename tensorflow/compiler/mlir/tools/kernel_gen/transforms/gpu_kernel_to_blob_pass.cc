@@ -54,7 +54,9 @@ class GpuKernelToBlobPass
   GpuKernelToBlobPass(mlir::StringRef blob_annotation,
                       llvm::ArrayRef<std::string> architectures,
                       bool generate_fatbin, bool print_ptx) {
-    blob_annotation_ = blob_annotation.str();
+    if (!blob_annotation.empty()) {
+      blob_annotation_ = blob_annotation.str();
+    }
     architectures_ = architectures;
     generate_fatbin_ = generate_fatbin;
     print_ptx_ = print_ptx;

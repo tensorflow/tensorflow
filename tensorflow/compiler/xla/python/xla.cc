@@ -36,8 +36,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/distributed/client.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/distributed.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/service.h"
+#include "tensorflow/compiler/xla/pjrt/gpu_device.h"
 #include "tensorflow/compiler/xla/pjrt/interpreter_device.h"
-#include "tensorflow/compiler/xla/pjrt/nvidia_gpu_device.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/tpu_client.h"
 #include "tensorflow/compiler/xla/python/bfloat16.h"
@@ -270,14 +270,14 @@ PYBIND11_MODULE(xla_extension, m) {
     return std::make_shared<PyClient>(std::move(client));
   });
   m.def(
-      "get_nvidia_gpu_client",
+      "get_gpu_client",
       [](bool asynchronous, const GpuAllocatorConfig& allocator_config,
          std::shared_ptr<DistributedRuntimeClient> distributed_client,
          int node_id) -> StatusOr<std::shared_ptr<PyClient>> {
         TF_ASSIGN_OR_RETURN(
             std::unique_ptr<PjRtClient> client,
-            GetNvidiaGpuClient(asynchronous, allocator_config,
-                               std::move(distributed_client), node_id));
+            GetGpuClient(asynchronous, allocator_config,
+                         std::move(distributed_client), node_id));
         return std::make_shared<PyClient>(std::move(client));
       },
       py::arg("asynchronous") = true,
@@ -377,8 +377,18 @@ PYBIND11_MODULE(xla_extension, m) {
   py::class_<PyExecutable, std::shared_ptr<PyExecutable>> executable(
       m, "Executable");
   executable.def_property_readonly("client", &PyExecutable::client)
-      .def("local_logical_device_ids", &PyExecutable::local_logical_device_ids)
-      .def("local_devices", &PyExecutable::LocalDevices)
+      .def("local_logical_device_ids",
+           [](PyExecutable* exec) {
+             auto span = exec->addressable_device_logical_ids();
+             // Not on dispatch critical path, so ok to have heap allocation.
+             std::vector<std::pair<int, int>> addressable_device_logical_ids;
+             addressable_device_logical_ids.reserve(span.size());
+             for (const auto& logical_device_id : span) {
+               addressable_device_logical_ids.push_back(std::make_pair(
+                   logical_device_id.replica, logical_device_id.partition));
+             }
+           })
+      .def("local_devices", &PyExecutable::AddressableDevices)
       .def("size_of_generated_code_in_bytes",
            &PyExecutable::SizeOfGeneratedCodeInBytes)
       .def("delete", &PyExecutable::Delete)

@@ -2276,7 +2276,7 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
 
   Note that converting floating point values to integer type may lose precision.
   In the example below, an image tensor `b` of dtype `float32` is converted to
-  `int8` and back to `float32`. The final output, howeverm is different from
+  `int8` and back to `float32`. The final output, however, is different from
   the original input `b` due to precision loss.
 
   >>> b = [[[0.12], [0.34]], [[0.56], [0.78]]]

@@ -351,6 +351,8 @@ third_party/gemmlowp/LICENSE \
 third_party/flatbuffers/include/flatbuffers/base.h \
 third_party/flatbuffers/include/flatbuffers/stl_emulation.h \
 third_party/flatbuffers/include/flatbuffers/flatbuffers.h \
+third_party/flatbuffers/include/flatbuffers/flexbuffers.h \
+third_party/flatbuffers/include/flatbuffers/util.h \
 third_party/flatbuffers/LICENSE.txt \
 third_party/ruy/ruy/profiler/instrumentation.h
 

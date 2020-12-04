@@ -19,6 +19,7 @@ limitations under the License.
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
+#include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/rewriters.h"
 
 namespace mlir {
 namespace kernel_gen {
@@ -162,10 +163,15 @@ class TFAssertOpConverter : public OpConversionPattern<AssertOp> {
 
 }  // namespace
 
-void PopulateEmbedTFFrameworkConversionPatterns(
+void PopulateEmbedTFFrameworkFunctionAndAllocConversionPatterns(
     MLIRContext *context, OwningRewritePatternList *patterns) {
-  patterns->insert<TFAllocOpConverter, TFAssertOpConverter,
-                   TFDeallocOpConverter, FuncOpConverter>(context);
+  patterns->insert<TFAllocOpConverter, TFDeallocOpConverter, FuncOpConverter>(
+      context);
+}
+
+void PopulateEmbedTFFrameworkAssertConversionPatterns(
+    MLIRContext *context, OwningRewritePatternList *patterns) {
+  patterns->insert<TFAssertOpConverter, FuncOpConverter>(context);
 }
 
 }  // namespace tf_framework

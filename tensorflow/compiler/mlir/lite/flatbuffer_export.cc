@@ -173,11 +173,13 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
                  type.dyn_cast<mlir::quant::UniformQuantizedType>()) {
     return GetTFLiteType(q_uniform_type.getStorageType(),
                          q_uniform_type.isSigned());
-
   } else if (auto q_peraxis_type =
                  type.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
     return GetTFLiteType(q_peraxis_type.getStorageType(),
                          q_peraxis_type.isSigned());
+  } else if (auto q_calibrated_type =
+                 type.dyn_cast<mlir::quant::CalibratedQuantizedType>()) {
+    return GetTFLiteType(q_calibrated_type.getExpressedType());
   } else if (type.isa<mlir::TF::ResourceType>()) {
     // Treat tf.resource values as integer values in flatbuffer.
     // TODO(b/146131919): Maybe need to have a detailed design for supporting
@@ -209,6 +211,64 @@ static bool IsTFResourceOp(Operation* op) {
     }
   }
   return false;
+}
+
+// Create description of operation that could not be converted.
+static std::string GetOpDescriptionForDebug(Operation* inst) {
+  const int kLargeElementsAttr = 16;
+  std::string op_str;
+  llvm::raw_string_ostream os(op_str);
+  inst->getName().print(os);
+  // Print out attributes except for large elementsattributes (which should
+  // rarely be the cause why the legalization didn't happen).
+  if (!inst->getMutableAttrDict().getAttrs().empty()) {
+    os << " {";
+    bool first = true;
+    for (auto& named_attr : inst->getAttrDictionary()) {
+      os << (!first ? ", " : "");
+      first = false;
+      named_attr.first.print(os);
+      os << " = ";
+      if (auto element_attr = named_attr.second.dyn_cast<ElementsAttr>()) {
+        if (element_attr.getNumElements() <= kLargeElementsAttr) {
+          element_attr.print(os);
+        } else {
+          os << "<large>";
+        }
+      } else {
+        named_attr.second.print(os);
+      }
+    }
+    os << "}";
+  }
+  return os.str();
+}
+
+// Create a summary with the given information regarding op names and
+// descriptions.
+static std::string GetOpsSummary(
+    const std::map<std::string, std::set<std::string>>& ops,
+    const std::string& summary_title) {
+  std::string op_str;
+  llvm::raw_string_ostream os(op_str);
+
+  std::vector<std::string> keys;
+  keys.reserve(ops.size());
+
+  std::vector<std::string> values;
+  values.reserve(ops.size());
+
+  for (auto const& op_name_and_details : ops) {
+    keys.push_back(op_name_and_details.first);
+    for (auto const& op_detail : op_name_and_details.second) {
+      values.push_back(op_detail);
+    }
+  }
+
+  os << summary_title << " ops: " << absl::StrJoin(keys, ", ") << "\n";
+  os << "Details:\n\t" << absl::StrJoin(values, "\n\t");
+
+  return os.str();
 }
 
 template <typename T>
@@ -570,11 +630,15 @@ class Translator {
   const Dialect* tfl_dialect_;
 
   // The failed ops during legalization.
-  std::set<std::string> failed_flex_ops_;
-  std::set<std::string> failed_custom_ops_;
+  std::map<std::string, std::set<std::string>> failed_flex_ops_;
+  std::map<std::string, std::set<std::string>> failed_custom_ops_;
+
+  // Ops to provide warning messages.
+  std::map<std::string, std::set<std::string>> custom_ops_;
+  std::map<std::string, std::set<std::string>> flex_ops_;
 
   // Resource ops to provide warning messages.
-  std::set<std::string> resource_ops_;
+  std::map<std::string, std::set<std::string>> resource_ops_;
 
   // Set of saved model tags, if any.
   const std::unordered_set<std::string> saved_model_tags_;
@@ -652,17 +716,20 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensorFromType(
   auto element_type = tensor_type.getElementType();
   tflite::TensorType tflite_element_type =
       GetTFLiteType(tensor_type.getElementType()).ValueOrDie();
-  BufferOffset<tflite::QuantizationParameters> q_params;
-  auto qtype = element_type.dyn_cast<mlir::quant::UniformQuantizedType>();
-  if (!qtype) {
-    return tflite::CreateTensor(builder_, builder_.CreateVector(shape),
-                                tflite_element_type,
-                                /*buffer=*/0, builder_.CreateString(name));
+  BufferOffset<tflite::QuantizationParameters> q_params = 0;
+  if (auto qtype = element_type.dyn_cast<mlir::quant::UniformQuantizedType>()) {
+    q_params = tflite::CreateQuantizationParameters(
+        builder_, /*min=*/0, /*max=*/0,
+        builder_.CreateVector<float>({static_cast<float>(qtype.getScale())}),
+        builder_.CreateVector<int64_t>({qtype.getZeroPoint()}));
+  } else if (auto qtype =
+                 element_type
+                     .dyn_cast<mlir::quant::CalibratedQuantizedType>()) {
+    q_params = tflite::CreateQuantizationParameters(
+        builder_,
+        builder_.CreateVector<float>({static_cast<float>(qtype.getMin())}),
+        builder_.CreateVector<float>({static_cast<float>(qtype.getMax())}));
   }
-  q_params = tflite::CreateQuantizationParameters(
-      builder_, /*min=*/0, /*max=*/0,
-      builder_.CreateVector<float>({static_cast<float>(qtype.getScale())}),
-      builder_.CreateVector<int64_t>({qtype.getZeroPoint()}));
   return tflite::CreateTensor(
       builder_, builder_.CreateVector(shape), tflite_element_type,
       /*buffer=*/0, builder_.CreateString(name), q_params,
@@ -1079,7 +1146,6 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
   }
 
   if (dialect == tf_dialect_) {
-    std::string op_name;
     if (auto ifOp = dyn_cast<mlir::TF::IfOp>(inst)) {
       return BuildIfOperator(ifOp, operands, results);
     } else if (auto whileOp = dyn_cast<mlir::TF::WhileOp>(inst)) {
@@ -1105,8 +1171,11 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
       return llvm::None;
     }
 
+    std::string op_name = node_def->op();
+    std::string op_desc = GetOpDescriptionForDebug(inst);
+
     if (IsTFResourceOp(inst)) {
-      resource_ops_.insert(node_def->op());
+      resource_ops_[op_name].insert(op_desc);
     }
 
     const bool is_allowed_flex_op =
@@ -1128,6 +1197,9 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
       } else {
         return llvm::None;
       }
+
+      // Gather flex ops.
+      flex_ops_[op_name].insert(op_desc);
     } else if (enabled_op_types_.contains(OpType::kCustomOp)) {
       // Generic case of custom ops - write using flex buffers since that
       // is the only custom options supported by TFLite today.
@@ -1138,40 +1210,15 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
       } else {
         return llvm::None;
       }
-    } else {
-      // Create description of operation that could not be converted.
-      const int kLargeElementsAttr = 16;
-      std::string op_str;
-      llvm::raw_string_ostream os(op_str);
-      inst->getName().print(os);
-      // Print out attributes except for large elementsattributes (which should
-      // rarely be the cause why the legalization didn't happen).
-      if (!inst->getMutableAttrDict().getAttrs().empty()) {
-        os << " {";
-        bool first = true;
-        for (auto& named_attr : inst->getAttrDictionary()) {
-          os << (!first ? ", " : "");
-          first = false;
-          named_attr.first.print(os);
-          os << " = ";
-          if (auto element_attr = named_attr.second.dyn_cast<ElementsAttr>()) {
-            if (element_attr.getNumElements() <= kLargeElementsAttr) {
-              element_attr.print(os);
-            } else {
-              os << "<large>";
-            }
-          } else {
-            named_attr.second.print(os);
-          }
-        }
-        os << "}";
-      }
 
+      // Gather custom ops.
+      custom_ops_[op_name].insert(op_desc);
+    } else {
       // Insert failed op to `flex_ops` or `custom_ops`.
       if (is_allowed_flex_op) {
-        failed_flex_ops_.insert(os.str());
+        failed_flex_ops_[op_name].insert(op_desc);
       } else {
-        failed_custom_ops_.insert(os.str());
+        failed_custom_ops_[op_name].insert(op_desc);
       }
       return inst->emitOpError("is neither a custom op nor a flex op"),
              llvm::None;
@@ -1677,29 +1724,49 @@ Optional<std::string> Translator::TranslateInternal() {
   }
 
   if (!resource_ops_.empty()) {
-    std::string resource_ops_list = absl::StrJoin(resource_ops_, ", ");
-    LOG(WARNING) << "Graph contains " << resource_ops_list
-                 << " op(s), that use(s) resource type. Currently, the "
+    std::string resource_ops_summary =
+        GetOpsSummary(resource_ops_, /*summary_title=*/"Resource");
+    LOG(WARNING) << "Graph contains the following resource op(s), that use(s) "
+                    "resource type. Currently, the "
                     "resource type is not natively supported in TFLite. Please "
                     "consider not using the resource type if there are issues "
-                    "with either TFLite converter or TFLite runtime.";
+                    "with either TFLite converter or TFLite runtime:\n"
+                 << resource_ops_summary;
+  }
+
+  if (!flex_ops_.empty()) {
+    std::string flex_ops_summary =
+        GetOpsSummary(flex_ops_, /*summary_title=*/"Flex");
+    LOG(WARNING) << "TFLite interpreter needs to link Flex delegate in order "
+                    "to run the model since it contains the following flex "
+                    "op(s):\n"
+                 << flex_ops_summary;
+  }
+
+  if (!custom_ops_.empty()) {
+    std::string custom_ops_summary =
+        GetOpsSummary(custom_ops_, /*summary_title=*/"Custom");
+    LOG(WARNING) << "The following operation(s) need TFLite custom op "
+                    "implementation(s):\n"
+                 << custom_ops_summary;
   }
 
   if (first_failed_func != -1) {
-    std::string failed_flex_ops_list = absl::StrJoin(failed_flex_ops_, "\n\t");
-    std::string failed_custom_ops_list =
-        absl::StrJoin(failed_custom_ops_, "\n\t");
+    std::string failed_flex_ops_summary =
+        GetOpsSummary(failed_flex_ops_, /*summary_title=*/"Flex");
+    std::string failed_custom_ops_summary =
+        GetOpsSummary(failed_custom_ops_, /*summary_title=*/"Custom");
     std::string err;
-    if (!failed_flex_ops_list.empty())
+    if (!failed_flex_ops_.empty())
       err +=
           "Ops that can be supported by the flex runtime (enabled via setting "
-          "the -emit-select-tf-ops flag):\n\t" +
-          failed_flex_ops_list;
-    if (!failed_custom_ops_list.empty())
+          "the -emit-select-tf-ops flag):\n" +
+          failed_flex_ops_summary;
+    if (!failed_custom_ops_.empty())
       err +=
           "Ops that need custom implementation (enabled via setting the "
-          "-emit-custom-ops flag):\n\t" +
-          failed_custom_ops_list;
+          "-emit-custom-ops flag):\n" +
+          failed_custom_ops_summary;
 
     auto& failed_region = named_regions[first_failed_func];
     return failed_region.second->getParentOp()->emitError()
