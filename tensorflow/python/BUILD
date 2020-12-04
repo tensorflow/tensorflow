@@ -34,9 +34,6 @@ load("//tensorflow:tensorflow.bzl", "tf_pybind_cc_library_wrapper")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_py_build_info_genrule")
 load("//tensorflow/core/platform:build_config.bzl", "pyx_library", "tf_additional_all_protos", "tf_additional_lib_deps", "tf_proto_library", "tf_protos_grappler")  # @unused
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static", "tf_additional_plugin_deps", "tf_additional_profiler_deps", "tf_additional_xla_deps_py")
 load("//tensorflow/python:build_defs.bzl", "tf_gen_op_wrapper_private_py")
@@ -132,7 +129,6 @@ py_library(
         ":_pywrap_py_exception_registry",
         ":_pywrap_python_op_gen",
         ":_pywrap_quantize_training",
-        ":_pywrap_stacktrace_handler",
         ":_pywrap_stat_summarizer",
         ":_pywrap_tfprof",
         ":_pywrap_transform_graph",
@@ -231,6 +227,7 @@ py_library(
         "//tensorflow/python/ops/parallel_for",
         "//tensorflow/python/ops/ragged",
         "//tensorflow/python/ops/signal",
+        "//tensorflow/python/platform:_pywrap_stacktrace_handler",
         "//tensorflow/python/profiler",
         "//tensorflow/python/profiler:profiler_client",
         "//tensorflow/python/profiler:profiler_v2",
@@ -276,150 +273,26 @@ py_library(
 
 # TODO(gunan): Investigate making this action hermetic so we do not need
 # to run it locally.
-tf_py_build_info_genrule(
-    name = "py_build_info_gen",
-    out = "platform/build_info.py",
-)
-
-py_library(
-    name = "platform_build_info",
-    srcs = ["platform/build_info.py"],
-)
 
 py_library(
     name = "platform",
-    srcs = glob(
-        [
-            "platform/*.py",
-        ],
-        exclude = [
-            "**/*test.py",
-            "**/benchmark.py",  # In platform_benchmark.
-            "**/analytics.py",  # In platform_analytics.
-            "**/device_context.py",  # In platform_device_context.
-        ],
-    ) + ["platform/build_info.py"],
-    srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-    deps = [
-        ":_pywrap_util_port",
-        ":lib",
-        ":platform_build_info",
-        ":pywrap_tfe",
-        ":util",
-        "//tensorflow/core:protos_all_py",
-        "@absl_py//absl/flags",
-        "@rules_python//python/runfiles",
-        "@six_archive//:six",
-    ],
+    deps = ["//tensorflow/python/platform"],
 )
 
 py_library(
     name = "platform_benchmark",
-    srcs = ["platform/benchmark.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":client",
-        ":platform",
-        "@six_archive//:six",
-    ],
+    deps = ["//tensorflow/python/platform:benchmark"],
 )
 
 py_library(
     name = "platform_analytics",
-    srcs = ["platform/analytics.py"],
-    srcs_version = "PY2AND3",
-)
-
-py_library(
-    name = "platform_device_context",
-    srcs = ["platform/device_context.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":control_flow_ops",
-        ":framework",
-    ],
+    deps = ["//tensorflow/python/platform:analytics"],
 )
 
 py_library(
     name = "platform_test",
-    srcs = ["platform/googletest.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":platform_benchmark",
-        "@absl_py//absl/testing:absltest",
-    ],
-)
-
-tf_py_test(
-    name = "resource_loader_test",
-    size = "small",
-    srcs = ["platform/resource_loader_test.py"],
-    data = [
-        "platform/resource_loader.py",
-    ],
-    python_version = "PY3",
-    tags = [
-        "no_pip",
-        "no_windows",
-    ],
-    deps = [
-        ":platform",
-        ":platform_test",
-    ],
-)
-
-tf_py_test(
-    name = "sysconfig_test",
-    size = "small",
-    srcs = ["platform/sysconfig_test.py"],
-    data = [
-        "platform/sysconfig.py",
-    ],
-    python_version = "PY3",
-    tags = [
-        "no_pip",
-        "no_windows",
-    ],
-    deps = [
-        ":platform",
-        ":platform_test",
-    ],
-)
-
-tf_py_test(
-    name = "flags_test",
-    size = "small",
-    srcs = ["platform/flags_test.py"],
-    python_version = "PY3",
-    deps = [
-        ":client_testlib",
-        ":platform",
-    ],
-)
-
-tf_py_test(
-    name = "stacktrace_handler_test",
-    size = "small",
-    srcs = ["platform/stacktrace_handler_test.py"],
-    python_version = "PY3",
-    tags = [
-        "no_windows",
-        "nomac",
-    ],
-    deps = [
-        ":client_testlib",
-        ":platform",
-    ],
-)
-
-tf_py_test(
-    name = "app_test",
-    size = "small",
-    srcs = ["platform/app_test.py"],
-    python_version = "PY3",
-    tags = ["notap"],
-    deps = [":platform"],
+    deps = ["//tensorflow/python/platform:test"],
 )
 
 cc_library(
@@ -861,17 +734,6 @@ tf_python_pybind_extension(
         "//tensorflow/core:protos_all_cc",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/strings",
-        "@pybind11",
-    ],
-)
-
-tf_python_pybind_extension(
-    name = "_pywrap_stacktrace_handler",
-    srcs = ["platform/stacktrace_handler_wrapper.cc"],
-    hdrs = ["//tensorflow/core/platform:stacktrace_handler_hdrs"],
-    module_name = "_pywrap_stacktrace_handler",
-    deps = [
-        "//third_party/python_runtime:headers",
         "@pybind11",
     ],
 )
@@ -1384,7 +1246,7 @@ py_library(
         ":_pywrap_python_api_parameter_converter",
         ":_pywrap_python_op_gen",
         ":_pywrap_quantize_training",
-        ":_pywrap_stacktrace_handler",
+        "//tensorflow/python/platform:_pywrap_stacktrace_handler",
         ":_pywrap_stat_summarizer",
         ":_pywrap_tfprof",
         ":_pywrap_transform_graph",
@@ -2385,7 +2247,6 @@ py_library(
         "//tensorflow_estimator/python/estimator:__subpackages__",
     ],
     deps = [
-        ":_pywrap_stacktrace_handler",
         ":array_ops",
         ":client",
         ":errors",
@@ -2407,6 +2268,7 @@ py_library(
         "//tensorflow/python/eager:tape",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/ops/ragged:ragged_tensor_value",
+        "//tensorflow/python/platform:_pywrap_stacktrace_handler",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
         "@six_archive//:six",
@@ -2496,18 +2358,7 @@ py_test(
 
 py_library(
     name = "client_testlib",
-    srcs = ["platform/test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":client",
-        ":cond_v2",
-        ":framework_test_lib",
-        ":gradient_checker",
-        ":gradient_checker_v2",
-        ":platform_test",
-        ":util",
-        ":while_v2",
-    ],
+    deps = ["//tensorflow/python/platform:client_testlib"],
 )
 
 py_library(
@@ -2597,43 +2448,6 @@ tf_py_test(
         ":platform_test",
         ":script_ops",
         ":subscribe",
-    ],
-)
-
-tf_py_test(
-    name = "build_info_test",
-    size = "small",
-    srcs = [
-        "platform/build_info.py",
-        "platform/build_info_test.py",
-    ],
-    main = "platform/build_info_test.py",
-    python_version = "PY3",
-    tags = [
-        "no_pip",
-        "notap",
-    ],
-    deps = [
-        ":client_testlib",
-        ":platform",
-    ],
-)
-
-tf_py_test(
-    name = "benchmark_test",
-    size = "small",
-    srcs = [
-        "platform/benchmark.py",
-        "platform/benchmark_test.py",
-    ],
-    main = "platform/benchmark_test.py",
-    python_version = "PY3",
-    tags = [
-        "no_pip",
-    ],
-    deps = [
-        ":client_testlib",
-        ":platform",
     ],
 )
 
@@ -4563,10 +4377,10 @@ py_library(
         ":nn_grad",
         ":nn_ops",
         ":nn_ops_gen",
-        ":platform_device_context",
         ":sparse_ops",
         ":util",
         ":variables",
+        "//tensorflow/python/platform:device_context",
     ],
 )
 
@@ -6091,6 +5905,7 @@ tf_proto_library(
     name = "compare_test_proto",
     testonly = 1,
     srcs = ["util/protobuf/compare_test.proto"],
+    cc_api_version = 2,
 )
 
 tf_proto_library(
