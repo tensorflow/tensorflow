@@ -1946,6 +1946,18 @@ void ReshapeOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
 }
 
 //===----------------------------------------------------------------------===//
+// ReplicaId Op
+//===----------------------------------------------------------------------===//
+
+LogicalResult ReplicaIdOp::inferReturnTypes(
+    MLIRContext* context, Optional<Location>, ValueRange operands,
+    DictionaryAttr, RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
+  inferredReturnTypes.push_back(RankedTensorType::get(
+      /*shape=*/{}, IntegerType::get(32, IntegerType::Unsigned, context)));
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // Case Op
 //===----------------------------------------------------------------------===//
 
