@@ -54,7 +54,6 @@ cc_library(
         "//tensorflow/c/eager:gradients_internal",
         "//tensorflow/c/experimental/ops:array_ops",
         "//tensorflow/c/experimental/ops:math_ops",
-        "//tensorflow/c/experimental/ops:nn_ops",
     ],
 )
 
@@ -127,13 +126,13 @@ tf_cuda_cc_test(
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags(),
     deps = [
+        ":unified_api_testutil",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c/eager:abstract_context",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/c/eager:c_api_unified_internal",
         "//tensorflow/c/eager:gradients_internal",
-        "//tensorflow/c/experimental/gradients:unified_api_testutil",
         "//tensorflow/c/experimental/ops",
         "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
         "//tensorflow/core:test",
@@ -169,24 +168,10 @@ cc_library(
         "//tensorflow:internal",
     ],
     deps = [
+        ":unified_api_testutil",
         "//tensorflow/c/eager:abstract_tensor_handle",
-        "//tensorflow/c/eager:c_api_experimental",
-        "//tensorflow/c/eager:c_api_unified_internal",
-        "//tensorflow/c/eager:gradients_internal",
-        "//tensorflow/c/experimental/gradients:unified_api_testutil",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "//tensorflow/c:c_api",
-        "//tensorflow/c:tf_status_helper",
-        "//tensorflow/c/experimental/gradients:math_grad",
-        "//tensorflow/c/experimental/gradients:nn_grad",
-        "//tensorflow/c/experimental/ops:array_ops",
         "//tensorflow/c/experimental/ops:math_ops",
-        "//tensorflow/c/experimental/ops:nn_ops",
-        "//tensorflow/cc/profiler",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/lib/llvm_rtti",
     ] + if_libtpu(
         if_false = ["//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration"],
         if_true = [],
@@ -203,10 +188,12 @@ tf_cuda_cc_test(
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + [
         "nomac",
-        "manual", #TODO(vnvo2409): Remove
+        "manual",  #TODO(vnvo2409): Remove
     ],
     deps = [
         ":gradient_checker",
+        ":math_grad",
+        ":nn_grad",
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_test_util",
         "//tensorflow/c:tf_status_helper",
@@ -217,8 +204,6 @@ tf_cuda_cc_test(
         "//tensorflow/c/eager:gradients_internal",
         "//tensorflow/c/eager:gradients_util",
         "//tensorflow/c/eager:mnist_gradients_testutil",
-        "//tensorflow/c/experimental/gradients:math_grad",
-        "//tensorflow/c/experimental/gradients:nn_grad",
         "//tensorflow/c/experimental/ops:array_ops",
         "//tensorflow/c/experimental/ops:math_ops",
         "//tensorflow/c/experimental/ops:nn_ops",
@@ -244,8 +229,8 @@ cc_library(
         "//tensorflow:internal",
     ],
     deps = [
-        "//tensorflow/c/experimental/gradients:gradient_checker",
-        "//tensorflow/c/experimental/gradients:unified_api_testutil",
+        ":gradient_checker",
+        ":unified_api_testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],

@@ -18,7 +18,6 @@ limitations under the License.
 #include "tensorflow/c/eager/gradients.h"
 #include "tensorflow/c/experimental/ops/array_ops.h"
 #include "tensorflow/c/experimental/ops/math_ops.h"
-#include "tensorflow/c/experimental/ops/nn_ops.h"
 
 using std::vector;
 using tensorflow::ops::Add;
