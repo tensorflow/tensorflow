@@ -134,6 +134,12 @@ func @testRsqrt(tensor<? x f32>) -> tensor<? x f32> {
   return %0 : tensor<? x f32>
 }
 
+// CHECK-LABEL: testRsqrtQuant
+func @testRsqrtQuant(%arg0: tensor<1x80x1x!quant.uniform<i8:f32, 0.048358432948589325:-128>>) -> tensor<1x80x1x!quant.uniform<i8:f32, 0.0066055487841367722:-128>> {
+  %0 = "tfl.rsqrt"(%arg0) : (tensor<1x80x1x!quant.uniform<i8:f32, 0.048358432948589325:-128>>) -> tensor<1x80x1x!quant.uniform<i8:f32, 0.0066055487841367722:-128>>
+  return %0 : tensor<1x80x1x!quant.uniform<i8:f32, 0.0066055487841367722:-128>>
+}
+
 // CHECK-LABEL: testSin
 func @testSin(tensor<? x f32>) -> tensor<? x f32> {
 ^bb0(%arg0: tensor<? x f32>):
@@ -170,6 +176,14 @@ func @testSquareWithWrongInputType(tensor<? x i32>) -> tensor<? x i32> {
   // expected-error @+1 {{tfl.square' op operand #0 must be tensor of 32-bit float values}}
   %0 = "tfl.square"(%arg0): (tensor<? x i32>) -> tensor<? x i32>
   return %0#0 : tensor<? x i32>
+}
+
+// -----
+
+// CHECK-LABEL: testSquaredDifferenceQuant
+func @testSquaredDifferenceQuant(%arg0: tensor<1x80x128x!quant.uniform<i8:f32, 0.089839041233062744:10>>, %arg1: tensor<1x80x128x!quant.uniform<i8:f32, 0.0019308560295030475:-6>>) -> tensor<1x80x128x!quant.uniform<i8:f32, 0.60070550441741943:-128>> {
+  %0 = "tfl.squared_difference"(%arg0, %arg1) : (tensor<1x80x128x!quant.uniform<i8:f32, 0.089839041233062744:10>>, tensor<1x80x128x!quant.uniform<i8:f32, 0.0019308560295030475:-6>>) -> tensor<1x80x128x!quant.uniform<i8:f32, 0.60070550441741943:-128>>
+  return %0 : tensor<1x80x128x!quant.uniform<i8:f32, 0.60070550441741943:-128>>
 }
 
 // -----
