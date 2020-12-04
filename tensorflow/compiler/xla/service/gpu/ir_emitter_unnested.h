@@ -337,9 +337,9 @@ class IrEmitterUnnested : public IrEmitter,
 
   // Helper for writing extra outputs from inside a reduce kernel.
   Status EmitExtraOutputsForReduce(
-      const HloInstruction* unnested_hlo, const llvm_ir::IrArray::Index& index,
-      bool use_linear_index,
-      absl::Span<const std::pair<llvm_ir::ElementGenerator, ShapeIndex>>
+      absl::Span<const llvm_ir::IrArray> result_ir_arrays,
+      const llvm_ir::IrArray::Index& index, bool use_linear_index,
+      absl::Span<const std::pair<llvm_ir::ElementGenerator, int>>
           extra_output_gens);
 
   // Generates code for reduction to contiguous dimensions.
@@ -408,8 +408,7 @@ class IrEmitterUnnested : public IrEmitter,
   // complicating the index calculation in the code generation of the reduce
   // instructions. In other words, a block_id_y is assigned to a group and so
   // different groups can be run in parallel.
-  Status EmitReductionFromOrToContiguousDimensions(
-      HloInstruction* unnested_hlo);
+  Status EmitReductionFromOrToContiguousDimensions(MlirEmitterInput mlir_input);
 
   // Computes the KernelMappingScheme for the reduce HLO and indicates whether
   // the reduction is a row reduction. For an un-fused reduce op, unnested_hlo
@@ -417,7 +416,7 @@ class IrEmitterUnnested : public IrEmitter,
   // unnested_hlo is the fusion instruction while first_reduce is the first
   // reduce op.
   ReductionCodegenInfo ComputeReductionCodegenInfo(
-      const HloInstruction* unnested_hlo, const HloInstruction* first_reduce);
+      mlir::Operation* unnested_hlo, mlir::Operation* first_reduce);
 
   // Generates code for input-fusible slices.
   //
@@ -557,35 +556,44 @@ class IrEmitterUnnested : public IrEmitter,
   // `instr_index_group` indicates a set of reductions this call needs to emit,
   // each i points to the ith output of unnested_hlo. Notice that if
   // unnested_hlo is not a multi-output fusion, instr_index_group is always {0}.
-  void EmitTileElementForReduction(HloInstruction* unnested_hlo,
-                                   const Shape& reduction_operand_shape,
-                                   absl::Span<const int> instr_index_group,
-                                   const llvm_ir::IrArray::Index& index,
-                                   const ReductionCodegenInfo& reduction_info,
-                                   absl::Span<HloComputation* const> reducers,
-                                   int64 x_iter_num);
+  void EmitTileElementForReduction(
+      mlir::Operation* unnested_hlo, const Shape& reduction_operand_shape,
+      absl::Span<const int> instr_index_group,
+      HloComputation* fused_computation, FusedIrEmitter* fused_emitter,
+      absl::Span<const llvm_ir::IrArray> operand_ir_arrays,
+      absl::Span<const llvm_ir::IrArray> result_ir_arrays,
+      absl::Span<HloComputation* const> reducers,
+      const llvm_ir::IrArray::Index& index,
+      const ReductionCodegenInfo& reduction_info, int64 x_iter_num);
 
   // Prepares for the code generation for a tile block of a reduction kernel.
   //
   // Create accumulator alloca's, populate them with initial values, and store
   // inside reduction_info.
-  void EmitPrologueForReduction(HloInstruction* unnested_hlo,
-                                absl::Span<const int> instr_index_group,
-                                ReductionCodegenInfo* reduction_info,
-                                llvm::Type* index_type);
+  void EmitPrologueForReduction(
+      mlir::Operation* unnested_hlo, absl::Span<const int> instr_index_group,
+      HloComputation* fused_computation, FusedIrEmitter* fused_emitter,
+      absl::Span<const llvm_ir::IrArray> operand_ir_arrays,
+      absl::Span<const llvm_ir::IrArray> result_ir_arrays,
+      ReductionCodegenInfo* reduction_info);
 
   // Wraps up the code generation for a tile block of a reduction kernel:
   // write the calculated output into the output tensor.
-  void EmitEpilogueForReduction(llvm::Type* index_ty,
-                                HloInstruction* unnested_hlo,
-                                absl::Span<const int> instr_index_group,
-                                const ReductionCodegenInfo& reduction_info,
-                                absl::Span<HloComputation* const> reducers,
-                                const TilingKernelInfo& tiling_kernel_info);
+  void EmitEpilogueForReduction(
+      llvm::Type* index_ty, mlir::Operation* unnested_hlo,
+      absl::Span<const int> instr_index_group,
+      absl::Span<const llvm_ir::IrArray> result_ir_arrays,
+      absl::Span<HloComputation* const> reducers,
+      const ReductionCodegenInfo& reduction_info,
+      const TilingKernelInfo& tiling_kernel_info);
 
-  // Emits code for reductions in the instr_index_group.
-  void EmitIRForReduction(HloInstruction* unnested_hlo,
+  // Emits code for reductions in the output_instructions.
+  void EmitIRForReduction(mlir::Operation* unnested_hlo,
                           absl::Span<const int> instr_index_group,
+                          HloComputation* fused_computation,
+                          FusedIrEmitter* fused_emitter,
+                          absl::Span<const llvm_ir::IrArray> operand_ir_arrays,
+                          absl::Span<const llvm_ir::IrArray> result_ir_arrays,
                           ReductionCodegenInfo* reduction_info,
                           const Shape& input_shape);
 
@@ -632,15 +640,18 @@ class IrEmitterUnnested : public IrEmitter,
 
   // Returns a thunk that, given a reduce or select-and-scatter op,
   // initializes its memory to the appropriate initial value.
-  StatusOr<std::unique_ptr<Thunk>> BuildInitializerThunk(
-      HloInstruction* hlo, const ShapeIndex& index = {});
-
   std::unique_ptr<Thunk> BuildConstantInitializerThunk(
       absl::Span<const uint8> init_value, const BufferAllocation::Slice& dest,
       const Shape& output_shape);
 
+  StatusOr<std::unique_ptr<Thunk>> TryBuildConstantInitializerThunk(
+      mlir::Value init_value, mlir::Value dest);
+
   StatusOr<std::unique_ptr<Thunk>> BuildInitializerThunkForMlir(
       mlir::Operation* op, mlir::Value init_value, mlir::Value dest);
+
+  StatusOr<std::unique_ptr<Thunk>> BuildFusedInitializerThunkForMlir(
+      mlir::lmhlo::FusionOp fusion, int output_index);
 
   // Returns a WhileThunk that invokes thunk sequences for 'condition' and
   // 'body' sub-computations of while instruction 'hlo'.
@@ -685,7 +696,7 @@ class IrEmitterUnnested : public IrEmitter,
       absl::optional<int64> thread_id_filter = absl::nullopt,
       absl::optional<int64> block_id_filter = absl::nullopt);
 
-  StatusOr<const HloComputation*> GetOrCreateSubComputationFromRegion(
+  StatusOr<HloComputation*> GetOrCreateSubComputationFromRegion(
       mlir::Region* region, bool is_fusion);
 
   StatusOr<MlirEmitterInput> GetMlirEmitterInput(HloInstruction* hlo);
