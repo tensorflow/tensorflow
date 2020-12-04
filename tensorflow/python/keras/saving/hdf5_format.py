@@ -179,7 +179,7 @@ def load_model_from_hdf5(filepath, custom_objects=None, compile=True):  # pylint
     model_config = f.attrs.get('model_config')
     if model_config is None:
       raise ValueError('No model found in config file.')
-    model_config = json_utils.decode(model_config)
+    model_config = json_utils.decode(model_config.decode('utf-8'))
     model = model_config_lib.model_from_config(model_config,
                                                custom_objects=custom_objects)
 
@@ -193,7 +193,7 @@ def load_model_from_hdf5(filepath, custom_objects=None, compile=True):  # pylint
         logging.warning('No training configuration found in the save file, so '
                         'the model was *not* compiled. Compile it manually.')
         return model
-      training_config = json_utils.decode(training_config)
+      training_config = json_utils.decode(training_config.decode('utf-8'))
 
       # Compile model.
       model.compile(**saving_utils.compile_args_from_training_config(
@@ -588,7 +588,7 @@ def save_optimizer_weights_to_hdf5_group(hdf5_group, optimizer):
   symbolic_weights = getattr(optimizer, 'weights')
   if symbolic_weights:
     weights_group = hdf5_group.create_group('optimizer_weights')
-    weight_names = [str(w.name) for w in symbolic_weights]
+    weight_names = [str(w.name).encode('utf8') for w in symbolic_weights]
     save_attributes_to_hdf5_group(weights_group, 'weight_names', weight_names)
     weight_values = K.batch_get_value(symbolic_weights)
     for name, val in zip(weight_names, weight_values):
@@ -627,8 +627,8 @@ def save_weights_to_hdf5_group(f, layers):
 
   save_attributes_to_hdf5_group(
       f, 'layer_names', [layer.name.encode('utf8') for layer in layers])
-  f.attrs['backend'] = K.backend()
-  f.attrs['keras_version'] = str(keras_version)
+  f.attrs['backend'] = K.backend().encode('utf8')
+  f.attrs['keras_version'] = str(keras_version).encode('utf8')
 
   # Sort model layers by layer name to ensure that group names are strictly
   # growing to avoid prefix issues.
@@ -636,7 +636,7 @@ def save_weights_to_hdf5_group(f, layers):
     g = f.create_group(layer.name)
     weights = _legacy_weights(layer)
     weight_values = K.batch_get_value(weights)
-    weight_names = [w.name for w in weights]
+    weight_names = [w.name.encode('utf8') for w in weights]
     save_attributes_to_hdf5_group(g, 'weight_names', weight_names)
     for name, val in zip(weight_names, weight_values):
       param_dset = g.create_dataset(name, val.shape, dtype=val.dtype)
@@ -659,11 +659,11 @@ def load_weights_from_hdf5_group(f, layers):
           and weights file.
   """
   if 'keras_version' in f.attrs:
-    original_keras_version = f.attrs['keras_version']
+    original_keras_version = f.attrs['keras_version'].decode('utf8')
   else:
     original_keras_version = '1'
   if 'backend' in f.attrs:
-    original_backend = f.attrs['backend']
+    original_backend = f.attrs['backend'].decode('utf8')
   else:
     original_backend = None
 
@@ -730,11 +730,11 @@ def load_weights_from_hdf5_group_by_name(
           and weights file and skip_match=False.
   """
   if 'keras_version' in f.attrs:
-    original_keras_version = f.attrs['keras_version']
+    original_keras_version = f.attrs['keras_version'].decode('utf8')
   else:
     original_keras_version = '1'
   if 'backend' in f.attrs:
-    original_backend = f.attrs['backend']
+    original_backend = f.attrs['backend'].decode('utf8')
   else:
     original_backend = None
 
@@ -849,14 +849,13 @@ def load_attributes_from_hdf5_group(group, name):
       data: Attributes data.
   """
   if name in group.attrs:
-    data = group.attrs[name].tolist()
+    data = [n.decode('utf8') for n in group.attrs[name]]
   else:
     data = []
     chunk_id = 0
     while '%s%d' % (name, chunk_id) in group.attrs:
       data.extend(
-        np.char.decode(group.attrs['%s%d' % (name, chunk_id)],'utf-8').tolist()
-        )
+          [n.decode('utf8') for n in group.attrs['%s%d' % (name, chunk_id)]])
       chunk_id += 1
   return data
 
