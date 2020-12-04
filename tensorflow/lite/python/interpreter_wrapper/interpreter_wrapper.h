@@ -87,6 +87,12 @@ class InterpreterWrapper {
   PyObject* TensorQuantizationParameters(int i) const;
   PyObject* SetTensor(int i, PyObject* value);
   PyObject* GetTensor(int i) const;
+  PyObject* SetInputTensorFromSignatureDefName(const char* input_name,
+                                               const char* method_name,
+                                               PyObject* value);
+  PyObject* GetOutputTensorFromSignatureDefName(const char* output_name,
+                                                const char* method_name) const;
+  PyObject* GetSignatureDefs() const;
   PyObject* ResetVariableTensors();
 
   int NumNodes() const;
