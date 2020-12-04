@@ -749,7 +749,8 @@ void TFE_ContextAddFunctionDef(TFE_Context* ctx,
 
 void TFE_ContextAddFunction(TFE_Context* ctx, TF_Function* function,
                             TF_Status* status) {
-  status->status = tensorflow::unwrap(ctx)->AddFunctionDef(function->fdef);
+  status->status = tensorflow::unwrap(ctx)->AddFunctionDefWithDebugInfo(
+      function->fdef, function->graph_with_debug_info);
 }
 
 void TFE_ContextRemoveFunction(TFE_Context* ctx, const char* name,
