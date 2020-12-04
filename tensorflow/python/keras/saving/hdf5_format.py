@@ -179,9 +179,7 @@ def load_model_from_hdf5(filepath, custom_objects=None, compile=True):  # pylint
     model_config = f.attrs.get('model_config')
     if model_config is None:
       raise ValueError('No model found in config file.')
-    if isinstance(model_config, str):
-      model_config = model_config.encode('utf-8')
-    model_config = json_utils.decode(model_config.decode('utf-8'))
+    model_config = json_utils.decode(model_config)
     model = model_config_lib.model_from_config(model_config,
                                                custom_objects=custom_objects)
 
@@ -630,7 +628,7 @@ def save_weights_to_hdf5_group(f, layers):
   save_attributes_to_hdf5_group(
       f, 'layer_names', [layer.name.encode('utf8') for layer in layers])
   f.attrs['backend'] = K.backend().encode('utf8')
-  f.attrs['keras_version'] = str(keras_version).encode('utf8')
+  f.attrs['keras_version'] = keras_version
 
   # Sort model layers by layer name to ensure that group names are strictly
   # growing to avoid prefix issues.
@@ -661,7 +659,7 @@ def load_weights_from_hdf5_group(f, layers):
           and weights file.
   """
   if 'keras_version' in f.attrs:
-    original_keras_version = f.attrs['keras_version'].decode('utf8')
+    original_keras_version = f.attrs['keras_version']
   else:
     original_keras_version = '1'
   if 'backend' in f.attrs:
@@ -732,7 +730,7 @@ def load_weights_from_hdf5_group_by_name(
           and weights file and skip_match=False.
   """
   if 'keras_version' in f.attrs:
-    original_keras_version = f.attrs['keras_version'].decode('utf8')
+    original_keras_version = f.attrs['keras_version']
   else:
     original_keras_version = '1'
   if 'backend' in f.attrs:
