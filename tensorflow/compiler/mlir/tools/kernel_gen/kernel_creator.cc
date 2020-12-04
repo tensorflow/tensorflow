@@ -47,6 +47,8 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -293,7 +295,9 @@ StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
     llvm::ArrayRef<uint32_t> tile_sizes,
     llvm::ArrayRef<uint32_t> unroll_factors, bool embed_memref_prints,
     bool generate_fatbin, bool print_ptx) {
-  mlir::RegisterAllTensorFlowDialects(context.getDialectRegistry());
+  auto& registry = context.getDialectRegistry();
+  mlir::RegisterAllTensorFlowDialects(registry);
+  registry.insert<mlir::chlo::HloClientDialect, mlir::mhlo::MhloDialect>();
   mlir::OwningModuleRef module = mlir::parseSourceString(tf_code, &context);
   TF_RETURN_IF_ERROR(LowerTFtoGPU(module.get(), gpu_binary_only, tile_sizes,
                                   unroll_factors, embed_memref_prints));
