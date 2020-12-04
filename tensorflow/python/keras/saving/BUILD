@@ -49,7 +49,6 @@ py_library(
     deps = [
         "//tensorflow/python:lib",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform",
         "//tensorflow/python:saver",
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python/eager:def_function",
