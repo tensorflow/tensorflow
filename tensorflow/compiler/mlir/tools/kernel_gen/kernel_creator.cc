@@ -190,19 +190,30 @@ Status LowerTFtoGPU(mlir::ModuleOp module, bool gpu_binary_only,
   // not create allocations for tensor computations that are not actually
   // needed.
   pm.addPass(mlir::createCanonicalizerPass());
+  // TODO(herhut) Remove once handled in mlir core.
   pm.addNestedPass<mlir::FuncOp>(
       std::make_unique<RemoveUnusedTensorToMemrefOperations>());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
+  if (!gpu_binary_only) {
+    // Before inserting more allocs, map the ones we already have to the
+    // tf runtime. That ensures that all allocations for the actual computation
+    // end up on the device, whereas allocations for shape computation and host
+    // side things remain on the host.
+    // Longer term, this should be handled by proper device placement.
+    pm.addPass(mlir::kernel_gen::tf_framework::
+                   CreateEmbedTFFrameworkFunctionAndAllocPass());
+  }
   pm.addPass(mlir::kernel_gen::transforms::CreateFinalBufferizePass());
-  // TODO(herhut) Remove once handled in mlir core.
   pm.addNestedPass<mlir::FuncOp>(mlir::createPromoteBuffersToStackPass(64));
-  // TODO(herhut): Enabled this to avoid leaks once fixed.
+  // TODO(herhut): Depends on https://bugs.llvm.org/show_bug.cgi?id=48385.
+  // We also cannot properly free temporaries until
+  // https://llvm.discourse.group/t/remove-tight-coupling-of-the-bufferdeallocation-pass-to-std-and-linalg-operations/2162
+  // is resolved.
   // pm.addNestedPass<mlir::FuncOp>(::mlir::createBufferDeallocationPass());
-
   // Apply the mapping and go to GPU. We cannot do this earlier due to missing
   // interfaces on the GPU dialect.
-  // TODO(herhut) Implement interfaces.
+  // TODO(b/174830459): Move up once implemented.
   pm.addNestedPass<::mlir::FuncOp>(mlir::createParallelLoopToGpuPass());
 
   // Some basic cleanup.
@@ -229,8 +240,9 @@ Status LowerTFtoGPU(mlir::ModuleOp module, bool gpu_binary_only,
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createConvertShapeConstraintsPass());
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
   pm.addPass(::mlir::createLowerToCFGPass());
-  // Map allocs, asserts, etc. to the tensorflow framework.
-  pm.addPass(mlir::kernel_gen::tf_framework::CreateEmbedTFFrameworkPass());
+  // Map asserts to the tensorflow framework.
+  pm.addPass(
+      mlir::kernel_gen::tf_framework::CreateEmbedTFFrameworkAssertPass());
   if (embed_memref_prints) {
     pm.addNestedPass<::mlir::FuncOp>(
         mlir::kernel_gen::transforms::CreateEmbedMemRefPrintsPass());

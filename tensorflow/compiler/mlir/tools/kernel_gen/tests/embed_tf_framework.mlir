@@ -1,4 +1,6 @@
-// RUN: kernel-gen-opt %s -embed-tf-framework -split-input-file | FileCheck %s
+// RUN: kernel-gen-opt %s -embed-tf-framework-func-and-alloc \
+// RUN:   -embed-tf-framework-assert -split-input-file | \
+// RUN: FileCheck %s
 
 // CHECK-LABEL: func @tf_entry(
 // CHECK-SAME:    [[CTX:%.*]]: !tf_framework.op_kernel_context,

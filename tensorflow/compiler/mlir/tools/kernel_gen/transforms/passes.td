@@ -27,9 +27,16 @@ def TFKernelToLLVMPass : Pass<"tf-kernel-to-llvm", "ModuleOp"> {
   ];
 }
 
-def EmbedTFFrameworkPass : Pass<"embed-tf-framework", "ModuleOp"> {
-  let summary = "Pass to embed TF Framework for allocation and error reporting";
-  let constructor = "tf_framework::CreateEmbedTFFrameworkPass()";
+def EmbedTFFrameworkFunctionAndAllocPass
+    : Pass<"embed-tf-framework-func-and-alloc", "ModuleOp"> {
+  let summary = "Pass to embed TF Framework for allocation and context";
+  let constructor = "tf_framework::CreateEmbedTFFrameworkFunctionAndAllocPass()";
+}
+
+def EmbedTFFrameworkAssertPass
+    : Pass<"embed-tf-framework-assert", "ModuleOp"> {
+  let summary = "Pass to rewrite assertions to TF framework calls";
+  let constructor = "tf_framework::CreateEmbedTFFrameworkAssertPass()";
 }
 
 def BufferReusePass : FunctionPass<"buffer-reuse"> {
