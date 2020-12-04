@@ -25,6 +25,8 @@ sudo xcode-select -s "${DEVELOPER_DIR}"
 
 install_macos_pip_deps sudo pip3.8
 
+sudo pip3.8 install 'twine ~= 3.2.0'
+
 # For python3 path on Mac
 export PATH=$PATH:/usr/local/bin
 
