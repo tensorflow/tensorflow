@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/eager/c_api_unified_experimental.h"
 #include "tensorflow/c/eager/c_api_unified_experimental_internal.h"
-#include "tensorflow/c/eager/unified_api_testutil.h"
+#include "tensorflow/c/experimental/gradients/unified_api_testutil.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"

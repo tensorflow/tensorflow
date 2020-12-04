@@ -228,34 +228,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "unified_api_testutil",
-    testonly = 1,
-    srcs = [
-        "unified_api_testutil.cc",
-    ],
-    hdrs = [
-        "unified_api_testutil.h",
-    ],
-    visibility = [
-        "//tensorflow:internal",
-    ],
-    deps = [
-        ":abstract_context",
-        ":abstract_tensor_handle",
-        ":c_api_experimental",
-        ":c_api_test_util",
-        ":c_api_unified_internal",
-        "//tensorflow/c:tf_status",
-        "//tensorflow/c:tf_status_helper",
-        "//tensorflow/core:framework",
-        "//tensorflow/core/lib/llvm_rtti",
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:status",
-        "@com_google_absl//absl/container:flat_hash_set",
-    ],
-)
-
 tf_cuda_cc_test(
     name = "gradients_test",
     size = "small",
@@ -272,13 +244,13 @@ tf_cuda_cc_test(
         ":c_api_test_util",
         ":c_api_unified_internal",
         ":gradients_internal",
-        ":unified_api_testutil",
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_test_util",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c/experimental/gradients:array_grad",
         "//tensorflow/c/experimental/gradients:math_grad",
         "//tensorflow/c/experimental/gradients:not_differentiable",
+        "//tensorflow/c/experimental/gradients:unified_api_testutil",
         "//tensorflow/c/experimental/gradients/tape:tape_context",
         "//tensorflow/c/experimental/ops",
         "//tensorflow/cc/profiler",
@@ -291,29 +263,6 @@ tf_cuda_cc_test(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-    ],
-)
-
-tf_cuda_cc_test(
-    name = "unified_api_test",
-    size = "small",
-    srcs = [
-        "unified_api_test.cc",
-    ],
-    args = ["--heap_check=local"],
-    linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags() + ["no_cuda_asan"],  # b/173654156
-    deps = [
-        ":c_api_experimental",
-        ":c_api_unified_internal",
-        ":unified_api_testutil",
-        "//tensorflow/c:tf_status_helper",
-        "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/lib/llvm_rtti",
-        "//tensorflow/core/platform:errors",
     ],
 )
 

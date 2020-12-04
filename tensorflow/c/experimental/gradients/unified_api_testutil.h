@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_C_EAGER_UNIFIED_API_TESTUTIL_H_
-#define TENSORFLOW_C_EAGER_UNIFIED_API_TESTUTIL_H_
+#ifndef TENSORFLOW_C_EXPERIMENTAL_UNIFIED_API_TESTUTIL_H_
+#define TENSORFLOW_C_EXPERIMENTAL_UNIFIED_API_TESTUTIL_H_
 
 #include "tensorflow/c/eager/abstract_context.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
@@ -58,4 +58,4 @@ Status TestTensorHandleWithDimsFloat(AbstractContext* ctx, float* data,
                                      AbstractTensorHandle** tensor);
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_C_EAGER_UNIFIED_API_TESTUTIL_H_
+#endif  // TENSORFLOW_C_EXPERIMENTAL_UNIFIED_API_TESTUTIL_H_

@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/c/eager/unified_api_testutil.h"
+#include "tensorflow/c/experimental/gradients/unified_api_testutil.h"
 
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/c/eager/c_api_experimental.h"

@@ -132,7 +132,7 @@ tf_cuda_cc_test(
         "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/c/eager:c_api_unified_internal",
         "//tensorflow/c/eager:gradients_internal",
-        "//tensorflow/c/eager:unified_api_testutil",
+        "//tensorflow/c/experimental/gradients:unified_api_testutil",
         "//tensorflow/c/experimental/ops",
         "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
         "//tensorflow/core:test",
@@ -168,6 +168,57 @@ cc_library(
         "//tensorflow/c/eager:gradients_util",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "unified_api_testutil",
+    testonly = 1,
+    srcs = [
+        "unified_api_testutil.cc",
+    ],
+    hdrs = [
+        "unified_api_testutil.h",
+    ],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        "//tensorflow/c:tf_status",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c/eager:abstract_context",
+        "//tensorflow/c/eager:abstract_tensor_handle",
+        "//tensorflow/c/eager:c_api_experimental",
+        "//tensorflow/c/eager:c_api_test_util",
+        "//tensorflow/c/eager:c_api_unified_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/lib/llvm_rtti",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "unified_api_test",
+    size = "small",
+    srcs = [
+        "unified_api_test.cc",
+    ],
+    args = ["--heap_check=local"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags() + ["no_cuda_asan"],  # b/173654156
+    deps = [
+        ":unified_api_testutil",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c/eager:c_api_experimental",
+        "//tensorflow/c/eager:c_api_unified_internal",
+        "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/lib/llvm_rtti",
+        "//tensorflow/core/platform:errors",
     ],
 )
 
