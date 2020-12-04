@@ -139,6 +139,7 @@ cc_library(
         ":mlir_hlo_to_hlo",
         ":translate_cl_options",
         "//tensorflow/compiler/mlir/hlo",
+        "//tensorflow/compiler/mlir/hlo:hlo_ops_base_enums",
         "//tensorflow/compiler/mlir/hlo:lhlo",
         "//tensorflow/compiler/mlir/hlo:lhlo_gpu",
         "//tensorflow/compiler/xla:debug_options_flags",

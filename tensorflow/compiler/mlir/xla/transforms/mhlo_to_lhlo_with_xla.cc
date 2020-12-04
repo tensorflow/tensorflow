@@ -39,6 +39,7 @@ limitations under the License.
 #include "mlir/Pass/PassOptions.h"  // from @llvm-project
 #include "mlir/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/hlo_function_importer.h"
@@ -229,12 +230,28 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(HloInstruction* instr) {
       return CreateOpWithoutAttrs<lmhlo::AbsOp>(instr);
     case HloOpcode::kAdd:
       return CreateOpWithoutAttrs<lmhlo::AddOp>(instr);
+    case HloOpcode::kAllReduce:
+      return EmitAllReduceOp(instr);
     case HloOpcode::kAnd:
       return CreateOpWithoutAttrs<lmhlo::AndOp>(instr);
+    case HloOpcode::kAtan2:
+      return CreateOpWithoutAttrs<lmhlo::Atan2Op>(instr);
+    case HloOpcode::kBitcastConvert:
+      return CreateOpWithoutAttrs<lmhlo::BitcastConvertOp>(instr);
     case HloOpcode::kCeil:
       return CreateOpWithoutAttrs<lmhlo::CeilOp>(instr);
+    case HloOpcode::kCbrt:
+      return CreateOpWithoutAttrs<lmhlo::CbrtOp>(instr);
+    case HloOpcode::kClamp:
+      return CreateOpWithoutAttrs<lmhlo::ClampOp>(instr);
+    case HloOpcode::kClz:
+      return CreateOpWithoutAttrs<lmhlo::ClzOp>(instr);
+    case HloOpcode::kCompare:
+      return EmitCompareOp(instr);
     case HloOpcode::kComplex:
       return CreateOpWithoutAttrs<lmhlo::ComplexOp>(instr);
+    case HloOpcode::kConvert:
+      return CreateOpWithoutAttrs<lmhlo::ConvertOp>(instr);
     case HloOpcode::kCopy:
       return CreateOpWithoutAttrs<lmhlo::CopyOp>(instr);
     case HloOpcode::kCos:
@@ -243,10 +260,20 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(HloInstruction* instr) {
       return CreateOpWithoutAttrs<lmhlo::DivOp>(instr);
     case HloOpcode::kExp:
       return CreateOpWithoutAttrs<lmhlo::ExpOp>(instr);
+    case HloOpcode::kExpm1:
+      return CreateOpWithoutAttrs<lmhlo::Expm1Op>(instr);
+    case HloOpcode::kFloor:
+      return CreateOpWithoutAttrs<lmhlo::FloorOp>(instr);
     case HloOpcode::kImag:
       return CreateOpWithoutAttrs<lmhlo::ImagOp>(instr);
+    case HloOpcode::kIsFinite:
+      return CreateOpWithoutAttrs<lmhlo::IsFiniteOp>(instr);
     case HloOpcode::kLog:
       return CreateOpWithoutAttrs<lmhlo::LogOp>(instr);
+    case HloOpcode::kLog1p:
+      return CreateOpWithoutAttrs<lmhlo::Log1pOp>(instr);
+    case HloOpcode::kMap:
+      return EmitMapOp(instr);
     case HloOpcode::kMaximum:
       return CreateOpWithoutAttrs<lmhlo::MaxOp>(instr);
     case HloOpcode::kMinimum:
@@ -255,22 +282,44 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(HloInstruction* instr) {
       return CreateOpWithoutAttrs<lmhlo::MulOp>(instr);
     case HloOpcode::kNegate:
       return CreateOpWithoutAttrs<lmhlo::NegOp>(instr);
+    case HloOpcode::kNot:
+      return CreateOpWithoutAttrs<lmhlo::NotOp>(instr);
+    case HloOpcode::kOr:
+      return CreateOpWithoutAttrs<lmhlo::OrOp>(instr);
+    case HloOpcode::kPopulationCount:
+      return CreateOpWithoutAttrs<lmhlo::PopulationCountOp>(instr);
+    case HloOpcode::kPower:
+      return CreateOpWithoutAttrs<lmhlo::PowOp>(instr);
     case HloOpcode::kReal:
       return CreateOpWithoutAttrs<lmhlo::RealOp>(instr);
+    case HloOpcode::kReducePrecision:
+      return EmitReducePrecisionOp(instr);
     case HloOpcode::kRemainder:
       return CreateOpWithoutAttrs<lmhlo::RemOp>(instr);
+    case HloOpcode::kRoundNearestAfz:
+      return CreateOpWithoutAttrs<lmhlo::RoundOp>(instr);
     case HloOpcode::kRsqrt:
       return CreateOpWithoutAttrs<lmhlo::RsqrtOp>(instr);
     case HloOpcode::kSelect:
       return CreateOpWithoutAttrs<lmhlo::SelectOp>(instr);
+    case HloOpcode::kShiftLeft:
+      return CreateOpWithoutAttrs<lmhlo::ShiftLeftOp>(instr);
+    case HloOpcode::kShiftRightLogical:
+      return CreateOpWithoutAttrs<lmhlo::ShiftRightLogicalOp>(instr);
+    case HloOpcode::kShiftRightArithmetic:
+      return CreateOpWithoutAttrs<lmhlo::ShiftRightArithmeticOp>(instr);
     case HloOpcode::kSign:
       return CreateOpWithoutAttrs<lmhlo::SignOp>(instr);
+    case HloOpcode::kSin:
+      return CreateOpWithoutAttrs<lmhlo::SinOp>(instr);
     case HloOpcode::kSqrt:
       return CreateOpWithoutAttrs<lmhlo::SqrtOp>(instr);
     case HloOpcode::kSubtract:
       return CreateOpWithoutAttrs<lmhlo::SubOp>(instr);
     case HloOpcode::kTanh:
       return CreateOpWithoutAttrs<lmhlo::TanhOp>(instr);
+    case HloOpcode::kXor:
+      return CreateOpWithoutAttrs<lmhlo::XorOp>(instr);
     case HloOpcode::kSort:
       return EmitSortOp(instr);
     case HloOpcode::kFusion:
@@ -640,6 +689,92 @@ StatusOr<lmhlo::ReduceOp> LhloDialectEmitter::EmitReduceOp(
   TF_RETURN_IF_ERROR(::xla::HloFunctionImporter::ImportAsRegion(
       *instr->called_computations()[0], &reduce_op.body(), &builder_));
   return reduce_op;
+}
+
+StatusOr<lmhlo::MapOp> LhloDialectEmitter::EmitMapOp(HloInstruction* instr) {
+  TF_ASSIGN_OR_RETURN(auto map_op, CreateOpWithoutAttrs<lmhlo::MapOp>(instr));
+  auto* map = ::xla::Cast<::xla::HloMapInstruction>(instr);
+  std::vector<int64_t> dimensions(map->dimensions().begin(),
+                                  map->dimensions().end());
+  map_op.dimensionsAttr(GetI64DenseElementsAttr(dimensions));
+  TF_RETURN_IF_ERROR(::xla::HloFunctionImporter::ImportAsRegion(
+      *instr->called_computations()[0], &map_op.computation(), &builder_));
+  return map_op;
+}
+
+StatusOr<lmhlo::CompareOp> LhloDialectEmitter::EmitCompareOp(
+    HloInstruction* instr) {
+  TF_ASSIGN_OR_RETURN(auto compare_op,
+                      CreateOpWithoutAttrs<lmhlo::CompareOp>(instr));
+
+  auto* compare = ::xla::Cast<::xla::HloCompareInstruction>(instr);
+  auto direction = [&]() {
+    switch (compare->direction()) {
+      case xla::ComparisonDirection::kEq:
+        return mhlo::ComparisonDirection::EQ;
+      case xla::ComparisonDirection::kNe:
+        return mhlo::ComparisonDirection::NE;
+      case xla::ComparisonDirection::kGe:
+        return mhlo::ComparisonDirection::GE;
+      case xla::ComparisonDirection::kGt:
+        return mhlo::ComparisonDirection::GT;
+      case xla::ComparisonDirection::kLe:
+        return mhlo::ComparisonDirection::LE;
+      case xla::ComparisonDirection::kLt:
+        return mhlo::ComparisonDirection::LT;
+    }
+  }();
+  compare_op.comparison_directionAttr(
+      builder_.getStringAttr(stringifyComparisonDirection(direction)));
+  auto compare_type = [&]() {
+    switch (compare->type()) {
+      case xla::Comparison::Type::kFloat:
+        return mhlo::ComparisonType::FLOAT;
+      case xla::Comparison::Type::kFloatTotalOrder:
+        return mhlo::ComparisonType::TOTALORDER;
+      case xla::Comparison::Type::kSigned:
+        return mhlo::ComparisonType::SIGNED;
+      case xla::Comparison::Type::kUnsigned:
+        return mhlo::ComparisonType::UNSIGNED;
+    }
+  }();
+  compare_op.compare_typeAttr(
+      builder_.getStringAttr(stringifyComparisonType(compare_type)));
+  return compare_op;
+}
+
+StatusOr<lmhlo::ReducePrecisionOp> LhloDialectEmitter::EmitReducePrecisionOp(
+    HloInstruction* instr) {
+  TF_ASSIGN_OR_RETURN(auto reduce_precision_op,
+                      CreateOpWithoutAttrs<lmhlo::ReducePrecisionOp>(instr));
+  auto* reduce_precision =
+      ::xla::Cast<::xla::HloReducePrecisionInstruction>(instr);
+  reduce_precision_op.exponent_bitsAttr(
+      builder_.getI32IntegerAttr(reduce_precision->exponent_bits()));
+  reduce_precision_op.mantissa_bitsAttr(
+      builder_.getI32IntegerAttr(reduce_precision->mantissa_bits()));
+  return reduce_precision_op;
+}
+
+StatusOr<lmhlo::AllReduceOp> LhloDialectEmitter::EmitAllReduceOp(
+    HloInstruction* instr) {
+  TF_ASSIGN_OR_RETURN(auto all_reduce_op,
+                      CreateOpWithoutAttrs<lmhlo::AllReduceOp>(instr));
+  auto* all_reduce = ::xla::Cast<::xla::HloAllReduceInstruction>(instr);
+  auto replica_groups_attr = ::xla::HloFunctionImporter::ConvertReplicaGroups(
+      all_reduce->replica_groups(), builder_);
+  all_reduce_op.setAttr(replica_groups_attr.first, replica_groups_attr.second);
+  all_reduce_op.constrain_layoutAttr(
+      builder_.getBoolAttr(all_reduce->constrain_layout()));
+  all_reduce_op.channel_idAttr(mlir::mhlo::ChannelHandle::get(
+      builder_.getI64IntegerAttr(all_reduce->channel_id().value_or(0)),
+      builder_.getI64IntegerAttr(0), builder_.getContext()));
+  all_reduce_op.use_global_device_idsAttr(
+      builder_.getBoolAttr(all_reduce->use_global_device_ids()));
+  TF_RETURN_IF_ERROR(::xla::HloFunctionImporter::ImportAsRegion(
+      *instr->called_computations()[0], &all_reduce_op.computation(),
+      &builder_));
+  return all_reduce_op;
 }
 
 StatusOr<Value> LhloDialectEmitter::GetOrCreateArrayView(
