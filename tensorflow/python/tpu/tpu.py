@@ -1032,7 +1032,7 @@ def _pad_all_input(
         need_padding.append(np.full_like(input_shape, False, dtype=bool))
       else:
         for i, s in enumerate(input_shape):
-          if not s or s != maximum_static_shapes[idx][i]:
+          if s is None or s != maximum_static_shapes[idx][i]:
             need_padding[idx][i] = True
         maximum_static_shapes[idx] = max(input_shape,
                                          maximum_static_shapes[idx])
@@ -1081,7 +1081,7 @@ def _pad_all_input(
             # The minimum padded dimension size is 2 as XLA doesn't support size
             # 1 dynamic size.
             minimum_dynamic_dim_size = 2
-            if s.value:
+            if s.value is not None:
               # Pad to the given maximum value.
               max_dim_size = max(s.value, minimum_dynamic_dim_size)
             else:
