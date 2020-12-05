@@ -62,6 +62,12 @@ class MemmappedTensorAllocator : public Allocator {
 
   void set_delete_on_deallocate() { delete_on_deallocate_ = true; }
 
+  // Make sure tensors or complex types (strings, variants, resources) don't get
+  // their constructor called via a placement new since that would require
+  // writing to immutable data.
+  // See also: tensorflow/core/framework/typed_allocator.h
+  bool AllocatesOpaqueHandle() const override { return true; }
+
  private:
   std::unique_ptr<ReadOnlyMemoryRegion> memory_region_;
   // If there is an error during allocation we keep it in this status.
