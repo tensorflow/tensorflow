@@ -19,7 +19,7 @@ persistent=yes
 
 # List of plugins (as comma separated values of python modules names) to load,
 # usually to register additional checkers.
-load-plugins=
+load-plugins=pylint.extensions.docparams
 
 
 [MESSAGES CONTROL]
@@ -316,6 +316,7 @@ deprecated-members=string.atof,string.atoi,string.atol,string.capitalize,string.
 
 [DOCSTRING]
 
+default-docstring-type=google
 # List of exceptions that do not need to be mentioned in the Raises section of
 # a docstring.
 ignore-exceptions=AssertionError,NotImplementedError,StopIteration,TypeError
