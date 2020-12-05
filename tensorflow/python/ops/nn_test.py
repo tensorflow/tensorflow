@@ -27,7 +27,6 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
@@ -1261,7 +1260,6 @@ class DataFormatDimMapTest(test_lib.TestCase):
       y_val = self.evaluate(y)
       self.assertAllEqual(y_val, y_val_expected)
 
-  @test_util.disable_xla("XLA catches the error and rethrows as different one")
   def testArbitraryASCII(self):
     x_val = [-4, -3, -2, -1, 0, 1, 2, 3]
     y_val_expected = [3, 2, 1, 0, 3, 2, 1, 0]
@@ -1270,46 +1268,6 @@ class DataFormatDimMapTest(test_lib.TestCase):
     with test_util.use_gpu():
       y_val = self.evaluate(y)
       self.assertAllEqual(y_val, y_val_expected)
-
-  @test_util.disable_xla("XLA catches the error and rethrows as different one")
-  def testInvalidLength(self):
-    x = [-4, -3, -2, -1, 0, 1, 2, 3]
-    with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                "Source format must be of length 4 or 5"):
-      op = nn_ops.data_format_dim_map(
-          x, src_format="12345678", dst_format="87654321")
-      with test_util.use_gpu():
-        self.evaluate(op)
-
-  @test_util.disable_xla("XLA catches the error and rethrows as different one")
-  def testDuplicateSrc(self):
-    x = [-4, -3, -2, -1, 0, 1, 2, 3]
-    with self.assertRaisesRegex(
-        errors.InvalidArgumentError,
-        "Destination and source format must determine a permutation"):
-      op = nn_ops.data_format_dim_map(x, src_format="1233", dst_format="4321")
-      with test_util.use_gpu():
-        self.evaluate(op)
-
-  @test_util.disable_xla("XLA catches the error and rethrows as different one")
-  def testDuplicateDst(self):
-    x = [-4, -3, -2, -1, 0, 1, 2, 3]
-    with self.assertRaisesRegex(
-        errors.InvalidArgumentError,
-        "Destination and source format must determine a permutation"):
-      op = nn_ops.data_format_dim_map(x, src_format="1234", dst_format="3321")
-      with test_util.use_gpu():
-        self.evaluate(op)
-
-  @test_util.disable_xla("XLA catches the error and rethrows as different one")
-  def testExtraSpecifiers(self):
-    x = [-4, -3, -2, -1, 0, 1, 2, 3]
-    with self.assertRaisesRegex(
-        errors.InvalidArgumentError,
-        "Destination and source format must determine a permutation"):
-      op = nn_ops.data_format_dim_map(x, src_format="1234", dst_format="5321")
-      with test_util.use_gpu():
-        self.evaluate(op)
 
 
 class DataFormatVectorPermuteTest(test_lib.TestCase):
@@ -1411,60 +1369,6 @@ class DataFormatVectorPermuteTest(test_lib.TestCase):
     with test_util.use_gpu():
       y_val = self.evaluate(y)
       self.assertAllEqual(y_val, [[7, 4], [4, 5], [5, 1], [9, 3]])
-
-  @test_util.disable_xla("XLA catches the error and rethrows as different one")
-  def testInvalidLength(self):
-    x = [0, 1, 2, 3]
-    with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                "Source format must be of length 4 or 5"):
-      op = nn_ops.data_format_vec_permute(
-          x, src_format="12345678", dst_format="87654321")
-      with test_util.use_gpu():
-        self.evaluate(op)
-
-  @test_util.disable_xla("XLA catches the error and rethrows as different one")
-  def testDuplicateSrc(self):
-    x = [0, 1, 2, 3]
-    with self.assertRaisesRegex(
-        errors.InvalidArgumentError,
-        "Destination and source format must determine a permutation"):
-      op = nn_ops.data_format_vec_permute(
-          x, src_format="1233", dst_format="4321")
-      with test_util.use_gpu():
-        self.evaluate(op)
-
-  @test_util.disable_xla("XLA catches the error and rethrows as different one")
-  def testDuplicateDst(self):
-    x = [0, 1, 2, 3]
-    with self.assertRaisesRegex(
-        errors.InvalidArgumentError,
-        "Destination and source format must determine a permutation"):
-      op = nn_ops.data_format_vec_permute(
-          x, src_format="1234", dst_format="3321")
-      with test_util.use_gpu():
-        self.evaluate(op)
-
-  @test_util.disable_xla("XLA catches the error and rethrows as different one")
-  def testExtraSpecifiers(self):
-    x = [0, 1, 2, 3]
-    with self.assertRaisesRegex(
-        errors.InvalidArgumentError,
-        "Destination and source format must determine a permutation"):
-      op = nn_ops.data_format_vec_permute(
-          x, src_format="1234", dst_format="5321")
-      with test_util.use_gpu():
-        self.evaluate(op)
-
-  @test_util.disable_xla("XLA catches the error and rethrows as different one")
-  def test2DNoWH(self):
-    x = [[0, 1], [2, 3]]
-    with self.assertRaisesRegex(
-        errors.InvalidArgumentError,
-        "Format specifier must contain H and W for 2D case"):
-      op = nn_ops.data_format_vec_permute(
-          x, src_format="1234", dst_format="4321")
-      with test_util.use_gpu():
-        self.evaluate(op)
 
 
 @test_util.run_all_in_graph_and_eager_modes
