@@ -1,0 +1,384 @@
+/* Copyright 2019 The Waymo Open Dataset Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+syntax = "proto2";
+
+package waymo.open_dataset;
+
+message Label {
+  // Upright box, zero pitch and roll.
+  message Box {
+    // Box coordinates in vehicle frame.
+    optional double center_x = 1;
+    optional double center_y = 2;
+    optional double center_z = 3;
+
+    // Dimensions of the box. length: dim x. width: dim y. height: dim z.
+    optional double length = 5;
+    optional double width = 4;
+    optional double height = 6;
+
+    // The heading of the bounding box (in radians).  The heading is the angle
+    // required to rotate +x to the surface normal of the box front face. It is
+    // normalized to [-pi, pi).
+    optional double heading = 7;
+
+    enum Type {
+      TYPE_UNKNOWN = 0;
+      // 7-DOF 3D (a.k.a upright 3D box).
+      TYPE_3D = 1;
+      // 5-DOF 2D. Mostly used for laser top down representation.
+      TYPE_2D = 2;
+      // Axis aligned 2D. Mostly used for image.
+      TYPE_AA_2D = 3;
+    }
+  }
+
+  optional Box box = 1;
+
+  message Metadata {
+    optional double speed_x = 1;
+    optional double speed_y = 2;
+    optional double accel_x = 3;
+    optional double accel_y = 4;
+  }
+  optional Metadata metadata = 2;
+
+  enum Type {
+    TYPE_UNKNOWN = 0;
+    TYPE_VEHICLE = 1;
+    TYPE_PEDESTRIAN = 2;
+    TYPE_SIGN = 3;
+    TYPE_CYCLIST = 4;
+  }
+  optional Type type = 3;
+  // Object ID.
+  optional string id = 4;
+
+  // The difficulty level of this label. The higher the level, the harder it is.
+  enum DifficultyLevel {
+    UNKNOWN = 0;
+    LEVEL_1 = 1;
+    LEVEL_2 = 2;
+  }
+
+  // Difficulty level for detection problem.
+  optional DifficultyLevel detection_difficulty_level = 5;
+  // Difficulty level for tracking problem.
+  optional DifficultyLevel tracking_difficulty_level = 6;
+
+  // The total number of lidar points in this box.
+  optional int32 num_lidar_points_in_box = 7;
+}
+
+// Non-self-intersecting 2d polygons. This polygon is not necessarily convex.
+message Polygon2dProto {
+  repeated double x = 1;
+  repeated double y = 2;
+
+  // A globally unique ID.
+  optional string id = 3;
+}
+message MatrixShape {
+  // Dimensions for the Matrix messages defined below. Must not be empty.
+  //
+  // The order of entries in 'dims' matters, as it indicates the layout of the
+  // values in the tensor in-memory representation.
+  //
+  // The first entry in 'dims' is the outermost dimension used to lay out the
+  // values; the last entry is the innermost dimension.  This matches the
+  // in-memory layout of row-major matrices.
+  repeated int32 dims = 1;
+}
+
+// Row-major matrix.
+// Requires: data.size() = product(shape.dims()).
+message MatrixFloat {
+  repeated float data = 1 [packed = true];
+  optional MatrixShape shape = 2;
+}
+
+// Row-major matrix.
+// Requires: data.size() = product(shape.dims()).
+message MatrixInt32 {
+  repeated int32 data = 1 [packed = true];
+  optional MatrixShape shape = 2;
+}
+
+message CameraName {
+  enum Name {
+    UNKNOWN = 0;
+    FRONT = 1;
+    FRONT_LEFT = 2;
+    FRONT_RIGHT = 3;
+    SIDE_LEFT = 4;
+    SIDE_RIGHT = 5;
+  }
+}
+
+// 'Laser' is used interchangeably with 'Lidar' in this file.
+message LaserName {
+  enum Name {
+    UNKNOWN = 0;
+    TOP = 1;
+    FRONT = 2;
+    SIDE_LEFT = 3;
+    SIDE_RIGHT = 4;
+    REAR = 5;
+  }
+}
+
+// 4x4 row major transform matrix that tranforms 3d points from one frame to
+// another.
+message Transform {
+  repeated double transform = 1;
+}
+
+message Velocity {
+  // Velocity in m/s.
+  optional float v_x = 1;
+  optional float v_y = 2;
+  optional float v_z = 3;
+
+  // Angular velocity in rad/s.
+  optional double w_x = 4;
+  optional double w_y = 5;
+  optional double w_z = 6;
+}
+
+message CameraCalibration {
+  optional CameraName.Name name = 1;
+  // 1d Array of [f_u, f_v, c_u, c_v, k{1, 2}, p{1, 2}, k{3}].
+  // Note that this intrinsic corresponds to the images after scaling.
+  // Camera model: pinhole camera.
+  // Lens distortion:
+  //   Radial distortion coefficients: k1, k2, k3.
+  //   Tangential distortion coefficients: p1, p2.
+  // k_{1, 2, 3}, p_{1, 2} follows the same definition as OpenCV.
+  // https://en.wikipedia.org/wiki/Distortion_(optics)
+  // https://docs.opencv.org/2.4/doc/tutorials/calib3d/camera_calibration/camera_calibration.html
+  repeated double intrinsic = 2;
+  // Camera frame to vehicle frame.
+  optional Transform extrinsic = 3;
+  // Camera image size.
+  optional int32 width = 4;
+  optional int32 height = 5;
+
+  enum RollingShutterReadOutDirection {
+    UNKNOWN = 0;
+    TOP_TO_BOTTOM = 1;
+    LEFT_TO_RIGHT = 2;
+    BOTTOM_TO_TOP = 3;
+    RIGHT_TO_LEFT = 4;
+    GLOBAL_SHUTTER = 5;
+  }
+  optional RollingShutterReadOutDirection rolling_shutter_direction = 6;
+}
+
+message LaserCalibration {
+  optional LaserName.Name name = 1;
+  // If non-empty, the beam pitch (in radians) is non-uniform. When constructing
+  // a range image, this mapping is used to map from beam pitch to range image
+  // row.  If this is empty, we assume a uniform distribution.
+  repeated double beam_inclinations = 2;
+  // beam_inclination_{min,max} (in radians) are used to determine the mapping.
+  optional double beam_inclination_min = 3;
+  optional double beam_inclination_max = 4;
+  // Lidar frame to vehicle frame.
+  optional Transform extrinsic = 5;
+}
+
+message Context {
+  // A unique name that identifies the frame sequence.
+  optional string name = 1;
+  repeated CameraCalibration camera_calibrations = 2;
+  repeated LaserCalibration laser_calibrations = 3;
+  // Some stats for the run segment used.
+  message Stats {
+    message ObjectCount {
+      optional Label.Type type = 1;
+      // The number of unique objects with the type in the segment.
+      optional int32 count = 2;
+    }
+    repeated ObjectCount laser_object_counts = 1;
+    repeated ObjectCount camera_object_counts = 5;
+    // Day, Dawn/Dusk, or Night, determined from sun elevation.
+    optional string time_of_day = 2;
+    // Human readable location (e.g. CHD, SF) of the run segment.
+    optional string location = 3;
+    // Currently either Sunny or Rain.
+    optional string weather = 4;
+  }
+  optional Stats stats = 4;
+}
+
+// Range image is a 2d tensor. The first dim (row) represents pitch. The second
+// dim represents yaw.
+// There are two types of range images:
+// 1. Raw range image: Raw range image with a non-empty
+//   'range_image_pose_compressed' which tells the vehicle pose of each
+//   range image cell.
+// 2. Virtual range image: Range image with an empty
+//   'range_image_pose_compressed'. This range image is constructed by
+//   transforming all lidar points into a fixed vehicle frame (usually the
+//   vehicle frame of the middle scan).
+// NOTE: 'range_image_pose_compressed' is only populated for the first range
+// image return. The second return has the exact the same range image pose as
+// the first one.
+message RangeImage {
+  // Zlib compressed [H, W, 4] serialized version of MatrixFloat.
+  // To decompress:
+  // string val = ZlibDecompress(range_image_compressed);
+  // MatrixFloat range_image;
+  // range_image.ParseFromString(val);
+  // Inner dimensions are:
+  //   * channel 0: range
+  //   * channel 1: intensity
+  //   * channel 2: elongation
+  //   * channel 3: is in any no label zone.
+  optional bytes range_image_compressed = 2;
+
+  // Lidar point to camera image projections. A point can be projected to
+  // multiple camera images. We pick the first two at the following order:
+  // [FRONT, FRONT_LEFT, FRONT_RIGHT, SIDE_LEFT, SIDE_RIGHT].
+  //
+  // Zlib compressed [H, W, 6] serialized version of MatrixInt32.
+  // To decompress:
+  // string val = ZlibDecompress(camera_projection_compressed);
+  // MatrixInt32 camera_projection;
+  // camera_projection.ParseFromString(val);
+  // Inner dimensions are:
+  //   * channel 0: CameraName.Name of 1st projection. Set to UNKNOWN if no
+  //       projection.
+  //   * channel 1: x (axis along image width)
+  //   * channel 2: y (axis along image height)
+  //   * channel 3: CameraName.Name of 2nd projection. Set to UNKNOWN if no
+  //       projection.
+  //   * channel 4: x (axis along image width)
+  //   * channel 5: y (axis along image height)
+  // Note: pixel 0 corresponds to the left edge of the first pixel in the image.
+  optional bytes camera_projection_compressed = 3;
+
+  // Zlib compressed [H, W, 6] serialized version of MatrixFloat.
+  // To decompress:
+  // string val = ZlibDecompress(range_image_pose_compressed);
+  // MatrixFloat range_image_pose;
+  // range_image_pose.ParseFromString(val);
+  // Inner dimensions are [roll, pitch, yaw, x, y, z] represents a transform
+  // from vehicle frame to global frame for every range image pixel.
+  // This is ONLY populated for the first return. The second return is assumed
+  // to have exactly the same range_image_pose_compressed.
+  //
+  // The roll, pitch and yaw are specified as 3-2-1 Euler angle rotations,
+  // meaning that rotating from the navigation to vehicle frame consists of a
+  // yaw, then pitch and finally roll rotation about the z, y and x axes
+  // respectively. All rotations use the right hand rule and are positive
+  // in the counter clockwise direction.
+  optional bytes range_image_pose_compressed = 4;
+
+  // Deprecated, do not use.
+  optional MatrixFloat range_image = 1 [deprecated = true];
+}
+
+// All timestamps in this proto are represented as seconds since Unix epoch.
+message CameraImage {
+  optional CameraName.Name name = 1;
+  // JPEG image.
+  optional bytes image = 2;
+  // SDC pose.
+  optional Transform pose = 3;
+  // SDC velocity at 'pose_timestamp' below. The velocity value is represented
+  // at *global* frame.
+  // With this velocity, the pose can be extrapolated.
+  // r(t+dt) = r(t) + dr/dt * dt where dr/dt = v_{x,y,z}.
+  // dR(t)/dt = W*R(t) where W = SkewSymmetric(w_{x,y,z})
+  // This differential equation solves to: R(t) = exp(Wt)*R(0) if W is constant.
+  // When dt is small: R(t+dt) = (I+W*dt)R(t)
+  // r(t) = (x(t), y(t), z(t)) is vehicle location at t in the global frame.
+  // R(t) = Rotation Matrix (3x3) from the body frame to the global frame at t.
+  // SkewSymmetric(x,y,z) is defined as the cross-product matrix in the
+  // following:
+  // https://en.wikipedia.org/wiki/Cross_product#Conversion_to_matrix_multiplication
+  optional Velocity velocity = 4;
+  // Timestamp of the `pose` above.
+  optional double pose_timestamp = 5;
+
+  // Rolling shutter params.
+  // The following explanation assumes left->right rolling shutter.
+  //
+  // Rolling shutter cameras expose and read the image column by column, offset
+  // by the read out time for each column. The desired timestamp for each column
+  // is the middle of the exposure of that column as outlined below for an image
+  // with 3 columns:
+  // ------time------>
+  // |---- exposure col 1----| read |
+  // -------|---- exposure col 2----| read |
+  // --------------|---- exposure col 3----| read |
+  // ^trigger time                                ^readout end time
+  //             ^time for row 1 (= middle of exposure of row 1)
+  //                    ^time image center (= middle of exposure of middle row)
+  // Shutter duration in seconds. Exposure time per column.
+  optional double shutter = 6;
+  // Time when the sensor was triggered and when last readout finished.
+  // The difference between trigger time and readout done time includes
+  // the exposure time and the actual sensor readout time.
+  optional double camera_trigger_time = 7;
+  optional double camera_readout_done_time = 8;
+}
+
+// The camera labels associated with a given camera image. This message
+// indicates the ground truth information for the camera image
+// recorded by the given camera. If there are no labeled objects in the image,
+// then the labels field is empty.
+message CameraLabels {
+  optional CameraName.Name name = 1;
+  repeated Label labels = 2;
+}
+
+message Laser {
+  optional LaserName.Name name = 1;
+  optional RangeImage ri_return1 = 2;
+  optional RangeImage ri_return2 = 3;
+}
+
+message Frame {
+  // This context is the same for all frames belong to the same driving run
+  // segment. Use context.name to identify frames belong to the same driving
+  // segment. We do not store all frames from one driving segment in one proto
+  // to avoid huge protos.
+  optional Context context = 1;
+
+  // Frame start time, which is the timestamp of the first top lidar spin
+  // within this frame.
+  optional int64 timestamp_micros = 2;
+  // The vehicle pose.
+  optional Transform pose = 3;
+  repeated CameraImage images = 4;
+  repeated Laser lasers = 5;
+  repeated Label laser_labels = 6;
+  // Lidar labels (laser_labels) projected to camera images. A projected
+  // label is the smallest image axis aligned rectangle that can cover all
+  // projected points from the 3d lidar label. The projected label is ignored if
+  // the projection is fully outside a camera image. The projected label is
+  // clamped to the camera image if it is partially outside.
+  repeated CameraLabels projected_lidar_labels = 9;
+  // NOTE: if a camera identified by CameraLabels.name has an entry in this
+  // field, then it has been labeled, even though it is possible that there are
+  // no labeled objects in the corresponding image, which is identified by a
+  // zero sized CameraLabels.labels.
+  repeated CameraLabels camera_labels = 8;
+  // No label zones in the *global* frame.
+  repeated Polygon2dProto no_label_zones = 7;
+}

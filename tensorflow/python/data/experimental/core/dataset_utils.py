@@ -13,7 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Copied over from https://github.com/tensorflow/datasets/blob/1a22a94e475e7371d8b394d7d8fd77ae3ec18de4/tensorflow_datasets/core/dataset_utils.py#L103 - all code belongs to original authors
+# Copied over from https://github.com/tensorflow/datasets/blob/234a7f1efac76ea04d1cbe3762e51525e7821486/tensorflow_datasets/core/dataset_utils.py - all code belongs to original authors
+
+
+"""Utilities for dealing with tf.data.Dataset."""
 
 import collections.abc
 import functools
@@ -24,7 +27,7 @@ import numpy as np
 import tensorflow.compat.v2 as tf
 from tensorflow.data.experimental.core import tf_compat
 from tensorflow.data.experimental.core import utils
-from tensorflow.data.experimental.utils import type_utils
+from tensorflow.data.experimental.core.utils import type_utils
 
 Tree = type_utils.Tree
 Tensor = type_utils.Tensor
@@ -160,3 +163,13 @@ def as_numpy(dataset: Tree[TensorflowElem]) -> Tree[NumpyElem]:
     return tf.nest.map_structure(_elem_to_numpy_eager, dataset)
   else:
     return _nested_to_numpy_graph(dataset)
+
+
+def dataset_shape_is_fully_defined(ds):
+  output_shapes = tf.compat.v1.data.get_output_shapes(ds)
+  return all([ts.is_fully_defined() for ts in tf.nest.flatten(output_shapes)])
+
+
+def features_shape_is_fully_defined(features):
+  return all([tf.TensorShape(info.shape).is_fully_defined() for info in
+              tf.nest.flatten(features.get_tensor_info())])
