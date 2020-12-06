@@ -201,6 +201,10 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       return ParseDequantize(op, error_reporter, allocator, builtin_data);
     }
 
+    case BuiltinOperator_DIV: {
+      return ParseDiv(op, error_reporter, allocator, builtin_data);
+    }
+
     case BuiltinOperator_FLOOR: {
       return ParseFloor(op, error_reporter, allocator, builtin_data);
     }
@@ -483,16 +487,7 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_HASHTABLE_LOOKUP:
       // no-op.
       return kTfLiteOk;
-    case BuiltinOperator_DIV: {
-      auto params = safe_allocator.Allocate<TfLiteDivParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* schema_params = op->builtin_options_as_DivOptions()) {
-        params->activation =
-            ConvertActivation(schema_params->fused_activation_function());
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
+
     case BuiltinOperator_LOCAL_RESPONSE_NORMALIZATION: {
       auto params = safe_allocator.Allocate<TfLiteLocalResponseNormParams>();
       TF_LITE_ENSURE(error_reporter, params != nullptr);
@@ -1083,6 +1078,21 @@ TfLiteStatus ParseDepthwiseConv2D(const Operator* op,
 // selective registration for the OpResolver implementation in micro.
 TfLiteStatus ParseDequantize(const Operator*, ErrorReporter*,
                              BuiltinDataAllocator*, void**) {
+  return kTfLiteOk;
+}
+
+TfLiteStatus ParseDiv(const Operator* op, ErrorReporter* error_reporter,
+                      BuiltinDataAllocator* allocator, void** builtin_data) {
+  CheckParsePointerParams(op, error_reporter, allocator, builtin_data);
+
+  SafeBuiltinDataAllocator safe_allocator(allocator);
+  auto params = safe_allocator.Allocate<TfLiteDivParams>();
+  TF_LITE_ENSURE(error_reporter, params != nullptr);
+  if (const auto* schema_params = op->builtin_options_as_DivOptions()) {
+    params->activation =
+        ConvertActivation(schema_params->fused_activation_function());
+  }
+  *builtin_data = params.release();
   return kTfLiteOk;
 }
 
