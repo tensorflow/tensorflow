@@ -28,11 +28,6 @@ namespace {
 
 using tensorflow::TF_StatusPtr;
 
-Status RegisterGradients(GradientRegistry* registry) {
-  TF_RETURN_IF_ERROR(registry->Register("BiasAdd", BiasAddRegisterer));
-  return Status::OK();
-}
-
 Status BiasAddModel(AbstractContext* ctx,
                     absl::Span<AbstractTensorHandle* const> inputs,
                     absl::Span<AbstractTensorHandle*> outputs) {
@@ -43,7 +38,7 @@ Status BiasAddGradModel(AbstractContext* ctx,
                         absl::Span<AbstractTensorHandle* const> inputs,
                         absl::Span<AbstractTensorHandle*> outputs) {
   GradientRegistry registry;
-  TF_RETURN_IF_ERROR(RegisterGradients(&registry));
+  TF_RETURN_IF_ERROR(registry.Register("BiasAdd", BiasAddRegisterer));
 
   Tape tape(/*persistent=*/false);
   tape.Watch(inputs[0]);  // Watch A.
