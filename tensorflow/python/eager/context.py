@@ -1243,10 +1243,10 @@ class Context(object):
     self._thread_local_data.invoking_op_callbacks = value
 
   def _initialize_physical_devices(self, reinitialize=False):
-    """Get local devices visible to the system.
+    """Gets local devices visible to the system.
     
     Args:
-      reinitialize: This flag will reinitialize self._physical_devices so that
+      reinitialize: If True, reinitializes self._physical_devices  so that
         dynamic registered devices will also be visible to the python front-end.
     """
     # We lazy initialize self._physical_devices since we do not want to do this
@@ -1272,7 +1272,7 @@ class Context(object):
     self._import_config()
   
   def reinitialize_physical_devices(self):
-    """Get local devices visible to the system."""
+    """Gets local devices visible to the system."""
     # Reinitialize the physical device list after registering
     # the pluggable device.
     self._initialize_physical_devices(True)
