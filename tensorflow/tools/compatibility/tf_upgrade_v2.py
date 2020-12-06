@@ -397,6 +397,12 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
         "tf.strings.to_number": {
             "string_tensor": "input",
         },
+        "tf.number_to_string": {
+            "input": "input",
+        },
+        "tf.strings.from_number": {
+            "input": "input",
+        },
         "tf.string_to_hash_bucket": {
             "string_tensor": "input",
         },

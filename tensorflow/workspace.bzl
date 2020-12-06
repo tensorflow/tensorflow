@@ -185,6 +185,17 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     tf_http_archive(
+        name = "fmtlib",
+        build_file = clean_dep("//third_party:fmtlib/BUILD"),
+        sha256 = "25723561436e1cc816889ea9fdf6bedfad4b245790605877a67a238dd90d2032",
+        strip_prefix = "fmt-a6fafe2f0191cd456d6df66a3071c35c087188a0",
+        urls = [
+            "https://mirror.bazel.build/github.com/fmtlib/fmt/archive/a6fafe2f0191cd456d6df66a3071c35c087188a0.tar.gz",
+            "https://github.com/fmtlib/fmt/archive/a6fafe2f0191cd456d6df66a3071c35c087188a0.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
         name = "com_google_absl",
         build_file = clean_dep("//third_party:com_google_absl.BUILD"),
         # TODO: Remove the patch when https://github.com/abseil/abseil-cpp/issues/326 is resolved

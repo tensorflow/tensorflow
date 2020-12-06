@@ -495,6 +495,22 @@ def string_to_number_v1(
 string_to_number_v1.__doc__ = gen_parsing_ops.string_to_number.__doc__
 
 
+@tf_export("strings.from_number", v1=["strings.from_number"])
+@dispatch.add_dispatch_support
+def number_to_string(input, name=None):
+  r"""Converts each numeric value in the input Tensor to string type.
+
+  Args:
+    input: A `Tensor` of numeric type, i.e. `tf.float32, tf.float64, tf.int32,
+      tf.int64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of type `string`.
+  """
+  return gen_parsing_ops.number_to_string(input, name)
+
+
 @tf_export("strings.to_hash_bucket", v1=[])
 @dispatch.add_dispatch_support
 def string_to_hash_bucket(input, num_buckets, name=None):

@@ -51970,6 +51970,32 @@ op {
   }
 }
 op {
+  name: "NumberToString"
+  input_arg {
+    name: "input"
+    type: in_type
+  }
+  output_arg {
+    name: "string_tensor"
+    type_attr: "DT_STRING"
+  }
+  attr {
+    name: "in_type"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
   name: "StringUpper"
   input_arg {
     name: "input"

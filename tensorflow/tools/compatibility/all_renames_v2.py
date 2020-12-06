@@ -308,6 +308,8 @@ manual_symbol_renames = {
         "tf.strings.to_hash_bucket",
     "tf.string_to_number":
         "tf.strings.to_number",
+    "tf.number_to_string":
+        "tf.strings.from_number",
     "tf.multinomial":
         "tf.random.categorical",
     "tf.random.multinomial":

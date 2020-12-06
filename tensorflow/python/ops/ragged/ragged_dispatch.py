@@ -338,6 +338,7 @@ _UNARY_ELEMENTWISE_OPS = [
     math_ops.tan,
     parsing_ops.decode_compressed,
     string_ops.string_to_number,
+    string_ops.number_to_string,
     string_ops.string_to_hash_bucket,
     string_ops.as_string,
     string_ops.decode_base64,
@@ -409,6 +410,7 @@ _V2_OPS_THAT_ARE_DELEGATED_TO_FROM_V1_OPS = [
     math_ops.reduce_any,
     math_ops.reduce_all,
     string_ops.string_to_number,
+    string_ops.number_to_string,
     string_ops.string_to_hash_bucket,
     string_ops.reduce_join_v2,
 ]

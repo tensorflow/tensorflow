@@ -119,6 +119,8 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
            'key': [1231, 12512]},
           {'op': string_ops.string_to_number,
            'x': ragged_factory_ops.constant_value([['-2.0', '3.0'], ['-3.0']])},
+          {'op': string_ops.number_to_string,
+           'x': ragged_factory_ops.constant_value([[-2.0, 3.0], [-3.0]])},
           {'op': string_ops.regex_full_match,
            'x': ragged_factory_ops.constant_value([['hello', '123'], ['1+1']]),
            'pattern': r'\w+'},
@@ -739,9 +741,9 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         'strings.regex_full_match', 'strings.regex_replace', 'strings.strip',
         'strings.substr', 'strings.to_hash_bucket_fast',
         'strings.to_hash_bucket_strong', 'strings.to_hash_bucket',
-        'strings.to_number', 'strings.unicode_script', 'tile', 'truncatediv',
-        'truncatemod', 'zeros_like', 'dynamic_partition', 'reverse',
-        'nn.dropout', 'strings.format', 'print'
+        'strings.to_number', 'strings.from_number', 'strings.unicode_script',
+        'tile', 'truncatediv', 'truncatemod', 'zeros_like', 'dynamic_partition',
+        'reverse', 'nn.dropout', 'strings.format', 'print'
     ]
 
     # Ops that should be listed as supported in v1 only.

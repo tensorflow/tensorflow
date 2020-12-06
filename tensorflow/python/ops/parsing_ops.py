@@ -39,6 +39,7 @@ ops.NotDifferentiable("DecodePaddedRaw")
 ops.NotDifferentiable("ParseTensor")
 ops.NotDifferentiable("SerializeTensor")
 ops.NotDifferentiable("StringToNumber")
+ops.NotDifferentiable("NumberToString")
 
 
 VarLenFeature = parsing_config.VarLenFeature

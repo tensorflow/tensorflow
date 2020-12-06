@@ -4339,6 +4339,7 @@ cc_library(
         ":example_parsing_ops",
         ":parse_tensor_op",
         ":string_to_number_op",
+        ":number_to_string_op",
     ],
 )
 
@@ -4407,6 +4408,12 @@ tf_kernel_library(
     name = "string_to_number_op",
     prefix = "string_to_number_op",
     deps = PARSING_DEPS,
+)
+
+tf_kernel_library(
+    name = "number_to_string_op",
+    prefix = "number_to_string_op",
+    deps = PARSING_DEPS + ["@fmtlib"]
 )
 
 cc_library(

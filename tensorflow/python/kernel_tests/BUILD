@@ -2753,6 +2753,18 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "number_to_string_op_test",
+    size = "small",
+    srcs = ["number_to_string_op_test.py"],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:parsing_ops",
+    ],
+)
+
+cuda_py_test(
     name = "summary_v1_audio_op_test",
     size = "small",
     srcs = ["summary_v1_audio_op_test.py"],
