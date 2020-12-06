@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/experimental/ops/math_ops.h"
 #include "tensorflow/c/tf_tensor.h"
+#include "tensorflow/core/platform/tensor_float_32_utils.h"
 
 namespace tensorflow {
 namespace gradients {
@@ -96,6 +97,10 @@ Status CalcNumericalGrad(AbstractContext* ctx, Model forward,
                          absl::Span<AbstractTensorHandle* const> inputs,
                          int input_index, bool use_function,
                          AbstractTensorHandle** numerical_grad) {
+  // Computing numerical gradients with TensorFloat-32 is numerically
+  // unstable.
+  enable_tensor_float_32_execution(false);
+
   vector<AbstractTensorHandle*> theta_inputs(inputs.size());
   for (int i{}; i < inputs.size(); ++i) {
     theta_inputs[i] = inputs[i];

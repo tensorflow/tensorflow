@@ -172,6 +172,7 @@ cc_library(
         "//tensorflow/c/eager:abstract_tensor_handle",
         "@com_google_absl//absl/types:span",
         "//tensorflow/c/experimental/ops:math_ops",
+        "//tensorflow/core/platform:tensor_float_32_utils",
     ] + if_libtpu(
         if_false = ["//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration"],
         if_true = [],
