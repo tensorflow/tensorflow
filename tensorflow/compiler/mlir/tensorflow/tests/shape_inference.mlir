@@ -614,6 +614,29 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     return
   }
 
+  // CHECK-LABEL: tensor_list_if_region_yield_multiple_elem_shape
+  func @tensor_list_if_region_yield_multiple_elem_shape(%arg0: tensor<i1>) -> () {
+    %zero = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+    %one = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+    %elem_shape = "tf.Const"() {value = dense<[-1, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
+    %size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
+    // CHECK: TensorListReserve
+    // CHECK-SAME: tensor<!tf.variant<tensor<?x1xf32>>>
+    %tl_0 = "tf.TensorListReserve"(%elem_shape, %size) : (tensor<2xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<?x1xf32>>>
+    %elem_0 = "tf.SomeOp"() : () -> tensor<16x1xf32>
+    %elem_1 = "tf.SomeOp"() : () -> tensor<16x1xf32>
+    %elem_2 = "tf.SomeOp"() : () -> tensor<8x1xf32>
+    %tl_1 = "tf.IfRegion"(%arg0) ({
+      %tl_true = "tf.TensorListSetItem"(%tl_0, %zero, %elem_0) : (tensor<!tf.variant<tensor<?x1xf32>>>, tensor<i32>, tensor<16x1xf32>) -> tensor<!tf.variant<tensor<?x1xf32>>>
+      "tf.Yield"(%tl_true) : (tensor<!tf.variant<tensor<?x1xf32>>>) -> ()
+    }, {
+      %tl_false = "tf.TensorListSetItem"(%tl_0, %zero, %elem_1) : (tensor<!tf.variant<tensor<?x1xf32>>>, tensor<i32>, tensor<16x1xf32>) -> tensor<!tf.variant<tensor<?x1xf32>>>
+      "tf.Yield"(%tl_false) : (tensor<!tf.variant<tensor<?x1xf32>>>) -> ()
+    }) {is_stateless = false} : (tensor<i1>) -> tensor<!tf.variant<tensor<?x1xf32>>>
+    %tl_2 = "tf.TensorListSetItem"(%tl_1, %one, %elem_2) : (tensor<!tf.variant<tensor<?x1xf32>>>, tensor<i32>, tensor<8x1xf32>) -> tensor<!tf.variant<tensor<?x1xf32>>>
+    return
+  }
+
   // CHECK-LABEL: while_result_multiple_element_shape
   func @while_result_multiple_element_shape() {
     %zero = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>

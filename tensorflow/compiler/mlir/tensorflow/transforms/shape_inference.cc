@@ -247,11 +247,10 @@ bool CanInferTensorListElementType(Value tensorlist,
       continue;
     }
     if (auto yield = llvm::dyn_cast<YieldOp>(use.getOwner())) {
-      assert(isa<WhileRegionOp>(yield.getParentOp()));
-      auto while_parent = yield->getParentOfType<WhileRegionOp>();
+      Operation* parent = yield.getParentOp();
       if (!CanInferTensorListElementType(
-              while_parent.getResult(use.getOperandNumber()),
-              initial_element_shape, potential_element_type))
+              parent->getResult(use.getOperandNumber()), initial_element_shape,
+              potential_element_type))
         return false;
       continue;
     }
