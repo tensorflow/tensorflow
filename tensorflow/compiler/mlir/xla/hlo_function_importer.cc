@@ -537,7 +537,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
     case HloOpcode::kAllReduce: {
       auto all_reduce = Cast<HloAllReduceInstruction>(instruction);
-      attributes.push_back(ConvertReplicaGroups(all_reduce->replica_groups()));
+      attributes.push_back(
+          ConvertReplicaGroups(all_reduce->replica_groups(), *builder_));
       attributes.push_back(ConvertChannelHandle(all_reduce->channel_id()));
       auto all_reduce_op = func_builder->create<mlir::mhlo::AllReduceOp>(
           loc, result_type, operands, attributes);
@@ -932,7 +933,7 @@ mlir::NamedAttribute HloFunctionImporter::ConvertSourceTargetPairs(
 }
 
 mlir::NamedAttribute HloFunctionImporter::ConvertReplicaGroups(
-    const std::vector<ReplicaGroup>& replica_groups) {
+    const std::vector<ReplicaGroup>& replica_groups, mlir::Builder builder) {
   int64_t num_groups = replica_groups.size();
   int64_t group_size =
       num_groups == 0 ? 0 : replica_groups[0].replica_ids_size();
@@ -944,9 +945,9 @@ mlir::NamedAttribute HloFunctionImporter::ConvertReplicaGroups(
       attr[flat_index++] = group.replica_ids(i);
   }
   auto type = mlir::RankedTensorType::get({num_groups, group_size},
-                                          builder_->getIntegerType(64));
-  return builder_->getNamedAttr("replica_groups",
-                                DenseIntElementsAttr::get(type, attr));
+                                          builder.getIntegerType(64));
+  return builder.getNamedAttr("replica_groups",
+                              DenseIntElementsAttr::get(type, attr));
 }
 
 mlir::NamedAttribute HloFunctionImporter::ConvertChannelHandle(

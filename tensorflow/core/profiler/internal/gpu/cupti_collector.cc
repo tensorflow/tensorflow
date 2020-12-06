@@ -369,7 +369,7 @@ struct PerDeviceCollector {
             std::string details = absl::StrCat(
                 activity_name, " bytes:", event.memcpy_info.num_bytes);
             if (event.memcpy_info.async) {
-              absl::StrAppend(&details, " aync");
+              absl::StrAppend(&details, " async");
             }
             if (event.memcpy_info.destination != event.device_id) {
               absl::StrAppend(&details,

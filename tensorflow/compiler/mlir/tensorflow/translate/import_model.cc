@@ -980,6 +980,31 @@ StatusOr<mlir::Type> ImporterBase::InferOutputType(const Node& node, int idx,
     }
   }
 
+  auto type_from_array_attr = [&node, &idx, &builder](
+                                  absl::string_view output_shape_attr,
+                                  absl::string_view element_type_attr) {
+    auto* output_shapes = node.attrs().Find(output_shape_attr);
+    auto* element_types = node.attrs().Find(element_type_attr);
+    const auto& output_shape = output_shapes->list().shape(idx);
+    const auto& element_type = element_types->list().type(idx);
+    return ConvertToMlirTensorType(output_shape, element_type, &builder);
+  };
+
+  if (node.type_string() == "IteratorGetNext" ||
+      node.type_string() == "IteratorGetNextSync" ||
+      node.type_string() == "MultiDeviceIteratorGetNextFromShard")
+    return type_from_array_attr("output_shapes", "output_types");
+
+  if (node.type_string() == "InfeedDequeueTuple")
+    return type_from_array_attr("shapes", "dtypes");
+
+  if (node.type_string() == "InfeedDequeue") {
+    assert(idx == 0);
+    const auto& output_shape = node.attrs().Find("shape")->shape();
+    const auto& element_type = node.attrs().Find("dtype")->type();
+    return ConvertToMlirTensorType(output_shape, element_type, &builder);
+  }
+
   // Returns a simple, more conservative unranked tensor type.
   auto default_type = [&]() -> StatusOr<mlir::Type> {
     mlir::Type element_type;

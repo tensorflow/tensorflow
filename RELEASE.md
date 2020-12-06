@@ -22,6 +22,7 @@
   * Added `profile_data_directory` to `EmbeddingConfigSpec` in
     `_tpu_estimator_embedding.py`. This allows embedding lookup statistics
     gathered at runtime to be used in embedding layer partitioning decisions.
+* `tf.keras.metrics.AUC` now support logit predictions.
 
 ## Bug Fixes and Other Changes
 
@@ -41,6 +42,16 @@
         renamed `tf.function(jit_compile=True)`.
 
 *   `tf.lite`:
+    *   class `tflite::Subgraph`:
+        *   Removed the `tensors()` method and the non-const overload of the
+            `nodes_and_registration()` method, both of which were previously
+            documented as temporary and to be removed.
+            *   Uses of `tensors()` can be replaced by calling the existing
+                methods `tensors_size()` and `tensor(int)`.
+            *   Uses of the non-const overload of `nodes_and_registration`
+                can be replaced by calling the existing methods `nodes_size()`
+                and `context()`, and then calling the `GetNodeAndRegistration`
+                method in the `TfLiteContext` returned by `context()`.
     *   NNAPI
         *   Removed deprecated `Interpreter::UseNNAPI(bool)` C++ API.
             *   Use `NnApiDelegate()` and related delegate configuration methods
@@ -52,7 +63,10 @@
     *   Added dynamic range quantization support for the BatchMatMul op.
     *  Add `RFFT2D` as builtin op. (`RFFT2D` also supports `RFFTD`.) Currently
        only supports float32 input.
-
+    *  TFLite Supports SingatureDef:
+        * TFLiteConverter exports models with SignatureDef
+        * Interpreter supports getting a list of signatures and getting callable
+          function for a given signaturedef.
 *   TF Core:
     *   Corrected higher-order gradients of control flow constructs (`tf.cond`,
         `tf.while_loop`, and compositions like `tf.foldl`) computed with

@@ -635,4 +635,148 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     }
     return %0 : tensor<*xi32>
   }
+
+  // Test shape invariant While only propagates operand handle types into
+  // results and functions/regions.
+  // CHECK-LABEL: func @while_shape_invariant_propagate
+  // CHECK-SAME: ({{%.+}}: tensor<4xf32>, {{%.+}}: tensor<!tf.resource<tensor<4xf32>>>, {{%.+}}: tensor<!tf.resource<tensor<8xf32>>>, {{%.+}}: tensor<1xi32>)
+  // CHECK-SAME: -> (tensor<*xf32>, tensor<*x!tf.resource<tensor<4xf32>>>, tensor<!tf.resource<tensor<8xf32>>>, tensor<?xi32>, tensor<*xf32>, tensor<*x!tf.resource<tensor<4xf32>>>, tensor<!tf.resource<tensor<8xf32>>>, tensor<?xi32>)
+  func @while_shape_invariant_propagate(%arg0: tensor<4xf32>, %arg1: tensor<!tf.resource<tensor<4xf32>>>, %arg2: tensor<!tf.resource<tensor<8xf32>>>, %arg3: tensor<1xi32>) -> (tensor<*xf32>, tensor<*x!tf.resource>, tensor<!tf.resource>, tensor<?xi32>, tensor<*xf32>, tensor<*x!tf.resource>, tensor<!tf.resource>, tensor<?xi32>) {
+    // CHECK: "tf.While"
+    // CHECK-SAME: (tensor<4xf32>, tensor<!tf.resource<tensor<4xf32>>>, tensor<!tf.resource<tensor<8xf32>>>, tensor<1xi32>)
+    // CHECK-SAME: -> (tensor<*xf32>, tensor<*x!tf.resource<tensor<4xf32>>>, tensor<!tf.resource<tensor<8xf32>>>, tensor<?xi32>)
+    %0:4 = "tf.While"(%arg0, %arg1, %arg2, %arg3) {cond = @while_shape_invariant_cond_func_propagate, body = @while_shape_invariant_body_func_propagate, is_stateless = false, shape_invariant} : (tensor<4xf32>, tensor<!tf.resource<tensor<4xf32>>>, tensor<!tf.resource<tensor<8xf32>>>, tensor<1xi32>) -> (tensor<*xf32>, tensor<*x!tf.resource>, tensor<!tf.resource>, tensor<?xi32>)
+
+    // CHECK: "tf.WhileRegion"
+    %1:4 = "tf.WhileRegion"(%arg0, %arg1, %arg2, %arg3) ( {
+    // CHECK-NEXT: ^{{.+}}({{%.+}}: tensor<*xf32>, {{%.+}}: tensor<*x!tf.resource<tensor<4xf32>>>, {{%.+}}: tensor<!tf.resource<tensor<8xf32>>>, {{%.+}}: tensor<?xi32>):
+    ^cond(%carg0: tensor<*xf32>, %carg1: tensor<*x!tf.resource>, %carg2: tensor<!tf.resource>, %carg3: tensor<?xi32>):
+      %2 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+      "tf.Yield"(%2) : (tensor<i1>) -> ()
+    }, {
+    // CHECK: ^{{.+}}({{%.+}}: tensor<*xf32>, {{%.+}}: tensor<*x!tf.resource<tensor<4xf32>>>, {{%.+}}: tensor<!tf.resource<tensor<8xf32>>>, {{%.+}}: tensor<?xi32>):
+    ^body(%barg0: tensor<*xf32>, %barg1: tensor<*x!tf.resource>, %barg2: tensor<!tf.resource>, %barg3: tensor<?xi32>):
+      %2 = "tf.SomeOp"(%barg3) : (tensor<?xi32>) -> tensor<?xi32>
+      // CHECK: "tf.Yield"
+      // CHECK-SAME: (tensor<*xf32>, tensor<*x!tf.resource<tensor<4xf32>>>, tensor<!tf.resource<tensor<8xf32>>>, tensor<?xi32>) -> ()
+      "tf.Yield"(%barg0, %barg1, %barg2, %2) : (tensor<*xf32>, tensor<*x!tf.resource>, tensor<!tf.resource>, tensor<?xi32>) -> ()
+    // CHECK-NEXT: shape_invariant
+    // CHECK-SAME: (tensor<4xf32>, tensor<!tf.resource<tensor<4xf32>>>, tensor<!tf.resource<tensor<8xf32>>>, tensor<1xi32>)
+    // CHECK-SAME: -> (tensor<*xf32>, tensor<*x!tf.resource<tensor<4xf32>>>, tensor<!tf.resource<tensor<8xf32>>>, tensor<?xi32>)
+    }) {is_stateless = false, shape_invariant} : (tensor<4xf32>, tensor<!tf.resource<tensor<4xf32>>>, tensor<!tf.resource<tensor<8xf32>>>, tensor<1xi32>) -> (tensor<*xf32>, tensor<*x!tf.resource>, tensor<!tf.resource>, tensor<?xi32>)
+
+    return %0#0, %0#1, %0#2, %0#3, %1#0, %1#1, %1#2, %1#3 : tensor<*xf32>, tensor<*x!tf.resource>, tensor<!tf.resource>, tensor<?xi32>, tensor<*xf32>, tensor<*x!tf.resource>, tensor<!tf.resource>, tensor<?xi32>
+  }
+
+  // CHECK-LABEL: func @while_shape_invariant_cond_func_propagate
+  // CHECK-SAME: ({{%.+}}: tensor<*xf32>, {{%.+}}: tensor<*x!tf.resource<tensor<4xf32>>>, {{%.+}}: tensor<!tf.resource<tensor<8xf32>>>, {{%.+}}: tensor<?xi32>)
+  // CHECK-SAME: -> tensor<i1>
+  func @while_shape_invariant_cond_func_propagate(%arg0: tensor<*xf32>, %arg1: tensor<*x!tf.resource>, %arg2: tensor<!tf.resource>, %arg3: tensor<?xi32>) -> tensor<i1> {
+    %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+    return %0 : tensor<i1>
+  }
+
+  // CHECK-LABEL: func @while_shape_invariant_body_func_propagate
+  // CHECK-SAME: ({{%.+}}: tensor<*xf32>, {{%.+}}: tensor<*x!tf.resource<tensor<4xf32>>>, {{%.+}}: tensor<!tf.resource<tensor<8xf32>>>, {{%.+}}: tensor<?xi32>)
+  // CHECK-SAME: -> (tensor<*xf32>, tensor<*x!tf.resource<tensor<4xf32>>>, tensor<!tf.resource<tensor<8xf32>>>, tensor<?xi32>)
+  func @while_shape_invariant_body_func_propagate(%arg0: tensor<*xf32>, %arg1: tensor<*x!tf.resource>, %arg2: tensor<!tf.resource>, %arg3: tensor<?xi32>) -> (tensor<*xf32>, tensor<*x!tf.resource>, tensor<!tf.resource>, tensor<?xi32>) {
+    %0 = "tf.SomeOp"(%arg3) : (tensor<?xi32>) -> tensor<?xi32>
+    return %arg0, %arg1, %arg2, %0 : tensor<*xf32>, tensor<*x!tf.resource>, tensor<!tf.resource>, tensor<?xi32>
+  }
+
+  // Test shape invariant While replaces different dimensions with a dynamic
+  // dimension when creating a shape for refining cond and body.
+  // CHECK-LABEL: func @while_shape_invariant_different_dims
+  // CHECK-SAME: ({{%.+}}: tensor<1x2x3xf32>)
+  // CHECK-SAME: -> (tensor<1x8x3xf32>, tensor<1x8x3xf32>)
+  func @while_shape_invariant_different_dims(%arg0: tensor<1x2x3xf32>) -> (tensor<1x8x3xf32>, tensor<1x8x3xf32>) {
+    // CHECK: "tf.While"
+    // CHECK-SAME: (tensor<1x2x3xf32>)
+    // CHECK-SAME: -> tensor<1x8x3xf32>
+    %0 = "tf.While"(%arg0) {cond = @while_shape_invariant_cond_func_different_dims, body = @while_shape_invariant_body_func_different_dims, is_stateless = false, shape_invariant} : (tensor<1x2x3xf32>) -> tensor<1x8x3xf32>
+
+    // CHECK: "tf.WhileRegion"
+    %1 = "tf.WhileRegion"(%arg0) ( {
+    // CHECK-NEXT: ^{{.+}}({{%.+}}: tensor<1x?x3xf32>):
+    ^cond(%carg0: tensor<*xf32>):
+      %2 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+      "tf.Yield"(%2) : (tensor<i1>) -> ()
+    }, {
+    // CHECK: ^{{.+}}({{%.+}}: tensor<1x?x3xf32>):
+    ^body(%barg0: tensor<*xf32>):
+      %2 = "tf.Identity"(%barg0) : (tensor<*xf32>) -> tensor<*xf32>
+      // CHECK: "tf.Yield"
+      // CHECK-SAME: (tensor<1x?x3xf32>) -> ()
+      "tf.Yield"(%2) : (tensor<*xf32>) -> ()
+    // CHECK-NEXT: shape_invariant
+    // CHECK-SAME: (tensor<1x2x3xf32>)
+    // CHECK-SAME: -> tensor<1x8x3xf32>
+    }) {is_stateless = false, shape_invariant} : (tensor<1x2x3xf32>) -> tensor<1x8x3xf32>
+
+    return %0, %1 : tensor<1x8x3xf32>, tensor<1x8x3xf32>
+  }
+
+  // CHECK-LABEL: func @while_shape_invariant_cond_func_different_dims
+  // CHECK-SAME: ({{%.+}}: tensor<1x?x3xf32>)
+  // CHECK-SAME: -> tensor<i1>
+  func @while_shape_invariant_cond_func_different_dims(%arg0: tensor<*xf32>) -> tensor<i1> {
+    %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+    return %0 : tensor<i1>
+  }
+
+  // CHECK-LABEL: func @while_shape_invariant_body_func_different_dims
+  // CHECK-SAME: ({{%.+}}: tensor<1x?x3xf32>)
+  // CHECK-SAME: -> tensor<1x?x3xf32>
+  func @while_shape_invariant_body_func_different_dims(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+    %0 = "tf.Identity"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+    return %0 : tensor<*xf32>
+  }
+
+  // Test shape invariant While can propagate handle type to result from body
+  // result.
+  // CHECK-LABEL: func @while_shape_invariant_body_result_propagate
+  // CHECK-SAME: ({{%.+}}: tensor<*x!tf.resource<tensor<f32>>>)
+  // CHECK-SAME: -> (tensor<*x!tf.resource<tensor<f32>>>, tensor<*x!tf.resource<tensor<f32>>>)
+  func @while_shape_invariant_body_result_propagate(%arg0: tensor<*x!tf.resource<tensor<f32>>>) -> (tensor<*x!tf.resource>, tensor<*x!tf.resource>) {
+    // CHECK: "tf.While"
+    // CHECK-SAME: (tensor<*x!tf.resource<tensor<f32>>>)
+    // CHECK-SAME: -> tensor<*x!tf.resource<tensor<f32>>>
+    %0 = "tf.While"(%arg0) {cond = @while_shape_invariant_cond_func_body_result_propagate, body = @while_shape_invariant_body_func_body_result_propagate, is_stateless = false, shape_invariant} : (tensor<*x!tf.resource<tensor<f32>>>) -> tensor<*x!tf.resource>
+
+    // CHECK: "tf.WhileRegion"
+    %1 = "tf.WhileRegion"(%arg0) ( {
+    // CHECK-NEXT: ^{{.+}}({{%.+}}: tensor<*x!tf.resource<tensor<f32>>>):
+    ^cond(%carg0: tensor<*x!tf.resource<tensor<f32>>>):
+      %2 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+      "tf.Yield"(%2) : (tensor<i1>) -> ()
+    }, {
+    // CHECK: ^{{.+}}({{%.+}}: tensor<*x!tf.resource<tensor<f32>>>):
+    ^body(%barg0: tensor<*x!tf.resource<tensor<f32>>>):
+      %2 = "tf.Identity"(%barg0) : (tensor<*x!tf.resource<tensor<f32>>>) -> tensor<*x!tf.resource<tensor<f32>>>
+      // CHECK: "tf.Yield"
+      // CHECK-SAME: (tensor<*x!tf.resource<tensor<f32>>>) -> ()
+      "tf.Yield"(%2) : (tensor<*x!tf.resource<tensor<f32>>>) -> ()
+    // CHECK-NEXT: shape_invariant
+    // CHECK-SAME: (tensor<*x!tf.resource<tensor<f32>>>)
+    // CHECK-SAME: -> tensor<*x!tf.resource<tensor<f32>>>
+    }) {is_stateless = false, shape_invariant} : (tensor<*x!tf.resource<tensor<f32>>>) -> tensor<*x!tf.resource>
+
+    return %0, %1 : tensor<*x!tf.resource>, tensor<*x!tf.resource>
+  }
+
+  // CHECK-LABEL: func @while_shape_invariant_cond_func_body_result_propagate
+  // CHECK-SAME: ({{%.+}}: tensor<*x!tf.resource<tensor<f32>>>)
+  // CHECK-SAME: -> tensor<i1>
+  func @while_shape_invariant_cond_func_body_result_propagate(%arg0: tensor<*x!tf.resource<tensor<f32>>>) -> tensor<i1> {
+    %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+    return %0 : tensor<i1>
+  }
+
+  // CHECK-LABEL: func @while_shape_invariant_body_func_body_result_propagate
+  // CHECK-SAME: ({{%.+}}: tensor<*x!tf.resource<tensor<f32>>>)
+  // CHECK-SAME: -> tensor<*x!tf.resource<tensor<f32>>>
+  func @while_shape_invariant_body_func_body_result_propagate(%arg0: tensor<*x!tf.resource<tensor<f32>>>) -> tensor<*x!tf.resource<tensor<f32>>> {
+    %0 = "tf.Identity"(%arg0) : (tensor<*x!tf.resource<tensor<f32>>>) -> tensor<*x!tf.resource<tensor<f32>>>
+    return %0 : tensor<*x!tf.resource<tensor<f32>>>
+  }
 }

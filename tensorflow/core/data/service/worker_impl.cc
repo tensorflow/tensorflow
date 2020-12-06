@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/split_provider.h"
+#include "tensorflow/core/data/service/task_runner.h"
 #include "tensorflow/core/data/service/utils.h"
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -123,11 +124,13 @@ Status DataServiceWorkerImpl::EnsureTaskInitialized(
     return Status::OK();
   }
   standalone::Dataset::Params params;
+  std::unique_ptr<standalone::Dataset> dataset;
+  std::unique_ptr<standalone::Iterator> iterator;
 
   switch (task.task_def.dataset_case()) {
     case TaskDef::kDatasetDef:
       TF_RETURN_IF_ERROR(standalone::Dataset::FromGraph(
-          params, task.task_def.dataset_def().graph(), &task.dataset));
+          params, task.task_def.dataset_def().graph(), &dataset));
       break;
     case TaskDef::kPath: {
       DatasetDef def;
@@ -139,7 +142,7 @@ Status DataServiceWorkerImpl::EnsureTaskInitialized(
             dispatcher_->GetDatasetDef(task.task_def.dataset_id(), def));
       }
       TF_RETURN_IF_ERROR(
-          standalone::Dataset::FromGraph(params, def.graph(), &task.dataset));
+          standalone::Dataset::FromGraph(params, def.graph(), &dataset));
       break;
     }
     case TaskDef::DATASET_NOT_SET:
@@ -151,17 +154,22 @@ Status DataServiceWorkerImpl::EnsureTaskInitialized(
       auto split_provider = absl::make_unique<DataServiceSplitProvider>(
           config_.dispatcher_address(), config_.protocol(),
           task.task_def.job_id(), config_.dispatcher_timeout_ms());
-      TF_RETURN_IF_ERROR(task.dataset->MakeIterator(std::move(split_provider),
-                                                    &task.iterator));
+      TF_RETURN_IF_ERROR(
+          dataset->MakeIterator(std::move(split_provider), &iterator));
       break;
     }
     case PARALLEL_EPOCHS:
-      TF_RETURN_IF_ERROR(task.dataset->MakeIterator(&task.iterator));
+      TF_RETURN_IF_ERROR(dataset->MakeIterator(&iterator));
       break;
     default:
       return errors::InvalidArgument("Unrecognized processing mode: ",
                                      task.task_def.processing_mode());
   }
+  auto task_iterator = absl::make_unique<StandaloneTaskIterator>(
+      std::move(dataset), std::move(iterator));
+  TF_RETURN_IF_ERROR(TaskRunner::Create(task.task_def, std::move(task_iterator),
+                                        task.task_runner));
+
   task.initialized = true;
   VLOG(3) << "Created iterator for task " << task.task_def.task_id();
   return Status::OK();
@@ -182,16 +190,25 @@ Status DataServiceWorkerImpl::GetElement(const GetElementRequest* request,
           "Worker has not yet registered with dispatcher.");
     }
     auto it = tasks_.find(request->task_id());
-    if (it == tasks_.end() || it->second->finished) {
+    if (it == tasks_.end()) {
       response->set_end_of_sequence(true);
       return Status::OK();
     }
     auto& task = it->second;
     TF_RETURN_IF_ERROR(EnsureTaskInitialized(*task));
-    TF_RETURN_IF_ERROR(task->iterator->GetNext(&outputs, &end_of_sequence));
+    TaskRunner::Request get_next_request;
+    if (request->optional_consumer_index_case() ==
+        GetElementRequest::kConsumerIndex) {
+      get_next_request.consumer_index = request->consumer_index();
+    }
+    if (request->optional_round_index_case() ==
+        GetElementRequest::kRoundIndex) {
+      get_next_request.round_index = request->round_index();
+    }
+    TF_RETURN_IF_ERROR(
+        task->task_runner->GetNext(get_next_request, outputs, end_of_sequence));
     if (end_of_sequence) {
       VLOG(3) << "Reached end_of_sequence for task " << request->task_id();
-      task->finished = true;
       pending_completed_tasks_.insert(request->task_id());
       task_completion_cv_.notify_one();
     }

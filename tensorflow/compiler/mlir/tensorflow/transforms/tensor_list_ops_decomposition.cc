@@ -539,7 +539,9 @@ LogicalResult GetConstShapeValue(Value shape_value,
   auto shape_const_op = llvm::dyn_cast<TF::ConstOp>(shape_op);
   if (!shape_const_op) return failure();
   for (const auto& v : shape_const_op.value().getValues<APInt>()) {
-    shape->push_back(v.getSExtValue());
+    int64_t dim_size = v.getSExtValue();
+    if (dim_size == ShapedType::kDynamicSize) return failure();
+    shape->push_back(dim_size);
   }
   return success();
 }

@@ -368,7 +368,6 @@ distribute_py_test(
         "no_windows_gpu",
         "noasan",  # TODO(b/170902997)
         "noguitar",  # TODO(b/172354344)
-        "notap",  # TODO(b/170902997)
         "notsan",
     ],
     tpu_tags = [
@@ -667,6 +666,7 @@ distribute_py_test(
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras/layers",
         "//tensorflow/python/ops/losses",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",

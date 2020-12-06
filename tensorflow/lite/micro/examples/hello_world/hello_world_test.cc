@@ -46,25 +46,15 @@ TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
   // This pulls in all the operation implementations we need
   tflite::AllOpsResolver resolver;
 
-  // Create an area of memory to use for input, output, and intermediate arrays.
-
-  // Minimum arena size, at the time of writing. After allocating tensors
-  // you can retrieve this value by invoking interpreter.arena_used_bytes().
-  const int model_arena_size = 754;
-  /* Extra headroom for model + alignment + future interpreter changes */
-  const int extra_arena_size = 554 + 16 + 100;
-  const int tensor_arena_size = model_arena_size + extra_arena_size;
-  uint8_t tensor_arena[tensor_arena_size];
+  constexpr int kTensorArenaSize = 2000;
+  uint8_t tensor_arena[kTensorArenaSize];
 
   // Build an interpreter to run the model with
-  tflite::MicroInterpreter interpreter(
-      model, resolver, tensor_arena, tensor_arena_size, &micro_error_reporter);
+  tflite::MicroInterpreter interpreter(model, resolver, tensor_arena,
+                                       kTensorArenaSize, &micro_error_reporter);
   // Allocate memory from the tensor_arena for the model's tensors
   TF_LITE_MICRO_EXPECT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
 
-  // Alert for substantial increase in arena size usage.
-  TF_LITE_MICRO_EXPECT_LE(interpreter.arena_used_bytes(),
-                          model_arena_size + 100);
   // Obtain a pointer to the model's input tensor
   TfLiteTensor* input = interpreter.input(0);
 

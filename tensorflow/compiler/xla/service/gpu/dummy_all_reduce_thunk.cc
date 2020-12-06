@@ -19,42 +19,33 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-struct NcclAllReduceConfig::AuxData {};
-
-NcclAllReduceConfig::NcclAllReduceConfig(NcclAllReduceConfig &&) = default;
-NcclAllReduceConfig::~NcclAllReduceConfig() = default;
-
-NcclAllReduceConfig GetNcclAllReduceConfig(const HloInstruction *instr,
+NcclAllReduceConfig GetNcclAllReduceConfig(const HloInstruction* hlo,
                                            int64 replica_count) {
-  NcclAllReduceConfig config = {};
-  return config;
+  return NcclAllReduceConfig();
 }
 
-/* static */ bool NcclAllReduceThunk::NcclIsEnabled() {
-  return false;  // Skylark selects this source file if NCCL is disabled.
-}
+NcclAllReduceThunk::NcclAllReduceThunk(
+    ThunkInfo thunk_info, NcclAllReduceConfig config,
+    std::vector<NcclAllReduceThunk::Buffer> buffers)
+    : NcclCollectiveThunk(Thunk::kNcclAllReduce, thunk_info),
+      config_(std::move(config)),
+      buffers_(std::move(buffers)) {}
 
-/* static */ bool NcclAllReduceThunk::CanImplement(const HloInstruction* crs) {
+/* static */ bool NcclAllReduceThunk::CanImplement(const HloInstruction* hlo) {
   return false;
 }
 
-Status NcclAllReduceThunk::ExecuteOnStream(const ExecuteParams& params) {
+Status NcclAllReduceThunk::RunNcclCollective(const ExecuteParams&, ncclComm_t) {
   return Unimplemented(
       "NCCL support is not available: this binary was not built with a CUDA "
       "compiler, which is necessary to build the NCCL source library.");
 }
 
-/*static*/ absl::flat_hash_set<GlobalDeviceId>
-NcclAllReduceThunk::DevicesWithOpenNcclChannels() {
-  return {};
+const NcclCollectiveConfig& NcclAllReduceThunk::config() const {
+  // This function will never be called.
+  const NcclCollectiveConfig* config = nullptr;
+  return *config;
 }
-
-NcclAllReduceThunk::NcclAllReduceThunk(
-    ThunkInfo thunk_info, NcclAllReduceConfig &&config,
-    std::vector<NcclAllReduceThunk::Buffer> buffers)
-    : Thunk(Thunk::kNcclAllReduce, thunk_info),
-      config_(std::move(config)),
-      buffers_(std::move(buffers)) {}
 
 }  // namespace gpu
 }  // namespace xla

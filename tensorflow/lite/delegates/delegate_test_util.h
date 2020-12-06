@@ -54,18 +54,25 @@ class TestDelegate : public ::testing::Test {
     // Create a simple implementation of a TfLiteDelegate. We use the C++ class
     // SimpleDelegate and it can produce a handle TfLiteDelegate that is
     // value-copyable and compatible with TfLite.
-    // fail_node_prepare: To simulate failure of Delegate node's Prepare().
-    // min_ops_per_subset: If >0, partitioning preview is used to choose only
-    // those subsets with min_ops_per_subset number of nodes.
-    // fail_node_invoke: To simulate failure of Delegate node's Invoke().
-    // automatic_shape_propagation: This assumes that the runtime will propagate
-    // shapes using the original execution plan.
+    //
+    // Parameters:
+    //   nodes: Indices of the graph nodes that the delegate will handle.
+    //   fail_node_prepare: To simulate failure of Delegate node's Prepare().
+    //   min_ops_per_subset: If >0, partitioning preview is used to choose only
+    //     those subsets with min_ops_per_subset number of nodes.
+    //   fail_node_invoke: To simulate failure of Delegate node's Invoke().
+    //   automatic_shape_propagation: This assumes that the runtime will
+    //     propagate shapes using the original execution plan.
+    //   custom_op: If true, the graph nodes specified in the 'nodes' parameter
+    //     should be custom ops with name "my_add"; if false, they should be
+    //     the builtin ADD operator.
     explicit SimpleDelegate(const std::vector<int>& nodes,
                             int64_t delegate_flags = kTfLiteDelegateFlagsNone,
                             bool fail_node_prepare = false,
                             int min_ops_per_subset = 0,
                             bool fail_node_invoke = false,
-                            bool automatic_shape_propagation = false);
+                            bool automatic_shape_propagation = false,
+                            bool custom_op = true);
 
     TfLiteRegistration FakeFusedRegistration();
 
@@ -80,6 +87,7 @@ class TestDelegate : public ::testing::Test {
     int min_ops_per_subset_ = 0;
     bool fail_delegate_node_invoke_ = false;
     bool automatic_shape_propagation_ = false;
+    bool custom_op_ = true;
   };
 
   std::unique_ptr<Interpreter> interpreter_;

@@ -38,6 +38,46 @@ config_setting(
 )
 
 filegroup(
+    name = "enabled_unary_unranked_kernel_srcs",
+    srcs = [
+        "unranked_op_gpu_abs.cc",
+        "unranked_op_gpu_tanh.cc",
+    ],
+    compatible_with = get_compatible_with_cloud(),
+)
+
+filegroup(
+    name = "experimental_unary_unranked_kernel_srcs",
+    srcs = [
+        "unranked_op_gpu_ceil.cc",
+        "unranked_op_gpu_conj.cc",
+        "unranked_op_gpu_cos.cc",
+        "unranked_op_gpu_exp.cc",
+        "unranked_op_gpu_floor.cc",
+        "unranked_op_gpu_imag.cc",
+        "unranked_op_gpu_is_inf.cc",
+        "unranked_op_gpu_log.cc",
+        "unranked_op_gpu_logical_not.cc",
+        "unranked_op_gpu_real.cc",
+        "unranked_op_gpu_rsqrt.cc",
+        "unranked_op_gpu_sign.cc",
+        "unranked_op_gpu_sin.cc",
+        "unranked_op_gpu_sqrt.cc",
+    ],
+    compatible_with = get_compatible_with_cloud(),
+)
+
+filegroup(
+    name = "unary_unranked_kernel_srcs",
+    srcs = [
+        ":enabled_unary_unranked_kernel_srcs",
+    ] + if_mlir_unranked_kernels_enabled(
+        if_true = [":experimental_unary_unranked_kernel_srcs"],
+    ),
+    compatible_with = get_compatible_with_cloud(),
+)
+
+filegroup(
     name = "unary_kernel_srcs",
     srcs = if_mlir_unranked_kernels_enabled(
         if_false = [
@@ -46,24 +86,7 @@ filegroup(
             "cwise_op_gpu_base.h",
             "cwise_op_gpu_tanh.cc",
         ],
-        if_true = [
-            "unranked_op_gpu_abs.cc",
-            "unranked_op_gpu_ceil.cc",
-            "unranked_op_gpu_conj.cc",
-            "unranked_op_gpu_cos.cc",
-            "unranked_op_gpu_exp.cc",
-            "unranked_op_gpu_floor.cc",
-            "unranked_op_gpu_imag.cc",
-            "unranked_op_gpu_is_inf.cc",
-            "unranked_op_gpu_log.cc",
-            "unranked_op_gpu_logical_not.cc",
-            "unranked_op_gpu_real.cc",
-            "unranked_op_gpu_rsqrt.cc",
-            "unranked_op_gpu_sign.cc",
-            "unranked_op_gpu_sin.cc",
-            "unranked_op_gpu_sqrt.cc",
-            "unranked_op_gpu_tanh.cc",
-        ],
+        if_true = [":unary_unranked_kernel_srcs"],
     ),
     compatible_with = get_compatible_with_cloud(),
 )
@@ -104,6 +127,11 @@ tf_kernel_library(
             "//tensorflow/core/platform:stream_executor",
         ],
         if_true = [
+            # Technically we only need to depend on the kernel libraries for the
+            # unranked kernels which are enabled by default. But this would
+            # make our BUILD target structure uglier. We already need to make
+            # sure that those targets can be built, so it should not hurt to
+            # link them in even if they are currently not needed yet.
             ":abs_unranked_kernels",
             ":ceil_unranked_kernels",
             ":conj_unranked_kernels",

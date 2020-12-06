@@ -25,6 +25,8 @@ sudo xcode-select -s "${DEVELOPER_DIR}"
 
 install_macos_pip_deps sudo pip3.6
 
+sudo pip3.6 install 'twine ~= 3.2.0'
+
 # For python3 path on Mac
 export PATH=$PATH:/usr/local/bin
 
@@ -56,7 +58,7 @@ for f in $(ls pip_pkg/tf_nightly*dev*macosx*.whl); do
   # Upload the PIP package if whl test passes.
   if [ ${RETVAL} -eq 0 ]; then
     echo "Basic PIP test PASSED, Uploading package: ${f}"
-    twine upload -r pypi-warehouse "${f}"
+    python3.6 -m twine upload -r pypi-warehouse "${f}"
   else
     echo "Basic PIP test FAILED, will not upload ${f} package"
     return 1

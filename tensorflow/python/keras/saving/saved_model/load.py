@@ -92,12 +92,6 @@ PUBLIC_ATTRIBUTES = CommonEndpoints.all_functions.union(
 PUBLIC_ATTRIBUTES.add(constants.KERAS_ATTR)
 
 
-KERAS_OBJECT_IDENTIFIERS = (
-    '_tf_keras_layer', '_tf_keras_input_layer', '_tf_keras_network',
-    '_tf_keras_model', '_tf_keras_sequential', '_tf_keras_metric',
-    '_tf_keras_rnn_layer')
-
-
 def load(path, compile=True, options=None):  # pylint: disable=redefined-builtin
   """Loads Keras objects from a SavedModel.
 
@@ -196,7 +190,7 @@ def _read_legacy_metadata(object_graph_def, metadata):
   node_paths = _generate_object_paths(object_graph_def)
   for node_id, proto in enumerate(object_graph_def.nodes):
     if (proto.WhichOneof('kind') == 'user_object' and
-        proto.user_object.identifier in KERAS_OBJECT_IDENTIFIERS):
+        proto.user_object.identifier in constants.KERAS_OBJECT_IDENTIFIERS):
       metadata.nodes.add(
           node_id=node_id,
           node_path=node_paths[node_id],
@@ -347,7 +341,7 @@ class KerasObjectLoader(object):
       if (child_proto.user_object.identifier in
           revived_types.registered_identifiers()):
         setter = revived_types.get_setter(child_proto.user_object)
-      elif obj_child._object_identifier in KERAS_OBJECT_IDENTIFIERS:
+      elif obj_child._object_identifier in constants.KERAS_OBJECT_IDENTIFIERS:
         setter = _revive_setter
       else:
         setter = setattr
@@ -384,7 +378,7 @@ class KerasObjectLoader(object):
     # time by creating objects multiple times).
     metric_list = []
     for node_metadata in self._metadata.nodes:
-      if node_metadata.identifier == '_tf_keras_metric':
+      if node_metadata.identifier == constants.METRIC_IDENTIFIER:
         metric_list.append(node_metadata)
         continue
 
@@ -432,12 +426,12 @@ class KerasObjectLoader(object):
 
   def _revive_from_config(self, identifier, metadata, node_id):
     """Revives a layer/model from config, or returns None."""
-    if identifier == '_tf_keras_metric':
+    if identifier == constants.METRIC_IDENTIFIER:
       obj = self._revive_metric_from_config(metadata)
     else:
       obj = (
           self._revive_graph_network(metadata, node_id) or
-          self._revive_layer_from_config(metadata, node_id))
+          self._revive_layer_or_model_from_config(metadata, node_id))
 
     if obj is None:
       return None, None
@@ -483,8 +477,8 @@ class KerasObjectLoader(object):
       self._models_to_reconstruct.append(node_id)
     return model
 
-  def _revive_layer_from_config(self, metadata, node_id):
-    """Revives a layer from config, or returns None if infeasible."""
+  def _revive_layer_or_model_from_config(self, metadata, node_id):
+    """Revives a layer/custom model from config; returns None if infeasible."""
     # Check that the following requirements are met for reviving from config:
     #    1. Object can be deserialized from config.
     #    2. If the object needs to be built, then the build input shape can be
@@ -522,6 +516,12 @@ class KerasObjectLoader(object):
       obj._set_dtype_policy(metadata['dtype'])
     if metadata.get('stateful') is not None:
       obj.stateful = metadata['stateful']
+    # Restore model save spec for subclassed models. (layers do not store a
+    # SaveSpec)
+    if isinstance(obj, training_lib.Model):
+      save_spec = metadata.get('save_spec')
+      if save_spec is not None:
+        obj._set_save_spec(save_spec)
     # pylint: enable=protected-access
 
     build_input_shape = metadata.get('build_input_shape')
@@ -530,7 +530,6 @@ class KerasObjectLoader(object):
     if not built:
       # If the layer cannot be built, revive a custom layer instead.
       return None
-
     return obj
 
   def _revive_metric_from_config(self, metadata):
@@ -921,11 +920,12 @@ def revive_custom_object(identifier, metadata):
     model_class = training_lib_v1.Model
 
   revived_classes = {
-      '_tf_keras_layer': (RevivedLayer, base_layer.Layer),
-      '_tf_keras_input_layer': (RevivedInputLayer, input_layer.InputLayer),
-      '_tf_keras_network': (RevivedNetwork, functional_lib.Functional),
-      '_tf_keras_model': (RevivedNetwork, model_class),
-      '_tf_keras_sequential': (RevivedNetwork, models_lib.Sequential),
+      constants.INPUT_LAYER_IDENTIFIER: (
+          RevivedInputLayer, input_layer.InputLayer),
+      constants.LAYER_IDENTIFIER: (RevivedLayer, base_layer.Layer),
+      constants.MODEL_IDENTIFIER: (RevivedNetwork, model_class),
+      constants.NETWORK_IDENTIFIER: (RevivedNetwork, functional_lib.Functional),
+      constants.SEQUENTIAL_IDENTIFIER: (RevivedNetwork, models_lib.Sequential),
   }
   parent_classes = revived_classes.get(identifier, None)
 

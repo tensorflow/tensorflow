@@ -40,7 +40,7 @@ namespace {
 
 // Maximum number of scratch buffer requests per operator. Operator kernels that
 // request more than this value will receive an exception.
-constexpr size_t kMaxScratchBuffersPerOp = 8;
+constexpr size_t kMaxScratchBuffersPerOp = 12;
 
 // Sentinel value used as a placeholder to mark a ScratchBufferRequest request
 // needs a node id assignment.

@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
+TfLiteRegistration* Register_DETECTION_POSTPROCESS();
 
 template <unsigned int tOpCount>
 class MicroMutableOpResolver : public MicroOpResolver {
@@ -169,6 +170,11 @@ class MicroMutableOpResolver : public MicroOpResolver {
     return AddBuiltin(BuiltinOperator_DEQUANTIZE,
                       tflite::ops::micro::Register_DEQUANTIZE(),
                       ParseDequantize);
+  }
+
+  TfLiteStatus AddDetectionPostprocess() {
+    return AddCustom("TFLite_Detection_PostProcess",
+                     tflite::Register_DETECTION_POSTPROCESS());
   }
 
   TfLiteStatus AddEqual() {

@@ -140,6 +140,12 @@ void RemoveLine(XPlane* plane, const XLine* line) {
   Remove(plane->mutable_lines(), line);
 }
 
+void RemoveEvents(XLine* line,
+                  const absl::flat_hash_set<const XEvent*>& events) {
+  RemoveIf(line->mutable_events(),
+           [&](const XEvent* event) { return events.contains(event); });
+}
+
 void RemoveEmptyPlanes(XSpace* space) {
   RemoveIf(space->mutable_planes(),
            [&](const XPlane* plane) { return plane->lines().empty(); });

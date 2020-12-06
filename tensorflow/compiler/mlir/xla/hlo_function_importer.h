@@ -64,6 +64,12 @@ class HloFunctionImporter {
 
   static void SetLayoutForMlir(mlir::Operation* op, const Shape& shape);
 
+  // Converts replica groups to attribute
+  //
+  // TODO(timshen): move this to attribute_importer.h.
+  static mlir::NamedAttribute ConvertReplicaGroups(
+      const std::vector<ReplicaGroup>& replica_groups, mlir::Builder builder);
+
  private:
   HloFunctionImporter(mlir::ModuleOp module,
                       std::unordered_map<const xla::HloComputation*,
@@ -135,10 +141,6 @@ class HloFunctionImporter {
   // Converts Array ref to padding attribute. Input is a flattened list of
   // padding low and padding high for each of the spatial dimensions.
   mlir::NamedAttribute ConvertPadding(llvm::ArrayRef<int64_t> padding);
-
-  // Converts replica groups to attribute
-  mlir::NamedAttribute ConvertReplicaGroups(
-      const std::vector<ReplicaGroup>& replica_groups);
 
   // Converts channel id to attribute
   mlir::NamedAttribute ConvertChannelHandle(
