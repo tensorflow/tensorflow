@@ -190,6 +190,7 @@ tf_cuda_cc_test(
     tags = tf_cuda_tests_tags() + [
         "nomac",
         "manual",  #TODO(vnvo2409): Remove
+        "notap",
     ],
     deps = [
         ":gradient_checker",
