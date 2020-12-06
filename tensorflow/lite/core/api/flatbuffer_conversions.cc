@@ -204,7 +204,7 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_DIV: {
       return ParseDiv(op, error_reporter, allocator, builtin_data);
     }
-    
+
     case BuiltinOperator_FILL: {
       return ParseFill(op, error_reporter, allocator, builtin_data);
     }
