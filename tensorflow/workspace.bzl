@@ -134,11 +134,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     # and update the sha256 with the result.
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "b6badf61153584d28ee40c8f8c553b79a1ee4642008c28d953ffaea47e308511",
-        strip_prefix = "XNNPACK-1a803b6e9b48aad978b33d648b7db00ffc300f60",
+        sha256 = "4982a2b2849fc3853bf8dda099e46306477c2abd139481adf37f6835e227a860",
+        strip_prefix = "XNNPACK-6eaa1521288d268dd4cceca4ae5c018cf009179b",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/1a803b6e9b48aad978b33d648b7db00ffc300f60.zip",
-            "https://github.com/google/XNNPACK/archive/1a803b6e9b48aad978b33d648b7db00ffc300f60.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/6eaa1521288d268dd4cceca4ae5c018cf009179b.zip",
+            "https://github.com/google/XNNPACK/archive/6eaa1521288d268dd4cceca4ae5c018cf009179b.zip",
         ],
     )
 
@@ -154,11 +154,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "pthreadpool",
-        sha256 = "03312bd7d8d9e379d685258963ee8820767158b5946cdd00336ff17dae851001",
-        strip_prefix = "pthreadpool-029c88620802e1361ccf41d1970bd5b07fd6b7bb",
+        sha256 = "8461f6540ae9f777ce20d1c0d1d249e5e61c438744fb390c0c6f91940aa69ea3",
+        strip_prefix = "pthreadpool-545ebe9f225aec6dca49109516fac02e973a3de2",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/Maratyszcza/pthreadpool/archive/029c88620802e1361ccf41d1970bd5b07fd6b7bb.zip",
-            "https://github.com/Maratyszcza/pthreadpool/archive/029c88620802e1361ccf41d1970bd5b07fd6b7bb.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/Maratyszcza/pthreadpool/archive/545ebe9f225aec6dca49109516fac02e973a3de2.zip",
+            "https://github.com/Maratyszcza/pthreadpool/archive/545ebe9f225aec6dca49109516fac02e973a3de2.zip",
         ],
     )
 
