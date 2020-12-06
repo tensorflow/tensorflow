@@ -134,6 +134,21 @@ class ApplicationsTest(test.TestCase, parameterized.TestCase):
     self.assertShapeEqual(output_shape, (None, None, None, last_dim))
     backend.clear_session()
 
+    @parameterized.parameters(MODEL_LIST)
+    def test_application_custom_input_shape_imagenet(self, app, _):
+      custom_input_shape = (42, 42, 3)
+      input_shape = _get_input_shape(
+           lambda: app(
+              input_shape=custom_input_shape, include_top=False, pooling="avg"
+          )
+      )
+      self.assertShapeEqual(input_shape, (None, *custom_input_shape))
+
+
+def _get_input_shape(model_fn):
+  model = model_fn()
+  return model.input_shape
+
 
 def _get_output_shape(model_fn):
   model = model_fn()
