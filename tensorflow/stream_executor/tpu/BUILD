@@ -64,7 +64,8 @@ cc_library(
     hdrs = ["noncopyable_buffer.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:platform_port",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
