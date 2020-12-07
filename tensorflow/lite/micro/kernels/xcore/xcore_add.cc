@@ -65,12 +65,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   //   printf("QQQ i=%d   v=%02x\n", i, (int)bss->data.raw[i]);
   // }
 
-  op->params.output.bias = reinterpret_cast<int32_t>(bss->data.i32[0]);
-  op->params.input[0].multiplier = reinterpret_cast<int32_t>(bss->data.i32[1]);
-  op->params.input[1].multiplier = reinterpret_cast<int32_t>(bss->data.i32[2]);
-  op->params.input[0].shr = reinterpret_cast<int32_t>(bss->data.i32[3]);
-  op->params.input[1].shr = reinterpret_cast<int32_t>(bss->data.i32[4]);
-  op->params.output.shr = reinterpret_cast<int32_t>(bss->data.i32[5]);
+  // op->params.output.bias = reinterpret_cast<int32_t>(bss->data.i32[0]);
+  // op->params.input[0].multiplier =
+  // reinterpret_cast<int32_t>(bss->data.i32[1]); op->params.input[1].multiplier
+  // = reinterpret_cast<int32_t>(bss->data.i32[2]); op->params.input[0].shr =
+  // reinterpret_cast<int32_t>(bss->data.i32[3]); op->params.input[1].shr =
+  // reinterpret_cast<int32_t>(bss->data.i32[4]); op->params.output.shr =
+  // reinterpret_cast<int32_t>(bss->data.i32[5]);
 
   // printf("QQQ op->params.input[0].shr=%d\n", op->params.input[0].shr);
   // printf("QQQ op->params.input[0].multiplier=%d\n",
@@ -135,17 +136,17 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // }
 
   // create 1 task for now
-  thread_data[0].Y = output->data.int8;
-  thread_data[0].X0 = input0->data.int8;
-  thread_data[0].X1 = input1->data.int8;
-  thread_data[0].params = &op->params;
-  thread_data[0].start = 0;
-  thread_data[0].count = output->bytes;
+  // thread_data[0].Y = output->data.int8;
+  // thread_data[0].X0 = input0->data.int8;
+  // thread_data[0].X1 = input1->data.int8;
+  // thread_data[0].params = &op->params;
+  // thread_data[0].start = 0;
+  // thread_data[0].count = output->bytes;
 
-  dispatcher->AddTask(reinterpret_cast<void*>(&thread_data[0]));
+  // dispatcher->AddTask(reinterpret_cast<void*>(&thread_data[0]));
 
-  // start and wait for tasks to complete
-  dispatcher->JoinTasks();
+  // // start and wait for tasks to complete
+  // dispatcher->JoinTasks();
 
   return kTfLiteOk;
 }

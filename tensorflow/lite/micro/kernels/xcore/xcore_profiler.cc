@@ -13,26 +13,40 @@ namespace micro {
 namespace xcore {
 
 XCoreProfiler::XCoreProfiler(tflite::ErrorReporter* reporter)
-    : reporter_(reporter) {}
+    : reporter_(reporter), event_count_(0) {}
+
+void XCoreProfiler::Reset() { event_count_ = 0; }
+
+uint32_t const* XCoreProfiler::GetTimes() { return event_times_; }
+
+uint32_t XCoreProfiler::GetNumTimes() { return event_count_; }
 
 uint32_t XCoreProfiler::BeginEvent(const char* tag, EventType event_type,
                                    int64_t event_metadata1,
                                    int64_t event_metadata2) {
-  start_time_ = tflite::GetCurrentTimeTicks();
+  event_start_time_ = tflite::GetCurrentTimeTicks();
   TFLITE_DCHECK(tag != nullptr);
   event_tag_ = tag;
   return 0;
 }
 
 void XCoreProfiler::EndEvent(uint32_t event_handle) {
-  int32_t end_time = tflite::GetCurrentTimeTicks();
+  uint32_t event_duration;
+  int32_t event_end_time = tflite::GetCurrentTimeTicks();
 #ifdef XCORE
+  event_duration =
+      (event_end_time - event_start_time_) / PLATFORM_REFERENCE_MHZ;
   TF_LITE_REPORT_ERROR(reporter_, "%s took %d microseconds", event_tag_,
-                       (end_time - start_time_) / PLATFORM_REFERENCE_MHZ);
+                       event_duration);
 #else  // not XCORE
+  event_duration = event_end_time - event_start_time_;
   TF_LITE_REPORT_ERROR(reporter_, "%s took %d cycles", event_tag_,
-                       (end_time - start_time_));
+                       event_duration);
 #endif
+  if (event_count_ < XCORE_PROFILER_MAX_LEVELS) {
+    event_times_[event_count_] = event_duration;
+    event_count_++;
+  }
 }
 
 }  // namespace xcore

@@ -7,6 +7,10 @@
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/micro/compatibility.h"
 
+#if !defined(XCORE_PROFILER_MAX_LEVELS)
+#define XCORE_PROFILER_MAX_LEVELS (64)
+#endif
+
 namespace tflite {
 namespace micro {
 namespace xcore {
@@ -32,10 +36,17 @@ class XCoreProfiler : public tflite::Profiler {
   // Event_handle is ignored since TFLu does not support concurrent events.
   void EndEvent(uint32_t event_handle) override;
 
+  void Reset();
+
+  uint32_t const* GetTimes();
+  uint32_t GetNumTimes();
+
  private:
   tflite::ErrorReporter* reporter_;
-  int32_t start_time_;
   const char* event_tag_;
+  uint32_t event_start_time_;
+  uint32_t event_count_;
+  uint32_t event_times_[XCORE_PROFILER_MAX_LEVELS];
   TF_LITE_REMOVE_VIRTUAL_DELETE
 };
 
