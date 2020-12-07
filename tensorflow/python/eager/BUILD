@@ -824,6 +824,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
+        ":_call_counter",
         ":context",
         ":function",
         ":lift_to_graph",
@@ -838,6 +839,16 @@ py_library(
         "//tensorflow/python/distribute/parallel_device",
         "//tensorflow/python/profiler:trace",
         "//tensorflow/python/training/tracking:base",
+    ],
+)
+
+pybind_extension(
+    name = "_call_counter",
+    srcs = ["def_function.cc"],
+    module_name = "_call_counter",
+    deps = [
+        "//third_party/python_runtime:headers",
+        "@pybind11",
     ],
 )
 
