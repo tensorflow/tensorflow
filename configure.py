@@ -1333,7 +1333,6 @@ def main():
 
   if (environ_cp.get('TF_NEED_ROCM') == '1' and environ_cp.get('ROCM_PATH')):
     write_action_env_to_bazelrc('ROCM_PATH', environ_cp.get('ROCM_PATH'))
-    write_action_env_to_bazelrc('ROCM_ROOT', environ_cp.get('ROCM_PATH'))
 
   if ((environ_cp.get('TF_NEED_ROCM') == '1') and
       (environ_cp.get('TF_ENABLE_MLIR_GENERATED_GPU_KERNELS') == '1')):
