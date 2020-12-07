@@ -134,6 +134,7 @@ cc_library(
     srcs = ["transforms/mhlo_to_lhlo_with_xla.cc"],
     hdrs = ["transforms/mhlo_to_lhlo_with_xla.h"],
     deps = [
+        ":attribute_importer",
         ":hlo_module_importer",
         ":hlo_utils",
         ":mlir_hlo_to_hlo",

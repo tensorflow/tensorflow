@@ -965,6 +965,10 @@ Status IrEmitterUnnested::HandleCustomCall(HloInstruction* custom_call) {
     return EmitGemmThunkFromMlir(input);
   }
 
+  if (IsCustomCallToDnnConvolution(*custom_call)) {
+    return ThunkEmitter(this).HandleCustomCall(custom_call);
+  }
+
 #if GOOGLE_CUDA
   if (mlir::isa<mlir::lmhlo_gpu::CholeskyOp>(input.op)) {
     return EmitCholeskyThunkFromMlir(input);
