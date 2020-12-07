@@ -720,6 +720,16 @@ bool TFLGpuDelegateSetCommandEncoder(
   return true;
 }
 
+bool TFLGpuDelegateSetCommandBuffer(TfLiteDelegate* delegate,
+                                    id<MTLCommandBuffer> command_buffer) {
+  auto* metal_delegate = ::tflite::gpu::metal::GetMetalDelegate(delegate);
+  if (!metal_delegate) return false;
+  id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+  metal_delegate->SetCommandEncoder(encoder);
+  [encoder endEncoding];
+  return true;
+}
+
 TFLGpuDelegateOptions TFLGpuDelegateOptionsDefault() {
   TFLGpuDelegateOptions options = {
       .allow_precision_loss = false,

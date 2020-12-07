@@ -38,4 +38,9 @@ bool TFLGpuDelegateBindMetalBufferToTensor(TfLiteDelegate* delegate,
 bool TFLGpuDelegateSetCommandEncoder(TfLiteDelegate* delegate,
                                      id<MTLComputeCommandEncoder> encoder);
 
+// Binds user-defined MTLCommandBuffer. The delegate puts all GPU tasks
+// into this buffer instead of the internal command buffer.
+bool TFLGpuDelegateSetCommandBuffer(TfLiteDelegate* delegate,
+                                    id<MTLCommandBuffer> command_buffer);
+
 #endif  // TENSORFLOW_LITE_DELEGATES_GPU_METAL_DELEGATE_INTERNAL_H_
