@@ -630,3 +630,45 @@ func @iota() -> tensor<7x10xf32> {
 // CHECK-NEXT:   %[[INT_CAST:.*]] = index_cast %[[D1]] : index to i32
 // CHECK-NEXT:   %[[FLOAT_CAST:.*]] = sitofp %[[INT_CAST]] : i32 to f32
 // CHECK-NEXT:   linalg.yield %[[FLOAT_CAST]] : f32
+
+// -----
+
+func @shift_left(%lhs: tensor<2x2xi32>,
+                 %rhs: tensor<2x2xi32>) -> tensor<2x2xi32> {
+  %result = "mhlo.shift_left"(%lhs, %rhs)
+      : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
+  return %result : tensor<2x2xi32>
+}
+// CHECK-LABEL: func @shift_left
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[LHS:.*]]: i32, %[[RHS:.*]]: i32):
+// CHECK-NEXT:   %[[RESULT:.*]] = shift_left %[[LHS]], %[[RHS]] : i32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
+
+// -----
+
+func @shift_right_arithmetic(%lhs: tensor<2x2xi32>,
+                             %rhs: tensor<2x2xi32>) -> tensor<2x2xi32> {
+  %result = "mhlo.shift_right_arithmetic"(%lhs, %rhs)
+      : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
+  return %result : tensor<2x2xi32>
+}
+// CHECK-LABEL: func @shift_right_arithmetic
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[LHS:.*]]: i32, %[[RHS:.*]]: i32):
+// CHECK-NEXT:   %[[RESULT:.*]] = shift_right_signed %[[LHS]], %[[RHS]] : i32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
+
+// -----
+
+func @shift_right_logical(%lhs: tensor<2x2xi32>,
+                          %rhs: tensor<2x2xi32>) -> tensor<2x2xi32> {
+  %result = "mhlo.shift_right_logical"(%lhs, %rhs)
+      : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
+  return %result : tensor<2x2xi32>
+}
+// CHECK-LABEL: func @shift_right_logical
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[LHS:.*]]: i32, %[[RHS:.*]]: i32):
+// CHECK-NEXT:   %[[RESULT:.*]] = shift_right_unsigned %[[LHS]], %[[RHS]] : i32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i32

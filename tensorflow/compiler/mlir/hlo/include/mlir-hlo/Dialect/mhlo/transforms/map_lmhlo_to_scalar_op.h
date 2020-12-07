@@ -499,6 +499,30 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::SelectOp>(
 }
 
 template <>
+inline Value MapLhloOpToStdScalarOp<lmhlo::ShiftLeftOp>(
+    Location loc, ArrayRef<Type> result_types, ArrayRef<Value> args,
+    OpBuilder* b) {
+  return MapLhloOpToStdScalarOpImpl<IntegerType, mlir::ShiftLeftOp>{}(
+      loc, result_types, args, b);
+}
+
+template <>
+inline Value MapLhloOpToStdScalarOp<lmhlo::ShiftRightArithmeticOp>(
+    Location loc, ArrayRef<Type> result_types, ArrayRef<Value> args,
+    OpBuilder* b) {
+  return MapLhloOpToStdScalarOpImpl<IntegerType, mlir::SignedShiftRightOp>{}(
+      loc, result_types, args, b);
+}
+
+template <>
+inline Value MapLhloOpToStdScalarOp<lmhlo::ShiftRightLogicalOp>(
+    Location loc, ArrayRef<Type> result_types, ArrayRef<Value> args,
+    OpBuilder* b) {
+  return MapLhloOpToStdScalarOpImpl<IntegerType, mlir::UnsignedShiftRightOp>{}(
+      loc, result_types, args, b);
+}
+
+template <>
 inline Value MapLhloOpToStdScalarOp<lmhlo::SignOp>(Location loc,
                                                    ArrayRef<Type> result_types,
                                                    ArrayRef<Value> args,

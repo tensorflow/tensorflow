@@ -425,6 +425,48 @@ func @sqrt(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
 
 // -----
 
+// CHECK-LABEL: func @shift_left
+func @shift_left(%lhs: memref<2x2xi32>, %rhs: memref<2x2xi32>,
+                 %result: memref<2x2xi32>) {
+  %tensor_lhs = tensor_load %lhs : memref<2x2xi32>
+  %tensor_rhs = tensor_load %rhs : memref<2x2xi32>
+  %tensor_result = "mhlo.shift_left"(%tensor_lhs, %tensor_rhs)
+      : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
+  // CHECK: "lmhlo.shift_left"(%{{.*}}, %{{.*}})
+  tensor_store %tensor_result, %result : memref<2x2xi32>
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @shift_right_arithmetic
+func @shift_right_arithmetic(%lhs: memref<2x2xi32>, %rhs: memref<2x2xi32>,
+                             %result: memref<2x2xi32>) {
+  %tensor_lhs = tensor_load %lhs : memref<2x2xi32>
+  %tensor_rhs = tensor_load %rhs : memref<2x2xi32>
+  %tensor_result = "mhlo.shift_right_arithmetic"(%tensor_lhs, %tensor_rhs)
+      : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
+  // CHECK: "lmhlo.shift_right_arithmetic"(%{{.*}}, %{{.*}})
+  tensor_store %tensor_result, %result : memref<2x2xi32>
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @shift_right_logical
+func @shift_right_logical(%lhs: memref<2x2xi32>, %rhs: memref<2x2xi32>,
+                          %result: memref<2x2xi32>) {
+  %tensor_lhs = tensor_load %lhs : memref<2x2xi32>
+  %tensor_rhs = tensor_load %rhs : memref<2x2xi32>
+  %tensor_result = "mhlo.shift_right_logical"(%tensor_lhs, %tensor_rhs)
+      : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
+  // CHECK: "lmhlo.shift_right_logical"(%{{.*}}, %{{.*}})
+  tensor_store %tensor_result, %result : memref<2x2xi32>
+  return
+}
+
+// -----
+
 // CHECK-LABEL: func @tanh
 func @tanh(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
   %tensor_operand = tensor_load %operand : memref<2x2xf32>
