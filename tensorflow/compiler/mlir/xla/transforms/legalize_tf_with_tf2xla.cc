@@ -255,7 +255,6 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::TruncateModOp>(),
     TypeID::get<TF::UnpackOp>(),
     TypeID::get<TF::UpperBoundOp>(),
-    TypeID::get<TF::XdivyOp>(),
     TypeID::get<TF::XlaBroadcastHelperOp>(),
     TypeID::get<TF::XlaConvOp>(),
     TypeID::get<TF::XlaDotOp>(),
@@ -265,8 +264,6 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::XlaKeyValueSortOp>(),
     TypeID::get<TF::XlaPadOp>(),
     TypeID::get<TF::XlaSetDynamicDimensionSizeOp>(),
-    TypeID::get<TF::Xlog1pyOp>(),
-    TypeID::get<TF::XlogyOp>(),
     TypeID::get<TF::XlaSortOp>(),
     TypeID::get<TF::XlaSvdOp>()
   };
