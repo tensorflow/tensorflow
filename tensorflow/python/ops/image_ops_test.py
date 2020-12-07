@@ -5012,9 +5012,9 @@ class NonMaxSuppressionWithScoresTest(test_util.TensorFlowTestCase):
                 [0, 10, 1, 11], [0, 10.1, 1, 11.1], [0, 100, 1, 101]]
     scores_np = [0.9, 0.75, 0.6, 0.95, 0.5, 0.3]
     max_output_size_np = 6
-    iou_threshold_np = 1.0
+    iou_threshold_np = 0.5
     score_threshold_np = 0.0
-    soft_nms_sigma_np = 0.5
+    soft_nms_sigma_np = 1.0
     boxes = constant_op.constant(boxes_np)
     scores = constant_op.constant(scores_np)
     max_output_size = constant_op.constant(max_output_size_np)
