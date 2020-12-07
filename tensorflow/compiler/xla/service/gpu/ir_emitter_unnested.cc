@@ -71,6 +71,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/kernel_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 #include "tensorflow/compiler/xla/service/gpu/memset_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/nccl_all_gather_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_to_all_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/parallel_loop_emitter.h"
@@ -2432,6 +2433,103 @@ Status IrEmitterUnnested::HandleCollectivePermute(HloInstruction* hlo) {
   AddThunkToThunkSequence(absl::make_unique<CollectivePermuteThunk>(
       GetThunkInfo(hlo), std::move(config),
       GetAllocationSlice(*hlo->operand(0)), GetAllocationSlice(*hlo)));
+  return Status::OK();
+}
+
+Status IrEmitterUnnested::HandleAllGather(HloInstruction* hlo) {
+  VLOG(2) << "AllGather; replica count: " << hlo_module_config_.replica_count()
+          << "; operand count: " << hlo->operand_count()
+          << "; NCCL is enabled: " << NcclAllGatherThunk::NcclIsEnabled();
+
+  // Note the replica_count == 1 case is handled via device-to-device copy
+  // below.
+  bool should_use_nccl_thunk = hlo_module_config_.replica_count() > 1 &&
+                               NcclAllGatherThunk::CanImplement(hlo);
+
+  if (should_use_nccl_thunk) {
+    std::vector<NcclAllGatherThunk::Buffer> buffers;
+    std::vector<BufferAllocation::Slice> tuple_element_buffers;
+    buffers.resize(hlo->operand_count());
+    tuple_element_buffers.reserve(hlo->operand_count());
+    CHECK(hlo->shape().IsArray() && hlo->operand_count() == 1 ||
+          hlo->shape().IsTuple() &&
+              hlo->shape().tuple_shapes_size() == hlo->operand_count());
+    for (int i = 0; i < hlo->operand_count(); ++i) {
+      CHECK(hlo->operand(i)->shape().IsArray())
+          << "Operands to all-gather must be arrays: " << hlo->ToString();
+      buffers[i].element_count =
+          ShapeUtil::ElementsIn(hlo->operand(i)->shape());
+      buffers[i].source_buffer = GetAllocationSlice(*hlo->operand(i));
+      buffers[i].destination_buffer = GetAllocationSlice(
+          *hlo, hlo->shape().IsTuple() ? ShapeIndex({i}) : ShapeIndex({}));
+      tuple_element_buffers.push_back(buffers[i].destination_buffer);
+    }
+    NcclAllGatherConfig config =
+        GetNcclAllGatherConfig(hlo, hlo_module_config_.replica_count());
+    auto all_gather_thunk = absl::make_unique<NcclAllGatherThunk>(
+        GetThunkInfo(hlo), std::move(config),
+        /*buffers=*/std::move(buffers));
+    if (hlo->shape().IsTuple()) {
+      std::vector<std::unique_ptr<Thunk>> thunks;
+      thunks.push_back(std::move(all_gather_thunk));
+      thunks.push_back(absl::make_unique<TupleThunk>(
+          Thunk::ThunkInfo(), tuple_element_buffers, GetAllocationSlice(*hlo)));
+      AddThunkToThunkSequence(absl::make_unique<SequentialThunk>(
+          GetThunkInfo(hlo), std::move(thunks)));
+    } else {
+      AddThunkToThunkSequence(std::move(all_gather_thunk));
+    }
+
+    return Status::OK();
+  }
+
+  if (hlo_module_config_.replica_count() != 1) {
+    string message = absl::StrFormat(
+        "Requested AllGather not implemented on GPU; replica_count: %d; "
+        "operand_count: %d; NCCL support: %d",
+        hlo_module_config_.replica_count(), hlo->operand_count(),
+        NcclAllGatherThunk::NcclIsEnabled());
+    if (hlo->operand_count() > 0) {
+      absl::StrAppendFormat(
+          &message, "; first operand array element-type: %s",
+          PrimitiveType_Name(hlo->operand(0)->shape().element_type()));
+    }
+    return Unimplemented("%s", message);
+  }
+
+  // All-gather with one operand and one replica is simply the identity
+  // function. Buffer assignment expects a copy, so that's what we do.
+  if (hlo->operand_count() == 1) {
+    CHECK(hlo->operand(0)->shape().IsArray())
+        << "Operands to all-gather must be arrays: " << hlo->ToString();
+    AddThunkToThunkSequence(absl::make_unique<DeviceToDeviceCopyThunk>(
+        GetThunkInfo(hlo),
+        /*source_address=*/GetAllocationSlice(*hlo->operand(0)),
+        /*destination_buffer=*/GetAllocationSlice(*hlo),
+        /*mem_size=*/ShapeUtil::ByteSizeOf(hlo->shape())));
+    return Status::OK();
+  }
+
+  // One-replica all-gather with multiple operands produces a tuple of the
+  // inputs. Again, buffer assignment expects us to copy each.
+  std::vector<std::unique_ptr<Thunk>> thunks;
+  std::vector<BufferAllocation::Slice> tuple_element_buffers;
+  for (int64 i = 0; i < hlo->operand_count(); ++i) {
+    tuple_element_buffers.push_back(ir_emitter_context_->buffer_assignment()
+                                        .GetUniqueSlice(hlo, {i})
+                                        .ValueOrDie());
+    thunks.push_back(absl::make_unique<DeviceToDeviceCopyThunk>(
+        Thunk::ThunkInfo(),
+        /*source_address=*/GetAllocationSlice(*hlo->operand(i)),
+        /*destination_buffer=*/tuple_element_buffers.back(),
+        /*mem_size=*/ShapeUtil::ByteSizeOf(hlo->operand(i)->shape())));
+  }
+
+  // Output a tuple of the buffers above.
+  thunks.push_back(absl::make_unique<TupleThunk>(
+      Thunk::ThunkInfo(), tuple_element_buffers, GetAllocationSlice(*hlo)));
+  AddThunkToThunkSequence(
+      absl::make_unique<SequentialThunk>(GetThunkInfo(hlo), std::move(thunks)));
   return Status::OK();
 }
 
