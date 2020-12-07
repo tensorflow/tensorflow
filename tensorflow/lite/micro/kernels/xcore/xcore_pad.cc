@@ -3,7 +3,7 @@
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/xcore/xcore_custom_options.h"
-#include "tensorflow/lite/util.h"
+#include "tensorflow/lite/micro/memory_helpers.h"
 
 extern "C" {
 #include "lib_nn/api/nn_operator.h"
@@ -59,7 +59,7 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
   op_data->pv.right = pad_sizes[5];
 
   size_t type_size;
-  TF_LITE_ENSURE_OK(context, GetSizeOfType(context, input->type, &type_size));
+  TF_LITE_ENSURE_OK(context, TfLiteTypeSizeOf(input->type, &type_size));
   auto bytes_per_pixel = type_size * x.channels;
   TF_LITE_ENSURE(context, bytes_per_pixel % 4 == 0);
 
