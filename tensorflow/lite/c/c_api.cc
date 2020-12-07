@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/delegates/interpreter_utils.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/error_reporter.h"
 #include "tensorflow/lite/interpreter.h"
@@ -165,7 +166,12 @@ TfLiteStatus TfLiteInterpreterAllocateTensors(TfLiteInterpreter* interpreter) {
 }
 
 TfLiteStatus TfLiteInterpreterInvoke(TfLiteInterpreter* interpreter) {
-  return interpreter->impl->Invoke();
+  if (interpreter->enable_delegate_fallback) {
+    return tflite::delegates::InterpreterUtils::InvokeWithCPUFallback(
+        interpreter->impl.get());
+  } else {
+    return interpreter->impl->Invoke();
+  }
 }
 
 int32_t TfLiteInterpreterGetOutputTensorCount(
@@ -298,8 +304,12 @@ TfLiteInterpreter* InterpreterCreateWithOpResolver(
     }
   }
 
+  bool enable_delegate_fallback =
+      optional_options != nullptr && optional_options->enable_delegate_fallback;
+
   return new TfLiteInterpreter{model->impl, std::move(optional_error_reporter),
-                               std::move(interpreter)};
+                               std::move(interpreter),
+                               enable_delegate_fallback};
 }
 
 }  // namespace internal

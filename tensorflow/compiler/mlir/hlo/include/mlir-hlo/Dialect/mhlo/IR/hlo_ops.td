@@ -490,7 +490,8 @@ def HLO_RecvOp : HLO_Op<"recv", []> {
 // MHLO parallelism related op definitions.
 //===----------------------------------------------------------------------===//
 
-def HLO_ReplicaIdOp : HLO_Op<"replica_id", [NoSideEffect]>,
+def HLO_ReplicaIdOp : HLO_Op<"replica_id", [NoSideEffect,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]>,
       BASE_HLO_ReplicaIdOp {
   let results = (outs TensorOf<[UI32]>);
 }

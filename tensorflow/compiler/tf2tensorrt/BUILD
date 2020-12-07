@@ -50,27 +50,11 @@ cc_library(
     ]),
 )
 
-# Copybara will replace tensorrt_lib_oss_placeholder with this one
-alias(
-    name = "tensorrt_lib_oss",
-    actual = select({
-        "@local_config_tensorrt//:use_static_tensorrt": "@local_config_tensorrt//:tensorrt",
-        "//conditions:default": ":tensorrt_stub",
-    }),
-    visibility = ["//visibility:private"],
-)
-
-alias(
-    name = "tensorrt_lib_oss_placeholder",
-    actual = ":tensorrt_stub",
-    visibility = ["//visibility:private"],
-)
-
 alias(
     name = "tensorrt_lib",
     actual = select({
-        "//tensorflow:oss": ":tensorrt_lib_oss",
-        "//conditions:default": "@local_config_tensorrt//:tensorrt",
+        "@local_config_tensorrt//:use_static_tensorrt": "@local_config_tensorrt//:tensorrt",
+        "//conditions:default": ":tensorrt_stub",
     }),
     visibility = ["//visibility:private"],
 )
@@ -606,21 +590,15 @@ tf_proto_library(
     protodeps = tf_additional_all_protos(),
 )
 
-tensorrt_static_define_oss_placeholder = []
-
-# @unused
-# Copybara will replace tensorrt_static_define_oss_placeholder with this one
-tensorrt_static_define_oss = select({
-    "@local_config_tensorrt//:use_static_tensorrt": ["TF_OSS_TENSORRT_STATIC=1"],
-    "//conditions:default": [],
-})
-
 cc_library(
     name = "py_utils",
     srcs = ["utils/py_utils.cc"],
     hdrs = ["utils/py_utils.h"],
     copts = tf_copts(),
-    defines = tensorrt_static_define_oss,
+    defines = select({
+        "@local_config_tensorrt//:use_static_tensorrt": ["TF_OSS_TENSORRT_STATIC=1"],
+        "//conditions:default": [],
+    }),
     deps = if_tensorrt([
         ":common_utils",
         ":tensorrt_lib",

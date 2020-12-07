@@ -113,17 +113,16 @@ void TestDelegate::TearDown() {
   delegate_.reset();
 }
 
-TestDelegate::SimpleDelegate::SimpleDelegate(const std::vector<int>& nodes,
-                                             int64_t delegate_flags,
-                                             bool fail_node_prepare,
-                                             int min_ops_per_subset,
-                                             bool fail_node_invoke,
-                                             bool automatic_shape_propagation)
+TestDelegate::SimpleDelegate::SimpleDelegate(
+    const std::vector<int>& nodes, int64_t delegate_flags,
+    bool fail_node_prepare, int min_ops_per_subset, bool fail_node_invoke,
+    bool automatic_shape_propagation, bool custom_op)
     : nodes_(nodes),
       fail_delegate_node_prepare_(fail_node_prepare),
       min_ops_per_subset_(min_ops_per_subset),
       fail_delegate_node_invoke_(fail_node_invoke),
-      automatic_shape_propagation_(automatic_shape_propagation) {
+      automatic_shape_propagation_(automatic_shape_propagation),
+      custom_op_(custom_op) {
   delegate_.Prepare = [](TfLiteContext* context,
                          TfLiteDelegate* delegate) -> TfLiteStatus {
     auto* simple = static_cast<SimpleDelegate*>(delegate->data_);
@@ -137,8 +136,12 @@ TestDelegate::SimpleDelegate::SimpleDelegate(const std::vector<int>& nodes,
       TfLiteNode* node;
       TfLiteRegistration* reg;
       context->GetNodeAndRegistration(context, node_index, &node, &reg);
-      TFLITE_CHECK_EQ(reg->builtin_code, tflite::BuiltinOperator_CUSTOM);
-      TFLITE_CHECK_EQ(strcmp(reg->custom_name, "my_add"), 0);
+      if (simple->custom_op_) {
+        TFLITE_CHECK_EQ(reg->builtin_code, tflite::BuiltinOperator_CUSTOM);
+        TFLITE_CHECK_EQ(strcmp(reg->custom_name, "my_add"), 0);
+      } else {
+        TFLITE_CHECK_EQ(reg->builtin_code, tflite::BuiltinOperator_ADD);
+      }
     }
     // Check that all nodes are available
     TfLiteIntArray* execution_plan;
@@ -150,8 +153,12 @@ TestDelegate::SimpleDelegate::SimpleDelegate(const std::vector<int>& nodes,
       context->GetNodeAndRegistration(context, node_index, &node, &reg);
       if (exec_index == node_index) {
         // Check op details only if it wasn't delegated already.
-        TFLITE_CHECK_EQ(reg->builtin_code, tflite::BuiltinOperator_CUSTOM);
-        TFLITE_CHECK_EQ(strcmp(reg->custom_name, "my_add"), 0);
+        if (simple->custom_op_) {
+          TFLITE_CHECK_EQ(reg->builtin_code, tflite::BuiltinOperator_CUSTOM);
+          TFLITE_CHECK_EQ(strcmp(reg->custom_name, "my_add"), 0);
+        } else {
+          TFLITE_CHECK_EQ(reg->builtin_code, tflite::BuiltinOperator_ADD);
+        }
       }
     }
 
@@ -182,7 +189,7 @@ TestDelegate::SimpleDelegate::SimpleDelegate(const std::vector<int>& nodes,
              sizeof(int) * nodes_to_separate->size);
     }
 
-    // Another call to PreviewDelegateParitioning should be okay, since
+    // Another call to PreviewDelegatePartitioning should be okay, since
     // partitioning memory is managed by context.
     TFLITE_CHECK_EQ(
         context->PreviewDelegatePartitioning(context, nodes_to_separate,

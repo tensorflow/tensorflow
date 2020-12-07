@@ -368,7 +368,6 @@ distribute_py_test(
         "no_windows_gpu",
         "noasan",  # TODO(b/170902997)
         "noguitar",  # TODO(b/172354344)
-        "notap",  # TODO(b/170902997)
         "notsan",
     ],
     tpu_tags = [

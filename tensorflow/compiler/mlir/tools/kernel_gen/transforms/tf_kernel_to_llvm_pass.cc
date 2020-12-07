@@ -59,7 +59,7 @@ class ConvertLaunchFuncOpToTfRuntimeCallPattern
       gpu::LaunchFuncOp launch_op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override;
 
-  MLIRContext *context_ = &this->typeConverter.getContext();
+  MLIRContext *context_ = &this->getTypeConverter()->getContext();
 
   LLVM::LLVMType llvm_void_type_ = LLVM::LLVMType::getVoidTy(context_);
   LLVM::LLVMType llvm_pointer_type_ = LLVM::LLVMType::getInt8PtrTy(context_);
@@ -68,7 +68,7 @@ class ConvertLaunchFuncOpToTfRuntimeCallPattern
   LLVM::LLVMType llvm_int32_type_ = LLVM::LLVMType::getInt32Ty(context_);
   LLVM::LLVMType llvm_int64_type_ = LLVM::LLVMType::getInt64Ty(context_);
   LLVM::LLVMType llvm_intptr_type_ = LLVM::LLVMType::getIntNTy(
-      context_, this->typeConverter.getPointerBitwidth(0));
+      context_, this->getTypeConverter()->getPointerBitwidth(0));
 
   llvm::SmallString<32> gpu_binary_annotation_;
 };
@@ -91,7 +91,7 @@ Value ConvertLaunchFuncOpToTfRuntimeCallPattern::generateParamsArray(
     OpBuilder &builder) const {
   auto loc = launch_op.getLoc();
   auto num_kernel_operands = launch_op.getNumKernelOperands();
-  auto arguments = typeConverter.promoteOperands(
+  auto arguments = getTypeConverter()->promoteOperands(
       loc, launch_op.getOperands().take_back(num_kernel_operands),
       operands.take_back(num_kernel_operands), builder);
   auto num_arguments = arguments.size();

@@ -137,6 +137,7 @@ $(wildcard tensorflow/lite/c/*.c) \
 $(wildcard tensorflow/lite/c/*.cc) \
 $(wildcard tensorflow/lite/core/*.cc) \
 $(wildcard tensorflow/lite/core/api/*.cc) \
+$(wildcard tensorflow/lite/delegates/interpreter_utils.cc) \
 $(wildcard tensorflow/lite/experimental/resource/*.cc) \
 $(wildcard tensorflow/lite/schema/schema_utils.cc) \
 $(wildcard tensorflow/lite/tools/make/downloads/ruy/ruy/*.cc)

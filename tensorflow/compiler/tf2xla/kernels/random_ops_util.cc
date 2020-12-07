@@ -13,29 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/profiler/utils/time_utils.h"
+#include "tensorflow/compiler/tf2xla/kernels/random_ops_util.h"
 
-#include "absl/time/clock.h"
-#include "absl/time/time.h"
+#include "tensorflow/compiler/xla/client/lib/constants.h"
 
 namespace tensorflow {
-namespace profiler {
 
-int64 GetCurrentTimeNanos() {
-  // absl::GetCurrentTimeNanos() is much faster than EnvTime::NowNanos().
-  // It is wrapped under tensorflow::profiler::GetCurrentTimeNanos to avoid ODR
-  // violation and to allow switching to yet another implementation if required.
-  return absl::GetCurrentTimeNanos();
+xla::XlaOp GetU64FromS32Seeds(xla::XlaOp seed0, xla::XlaOp seed1) {
+  // Here, the seeds are cast to unsigned type of the same width to have leading
+  // zeros in the 64 bit representation.
+  xla::XlaOp u64_seed0 =
+      ConvertElementType(ConvertElementType(seed0, xla::U32), xla::U64);
+  xla::XlaOp u64_seed1 =
+      ConvertElementType(ConvertElementType(seed1, xla::U32), xla::U64);
+  return u64_seed0 |
+         (u64_seed1 << ConstantR0WithType(seed0.builder(), xla::U64, 32));
 }
 
-void SleepForNanos(int64 ns) { absl::SleepFor(absl::Nanoseconds(ns)); }
-
-void SpinForNanos(int64 ns) {
-  if (ns <= 0) return;
-  int64 deadline = GetCurrentTimeNanos() + ns;
-  while (GetCurrentTimeNanos() < deadline) {
-  }
-}
-
-}  // namespace profiler
 }  // namespace tensorflow

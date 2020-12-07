@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/data_service.h"
 #include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
+#include "tensorflow/core/data/service/task_runner.h"
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -60,11 +61,7 @@ class DataServiceWorkerImpl {
     TaskDef task_def;
     mutex mu;
     bool initialized TF_GUARDED_BY(mu) = false;
-    bool finished = false;
-    // TODO(aaudibert): Have standalone::Iterator own a reference to
-    // standalone::Dataset so that we don't need to store the dataset here.
-    std::unique_ptr<standalone::Dataset> dataset;
-    std::unique_ptr<standalone::Iterator> iterator;
+    std::unique_ptr<TaskRunner> task_runner;
   };
 
   // Sends task status to the dispatcher and checks for dispatcher commands.

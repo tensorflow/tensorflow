@@ -674,6 +674,14 @@ func @fold_compare_same_gt(%arg0: tensor<i64>) -> tensor<i1> {
   return %0 : tensor<i1>
 }
 
+// Address NaN != NaN.
+// CHECK-LABEL: dont_fold_compare_same_eq_float
+func @dont_fold_compare_same_eq_float(%arg0: tensor<f16>) -> tensor<i1> {
+  // CHECK: %0 = "mhlo.compare"(%arg0, %arg0) {comparison_direction = "EQ"} : (tensor<f16>, tensor<f16>) -> tensor<i1>
+  %0 = "mhlo.compare"(%arg0, %arg0) {comparison_direction = "EQ"} : (tensor<f16>, tensor<f16>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+
 // CHECK-LABEL: fold_compare_false_eq
 func @fold_compare_false_eq() -> tensor<i1> {
   %0 = mhlo.constant dense<0> : tensor<i32>

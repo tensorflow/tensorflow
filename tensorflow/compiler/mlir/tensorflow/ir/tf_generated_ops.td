@@ -15745,6 +15745,8 @@ def TF_VariableOp : TF_Op<"Variable", []> {
   );
 
   TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_VariableShapeOp : TF_Op<"VariableShape", []> {

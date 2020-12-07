@@ -255,3 +255,8 @@ def XdivyWithSqrtDivisor : Pat<(TF_XdivyOp $arg0, (TF_SqrtOp $arg1)),
 
 def ReadVariableOfCast : Pat<(TF_ReadVariableOp (TF_CastOp:$output $x, BoolAttr:$Truncate)), (TF_ReadVariableOp $x), [(HasOnlyReadVariableOpUsers $output)]>;
 
+//===----------------------------------------------------------------------===//
+// Canonicalize tf.Variable ops to tf.VariableV2 ops
+//===----------------------------------------------------------------------===//
+
+def VariableToVariableV2 : Pat<(TF_VariableOp $shape, $container, $shard_name), (TF_VariableV2Op $shape, $container, $shard_name)>;
