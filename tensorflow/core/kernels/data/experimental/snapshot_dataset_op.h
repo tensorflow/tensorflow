@@ -46,6 +46,8 @@ class SnapshotDatasetV2Op : public UnaryDatasetOpKernel {
   static constexpr const char* const kCompression = "compression";
   static constexpr const char* const kReaderPrefix = "reader_prefix";
   static constexpr const char* const kWriterPrefix = "writer_prefix";
+  static constexpr const char* const kHashValid = "hash_valid";
+  static constexpr const char* const kHash = "hash";
   static constexpr const char* const kCompressionAuto = "AUTO";
   static constexpr const char* const kReaderFunc = "reader_func";
   static constexpr const char* const kShardFunc = "shard_func";
@@ -56,6 +58,8 @@ class SnapshotDatasetV2Op : public UnaryDatasetOpKernel {
   static constexpr const char* const kReaderFuncTarguments =
       "Treader_func_args";
   static constexpr const char* const kShardFuncTarguments = "Tshard_func_args";
+  // Note: If a new constant is declared here, it *must* be defined in
+  // snapshot_dataset_op.cc, otherwise it will not compile in debug mode.
 
   explicit SnapshotDatasetV2Op(OpKernelConstruction* ctx);
 
@@ -75,6 +79,8 @@ class SnapshotDatasetV2Op : public UnaryDatasetOpKernel {
   std::string compression_;
   std::string reader_prefix_;
   std::string writer_prefix_;
+  bool hash_valid_;
+  uint64 hash_;
 
   std::shared_ptr<FunctionMetadata> reader_func_metadata_;
   std::shared_ptr<FunctionMetadata> shard_func_metadata_;

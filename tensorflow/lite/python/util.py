@@ -33,6 +33,7 @@ from tensorflow.core.protobuf import graph_debug_info_pb2
 from tensorflow.core.protobuf import meta_graph_pb2 as _meta_graph_pb2
 from tensorflow.lite.python import schema_py_generated as schema_fb
 from tensorflow.lite.python import schema_util
+from tensorflow.lite.python import tflite_keras_util as _tflite_keras_util
 from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs
 from tensorflow.lite.python.op_hint import find_all_hinted_output_nodes
 from tensorflow.lite.toco import types_pb2 as _types_pb2
@@ -44,6 +45,10 @@ from tensorflow.python.framework import graph_util as tf_graph_util
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.training.saver import export_meta_graph as _export_meta_graph
 
+# Keras functions used by TFLite
+model_input_signature = _tflite_keras_util.model_input_signature
+trace_model_call = _tflite_keras_util.trace_model_call
+
 # Map of tf.dtypes to TFLite types_flag_pb2.
 _MAP_TF_TO_TFLITE_TYPES = {
     dtypes.float32: _types_pb2.FLOAT,
@@ -51,6 +56,7 @@ _MAP_TF_TO_TFLITE_TYPES = {
     dtypes.int32: _types_pb2.INT32,
     dtypes.uint8: _types_pb2.QUANTIZED_UINT8,
     dtypes.int64: _types_pb2.INT64,
+    dtypes.uint64: _types_pb2.UINT64,
     dtypes.string: _types_pb2.STRING,
     dtypes.bool: _types_pb2.BOOL,
     dtypes.int16: _types_pb2.QUANTIZED_INT16,
@@ -377,7 +383,7 @@ def build_debug_info_func(original_graph):
                 (func, sub_func.graph.get_operation_by_name(name)))
           else:
             sys.stderr.write(
-                "Use '@tf.function' or '@defun' to decorate the function.")
+                "Use '@tf.function' or '@defun' to decorate the function.\n")
             continue
       except KeyError:
         # New node created by graph optimizer. No stack trace from source code.
@@ -645,7 +651,7 @@ def _modify_model_input_type(model, inference_input_type=dtypes.float32):
     builtin_code = schema_util.get_builtin_code_from_operator_code(opcode)
     if builtin_code == schema_fb.BuiltinOperator.QUANTIZE:
       quant_opcode_idxs.append(idx)
-  if not quant_opcode_idxs:
+  if operators and not quant_opcode_idxs:
     raise ValueError("Model input is not quantized.")
 
   # Validate that the model input is quantized
@@ -683,7 +689,11 @@ def _modify_model_input_type(model, inference_input_type=dtypes.float32):
       input_quant_ops.append(op)
 
   if len(subgraph.inputs) != len(input_quant_ops):
-    raise ValueError("Model input is not quantized.")
+    logging.warning(
+        "For model inputs containing unsupported operations which cannot be "
+        "quantized, the `inference_input_type` attribute will default to the "
+        "original type."
+        )
 
   # Modify model input type
   if inference_input_type == dtypes.uint8:
@@ -726,7 +736,7 @@ def _modify_model_output_type(model, inference_output_type=dtypes.float32):
     builtin_code = schema_util.get_builtin_code_from_operator_code(opcode)
     if builtin_code == schema_fb.BuiltinOperator.DEQUANTIZE:
       dequant_opcode_idxs.append(idx)
-  if not dequant_opcode_idxs:
+  if operators and not dequant_opcode_idxs:
     raise ValueError("Model output is not dequantized.")
 
   # Validate that the model output is dequantized
@@ -765,7 +775,11 @@ def _modify_model_output_type(model, inference_output_type=dtypes.float32):
       output_dequant_ops.append(op)
 
   if len(subgraph.outputs) != len(output_dequant_ops):
-    raise ValueError("Model output is not dequantized.")
+    logging.warning(
+        "For model outputs containing unsupported operations which cannot be "
+        "quantized, the `inference_output_type` attribute will default to the "
+        "original type."
+        )
 
   # Modify model output type
   if inference_output_type == dtypes.uint8:

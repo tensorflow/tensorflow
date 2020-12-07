@@ -293,7 +293,12 @@ def class_and_config_for_serialized_keras_object(
   class_name = config['class_name']
   cls = get_registered_object(class_name, custom_objects, module_objects)
   if cls is None:
-    raise ValueError('Unknown ' + printable_module_name + ': ' + class_name)
+    raise ValueError(
+        'Unknown {}: {}. Please ensure this object is '
+        'passed to the `custom_objects` argument. See '
+        'https://www.tensorflow.org/guide/keras/save_and_serialize'
+        '#registering_the_custom_object for details.'
+        .format(printable_module_name, class_name))
 
   cls_config = config['config']
   # Check if `cls_config` is a list. If it is a list, return the class and the
@@ -375,7 +380,12 @@ def deserialize_keras_object(identifier,
       obj = module_objects.get(object_name)
       if obj is None:
         raise ValueError(
-            'Unknown ' + printable_module_name + ': ' + object_name)
+            'Unknown {}: {}. Please ensure this object is '
+            'passed to the `custom_objects` argument. See '
+            'https://www.tensorflow.org/guide/keras/save_and_serialize'
+            '#registering_the_custom_object for details.'
+            .format(printable_module_name, object_name))
+
     # Classes passed by name are instantiated with no args, functions are
     # returned as-is.
     if tf_inspect.isclass(obj):

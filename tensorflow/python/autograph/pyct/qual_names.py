@@ -108,6 +108,12 @@ class QN(object):
     return self._has_attr
 
   @property
+  def attr(self):
+    if not self._has_attr:
+      raise ValueError('Cannot get attr of non-attribute "%s".' % self)
+    return self.qn[1]
+
+  @property
   def parent(self):
     if self._parent is None:
       raise ValueError('Cannot get parent of simple name "%s".' % self.qn[0])
@@ -159,6 +165,18 @@ class QN(object):
     return (isinstance(other, QN) and self.qn == other.qn and
             self.has_subscript() == other.has_subscript() and
             self.has_attr() == other.has_attr())
+
+  def __lt__(self, other):
+    if isinstance(other, QN):
+      return self.qn < other.qn
+    else:
+      return str(self) < str(other)
+
+  def __gt__(self, other):
+    if isinstance(other, QN):
+      return self.qn > other.qn
+    else:
+      return str(self) > str(other)
 
   def __str__(self):
     root = self.qn[0]

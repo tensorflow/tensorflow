@@ -28,6 +28,8 @@ import inspect
 import os
 from typing import List, Sequence, Tuple, Union
 
+from . import xla_extension as _xla
+
 from absl import logging
 import numpy as np
 
@@ -35,8 +37,6 @@ import numpy as np
 # Python bindings are currently packaged both as part of jaxlib and as part
 # of TensorFlow. If we use protocol buffers here, then importing both jaxlib
 # and TensorFlow may fail with duplicate protocol buffer message definitions.
-
-from tensorflow.compiler.xla.python import xla_extension as _xla
 
 # Most functions are snake_case for consistency with other modules, some
 # method names are CamelCase for consistency with XLA.
@@ -83,7 +83,7 @@ def _gpu_backend_factory(distributed_client=None, node_id=0):
     config.memory_fraction = float(memory_fraction)
   config.preallocate = preallocate not in ('0', 'false', 'False')
 
-  return _xla.get_nvidia_gpu_client(
+  return _xla.get_gpu_client(
       asynchronous=True,
       allocator_config=config,
       distributed_client=distributed_client,
@@ -419,6 +419,7 @@ XlaComputation = _xla.XlaComputation
 FftType = _xla.FftType
 Client = _xla.Client
 Buffer = _xla.Buffer
+DeviceArrayBase = _xla.DeviceArrayBase
 Executable = _xla.Executable
 
 
@@ -607,7 +608,7 @@ def make_convolution_dimension_numbers(
 class OpSharding(object):
   """Python representation of a xla.OpSharding protobuf."""
   __slots__ = ('type', 'tile_assignment_dimensions', 'tile_assignment_devices',
-               'tuple_shardings')
+               'tuple_shardings', 'replicate_on_last_tile_dim')
 
   Type = _xla.OpSharding_Type
 
@@ -616,6 +617,7 @@ class OpSharding(object):
     self.tile_assignment_dimensions = []
     self.tile_assignment_devices = []
     self.tuple_shardings = []
+    self.replicate_on_last_tile_dim = False
 
 
 class PrecisionConfig(object):

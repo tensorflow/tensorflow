@@ -1,3 +1,4 @@
+load("@rules_proto//proto:defs.bzl", "proto_library")
 load(
     "@com_google_protobuf//:protobuf.bzl",
     "cc_proto_library",
@@ -12,29 +13,48 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
-PROTO_FILES = [
-    "google/protobuf/any.proto",
-    "google/protobuf/api.proto",
-    "google/protobuf/compiler/plugin.proto",
-    "google/protobuf/descriptor.proto",
-    "google/protobuf/duration.proto",
-    "google/protobuf/empty.proto",
-    "google/protobuf/field_mask.proto",
-    "google/protobuf/source_context.proto",
-    "google/protobuf/struct.proto",
-    "google/protobuf/timestamp.proto",
-    "google/protobuf/type.proto",
-    "google/protobuf/wrappers.proto",
-]
+# Map of all well known protos.
+# name => (include path, imports)
+WELL_KNOWN_PROTO_MAP = {
+    "any": ("google/protobuf/any.proto", []),
+    "api": (
+        "google/protobuf/api.proto",
+        [
+            "source_context",
+            "type",
+        ],
+    ),
+    "compiler_plugin": (
+        "google/protobuf/compiler/plugin.proto",
+        ["descriptor"],
+    ),
+    "descriptor": ("google/protobuf/descriptor.proto", []),
+    "duration": ("google/protobuf/duration.proto", []),
+    "empty": ("google/protobuf/empty.proto", []),
+    "field_mask": ("google/protobuf/field_mask.proto", []),
+    "source_context": ("google/protobuf/source_context.proto", []),
+    "struct": ("google/protobuf/struct.proto", []),
+    "timestamp": ("google/protobuf/timestamp.proto", []),
+    "type": (
+        "google/protobuf/type.proto",
+        [
+            "any",
+            "source_context",
+        ],
+    ),
+    "wrappers": ("google/protobuf/wrappers.proto", []),
+}
+
+RELATIVE_WELL_KNOWN_PROTOS = [proto[1][0] for proto in WELL_KNOWN_PROTO_MAP.items()]
 
 genrule(
     name = "link_proto_files",
-    outs = PROTO_FILES,
+    outs = RELATIVE_WELL_KNOWN_PROTOS,
     cmd = """
       for i in $(OUTS); do
         f=$${i#$(@D)/}
         mkdir -p $(@D)/$${f%/*}
-        ln -sf $(INCLUDEDIR)/$$f $(@D)/$$f
+        ln -sf $(PROTOBUF_INCLUDE_PATH)/$$f $(@D)/$$f
       done
     """,
 )
@@ -85,74 +105,9 @@ py_library(
     visibility = ["//visibility:public"],
 )
 
-proto_library(
-    name = "any_proto",
-    srcs = ["google/protobuf/any.proto"],
+[proto_library(
+    name = proto[0] + "_proto",
+    srcs = [proto[1][0]],
     visibility = ["//visibility:public"],
-)
-
-proto_library(
-    name = "api_proto",
-    srcs = ["google/protobuf/api.proto"],
-    visibility = ["//visibility:public"],
-)
-
-proto_library(
-    name = "compiler_plugin_proto",
-    srcs = ["google/protobuf/compiler/plugin.proto"],
-    visibility = ["//visibility:public"],
-)
-
-proto_library(
-    name = "descriptor_proto",
-    srcs = ["google/protobuf/descriptor.proto"],
-    visibility = ["//visibility:public"],
-)
-
-proto_library(
-    name = "duration_proto",
-    srcs = ["google/protobuf/duration.proto"],
-    visibility = ["//visibility:public"],
-)
-
-proto_library(
-    name = "empty_proto",
-    srcs = ["google/protobuf/empty.proto"],
-    visibility = ["//visibility:public"],
-)
-
-proto_library(
-    name = "field_mask_proto",
-    srcs = ["google/protobuf/field_mask.proto"],
-    visibility = ["//visibility:public"],
-)
-
-proto_library(
-    name = "source_context_proto",
-    srcs = ["google/protobuf/source_context.proto"],
-    visibility = ["//visibility:public"],
-)
-
-proto_library(
-    name = "struct_proto",
-    srcs = ["google/protobuf/struct.proto"],
-    visibility = ["//visibility:public"],
-)
-
-proto_library(
-    name = "timestamp_proto",
-    srcs = ["google/protobuf/timestamp.proto"],
-    visibility = ["//visibility:public"],
-)
-
-proto_library(
-    name = "type_proto",
-    srcs = ["google/protobuf/type.proto"],
-    visibility = ["//visibility:public"],
-)
-
-proto_library(
-    name = "wrappers_proto",
-    srcs = ["google/protobuf/wrappers.proto"],
-    visibility = ["//visibility:public"],
-)
+    deps = [dep + "_proto" for dep in proto[1][1]],
+) for proto in WELL_KNOWN_PROTO_MAP.items()]

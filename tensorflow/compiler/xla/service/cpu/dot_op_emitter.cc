@@ -28,7 +28,7 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/EDSC/Intrinsics.h"  // from @llvm-project
 #include "mlir/EDSC/Builders.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project

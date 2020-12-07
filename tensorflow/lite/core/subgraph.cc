@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/core/api/tensor_utils.h"
-#include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/graph_info.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -163,9 +162,9 @@ class InterpreterInfo : public GraphInfo {
  public:
   explicit InterpreterInfo(Subgraph* subgraph) : subgraph_(subgraph) {}
 
-  size_t num_tensors() const override { return subgraph_->tensors().size(); }
+  size_t num_tensors() const override { return subgraph_->tensors_size(); }
   TfLiteTensor* tensor(size_t index) override {
-    return &subgraph_->tensors()[index];
+    return subgraph_->tensor(index);
   }
   size_t num_execution_nodes() const override {
     return subgraph_->execution_plan().size();
@@ -219,8 +218,8 @@ Subgraph::Subgraph(ErrorReporter* error_reporter,
 
   // Reserve some space for the tensors to avoid excessive resizing.
   tensors_.reserve(kTensorsReservedCapacity);
-  nodes_and_registration().reserve(kTensorsReservedCapacity);
-  // Invalid to call these these except from TfLiteDelegate
+  nodes_and_registration_.reserve(kTensorsReservedCapacity);
+  // Invalid to call these except from TfLiteDelegate
   SwitchToKernelContext();
 }
 
@@ -312,7 +311,7 @@ TfLiteDelegateParams* CreateDelegateParams(TfLiteDelegate* delegate,
   // Use `char*` for conveniently step through the allocated space by bytes.
   char* allocation = static_cast<char*>(malloc(allocation_size));
 
-  // Step 3: Fill all data structures structures.
+  // Step 3: Fill all data structures.
   TfLiteDelegateParams* params =
       reinterpret_cast<TfLiteDelegateParams*>(allocation);
   params->delegate = delegate;
@@ -962,12 +961,13 @@ TfLiteStatus Subgraph::PrepareOpsAndTensors() {
   // overhead should be minimal since the number of custom-allocated tensors
   // will typically be low.
   for (int i = 0; i < custom_allocations_.size(); ++i) {
-    auto idx_and_alloc = custom_allocations_[i];
-    auto& tensor = tensors()[idx_and_alloc.first];
-    const auto& alloc = idx_and_alloc.second;
-    TF_LITE_ENSURE(context(), tensor.allocation_type == kTfLiteCustom);
+    auto index_and_alloc = custom_allocations_[i];
+    TfLiteTensor* tensor_at_index = tensor(index_and_alloc.first);
+    const auto& alloc = index_and_alloc.second;
+    TF_LITE_ENSURE(context(),
+                   tensor_at_index->allocation_type == kTfLiteCustom);
     TF_LITE_ENSURE_STATUS(
-        ValidateCustomAllocationForTensor(context(), &tensor, alloc));
+        ValidateCustomAllocationForTensor(context(), tensor_at_index, alloc));
   }
 
   next_execution_plan_index_to_plan_allocation_ =
@@ -989,13 +989,6 @@ TfLiteStatus Subgraph::Invoke() {
   } else if (memory_planner_ && !memory_planner_->HasNonPersistentMemory()) {
     ReportError("Non-persistent memory is not available.");
     return kTfLiteError;
-  }
-
-  // This is only needed for UseNNAPI(true);
-  if (should_apply_nnapi_delegate_ && !applied_nnapi_delegate_) {
-    TF_LITE_ENSURE_OK(&context_, ModifyGraphWithDelegate(NnApiDelegate()));
-    // only need to modify the graph once upon the first invocation.
-    applied_nnapi_delegate_ = true;
   }
 
   // Invocations are always done in node order.
@@ -1333,16 +1326,6 @@ TfLiteStatus Subgraph::ResizeTensorImpl(TfLiteTensor* tensor,
     return kTfLiteError;
   }
   return kTfLiteOk;
-}
-
-void Subgraph::UseNNAPI(bool enable) {
-  // Note that there is no way to disable the delegate once it modified the
-  // graph.
-  if (applied_nnapi_delegate_ && !enable) {
-    ReportError("Attempting to disable NNAPI delegate after it's applied.");
-  } else {
-    should_apply_nnapi_delegate_ = enable;
-  }
 }
 
 void Subgraph::SwitchToDelegateContext() {

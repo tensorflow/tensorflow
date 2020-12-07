@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/cl/kernels/convolution_transposed.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/convolution_transposed.h"
 
 #include <vector>
 
@@ -56,9 +56,11 @@ TEST_F(OpenCLOperationTest, ConvolutionTransposedSimpleWeights) {
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       ConvolutionTransposed operation = CreateConvolutionTransposed(
-          creation_context_.GetDeviceInfo(), op_def, attr);
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 4, 4, 2), &dst_tensor));
+          creation_context_.GetGpuInfo(), op_def, attr);
+      ASSERT_OK(ExecuteGPUOperation(
+          src_tensor, creation_context_,
+          absl::make_unique<ConvolutionTransposed>(std::move(operation)),
+          BHWC(1, 4, 4, 2), &dst_tensor));
       EXPECT_THAT(
           dst_tensor.data,
           Pointwise(FloatNear(eps),
@@ -94,9 +96,11 @@ TEST_F(OpenCLOperationTest, ConvolutionTransposed) {
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       ConvolutionTransposed operation = CreateConvolutionTransposed(
-          creation_context_.GetDeviceInfo(), op_def, attr);
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 4, 4, 1), &dst_tensor));
+          creation_context_.GetGpuInfo(), op_def, attr);
+      ASSERT_OK(ExecuteGPUOperation(
+          src_tensor, creation_context_,
+          absl::make_unique<ConvolutionTransposed>(std::move(operation)),
+          BHWC(1, 4, 4, 1), &dst_tensor));
       EXPECT_THAT(
           dst_tensor.data,
           Pointwise(FloatNear(eps),

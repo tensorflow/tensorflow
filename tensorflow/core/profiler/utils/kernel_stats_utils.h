@@ -26,7 +26,7 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
-// Populates kernel launch information from a KernelDetails XStat.
+// Populates kernel launch information from a kKernelDetails XStat.
 void ParseKernelLaunchParams(absl::string_view xstat_kernel_details,
                              KernelReport* kernel);
 

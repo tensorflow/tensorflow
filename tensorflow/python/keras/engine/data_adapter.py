@@ -619,7 +619,7 @@ class ListsOfScalarsDataAdapter(DataAdapter):
   def _is_list_of_scalars(inp):
     if isinstance(inp, (float, int, str, bytes, bytearray)):
       return True
-    if isinstance(inp, (list, tuple)):
+    if isinstance(inp, (list, tuple)) and inp:
       return ListsOfScalarsDataAdapter._is_list_of_scalars(inp[0])
     return False
 
@@ -1542,7 +1542,4 @@ def _scipy_sparse_to_sparse_tensor(t):
 
 
 def _is_distributed_dataset(ds):
-  # TODO(b/151165986): Use public APIs.
-  return isinstance(
-      ds,
-      (input_lib.DistributedDataset, input_lib.DistributedDatasetsFromFunction))
+  return isinstance(ds, input_lib.DistributedDatasetInterface)

@@ -27,7 +27,7 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
@@ -147,9 +147,9 @@ LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
       // We can simply change name of TPU program's main function because there
       // should be no other reference to it.
       clone.setName("main");
-      clone.setVisibility(FuncOp::Visibility::Public);
+      clone.setPublic();
     } else {
-      clone.setVisibility(FuncOp::Visibility::Private);
+      clone.setPrivate();
     }
     symbol_table.insert(clone);
   }

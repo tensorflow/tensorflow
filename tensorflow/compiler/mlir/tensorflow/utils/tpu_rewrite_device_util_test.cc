@@ -20,8 +20,8 @@ limitations under the License.
 
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
@@ -802,6 +802,12 @@ TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceNotReplicated) {
   EXPECT_TRUE(mlir::succeeded(
       GetHostDeviceOutsideComputation(runtime_devices, cluster, &host_device)));
   EXPECT_EQ(host_device, "/job:localhost/replica:0/task:0/device:CPU:0");
+}
+
+TEST(TPURewriteDeviceUtilTest, TestIsTPUDevice) {
+  EXPECT_TRUE(IsTPUDevice("/job:localhost/replica:0/task:0/device:TPU:0"));
+  EXPECT_FALSE(IsTPUDevice("/job:localhost/replica:0/task:0/device:CPU:0"));
+  EXPECT_FALSE(IsTPUDevice("INVALID_DEVICE"));
 }
 
 }  // anonymous namespace

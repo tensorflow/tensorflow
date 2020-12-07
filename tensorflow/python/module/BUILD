@@ -23,7 +23,6 @@ py_library(
 tf_py_test(
     name = "module_test",
     srcs = ["module_test.py"],
-    tfrt_enabled = True,
     deps = [
         ":module",
         "//tensorflow/python:client_testlib",

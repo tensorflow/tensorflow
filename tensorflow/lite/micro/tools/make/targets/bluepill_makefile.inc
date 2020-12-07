@@ -3,7 +3,7 @@ TARGET_ARCH := cortex-m3
 TARGET_TOOLCHAIN_PREFIX := arm-none-eabi-
 
 $(eval $(call add_third_party_download,$(GCC_EMBEDDED_URL),$(GCC_EMBEDDED_MD5),gcc_embedded,))
-$(eval $(call add_third_party_download,$(CMSIS_URL),$(CMSIS_MD5),cmsis,patch_cmsis))
+$(eval $(call add_third_party_download,$(CMSIS_URL),$(CMSIS_MD5),cmsis,))
 $(eval $(call add_third_party_download,$(STM32_BARE_LIB_URL),$(STM32_BARE_LIB_MD5),stm32_bare_lib,))
 
 PLATFORM_FLAGS = \
@@ -40,7 +40,8 @@ EXCLUDED_SRCS := \
   $(MAKEFILE_DIR)/downloads/stm32_bare_lib/source/debug_log.c
 MICROLITE_CC_SRCS := $(filter-out $(EXCLUDED_SRCS), $(MICROLITE_CC_SRCS))
 
-# TODO(b/143286954): Figure out why some tests fail and enable ince the issues
+# TODO(b/158651472): Fix the memory_arena_threshold_test
+# TODO(b/143286954): Figure out why some tests fail and enable once the issues
 # are resolved.
 EXCLUDED_TESTS := \
   tensorflow/lite/micro/micro_interpreter_test.cc \

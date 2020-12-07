@@ -39,10 +39,10 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_op_util.h"
 #include "tensorflow/core/tpu/kernels/tpu_program_group_interface.h"
 #include "tensorflow/core/tpu/kernels/tpu_util.h"
-#include "tensorflow/core/tpu/kernels/tpu_util_c_api.h"
 #include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/core/tpu/tpu_configuration.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
+#include "tensorflow/core/tpu/tpu_ops_c_api.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -543,7 +543,7 @@ void TpuCompileOpKernelCommon::Compute(OpKernelContext* ctx) {
       ctx->cancellation_manager()->get_cancellation_token();
   const bool already_cancelled =
       !ctx->cancellation_manager()->RegisterCallback(token, [ctx, done]() {
-        if (UtilApiFn()->TpuCompile_ShouldTpuCompileOpIgnoreCancellationFn()) {
+        if (OpsApiFn()->TpuCompile_ShouldTpuCompileOpIgnoreCancellationFn()) {
           return;
         }
 
@@ -634,8 +634,9 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
   }
 
   const TpuCompilationCacheKey key = CreateCompilationCacheKey(
-      function_.name(), metadata_.function_library_fingerprint(), mlir_module_,
-      guaranteed_constants, dynamic_shapes, metadata_, *mesh_state);
+      function_.name(), metadata_.function_library_fingerprint(),
+      mlir_module_fingerprint_, guaranteed_constants, dynamic_shapes, metadata_,
+      *mesh_state);
 
   // Process-wide cache of TPU executables.
   TpuCompilationCacheInterface* cache;

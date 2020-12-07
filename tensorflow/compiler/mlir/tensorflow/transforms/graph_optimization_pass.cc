@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/graph_optimization_pass.h"
 
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
@@ -28,10 +28,11 @@ namespace TF {
 namespace {
 using Status = ::tensorflow::Status;
 using ConfigProto = ::tensorflow::ConfigProto;
+using Graph = ::tensorflow::Graph;
 }  // namespace
 
 Status MlirGraphOptimizationPass::Run(const ConfigProto& config_proto,
-                                      ModuleOp module) {
+                                      ModuleOp module, const Graph& graph) {
   if (!config_proto.experimental().enable_mlir_graph_optimization()) {
     VLOG(1) << "Skipping MLIR Graph Optimization Pass"
             << ", session flag not enabled";
@@ -50,7 +51,8 @@ Status MlirGraphOptimizationPass::Run(const ConfigProto& config_proto,
   // Assign optimal data layout to layout sensitive operations and delete
   // redundant transposes from the IR.
   LayoutOptimizationPipelineOptions layout_optimization_options;
-  CreateLayoutOptimizationPipeline(pm, layout_optimization_options);
+  CreateLayoutOptimizationPipeline(pm.nest<FuncOp>(),
+                                   layout_optimization_options);
 
   // Prepare IR for exporting.
   pm.addPass(CreateBreakUpIslandsPass());

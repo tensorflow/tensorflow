@@ -261,11 +261,16 @@ message DebugOptions {
   // Max number of hlo module dumps in a directory. Set to < 0 for unbounded.
   int32 xla_dump_max_hlo_modules = 132;
 
+  // Dump HloModuleMetadata as a text proto for each HLO module.
+  bool xla_dump_module_metadata = 144;
+
   //
   // END flags controlling dumping HLO modules.
   //
 
+  // Overrides for XLA GPU's convolution layout heuristic.
   bool xla_gpu_force_conv_nchw = 125;
+  bool xla_gpu_force_conv_nhwc = 146;
 
   // Paths to files with ptx code.
   repeated string xla_gpu_ptx_file = 127;
@@ -290,7 +295,14 @@ message DebugOptions {
   // Extra parameters to pass the GPU assembler.
   string xla_gpu_asm_extra_flags = 141;
 
-  // Next id: 142
+  // Per-heap size constraint. New heaps will be created if per-heap max size is
+  // reached.
+  int32 xla_multiheap_size_constraint_per_heap = 142;
+
+  // Enable detailed logging into vlog.
+  bool xla_detailed_logging = 143;
+
+  // Next id: 146
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

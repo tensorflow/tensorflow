@@ -31,10 +31,9 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -250,8 +249,6 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
   return node_def;
 }
 
-// TODO(b/160014479): Support exporting function result attributes as optional
-// attributes.
 StatusOr<std::unique_ptr<NodeDef>> Exporter::GetReturnNode(
     mlir::FuncOp function, Value operand, unsigned index,
     llvm::StringRef name) {
@@ -272,6 +269,18 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetReturnNode(
   AttrValue index_attr;
   index_attr.set_i(index);
   (*node_def->mutable_attr())["index"] = index_attr;
+
+  if (auto device_attr =
+          function.getResultAttrOfType<mlir::StringAttr>(index, kDeviceAttr))
+    *node_def->mutable_device() = device_attr.getValue().str();
+
+  llvm::ArrayRef<mlir::NamedAttribute> func_res_i_attrs =
+      function.getResultAttrs(index);
+  absl::flat_hash_set<absl::string_view> attrs_to_ignore = {kDeviceAttr};
+  TF_RETURN_IF_ERROR(ConvertAttributes(func_res_i_attrs, attrs_to_ignore,
+                                       /*remove_ref_type=*/false,
+                                       node_def->mutable_attr()));
+
   return node_def;
 }
 

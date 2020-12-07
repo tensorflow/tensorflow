@@ -57,13 +57,16 @@ class Benchmark {
             const SessionOptions* options = nullptr, Graph* init = nullptr,
             Rendezvous* rendez = nullptr, const char* executor_type = "",
             bool old_benchmark_api = true);
+
+  Benchmark(const string& device, Graph* g, bool old_benchmark_api);
+
   ~Benchmark();
 
   // Executes the graph for "iters" times.
   // This function is deprecated. Use the overload that takes
   // `benchmark::State&`
   // instead.
-  void Run(int iters);
+  [[deprecated("use `Run(benchmark::State&)` instead.")]] void Run(int iters);
 
   void Run(::testing::benchmark::State& state);
 
@@ -74,9 +77,10 @@ class Benchmark {
   // graph.
   // This function is deprecated. Use the overload that takes
   // `benchmark::State&` instead.
-  void RunWithRendezvousArgs(
-      const std::vector<std::pair<string, Tensor>>& inputs,
-      const std::vector<string>& outputs, int iters);
+  [[deprecated(
+      "use `RunWithRendezvousArgs(...,benchmark::State&)` instead.")]] void
+  RunWithRendezvousArgs(const std::vector<std::pair<string, Tensor>>& inputs,
+                        const std::vector<string>& outputs, int iters);
 
   void RunWithRendezvousArgs(
       const std::vector<std::pair<string, Tensor>>& inputs,

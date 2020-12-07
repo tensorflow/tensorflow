@@ -82,7 +82,7 @@ void SetBoundForSimpleLoop(mlir::AffineForOp loop, mlir::AffineExpr new_bound,
 // * TileLoop always puts the tiling logic "stepping" logic into AffineExprs.
 //   With that all index calculation is done in AffineExprs and easier to
 //   analyze in a single place.
-// * TileLoop doesn't plan to use use max() and min() to resolve the issue when
+// * TileLoop doesn't plan to use max() and min() to resolve the issue when
 //   N % X != 0. max() and min() are not representable in AffineExprs.
 //   TODO(timshen): support the case where N % X != 0.
 //

@@ -32,15 +32,16 @@ from six.moves import zip  # pylint: disable=redefined-builtin
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python import tf2
 from tensorflow.python.data.experimental.ops import cardinality
-from tensorflow.python.data.experimental.ops.distribute_options import AutoShardPolicy
+from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import context
-from tensorflow.python.framework import composite_tensor_utils
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend as K
@@ -54,10 +55,21 @@ from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
-from tensorflow.python.util.compat import collections_abc
+
+
+def is_composite_or_composite_value(tensor):
+  """Returns true if 'tensor' is a CompositeTensor or a CT Value object."""
+  # TODO(b/125094323): This should be isinstance(CompositeTensor) or
+  # isinstance(CompositeTensorValue) once we support that.
+  return isinstance(
+      tensor,
+      (composite_tensor.CompositeTensor, sparse_tensor.SparseTensorValue,
+       ragged_tensor_value.RaggedTensorValue))
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -143,6 +155,119 @@ class MetricsAggregator(Aggregator):
     self.results[0] /= (self.num_samples or self.steps)
 
 
+def _append_sparse_tensor_value(target, to_append):
+  """Append sparse tensor value objects."""
+  # Make sure the sparse tensors are of the same size (except for the 0th dim).
+  if len(target.dense_shape) != len(to_append.dense_shape):
+    raise RuntimeError(
+        'Unable to concatenate %s and %s. The inner dense shapes do not '
+        'have the same number of dimensions (%s vs %s)' %
+        (target, to_append, target.dense_shape, to_append.dense_shape))
+
+  if target.dense_shape[1:] != to_append.dense_shape[1:]:
+    raise RuntimeError(
+        'Unable to concatenate %s and %s. The inner dense shapes do not '
+        'match inner dimensions (%s vs %s)' %
+        (target, to_append, target.dense_shape[1:], to_append.dense_shape[1:]))
+
+  # Add the to_append indices to target, updating the 0th value, and keeping
+  # track of the maximum so we know the final dense_shape of this tensor.
+  base_dim0_value = target.dense_shape[0]
+  max_dim0_value = target.dense_shape[0]
+  new_indices = target.indices
+  for index in to_append.indices:
+    # Here, we iterate through the sparse indices of the tensor to append. For
+    # each index, we update its zeroth value (the batch index) by adding the
+    # number of batch items in the tensor we are appending to (so an index
+    # of [0, 0, 1] for a value that is being appended to a tensor with 0th dim
+    # size 3 would become [3, 0, 1].)
+    index[0] += base_dim0_value
+    max_dim0_value = max(max_dim0_value, index[0])
+    new_indices = np.append(new_indices, [index], axis=0)
+
+  # Extend the values array to contain all of the appended values. These will
+  # be in the same order as the indices added above.
+  new_values = np.concatenate((target.values, to_append.values), axis=0)
+
+  # Create a new dense shape by replacing the value for the 0th dimension
+  # with the new max dim0 value.
+  new_dense_shape = list(target.dense_shape)
+  new_dense_shape[0] = max_dim0_value + 1
+  new_dense_shape = tuple(new_dense_shape)
+
+  return sparse_tensor.SparseTensorValue(
+      indices=new_indices, values=new_values, dense_shape=new_dense_shape)
+
+
+def _append_ragged_tensor_value(target, to_append):
+  """Append ragged tensor value objects."""
+  # Make sure the ragged tensors are of the same size (save for the 0th dim).
+  if len(target.shape) != len(to_append.shape):
+    raise RuntimeError('Unable to concatenate %s and %s' % (target, to_append))
+
+  if target.shape[1:] != to_append.shape[1:]:
+    raise RuntimeError('Unable to concatenate %s and %s' % (target, to_append))
+
+  adjusted_row_splits = to_append.row_splits[1:] + target.row_splits[-1]
+  new_row_splits = np.append(target.row_splits, adjusted_row_splits)
+  if isinstance(target.values, ragged_tensor_value.RaggedTensorValue):
+    new_values = _append_ragged_tensor_value(target.values, to_append.values)
+  else:
+    new_values = np.concatenate((target.values, to_append.values), axis=0)
+
+  return ragged_tensor_value.RaggedTensorValue(new_values, new_row_splits)
+
+
+def _append_composite_tensor(target, to_append):
+  """Helper function to append composite tensors to each other in the 0 axis.
+
+  In order to support batching within a fit/evaluate/predict call, we need
+  to be able to aggregate within a CompositeTensor. Unfortunately, the CT
+  API currently does not make this easy - especially in V1 mode, where we're
+  working with CompositeTensor Value objects that have no connection with the
+  CompositeTensors that created them.
+
+  Arguments:
+    target: CompositeTensor or CompositeTensor value object that will be
+      appended to.
+    to_append: CompositeTensor or CompositeTensor value object to append to.
+      'target'.
+
+  Returns:
+    A CompositeTensor or CompositeTensor value object.
+
+  Raises:
+    RuntimeError: if concatenation is not possible.
+  """
+  if type(target) is not type(to_append):
+    raise RuntimeError('Unable to concatenate %s and %s' %
+                       (type(target), type(to_append)))
+
+  # Perform type-specific concatenation.
+  # TODO(b/125094323): This should be replaced by a simple call to
+  # target.append() that should work on all of the below classes.
+
+  # If we're seeing a CompositeTensor here, we know it's because we're in
+  # Eager mode (or else we'd have evaluated the CT to a CT Value object
+  # already). Therefore, it's safe to call concat() on it without evaluating
+  # the result any further. If not - that is, if we're seeing a
+  # SparseTensorValue or a RaggedTensorValue - we need to hand-update it
+  # since we're outside of the graph anyways.
+  if isinstance(target, sparse_tensor.SparseTensor):
+    # We need to invoke the sparse version of concatenate here - tf.concat
+    # won't work.
+    return sparse_ops.sparse_concat(sp_inputs=[target, to_append], axis=0)
+  elif isinstance(target, ragged_tensor.RaggedTensor):
+    return array_ops.concat([target, to_append], axis=0)
+  elif isinstance(target, sparse_tensor.SparseTensorValue):
+    return _append_sparse_tensor_value(target, to_append)
+  elif isinstance(target, ragged_tensor_value.RaggedTensorValue):
+    return _append_ragged_tensor_value(target, to_append)
+  else:
+    raise RuntimeError('Attempted to concatenate unsupported object %s.' %
+                       type(target))
+
+
 class ConcatAggregator(Aggregator):
   """Combine tensor-likes which cannot be merged on the fly.
 
@@ -156,8 +281,7 @@ class ConcatAggregator(Aggregator):
         use_steps=True, num_samples=None, steps=None, batch_size=batch_size)
 
   def create(self, batch_element):
-    self.composite = composite_tensor_utils.is_composite_or_composite_value(
-        batch_element)
+    self.composite = is_composite_or_composite_value(batch_element)
 
   def aggregate(self, batch_element, batch_start=None, batch_end=None):
 
@@ -180,7 +304,7 @@ class ConcatAggregator(Aggregator):
       # TODO(taylorrobie): efficiently concatenate.
       results = self.results[0]
       for r in self.results[1:]:
-        results = composite_tensor_utils.append_composite_tensor(results, r)
+        results = _append_composite_tensor(results, r)
       self.results = results
 
     else:
@@ -313,12 +437,11 @@ class OutputsAggregator(Aggregator):
     # SparseTensorValue is a named tuple which nest will flatten, so we need
     # to guard it to properly handle the structure.
     self._structure = nest.get_traverse_shallow_structure(
-        lambda x: not composite_tensor_utils.is_composite_or_composite_value(x),
-        batch_outs)
+        lambda x: not is_composite_or_composite_value(x), batch_outs)
     batch_outs = nest.flatten_up_to(self._structure, batch_outs)
 
     for batch_element in batch_outs:
-      if composite_tensor_utils.is_composite_or_composite_value(batch_element):
+      if is_composite_or_composite_value(batch_element):
         # If the output is not a ndarray, it will be either a composite tensor
         # or a composite tensor's Value object. In either case, we can't
         # allocate an array to hold the object - we'll handle it later.
@@ -399,7 +522,7 @@ def standardize_single_array(x, expected_shape=None):
   if x is None:
     return None
 
-  if composite_tensor_utils.is_composite_or_composite_value(x):
+  if is_composite_or_composite_value(x):
     return x
 
   if isinstance(x, int):
@@ -413,6 +536,15 @@ def standardize_single_array(x, expected_shape=None):
     else:
       x = np.expand_dims(x, 1)
   return x
+
+
+def get_composite_shape(tensor):
+  """Returns the shape of the passed composite tensor."""
+  if isinstance(tensor, sparse_tensor.SparseTensorValue):
+    # SparseTensorValues use a 'dense_shape' attribute
+    return tensor.dense_shape
+  else:
+    return tensor.shape
 
 
 def standardize_input_data(data,
@@ -517,8 +649,8 @@ def standardize_input_data(data,
           if not tensorshape:
             continue
           data_shape = tuple(tensorshape.as_list())
-        elif composite_tensor_utils.is_composite_or_composite_value(data[i]):
-          tensorshape = composite_tensor_utils.get_shape(data[i])
+        elif is_composite_or_composite_value(data[i]):
+          tensorshape = get_composite_shape(data[i])
           data_shape = tuple(tensorshape.as_list())
         else:
           data_shape = data[i].shape
@@ -574,7 +706,7 @@ def standardize_sample_or_class_weights(x_weight, output_names, weight_type):
                        'You should provide one `' + weight_type + '`'
                        'array per model output.')
     return x_weight
-  if isinstance(x_weight, collections_abc.Mapping):
+  if isinstance(x_weight, collections.abc.Mapping):
     generic_utils.check_for_unexpected_keys(weight_type, x_weight, output_names)
     x_weights = []
     for name in output_names:
@@ -610,8 +742,7 @@ def check_array_lengths(inputs, targets, weights=None):
   """
 
   def is_tensor_or_composite_tensor(x):
-    return tensor_util.is_tensor(
-        x) or composite_tensor_utils.is_composite_or_composite_value(x)
+    return tensor_util.is_tensor(x) or is_composite_or_composite_value(x)
 
   def set_of_lengths(x):
     # Returns a set with the variation between
@@ -762,7 +893,7 @@ def collect_per_output_metric_info(metrics,
               [metrics_module.clone_metric(m) for m in metrics])
       else:
         nested_metrics = [metrics]
-  elif isinstance(metrics, collections_abc.Mapping):
+  elif isinstance(metrics, collections.abc.Mapping):
     generic_utils.check_for_unexpected_keys('metrics', metrics, output_names)
     nested_metrics = []
     for name in output_names:
@@ -1078,7 +1209,7 @@ def get_loss_function(loss):
         'before passing them to Model.compile.'.format(loss))
 
   # Deserialize loss configuration, if needed.
-  if isinstance(loss, collections_abc.Mapping):
+  if isinstance(loss, collections.abc.Mapping):
     loss = losses.get(loss)
 
   # Custom callable class.
@@ -1194,7 +1325,7 @@ def check_steps_argument(input_data, steps, steps_name):
         but not provided.
   """
   is_x_iterator = isinstance(
-      input_data, (iterator_ops.Iterator, iterator_ops.OwnedIterator))
+      input_data, (iterator_ops.Iterator, iterator_ops.IteratorBase))
   if (input_data is None or is_x_iterator or has_symbolic_tensors(input_data) or
       (isinstance(input_data, list) and not input_data)):
     if steps is None:
@@ -1295,7 +1426,7 @@ def prepare_sample_weight_modes(training_endpoints, sample_weight_mode):
     ValueError: In case of invalid `sample_weight_mode` input.
   """
 
-  if isinstance(sample_weight_mode, collections_abc.Mapping):
+  if isinstance(sample_weight_mode, collections.abc.Mapping):
     generic_utils.check_for_unexpected_keys(
         'sample_weight_mode', sample_weight_mode,
         [e.output_name for e in training_endpoints])
@@ -1342,7 +1473,7 @@ def prepare_loss_functions(loss, output_names):
       ValueError: If loss is a dict with keys not in model output names,
           or if loss is a list with len not equal to model outputs.
   """
-  if isinstance(loss, collections_abc.Mapping):
+  if isinstance(loss, collections.abc.Mapping):
     generic_utils.check_for_unexpected_keys('loss', loss, output_names)
     loss_functions = []
     for name in output_names:
@@ -1354,7 +1485,7 @@ def prepare_loss_functions(loss, output_names):
       loss_functions.append(get_loss_function(loss.get(name, None)))
   elif isinstance(loss, six.string_types):
     loss_functions = [get_loss_function(loss) for _ in output_names]
-  elif isinstance(loss, collections_abc.Sequence):
+  elif isinstance(loss, collections.abc.Sequence):
     if len(loss) != len(output_names):
       raise ValueError('When passing a list as loss, it should have one entry '
                        'per model outputs. The model has {} outputs, but you '
@@ -1388,7 +1519,7 @@ def prepare_loss_weights(training_endpoints, loss_weights=None):
   if loss_weights is None:
     for e in training_endpoints:
       e.loss_weight = 1.
-  elif isinstance(loss_weights, collections_abc.Mapping):
+  elif isinstance(loss_weights, collections.abc.Mapping):
     generic_utils.check_for_unexpected_keys(
         'loss_weights', loss_weights,
         [e.output_name for e in training_endpoints])
@@ -1418,7 +1549,7 @@ def is_feature_layer(layer):
 def is_eager_dataset_or_iterator(data):
   return context.executing_eagerly() and isinstance(
       data, (dataset_ops.DatasetV1, dataset_ops.DatasetV2,
-             iterator_ops.OwnedIterator))
+             iterator_ops.IteratorBase))
 
 
 # pylint: disable=protected-access
@@ -1456,7 +1587,7 @@ def verify_dataset_shuffled(x):
 
 def is_dataset_or_iterator(data):
   return isinstance(data, (dataset_ops.DatasetV1, dataset_ops.DatasetV2,
-                           iterator_ops.Iterator, iterator_ops.OwnedIterator))
+                           iterator_ops.Iterator, iterator_ops.IteratorBase))
 
 
 def get_iterator(dataset):
@@ -1551,7 +1682,7 @@ def infer_steps_for_dataset(model,
   assert isinstance(dataset, dataset_ops.DatasetV2)
   if (model._in_multi_worker_mode() and
       (dataset.options().experimental_distribute.auto_shard_policy !=
-       AutoShardPolicy.OFF)):
+       distribute_options.AutoShardPolicy.OFF)):
     # If the dataset would be auto-sharded, we should not infer a local
     # steps_per_epoch due to the possible inbalanced sharding between workers.
     return None
@@ -1695,9 +1826,9 @@ def should_run_validation(validation_freq, epoch):
       raise ValueError('`validation_freq` can not be less than 1.')
     return one_indexed_epoch % validation_freq == 0
 
-  if not isinstance(validation_freq, collections_abc.Container):
+  if not isinstance(validation_freq, collections.abc.Container):
     raise ValueError('`validation_freq` must be an Integer or '
-                     '`collections_abc.Container` (e.g. list, tuple, etc.)')
+                     '`collections.abc.Container` (e.g. list, tuple, etc.)')
   return one_indexed_epoch in validation_freq
 
 
@@ -1741,7 +1872,7 @@ def unpack_validation_data(validation_data, raise_if_ambiguous=True):
     tuple of 3, (x, y, sample_weights) for numpy and tensor input.
   """
   if (isinstance(validation_data, (iterator_ops.Iterator,
-                                   iterator_ops.OwnedIterator,
+                                   iterator_ops.IteratorBase,
                                    dataset_ops.DatasetV2,
                                    data_utils.Sequence))
       or not hasattr(validation_data, '__len__')):

@@ -1,4 +1,5 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow:tensorflow.bzl", "if_nccl")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
@@ -237,12 +238,12 @@ cc_library(
 )
 
 cc_library(
-    name = "nvidia_gpu_device",
-    srcs = ["nvidia_gpu_device.cc"],
-    hdrs = ["nvidia_gpu_device.h"],
-    copts = if_cuda(["-DNCCL_ENABLED=1"]),
+    name = "gpu_device",
+    srcs = ["gpu_device.cc"],
+    hdrs = ["gpu_device.h"],
     deps = [
         ":pjrt_client",
+        "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:client_library",
@@ -250,10 +251,20 @@ cc_library(
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core/common_runtime:bfc_allocator",
-        "//tensorflow/core/common_runtime/gpu:gpu_mem_allocator",
+        "//tensorflow/core/common_runtime/device:device_mem_allocator",
+        "//tensorflow/core/common_runtime/device:device_id",
         "//tensorflow/core:lib_internal",
         "//tensorflow/stream_executor:tf_allocator_adapter",
-    ] + if_cuda(["@local_config_nccl//:nccl"]),
+    ] + if_nccl([":nccl_plugin"]),
+)
+
+# We actually wish we could write if_cuda(if_nccl(...)) in :gpu_device,
+# but Bazel does not allow nested selects. We can work around the problem using
+# an intermediate library.
+cc_library(
+    name = "nccl_plugin",
+    defines = if_cuda(["NCCL_ENABLED=1"]),
+    deps = if_cuda(["@local_config_nccl//:nccl"]),
 )
 
 tf_cc_test(
@@ -266,7 +277,7 @@ tf_cc_test(
         "notap",
     ],
     deps = [
-        ":nvidia_gpu_device",
+        ":gpu_device",
         ":pjrt_client",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/client:executable_build_options",

@@ -331,10 +331,10 @@ struct HostCallbackContext {
   std::function<Status()> callback;
 };
 
-SE_Status* HostCallbackTrampoline(void* ctx) {
+TF_Status* HostCallbackTrampoline(void* ctx) {
   HostCallbackContext* host_ctx = reinterpret_cast<HostCallbackContext*>(ctx);
   Status status = host_ctx->callback();
-  SE_Status* c_status = tpu::ExecutorApiFn()->TpuStatus_CreateFn(
+  TF_Status* c_status = tpu::ExecutorApiFn()->TpuStatus_CreateFn(
       status.code(), status.error_message().c_str());
   delete host_ctx;
   return c_status;

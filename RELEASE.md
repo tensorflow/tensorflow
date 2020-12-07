@@ -18,11 +18,83 @@
 * <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 * <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
 
+* TPU embedding support
+  * Added `profile_data_directory` to `EmbeddingConfigSpec` in
+    `_tpu_estimator_embedding.py`. This allows embedding lookup statistics
+    gathered at runtime to be used in embedding layer partitioning decisions.
+* `tf.keras.metrics.AUC` now support logit predictions.
+
 ## Bug Fixes and Other Changes
 
 *   <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
 *   <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 *   <NOTES SHOULD BE GROUPED PER AREA>
+*   `tf.keras`:
+    *   Improvements to Keras preprocessing layers:
+        *   Discretization combiner implemented, with additional arg `epsilon`.
+
+*   `tf.data`:
+    *   Exposing `tf.data.experimental.ExternalStatePolicy`, which can be used
+        to control how external state should be handled during dataset
+        serialization or iterator checkpointing.
+*   XLA compilation:
+    *   `tf.function(experimental_compile=True)` has become a stable API,
+        renamed `tf.function(jit_compile=True)`.
+
+*   `tf.lite`:
+    *   class `tflite::Subgraph`:
+        *   Removed the `tensors()` method and the non-const overload of the
+            `nodes_and_registration()` method, both of which were previously
+            documented as temporary and to be removed.
+            *   Uses of `tensors()` can be replaced by calling the existing
+                methods `tensors_size()` and `tensor(int)`.
+            *   Uses of the non-const overload of `nodes_and_registration`
+                can be replaced by calling the existing methods `nodes_size()`
+                and `context()`, and then calling the `GetNodeAndRegistration`
+                method in the `TfLiteContext` returned by `context()`.
+    *   NNAPI
+        *   Removed deprecated `Interpreter::UseNNAPI(bool)` C++ API.
+            *   Use `NnApiDelegate()` and related delegate configuration methods
+                directly.
+    *  16 bits quantization
+        *   Added int16x8 support for ABS, REDUCE_MAX and REDUCE_MIN operators.
+    *   Added support for saved model's session initializer through
+         `TFLiteConverter.from_saved_model`.
+    *   Added dynamic range quantization support for the BatchMatMul op.
+    *  Add `RFFT2D` as builtin op. (`RFFT2D` also supports `RFFTD`.) Currently
+       only supports float32 input.
+    *  TFLite Supports SingatureDef:
+        * TFLiteConverter exports models with SignatureDef
+        * Interpreter supports getting a list of signatures and getting callable
+          function for a given signaturedef.
+*   TF Core:
+    *   Corrected higher-order gradients of control flow constructs (`tf.cond`,
+        `tf.while_loop`, and compositions like `tf.foldl`) computed with
+        `tf.GradientTape` inside a `tf.function`.
+    *   Changed the default step size in `gradient_checker_v2.compute_gradients` to be exactly representable as a binary floating point numbers. This avoids poluting gradient approximations needlessly, which is some cases leads to false negatives in op gradient tests.
+
+*   `tf.summary`:
+  *   New `tf.summary.graph` allows manual write of TensorFlow graph
+      (`tf.Graph` or `tf.compat.v1.GraphDef`) as a summary. This is not a
+      replacement for the trace-based API.
+
+*   Set `/d2ReducedOptimizeHugeFunctions` by default for Windows builds. This
+    provides a big compile-time speedup, and effectively raises the minimum
+    supported MSVC version to 16.4 (current: 16.8).
+    *   See: https://groups.google.com/a/tensorflow.org/d/topic/build/SsW98Eo7l3o/discussion
+
+*   TensorRT
+    *   Removed the deprecated `session_config` parameter for the TF1-TRT
+        converter `TrtGraphConverter`. Previously, we issued a warning when the
+        value of the parameter is not None.
+    *   The TF2-TRT converter `TrtGraphConverterV2` takes an object of class
+        TrtConversionParams as a parameter. Removed three deprecated fields from
+        this class: `rewriter_config_template`, `is_dynamic_op`, and
+        `max_batch_size`. Previously, we issued a warning when the value of
+        `rewriter_config_template` is not None. We issued an error when the
+        value of `is_dynamic_op` is not True. We didn't use the value for
+        `max_batch_size` for building TensorRT engines.
+    *   Issue a warning when function get_tensorrt_rewriter_config is used.
 
 ## Thanks to our Contributors
 
@@ -102,6 +174,35 @@ This release contains contributions from many people at Google, as well as:
   `tf.distribute.experimental.CommunicationOptions`.
   `tf.distribute.experimental.CollectiveCommunication` is renamed
   `tf.distribute.experimental.CommunicationImplementation`.
+* `tf.keras.mixed_precision.experimental`:
+  * `AutoCastVariable.dtype` now refers to the actual variable dtype, not the
+    dtype it will be casted to.
+  * When mixed precision is enabled, `tf.keras.layers.Embedding` now outputs a
+    float16 or bfloat16 tensor instead of a float32 tensor.
+  * The property
+    `tf.keras.mixed_precision.experimental.LossScaleOptimizer.loss_scale` is now
+    a tensor, not a `LossScale` object. This means to get a loss scale of a
+    `LossScaleOptimizer` as a tensor, you must now call `opt.loss_scale` instead
+    of `opt.loss_scale()`.
+  * The property `should_cast_variables` has been removed from
+    `tf.keras.mixed_precision.experimental.Policy`
+  * When passing a `tf.mixed_precision.experimental.DynamicLossScale` to
+    `tf.keras.mixed_precision.experimental.LossScaleOptimizer`, the
+    `DynamicLossScale`'s multiplier must be 2.
+  * When passing a `tf.mixed_precision.experimental.DynamicLossScale` to
+    `tf.keras.mixed_precision.experimental.LossScaleOptimizer`, the weights of
+    the `DynanmicLossScale` are copied into the `LossScaleOptimizer` instead of
+    being reused. This means modifying the weights of the `DynamicLossScale`
+    will no longer affect the weights of the LossScaleOptimizer, and vice versa.
+  * The global policy can no longer be set to a non-floating point policy in
+    `tf.keras.mixed_precision.experimental.set_policy`
+  * In `Layer.call`, `AutoCastVariable`s will no longer be casted within
+    `MirroredStrategy.run` or `ReplicaContext.merge_call`. This is because a
+    thread local variable is used to determine whether `AutoCastVariable`s are
+    casted, and those two functions run with a different thread. Note this only
+    applies if one of these two functions is called within `Layer.call`; if one
+    of those two functions calls `Layer.call`, `AutoCastVariable`s will still be
+    casted.
 
 ## Known Caveats
 
@@ -129,6 +230,24 @@ This release contains contributions from many people at Google, as well as:
     * Major issues with saving are fixed.
     * See [Multi-worker training with Keras](https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras) for a tutorial.
   * Deprecated `experimental_distribute_datasets_from_function` method and renamed it to `distribute_datasets_from_function` as it is no longer experimental.
+* The `tf.keras.mixed_precision` API has been made non-experimental. The major
+  changes to the new non-experimental API are:
+  * `tf.keras.mixed_precision.Policy` no longer takes in a
+    `tf.mixed_precision.experimental.LossScale` in the constructor, and no
+    longer has a `LossScale` associated with it. Instead, `Model.compile` will
+    automatically wrap the optimizer with a `LossScaleOptimizer` using dynamic
+    loss scaling if `Policy.name` is "mixed_float16".
+  * `tf.keras.mixed_precision.LossScaleOptimizer`'s constructor takes in
+    different arguments. In particular, it no longer takes in a `LossScale`, and
+    there is no longer a `LossScale` associated with the `LossScaleOptimizer`.
+    Instead, `LossScaleOptimizer` directly implements fixed or dynamic loss
+    scaling. See the documentation of
+    `tf.keras.mixed_precision.experimental.LossScaleOptimizer` for details on
+    the differences between the experimental `LossScaleOptimizer` and the new
+    non-experimental `LossScaleOptimizer`.
+  * `tf.mixed_precision.experimental.LossScale` and its subclasses are
+    deprecated, as all of its functionality now exists within
+    `tf.keras.mixed_precision.LossScaleOptimizer`
 
 ## Bug Fixes and Other Changes
 
@@ -293,6 +412,8 @@ This release contains contributions from many people at Google, as well as:
     *   Improvements to Keras preprocessing layers:
         *   TextVectorization can now accept a vocabulary list or file as an
             init arg.
+        *   TextVectorization, StringLookup, and IntegerLookup can now accept a
+            vocabulary file via the `set_vocab_from_file` method.
         *   Normalization can now accept mean and variance values as init args.
     *   In `Attention` and `AdditiveAttention` layers, the `call()` method now
         accepts a `return_attention_scores` argument. When set to
@@ -314,10 +435,14 @@ This release contains contributions from many people at Google, as well as:
         True, the function may use type annotations to optimize the tracing
         performance.
     *   Added support for `iter(DistributedDataset)` in AutoGraph `for` loops.
-    *   AutoGraph now allows creating new symbols inside a TensorFLow loop, if
+    *   AutoGraph now allows creating new symbols inside a TensorFlow loop, if
         the values of these symbols at an iteration does not depend on the
         previous iteration. These types of loops must run at least one
         iteration, and will raise a runtime error otherwise.
+    *   Variables contained in `tf.Module`s that are set as attributes of
+        custom Keras `Layer`s and `Model`s are now tracked in
+        the properties `layer.trainable_variables` and
+        `layer.non_trainable_variables`.
 
     Example:
 

@@ -986,20 +986,17 @@ class TensorArray(object):
 
   Example 3: A simple loop interacting with a `tf.Variable`.
 
-  # TODO(b/153898334): Convert back to doctest once bug is resolved.
-  ```
-  v = tf.Variable(1)
-  @tf.function
-  def f(x):
-    ta = tf.TensorArray(tf.int32, size=0, dynamic_size=True)
-    for i in tf.range(x):
-      v.assign_add(i)
-      ta = ta.write(i, v)
-    return ta.stack()
-  f(5)
+  >>> v = tf.Variable(1)
+  >>> @tf.function
+  ... def f(x):
+  ...   ta = tf.TensorArray(tf.int32, size=0, dynamic_size=True)
+  ...   for i in tf.range(x):
+  ...     v.assign_add(i)
+  ...     ta = ta.write(i, v)
+  ...   return ta.stack()
+  >>> f(5)
   <tf.Tensor: shape=(5,), dtype=int32, numpy=array([ 1,  2,  4,  7, 11],
   dtype=int32)>
-  ```
   """
 
   def __init__(self,
@@ -1316,6 +1313,7 @@ def _check_dtypes(value, dtype):
 
 
 @tf_export("TensorArraySpec")
+@type_spec.register("tf.TensorArraySpec")
 class TensorArraySpec(type_spec.TypeSpec):
   """Type specification for a `tf.TensorArray`."""
 

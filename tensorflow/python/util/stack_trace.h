@@ -20,43 +20,63 @@ limitations under the License.
 #include <frameobject.h>
 
 #include <array>
+#include <limits>
 #include <sstream>
 #include <string>
 
 #include "absl/base/attributes.h"
 #include "absl/base/optimization.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/types/optional.h"
-#include "tensorflow/core/util/abstract_stack_trace.h"
-#include "tensorflow/python/lib/core/py_util.h"
+#include "tensorflow/core/util/managed_stack_trace.h"
 
 namespace tensorflow {
+
+// Assert that Python GIL is held.
+// TODO(cheshire): Fix duplication vs. py_util.h
+inline void DCheckPyGilStateForStackTrace() {
+#if PY_MAJOR_VERSION >= 3 && PY_MINOR_VERSION >= 4
+  DCHECK(PyGILState_Check());
+#endif
+}
+
+// Maps filename/line_no combination into a stack frame.
+using StackTraceMap =
+    absl::flat_hash_map<std::pair<std::string, int>, StackFrame>;
+
+// Contains filenames which should be skipped.
+using StackTraceFilter = absl::flat_hash_set<std::string>;
 
 // A class for capturing Python stack trace.
 class StackTrace final {
  public:
-  static constexpr int kMaxDepth = 10;
+  static constexpr int kStackTraceInitialSize = 10;
 
-  StackTrace() : size_(0) {}
+  StackTrace() {}
 
   // Returns `StackTrace` object that captures the current Python stack trace.
+  // `limit` determines how many stack frames at most are returned: set to -1
+  // for "no limit".
   // Python GIL must be acquired beforehand.
   ABSL_MUST_USE_RESULT
   ABSL_ATTRIBUTE_HOT
-  static StackTrace Capture() {
-    DCheckPyGilState();
+  static StackTrace Capture(int limit) {
+    DCheckPyGilStateForStackTrace();
+    if (limit == -1) limit = std::numeric_limits<int>::max();
 
     StackTrace result;
     const PyFrameObject* frame = PyThreadState_GET()->frame;
     int i = 0;
-    for (; i < kMaxDepth && frame != nullptr; frame = frame->f_back, ++i) {
+    for (; i < limit && frame != nullptr; frame = frame->f_back, ++i) {
       PyCodeObject* code_obj = frame->f_code;
       DCHECK(code_obj != nullptr);
 
       Py_INCREF(code_obj);
-      result.code_objs_[i] = code_obj;
-      result.last_instructions_[i] = frame->f_lasti;
+      result.code_objs_.push_back(code_obj);
+      result.last_instructions_.push_back(frame->f_lasti);
     }
-    result.size_ = i;
     return result;
   }
 
@@ -65,38 +85,40 @@ class StackTrace final {
   ~StackTrace() { Clear(); }
 
   StackTrace(StackTrace&& other) {
-    code_objs_ = other.code_objs_;
-    last_instructions_ = other.last_instructions_;
-    size_ = other.size_;
-    other.size_ = 0;
+    code_objs_ = std::move(other.code_objs_);
+    last_instructions_ = std::move(other.last_instructions_);
+    other.code_objs_ = {};
   }
 
   // Python GIL must be acquired beforehand.
   ABSL_ATTRIBUTE_HOT
   StackTrace& operator=(StackTrace&& other) {
     Clear();
-
-    code_objs_ = other.code_objs_;
-    last_instructions_ = other.last_instructions_;
-    size_ = other.size_;
-    other.size_ = 0;
+    std::swap(code_objs_, other.code_objs_);
+    std::swap(last_instructions_, other.last_instructions_);
     return *this;
   }
 
   // Returns a structured representation of the captured stack trace.
-  std::vector<StackFrame> ToStackFrames() const;
-
- private:
-  std::array<PyCodeObject*, kMaxDepth> code_objs_;
-  std::array<int, kMaxDepth> last_instructions_;
-  int size_;
+  // `mapper` provides a custom mapping for translating stack frames, `filter`
+  // returns `true` for the stack frames which should be omitted, and if
+  // `drop_last` is set, the last stack frame is dropped.
+  std::vector<StackFrame> ToStackFrames(
+      const StackTraceMap& mapper = {},
+      const StackTraceFilter& filtered = {}) const;
 
   // Python GIL must be acquired beforehand.
   ABSL_ATTRIBUTE_HOT
   void Clear() {
-    DCheckPyGilState();
-    for (int i = 0; i < size_; ++i) Py_DECREF(code_objs_[i]);
+    if (!code_objs_.empty()) DCheckPyGilStateForStackTrace();
+    for (PyCodeObject* obj : code_objs_) Py_DECREF(obj);
+    code_objs_.clear();
+    last_instructions_.clear();
   }
+
+ private:
+  absl::InlinedVector<PyCodeObject*, kStackTraceInitialSize> code_objs_;
+  absl::InlinedVector<int, kStackTraceInitialSize> last_instructions_;
 
   StackTrace(const StackTrace&) = delete;
   StackTrace& operator=(const StackTrace&) = delete;
@@ -112,11 +134,11 @@ class StackTraceManager {
   // Python GIL must be acquired beforehand.
   ABSL_MUST_USE_RESULT
   ABSL_ATTRIBUTE_HOT
-  int Capture() {
-    DCheckPyGilState();
+  int Capture(int limit) {
+    DCheckPyGilStateForStackTrace();
     const int id = next_id_++;
     const int index = id & (kStackTraceCircularBufferSize - 1);
-    stack_traces_[index] = StackTrace::Capture();
+    stack_traces_[index] = StackTrace::Capture(limit);
     return id;
   }
 
@@ -138,9 +160,9 @@ extern StackTraceManager* const stack_trace_manager;
 // Note that the actual stack trace is kept in a circular buffer for string
 // conversion could fail if it's evicted before.
 // Python GIL must be acquired beforehand.
-inline AbstractStackTrace GetStackTrace() {
-  DCheckPyGilState();
-  return AbstractStackTrace(stack_trace_manager->Capture(), [](int id) {
+inline ManagedStackTrace GetStackTrace(int limit) {
+  DCheckPyGilStateForStackTrace();
+  return ManagedStackTrace(stack_trace_manager->Capture(limit), [](int id) {
     PyGILState_STATE gstate = PyGILState_Ensure();
     std::vector<StackFrame> result =
         stack_trace_manager->Get(id)->ToStackFrames();

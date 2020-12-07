@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import gc
+import warnings
 
 from absl.testing import parameterized
 import numpy as np
@@ -26,11 +27,13 @@ import scipy.sparse
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.eager.context import get_config
 from tensorflow.python.framework import config
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import activations
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras.engine import input_layer
@@ -106,7 +109,7 @@ class BackendResetTest(test.TestCase, parameterized.TestCase):
     # User defined jit setting
     config.set_optimizer_jit(False)
     sess = backend.get_session()
-    default_config = context.context().config
+    default_config = get_config()
     self.assertEqual(
         sess._config.graph_options.optimizer_options.global_jit_level,
         default_config.graph_options.optimizer_options.global_jit_level)
@@ -114,7 +117,7 @@ class BackendResetTest(test.TestCase, parameterized.TestCase):
 
     # New session has the same jit setting
     sess = backend.get_session()
-    default_config = context.context().config
+    default_config = get_config()
     self.assertEqual(
         sess._config.graph_options.optimizer_options.global_jit_level,
         default_config.graph_options.optimizer_options.global_jit_level)
@@ -123,7 +126,7 @@ class BackendResetTest(test.TestCase, parameterized.TestCase):
     # Change respected
     config.set_optimizer_jit(True)
     sess = backend.get_session()
-    default_config = context.context().config
+    default_config = get_config()
     self.assertEqual(
         sess._config.graph_options.optimizer_options.global_jit_level,
         default_config.graph_options.optimizer_options.global_jit_level)
@@ -1733,6 +1736,45 @@ class BackendCrossEntropyLossesTest(test.TestCase, parameterized.TestCase):
     p = array_ops.identity(array_ops.identity(p))
     result = self.evaluate(backend.sparse_categorical_crossentropy(t, p))
     self.assertArrayNear(result, [0.002, 0.0005, 0.17], 1e-3)
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_binary_crossentropy_from_logits_no_warnings(self):
+    t = backend.constant([[0, 1, 0]])
+    logits = backend.constant([[8., 1., 1.]])
+    with warnings.catch_warnings(record=True) as w:
+      self.evaluate(backend.binary_crossentropy(t, logits, from_logits=True))
+      self.assertEmpty(w)
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_binary_crossentropy_from_logits_with_sigmoid(self):
+    t = backend.constant([[0, 1, 0]])
+    logits = backend.constant([[8., 1., 1.]])
+    p = activations.sigmoid(logits)
+    with warnings.catch_warnings(record=True) as w:
+      self.evaluate(backend.binary_crossentropy(t, p, from_logits=True))
+      self.assertLen(w, 1)
+      self.assertIn('received `from_logits=True`', str(w[0].message))
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_categorical_crossentropy_from_logits_with_softmax(self):
+    t = backend.constant([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
+    logits = backend.constant([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
+    p = activations.softmax(logits)
+    with warnings.catch_warnings(record=True) as w:
+      self.evaluate(backend.categorical_crossentropy(t, p, from_logits=True))
+      self.assertLen(w, 1)
+      self.assertIn('received `from_logits=True`', str(w[0].message))
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_sparse_categorical_crossentropy_from_logits_with_softmax(self):
+    t = backend.constant([0, 1, 2])
+    logits = backend.constant([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
+    p = activations.softmax(logits)
+    with warnings.catch_warnings(record=True) as w:
+      self.evaluate(
+          backend.sparse_categorical_crossentropy(t, p, from_logits=True))
+      self.assertLen(w, 1)
+      self.assertIn('received `from_logits=True`', str(w[0].message))
 
 
 @test_util.with_control_flow_v2

@@ -52,8 +52,9 @@ py_binary(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:image_ops",
         "//tensorflow/python:io_ops",
-        "//tensorflow/python:platform",
         "//tensorflow/python:session",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
     ],
 )
 
@@ -80,7 +81,8 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         ":flatbuffer_utils",
-        "//tensorflow/python:platform",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
     ],
 )
 
@@ -91,7 +93,8 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         ":flatbuffer_utils",
-        "//tensorflow/python:platform",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
     ],
 )
 
@@ -102,7 +105,8 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         ":flatbuffer_utils",
-        "//tensorflow/python:platform",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
     ],
 )
 
@@ -220,8 +224,8 @@ cc_test(
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:util",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
-        "//tensorflow/lite/schema:schema_utils",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
         "@flatbuffers",

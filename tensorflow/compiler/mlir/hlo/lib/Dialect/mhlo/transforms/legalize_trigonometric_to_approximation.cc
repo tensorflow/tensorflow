@@ -19,9 +19,9 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
-#include "mlir/IR/Function.h"
-#include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
 namespace mhlo {
@@ -259,7 +259,7 @@ struct LegalizeTrigonometricToApproximationPass
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     PopulateTrigonometricToApproximationPatterns(&getContext(), &patterns);
-    applyPatternsAndFoldGreedily(getFunction(), patterns);
+    applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
   }
 };
 

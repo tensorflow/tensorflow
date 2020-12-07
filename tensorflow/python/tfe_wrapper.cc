@@ -204,6 +204,13 @@ TFE_OutputTensorHandles InputTFE_OutputTensorHandles(
 #else
   long sz = PyLong_AsLong(num_outputs.ptr());  // NOLINT
 #endif
+  // We can't handle more than int32 sizes for number of outputs.
+  if (static_cast<long>(static_cast<int32>(sz)) != sz) {  // NOLINT
+    PyErr_SetString(PyExc_ValueError, tensorflow::strings::StrCat(
+                                          "Number of outputs is too big: ", sz)
+                                          .c_str());
+    throw py::error_already_set();
+  }
   if (sz > 0) {
 #if PY_MAJOR_VERSION < 3
     output_tensor_handles.resize(PyInt_AsLong(num_outputs.ptr()), nullptr);
@@ -1022,12 +1029,6 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   // Additional Context Logic
   m.def("TFE_Py_SetEagerContext", [](const py::handle& o) {
     return tensorflow::PyoOrThrow(TFE_Py_SetEagerContext(o.ptr()));
-  });
-  m.def("TFE_ContextStartStep", [](py::handle& o) {
-    TFE_ContextStartStep(tensorflow::InputTFE_Context(o.ptr()));
-  });
-  m.def("TFE_ContextEndStep", [](py::handle& o) {
-    TFE_ContextEndStep(tensorflow::InputTFE_Context(o.ptr()));
   });
   m.def("TFE_Py_RegisterVSpace", [](const py::handle& o) {
     return tensorflow::PyoOrThrow(TFE_Py_RegisterVSpace(o.ptr()));

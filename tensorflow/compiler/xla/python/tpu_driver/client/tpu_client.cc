@@ -37,7 +37,7 @@ namespace xla {
 
 TpuDevice::TpuDevice(int id, int host_id, const std::array<int, 3>& coords,
                      int core_on_chip)
-    : xla::PjRtDevice(id, /*local_device_state=*/nullptr, kTpuPlatform,
+    : xla::PjRtDevice(id, /*local_device_state=*/nullptr,
                       /*device_kind=*/"Cloud TPU", host_id),
       coords_(coords),
       core_on_chip_(core_on_chip) {}
@@ -427,7 +427,12 @@ StatusOr<std::unique_ptr<PyTpuBuffer>> PyTpuBuffer::CopyToDevice(
 
 Status PyTpuBuffer::BlockHostUntilReady() {
   tensorflow::profiler::TraceMe traceme("PyTpuBuffer::BlockHostUntilReady");
-  return DeviceBuffer()->handle->OnReady()->Await();
+  std::shared_ptr<TpuSharedBuffer> device_buffer = DeviceBuffer();
+  if (!device_buffer) {
+    return InvalidArgument(
+        "BlockHostUntilReady() called on deleted or donated buffer");
+  }
+  return device_buffer->handle->OnReady()->Await();
 }
 
 /* static */
@@ -526,7 +531,7 @@ PyTpuExecutable::PyTpuExecutable(
           << "Inserting duplicate replica:" << replica;
       executables_[replica] =
           client_->driver()->LoadProgram(device_id, compiled_program.get(), {});
-      local_logical_device_ids_.emplace_back(replica, partition);
+      addressable_device_logical_ids_.emplace_back(replica, partition);
       local_devices_.push_back(device);
     }
   }
@@ -706,8 +711,8 @@ PyTpuExecutable::ExecuteOnLocalDevices(
     // long time and we want all cores to be scheduled in parallel.
     thread_pool->Schedule([this, i, argument_handles, &results, &results_lock,
                            &execute_semaphore]() {
-      const int replica = local_logical_device_ids_[i].first;
-      const int partition = local_logical_device_ids_[i].second;
+      const int replica = addressable_device_logical_ids_[i].first;
+      const int partition = addressable_device_logical_ids_[i].second;
       RunId run_id;
       auto result = ExecuteHelper(argument_handles, argument_handles[i],
                                   replica, partition, run_id);

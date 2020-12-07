@@ -122,6 +122,9 @@ Benchmark::Benchmark(const string& device, Graph* g,
   TF_CHECK_OK(NewExecutor(executor_type, params, *g, &exec_));
 }
 
+Benchmark::Benchmark(const string& device, Graph* g, bool old_benchmark_api)
+    : Benchmark(device, g, nullptr, nullptr, nullptr, "", old_benchmark_api) {}
+
 Benchmark::~Benchmark() {
   if (device_) {
     rendez_->Unref();

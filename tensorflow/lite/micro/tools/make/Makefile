@@ -6,9 +6,9 @@ endif
 TENSORFLOW_ROOT :=
 MAKEFILE_DIR := tensorflow/lite/micro/tools/make
 
-#  Override this on make command line to to parse thirdy party downloads during project generation 
-#  make -f tensorflow/lite/micro/tools/make/Makefile PARSE_THIRD_PARTY=true TARGET=apollo3evb generate_hello_world_make_project 
-PARSE_THIRD_PARTY := 
+#  Override this on make command line to parse third party downloads during project generation
+#  make -f tensorflow/lite/micro/tools/make/Makefile PARSE_THIRD_PARTY=true TARGET=apollo3evb generate_hello_world_make_project
+PARSE_THIRD_PARTY :=
 
 
 # Pull in some convenience functions.
@@ -42,6 +42,16 @@ CXX_TOOL := g++
 CC_TOOL := gcc
 AR_TOOL := ar
 
+# Specify which specialized kernel implementation should be pulled in. This was
+# previously supported via TAGS, but that is soon going to be removed. The
+# reason for removing TAGS is that we no longer support more than a single
+# specialized implementation and we also want to be explicit about what
+# makefiles get included for a given command line invocation.
+#
+# Currently, we are keeping the support for optimized kernels via TAGS for
+# backwards compatibility, but will be removing that in the near future.
+OPTIMIZED_KERNEL_DIR :=
+
 # Specify TAGS on the command line to add a particular set of specialized
 # implementations, for example TAGS="CMSIS disco_f746ng" to target a Discovery
 # STM32F746NG board, using the CMSIS library's implementations where possible.
@@ -51,7 +61,6 @@ ALL_TAGS := $(TAGS) $(TARGET)
 # include directories from one source.
 INCLUDES := \
 -I. \
--I$(MAKEFILE_DIR)/downloads/ \
 -I$(MAKEFILE_DIR)/downloads/gemmlowp \
 -I$(MAKEFILE_DIR)/downloads/flatbuffers/include \
 -I$(MAKEFILE_DIR)/downloads/ruy
@@ -75,7 +84,6 @@ TEST_SCRIPT := tensorflow/lite/micro/testing/test_linux_binary.sh
 
 MICROLITE_LIBS := -lm
 
-
 # For each tag specified on the command line we add -D<tag> to the cflags to
 # allow for #idefs in the code.
 #
@@ -88,6 +96,17 @@ MICROLITE_LIBS := -lm
 # TODO(b/168824958): remove dash->underscore transformation once the cmsis-nn
 # and ethos-u directories have been renamed.
 TAG_DEFINES := $(foreach TAG,$(TAGS),-D$(shell echo $(TAG) | tr [a-z] [A-Z] | tr - _))
+
+OPTIMIZED_KERNEL_DEFINES :=
+ifneq ($(OPTIMIZED_KERNEL_DIR),)
+  # For backwards compatibility, we are using an empty OPTIMIZED_KERNEL_DIR to
+  # impy that we want to fall-back to TAGS. So, we are additionally using
+  # OPTIMIZED_KERNEL_DIR==none to signify that we do not want any optimized
+  # implementations.
+  ifneq ($(OPTIMIZED_KERNEL_DIR), none)
+    OPTIMIZED_KERNEL_DEFINES := -D$(shell echo $(OPTIMIZED_KERNEL_DIR) | tr [a-z] [A-Z] | tr - _)
+  endif
+endif
 
 OPTIMIZATION_LEVEL := -O3
 
@@ -115,7 +134,14 @@ COMMON_FLAGS := \
   -DTF_LITE_DISABLE_X86_NEON \
   $(OPTIMIZATION_LEVEL) \
   $(CC_WARNINGS) \
+  $(OPTIMIZED_KERNEL_DEFINES) \
   $(TAG_DEFINES)
+
+ifeq ($(TARGET), $(HOST_OS))
+  # If we are not doing a cross-compilation then -DTF_LITE_USE_CTIME is what we
+  # want to have by default.
+  COMMON_FLAGS += -DTF_LITE_USE_CTIME
+endif
 
 CXXFLAGS := \
   -std=c++11 \
@@ -207,14 +233,111 @@ MICRO_LITE_EXAMPLE_TESTS := $(shell find tensorflow/lite/micro/examples/ -maxdep
 MICRO_LITE_EXAMPLE_TESTS += $(shell find tensorflow/lite/micro/examples/ -name Makefile_internal.inc)
 MICRO_LITE_BENCHMARKS := $(wildcard tensorflow/lite/micro/benchmarks/Makefile.inc)
 
-MICROLITE_TEST_SRCS := \
-$(wildcard tensorflow/lite/micro/*test.cc) \
-$(wildcard tensorflow/lite/micro/kernels/*test.cc) \
-$(wildcard tensorflow/lite/micro/memory_planner/*test.cc)
-
 # TODO(b/152645559): move all benchmarks to benchmarks directory.
 MICROLITE_BENCHMARK_SRCS := \
 $(wildcard tensorflow/lite/micro/benchmarks/*benchmark.cc)
+
+MICROLITE_TEST_SRCS := \
+tensorflow/lite/micro/memory_arena_threshold_test.cc \
+tensorflow/lite/micro/memory_helpers_test.cc \
+tensorflow/lite/micro/micro_allocator_test.cc \
+tensorflow/lite/micro/micro_error_reporter_test.cc \
+tensorflow/lite/micro/micro_interpreter_test.cc \
+tensorflow/lite/micro/micro_mutable_op_resolver_test.cc \
+tensorflow/lite/micro/micro_string_test.cc \
+tensorflow/lite/micro/micro_time_test.cc \
+tensorflow/lite/micro/micro_utils_test.cc \
+tensorflow/lite/micro/recording_micro_allocator_test.cc \
+tensorflow/lite/micro/recording_simple_memory_allocator_test.cc \
+tensorflow/lite/micro/simple_memory_allocator_test.cc \
+tensorflow/lite/micro/testing_helpers_test.cc \
+tensorflow/lite/micro/kernels/activations_test.cc \
+tensorflow/lite/micro/kernels/add_test.cc \
+tensorflow/lite/micro/kernels/arg_min_max_test.cc \
+tensorflow/lite/micro/kernels/ceil_test.cc \
+tensorflow/lite/micro/kernels/circular_buffer_test.cc \
+tensorflow/lite/micro/kernels/comparisons_test.cc \
+tensorflow/lite/micro/kernels/concatenation_test.cc \
+tensorflow/lite/micro/kernels/conv_test.cc \
+tensorflow/lite/micro/kernels/depthwise_conv_test.cc \
+tensorflow/lite/micro/kernels/dequantize_test.cc \
+tensorflow/lite/micro/kernels/detection_postprocess_test.cc \
+tensorflow/lite/micro/kernels/elementwise_test.cc \
+tensorflow/lite/micro/kernels/floor_test.cc \
+tensorflow/lite/micro/kernels/fully_connected_test.cc \
+tensorflow/lite/micro/kernels/hard_swish_test.cc \
+tensorflow/lite/micro/kernels/l2norm_test.cc \
+tensorflow/lite/micro/kernels/logical_test.cc \
+tensorflow/lite/micro/kernels/logistic_test.cc \
+tensorflow/lite/micro/kernels/maximum_minimum_test.cc \
+tensorflow/lite/micro/kernels/mul_test.cc \
+tensorflow/lite/micro/kernels/neg_test.cc \
+tensorflow/lite/micro/kernels/pack_test.cc \
+tensorflow/lite/micro/kernels/pad_test.cc \
+tensorflow/lite/micro/kernels/pooling_test.cc \
+tensorflow/lite/micro/kernels/prelu_test.cc \
+tensorflow/lite/micro/kernels/quantization_util_test.cc \
+tensorflow/lite/micro/kernels/quantize_test.cc \
+tensorflow/lite/micro/kernels/reduce_test.cc \
+tensorflow/lite/micro/kernels/reshape_test.cc \
+tensorflow/lite/micro/kernels/resize_nearest_neighbor_test.cc \
+tensorflow/lite/micro/kernels/round_test.cc \
+tensorflow/lite/micro/kernels/shape_test.cc \
+tensorflow/lite/micro/kernels/softmax_test.cc \
+tensorflow/lite/micro/kernels/split_test.cc \
+tensorflow/lite/micro/kernels/split_v_test.cc \
+tensorflow/lite/micro/kernels/strided_slice_test.cc \
+tensorflow/lite/micro/kernels/sub_test.cc \
+tensorflow/lite/micro/kernels/svdf_test.cc \
+tensorflow/lite/micro/kernels/tanh_test.cc \
+tensorflow/lite/micro/kernels/unpack_test.cc \
+tensorflow/lite/micro/memory_planner/greedy_memory_planner_test.cc \
+tensorflow/lite/micro/memory_planner/linear_memory_planner_test.cc
+
+MICROLITE_CC_KERNEL_SRCS := \
+tensorflow/lite/micro/kernels/activations.cc \
+tensorflow/lite/micro/kernels/add.cc \
+tensorflow/lite/micro/kernels/arg_min_max.cc \
+tensorflow/lite/micro/kernels/ceil.cc \
+tensorflow/lite/micro/kernels/circular_buffer.cc \
+tensorflow/lite/micro/kernels/comparisons.cc \
+tensorflow/lite/micro/kernels/concatenation.cc \
+tensorflow/lite/micro/kernels/conv.cc \
+tensorflow/lite/micro/kernels/depthwise_conv.cc \
+tensorflow/lite/micro/kernels/dequantize.cc \
+tensorflow/lite/micro/kernels/detection_postprocess.cc \
+tensorflow/lite/micro/kernels/elementwise.cc \
+tensorflow/lite/micro/kernels/ethosu.cc \
+tensorflow/lite/micro/kernels/flexbuffers_generated_data.cc \
+tensorflow/lite/micro/kernels/floor.cc \
+tensorflow/lite/micro/kernels/fully_connected.cc \
+tensorflow/lite/micro/kernels/hard_swish.cc \
+tensorflow/lite/micro/kernels/kernel_runner.cc \
+tensorflow/lite/micro/kernels/kernel_util.cc \
+tensorflow/lite/micro/kernels/l2norm.cc \
+tensorflow/lite/micro/kernels/logical.cc \
+tensorflow/lite/micro/kernels/logistic.cc \
+tensorflow/lite/micro/kernels/maximum_minimum.cc \
+tensorflow/lite/micro/kernels/mul.cc \
+tensorflow/lite/micro/kernels/neg.cc \
+tensorflow/lite/micro/kernels/pack.cc \
+tensorflow/lite/micro/kernels/pad.cc \
+tensorflow/lite/micro/kernels/pooling.cc \
+tensorflow/lite/micro/kernels/prelu.cc \
+tensorflow/lite/micro/kernels/quantize.cc \
+tensorflow/lite/micro/kernels/reduce.cc \
+tensorflow/lite/micro/kernels/reshape.cc \
+tensorflow/lite/micro/kernels/resize_nearest_neighbor.cc \
+tensorflow/lite/micro/kernels/round.cc \
+tensorflow/lite/micro/kernels/shape.cc \
+tensorflow/lite/micro/kernels/softmax.cc \
+tensorflow/lite/micro/kernels/split.cc \
+tensorflow/lite/micro/kernels/split_v.cc \
+tensorflow/lite/micro/kernels/strided_slice.cc \
+tensorflow/lite/micro/kernels/sub.cc \
+tensorflow/lite/micro/kernels/svdf.cc \
+tensorflow/lite/micro/kernels/tanh.cc \
+tensorflow/lite/micro/kernels/unpack.cc
 
 MICROLITE_TEST_HDRS := \
 $(wildcard tensorflow/lite/micro/testing/*.h)
@@ -222,7 +345,6 @@ $(wildcard tensorflow/lite/micro/testing/*.h)
 MICROLITE_CC_BASE_SRCS := \
 $(wildcard tensorflow/lite/micro/*.cc) \
 $(wildcard tensorflow/lite/micro/benchmarks/*model_data.cc) \
-$(wildcard tensorflow/lite/micro/kernels/*.cc) \
 $(wildcard tensorflow/lite/micro/memory_planner/*.cc) \
 $(wildcard tensorflow/lite/micro/testing/*model.cc) \
 tensorflow/lite/c/common.c \
@@ -322,6 +444,8 @@ third_party/gemmlowp/LICENSE \
 third_party/flatbuffers/include/flatbuffers/base.h \
 third_party/flatbuffers/include/flatbuffers/stl_emulation.h \
 third_party/flatbuffers/include/flatbuffers/flatbuffers.h \
+third_party/flatbuffers/include/flatbuffers/flexbuffers.h \
+third_party/flatbuffers/include/flatbuffers/util.h \
 third_party/flatbuffers/LICENSE.txt \
 third_party/ruy/ruy/profiler/instrumentation.h
 
@@ -354,10 +478,20 @@ ALL_PROJECT_TARGETS :=
 ARDUINO_LIBRARY_TARGETS :=
 ARDUINO_LIBRARY_ZIPS :=
 
+# The download scripts require that the downloads directory already exist for
+# improved error checking. To accomodate that, we first create a downloads
+# directory.
+$(shell mkdir -p ${MAKEFILE_DIR}/downloads)
+
+# Directly download the flatbuffers library.
+DOWNLOAD_RESULT := $(shell $(MAKEFILE_DIR)/flatbuffers_download.sh ${MAKEFILE_DIR}/downloads)
+ifneq ($(DOWNLOAD_RESULT), SUCCESS)
+  $(error Something went wrong with the flatbuffers download: $(DOWNLOAD_RESULT))
+endif
+
 include $(MAKEFILE_DIR)/third_party_downloads.inc
 THIRD_PARTY_DOWNLOADS :=
 $(eval $(call add_third_party_download,$(GEMMLOWP_URL),$(GEMMLOWP_MD5),gemmlowp,))
-$(eval $(call add_third_party_download,$(FLATBUFFERS_URL),$(FLATBUFFERS_MD5),flatbuffers,))
 $(eval $(call add_third_party_download,$(RUY_URL),$(RUY_MD5),ruy,))
 $(eval $(call add_third_party_download,$(PERSON_MODEL_URL),$(PERSON_MODEL_MD5),person_model_grayscale,))
 $(eval $(call add_third_party_download,$(PERSON_MODEL_INT8_URL),$(PERSON_MODEL_INT8_MD5),person_model_int8,))
@@ -378,11 +512,30 @@ ifeq ($(findstring $(TARGET),$(TARGETS_WITHOUT_MAKEFILES)),)
   include $(MAKEFILE_DIR)/targets/$(TARGET)_makefile.inc
 endif
 
-# Load dependencies for optimized kernel implementations.
-include $(wildcard $(MAKEFILE_DIR)/ext_libs/*.inc)
+ifneq ($(OPTIMIZED_KERNEL_DIR),)
+  # The new way of using optimized kernels enforces that only that specific
+  # makefile is included. For backwards compatibility, we are using an empty
+  # OPTIMIZED_KERNEL_DIR to impy that we want to fall-back to TAGS. So, we are
+  # additionally using OPTIMIZED_KERNEL_DIR==none to signify that we do not want
+  # any optimized implementations.
+  ifneq ($(OPTIMIZED_KERNEL_DIR), none)
+    include $(MAKEFILE_DIR)/ext_libs/$(OPTIMIZED_KERNEL_DIR).inc
+    # Specialize for the optimized kernels
+    MICROLITE_CC_KERNEL_SRCS := $(call substitute_specialized_implementations,$(MICROLITE_CC_KERNEL_SRCS),$(OPTIMIZED_KERNEL_DIR))
+  endif
 
-# Call specialize here so that platform-specific tags can be taken into account.
-MICROLITE_CC_SRCS := $(call specialize,$(MICROLITE_CC_SRCS))
+  # Specialize for debug_log. micro_time etc.
+  MICROLITE_CC_SRCS := $(call substitute_specialized_implementations,$(MICROLITE_CC_SRCS),$(TARGET))
+  MICROLITE_CC_SRCS += $(MICROLITE_CC_KERNEL_SRCS)
+else
+  # This is the deprecated way of pulling in optimized kernel implementations.
+  # Load dependencies for optimized kernel implementations.
+  include $(wildcard $(MAKEFILE_DIR)/ext_libs/*.inc)
+
+  # Call specialize here so that platform-specific tags can be taken into account.
+  MICROLITE_CC_SRCS += $(MICROLITE_CC_KERNEL_SRCS)
+  MICROLITE_CC_SRCS := $(call specialize,$(MICROLITE_CC_SRCS))
+endif
 
 ALL_TAGS += $(TARGET_ARCH)
 
@@ -443,7 +596,7 @@ microlite: $(MICROLITE_LIB_PATH)
 
 # Hack for generating schema file bypassing flatbuffer parsing
 tensorflow/lite/schema/schema_generated.h:
-	@cp -u tensorflow/lite/schema/schema_generated.h.OPENSOURCE tensorflow/lite/schema/schema_generated.h
+	@cp -u tensorflow/lite/schema/schema_generated.h.oss tensorflow/lite/schema/schema_generated.h
 
 # Gathers together all the objects we've compiled into a single '.a' archive.
 $(MICROLITE_LIB_PATH): tensorflow/lite/schema/schema_generated.h $(MICROLITE_LIB_OBJS)

@@ -18,6 +18,8 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
+#include "tensorflow/compiler/mlir/mlir_bridge_rollout_policy.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/types/variant.h"
 #include "tensorflow/compiler/jit/defs.h"
@@ -206,7 +208,7 @@ Status BuildComputation(
     switch (retval.kind()) {
       case XlaExpression::Kind::kConstant:
         output.is_constant = true;
-        output.constant_value = retval.constant_value();
+        output.constant_value = *retval.constant_value();
         output.shape = output.constant_value.shape();
         break;
 
@@ -445,6 +447,9 @@ string XlaCompiler::Argument::HumanString() const {
     case kConstant:
       return absl::StrCat("kind=constant", common,
                           " value=", constant_value.DebugString());
+    case kConstantResource:
+      return absl::StrCat("kind=constant-resource", common,
+                          " value=", constant_value.DebugString());
     case kResource: {
       string output = absl::StrCat(
           "kind=resource", common,
@@ -547,7 +552,8 @@ static Status GetFunctionBody(const NameAttrList& function,
 }
 
 Status XlaCompiler::FindFunctionBody(const NameAttrList& function,
-                                     const FunctionBody** fbody) {
+                                     const FunctionBody** fbody,
+                                     const ConfigProto** config_proto) {
   // The function may be in either the local_flib_runtime_ or flib_runtime_.
   // Look up the function in local first and if it is not found then look up the
   // function in flib_runtime_.
@@ -559,8 +565,14 @@ Status XlaCompiler::FindFunctionBody(const NameAttrList& function,
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
         GetFunctionBody(function, flib_runtime_, fbody),
         "Local lookup failed with: ", status.error_message());
+    if (config_proto) {
+      *config_proto = flib_runtime_->config_proto();
+    }
     VLOG(4) << "Function " << function.name() << " in flib_runtime_";
   } else {
+    if (config_proto) {
+      *config_proto = local_flib_runtime_->config_proto();
+    }
     VLOG(4) << "Function " << function.name() << " in local_flib_runtime_";
   }
   return Status::OK();
@@ -675,6 +687,38 @@ std::unique_ptr<Graph> XlaCompiler::GetGraph(const FunctionBody* fbody) {
   return graph;
 }
 
+// Collects all control rets from `orig_control_ret_nodes` that are still valid,
+// keeping the same order.
+std::vector<std::string> GetValidControlRets(
+    absl::Span<Node* const> orig_control_ret_nodes, const Graph& graph) {
+  // Build map from control ret node to index.
+  absl::flat_hash_map<const Node*, int> control_ret_nodes_map;
+  for (int i = 0; i < orig_control_ret_nodes.size(); ++i) {
+    const Node* n = orig_control_ret_nodes[i];
+    control_ret_nodes_map[n] = i;
+  }
+  // Check which control rets are still valid.
+  std::vector<bool> is_valid_control_ret(orig_control_ret_nodes.size(), false);
+  int num_valid_control_rets = 0;
+  for (const Node* n : graph.nodes()) {
+    auto iter = control_ret_nodes_map.find(n);
+    if (iter != control_ret_nodes_map.end()) {
+      ++num_valid_control_rets;
+      is_valid_control_ret[iter->second] = true;
+    }
+  }
+  // Return valid control rets in same order as they appear in
+  // `orig_control_ret_nodes`.
+  std::vector<std::string> valid_control_rets;
+  valid_control_rets.reserve(num_valid_control_rets);
+  for (int i = 0; i < orig_control_ret_nodes.size(); ++i) {
+    if (is_valid_control_ret[i]) {
+      valid_control_rets.push_back(orig_control_ret_nodes[i]->name());
+    }
+  }
+  return valid_control_rets;
+}
+
 Status XlaCompiler::CompileFunction(
     const XlaCompiler::CompileOptions& options,
     const NameAttrList& fn_name_attrs,
@@ -692,7 +736,13 @@ Status XlaCompiler::CompileFunction(
   }
 
   const FunctionBody* fbody;
-  TF_RETURN_IF_ERROR(FindFunctionBody(fn_name_attrs, &fbody));
+  const ConfigProto* config = nullptr;
+  TF_RETURN_IF_ERROR(FindFunctionBody(fn_name_attrs, &fbody, &config));
+
+  absl::optional<ConfigProto> config_proto;
+  if (config) {
+    config_proto = *config;
+  }
 
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       CheckSignature(fbody->arg_types, args),
@@ -753,27 +803,27 @@ Status XlaCompiler::CompileFunction(
   }
 
   VLOG(1) << "====================================================";
+  MlirBridgeRolloutPolicy policy =
+      GetMlirBridgeRolloutPolicy(*graph, config_proto);
 #ifdef LIBTPU_ON_GCE
-  if (GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge ==
-      ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED) {
+  if (policy == MlirBridgeRolloutPolicy::kEnabledByUser) {
     VLOG(1) << "MLIR is not supported in this environment.";
   }
   TF_RETURN_IF_ERROR(
       CompileGraph(options, function_id, std::move(graph), args, result));
 #else
-  if (GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge ==
-      ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED) {
+  if (policy == MlirBridgeRolloutPolicy::kEnabledByUser) {
     VLOG(1) << "Using MLIR bridge";
     GraphDebugInfo debug_info;
-    std::vector<std::string> control_rets;
-    for (const auto* control_ret_node : fbody->control_ret_nodes) {
-      control_rets.push_back(control_ret_node->name());
-    }
+
+    std::vector<std::string> valid_control_rets =
+        GetValidControlRets(fbody->control_ret_nodes, *graph);
+
     TF_RETURN_IF_ERROR(CompileGraphToXlaHlo(
         std::move(*graph), mlir::SpanToArrayRef<XlaCompiler::Argument>(args),
-        control_rets, options_.device_type.type_string(), options.use_tuple_arg,
-        *options_.flib_def, debug_info, options_.shape_representation_fn,
-        result));
+        valid_control_rets, options_.device_type.type_string(),
+        options.use_tuple_arg, *options_.flib_def, debug_info,
+        options_.shape_representation_fn, result));
   } else {
     TF_RETURN_IF_ERROR(
         CompileGraph(options, function_id, std::move(graph), args, result));
@@ -823,6 +873,7 @@ Status XlaCompiler::XLAShapeForArgument(
       *xla_shape = absl::get<xla::Shape>(arg.shape);
       return Status::OK();
     }
+    case XlaCompiler::Argument::kConstantResource:
     case XlaCompiler::Argument::kResource: {
       TF_RET_CHECK(arg.initialized);
 
@@ -926,6 +977,7 @@ Status XlaCompiler::BuildArguments(
     const XlaCompiler::Argument& arg = args[i];
     XlaExpression& arg_expression = (*arg_expressions)[i];
     switch (arg.kind) {
+      case XlaCompiler::Argument::kConstantResource:
       case XlaCompiler::Argument::kResource: {
         TF_RET_CHECK(arg.resource_kind != XlaResource::kInvalid);
         TF_RET_CHECK(absl::holds_alternative<TensorShape>(arg.shape));
@@ -938,7 +990,10 @@ Status XlaCompiler::BuildArguments(
                 /*max_array_size=*/arg.max_array_size,
                 /*tensor_array_gradients=*/arg.tensor_array_gradients,
                 /*tensor_array_multiple_writes_aggregate=*/true));
-        arg_expression = XlaExpression::Resource(resource);
+        arg_expression =
+            arg.kind == XlaCompiler::Argument::kResource
+                ? XlaExpression::Resource(resource)
+                : XlaExpression::ConstantResource(arg.constant_value, resource);
         if (arg.initialized) {
           input_to_args->push_back(i);
         }
@@ -1091,6 +1146,7 @@ Status XlaCompiler::BuildArguments(
                                    arg_shardings.at(i).DebugString()));
     XlaExpression& arg_expression = (*arg_expressions)[input_to_args->at(i)];
     switch (arg.kind) {
+      case XlaCompiler::Argument::kConstantResource:
       case XlaCompiler::Argument::kResource: {
         TF_RET_CHECK(arg.initialized);
         XlaResource* resource = arg_expression.resource();

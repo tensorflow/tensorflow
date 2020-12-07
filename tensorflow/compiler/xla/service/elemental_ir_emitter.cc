@@ -1578,6 +1578,33 @@ llvm::Value* ElementalIrEmitter::EmitIntegerRemainder(llvm::Value* lhs,
       Select(has_int_min_overflow, GetZero(lhs->getType()), safe_rem));
 }
 
+llvm::Value* ElementalIrEmitter::EmitIntegerPow(llvm::Value* base,
+                                                llvm::Value* exponent,
+                                                bool is_signed) {
+  // Exponentiation by squaring:
+  // https://en.wikipedia.org/wiki/Exponentiation_by_squaring;
+  int bits = 6;  // Everything else would overflow for any exponent > 1, as 2^64
+                 // is the larget possible exponent for a 64-bit integer, and
+                 // that's 1 << 6.
+  llvm::Value* accumulator = llvm::ConstantInt::get(base->getType(), 1);
+  llvm::Value* one = llvm::ConstantInt::get(exponent->getType(), 1);
+  llvm::Value* zero = llvm::ConstantInt::get(exponent->getType(), 0);
+  llvm::Value* original_base = base;
+  llvm::Value* original_exponent = exponent;
+
+  // Unroll the loop at compile time.
+  for (int i = 0; i < bits; i++) {
+    accumulator =
+        b_->CreateSelect(b_->CreateICmpEQ(b_->CreateAnd(exponent, one), one),
+                         b_->CreateMul(accumulator, base), accumulator);
+    base = b_->CreateMul(base, base);
+    exponent = b_->CreateLShr(exponent, 1);
+  }
+  return b_->CreateSelect(
+      b_->CreateICmpSGE(original_exponent, zero), accumulator,
+      b_->CreateSelect(b_->CreateICmpEQ(original_base, one), one, zero));
+}
+
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerBinaryOp(
     const HloInstruction* op, llvm::Value* lhs_value, llvm::Value* rhs_value,
     bool is_signed) {
@@ -1627,6 +1654,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerBinaryOp(
       return And(lhs_value, rhs_value);
     case HloOpcode::kOr:
       return Or(lhs_value, rhs_value);
+    case HloOpcode::kPower:
+      return EmitIntegerPow(lhs_value, rhs_value, is_signed);
     case HloOpcode::kXor:
       return Xor(lhs_value, rhs_value);
 
@@ -2486,6 +2515,10 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
         return EmitElementalReduce(reduce_instr, std::move(input_generators),
                                    std::move(initial_value_generators), index);
       };
+    case HloOpcode::kConvolution:
+      return [this, hlo, &operand_to_generator](const IrArray::Index& index) {
+        return EmitConvolution(hlo, operand_to_generator, index);
+      };
     default:
       return [hlo](const IrArray::Index& index) {
         return Unimplemented("Unhandled opcode for elemental IR emission: %s",
@@ -2728,6 +2761,13 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalReduce(
     CHECK_EQ(accumulator_addrs.size(), 1);
     return Load(accumulator_addrs[0]);
   }
+}
+
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitConvolution(
+    const HloInstruction* hlo,
+    const ElementalIrEmitter::HloToElementGeneratorMap& operand_to_generator,
+    const llvm_ir::IrArray::Index& index) {
+  return Unimplemented("Elemental convolution is not implemented");
 }
 
 // Evaluate polynomial using Horner's method.

@@ -206,13 +206,26 @@ bool MergeSharding(const HloSharding& old, HloSharding* to_merge,
     int64 old_group_id = get_group_index(old_index, old);
     int64 new_group_id = get_group_index(new_index, *to_merge);
     if (old_group_members[old_group_id].empty() ||
-        new_group_members[new_group_id].empty() ||
-        *old_group_members[old_group_id].begin() !=
-            *new_group_members[new_group_id].begin()) {
+        new_group_members[new_group_id].empty()) {
       compatible = false;
       return;
     }
-    *device = *old_group_members[old_group_id].begin();
+
+    int64 smallest_old = *old_group_members[old_group_id].begin();
+    int64 smallest_new = *new_group_members[new_group_id].begin();
+    if (smallest_old < smallest_new) {
+      if (old_group_members[old_group_id].count(smallest_new) == 0) {
+        compatible = false;
+        return;
+      }
+      *device = smallest_new;
+    } else {
+      if (new_group_members[new_group_id].count(smallest_old) == 0) {
+        compatible = false;
+        return;
+      }
+      *device = smallest_old;
+    }
     old_group_members[old_group_id].erase(*device);
     new_group_members[new_group_id].erase(*device);
   });
@@ -666,6 +679,23 @@ bool InferShardingFromOperands(HloInstruction* instruction,
                                bool is_spmd, int64 aggressiveness) {
   if (!CanPropagateThroughAtAgressiveLevel(*instruction, aggressiveness)) {
     return false;
+  }
+  // Do not change manual sharding.
+  if (instruction->has_sharding() && instruction->sharding().IsManual()) {
+    return false;
+  }
+  // Propagate manual sharding. Avoid tuple shaped HLOs that group independent
+  // together. Reduce and Sort can be tuples but the elements are correlated, so
+  // we propagate manual sharding through them.
+  if (!instruction->has_sharding() &&
+      (instruction->shape().IsArray() ||
+       instruction->opcode() == HloOpcode::kReduce ||
+       instruction->opcode() == HloOpcode::kSort) &&
+      absl::c_any_of(instruction->operands(), [](const HloInstruction* op) {
+        return op->has_sharding() && op->sharding().IsManual();
+      })) {
+    instruction->set_sharding(HloSharding::Manual());
+    return true;
   }
   const bool may_combine_partial_sharding = is_spmd && aggressiveness > 0;
   if (!SupportSpatialPartitioning(instruction, computation_map, is_spmd)) {
@@ -1290,6 +1320,9 @@ absl::optional<HloSharding> GetShardingFromUser(
       return hlo_sharding_util::ReshapeSharding(
           user.shape(), instruction.shape(), user.sharding());
     }
+    case HloOpcode::kSlice: {
+      return user.sharding();
+    }
     case HloOpcode::kTranspose: {
       // Calculate the dimension numbers for reversing the current transpose
       // and then use TransposeSharding to convert the output sharding to an
@@ -1440,6 +1473,19 @@ bool InferShardingFromUsers(HloInstruction* instruction,
                             int64 aggressiveness, bool is_spmd) {
   if (aggressiveness < 2 && instruction->opcode() == HloOpcode::kBroadcast) {
     return false;
+  }
+  // Do not change manual sharding.
+  if (instruction->has_sharding() && instruction->sharding().IsManual()) {
+    return false;
+  }
+  // Propagate manual sharding.
+  if (!instruction->has_sharding() && instruction->shape().IsArray() &&
+      absl::c_any_of(instruction->users(), [](const HloInstruction* user) {
+        return user->has_sharding() && user->sharding().IsManual() &&
+               !user->IsCustomCall("SPMDFullToShardShape");
+      })) {
+    instruction->set_sharding(HloSharding::Manual());
+    return true;
   }
   if (!SupportSpatialPartitioning(instruction, computation_map, is_spmd)) {
     return false;

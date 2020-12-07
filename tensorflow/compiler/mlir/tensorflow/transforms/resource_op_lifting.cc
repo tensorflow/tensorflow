@@ -32,9 +32,8 @@ limitations under the License.
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Region.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
@@ -120,7 +119,7 @@ namespace {
 //   return %read
 // }
 //
-// will be be transformed to:
+// will be transformed to:
 //
 // func @cluster_with_loop() {
 //   %0 = "tf.VarHandleOp"() ...
@@ -201,8 +200,20 @@ void ForwardStoreToLoad(Block* block) {
       if (!last_store) continue;
 
       // Use stored value in last_store to replace all uses of current resource
-      // load's result, then erase this resource load.
-      read_variable_op.value().replaceAllUsesWith(last_store.value());
+      // load's result, then erase this resource load. Add an intermediate
+      // CastOp if the shape of types doesn't exactly match.
+      Type read_type = read_variable_op.value().getType();
+      if (read_type != last_store.value().getType()) {
+        OpBuilder builder(last_store);
+        builder.setInsertionPointAfter(last_store);
+        auto cast = builder.create<TF::CastOp>(
+            last_store.getLoc(), read_type, last_store.value(),
+            /*Truncate=*/builder.getBoolAttr(false));
+        read_variable_op.value().replaceAllUsesWith(cast);
+      } else {
+        read_variable_op.value().replaceAllUsesWith(last_store.value());
+      }
+
       read_variable_op.erase();
       continue;
     }
@@ -233,7 +244,7 @@ class RegionResourceHoister {
   // Returns all resources accessed by the regions attached the op.
   auto& GetResources() { return resources_; }
 
-  // Returns if the given value is a resouce that needs lifting.
+  // Returns if the given value is a resource that needs lifting.
   bool Contains(Value resource) const {
     return resources_.find(resource) != resources_.end();
   }
@@ -367,7 +378,7 @@ LogicalResult RegionResourceHoister::Analyze() {
       // If the user is not in one of the regions, we are not interested in it.
       // Since all the sub-regions within this region (i.e., regions attached to
       // op's in this region) have themselves gone through lifting, all resource
-      // users are expected to be operations in this region and and not embedded
+      // users are expected to be operations in this region and not embedded
       // within other sub-regions attached to op's in this region. So the check
       // for whether a user is in one of the regions attached to this op is
       // straightforward.
@@ -483,7 +494,7 @@ void RegionResourceHoister::AppendResourceStoreValueToReturn(
     auto new_return_operands = llvm::to_vector<4>(old_return->getOperands());
     new_return_operands.resize(num_new_results_);
 
-    // initialize return values for written resources to be the hosited reads.
+    // initialize return values for written resources to be the hoisted reads.
     for (Value resource : written_resources_) {
       const ResourceInfo& info = resources_[resource];
       new_return_operands[info.result_index] = info.hoisted_read;
@@ -519,7 +530,7 @@ void RegionResourceHoister::ReplaceOpWithNewOp() {
   new_result_types.insert(new_result_types.end(), extra_result_types.begin(),
                           extra_result_types.end());
   OpBuilder builder(op_);
-  // Clone ths old operation but with new result types.
+  // Clone this old operation but with new result types.
   Operation* new_op = Operation::create(
       op_->getLoc(), op_->getName(), new_result_types, op_->getOperands(),
       op_->getAttrs(), op_->getSuccessors(), op_->getNumRegions());
@@ -796,7 +807,7 @@ LogicalResult LiftArgRetResourcesForFunction(
   // value to be written.
 
   // Now create read values that will be used to replace each resource that
-  // is read in the function body. These read vaulues are just the same argument
+  // is read in the function body. These read values are just the same argument
   // with type replaced.
   llvm::SmallVector<Value, 4> skipped_args;
   for (auto& it : hoister.GetResources()) {
@@ -1099,7 +1110,7 @@ LogicalResult HandlePartitionedCallOpCallee(
   name_base += "_resource_lifted";
   auto name = name_base;
   callee = callee.clone();
-  callee.setVisibility(SymbolTable::Visibility::Private);
+  callee.setPrivate();
   callee.setName(name);
   SymbolTable(module).insert(callee);
   result->lifted_callee = callee;

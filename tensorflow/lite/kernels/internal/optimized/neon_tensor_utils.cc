@@ -127,69 +127,6 @@ inline int32_t AccumulateNeonLane(const int32x4_t lane) {
 #endif
 }
 
-// TODO(jaesung): Merge duplicated implementations in optimized_ops.h and
-// neon_tensor_utils.cc.
-inline int32x4x4_t MultiplyByQuantizedMultiplier4Rows(
-    int32x4x4_t input_val, int32 quantized_multiplier, int shift) {
-  using gemmlowp::RoundingDivideByPOT;
-  using gemmlowp::SaturatingRoundingDoublingHighMul;
-  const int left_shift = shift > 0 ? shift : 0;
-  const int right_shift = shift > 0 ? 0 : -shift;
-  int32x4x4_t result;
-  // The vector type support for SaturatingRoundingDoublingHighMulth in gemmlowp
-  // is limited to NEON.
-#ifdef GEMMLOWP_NEON
-  const int32x4_t left_shifted_one_dup = vdupq_n_s32(1 << left_shift);
-  result.val[0] =
-      RoundingDivideByPOT(SaturatingRoundingDoublingHighMul(
-                              vmulq_s32(input_val.val[0], left_shifted_one_dup),
-                              quantized_multiplier),
-                          right_shift);
-  result.val[1] =
-      RoundingDivideByPOT(SaturatingRoundingDoublingHighMul(
-                              vmulq_s32(input_val.val[1], left_shifted_one_dup),
-                              quantized_multiplier),
-                          right_shift);
-  result.val[2] =
-      RoundingDivideByPOT(SaturatingRoundingDoublingHighMul(
-                              vmulq_s32(input_val.val[2], left_shifted_one_dup),
-                              quantized_multiplier),
-                          right_shift);
-  result.val[3] =
-      RoundingDivideByPOT(SaturatingRoundingDoublingHighMul(
-                              vmulq_s32(input_val.val[3], left_shifted_one_dup),
-                              quantized_multiplier),
-                          right_shift);
-#else
-  for (int i = 0; i < 4; ++i) {
-    int32_t vals[4];
-    vals[0] = RoundingDivideByPOT(
-        SaturatingRoundingDoublingHighMul(
-            vgetq_lane_s32(input_val.val[i], 0) * (1 << left_shift),
-            quantized_multiplier),
-        right_shift);
-    vals[1] = RoundingDivideByPOT(
-        SaturatingRoundingDoublingHighMul(
-            vgetq_lane_s32(input_val.val[i], 1) * (1 << left_shift),
-            quantized_multiplier),
-        right_shift);
-    vals[2] = RoundingDivideByPOT(
-        SaturatingRoundingDoublingHighMul(
-            vgetq_lane_s32(input_val.val[i], 2) * (1 << left_shift),
-            quantized_multiplier),
-        right_shift);
-    vals[3] = RoundingDivideByPOT(
-        SaturatingRoundingDoublingHighMul(
-            vgetq_lane_s32(input_val.val[i], 3) * (1 << left_shift),
-            quantized_multiplier),
-        right_shift);
-
-    result.val[i] = vld1q_s32(reinterpret_cast<int32_t*>(&vals));
-  }
-#endif
-  return result;
-}
-
 inline int32x4x2_t MultiplyByQuantizedMultiplier2Rows(
     int32x4x2_t input_val, int32 quantized_multiplier, int shift) {
   using gemmlowp::RoundingDivideByPOT;
@@ -2565,6 +2502,66 @@ void NeonReductionSumVector(const int8_t* input_vector, int32_t* output_vector,
       sum += row_ptr[r];
     }
     output_vector[o] += sum;
+  }
+}
+
+void NeonVectorBatchVectorCwiseProductAccumulate(
+    const int16_t* vector, int v_size, const int16_t* batch_vector, int n_batch,
+    int32_t multiplier, int shift, int16_t* result) {
+  int32x4_t min_value_vector = vdupq_n_s32(-32768);
+  int32x4_t max_value_vector = vdupq_n_s32(32767);
+
+  for (int b = 0; b < n_batch; b++) {
+    int v = 0;
+    for (; v <= v_size - 16; v += 16) {
+      int32x4x4_t prod;
+      prod.val[0] = vmull_s16(vld1_s16(vector + v), vld1_s16(batch_vector));
+      prod.val[1] =
+          vmull_s16(vld1_s16(vector + v + 4), vld1_s16(batch_vector + 4));
+      prod.val[2] =
+          vmull_s16(vld1_s16(vector + v + 8), vld1_s16(batch_vector + 8));
+      prod.val[3] =
+          vmull_s16(vld1_s16(vector + v + 12), vld1_s16(batch_vector + 12));
+      batch_vector += 16;
+
+      prod = MultiplyByQuantizedMultiplier4Rows(prod, multiplier, shift);
+
+      int16x4x4_t results;
+      results.val[0] = vld1_s16(result);
+      results.val[1] = vld1_s16(result + 4);
+      results.val[2] = vld1_s16(result + 8);
+      results.val[3] = vld1_s16(result + 12);
+
+      prod.val[0] = vaddq_s32(prod.val[0], vmovl_s16(results.val[0]));
+      prod.val[1] = vaddq_s32(prod.val[1], vmovl_s16(results.val[1]));
+      prod.val[2] = vaddq_s32(prod.val[2], vmovl_s16(results.val[2]));
+      prod.val[3] = vaddq_s32(prod.val[3], vmovl_s16(results.val[3]));
+
+      prod.val[0] = vmaxq_s32(prod.val[0], min_value_vector);
+      prod.val[1] = vmaxq_s32(prod.val[1], min_value_vector);
+      prod.val[2] = vmaxq_s32(prod.val[2], min_value_vector);
+      prod.val[3] = vmaxq_s32(prod.val[3], min_value_vector);
+
+      prod.val[0] = vminq_s32(prod.val[0], max_value_vector);
+      prod.val[1] = vminq_s32(prod.val[1], max_value_vector);
+      prod.val[2] = vminq_s32(prod.val[2], max_value_vector);
+      prod.val[3] = vminq_s32(prod.val[3], max_value_vector);
+
+      vst1_s16(result, vmovn_s32(prod.val[0]));
+      vst1_s16(result + 4, vmovn_s32(prod.val[1]));
+      vst1_s16(result + 8, vmovn_s32(prod.val[2]));
+      vst1_s16(result + 12, vmovn_s32(prod.val[3]));
+
+      result += 16;
+    }
+
+    for (; v < v_size; v++) {
+      int32_t prod = vector[v] * *batch_vector++;
+      prod = MultiplyByQuantizedMultiplier(prod, multiplier, shift);
+      int32_t output = prod + *result;
+      output = std::max(std::min(32767, output), -32768);
+      *result++ = output;
+    }
   }
 }
 

@@ -204,7 +204,7 @@ def MobileNetV2(input_shape=None,
         raise ValueError('input_tensor: ', input_tensor,
                          'is not type input_tensor')
     if is_input_t_tensor:
-      if backend.image_data_format == 'channels_first':
+      if backend.image_data_format() == 'channels_first':
         if backend.int_shape(input_tensor)[1] != input_shape[1]:
           raise ValueError('input_shape: ', input_shape, 'and input_tensor: ',
                            input_tensor,

@@ -481,7 +481,7 @@ typedef struct TFE_CustomDevice {
 // "/job:localhost/replica:0/task:0/device:CUSTOM:0".
 //
 // The custom device defines copy operations for moving TensorHandles on and
-// off, and an an execution operation for named operations. Often execution will
+// off, and an execution operation for named operations. Often execution will
 // simply wrap op execution on one or more physical devices.
 //
 // device_info is an opaque caller-defined type stored with the custom device

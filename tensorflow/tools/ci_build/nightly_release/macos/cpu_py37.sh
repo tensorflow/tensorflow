@@ -25,10 +25,10 @@ sudo xcode-select -s "${DEVELOPER_DIR}"
 
 install_macos_pip_deps sudo pip3.7
 
+sudo pip3.7 install 'twine ~= 3.2.0'
+
 # For python3 path on Mac
 export PATH=$PATH:/usr/local/bin
-
-sudo pip install twine
 
 ./tensorflow/tools/ci_build/update_version.py --nightly
 
@@ -44,7 +44,7 @@ mkdir pip_pkg
 
 # Copy and rename to tf_nightly
 for f in $(ls pip_pkg/tf_nightly_cpu-*dev*macosx*.whl); do
-  copy_to_new_project_name "${f}" tf_nightly
+  copy_to_new_project_name "${f}" tf_nightly python
 done
 
 # Upload the built packages to pypi.
@@ -58,7 +58,7 @@ for f in $(ls pip_pkg/tf_nightly*dev*macosx*.whl); do
   # Upload the PIP package if whl test passes.
   if [ ${RETVAL} -eq 0 ]; then
     echo "Basic PIP test PASSED, Uploading package: ${f}"
-    twine upload -r pypi-warehouse "${f}" || echo
+    python3.7 -m twine upload -r pypi-warehouse "${f}"
   else
     echo "Basic PIP test FAILED, will not upload ${f} package"
     return 1

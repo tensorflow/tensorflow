@@ -36,6 +36,7 @@ py_library(
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/keras/applications",
         "//tensorflow/python/keras/datasets",
+        "//tensorflow/python/keras/distribute",
         "//tensorflow/python/keras/feature_column",
         "//tensorflow/python/keras/layers",
         "//tensorflow/python/keras/mixed_precision:mixed_precision_experimental",
@@ -60,7 +61,6 @@ py_library(
         "//tensorflow/python:check_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:clip_ops",
-        "//tensorflow/python:composite_tensor_utils",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:ctc_ops",
@@ -95,6 +95,7 @@ py_library(
         "//tensorflow/python/distribute:multi_worker_util",
         "//tensorflow/python/keras/engine:keras_tensor",
         "//tensorflow/python/keras/utils:control_flow_util",
+        "//tensorflow/python/keras/utils:object_identity",
         "//tensorflow/python/keras/utils:tf_contextlib",
         "//tensorflow/python/keras/utils:tf_inspect",
     ],
@@ -130,6 +131,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":backend",
+        "//tensorflow/python/keras/layers:advanced_activations",
         "//tensorflow/python/keras/utils:engine_utils",
     ],
 )
@@ -152,7 +154,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":backend",
-        "//tensorflow/python/distribute:distributed_file_utils",
+        "//tensorflow/python/keras/distribute:distributed_file_utils",
         "//tensorflow/python/keras/distribute:worker_training_state",
         "//tensorflow/python/keras/protobuf:projector_config_proto_py",
         "//tensorflow/python/keras/utils:engine_utils",
@@ -339,7 +341,6 @@ tf_py_test(
     size = "small",
     srcs = ["activations_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":activations",
         ":backend",
@@ -359,7 +360,6 @@ tf_py_test(
     size = "small",
     srcs = ["combinations_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":combinations",
         ":testing_utils",
@@ -376,7 +376,6 @@ tf_py_test(
     size = "small",
     srcs = ["constraints_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":backend",
         ":combinations",
@@ -391,7 +390,6 @@ tf_py_test(
     size = "small",
     srcs = ["initializers_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":backend",
         ":combinations",
@@ -426,7 +424,6 @@ tf_py_test(
     python_version = "PY3",
     shard_count = 8,
     tags = ["notsan"],
-    tfrt_enabled = True,
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
@@ -630,7 +627,6 @@ tf_py_test(
     size = "medium",
     srcs = ["backend_config_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":backend",
         ":backend_config",
@@ -645,7 +641,6 @@ tf_py_test(
     srcs = ["keras_parameterized_test.py"],
     python_version = "PY3",
     tags = ["notsan"],
-    tfrt_enabled = True,
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",

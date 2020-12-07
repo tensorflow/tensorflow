@@ -21,6 +21,8 @@ limitations under the License.
 
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/status.h"
@@ -132,6 +134,12 @@ Status Profile(const std::string& repository_root,
                    << client_response.service_address;
     } else {
       has_trace_data = true;
+      // If server side returns tool data in the response, saves that into the
+      // repository. This improves backward compatibility by reducing assumption
+      // of what server side does.
+      TF_RETURN_IF_ERROR(SaveProfile(repository_root, session_id,
+                                     client_response.service_address, response,
+                                     &std::cout));
     }
     if (!client_response.status.ok()) {
       LOG(WARNING) << client_response.service_address << " returned "
@@ -170,7 +178,7 @@ Status NewSession(absl::string_view repository_root,
 }  // namespace
 
 Status Trace(const std::string& logdir, int num_tracing_attempts,
-             const RemoteProfilerSessionManagerOptions& opts,
+             RemoteProfilerSessionManagerOptions& opts,
              bool is_cloud_tpu_session) {
   DCHECK_GT(opts.profiler_options().duration_ms(), 0);
   DCHECK(!opts.service_addresses().empty());
@@ -184,6 +192,14 @@ Status Trace(const std::string& logdir, int num_tracing_attempts,
   Status status;
   int remaining_attempts = num_tracing_attempts;
   while (true) {
+    auto start_timestamp = absl::Now() + absl::Milliseconds(opts.delay_ms());
+    opts.mutable_profiler_options()->set_start_timestamp_ns(
+        absl::ToUnixNanos(start_timestamp));
+    LOG(INFO) << "Profiler delay_ms was " << opts.delay_ms()
+              << ", start_timestamp_ns set to "
+              << opts.profiler_options().start_timestamp_ns() << " ["
+              << start_timestamp << "]";
+
     std::cout << "Starting to trace for " << duration_ms << " ms. "
               << "Remaining attempt(s): " << --remaining_attempts << std::endl;
 

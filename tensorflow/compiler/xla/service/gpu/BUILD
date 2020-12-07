@@ -74,11 +74,9 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
-        "//tensorflow/core:lib_internal",
+        "//tensorflow/compiler/xla/service:global_device_id",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
-        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -250,6 +248,7 @@ cc_library(
         "ir_emitter_unnested.h",
         "kernel_mapping_scheme.h",
     ],
+    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]),
     deps = [
         ":backend_configs_cc",
         ":buffer_allocations",
@@ -261,6 +260,7 @@ cc_library(
         ":ir_emission_utils",
         ":launch_dimensions",
         ":nccl_all_reduce_thunk",
+        ":nccl_all_to_all_thunk",
         ":parallel_loop_emitter",
         ":target_util",
         ":thunk",
@@ -268,6 +268,8 @@ cc_library(
         "//tensorflow/compiler/mlir:name_utils",
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/hlo:lhlo",
+        "//tensorflow/compiler/mlir/hlo:lhlo_gpu",
+        "//tensorflow/compiler/mlir/xla:hlo_module_importer",
         "//tensorflow/compiler/mlir/xla:hlo_utils",
         "//tensorflow/compiler/mlir/xla:mhlo_to_lhlo_with_xla",
         "//tensorflow/compiler/mlir/xla:mlir_hlo_to_hlo",
@@ -288,6 +290,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_execution_profile",
         "//tensorflow/compiler/xla/service:name_uniquer",
         "//tensorflow/compiler/xla/service:pattern_matcher",
+        "//tensorflow/compiler/xla/service:shape_inference",
         "//tensorflow/compiler/xla/service:while_loop_analysis",
         "//tensorflow/compiler/xla/service/llvm_ir:buffer_assignment_util",
         "//tensorflow/compiler/xla/service/llvm_ir:dynamic_update_slice_util",
@@ -416,15 +419,6 @@ cc_library(
     ],
 )
 
-# First level of nested select. NCCL requires both if_cuda and if_nccl.
-filegroup(
-    name = "nccl_all_reduce_thunk_src",
-    srcs = if_nccl(
-        ["nccl_all_reduce_thunk.cc"],
-        ["dummy_all_reduce_thunk.cc"],
-    ),
-)
-
 # use alias since nested select statements not possible
 cc_library(
     name = "empty",
@@ -440,6 +434,55 @@ alias(
     actual = if_rocm("@local_config_rocm//rocm:rccl", ":empty"),
 )
 
+# First level of nested select. NCCL requires both if_cuda and if_nccl.
+filegroup(
+    name = "nccl_collective_thunk_src",
+    srcs = if_nccl(
+        ["nccl_collective_thunk.cc"],
+        ["dummy_collective_thunk.cc"],
+    ),
+)
+
+tf_cuda_library(
+    name = "nccl_collective_thunk",
+    srcs = if_cuda_or_rocm(
+        [":nccl_collective_thunk_src"],
+        ["dummy_collective_thunk.cc"],
+    ),
+    hdrs = ["nccl_collective_thunk.h"],
+    deps = [
+        ":thunk",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "//tensorflow/compiler/xla/service:collective_ops_utils",
+        "//tensorflow/compiler/xla/service:global_device_id",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/core:lib",
+    ] + if_cuda([
+        "//tensorflow/stream_executor/cuda:cuda_activation",
+        "//tensorflow/stream_executor/cuda:cuda_gpu_executor",
+    ]) + if_rocm([
+        "//tensorflow/stream_executor/rocm:rocm_activation",
+        "//tensorflow/stream_executor/rocm:rocm_gpu_executor",
+    ]) + if_nccl([
+        ":virtual_nccl",
+        ":virtual_nccl_utils",
+        ":virtual_rccl",
+    ]),
+)
+
+# First level of nested select. NCCL requires both if_cuda and if_nccl.
+filegroup(
+    name = "nccl_all_reduce_thunk_src",
+    srcs = if_nccl(
+        ["nccl_all_reduce_thunk.cc"],
+        ["dummy_all_reduce_thunk.cc"],
+    ),
+)
+
 tf_cuda_library(
     name = "nccl_all_reduce_thunk",
     srcs = if_cuda_or_rocm(
@@ -449,31 +492,132 @@ tf_cuda_library(
     hdrs = ["nccl_all_reduce_thunk.h"],
     deps = [
         ":buffer_allocations",
-        ":hlo_execution_profiler",
-        ":thunk",
         ":gpu_executable_run_options",
+        ":hlo_execution_profiler",
+        ":nccl_collective_thunk",
+        ":thunk",
         "@com_google_absl//absl/base:core_headers",
-        "//tensorflow/compiler/xla/service:pattern_matcher",
-        "//tensorflow/compiler/xla:refcounting_hash_map",
-        "//tensorflow/compiler/xla/service:collective_ops_utils",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/synchronization",
-        "//tensorflow/compiler/xla:util",
+        "@com_google_absl//absl/strings:str_format",
         "//tensorflow/compiler/xla/service:buffer_assignment",
+        "//tensorflow/compiler/xla/service:collective_ops_utils",
         "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/platform:stream_executor_no_cuda",
+        "//tensorflow/compiler/xla/service:hlo_casting_utils",
+        "//tensorflow/compiler/xla/service:pattern_matcher",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
-    ] + if_cuda([
-        "//tensorflow/stream_executor/cuda:cuda_activation",
-        "//tensorflow/stream_executor/cuda:cuda_gpu_executor",
-    ]) + if_rocm([
-        "//tensorflow/stream_executor/rocm:rocm_activation",
-        "//tensorflow/stream_executor/rocm:rocm_gpu_executor",
+        "//tensorflow/core:lib",
+    ] + if_nccl([
+        ":virtual_nccl",
+        ":virtual_nccl_utils",
+        ":virtual_rccl",
+    ]),
+)
+
+# First level of nested select. NCCL requires both if_cuda and if_nccl.
+filegroup(
+    name = "nccl_all_to_all_thunk_src",
+    srcs = if_nccl(
+        ["nccl_all_to_all_thunk.cc"],
+        ["dummy_all_to_all_thunk.cc"],
+    ),
+)
+
+tf_cuda_library(
+    name = "nccl_all_to_all_thunk",
+    srcs = if_cuda_or_rocm(
+        [":nccl_all_to_all_thunk_src"],
+        ["dummy_all_to_all_thunk.cc"],
+    ),
+    hdrs = ["nccl_all_to_all_thunk.h"],
+    deps = [
+        ":buffer_allocations",
+        ":gpu_executable_run_options",
+        ":hlo_execution_profiler",
+        ":nccl_collective_thunk",
+        ":thunk",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/strings:str_format",
+        "//tensorflow/compiler/xla/service:buffer_assignment",
+        "//tensorflow/compiler/xla/service:collective_ops_utils",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_casting_utils",
+        "//tensorflow/compiler/xla/service:pattern_matcher",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/core:lib",
+    ] + if_nccl([
+        ":virtual_nccl",
+        ":virtual_nccl_utils",
+        ":virtual_rccl",
+    ]),
+)
+
+# First level of nested select. NCCL requires both if_cuda and if_nccl.
+filegroup(
+    name = "nccl_test_utils_src",
+    srcs = if_nccl(
+        ["nccl_test_utils.cc"],
+        ["dummy_nccl_test_utils.cc"],
+    ),
+)
+
+tf_cuda_library(
+    name = "nccl_test_utils",
+    srcs = if_cuda_or_rocm(
+        [":nccl_test_utils_src"],
+        ["dummy_nccl_test_utils.cc"],
+    ),
+    hdrs = ["nccl_test_utils.h"],
+    deps = [
+        "@com_google_absl//absl/container:flat_hash_set",
+        "//tensorflow/compiler/xla/service:global_device_id",
+    ] + if_nccl([
+        ":virtual_nccl_utils",
+    ]),
+)
+
+# First level of nested select. NCCL requires both if_cuda and if_nccl.
+filegroup(
+    name = "nccl_utils_srcs",
+    srcs = if_nccl(["nccl_utils.cc"]),
+)
+
+# First level of nested select. NCCL requires both if_cuda and if_nccl.
+filegroup(
+    name = "nccl_utils_hdrs",
+    srcs = if_nccl(["nccl_utils.h"]),
+)
+
+tf_cuda_library(
+    name = "nccl_utils",
+    srcs = if_cuda_or_rocm([":nccl_utils_srcs"]),
+    hdrs = if_cuda_or_rocm([":nccl_utils_hdrs"]),
+    deps = if_cuda_or_rocm([
+        ":gpu_executable_run_options",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
+        "//tensorflow/compiler/xla:refcounting_hash_map",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/service:collective_ops_utils",
+        "//tensorflow/compiler/xla/service:global_device_id",
+        "//tensorflow/core:lib",
+        "//tensorflow/stream_executor/lib",
     ]) + if_nccl([
         ":virtual_nccl",
         ":virtual_rccl",
     ]),
+)
+
+alias(
+    name = "virtual_nccl_utils",
+    actual = if_cuda_or_rocm(":nccl_utils", ":empty"),
 )
 
 cc_library(
@@ -638,9 +782,12 @@ cc_library(
     srcs = ["ir_emission_utils.cc"],
     hdrs = ["ir_emission_utils.h"],
     deps = [
-        ":backend_configs_cc",
         ":gpu_device_info",
         ":target_util",
+        "//tensorflow/compiler/mlir/hlo",
+        "//tensorflow/compiler/mlir/hlo:lhlo",
+        "//tensorflow/compiler/mlir/xla:mlir_hlo_to_hlo",
+        "//tensorflow/compiler/mlir/xla:type_to_shape",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:window_util",
@@ -650,8 +797,8 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:stream_executor_no_cuda",
         "//tensorflow/stream_executor:device_description",
-        "@com_google_absl//absl/algorithm:container",
         "@llvm-project//llvm:Core",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -1236,8 +1383,10 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_proto_util",
         "//tensorflow/compiler/xla/service:hlo_subcomputation_unification",
         "//tensorflow/compiler/xla/service:hlo_verifier",
+        "//tensorflow/compiler/xla/service:integral_upcaster",
         "//tensorflow/compiler/xla/service:llvm_compiler",
         "//tensorflow/compiler/xla/service:logistic_expander",
+        "//tensorflow/compiler/xla/service:loop_schedule_linearizer",
         "//tensorflow/compiler/xla/service:qr_expander",
         "//tensorflow/compiler/xla/service:reshape_mover",
         "//tensorflow/compiler/xla/service:rng_bit_generator_expander",

@@ -517,3 +517,44 @@ func @decompose_variable_shape_no_subtype(%input: tensor<!tf.resource>) -> tenso
   // CHECK-NOT: "tf.Shape"
   return %0 : tensor<3xi32>
 }
+
+// -----
+
+// Tests that resource subtype is correctly propagated when decomposing tf.ResourceGather.
+
+// CHECK-LABEL: @decompose_resource_apply_proximal_adagrad_op
+// CHECK-SAME: (%[[LR:.*]]: tensor<f32>, %[[L1:.*]]: tensor<f32>, %[[L2:.*]]: tensor<f32>, %[[GRAD:.*]]: tensor<4xf32>)
+func @decompose_resource_apply_proximal_adagrad_op(%lr: tensor<f32>, %l1: tensor<f32>, %l2: tensor<f32>, %grad: tensor<4xf32>) -> () {
+  %var = "tf.VarHandleOp"() {container = "c", shared_name = "var"} : () -> tensor<*x!tf.resource<tensor<4xf32>>>
+  %accum = "tf.VarHandleOp"() {container = "c", shared_name = "accum"} : () -> tensor<*x!tf.resource<tensor<4xf32>>>
+
+  // CHECK-DAG: %[[ONE:.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  // CHECK-DAG: %[[ZERO:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  // CHECK-DAG: %[[VAR_HANDLE:.*]] = "tf.VarHandleOp"() {container = "c", shared_name = "var"} : () -> tensor<*x!tf.resource<tensor<4xf32>>>
+  // CHECK-DAG: %[[ACCUM_HANDLE:.*]] = "tf.VarHandleOp"() {container = "c", shared_name = "accum"} : () -> tensor<*x!tf.resource<tensor<4xf32>>>
+  // CHECK-DAG: %[[GRAD_SQRT:.*]] = "tf.Sqrt"(%[[GRAD]]) : (tensor<4xf32>) -> tensor<4xf32>
+  // CHECK-DAG: %[[ACCUM:.*]] = "tf.ReadVariableOp"(%[[ACCUM_HANDLE]]) : (tensor<*x!tf.resource<tensor<4xf32>>>) -> tensor<4xf32>
+  // CHECK-DAG: %[[ACCUM_NEW:.*]] = "tf.AddV2"(%[[ACCUM]], %[[GRAD_SQRT]]) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+  // CHECK-DAG: %[[RSQRT_ACCUM:.*]] = "tf.Rsqrt"(%[[ACCUM_NEW]]) : (tensor<4xf32>) -> tensor<4xf32>
+  // CHECK-DAG: %[[ADAGRAD_LR:.*]] = "tf.Mul"(%[[LR]], %[[RSQRT_ACCUM]]) : (tensor<f32>, tensor<4xf32>) -> tensor<4xf32>
+  // CHECK-DAG: %[[DELTA:.*]] = "tf.Mul"(%[[GRAD]], %[[ADAGRAD_LR]]) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+  // CHECK-DAG: %[[VAR:.*]] = "tf.ReadVariableOp"(%[[VAR_HANDLE]]) : (tensor<*x!tf.resource<tensor<4xf32>>>) -> tensor<4xf32>
+  // CHECK-DAG: %[[PROX:.*]] = "tf.Sub"(%[[VAR]], %[[DELTA]]) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+  // CHECK-DAG: %[[SIGN:.*]] = "tf.Sign"(%[[PROX]]) : (tensor<4xf32>) -> tensor<4xf32>
+  // CHECK-DAG: %[[ABS:.*]] = "tf.Abs"(%[[PROX]]) : (tensor<4xf32>) -> tensor<4xf32>
+  // CHECK-DAG: %[[SCALED_L1:.*]] = "tf.Mul"(%[[ADAGRAD_LR]], %[[L1]]) : (tensor<4xf32>, tensor<f32>) -> tensor<4xf32>
+  // CHECK-DAG: %[[PROX_NEW:.*]] = "tf.Sub"(%[[ABS]], %[[SCALED_L1]]) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+  // CHECK-DAG: %[[MAX:.*]] = "tf.Maximum"(%[[PROX_NEW]], %[[ZERO]]) : (tensor<4xf32>, tensor<f32>) -> tensor<4xf32>
+  // CHECK-DAG: %[[SIGNED:.*]] = "tf.Mul"(%[[SIGN]], %[[MAX]]) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+  // CHECK-DAG: %[[GT:.*]] = "tf.Greater"(%[[L1]], %[[ZERO]]) : (tensor<f32>, tensor<f32>) -> tensor<i1>
+  // CHECK-DAG: %[[NUMERATOR:.*]] = "tf.SelectV2"(%[[GT]], %[[SIGNED:.*]], %[[PROX]]) : (tensor<i1>, tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+  // CHECK-DAG: %[[SCALED_L2:.*]] = "tf.Mul"(%[[ADAGRAD_LR]], %[[L2]]) : (tensor<4xf32>, tensor<f32>) -> tensor<4xf32>
+  // CHECK-DAG: %[[DENOMINATOR:.*]] = "tf.Add"(%[[ONE]], %[[SCALED_L2]]) : (tensor<f32>, tensor<4xf32>) -> tensor<4xf32>
+  // CHECK-DAG: %[[VAR_NEW:.*]] = "tf.Div"(%[[NUMERATOR]], %[[DENOMINATOR]]) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+  // CHECK-DAG: "tf.AssignVariableOp"(%[[VAR_HANDLE]], %[[VAR_NEW]]) : (tensor<*x!tf.resource<tensor<4xf32>>>, tensor<4xf32>) -> ()
+  // CHECK-DAG: "tf.AssignVariableOp"(%[[ACCUM_HANDLE]], %[[ACCUM_NEW]]) : (tensor<*x!tf.resource<tensor<4xf32>>>, tensor<4xf32>) -> ()
+
+  "tf.ResourceApplyProximalAdagrad"(%var, %accum, %lr, %l1, %l2, %grad) {use_locking = false} : (tensor<*x!tf.resource<tensor<4xf32>>>, tensor<*x!tf.resource<tensor<4xf32>>>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<4xf32>) -> ()
+
+  return
+}

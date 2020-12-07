@@ -130,7 +130,7 @@ function install_ubuntu_16_pip_deps {
   "${PIP_CMD}" install --user 'keras_preprocessing ~= 1.1.2'
   "${PIP_CMD}" install --user 'numpy ~= 1.19.2'
   "${PIP_CMD}" install --user 'opt_einsum ~= 3.3.0'
-  "${PIP_CMD}" install --user 'protobuf ~= 3.13.0'
+  "${PIP_CMD}" install --user 'protobuf >= 3.9.2'
   "${PIP_CMD}" install --user 'six ~= 1.15.0'
   "${PIP_CMD}" install --user 'termcolor ~= 1.1.0'
   "${PIP_CMD}" install --user 'typing_extensions ~= 3.7.4'
@@ -156,6 +156,8 @@ function install_macos_pip_deps {
   # above (probably needs to convert to venv too).
   SUDO_CMD=""
   PIP_CMD="pip"
+  IS_VIRTUALENV=false
+  USER_FLAG="--user"
 
   while true; do
     if [[ -z "${1}" ]]; then
@@ -168,6 +170,10 @@ function install_macos_pip_deps {
       SUDO_CMD="sudo -H "
     elif [[ "$1" == "pip"* ]]; then
       PIP_CMD="$1"
+    elif [[ "$1" == "virtualenv" ]]; then
+      IS_VIRTUALENV=true
+      PIP_CMD="pip"
+      USER_FLAG=""
     fi
     shift
   done
@@ -176,34 +182,36 @@ function install_macos_pip_deps {
   # To have reproducible builds, these dependencies should be pinned always.
   # Prefer pinning to the same version as in setup.py
   # First, upgrade pypi wheels
-  ${PIP_CMD} install --user --upgrade setuptools pip wheel
+  ${PIP_CMD} install $USER_FLAG --upgrade setuptools pip wheel
   # Now, install the deps, as listed in setup.py
-  ${PIP_CMD} install --user 'absl-py ~= 0.10'
-  ${PIP_CMD} install --user 'astunparse ~= 1.6.3'
-  ${PIP_CMD} install --user 'flatbuffers ~= 1.12.0'
-  ${PIP_CMD} install --user 'google_pasta ~= 0.2'
-  ${PIP_CMD} install --user 'h5py ~= 2.10.0'
-  ${PIP_CMD} install --user 'keras_preprocessing ~= 1.1.2'
-  ${PIP_CMD} install --user 'numpy ~= 1.19.2'
-  ${PIP_CMD} install --user 'opt_einsum ~= 3.3.0'
-  ${PIP_CMD} install --user 'protobuf ~= 3.13.0'
-  ${PIP_CMD} install --user 'six ~= 1.15.0'
-  ${PIP_CMD} install --user 'termcolor ~= 1.1.0'
-  ${PIP_CMD} install --user 'typing_extensions ~= 3.7.4'
-  ${PIP_CMD} install --user 'wheel ~= 0.35'
-  ${PIP_CMD} install --user 'wrapt ~= 1.12.1'
+  ${PIP_CMD} install $USER_FLAG 'absl-py ~= 0.10'
+  ${PIP_CMD} install $USER_FLAG 'astunparse ~= 1.6.3'
+  ${PIP_CMD} install $USER_FLAG 'flatbuffers ~= 1.12.0'
+  ${PIP_CMD} install $USER_FLAG 'google_pasta ~= 0.2'
+  ${PIP_CMD} install $USER_FLAG 'h5py ~= 2.10.0'
+  ${PIP_CMD} install $USER_FLAG 'keras_preprocessing ~= 1.1.2'
+  ${PIP_CMD} install $USER_FLAG 'numpy ~= 1.19.2'
+  ${PIP_CMD} install $USER_FLAG 'opt_einsum ~= 3.3.0'
+  ${PIP_CMD} install $USER_FLAG 'protobuf >= 3.9.2'
+  ${PIP_CMD} install $USER_FLAG 'six ~= 1.15.0'
+  ${PIP_CMD} install $USER_FLAG 'termcolor ~= 1.1.0'
+  ${PIP_CMD} install $USER_FLAG 'typing_extensions ~= 3.7.4'
+  ${PIP_CMD} install $USER_FLAG 'wheel ~= 0.35'
+  ${PIP_CMD} install $USER_FLAG 'wrapt ~= 1.12.1'
   # We need to pin gast dependency exactly
-  ${PIP_CMD} install --user 'gast == 0.3.3'
+  ${PIP_CMD} install $USER_FLAG 'gast == 0.3.3'
   # Finally, install tensorboard and estimator
   # Note that here we want the latest version that matches (b/156523241)
-  ${PIP_CMD} install --user --upgrade --force-reinstall 'tb-nightly ~= 2.4.0.a'
-  ${PIP_CMD} install --user --upgrade --force-reinstall 'tensorflow_estimator ~= 2.3.0'
+  ${PIP_CMD} install $USER_FLAG --upgrade --force-reinstall 'tb-nightly ~= 2.4.0.a'
+  ${PIP_CMD} install $USER_FLAG --upgrade --force-reinstall 'tensorflow_estimator ~= 2.3.0'
   # Test dependencies
-  ${PIP_CMD} install --user 'grpcio ~= 1.32.0'
-  ${PIP_CMD} install --user 'portpicker ~= 1.3.1'
-  ${PIP_CMD} install --user 'scipy ~= 1.5.2'
+  ${PIP_CMD} install $USER_FLAG 'grpcio ~= 1.32.0'
+  ${PIP_CMD} install $USER_FLAG 'portpicker ~= 1.3.1'
+  ${PIP_CMD} install $USER_FLAG 'scipy ~= 1.5.2'
+
   # LINT.ThenChange(:linux_pip_installations)
 }
+
 
 function maybe_skip_v1 {
   # If we are building with v2 by default, skip tests with v1only tag.
@@ -223,6 +231,7 @@ function maybe_skip_v1 {
 function copy_to_new_project_name {
   WHL_PATH="$1"
   NEW_PROJECT_NAME="$2"
+  PYTHON_CMD="$3"
 
   ORIGINAL_WHL_NAME=$(basename "${WHL_PATH}")
   ORIGINAL_WHL_DIR=$(realpath "$(dirname "${WHL_PATH}")")
@@ -231,13 +240,14 @@ function copy_to_new_project_name {
   NEW_WHL_NAME="${NEW_PROJECT_NAME}-${FULL_TAG}"
   VERSION="$(echo "${FULL_TAG}" | cut -d '-' -f 1)"
 
-  TMP_DIR="$(mktemp -d)"
-  wheel unpack "${WHL_PATH}" -d "${TMP_DIR}"
-  TMP_UNPACKED_DIR="$(ls -d "${TMP_DIR}"/* | head -n 1)"
-  pushd "${TMP_UNPACKED_DIR}"
-
   ORIGINAL_WHL_DIR_PREFIX="${ORIGINAL_PROJECT_NAME}-${VERSION}"
   NEW_WHL_DIR_PREFIX="${NEW_PROJECT_NAME}-${VERSION}"
+
+ TMP_DIR="$(mktemp -d)"
+ ${PYTHON_CMD} -m wheel unpack "${WHL_PATH}"
+ mv "${ORIGINAL_WHL_DIR_PREFIX}" "${TMP_DIR}"
+ pushd "${TMP_DIR}/${ORIGINAL_WHL_DIR_PREFIX}"
+
   mv "${ORIGINAL_WHL_DIR_PREFIX}.dist-info" "${NEW_WHL_DIR_PREFIX}.dist-info"
   if [[ -d "${ORIGINAL_WHL_DIR_PREFIX}.data" ]]; then
     mv "${ORIGINAL_WHL_DIR_PREFIX}.data" "${NEW_WHL_DIR_PREFIX}.data"
@@ -245,9 +255,18 @@ function copy_to_new_project_name {
 
   ORIGINAL_PROJECT_NAME_DASH="${ORIGINAL_PROJECT_NAME//_/-}"
   NEW_PROJECT_NAME_DASH="${NEW_PROJECT_NAME//_/-}"
-  sed -i.bak "s/${ORIGINAL_PROJECT_NAME_DASH}/${NEW_PROJECT_NAME_DASH}/g" "${NEW_WHL_DIR_PREFIX}.dist-info/METADATA"
 
-  wheel pack "${TMP_UNPACKED_DIR}" -d "${ORIGINAL_WHL_DIR}"
+  # We need to change the name in the METADATA file, but we need to ensure that
+  # all other occurences of the name stay the same, otherwise things such as
+  # URLs and depedencies might be broken (for example, replacing without care
+  # might transform a `tensorflow_estimator` dependency into
+  # `tensorflow_gpu_estimator`, which of course does not exist -- except by
+  # manual upload of a manually altered `tensorflow_estimator` package)
+  sed -i.bak "s/Name: ${ORIGINAL_PROJECT_NAME_DASH}/Name: ${NEW_PROJECT_NAME_DASH}/g" "${NEW_WHL_DIR_PREFIX}.dist-info/METADATA"
+
+  ${PYTHON_CMD} -m wheel pack .
+  mv *.whl "${ORIGINAL_WHL_DIR}"
+
   popd
   rm -rf "${TMP_DIR}"
 }

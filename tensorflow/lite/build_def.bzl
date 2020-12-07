@@ -178,6 +178,7 @@ def tf_to_tflite(name, src, options, out):
 
     toco_cmdline = " ".join([
         "$(location //tensorflow/lite/python:tflite_convert)",
+        "--enable_v1_converter",
         "--experimental_new_converter",
         ("--graph_def_file=$(location %s)" % src),
         ("--output_file=$(location %s)" % out),
@@ -358,7 +359,6 @@ def generated_test_models():
         "resolve_constant_strided_slice",
         "reverse_sequence",
         "reverse_v2",
-        "rfft2d",
         "round",
         "rsqrt",
         "scatter_nd",
@@ -674,8 +674,7 @@ def gen_zipped_test_file(name, file, toco, flags):
         cmd = (("$(locations :generate_examples) --toco $(locations {0}) " +
                 " --zip_to_output {1} {2} $(@D)").format(toco, file, flags)),
         outs = [file],
-        # `exec_tools` is required for PY3 compatibility in place of `tools`.
-        exec_tools = [
+        tools = [
             ":generate_examples",
             toco,
         ],
@@ -763,6 +762,7 @@ def gen_model_coverage_test(src, model_name, data, failure_type, tags, size = "m
                 "no_windows",
             ] + tags + coverage_tags,
             deps = [
+                "//third_party/py/tensorflow",
                 "//tensorflow/lite/testing/model_coverage:model_coverage_lib",
                 "//tensorflow/lite/python:lite",
                 "//tensorflow/python:client_testlib",

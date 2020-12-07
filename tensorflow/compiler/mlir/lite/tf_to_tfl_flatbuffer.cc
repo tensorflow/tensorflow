@@ -21,7 +21,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Parser.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -137,6 +137,7 @@ StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
 Status ConvertTFExecutorToTFLOrFlatbuffer(
     mlir::ModuleOp module, bool export_to_mlir, bool emit_builtin_tflite_ops,
     bool emit_select_tf_ops, bool emit_custom_ops,
+    const std::unordered_set<std::string>& select_user_tf_ops,
     const mlir::TFL::QuantizationSpecs& quant_specs,
     const std::unordered_set<std::string>& saved_model_tags,
     std::string* result, mlir::PassManager* pass_manager) {
@@ -169,10 +170,12 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
   }
 
   // Write MLIR TFLite dialect into FlatBuffer
+  OpOrArgLocNameMapper op_or_arg_name_mapper;
   if (!quant_specs.RunWeightQuantization()) {
     if (tflite::MlirToFlatBufferTranslateFunction(
             module, result, emit_builtin_tflite_ops, emit_select_tf_ops,
-            emit_custom_ops, saved_model_tags)) {
+            emit_custom_ops, select_user_tf_ops, saved_model_tags,
+            &op_or_arg_name_mapper)) {
       return statusHandler.ConsumeStatus();
     }
   } else {
@@ -181,7 +184,8 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
     std::string pre_quantized_result;
     if (tflite::MlirToFlatBufferTranslateFunction(
             module, &pre_quantized_result, emit_builtin_tflite_ops,
-            emit_select_tf_ops, emit_custom_ops, saved_model_tags)) {
+            emit_select_tf_ops, emit_custom_ops, select_user_tf_ops,
+            saved_model_tags, &op_or_arg_name_mapper)) {
       return statusHandler.ConsumeStatus();
     }
     flatbuffers::FlatBufferBuilder q_builder(/*initial_size=*/10240);

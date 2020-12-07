@@ -615,19 +615,19 @@ Status MetaOptimizer::RunOptimizer(
 void PropagateTFDataAttrs(const FunctionLibraryDefinition& flib,
                           FunctionDefLibrary& fdef_lib) {
   // Collect functions that need the attribute in this set.
-  absl::flat_hash_set<string> tf_data_functions;
-  std::function<void(const string&)> collect_tf_data_functions_dfs =
-      [&](const string& func_name) -> void {
+  absl::flat_hash_set<std::string> tf_data_functions;
+  std::function<void(const std::string&)> collect_tf_data_functions_dfs =
+      [&](const std::string& func_name) -> void {
+    const FunctionDef* func_def = flib.Find(func_name);
+    // Skip functions that are not reachable from the optimized graph.
+    if (func_def == nullptr) return;
+
     // Return if we already found and added this function.
     if (tf_data_functions.contains(func_name)) return;
 
     // We only get here if the function is (directly or indirectly) called from
     // a tf.data function, so add it to the set.
     tf_data_functions.insert(func_name);
-
-    const FunctionDef* func_def = flib.Find(func_name);
-    // Skip functions that are not reachable from the optimized graph.
-    if (func_def == nullptr) return;
 
     // Proceed with DFS for functions called from current function.
     for (const NodeDef& node : func_def->node_def()) {
@@ -651,7 +651,7 @@ void PropagateTFDataAttrs(const FunctionLibraryDefinition& flib,
   };
   // Perform DFS for all tf.data functions in `fdef_lib`.
   for (const auto& func_def : fdef_lib.function()) {
-    const string& func_name = func_def.signature().name();
+    const std::string& func_name = func_def.signature().name();
     if (data::IsTFDataFunction(func_def))
       collect_tf_data_functions_dfs(func_name);
   }
@@ -659,7 +659,7 @@ void PropagateTFDataAttrs(const FunctionLibraryDefinition& flib,
   // because `FunctionLibraryDefinition` does not seem to provide mutable access
   // to a `FunctionDef`.
   for (FunctionDef& func_def : *fdef_lib.mutable_function()) {
-    const string& func_name = func_def.signature().name();
+    const std::string& func_name = func_def.signature().name();
     if (tf_data_functions.contains(func_name) &&
         !data::IsTFDataFunction(func_def)) {
       VLOG(2) << "Marking " << func_name << " as tf.data function";

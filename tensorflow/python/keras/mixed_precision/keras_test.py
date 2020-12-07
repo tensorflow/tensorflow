@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import os
 
+from absl import flags
 from absl.testing import parameterized
 import numpy as np
 
@@ -53,7 +54,7 @@ from tensorflow.python.keras.saving import save
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.platform import flags
+# from tensorflow.python.platform import flags
 from tensorflow.python.platform import test
 from tensorflow.python.training.experimental import loss_scale as loss_scale_module
 from tensorflow.python.training.tracking import util as trackable_utils
@@ -252,6 +253,10 @@ class KerasLayerTest(keras_parameterized.TestCase):
     with strategy_fn().scope() as strategy:
       with policy.policy_scope('mixed_float16'):
         layer = mp_test_util.MultiplyLayer(assert_type=dtypes.float16)
+        # Learning rate is small enough that if applied to a float16 variable,
+        # the variable will not change. So this tests the learning rate is not
+        # applied to a float16 value, but instead the float32 variable.
+        opt = gradient_descent.SGD(2**-14)
 
         def run_fn():
           with backprop.GradientTape() as tape:
@@ -260,10 +265,6 @@ class KerasLayerTest(keras_parameterized.TestCase):
             # sum of each of the replica's losses.
             y /= strategy.num_replicas_in_sync
 
-          # Learning rate is small enough that if applied to a float16 variable,
-          # the variable will not change. So this tests the learning rate is not
-          # applied to a float16 value, but instead the float32 variable.
-          opt = gradient_descent.SGD(2**-14)
           grad = tape.gradient(y, layer.v)
           return opt.apply_gradients([(grad, layer.v)])
 

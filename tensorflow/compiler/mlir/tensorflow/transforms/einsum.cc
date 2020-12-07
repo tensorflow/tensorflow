@@ -39,7 +39,9 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/verification_utils.h"
 #include "tensorflow/core/util/matmul_bcast.h"
 
 namespace mlir {
@@ -56,7 +58,7 @@ TF::TransposeOp createTransposeOp(Value value, Location loc,
       {static_cast<int32_t>(permutation.size())}, rewriter->getIntegerType(32));
   auto perm_attr = DenseElementsAttr::get(perm_type, permutation);
   auto perm_op = rewriter->create<ConstantOp>(loc, perm_type, perm_attr);
-  std::vector<int64_t> transposed_shape(shape.begin(), shape.end());
+  SmallVector<int64_t, 4> transposed_shape(shape.begin(), shape.end());
   for (int i = 0, end = shape.size(); i < end; ++i) {
     transposed_shape[i] = shape[permutation[i]];
   }
@@ -283,6 +285,10 @@ LogicalResult reshapeForBatchMatmul(const Location& loc,
   rhs_shape.push_back(rhs_size);
   out_shape->push_back(rhs_size);
 
+  if (failed(VerifyShapeOfReshapeOp(lhs_shape)) ||
+      failed(VerifyShapeOfReshapeOp(rhs_shape)))
+    return failure();
+
   *lhs = createReshapeOp(*lhs, lhs_shape, lhs_type.getElementType(), loc,
                          rewriter);
   *rhs = createReshapeOp(*rhs, rhs_shape, rhs_type.getElementType(), loc,
@@ -321,15 +327,18 @@ LogicalResult rewriteToBatchMatmul(TF::EinsumOp op,
                                    &matmul_shape, &rewriter)))
     return failure();
 
+  std::vector<int64_t> reshape_shape =
+      inverseTransposeVector(original_type.getShape(), out_transpose);
+  if (failed(VerifyShapeOfReshapeOp(reshape_shape))) return failure();
+
   auto matmul_type =
       RankedTensorType::get(matmul_shape, original_type.getElementType());
   Value out = rewriter.create<TF::BatchMatMulV2Op>(
       op.getLoc(), matmul_type, lhs, rhs, rewriter.getBoolAttr(false),
       rewriter.getBoolAttr(false));
 
-  out = createReshapeOp(
-      out, inverseTransposeVector(original_type.getShape(), out_transpose),
-      original_type.getElementType(), op.getLoc(), &rewriter);
+  out = createReshapeOp(out, reshape_shape, original_type.getElementType(),
+                        op.getLoc(), &rewriter);
   out = createTransposeOp(out, op.getLoc(), out_transpose, &rewriter);
 
   rewriter.replaceOp(op, out);
@@ -364,7 +373,7 @@ void TransformEinsumPass::runOnFunction() {
   auto func = getFunction();
 
   patterns.insert<ConvertTFEinsumOp>(&getContext());
-  applyPatternsAndFoldGreedily(func, patterns);
+  applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
 static PassRegistration<TransformEinsumPass> pass(

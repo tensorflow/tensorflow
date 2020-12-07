@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Keras text vectorization preprocessing layer."""
+# pylint: disable=g-classes-have-attributes
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -28,6 +29,7 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.keras.layers.preprocessing import category_encoding
 from tensorflow.python.keras.layers.preprocessing import string_lookup
+from tensorflow.python.keras.layers.preprocessing import table_utils
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
@@ -116,7 +118,7 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
        ["another", "string", "to", "split"]]`. This makes the callable site
        natively compatible with `tf.strings.split()`.
 
-  Attributes:
+  Arguments:
     max_tokens: The maximum size of the vocabulary for this layer. If None,
       there is no cap on the size of the vocabulary. Note that this vocabulary
       contains 1 OOV token, so the effective number of tokens is `(max_tokens -
@@ -161,6 +163,7 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
       times, an error will be thrown.
 
   Example:
+
   This example instantiates a TextVectorization layer that lowercases text,
   splits on whitespace, strips punctuation, and outputs integer vocab indices.
 
@@ -201,6 +204,7 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
          [1, 3, 0, 0]])
 
   Example:
+
   This example instantiates a TextVectorization layer by passing a list
   of vocabulary terms to the layer's __init__ method.
 
@@ -333,7 +337,8 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
     super(TextVectorization, self).__init__(
         combiner=None,
         **kwargs)
-    base_preprocessing_layer._kpl_gauge.get_cell("V2").set("TextVectorization")
+    base_preprocessing_layer.keras_kpl_gauge.get_cell(
+        "TextVectorization").set(True)
 
     mask_token = "" if output_mode in [None, INT] else None
     self._index_lookup_layer = self._get_index_lookup_class()(
@@ -450,7 +455,7 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
     # at init time it's now stored in variable state - we don't need to
     # pull it off disk again.
     config = {
-        "max_tokens": self._max_tokens,
+        "max_tokens": self._index_lookup_layer.max_tokens,
         "standardize": self._standardize,
         "split": self._split,
         "ngrams": self._ngrams_arg,
@@ -481,7 +486,8 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
     it.
 
     Arguments:
-      vocab: An array of string tokens.
+      vocab: An array of string tokens, or a path to a file containing one
+        token per line.
       df_data: An array of document frequency data. Only necessary if the layer
         output_mode is TFIDF.
       oov_df_value: The document frequency of the OOV token. Only necessary if
@@ -505,6 +511,21 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
                           "pad_to_max_tokens is False, the vocabulary cannot "
                           "be changed after the layer is "
                           "called.").format(mode=self._output_mode))
+
+    # Handle reading from a file. We can't do this via TF-IDF, as we don't have
+    # a standard format - we error out and ask our users to parse the file
+    # themselves.
+    if isinstance(vocab, str):
+      if self._output_mode == TFIDF:
+        raise RuntimeError("Setting vocabulary directly from a file is not "
+                           "supported in TF-IDF mode, since this layer cannot "
+                           "read files containing TF-IDF weight data. Please "
+                           "read the file using Python and set the vocab "
+                           "and weights by passing lists or arrays to the "
+                           "set_vocabulary function's `vocab` and `df_data` "
+                           "args.")
+      vocab = table_utils.get_vocabulary_from_file(
+          vocab, self._index_lookup_layer.encoding)
 
     self._index_lookup_layer.set_vocabulary(vocab)
 

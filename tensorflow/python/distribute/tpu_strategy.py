@@ -338,8 +338,8 @@ class TPUStrategyV2(distribute_lib.Strategy):
     """Adds annotation that `tensor` will be split across logical devices.
 
     This adds an annotation to tensor `tensor` specifying that operations on
-    `tensor` will be be split among multiple logical devices. Tensor `tensor`
-    will be split across dimensions specified by `partition_dimensions`.
+    `tensor` will be split among multiple logical devices. Tensor `tensor` will
+    be split across dimensions specified by `partition_dimensions`.
     The dimensions of `tensor` must be divisible by corresponding value in
     `partition_dimensions`.
 
@@ -739,7 +739,10 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       atexit.register(async_wait)
 
     # Flag to turn on VariablePolicy
-    self._use_var_policy = False
+    self._use_var_policy = True
+
+    # Flag to enable TF2 SPMD
+    self._use_spmd_for_xla_partitioning = False
 
   def _validate_colocate_with_variable(self, colocate_with_variable):
     distribute_utils. validate_colocate(colocate_with_variable, self)
@@ -796,7 +799,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         raise ValueError(
             "Found tensor {} with spec {}. TPUStrategy does not support "
             "distributed datasets with device prefetch when using sparse or "
-            "ragged tensors. If you indend to use sparse or ragged tensors, "
+            "ragged tensors. If you intend to use sparse or ragged tensors, "
             "please pass a tf.distribute.InputOptions object with "
             "experimental_prefetch_to_device set to False to your dataset "
             "distribution function.".format(path, type(spec)))
@@ -900,8 +903,8 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
           run_fn,
           replicate_inputs,
           device_assignment=self._device_assignment,
-          xla_options=tpu.XLAOptions(use_spmd_for_xla_partitioning=False))
-
+          xla_options=tpu.XLAOptions(use_spmd_for_xla_partitioning=self
+                                     ._use_spmd_for_xla_partitioning))
       # If run_fn has tensor outputs, tpu.replicate returns a list of list. We
       # will flatten it in this case. If run_fn has no tensor outputs,
       # tpu.replicate returns a list of no_ops, we will keep the output as it
@@ -1361,7 +1364,8 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
             device_assignment=self._device_assignment,
             maximum_shapes=maximum_shapes,
             padding_spec=padding_spec,
-            xla_options=tpu.XLAOptions(use_spmd_for_xla_partitioning=False))
+            xla_options=tpu.XLAOptions(use_spmd_for_xla_partitioning=self
+                                       ._use_spmd_for_xla_partitioning))
 
       # Remove all no ops that may have been added during 'tpu.replicate()'
       if isinstance(result[0], list):

@@ -27,9 +27,9 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import parameter_server_strategy
+from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.framework import composite_tensor_utils
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -68,7 +68,6 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.types import core
 from tensorflow.python.util import nest
-from tensorflow.python.util.compat import collections_abc
 
 try:
   from scipy.sparse import issparse  # pylint: disable=g-import-not-at-top
@@ -361,9 +360,15 @@ class Model(training_lib.Model):
 
     if isinstance(self._distribution_strategy,
                   parameter_server_strategy.ParameterServerStrategyV1):
-      raise NotImplementedError('`tf.compat.v1.distribute.experimental.Paramet'
-                                'erServerStrategy` currently only works '
-                                'with the tf.Estimator API')
+      raise NotImplementedError(
+          '`tf.compat.v1.distribute.experimental.ParameterServerStrategy` '
+          'currently only works with the tf.Estimator API')
+
+    if isinstance(self._distribution_strategy,
+                  parameter_server_strategy_v2.ParameterServerStrategyV2):
+      raise NotImplementedError(
+          '`tf.distribute.experimental.ParameterServerStrategy` is only '
+          'supported in TF2.')
 
     if not self._experimental_run_tf_function:
       self._validate_compile_param_for_distribution_strategy(self.run_eagerly,
@@ -498,7 +503,9 @@ class Model(training_lib.Model):
         return super(Model, self).metrics
       metrics += self._compile_metric_functions
     metrics.extend(self._metrics)
-    metrics.extend(_get_metrics_from_layers(self._layers))
+    metrics.extend(
+        _get_metrics_from_layers(
+            list(self._flatten_layers(include_self=False, recursive=False))))
     return metrics
 
   @property
@@ -576,7 +583,7 @@ class Model(training_lib.Model):
     #  integrated into the data adapters in the v2 loop. We can't do this yet
     #  because we currently have to fall back for unhandled data types.
     if isinstance(inputs, (iterator_ops.Iterator,
-                           iterator_ops.OwnedIterator)):
+                           iterator_ops.IteratorBase)):
       raise ValueError('For performance reasons Keras `fit`, `evaluate` and'
                        '`predict` accept tf.data `Datasets` as input but not '
                        'iterators that have been manually generated from '
@@ -740,7 +747,7 @@ class Model(training_lib.Model):
             the dataset at each epoch. This ensures that the same validation
             samples are used every time.
         validation_freq: Only relevant if validation data is provided. Integer
-            or `collections_abc.Container` instance (e.g. list, tuple, etc.).
+            or `collections.abc.Container` instance (e.g. list, tuple, etc.).
             If an integer, specifies how many training epochs to run before a
             new validation run is performed, e.g. `validation_freq=2` runs
             validation every 2 epochs. If a Container, specifies the epochs on
@@ -1202,7 +1209,7 @@ class Model(training_lib.Model):
     # at this point.
     if self.run_eagerly or self._distribution_strategy:
       inputs = training_utils_v1.cast_if_floating_dtype(inputs)
-      if isinstance(inputs, collections_abc.Sequence):
+      if isinstance(inputs, collections.abc.Sequence):
         # Unwrap lists with only one input, as we do when training on batch
         if len(inputs) == 1:
           inputs = inputs[0]
@@ -1711,7 +1718,7 @@ class Model(training_lib.Model):
 
     # Avoids the override in Sequential.layers which filters Input layers.
     # (Which are often the very layers that we're after.)
-    layers = layer_utils.filter_empty_layer_containers(self._layers)
+    layers = self._flatten_layers(include_self=False, recursive=False)
     first_layer = next(layers, None)
     if first_layer:
       # The per-replica static batch size.
@@ -1742,8 +1749,8 @@ class Model(training_lib.Model):
 
         # Check Dataset/Iterator batch size is consistent with InputLayer.
         if isinstance(x, (dataset_ops.DatasetV2, iterator_ops.Iterator,
-                          iterator_ops.OwnedIterator)):
-          ds_batch_size = tensor_shape.as_dimension(
+                          iterator_ops.IteratorBase)):
+          ds_batch_size = tensor_shape.Dimension(
               nest.flatten(dataset_ops.get_legacy_output_shapes(x))[0][0]).value
           if ds_batch_size is not None:
             if ds_batch_size % num_splits_for_ds != 0:
@@ -2495,7 +2502,7 @@ class Model(training_lib.Model):
     # users should explicitly add composite tensor inputs to their subclassed
     # models.
     for input_tensor in processed_inputs:
-      if composite_tensor_utils.is_composite_or_composite_value(input_tensor):
+      if training_utils_v1.is_composite_or_composite_value(input_tensor):
         # TODO(b/132691975): Document subclass-model CT input handling.
         raise ValueError(
             'All SparseTensor and RaggedTensor inputs must be explicitly '
@@ -2746,7 +2753,7 @@ class Model(training_lib.Model):
   def _maybe_load_initial_epoch_from_ckpt(self, initial_epoch, mode):
     """Maybe load initial epoch from ckpt considering possible worker recovery.
 
-    Refer to tensorflow/python/keras/distribute/multi_worker_training_state.py
+    Refer to tensorflow/python/keras/distribute/worker_training_state.py
     for more information.
 
     Arguments:
@@ -2800,20 +2807,12 @@ class Model(training_lib.Model):
     Returns:
       Whether this model indicates it's working in multi-worker settings.
     """
-    strategy = self._get_distribution_strategy()
-    return strategy and strategy.extended._in_multi_worker_mode()  # pylint: disable=protected-access
-
-  def _get_distribution_strategy(self):
-    # If the model was compiled under the scope of a `tf.distribute.Strategy',
-    # `self._distribution_strategy` would have been set and model should infer
-    # that as the used strategy (even if it's out of strategy scope already).
     strategy = self._distribution_strategy
 
     # Otherwise, use the strategy whose scope this is in.
     if not strategy and distribution_strategy_context.has_strategy():
       strategy = distribution_strategy_context.get_strategy()
-
-    return strategy
+    return strategy and strategy.extended._in_multi_worker_mode()  # pylint: disable=protected-access
 
   @property
   def _trackable_saved_model_saver(self):

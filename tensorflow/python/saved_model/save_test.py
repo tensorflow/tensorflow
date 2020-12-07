@@ -308,8 +308,9 @@ class SaveTest(test.TestCase, parameterized.TestCase):
       save.save(root, save_dir)
 
     expected_message = (
-        "WARNING:absl:No concrete functions found for untraced function `foo` "
-        "while saving. This function will not be callable after loading.")
+        "WARNING:absl:Found untraced functions such as foo while saving "
+        "(showing 1 of 1). These functions will not be directly callable after "
+        "loading.")
     self.assertIn(expected_message, logs.output)
 
   def test_find_default_save_function(self):

@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Rewrite/PatternApplicator.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -105,7 +106,6 @@ void AddRewrittenCompositeOps(MLIRContext* context,
       GET_OPERATION_NAME(TF::TensorArrayGradV3Op),
       GET_OPERATION_NAME(TF::TensorArrayGatherV3Op),
       GET_OPERATION_NAME(TF::TensorArrayScatterV3Op),
-      GET_OPERATION_NAME(TF::TensorListFromTensorOp),
       // Tensor List Ops.
       GET_OPERATION_NAME(TF::EmptyTensorListOp),
       GET_OPERATION_NAME(TF::TensorListReserveOp),
@@ -118,6 +118,7 @@ void AddRewrittenCompositeOps(MLIRContext* context,
       GET_OPERATION_NAME(TF::TensorListElementShapeOp),
       GET_OPERATION_NAME(TF::TensorListGatherOp),
       GET_OPERATION_NAME(TF::TensorListScatterIntoExistingListOp),
+      GET_OPERATION_NAME(TF::TensorListStackOp),
   };
 #undef GET_OPERATION_NAME
 
@@ -164,10 +165,12 @@ bool IsSupportedOp(Operation& op,
                    const Dialect* tf_dialect) {
   if (op.getDialect() != tf_dialect)
     return true;
-  else
-    return !HasStringOperand(op) && !HasStringResult(op) &&
-           (MatchesPattern(op, supported_ops) ||
-            mhlo::IsOpAllowedTf2XlaFallback(&op));
+  // Assert has a legalization that later removes it so we don't want to outside
+  // compile it ever for performance reasons.
+  if (llvm::isa<TF::AssertOp>(op)) return true;
+  return !HasStringOperand(op) && !HasStringResult(op) &&
+         (MatchesPattern(op, supported_ops) ||
+          mhlo::IsOpAllowedTf2XlaFallback(&op));
 }
 
 // Checks all regions of `op` for captured string operands.
@@ -248,10 +251,11 @@ void MarkOpsForOutsideCompilation::runOnOperation() {
   // be lowered in the future passes but if the op is not in this set, it can't
   // be lowered in a subsequent pass.
   llvm::DenseSet<OperationName> supported_ops;
-  for (auto& pattern : patterns) {
-    Optional<OperationName> root_kind = pattern->getRootKind();
-    if (root_kind.hasValue()) supported_ops.insert(root_kind.getValue());
-  }
+  PatternApplicator(std::move(patterns))
+      .walkAllPatterns([&](const Pattern& pattern) {
+        Optional<OperationName> root_kind = pattern.getRootKind();
+        if (root_kind.hasValue()) supported_ops.insert(root_kind.getValue());
+      });
   AddSupportedControlFlowOps(module.getContext(), &supported_ops);
   AddRewrittenEmbeddingOps(module.getContext(), &supported_ops);
   AddRewrittenCompositeOps(module.getContext(), &supported_ops);

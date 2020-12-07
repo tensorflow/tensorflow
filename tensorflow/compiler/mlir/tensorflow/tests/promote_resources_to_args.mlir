@@ -299,7 +299,7 @@ func @main(%arg0: tensor<i32>) -> tensor<2xf32> {
   %2 = "tf.PartitionedCall"(%0) {config = "", config_proto = "", executor_type = "", f = @callee} : (tensor<!tf.resource<tensor<2xf32>>>) -> tensor<2xf32>
   return %2 : tensor<2xf32>
 }
-func @callee(%arg0: tensor<!tf.resource<tensor<2xf32>>>) -> tensor<2xf32> attributes {sym_visibility = "private"} {
+func private @callee(%arg0: tensor<!tf.resource<tensor<2xf32>>>) -> tensor<2xf32> {
   %0 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf.resource<tensor<2xf32>>>) -> tensor<2xf32>
   return %0 : tensor<2xf32>
 }

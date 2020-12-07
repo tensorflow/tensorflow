@@ -184,7 +184,7 @@ def _get_val_from_proto(attr_type, attr_val):
       array_attr_elts = ['{}:{}'.format(val, elt_ty) for val in values]
       return '[{}]'.format(','.join(array_attr_elts))
   raise NotImplementedError(
-      'Proto AttrValue not recoganized. type: {}, value: {}'.format(
+      'Proto AttrValue not recognized. type: {}, value: {}'.format(
           attr_type, attr_val))
 
 
@@ -242,7 +242,7 @@ class OpDefCache(object):
     elif not func_def:
       op_name = f_name
     else:
-      # TODO(fengliuai): create one utility method to match different apis.
+      # TODO(fengliuai): create one utility method to match different APIs.
       compose_dec = []
       for dec in func_def.decorator_list:
         if isinstance(dec, ast.Call):
@@ -381,7 +381,7 @@ class TFRTypeResolver(type_inference.Resolver):
     if hasattr(value, '__module__'):
       # All the imported operations, which are not autograph built-ins, are
       # considered to be TF raw ops.
-      # TODO(fengliuai): refine the condition so we only matche tensorflow
+      # TODO(fengliuai): refine the condition so we only match TensorFlow
       # ops here.
       return {TFRTypes.TF_RAW_OP}
     # TODO(mdan): Is ATTR equivalent to string?
@@ -425,6 +425,15 @@ class TFRTypeResolver(type_inference.Resolver):
 
     elif f_type == (TFRTypes.TF_RAW_OP,):
       op_name = name.qn[1]
+      op_def, _ = self._op_defs.lookup(op_name)
+      if len(op_def.output_arg) == 1:
+        return {_get_type_from_proto(op_def.output_arg[0])}, None
+      return ({tuple(_get_type_from_proto(arg) for arg in op_def.output_arg)},
+              None)
+
+    elif f_type == (types.FunctionType,):
+      # A composition Python function name is used directly.
+      op_name = name.qn[0]
       op_def, _ = self._op_defs.lookup(op_name)
       if len(op_def.output_arg) == 1:
         return {_get_type_from_proto(op_def.output_arg[0])}, None
@@ -519,7 +528,7 @@ class SymbolTable(object):
   def insert_symbol(self, name, value, type_):
     self.curr_table['symbols'][name] = (value, type_)
     # TODO(mdan): Use the inferred type rather than tracking it here.
-    # The following field is decrepcated.
+    # The following field is deprecated.
     self.curr_table['types'][name] = type_
     return value
 
@@ -696,7 +705,7 @@ class TFRGen(transformer.CodeGenerator):
       if ty == TFRTypes.SHAPE and node.attr == 'as_list':
         return (value, TFRTypes.TF_TENSOR_SHAPE_FUNC)
 
-    raise NotImplementedError('Attribute kind not recoganized.')
+    raise NotImplementedError('Attribute kind not recognized.')
 
   def visit_Assign(self, node):
     values = self.visit(node.value)
@@ -705,7 +714,7 @@ class TFRGen(transformer.CodeGenerator):
     elif isinstance(node.targets[0], ast.Name):
       targets = [node.targets[0].id]
     else:
-      raise NotImplementedError('Assignment target type not recoganized.')
+      raise NotImplementedError('Assignment target type not recognized.')
 
     if isinstance(values, list):
       if len(targets) == len(values):
@@ -789,8 +798,6 @@ class TFRGen(transformer.CodeGenerator):
         # The out symbols are just a Tuple of names
         for out in node.args[5].elts[:nouts]:
           val, ty = self.symbol_table.lookup(out.value)
-          if ty != TFRTypes.AG_UNDEFINED_VAL:
-            raise ValueError('if stmt out symbol is not defined.')
           out_symbols.append(out.value)
         return self._visit_if_stmt(cond, body, orelse, get_state, out_symbols,
                                    node)
@@ -809,6 +816,9 @@ class TFRGen(transformer.CodeGenerator):
         return (val, TFRTypes.AG_UNDEFINED_VAL)
 
     if func_type == TFRTypes.TF_RAW_OP:
+      return self._visit_tf_op(func_name, node.args, node.keywords, node)
+
+    if func_type == types.FunctionType:
       return self._visit_tf_op(func_name, node.args, node.keywords, node)
 
     if func_type == TFRTypes.TF_TENSOR_SHAPE_FUNC:
@@ -980,10 +990,8 @@ class TFRGen(transformer.CodeGenerator):
     if ret_ssa_values:
       self.emit(ret_str + ' = ')
 
-    # add ssa values to the symbol table
     out_types = []
     for symbol, ssa_value in zip(out_symbols, ret_ssa_values):
-      self.symbol_table.insert_symbol(symbol, ssa_value, TFRTypes.TENSOR)
       out_types.append(str(TFRTypes.TENSOR))
 
     self.emit('scf.if {} -> ({}) {{'.format(cond, ', '.join(out_types)))
@@ -1000,6 +1008,10 @@ class TFRGen(transformer.CodeGenerator):
     self.visit_block(orelse_def.body)
     self.visit_block(get_state.body)
     self.symbol_table.exit_scope()
+
+    # add ssa values to the symbol table
+    for symbol, ssa_value in zip(out_symbols, ret_ssa_values):
+      self.symbol_table.insert_symbol(symbol, ssa_value, TFRTypes.TENSOR)
 
     self._emit_with_loc('\n}', node)
     return list(zip(ret_ssa_values, out_types))
@@ -1184,7 +1196,13 @@ class TFRGen(transformer.CodeGenerator):
     raise NotImplementedError('If not supported.')
 
   def visit_Name(self, node):
-    val, lookup_type = self.symbol_table.lookup(node.id)
+    val_and_lookup_type = self.symbol_table.lookup(node.id)
+    if val_and_lookup_type:
+      (val, lookup_type) = val_and_lookup_type
+    else:
+      op_def, _ = self._op_defs.lookup(node.id)
+      val = op_def.name
+      lookup_type = anno.getanno(node, anno.Static.TYPES, types.FunctionType)
     type_ = self._get_inferred_type(node, lookup_type)
     return val, type_
 
@@ -1300,7 +1318,7 @@ class TFRGen(transformer.CodeGenerator):
 
 def _apply_py_to_tf_passes(node, ctx):
   """Apply transformations from PyToTF to match tf.function tracing."""
-  # TODO(fengliuai): we don't know which passes are required, thus we evalute
+  # TODO(fengliuai): we don't know which passes are required, thus we evaluate
   # each one when the corresponding node is handled.
   # copied from PyToTF.transform_ast
   node = return_statements.transform(node, ctx, False)
@@ -1368,10 +1386,16 @@ def tfr_gen_from_module(source, method_prefix=None, op_libraries=None):
         logging.info('load file: ' + lib_path)
         load_library.load_op_library(lib_path)
 
-  mlir_funcs = [
-      tfr_gen(func, op_defs)
+  py_funcs = [
+      func
       for name, func in tf_inspect.getmembers(source, tf_inspect.isfunction)
       if not method_prefix or name.startswith(method_prefix)
   ]
+  # Sort the methods by the line number, to make sure the definitions are
+  # processed before the usages.
+  # TODO(fengliuai): Use type inference resolver to recursively process any
+  # functions called.
+  py_funcs = sorted(py_funcs, key=lambda x: x.__code__.co_firstlineno)
+  mlir_funcs = [tfr_gen(func, op_defs) for func in py_funcs]
 
   return '\n'.join(mlir_funcs + op_defs.mlir_external_funcs())

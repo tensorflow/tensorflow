@@ -21,11 +21,27 @@ include "mlir/Pass/PassBase.td"
 def TFKernelToLLVMPass : Pass<"tf-kernel-to-llvm", "ModuleOp"> {
   let summary = "Pass for applying LLVM legalization patterns.";
   let constructor = "transforms::CreateTFKernelToLLVMPass()";
+  let options = [
+      Option<"blob_annotation_", "blob-annotation", "std::string",
+           /*default=*/"\"gpu.binary_blob\"", "Blob attribute name">,
+  ];
 }
 
-def EmbedTFFrameworkPass : Pass<"embed-tf-framework", "ModuleOp"> {
-  let summary = "Pass to embed TF Framework for allocation and error reporting";
-  let constructor = "tf_framework::CreateEmbedTFFrameworkPass()";
+def EmbedTFFrameworkFunctionAndAllocPass
+    : Pass<"embed-tf-framework-func-and-alloc", "ModuleOp"> {
+  let summary = "Pass to embed TF Framework for allocation and context";
+  let constructor = "tf_framework::CreateEmbedTFFrameworkFunctionAndAllocPass()";
+}
+
+def EmbedTFFrameworkAssertPass
+    : Pass<"embed-tf-framework-assert", "ModuleOp"> {
+  let summary = "Pass to rewrite assertions to TF framework calls";
+  let constructor = "tf_framework::CreateEmbedTFFrameworkAssertPass()";
+}
+
+def BufferReusePass : FunctionPass<"buffer-reuse"> {
+  let summary = "Pass to find and annotate candidates for buffer reuse.";
+  let constructor = "transforms::CreateBufferReusePass()";
 }
 
 def ShapeToDescriptorsPass : Pass<"shape-to-descriptors", "ModuleOp"> {
@@ -33,9 +49,16 @@ def ShapeToDescriptorsPass : Pass<"shape-to-descriptors", "ModuleOp"> {
   let constructor = "transforms::CreateShapeToDescriptorsPass()";
 }
 
-def BufferizePass : Pass<"bufferize", "ModuleOp"> {
-  let summary = "Pass to transform operations on values to buffer based ones";
-  let constructor = "transforms::CreateBufferizePass()";
+def HloBufferizePass : Pass<"hlo-bufferize", "ModuleOp"> {
+  let summary = "Pass to transform hlo operations on values to buffer based "
+                "ones.";
+  let constructor = "transforms::CreateHloBufferizePass()";
+}
+
+def FinalBufferizePass : Pass<"final-bufferize", "ModuleOp"> {
+  let summary = "Pass to transform late operations on values to buffer based "
+                "ones.";
+  let constructor = "transforms::CreateFinalBufferizePass()";
 }
 
 def MaterializeBroadcastsPass : FunctionPass<"materialize-broadcast"> {
@@ -52,11 +75,13 @@ def GpuKernelToBlobPass : Pass<"gpu-kernel-to-blob", "gpu::GPUModuleOp"> {
   let summary = "Pass to annotate GPU Module with its PTX";
   let options = [
     Option<"blob_annotation_", "blob-annotation", "std::string",
-           /*default=*/"", "Blob attribute name">,
+           /*default=*/"\"gpu.binary_blob\"", "Blob attribute name">,
     ListOption<"architectures_", "arch", "std::string", "GPU architectures">,
     Option<"generate_fatbin_", "generate-fatbin", "bool", /*default=*/"true",
            "Bundle machine code for the different architectures in one "
            "fatbin.">,
+    Option<"print_ptx_", "print-ptx", "bool", /*default=*/"false",
+           "Print generated PTX code per target architecture.">,
   ];
   let constructor = "transforms::CreateGpuKernelToBlobPass()";
 }
@@ -66,14 +91,21 @@ def ParallelLoopsToSequential : FunctionPass<"parallel-loops-to-sequential"> {
   let constructor = "transforms::CreateParallelLoopsToSequential()";
 }
 
-def PropagateTensorFlowABIKnowledgePass
-    : Pass<"propagate-tf-abi-knowledge", "LLVM::LLVMFuncOp"> {
-  let summary = "Pass to propagate TF ABI knowledge, e.g. offsets, alignment";
-  let options = [
-    ListOption<"same_shape_", "same-shape", "uint32_t",
-               "List of same shape args">,
-  ];
-  let constructor = "transforms::CreatePropagateTensorFlowABIKnowledgePass()";
+def PropagateTfAbiKnowledgeToKernels
+    : FunctionPass<"propagate-tf-abi-knowledge-to-kernels"> {
+  let summary = "Pass to propagate tensorflow ABI knowledge to kernels";
+  let constructor = "transforms::CreatePropagateTfAbiKnowledgeToKernels()";
+}
+
+def PropagateShapeKnowledgeToKernels
+    : FunctionPass<"propagate-shape-knowledge-to-kernels"> {
+  let summary = "Pass to propagate shape information into kernels";
+  let constructor = "transforms::CreatePropagateShapeKnowledgeToKernels()";
+}
+
+def EmbedMemRefPrintsPass : FunctionPass<"embed-memref-prints"> {
+  let summary = "Pass to print content of memrefs";
+  let constructor = "transforms::CreateEmbedMemRefPrintsPass()";
 }
 
 #endif // TF_KERNEL_GEN_PASSES

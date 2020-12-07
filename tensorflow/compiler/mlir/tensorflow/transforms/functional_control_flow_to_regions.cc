@@ -21,7 +21,7 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
@@ -112,7 +112,8 @@ LogicalResult ConvertIfOp(IfOp if_op) {
 LogicalResult ConvertWhileOp(WhileOp while_op) {
   auto while_region = OpBuilder(while_op).create<TF::WhileRegionOp>(
       while_op.getLoc(), while_op.getResultTypes(), while_op.input(),
-      while_op.is_stateless(), while_op.parallel_iterations());
+      while_op.parallel_iterations(), while_op.is_stateless(),
+      while_op.shape_invariant());
   CopyDeviceAndUnderscoredAttributes(while_op, while_region);
 
   YieldOp cond_yield =

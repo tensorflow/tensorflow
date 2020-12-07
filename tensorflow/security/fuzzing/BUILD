@@ -28,6 +28,34 @@ tf_fuzz_target(
 )
 
 tf_fuzz_target(
+    name = "joinpath_fuzz",
+    srcs = ["joinpath_fuzz.cc"],
+    deps = [
+        "//tensorflow/core/platform:path",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_fuzz_target(
+    name = "parseURI_fuzz",
+    srcs = ["parseURI_fuzz.cc"],
+    deps = [
+        "//tensorflow/core/platform:path",
+        "//tensorflow/core/platform:stringpiece",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_fuzz_target(
+    name = "cleanpath_fuzz",
+    srcs = ["cleanpath_fuzz.cc"],
+    deps = [
+        "//tensorflow/core/platform:path",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_fuzz_target(
     name = "consume_leading_digits_fuzz",
     srcs = ["consume_leading_digits_fuzz.cc"],
     deps = [
@@ -67,5 +95,15 @@ tf_fuzz_target(
     srcs = ["tstring_fuzz.cc"],
     deps = [
         "//tensorflow/core/platform:tstring",
+    ],
+)
+
+tf_fuzz_target(
+    name = "base64_fuzz",
+    srcs = ["base64_fuzz.cc"],
+    deps = [
+        "//tensorflow/core/platform:base64",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:stringpiece",
     ],
 )

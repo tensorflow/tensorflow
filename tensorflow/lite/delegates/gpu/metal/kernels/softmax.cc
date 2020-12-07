@@ -20,20 +20,19 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
-#include "tensorflow/lite/delegates/gpu/metal/environment.h"
-#include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
 namespace tflite {
 namespace gpu {
 namespace metal {
 namespace {
-std::string GetSoftmax1x1Code(const DeviceInfo& device_info) {
-  const std::string barrier = device_info.IsWaveSizeEqualTo32()
+std::string GetSoftmax1x1Code(const GpuInfo& gpu_info) {
+  const std::string barrier = gpu_info.IsWaveSizeEqualTo32()
                                   ? "SIMDGROUP_BARRIER"
                                   : "threadgroup_barrier";
   std::string code = R"(
@@ -57,7 +56,7 @@ kernel void ComputeFunction($1
   do {
     if (offset + tid < params.size.x) {
       float4 mask_temp = offset + tid == params.size.x - 1 ? params.mask : float4(1.0h);
-      float4 src = float4(src_buffer[offset + tid]);
+      float4 src = float4(src_tensor[offset + tid]);
       sum += dot(mask_temp, exp(src));
       offset += 32;
     }
@@ -91,10 +90,10 @@ kernel void ComputeFunction($1
   do {
     if (offset + tid < params.size.x) {
       int linear_index = offset + tid;
-      FLT4 value = FLT4(exp(float4(src_buffer[linear_index])) * sum);
+      FLT4 value = FLT4(exp(float4(src_tensor[linear_index])) * sum);
       uint3 gid = uint3(0, 0, linear_index);
       $2
-      dst_buffer[linear_index] = value;
+      dst_tensor[linear_index] = value;
       offset += 32;
     }
     s++;
@@ -104,18 +103,15 @@ kernel void ComputeFunction($1
 }
 }  // namespace
 
-std::vector<ComputeTaskDescriptorPtr> Softmax(int id, ValueId input_id,
-                                              ValueId output_id,
-                                              int channels_count) {
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = false;
-  desc->shader_source = R"(
+ComputeTaskDescriptor Softmax(const OperationDef& definition,
+                              int channels_count) {
+  ComputeTaskDescriptor desc(definition);
+  desc.shader_source = R"(
     #include <metal_stdlib>
     using namespace metal;
     constant int src_channels = )";
-  desc->shader_source += std::to_string(channels_count);
-  desc->shader_source += R"(;
+  desc.shader_source += std::to_string(channels_count);
+  desc.shader_source += R"(;
     $0
     kernel void ComputeFunction(
                                 $1
@@ -129,11 +125,11 @@ std::vector<ComputeTaskDescriptorPtr> Softmax(int id, ValueId input_id,
       float sum = 0.0f;
       for (int d = 0; d < src_channels / 4; ++d) {
         int buffer_index = (d * size.y + gid.y) * size.x + gid.x;
-        sum += dot(float4(1.0f), exp(float4(input_buffer[buffer_index]) - shift));
+        sum += dot(float4(1.0f), exp(float4(src_tensor[buffer_index]) - shift));
       }
       if (remaining_channels > 0) {
         int buffer_index = ((src_channels / 4) * size.y + gid.y) * size.x + gid.x;
-        float4 last_element = float4(input_buffer[buffer_index]);
+        float4 last_element = float4(src_tensor[buffer_index]);
         sum += exp(last_element.x - shift);
         if (remaining_channels > 1) sum += exp(last_element.y - shift);
         if (remaining_channels == 3) sum += exp(last_element.z - shift);
@@ -141,63 +137,48 @@ std::vector<ComputeTaskDescriptorPtr> Softmax(int id, ValueId input_id,
 
       for (int d = 0; d < (src_channels + 3) / 4; ++d) {
         const int linear_index = (d * size.y + gid.y) * size.x + gid.x;
-        FLT4 value = FLT4(exp(float4(input_buffer[linear_index]) - shift) / sum);
+        FLT4 value = FLT4(exp(float4(src_tensor[linear_index]) - shift) / sum);
         $2
-        output_buffer[linear_index] = value;
+        dst_tensor[linear_index] = value;
       }
     }
   )";
 
-  desc->input_buffers = {
-      {input_id, "device FLT4* const input_buffer"},
-  };
+  desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
+  desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
-  desc->output_buffer = {output_id, "device FLT4* output_buffer",
-                         [input_id](const std::map<ValueId, BHWC>& buffers) {
-                           return buffers.find(input_id)->second;
-                         }};
-
-  desc->uniform_buffers = {
+  desc.uniform_buffers = {
       {"constant int2& size",
-       [output_id](const std::map<ValueId, BHWC>& buffers) {
-         const auto& dimension = buffers.find(output_id)->second;
-         std::vector<int> sizes{dimension.w, dimension.h};
+       [](const std::vector<BHWC>& src_shapes,
+          const std::vector<BHWC>& dst_shapes) {
+         std::vector<int> sizes{dst_shapes[0].w, dst_shapes[0].h};
          return GetByteBuffer(sizes);
        }},
   };
 
-  desc->resize_function = [output_id](const std::map<ValueId, BHWC>& buffers) {
+  desc.resize_function = [](const std::vector<BHWC>& src_shapes,
+                            const std::vector<BHWC>& dst_shapes) {
     uint3 groups_size{8, 4, 1};
-    const auto& dimension = buffers.find(output_id)->second;
-    uint3 groups_count{DivideRoundUp(dimension.w, groups_size.x),
-                       DivideRoundUp(dimension.h, groups_size.y), 1};
+    uint3 groups_count{DivideRoundUp(dst_shapes[0].w, groups_size.x),
+                       DivideRoundUp(dst_shapes[0].h, groups_size.y), 1};
     return std::make_pair(groups_size, groups_count);
   };
 
-  return {desc};
+  return desc;
 }
 
-std::vector<ComputeTaskDescriptorPtr> Softmax1x1(int id, ValueId input_id,
-                                                 ValueId output_id,
-                                                 const DeviceInfo& device_info,
-                                                 int channels_count) {
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = false;
-  desc->shader_source = GetSoftmax1x1Code(device_info);
+ComputeTaskDescriptor Softmax1x1(const OperationDef& definition,
+                                 const GpuInfo& gpu_info, int channels_count) {
+  ComputeTaskDescriptor desc(definition);
+  desc.shader_source = GetSoftmax1x1Code(gpu_info);
 
-  desc->input_buffers = {
-      {input_id, "device FLT4* const src_buffer"},
-  };
+  desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
+  desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
-  desc->output_buffer = {output_id, "device FLT4* dst_buffer",
-                         [input_id](const std::map<ValueId, BHWC>& buffers) {
-                           return buffers.find(input_id)->second;
-                         }};
-
-  desc->uniform_buffers = {
+  desc.uniform_buffers = {
       {"constant uniforms& params",
-       [channels_count](const std::map<ValueId, BHWC>& buffers) {
+       [channels_count](const std::vector<BHWC>& src_shapes,
+                        const std::vector<BHWC>& dst_shapes) {
          const int src_depth = DivideRoundUp(channels_count, 4);
          struct uniforms {
            int4 size;
@@ -215,11 +196,12 @@ std::vector<ComputeTaskDescriptorPtr> Softmax1x1(int id, ValueId input_id,
        }},
   };
 
-  desc->resize_function = [](const std::map<ValueId, BHWC>& buffers) {
+  desc.resize_function = [](const std::vector<BHWC>& src_shapes,
+                            const std::vector<BHWC>& dst_shapes) {
     return std::make_pair(uint3{32u, 1u, 1u}, uint3{1u, 1u, 1u});
   };
 
-  return {desc};
+  return desc;
 }
 
 }  // namespace metal

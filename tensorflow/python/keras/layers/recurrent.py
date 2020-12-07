@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import warnings
 
 import numpy as np
@@ -46,7 +47,6 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.util import nest
-from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 
@@ -274,7 +274,9 @@ class RNN(Layer):
   Call arguments:
     inputs: Input tensor.
     mask: Binary tensor of shape `[batch_size, timesteps]` indicating whether
-      a given timestep should be masked.
+      a given timestep should be masked. An individual `True` entry indicates
+      that the corresponding timestep should be utilized, while a `False`
+      entry indicates that the corresponding timestep should be ignored.
     training: Python boolean indicating whether the layer should behave in
       training mode or in inference mode. This argument is passed to the cell
       when calling it. This is for use with cells that use dropout.
@@ -441,6 +443,16 @@ class RNN(Layer):
       if ds_context.has_strategy():
         raise ValueError('RNNs with stateful=True not yet supported with '
                          'tf.distribute.Strategy.')
+
+  @property
+  def _use_input_spec_as_call_signature(self):
+    if self.unroll:
+      # When the RNN layer is unrolled, the time step shape cannot be unknown.
+      # The input spec does not define the time step (because this layer can be
+      # called with any time step value, as long as it is not None), so it
+      # cannot be used as the call function signature when saving to SavedModel.
+      return False
+    return super(RNN, self)._use_input_spec_as_call_signature
 
   @property
   def states(self):
@@ -828,7 +840,7 @@ class RNN(Layer):
     # input shape: `(samples, time (padded with zeros), input_dim)`
     # note that the .build() method of subclasses MUST define
     # self.input_spec and self.state_spec with complete input shapes.
-    if (isinstance(inputs, collections_abc.Sequence)
+    if (isinstance(inputs, collections.abc.Sequence)
         and not isinstance(inputs, tuple)):
       # get initial_state from full input spec
       # as they could be copied to multiple GPU.
@@ -1481,7 +1493,9 @@ class SimpleRNN(RNN):
   Call arguments:
     inputs: A 3D tensor, with shape `[batch, timesteps, feature]`.
     mask: Binary tensor of shape `[batch, timesteps]` indicating whether
-      a given timestep should be masked.
+      a given timestep should be masked. An individual `True` entry indicates
+      that the corresponding timestep should be utilized, while a `False` entry
+      indicates that the corresponding timestep should be ignored.
     training: Python boolean indicating whether the layer should behave in
       training mode or in inference mode. This argument is passed to the cell
       when calling it. This is only relevant if `dropout` or
@@ -1568,7 +1582,6 @@ class SimpleRNN(RNN):
     self.input_spec = [InputSpec(ndim=3)]
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
-    self._maybe_reset_cell_dropout_mask(self.cell)
     return super(SimpleRNN, self).call(
         inputs, mask=mask, training=training, initial_state=initial_state)
 
@@ -2027,7 +2040,9 @@ class GRU(RNN):
   Call arguments:
     inputs: A 3D tensor.
     mask: Binary tensor of shape `(samples, timesteps)` indicating whether
-      a given timestep should be masked.
+      a given timestep should be masked. An individual `True` entry indicates
+      that the corresponding timestep should be utilized, while a `False`
+      entry indicates that the corresponding timestep should be ignored.
     training: Python boolean indicating whether the layer should behave in
       training mode or in inference mode. This argument is passed to the cell
       when calling it. This is only relevant if `dropout` or
@@ -2103,7 +2118,6 @@ class GRU(RNN):
     self.input_spec = [InputSpec(ndim=3)]
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
-    self._maybe_reset_cell_dropout_mask(self.cell)
     return super(GRU, self).call(
         inputs, mask=mask, training=training, initial_state=initial_state)
 
@@ -2702,7 +2716,9 @@ class LSTM(RNN):
   Call arguments:
     inputs: A 3D tensor.
     mask: Binary tensor of shape `(samples, timesteps)` indicating whether
-      a given timestep should be masked.
+      a given timestep should be masked. An individual `True` entry indicates
+      that the corresponding timestep should be utilized, while a `False`
+      entry indicates that the corresponding timestep should be ignored.
     training: Python boolean indicating whether the layer should behave in
       training mode or in inference mode. This argument is passed to the cell
       when calling it. This is only relevant if `dropout` or
@@ -2778,7 +2794,6 @@ class LSTM(RNN):
     self.input_spec = [InputSpec(ndim=3)]
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
-    self._maybe_reset_cell_dropout_mask(self.cell)
     return super(LSTM, self).call(
         inputs, mask=mask, training=training, initial_state=initial_state)
 

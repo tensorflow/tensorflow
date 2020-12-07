@@ -43,7 +43,6 @@ from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
-from tensorflow.python import _pywrap_stacktrace_handler
 from tensorflow.python import _pywrap_util_port
 from tensorflow.python import tf2
 from tensorflow.python.client import device_lib
@@ -79,6 +78,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_ops  # pylint: disable=unused-import
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_tensor_value
+from tensorflow.python.platform import _pywrap_stacktrace_handler
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
@@ -1554,6 +1554,11 @@ def is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
   also return False. Use `tf.test.is_built_with_cuda` to validate if TensorFlow
   was build with CUDA support.
 
+  For example,
+  >>> gpu_available = tf.test.is_gpu_available()
+  >>> is_cuda_gpu_available = tf.test.is_gpu_available(cuda_only=True)
+  >>> is_cuda_gpu_min_3 = tf.test.is_gpu_available(True, (3,0))
+
   Args:
     cuda_only: limit the search to CUDA GPUs.
     min_cuda_compute_capability: a (major,minor) pair that indicates the minimum
@@ -2176,10 +2181,9 @@ class TensorFlowTestCase(googletest.TestCase):
       message: the message to validate.
       msg: Optional message to report on failure.
     """
-    msg = msg if msg else ""
     if isinstance(expected_message_maybe_ascii, type(message)):
       expected_message = expected_message_maybe_ascii
-      self._AssertProtoEquals(expected_message, message)
+      self._AssertProtoEquals(expected_message, message, msg=msg)
     elif isinstance(expected_message_maybe_ascii, (str, bytes)):
       expected_message = type(message)()
       text_format.Merge(
@@ -2188,8 +2192,8 @@ class TensorFlowTestCase(googletest.TestCase):
           descriptor_pool=descriptor_pool.Default())
       self._AssertProtoEquals(expected_message, message, msg=msg)
     else:
-      assert False, ("Can't compare protos of type %s and %s. %s" %
-                     (type(expected_message_maybe_ascii), type(message), msg))
+      assert False, ("Can't compare protos of type %s and %s." %
+                     (type(expected_message_maybe_ascii), type(message)))
 
   def assertProtoEqualsVersion(
       self,
@@ -2759,23 +2763,29 @@ class TensorFlowTestCase(googletest.TestCase):
     self.assertAllClose(a, b, rtol=rtol, atol=atol, msg=msg)
 
   @py_func_if_in_function
-  def assertNotAllClose(self, a, b, **kwargs):
+  def assertNotAllClose(self, a, b, rtol=1e-6, atol=1e-6, msg=None):
     """Assert that two numpy arrays, or Tensors, do not have near values.
 
     Args:
-      a: the first value to compare.
-      b: the second value to compare.
-      **kwargs: additional keyword arguments to be passed to the underlying
-        `assertAllClose` call.
+      a: The expected numpy `ndarray`, or anything that can be converted into a
+        numpy `ndarray` (including Tensor), or any arbitrarily nested of
+        structure of these.
+      b: The actual numpy `ndarray`, or anything that can be converted into a
+        numpy `ndarray` (including Tensor), or any arbitrarily nested of
+        structure of these.
+      rtol: relative tolerance.
+      atol: absolute tolerance.
+      msg: Optional message to report on failure.
 
     Raises:
       AssertionError: If `a` and `b` are unexpectedly close at all elements.
     """
     try:
-      self.assertAllClose(a, b, **kwargs)
+      self.assertAllClose(a, b,  rtol=rtol, atol=atol, msg=msg)
     except AssertionError:
       return
-    raise AssertionError("The two values are close at all elements")
+    msg = msg or ""
+    raise AssertionError("The two values are close at all elements. %s" % msg)
 
   @py_func_if_in_function
   def assertAllEqual(self, a, b, msg=None):

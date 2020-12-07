@@ -116,15 +116,14 @@ SimpleOrcJIT::SimpleOrcJIT(
           << " features: " << target_machine_->getTargetFeatureString().str();
 
   // Materialize unknown symbols from the runtime symbol table.
-  class RuntimeSymbolGenerator
-      : public llvm::orc::JITDylib::DefinitionGenerator {
+  class RuntimeSymbolGenerator : public llvm::orc::DefinitionGenerator {
     SimpleOrcJIT& jit_;
 
    public:
     explicit RuntimeSymbolGenerator(SimpleOrcJIT& jit) : jit_(jit) {}
     llvm::Error tryToGenerate(
-        llvm::orc::LookupKind, llvm::orc::JITDylib& jit_dylib,
-        llvm::orc::JITDylibLookupFlags,
+        llvm::orc::LookupState&, llvm::orc::LookupKind,
+        llvm::orc::JITDylib& jit_dylib, llvm::orc::JITDylibLookupFlags,
         const llvm::orc::SymbolLookupSet& names) override {
       llvm::orc::SymbolMap new_defs;
 
@@ -151,6 +150,12 @@ SimpleOrcJIT::SimpleOrcJIT(
   }
 }
 
+SimpleOrcJIT::~SimpleOrcJIT() {
+  if (auto err = execution_session_->endSession()) {
+    execution_session_->reportError(std::move(err));
+  }
+}
+
 llvm::Expected<std::unique_ptr<SimpleOrcJIT>> SimpleOrcJIT::Create(
     const llvm::TargetOptions& target_options,
     llvm::CodeGenOpt::Level opt_level, bool optimize_for_size,
@@ -158,7 +163,9 @@ llvm::Expected<std::unique_ptr<SimpleOrcJIT>> SimpleOrcJIT::Create(
     LLVMCompiler::ModuleHook pre_optimization_hook,
     LLVMCompiler::ModuleHook post_optimization_hook,
     std::function<void(const llvm::object::ObjectFile&)> post_codegen_hook) {
-  auto target_process_control = llvm::orc::SelfTargetProcessControl::Create();
+  auto SSP = std::make_shared<llvm::orc::SymbolStringPool>();
+  auto target_process_control =
+      llvm::orc::SelfTargetProcessControl::Create(std::move(SSP));
   if (!target_process_control) {
     return target_process_control.takeError();
   }

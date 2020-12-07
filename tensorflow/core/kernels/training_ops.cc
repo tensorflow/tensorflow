@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/util/util.h"
 
-
 namespace tensorflow {
 
 using CPUDevice = Eigen::ThreadPoolDevice;
@@ -52,7 +51,6 @@ struct ApplyGradientDescent<CPUDevice, T> {
     var.device(d) -= grad * lr();
   }
 };
-
 
 template <typename T>
 struct ApplyAdadelta<CPUDevice, T> {
@@ -378,6 +376,61 @@ inline T FtrlCompute(const T& accum, const T& linear, const T& lr, const T& l1,
   }
 }
 
+template <typename T, typename GradTy, typename GradeMaybeWithShrinkageTy,
+          typename AccumTy, typename LinearTy, typename VarTy>
+void ComputeFtrl(GradTy grad,
+                 GradeMaybeWithShrinkageTy grad_maybe_with_shrinkage,
+                 AccumTy accum, LinearTy linear, VarTy var, T l1_scalar,
+                 T l2_scalar, bool multiply_linear_by_lr, T lr_power_scalar,
+                 T lr_scalar) {
+  auto new_accum = accum + grad.square();
+  if (multiply_linear_by_lr) {
+    if (lr_power_scalar == static_cast<T>(-0.5)) {
+      linear += grad_maybe_with_shrinkage * lr_scalar -
+                (new_accum.sqrt() - accum.sqrt()) * var;
+    } else {
+      linear +=
+          grad_maybe_with_shrinkage * lr_scalar -
+          (new_accum.pow(-lr_power_scalar) - accum.pow(-lr_power_scalar)) * var;
+    }
+  } else {
+    if (lr_power_scalar == static_cast<T>(-0.5)) {
+      linear += grad_maybe_with_shrinkage -
+                (new_accum.sqrt() - accum.sqrt()) / lr_scalar * var;
+    } else {
+      linear += grad_maybe_with_shrinkage - (new_accum.pow(-lr_power_scalar) -
+                                             accum.pow(-lr_power_scalar)) /
+                                                lr_scalar * var;
+    }
+  }
+  auto l1_reg_adjust =
+      (multiply_linear_by_lr ? linear.cwiseMin(l1_scalar * lr_scalar)
+                                   .cwiseMax(-l1_scalar * lr_scalar)
+                             : linear.cwiseMin(l1_scalar).cwiseMax(-l1_scalar));
+  auto x = l1_reg_adjust - linear;
+  if (multiply_linear_by_lr) {
+    if (lr_power_scalar == static_cast<T>(-0.5)) {
+      auto y = new_accum.sqrt() +
+               linear.constant(static_cast<T>(2) * l2_scalar * lr_scalar);
+      var = x / y;
+    } else {
+      auto y = new_accum.pow(-lr_power_scalar) +
+               linear.constant(static_cast<T>(2) * l2_scalar * lr_scalar);
+      var = x / y;
+    }
+  } else {
+    if (lr_power_scalar == static_cast<T>(-0.5)) {
+      auto y = new_accum.sqrt() / new_accum.constant(lr_scalar) +
+               linear.constant(static_cast<T>(2) * l2_scalar);
+      var = x / y;
+    } else {
+      auto y = new_accum.pow(-lr_power_scalar) / new_accum.constant(lr_scalar) +
+               linear.constant(static_cast<T>(2) * l2_scalar);
+      var = x / y;
+    }
+  }
+  accum += grad.square();
+}
 }  // namespace
 
 template <typename T, typename Tindex, bool has_l2_shrinkage>
@@ -419,70 +472,25 @@ struct SparseApplyFtrl<CPUDevice, T, Tindex, has_l2_shrinkage> {
           auto grad = grad_flat.template chip<0>(i);
           auto var = var_flat.template chip<0>(index);
 
-// TODO(sanjoy): Remove this macro.
-// Use a macro to implement the computation here due to the templating of the
-// eigen tensor library.
-#define COMPUTE_FTRL(grad, grad_maybe_with_shrinkage)                          \
-  auto new_accum = accum + grad.square();                                      \
-  if (multiply_linear_by_lr) {                                                 \
-    if (lr_power_scalar == static_cast<T>(-0.5)) {                             \
-      linear += grad_maybe_with_shrinkage * lr_scalar -                        \
-                (new_accum.sqrt() - accum.sqrt()) * var;                       \
-    } else {                                                                   \
-      linear +=                                                                \
-          grad_maybe_with_shrinkage * lr_scalar -                              \
-          (new_accum.pow(-lr_power_scalar) - accum.pow(-lr_power_scalar)) *    \
-              var;                                                             \
-    }                                                                          \
-  } else {                                                                     \
-    if (lr_power_scalar == static_cast<T>(-0.5)) {                             \
-      linear += grad_maybe_with_shrinkage -                                    \
-                (new_accum.sqrt() - accum.sqrt()) / lr_scalar * var;           \
-    } else {                                                                   \
-      linear += grad_maybe_with_shrinkage - (new_accum.pow(-lr_power_scalar) - \
-                                             accum.pow(-lr_power_scalar)) /    \
-                                                lr_scalar * var;               \
-    }                                                                          \
-  }                                                                            \
-  auto l1_reg_adjust =                                                         \
-      (multiply_linear_by_lr                                                   \
-           ? linear.cwiseMin(l1_scalar * lr_scalar)                            \
-                 .cwiseMax(-l1_scalar * lr_scalar)                             \
-           : linear.cwiseMin(l1_scalar).cwiseMax(-l1_scalar));                 \
-  auto x = l1_reg_adjust - linear;                                             \
-  if (multiply_linear_by_lr) {                                                 \
-    if (lr_power_scalar == static_cast<T>(-0.5)) {                             \
-      auto y = new_accum.sqrt() +                                              \
-               linear.constant(static_cast<T>(2) * l2_scalar * lr_scalar);     \
-      var = x / y;                                                             \
-    } else {                                                                   \
-      auto y = new_accum.pow(-lr_power_scalar) +                               \
-               linear.constant(static_cast<T>(2) * l2_scalar * lr_scalar);     \
-      var = x / y;                                                             \
-    }                                                                          \
-  } else {                                                                     \
-    if (lr_power_scalar == static_cast<T>(-0.5)) {                             \
-      auto y = new_accum.sqrt() / new_accum.constant(lr_scalar) +              \
-               linear.constant(static_cast<T>(2) * l2_scalar);                 \
-      var = x / y;                                                             \
-    } else {                                                                   \
-      auto y =                                                                 \
-          new_accum.pow(-lr_power_scalar) / new_accum.constant(lr_scalar) +    \
-          linear.constant(static_cast<T>(2) * l2_scalar);                      \
-      var = x / y;                                                             \
-    }                                                                          \
-  }                                                                            \
-  accum += grad.square();
-
           if (has_l2_shrinkage) {
             auto grad_with_shrinkage =
                 grad + static_cast<T>(2) * l2_shrinkage_scalar * var;
-            COMPUTE_FTRL(grad, grad_with_shrinkage);
+            ComputeFtrl(/*grad=*/grad,
+                        /*grad_maybe_with_shrinkage=*/grad_with_shrinkage,
+                        /*accum=*/accum, /*linear=*/linear, /*var=*/var,
+                        /*l1_scalar=*/l1_scalar, /*l2_scalar=*/l2_scalar,
+                        /*multiply_linear_by_lr=*/multiply_linear_by_lr,
+                        /*lr_power_scalar=*/lr_power_scalar,
+                        /*lr_scalar=*/lr_scalar);
           } else {
-            COMPUTE_FTRL(grad, grad);
+            ComputeFtrl(/*grad=*/grad, /*grad_maybe_with_shrinkage=*/grad,
+                        /*accum=*/accum, /*linear=*/linear, /*var=*/var,
+                        /*l1_scalar=*/l1_scalar, /*l2_scalar=*/l2_scalar,
+                        /*multiply_linear_by_lr=*/multiply_linear_by_lr,
+                        /*lr_power_scalar=*/lr_power_scalar,
+                        /*lr_scalar=*/lr_scalar);
           }
         }
-#undef COMPUTE_FTRL
       } else {
         const Tindex first_dim_size = accum_flat.size();
 
@@ -656,7 +664,6 @@ struct ApplyAdamNonCuda {
   }
 };
 
-
 template <typename T>
 struct ApplyAdam<CPUDevice, T> : ApplyAdamNonCuda<CPUDevice, T> {};
 
@@ -811,7 +818,6 @@ class ApplyGradientDescentOp : public OpKernel {
   bool use_exclusive_lock_;
 };
 
-
 #define REGISTER_KERNELS(D, T)                                                \
   REGISTER_KERNEL_BUILDER(                                                    \
       Name("ApplyGradientDescent").Device(DEVICE_##D).TypeConstraint<T>("T"), \
@@ -855,7 +861,6 @@ REGISTER_KERNELS(GPU, complex128);
 #endif
 #endif
 
-
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
 
@@ -867,24 +872,12 @@ class ApplyAdadeltaOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    Var* resource;
     const bool sparse = false;
-    mutex* mu = GetTrainingVariableMutex<Device, T>(ctx, 0, sparse, &resource);
-    core::ScopedUnref scoped_unref(resource);
-    if (use_exclusive_lock_ && mu != nullptr) {
-      mutex_lock l1(*mu);
-      // Don't try to acquire a lock on the second ref as they share the same
-      // mutex.
-      //
-      // mutex_lock l2(*ctx->input_ref_mutex(1));
-      DoValidate(ctx);
-      if (!ctx->status().ok()) return;
-      DoCompute(ctx);
-    } else {
-      DoValidate(ctx);
-      if (!ctx->status().ok()) return;
-      DoCompute(ctx);
-    }
+    auto locks = MaybeLockVariableInputMutexesInOrder<Device, T>(
+        ctx, use_exclusive_lock_, sparse, {0, 1, 2});
+    DoValidate(ctx);
+    if (!ctx->status().ok()) return;
+    DoCompute(ctx);
     MaybeForwardRefInputToRefOutput(ctx, 0, 0);
   }
 
@@ -1029,20 +1022,10 @@ class SparseApplyAdadeltaOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    Var* var;
     const bool sparse = true;
-    mutex* mu = GetTrainingVariableMutex<CPUDevice, T>(ctx, 0, sparse, &var);
-    core::ScopedUnref scoped_unref(var);
-    // mu_accum is actually the same mutex as mu_var since currently we use a
-    // global mutex.
-    //
-    // mutex* mu_accum = ctx->input_ref_mutex(1);
-    if (use_exclusive_lock_ && mu != nullptr) {
-      mutex_lock ml(*mu);
-      DoCompute(ctx);
-    } else {
-      DoCompute(ctx);
-    }
+    auto locks = MaybeLockVariableInputMutexesInOrder<CPUDevice, T>(
+        ctx, use_exclusive_lock_, sparse, {0, 1, 2});
+    DoCompute(ctx);
   }
 
   void DoCompute(OpKernelContext* ctx) {
@@ -3487,7 +3470,6 @@ class ApplyAdamOp : public OpKernel {
   bool use_nesterov_;
 };
 
-
 #define REGISTER_KERNELS(D, T)                                     \
   REGISTER_KERNEL_BUILDER(                                         \
       Name("ApplyAdam").Device(DEVICE_##D).TypeConstraint<T>("T"), \
@@ -3503,7 +3485,6 @@ class ApplyAdamOp : public OpKernel {
 
 TF_CALL_FLOAT_TYPES(REGISTER_CPU_KERNELS);
 TF_CALL_COMPLEX_TYPES(REGISTER_CPU_KERNELS);
-
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.

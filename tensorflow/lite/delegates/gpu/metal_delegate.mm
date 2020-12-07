@@ -43,7 +43,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/buffer_convert.h"
 #include "tensorflow/lite/delegates/gpu/metal/common.h"
 #include "tensorflow/lite/delegates/gpu/metal/compiled_model.h"
-#include "tensorflow/lite/delegates/gpu/metal/environment.h"
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/metal/inference_context.h"
 #include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -229,10 +229,7 @@ class Delegate {
     return absl::NotFoundError("Couldn't find tensor: " + std::to_string(tensor_index));
   }
 
-  void SetCommandEncoder(
-      id<MTLComputeCommandEncoder> encoder,
-      std::function<id<MTLComputeCommandEncoder>(bool is_last)> control_encoder) {
-    control_encoder_ = control_encoder;
+  void SetCommandEncoder(id<MTLComputeCommandEncoder> encoder) {
     external_command_encoder_ = encoder;
   }
 
@@ -338,13 +335,14 @@ class Delegate {
     }
 
     std::string device_name = std::string([[metal_device_ name] UTF8String]);
-    DeviceInfo device_info(device_name);
+    GpuInfo gpu_info;
+    GetGpuInfoFromDeviceDescription(device_name, GpuApi::kMetal, &gpu_info);
     size_t storage_type_size;
     RuntimeOptions runtime_options;
     if (options_.allow_precision_loss) {
       storage_type_size = sizeof(HalfBits);
       runtime_options.storage_precision = RuntimeOptions::Precision::FP16;
-      if (device_info.IsRoundToNearestSupported()) {
+      if (gpu_info.IsRoundToNearestSupported()) {
         runtime_options.accumulator_precision = RuntimeOptions::Precision::FP16;
       } else {
         runtime_options.accumulator_precision = RuntimeOptions::Precision::FP32;
@@ -437,19 +435,16 @@ class Delegate {
 
     // TODO(impjdi): Merge these.
     CompiledModel compiled_model;
-    RETURN_IF_ERROR(Compile(graph, device_info, runtime_options, &compiled_model));
+    RETURN_IF_ERROR(Compile(graph, gpu_info, runtime_options, &compiled_model));
     CompiledModel optimized_model;
     RETURN_IF_ERROR(ValidateOptimizeModel(input_ids, output_ids, compiled_model, &optimized_model));
 
     inference_context_ = [[TFLInferenceContext alloc] init];
     RETURN_IF_ERROR([inference_context_ compileModelWithDevice:metal_device_
-                                               taskDescriptors:optimized_model
+                                                         model:optimized_model
+                                                inputBufferIDs:input_ids
                                                outputBufferIDs:output_ids
                                                 runtimeOptions:runtime_options]);
-    std::map<::tflite::gpu::ValueId, BHWC> output_dimensions;
-    RETURN_IF_ERROR([inference_context_ setInputDimensions:input_dimensions
-                                          outputDimensions:&output_dimensions
-                                           taskDescriptors:optimized_model]);
     return absl::OkStatus();
   }
 
@@ -496,9 +491,6 @@ class Delegate {
          encodeWithEncoder:encoder
         inputOutputBuffers:bphwc4_buffers_
               encoderBlock:^(bool isLast) {
-                if (control_encoder_ != nullptr) {
-                  return control_encoder_(isLast);
-                }
                 if (external_command_encoder_ != nil ||
                     options_.wait_type == TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypePassive) {
                   return encoder;
@@ -629,7 +621,6 @@ class Delegate {
   std::vector<BufferDescriptor> graph_outputs_;
 
   id<MTLComputeCommandEncoder> external_command_encoder_ = nil;
-  std::function<id<MTLComputeCommandEncoder>(bool is_last)> control_encoder_;
   id<MTLCommandQueue> command_queue_;
   std::unique_ptr<GpuAlarmClock> gpu_alarm_clock_;
   id<MTLComputePipelineState> signal_program_;
@@ -722,11 +713,10 @@ bool TFLGpuDelegateBindMetalBufferToTensor(TfLiteDelegate* delegate, int tensor_
 // Note: This function is not exposed in `metal_delegate.h`, but it's exposed in
 // `metal_delegate_internal.h`.
 bool TFLGpuDelegateSetCommandEncoder(
-    TfLiteDelegate* delegate, id<MTLComputeCommandEncoder> encoder,
-    std::function<id<MTLComputeCommandEncoder>(bool is_last)> control_encoder) {
+    TfLiteDelegate* delegate, id<MTLComputeCommandEncoder> encoder) {
   auto* metal_delegate = ::tflite::gpu::metal::GetMetalDelegate(delegate);
   if (!metal_delegate) return false;
-  metal_delegate->SetCommandEncoder(encoder, control_encoder);
+  metal_delegate->SetCommandEncoder(encoder);
   return true;
 }
 

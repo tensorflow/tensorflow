@@ -21,6 +21,7 @@ cc_library(
     hdrs = ["rewriters.h"],
     deps = [
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:LLVMTransforms",
@@ -35,7 +36,6 @@ cc_library(
     srcs = ["bufferize.cc"],
     hdrs = ["rewriters.h"],
     deps = [
-        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SCFDialect",
@@ -72,19 +72,23 @@ gentbl(
 cc_library(
     name = "passes",
     srcs = [
+        "buffer_reuse_pass.cc",
         "bufferize_pass.cc",
+        "embed_memref_prints.cc",
         "embed_tf_framework_pass.cc",
         "gpu_kernel_to_blob_pass.cc",
         "materialize_broadcasts_pass.cc",
         "parallel_loops_to_sequential.cc",
-        "propagate_tf_abi_knowledge_pass.cc",
+        "same_shape_propagation.cc",
         "shape_to_descriptors_pass.cc",
+        "tensorflow_abi_knowledge_propagation.cc",
         "tf_kernel_to_llvm_pass.cc",
         "unfuse_batch_norm_pass.cc",
     ],
     hdrs = ["passes.h"],
     copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]) + if_rocm_is_configured(["-DTENSORFLOW_USE_ROCM=1"]),
     deps = [
+        "@llvm-project//mlir:Affine",
         "//tensorflow/compiler/mlir/hlo:materialize_broadcasts",  # buildcleaner: keep
         "//tensorflow/compiler/mlir/hlo:unfuse_batch_norm",  # buildcleaner: keep
         "//tensorflow/compiler/xla/service:hlo_module_config",
@@ -105,15 +109,19 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:LLVMTransforms",
+        "@llvm-project//mlir:LinalgTransforms",
+        "@llvm-project//mlir:LinalgOps",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:Shape",
+        "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:TargetNVVMIR",
         "@llvm-project//mlir:TargetROCDLIR",
         "@llvm-project//mlir:ShapeToStandard",
         "@llvm-project//mlir:SCFToStandard",
         "@llvm-project//mlir:ShapeTransforms",
         "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:StandardOpsTransforms",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
@@ -122,11 +130,11 @@ cc_library(
         "//tensorflow/compiler/mlir/hlo:hlo_legalize_to_lhlo",
         "//tensorflow/compiler/mlir/hlo:lhlo",
         "//tensorflow/compiler/xla/service/gpu:stream_executor_util",
-        "//tensorflow/compiler/mlir/hlo:lhlo_legalize_to_llvm",
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
     ] + if_cuda_is_configured([
         "//tensorflow/stream_executor/gpu:asm_compiler",
     ]) + if_rocm_is_configured([
+        "//tensorflow/stream_executor/gpu:asm_compiler",
         "//tensorflow/core/platform:rocm_rocdl_path",
     ]),
 )

@@ -96,7 +96,7 @@ string GetLibdeviceDir(const HloModuleConfig& hlo_module_config) {
       "uses routines from libdevice.",
       hlo_module_config);
 
-  // GetCudaRootCandidates always includes ".", but but if everything fails, we
+  // GetCudaRootCandidates always includes ".", but if everything fails, we
   // return it anyway.  Better than returning the empty string.
   return ".";
 }
@@ -396,7 +396,7 @@ std::vector<uint8> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
                      "--xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found "
                      "to use the GPU driver for compiling ptx instead. However "
                      "this option is discouraged and can lead to increased "
-                     "memory concumptions and other subtle runtime issues.";
+                     "memory consumptions and other subtle runtime issues.";
             }
             // Missing ptxas is expected in some environments where CUDA SDK
             // binaries are not available. We don't want to spam logs with

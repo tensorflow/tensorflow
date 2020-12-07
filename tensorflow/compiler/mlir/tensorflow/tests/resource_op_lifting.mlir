@@ -82,6 +82,38 @@ func @same_resource_load_and_store() -> tensor<*xi32> {
 
 // -----
 
+// Tests that a resource ops with both load and store are hoisted
+// but input to load and output from store have mixed defined/undefined shapes.
+
+// CHECK-LABEL: func @same_resource_load_and_store_cast
+func @same_resource_load_and_store_cast() -> tensor<1xi32> {
+
+  // CHECK: %[[RES_HANDLE:[0-9]*]] = "tf.VarHandleOp"
+  %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource>
+
+  // CHECK: %[[RES_READ_VAL:[0-9]*]] = "tf.ReadVariableOp"(%[[RES_HANDLE]])
+  // CHECK: %[[CLUSTER_RES:[0-9]*]]:2 = "tf_device.cluster"
+  // CHECK: %[[COMPUTE_RES:[0-9]*]] = "tf.SomeComputation"(%[[RES_READ_VAL]])
+  // CHECK: %[[CAST_RES:[0-9]*]] = "tf.Cast"(%[[COMPUTE_RES]])
+  // CHECK: tf_device.return %[[CAST_RES]], %[[COMPUTE_RES]]
+  // CHECK: {cluster_attr = "cluster_attr"}
+  // CHECK-SAME: () -> (tensor<1xi32>, tensor<*xi32>)
+  // CHECK: "tf.AssignVariableOp"(%[[RES_HANDLE]], %[[CLUSTER_RES]]#1)
+
+  %1 = "tf_device.cluster"() ( {
+    %2 = "tf.ReadVariableOp"(%0) {dtype = i32} : (tensor<*x!tf.resource>) -> tensor<1xi32>
+    %3 = "tf.SomeComputation"(%2) : (tensor<1xi32>) -> (tensor<*xi32>)
+    "tf.AssignVariableOp"(%0, %3) {dtype = i32} : (tensor<*x!tf.resource>, tensor<*xi32>) -> ()
+    %4 = "tf.ReadVariableOp"(%0) {dtype = i32} : (tensor<*x!tf.resource>) -> tensor<1xi32>
+    tf_device.return %4 : tensor<1xi32>
+  }) {cluster_attr = "cluster_attr"} : () -> tensor<1xi32>
+
+  // CHECK: return %[[CLUSTER_RES]]#0
+  return %1 : tensor<1xi32>
+}
+
+// -----
+
 // Tests that internal resource operations are not hoisted.
 
 // CHECK-LABEL: func @internal_resource
@@ -612,7 +644,7 @@ func @callee(%arg0: tensor<f32>, %arg1: tensor<*x!tf.resource<tensor<f32>>>, %ar
   %2 = "tf.AddV2"(%1, %arg2) : (tensor<f32>, tensor<f32>) -> tensor<f32>
   return %2 : tensor<f32>
 }
-// CHECK: func @callee_resource_lifted(%[[A0:.*]]: tensor<f32>, %[[A1:.*]]: tensor<f32>, %[[A2:.*]]: tensor<f32>) -> tensor<f32>
+// CHECK: func private @callee_resource_lifted(%[[A0:.*]]: tensor<f32>, %[[A1:.*]]: tensor<f32>, %[[A2:.*]]: tensor<f32>) -> tensor<f32>
 // CHECK-NEXT:   %[[ADD0:.*]] = "tf.AddV2"(%[[A1]], %[[A0]])
 // CHECK-NEXT:   %[[ADD1:.*]] = "tf.AddV2"(%[[ADD0]], %[[A2]])
 // CHECK-NEXT:   return %[[ADD1]]
@@ -659,7 +691,7 @@ func @callee(%arg0: tensor<*x!tf.resource<tensor<f32>>>, %arg1: tensor<*x!tf.res
   "tf.AssignVariableOp"(%arg0, %1) {dtype = i32} : (tensor<*x!tf.resource<tensor<f32>>>, tensor<f32>) -> ()
   return %arg0 : tensor<*x!tf.resource<tensor<f32>>>
 }
-// CHECK: func @callee_resource_lifted(%[[A0:.*]]: tensor<f32>, %[[A1:.*]]: tensor<f32>, %[[A2:.*]]: tensor<f32>) -> tensor<f32>
+// CHECK: func private @callee_resource_lifted(%[[A0:.*]]: tensor<f32>, %[[A1:.*]]: tensor<f32>, %[[A2:.*]]: tensor<f32>) -> tensor<f32>
 // CHECK-NEXT:   %[[ADD:.*]] = "tf.AddV2"(%[[A1]], %[[A2]])
 // CHECK-NEXT:   return %[[ADD]]
 
@@ -711,7 +743,7 @@ func @callee(%arg0: tensor<*x!tf.resource<tensor<f32>>>) -> tensor<f32> {
   return %1 : tensor<f32>
 }
 
-// CHECK:      func @callee_resource_lifted(%[[A0:.*]]: tensor<f32>) -> tensor<f32>
+// CHECK:      func private @callee_resource_lifted(%[[A0:.*]]: tensor<f32>) -> tensor<f32>
 // CHECK-NEXT:   return %[[A0]]
 
 // -----
@@ -1216,4 +1248,79 @@ func @callee(%arg0: !tf_res) -> tensor<i1> {
   %0 = "tf.VarIsInitializedOp"(%arg0) : (!tf_res) -> tensor<i1>
   // CHECK-NEXT: return [[TRUE]] :
   return %0 : tensor<i1>
+}
+
+// -----
+
+// Tests passthrough tf.Cast ops are removed.
+
+!tf_res = type tensor<*x!tf.resource<tensor<f32>>>
+
+// CHECK-LABEL: func @tpu_computation
+func @tpu_computation(%arg0: !tf_res) {
+  "tf_device.cluster"() ( {
+    %0 = "tf.While"(%arg0) {body = @while_body, cond = @while_cond, is_stateless = false} : (!tf_res) -> !tf_res
+    %1 = "tf.WhileRegion"(%arg0) ( {
+    ^cond(%carg0: !tf_res):
+      %2 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+      "tf.Yield"(%2) : (tensor<i1>) -> ()
+    }, {
+    ^body(%barg0: !tf_res):
+      // CHECK-NOT: tf.Cast
+      %2 = "tf.Cast"(%barg0) : (!tf_res) -> !tf_res
+      "tf.Yield"(%2) : (!tf_res) -> ()
+    }) {is_stateless = false} : (!tf_res) -> !tf_res
+    tf_device.return
+  }) {} : () -> ()
+  return
+}
+
+func @while_cond(%arg0: !tf_res) -> tensor<i1> {
+  %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+  return %0 : tensor<i1>
+}
+
+// CHECK-LABEL: func @while_body
+func @while_body(%arg0: !tf_res) -> !tf_res {
+  // CHECK-NOT: tf.Cast
+  %0 = "tf.Cast"(%arg0) : (!tf_res) -> !tf_res
+  return %0 : !tf_res
+}
+
+// -----
+
+// Tests passthrough tf.Cast ops are removed.
+
+!tf_res_static = type tensor<!tf.resource<tensor<f32>>>
+!tf_res_dynamic = type tensor<*x!tf.resource<tensor<f32>>>
+
+// CHECK-LABEL: func @tpu_computation
+func @tpu_computation(%arg0: !tf_res_static) {
+  "tf_device.cluster"() ( {
+    %0 = "tf.While"(%arg0) {body = @while_body, cond = @while_cond, is_stateless = false} : (!tf_res_static) -> !tf_res_dynamic
+    %1 = "tf.WhileRegion"(%arg0) ( {
+    ^cond(%carg0: !tf_res_static):
+      %2 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+      "tf.Yield"(%2) : (tensor<i1>) -> ()
+    }, {
+    ^body(%barg0: !tf_res_static):
+      // CHECK-NOT: tf.Cast
+      %2 = "tf.Cast"(%barg0) : (!tf_res_static) -> !tf_res_dynamic
+      "tf.Yield"(%2) : (!tf_res_dynamic) -> ()
+    }) {is_stateless = false} : (!tf_res_static) -> !tf_res_dynamic
+    tf_device.return
+  }) {} : () -> ()
+  return
+}
+
+func @while_cond(%arg0: !tf_res_static) -> tensor<i1> {
+  %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+  return %0 : tensor<i1>
+}
+
+// CHECK-LABEL: func @while_body
+func @while_body(%arg0: !tf_res_static) -> !tf_res_dynamic {
+  // CHECK-NOT: tf.Cast
+  %0 = "tf.Cast"(%arg0) : (!tf_res_static) -> !tf_res_dynamic
+  return %0 : !tf_res_dynamic
 }

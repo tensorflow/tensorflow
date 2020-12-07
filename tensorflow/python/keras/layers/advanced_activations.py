@@ -30,6 +30,10 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.util.tf_export import keras_export
 
 
+def get_globals():
+  return globals()
+
+
 @keras_export('keras.layers.LeakyReLU')
 class LeakyReLU(Layer):
   """Leaky version of a Rectified Linear Unit.
@@ -404,7 +408,7 @@ class ReLU(Layer):
       raise ValueError('threshold of Relu layer '
                        'cannot be None. Required a float')
 
-    self.support_masking = True
+    self.supports_masking = True
     if max_value is not None:
       max_value = K.cast_to_floatx(max_value)
     self.max_value = max_value

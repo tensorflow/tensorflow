@@ -142,7 +142,9 @@ cc_library(
 tf_cuda_cc_test(
     name = "cuda_driver_test",
     srcs = ["cuda_driver_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    tags = tf_cuda_tests_tags() + [
+        "no_cuda_asan",  # TODO(b/171512140): re-enable.
+    ],
     deps = [
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -154,7 +156,9 @@ tf_cuda_cc_test(
 tf_cuda_cc_test(
     name = "memcpy_test",
     srcs = ["memcpy_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    tags = tf_cuda_tests_tags() + [
+        "no_cuda_asan",  # TODO(b/171512140): re-enable.
+    ],
     deps = [
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -658,7 +662,9 @@ cc_library(
 tf_cuda_cc_test(
     name = "redzone_allocator_test",
     srcs = ["redzone_allocator_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    tags = tf_cuda_tests_tags() + [
+        "no_cuda_asan",  # TODO(b/171512140): re-enable.
+    ],
     deps = [
         ":cuda_activation",
         ":cuda_gpu_executor",

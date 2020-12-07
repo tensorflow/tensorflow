@@ -65,8 +65,8 @@ std::string GetMaxUnpoolingCode(const HW& kernel_size) {
       int src_index = (gid.z * params.src_size.y + src_y) * params.src_size.x + src_x;
       int linear_index = (gid.z * params.dst_size.y + Y) * params.dst_size.x + X;
 
-      int4 indexes = outside ? int4(0) : int4(src_indices_buffer[src_index]);
-      FLT4 src_color = outside ? FLT4(0.0f) : src_buffer[src_index];
+      int4 indexes = outside ? int4(0) : int4(src_indices[src_index]);
+      FLT4 src_color = outside ? FLT4(0.0f) : src_tensor[src_index];
 
       int t_x = X - (src_x * params.stride.x - params.offset.x);
       int t_y = Y - (src_y * params.stride.y - params.offset.y);
@@ -79,42 +79,31 @@ std::string GetMaxUnpoolingCode(const HW& kernel_size) {
       value.w = t_index == indexes.w ? src_color.w : 0.0;
 
       $$2
-      output_buffer[linear_index] = value;
+      dst_tensor[linear_index] = value;
     }
   )";
   return absl::Substitute(shader_source, kernel_size.w);
 }
 }  // namespace
 
-std::vector<ComputeTaskDescriptorPtr> MaxUnpooling(
-    int id, ValueId input_id, ValueId input_indices_id, ValueId output_id,
-    const MaxUnpooling2DAttributes& params) {
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = false;
-  desc->shader_source = GetMaxUnpoolingCode(params.kernel);
+ComputeTaskDescriptor MaxUnpooling(const OperationDef& definition,
+                                   const MaxUnpooling2DAttributes& params) {
+  ComputeTaskDescriptor desc(definition);
+  desc.shader_source = GetMaxUnpoolingCode(params.kernel);
 
-  desc->input_buffers = {
-      {input_id, "device FLT4* const src_buffer"},
-      {input_indices_id, "device FLT4* const src_indices_buffer"},
-  };
+  desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
+  desc.AddSrcTensor("src_indices", definition.src_tensors[1]);
+  desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
-  desc->output_buffer = {
-      output_id, "device FLT4* output_buffer",
-      [input_id, params](const std::map<ValueId, BHWC>& buffers) {
-        return CalculateOutputShape(buffers.find(input_id)->second, params);
-      }};
-
-  desc->uniform_buffers = {
+  desc.uniform_buffers = {
       {"constant uniforms& params",
-       [input_id, output_id, params](const std::map<ValueId, BHWC>& buffers) {
-         const auto& dimension = buffers.find(input_id)->second;
-         const auto& output_dimension = buffers.find(output_id)->second;
+       [params](const std::vector<BHWC>& src_shapes,
+                const std::vector<BHWC>& dst_shapes) {
          std::vector<int> uniform_params{
-             dimension.w,
-             dimension.h,
-             output_dimension.w,
-             output_dimension.h,
+             src_shapes[0].w,
+             src_shapes[0].h,
+             dst_shapes[0].w,
+             dst_shapes[0].h,
              params.strides.w,
              params.strides.h,
              params.padding.prepended.w,
@@ -124,18 +113,16 @@ std::vector<ComputeTaskDescriptorPtr> MaxUnpooling(
        }},
   };
 
-  desc->resize_function = [input_id,
-                           params](const std::map<ValueId, BHWC>& buffers) {
-    const auto& src_shape = buffers.find(input_id)->second;
-    BHWC dst_shape = CalculateOutputShape(src_shape, params);
+  desc.resize_function = [params](const std::vector<BHWC>& src_shapes,
+                                  const std::vector<BHWC>& dst_shapes) {
     const uint3 groups_size{16, 16, 1};
-    int groups_x = DivideRoundUp(dst_shape.w, groups_size.x);
-    int groups_y = DivideRoundUp(dst_shape.h, groups_size.y);
-    int groups_z = DivideRoundUp(dst_shape.c, 4);
+    int groups_x = DivideRoundUp(dst_shapes[0].w, groups_size.x);
+    int groups_y = DivideRoundUp(dst_shapes[0].h, groups_size.y);
+    int groups_z = DivideRoundUp(dst_shapes[0].c, 4);
     return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
   };
 
-  return {desc};
+  return desc;
 }
 
 }  // namespace metal

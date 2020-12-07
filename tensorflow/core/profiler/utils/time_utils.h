@@ -30,11 +30,26 @@ inline double PicosToMillis(uint64 ps) { return ps / 1E9; }
 inline double PicosToSeconds(uint64 ps) { return ps / 1E12; }
 inline uint64 NanosToPicos(uint64 ns) { return ns * 1000; }
 inline double NanosToMicros(uint64 ns) { return ns / 1E3; }
+inline uint64 MicrosToNanos(double us) { return us * 1E3; }
 inline double MicrosToMillis(double us) { return us / 1E3; }
 inline uint64 MillisToPicos(double ms) { return ms * 1E9; }
 inline uint64 MillisToNanos(double ms) { return ms * 1E6; }
 inline double MillisToSeconds(double ms) { return ms / 1E3; }
 inline uint64 SecondsToNanos(double s) { return s * 1E9; }
+
+// Returns the current CPU wallclock time in nanoseconds.
+int64 GetCurrentTimeNanos();
+
+// Sleeps for the specified duration.
+void SleepForNanos(int64 ns);
+inline void SleepForMicros(int64 us) { SleepForNanos(us * 1000); }
+inline void SleepForMillis(int64 ms) { SleepForNanos(ms * 1000000); }
+inline void SleepForSeconds(int64 s) { SleepForNanos(s * 1000000000); }
+
+// Spins to simulate doing some work instead of sleeping, because sleep
+// precision is poor. For testing only.
+void SpinForNanos(int64 ns);
+inline void SpinForMicros(int64 us) { SpinForNanos(us * 1000); }
 
 }  // namespace profiler
 }  // namespace tensorflow
