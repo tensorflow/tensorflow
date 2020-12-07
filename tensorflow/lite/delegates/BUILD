@@ -22,12 +22,31 @@ package(
 )
 
 cc_library(
-    name = "status",
-    hdrs = ["status.h"],
+    name = "telemetry",
+    srcs = ["telemetry.cc"],
+    hdrs = ["telemetry.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+    ],
+)
+
+cc_test(
+    name = "telemetry_test",
+    srcs = ["telemetry_test.cc"],
+    linkopts = tflite_linkopts(),
+    linkstatic = 1,
+    deps = [
+        ":telemetry",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+        "//tensorflow/lite/profiling:profile_buffer",
+        "@com_google_googletest//:gtest_main",
+        "@flatbuffers",
     ],
 )
 

@@ -345,12 +345,16 @@ all: $(LIB_PATH)  $(MINIMAL_BINARY) $(BENCHMARK_BINARY) $(BENCHMARK_PERF_OPTIONS
 # The target that's compiled for micro-controllers
 micro: $(LIB_PATH)
 
-# Hack for generating schema file bypassing flatbuffer parsing
+# Hack for generating schema files bypassing flatbuffer parsing
 tensorflow/lite/schema/schema_generated.h:
 	@cp -u tensorflow/lite/schema/schema_generated.h.oss tensorflow/lite/schema/schema_generated.h
+	@cp -u tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h.oss tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h
 
 # Gathers together all the objects we've compiled into a single '.a' archive.
 $(LIB_PATH): tensorflow/lite/schema/schema_generated.h $(LIB_OBJS)
+	@mkdir -p $(dir $@)
+	$(AR) $(ARFLAGS) $(LIB_PATH) $(LIB_OBJS)
+$(LIB_PATH): tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h $(LIB_OBJS)
 	@mkdir -p $(dir $@)
 	$(AR) $(ARFLAGS) $(LIB_PATH) $(LIB_OBJS)
 
