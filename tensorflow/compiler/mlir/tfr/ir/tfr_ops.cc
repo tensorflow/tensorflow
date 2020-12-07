@@ -437,6 +437,23 @@ struct RemoveRedundantGetElement : public OpRewritePattern<GetElementOp> {
   }
 };
 
+struct RemoveRedundantGetLength : public OpRewritePattern<GetLengthOp> {
+  using OpRewritePattern<GetLengthOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(GetLengthOp gl_op,
+                                PatternRewriter &rewriter) const override {
+    auto preceding_build_list = llvm::dyn_cast_or_null<BuildListOp>(
+        gl_op.tensor_list().getDefiningOp());
+    if (!preceding_build_list) {
+      return failure();
+    }
+    int64_t num_tensors = preceding_build_list.getNumOperands();
+    rewriter.replaceOpWithNewOp<ConstantOp>(gl_op,
+                                            rewriter.getIndexAttr(num_tensors));
+    return success();
+  }
+};
+
 struct BuildConstantListAsAttr : public OpRewritePattern<BuildListOp> {
   using OpRewritePattern<BuildListOp>::OpRewritePattern;
 
@@ -475,6 +492,11 @@ void GetShapeOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 void GetElementOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
   results.insert<RemoveRedundantGetElement>(context);
+}
+
+void GetLengthOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                              MLIRContext *context) {
+  results.insert<RemoveRedundantGetLength>(context);
 }
 
 void BuildListOp::getCanonicalizationPatterns(OwningRewritePatternList &results,

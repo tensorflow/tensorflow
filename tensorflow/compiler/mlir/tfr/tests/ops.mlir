@@ -260,6 +260,19 @@ func @build_const_list() -> !tfr.attr {
 
 // -----
 
+// CHECK-LABEL: get_length
+// CANON-LABEL: get_length
+func @get_length(%arg0: !tfr.tensor<A>, %arg1: !tfr.tensor<B>) -> index {
+  %0 = "tfr.build_list"(%arg0, %arg1) : (!tfr.tensor<A>, !tfr.tensor<B>) -> !tfr.tensor_list
+  %1 = "tfr.get_length"(%0) : (!tfr.tensor_list) -> index
+  return %1 : index
+
+// CANON-NEXT: %[[c:.*]] = constant 2 : index
+// CANON-NEXT: return %[[c]] : index
+}
+
+// -----
+
 // CHECK-LABEL: tfr.func
 tfr.func @External(%arg0: !tfr.tensor<A>,
               %arg1: !tfr.tensor_list<C>,

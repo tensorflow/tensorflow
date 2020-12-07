@@ -349,6 +349,30 @@ def TFR_BuildListOp : TFR_Op<"build_list", [NoSideEffect]> {
   let hasCanonicalizer = 1;
 }
 
+def TFR_GetLengthOp : TFR_Op<"get_length", [NoSideEffect]> {
+  let description = [{
+    The `get_length` operation returns the number of tensors for a
+    tfr.tensor_list.
+
+    Example:
+
+    ```mlir
+    %2 = tfr.get_length(%1) : tfr.tensor -> index
+    %2 = tfr.get_length %1 -> index
+    ```
+  }];
+
+  let arguments = (ins TFR_TensorListType:$tensor_list);
+
+  let results = (outs Index:$out);
+
+  let hasCanonicalizer = 1;
+
+  let assemblyFormat = [{
+    $tensor_list attr-dict `->` type($out)
+  }];
+}
+
 //===----------------------------------------------------------------------===//
 // Function related classes
 //===----------------------------------------------------------------------===//
