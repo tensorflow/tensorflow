@@ -44,10 +44,10 @@ Status InitializeTpuLibrary(void* library_handle) {
   // loaded. We do not want to register a TPU platform in XLA without the
   // supporting library providing the necessary APIs.
   if (s.ok()) {
-    void (*initialize_fn)();
-    initialize_fn = reinterpret_cast<decltype(initialize_fn)>(dlsym(
-        library_handle, "TfTpu_Initialize", /*argc=*/0, /*argv=*/nullptr));
-    (*initialize_fn)();
+    void (*initialize_fn)(bool init_library, int argc, char** argv);
+    initialize_fn = reinterpret_cast<decltype(initialize_fn)>(
+        dlsym(library_handle, "TfTpu_Initialize"));
+    (*initialize_fn)(/*init_library=*/false, /*argc=*/0, /*argv=*/nullptr);
 
     RegisterTpuPlatform();
   }
