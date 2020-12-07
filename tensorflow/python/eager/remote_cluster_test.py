@@ -320,6 +320,7 @@ class DynamicClusterTest(test.TestCase, parameterized.TestCase):
     t.start()
 
     for _ in range(num_calls):
+
       @def_function.function
       def worker_fn(i):
         return math_ops.matmul(i, i)
@@ -389,10 +390,10 @@ class DynamicClusterTest(test.TestCase, parameterized.TestCase):
     t1_results = [None] * num_calls
     t2_results = [None] * num_calls
     threads = []
-    threads.append(threading.Thread(target=thread_fn,
-                                    args=(self.device_t1, t1_results)))
-    threads.append(threading.Thread(target=thread_fn,
-                                    args=(self.device_t2, t2_results)))
+    threads.append(
+        threading.Thread(target=thread_fn, args=(self.device_t1, t1_results)))
+    threads.append(
+        threading.Thread(target=thread_fn, args=(self.device_t2, t2_results)))
     threads.append(threading.Thread(target=update_server_def_fn))
     for t in threads:
       t.start()
@@ -535,6 +536,7 @@ class DynamicClusterTest(test.TestCase, parameterized.TestCase):
       with ops.device(self.device_t2):
         add = mul + i
       return add - i
+
     worker_fn.get_concrete_function(x1)
 
     num_calls = 10
@@ -551,13 +553,13 @@ class DynamicClusterTest(test.TestCase, parameterized.TestCase):
       with self._coord.stop_on_exception():
         for i in range(num_calls):
           context.update_server_def(
-              server_def=(self.server_def_s1_s2_s3
-                          if i % 2 == 0 else self.server_def_s1_s2))
+              server_def=(self.server_def_s1_s2_s3 if i %
+                          2 == 0 else self.server_def_s1_s2))
 
     results = [None] * num_calls
     threads = []
-    threads.append(threading.Thread(target=thread_fn,
-                                    args=(self.device_t1, results)))
+    threads.append(
+        threading.Thread(target=thread_fn, args=(self.device_t1, results)))
     threads.append(threading.Thread(target=update_server_def_fn))
     for t in threads:
       t.start()
@@ -630,9 +632,8 @@ class DynamicClusterTest(test.TestCase, parameterized.TestCase):
     self.assertTrue(context.check_alive("/job:remote_device/replica:0/task:0"))
     self.assertTrue(context.check_alive("/job:remote_device/replica:0/task:1"))
 
-    with self.assertRaisesRegex(
-        errors.InvalidArgumentError,
-        "Client for target /job:remote_device/replica:0/task:10 not found."):
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "Unable to find worker interface"):
       context.check_alive("/job:remote_device/replica:0/task:10")
 
 

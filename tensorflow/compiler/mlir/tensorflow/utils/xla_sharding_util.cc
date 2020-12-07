@@ -242,7 +242,8 @@ mlir::LogicalResult ExtractInputsForLogicalDevices(
           cluster_func.getLoc(), sharding, input_value, builder, &tiled_inputs);
       if (mlir::failed(result)) return mlir::failure();
 
-      if (tiled_inputs.size() != num_cores_per_replica)
+      const int64 tiled_inputs_size = tiled_inputs.size();
+      if (tiled_inputs_size != num_cores_per_replica)
         cluster_func.emitError(llvm::formatv(
             "incorrect {0}-th tiled input sharding received. "
             "Product of tile sharding splits({1}) must be equal to "
@@ -376,7 +377,8 @@ mlir::LogicalResult HandleTileShardedOutputs(
 
     llvm::SmallVector<mlir::Value, 4> new_outputs;
     new_outputs.reserve(num_splits);
-    for (int i = 0; i < outputs_to_merge.size(); i = i + num_splits) {
+    for (int i = 0, end = outputs_to_merge.size(); i < end;
+         i = i + num_splits) {
       mlir::TF::ConcatOp concat_op;
       auto result =
           CreateConcatOp(concat_dimension, location,

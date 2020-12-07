@@ -1039,7 +1039,7 @@ class PartitionedCallTest(test.TestCase):
       output, = functional_ops.partitioned_call(
           args=[constant_op.constant(1.),
                 constant_op.constant(2.)], f=Body)
-      self.assertEqual(output.eval(), 12.)
+      self.assertEqual(self.evaluate(output), 12.)
 
   @test_util.run_deprecated_v1
   def testBasicMultiDeviceGPU(self):

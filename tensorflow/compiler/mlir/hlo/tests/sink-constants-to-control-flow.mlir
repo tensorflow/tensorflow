@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt %s -xla-hlo-sink-constants-to-control-flow | FileCheck %s
+// RUN: mlir-hlo-opt %s -mhlo-sink-constants-to-control-flow | FileCheck %s
 
 // Tests sinking constants to a while loop.
 
@@ -57,4 +57,18 @@ func @sink_const_to_conditional(%arg0: tensor<i64>) -> tensor<i64> {
   }) : (tensor<i1>, tuple<tensor<i64>>, tuple<tensor<i64>>) -> tuple<tensor<i64>>
   %9 = "mhlo.get_tuple_element"(%2) {index = 0 : i32} : (tuple<tensor<i64>>) -> tensor<i64>
   return %9 : tensor<i64>
+}
+
+func @sink_const_to_sort(%arg0: tensor<16xf32>) {
+  %c0 = constant dense<1.0> : tensor<f32>
+  // CHECK: "mhlo.sort"
+  %0 = "mhlo.sort"(%arg0) ( {
+  ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+    // CHECK: constant dense<1.000000e+00>
+    %1 = "mhlo.divide"(%arg1, %c0) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+    %2 = "mhlo.divide"(%arg2, %c0) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+    %3 = "mhlo.compare"(%1, %2) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    "mhlo.return"(%3) : (tensor<i1>) -> ()
+  }) {is_stable = true} : (tensor<16xf32>) -> tensor<16xi32>
+  return
 }

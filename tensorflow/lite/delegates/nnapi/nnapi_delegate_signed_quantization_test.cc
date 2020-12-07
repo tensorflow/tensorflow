@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/fully_connected.h"
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
@@ -42,7 +41,8 @@ class SingleOpModelWithNNAPI : public SingleOpModel {
  public:
   SingleOpModelWithNNAPI() = default;
   void Init(const NnApi* nnapi) {
-    stateful_delegate_.reset(new StatefulNnApiDelegate(nnapi));
+    options_.disallow_nnapi_cpu = false;
+    stateful_delegate_.reset(new StatefulNnApiDelegate(nnapi, options_));
     SetDelegate(stateful_delegate_.get());
   }
 
@@ -55,6 +55,7 @@ class SingleOpModelWithNNAPI : public SingleOpModel {
 
  protected:
   std::unique_ptr<StatefulNnApiDelegate> stateful_delegate_;
+  StatefulNnApiDelegate::Options options_;
   TfLiteStatus compilation_status_;
 };
 

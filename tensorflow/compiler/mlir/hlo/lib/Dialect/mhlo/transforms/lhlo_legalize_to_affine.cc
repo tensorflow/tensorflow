@@ -15,17 +15,14 @@ limitations under the License.
 
 // This file implements logic for lowering LHLO dialect to Affine dialect.
 
-#include "absl/memory/memory.h"
-#include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Location.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/map_xla_to_scalar_op.h"
+#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/map_lmhlo_to_scalar_op.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/IR/Location.h"
+#include "mlir/IR/StandardTypes.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
 namespace lmhlo {
@@ -60,6 +57,20 @@ struct DotOpConverter : public OpRewritePattern<DotOp> {
       return failure();
     }
 
+    // We don't currently support batching dimensions, or multiple contraction
+    // dimensions.
+    mhlo::DotDimensionNumbers dot_dimension_numbers =
+        op.dot_dimension_numbers();
+    if (dot_dimension_numbers.lhs_batching_dimensions().size() > 0 ||
+        dot_dimension_numbers.rhs_batching_dimensions().size() > 0)
+      return failure();
+    if (dot_dimension_numbers.lhs_contracting_dimensions().size() != 1 ||
+        *dot_dimension_numbers.lhs_contracting_dimensions().begin() != 1 ||
+        dot_dimension_numbers.rhs_contracting_dimensions().size() != 1 ||
+        *dot_dimension_numbers.rhs_contracting_dimensions().begin() != 0) {
+      return failure();
+    }
+
     LogicalResult map_status = success();
     auto body_builder = [&](OpBuilder& builder, Location loc, ValueRange ivs) {
       SmallVector<Value, 2> lhs_indices{ivs[0], ivs[2]},
@@ -69,7 +80,7 @@ struct DotOpConverter : public OpRewritePattern<DotOp> {
       auto r = builder.create<AffineLoadOp>(loc, rhs, rhs_indices);
       auto result =
           rewriter.create<AffineLoadOp>(loc, op.output(), result_indices);
-      Value op_result = lmhlo::XlaOpToStdScalarOp::map<DotOp>(
+      Value op_result = lmhlo::HloOpToStdScalarOp::map<DotOp>(
           op, element_type, {l, r, result}, &builder);
       map_status = success(op_result != nullptr);
       if (failed(map_status)) return;
@@ -108,7 +119,7 @@ struct BinaryOpConverter : public OpRewritePattern<LhloOpTy> {
                             ValueRange induction_vars) {
       auto l = builder.create<AffineLoadOp>(loc, lhs, induction_vars);
       auto r = builder.create<AffineLoadOp>(loc, rhs, induction_vars);
-      Value op_result = lmhlo::XlaOpToStdScalarOp::map<LhloOpTy>(
+      Value op_result = lmhlo::HloOpToStdScalarOp::map<LhloOpTy>(
           op, element_type, {l, r}, &builder);
       map_status = success(op_result != nullptr);
       if (failed(map_status)) return;
@@ -138,24 +149,24 @@ void populateLHLOToAffineConversionPattern(MLIRContext* context,
   // clang-format on
 }
 
-struct LhloLegalizeToAffine
-    : public PassWrapper<LhloLegalizeToAffine, FunctionPass> {
+struct LhloLegalizeToAffinePass
+    : public PassWrapper<LhloLegalizeToAffinePass, FunctionPass> {
+  void getDependentDialects(DialectRegistry& registry) const override {
+    registry.insert<AffineDialect>();
+  }
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     auto func = getFunction();
     populateLHLOToAffineConversionPattern(func.getContext(), &patterns);
-    applyPatternsAndFoldGreedily(func, patterns);
+    applyPatternsAndFoldGreedily(func, std::move(patterns));
   }
 };
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeToAffinePass() {
-  return absl::make_unique<LhloLegalizeToAffine>();
+std::unique_ptr<OperationPass<FuncOp>> createLhloLegalizeToAffinePass() {
+  return std::make_unique<LhloLegalizeToAffinePass>();
 }
-
-static PassRegistration<LhloLegalizeToAffine> legalize_pass(
-    "lhlo-legalize-to-affine", "Legalize from LHLO dialect to affine dialect");
 
 }  // namespace lmhlo
 }  // namespace mlir

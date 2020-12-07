@@ -34,35 +34,45 @@ namespace grappler {
 namespace {
 
 constexpr char kInsertOpName[] = "LatencyStatsDataset";
+constexpr char kModelDataset[] = "ModelDataset";
 
-NodeDef MakeLatencyNode(const NodeDef& node, MutableGraphView* graph) {
-  NodeDef new_node;
-  new_node.set_op(kInsertOpName);
+// Creates a LatencyStatsDataset node whose input is `node`.
+Status MakeLatencyNode(const NodeDef& node, MutableGraphView* graph,
+                       NodeDef* result) {
+  result->set_op(kInsertOpName);
   graph_utils::SetUniqueGraphNodeName(strings::StrCat(kInsertOpName),
-                                      graph->graph(), &new_node);
+                                      graph->graph(), result);
   // Set the input of LatencyDataset node as `node`
-  new_node.add_input(node.name());
+  result->add_input(node.name());
 
   string tag_name = strings::StrCat("record_latency",
                                     data::stats_utils::kDelimiter, node.name());
   NodeDef* tag = graph_utils::AddScalarConstNode<StringPiece>(
       StringPiece(tag_name), graph);
-  new_node.add_input(tag->name());
+  result->add_input(tag->name());
 
-  // Set `output_types` and `output_shapes` attributes.
+  // Set `output_types` and `output_shapes` attributes by copying the relevant
+  // attrs from the input node. This is an imperfect heuristic; some dataset ops
+  // might not have these attrs. If we encounter such an op, return an error
+  // instead of creating a node.
   for (auto key : {"output_shapes", "output_types"}) {
     if (node.attr().find(key) != node.attr().end()) {
-      (*new_node.mutable_attr())[key] = node.attr().at(key);
+      (*result->mutable_attr())[key] = node.attr().at(key);
     } else {
       const char* kInferredAttrPrefix = "T";
       if (node.attr().find(strings::StrCat(kInferredAttrPrefix, key)) !=
           node.attr().end()) {
-        (*new_node.mutable_attr())[key] =
+        (*result->mutable_attr())[key] =
             node.attr().at(strings::StrCat(kInferredAttrPrefix, key));
+      } else {
+        return errors::InvalidArgument(
+            "Could not create LatencyStatsDataset after ", node.op(),
+            " node because it does not have a (T)output_types or output_shapes "
+            "attr.");
       }
     }
   }
-  return new_node;
+  return Status::OK();
 }
 
 }  // namespace
@@ -83,9 +93,24 @@ Status LatencyAllEdges::OptimizeAndCollectStats(Cluster* cluster,
       // node corresponds to a `Dataset` op.
       continue;
     }
-    NodeDef* latency_node = graph.AddNode(MakeLatencyNode(node, &graph));
-    TF_RETURN_IF_ERROR(graph.UpdateFanouts(node.name(), latency_node->name()));
-    stats->num_changes++;
+    // We don't add LatencyStatsDataset after ModelDataset.
+    if (node.op() == kModelDataset) {
+      continue;
+    }
+
+    NodeDef latency_node;
+    // Try to make a latency node. This may fail if the input node doesn't have
+    // output_types or output_shapes attrs. In those cases, we don't add a node
+    // after `node`.
+    Status s = MakeLatencyNode(node, &graph, &latency_node);
+    if (s.ok()) {
+      NodeDef* latency_node_pointer = graph.AddNode(std::move(latency_node));
+      TF_RETURN_IF_ERROR(
+          graph.UpdateFanouts(node.name(), latency_node_pointer->name()));
+      stats->num_changes++;
+    } else {
+      LOG(WARNING) << s.error_message();
+    }
   }
   return Status::OK();
 }

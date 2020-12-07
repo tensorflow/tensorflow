@@ -1,4 +1,9 @@
 op {
   graph_op_name: "WriteImageSummary"
   visibility: HIDDEN
+  summary: "Writes an image summary."
+  description: <<END
+Writes image `tensor` at `step` with `tag` using summary `writer`.
+`tensor` is image with shape [height, width, channels].
+END
 }

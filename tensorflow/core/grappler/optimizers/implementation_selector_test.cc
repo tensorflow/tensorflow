@@ -83,6 +83,30 @@ TEST_F(ImplementationSelectorTest, SelectDeviceIndex) {
   }
 }
 
+TEST_F(ImplementationSelectorTest, SelectDeviceIndexStatelessCase) {
+  using test::function::NDef;
+  ImplementationSelector optimizer;
+  GraphDef output;
+  GrapplerItem item;
+  AttrValue device_names;
+  device_names.mutable_list()->add_s("CPU");
+  device_names.mutable_list()->add_s("GPU");
+  item.graph = test::function::GDef(
+      {NDef("x", "DeviceIndex", {}, {{"device_names", device_names}},
+            CpuDevice),
+       NDef("case", "StatelessCase", {"x"}, {{"T", DT_FLOAT}}, GpuDevice)});
+
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "x") {
+      // Rewrite DeviceIndex op to a Const op with value of GPU index 1.
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(1, node.attr().at("value").tensor().int_val(0));
+    }
+  }
+}
+
 TEST_F(ImplementationSelectorTest, SelectDeviceIndexMultiOps) {
   using test::function::NDef;
   ImplementationSelector optimizer;

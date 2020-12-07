@@ -396,12 +396,12 @@ Status InitializeTableFromTextFile(const string& filename, int64 vocab_size,
 
 class DatasetIterator : public InitializableLookupTable::InitTableIterator {
  public:
-  explicit DatasetIterator(DatasetBase* dataset) : dataset_(dataset) {}
+  explicit DatasetIterator(data::DatasetBase* dataset) : dataset_(dataset) {}
 
   ~DatasetIterator() override {}
 
   Status Init(OpKernelContext* ctx) {
-    IteratorContext::Params params(ctx);
+    data::IteratorContext::Params params(ctx);
     function_handle_cache_ =
         absl::make_unique<data::FunctionHandleCache>(params.flr);
     params.function_handle_cache = function_handle_cache_.get();
@@ -409,7 +409,7 @@ class DatasetIterator : public InitializableLookupTable::InitTableIterator {
     cancellation_manager_ =
         absl::make_unique<CancellationManager>(ctx->cancellation_manager());
     params.cancellation_manager = cancellation_manager_.get();
-    iterator_ctx_ = absl::make_unique<IteratorContext>(std::move(params));
+    iterator_ctx_ = absl::make_unique<data::IteratorContext>(std::move(params));
     TF_RETURN_IF_ERROR(dataset_->MakeIterator(iterator_ctx_.get(), nullptr,
                                               "LookupTable", &iterator_));
     Next();
@@ -442,12 +442,12 @@ class DatasetIterator : public InitializableLookupTable::InitTableIterator {
   }
 
  private:
-  DatasetBase* dataset_;  // not owned.
-  std::unique_ptr<IteratorContext> iterator_ctx_;
+  data::DatasetBase* dataset_;  // not owned.
+  std::unique_ptr<data::IteratorContext> iterator_ctx_;
   std::unique_ptr<data::FunctionHandleCache> function_handle_cache_;
   ResourceMgr resource_mgr_;
   std::unique_ptr<CancellationManager> cancellation_manager_;
-  std::unique_ptr<IteratorBase> iterator_;
+  std::unique_ptr<data::IteratorBase> iterator_;
   std::vector<Tensor> tensors_;
   Status status_;
 };

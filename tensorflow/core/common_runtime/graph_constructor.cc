@@ -470,17 +470,17 @@ Status MaybeAppendVersionWarning(const VersionDef* versions,
     return Status(
         import_status.code(),
         absl::StrCat(
-            "Converting GraphDef to Graph has failed. The binary trying to "
-            "import the GraphDef was built when GraphDef version was ",
+            "Converting GraphDef to Graph has failed with an error: '",
+            import_status.error_message(),
+            "' The binary trying to import the GraphDef was built when "
+            "GraphDef version was ",
             TF_GRAPH_DEF_VERSION,
             ". The GraphDef was produced by a binary built when GraphDef "
             "version was ",
             versions->producer(),
             ". The difference between these versions is larger than "
-            "TensorFlow's forward compatibility guarantee. The following error "
-            "might be due to the binary trying to import the GraphDef being "
-            "too old: ",
-            import_status.error_message()));
+            "TensorFlow's forward compatibility guarantee, and might be the "
+            "root cause for failing to import the GraphDef."));
   }
   return import_status;
 }
@@ -1546,6 +1546,8 @@ Status ImportGraphDef(const ImportGraphDefOptions& opts, const GraphDef& gdef,
 }
 
 void CopyGraph(const Graph& src, Graph* dest) {
+  dest->SetConstructionContext(src.GetConstructionContextInternal());
+
   for (Node* n : dest->nodes()) {
     CHECK(n->IsSource() || n->IsSink()) << "*dest must be empty";
   }

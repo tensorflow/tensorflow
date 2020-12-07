@@ -181,6 +181,16 @@ Status PyArray_TYPE_to_TF_DataType(PyArrayObject* array,
         // might be different on certain platforms.
         *out_tf_datatype = TF_INT64;
         break;
+      } else if (pyarray_type == NPY_INT) {
+        // NPY_INT is equivalent to NPY_INT32, while their enum values might be
+        // different on certain platforms.
+        *out_tf_datatype = TF_INT32;
+        break;
+      } else if (pyarray_type == NPY_UINT) {
+        // NPY_UINT is equivalent to NPY_UINT32, while their enum values might
+        // be different on certain platforms.
+        *out_tf_datatype = TF_UINT32;
+        break;
       }
       return errors::Internal("Unsupported numpy type: ",
                               numpy_type_name(pyarray_type));
@@ -271,7 +281,7 @@ Status CopyTF_TensorStringsToPyArray(const TF_Tensor* src, uint64 nelems,
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
   auto iter = make_safe(PyArray_IterNew(reinterpret_cast<PyObject*>(dst)));
-  for (int64 i = 0; i < nelems; ++i) {
+  for (int64 i = 0; i < static_cast<int64>(nelems); ++i) {
     const tstring& tstr_i = tstr[i];
     auto py_string =
         make_safe(PyBytes_FromStringAndSize(tstr_i.data(), tstr_i.size()));
@@ -460,7 +470,7 @@ Status TF_TensorToPyArray(Safe_TF_TensorPtr tensor, PyObject** out_ndarray) {
 }
 
 Status NdarrayToTensor(TFE_Context* ctx, PyObject* ndarray,
-                       Safe_TF_TensorPtr* ret, bool convert_string) {
+                       Safe_TF_TensorPtr* ret) {
   DCHECK(ret != nullptr);
 
   // Make sure we dereference this array object in case of error, etc.
@@ -491,7 +501,7 @@ Status NdarrayToTensor(TFE_Context* ctx, PyObject* ndarray,
     if (ctx) {
       *ret = make_safe(new TF_Tensor{tensorflow::unwrap(ctx)->CreateTensor(
           static_cast<tensorflow::DataType>(dtype), {}, 0, PyArray_DATA(array),
-          size, convert_string, &DelayedNumpyDecref, array)});
+          size, &DelayedNumpyDecref, array)});
     } else {
       *ret = make_safe(TF_NewTensor(dtype, {}, 0, PyArray_DATA(array), size,
                                     &DelayedNumpyDecref, array));
@@ -503,8 +513,7 @@ Status NdarrayToTensor(TFE_Context* ctx, PyObject* ndarray,
     if (ctx) {
       *ret = make_safe(new TF_Tensor{tensorflow::unwrap(ctx)->CreateTensor(
           static_cast<tensorflow::DataType>(dtype), dims.data(), dims.size(),
-          PyArray_DATA(array), size, convert_string, &DelayedNumpyDecref,
-          array)});
+          PyArray_DATA(array), size, &DelayedNumpyDecref, array)});
     } else {
       *ret = make_safe(TF_NewTensor(dtype, dims.data(), dims.size(),
                                     PyArray_DATA(array), size,
@@ -518,7 +527,7 @@ Status NdarrayToTensor(TFE_Context* ctx, PyObject* ndarray,
     if (ctx) {
       *ret = make_safe(new TF_Tensor{tensorflow::unwrap(ctx)->CreateTensor(
           static_cast<tensorflow::DataType>(dtype), dims.data(), dims.size(),
-          encoded, size, convert_string,
+          encoded, size,
           [](void* data, size_t len, void* arg) {
             delete[] reinterpret_cast<tensorflow::tstring*>(data);
           },
@@ -541,8 +550,7 @@ TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src, Status* status);
 
 Status NdarrayToTensor(PyObject* obj, Tensor* ret) {
   Safe_TF_TensorPtr tf_tensor = make_safe(static_cast<TF_Tensor*>(nullptr));
-  Status s = NdarrayToTensor(nullptr /*ctx*/, obj, &tf_tensor,
-                             false /*convert_string*/);
+  Status s = NdarrayToTensor(nullptr /*ctx*/, obj, &tf_tensor);
   if (!s.ok()) {
     return s;
   }

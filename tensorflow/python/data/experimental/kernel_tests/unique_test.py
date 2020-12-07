@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.experimental.unique()`."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -60,6 +61,7 @@ class UniqueTest(test_base.DatasetTestBase, parameterized.TestCase):
           ([], []),
           ([1], [1]),
           ([1, 1, 1, 1, 1, 1, 1], [1]),
+          ([1, 1, 1, 1, 0], [1, 0]),
           ([1, 2, 3, 4], [1, 2, 3, 4]),
           ([1, 2, 4, 3, 2, 1, 2, 3, 4], [1, 2, 4, 3]),
           ([[1], [1, 1], [1, 1, 1]], [[1], [1, 1], [1, 1, 1]]),
@@ -75,6 +77,21 @@ class UniqueTest(test_base.DatasetTestBase, parameterized.TestCase):
         (["hello", "world"], ["hello", "world"]),
         (["foo", "bar", "baz", "baz", "bar", "foo"], ["foo", "bar", "baz"]),
     ])
+
+  @combinations.generate(test_base.graph_only_combinations())
+  def testUnsupportedTypes(self):
+    """Should raise TypeError when element type doesn't match with the
+
+    dtypes.int64, dtypes.int32 or dtypes.string (supported types).
+    """
+
+    for dtype in [
+        dtypes.bool, dtypes.double, dtypes.complex64, dtypes.float32,
+        dtypes.float64, dtypes.qint16, dtypes.qint32
+    ]:
+      with self.assertRaises(TypeError):
+        _ = dataset_ops.Dataset.from_generator(lambda: [],
+                                               dtype).apply(unique.unique())
 
 
 if __name__ == "__main__":

@@ -45,13 +45,13 @@ limitations under the License.
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #if GOOGLE_CUDA
-#include "tensorflow/core/kernels/cuda_solvers.h"
+#include "tensorflow/core/util/cuda_solvers.h"
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
 
 using stream_executor::cuda::ScopedActivateExecutorContext;
 #elif TENSORFLOW_USE_ROCM
-#include "tensorflow/core/kernels/cuda_solvers.h"
 #include "tensorflow/core/platform/rocm.h"
+#include "tensorflow/core/util/cuda_solvers.h"
 using stream_executor::rocm::ScopedActivateExecutorContext;
 #endif  // GOOGLE_CUDA
 
@@ -206,24 +206,26 @@ class SegmentReductionOp : public OpKernel {
 };
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-//  SegmentSumGPUOp is a segment sum operator implemented for GPU only.
-//  TODO: This implementation of SegmentSumGPUOp is sometimes slower than
+//  SegmentReductionGPUOp is a segment reduction operator implemented for GPU
+//  only.
+//  TODO: This implementation of SegmentReductionGPUOp is sometimes slower than
 //  its unsorted counterpart (mostly when problem size is small).
 //  This is due to the following two main reasons and a cost-effective way
 //  to resolve these problems is desirable.
-//  1. Sorted segment sum requires a memory transfer from device to host in
-//     order to know the size of the output dimension whereas unsorted segment
-//     sum receives the size of the output dimension as an input parameter.
-//  2. Sorted segment sum is essentially a tiled version of unsorted segment
-//     sum and therefore such optimization comes at an inherent cost. However
-//     such cost may not be justified when the problem size is small. When to
-//     use the tiled version or the untiled version depends on many factors
-//     including data alignments, ratio of calculation to memory traffic and
-//     obviously, the problem sizes.
-template <class T, class Index>
-class SegmentSumGPUOp : public AsyncOpKernel {
+//  1. Sorted segment reduction requires a memory transfer from device to host
+//     in order to know the size of the output dimension whereas unsorted
+//     segment reduction receives the size of the output dimension as an input
+//     parameter.
+//  2. Sorted segment reduction is essentially a tiled version of unsorted
+//     segment reduction and therefore such optimization comes at an inherent
+//     cost. However such cost may not be justified when the problem size is
+//     small. When to use the tiled version or the untiled version depends on
+//     many factors including data alignments, ratio of calculation to memory
+//     traffic and obviously, the problem sizes.
+template <class T, class Index, class SegmentReductionFunctor>
+class SegmentReductionGPUOp : public AsyncOpKernel {
  public:
-  explicit SegmentSumGPUOp(OpKernelConstruction* context)
+  explicit SegmentReductionGPUOp(OpKernelConstruction* context)
       : AsyncOpKernel(context) {}
 
   void ComputeAsync(OpKernelContext* context, DoneCallback done) override {
@@ -265,11 +267,11 @@ class SegmentSumGPUOp : public AsyncOpKernel {
             ->ThenMemcpy(output_rows_host.mutable_data(), output_rows_device,
                          sizeof(Index))
             .ok(),
-        errors::Internal(
-            "SegmentSumGPUOp: failed to copy output_rows from device"),
+        errors::Internal(type_string() +
+                         ": failed to copy output_rows from device"),
         done);
 
-    functor::SegmentSumFunctor<T, Index> functor_;
+    SegmentReductionFunctor functor_;
     auto create_and_check_output = [context, output_rows_host, &input,
                                     &segment_ids, &functor_, done]() {
       // Ensure that within the callback, the proper GPU settings are

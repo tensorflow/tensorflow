@@ -14,15 +14,15 @@ limitations under the License.
 ==============================================================================*/
 
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
-#include "mlir/IR/Types.h"  // from @llvm-project
-#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/StandardTypes.h"
+#include "mlir/IR/Types.h"
+#include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir {
 namespace mhlo {
@@ -122,7 +122,7 @@ class UnfuseBatchNormInferencePattern
     if (!fp_type) {
       return failure();
     }
-    int64_t feature_dim = bn_op.feature_index().getSExtValue();
+    int64_t feature_dim = bn_op.feature_index();
 
     // Add epsilon to the variance and sqrt to get stddev:
     // stddev = sqrt(variance + epsilon)

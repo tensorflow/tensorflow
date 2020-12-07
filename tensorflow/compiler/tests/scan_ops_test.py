@@ -24,6 +24,7 @@ from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
@@ -90,6 +91,7 @@ class CumsumTest(xla_test.XLATestCase):
       for reverse in [True, False]:
         self._compare(x, axis, exclusive, reverse)
 
+  @test_util.disable_mlir_bridge("TODO(b/172473885)")
   def testEmpty(self):
     for dtype in self.valid_dtypes:
       x = np.zeros([0]).astype(dtype)
@@ -129,6 +131,7 @@ class CumsumTest(xla_test.XLATestCase):
       for axis in range(-6, 6, 3):
         self._compareAll(x, axis)
 
+  @test_util.disable_mlir_bridge("Error handling")
   def testInvalidAxis(self):
     x = np.arange(0, 10).reshape([2, 5]).astype(np.float32)
     with self.session(), self.test_scope():
@@ -168,6 +171,7 @@ class CumprodTest(xla_test.XLATestCase):
       for reverse in [True, False]:
         self._compare(x, axis, exclusive, reverse)
 
+  @test_util.disable_mlir_bridge("TODO(b/172473885)")
   def testEmpty(self):
     for dtype in self.valid_dtypes:
       x = np.zeros([0]).astype(dtype)
@@ -207,6 +211,7 @@ class CumprodTest(xla_test.XLATestCase):
       for axis in range(-6, 6, 3):
         self._compareAll(x, axis)
 
+  @test_util.disable_mlir_bridge("Error handling")
   def testInvalidAxis(self):
     x = np.arange(0, 10).reshape([2, 5]).astype(np.float32)
     with self.session(), self.test_scope():

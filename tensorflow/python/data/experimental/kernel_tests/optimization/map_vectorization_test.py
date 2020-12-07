@@ -223,7 +223,7 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     """
     map_node_name = "Map"
     if num_parallel_calls is not None:
-      map_node_name = "ParallelMapV2"
+      map_node_name = "ParallelMap"
 
     def _make_dataset(node_names):
       dataset = base_dataset.apply(testing.assert_next(node_names))
@@ -235,11 +235,11 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
       dataset = dataset.with_options(options)
       return dataset
 
-    unoptimized = _make_dataset([map_node_name, "BatchV2"])
+    unoptimized = _make_dataset([map_node_name, "Batch"])
     # Note that because of the `ChooseDataset` fork, we can't use `assert_next`
     # to verify the optimization result.
-    optimized = _make_dataset(["ChooseFastestBranch"] if expect_optimized else
-                              [map_node_name, "BatchV2"])
+    optimized = _make_dataset(["ChooseFastestBranch"]
+                              if expect_optimized else [map_node_name, "Batch"])
     optimized = self._enable_map_vectorization(optimized)
     return unoptimized, optimized
 

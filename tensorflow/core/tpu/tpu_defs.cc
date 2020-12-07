@@ -24,4 +24,7 @@ const char* const DEVICE_TPU_XLA_JIT = "XLA_TPU_JIT";
 const char* const TPUREPLICATE_MIRRORED_VAR_INDICES_ATTR =
     "_mirrored_variable_indices";
 
+const char* const kTPUReplicateAttr = "_tpu_replicate";
+const char* const kOutsideCompilationAttr = "_xla_outside_compilation";
+
 }  // namespace tensorflow

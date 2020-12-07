@@ -38,6 +38,12 @@ has a built-in profiler that shows per operator profiling statistics. This can
 help in understanding performance bottlenecks and which operators dominate the
 computation time.
 
+You can also use
+[TensorFlow Lite tracing](measurement.md#trace_tensorflow_lite_internals_in_android)
+to profile the model in your Android application, using standard Android system
+tracing, and to visualize the operator invocations by time with GUI based
+profiling tools.
+
 ## Profile and optimize operators in the graph
 
 If a particular operator appears frequently in the model and, based on
@@ -101,9 +107,8 @@ interpreter execution. TensorFlow Lite can use delegates by:
 *   Using Android's
     [Neural Networks API](https://developer.android.com/ndk/guides/neuralnetworks/).
     You can utilize these hardware accelerator backends to improve the speed and
-    efficiency of your model. To enable the Neural Networks API, call
-    [UseNNAPI](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/interpreter.h#L343)
-    on the interpreter instance.
+    efficiency of your model. To enable the Neural Networks API, check out
+    the [NNAPI delegate](nnapi.md) guide.
 *   GPU delegate is available on Android and iOS, using OpenGL/OpenCL and Metal,
     respectively. To try them out, see the [GPU delegate tutorial](gpu.md) and
     [documentation](gpu_advanced.md).
@@ -116,7 +121,7 @@ interpreter execution. TensorFlow Lite can use delegates by:
 
 Be aware that some accelerators work better for different types of models. Some
 delegates only support float models or models optimized in a specific way. It is
-important to [benchmark](benchmarks.md) each delegate to see if it is a good
+important to [benchmark](measurement.md) each delegate to see if it is a good
 choice for your application. For example, if you have a very small model, it may
 not be worth delegating the model to either the NN API or the GPU. Conversely,
 accelerators are a great choice for large models that have high arithmetic

@@ -25,14 +25,16 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import combinations as ds_combinations
+from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import reduce_util
-from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import test
+from tensorflow.python.framework import test_combinations as combinations
+from tensorflow.python.keras.distribute import strategy_combinations
 from tensorflow.python.module import module
 from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import test
 from tensorflow.python.util import nest
 
 
@@ -52,15 +54,17 @@ class CustomModel(module.Module):
     return x
 
 
+@ds_combinations.generate(
+    combinations.combine(
+        distribution=(strategy_combinations.all_strategies +
+                      strategy_combinations.multiworker_strategies),
+        mode=["eager"]
+        )
+    )
 class KerasModelsTest(test.TestCase, parameterized.TestCase):
 
-  @combinations.generate(
-      combinations.combine(
-          distribution=strategy_combinations.all_strategies,
-          mode=["eager"]
-      ))
-  def test_single_keras_layer_experimental_run(self, distribution):
-    dataset = self._get_dataset()
+  def test_single_keras_layer_run(self, distribution):
+    dataset = _get_dataset()
     input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
 
     with distribution.scope():
@@ -72,7 +76,7 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
         images, targets = inputs
         with backprop.GradientTape() as tape:
           outputs = model(images)
-          loss = math_ops.reduce_sum(outputs - targets)
+          loss = keras.losses.mean_squared_error(targets, outputs)
         grads = tape.gradient(loss, model.variables)
         return grads
 
@@ -83,72 +87,33 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
 
     train_step(input_iterator)
 
-  @combinations.generate(
-      combinations.combine(
-          distribution=strategy_combinations.all_strategies,
-          mode=["eager"]
-      ))
-  def test_keras_model_creation_experimental_run(self, distribution):
-    dataset = self._get_dataset()
+  def test_keras_model_optimizer_run(self, distribution):
+    dataset = _get_dataset()
     input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
 
     with distribution.scope():
-      model = self._get_model()
-
-    @def_function.function
-    def train_step(iterator):
-      def step_fn(inputs):
-        images, targets = inputs
-        with backprop.GradientTape() as tape:
-          outputs = model(images)
-          loss = math_ops.reduce_sum(outputs - targets)
-        grads = tape.gradient(loss, model.variables)
-        return grads
-
-      outputs = distribution.run(
-          step_fn, args=(next(iterator),))
-      return nest.map_structure(distribution.experimental_local_results,
-                                outputs)
-
-    train_step(input_iterator)
-
-  @combinations.generate(
-      combinations.combine(
-          distribution=strategy_combinations.all_strategies,
-          mode=["eager"]
-      ))
-  def test_keras_model_optimizer_experimental_run(self, distribution):
-    dataset = self._get_dataset()
-    input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
-
-    with distribution.scope():
-      model = self._get_model()
+      model = _get_model()
       optimizer = keras.optimizer_v2.rmsprop.RMSprop()
 
     @def_function.function
-    def train_step(iterator):
+    def train_step(replicated_inputs):
       def step_fn(inputs):
         images, targets = inputs
         with backprop.GradientTape() as tape:
           outputs = model(images)
-          loss = math_ops.reduce_sum(outputs - targets)
+          loss = keras.losses.mean_squared_error(targets, outputs)
         grads = tape.gradient(loss, model.variables)
         optimizer.apply_gradients(zip(grads, model.variables))
         return loss
 
-      outputs = distribution.run(
-          step_fn, args=(next(iterator),))
+      outputs = distribution.run(step_fn, args=(replicated_inputs,))
       return nest.map_structure(distribution.experimental_local_results,
                                 outputs)
 
-    train_step(input_iterator)
+    for x in input_iterator:
+      train_step(x)
 
-  @combinations.generate(
-      combinations.combine(
-          distribution=strategy_combinations.all_strategies,
-          mode=["eager"]
-      ))
-  def test_keras_subclass_model_optimizer_experimental_run(self, distribution):
+  def test_keras_subclass_model_optimizer_run(self, distribution):
     def get_subclass_model():
 
       class KerasSubclassModel(keras.Model):
@@ -161,7 +126,7 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
           return self.l(x)
 
       return KerasSubclassModel()
-    dataset = self._get_dataset()
+    dataset = _get_dataset()
     input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
 
     with distribution.scope():
@@ -174,29 +139,23 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
         images, targets = inputs
         with backprop.GradientTape() as tape:
           outputs = model(images)
-          loss = math_ops.reduce_sum(outputs - targets)
+          loss = keras.losses.mean_squared_error(targets, outputs)
         grads = tape.gradient(loss, model.variables)
         optimizer.apply_gradients(zip(grads, model.variables))
         return loss
 
-      outputs = distribution.run(
-          step_fn, args=(next(iterator),))
+      outputs = distribution.run(step_fn, args=(next(iterator),))
       return nest.map_structure(distribution.experimental_local_results,
                                 outputs)
 
     train_step(input_iterator)
 
-  @combinations.generate(
-      combinations.combine(
-          distribution=strategy_combinations.all_strategies,
-          mode=["eager"]
-      ))
-  def test_keras_model_optimizer_experimental_run_loop(self, distribution):
-    dataset = self._get_dataset()
+  def test_keras_model_optimizer_run_loop(self, distribution):
+    dataset = _get_dataset()
     input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
 
     with distribution.scope():
-      model = self._get_model()
+      model = _get_model()
       optimizer = keras.optimizer_v2.rmsprop.RMSprop()
 
     @def_function.function
@@ -205,27 +164,22 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
         images, targets = inputs
         with backprop.GradientTape() as tape:
           outputs = model(images)
-          loss = math_ops.reduce_sum(outputs - targets)
+          loss = keras.losses.mean_squared_error(targets, outputs)
         grads = tape.gradient(loss, model.variables)
         optimizer.apply_gradients(zip(grads, model.variables))
         return loss
 
-      for _ in range(5):
+      for _ in math_ops.range(4):
         distribution.run(step_fn, args=(next(iterator),))
 
     train_step(input_iterator)
 
-  @combinations.generate(
-      combinations.combine(
-          distribution=strategy_combinations.all_strategies,
-          mode=["eager"]
-      ))
   def test_batch_norm_with_dynamic_batch(self, distribution):
     inputs = np.zeros((10, 3, 3, 3), dtype=np.float32)
     targets = np.zeros((10, 4), dtype=np.float32)
     dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
     dataset = dataset.repeat()
-    dataset = dataset.batch(10, drop_remainder=False)
+    dataset = dataset.batch(10)
     input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
 
     with distribution.scope():
@@ -242,7 +196,7 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
         images, targets = inputs
         with backprop.GradientTape() as tape:
           outputs = model(images, training=True)
-          loss = math_ops.reduce_sum(outputs - targets)
+          loss = keras.losses.mean_squared_error(targets, outputs)
         grads = tape.gradient(loss, model.variables)
         optimizer.apply_gradients(zip(grads, model.variables))
         return loss
@@ -251,11 +205,6 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
 
     train_step(input_iterator)
 
-  @combinations.generate(
-      combinations.combine(
-          distribution=strategy_combinations.all_strategies,
-          mode=["eager"]
-      ))
   def test_lstm(self, distribution):
 
     batch_size = 32
@@ -277,7 +226,7 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
 
     x, y = create_lstm_data()
     dataset = dataset_ops.Dataset.from_tensor_slices((x, y))
-    dataset = dataset.batch(batch_size, drop_remainder=True)
+    dataset = dataset.batch(batch_size)
     input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
 
     with distribution.scope():
@@ -304,9 +253,6 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
 
     train_step(input_iterator)
 
-  @combinations.generate(
-      combinations.combine(
-          distribution=strategy_combinations.all_strategies, mode=["eager"]))
   def test_nested_tf_functions(self, distribution):
     # The test builds two computations with keras layers, one with nested
     # tf.function, and the other without nested tf.function. We run these
@@ -316,7 +262,7 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
     inputs = np.random.random((10, 3)).astype(np.float32)
     targets = np.ones((10, 4), dtype=np.float32)
     dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets)).repeat()
-    dataset = dataset.batch(10, drop_remainder=True)
+    dataset = dataset.batch(10)
     input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
 
     def get_model():
@@ -339,7 +285,7 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
 
     def compute_loss(images, targets):
       outputs = model(images)
-      return math_ops.reduce_sum(outputs - targets)
+      return keras.losses.mean_squared_error(targets, outputs)
 
     @def_function.function
     def train_step_without_nested_tf_function(inputs):
@@ -356,7 +302,7 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
     @def_function.function
     def compute_loss2(images, targets):
       outputs = model2(images)
-      return math_ops.reduce_sum(outputs - targets)
+      return keras.losses.mean_squared_error(targets, outputs)
 
     @def_function.function
     def train_step_with_nested_tf_function(inputs):
@@ -379,14 +325,11 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
     for model_v, model2_v in zip(model.variables, model2.variables):
       self.assertAllClose(model_v.numpy(), model2_v.numpy())
 
-  @combinations.generate(
-      combinations.combine(
-          distribution=strategy_combinations.all_strategies, mode=["eager"]))
   def test_nested_tf_functions_with_control_flow(self, distribution):
     inputs = np.random.random((10, 3)).astype(np.float32)
     targets = np.ones((10, 4), dtype=np.float32)
     dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets)).repeat()
-    dataset = dataset.batch(10, drop_remainder=True)
+    dataset = dataset.batch(10)
     input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
 
     def get_model():
@@ -406,7 +349,7 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
         images, targets = inputs
         with backprop.GradientTape() as tape:
           outputs = model(images)
-          loss = math_ops.reduce_sum(outputs - targets)
+          loss = keras.losses.mean_squared_error(targets, outputs)
         grads = tape.gradient(loss, model.variables)
         optimizer.apply_gradients(zip(grads, model.variables))
 
@@ -419,13 +362,8 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
 
     train_steps(input_iterator)
 
-  @combinations.generate(
-      combinations.combine(
-          distribution=strategy_combinations.all_strategies,
-          mode=["eager"]
-      ))
-  def test_customized_tf_module_experimental_run(self, distribution):
-    dataset = self._get_dataset()
+  def test_customized_tf_module_run(self, distribution):
+    dataset = _get_dataset()
     input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
 
     with distribution.scope():
@@ -438,7 +376,7 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
         images, targets = inputs
         with backprop.GradientTape() as tape:
           outputs = model(images)
-          loss = math_ops.reduce_sum(outputs - targets)
+          loss = keras.losses.mean_squared_error(targets, outputs)
         grads = tape.gradient(loss, model.variables)
         return grads
 
@@ -449,14 +387,11 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
 
     train_step(input_iterator)
 
-  @combinations.generate(
-      combinations.combine(
-          distribution=strategy_combinations.all_strategies, mode=["eager"]))
   def test_reduce_loss(self, distribution):
     inputs = np.zeros((10, 4), dtype=np.float32)
     targets = np.zeros((10, 1), dtype=np.float32)
     dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
-    dataset = dataset.batch(10, drop_remainder=False)
+    dataset = dataset.batch(10)
     input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
 
     with distribution.scope():
@@ -478,11 +413,14 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
     loss = train_step(input_iterator)
     loss = distribution.reduce(reduce_util.ReduceOp.MEAN, loss, axis=0)
 
-  @combinations.generate(
+
+class KerasModelsXLATest(test.TestCase, parameterized.TestCase):
+
+  @ds_combinations.generate(
       combinations.combine(
           distribution=strategy_combinations.tpu_strategies, mode=["eager"]))
-  def test_tf_function_experimental_compile(self, distribution):
-    dataset = self._get_dataset()
+  def test_tf_function_jit_compile(self, distribution):
+    dataset = _get_dataset()
     input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
 
     class CustomDense(keras.layers.Layer):
@@ -495,7 +433,7 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
         self.kernel = self.add_variable(
             "kernel", shape=[int(input_shape[-1]), self.num_outputs])
 
-      @def_function.function(experimental_compile=True)
+      @def_function.function(jit_compile=True)
       def call(self, inputs):
         return math_ops.matmul(inputs, self.kernel)
 
@@ -510,7 +448,7 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
         images, targets = inputs
         with backprop.GradientTape() as tape:
           outputs = model(images)
-          loss = math_ops.reduce_sum(outputs - targets)
+          loss = keras.losses.mean_squared_error(targets, outputs)
         grads = tape.gradient(loss, model.variables)
         return grads
 
@@ -521,20 +459,21 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
 
     train_step(input_iterator)
 
-  def _get_dataset(self):
-    inputs = np.zeros((10, 3), dtype=np.float32)
-    targets = np.zeros((10, 4), dtype=np.float32)
-    dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
-    dataset = dataset.repeat(100)
-    dataset = dataset.batch(10, drop_remainder=True)
-    return dataset
 
-  def _get_model(self):
-    x = keras.layers.Input(shape=(3,), name="input")
-    y = keras.layers.Dense(4, name="dense")(x)
-    model = keras.Model(x, y)
-    return model
+def _get_dataset():
+  inputs = np.zeros((31, 3), dtype=np.float32)
+  targets = np.zeros((31, 4), dtype=np.float32)
+  dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
+  dataset = dataset.batch(10)
+  return dataset
+
+
+def _get_model():
+  x = keras.layers.Input(shape=(3,), name="input")
+  y = keras.layers.Dense(4, name="dense")(x)
+  model = keras.Model(x, y)
+  return model
 
 
 if __name__ == "__main__":
-  test.main()
+  multi_process_runner.test_main()

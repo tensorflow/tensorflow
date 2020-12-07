@@ -4,8 +4,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
-
 py_library(
     name = "v2_compat",
     srcs = ["v2_compat.py"],

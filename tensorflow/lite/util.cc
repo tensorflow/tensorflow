@@ -96,11 +96,17 @@ TfLiteStatus GetSizeOfType(TfLiteContext* context, const TfLiteType type,
     case kTfLiteInt64:
       *bytes = sizeof(int64_t);
       break;
+    case kTfLiteUInt64:
+      *bytes = sizeof(uint64_t);
+      break;
     case kTfLiteBool:
       *bytes = sizeof(bool);
       break;
     case kTfLiteComplex64:
       *bytes = sizeof(std::complex<float>);
+      break;
+    case kTfLiteComplex128:
+      *bytes = sizeof(std::complex<double>);
       break;
     case kTfLiteInt16:
       *bytes = sizeof(int16_t);

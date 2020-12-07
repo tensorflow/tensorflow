@@ -27,7 +27,7 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
@@ -93,8 +93,9 @@ class LstmUtilsTest : public ::testing::Test {
   LstmUtilsTest() {}
 
   void SetUp() override {
-    RegisterDialects();
     context_ = std::make_unique<mlir::MLIRContext>();
+    context_->loadDialect<mlir::StandardOpsDialect, mlir::TF::TensorFlowDialect,
+                          TensorFlowLiteDialect>();
     builder_ = std::unique_ptr<mlir::Builder>(new Builder(context_.get()));
     fused_lstm_func_ = createLstmCompositeFunc(builder_.get(), false, false);
     fused_lstm_func_cifg_ =
@@ -107,12 +108,6 @@ class LstmUtilsTest : public ::testing::Test {
     fused_lstm_func_cifg_.erase();
     fused_ln_lstm_func_.erase();
     builder_.reset();
-  }
-
-  void RegisterDialects() {
-    mlir::registerDialect<mlir::StandardOpsDialect>();
-    mlir::registerDialect<mlir::TF::TensorFlowDialect>();
-    mlir::registerDialect<TensorFlowLiteDialect>();
   }
 
   FuncOp fused_lstm_func_;

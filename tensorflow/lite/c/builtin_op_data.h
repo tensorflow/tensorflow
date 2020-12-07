@@ -68,7 +68,6 @@ typedef enum {
   kTfLiteActNone = 0,
   kTfLiteActRelu,
   kTfLiteActReluN1To1,                    // min(max(-1, x), 1)
-  kTfLiteActRelu1 = kTfLiteActReluN1To1,  // kTfLiteActRelu1 will be deprecated.
   kTfLiteActRelu6,                        // min(max(0, x), 6)
   kTfLiteActTanh,
   kTfLiteActSignBit,
@@ -199,6 +198,8 @@ typedef struct {
 
 typedef struct {
   TfLiteFusedActivation activation;
+  // Parameter added for the version 4.
+  bool pot_scale_int16;
 } TfLiteAddParams;
 
 typedef struct {
@@ -212,6 +213,10 @@ typedef struct {
 typedef struct {
   bool adj_x;
   bool adj_y;
+  // Parameters for BatchMatMul version 4 or above.
+  // If set to true and the weights are quantized, then non constant inputs
+  // are quantized at evaluation time with asymmetric quantization.
+  bool asymmetric_quantize_inputs;
 } TfLiteBatchMatMulParams;
 
 typedef struct {
@@ -220,6 +225,8 @@ typedef struct {
 
 typedef struct {
   TfLiteFusedActivation activation;
+  // Parameter added for the version 5.
+  bool pot_scale_int16;
 } TfLiteSubParams;
 
 typedef struct {
@@ -460,6 +467,15 @@ typedef struct {
   int cond_subgraph_index;
   int body_subgraph_index;
 } TfLiteWhileParams;
+
+typedef struct {
+  bool exclusive;
+  bool reverse;
+} TfLiteCumsumParams;
+
+typedef struct {
+  int init_subgraph_index;
+} TfLiteCallOnceParams;
 
 #ifdef __cplusplus
 }  // extern "C"

@@ -19,29 +19,29 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
+#include "json/json.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/util.h"
 
 namespace tflite {
 namespace flex {
 
 std::string OpListToJSONString(const OpKernelSet& flex_ops) {
-  return absl::StrCat("[",
-                      absl::StrJoin(flex_ops, ",\n",
-                                    [](std::string* out, const OpKernel& op) {
-                                      absl::StrAppend(out, "[\"", op.op_name,
-                                                      "\", \"", op.kernel_name,
-                                                      "\"]");
-                                    }),
-                      "]");
+  Json::Value result(Json::arrayValue);
+  for (const OpKernel& op : flex_ops) {
+    Json::Value op_kernel(Json::arrayValue);
+    op_kernel.append(Json::Value(op.op_name));
+    op_kernel.append(Json::Value(op.kernel_name));
+    result.append(op_kernel);
+  }
+  return Json::FastWriter().write(result);
 }
 
 // Find the class name of the op kernel described in the node_def from the pool
@@ -88,7 +88,7 @@ void AddFlexOpsFromModel(const tflite::Model* model, OpKernelSet* flex_ops) {
     for (int i = 0; i < operators->size(); ++i) {
       const tflite::Operator* op = operators->Get(i);
       const tflite::OperatorCode* opcode = opcodes->Get(op->opcode_index());
-      if (opcode->builtin_code() != tflite::BuiltinOperator_CUSTOM ||
+      if (tflite::GetBuiltinCode(opcode) != tflite::BuiltinOperator_CUSTOM ||
           !tflite::IsFlexOp(opcode->custom_code()->c_str())) {
         continue;
       }

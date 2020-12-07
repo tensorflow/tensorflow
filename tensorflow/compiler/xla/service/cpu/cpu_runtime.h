@@ -72,6 +72,7 @@ extern const char* const kAcquireOutfeedBufferForPopulationSymbolName;
 extern const char* const kReleaseOutfeedBufferAfterPopulationSymbolName;
 extern const char* const kParallelForkJoinSymbolName;
 extern const char* const kKeyValueSortSymbolName;
+extern const char* const kTopKF32SymbolName;
 extern const char* const kAllReduceSymbolName;
 extern const char* const kCollectivePermuteSymbolName;
 extern const char* const kReplicaIdSymbolName;

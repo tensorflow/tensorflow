@@ -16,9 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_QUANTIZATION_UTIL_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_QUANTIZATION_UTIL_H_
 
-#include <unordered_map>
+#include <stdint.h>
+
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
@@ -32,11 +34,11 @@ namespace gpu {
 // tensor and its original quantized one.
 absl::Status DequantizeInputs(
     TfLiteContext* context, const std::vector<uint32_t>& input_indices,
-    const std::unordered_map<int, int>& quant_conversion_map);
+    const absl::flat_hash_map<int, int>& quant_conversion_map);
 
 absl::Status DequantizeInputs(
     TfLiteContext* context, const std::vector<int64_t>& input_indices,
-    const std::unordered_map<int, int>& quant_conversion_map);
+    const absl::flat_hash_map<int, int>& quant_conversion_map);
 
 // Quantizes output tensors post-inference, leaving float tensors intact.
 // output_indices contains (fp32) inputs to be quantized, which are outputs of
@@ -45,11 +47,11 @@ absl::Status DequantizeInputs(
 // tensor and its original quantized one.
 absl::Status QuantizeOutputs(
     TfLiteContext* context, const std::vector<uint32_t>& output_indices,
-    const std::unordered_map<int, int>& quant_conversion_map);
+    const absl::flat_hash_map<int, int>& quant_conversion_map);
 
 absl::Status QuantizeOutputs(
     TfLiteContext* context, const std::vector<int64_t>& output_indices,
-    const std::unordered_map<int, int>& quant_conversion_map);
+    const absl::flat_hash_map<int, int>& quant_conversion_map);
 }  // namespace gpu
 }  // namespace tflite
 

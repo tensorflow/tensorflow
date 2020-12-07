@@ -147,6 +147,9 @@ Status Conv2DBackpropInputShape(shape_inference::InferenceContext* c);
 // Shape function for AvgPool-like operations.
 Status AvgPoolShape(shape_inference::InferenceContext* c);
 
+// Shape function for AvgPoolGrad-like operations.
+Status AvgPoolGradShape(shape_inference::InferenceContext* c);
+
 // Shape function for FusedBatchNorm and FusedBatchNormV2 operations.
 Status FusedBatchNormShape(shape_inference::InferenceContext* c);
 
@@ -168,14 +171,27 @@ Status MatrixDiagV2Shape(shape_inference::InferenceContext* c);
 // Shape function for MatrixSetDiagV2 and MatrixSetDiagV3 operations.
 Status MatrixSetDiagV2Shape(shape_inference::InferenceContext* c);
 
-// Shape function for MaxPool-like operations.
+// Shape function for MaxPool-like operations that support explicit padding.
+Status MaxPoolShapeWithExplicitPadding(shape_inference::InferenceContext* c);
+
+// Shape function for MaxPool-like operations that do not support explicit
+// padding.
 Status MaxPoolShape(shape_inference::InferenceContext* c);
 
 // Shape function for MaxPoolV2-like operations.
 Status MaxPoolV2Shape(shape_inference::InferenceContext* c, int num_inputs);
 
+// Shape function for MaxPoolGrad-like operations.
+Status MaxPoolGradShape(shape_inference::InferenceContext* c);
+
 // Shape function for 3D Pooling operations.
 Status Pool3DShape(shape_inference::InferenceContext* c);
+
+// Shape function for MaxPool3DGrad-like operations.
+Status MaxPool3DGradShape(shape_inference::InferenceContext* c);
+
+// Shape function for AvgPool3DGrad-like operations.
+Status AvgPool3DGradShape(shape_inference::InferenceContext* c);
 
 // Shape function for use with ops whose output shapes are unknown.
 Status UnknownShape(shape_inference::InferenceContext* c);
@@ -241,8 +257,9 @@ Status ValidateVariableResourceHandle(
 // Shape function for GatherNd operations.
 Status GatherNdShape(InferenceContext* c);
 
-// Shape function for ScatterNd update/add/sub/... operations.
-Status ScatterNdUpdateShape(InferenceContext* c);
+// Helper shape function for ScatterNd.../TensorScatter... operations.
+Status ScatterNdShapeHelper(InferenceContext* c, ShapeHandle indices_shape,
+                            ShapeHandle updates_shape, ShapeHandle input_shape);
 
 // Shape function for ops with an explicit "shape" attribute.
 Status ExplicitShape(InferenceContext* c);

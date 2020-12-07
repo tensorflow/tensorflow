@@ -135,7 +135,7 @@ above, and you we still need an output labels file.
 
 To compute mAP in a consistent and interpretable way, we utilize the same 2014
 COCO 'minival' dataset that is mentioned in the
-[Tensorflow detection model zoo](https://github.com/tensorflow/models/blob/master/research/object_detection/g3doc/detection_model_zoo.md).
+[Tensorflow detection model zoo](https://github.com/tensorflow/models/blob/master/research/object_detection/g3doc/tf1_detection_zoo.md).
 
 The links to download the components of the validation set are:
 

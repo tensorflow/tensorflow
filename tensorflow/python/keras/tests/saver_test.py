@@ -27,16 +27,16 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops as ops_lib
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
+from tensorflow.python.module import module
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import adam
 from tensorflow.python.training import saver as saver_module
 from tensorflow.python.training import training_util
-from tensorflow.python.training.tracking import tracking as trackable_tracking
 from tensorflow.python.training.tracking import util as trackable_utils
 
 
-class NonLayerTrackable(trackable_tracking.AutoTrackable):
+class NonLayerTrackable(module.Module):
 
   def __init__(self):
     super(NonLayerTrackable, self).__init__()

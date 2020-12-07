@@ -190,6 +190,7 @@ posix_cmake_vars = {
     "HAVE_PTHREAD_H": 1,
     "HAVE_SIGNAL_H": 1,
     "HAVE_STDINT_H": 1,
+    "HAVE_SYSEXITS_H": 1,
     "HAVE_SYS_IOCTL_H": 1,
     "HAVE_SYS_MMAN_H": 1,
     "HAVE_SYS_PARAM_H": 1,
@@ -292,11 +293,6 @@ win32_cmake_vars = {
 
     # LLVM features
     "LTDL_SHLIB_EXT": ".dll",
-
-    # ThreadPoolExecutor global destructor and thread handshaking do not work
-    # on this platform when used as a DLL.
-    # See: https://bugs.llvm.org/show_bug.cgi?id=44211
-    "LLVM_ENABLE_THREADS": 0,
 }
 
 # Select a set of CMake variables based on the platform.
@@ -331,6 +327,14 @@ llvm_all_cmake_vars = select({
             cmake_vars,
             llvm_target_cmake_vars("X86", "x86_64-unknown-freebsd"),
             posix_cmake_vars,
+        ),
+    ),
+    "@org_tensorflow//tensorflow:linux_s390x": cmake_var_string(
+        _dict_add(
+            cmake_vars,
+            llvm_target_cmake_vars("SystemZ", "systemz-unknown-linux_gnu"),
+            posix_cmake_vars,
+            linux_cmake_vars,
         ),
     ),
     "//conditions:default": cmake_var_string(

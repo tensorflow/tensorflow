@@ -8,8 +8,8 @@ Our smart reply model generates reply suggestions based on chat messages. The
 suggestions are intended to be contextually relevant, one-touch responses that
 help the user to easily reply to an incoming message.
 
-<a class="button button-primary" href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/smartreply_1.0_2017_11_01.zip">Download
-starter model and labels</a>
+<a class="button button-primary" href="https://tfhub.dev/tensorflow/lite-model/smartreply/1/default/1?lite-format=tflite">Download
+starter model</a>
 
 ### Sample application
 

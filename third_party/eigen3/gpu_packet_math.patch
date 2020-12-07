@@ -1,3 +1,4 @@
+diff -ru a/Eigen/src/Geometry/arch/Geometry_SSE.h b/Eigen/src/Geometry/arch/Geometry_SSE.h
 --- a/Eigen/src/Geometry/arch/Geometry_SSE.h
 +++ b/Eigen/src/Geometry/arch/Geometry_SSE.h
 @@ -33,13 +33,14 @@
@@ -22,3 +23,76 @@
      return res;
    }
  };
+diff -ru a/Eigen/src/Core/GenericPacketMath.h b/Eigen/src/Core/GenericPacketMath.h
+--- a/Eigen/src/Core/GenericPacketMath.h
++++ b/Eigen/src/Core/GenericPacketMath.h
+@@ -255,49 +255,43 @@
+   return std::complex<RealScalar>(b, b);
+ }
+ 
+-template <typename Packet, typename Op>
+-EIGEN_DEVICE_FUNC inline Packet bitwise_helper(const Packet& a, const Packet& b, Op op) {
++/** \internal \returns the bitwise and of \a a and \a b */
++template<typename Packet> EIGEN_DEVICE_FUNC inline Packet
++pand(const Packet& a, const Packet& b) {
+   const unsigned char* a_ptr = reinterpret_cast<const unsigned char*>(&a);
+   const unsigned char* b_ptr = reinterpret_cast<const unsigned char*>(&b);
+   Packet c;
+   unsigned char* c_ptr = reinterpret_cast<unsigned char*>(&c);
+   for (size_t i = 0; i < sizeof(Packet); ++i) {
+-    *c_ptr++ = op(*a_ptr++, *b_ptr++);
++    *c_ptr++ = *a_ptr++ & *b_ptr++;
+   }
+   return c;
+ }
+ 
+-/** \internal \returns the bitwise and of \a a and \a b */
+-template<typename Packet> EIGEN_DEVICE_FUNC inline Packet
+-pand(const Packet& a, const Packet& b) {
+-#if defined(EIGEN_HIP_DEVICE_COMPILE)
+-  return bitwise_helper(a ,b, std::bit_and<unsigned char>());
+-#else
+-  EIGEN_USING_STD(bit_and);
+-  return bitwise_helper(a ,b, bit_and<unsigned char>());
+-#endif
+-}
+-
+ /** \internal \returns the bitwise or of \a a and \a b */
+ template<typename Packet> EIGEN_DEVICE_FUNC inline Packet
+ por(const Packet& a, const Packet& b) {
+-#if defined(EIGEN_HIP_DEVICE_COMPILE)
+-  return bitwise_helper(a ,b, std::bit_or<unsigned char>());
+-#else
+-  EIGEN_USING_STD(bit_or);
+-  return bitwise_helper(a ,b, bit_or<unsigned char>());
+-#endif
++  const unsigned char* a_ptr = reinterpret_cast<const unsigned char*>(&a);
++  const unsigned char* b_ptr = reinterpret_cast<const unsigned char*>(&b);
++  Packet c;
++  unsigned char* c_ptr = reinterpret_cast<unsigned char*>(&c);
++  for (size_t i = 0; i < sizeof(Packet); ++i) {
++    *c_ptr++ = *a_ptr++ | *b_ptr++;
++  }
++  return c;
+ }
+ 
+ /** \internal \returns the bitwise xor of \a a and \a b */
+ template<typename Packet> EIGEN_DEVICE_FUNC inline Packet
+ pxor(const Packet& a, const Packet& b) {
+-#if defined(EIGEN_HIP_DEVICE_COMPILE)
+-  return bitwise_helper(a ,b, std::bit_xor<unsigned char>());
+-#else
+-  EIGEN_USING_STD(bit_xor);
+-  return bitwise_helper(a ,b, bit_xor<unsigned char>());
+-#endif
++  const unsigned char* a_ptr = reinterpret_cast<const unsigned char*>(&a);
++  const unsigned char* b_ptr = reinterpret_cast<const unsigned char*>(&b);
++  Packet c;
++  unsigned char* c_ptr = reinterpret_cast<unsigned char*>(&c);
++  for (size_t i = 0; i < sizeof(Packet); ++i) {
++    *c_ptr++ = *a_ptr++ ^ *b_ptr++;
++  }
++  return c;
+ }
+ 
+ /** \internal \returns the bitwise and of \a a and not \a b */

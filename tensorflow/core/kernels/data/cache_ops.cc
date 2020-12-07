@@ -63,6 +63,11 @@ size_t MemoryCache::size() {
   return cache_.size();
 }
 
+const std::vector<std::vector<Tensor>>& MemoryCache::data() {
+  tf_shared_lock l(mu_);
+  return cache_;
+}
+
 AnonymousMemoryCacheHandleOp::AnonymousMemoryCacheHandleOp(
     OpKernelConstruction* ctx)
     : AnonymousResourceOp<MemoryCacheManager>(ctx) {}

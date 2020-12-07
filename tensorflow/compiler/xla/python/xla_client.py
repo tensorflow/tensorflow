@@ -28,6 +28,8 @@ import inspect
 import os
 from typing import List, Sequence, Tuple, Union
 
+from . import xla_extension as _xla
+
 from absl import logging
 import numpy as np
 
@@ -35,8 +37,6 @@ import numpy as np
 # Python bindings are currently packaged both as part of jaxlib and as part
 # of TensorFlow. If we use protocol buffers here, then importing both jaxlib
 # and TensorFlow may fail with duplicate protocol buffer message definitions.
-
-from tensorflow.compiler.xla.python import xla_extension as _xla
 
 # Most functions are snake_case for consistency with other modules, some
 # method names are CamelCase for consistency with XLA.
@@ -83,11 +83,15 @@ def _gpu_backend_factory(distributed_client=None, node_id=0):
     config.memory_fraction = float(memory_fraction)
   config.preallocate = preallocate not in ('0', 'false', 'False')
 
-  return _xla.get_nvidia_gpu_client(
+  return _xla.get_gpu_client(
       asynchronous=True,
       allocator_config=config,
       distributed_client=distributed_client,
       node_id=node_id)
+
+
+def _tpu_backend_factory():
+  return _xla.get_tpu_client(asynchronous=True)
 
 
 # Backend factories, keyed by user-visible name, in increasing priority order.
@@ -95,6 +99,7 @@ _local_backend_factories = collections.OrderedDict([
     ('interpreter', _interpreter_backend_factory),
     ('cpu', _cpu_backend_factory),
     ('gpu', _gpu_backend_factory),
+    ('tpu', _tpu_backend_factory),
 ])
 
 
@@ -113,16 +118,17 @@ def _get_local_backends():
 
   _local_backends = collections.OrderedDict()
   for name, factory in _local_backend_factories.items():
-    logging.vlog(2, "Initializing backend '%s'" % name)
+    logging.vlog(1, "Initializing backend '%s'" % name)
     try:
       backend = factory()
-    except RuntimeError:
+    except RuntimeError as err:
       if name == 'cpu':
         # We always expect CPU to initialize successfully.
         raise
       else:
         # If the backend isn't built into the binary, or if it has no devices,
         # we expect a RuntimeError.
+        logging.vlog(1, "Error initializing backend '%s': %s" % (name, err))
         continue
     _local_backends[name] = backend
   return _local_backends
@@ -144,7 +150,8 @@ def get_local_backend(name=None):
     try:
       return backends[name]
     except KeyError:
-      raise RuntimeError('Unknown backend {}'.format(name))
+      raise RuntimeError(
+          'Unknown backend %s. Available: %s' % (name, list(backends.keys())))
 
   return list(backends.values())[-1]
 
@@ -191,8 +198,8 @@ XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.F64: np.dtype('float64'),
     PrimitiveType.C64: np.dtype('complex64'),
     PrimitiveType.C128: np.dtype('complex128'),
-    PrimitiveType.TUPLE: np.dtype(np.object),
-    PrimitiveType.TOKEN: np.dtype(np.object),
+    PrimitiveType.TUPLE: np.dtype(np.object_),
+    PrimitiveType.TOKEN: np.dtype(np.object_),
 }
 
 # Note the conversion on the key. Numpy has a known issue wherein dtype hashing
@@ -412,6 +419,7 @@ XlaComputation = _xla.XlaComputation
 FftType = _xla.FftType
 Client = _xla.Client
 Buffer = _xla.Buffer
+DeviceArrayBase = _xla.DeviceArrayBase
 Executable = _xla.Executable
 
 
@@ -600,7 +608,7 @@ def make_convolution_dimension_numbers(
 class OpSharding(object):
   """Python representation of a xla.OpSharding protobuf."""
   __slots__ = ('type', 'tile_assignment_dimensions', 'tile_assignment_devices',
-               'tuple_shardings')
+               'tuple_shardings', 'replicate_on_last_tile_dim')
 
   Type = _xla.OpSharding_Type
 
@@ -609,6 +617,7 @@ class OpSharding(object):
     self.tile_assignment_dimensions = []
     self.tile_assignment_devices = []
     self.tuple_shardings = []
+    self.replicate_on_last_tile_dim = False
 
 
 class PrecisionConfig(object):

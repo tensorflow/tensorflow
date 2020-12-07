@@ -1,19 +1,6 @@
---- a/icu4c/source/common/unicode/uconfig.h
-+++ b/icu4c/source/common/unicode/uconfig.h
-@@ -55,6 +55,11 @@
- #include "uconfig_local.h"
- #endif
- 
-+// Tensorflow is statically linked on all platforms.
-+#ifndef U_STATIC_IMPLEMENTATION
-+#define U_STATIC_IMPLEMENTATION
-+#endif
-+
- /**
-  * \def U_DEBUG
-  * Determines whether to include debugging code.
---- a/icu4c/source/common/udata.cpp
-+++ b/icu4c/source/common/udata.cpp
+diff -ru a/icu4c/source/common/udata.cpp b/icu4c/source/common/udata.cpp
+--- a/icu4c/source/common/udata.cpp	2019-04-17 12:03:04.000000000 +0000
++++ b/icu4c/source/common/udata.cpp	2020-07-14 23:49:37.836668741 +0000
 @@ -18,11 +18,10 @@
  
  #include "unicode/utypes.h"  /* U_PLATFORM etc. */
@@ -57,3 +44,18 @@
  #if U_PLATFORM_HAS_WINUWP_API == 0 // Windows UWP Platform does not support dll icu data at this time
          setCommonICUDataPointer(&U_ICUDATA_ENTRY_POINT, FALSE, pErrorCode);
          {
+diff -ru a/icu4c/source/common/unicode/uconfig.h b/icu4c/source/common/unicode/uconfig.h
+--- a/icu4c/source/common/unicode/uconfig.h	2019-04-17 12:03:04.000000000 +0000
++++ b/icu4c/source/common/unicode/uconfig.h	2020-07-14 23:49:37.836668741 +0000
+@@ -55,6 +55,11 @@
+ #include "uconfig_local.h"
+ #endif
+ 
++// Tensorflow is statically linked on all platforms.
++#ifndef U_STATIC_IMPLEMENTATION
++#define U_STATIC_IMPLEMENTATION
++#endif
++
+ /**
+  * \def U_DEBUG
+  * Determines whether to include debugging code.

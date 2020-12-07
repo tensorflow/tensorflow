@@ -147,6 +147,47 @@ class TensorArrayTest(test.TestCase):
       c0 = self.evaluate(c0)
       self.assertAllEqual([3, 0, 1], c0.shape)
 
+  def testTensorArrayWriteConcatInParallel(self):
+    with self.session(use_gpu=True):
+
+      def _concat_1():
+        ta = tensor_array_ops.TensorArray(
+            dtype=dtypes.int32, size=2, infer_shape=False)
+        w0 = ta.write(0, constant_op.constant([1]))
+        w1 = w0.write(1, constant_op.constant([],
+                                              shape=(0,),
+                                              dtype=dtypes.int32))
+        return w1.concat()
+
+      def _concat_2():
+        ta = tensor_array_ops.TensorArray(
+            dtype=dtypes.int32, size=3, infer_shape=False)
+        w0 = ta.write(0, constant_op.constant([8]))
+        w1 = w0.write(1, constant_op.constant([],
+                                              shape=(0,),
+                                              dtype=dtypes.int32))
+        w2 = w1.write(2, constant_op.constant([9]))
+        return w2.concat()
+
+      def _write(index, output):
+        elements = control_flow_ops.cond(
+            math_ops.less(index, 3), _concat_1, _concat_2)
+        return (index + 1, output.write(index, elements))
+
+      num_iterations = 6
+      init_state = (0,
+                    tensor_array_ops.TensorArray(
+                        dtype=dtypes.int32,
+                        size=num_iterations,
+                        infer_shape=False))
+      _, final_state = control_flow_ops.while_loop(
+          lambda i, _: i < num_iterations, _write, init_state)
+
+      c0 = final_state.concat()
+
+      c0 = self.evaluate(c0)
+      self.assertAllEqual([1, 1, 1, 8, 9, 8, 9, 8, 9], c0)
+
   def _testTensorArrayWriteConcat(self, tf_dtype):
     with self.cached_session(use_gpu=True):
       ta = tensor_array_ops.TensorArray(
@@ -617,7 +658,7 @@ class TensorArrayTest(test.TestCase):
       with self.assertRaisesOpError(
           r"TensorArray foo_.*: Could not write to TensorArray index 2 because "
           r"it has already been written to."):
-        w1.flow.eval()
+        self.evaluate(w1.flow)
 
       # Using differing shapes causes an exception
       wb0_grad = ta_grad.write(1, c(1.0))
@@ -626,7 +667,7 @@ class TensorArrayTest(test.TestCase):
       with self.assertRaisesOpError(
           r"Could not aggregate to TensorArray index 1 because the "
           r"existing shape is \[\] but the new input shape is \[1\]"):
-        wb1_grad.flow.eval()
+        self.evaluate(wb1_grad.flow)
 
   @test_util.disable_control_flow_v2("v2 does not support TensorArray.grad.")
   @test_util.run_v1_only("v2 does not support TensorArray.grad.")

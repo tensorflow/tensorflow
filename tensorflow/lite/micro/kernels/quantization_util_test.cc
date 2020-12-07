@@ -27,40 +27,55 @@ void RunSafeCastTests() {
   const IntOut imin = std::numeric_limits<IntOut>::min();
   const bool s = std::numeric_limits<IntOut>::is_signed;
   if (s) {
-    TF_LITE_MICRO_EXPECT_LT(imin, 0);
+    TF_LITE_MICRO_EXPECT_LT(static_cast<IntOut>(imin), 0);
   } else {
-    TF_LITE_MICRO_EXPECT_EQ(0, imin);
+    TF_LITE_MICRO_EXPECT_EQ(static_cast<IntOut>(0), imin);
   }
 
   // Some basic tests.
-  TF_LITE_MICRO_EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(0.0)), 0);
-  TF_LITE_MICRO_EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(-0.0)), 0);
-  TF_LITE_MICRO_EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(0.99)), 0);
-  TF_LITE_MICRO_EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(1.0)), 1);
-  TF_LITE_MICRO_EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(1.01)), 1);
-  TF_LITE_MICRO_EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(1.99)), 1);
-  TF_LITE_MICRO_EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(2.0)), 2);
-  TF_LITE_MICRO_EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(2.01)), 2);
-  TF_LITE_MICRO_EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(-0.99)), 0);
+  TF_LITE_MICRO_EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(0.0)),
+                          static_cast<IntOut>(0));
+  TF_LITE_MICRO_EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(-0.0)),
+                          static_cast<IntOut>(0));
+  TF_LITE_MICRO_EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(0.99)),
+                          static_cast<IntOut>(0));
+  TF_LITE_MICRO_EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(1.0)),
+                          static_cast<IntOut>(1));
+  TF_LITE_MICRO_EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(1.01)),
+                          static_cast<IntOut>(1));
+  TF_LITE_MICRO_EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(1.99)),
+                          static_cast<IntOut>(1));
+  TF_LITE_MICRO_EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(2.0)),
+                          static_cast<IntOut>(2));
+  TF_LITE_MICRO_EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(2.01)),
+                          static_cast<IntOut>(2));
+  TF_LITE_MICRO_EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(-0.99)),
+                          static_cast<IntOut>(0));
   TF_LITE_MICRO_EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(-1.0)),
-                          s ? -1 : 0);
+                          s ? static_cast<IntOut>(-1) : static_cast<IntOut>(0));
   TF_LITE_MICRO_EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(-1.01)),
-                          s ? -1 : 0);
+                          s ? static_cast<IntOut>(-1) : static_cast<IntOut>(0));
   TF_LITE_MICRO_EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(-1.99)),
-                          s ? -1 : 0);
+                          s ? static_cast<IntOut>(-1) : static_cast<IntOut>(0));
   TF_LITE_MICRO_EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(-2.0)),
-                          s ? -2 : 0);
+                          s ? static_cast<IntOut>(-2) : static_cast<IntOut>(0));
   TF_LITE_MICRO_EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(-2.01)),
-                          s ? -2 : 0);
-  TF_LITE_MICRO_EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(117.9)), 117);
-  TF_LITE_MICRO_EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(118.0)), 118);
-  TF_LITE_MICRO_EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(118.1)), 118);
-  TF_LITE_MICRO_EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(-117.9)),
-                          s ? -117 : 0);
-  TF_LITE_MICRO_EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(-118.0)),
-                          s ? -118 : 0);
-  TF_LITE_MICRO_EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(-118.1)),
-                          s ? -118 : 0);
+                          s ? static_cast<IntOut>(-2) : static_cast<IntOut>(0));
+  TF_LITE_MICRO_EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(117.9)),
+                          static_cast<IntOut>(117));
+  TF_LITE_MICRO_EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(118.0)),
+                          static_cast<IntOut>(118));
+  TF_LITE_MICRO_EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(118.1)),
+                          static_cast<IntOut>(118));
+  TF_LITE_MICRO_EXPECT_EQ(
+      SafeCast<IntOut>(static_cast<FloatIn>(-117.9)),
+      s ? static_cast<IntOut>(-117) : static_cast<IntOut>(0));
+  TF_LITE_MICRO_EXPECT_EQ(
+      SafeCast<IntOut>(static_cast<FloatIn>(-118.0)),
+      s ? static_cast<IntOut>(-118) : static_cast<IntOut>(0));
+  TF_LITE_MICRO_EXPECT_EQ(
+      SafeCast<IntOut>(static_cast<FloatIn>(-118.1)),
+      s ? static_cast<IntOut>(-118) : static_cast<IntOut>(0));
 
   // Some edge cases.
   TF_LITE_MICRO_EXPECT_EQ(SafeCast<IntOut>(std::numeric_limits<FloatIn>::max()),
@@ -72,52 +87,66 @@ void RunSafeCastTests() {
   TF_LITE_MICRO_EXPECT_EQ(
       SafeCast<IntOut>(-std::numeric_limits<FloatIn>::infinity()), imin);
   TF_LITE_MICRO_EXPECT_EQ(
-      SafeCast<IntOut>(std::numeric_limits<FloatIn>::quiet_NaN()), 0);
+      SafeCast<IntOut>(std::numeric_limits<FloatIn>::quiet_NaN()),
+      static_cast<IntOut>(0));
 
   // Some larger numbers.
-  if (sizeof(IntOut) >= 4 && sizeof(FloatIn) > 4) {
+  if (sizeof(IntOut) >= static_cast<size_t>(4) &&
+      sizeof(FloatIn) > static_cast<size_t>(4)) {
     TF_LITE_MICRO_EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(0x76543210)),
-                            0x76543210);
+                            static_cast<IntOut>(0x76543210));
   }
 
   if (sizeof(FloatIn) > sizeof(IntOut)) {
     // Check values near imax.
-    TF_LITE_MICRO_EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(
-                                static_cast<FloatIn>(imax) + 0.1)),
-                            imax);
-    TF_LITE_MICRO_EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(
-                                static_cast<FloatIn>(imax) + 0.99)),
-                            imax);
-    TF_LITE_MICRO_EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(
-                                static_cast<FloatIn>(imax) + 1.0)),
-                            imax);
-    TF_LITE_MICRO_EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(
-                                static_cast<FloatIn>(imax) + 1.99)),
-                            imax);
-    TF_LITE_MICRO_EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(
-                                static_cast<FloatIn>(imax) + 2.0)),
-                            imax);
-    TF_LITE_MICRO_EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(
-                                static_cast<FloatIn>(imax) - 0.1)),
-                            imax - 1);
-    TF_LITE_MICRO_EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(
-                                static_cast<FloatIn>(imax) - 0.99)),
-                            imax - 1);
-    TF_LITE_MICRO_EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(
-                                static_cast<FloatIn>(imax) - 1.0)),
-                            imax - 1);
-    TF_LITE_MICRO_EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(
-                                static_cast<FloatIn>(imax) - 1.01)),
-                            imax - 2);
-    TF_LITE_MICRO_EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(
-                                static_cast<FloatIn>(imax) - 1.99)),
-                            imax - 2);
-    TF_LITE_MICRO_EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(
-                                static_cast<FloatIn>(imax) - 2.0)),
-                            imax - 2);
-    TF_LITE_MICRO_EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(
-                                static_cast<FloatIn>(imax) - 2.01)),
-                            imax - 3);
+    TF_LITE_MICRO_EXPECT_EQ(
+        SafeCast<IntOut>(static_cast<FloatIn>(static_cast<FloatIn>(imax) +
+                                              static_cast<FloatIn>(0.1))),
+        imax);
+    TF_LITE_MICRO_EXPECT_EQ(
+        SafeCast<IntOut>(static_cast<FloatIn>(static_cast<FloatIn>(imax) +
+                                              static_cast<FloatIn>(0.99))),
+        imax);
+    TF_LITE_MICRO_EXPECT_EQ(
+        SafeCast<IntOut>(static_cast<FloatIn>(static_cast<FloatIn>(imax) +
+                                              static_cast<FloatIn>(1.0))),
+        imax);
+    TF_LITE_MICRO_EXPECT_EQ(
+        SafeCast<IntOut>(static_cast<FloatIn>(static_cast<FloatIn>(imax) +
+                                              static_cast<FloatIn>(1.99))),
+        imax);
+    TF_LITE_MICRO_EXPECT_EQ(
+        SafeCast<IntOut>(static_cast<FloatIn>(static_cast<FloatIn>(imax) +
+                                              static_cast<FloatIn>(2.0))),
+        imax);
+    TF_LITE_MICRO_EXPECT_EQ(
+        SafeCast<IntOut>(static_cast<FloatIn>(static_cast<FloatIn>(imax) -
+                                              static_cast<FloatIn>(0.1))),
+        imax - 1);
+    TF_LITE_MICRO_EXPECT_EQ(
+        SafeCast<IntOut>(static_cast<FloatIn>(static_cast<FloatIn>(imax) -
+                                              static_cast<FloatIn>(0.99))),
+        imax - 1);
+    TF_LITE_MICRO_EXPECT_EQ(
+        SafeCast<IntOut>(static_cast<FloatIn>(static_cast<FloatIn>(imax) -
+                                              static_cast<FloatIn>(1.0))),
+        imax - 1);
+    TF_LITE_MICRO_EXPECT_EQ(
+        SafeCast<IntOut>(static_cast<FloatIn>(static_cast<FloatIn>(imax) -
+                                              static_cast<FloatIn>(1.01))),
+        imax - 2);
+    TF_LITE_MICRO_EXPECT_EQ(
+        SafeCast<IntOut>(static_cast<FloatIn>(static_cast<FloatIn>(imax) -
+                                              static_cast<FloatIn>(1.99))),
+        imax - 2);
+    TF_LITE_MICRO_EXPECT_EQ(
+        SafeCast<IntOut>(static_cast<FloatIn>(static_cast<FloatIn>(imax) -
+                                              static_cast<FloatIn>(2.0))),
+        imax - 2);
+    TF_LITE_MICRO_EXPECT_EQ(
+        SafeCast<IntOut>(static_cast<FloatIn>(static_cast<FloatIn>(imax) -
+                                              static_cast<FloatIn>(2.01))),
+        imax - 3);
   }
 
   // Check values considerably larger in magnitude than imin and imax
@@ -174,7 +203,7 @@ TF_LITE_MICRO_TEST(QuantizationUtilTest_SafeCast) {
 //  128       | 10.0
 TF_LITE_MICRO_TEST(QuantizationUtilTest_ChooseQuantizationParams) {
   tflite::QuantizationParams qp =
-      tflite::ChooseQuantizationParams<uint8>(-10.0, 30.0);
+      tflite::ChooseQuantizationParams<uint8_t>(-10.0, 30.0);
   TF_LITE_MICRO_EXPECT_NEAR(qp.scale, 0.156863, 1e-5);
   TF_LITE_MICRO_EXPECT_EQ(qp.zero_point, 64);
 }
@@ -182,7 +211,7 @@ TF_LITE_MICRO_TEST(QuantizationUtilTest_ChooseQuantizationParams) {
 TF_LITE_MICRO_TEST(
     QuantizationUtilTest_ChooseQuantizationParamsZeroPointOnMinBoundary) {
   tflite::QuantizationParams qp =
-      tflite::ChooseQuantizationParams<uint8>(0.0, 30.0);
+      tflite::ChooseQuantizationParams<uint8_t>(0.0, 30.0);
   TF_LITE_MICRO_EXPECT_NEAR(qp.scale, 0.117647, 1e-5);
   TF_LITE_MICRO_EXPECT_EQ(qp.zero_point, 0);
 }
@@ -190,7 +219,7 @@ TF_LITE_MICRO_TEST(
 TF_LITE_MICRO_TEST(
     QuantizationUtilTest_ChooseQuantizationParamsEmptyRangeZero) {
   tflite::QuantizationParams qp =
-      tflite::ChooseQuantizationParams<uint8>(0.0, 0.0);
+      tflite::ChooseQuantizationParams<uint8_t>(0.0, 0.0);
   TF_LITE_MICRO_EXPECT_NEAR(qp.scale, 0.0, 1e-5);
   TF_LITE_MICRO_EXPECT_EQ(qp.zero_point, 0);
 }
@@ -198,7 +227,7 @@ TF_LITE_MICRO_TEST(
 TF_LITE_MICRO_TEST(
     QuantizationUtilTest_ChooseQuantizationParamsZeroPointOnMaxBoundary) {
   tflite::QuantizationParams qp =
-      tflite::ChooseQuantizationParams<uint8>(-10.0, 0.0);
+      tflite::ChooseQuantizationParams<uint8_t>(-10.0, 0.0);
   TF_LITE_MICRO_EXPECT_NEAR(qp.scale, 0.039216, 1e-5);
   TF_LITE_MICRO_EXPECT_EQ(qp.zero_point, 255);
 }
@@ -210,30 +239,30 @@ TF_LITE_MICRO_TEST(QuantizationUtilTest_IntegerFrExp) {
   TF_LITE_MICRO_EXPECT_EQ(0, shift);
 
   result = tflite::IntegerFrExp(1.0, &shift);
-  TF_LITE_MICRO_EXPECT_NEAR(0x40000000, result, 1);
+  TF_LITE_MICRO_EXPECT_NEAR(0x40000000, result, 1ll);
   TF_LITE_MICRO_EXPECT_EQ(1, shift);
 
   result = tflite::IntegerFrExp(0.25, &shift);
-  TF_LITE_MICRO_EXPECT_NEAR(0x40000000, result, 1);
+  TF_LITE_MICRO_EXPECT_NEAR(0x40000000, result, 1ll);
   TF_LITE_MICRO_EXPECT_EQ(-1, shift);
 
   result = tflite::IntegerFrExp(-1.0, &shift);
-  TF_LITE_MICRO_EXPECT_NEAR(-(1 << 30), result, 1);
+  TF_LITE_MICRO_EXPECT_NEAR(-(1 << 30), result, 1ll);
   TF_LITE_MICRO_EXPECT_EQ(1, shift);
 
   result = tflite::IntegerFrExp(123.45, &shift);
-  TF_LITE_MICRO_EXPECT_NEAR(2071147315, result, 1);
+  TF_LITE_MICRO_EXPECT_NEAR(2071147315, result, 1ll);
   TF_LITE_MICRO_EXPECT_EQ(7, shift);
 
-  result = tflite::IntegerFrExp(NAN, &shift);
+  result = tflite::IntegerFrExp(static_cast<double>(NAN), &shift);
   TF_LITE_MICRO_EXPECT_NEAR(0, result, 1);
   TF_LITE_MICRO_EXPECT_EQ(0x7fffffff, shift);
 
-  result = tflite::IntegerFrExp(INFINITY, &shift);
+  result = tflite::IntegerFrExp(static_cast<double>(INFINITY), &shift);
   TF_LITE_MICRO_EXPECT_NEAR(std::numeric_limits<int64_t>::max(), result, 1);
   TF_LITE_MICRO_EXPECT_EQ(0x7fffffff, shift);
 
-  result = tflite::IntegerFrExp(-INFINITY, &shift);
+  result = tflite::IntegerFrExp(-static_cast<double>(INFINITY), &shift);
   TF_LITE_MICRO_EXPECT_NEAR(std::numeric_limits<int64_t>::min(), result, 1);
   TF_LITE_MICRO_EXPECT_EQ(0x7fffffff, shift);
 }
@@ -301,11 +330,11 @@ TF_LITE_MICRO_TEST(QuantizationUtilTest_DoubleFromFractionAndShift) {
   result = tflite::DoubleFromFractionAndShift(fraction, shift);
   TF_LITE_MICRO_EXPECT_NEAR(-23.232323, result, 1e-5);
 
-  fraction = tflite::IntegerFrExp(NAN, &shift);
+  fraction = tflite::IntegerFrExp(static_cast<double>(NAN), &shift);
   result = tflite::DoubleFromFractionAndShift(fraction, shift);
   TF_LITE_MICRO_EXPECT_TRUE(std::isnan(result));
 
-  fraction = tflite::IntegerFrExp(INFINITY, &shift);
+  fraction = tflite::IntegerFrExp(static_cast<double>(INFINITY), &shift);
   result = tflite::DoubleFromFractionAndShift(fraction, shift);
   TF_LITE_MICRO_EXPECT_FALSE(std::isfinite(result));
 }
@@ -326,10 +355,10 @@ TF_LITE_MICRO_TEST(QuantizationUtilTest_IntegerDoubleMultiply) {
                             1e-5);
   TF_LITE_MICRO_EXPECT_NEAR(
       15000000.0, tflite::IntegerDoubleMultiply(3000.0, 5000.0), 1e-5);
-  TF_LITE_MICRO_EXPECT_TRUE(
-      std::isnan(tflite::IntegerDoubleMultiply(NAN, 5000.0)));
-  TF_LITE_MICRO_EXPECT_TRUE(
-      std::isnan(tflite::IntegerDoubleMultiply(3000.0, NAN)));
+  TF_LITE_MICRO_EXPECT_TRUE(std::isnan(
+      tflite::IntegerDoubleMultiply(static_cast<double>(NAN), 5000.0)));
+  TF_LITE_MICRO_EXPECT_TRUE(std::isnan(
+      tflite::IntegerDoubleMultiply(3000.0, static_cast<double>(NAN))));
 }
 
 TF_LITE_MICRO_TEST(QuantizationUtilTest_IntegerDoubleCompare) {
@@ -339,8 +368,12 @@ TF_LITE_MICRO_TEST(QuantizationUtilTest_IntegerDoubleCompare) {
   TF_LITE_MICRO_EXPECT_EQ(0, tflite::IntegerDoubleCompare(0.0, 0.0));
   TF_LITE_MICRO_EXPECT_EQ(-1, tflite::IntegerDoubleCompare(-10.0, 10.0));
   TF_LITE_MICRO_EXPECT_EQ(1, tflite::IntegerDoubleCompare(123.45, 10.0));
-  TF_LITE_MICRO_EXPECT_EQ(1, tflite::IntegerDoubleCompare(NAN, INFINITY));
-  TF_LITE_MICRO_EXPECT_EQ(1, tflite::IntegerDoubleCompare(INFINITY, NAN));
+  TF_LITE_MICRO_EXPECT_EQ(
+      1, tflite::IntegerDoubleCompare(static_cast<double>(NAN),
+                                      static_cast<double>(INFINITY)));
+  TF_LITE_MICRO_EXPECT_EQ(
+      1, tflite::IntegerDoubleCompare(static_cast<double>(INFINITY),
+                                      static_cast<double>(NAN)));
 }
 
 TF_LITE_MICRO_TEST(QuantizationUtilTest_PreprocessSoftmaxScaling) {
@@ -385,11 +418,11 @@ TF_LITE_MICRO_TEST(QuantizationUtilTest_QuantizeMultiplierArray) {
                             0.125, 0.25, 0.5, 1,    2,     4};
 
   const int size = 13;
-  int32 effective_scale_significand[size];
+  int32_t effective_scale_significand[size];
   int effective_scale_shift[size];
   tflite::QuantizeMultiplierArray(weights, size, effective_scale_significand,
                                   effective_scale_shift);
-  const int32 expected_effective_scale_significand[] = {
+  const int32_t expected_effective_scale_significand[] = {
       -1073741824,  // float scale = -4
       -1073741824,  // float scale = -2
       -1073741824,  // float scale = -1

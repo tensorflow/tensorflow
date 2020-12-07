@@ -40,12 +40,12 @@ Status CompileAndExecute(XlaBuilder* builder, XlaOp root, int device_id,
   compile_options.executable_build_options.set_device_assignment(
       device_assignment);
 
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<PjRtExecutable> executable,
-      PjRtExecutable::Compile(computation, client, std::move(compile_options)));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
+                      client->Compile(computation, std::move(compile_options)));
   ExecuteOptions execute_options;
-  TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<PjRtBuffer>> output_buffers,
-                      executable->Execute({}, execute_options));
+  TF_ASSIGN_OR_RETURN(
+      std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers,
+      executable->Execute({{}}, execute_options));
   return Status::OK();
 }
 
@@ -78,11 +78,11 @@ TEST(OutfeedReceiverTest, ReceiveOutfeedSimple) {
   std::vector<PjRtClient*> clients{cpu_client.get()};
 
   auto receiver = absl::make_unique<Accumulator>();
-  OutfeedReceiver::Callback callback = [&receiver](
-                                           Device* device, uint32_t consumer_id,
-                                           std::shared_ptr<Literal> data) {
-    receiver->Receive(consumer_id, data);
-  };
+  OutfeedReceiver::Callback callback =
+      [&receiver](PjRtDevice* device, uint32_t consumer_id,
+                  std::shared_ptr<Literal> data) {
+        receiver->Receive(consumer_id, data);
+      };
   auto outfeed_receiver =
       std::make_shared<OutfeedReceiver>(callback, clients, 128);
   outfeed_receiver->Start();
@@ -111,11 +111,11 @@ TEST(OutfeedReceiverTest, ReceiveOutfeedTwoComputations) {
   std::vector<PjRtClient*> clients{cpu_client.get()};
 
   auto receiver = absl::make_unique<Accumulator>();
-  OutfeedReceiver::Callback callback = [&receiver](
-                                           Device* device, uint32_t consumer_id,
-                                           std::shared_ptr<Literal> data) {
-    receiver->Receive(consumer_id, data);
-  };
+  OutfeedReceiver::Callback callback =
+      [&receiver](PjRtDevice* device, uint32_t consumer_id,
+                  std::shared_ptr<Literal> data) {
+        receiver->Receive(consumer_id, data);
+      };
   auto outfeed_receiver =
       std::make_shared<OutfeedReceiver>(callback, clients, 128);
   outfeed_receiver->Start();
@@ -156,11 +156,11 @@ TEST(OutfeedReceiverTest, ReceiveOutfeedTwoOutfeed) {
   std::vector<PjRtClient*> clients{cpu_client.get()};
 
   auto receiver = absl::make_unique<Accumulator>();
-  OutfeedReceiver::Callback callback = [&receiver](
-                                           Device* device, uint32_t consumer_id,
-                                           std::shared_ptr<Literal> data) {
-    receiver->Receive(consumer_id, data);
-  };
+  OutfeedReceiver::Callback callback =
+      [&receiver](PjRtDevice* device, uint32_t consumer_id,
+                  std::shared_ptr<Literal> data) {
+        receiver->Receive(consumer_id, data);
+      };
   auto outfeed_receiver =
       std::make_shared<OutfeedReceiver>(callback, clients, 128);
   outfeed_receiver->Start();
@@ -199,11 +199,11 @@ TEST(OutfeedReceiverTest, DifferentShapeForConsumerIdError) {
   std::vector<PjRtClient*> clients{cpu_client.get()};
 
   auto receiver = absl::make_unique<Accumulator>();
-  OutfeedReceiver::Callback callback = [&receiver](
-                                           Device* device, uint32_t consumer_id,
-                                           std::shared_ptr<Literal> data) {
-    receiver->Receive(consumer_id, data);
-  };
+  OutfeedReceiver::Callback callback =
+      [&receiver](PjRtDevice* device, uint32_t consumer_id,
+                  std::shared_ptr<Literal> data) {
+        receiver->Receive(consumer_id, data);
+      };
   auto outfeed_receiver =
       std::make_shared<OutfeedReceiver>(callback, clients, 128);
   outfeed_receiver->Start();
@@ -233,11 +233,11 @@ TEST(OutfeedReceiverTest, InvalidConsumerIdError) {
   std::vector<PjRtClient*> clients{cpu_client.get()};
 
   auto receiver = absl::make_unique<Accumulator>();
-  OutfeedReceiver::Callback callback = [&receiver](
-                                           Device* device, uint32_t consumer_id,
-                                           std::shared_ptr<Literal> data) {
-    receiver->Receive(consumer_id, data);
-  };
+  OutfeedReceiver::Callback callback =
+      [&receiver](PjRtDevice* device, uint32_t consumer_id,
+                  std::shared_ptr<Literal> data) {
+        receiver->Receive(consumer_id, data);
+      };
   auto outfeed_receiver =
       std::make_shared<OutfeedReceiver>(callback, clients, 128);
   outfeed_receiver->Start();

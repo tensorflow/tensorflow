@@ -96,7 +96,8 @@ class BenchmarkTest(test.TestCase):
     self.assertFalse(_ran_somebenchmark_but_shouldnt[0])
 
     # Run other benchmarks, but this wont run the one we care about
-    benchmark._run_benchmarks("unrelated")
+    with self.assertRaises(ValueError):
+      benchmark._run_benchmarks("unrelated")
 
     # Validate that SomeBenchmark has not run yet
     self.assertFalse(_ran_somebenchmark_1[0])

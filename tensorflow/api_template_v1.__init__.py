@@ -147,13 +147,34 @@ if _running_from_pip_package():
   # TODO(gunan): Add sanity checks to loaded modules here.
   for _s in _site_packages_dirs:
     # Load first party dynamic kernels.
-    _main_dir = _os.path.join(_s, 'tensorflow_core/core/kernels')
-    if _fi.file_exists(_main_dir):
+    _main_dir = _os.path.join(_s, 'tensorflow/core/kernels')
+    if _os.path.exists(_main_dir):
       _ll.load_library(_main_dir)
 
     # Load third party dynamic kernels.
     _plugin_dir = _os.path.join(_s, 'tensorflow-plugins')
-    if _fi.file_exists(_plugin_dir):
+    if _os.path.exists(_plugin_dir):
       _ll.load_library(_plugin_dir)
+
+# Delete modules that should be hidden from dir().
+# Don't fail if these modules are not available.
+# For e.g. this file will be originally placed under tensorflow/_api/v1 which
+# does not have 'python', 'core' directories. Then, it will be copied
+# to tensorflow/ which does have these two directories.
+
+# pylint: disable=undefined-variable
+try:
+  del python
+except NameError:
+  pass
+try:
+  del core
+except NameError:
+  pass
+try:
+  del compiler
+except NameError:
+  pass
+
 
 # __all__ PLACEHOLDER

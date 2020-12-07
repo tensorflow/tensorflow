@@ -22,10 +22,9 @@ namespace xla {
 namespace gpu {
 
 HostToDeviceCopyThunk::HostToDeviceCopyThunk(
-    const void* source_address,
-    const BufferAllocation::Slice& destination_buffer, uint64 mem_size,
-    const HloInstruction* hlo_instruction)
-    : Thunk(Kind::kCopy, hlo_instruction),
+    ThunkInfo thunk_info, const void* source_address,
+    const BufferAllocation::Slice& destination_buffer, uint64 mem_size)
+    : Thunk(Kind::kCopy, thunk_info),
       source_address_(source_address),
       destination_buffer_(destination_buffer),
       mem_size_(mem_size) {}
@@ -34,16 +33,15 @@ Status HostToDeviceCopyThunk::ExecuteOnStream(const ExecuteParams& params) {
   se::DeviceMemoryBase destination_data =
       params.buffer_allocations->GetDeviceAddress(destination_buffer_);
   auto op_profiler =
-      params.profiler->MakeScopedInstructionProfiler(hlo_instruction());
+      params.profiler->MakeScopedInstructionProfiler(profile_index());
   params.stream->ThenMemcpy(&destination_data, source_address_, mem_size_);
   return Status::OK();
 }
 
 DeviceToDeviceCopyThunk::DeviceToDeviceCopyThunk(
-    const BufferAllocation::Slice& source_buffer,
-    const BufferAllocation::Slice& destination_buffer, uint64 mem_size,
-    const HloInstruction* hlo_instruction)
-    : Thunk(Kind::kCopy, hlo_instruction),
+    ThunkInfo thunk_info, const BufferAllocation::Slice& source_buffer,
+    const BufferAllocation::Slice& destination_buffer, uint64 mem_size)
+    : Thunk(Kind::kCopy, thunk_info),
       source_buffer_(source_buffer),
       destination_buffer_(destination_buffer),
       mem_size_(mem_size) {}
@@ -54,7 +52,7 @@ Status DeviceToDeviceCopyThunk::ExecuteOnStream(const ExecuteParams& params) {
   se::DeviceMemoryBase source_data =
       params.buffer_allocations->GetDeviceAddress(source_buffer_);
   auto op_profiler =
-      params.profiler->MakeScopedInstructionProfiler(hlo_instruction());
+      params.profiler->MakeScopedInstructionProfiler(profile_index());
   params.stream->ThenMemcpy(&destination_data, source_data, mem_size_);
   return Status::OK();
 }

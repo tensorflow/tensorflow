@@ -292,6 +292,23 @@ class FromTensorSlicesTest(test_base.DatasetTestBase, parameterized.TestCase):
                      dataset_ops.get_legacy_output_types(dataset))
     self.assertDatasetProduces(dataset, expected_output)
 
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(depth=[1, 2, 3])))
+  def testDatasetInputSerialization(self, depth):
+    dataset = dataset_ops.Dataset.range(100)
+    for _ in range(depth):
+      dataset = [dataset, dataset]
+    dataset = dataset_ops.Dataset.from_tensor_slices(dataset)
+    for _ in range(depth - 1):
+      dataset = dataset.unbatch()
+    dataset = dataset.flat_map(lambda x: x)
+    dataset = self.graphRoundTrip(dataset)
+    expected = list(range(100)) + list(range(100))
+    for _ in range(depth - 1):
+      expected = expected + expected
+    self.assertDatasetProduces(dataset, expected)
+
 
 if __name__ == "__main__":
   test.main()

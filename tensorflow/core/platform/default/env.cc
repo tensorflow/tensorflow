@@ -185,8 +185,9 @@ class PosixEnv : public Env {
     });
   }
 
-  Status LoadLibrary(const char* library_filename, void** handle) override {
-    return tensorflow::internal::LoadLibrary(library_filename, handle);
+  Status LoadDynamicLibrary(const char* library_filename,
+                            void** handle) override {
+    return tensorflow::internal::LoadDynamicLibrary(library_filename, handle);
   }
 
   Status GetSymbolFromLibrary(void* handle, const char* symbol_name,

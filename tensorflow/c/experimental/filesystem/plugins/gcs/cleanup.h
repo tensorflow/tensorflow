@@ -45,8 +45,6 @@ limitations under the License.
 #include <type_traits>
 #include <utility>
 
-#include "tensorflow/core/platform/macros.h"
-
 namespace tf_gcs_filesystem {
 
 // A move-only RAII object that calls a stored cleanup functor when

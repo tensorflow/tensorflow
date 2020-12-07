@@ -785,8 +785,8 @@ class SymbolicShapeRefiner {
     MutableGraphView gv(&grappler_function_item.graph);
 
     // Forward shapes from function input nodes to argument nodes.
-    for (int i = 0, iter_limit = grappler_function_item.inputs().size();
-         i < iter_limit; ++i) {
+    for (int i = 0, end = grappler_function_item.inputs().size(); i < end;
+         ++i) {
       auto& fun_input = grappler_function_item.input(i);
       NodeDef* fun_node = gv.GetNode(fun_input.node_name);
       const TensorId input_tensor = ParseTensorName(function_node->input(i));
@@ -854,6 +854,15 @@ class SymbolicShapeRefiner {
       }
     }
 
+    // ReplaceInputWithConst() may break GraphView's internal node mapping
+    // structure; hence, we separately build node name to NodeDef* map, for the
+    // output nodes (before GraphView becomes invalid). Note that we use string,
+    // not string_view.
+    absl::flat_hash_map<std::string, NodeDef*> output_nodes;
+    for (const auto& output_arg : grappler_function_item.outputs()) {
+      output_nodes[output_arg.node_name] = gv.GetNode(output_arg.node_name);
+    }
+
     // Replace input nodes with Consts, if values are known. Note that
     // we don't check exceptions here as it's done in the above loop.
     auto* ctx = GetNodeContext(function_node);
@@ -884,11 +893,13 @@ class SymbolicShapeRefiner {
                                           &grappler_function_item));
       }
     }
+    // node_name to NodeDef* map in GraphView gv can be broken due to
+    // ReplaceInputWithConst(). gv should not be used after this.
 
     // Replace output _Retval nodes with Identity nodes. _Retval is a system op
     // without outputs and registered shape function.
     for (const auto& output_arg : grappler_function_item.outputs()) {
-      NodeDef* output_node = gv.GetNode(output_arg.node_name);
+      NodeDef* output_node = output_nodes[output_arg.node_name];
       DCHECK_EQ(output_node->op(), "_Retval");
       output_node->set_op("Identity");
       output_node->mutable_attr()->erase("index");
@@ -911,12 +922,12 @@ class SymbolicShapeRefiner {
       // inputs, so port_id >= 0.
       TensorId out_tensor = ParseTensorName(out_arg.node_name);
 
-      const NodeDef* retnode = gv.GetNode(out_tensor.node());
-      if (retnode == nullptr) {
+      if (output_nodes.count(out_tensor.node()) <= 0) {
         return errors::FailedPrecondition(
             "Unable to find return function_node ", out_tensor.node(), " for ",
             function_node->name());
       }
+      const NodeDef* retnode = output_nodes[out_tensor.node()];
 
       auto output_properties = gp.GetOutputProperties(retnode->name());
       int output_properties_size = output_properties.size();
@@ -1284,8 +1295,8 @@ class SymbolicShapeRefiner {
     }
 
     for (int i = grappler_function_item.inputs().size(),
-             iter_limit = function_node->input_size();
-         i < iter_limit; ++i) {
+             end = function_node->input_size();
+         i < end; ++i) {
       const string& input = function_node->input(i);
       if (!IsControlInput(input)) {
         return errors::FailedPrecondition(
@@ -2310,7 +2321,7 @@ Status GraphProperties::UpdateEnqueue(
 
   // TODO(bsteiner): handle EnqueueMany as well.
   std::vector<ShapeAndType> shapes_and_types;
-  for (int i = 1, iter_limit = ctx->input_types.size(); i < iter_limit; ++i) {
+  for (int i = 1, end = ctx->input_types.size(); i < end; ++i) {
     GraphView::InputPort inp(enqueue_node, i);
     GraphView::OutputPort fanin = shape_refiner->graph().GetRegularFanin(inp);
     InferenceContext* in = shape_refiner->GetContext(fanin.node);

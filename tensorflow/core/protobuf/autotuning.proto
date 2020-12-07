@@ -10,7 +10,7 @@ package tensorflow;
 import "google/protobuf/any.proto";
 import "google/protobuf/duration.proto";
 
-option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/core_protos_go_proto";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
 
 message CudnnVersion {
   int32 major = 1;

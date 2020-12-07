@@ -23,7 +23,14 @@ TfLiteDelegate* NnApiDelegate() {
   return delegate;
 }
 
+StatefulNnApiDelegate::StatefulNnApiDelegate(const NnApi* /* nnapi */)
+    : StatefulNnApiDelegate() {}
+
 StatefulNnApiDelegate::StatefulNnApiDelegate(Options /* options */)
+    : StatefulNnApiDelegate() {}
+
+StatefulNnApiDelegate::StatefulNnApiDelegate(const NnApi* /* nnapi */,
+                                             Options /* options */)
     : StatefulNnApiDelegate() {}
 
 StatefulNnApiDelegate::StatefulNnApiDelegate()

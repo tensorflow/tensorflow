@@ -375,7 +375,7 @@ The `operand` is broadcast to the shape described by `out_dim_size`.
 `broadcast_dimensions` maps the dimensions of `operand` to the dimensions of the
 target shape, i.e. the i'th dimension of the operand is mapped to the
 broadcast_dimension\[i\]'th dimension of the output shape. The dimensions of
-`operand` must have size 1 or be the same size as the dimension in in the output
+`operand` must have size 1 or be the same size as the dimension in the output
 shape they are mapped to. The remaining dimensions are filled with dimensions of
 size 1. Degenerate-dimension broadcasting then broadcasts along these degenerate
 dimensions to reach the output shape. The semantics are described in detail on
@@ -1235,7 +1235,10 @@ floating-point types.
 
 Where `Op` is one of `Eq` (equal-to), `Ne` (not equal-to), `Ge`
 (greater-or-equal-than), `Gt` (greater-than), `Le` (less-or-equal-than), `Lt`
-(less-than).
+(less-than). Another set of operators, EqTotalOrder, NeTotalOrder, GeTotalOrder,
+GtTotalOrder, LeTotalOrder, and LtTotalOrder, provide the same functionalities,
+except that they additionally support a total order over the floating point
+numbers, by enforcing -NaN < -Inf < -Finite < -0 < +0 < +Finite < +Inf < +NaN.
 
 Arguments | Type    | Semantics
 --------- | ------- | ----------------------------------------
@@ -1327,7 +1330,7 @@ array with the same shape. It is allowed for `operand` to be a scalar (rank 0).
 The XLA FFT operation implements the forward and inverse Fourier Transforms for
 real and complex inputs/outputs. Multidimensional FFTs on up to 3 axes are
 supported, except on TPU, where only a single axis is supported (please file a
-github issue if you require higher order).
+GitHub issue if you require higher order).
 
 See also
 [`XlaBuilder::Fft`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).

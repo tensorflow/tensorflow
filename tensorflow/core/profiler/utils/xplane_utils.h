@@ -18,9 +18,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/core/profiler/utils/trace_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -39,17 +41,16 @@ std::vector<const XPlane*> FindPlanesWithPrefix(const XSpace& space,
 std::vector<XPlane*> FindMutablePlanesWithPrefix(XSpace* space,
                                                  absl::string_view prefix);
 
-// Returns true if event is nested by parent.
-bool IsNested(const tensorflow::profiler::XEvent& event,
-              const tensorflow::profiler::XEvent& parent);
+// Returns the plane with the given id or nullptr if not found.
+const XLine* FindLineWithId(const XPlane& plane, int64 id);
 
-void AddOrUpdateIntStat(int64 metadata_id, int64 value,
-                        tensorflow::profiler::XEvent* event);
+XStat* FindOrAddMutableStat(const XStatMetadata& stat_metadata, XEvent* event);
 
-void AddOrUpdateStrStat(int64 metadata_id, absl::string_view value,
-                        tensorflow::profiler::XEvent* event);
+void RemovePlane(XSpace* space, const XPlane* plane);
+void RemoveLine(XPlane* plane, const XLine* line);
+void RemoveEvents(XLine* line,
+                  const absl::flat_hash_set<const XEvent*>& events);
 
-void RemovePlaneWithName(XSpace* space, absl::string_view name);
 void RemoveEmptyPlanes(XSpace* space);
 void RemoveEmptyLines(XPlane* plane);
 
@@ -75,6 +76,26 @@ void SortXPlane(XPlane* plane);
 // Sorts each plane of the XSpace.
 void SortXSpace(XSpace* space);
 
+// Functor that compares XEvents for sorting by timespan.
+struct XEventsComparator {
+  bool operator()(const XEvent* a, const XEvent* b) const;
+};
+
+// Returns a sorted vector of all XEvents in the given XPlane.
+template <class Compare>
+std::vector<XEvent*> GetSortedEvents(XPlane* plane, Compare comp,
+                                     bool include_derived_events = false) {
+  std::vector<XEvent*> events;
+  for (XLine& line : *plane->mutable_lines()) {
+    if (!include_derived_events && IsDerivedThreadId(line.id())) continue;
+    for (XEvent& event : *line.mutable_events()) {
+      events.push_back(&event);
+    }
+  }
+  absl::c_sort(events, XEventsComparator());
+  return events;
+}
+
 // Normalize timestamps by time-shifting to start_time_ns_ as origin.
 void NormalizeTimestamps(XPlane* plane, uint64 start_time_ns);
 void NormalizeTimestamps(XSpace* space, uint64 start_time_ns);
@@ -88,6 +109,9 @@ void MergePlanes(const XPlane& src_plane, XPlane* dst_plane);
 // Plane's start timestamp is defined as the minimum of all lines' start
 // timestamps. If zero line exists, return 0;
 uint64 GetStartTimestampNs(const XPlane& plane);
+
+// Returns true if there are no XEvents.
+bool IsEmpty(const XSpace& space);
 
 }  // namespace profiler
 }  // namespace tensorflow

@@ -28,12 +28,20 @@ class SaveContext(threading.local):
   def __init__(self):
     super(SaveContext, self).__init__()
     self._in_save_context = False
+    self._options = None
 
-  def enter_save_context(self):
+  def options(self):
+    if not self.in_save_context():
+      raise ValueError("not in a SaveContext")
+    return self._options
+
+  def enter_save_context(self, options):
     self._in_save_context = True
+    self._options = options
 
   def exit_save_context(self):
     self._in_save_context = False
+    self._options = None
 
   def in_save_context(self):
     return self._in_save_context
@@ -42,8 +50,10 @@ _save_context = SaveContext()
 
 
 @contextlib.contextmanager
-def save_context():
-  _save_context.enter_save_context()
+def save_context(options):
+  if in_save_context():
+    raise ValueError("already in a SaveContext")
+  _save_context.enter_save_context(options)
   try:
     yield
   finally:
@@ -54,3 +64,7 @@ def in_save_context():
   """Returns whether under a save context."""
   return _save_context.in_save_context()
 
+
+def get_save_options():
+  """Returns the save options if under a save context."""
+  return _save_context.options()

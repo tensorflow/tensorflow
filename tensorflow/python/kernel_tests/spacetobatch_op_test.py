@@ -374,7 +374,7 @@ class SpaceToBatchErrorHandlingTest(test.TestCase, PythonOpImpl):
     block_size = 10
     with self.assertRaises(ValueError):
       out_tf = self.space_to_batch(x_np, paddings, block_size)
-      out_tf.eval()
+      self.evaluate(out_tf)
 
   @test_util.run_deprecated_v1
   def testBlockSizeNotDivisibleWidth(self):

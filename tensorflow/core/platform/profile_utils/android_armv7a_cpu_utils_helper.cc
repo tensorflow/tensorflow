@@ -54,12 +54,11 @@ uint64 AndroidArmV7ACpuUtilsHelper::GetCurrentClockCycle() {
   return static_cast<uint64>(count);
 }
 
-void AndroidArmV7ACpuUtilsHelper::EnableClockCycleProfiling(const bool enable) {
+void AndroidArmV7ACpuUtilsHelper::EnableClockCycleProfiling() {
   if (!is_initialized_) {
     // Initialize here to avoid unnecessary initialization
     InitializeInternal();
   }
-  if (enable) {
     const int64 cpu0_scaling_min = ReadCpuFrequencyFile(0, "scaling_min");
     const int64 cpu0_scaling_max = ReadCpuFrequencyFile(0, "scaling_max");
     if (cpu0_scaling_max != cpu0_scaling_min) {
@@ -69,9 +68,14 @@ void AndroidArmV7ACpuUtilsHelper::EnableClockCycleProfiling(const bool enable) {
     }
     ResetClockCycle();
     ioctl(fd_, PERF_EVENT_IOC_ENABLE, 0);
-  } else {
-    ioctl(fd_, PERF_EVENT_IOC_DISABLE, 0);
+}
+
+void AndroidArmV7ACpuUtilsHelper::DisableClockCycleProfiling() {
+  if (!is_initialized_) {
+    // Initialize here to avoid unnecessary initialization
+    InitializeInternal();
   }
+  ioctl(fd_, PERF_EVENT_IOC_DISABLE, 0);
 }
 
 int64 AndroidArmV7ACpuUtilsHelper::CalculateCpuFrequency() {

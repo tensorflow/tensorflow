@@ -24,20 +24,20 @@ namespace reference_ops {
 // Element-wise mul that can often be used for inner loop of broadcast Mul as
 // well as the non-broadcast Mul.
 inline void MulElementwise(int size, const ArithmeticParams& params,
-                           const uint8* input1_data, const uint8* input2_data,
-                           uint8* output_data) {
+                           const uint8_t* input1_data,
+                           const uint8_t* input2_data, uint8_t* output_data) {
   for (int i = 0; i < size; ++i) {
-    const int32 input1_val = params.input1_offset + input1_data[i];
-    const int32 input2_val = params.input2_offset + input2_data[i];
-    const int32 unclamped_result =
+    const int32_t input1_val = params.input1_offset + input1_data[i];
+    const int32_t input2_val = params.input2_offset + input2_data[i];
+    const int32_t unclamped_result =
         params.output_offset +
         MultiplyByQuantizedMultiplier(input1_val * input2_val,
                                       params.output_multiplier,
                                       params.output_shift);
-    const int32 clamped_output =
+    const int32_t clamped_output =
         std::min(params.quantized_activation_max,
                  std::max(params.quantized_activation_min, unclamped_result));
-    output_data[i] = static_cast<uint8>(clamped_output);
+    output_data[i] = static_cast<uint8_t>(clamped_output);
   }
 }
 
@@ -60,9 +60,9 @@ inline void Mul(const ArithmeticParams& params,
 }
 
 inline void Mul(const ArithmeticParams& params,
-                const RuntimeShape& input1_shape, const uint8* input1_data,
-                const RuntimeShape& input2_shape, const uint8* input2_data,
-                const RuntimeShape& output_shape, uint8* output_data) {
+                const RuntimeShape& input1_shape, const uint8_t* input1_data,
+                const RuntimeShape& input2_shape, const uint8_t* input2_data,
+                const RuntimeShape& output_shape, uint8_t* output_data) {
   TFLITE_DCHECK_LE(params.quantized_activation_min,
                    params.quantized_activation_max);
   const int flat_size =
@@ -73,11 +73,11 @@ inline void Mul(const ArithmeticParams& params,
 
 inline void BroadcastMul4DSlow(const ArithmeticParams& params,
                                const RuntimeShape& input1_shape,
-                               const uint8* input1_data,
+                               const uint8_t* input1_data,
                                const RuntimeShape& input2_shape,
-                               const uint8* input2_data,
+                               const uint8_t* input2_data,
                                const RuntimeShape& output_shape,
-                               uint8* output_data) {
+                               uint8_t* output_data) {
   NdArrayDesc<4> desc1;
   NdArrayDesc<4> desc2;
   NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
@@ -89,22 +89,22 @@ inline void BroadcastMul4DSlow(const ArithmeticParams& params,
     for (int y = 0; y < extended_output_shape.Dims(1); ++y) {
       for (int x = 0; x < extended_output_shape.Dims(2); ++x) {
         for (int c = 0; c < extended_output_shape.Dims(3); ++c) {
-          const int32 input1_val =
+          const int32_t input1_val =
               params.input1_offset +
               input1_data[SubscriptToIndex(desc1, b, y, x, c)];
-          const int32 input2_val =
+          const int32_t input2_val =
               params.input2_offset +
               input2_data[SubscriptToIndex(desc2, b, y, x, c)];
-          const int32 unclamped_result =
+          const int32_t unclamped_result =
               params.output_offset +
               MultiplyByQuantizedMultiplier(input1_val * input2_val,
                                             params.output_multiplier,
                                             params.output_shift);
-          const int32 clamped_output = std::min(
+          const int32_t clamped_output = std::min(
               params.quantized_activation_max,
               std::max(params.quantized_activation_min, unclamped_result));
           output_data[Offset(extended_output_shape, b, y, x, c)] =
-              static_cast<uint8>(clamped_output);
+              static_cast<uint8_t>(clamped_output);
         }
       }
     }

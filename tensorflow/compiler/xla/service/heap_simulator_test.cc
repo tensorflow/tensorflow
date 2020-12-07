@@ -228,7 +228,7 @@ const char kFinish[] = "Finish";
 using CallSequence = std::vector<std::pair<string, const HloValue*>>;
 
 // HeapCallRecorder is a dummy heap algorithm that simply records its calls.
-class HeapCallRecorder : public HeapAlgorithm {
+class HeapCallRecorder : public HeapAlgorithm<HloValue> {
  public:
   explicit HeapCallRecorder(CallSequence* calls) : calls_(calls) {}
   ~HeapCallRecorder() override {}
@@ -256,12 +256,15 @@ class HeapCallRecorder : public HeapAlgorithm {
   }
   Result Finish() override {
     calls_->emplace_back(kFinish, nullptr);
-    return result_;
+    HeapSimulator::Result<HloValue> result;
+    result.heap_size = result_.heap_size;
+    result.heap_results.emplace_back(std::move(result_));
+    return result;
   }
 
  private:
   CallSequence* calls_;
-  Result result_;
+  HeapSimulator::HeapResult<HloValue> result_;
 };
 
 // HeapSimulatorTracker runs the heap simulator, recording the sequence of calls
@@ -335,7 +338,8 @@ class HeapSimulatorTracker {
 
   int64 OffsetAt(const HloInstruction* instruction, const ShapeIndex& index) {
     const HloValue* buffer = BufferAt(instruction, index);
-    return result_.chunk_map.at(buffer).offset;
+    CHECK_EQ(1, result_.heap_results.size());
+    return result_.heap_results.at(0).chunk_map.at(buffer).offset;
   }
 
   // Ensures the expected sequence of Alloc/Free/Finish calls was performed.
@@ -396,7 +400,7 @@ class HeapSimulatorTracker {
   std::unique_ptr<HloModule> module_;
   std::unique_ptr<HloAliasAnalysis> alias_analysis_;
   CallSequence actual_calls_;
-  HeapSimulator::Result result_;
+  HeapSimulator::Result<HloValue> result_;
 };
 
 class HeapSimulatorTest : public HloTestBase {
@@ -976,12 +980,12 @@ class HeapAlgorithmTestBase : public ::testing::Test {
 class NoFragmentationStatsHeapTest : public HeapAlgorithmTestBase {};
 
 TEST_F(NoFragmentationStatsHeapTest, Empty) {
-  NoFragmentationStatsHeap heap;
+  NoFragmentationStatsHeap<HloValue> heap;
   EXPECT_EQ(0, heap.Finish().heap_size);
 }
 
 TEST_F(NoFragmentationStatsHeapTest, Simple) {
-  NoFragmentationStatsHeap heap;
+  NoFragmentationStatsHeap<HloValue> heap;
   heap.Alloc(buffer_a_, 10);
   heap.Alloc(buffer_b_, 20);
   heap.Alloc(buffer_c_, 30);
@@ -994,7 +998,7 @@ TEST_F(NoFragmentationStatsHeapTest, Simple) {
 }
 
 TEST_F(NoFragmentationStatsHeapTest, Mixed) {
-  NoFragmentationStatsHeap heap;
+  NoFragmentationStatsHeap<HloValue> heap;
   heap.Alloc(buffer_a_, 10);  // max: A
 
   heap.Alloc(buffer_b_, 20);  // max: A+B
@@ -1013,7 +1017,7 @@ TEST_F(NoFragmentationStatsHeapTest, Mixed) {
 class GlobalDecreasingSizeBestFitHeapTest : public HeapAlgorithmTestBase {
  protected:
   class InheritedGlobalDecreasingSizeBestFitHeap
-      : public GlobalDecreasingSizeBestFitHeap {
+      : public GlobalDecreasingSizeBestFitHeap<HloValue> {
    public:
     InheritedGlobalDecreasingSizeBestFitHeap()
         : GlobalDecreasingSizeBestFitHeap(/*alignment=*/1) {}
@@ -1048,10 +1052,11 @@ class GlobalDecreasingSizeBestFitHeapTest : public HeapAlgorithmTestBase {
 };
 
 TEST_F(GlobalDecreasingSizeBestFitHeapTest, Empty) {
-  GlobalDecreasingSizeBestFitHeap heap(/*alignment=*/1);
-  const HeapSimulator::Result result = heap.Finish();
+  GlobalDecreasingSizeBestFitHeap<HloValue> heap(/*alignment=*/1);
+  const HeapSimulator::Result<HloValue> result = heap.Finish();
   EXPECT_EQ(0, result.heap_size);
-  EXPECT_EQ(0, result.chunk_map.size());
+  EXPECT_EQ(1, result.heap_results.size());
+  EXPECT_EQ(0, result.heap_results.at(0).chunk_map.size());
 }
 
 TEST_F(GlobalDecreasingSizeBestFitHeapTest, DecreasingSize) {
@@ -1068,7 +1073,7 @@ TEST_F(GlobalDecreasingSizeBestFitHeapTest, DecreasingSize) {
   //   |         |   d   |
   //   |         +-------+
   //   -----------------> time
-  GlobalDecreasingSizeBestFitHeap heap(/*alignment=*/1);
+  GlobalDecreasingSizeBestFitHeap<HloValue> heap(/*alignment=*/1);
   heap.Alloc(buffer_a_, 10);
   heap.Alloc(buffer_b_, 30);
   heap.Alloc(buffer_c_, 20);
@@ -1078,7 +1083,10 @@ TEST_F(GlobalDecreasingSizeBestFitHeapTest, DecreasingSize) {
   heap.Free(buffer_c_, 20);
   heap.Free(buffer_d_, 40);
 
-  const HeapSimulator::Result result = heap.Finish();
+  const HeapSimulator::Result<HloValue> results = heap.Finish();
+  EXPECT_EQ(1, results.heap_results.size());
+  const HeapSimulator::HeapResult<HloValue>& result =
+      results.heap_results.at(0);
   EXPECT_EQ(100, result.heap_size);
   EXPECT_EQ(10, result.chunk_map.at(buffer_a_).size);
   EXPECT_EQ(30, result.chunk_map.at(buffer_b_).size);
@@ -1107,7 +1115,7 @@ TEST_F(GlobalDecreasingSizeBestFitHeapTest, DecreasingSizeWithAlignment) {
   //   |         |       |
   //   |         +-------+
   //   ---------------------> time
-  GlobalDecreasingSizeBestFitHeap heap(/*alignment=*/20);
+  GlobalDecreasingSizeBestFitHeap<HloValue> heap(/*alignment=*/20);
   heap.Alloc(buffer_a_, 10);
   heap.Alloc(buffer_b_, 20);
   heap.Alloc(buffer_c_, 50);
@@ -1117,7 +1125,10 @@ TEST_F(GlobalDecreasingSizeBestFitHeapTest, DecreasingSizeWithAlignment) {
   heap.Free(buffer_c_, 50);
   heap.Free(buffer_d_, 40);
 
-  const HeapSimulator::Result result = heap.Finish();
+  const HeapSimulator::Result<HloValue> results = heap.Finish();
+  EXPECT_EQ(1, results.heap_results.size());
+  const HeapSimulator::HeapResult<HloValue>& result =
+      results.heap_results.at(0);
   EXPECT_EQ(120, result.heap_size);
   EXPECT_EQ(10, result.chunk_map.at(buffer_a_).size);
   EXPECT_EQ(20, result.chunk_map.at(buffer_b_).size);
@@ -1148,7 +1159,7 @@ TEST_F(GlobalDecreasingSizeBestFitHeapTest, BestFit) {
   //   |           |       |
   //   |           +-------+
   //   ---------------------> time
-  GlobalDecreasingSizeBestFitHeap heap(/*alignment=*/1);
+  GlobalDecreasingSizeBestFitHeap<HloValue> heap(/*alignment=*/1);
   heap.Alloc(buffer_a_, 10);
   heap.Alloc(buffer_b_, 20);
   heap.Alloc(buffer_c_, 40);
@@ -1160,7 +1171,10 @@ TEST_F(GlobalDecreasingSizeBestFitHeapTest, BestFit) {
   heap.Free(buffer_d_, 30);
   heap.Free(buffer_e_, 50);
 
-  const HeapSimulator::Result result = heap.Finish();
+  const HeapSimulator::Result<HloValue> results = heap.Finish();
+  EXPECT_EQ(1, results.heap_results.size());
+  const HeapSimulator::HeapResult<HloValue>& result =
+      results.heap_results.at(0);
   EXPECT_EQ(140, result.heap_size);
   EXPECT_EQ(10, result.chunk_map.at(buffer_a_).size);
   EXPECT_EQ(20, result.chunk_map.at(buffer_b_).size);
@@ -1184,7 +1198,7 @@ TEST_F(GlobalDecreasingSizeBestFitHeapTest, Colocated) {
   //   ||      |+----+|       |
   //   |+--a---++-b--++---c---+
   //   ---------------------> time
-  GlobalDecreasingSizeBestFitHeap heap(/*alignment=*/1);
+  GlobalDecreasingSizeBestFitHeap<HloValue> heap(/*alignment=*/1);
   heap.Alloc(buffer_a_, 40);
   heap.Free(buffer_a_, 40);
   heap.Alloc(buffer_b_, 20);
@@ -1192,7 +1206,10 @@ TEST_F(GlobalDecreasingSizeBestFitHeapTest, Colocated) {
   heap.ShareWith(buffer_c_, buffer_a_, 40);
   heap.Free(buffer_c_, 40);
 
-  const HeapSimulator::Result result = heap.Finish();
+  const HeapSimulator::Result<HloValue> results = heap.Finish();
+  EXPECT_EQ(1, results.heap_results.size());
+  const HeapSimulator::HeapResult<HloValue>& result =
+      results.heap_results.at(0);
   EXPECT_EQ(40, result.heap_size);
   EXPECT_EQ(40, result.chunk_map.at(buffer_a_).size);
   EXPECT_EQ(20, result.chunk_map.at(buffer_b_).size);
@@ -1212,7 +1229,7 @@ TEST_F(GlobalDecreasingSizeBestFitHeapTest, ColocatedII) {
   //   ||      |      |       | <--- colocate with a
   //   |+--a---+      +---c---+
   //   ---------------------> time
-  GlobalDecreasingSizeBestFitHeap heap(/*alignment=*/1);
+  GlobalDecreasingSizeBestFitHeap<HloValue> heap(/*alignment=*/1);
   heap.Alloc(buffer_a_, 40);
   heap.Free(buffer_a_, 40);
   heap.Alloc(buffer_b_, 20);
@@ -1221,7 +1238,10 @@ TEST_F(GlobalDecreasingSizeBestFitHeapTest, ColocatedII) {
   heap.Free(buffer_c_, 40);
   heap.Free(buffer_b_, 20);
 
-  const HeapSimulator::Result result = heap.Finish();
+  const HeapSimulator::Result<HloValue> results = heap.Finish();
+  EXPECT_EQ(1, results.heap_results.size());
+  const HeapSimulator::HeapResult<HloValue>& result =
+      results.heap_results.at(0);
   EXPECT_EQ(60, result.heap_size);
   EXPECT_EQ(40, result.chunk_map.at(buffer_a_).size);
   EXPECT_EQ(20, result.chunk_map.at(buffer_b_).size);
@@ -1242,7 +1262,7 @@ TEST_F(GlobalDecreasingSizeBestFitHeapTest, ColocatedIII) {
   //   |       |               |
   //   |       +-------b-------+
   //   ---------------------> time
-  GlobalDecreasingSizeBestFitHeap heap(/*alignment=*/1);
+  GlobalDecreasingSizeBestFitHeap<HloValue> heap(/*alignment=*/1);
   heap.Alloc(buffer_a_, 10);
   heap.Free(buffer_a_, 10);
   heap.Alloc(buffer_b_, 30);
@@ -1251,7 +1271,10 @@ TEST_F(GlobalDecreasingSizeBestFitHeapTest, ColocatedIII) {
   heap.Free(buffer_c_, 10);
   heap.Free(buffer_b_, 30);
 
-  const HeapSimulator::Result result = heap.Finish();
+  const HeapSimulator::Result<HloValue> results = heap.Finish();
+  EXPECT_EQ(1, results.heap_results.size());
+  const HeapSimulator::HeapResult<HloValue>& result =
+      results.heap_results.at(0);
   EXPECT_EQ(40, result.heap_size);
   EXPECT_EQ(10, result.chunk_map.at(buffer_a_).size);
   EXPECT_EQ(30, result.chunk_map.at(buffer_b_).size);
@@ -1309,6 +1332,122 @@ TEST_F(GlobalDecreasingSizeBestFitHeapTest, ChunkCandidate) {
   EXPECT_EQ(pair(25, 35), heap_.FindChunkCandidate(buffer_g_, 10, 4, 8, 15));
   heap_.CommitChunk();  // offset: 25, size: 10, start: 4, end: 8
   // Preferred offset 15 could not be given because it is occupied.
+}
+
+class ConstrainedGlobalDecreasingSizeBestFitHeapTest
+    : public HeapAlgorithmTestBase {};
+
+TEST_F(ConstrainedGlobalDecreasingSizeBestFitHeapTest, DecreasingSize) {
+  // space
+  //   ^
+  //   |      +-------+
+  //   |      +---c---+
+  //   |    +-------+
+  //   |    |   b   |
+  //   |    +-------+
+  //   | ................ // split into two allocations.
+  //   |  +---a---+
+  //   |         +-------+
+  //   |         |       |
+  //   |         |   d   |
+  //   |         +-------+
+  //   -----------------> time
+  ConstrainedGlobalDecreasingSizeBestFitHeap heap(/*size_limit_per_heap=*/50,
+                                                  /*alignment=*/1);
+  heap.Alloc(buffer_a_, 10);
+  heap.Alloc(buffer_b_, 30);
+  heap.Alloc(buffer_c_, 20);
+  heap.Alloc(buffer_d_, 40);
+  heap.Free(buffer_a_, 10);
+  heap.Free(buffer_b_, 30);
+  heap.Free(buffer_c_, 20);
+  heap.Free(buffer_d_, 40);
+
+  const HeapSimulator::Result<HloValue> result = heap.Finish();
+  EXPECT_EQ(100, result.heap_size);
+  EXPECT_EQ(2, result.heap_results.size());
+
+  EXPECT_TRUE(result.heap_results[0].chunk_map.contains(buffer_a_));
+  EXPECT_TRUE(result.heap_results[0].chunk_map.contains(buffer_d_));
+  EXPECT_EQ(10, result.heap_results[0].chunk_map.at(buffer_a_).size);
+  EXPECT_EQ(40, result.heap_results[0].chunk_map.at(buffer_d_).size);
+  EXPECT_EQ(40, result.heap_results[0].chunk_map.at(buffer_a_).offset);
+  EXPECT_EQ(0, result.heap_results[0].chunk_map.at(buffer_d_).offset);
+}
+
+TEST_F(ConstrainedGlobalDecreasingSizeBestFitHeapTest,
+       DecreasingSizeWithAlignment) {
+  // space
+  //   ^
+  //   |      +-------+
+  //   |      +---b---+
+  //   |            +-------+
+  //   |            |       |
+  //   |            |   d   |
+  //   |            +-------+
+  //   | ...................
+  //   |  +---a---+
+  //   |
+  //   |         +-------+
+  //   |         |       |
+  //   |         |   c   |
+  //   |         |       |
+  //   |         +-------+
+  //   ---------------------> time
+  ConstrainedGlobalDecreasingSizeBestFitHeap heap(/*size_limit_per_heap=*/70,
+                                                  /*alignment=*/20);
+  heap.Alloc(buffer_a_, 10);
+  heap.Alloc(buffer_b_, 20);
+  heap.Alloc(buffer_c_, 50);
+  heap.Free(buffer_a_, 10);
+  heap.Alloc(buffer_d_, 40);
+  heap.Free(buffer_b_, 20);
+  heap.Free(buffer_c_, 50);
+  heap.Free(buffer_d_, 40);
+
+  const HeapSimulator::Result<HloValue> result = heap.Finish();
+  EXPECT_EQ(130, result.heap_size);  // 70 + 60
+  EXPECT_EQ(2, result.heap_results.size());
+
+  EXPECT_TRUE(result.heap_results[0].chunk_map.contains(buffer_a_));
+  EXPECT_TRUE(result.heap_results[0].chunk_map.contains(buffer_c_));
+  EXPECT_EQ(10, result.heap_results[0].chunk_map.at(buffer_a_).size);
+  EXPECT_EQ(50, result.heap_results[0].chunk_map.at(buffer_c_).size);
+  EXPECT_EQ(60, result.heap_results[0].chunk_map.at(buffer_a_).offset);
+  EXPECT_EQ(0, result.heap_results[0].chunk_map.at(buffer_c_).offset);
+}
+
+TEST_F(ConstrainedGlobalDecreasingSizeBestFitHeapTest, ColocatedII) {
+  // space
+  //   ^
+  //   |       +---------------+
+  //   |       +-------b-------+
+  //   | ....................
+  //   |+------+      +-------+
+  //   ||      |      |       |
+  //   ||      |      |       | <--- colocate with a
+  //   |+--a---+      +---c---+
+  //   ---------------------> time
+  ConstrainedGlobalDecreasingSizeBestFitHeap heap(/*size_limit_per_heap=*/50,
+                                                  /*alignment=*/20);
+  heap.Alloc(buffer_a_, 30);
+  heap.Free(buffer_a_, 30);
+  heap.Alloc(buffer_b_, 20);
+
+  heap.ShareWith(buffer_c_, buffer_a_, 40);
+  heap.Free(buffer_c_, 40);
+  heap.Free(buffer_b_, 20);
+
+  const HeapSimulator::Result<HloValue> result = heap.Finish();
+  EXPECT_EQ(50, result.heap_size);
+  EXPECT_EQ(2, result.heap_results.size());
+
+  EXPECT_TRUE(result.heap_results[0].chunk_map.contains(buffer_a_));
+  EXPECT_TRUE(result.heap_results[0].chunk_map.contains(buffer_c_));
+  EXPECT_EQ(30, result.heap_results[0].chunk_map.at(buffer_a_).size);
+  EXPECT_EQ(30, result.heap_results[0].chunk_map.at(buffer_c_).size);
+  EXPECT_EQ(0, result.heap_results[0].chunk_map.at(buffer_a_).offset);
+  EXPECT_EQ(0, result.heap_results[0].chunk_map.at(buffer_c_).offset);
 }
 
 class IntervalTreeTest : public ::testing::Test {};

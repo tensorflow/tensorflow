@@ -155,7 +155,10 @@ cc_library(
     name = "custom_registry",
     srcs = ["custom_registry.cc"],
     hdrs = ["custom_registry.h"],
-    deps = ["//tensorflow/lite/delegates/gpu/gl:node_shader"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/gl:node_shader",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
 )
 
 cc_library(
@@ -317,13 +320,11 @@ cc_library(
     srcs = ["mean.cc"],
     hdrs = ["mean.h"],
     deps = [
-        "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/gl:node_shader",
         "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -332,6 +333,7 @@ cc_test(
     srcs = ["mean_test.cc"],
     linkstatic = True,
     tags = [
+        "no_mac",  # TODO(b/171882090)
         "notap",
         "tflite_not_portable_ios",
     ],
@@ -348,6 +350,7 @@ cc_library(
     srcs = ["mul.cc"],
     hdrs = ["mul.h"],
     deps = [
+        "//tensorflow/lite/delegates/gpu/common:convert",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
@@ -470,7 +473,6 @@ cc_library(
     srcs = ["quantize_and_dequantize.cc"],
     hdrs = ["quantize_and_dequantize.h"],
     deps = [
-        "//tensorflow/lite/delegates/gpu/common:convert",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:shape",
@@ -645,7 +647,6 @@ cc_test(
         ":space_to_depth",
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:shape",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -673,6 +674,8 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/gl:request_gpu_info",
         "//tensorflow/lite/delegates/gpu/gl:runtime_options",
         "//tensorflow/lite/delegates/gpu/gl/workgroups:default_calculator",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],
@@ -720,7 +723,6 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/gl:node_shader",
-        "//tensorflow/lite/delegates/gpu/gl:variable",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -779,6 +781,7 @@ cc_library(
                "//conditions:default": NON_TFLITE_GPU_BINARY_RELEASE_OPERATORS,
            }) + [
         ":custom_registry",
+        "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/gl:node_shader",

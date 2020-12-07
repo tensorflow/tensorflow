@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/infer_fusibility_op_interface.h"
+#include "mlir-hlo/Dialect/mhlo/IR/infer_fusibility_op_interface.h"
 
 namespace mlir {
 
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/infer_fusibility_op_interface.cc.inc"
+#include "mlir-hlo/Dialect/mhlo/IR/infer_fusibility_op_interface.cpp.inc"
 
 }  // namespace mlir

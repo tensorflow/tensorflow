@@ -42,11 +42,19 @@ from tensorflow.python.platform import test
 
 class InterpreterCustomOpsTest(test_util.TensorFlowTestCase):
 
-  def testRegisterer(self):
+  def testRegistererByName(self):
     interpreter = interpreter_wrapper.InterpreterWithCustomOps(
         model_path=resource_loader.get_path_to_datafile(
             'testdata/permute_float.tflite'),
         custom_op_registerers=['TF_TestRegisterer'])
+    self.assertTrue(interpreter._safe_to_run())
+    self.assertEqual(test_registerer.get_num_test_registerer_calls(), 1)
+
+  def testRegistererByFunc(self):
+    interpreter = interpreter_wrapper.InterpreterWithCustomOps(
+        model_path=resource_loader.get_path_to_datafile(
+            'testdata/permute_float.tflite'),
+        custom_op_registerers=[test_registerer.TF_TestRegisterer])
     self.assertTrue(interpreter._safe_to_run())
     self.assertEqual(test_registerer.get_num_test_registerer_calls(), 1)
 
@@ -72,14 +80,16 @@ class InterpreterTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegex(ValueError, 'num_threads should >= 1'):
       interpreter_wrapper.Interpreter(
           model_path=resource_loader.get_path_to_datafile(
-              'testdata/permute_float.tflite'), num_threads=-1)
+              'testdata/permute_float.tflite'),
+          num_threads=-1)
 
   def testThreads_WrongType(self):
     with self.assertRaisesRegex(ValueError,
                                 'type of num_threads should be int'):
       interpreter_wrapper.Interpreter(
           model_path=resource_loader.get_path_to_datafile(
-              'testdata/permute_float.tflite'), num_threads=4.2)
+              'testdata/permute_float.tflite'),
+          num_threads=4.2)
 
   def testFloat(self):
     interpreter = interpreter_wrapper.Interpreter(
@@ -116,7 +126,8 @@ class InterpreterTest(test_util.TensorFlowTestCase):
   def testFloatWithTwoThreads(self):
     interpreter = interpreter_wrapper.Interpreter(
         model_path=resource_loader.get_path_to_datafile(
-            'testdata/permute_float.tflite'), num_threads=2)
+            'testdata/permute_float.tflite'),
+        num_threads=2)
     interpreter.allocate_tensors()
 
     input_details = interpreter.get_input_details()
@@ -158,8 +169,7 @@ class InterpreterTest(test_util.TensorFlowTestCase):
 
     test_input = np.array([[1, 2, 3, 4]], dtype=np.uint8)
     expected_output = np.array([[4, 3, 2, 1]], dtype=np.uint8)
-    interpreter.resize_tensor_input(input_details[0]['index'],
-                                    test_input.shape)
+    interpreter.resize_tensor_input(input_details[0]['index'], test_input.shape)
     interpreter.allocate_tensors()
     interpreter.set_tensor(input_details[0]['index'], test_input)
     interpreter.invoke()
@@ -207,6 +217,18 @@ class InterpreterTest(test_util.TensorFlowTestCase):
 
     output_data = interpreter.get_tensor(output_details[0]['index'])
     self.assertTrue((expected_output == output_data).all())
+
+  def testStringZeroDim(self):
+    data = b'abcd' + bytes(16)
+    interpreter = interpreter_wrapper.Interpreter(
+        model_path=resource_loader.get_path_to_datafile(
+            'testdata/gather_string_0d.tflite'))
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    interpreter.set_tensor(input_details[0]['index'], np.array(data))
+    test_input_tensor = interpreter.get_tensor(input_details[0]['index'])
+    self.assertEqual(len(data), len(test_input_tensor.item(0)))
 
   def testPerChannelParams(self):
     interpreter = interpreter_wrapper.Interpreter(
@@ -267,8 +289,7 @@ class InterpreterTestErrorPropagation(test_util.TensorFlowTestCase):
   def testInvalidModelFile(self):
     with self.assertRaisesRegex(ValueError,
                                 'Could not open \'totally_invalid_file_name\''):
-      interpreter_wrapper.Interpreter(
-          model_path='totally_invalid_file_name')
+      interpreter_wrapper.Interpreter(model_path='totally_invalid_file_name')
 
   def testInvokeBeforeReady(self):
     interpreter = interpreter_wrapper.Interpreter(
@@ -423,16 +444,19 @@ class InterpreterDelegateTest(test_util.TensorFlowTestCase):
     self.skipTest('TODO(b/142136355): fix flakiness and re-enable')
     # Track which order destructions were doned in
     destructions = []
+
     def register_destruction(x):
       destructions.append(
           x if isinstance(x, str) else six.ensure_text(x, 'utf-8'))
       return 0
+
     # Make a wrapper for the callback so we can send this to ctypes
     delegate = interpreter_wrapper.load_delegate(self._delegate_file)
     # Make an interpreter with the delegate
     interpreter = interpreter_wrapper.Interpreter(
         model_path=resource_loader.get_path_to_datafile(
-            'testdata/permute_float.tflite'), experimental_delegates=[delegate])
+            'testdata/permute_float.tflite'),
+        experimental_delegates=[delegate])
 
     class InterpreterDestroyCallback(object):
 

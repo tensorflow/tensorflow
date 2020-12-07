@@ -119,22 +119,24 @@ class BincountTest(test_util.TensorFlowTestCase):
       with self.assertRaises(errors.InvalidArgumentError):
         self.evaluate(bincount_ops.bincount([1, 2, 3, -1, 6, 8]))
 
-  @test_util.run_deprecated_v1
   def test_shape_function(self):
     # size must be scalar.
     with self.assertRaisesRegex(
-        ValueError, "Shape must be rank 0 but is rank 1 for .*Bincount"):
-      gen_math_ops.bincount([1, 2, 3, -1, 6, 8], [1], [])
+        (ValueError, errors.InvalidArgumentError),
+        "Shape must be rank 0 but is rank 1 .*Bincount"):
+      gen_math_ops.bincount([1, 2, 3, 1, 6, 8], [1], [])
     # size must be positive.
-    with self.assertRaisesRegex(ValueError, "must be non-negative"):
-      gen_math_ops.bincount([1, 2, 3, -1, 6, 8], -5, [])
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                "must be non-negative"):
+      gen_math_ops.bincount([1, 2, 3, 1, 6, 8], -5, [])
     # if size is a constant then the shape is known.
-    v1 = gen_math_ops.bincount([1, 2, 3, -1, 6, 8], 5, [])
+    v1 = gen_math_ops.bincount([1, 2, 3, 1, 6, 8], 5, [])
     self.assertAllEqual(v1.get_shape().as_list(), [5])
     # if size is a placeholder then the shape is unknown.
-    s = array_ops.placeholder(dtype=dtypes.int32)
-    v2 = gen_math_ops.bincount([1, 2, 3, -1, 6, 8], s, [])
-    self.assertAllEqual(v2.get_shape().as_list(), [None])
+    with ops.Graph().as_default():
+      s = array_ops.placeholder(dtype=dtypes.int32)
+      v2 = gen_math_ops.bincount([1, 2, 3, 1, 6, 8], s, [])
+      self.assertAllEqual(v2.get_shape().as_list(), [None])
 
 
 class BincountOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
@@ -322,9 +324,9 @@ class BincountOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     size = 10
     self._test_bincount_col_binary(num_rows, num_cols, size, dtype)
 
-  @test_util.run_deprecated_v1
   def test_invalid_rank(self):
-    with self.assertRaisesRegex(ValueError, "at most rank 2"):
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                "at most rank 2"):
       with test_util.use_gpu():
         self.evaluate(
             gen_math_ops.dense_bincount(

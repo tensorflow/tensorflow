@@ -34,6 +34,8 @@ import itertools
 
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.tf_export import tf_export
+
 
 from typing import Any, Callable, TypeVar
 
@@ -49,6 +51,7 @@ _GLOBAL_DISPATCHERS = []
 F = TypeVar("F", bound=Callable[..., Any])
 
 
+@tf_export("__internal__.dispatch.OpDispatcher", v1=[])
 class OpDispatcher(object):
   """Abstract base class for TensorFlow operator dispatchers.
 
@@ -92,6 +95,7 @@ class OpDispatcher(object):
     getattr(op, DISPATCH_ATTR).append(self)
 
 
+@tf_export("__internal__.dispatch.GlobalOpDispatcher", v1=[])
 class GlobalOpDispatcher(object):
   """Abstract base class for TensorFlow global operator dispatchers."""
 
@@ -199,6 +203,7 @@ def add_dispatch_list(target: F) -> F:
   return target
 
 
+@tf_export("__internal__.dispatch.add_dispatch_support", v1=[])
 def add_dispatch_support(target):
   """Decorator that adds a dispatch handling wrapper to an op."""
   def wrapper(*args, **kwargs):

@@ -66,12 +66,13 @@ PYBIND11_MODULE(_pywrap_tf_optimizer, m) {
          const std::string& graph_id,
          bool strip_default_attributes) -> py::bytes {
         tensorflow::ConfigProto config_proto;
-        if (!config_proto.ParseFromString(serialized_config_proto)) {
+        if (!config_proto.ParseFromString(
+                std::string(serialized_config_proto))) {
           throw std::invalid_argument(
               "The ConfigProto could not be parsed as a valid protocol buffer");
         }
         tensorflow::MetaGraphDef metagraph;
-        if (!metagraph.ParseFromString(serialized_metagraph)) {
+        if (!metagraph.ParseFromString(std::string(serialized_metagraph))) {
           throw std::invalid_argument(
               "The MetaGraphDef could not be parsed as a valid protocol "
               "buffer");

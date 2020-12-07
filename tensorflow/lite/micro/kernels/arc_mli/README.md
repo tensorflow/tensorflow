@@ -1,5 +1,12 @@
 # EmbARC MLI Library Based Optimizations of TensorFlow Lite Micro Kernels for ARC Platforms.
 
+## Maintainers
+
+*   [dzakhar](https://github.com/dzakhar)
+*   [JaccovG](https://github.com/JaccovG)
+
+## Introduction
+
 This folder contains kernel implementations which use optimized
 [embARC MLI Library](https://github.com/foss-for-synopsys-dwc-arc-processors/embarc_mli).
 It allows acceleration of inference operations which use int8 (asymmetric
@@ -58,7 +65,7 @@ quantization only, `dilation_ratio==1` 3. Average Pooling 4. Max Pooling 5.
 Fully Connected
 
 Currently only
-[/tensorflow/lite/micro/examples/person_detection_experimental](/tensorflow/lite/micro/examples/person_detection_experimental)
+[/tensorflow/lite/micro/examples/person_detection](/tensorflow/lite/micro/examples/person_detection)
 is quantized using this specification. Other examples can be executed on
 ARC-based targets, but will only use reference kernels.
 

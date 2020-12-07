@@ -47,7 +47,7 @@ class DestroyTensorHandleNode : public tensorflow::AsyncEagerNode {
     // well. We don't want this request poison following requests since it is
     // safe to ignore a failing destroy tensor handle request.
     eager_client_->EnqueueAsync(
-        request_.get(), response,
+        /*call_opts=*/nullptr, request_.get(), response,
         [response, ready, done](const tensorflow::Status& s) {
           // Omit the warning if:
           // 1. The remote tensor isn't ready.

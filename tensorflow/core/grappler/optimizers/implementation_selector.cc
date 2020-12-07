@@ -41,6 +41,7 @@ namespace grappler {
 
 constexpr char kConstOp[] = "Const";
 constexpr char kCaseOp[] = "Case";
+constexpr char kStatelessCaseOp[] = "StatelessCase";
 constexpr char kDeviceIndexOp[] = "DeviceIndex";
 
 // TODO(b/157615690): clean up function implementation swap code.
@@ -353,7 +354,9 @@ Status ImplementationSelector::SelectDeviceIndex(GraphDef* graph) const {
     // case node.
     for (const auto& fanouts : node_view->GetRegularFanouts()) {
       for (const auto& fanout : fanouts) {
-        if (fanout.node_view()->GetOp() != kCaseOp) continue;
+        if (fanout.node_view()->GetOp() != kCaseOp &&
+            fanout.node_view()->GetOp() != kStatelessCaseOp)
+          continue;
         int index;
         // If any error is thrown out during device parsing, we simply skip
         // and do not modify the DeviceIndexNode.

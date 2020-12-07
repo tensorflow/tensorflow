@@ -1,3 +1,4 @@
+# Lint as python3
 # Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import re
+from typing import Callable, Dict, List, Sequence, Tuple, Union
 
 import numpy as np
 
@@ -84,6 +86,23 @@ class StructuredTensor(composite_tensor.CompositeTensor):
   A *field path* is a tuple of field names, specifying the path to a nested
   field.
   """
+
+  #=============================================================================
+  # Common Types
+  #=============================================================================
+  # pylint: disable=invalid-name
+  # Field names work as key, and they can be a sequence to refer to the
+  # sub-levels (embedded) StructuredTensor's.
+  FieldName = Union[str, Sequence[str]]
+
+  # Each field may contain one of the following types of Tensors.
+  FieldValue = Union[ops.Tensor, ragged_tensor.RaggedTensor, 'StructuredTensor']
+
+  # Function that takes a FieldValue as input and returns the transformed
+  # FieldValue.
+  FieldFn = Callable[[FieldValue], FieldValue]
+
+  # pylint: enable=invalid-name
 
   #=============================================================================
   # Constructor & Factory Methods
@@ -252,6 +271,246 @@ class StructuredTensor(composite_tensor.CompositeTensor):
         row_partitions,
         internal=_structured_tensor_factory_key)
 
+  def with_updates(self,
+                   updates: Dict[FieldName, Union[FieldValue, FieldFn, None]],
+                   validate: bool = False) -> 'StructuredTensor':    # pylint: disable=bad-whitespace
+    """Creates a new `StructuredTensor` with the updated fields.
+
+    If this `StructuredTensor` is a scalar, and `k` is the `FieldName` being
+    updated and `v` the new value, then:
+
+    ```
+    result[k] = v              # If (k, v) is in updates and v is a FieldValue
+    result[k] = f(self[k])     # If (k, f) is in updates and f is a FieldFn
+    result[k] = self[k]        # If k is in self.field_names but not in updates
+    ```
+
+    If this `StructuredTensor` has rank `N` and shape `[D1...DN]`, then each
+    FieldValue `v` in `updates` must have shape `[D1...DN, ...]`, that is,
+    prefixed with the same shape as the `StructuredTensor`. Then the resulting
+    `StructuredTensor` will have:
+
+    ```
+    result[i1...iN][k] = v[i1...iN]                        # (k, v) in updates
+    result[i1...iN][k] = f(self.field_value(k))[i1...iN]   # (k, f) in updates
+    result[i1...iN][k] = self[i1...iN][k]                  # k not in updates
+    ```
+
+    Note that `result.shape` is always equal to `self.shape` (but the shapes
+    of nested StructuredTensors may be changed if they are updated with new
+    values).
+
+    Args:
+      updates: A dictionary mapping `FieldName` to either a `FieldValue` to be
+        used to update, or a `FieldFn` that will transform the value for the
+        given `FieldName`. `FieldName` can be a string for a direct field, or a
+        sequence of strings to refer to a nested sub-field. `FieldFn` is a
+        function that takes a `FieldValue` as input and should return a
+        `FieldValue`. All other fields are copied over to the new
+        `StructuredTensor`. New `FieldName` can be given (to add new fields),
+        but only to existing `StructuredTensor`, it won't automatically create
+        new nested structures -- but one can create a whole `StructureTensor`
+        sub-structure and set that into an existing structure. If the new value
+        is set to `None`, it is removed.
+      validate: If true, then add runtime validation ops that check that the
+        field values all have compatible shapes in the outer `shape.rank`
+        dimensions.
+
+    Returns:
+      A `StructuredTensor`.
+
+    Raises:
+      `ValueError`: If the any of the `FieldName` keys points to non-existent
+        sub-structures, if parent and child nodes are updated, if shapes
+        change, if a delete update is given for a non-existant field, or if a
+        `FieldFn` transforming function is given for a `FieldName` that doesn't
+        yet exist.
+
+    Examples:
+
+    >>> shoes_us = StructuredTensor.from_pyval([
+    ...    {"age": 12, "nicknames": ["Josaphine"],
+    ...       "shoes": {"sizes": [8.0, 7.5, 7.5]}},
+    ...    {"age": 82, "nicknames": ["Bob", "Bobby"],
+    ...        "shoes": {"sizes": [11.0, 11.5, 12.0]}},
+    ...    {"age": 42, "nicknames": ["Elmo"],
+    ...        "shoes": {"sizes": [9.0, 9.5, 10.0]}}])
+    >>> def us_to_europe(t):
+    ...   return tf.round(t * 2.54 + 17.0)  # Rough approximation.
+    >>> shoe_sizes_key = ("shoes", "sizes")
+    >>> shoes_eu = shoes_us.with_updates({shoe_sizes_key: us_to_europe})
+    >>> shoes_eu.field_value(shoe_sizes_key)
+    <tf.RaggedTensor [[37.0, 36.0, 36.0], [45.0, 46.0, 47.0],
+    [40.0, 41.0, 42.0]]>
+    """
+    updates_items = [(_normalize_field_name_to_tuple(name), value)
+                     for name, value in updates.items()]
+
+    # Sort by keys and check for updates of both parent and child nodes.
+    updates_items = sorted(updates_items)
+    for i in range(1, len(updates_items)):
+      # Parent of a node would precede node in the sorted order.
+      name = updates_items[i][0]  # item[0] is the name, item[1] is the value.
+      prev_name = updates_items[i - 1][0]
+      if name[:len(prev_name)] == prev_name:
+        raise ValueError(
+            '`StructuredTensor.with_updates` does not allow both parent and '
+            'child nodes to be updated: parent={}, child={}. If needed you can '
+            'update child nodes in the parent update value.'.format(
+                prev_name, name))
+    return self._with_updates_impl((), updates_items, validate)
+
+  def _with_updates_impl(self, error_prefix: Tuple[str],  # pylint: disable=invalid-sequence-index
+                         updates: List[Tuple[FieldName, Union[FieldValue,  # pylint: disable=invalid-sequence-index
+                                                              FieldFn]]],
+                         validate: bool) -> 'StructuredTensor':
+    """Recursive part of `with_updates` implementation."""
+    # Get current fields.
+    new_fields = dict(self._fields)
+
+    # Convert field name to string with full path for error messages.
+    def name_fullpath(name: Sequence[str]) -> str:
+      return str(error_prefix + (name,))
+
+    # Apply value if a function or the value itself.
+    def apply_value(name: str, value: Union['FieldValue',
+                                            'FieldFn']) -> 'FieldValue':
+      if callable(value):
+        # `value` is actually a transforming function.
+        if name not in new_fields:
+          raise ValueError(
+              '`StructuredTensor.with_updates` cannot update the field {} '
+              'because a transforming function was given, but that field '
+              'does not already exist.'.format(name_fullpath(name)))
+        value = value(new_fields[name])
+      return value
+
+    # Merge updates.
+    for name, value in updates:
+      if not name or not name[0]:
+        raise ValueError(
+            '`StructuredTensor.with_updates` does not allow empty names '
+            '{}.'.format(name_fullpath(name)))
+
+      if len(name) == 1:
+        name = name[0]
+        if value is None:
+          if name not in new_fields:
+            raise ValueError(
+                '`StructuredTensor.with_updates` cannot delete field '
+                '{} because it is not present.'.format(name_fullpath(name)))
+          new_fields.pop(name)
+        else:
+          new_fields[name] = apply_value(name, value)
+      else:
+        # Recursive
+        prefix = name[0]
+        suffix = name[1:]
+        if prefix not in new_fields:
+          raise ValueError(
+              '`StructuredTensor.with_updates` cannot create new sub-field '
+              '{} if parent field {} is not set.'.format(
+                  error_prefix + tuple(name), name_fullpath(prefix)))
+        current_value = new_fields[prefix]
+        if not isinstance(current_value, StructuredTensor):
+          raise ValueError(
+              '`StructuredTensor.with_updates` cannot create new sub-field '
+              '{} if parent structure {} is not a `StructuredTensor` that '
+              'can contain sub-structures -- it is a `{}`.'.format(
+                  error_prefix + tuple(name), name_fullpath(prefix),
+                  type(current_value)))
+        one_update = [(suffix, value)]
+
+        # Accessing protected member in recursion.
+        # FutureWork: optimize by aggregating the recursions, instead of
+        #   calling one at a time.
+        # pylint: disable=protected-access
+        value = current_value._with_updates_impl(error_prefix + (prefix,),
+                                                 one_update, validate)
+        # pylint: enable=protected-access
+        new_fields[prefix] = value
+
+    # TODO(edloper): When validate=True, only validate the modified fields.
+    try:
+      return StructuredTensor.from_fields(
+          new_fields,
+          shape=self.shape,
+          row_partitions=self._row_partitions,
+          nrows=self._nrows,
+          validate=validate)
+
+    except ValueError as e:
+      msg = '`StructuredTensor.with_updates` failed'
+      if error_prefix:
+        msg = '{} for field {}'.format(msg, error_prefix)
+      raise ValueError('{}: {}'.format(msg, e))
+
+  def _promote_helper(self, source_path, new_parent_path):
+    """Creates a promoted field without adding it to the structure.
+
+    Args:
+      source_path: the source path in the structured tensor.
+      new_parent_path: the new parent path. Must be a prefix of source_path.
+
+    Returns:
+      a composite tensor of source_path promoted.
+    Raises:
+      ValueError: if the shape of the field is unknown and the right strategy
+      cannot be determined.
+    """
+    current_field = self.field_value(source_path)
+    new_parent_rank = self.field_value(new_parent_path).rank
+    parent_rank = self.field_value(source_path[:-1]).rank
+    if new_parent_rank == parent_rank:
+      return current_field
+    current_field_rank = current_field.shape.rank
+    if current_field_rank is None:
+      raise ValueError('Cannot determine if dimensions should be merged.')
+    inner_dim = min(parent_rank, current_field_rank - 1)
+    if inner_dim <= new_parent_rank:
+      return current_field
+    return _merge_dims_generic(current_field, new_parent_rank, inner_dim)
+
+  def promote(self, source_path, new_name):
+    """Promotes a field, merging dimensions between grandparent and parent.
+
+    >>> d = [
+    ...  {'docs': [{'tokens':[1, 2]}, {'tokens':[3]}]},
+    ...  {'docs': [{'tokens':[7]}]}]
+    >>> st = StructuredTensor.from_pyval(d)
+    >>> st2 =st.promote(('docs','tokens'), 'docs_tokens')
+    >>> st2[0]['docs_tokens']
+    <tf.Tensor: shape=(3,), dtype=int32, numpy=array([1, 2, 3], dtype=int32)>
+    >>> st2[1]['docs_tokens']
+    <tf.Tensor: shape=(1,), dtype=int32, numpy=array([7], dtype=int32)>
+
+    Args:
+      source_path: the path of the field or substructure to promote; must have
+        length at least 2.
+      new_name: the name of the new field (must be a string).
+
+    Returns:
+      a modified structured tensor with the new field as a child of the
+      grandparent of the source_path.
+
+    Raises:
+      ValueError: if source_path is not a list or a tuple or has a length
+        less than two, or new_name is not a string, or the rank
+        of source_path is unknown and it is needed.
+    """
+    if not isinstance(new_name, str):
+      raise ValueError('new_name is not a string')
+    if not isinstance(source_path, (list, tuple)):
+      raise ValueError('source_path must be a list or tuple')
+
+    if len(source_path) < 2:
+      raise ValueError('source_path must have length at least two')
+
+    grandparent_path = source_path[:-2]
+    new_field = self._promote_helper(source_path, grandparent_path)
+    new_path = grandparent_path + (new_name,)
+    return self.with_updates({new_path: new_field})
+
   #=============================================================================
   # Properties
   #=============================================================================
@@ -279,21 +538,73 @@ class StructuredTensor(composite_tensor.CompositeTensor):
   def row_partitions(self):
     """A tuple of `RowPartition`s defining the shape of this `StructuredTensor`.
 
-    If this `StructuredTensor` has a ragged shape, then all fields will be
-    encoded as either `RaggedTensor`s or `StructuredTensor`s with these
-    `RowPartition`s used to define their outermost `self.rank` dimensions.
+    When `self.rank <= 1`, this tuple will be empty.
 
-    If this `StructuredTensor` has a uniform (non-ragged) shape, then these
-    row partitions will all be defined using `uniform_row_length`.
+    When `self.rank > 1`, these `RowPartitions` define the shape of the
+    `StructuredTensor` by describing how a flat (1D) list of structures can be
+    repeatedly partitioned to form a higher-dimensional object.  In particular,
+    the flat list is first partitioned into sublists using `row_partitions[-1]`,
+    and then those sublists are further partitioned using `row_partitions[-2]`,
+    etc.  The following examples show the row partitions used to describe
+    several different `StructuredTensor`, each of which contains 8 copies of
+    the same structure (`x`):
+
+    >>> x = {'a': 1, 'b': ['foo', 'bar', 'baz']}       # shape = [] (scalar)
+
+    >>> s1 = [[x, x, x, x], [x, x, x, x]]              # shape = [2, 4]
+    >>> StructuredTensor.from_pyval(s1).row_partitions
+    (tf.RowPartition(row_splits=tf.Tensor([0 4 8], shape=(3,),
+                                          dtype=int64)),)
+
+    >>> s2 = [[x, x], [x, x], [x, x], [x, x]]          # shape = [4, 2]
+    >>> StructuredTensor.from_pyval(s2).row_partitions
+    (tf.RowPartition(row_splits=tf.Tensor([0 2 4 6 8], shape=(5,),
+                                          dtype=int64)),)
+
+    >>> s3 = [[x, x, x], [], [x, x, x, x], [x]]        # shape = [2, None]
+    >>> StructuredTensor.from_pyval(s3).row_partitions
+    (tf.RowPartition(row_splits=tf.Tensor([0 3 3 7 8], shape=(5,),
+                                          dtype=int64)),)
+
+    >>> s4 = [[[x, x], [x, x]], [[x, x], [x, x]]]      # shape = [2, 2, 2]
+    >>> StructuredTensor.from_pyval(s4).row_partitions
+    (tf.RowPartition(row_splits=tf.Tensor([0 2 4], shape=(3,), dtype=int64)),
+     tf.RowPartition(row_splits=tf.Tensor([0 2 4 6 8], shape=(5,),
+                                          dtype=int64)))
+
+
+    >>> s5 = [[[x, x], [x]], [[x, x]], [[x, x], [x]]]  # shape = [3, None, None]
+    >>> StructuredTensor.from_pyval(s5).row_partitions
+    (tf.RowPartition(row_splits=tf.Tensor([0 2 3 5], shape=(4,), dtype=int64)),
+     tf.RowPartition(row_splits=tf.Tensor([0 2 3 5 7 8], shape=(6,),
+                                          dtype=int64)))
+
+    Note that shapes for nested fields (such as `x['b']` in the above example)
+    are not considered part of the shape of a `StructuredTensor`, and are not
+    included in `row_partitions`.
+
+    If this `StructuredTensor` has a ragged shape (i.e., if any of the
+    `row_partitions` is not uniform in size), then all fields will be encoded
+    as either `RaggedTensor`s or `StructuredTensor`s with these `RowPartition`s
+    used to define their outermost `self.rank` dimensions.
 
     Returns:
       A `tuple` of `RowPartition` objects with length `self.rank - 1`
-      (or `0` if `self.rank < 2`).
+      (or `0` if `self.rank < 2`)
+
     """
     return self._row_partitions
 
   def nrows(self):
     """The number of rows in this StructuredTensor (if rank>0).
+
+    This means the length of the outer-most dimension of the StructuredTensor.
+
+    Notice that if `self.rank > 1`, then this equals the number of rows
+    of the first row partition. That is,
+    `self.nrows() == self.row_partitions[0].nrows()`.
+
+    Otherwise `self.nrows()` will be the first dimension of the field values.
 
     Returns:
       A scalar integer `Tensor` (or `None` if `self.rank == 0`).
@@ -501,8 +812,11 @@ class StructuredTensor(composite_tensor.CompositeTensor):
 
     # If rank>0, then re-group each value from dict-of-list to list-of-dict.
     if len(self._shape) > 0:  # pylint: disable=g-explicit-length-test
+      if not result:  # special-case for StructuredTensors w/ no fields.
+        return _empty_dict_pylist_from_row_partitions(self._row_partitions,
+                                                      self._nrows)
       return _pyval_field_major_to_node_major(
-          list(result.keys()), list(result.values()), self._shape.as_list())
+          list(result.keys()), list(result.values()), self._shape.rank)
     else:
       return result
 
@@ -699,8 +1013,8 @@ class StructuredTensor(composite_tensor.CompositeTensor):
         self.shape.rank,
         axis_name='inner_axis',
         ndims_name='rank(self)')
-    if not outer_axis < inner_axis:
-      raise ValueError('Expected outer_axis (%d) to be less than '
+    if not outer_axis <= inner_axis:
+      raise ValueError('Expected outer_axis (%d) to be less than or equal to '
                        'inner_axis (%d)' % (outer_axis, inner_axis))
     return _merge_dims(self, outer_axis, inner_axis)
 
@@ -783,6 +1097,57 @@ class StructuredTensorSpec(type_spec.BatchableTypeSpec):
         self._shape[1:],
         dict((k, v._unbatch()) for (k, v) in self._field_specs.items()))
 
+  @property
+  def _flat_tensor_specs(self):
+    # pylint: disable=protected-access
+    result = []
+    for _, field_spec in sorted(self._field_specs.items(), key=lambda t: t[0]):
+      result.extend(field_spec._flat_tensor_specs)
+    return result
+
+  def _to_tensor_list(self, value):
+    return self._to_tensor_list_internal(value, batched=False)
+
+  def _to_batched_tensor_list(self, value):
+    return self._to_tensor_list_internal(value, batched=True)
+
+  def _from_compatible_tensor_list(self, tensor_list):
+    # pylint: disable=protected-access
+    fields = {}
+    pos = 0
+    for field_name, field_spec in sorted(
+        self._field_specs.items(), key=lambda t: t[0]):
+      num_tensors_for_field = len(field_spec._flat_tensor_specs)
+      field_tensors = tensor_list[pos:pos + num_tensors_for_field]
+      fields[field_name] = field_spec._from_compatible_tensor_list(
+          field_tensors)
+      pos += num_tensors_for_field
+    return StructuredTensor.from_fields(fields, self._shape)
+
+  def _to_tensor_list_internal(self, value, batched):
+    """Returns a dict whose entries are each field's (batched) tensor_list.
+
+    If a field is a StructuredTensor, then its entry will be a dict,
+    recursively.
+
+    Args:
+      value: A StructuredTensor (conforming to `self`).
+      batched: A boolean. if True, produce `batched_tensor_list` for each field
+        otherwise produce `tensor_list`.
+    Returns:
+      A dict.
+    """
+    result = []
+    for field_name, field_spec in sorted(
+        self._field_specs.items(), key=lambda t: t[0]):
+      # pylint: disable=protected-access
+      field_value = value._fields[field_name]
+      if batched:
+        result.extend(field_spec._to_batched_tensor_list(field_value))
+      else:
+        result.extend(field_spec._to_tensor_list(field_value))
+
+    return result
 
 # Regular expression used to determine whether a string is a valid field name.
 # Note: we plan to relax (or possibly eliminate) this in the future; you
@@ -927,38 +1292,52 @@ def _row_partitions_for_uniform_shape(shape, rank):
   ])
 
 
-def _pyval_field_major_to_node_major(keys, values, shape):
+def _pyval_field_major_to_node_major(keys, values, depth):
   """Regroup each field (k, v) from dict-of-list to list-of-dict.
 
   Given a "field-major" encoding of the StructuredTensor (which maps each key to
   a single nested list containing the values for all structs), return a
   corresponding "node-major" encoding, consisting of a nested list of dicts.
-  `shape` is used to determine how far to recurse; and if `keys` is empty
-  it is used to determine the sizes for empty lists.
 
   Args:
-    keys: The field names (list of string).
+    keys: The field names (list of string).  Must not be empty.
     values: The field values (list of python values).  Must have the same length
       as `keys`.
-    shape: A tuple specifying the shape of the `StructuredTensor`.
+    depth: The list depth at which dictionaries should be created.
 
   Returns:
-    A nested list of dict.
+    A nested list of dict, with depth `depth`.
   """
-  if not shape:
+  assert keys
+  if depth == 0:
     return dict(zip(keys, values))
-  elif not keys:
-    if shape[0] in (0, None):
-      return []
-    else:
-      return [_pyval_field_major_to_node_major((), (), shape[1:])] * shape[0]
+  nvals = len(values[0])
+  assert all(nvals == len(values[i]) for i in range(1, len(values)))
+  return [
+      _pyval_field_major_to_node_major(keys, value_slice, depth - 1)
+      for value_slice in zip(*values)
+  ]
+
+
+def _empty_dict_pylist_from_row_partitions(row_partitions, nrows):
+  """Returns a python list of empty dicts from the given row partitions.
+
+  Args:
+    row_partitions: The row-partitions describing the ragged shape of the
+      result.
+    nrows: The number of rows in the outermost row-partition.  (Or if
+      `len(row_partitions)==0`, then the number of empty dicts to return.)
+
+  Returns:
+    A nested python list whose leaves (if any) are empty python dicts.
+  """
+  if not row_partitions:
+    return [{} for _ in range(nrows)]
   else:
-    nvals = len(values[0])
-    assert all(nvals == len(values[i]) for i in range(1, len(values)))
-    return [
-        _pyval_field_major_to_node_major(keys, value_slice, shape[1:])
-        for value_slice in zip(*values)
-    ]
+    values = _empty_dict_pylist_from_row_partitions(
+        row_partitions[1:], row_partitions[0].row_splits()[-1])
+    splits = row_partitions[0].row_splits()
+    return [values[splits[i]:splits[i + 1]] for i in range(len(splits) - 1)]
 
 
 def _pyval_find_struct_keys_and_depth(pyval, keys):
@@ -1175,3 +1554,36 @@ def _merge_dims(value, outer_axis, inner_axis):
 
 
 _structured_tensor_factory_key = object()  # unique private object
+
+
+def _normalize_field_name_to_tuple(name: 'FieldName') -> Sequence[str]:
+  """FieldName can be given also as string, this normalizes it to a tuple."""
+  if isinstance(name, str):
+    return (name,)
+  if isinstance(name, list):
+    return tuple(name)
+  assert isinstance(name, tuple)
+  return name
+
+
+def _merge_dims_generic(source, outer, inner):
+  """Merges outer_axis...inner_axis into a single dimension.
+
+  If outer == inner, this is a NOOP. If inner < outer, then this fials.
+  If inner >= source.shape.rank, then the behavior is undefined.
+
+  Args:
+    source: a tensor, ragged tensor, or structured tensor.
+    outer: a python int, indicating the first dimension to compress
+      (must be nonnegative).
+    inner: a python int, indicating the first dimension to keep (of the tail)
+      (must be nonnegative).
+
+  Returns:
+    source with outer_axis...inner_axis merged into a single dimension.
+
+  """
+  if isinstance(source, StructuredTensor):
+    return source.merge_dims(outer, inner)
+  else:
+    return ragged_tensor.merge_dims(source, outer, inner)

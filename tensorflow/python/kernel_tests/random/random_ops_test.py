@@ -336,8 +336,6 @@ class RandomUniformTest(RandomOpTestCommon):
       self.assertLess(error.max(), 5 * std)
 
   # Check that minval = maxval is fine iff we're producing no numbers
-  @test_util.disable_tfrt(
-      "TFE_TensorHandleToNumpy not implemented yet. b/156191611")
   def testUniformIntsDegenerate(self):
     for dt in dtypes.int32, dtypes.int64:
       def sample(n):

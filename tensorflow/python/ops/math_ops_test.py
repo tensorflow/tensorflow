@@ -33,6 +33,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
+from tensorflow.python.platform import test
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -261,7 +262,10 @@ class ModTest(test_util.TensorFlowTestCase):
 class SquaredDifferenceTest(test_util.TensorFlowTestCase):
 
   def testSquaredDifference(self):
-    for dtype in [np.float16, np.float32, np.float64, np.int32, np.int64]:
+    for dtype in [
+        np.float16, np.float32, np.float64, dtypes.bfloat16.as_numpy_dtype,
+        np.int32, np.int64
+    ]:
       x = np.array([[1, 2, 3], [4, 5, 6]], dtype=dtype)
       y = np.array([-3, -2, -1], dtype=dtype)
       z = (x - y) * (x - y)
@@ -472,6 +476,13 @@ class DivAndModTest(test_util.TensorFlowTestCase):
     # tf2_result = (array_ops.constant(nums)
     #               % array_ops.constant(divs))
     # self.assertAllEqual(tf2_result, tf_result)
+
+  def testFloorModBfloat64(self):
+    nums, divs = self.floatTestData()
+    tf_result = math_ops.floormod(math_ops.cast(nums, dtypes.bfloat16),
+                                  math_ops.cast(divs, dtypes.bfloat16))
+    np_result = nums % divs
+    self.assertAllEqual(tf_result, np_result)
 
   def testTruncateModInt(self):
     nums, divs = self.intTestData()
@@ -870,6 +881,21 @@ class RangeTest(test_util.TensorFlowTestCase):
     tensor = ops.convert_to_tensor(values)
     self.assertAllEqual((5,), tensor.get_shape().as_list())
     self.assertAllEqual(values, self.evaluate(tensor))
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class ErfcinvTest(test_util.TensorFlowTestCase):
+
+  def testErfcinv(self):
+    if test.is_built_with_rocm():
+      # The implementation of erfcinv calls ndtri op,
+      # and the ROCm implementaion for ndtri op has a known bug in it
+      # whose fix will be in a forthcoming ROCm release (4.0 ?).
+      # Need to skip this unit-test until that ROCm release is out
+      self.skipTest("ndtri op implementation is buggy on ROCm")
+    values = np.random.uniform(0.1, 1.9, size=int(1e4)).astype(np.float32)
+    approx_id = math_ops.erfc(math_ops.erfcinv(values))
+    self.assertAllClose(values, self.evaluate(approx_id))
 
 
 if __name__ == "__main__":

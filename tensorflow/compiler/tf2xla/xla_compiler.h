@@ -21,8 +21,10 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
 #include "tensorflow/compiler/tf2xla/host_compute_metadata.pb.h"
+#include "tensorflow/compiler/tf2xla/xla_argument.h"
 #include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_expression.h"
+#include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -97,96 +99,7 @@ class XlaContext;
 // `tensor_array_gradients` ordered set.
 class XlaCompiler {
  public:
-  // Describes how to derive the value of each _Arg node in the graph/function
-  // being compiled. There must be one Argument for each _Arg index.
-  struct Argument {
-    enum Kind {
-      // Default value; not a valid kind.
-      kInvalid,
-
-      // Argument is a compile-time constant. No associated runtime parameter.
-      kConstant,
-
-      // Argument is a Variable, TensorArray, or Stack resource. Has an
-      // associated runtime parameter iff `initialized` is true.
-      kResource,
-
-      // Argument is a run-time parameter.
-      kParameter,
-
-      // Argument is an XLA token.
-      kToken,
-
-      // Argument is a TensorList.
-      kTensorList,
-    };
-
-    Kind kind = kInvalid;
-
-    // The type of the argument. If the argument is a resource, this
-    // is the type of the variable's value, not DT_RESOURCE.
-    DataType type = DT_INVALID;
-
-    // The shape of the argument. For:
-    // * a parameter: the shape of the parameter. We allow setting the xla shape
-    //   if known. This helps avoid conversions to and from TensorShape.
-    // * a constant: ignored; the shape given by constant_value is used
-    //     instead.
-    // * an uninitialized resource: ignored. We don't yet know the shape of an
-    //     uninitialized resource (otherwise we would have initialized it!)
-    // * an initialized variable: the shape of the variable's value.
-    // * an initialized TensorArray or Stack resource: the shape of an entry in
-    //   the TensorArray/Stack. Note this is the size of a single entry, not the
-    //   XLA data structure that represents the complete stack/array.
-    absl::variant<TensorShape, xla::Shape> shape;
-
-    // The value of the argument, if it is a compile-time constant. Must be a
-    // host-memory tensor.
-    Tensor constant_value;
-
-    // The name of this argument, used for debugging.
-    string name;
-
-    // The name of TensorFlow _Arg node, used for debugging.
-    string node_name;
-
-    // For a kResource, what kind of resource is it?
-    XlaResource::Kind resource_kind = XlaResource::kInvalid;
-
-    // For a kResource, has this resource been initialized?
-    bool initialized = false;
-
-    // For a kResource, is this resource on Fast Memory.
-    bool fast_mem = false;
-
-    // For a TensorArray or Stack resource, what is the array's declared size?
-    // (Used for lazy initialization.)
-    int64 max_array_size = -1;
-
-    // TensorArray resource parameters are passed as (array, gradient array 0,
-    // ..., gradient array k), where the gradient arrays are in the same order
-    // as `tensor_array_gradients`.
-    std::set<string> tensor_array_gradients;
-
-    // dynamic dims to arg number map. Empty if no dynamic shapes.
-    std::map<int32, int32> dynamic_dim_to_arg_num_map;
-    bool is_pad_arg = false;
-
-    // Whether this argument will receive the same data across all replicas.
-    bool is_same_data_across_replicas = false;
-
-    bool operator==(const Argument& other) const;
-
-    // Returns a human-readable summary of the argument.
-    string HumanString() const;
-
-    // Returns the dimension sizes for either TensorShape or xla::Shape.
-    std::vector<int64> DimensionSizes() const;
-    absl::InlinedVector<int64, 4> DimensionSizesAsInlinedVector() const;
-
-    // Returns the human-readable string for either TensorShape or xla::Shape.
-    string ShapeHumanString() const;
-  };
+  using Argument = ::tensorflow::XlaArgument;
 
   // Options pertaining to an individual call to CompileGraph() or
   // CompileFunction().
@@ -216,82 +129,14 @@ class XlaCompiler {
 
     // Resource updates are converted into input / output of xla. The two
     // buffers are aliased with other if this option is true.
-    //
-    // Currently only supports TPU.
     bool alias_resource_update = false;
   };
 
-  struct OutputDescription {
-    // Type and shape of the output. The shape is the unflattened shape.
-    // When `type` is DT_RESOURCE, `shape` is the shape of the resource
-    // variable's value.
-    DataType type;
-    TensorShape shape;
+  using OutputDescription = ::tensorflow::XlaOutputDescription;
 
-    // Constant output value, if known to be constant at JIT compilation time.
-    // 'Tensor' is in host memory.
-    bool is_constant = false;
-    Tensor constant_value;
+  using ResourceUpdate = ::tensorflow::XlaResourceUpdate;
 
-    // When this output is a resource, i.e. `type == DT_RESOURCE`, this is
-    // the index of the input that contains the resource.
-    int input_index;
-
-    // Whether this output is a TensorList.
-    bool is_tensor_list = false;
-  };
-
-  // Describes a variable write side effect of the computation.
-  struct ResourceUpdate {
-    // Index of the input that contains the variable resource to write to.
-    int input_index;
-
-    // Type and shape of the tensor to be written back.
-    // The `shape` field has the same meaning as the Argument::shape field.
-    DataType type;
-    TensorShape shape;
-
-    // Was the value of the variable modified by the computation?
-    // (Always true, unless `return_updated_values_for_all_resources` is true.)
-    bool modified;
-
-    // If the resource is a TensorArray, the set of gradients read or written.
-    std::set<string> tensor_array_gradients_accessed;
-  };
-
-  struct CompilationResult {
-    // Vector that maps from the parameters of the XLA computation to their
-    // original argument positions. To handle compile-time constant inputs, the
-    // parameters to the XLA computation may be a subset of the original
-    // arguments. The relative ordering of parameters are maintained.
-    std::vector<int> input_mapping;
-
-    // Input shapes of the computation. If we are flattening inputs, these are
-    // the flattened shapes.
-    std::vector<xla::Shape> xla_input_shapes;
-
-    // Output shape in XLA format. The output shape is always a tuple. If we
-    // are flattening outputs, these are the flattened shapes.
-    xla::Shape xla_output_shape;
-
-    // TensorFlow shapes of outputs, together with the values of any
-    // constant arguments. Vector indexed by Tensorflow _Retval number,
-    // containing both constant and non-constant results.
-    std::vector<OutputDescription> outputs;
-
-    // TensorFlow shapes and types of sends/recvs from HostCompute Ops to their
-    // matching RecvAtHost/SendFromHost Ops in the outer graph.
-    tf2xla::HostComputeMetadata host_compute_metadata;
-
-    // Resources whose values were updated by the computation, ordered
-    // by return value position (which is the same as the order the resources
-    // were passed as arguments). Resource updates follow the non-constant
-    // results in the outputs of XLA computation.
-    std::vector<ResourceUpdate> resource_updates;
-
-    // The XLA computation built from the tensorflow subgraph.
-    std::shared_ptr<xla::XlaComputation> computation;
-  };
+  using CompilationResult = ::tensorflow::XlaCompilationResult;
 
   typedef std::function<xla::StatusOr<xla::Shape>(const TensorShape&, DataType,
                                                   bool)>
@@ -352,6 +197,9 @@ class XlaCompiler {
     // Alias input and output buffers for parameters that are passed-through XLA
     // modules without being changed.
     bool alias_passthrough_params = false;
+
+    // Enable detailed logging of compilation metadata.
+    bool detailed_logging = true;
   };
 
   explicit XlaCompiler(Options options);
@@ -443,7 +291,8 @@ class XlaCompiler {
 
   // Sets the function body `fbody` to the one registered as `function`.
   Status FindFunctionBody(const NameAttrList& function,
-                          const FunctionBody** fbody);
+                          const FunctionBody** fbody,
+                          const ConfigProto** config_proto = nullptr);
 
  private:
   // Returns the optimized graph object in this function body.
@@ -518,21 +367,6 @@ class XlaCompiler {
   TF_DISALLOW_COPY_AND_ASSIGN(XlaCompiler);
 };
 
-// Creates an identity shape representation function.
-XlaCompiler::ShapeRepresentationFn IdentityShapeRepresentationFn();
-
-// Rewrites the layout of xla_shape if there is tiled sharding.
-Status RewriteLayoutWithShardedShape(
-    const absl::optional<xla::HloSharding>& sharding, bool use_fast_memory,
-    XlaCompiler::ShapeRepresentationFn shape_representation_fn,
-    xla::Shape* xla_shape);
-
-// Adds reshapes to fix the layout of an output, if a shape_representation_fn or
-// sharding is present.
-xla::StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
-    xla::XlaBuilder* builder, xla::XlaOp original, xla::Shape original_shape,
-    XlaCompiler::ShapeRepresentationFn shape_representation_fn,
-    absl::optional<xla::OpSharding> sharding, bool fast_mem);
 
 }  // namespace tensorflow
 

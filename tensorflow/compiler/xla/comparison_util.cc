@@ -54,32 +54,59 @@ StatusOr<Comparison::Direction> StringToComparisonDirection(
   return it->second;
 }
 
-Comparison::Comparison(Direction dir, PrimitiveType type) : dir_(dir) {
+StatusOr<Comparison::Type> StringToComparisonType(
+    absl::string_view compare_type_name) {
+  static auto* type_map = new absl::flat_hash_map<string, Comparison::Type>({
+      {"FLOAT", Comparison::Type::kFloat},
+      {"TOTALORDER", Comparison::Type::kFloatTotalOrder},
+      {"SIGNED", Comparison::Type::kSigned},
+      {"UNSIGNED", Comparison::Type::kUnsigned},
+  });
+  auto it = type_map->find(compare_type_name);
+  if (it == type_map->end()) {
+    return InvalidArgument("Unknown comparison type: %s", compare_type_name);
+  }
+  return it->second;
+}
+
+std::string ComparisonTypeToString(Comparison::Type type) {
+  switch (type) {
+    case Comparison::Type::kFloat:
+      return "FLOAT";
+    case Comparison::Type::kFloatTotalOrder:
+      return "TOTALORDER";
+    case Comparison::Type::kSigned:
+      return "SIGNED";
+    case Comparison::Type::kUnsigned:
+      return "UNSIGNED";
+  }
+}
+
+Comparison::Comparison(Direction dir, PrimitiveType type)
+    : dir_(dir), type_(DefaultComparisonType(type)) {}
+
+Comparison::Type Comparison::DefaultComparisonType(PrimitiveType type) {
   switch (type) {
     case S8:
     case S16:
     case S32:
     case S64:
-      type_ = Type::kSigned;
-      break;
+      return Type::kSigned;
     case PRED:
     case U8:
     case U16:
     case U32:
     case U64:
-      type_ = Type::kUnsigned;
-      break;
+      return Type::kUnsigned;
     case F16:
     case F32:
     case BF16:
     case F64:
     case C64:
     case C128:
-      type_ = Type::kFloat;
-      break;
+      return Type::kFloat;
     default:
       LOG(FATAL) << "Unsupported comparison mode."
-                 << ComparisonDirectionToString(dir) << ":"
                  << PrimitiveType_Name(type) << "\n";
   }
 }
@@ -161,20 +188,6 @@ bool Comparison::IsAntireflexive() const {
       return Direction::kGt;
     case Direction::kLt:
       return Direction::kGe;
-  }
-}
-
-/* static */ const char* Comparison::ComparisonTypeToString(
-    Comparison::Type type) {
-  switch (type) {
-    case Type::kFloat:
-      return "f";
-    case Type::kFloatTotalOrder:
-      return "ft";
-    case Type::kSigned:
-      return "s";
-    case Type::kUnsigned:
-      return "u";
   }
 }
 

@@ -658,7 +658,7 @@ class MirroredThreeDeviceDistributionTest(
 
     with distribution.scope():
       result = distribution.extended.call_for_each_replica(model_fn)
-      self.assertIsInstance(result, values.MirroredVariable)
+      self.assertTrue(distribute_utils.is_mirrored(result))
       self.assertEqual("foo:0", result.name)
 
 
@@ -680,7 +680,7 @@ class MirroredVariableUpdateTest(test.TestCase):
 
     with distribution.scope():
       mirrored_var = distribution.extended.call_for_each_replica(var_fn)
-      self.assertIsInstance(mirrored_var, values.MirroredVariable)
+      self.assertTrue(distribute_utils.is_mirrored(mirrored_var))
       self.evaluate(variables.global_variables_initializer())
 
       def model_fn():
@@ -700,7 +700,7 @@ class MirroredVariableUpdateTest(test.TestCase):
 
     with distribution.scope():
       mirrored_var = distribution.extended.call_for_each_replica(var_fn)
-      self.assertIsInstance(mirrored_var, values.MirroredVariable)
+      self.assertTrue(distribute_utils.is_mirrored(mirrored_var))
       self.evaluate(variables.global_variables_initializer())
 
       def model_fn():
@@ -718,7 +718,7 @@ class MirroredVariableUpdateTest(test.TestCase):
 
     with distribution.scope():
       mirrored_var = distribution.extended.call_for_each_replica(var_fn)
-      self.assertIsInstance(mirrored_var, values.MirroredVariable)
+      self.assertTrue(distribute_utils.is_mirrored(mirrored_var))
       self.evaluate(variables.global_variables_initializer())
       self.assertEqual(1.0, self.evaluate(mirrored_var))
       mirrored_var_result = self.evaluate(mirrored_var.assign(6.0))
@@ -731,7 +731,7 @@ class MirroredVariableUpdateTest(test.TestCase):
 
     with distribution.scope():
       mirrored_var = distribution.extended.call_for_each_replica(var_fn)
-      self.assertIsInstance(mirrored_var, values.MirroredVariable)
+      self.assertTrue(distribute_utils.is_mirrored(mirrored_var))
       self.evaluate(variables.global_variables_initializer())
       self.assertEqual(1.0, self.evaluate(mirrored_var))
 
@@ -752,7 +752,7 @@ class MirroredVariableUpdateTest(test.TestCase):
 
     with distribution.scope():
       mirrored_var = distribution.extended.call_for_each_replica(var_fn)
-      self.assertIsInstance(mirrored_var, values.MirroredVariable)
+      self.assertTrue(distribute_utils.is_mirrored(mirrored_var))
       self.evaluate(variables.global_variables_initializer())
       self.assertEqual(1.0, self.evaluate(mirrored_var))
 
@@ -769,7 +769,7 @@ class MirroredVariableUpdateTest(test.TestCase):
 
     with distribution.scope():
       mirrored_var = distribution.extended.call_for_each_replica(var_fn)
-      self.assertIsInstance(mirrored_var, values.MirroredVariable)
+      self.assertTrue(distribute_utils.is_mirrored(mirrored_var))
       self.evaluate(variables.global_variables_initializer())
       self.assertEqual(1.0, self.evaluate(mirrored_var))
 
@@ -812,7 +812,7 @@ class MirroredVariableUpdateTest(test.TestCase):
 
     with distribution.scope():
       mirrored_var = distribution.extended.call_for_each_replica(var_fn)
-      self.assertIsInstance(mirrored_var, values.MirroredVariable)
+      self.assertTrue(distribute_utils.is_mirrored(mirrored_var))
       self.evaluate(variables.global_variables_initializer())
       self.assertEqual(1.0, self.evaluate(mirrored_var))
 
@@ -833,7 +833,7 @@ class MirroredVariableUpdateTest(test.TestCase):
 
     with distribution.scope():
       mirrored_var = distribution.extended.call_for_each_replica(var_fn)
-      self.assertIsInstance(mirrored_var, values.MirroredVariable)
+      self.assertTrue(distribute_utils.is_mirrored(mirrored_var))
       self.evaluate(variables.global_variables_initializer())
       self.assertEqual(1.0, self.evaluate(mirrored_var))
 
@@ -850,7 +850,7 @@ class MirroredVariableUpdateTest(test.TestCase):
 
     with distribution.scope():
       mirrored_var = distribution.extended.call_for_each_replica(var_fn)
-      self.assertIsInstance(mirrored_var, values.MirroredVariable)
+      self.assertTrue(distribute_utils.is_mirrored(mirrored_var))
       self.evaluate(variables.global_variables_initializer())
       self.assertEqual(5.0, self.evaluate(mirrored_var))
       mirrored_var_result = self.evaluate(mirrored_var.assign_sub(2.0))
@@ -875,7 +875,7 @@ class MirroredVariableUpdateTest(test.TestCase):
 
     with distribution.scope():
       mirrored_var = distribution.extended.call_for_each_replica(var_fn)
-      self.assertIsInstance(mirrored_var, values.MirroredVariable)
+      self.assertTrue(distribute_utils.is_mirrored(mirrored_var))
       self.evaluate(variables.global_variables_initializer())
       self.assertEqual(5.0, self.evaluate(mirrored_var))
 
@@ -896,7 +896,7 @@ class MirroredVariableUpdateTest(test.TestCase):
 
     with distribution.scope():
       mirrored_var = distribution.extended.call_for_each_replica(var_fn)
-      self.assertIsInstance(mirrored_var, values.MirroredVariable)
+      self.assertTrue(distribute_utils.is_mirrored(mirrored_var))
       self.evaluate(variables.global_variables_initializer())
       self.assertEqual(5.0, self.evaluate(mirrored_var))
 
@@ -926,7 +926,7 @@ class MirroredAndSyncOnReadVariableInitializerTest(test.TestCase):
 
       with distribution.scope():
         mirrored_var = distribution.extended.call_for_each_replica(var_fn)
-        self.assertIsInstance(mirrored_var, values.MirroredVariable)
+        self.assertTrue(distribute_utils.is_mirrored(mirrored_var))
         self.assertFalse(self.evaluate(mirrored_var.is_initialized()))
         self.evaluate(mirrored_var.initializer)
         self.assertTrue(self.evaluate(mirrored_var.is_initialized()))
@@ -940,13 +940,13 @@ class MirroredAndSyncOnReadVariableInitializerTest(test.TestCase):
             1.0,
             synchronization=variable_scope.VariableSynchronization.ON_READ,
             aggregation=variable_scope.VariableAggregation.SUM)
-        self.assertIsInstance(v_sum, values.SyncOnReadVariable)
+        self.assertTrue(distribute_utils.is_sync_on_read(v_sum))
         return v_sum
 
       with distribution.scope():
         sync_on_read_var = distribution.extended.call_for_each_replica(
             model_fn)
-        self.assertIsInstance(sync_on_read_var, values.SyncOnReadVariable)
+        self.assertTrue(distribute_utils.is_sync_on_read(sync_on_read_var))
         self.assertFalse(self.evaluate(sync_on_read_var.is_initialized()))
         self.evaluate(sync_on_read_var.initializer)
         self.assertTrue(self.evaluate(sync_on_read_var.is_initialized()))
@@ -970,7 +970,7 @@ class SyncOnReadVariableAssignTest(test.TestCase):
 
     with distribution.scope():
       sync_on_read_var = distribution.extended.call_for_each_replica(model_fn)
-      self.assertIsInstance(sync_on_read_var, values.SyncOnReadVariable)
+      self.assertTrue(distribute_utils.is_sync_on_read(sync_on_read_var))
       self.evaluate(variables.global_variables_initializer())
       # Each replica has a value of 1.0 assigned to it in replica context.
       # When we read the value using `read_var` we should see the SUM of each of
@@ -997,7 +997,7 @@ class SyncOnReadVariableAssignTest(test.TestCase):
 
     with distribution.scope():
       sync_on_read_var = distribution.extended.call_for_each_replica(model_fn)
-      self.assertIsInstance(sync_on_read_var, values.SyncOnReadVariable)
+      self.assertTrue(distribute_utils.is_sync_on_read(sync_on_read_var))
       self.evaluate(variables.global_variables_initializer())
       # Each replica has a value of 1.0 assigned to it in replica context.
       # When we read the value using `read_var` we should see the MEAN of values
@@ -1148,9 +1148,9 @@ class MirroredStrategyDefunTest(test.TestCase):
                 # pylint: disable=g-long-lambda
                 lambda: mirrored_strategy.MirroredStrategy(
                     devices=mirrored_strategy.all_local_devices(),
-                    cross_device_ops=cross_device_ops_lib.MultiWorkerAllReduce([
-                        "/job:worker/task:0", "/job:worker/task:1"
-                    ], context.num_gpus())),
+                    cross_device_ops=cross_device_ops_lib.ReductionToOneDevice(
+                    ),
+                ),
                 required_gpus=1)
         ],
         mode=["graph"]))
@@ -1288,9 +1288,7 @@ class MultiWorkerMirroredStrategyTestWithChief(
     cls._default_target = "grpc://" + cls._cluster_spec["chief"][0]
 
   def _make_cross_device_ops(self):
-    return cross_device_ops_lib.MultiWorkerAllReduce(
-        ["/job:chief/task:0", "/job:worker/task:0", "/job:worker/task:1"],
-        context.num_gpus())
+    return cross_device_ops_lib.ReductionToOneDevice()
 
   def testMinimizeLossGraph(self):
     with context.graph_mode():

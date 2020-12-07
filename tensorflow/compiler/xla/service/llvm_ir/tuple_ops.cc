@@ -62,10 +62,11 @@ void EmitTuple(const IrArray& tuple, absl::Span<llvm::Value* const> operands,
                llvm::IRBuilder<>* b) {
   llvm::Module* module = getModuleFromBuilder(b);
   for (size_t i = 0; i < operands.size(); ++i) {
+    auto* cast =
+        b->CreatePointerCast(operands[i], PrimitiveTypeToIrType(TUPLE, module));
     auto* store = b->CreateStore(
-        b->CreatePointerCast(operands[i], PrimitiveTypeToIrType(TUPLE, module)),
-        b->CreateInBoundsGEP(tuple.GetBasePointer(),
-                             {b->getInt64(0), b->getInt64(i)}));
+        cast, b->CreateInBoundsGEP(tuple.GetBasePointer(),
+                                   {b->getInt64(0), b->getInt64(i)}));
     tuple.AnnotateLoadStoreInstructionWithMetadata(store);
   }
 }

@@ -38,8 +38,8 @@ class ModelToDotFormatTest(test.TestCase):
     try:
       vis_utils.plot_model(
           model, to_file=dot_img_file, show_shapes=True, show_dtype=True)
-      self.assertTrue(file_io.file_exists(dot_img_file))
-      file_io.delete_file(dot_img_file)
+      self.assertTrue(file_io.file_exists_v2(dot_img_file))
+      file_io.delete_file_v2(dot_img_file)
     except ImportError:
       pass
 
@@ -68,8 +68,8 @@ class ModelToDotFormatTest(test.TestCase):
           show_shapes=True,
           show_dtype=True,
           expand_nested=True)
-      self.assertTrue(file_io.file_exists(dot_img_file))
-      file_io.delete_file(dot_img_file)
+      self.assertTrue(file_io.file_exists_v2(dot_img_file))
+      file_io.delete_file_v2(dot_img_file)
     except ImportError:
       pass
 
@@ -86,8 +86,8 @@ class ModelToDotFormatTest(test.TestCase):
           show_shapes=True,
           show_dtype=True,
           expand_nested=True)
-      self.assertTrue(file_io.file_exists(dot_img_file))
-      file_io.delete_file(dot_img_file)
+      self.assertTrue(file_io.file_exists_v2(dot_img_file))
+      file_io.delete_file_v2(dot_img_file)
     except ImportError:
       pass
 
@@ -102,8 +102,8 @@ class ModelToDotFormatTest(test.TestCase):
           show_shapes=True,
           show_dtype=True,
           expand_nested=True)
-      self.assertTrue(file_io.file_exists(dot_img_file))
-      file_io.delete_file(dot_img_file)
+      self.assertTrue(file_io.file_exists_v2(dot_img_file))
+      file_io.delete_file_v2(dot_img_file)
     except ImportError:
       pass
 

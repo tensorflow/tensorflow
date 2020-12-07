@@ -159,6 +159,16 @@ class ReplicateHelper {
     return Status::OK();
   }
 
+  void RemoveDeadReplicatedArgs(Graph* graph) {
+    for (const auto& entry : replicated_nodes_map_) {
+      for (Node* replicated_node : entry.second) {
+        if (replicated_node->IsArg() && replicated_node->out_edges().empty()) {
+          graph->RemoveNode(replicated_node);
+        }
+      }
+    }
+  }
+
  private:
   // Map from original nodes to corresponding replicated nodes.
   absl::flat_hash_map<const Node*, std::vector<Node*>> replicated_nodes_map_;
@@ -256,6 +266,8 @@ Status ReplicatePerReplicaNodesInFunctionGraph(
     for (auto* n : cluster_nodes) {
       graph->RemoveNode(n);
     }
+
+    helper.RemoveDeadReplicatedArgs(graph);
   }
   return Status::OK();
 }

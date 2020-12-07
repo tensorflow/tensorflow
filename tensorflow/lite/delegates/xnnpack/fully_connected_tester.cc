@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
 
@@ -59,12 +60,16 @@ void FullyConnectedTester::Test(TfLiteDelegate* delegate) const {
 
   std::unique_ptr<Interpreter> delegate_interpreter;
   ASSERT_EQ(
-      InterpreterBuilder(model, ::tflite::ops::builtin::BuiltinOpResolver())(
+      InterpreterBuilder(
+          model,
+          ::tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates())(
           &delegate_interpreter),
       kTfLiteOk);
   std::unique_ptr<Interpreter> default_interpreter;
   ASSERT_EQ(
-      InterpreterBuilder(model, ::tflite::ops::builtin::BuiltinOpResolver())(
+      InterpreterBuilder(
+          model,
+          ::tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates())(
           &default_interpreter),
       kTfLiteOk);
 
@@ -201,9 +206,9 @@ std::vector<char> FullyConnectedTester::CreateTfLiteModel() const {
                              sizeof(float) * bias_data.size())));
   }
 
-  const std::array<int32_t, 2> filter_shape(
-      {OutputChannels(), InputChannels()});
-  const std::array<int32_t, 1> bias_shape({OutputChannels()});
+  const std::array<int32_t, 2> filter_shape{
+      {OutputChannels(), InputChannels()}};
+  const std::array<int32_t, 1> bias_shape{{OutputChannels()}};
 
   const std::vector<int32_t> output_shape = OutputShape();
   std::vector<flatbuffers::Offset<Tensor>> tensors;

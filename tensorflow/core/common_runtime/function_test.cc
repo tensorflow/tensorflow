@@ -162,8 +162,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     pflr_.reset(new ProcessFunctionLibraryRuntime(
         device_mgr_.get(), Env::Default(), &options.config,
         TF_GRAPH_DEF_VERSION, lib_def_.get(), opts, /*thread_pool=*/nullptr,
-        /*parent=*/nullptr, /*custom_kernel_creator=*/nullptr,
-        /*session_metadata=*/nullptr,
+        /*parent=*/nullptr, /*session_metadata=*/nullptr,
         Rendezvous::Factory{
             [](const int64, const DeviceMgr* device_mgr, Rendezvous** r) {
               *r = new IntraProcessRendezvous(device_mgr);
@@ -830,10 +829,10 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctions) {
   {
     Scope s = Scope::NewRootScope();
     auto x = ops::_Arg(s.WithOpName("x"), DT_FLOAT, 0);
-    auto x4_x2_two = ops::Const<int64>(s.WithOpName("x4/x2/two"), 2LL);
-    auto x4_y_two = ops::Const<int64>(s.WithOpName("x4/y/two"), 2LL);
-    auto y_x2_two = ops::Const<int64>(s.WithOpName("y/x2/two"), 2LL);
-    auto y_y_two = ops::Const<int64>(s.WithOpName("y/y/two"), 2LL);
+    auto x4_x2_two = ops::Const<int64>(s.WithOpName("x4/x2/two"), int64{2});
+    auto x4_y_two = ops::Const<int64>(s.WithOpName("x4/y/two"), int64{2});
+    auto y_x2_two = ops::Const<int64>(s.WithOpName("y/x2/two"), int64{2});
+    auto y_y_two = ops::Const<int64>(s.WithOpName("y/y/two"), int64{2});
     auto x4_x2_scale =
         ops::Cast(s.WithOpName("x4/x2/scale"), x4_x2_two, DT_FLOAT);
     auto x4_y_scale = ops::Cast(s.WithOpName("x4/y/scale"), x4_y_two, DT_FLOAT);
@@ -876,10 +875,10 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctions) {
   {
     Scope s = Scope::NewRootScope();
     auto x = ops::_Arg(s.WithOpName("x"), DT_FLOAT, 0);
-    auto x4_x2_two = ops::Const<int64>(s.WithOpName("x4/x2/two"), 2LL);
-    auto x4_y_two = ops::Const<int64>(s.WithOpName("x4/y/two"), 2LL);
-    auto y_x2_two = ops::Const<int64>(s.WithOpName("y/x2/two"), 2LL);
-    auto y_y_two = ops::Const<int64>(s.WithOpName("y/y/two"), 2LL);
+    auto x4_x2_two = ops::Const<int64>(s.WithOpName("x4/x2/two"), int64{2});
+    auto x4_y_two = ops::Const<int64>(s.WithOpName("x4/y/two"), int64{2});
+    auto y_x2_two = ops::Const<int64>(s.WithOpName("y/x2/two"), int64{2});
+    auto y_y_two = ops::Const<int64>(s.WithOpName("y/y/two"), int64{2});
     auto x4_x2_scale =
         ops::Cast(s.WithOpName("x4/x2/scale"), x4_x2_two, DT_FLOAT);
     auto x4_y_scale = ops::Cast(s.WithOpName("x4/y/scale"), x4_y_two, DT_FLOAT);
@@ -957,7 +956,7 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsWithInputControlEdges) {
         s.WithOpName("Func/b/x2/input/_4").WithControlDependencies({func3}),
         func1);
     auto b_x2_two = ops::Const(
-        s.WithOpName("b/x2/two").WithControlDependencies({func3}), 2LL);
+        s.WithOpName("b/x2/two").WithControlDependencies({func3}), int64{2});
     auto b_x2_scale = ops::Cast(s.WithOpName("b/x2/scale"), b_x2_two, DT_FLOAT);
     auto b_x2_y = ops::Mul(s.WithOpName("b/x2/y"), func4, b_x2_scale);
     auto func5 = ops::Identity(s.WithOpName("Func/b/x2/output/_5"), b_x2_y);
@@ -968,7 +967,7 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsWithInputControlEdges) {
         s.WithOpName("Func/b/y/input/_7").WithControlDependencies({func6}),
         func5);
     auto b_y_two = ops::Const(
-        s.WithOpName("b/y/two").WithControlDependencies({func6}), 2LL);
+        s.WithOpName("b/y/two").WithControlDependencies({func6}), int64{2});
     auto b_y_scale = ops::Cast(s.WithOpName("b/y/scale"), b_y_two, DT_FLOAT);
     auto b_y_y = ops::Mul(s.WithOpName("b/y/y"), func7, b_y_scale);
     auto func8 = ops::Identity(s.WithOpName("Func/b/y/output/_8"), b_y_y);
@@ -1589,7 +1588,7 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_XTimesTwo) {
   {
     Scope s = Scope::NewRootScope();
     auto x = ops::_Arg(s.WithOpName("x"), DT_FLOAT, 0);
-    auto two = ops::Const(s.WithOpName("two"), 2LL);
+    auto two = ops::Const(s.WithOpName("two"), int64{2});
     auto scale = ops::Cast(s.WithOpName("scale"), two, DT_FLOAT);
     auto y = ops::Mul(s.WithOpName("y"), x, scale);
     auto ret = ops::_Retval(s.WithOpName("y_RetVal"), y, 0);
@@ -1607,7 +1606,7 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_XTimesTwo) {
     Scope s = Scope::NewRootScope();
     auto x = ops::_Arg(s.WithOpName("x"), DT_FLOAT, 0);
     auto func0 = ops::_Arg(s.WithOpName("Func/_0"), DT_FLOAT, 1);
-    auto two = ops::Const(s.WithOpName("two"), 2LL);
+    auto two = ops::Const(s.WithOpName("two"), int64{2});
     auto scale = ops::Cast(s.WithOpName("scale"), two, DT_FLOAT);
     auto y = ops::Mul(s.WithOpName("y"), x, scale);
     NameAttrList fn0;

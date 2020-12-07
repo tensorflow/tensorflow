@@ -232,6 +232,20 @@ func @invalid_island(%arg0: tensor<*xf32>, %ctl: !tf_executor.control) {
 
 // -----
 
+// Check that an island body doesn't have any block arguments.
+func @invalid_island(%arg0: tensor<*xf32>, %ctl: !tf_executor.control) {
+  tf_executor.graph {
+    "tf_executor.island"() ({
+      // expected-error@-1 {{expects body without any arguments}}
+      ^entry(%arg: tensor<2xi32>):
+        tf_executor.yield
+    }) : () -> (!tf_executor.control)
+  }
+  return
+}
+
+// -----
+
 // Check that an island body can't be empty.
 func @invalid_island(%arg0: tensor<*xf32>, %ctl: !tf_executor.control) {
   tf_executor.graph {

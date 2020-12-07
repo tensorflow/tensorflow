@@ -166,7 +166,7 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
           return out_handle;
         });
   m.def("_TF_SetTarget", TF_SetTarget);
-  m.def("_TF_SetConfig", [](TF_SessionOptions* options, py::str proto) {
+  m.def("_TF_SetConfig", [](TF_SessionOptions* options, py::bytes proto) {
     tensorflow::Safe_TF_StatusPtr status =
         tensorflow::make_safe(TF_NewStatus());
     tensorflow::Safe_TF_BufferPtr buf =
@@ -398,7 +398,7 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
   });
 
   m.def("SetHandleShapeAndType",
-        [](TF_Graph* graph, TF_Output output, py::str proto) {
+        [](TF_Graph* graph, TF_Output output, py::bytes proto) {
           tensorflow::Safe_TF_StatusPtr status =
               tensorflow::make_safe(TF_NewStatus());
           tensorflow::Safe_TF_BufferPtr buf =
@@ -614,7 +614,7 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
         });
 
   m.def("TF_SetAttrValueProto", [](TF_OperationDescription* desc,
-                                   const char* attr_name, py::str proto) {
+                                   const char* attr_name, py::bytes proto) {
     tensorflow::Safe_TF_StatusPtr status =
         tensorflow::make_safe(TF_NewStatus());
     tensorflow::Safe_TF_BufferPtr buf =
@@ -673,7 +673,7 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
   m.def("TF_DeleteBuffer", &TF_DeleteBuffer);
   m.def(
       "TF_NewBufferFromString",
-      [](py::str buffer_as_string) {
+      [](py::bytes buffer_as_string) {
         tensorflow::Safe_TF_BufferPtr buf = tensorflow::make_safe(
             ProtoStringToTFBuffer(buffer_as_string.ptr()));
         return TF_NewBufferFromString(buf.get()->data, buf.get()->length);
@@ -853,7 +853,7 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
         py::call_guard<py::gil_scoped_release>());
 
   m.def("TF_FunctionSetAttrValueProto",
-        [](TF_Function* func, const char* attr_name, py::str proto) {
+        [](TF_Function* func, const char* attr_name, py::bytes proto) {
           tensorflow::Safe_TF_StatusPtr status =
               tensorflow::make_safe(TF_NewStatus());
           tensorflow::Safe_TF_BufferPtr buf =
@@ -887,7 +887,7 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
 
   m.def(
       "TF_FunctionImportFunctionDef",
-      [](py::str proto) {
+      [](py::bytes proto) {
         tensorflow::Safe_TF_StatusPtr status =
             tensorflow::make_safe(TF_NewStatus());
         tensorflow::Safe_TF_BufferPtr buf =
@@ -991,7 +991,7 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
 
   m.def(
       "TF_NewServer",
-      [](py::str proto) {
+      [](py::bytes proto) {
         tensorflow::Safe_TF_StatusPtr status =
             tensorflow::make_safe(TF_NewStatus());
         tensorflow::Safe_TF_BufferPtr buf =
@@ -1153,6 +1153,13 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
     // the Windows import will not load the libraries necessarily
     // in order. b/145559202
     return "TensorHandle";
+  });
+
+  m.def("TF_RegisterFilesystemPlugin", [](const char* plugin_filename) {
+    tensorflow::Safe_TF_StatusPtr status =
+        tensorflow::make_safe(TF_NewStatus());
+    TF_RegisterFilesystemPlugin(plugin_filename, status.get());
+    tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
   });
 
   py::enum_<TF_DataType>(m, "TF_DataType")

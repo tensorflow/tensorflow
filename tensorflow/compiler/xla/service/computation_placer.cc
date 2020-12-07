@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/service/global_device_id.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -39,27 +40,33 @@ using absl::StrCat;
 
 namespace xla {
 
-StatusOr<int> DeviceAssignment::ReplicaIdForDeviceOrdinal(
-    int device_ordinal) const {
-  absl::optional<int> replica_id;
-  for (int64 r = 0; r < replica_count(); ++r) {
-    for (int64 c = 0; c < computation_count(); ++c) {
-      if ((*this)(r, c) == device_ordinal) {
-        if (replica_id.has_value()) {
+StatusOr<std::pair<int, int>> DeviceAssignment::LogicalIdsForDevice(
+    GlobalDeviceId device_id) const {
+  absl::optional<std::pair<int, int>> logical_ids;
+  for (int r = 0; r < replica_count(); ++r) {
+    for (int c = 0; c < computation_count(); ++c) {
+      if ((*this)(r, c) == device_id.value()) {
+        if (logical_ids.has_value()) {
           return InternalError(
-              "Device ordinal %d appears twice in DeviceAssignment? %s",
-              device_ordinal, ToString());
+              "Device %d appears twice in DeviceAssignment: %s",
+              device_id.value(), ToString());
         }
-        replica_id = r;
+        logical_ids.emplace(r, c);
       }
     }
   }
-  if (!replica_id.has_value()) {
-    return InternalError(
-        "Device ordinal %d doesn't appear in DeviceAssignment %s",
-        device_ordinal, ToString());
+  if (logical_ids.has_value()) {
+    return *logical_ids;
+  } else {
+    return InternalError("Device %d doesn't appear in DeviceAssignment: %s",
+                         device_id.value(), ToString());
   }
-  return *replica_id;
+}
+
+StatusOr<int> DeviceAssignment::ReplicaIdForDevice(
+    GlobalDeviceId device_id) const {
+  TF_ASSIGN_OR_RETURN(auto logical_ids, LogicalIdsForDevice(device_id));
+  return logical_ids.first;
 }
 
 Status DeviceAssignment::Serialize(DeviceAssignmentProto* proto) const {

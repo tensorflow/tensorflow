@@ -277,7 +277,7 @@ module attributes {tf_saved_model.semantics} {
 module attributes {tf_saved_model.semantics} {
 
   // expected-error@+1 {{the initializer function does not exist}}
-  "tf_saved_model.session_initializer"() { initializer = @init } : () -> ()
+  "tf_saved_model.session_initializer"() { initializers = [@init] } : () -> ()
 }
 
 // -----
@@ -285,7 +285,7 @@ module attributes {tf_saved_model.semantics} {
 module attributes {tf_saved_model.semantics} {
 
   // expected-error@+1 {{the initializer function should have no output}}
-  "tf_saved_model.session_initializer"() { initializer = @init } : () -> ()
+  "tf_saved_model.session_initializer"() { initializers = [@init] } : () -> ()
   func @init() -> tensor<1xf32> attributes {sym_visibility = "private"} {
     %0 = "tf.Const"() {value = dense<[1.0]> : tensor<1xf32> } : () -> tensor<1xf32>
     return %0 : tensor<1xf32>
@@ -298,7 +298,7 @@ module attributes {tf_saved_model.semantics} {
 
   "tf_saved_model.session_initializer"() { initializer = @init } : () -> ()
   // expected-error@+1 {{there must be no more than one session_initializer op}}
-  "tf_saved_model.session_initializer"() { initializer = @init } : () -> ()
+  "tf_saved_model.session_initializer"() { initializers = [@init] } : () -> ()
   func @init() -> tensor<1xf32> attributes {sym_visibility = "private"} {
     %0 = "tf.Const"() {value = dense<[1.0]> : tensor<1xf32> } : () -> tensor<1xf32>
     return %0 : tensor<1xf32>
@@ -336,7 +336,7 @@ module attributes {tf_saved_model.semantics} {
 module attributes {tf_saved_model.semantics} {
 
   // expected-error@+1 {{the initializer function does not exist}}
-  "tf_saved_model.session_initializer"() { initializer = @init } : () -> ()
+  "tf_saved_model.session_initializer"() { initializers = [@init] } : () -> ()
 }
 
 // -----
@@ -344,7 +344,7 @@ module attributes {tf_saved_model.semantics} {
 module attributes {tf_saved_model.semantics} {
 
   // expected-error@+1 {{the initializer function should have no output}}
-  "tf_saved_model.session_initializer"() { initializer = @init } : () -> ()
+  "tf_saved_model.session_initializer"() { initializers = [@init] } : () -> ()
   func @init() -> (tensor<1xf32> {tf_saved_model.index_path = ["output"]})
     attributes { tf_saved_model.exported_names = ["__tf_saved_model_session_initializer"] } {
     %0 = "tf.Const"() {value = dense<[1.0]> : tensor<1xf32> } : () -> tensor<1xf32>
@@ -356,9 +356,9 @@ module attributes {tf_saved_model.semantics} {
 
 module attributes {tf_saved_model.semantics} {
 
-  "tf_saved_model.session_initializer"() { initializer = @init } : () -> ()
+  "tf_saved_model.session_initializer"() { initializers = [@init] } : () -> ()
   // expected-error@+1 {{there must be no more than one session_initializer op}}
-  "tf_saved_model.session_initializer"() { initializer = @init } : () -> ()
+  "tf_saved_model.session_initializer"() { initializers = [@init] } : () -> ()
   func @init() -> (tensor<1xf32> {tf_saved_model.index_path = ["output"]})
     attributes { tf_saved_model.exported_names = ["__tf_saved_model_session_initializer"] } {
     %0 = "tf.Const"() {value = dense<[1.0]> : tensor<1xf32> } : () -> tensor<1xf32>
@@ -371,7 +371,7 @@ module attributes {tf_saved_model.semantics} {
 module attributes {tf_saved_model.semantics} {
 
   // expected-error@+1 {{the initializer function should be exported}}
-  "tf_saved_model.session_initializer"() { initializer = @init } : () -> ()
+  "tf_saved_model.session_initializer"() { initializers = [@init] } : () -> ()
   func @init() attributes {sym_visibility = "private"} {
     return
   }
@@ -382,7 +382,7 @@ module attributes {tf_saved_model.semantics} {
 module attributes {tf_saved_model.semantics} {
 
   // expected-error@+1 {{the initializer function should have only one exported name}}
-  "tf_saved_model.session_initializer"() { initializer = @init } : () -> ()
+  "tf_saved_model.session_initializer"() { initializers = [@init] } : () -> ()
   func @init() attributes { tf_saved_model.exported_names = ["a", "b"] } {
     return
   }
@@ -399,4 +399,18 @@ module attributes {tf_saved_model.semantics} {
     return
   }
 
+}
+
+// -----
+
+module attributes {tf_saved_model.semantics} {
+
+  "tf_saved_model.global_tensor"() { is_mutable, sym_name = "v", type = tensor<f32>, value = dense<42.0> : tensor<f32> } : () -> ()
+  // expected-error@+1 {{duplicate 'tf_saved_model.bound_input' binding}}
+  func @f(
+    %arg0: tensor<!tf.resource<tensor<f32>>> {tf_saved_model.bound_input = @v},
+    %arg1: tensor<!tf.resource<tensor<f32>>> {tf_saved_model.bound_input = @v}
+  ) attributes {tf_saved_model.exported_names = ["f"]} {
+    return
+  }
 }

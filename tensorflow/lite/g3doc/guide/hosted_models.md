@@ -4,8 +4,8 @@ The following is an incomplete list of pre-trained models optimized to work with
 TensorFlow Lite.
 
 To get started choosing a model, visit <a href="../models">Models</a> page with
-end-to-end examples, or pick a [TensorFlow Lite model from TensorFlow Hub]
-(https://tfhub.dev/s?deployment-format=lite).
+end-to-end examples, or pick a
+[TensorFlow Lite model from TensorFlow Hub](https://tfhub.dev/s?deployment-format=lite).
 
 Note: The best model for a given application depends on your requirements. For
 example, some applications might benefit from higher accuracy, while others
@@ -16,6 +16,9 @@ models to find the optimal balance between size, performance, and accuracy.
 
 For more information about image classification, see
 <a href="../models/image_classification/overview.md">Image classification</a>.
+Explore the TensorFlow Lite Task Library for instructions about
+[how to integrate image classification models](../inference_with_metadata/task_library/image_classifier)
+in just a few lines of code.
 
 ### Quantized models
 
@@ -24,7 +27,8 @@ classification models offer the smallest model size and fastest performance, at
 the expense of accuracy. The performance values are measured on Pixel 3 on
 Android 10.
 
-You can find many [quantized models](https://tfhub.dev/s?deployment-format=lite&module-type=image-classification&q=quantized)
+You can find many
+[quantized models](https://tfhub.dev/s?deployment-format=lite&module-type=image-classification&q=quantized)
 from TensorFlow Hub and get more model information there.
 
 Model name                  | Paper and model                                                                                                                                                                   | Model size | Top-1 accuracy | Top-5 accuracy | CPU, 4 threads | NNAPI
@@ -54,9 +58,9 @@ Inception_V4_quant          | [paper](https://arxiv.org/abs/1602.07261), [tflite
 Note: The model files include both TF Lite FlatBuffer and Tensorflow frozen
 Graph.
 
-Note: Performance numbers were benchmarked on Pixel-3 (Android 10).
-Accuracy numbers were computed using the
-[TFLite accuracy tool](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/accuracy/ilsvrc).
+Note: Performance numbers were benchmarked on Pixel-3 (Android 10). Accuracy
+numbers were computed using the
+[TFLite image classification evaluation tool](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/evaluation/tasks/imagenet_image_classification).
 
 ### Floating point models
 
@@ -65,7 +69,8 @@ performance. <a href="../performance/gpu">GPU acceleration</a> requires the use
 of floating point models. The performance values are measured on Pixel 3 on
 Android 10.
 
-You can find many [image classification models](https://tfhub.dev/s?deployment-format=lite&module-type=image-classification)
+You can find many
+[image classification models](https://tfhub.dev/s?deployment-format=lite&module-type=image-classification)
 from TensorFlow Hub and get more model information there.
 
 Model name            | Paper and model                                                                                                                                                                           | Model size | Top-1 accuracy | Top-5 accuracy | CPU, 4 threads | GPU    | NNAPI
@@ -102,8 +107,9 @@ The following image classification models were created using
 <a href="https://cloud.google.com/automl/">Cloud AutoML</a>. The performance
 values are measured on Pixel 3 on Android 10.
 
-You can find these models in [TensorFlow Hub](https://tfhub.dev/s?deployment-format=lite&q=MnasNet)
-and get more model information there.
+You can find these models in
+[TensorFlow Hub](https://tfhub.dev/s?deployment-format=lite&q=MnasNet) and get
+more model information there.
 
 Model Name       | Paper and model                                                                                                                                                | Model size | Top-1 accuracy | Top-5 accuracy | CPU, 4 threads | GPU     | NNAPI
 ---------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------: | ---------: | -------------: | -------------: | -------------: | ------: | ----:
@@ -116,16 +122,20 @@ MnasNet_1.0_192  | [paper](https://arxiv.org/abs/1807.11626), [tflite&pb](https:
 MnasNet_1.0_224  | [paper](https://arxiv.org/abs/1807.11626), [tflite&pb](https://storage.cloud.google.com/download.tensorflow.org/models/tflite/mnasnet_1.0_224_09_07_2018.tgz)  | 17 Mb      | 74.08%         | 91.75%         | 19.4 ms        | 8.7 ms  | 19 ms
 MnasNet_1.3_224  | [paper](https://arxiv.org/abs/1807.11626), [tflite&pb](https://storage.cloud.google.com/download.tensorflow.org/models/tflite/mnasnet_1.3_224_09_07_2018.tgz)  | 24 Mb      | 75.24%         | 92.55%         | 27.9 ms        | 10.6 ms | 22.0 ms
 
-Note: Performance numbers were benchmarked on Pixel-3 (Android 10).
-Accuracy numbers were computed using the
-[TFLite accuracy tool](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/accuracy/ilsvrc).
+Note: Performance numbers were benchmarked on Pixel-3 (Android 10). Accuracy
+numbers were computed using the
+[TFLite image classification evaluation tool](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/evaluation/tasks/imagenet_image_classification).
 
 ## Object detection
 
 For more information about object detection, see
-<a href="../models/object_detection/overview.md">Object detection</a>.
+<a href="../models/object_detection/overview.md">Object detection</a>. Explore
+the TensorFlow Lite Task Library for instructions about
+[how to integrate object detection models](../inference_with_metadata/task_library/object_detector)
+in just a few lines of code.
 
-Please find [object detection models](https://tfhub.dev/s?deployment-format=lite&module-type=image-object-detection)
+Please find
+[object detection models](https://tfhub.dev/s?deployment-format=lite&module-type=image-object-detection)
 from TensorFlow Hub.
 
 ## Pose estimation
@@ -133,21 +143,29 @@ from TensorFlow Hub.
 For more information about pose estimation, see
 <a href="../models/pose_estimation/overview.md">Pose estimation</a>.
 
-Please find [pose estimation models](https://tfhub.dev/s?deployment-format=lite&module-type=image-pose-detection)
+Please find
+[pose estimation models](https://tfhub.dev/s?deployment-format=lite&module-type=image-pose-detection)
 from TensorFlow Hub.
 
 ## Image segmentation
 
 For more information about image segmentation, see
-<a href="../models/segmentation/overview.md">Segmentation</a>.
+<a href="../models/segmentation/overview.md">Segmentation</a>. Explore the
+TensorFlow Lite Task Library for instructions about
+[how to integrate image segmentation models](../inference_with_metadata/task_library/image_segmenter)
+in just a few lines of code.
 
-Please find [image segmentation models](https://tfhub.dev/s?deployment-format=lite&module-type=image-segmentation)
+Please find
+[image segmentation models](https://tfhub.dev/s?deployment-format=lite&module-type=image-segmentation)
 from TensorFlow Hub.
 
 ## Question and Answer
 
-For more information about text classification with Mobile BERT, see
-<a href="../models/bert_qa/overview.md">Question And Answer</a>.
+For more information about question and answer with MobileBERT, see
+<a href="../models/bert_qa/overview.md">Question And Answer</a>. Explore the
+TensorFlow Lite Task Library for instructions about
+[how to integrate question and answer models](../inference_with_metadata/task_library/bert_question_answerer)
+in just a few lines of code.
 
 Please find [Mobile BERT model](https://tfhub.dev/tensorflow/mobilebert/1) from
 TensorFlow Hub.

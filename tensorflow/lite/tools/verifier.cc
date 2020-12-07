@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/version.h"
 
@@ -106,9 +107,10 @@ bool VerifyStringTensorBuffer(const Tensor& tensor, const Buffer& buffer,
     return false;
   }
   offset += sizeof(int32_t);
-  for (int i = 1; i <= num_strings; i++, offset += sizeof(int32_t)) {
+  for (int i = 1, end = num_strings; i <= end; i++, offset += sizeof(int32_t)) {
     int string_offset = *GetIntPtr(buffer_ptr + offset);
-    if (string_offset < prev_ptr || string_offset > buffer_size) {
+    if (string_offset < static_cast<int>(prev_ptr) ||
+        string_offset > static_cast<int>(buffer_size)) {
       ReportError(error_reporter,
                   "String tensor %s buffer is invalid: index %d",
                   NameOrEmptyString(tensor.name()), i);
@@ -122,6 +124,25 @@ bool VerifyStringTensorBuffer(const Tensor& tensor, const Buffer& buffer,
     return false;
   }
   return true;
+}
+
+bool CheckArraySegments(const DimensionMetadata* dim_metadata) {
+  if (dim_metadata->array_segments() == nullptr) {
+    return false;
+  }
+  switch (dim_metadata->array_segments_type()) {
+    case SparseIndexVector_Int32Vector:
+      return (dim_metadata->array_segments_as_Int32Vector()->values() !=
+              nullptr);
+    case SparseIndexVector_Uint16Vector:
+      return (dim_metadata->array_segments_as_Uint16Vector()->values() !=
+              nullptr);
+    case SparseIndexVector_Uint8Vector:
+      return (dim_metadata->array_segments_as_Uint8Vector()->values() !=
+              nullptr);
+    default:
+      return false;
+  }
 }
 
 int GetSizeOfSegments(const DimensionMetadata* dim_metadata) {
@@ -150,6 +171,25 @@ int GetValueOfSegmentsAt(const DimensionMetadata* dim_metadata, const int i) {
           dim_metadata->array_segments_as_Uint8Vector()->values()->Get(i));
     default:
       return -1;
+  }
+}
+
+bool CheckArrayIndices(const DimensionMetadata* dim_metadata) {
+  if (dim_metadata->array_indices() == nullptr) {
+    return false;
+  }
+  switch (dim_metadata->array_indices_type()) {
+    case SparseIndexVector_Int32Vector:
+      return (dim_metadata->array_indices_as_Int32Vector()->values() !=
+              nullptr);
+    case SparseIndexVector_Uint16Vector:
+      return (dim_metadata->array_indices_as_Uint16Vector()->values() !=
+              nullptr);
+    case SparseIndexVector_Uint8Vector:
+      return (dim_metadata->array_indices_as_Uint8Vector()->values() !=
+              nullptr);
+    default:
+      return false;
   }
 }
 
@@ -203,9 +243,8 @@ absl::optional<uint64_t> VerifyAndCountElements(
       // Each index in a dense dimension is stored implicitly.
       num_elements *= dim_metadata->dense_size();
     } else {
-      const auto* array_segments = dim_metadata->array_segments();
-      const auto* array_indices = dim_metadata->array_indices();
-      if (array_segments == nullptr || array_indices == nullptr) {
+      if (!CheckArraySegments(dim_metadata) ||
+          !CheckArrayIndices(dim_metadata)) {
         return absl::nullopt;
       }
 
@@ -221,7 +260,7 @@ absl::optional<uint64_t> VerifyAndCountElements(
         }
       }
 
-      if (num_elements != array_segments_size - 1) {
+      if (static_cast<int>(num_elements) != array_segments_size - 1) {
         return absl::nullopt;
       }
 
@@ -254,16 +293,20 @@ absl::optional<uint64_t> VerifyAndCountSparseElements(const Tensor& tensor) {
 
   const int total_dims = sparsity->traversal_order()->size();
   const int original_rank = tensor.shape()->size();
-
-  if (total_dims < original_rank ||
-      sparsity->dim_metadata()->size() != total_dims) {
+  const int sparsity_dim_metadata_size = sparsity->dim_metadata()->size();
+  if (total_dims < original_rank || sparsity_dim_metadata_size != total_dims) {
     return absl::nullopt;
   }
 
   const int block_rank = total_dims - original_rank;
-  if (block_rank > 0 && (sparsity->block_map() == nullptr ||
-                         sparsity->block_map()->size() != block_rank)) {
-    return absl::nullopt;
+  if (block_rank > 0) {
+    if (sparsity->block_map() == nullptr) {
+      return absl::nullopt;
+    }
+    const int sparse_rank = sparsity->block_map()->size();
+    if (sparse_rank != block_rank) {
+      return absl::nullopt;
+    }
   }
 
   // For a n-dimensional tensor (d0, ..., dn-1) with k-dimensional block (dn,
@@ -308,6 +351,9 @@ absl::optional<uint64_t> VerifyAndCountSparseElements(const Tensor& tensor) {
   for (int i = 0; i < block_rank; i++) {
     int original_block_dim =
         sparsity->traversal_order()->Get(i + original_rank);
+    if (original_block_dim < 0 || original_block_dim >= total_dims) {
+      return absl::nullopt;
+    }
     int block_dim_size =
         sparsity->dim_metadata()->Get(i + original_rank)->dense_size();
     if (block_dim_size == 0) {
@@ -315,7 +361,12 @@ absl::optional<uint64_t> VerifyAndCountSparseElements(const Tensor& tensor) {
     }
 
     expanded_dim_sizes[original_block_dim] = block_dim_size;
-    expanded_dim_sizes[sparsity->block_map()->Get(i)] /= block_dim_size;
+
+    int mapped_block_dim = sparsity->block_map()->Get(i);
+    if (mapped_block_dim < 0 || mapped_block_dim >= total_dims) {
+      return absl::nullopt;
+    }
+    expanded_dim_sizes[mapped_block_dim] /= block_dim_size;
   }
 
   return VerifyAndCountElements(*sparsity, expanded_dim_sizes);
@@ -375,6 +426,9 @@ bool VerifyNumericTensorBuffer(const Tensor& tensor, const Buffer& buffer,
     case TensorType_INT64:
       bytes_required *= sizeof(int64_t);
       break;
+    case TensorType_UINT64:
+      bytes_required *= sizeof(uint64_t);
+      break;
     case TensorType_BOOL:
       bytes_required *= sizeof(bool);
       break;
@@ -383,6 +437,9 @@ bool VerifyNumericTensorBuffer(const Tensor& tensor, const Buffer& buffer,
       break;
     case TensorType_COMPLEX64:
       bytes_required *= sizeof(std::complex<float>);
+      break;
+    case TensorType_COMPLEX128:
+      bytes_required *= sizeof(std::complex<double>);
       break;
     default:
       ReportError(error_reporter, "Tensor %s invalid type: %d",
@@ -443,7 +500,7 @@ bool VerifySubGraphConsistency(const Model& model, const SubGraph& subgraph,
   absl::flat_hash_set<int> subgraph_input_tensors, constant_tensors,
       variable_tensors, output_tensors;
   if (subgraph.tensors()) {
-    for (int i = 0; i < subgraph.tensors()->size(); ++i) {
+    for (int i = 0, end = subgraph.tensors()->size(); i < end; ++i) {
       const auto* tensor = subgraph.tensors()->Get(i);
       if (IsConstantTensor(*tensor, model)) {
         constant_tensors.insert(i);
@@ -459,7 +516,8 @@ bool VerifySubGraphConsistency(const Model& model, const SubGraph& subgraph,
   }
 
   if (subgraph.operators()) {
-    for (int op_idx = 0; op_idx < subgraph.operators()->size(); ++op_idx) {
+    for (int op_idx = 0, end = subgraph.operators()->size(); op_idx < end;
+         ++op_idx) {
       const auto* op = subgraph.operators()->Get(op_idx);
       if (!model.operator_codes() ||
           (op->opcode_index() >= model.operator_codes()->size())) {
@@ -469,6 +527,7 @@ bool VerifySubGraphConsistency(const Model& model, const SubGraph& subgraph,
         return false;
       }
       const auto& opcode = model.operator_codes()->Get(op->opcode_index());
+      auto builtin_code = GetBuiltinCode(opcode);
       // Check for invalid inputs by ensuring all exist in produced_tensors.
       for (const int input_idx : *op->inputs()) {
         if (input_idx == kTfLiteOptionalTensor) continue;
@@ -479,8 +538,7 @@ bool VerifySubGraphConsistency(const Model& model, const SubGraph& subgraph,
             output_tensors.find(input_idx) == output_tensors.end()) {
           ReportError(error_reporter,
                       "Input tensor %d to op %d (%s) is not produced",
-                      input_idx, op_idx,
-                      EnumNameBuiltinOperator(opcode->builtin_code()));
+                      input_idx, op_idx, EnumNameBuiltinOperator(builtin_code));
           return false;
         }
       }
@@ -488,31 +546,29 @@ bool VerifySubGraphConsistency(const Model& model, const SubGraph& subgraph,
       // produced_tensors.
       for (const int output_idx : *op->outputs()) {
         if (constant_tensors.find(output_idx) != constant_tensors.end()) {
-          ReportError(error_reporter,
-                      "Output tensor %d to op %d (%s) is a constant",
-                      output_idx, op_idx,
-                      EnumNameBuiltinOperator(opcode->builtin_code()));
+          ReportError(
+              error_reporter, "Output tensor %d to op %d (%s) is a constant",
+              output_idx, op_idx, EnumNameBuiltinOperator(builtin_code));
           return false;
         } else if (variable_tensors.find(output_idx) !=
                    variable_tensors.end()) {
-          ReportError(error_reporter,
-                      "Output tensor %d to op %d (%s) is a variable",
-                      output_idx, op_idx,
-                      EnumNameBuiltinOperator(opcode->builtin_code()));
+          ReportError(
+              error_reporter, "Output tensor %d to op %d (%s) is a variable",
+              output_idx, op_idx, EnumNameBuiltinOperator(builtin_code));
           return false;
         } else if (subgraph_input_tensors.find(output_idx) !=
                    subgraph_input_tensors.end()) {
           ReportError(error_reporter,
                       "Output tensor %d to op %d (%s) is a subgraph input",
                       output_idx, op_idx,
-                      EnumNameBuiltinOperator(opcode->builtin_code()));
+                      EnumNameBuiltinOperator(builtin_code));
           return false;
         } else if (output_tensors.find(output_idx) != output_tensors.end()) {
           ReportError(error_reporter,
                       "Output tensor %d to op %d (%s) is an output from "
                       "another op. There is a cycle in the graph",
                       output_idx, op_idx,
-                      EnumNameBuiltinOperator(opcode->builtin_code()));
+                      EnumNameBuiltinOperator(builtin_code));
           return false;
         }
         // This can be an input to a subsequent op.
@@ -599,14 +655,15 @@ bool VerifyOps(const Model& model, const OpResolver& resolver,
     return true;
   }
   for (const auto& opcode : *model.operator_codes()) {
-    if (opcode->builtin_code() < BuiltinOperator_MIN ||
-        opcode->builtin_code() > BuiltinOperator_MAX) {
+    auto builtin_code = GetBuiltinCode(opcode);
+    if (builtin_code < BuiltinOperator_MIN ||
+        builtin_code > BuiltinOperator_MAX) {
       ReportError(error_reporter, "Operator id '%d' is out of range.",
-                  opcode->builtin_code());
+                  builtin_code);
       return false;
     }
 
-    if (opcode->builtin_code() == BuiltinOperator_CUSTOM) {
+    if (builtin_code == BuiltinOperator_CUSTOM) {
       if (IsNullOrEmptyString(opcode->custom_code())) {
         ReportError(error_reporter,
                     "Invalid custom op name, cannot be null/empty.");
@@ -618,10 +675,9 @@ bool VerifyOps(const Model& model, const OpResolver& resolver,
         return false;
       }
     } else {
-      if (!resolver.FindOp(opcode->builtin_code(), opcode->version())) {
+      if (!resolver.FindOp(builtin_code, opcode->version())) {
         ReportError(error_reporter, "Unsupported builtin op: %s, version: %d",
-                    EnumNameBuiltinOperator(opcode->builtin_code()),
-                    opcode->version());
+                    EnumNameBuiltinOperator(builtin_code), opcode->version());
         return false;
       }
     }

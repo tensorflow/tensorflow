@@ -30,7 +30,14 @@ namespace tensorflow {
 // tracing or immediate execution mode.
 class AbstractOperation {
  protected:
-  enum AbstractOperationKind { kGraph, kMlir, kEager, kTfrt };
+  enum AbstractOperationKind {
+    kGraph,
+    kMlir,
+    kEager,
+    kTfrt,
+    kTape,
+    kOpHandler
+  };
   explicit AbstractOperation(AbstractOperationKind kind) : kind_(kind) {}
   virtual ~AbstractOperation() {}
 
@@ -73,7 +80,8 @@ class AbstractOperation {
   virtual Status SetDeviceName(const char* name) = 0;
 
   virtual Status AddInput(AbstractTensorHandle* input) = 0;
-  virtual Status AddInputList(absl::Span<AbstractTensorHandle*> inputs) = 0;
+  virtual Status AddInputList(
+      absl::Span<AbstractTensorHandle* const> inputs) = 0;
   virtual Status Execute(absl::Span<AbstractTensorHandle*> retvals,
                          int* num_retvals) = 0;
 

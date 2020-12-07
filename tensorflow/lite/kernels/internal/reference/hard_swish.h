@@ -86,7 +86,7 @@ inline void HardSwish(const HardSwishParams& params,
     // (reluish_multiplier_fixedpoint) and bit-shift such that we represent
     // that input value on the scale where the real value 3.0f is represented
     // by the quantized value 32768.  (+32768 is actually not representable as
-    // int16, so this saturates at +32767, and that is seen empirically to be
+    // int16_t, so this saturates at +32767, and that is seen empirically to be
     // a negligible contribution to numerical error/bias).
     //
     // This code is careful to correctly implement any magnitude of multiplier,

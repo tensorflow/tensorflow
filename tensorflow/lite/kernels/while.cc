@@ -195,7 +195,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     }
   }
   for (int i = 0; i < num_inputs; ++i) {
-    TfLiteTensor* output = GetOutput(context, node, i);
+    TfLiteTensor* output;
+    TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, i, &output));
     if (op_data->body_has_dynamic_output_tensors) {
       SetTensorToDynamic(output);
     } else {

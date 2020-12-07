@@ -86,6 +86,7 @@ void TRTOptimizationPass::PrintDebugInfo(grappler::Cluster* cluster,
   string offset2 = StrCat(offset, offset);
   string offset3 = StrCat(offset2, offset);
   string offset4 = StrCat(offset2, offset2);
+
   if (cluster) {
     LOG(INFO) << offset << "type             = " << cluster->type();
     LOG(INFO) << offset << "num warmup steps = " << cluster->NumWarmupSteps();
@@ -132,7 +133,15 @@ void TRTOptimizationPass::PrintDebugInfo(grappler::Cluster* cluster,
         }
       }
     }
+
+    if (cluster->GetDeviceSet()) {
+      for (const auto dev : cluster->GetDeviceSet()->devices()) {
+        LOG(INFO) << "Device name= " << dev->name() << "Pased name= "
+                  << DeviceNameUtils::ParsedNameToString(dev->parsed_name());
+      }
+    }
   }
+
   LOG(INFO) << "item: " << item.id;
   if (!item.feed.empty()) {
     LOG(INFO) << offset << "Feeds  :";
@@ -171,13 +180,6 @@ void TRTOptimizationPass::PrintDebugInfo(grappler::Cluster* cluster,
   } else {
     LOG(INFO) << offset << "No keep ops";
   }
-  for (const auto dev : cluster->GetDeviceSet()->devices()) {
-    const auto& pname = dev->parsed_name();
-    LOG(INFO) << "Device name= " << dev->name()
-              << " parsedname job= " << pname.job << " id= " << pname.id
-              << " has_id: " << pname.has_id << " has_job: " << pname.has_job
-              << "has_type: " << pname.has_type << " type =" << pname.type;
-  }
 }
 
 Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
@@ -200,32 +202,6 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
   if (VLOG_IS_ON(3)) {
     LOG(INFO) << CurrentStackTrace();
     PrintDebugInfo(cluster, item);
-  }
-  if (!is_dynamic_op_) {
-    int max_batch_dim = -1;
-    if (!item.feed.empty()) {
-      for (const auto& f : item.feed) {
-        const auto& shape = f.second.shape();
-        if (shape.dims() > 0) {
-          if (shape.dim_size(0) > max_batch_dim)
-            max_batch_dim = shape.dim_size(0);
-          VLOG(2) << "Setting max_batch_dim to " << max_batch_dim
-                  << " using batch dimension of " << f.first << " with shape "
-                  << shape;
-        }
-      }
-    }
-    if (max_batch_dim > maximum_batch_size_) {
-      return errors::InvalidArgument(
-          "Specified max_batch_size=", maximum_batch_size_,
-          " is less than maximum batch dimension of inputs (", max_batch_dim,
-          "). ", "To continue, set max_batch_size to >= ", max_batch_dim);
-    } else if (max_batch_dim < maximum_batch_size_) {
-      LOG(INFO) << "Specified max_batch_size=" << maximum_batch_size_
-                << " is larger than maximum batch dimension of inputs ("
-                << max_batch_dim << "). "
-                << "This can result in poor performance.";
-    }
   }
 
   if (use_calibration_ && precision_mode_ != TrtPrecisionMode::INT8) {

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for while loops in XLA."""
+"""Tests for case statements in XLA."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -32,7 +32,7 @@ class CaseTest(xla_test.XLATestCase):
 
   def testCaseBasic(self):
 
-    @def_function.function(experimental_compile=True)
+    @def_function.function(jit_compile=True)
     def switch_case_test(branch_index):
 
       def f1():
@@ -58,7 +58,7 @@ class CaseTest(xla_test.XLATestCase):
 
   def testBranchIsPruned(self):
 
-    @def_function.function(experimental_compile=True)
+    @def_function.function(jit_compile=True)
     def switch_case_test():
       branch_index = array_ops.constant(0)
 

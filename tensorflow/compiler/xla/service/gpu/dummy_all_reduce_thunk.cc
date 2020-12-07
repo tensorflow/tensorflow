@@ -14,39 +14,38 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
 namespace xla {
 namespace gpu {
 
-/* static */ bool NcclAllReduceThunk::NcclIsEnabled() {
-  return false;  // Skylark selects this source file if NCCL is disabled.
+NcclAllReduceConfig GetNcclAllReduceConfig(const HloInstruction* hlo,
+                                           int64 replica_count) {
+  return NcclAllReduceConfig();
 }
 
-/* static */ bool NcclAllReduceThunk::CanImplement(const HloInstruction* crs) {
+NcclAllReduceThunk::NcclAllReduceThunk(
+    ThunkInfo thunk_info, NcclAllReduceConfig config,
+    std::vector<NcclAllReduceThunk::Buffer> buffers)
+    : NcclCollectiveThunk(Thunk::kNcclAllReduce, thunk_info),
+      config_(std::move(config)),
+      buffers_(std::move(buffers)) {}
+
+/* static */ bool NcclAllReduceThunk::CanImplement(const HloInstruction* hlo) {
   return false;
 }
 
-Status NcclAllReduceThunk::ExecuteOnStream(const ExecuteParams& params) {
+Status NcclAllReduceThunk::RunNcclCollective(const ExecuteParams&, ncclComm_t) {
   return Unimplemented(
       "NCCL support is not available: this binary was not built with a CUDA "
       "compiler, which is necessary to build the NCCL source library.");
 }
 
-NcclAllReduceThunk::~NcclAllReduceThunk() = default;
-
-/*static*/ absl::flat_hash_set<GlobalDeviceId>
-NcclAllReduceThunk::DevicesWithOpenNcclChannels() {
-  return {};
+const NcclCollectiveConfig& NcclAllReduceThunk::config() const {
+  // This function will never be called.
+  const NcclCollectiveConfig* config = nullptr;
+  return *config;
 }
-
-struct NcclAllReduceThunk::AuxData {};
-
-NcclAllReduceThunk::NcclAllReduceThunk(
-    int64 replica_count, std::vector<NcclAllReduceThunk::Buffer> buffers,
-    const HloInstruction* all_reduce)
-    : Thunk(Thunk::kNcclAllReduce, all_reduce),
-      replica_count_(replica_count),
-      buffers_(std::move(buffers)) {}
 
 }  // namespace gpu
 }  // namespace xla

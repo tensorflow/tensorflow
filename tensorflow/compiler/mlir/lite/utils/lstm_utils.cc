@@ -24,7 +24,7 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -134,7 +134,7 @@ Value SliceRankedTensor(OpBuilder* builder, Value input,
   // the input tensor's dimensions, return 0-valued tensor of the requested
   // shape.
   ArrayRef<int64_t> input_shape = GetRankedTensorShape(input);
-  for (int i = 0; i < input_shape.size(); i++) {
+  for (int i = 0, end = input_shape.size(); i < end; i++) {
     if (begin_values[i] < 0 ||
         (begin_values[i] + size_values[i] > input_shape[i])) {
       return CreateF32SplatConst(builder, size_shape, 0, location);
@@ -744,7 +744,12 @@ LogicalResult ConvertKerasLSTMLayer(mlir::FuncOp func_op, OpBuilder* builder) {
       /*cell_layer_norm_coefficients=*/none,
       /*output_layer_norm_coefficients=*/none, builder->getStringAttr("TANH"),
       builder->getF32FloatAttr(10.0), builder->getF32FloatAttr(0.0),
-      builder->getBoolAttr(time_majored));
+      builder->getBoolAttr(time_majored),
+      /*input_to_input_intermediate=*/mlir::TypeAttr(),
+      /*input_to_forget_intermediate=*/mlir::TypeAttr(),
+      /*input_to_cell_intermediate=*/mlir::TypeAttr(),
+      /*input_to_output_intermediate=*/mlir::TypeAttr(),
+      /*effective_hidden_scale_intermediate=*/mlir::TypeAttr());
 
   auto final_output_full_sequences = lstm.getResult();
 

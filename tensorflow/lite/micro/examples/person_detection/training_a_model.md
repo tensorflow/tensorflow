@@ -140,41 +140,41 @@ This will take a couple of days on a single-GPU v100 instance to complete all
 one-million steps, but you should be able to get a fairly accurate model after
 a few hours if you want to experiment early.
 
-- The checkpoints and summaries will the saved in the folder given in the
-`--train_dir` argument, so that's where you'll have to look for the results.
-- The `--dataset_dir` parameter should match the one where you saved the
-TFRecords from the Visual Wake Words build script.
-- The architecture we'll be using is defined by the `--model_name` argument.
-The 'mobilenet_v1' prefix tells the script to use the first version of
-MobileNet. We did experiment with later versions, but these used more RAM for
-their intermediate activation buffers, so for now we kept with the original.
-The '025' is the depth multiplier to use, which mostly affects the number of
-weight parameters, this low setting ensures the model fits within 250KB of
-Flash.
-- `--preprocessing_name` controls how input images are modified before they're
-fed into the model. The 'mobilenet_v1' version shrinks the width and height of
-the images to the size given in `--train_image_size` (in our case 96 pixels
-since we want to reduce the compute requirements). It also scales the pixel
-values from 0 to 255 integers into -1.0 to +1.0 floating point numbers (though
-we'll be quantizing those after training).
-- The
-[HM01B0](https://himax.com.tw/products/cmos-image-sensor/image-sensors/hm01b0/)
-camera we're using on the SparkFun Edge board is monochrome, so to get the best
-results we have to train our model on black and white images too, so we pass in
-the `--input_grayscale` flag to enable that preprocessing.
-- The `--learning_rate`, `--label_smoothing`, `--learning_rate_decay_factor`,
-`--num_epochs_per_decay`, `--moving_average_decay` and `--batch_size` are all
-parameters that control how weights are updated during the the training
-process. Training deep networks is still a bit of a dark art, so these exact
-values we found through experimentation for this particular model. You can try
-tweaking them to speed up training or gain a small boost in accuracy, but we
-can't give much guidance for how to make those changes, and it's easy to get
-combinations where the training accuracy never converges.
-- The `--max_number_of_steps` defines how long the training should continue.
-There's no good way to figure out this threshold in advance, you have to
-experiment to tell when the accuracy of the model is no longer improving to
-tell when to cut it off. In our case we default to a million steps, since with
-this particular model we know that's a good point to stop.
+-   The checkpoints and summaries will the saved in the folder given in the
+    `--train_dir` argument, so that's where you'll have to look for the results.
+-   The `--dataset_dir` parameter should match the one where you saved the
+    TFRecords from the Visual Wake Words build script.
+-   The architecture we'll be using is defined by the `--model_name` argument.
+    The 'mobilenet_v1' prefix tells the script to use the first version of
+    MobileNet. We did experiment with later versions, but these used more RAM
+    for their intermediate activation buffers, so for now we kept with the
+    original. The '025' is the depth multiplier to use, which mostly affects the
+    number of weight parameters, this low setting ensures the model fits within
+    250KB of Flash.
+-   `--preprocessing_name` controls how input images are modified before they're
+    fed into the model. The 'mobilenet_v1' version shrinks the width and height
+    of the images to the size given in `--train_image_size` (in our case 96
+    pixels since we want to reduce the compute requirements). It also scales the
+    pixel values from 0 to 255 integers into -1.0 to +1.0 floating point numbers
+    (though we'll be quantizing those after training).
+-   The
+    [HM01B0](https://himax.com.tw/products/cmos-image-sensor/image-sensors/hm01b0/)
+    camera we're using on the SparkFun Edge board is monochrome, so to get the
+    best results we have to train our model on black and white images too, so we
+    pass in the `--input_grayscale` flag to enable that preprocessing.
+-   The `--learning_rate`, `--label_smoothing`, `--learning_rate_decay_factor`,
+    `--num_epochs_per_decay`, `--moving_average_decay` and `--batch_size` are
+    all parameters that control how weights are updated during the training
+    process. Training deep networks is still a bit of a dark art, so these exact
+    values we found through experimentation for this particular model. You can
+    try tweaking them to speed up training or gain a small boost in accuracy,
+    but we can't give much guidance for how to make those changes, and it's easy
+    to get combinations where the training accuracy never converges.
+-   The `--max_number_of_steps` defines how long the training should continue.
+    There's no good way to figure out this threshold in advance, you have to
+    experiment to tell when the accuracy of the model is no longer improving to
+    tell when to cut it off. In our case we default to a million steps, since
+    with this particular model we know that's a good point to stop.
 
 Once you start the script, you should see output that looks something like this:
 
@@ -372,6 +372,9 @@ tf.lite.TFLiteConverter.from_frozen_graph('vww_96_grayscale_frozen.pb',
 ['input'], ['MobilenetV1/Predictions/Reshape_1'])
 converter.optimizations = [tf.lite.Optimize.DEFAULT]
 converter.representative_dataset = representative_dataset_gen
+converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
+converter.inference_input_type = tf.int8
+converter.inference_output_type = tf.int8
 
 tflite_quant_model = converter.convert()
 open("vww_96_grayscale_quantized.tflite", "wb").write(tflite_quant_model)

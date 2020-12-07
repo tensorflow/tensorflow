@@ -36,6 +36,8 @@ limitations under the License.
 
 namespace tensorflow {
 
+constexpr BFCAllocator::ChunkHandle BFCAllocator::kInvalidChunkHandle;
+
 BFCAllocator::BFCAllocator(SubAllocator* sub_allocator, size_t total_memory,
                            bool allow_growth, const string& name,
                            bool garbage_collection)
@@ -123,7 +125,8 @@ bool BFCAllocator::Extend(size_t alignment, size_t rounded_bytes) {
 
   // Try allocating.
   size_t bytes = std::min(curr_region_allocation_bytes_, available_bytes);
-  void* mem_addr = sub_allocator_->Alloc(alignment, bytes);
+  size_t bytes_received;
+  void* mem_addr = sub_allocator_->Alloc(alignment, bytes, &bytes_received);
   if (mem_addr == nullptr && !started_backpedal_) {
     // Only backpedal once.
     started_backpedal_ = true;
@@ -134,7 +137,7 @@ bool BFCAllocator::Extend(size_t alignment, size_t rounded_bytes) {
     while (mem_addr == nullptr) {
       bytes = RoundedBytes(bytes * kBackpedalFactor);
       if (bytes < rounded_bytes) break;
-      mem_addr = sub_allocator_->Alloc(alignment, bytes);
+      mem_addr = sub_allocator_->Alloc(alignment, bytes, &bytes_received);
     }
   }
 
@@ -156,7 +159,7 @@ bool BFCAllocator::Extend(size_t alignment, size_t rounded_bytes) {
 
   VLOG(1) << "Allocated memory at " << mem_addr << " to "
           << static_cast<void*>(static_cast<char*>(mem_addr) + bytes);
-  region_manager_.AddAllocationRegion(mem_addr, bytes);
+  region_manager_.AddAllocationRegion(mem_addr, bytes_received);
 
   // Create one large chunk for the whole memory space that will
   // be chunked later.
@@ -228,7 +231,7 @@ void* BFCAllocator::AllocateRawInternalWithRetry(
 void* BFCAllocator::AllocateRaw(size_t unused_alignment, size_t num_bytes,
                                 const AllocationAttributes& allocation_attr) {
   VLOG(1) << "AllocateRaw " << Name() << "  " << num_bytes;
-  if (allocation_attr.no_retry_on_failure) {
+  if (!allocation_attr.retry_on_failure) {
     // Return immediately upon the first failure if this is for allocating an
     // optional scratch space.
     bool dump_log_on_failure = VLOG_IS_ON(2);
@@ -832,7 +835,7 @@ bool BFCAllocator::MergeTimestampedChunks(size_t required_bytes) {
   // to to_merge.  If this is a standard merge (required_bytes == 0) then
   // merge them all, otherwise merge just until a Chunk of the required size
   // is produced.
-  for (int ci = 0; ci < to_merge.size(); ++ci) {
+  for (int ci = 0, end = to_merge.size(); ci < end; ++ci) {
     void* ptr = to_merge[ci];
     // It's possible that the Chunk associated with this memory location got
     // merged and deallocated in a prior iteration so refetch the handle and

@@ -19,10 +19,10 @@ limitations under the License.
 #include <cstdint>
 #include <deque>
 #include <mutex>  // NOLINT
-#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
@@ -46,7 +46,7 @@ namespace gpu {
 namespace gl {
 namespace {
 
-using ObjectsSizes = std::unordered_map<ValueId, size_t>;
+using ObjectsSizes = absl::flat_hash_map<ValueId, size_t>;
 
 enum class InferenceContextState {
   NOT_STARTED,
@@ -313,7 +313,7 @@ class CompiledModelImpl
       full_shaders[shader.second] = shader.first;
     }
 
-    std::unordered_map<std::string, size_t> partial_shader_to_index;
+    absl::flat_hash_map<std::string, size_t> partial_shader_to_index;
     std::vector<std::string> partial_shaders;
     for (const auto& program : programs_) {
       // Remove a header from a shader.
@@ -366,16 +366,16 @@ class CompiledModelImpl
   std::vector<GlShader> shaders_;
 
   // Shaders are serialized in order of their indices.
-  std::unordered_map<std::string, size_t> shader_to_index_;
+  absl::flat_hash_map<std::string, size_t> shader_to_index_;
   std::deque<ProgramParameters> programs_;
-  std::unordered_map<ValueId, size_t> object_sizes_;
+  absl::flat_hash_map<ValueId, size_t> object_sizes_;
   CompilerStats stats_;
 };
 }  // namespace
 
 absl::Status Compile(const CompilationOptions& options,
                      const GraphFloat32& model,
-                     const std::unordered_set<int>& tflite_graph_io,
+                     const std::unordered_set<int>& tflite_graph_io,  // NOLINT
                      const NodeShader& node_shader,
                      const WorkgroupsCalculator& workgroup_calculator,
                      std::unique_ptr<CompiledModel>* compiled_model) {
@@ -385,7 +385,7 @@ absl::Status Compile(const CompilationOptions& options,
   }
   GpuInfo gpu_info;
   RETURN_IF_ERROR(RequestGpuInfo(&gpu_info));
-  if (!IsOpenGl31OrAbove(gpu_info)) {
+  if (!gpu_info.IsApiOpenGl31OrAbove()) {
     return absl::InternalError(
         "OpenGL ES 3.1 or above is required to use OpenGL inference.");
   }
@@ -406,7 +406,7 @@ absl::Status ReadSerializedModel(
     std::unique_ptr<CompiledModel>* compiled_model) {
   GpuInfo gpu_info;
   RETURN_IF_ERROR(RequestGpuInfo(&gpu_info));
-  if (!IsOpenGl31OrAbove(gpu_info)) {
+  if (!gpu_info.IsApiOpenGl31OrAbove()) {
     return absl::InternalError(
         "OpenGL ES 3.1 or above is required to use OpenGL inference.");
   }

@@ -296,7 +296,10 @@ def _convert_actual(entity, program_ctx):
 
 
 def autograph_artifact(entity, extras=None):
-  setattr(entity, 'autograph_info__', extras)
+  if inspect.ismethod(entity):
+    setattr(entity.__func__, 'autograph_info__', extras)
+  else:
+    setattr(entity, 'autograph_info__', extras)
   return entity
 
 
@@ -377,6 +380,10 @@ def converted_call(f,
       return py_builtins.eval_in_original_context(f, args, caller_fn_scope)
     if f is super:
       return py_builtins.super_in_original_context(f, args, caller_fn_scope)
+    if f is globals:
+      return py_builtins.globals_in_original_context(caller_fn_scope)
+    if f is locals:
+      return py_builtins.locals_in_original_context(caller_fn_scope)
     if kwargs:
       return py_builtins.overload_of(f)(*args, **kwargs)
     else:

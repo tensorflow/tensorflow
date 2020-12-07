@@ -32,6 +32,7 @@ from tensorflow.python.framework import function as framework_function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import versions
 from tensorflow.python.lib.io import file_io
@@ -44,6 +45,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.saved_model import builder_impl
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import save
@@ -565,6 +567,25 @@ class LoadTest(test.TestCase):
         start_dense_shape=dense_shape)
     self.assertAllEqual([84, 86, 88], result["output"].values.numpy())
 
+  def _model_with_ragged_input(self):
+    """Generate a graph with a RaggedTensor input and serialize in V1 format."""
+    export_graph = ops.Graph()
+    with export_graph.as_default():
+      x = ragged_factory_ops.placeholder(dtypes.float32, 1, [])
+      y = x * 2
+      with session_lib.Session() as sess:
+        path = os.path.join(self.get_temp_dir(), "saved_model", str(ops.uid()))
+        simple_save.simple_save(sess, path, inputs={"x": x}, outputs={"y": y})
+    return path
+
+  def test_load_ragged_inputs(self):
+    path = self._model_with_ragged_input()
+    imported = load.load(path)
+    imported_fn = imported.signatures["serving_default"]
+    x = ragged_factory_ops.constant([[10., 20.], [30.]])
+    result = imported_fn(x_component_0=x.values, x_component_1=x.row_splits)
+    self.assertAllEqual(result["y"], [[20., 40.], [60.]])
+
   def _model_with_defun(self):
     """Generate a graph with a Defun and serialize in V1 format."""
     export_graph = ops.Graph()
@@ -629,6 +650,15 @@ class LoadTest(test.TestCase):
         self.evaluate(
             imported.signatures["serving_default"](constant_op.constant(2.))),
         {"y": [10, 8, 6, 4, 2, 0]})
+
+  def test_structured_input_signature(self):
+    path = self._v1_single_metagraph_saved_model(False)
+    imported = load.load(path)
+    args, kwargs = (
+        imported.signatures["serving_default"].structured_input_signature)
+    self.assertEqual(args, ())
+    self.assertAllEqual(
+        kwargs, {"start": tensor_spec.TensorSpec(shape=None, name="start")})
 
 
 if __name__ == "__main__":

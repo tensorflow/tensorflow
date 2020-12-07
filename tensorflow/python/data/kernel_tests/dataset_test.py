@@ -543,6 +543,19 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         10, output_type=dtypes.int32).map(lambda x: (x, None))
     self.assertEqual(self.evaluate(fn(dataset)), 45)
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testIncorrectPythonStructure(self):
+    # Tests that an exception is raised (as opposed to a segfault) when the
+    # Python structure assigned to a dataset is incorrect.
+    dataset = dataset_ops.Dataset.range(10)
+    spec = tensor_spec.TensorSpec([], dtypes.int64)
+    new_structure = (spec, spec)
+    dataset = dataset_ops._RestructuredDataset(dataset, new_structure)
+    dataset = dataset.map(lambda x, y: y)
+
+    with self.assertRaisesOpError(""):
+      self.getDatasetOutput(dataset)
+
 
 if __name__ == "__main__":
   test.main()

@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numbers
 import sys
 
 import numpy as np
@@ -32,7 +33,9 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import sort_ops
 from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops.numpy_ops import np_array_ops
@@ -67,7 +70,7 @@ def dot(a, b):  # pylint: disable=missing-docstring
 # TODO(wangpeng): Make element-wise ops `ufunc`s
 def _bin_op(tf_fun, a, b, promote=True):
   if promote:
-    a, b = np_array_ops._promote_dtype(a, b)  # pylint: disable=protected-access
+    a, b = np_array_ops._promote_dtype_binary(a, b)  # pylint: disable=protected-access
   else:
     a = np_array_ops.array(a)
     b = np_array_ops.array(b)
@@ -169,7 +172,14 @@ def divmod(x1, x2):  # pylint: disable=redefined-builtin
 
 
 @np_utils.np_doc('maximum')
-def maximum(x1, x2):
+def maximum(x1, x2):  # pylint: disable=missing-function-docstring
+
+  # Fast path for when maximum is used as relu.
+  if isinstance(
+      x2, numbers.Real) and not isinstance(x2, bool) and x2 == 0 and isinstance(
+          x1, np_arrays.ndarray) and not x1._is_boolean():  # pylint: disable=protected-access
+    return np_utils.tensor_to_ndarray(
+        nn_ops.relu(np_array_ops.asarray(x1).data))
 
   def max_or_or(x1, x2):
     if x1.dtype == dtypes.bool:
@@ -207,13 +217,16 @@ def clip(a, a_min, a_max):  # pylint: disable=missing-docstring
             *np_utils.tf_broadcast(a.data, a_min.data, a_max.data)))
 
 
+setattr(np_arrays.ndarray, 'clip', clip)
+
+
 @np_utils.np_doc('matmul')
 def matmul(x1, x2):  # pylint: disable=missing-docstring
   def f(x1, x2):
     try:
-      if x1.shape.rank == 2 and x2.shape.rank == 2:
+      if x1._rank() == 2 and x2._rank() == 2:  # pylint: disable=protected-access
         # Fast path for known ranks.
-        return math_ops.matmul(x1, x2)
+        return gen_math_ops.mat_mul(x1, x2)
       return np_utils.cond(
           math_ops.equal(np_utils.tf_rank(x2), 1),
           lambda: math_ops.tensordot(x1, x2, axes=1),
@@ -251,10 +264,11 @@ def cross(a, b, axisa=-1, axisb=-1, axisc=-1, axis=None):  # pylint: disable=mis
 
   def f(a, b):  # pylint: disable=missing-docstring
     # We can't assign to captured variable `axisa`, so make a new variable
-    axis_a = axisa
-    axis_b = axisb
-    axis_c = axisc
-    if axis is not None:
+    if axis is None:
+      axis_a = axisa
+      axis_b = axisb
+      axis_c = axisc
+    else:
       axis_a = axis
       axis_b = axis
       axis_c = axis
@@ -555,7 +569,7 @@ def bitwise_xor(x1, x2):
   return _bitwise_binary_op(bitwise_ops.bitwise_xor, x1, x2)
 
 
-@np_utils.np_doc('bitwise_not')
+@np_utils.np_doc('bitwise_not', link=np_utils.AliasOf('invert'))
 def bitwise_not(x):
 
   def f(x):
@@ -602,7 +616,7 @@ def sqrt(x):
   return _scalar(math_ops.sqrt, x, True)
 
 
-@np_utils.np_doc('abs')
+@np_utils.np_doc('abs', link=np_utils.AliasOf('absolute'))
 def abs(x):  # pylint: disable=redefined-builtin
   return _scalar(math_ops.abs, x)
 
@@ -759,7 +773,7 @@ def cbrt(x):
   return _scalar(f, x, True)
 
 
-@np_utils.np_doc('conjugate')
+@np_utils.np_doc('conjugate', link=np_utils.AliasOf('conj'))
 def conjugate(x):
   return _scalar(math_ops.conj, x)
 

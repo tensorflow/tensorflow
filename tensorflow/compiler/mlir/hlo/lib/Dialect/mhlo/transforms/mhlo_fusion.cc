@@ -18,14 +18,14 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "llvm/ADT/EquivalenceClasses.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/utils/cycle_detector.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/MLIRContext.h"              // TF:llvm-project
 #include "mlir/IR/Matchers.h"
 #include "mlir/Pass/Pass.h"               // TF:local_config_mlir
 #include "mlir/Transforms/RegionUtils.h"  // TF:llvm-project
-#include "llvm/ADT/EquivalenceClasses.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/cycle_detector.h"
 
 // This pass has similar functionality of the fusion pass in XLA stack.
 // However, unlike XLA, it targets the fully dynamic shape scenario.
@@ -479,7 +479,7 @@ class FusionPlanner {
   EquivalenceClasses<int32_t> leader_for_node_;
 };
 
-struct XlaHloFusion : public mlir::PassWrapper<XlaHloFusion, FunctionPass> {
+struct MhloFusionPass : public mlir::PassWrapper<MhloFusionPass, FunctionPass> {
   void runOnFunction() override {
     FuncOp func = getFunction();
     if (!IsTargetFunc(func)) {
@@ -568,12 +568,9 @@ struct XlaHloFusion : public mlir::PassWrapper<XlaHloFusion, FunctionPass> {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createXlaHloFusion() {
-  return std::make_unique<XlaHloFusion>();
+std::unique_ptr<OperationPass<FuncOp>> createMhloFusionPass() {
+  return std::make_unique<MhloFusionPass>();
 }
-
-static PassRegistration<XlaHloFusion> mhlo_fusion_pass(
-    "xla-hlo-fusion", "fuse mhlo ops to kLoop/kInput fusion patterns.");
 
 }  // namespace mhlo
 }  // namespace mlir

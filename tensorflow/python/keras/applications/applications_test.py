@@ -27,6 +27,7 @@ from tensorflow.python.keras.applications import inception_resnet_v2
 from tensorflow.python.keras.applications import inception_v3
 from tensorflow.python.keras.applications import mobilenet
 from tensorflow.python.keras.applications import mobilenet_v2
+from tensorflow.python.keras.applications import mobilenet_v3
 from tensorflow.python.keras.applications import nasnet
 from tensorflow.python.keras.applications import resnet
 from tensorflow.python.keras.applications import resnet_v2
@@ -50,6 +51,8 @@ MODEL_LIST_NO_NASNET = [
     (inception_resnet_v2.InceptionResNetV2, 1536),
     (mobilenet.MobileNet, 1024),
     (mobilenet_v2.MobileNetV2, 1280),
+    (mobilenet_v3.MobileNetV3Small, 1024),
+    (mobilenet_v3.MobileNetV3Large, 1280),
     (densenet.DenseNet121, 1024),
     (densenet.DenseNet169, 1664),
     (densenet.DenseNet201, 1920),

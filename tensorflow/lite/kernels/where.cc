@@ -56,9 +56,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  const TfLiteTensor* cond_tensor =
-      GetInput(context, node, kInputConditionTensor);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteTensor* cond_tensor;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputConditionTensor,
+                                          &cond_tensor));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
 
   if (cond_tensor->type != kTfLiteBool) {
     context->ReportError(context,
@@ -81,13 +84,23 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* cond_tensor =
-      GetInput(context, node, kInputConditionTensor);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteTensor* cond_tensor;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputConditionTensor,
+                                          &cond_tensor));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
 
   if (IsDynamicTensor(output)) {
     TF_LITE_ENSURE_OK(context,
                       ResizeOutputTensor(context, cond_tensor, output));
+  }
+
+  TfLiteIntArray* dims = cond_tensor->dims;
+  if (dims->size == 0) {
+    // Scalar tensors are not supported.
+    TF_LITE_KERNEL_LOG(context, "Where op requires condition w/ rank > 0");
+    return kTfLiteError;
   }
 
   reference_ops::SelectTrueCoords(GetTensorShape(cond_tensor),

@@ -51,8 +51,6 @@ enum Delegate {
   GPU = 2;
   HEXAGON = 3;
   XNNPACK = 4;
-  // TODO(b/157893534): Support exposing edgetpu tflite delegate creation
-  // options.
   EDGETPU = 5;
 }
 
@@ -109,8 +107,10 @@ message NNAPISettings {
   // case.
   optional int32 no_of_nnapi_instances_to_cache = 5;
 
+  // Deprecated; use the fallback_settings in TFLiteSettings.
+  //
   // Whether to automatically fall back to TFLite CPU path.
-  optional FallbackSettings fallback_settings = 6;
+  optional FallbackSettings fallback_settings = 6 [deprecated = true];
 
   // Whether to allow use of NNAPI CPU (nnapi-reference accelerator) on Android
   // 10+ when an accelerator name is not specified. The NNAPI CPU typically
@@ -119,6 +119,21 @@ message NNAPISettings {
   optional bool allow_nnapi_cpu_on_android_10_plus = 7;
 
   optional NNAPIExecutionPriority execution_priority = 8;
+
+  // Whether to allow dynamic dimension sizes without re-compilation.
+  // A tensor of with dynamic dimension must have a valid dims_signature
+  // defined.
+  // Only supported in NNAPI 1.1 and newer versions.
+  // WARNING: Setting this flag to true may result in model being rejected by
+  // accelerator. This should only be enabled if the target device supports
+  // dynamic dimensions of the model.
+  // By default this is set to false.
+  optional bool allow_dynamic_dimensions = 9;
+
+  // Whether to allow the NNAPI accelerator to optionally use lower-precision
+  // float16 (16-bit floating point) arithmetic when doing calculations on
+  // float32 (32-bit floating point).
+  optional bool allow_fp16_precision_for_fp32 = 10;
 }
 
 // Which GPU backend to select. Default behaviour on Android is to try OpenCL
@@ -162,6 +177,43 @@ message XNNPackSettings {
   optional int32 num_threads = 1;
 }
 
+// EdgeTPU Delegate settings
+//
+message EdgeTpuSettings {
+  // Generic definitions of EdgeTPU power states.
+  enum PowerState {
+    // Undefined power state.
+    UNDEFINED = 0;
+
+    // TPU core is off but control cluster is on.
+    TPU_CORE_OFF = 1;
+
+    // A non-active low-power state that has much smaller transition time to
+    // active compared to off.
+    READY = 2;
+
+    // Device is inactive but ready and all previous data is retained (e.g.
+    // cached parameters).
+    READY_WITH_RETENTION = 3;
+
+    // Minimum power active state.
+    ACTIVE_MIN_POWER = 4;
+
+    // Low performance, low power.
+    ACTIVE_LOW_POWER = 5;
+
+    // The normal performance and power. This setting usually provides the
+    // optimal perf/power trade-off for the average use-case.
+    ACTIVE = 6;
+
+    // Maximum performance level. Potentially higher power and thermal. This
+    // setting may not be allowed in production depending on the system.
+    OVER_DRIVE = 7;
+  }
+
+  optional PowerState inference_power_state = 1;
+}
+
 message CPUSettings {
   optional int32 num_threads = 1;
 }
@@ -185,6 +237,12 @@ message TFLiteSettings {
 
   // Shared delegation settings.
   optional int32 max_delegated_partitions = 7;
+
+  // For configuring the EdgeTpuDelegate.
+  optional EdgeTpuSettings edgetpu_settings = 8;
+
+  // Whether to automatically fall back to TFLite CPU path.
+  optional FallbackSettings fallback_settings = 9;
 }
 
 // Whether to automatically fallback to TFLite CPU path on delegation errors.

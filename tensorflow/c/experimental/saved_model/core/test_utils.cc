@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/lib/bfloat16/bfloat16.h"
+#include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
@@ -45,11 +45,9 @@ EagerContextPtr CreateTestingEagerContext(DeviceMgr* device_mgr) {
   return EagerContextPtr(new EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-      tensorflow::ContextMirroringPolicy::MIRRORING_NONE,
       /* async= */ false,
       /* lazy_copy_function_remote_inputs= */ false, device_mgr,
       /* device_mgr_owned= */ false, /* rendezvous= */ nullptr,
-      /* custom_kernel_creator= */ nullptr,
       /* cluster_flr= */ nullptr));
 }
 

@@ -20,6 +20,8 @@ from __future__ import print_function
 import os
 import threading
 
+from absl.testing import parameterized
+
 from tensorflow.python.distribute.parallel_device import parallel_device
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -31,9 +33,12 @@ from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.saved_model import load
+from tensorflow.python.saved_model import save
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training.tracking import util as tracking
 from tensorflow.python.util import nest
@@ -91,28 +96,36 @@ class _VirtualDeviceTestCase(test.TestCase):
 
   def setUp(self):
     super(_VirtualDeviceTestCase, self).setUp()
-    cpus = context.context().list_physical_devices("CPU")
-    # Set 4 virtual CPUs
-    context.context().set_logical_device_configuration(cpus[0], [
-        context.LogicalDeviceConfiguration(),
-        context.LogicalDeviceConfiguration(),
-        context.LogicalDeviceConfiguration(),
-        context.LogicalDeviceConfiguration()
+    ctx = context.context()
+    if ctx.list_physical_devices("TPU"):
+      self.device_type = "TPU"
+    elif ctx.list_physical_devices("GPU"):
+      self.device_type = "GPU"
+      gpus = ctx.list_physical_devices(self.device_type)
+      ctx.set_logical_device_configuration(gpus[0], [
+          context.LogicalDeviceConfiguration(memory_limit=100),
+          context.LogicalDeviceConfiguration(memory_limit=100),
+      ])
+    else:
+      self.device_type = "CPU"
+      cpus = ctx.list_physical_devices("CPU")
+      ctx.set_logical_device_configuration(cpus[0], [
+          context.LogicalDeviceConfiguration(),
+          context.LogicalDeviceConfiguration(),
+      ])
+
+    self.device = parallel_device.ParallelDevice(components=[
+        "/job:localhost/device:{}:0".format(self.device_type),
+        self.device_type + ":1"
     ])
-
-    # TODO(allenl): Make CPU:0 and CPU:1 work (right now "CPU:1" soft-places
-    # onto CPU:0, which seems wrong).
-    components = [
-        "/job:localhost/replica:0/task:0/device:CPU:0",
-        "/job:localhost/replica:0/task:0/device:CPU:1"
-    ]
-    self.device = parallel_device.ParallelDevice(components)
+    self.assertIn(self.device_type + ":0", self.device.components[0])
+    self.assertIn(self.device_type + ":1", self.device.components[1])
 
 
-class ParallelDeviceTests(_VirtualDeviceTestCase):
+class ParallelDeviceTests(_VirtualDeviceTestCase, parameterized.TestCase):
 
   def test_register_parallel_device(self):
-    with ops.device(self.device.name):
+    with self.device:
       c = constant_op.constant(1.)
       d = constant_op.constant(2.)
       e = c + d
@@ -125,11 +138,15 @@ class ParallelDeviceTests(_VirtualDeviceTestCase):
   def test_device_id(self):
     device_ids = self.device.unpack(self.device.device_ids)
     self.assertAllClose([0, 1], device_ids)
-    self.assertIn(self.device.components[0], device_ids[0].backing_device)
-    self.assertIn(self.device.components[1], device_ids[1].backing_device)
+    # TODO(allenl): Should device IDs be int64 so they can be placed on GPUs?
+    # Currently backing_device is CPU.
+    self.assertIn(self.device.components[0], device_ids[0].device)
+    self.assertIn(self.device.components[1], device_ids[1].device)
 
   def test_collective_reduce(self):
-    with ops.device(self.device.name):
+    if self.device_type == "TPU":
+      self.skipTest("ParallelDevice collectives on TPUs need work")
+    with self.device:
       x = self.device.pack(
           [constant_op.constant(-1.5),
            constant_op.constant(3.5)])
@@ -140,9 +157,11 @@ class ParallelDeviceTests(_VirtualDeviceTestCase):
     self.assertIn(self.device.components[1], outputs[1].backing_device)
 
   def test_collective_reduce_async_scope(self):
+    if self.device_type == "TPU":
+      self.skipTest("ParallelDevice collectives on TPUs need work")
     # Note that ops on the parallel device currently don't execute
     # asynchronously. The test is just that we don't get deadlocks.
-    with context.async_scope(), ops.device(self.device.name):
+    with context.async_scope(), self.device:
       x = self.device.pack(
           [constant_op.constant(-1.5),
            constant_op.constant(3.5)])
@@ -153,6 +172,8 @@ class ParallelDeviceTests(_VirtualDeviceTestCase):
     self.assertIn(self.device.components[1], outputs[1].backing_device)
 
   def test_collective_reduce_async_context(self):
+    if self.device_type == "TPU":
+      self.skipTest("ParallelDevice collectives on TPUs need work")
     previous = config.get_synchronous_execution()
     try:
       context._reset_context()
@@ -160,7 +181,7 @@ class ParallelDeviceTests(_VirtualDeviceTestCase):
       self.setUp()
       # Note that ops on the parallel device currently don't execute
       # asynchronously. The test is just that we don't get deadlocks.
-      with ops.device(self.device.name):
+      with self.device:
         x = self.device.pack(
             [constant_op.constant(-1.5),
              constant_op.constant(3.5)])
@@ -173,7 +194,50 @@ class ParallelDeviceTests(_VirtualDeviceTestCase):
       context._reset_context()
       config.set_synchronous_execution(previous)
 
+  @parameterized.named_parameters(
+      [("RunFunctionsEagerly", True),
+       ("", False)])
+  def test_cond(self, run_functions_eagerly):
+    try:
+      def_function.run_functions_eagerly(run_functions_eagerly)
+      with self.device:
+        pred = self.device.pack([True, False])
+        capture = self.device.pack([[1.], [2.]])
+        result = control_flow_ops.cond(
+            pred,
+            def_function.function(lambda: capture * 2.),
+            def_function.function(lambda: capture * 4.))
+      self.assertAllClose(
+          [[2.], [8.]], self.device.unpack(result))
+    finally:
+      def_function.run_functions_eagerly(False)
+
+  def test_cond_with_variable(self):
+    with self.device:
+      pred = self.device.pack([True, False])
+      capture = self.device.pack([[1.], [2.]])
+      v = None
+      @def_function.function
+      def true_branch():
+        nonlocal v
+        if v is None:
+          v = variables.Variable(constant_op.constant(2.))
+        return v * capture
+      result = control_flow_ops.cond(
+          pred, true_branch, def_function.function(lambda: capture * 4.))
+    self.assertAllClose(
+        [[2.], [8.]], self.device.unpack(result))
+    self.assertAllClose(
+        [2., 2.], self.device.unpack(v))
+    # There are two unique variable handles with separate storage.
+    h1, _ = self.device.unpack(v.handle)
+    gen_resource_variable_ops.assign_variable_op(h1, constant_op.constant(3.))
+    self.assertAllClose(
+        [3., 2.], self.device.unpack(v))
+
   def test_collective_in_function(self):
+    if self.device_type == "TPU":
+      self.skipTest("ParallelDevice collectives on TPUs need work")
     c = constant_op.constant([2])
 
     @def_function.function
@@ -195,31 +259,79 @@ class ParallelDeviceTests(_VirtualDeviceTestCase):
       return control_flow_ops.switch_case(
           device_id, branch_fns={0: send, 1: recv})
 
-    with ops.device(self.device.name):
+    with self.device:
       result = broadcast_send_recv(self.device.device_ids)
     self.assertAllClose([[2], [6]], self.device.unpack(result))
 
+  def test_use_in_graph_error_is_informative(self):
+    @def_function.function
+    def uses_parallel():
+      with self.device:
+        return self.device.unpack(array_ops.ones([]))
+
+    with self.assertRaisesRegex(NotImplementedError, "inside `tf.function`"):
+      uses_parallel()
+
   def test_checkpointing(self):
-    self.skipTest(
-        "Disable saving until SaveableObject's methods are traceable.")
     prefix = os.path.join(self.get_temp_dir(), "ckpt")
-    with self.device.scope():
+    with self.device:
       different_values = self.device.pack(
           [constant_op.constant(-1.),
            constant_op.constant(3.)])
       v = variables.Variable(different_values)
       checkpoint = tracking.Checkpoint(v=v)
     save_path = checkpoint.save(prefix)
-    with ops.device(self.device.name):
+    with self.device:
       v.assign(constant_op.constant(0.))
     checkpoint.restore(save_path).assert_consumed()
-    with ops.device(self.device.name):
+    with self.device:
       outputs = self.device.unpack(v)
     self.assertAllClose([-1., 3.], outputs)
 
+    with self.device:
+      restore_on_create = tracking.Checkpoint()
+      restore_on_create.restore(save_path)
+      restore_on_create.v = variables.Variable(0.)
+      outputs = self.device.unpack(restore_on_create.v)
+    self.assertAllClose([-1., 3.], outputs)
+
+    # Changing the number of devices / restoring into a single-device copy is OK
+    single_device = tracking.Checkpoint(v=variables.Variable(0.))
+    status = single_device.restore(save_path)
+    status.assert_existing_objects_matched()
+    self.assertAllClose(-1., single_device.v)
+    with self.assertRaisesRegex(AssertionError, "parallel_component_1"):
+      # There are parts of the variable that aren't restored into a
+      # single-device copy.
+      status.assert_consumed()
+
+  def test_saved_model(self):
+    with self.device:
+      different_values = self.device.pack(
+          [constant_op.constant(-1.),
+           constant_op.constant(3.)])
+      m = module.Module()
+      m.v = variables.Variable(different_values)
+      m.f = def_function.function(lambda: m.v * 2.)
+      self.assertAllClose([-2., 6.], self.device.unpack(m.f()))
+    saved_model_path = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(m, saved_model_path)
+
+    context._reset_context()
+    self.setUp()
+
+    single_device_loaded = load.load(saved_model_path)
+    self.assertAllClose(-2., single_device_loaded.f())
+    with self.device:
+      parallel_loaded = load.load(saved_model_path)
+      self.assertAllClose([-2., 6.], self.device.unpack(parallel_loaded.f()))
+      self.assertAllClose([-1., 3.], self.device.unpack(parallel_loaded.v))
+      parallel_loaded.v.assign(self.device.pack([.1, .2]))
+      self.assertAllClose([.2, .4], self.device.unpack(parallel_loaded.f()))
+
   def _assert_close_to_non_parallel(self, computation):
     """Asserts that replication of `computation` works and is equivalent."""
-    with ops.device(self.device.name):
+    with self.device:
       parallel_result = computation()
     non_parallel_result = computation()
     # The computations should have the same number and structure of Tensor
@@ -230,10 +342,23 @@ class ParallelDeviceTests(_VirtualDeviceTestCase):
     parallel_flat = nest.flatten(parallel_result)
     self.assertGreater(len(parallel_flat), 0)
     for non_parallel, parallel in zip(non_parallel_flat, parallel_flat):
-      self.assertEqual(self.device.name, parallel.device)
-      self.assertNotEqual(self.device.name, non_parallel.device)
+      self.assertEqual(self.device._name, parallel.device)
+      self.assertNotEqual(self.device._name, non_parallel.device)
       for parallel_component in self.device.unpack(parallel):
         self.assertAllClose(non_parallel, parallel_component)
+
+  def test_capturing(self):
+    with self.device:
+      x = constant_op.constant([1., 2.])
+      x = array_ops.identity(x)
+
+      @def_function.function
+      def f(y):
+        return x + y
+
+      y = array_ops.ones([2])
+      parallel_result = f(y)
+    self.assertAllClose([[2., 3.]] * 2, self.device.unpack(parallel_result))
 
   def test_euclidean_norm(self):
     def _test_fn():
@@ -253,11 +378,38 @@ class ParallelDeviceTests(_VirtualDeviceTestCase):
       return y, tape.gradient(y, x)
     self._assert_close_to_non_parallel(_test_fn)
 
+  def test_variable_created_in_function(self):
+
+    class M(module.Module):
+
+      def __init__(self):
+        self.v = None
+        self.w = None
+        self.x = None
+        self.z = None
+
+      @def_function.function(autograph=False)
+      def __call__(self, x):
+        if self.v is None:
+          with ops.init_scope():
+            initial_value = constant_op.constant(2.)
+            self.z = variables.Variable(initial_value)
+          self.x = variables.Variable(initial_value)
+          self.w = variables.Variable(lambda: constant_op.constant(2.))
+          self.v = variables.Variable(constant_op.constant(2.))
+        return x * self.v * self.w * self.x * self.z
+
+    with self.device:
+      m = M()
+      packed_outputs = m(array_ops.ones([]))
+      outputs = self.device.unpack(packed_outputs)
+    self.assertAllClose([16., 16.], outputs)
+
 
 class LayerTests(_VirtualDeviceTestCase):
 
   def test_layer_forward(self):
-    with ops.device(self.device.name):
+    with self.device:
       layer = _Dense(5)
       x = constant_op.constant([[2.]])
       y = layer(x)
@@ -268,7 +420,7 @@ class LayerTests(_VirtualDeviceTestCase):
     self.assertIn(self.device.components[1], outputs[1].backing_device)
 
     # With different Layer inputs we get different outputs
-    with ops.device(self.device.name):
+    with self.device:
       x = self.device.pack(
           [constant_op.constant([[-0.5]]),
            constant_op.constant([[0.5]])])
@@ -280,7 +432,9 @@ class LayerTests(_VirtualDeviceTestCase):
     self.assertIn(self.device.components[1], outputs[1].backing_device)
 
   def test_layer_sync_training(self):
-    with ops.device(self.device.name):
+    if self.device_type == "TPU":
+      self.skipTest("ParallelDevice collectives on TPUs need work")
+    with self.device:
       layer = _Dense(5)
 
       with backprop.GradientTape() as tape:
@@ -305,7 +459,7 @@ class LayerTests(_VirtualDeviceTestCase):
     self.assertIn(self.device.components[1], final_kernels[1].backing_device)
 
   def test_layer_divergent_buffer_training(self):
-    with ops.device(self.device.name):
+    with self.device:
       layer = _Dense(5)
 
       with backprop.GradientTape() as tape:
@@ -329,8 +483,8 @@ class LayerTests(_VirtualDeviceTestCase):
     self.assertIn(self.device.components[1], final_kernels[1].backing_device)
 
   def test_training_loop(self):
-    self.skipTest(
-        "Disable saving until SaveableObject's methods are traceable.")
+    if self.device_type == "TPU":
+      self.skipTest("ParallelDevice collectives on TPUs need work")
     for _ in range(5):
       layer = _Dense(5)
       checkpoint = tracking.Checkpoint(layer=layer)
@@ -339,7 +493,7 @@ class LayerTests(_VirtualDeviceTestCase):
       manager.restore_or_initialize()
 
       for _ in range(10):
-        with self.device.scope():
+        with self.device:
           with backprop.GradientTape() as tape:
             x = self.device.pack(
                 [constant_op.constant([[-0.5]]),

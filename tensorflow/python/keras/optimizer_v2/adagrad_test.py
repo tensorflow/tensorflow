@@ -118,9 +118,9 @@ class AdagradOptimizerTest(test.TestCase, parameterized.TestCase):
   def testBasic(self):
     self.doTestBasic()
 
+  @combinations.generate(combinations.combine(mode=["eager"]))
   def testBasicCallableParams(self):
-    with context.eager_mode():
-      self.doTestBasic(use_callable_params=True)
+    self.doTestBasic(use_callable_params=True)
 
   def testBasicWithLearningRateDecay(self):
     for dtype in _DATA_TYPES:

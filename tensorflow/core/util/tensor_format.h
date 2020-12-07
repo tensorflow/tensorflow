@@ -19,6 +19,7 @@ limitations under the License.
 #include <array>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -97,18 +98,18 @@ enum FilterTensorFormat {
 
 // Parse tensor format from the given string.
 // Return true if the parsing succeeds, and false if it fails.
-bool FormatFromString(const string& format_str, TensorFormat* format);
+bool FormatFromString(absl::string_view format_str, TensorFormat* format);
 
 // Parse tensor format from the given string.
 // Return true if the parsing succeeds, and false if it fails.
-bool FilterFormatFromString(const string& format_str,
+bool FilterFormatFromString(absl::string_view format_str,
                             FilterTensorFormat* format);
 
 // Convert a tensor format into string.
-string ToString(TensorFormat format);
+std::string ToString(TensorFormat format);
 
 // Convert a filter tensor format into string.
-string ToString(FilterTensorFormat format);
+std::string ToString(FilterTensorFormat format);
 
 // Returns the number of spatial dims of a tensor of rank 'num_dims' and tensor
 // format 'format'.
@@ -504,13 +505,13 @@ inline void GetExplicitPaddingForDim(
 }
 
 // Return the string that specifies the data format for convnet operations.
-string GetConvnetDataFormatAttrString();
-string GetConvnet3dDataFormatAttrString();
+std::string GetConvnetDataFormatAttrString();
+std::string GetConvnet3dDataFormatAttrString();
 
 // Return the string that specifies the filter format for convnet operations.
-string GetConvnetFilterFormatAttrString();
-string GetConvnet3dFilterFormatAttrString();
-string GetConvnetDataFormat2D3DAttrString();
+std::string GetConvnetFilterFormatAttrString();
+std::string GetConvnet3dFilterFormatAttrString();
+std::string GetConvnetDataFormat2D3DAttrString();
 
 // Returns a tensor shape for the specified format and dimension sizes.
 // Works for both 2D and 3D operations. The output shapes are as follows:

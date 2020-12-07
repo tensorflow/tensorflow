@@ -12,6 +12,18 @@ func @f() {
 
 // -----
 
+// Test case: Basic converting. '_class' attribute is at IdentityOp.
+
+func @f() {
+  // CHECK: "tf.VarHandleOp"
+  // CHECK: "tf.ReadVariableOp"
+  %val0 = "tf.VariableV2"() {container = "", device = "", shape = #tf.shape<96>, shared_name = ""} : () -> tensor<96x!tf.f32ref>
+  %val1 = "tf.Identity"(%val0) {_class = ["loc:@v"]} : (tensor<96x!tf.f32ref>) -> tensor<96xf32>
+  return
+}
+
+// -----
+
 // Test case: Two ReadVariable ops.
 
 func @f() {

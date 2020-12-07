@@ -18,8 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
-
+import collections.abc as collections_abc
 import numpy as np
 
 from tensorflow.python.platform import test
@@ -38,7 +37,7 @@ class PreprocessingLayerTest(test.TestCase):
       self.assertEqual(len(a), len(b))
       for a_value, b_value in zip(a, b):
         self.assertAllCloseOrEqual(a_value, b_value, msg=msg)
-    elif isinstance(a, collections.Mapping):
+    elif isinstance(a, collections_abc.Mapping):
       self.assertEqual(len(a), len(b))
       for key, a_value in a.items():
         b_value = b[key]

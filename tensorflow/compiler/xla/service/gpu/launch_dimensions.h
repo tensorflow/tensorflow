@@ -29,24 +29,37 @@ namespace gpu {
 // number of threads per block.
 class LaunchDimensions {
  public:
+  struct Dim3D {
+    int64 x, y, z;
+  };
+
   // The default constructor creates a launch dimension that indicate
   // single-threaded execution.
-  LaunchDimensions() : block_count_(1), threads_per_block_(1) {}
+  LaunchDimensions()
+      : block_counts_({1, 1, 1}), thread_counts_per_block_({1, 1, 1}) {}
 
-  LaunchDimensions(int64 block_count, int64 threads_per_block)
-      : block_count_(block_count), threads_per_block_(threads_per_block) {}
+  LaunchDimensions(int64 block_x_count, int64 thread_x_count_per_block)
+      : block_counts_({block_x_count, 1, 1}),
+        thread_counts_per_block_({thread_x_count_per_block, 1, 1}) {}
 
-  bool IsSinglethreaded() const {
-    return block_count_ == 1 && threads_per_block_ == 1;
+  LaunchDimensions(const Dim3D& block_counts,
+                   const Dim3D& thread_counts_per_block)
+      : block_counts_(block_counts),
+        thread_counts_per_block_(thread_counts_per_block) {}
+
+  Dim3D block_counts() const { return block_counts_; }
+
+  Dim3D thread_counts_per_block() const { return thread_counts_per_block_; }
+
+  int64 launch_bound() const {
+    return block_counts_.x * thread_counts_per_block_.x * block_counts_.y *
+           thread_counts_per_block_.y * block_counts_.z *
+           thread_counts_per_block_.z;
   }
 
-  int64 block_count() const { return block_count_; }
-  int64 threads_per_block() const { return threads_per_block_; }
-  int64 launch_bound() const { return block_count() * threads_per_block(); }
-
  private:
-  int64 block_count_;
-  int64 threads_per_block_;
+  Dim3D block_counts_;
+  Dim3D thread_counts_per_block_;
 };
 
 std::ostream& operator<<(std::ostream& out,
@@ -54,7 +67,8 @@ std::ostream& operator<<(std::ostream& out,
 
 LaunchDimensions CalculateLaunchDimensions(const Shape& shape,
                                            GpuDeviceInfo gpu_device_info,
-                                           int unroll_factor = 1);
+                                           int unroll_factor = 1,
+                                           bool few_waves = false);
 
 }  // namespace gpu
 }  // namespace xla

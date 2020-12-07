@@ -28,7 +28,6 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
@@ -61,7 +60,7 @@ class CholeskyOpTest(xla_test.XLATestCase):
           dtypes.as_dtype(x.dtype), shape=x.shape)
       with self.test_scope():
         chol = linalg_ops.cholesky(placeholder)
-      verification = math_ops.matmul(chol, chol, adjoint_b=True)
+      verification = test_util.matmul_without_tf32(chol, chol, adjoint_b=True)
       self._verifyCholeskyBase(sess, placeholder, x, chol, verification, atol)
 
   def testBasic(self):

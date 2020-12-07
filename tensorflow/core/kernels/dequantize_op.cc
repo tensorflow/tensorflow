@@ -23,8 +23,8 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/meta_support.h"
 #include "tensorflow/core/kernels/quantization_utils.h"
-#include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/bfloat16.h"
 
 namespace {
 enum {

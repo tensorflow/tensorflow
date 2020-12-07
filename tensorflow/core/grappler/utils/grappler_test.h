@@ -37,6 +37,9 @@ class GrapplerTest : public ::testing::Test {
   GrapplerTest();
 
  protected:
+  void DisableAllOptimizers();
+  void EnableAllOptimizers();
+
   std::vector<Tensor> EvaluateNodes(
       const GraphDef& graph, const std::vector<string>& node_names) const;
 
@@ -50,6 +53,8 @@ class GrapplerTest : public ::testing::Test {
                    const std::vector<string>& inputs,
                    const std::vector<std::pair<string, AttrValue>>& attributes,
                    GraphDef* graph) const;
+
+  void DisableAllOptimizers(RewriterConfig* cfg);
 
   // Checks if two graphs are equal. Both graphs must have the same set of nodes
   // with the same inputs and attributes. Nodes can be in different order.
@@ -86,6 +91,15 @@ class GrapplerTest : public ::testing::Test {
     Tensor tensor(DTYPE, shape);
     for (auto i = 0; i < tensor.NumElements(); i++)
       tensor.flat<T>()(i) = i + random::New64() % 10;
+    return tensor;
+  }
+
+  // Creates a random tensor with given shape using `setRandom`.
+  template <DataType DTYPE>
+  Tensor GenerateTensorWithSetRandom(const TensorShape& shape) const {
+    typedef typename EnumToDataType<DTYPE>::Type T;
+    Tensor tensor(DTYPE, shape);
+    tensor.flat<T>().setRandom();
     return tensor;
   }
 

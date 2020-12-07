@@ -16,9 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_SAVED_MODEL_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_SAVED_MODEL_H_
 
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 
 namespace mlir {
@@ -40,9 +39,15 @@ class TensorFlowSavedModelDialect : public Dialect {
   static StringRef getDialectNamespace() { return "tf_saved_model"; }
 };
 
+}  // namespace tf_saved_model
+}  // namespace mlir
+
 // Declares the operations for this dialect using the generated header.
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h.inc"
+
+namespace mlir {
+namespace tf_saved_model {
 
 // Returns the list of exported names for `op`.
 // An empty list means `op` is not exported.
@@ -75,7 +80,7 @@ Type GetBoundInputArgTypeFor(mlir::Operation *op);
 SessionInitializerOp GetSessionInitializerOp(mlir::ModuleOp op);
 
 // Returns the exported name for the session initializer function.
-llvm::Optional<StringRef> GetSessionInitializerExportedName(mlir::ModuleOp op);
+SmallVector<StringRef, 2> GetSessionInitializerExportedName(mlir::ModuleOp op);
 
 }  // namespace tf_saved_model
 }  // namespace mlir

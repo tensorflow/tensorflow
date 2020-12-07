@@ -21,7 +21,7 @@ limitations under the License.
 
 namespace mlir {
 
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/infer_fusibility_op_interface.h.inc"
+#include "mlir-hlo/Dialect/mhlo/IR/infer_fusibility_op_interface.h.inc"
 
 }  // namespace mlir
 

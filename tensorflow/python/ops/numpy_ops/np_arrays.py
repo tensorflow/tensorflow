@@ -107,6 +107,8 @@ class ndarray(composite_tensor.CompositeTensor):
   or if there are any differences in behavior.
   """
 
+  __slots__ = ['_data', '_dtype', '_type_spec_internal']
+
   def __init__(self, shape, dtype=float, buffer=None):  # pylint: disable=redefined-builtin
     """Initializes an ndarray.
 
@@ -157,12 +159,14 @@ class ndarray(composite_tensor.CompositeTensor):
       buffer = math_ops.cast(buffer, dtype)
     self._data = buffer
     self._type_spec_internal = None
+    self._dtype = None
 
   @classmethod
   def from_tensor(cls, tensor):
     o = cls.__new__(cls, None)
     # pylint: disable=protected-access
     o._data = tensor
+    o._dtype = None
     o._type_spec_internal = None
     # pylint: enable=protected-access
     return o
@@ -201,7 +205,12 @@ class ndarray(composite_tensor.CompositeTensor):
 
   @property
   def dtype(self):
-    return np.dtype(self.data.dtype.as_numpy_dtype)
+    if self._dtype is None:
+      self._dtype = np_dtypes._get_cached_dtype(self._data.dtype)  # pylint: disable=protected-access
+    return self._dtype
+
+  def _is_boolean(self):
+    return self._data.dtype == dtypes.bool
 
   @property
   def ndim(self):
@@ -254,11 +263,11 @@ class ndarray(composite_tensor.CompositeTensor):
   def __float__(self):
     return float(self.data)
 
-  def __nonzero__(self):
+  def __bool__(self):
     return bool(self.data)
 
-  def __bool__(self):
-    return self.__nonzero__()
+  def __nonzero__(self):
+    return self.__bool__()
 
   def __iter__(self):
     if not isinstance(self.data, ops.EagerTensor):
@@ -284,6 +293,19 @@ class ndarray(composite_tensor.CompositeTensor):
 
   # NOTE: we currently prefer interop with TF to allow TF to take precedence.
   __array_priority__ = 90
+
+  def __array_module__(self, types):
+    # Experimental support for NumPy's module dispatch with NEP-37:
+    # https://numpy.org/neps/nep-0037-array-module.html
+    # Currently requires https://github.com/seberg/numpy-dispatch
+
+    # pylint: disable=g-import-not-at-top
+    import tensorflow.compat.v2 as tf
+
+    if all(issubclass(t, (ndarray, np.ndarray)) for t in types):
+      return tf.experimental.numpy
+    else:
+      return NotImplemented
 
   def __index__(self):
     """Returns a python scalar.

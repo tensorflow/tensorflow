@@ -302,7 +302,7 @@ public final class Tensor {
   }
 
   /** Returns the type of the data. */
-  static DataType dataTypeOf(Object o) {
+  DataType dataTypeOf(Object o) {
     if (o != null) {
       Class<?> c = o.getClass();
       // For arrays, the data elements must be a *primitive* type, e.g., an
@@ -316,9 +316,15 @@ public final class Tensor {
         } else if (int.class.equals(c)) {
           return DataType.INT32;
         } else if (byte.class.equals(c)) {
+          // Byte array can be used for storing string tensors, especially for ParseExample op.
+          if (dtype == DataType.STRING) {
+            return DataType.STRING;
+          }
           return DataType.UINT8;
         } else if (long.class.equals(c)) {
           return DataType.INT64;
+        } else if (boolean.class.equals(c)) {
+          return DataType.BOOL;
         } else if (String.class.equals(c)) {
           return DataType.STRING;
         }
@@ -335,6 +341,8 @@ public final class Tensor {
           return DataType.UINT8;
         } else if (Long.class.equals(c) || o instanceof LongBuffer) {
           return DataType.INT64;
+        } else if (Boolean.class.equals(c)) {
+          return DataType.BOOL;
         } else if (String.class.equals(c)) {
           return DataType.STRING;
         }
@@ -345,8 +353,21 @@ public final class Tensor {
   }
 
   /** Returns the shape of an object as an int array. */
-  static int[] computeShapeOf(Object o) {
+  int[] computeShapeOf(Object o) {
     int size = computeNumDimensions(o);
+    if (dtype == DataType.STRING) {
+      Class<?> c = o.getClass();
+      if (c.isArray()) {
+        while (c.isArray()) {
+          c = c.getComponentType();
+        }
+        // If the given string data is stored in byte streams, the last array dimension should be
+        // treated as a value.
+        if (byte.class.equals(c)) {
+          --size;
+        }
+      }
+    }
     int[] dimensions = new int[size];
     fillShape(o, 0, dimensions);
     return dimensions;

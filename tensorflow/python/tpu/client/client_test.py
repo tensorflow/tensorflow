@@ -87,6 +87,7 @@ class CloudTpuClientTest(test.TestCase):
     if 'TPU_NAME' in os.environ:
       del os.environ['TPU_NAME']
     self._time_now = 0
+    self.addCleanup(mock.patch.stopall)
 
   def _mock_time(self, *args, **kwargs):
     return self._time_now
@@ -460,6 +461,189 @@ class CloudTpuClientTest(test.TestCase):
                     'createTime': '2000-01-01T00:29:30.123456Z',
                     'symptomType': 'OUT_OF_MEMORY',
                     'details': 'The TPU runtime has run OOM at timestamp '
+                               '2020-05-29T04:51:32.038721+00:00',
+                    'workerId': '0'
+                }]
+            }
+        }, True),
+    ]
+
+    for tpu_map, want in test_cases:
+      c = client.Client(tpu='grpc://1.2.3.4:8470',
+                        service=self.mock_service_client(tpu_map=tpu_map))
+      self.assertEqual(want, c.recoverable())
+
+  @mock.patch.object(client, '_request_compute_metadata',
+                     mock_request_compute_metadata)
+  @mock.patch.object(client, '_utcnow', mock_utcnow)
+  def testRecoverableHBMOOM(self):
+    test_cases = [
+        ({
+            'projects/test-project/locations/us-central1-c/nodes/tpu_name': {
+                'state':
+                    'READY',
+            }
+        }, True),
+        ({
+            'projects/test-project/locations/us-central1-c/nodes/tpu_name': {
+                'state':
+                    'READY',
+                'symptoms': [{
+                    'createTime': '2000-01-01T00:29:30.123456Z',
+                    'symptomType': 'HBM_OUT_OF_MEMORY',
+                    'details': 'The TPU HBM has run OOM at timestamp '
+                               '2020-05-29T04:51:32.038721+00:00',
+                    'workerId': '0'
+                }]
+            }
+        }, False),
+        ({
+            'projects/test-project/locations/us-central1-c/nodes/tpu_name': {
+                'state':
+                    'READY',
+                'symptoms': [{
+                    'createTime': '2000-01-01T00:28:20.123456Z',
+                    'symptomType': 'HBM_OUT_OF_MEMORY',
+                    'details': 'The TPU HBM has run OOM at timestamp '
+                               '2020-05-29T04:51:32.038721+00:00',
+                    'workerId': '0'
+                }]
+            }
+        }, True),
+        ({
+            'projects/test-project/locations/us-central1-c/nodes/tpu_name': {
+                'state':
+                    'READY',
+                'symptoms': [{
+                    'createTime': '2000-01-01T00:28:40.123456Z',
+                    'symptomType': 'LOW_MEMORY',
+                    'details': 'The TPU HBM has run OOM at timestamp '
+                               '2020-05-29T04:51:32.038721+00:00',
+                    'workerId': '0'
+                }, {
+                    'createTime': '2000-01-01T00:29:30.123456Z',
+                    'symptomType': 'HBM_OUT_OF_MEMORY',
+                    'details': 'The TPU HBM has run OOM at timestamp '
+                               '2020-05-29T04:51:32.038721+00:00',
+                    'workerId': '0'
+                }, {
+                    'createTime': '2000-01-01T00:29:40.123456Z',
+                    'symptomType': 'LOW_MEMORY',
+                    'details': 'The TPU HBM has run OOM at timestamp '
+                               '2020-05-29T04:51:32.038721+00:00',
+                    'workerId': '0'
+                }]
+            }
+        }, False),
+        ({
+            'projects/test-project/locations/us-central1-c/nodes/tpu_name': {
+                'state':
+                    'READY',
+                'symptoms': [{
+                    'createTime': '2000-01-01T00:28:20.123456Z',
+                    'symptomType': 'HBM_OUT_OF_MEMORY',
+                    'details': 'The TPU HBM has run OOM at timestamp '
+                               '2020-05-29T04:51:32.038721+00:00',
+                    'workerId': '0'
+                }, {
+                    'createTime': '2000-01-01T00:29:30.123456Z',
+                    'symptomType': 'LOW_MEMORY',
+                    'details': 'The TPU HBM has run OOM at timestamp '
+                               '2020-05-29T04:51:32.038721+00:00',
+                    'workerId': '0'
+                }, {
+                    'createTime': '2000-01-01T00:29:40.123456Z',
+                    'symptomType': 'LOW_MEMORY',
+                    'details': 'The TPU HBM has run OOM at timestamp '
+                               '2020-05-29T04:51:32.038721+00:00',
+                    'workerId': '0'
+                }]
+            }
+        }, True),
+        ({
+            'projects/test-project/locations/us-central1-c/nodes/tpu_name': {
+                'state':
+                    'READY',
+                'symptoms': [{
+                    'createTime': '2000-01-01T00:29:00.123456Z',
+                    'symptomType': 'LOW_MEMORY',
+                    'details': 'The TPU HBM has run OOM at timestamp '
+                               '2020-05-29T04:51:32.038721+00:00',
+                    'workerId': '0'
+                }, {
+                    'createTime': '2000-01-01T00:29:10.123456Z',
+                    'symptomType': 'LOW_MEMORY',
+                    'details': 'The TPU HBM has run OOM at timestamp '
+                               '2020-05-29T04:51:32.038721+00:00',
+                    'workerId': '0'
+                }, {
+                    'createTime': '2000-01-01T00:29:20.123456Z',
+                    'symptomType': 'LOW_MEMORY',
+                    'details': 'The TPU HBM has run OOM at timestamp '
+                               '2020-05-29T04:51:32.038721+00:00',
+                    'workerId': '0'
+                }, {
+                    'createTime': '2000-01-01T00:29:30.123456Z',
+                    'symptomType': 'LOW_MEMORY',
+                    'details': 'The TPU HBM has run OOM at timestamp '
+                               '2020-05-29T04:51:32.038721+00:00',
+                    'workerId': '0'
+                }, {
+                    'createTime': '2000-01-01T00:29:40.123456Z',
+                    'symptomType': 'LOW_MEMORY',
+                    'details': 'The TPU HBM has run OOM at timestamp '
+                               '2020-05-29T04:51:32.038721+00:00',
+                    'workerId': '0'
+                }]
+            }
+        }, True)
+    ]
+
+    for tpu_map, want in test_cases:
+      c = client.Client(tpu='tpu_name',
+                        service=self.mock_service_client(tpu_map=tpu_map))
+      self.assertEqual(want, c.recoverable())
+
+  @mock.patch.object(client, '_request_compute_metadata',
+                     mock_request_compute_metadata)
+  @mock.patch.object(client, '_utcnow', mock_utcnow)
+  def testRecoverableHBMOOMDisabled(self):
+    test_cases = [
+        ({
+            'projects/test-project/locations/us-central1-c/nodes/tpu_name': {
+                'state':
+                    'READY',
+                'symptoms': [{
+                    'createTime': '2000-01-01T00:29:30.123456Z',
+                    'symptomType': 'HBM_OUT_OF_MEMORY',
+                    'details': 'The TPU HBM has run OOM at timestamp '
+                               '2020-05-29T04:51:32.038721+00:00',
+                    'workerId': '0'
+                }]
+            }
+        }, True),
+    ]
+
+    FLAGS.hbm_oom_exit = False
+    for tpu_map, want in test_cases:
+      c = client.Client(tpu='tpu_name',
+                        service=self.mock_service_client(tpu_map=tpu_map))
+      self.assertEqual(want, c.recoverable())
+    FLAGS.hbm_oom_exit = True
+
+  @mock.patch.object(client, '_request_compute_metadata',
+                     mock_request_compute_metadata)
+  @mock.patch.object(client, '_utcnow', mock_utcnow)
+  def testRecoverableHBMOOMNoAPI(self):
+    test_cases = [
+        ({
+            'projects/test-project/locations/us-central1-c/nodes/tpu_name': {
+                'state':
+                    'READY',
+                'symptoms': [{
+                    'createTime': '2000-01-01T00:29:30.123456Z',
+                    'symptomType': 'HBM_OUT_OF_MEMORY',
+                    'details': 'The TPU HBM has run OOM at timestamp '
                                '2020-05-29T04:51:32.038721+00:00',
                     'workerId': '0'
                 }]

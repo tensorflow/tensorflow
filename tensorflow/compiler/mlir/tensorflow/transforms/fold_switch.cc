@@ -240,7 +240,7 @@ static LogicalResult FoldMergeNodes(FuncOp function, const DeadQueue& queue) {
       auto def_op = val.getDefiningOp();
 #ifndef NDEBUG
       auto exec_dialect =
-          function.getContext()->getRegisteredDialect("tf_executor");
+          function.getContext()->getLoadedDialect("tf_executor");
       assert(def_op->getDialect() == exec_dialect &&
              "unable to forward control dependencies");
 #endif

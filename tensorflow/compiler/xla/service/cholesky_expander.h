@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CHOLESKY_EXPANDER_H_
 
 #include "absl/container/flat_hash_map.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/service/op_expander_pass.h"
 
 namespace xla {
@@ -31,7 +32,13 @@ class CholeskyExpander : public OpExpanderPass {
   StatusOr<HloInstruction*> ExpandInstruction(
       HloInstruction* instruction) override;
 
+  virtual StatusOr<std::pair<XlaOp, XlaOp>> CholeskyUnblocked(
+      XlaOp a, PrecisionConfig::Precision precision);
+
  private:
+  XlaOp BuildCholesky(XlaOp a, int64 block_size,
+                      PrecisionConfig::Precision precision);
+
   // Mapping from op signatures to existing computations.
   absl::flat_hash_map<string, HloComputation*> computation_cache_;
 };

@@ -26,6 +26,7 @@ import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -40,6 +41,7 @@ from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import list_ops
@@ -521,6 +523,11 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
               np_answer = x_np[::-1, :, :]
               self.assertAllEqual(x_tf, np_answer)
 
+  def testReverseInvalidShape(self):
+    x = np.ndarray(shape=[0, 1, 1])
+    v = array_ops.reverse_v2(x, axis=[1])
+    self.assertAllEqual(self.evaluate(v), v)
+
 
 class MeshgridTest(test_util.TensorFlowTestCase):
 
@@ -800,7 +807,7 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
   def testExpandVariable(self):
     with self.session(use_gpu=True):
       x = variables.Variable(7, dtype=dtypes.int32)
-      x.initializer.run()
+      self.evaluate(x.initializer)
       y = x[None].eval()
       self.assertEqual(y.shape, (1,))
       self.assertAllEqual(y, (7,))
@@ -1069,11 +1076,11 @@ class StridedSliceBenchmark(test_lib.Benchmark):
   def run_and_time(self, slice_op):
     self.evaluate(variables.global_variables_initializer())
     for _ in range(10):
-      _ = slice_op.eval()
+      _ = self.evaluate(slice_op)
     iters = 1000
     t0 = time.time()
     for _ in range(iters):
-      slice_op.eval()
+      self.evaluate(slice_op)
     t1 = time.time()
     self.report_benchmark(iters=iters, wall_time=(t1 - t0) / 1000.0)
 
@@ -1142,7 +1149,7 @@ class StridedSliceAssignChecker(object):
       self.test.assertAllEqual(val_copy, valnp)
 
 
-class SliceAssignTest(test_util.TensorFlowTestCase):
+class SliceAssignTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @test_util.run_deprecated_v1
   def testInvalidSlice(self):
@@ -1227,6 +1234,58 @@ class SliceAssignTest(test_util.TensorFlowTestCase):
       with self.assertRaises(ValueError):
         sess.run(v[:].assign(too_small_val))
 
+  @test_util.disable_xla("b/123559667")
+  @test_util.run_in_graph_and_eager_modes
+  def testTensorStridedSliceUpdateWithInputForward(self):
+    """Tests tensor_strided_slice_update with input-forwarding taking effect."""
+    @def_function.function
+    def assign(x):
+      y = x + 1
+      return gen_array_ops.tensor_strided_slice_update(y, [0], [1], [1], [0])
+    self.assertAllEqual([0, 1], self.evaluate(assign(array_ops.zeros([2]))))
+
+  @test_util.disable_xla("b/123559667")
+  @test_util.run_in_graph_and_eager_modes
+  def testTensorStridedSliceUpdateNoInputForward(self):
+    """Tests tensor_strided_slice_update with no input-forwarding."""
+    x = constant_op.constant([0.2, 0.3])
+    y = x + 1
+    # y's buffer won't be forwarded to z because y and z will be alive at the
+    # same time later.
+    z = gen_array_ops.tensor_strided_slice_update(y, [0], [1], [1], [0.4])
+    ans = y + z
+    self.assertAllClose([1.6, 2.6], self.evaluate(ans))
+
+  @test_util.disable_xla("b/123559667")
+  def testTensorStridedSliceUpdateGradSimple(self):
+    original = constant_op.constant([0.2, 0.3])
+    updates = constant_op.constant([0.4])
+    with backprop.GradientTape() as tape:
+      tape.watch([original, updates])
+      updated = gen_array_ops.tensor_strided_slice_update(
+          original, [0], [1], [1], updates)
+    d1, d2 = tape.gradient(updated, [original, updates],
+                           output_gradients=constant_op.constant([2.0, 3.0]))
+    self.assertAllClose([0.0, 3.0], d1)
+    self.assertAllClose([2.0], d2)
+
+  @parameterized.named_parameters(
+      ("_%s" % i, *args) for i, args in enumerate([  # pylint:disable=g-complex-comprehension
+          ([2, 5], [0, 1], [1, 0], [1, 2], [2], 0, 2, 0, 0, 1),
+          ([4], [5], [3], [1], [3], 1, 0, 0, 0, 0),
+          ([2, 2, 3, 2], [0, 0, 1], [1, 0, 2], [1, 0, 1], [2, 3], 0, 0, 2, 0, 5)
+      ]))
+  @test_util.disable_xla("b/123559667")
+  def testTensorStridedSliceUpdateGrad(
+      self, shape, begin, end, strides, updates_shape, *args):
+    with self.cached_session():
+      def f(a, b):
+        return gen_array_ops.tensor_strided_slice_update(
+            a, begin, end, strides, b, *args)
+      theoretical, numerical = gradient_checker_v2.compute_gradient(
+          f, [array_ops.zeros(shape), array_ops.ones(updates_shape)], delta=1.0)
+      self.assertAllClose(theoretical, numerical)
+
 
 class ShapeSizeRankTest(test_util.TensorFlowTestCase):
 
@@ -1277,7 +1336,7 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
       res = array_ops.sequence_mask(constant_op.constant([1, 3, 2]), 5)
       self.assertAllEqual(res.get_shape(), [3, 5])
       self.assertAllEqual(
-          res.eval(),
+          res,
           [[True, False, False, False, False], [True, True, True, False, False],
            [True, True, False, False, False]])
 
@@ -1289,7 +1348,7 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
           constant_op.constant([0, 1, 4]), dtype=dtypes.float32)
       self.assertAllEqual(res.get_shape().as_list(), [3, 4])
       self.assertAllEqual(
-          res.eval(),
+          res,
           [[0.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0], [1.0, 1.0, 1.0, 1.0]])
 
   @test_util.run_deprecated_v1
@@ -1298,8 +1357,8 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
       res = array_ops.sequence_mask(constant_op.constant([0, 1, 4]))
       self.assertAllEqual(res.get_shape().as_list(), [3, 4])
       self.assertAllEqual(
-          res.eval(), [[False, False, False, False],
-                       [True, False, False, False], [True, True, True, True]])
+          res, [[False, False, False, False], [True, False, False, False],
+                [True, True, True, True]])
 
   @test_util.run_deprecated_v1
   def testTwoDimensional(self):
@@ -1315,7 +1374,7 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
           constant_op.constant([[0, 1, 4], [1, 2, 3]]), dtype=dtypes.float32)
       self.assertAllEqual(res.get_shape().as_list(), [2, 3, 4])
       self.assertAllEqual(
-          res.eval(),
+          res,
           [[[0.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0], [1.0, 1.0, 1.0, 1.0]],
            [[1.0, 0.0, 0.0, 0.0], [1.0, 1.0, 0.0, 0.0], [1.0, 1.0, 1.0, 0.0]]])
 
@@ -1334,7 +1393,7 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
           constant_op.constant(5, dtype=maxlen_dtype))
       self.assertAllEqual(res.get_shape(), [3, 5])
       self.assertAllEqual(
-          res.eval(),
+          res,
           [[True, False, False, False, False], [True, True, True, False, False],
            [True, True, False, False, False]])
 
@@ -1343,6 +1402,34 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
       check_dtypes(dtypes.int32, dtypes.int64)
       check_dtypes(dtypes.int64, dtypes.int32)
       check_dtypes(dtypes.int64, dtypes.int64)
+
+  def testOutputDtype(self):
+
+    def check_output_dtype(output_dtype):
+      res = self.evaluate(
+          array_ops.sequence_mask(
+              constant_op.constant([1, 3, 2], dtype=dtypes.int32),
+              constant_op.constant(5, dtype=dtypes.int32),
+              dtype=output_dtype))
+      self.assertAllEqual(
+          res,
+          self.evaluate(
+              math_ops.cast([[True, False, False, False, False],
+                             [True, True, True, False, False],
+                             [True, True, False, False, False]], output_dtype)))
+
+    check_output_dtype(dtypes.bool)
+    check_output_dtype("bool")
+    check_output_dtype(np.bool)
+    check_output_dtype(dtypes.int32)
+    check_output_dtype("int32")
+    check_output_dtype(np.int32)
+    check_output_dtype(dtypes.float32)
+    check_output_dtype("float32")
+    check_output_dtype(np.float32)
+    check_output_dtype(dtypes.int64)
+    check_output_dtype("float64")
+    check_output_dtype(np.float64)
 
 
 class ConcatSliceResourceTest(test_util.TensorFlowTestCase):
@@ -1399,6 +1486,31 @@ class PadTest(test_util.TensorFlowTestCase):
                           [[0, 0, 0, 0, 0, 0, 0], [0, 0, 1, 2, 3, 0, 0],
                            [0, 0, 4, 5, 6, 0, 0], [0, 0, 0, 0, 0, 0, 0]])
 
+  def testSymmetricMirrorPadGrad(self):
+    t = np.broadcast_to(np.arange(0, 7), (3, 2, 1, 7))
+    paddings = constant_op.constant([
+        [1, 1],
+        [0, 0],
+        [0, 0],
+        [2, 2],
+    ])
+    expected = np.broadcast_to(np.array([9, 27, 27]), (1, 2, 1, 3))
+    result = gen_array_ops.mirror_pad_grad(t, paddings, "SYMMETRIC")
+    self.assertAllEqual(result, expected)
+
+  def testReflectMirrorPadGrad(self):
+    t = np.broadcast_to(np.reshape(np.arange(0, 7), (7, 1)), (1, 4, 7, 1))
+    paddings = constant_op.constant([
+        [0, 0],
+        [1, 1],
+        [2, 2],
+        [0, 0],
+    ])
+    expected = np.broadcast_to(
+        np.reshape(np.array([16, 18, 8]), (3, 1)), (1, 2, 3, 1))
+    result = gen_array_ops.mirror_pad_grad(t, paddings, "REFLECT")
+    self.assertAllEqual(result, expected)
+
 
 class InvertPermutationTest(test_util.TensorFlowTestCase):
 
@@ -1454,7 +1566,7 @@ class GuaranteeConstOpTest(test_util.TensorFlowTestCase):
     with self.cached_session():
       a = array_ops.constant(10)
       guarantee_a = array_ops.guarantee_const(a)
-      self.assertEqual(10, guarantee_a.eval())
+      self.assertEqual(10, self.evaluate(guarantee_a))
 
   @test_util.run_deprecated_v1
   def testVariables(self):
@@ -1467,7 +1579,7 @@ class GuaranteeConstOpTest(test_util.TensorFlowTestCase):
               use_resource=use_resource)
           guarantee_a = array_ops.guarantee_const(a)
           self.evaluate(variables.global_variables_initializer())
-          self.assertEqual(10.0, guarantee_a.eval())
+          self.assertEqual(10.0, self.evaluate(guarantee_a))
 
   @test_util.run_deprecated_v1
   def testResourceRejection(self):
@@ -1480,7 +1592,7 @@ class GuaranteeConstOpTest(test_util.TensorFlowTestCase):
       self.evaluate(variables.global_variables_initializer())
       with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError,
                                                "cannot be a resource variable"):
-        guarantee_a.eval()
+        self.evaluate(guarantee_a)
 
 
 class SnapshotOpTest(test_util.TensorFlowTestCase):
@@ -1523,7 +1635,7 @@ class QuantizeAndDequantizeTest(test_util.TensorFlowTestCase):
         expected = self._scale_per_slice(shape, axis, quant_values)
         unused_minmax_value = 0 if axis is None else [0] * shape[axis]
         fake_quantized = self.evaluate(
-            array_ops.quantize_and_dequantize(
+            array_ops.quantize_and_dequantize_v2(
                 inputs,
                 unused_minmax_value,
                 unused_minmax_value,
@@ -1533,13 +1645,46 @@ class QuantizeAndDequantizeTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(fake_quantized, expected)
         if axis is not None:
           fake_quantized = self.evaluate(
-              array_ops.quantize_and_dequantize(
+              array_ops.quantize_and_dequantize_v2(
                   inputs,
                   unused_minmax_value,
                   unused_minmax_value,
                   range_given=False,
                   axis=(axis - 4)))
           self.assertAllClose(fake_quantized, expected)
+
+  def testBadAxis(self):
+    input_tensor = [2.5, 2.5]
+    input_min = [0, 0]
+    input_max = [1, 1]
+    error_message_pattern = "Shape must be at least rank 11 but is rank 1"
+    # TODO(b/171260356): Eager mode and graph mode throw different error types
+    error = errors.InvalidArgumentError if context.executing_eagerly(
+    ) else ValueError
+    with self.assertRaisesRegex(error, error_message_pattern):
+      self.evaluate(
+          array_ops.quantize_and_dequantize_v2(
+              input=input_tensor,
+              input_min=input_min,
+              input_max=input_max,
+              axis=10))
+
+  def testQuantizeDequantizeGrad(self):
+    shape = (2, 2)
+    max_threshold = 0
+    min_threshold = -10
+    input_value = np.random.rand(2, 2) * 40.0 - 20.0
+    input_tensor = constant_op.constant(input_value, shape=shape,
+                                        name="input_tensor")
+    with self.cached_session():
+      def f(a):
+        return array_ops.quantize_and_dequantize_v2(
+            a,
+            input_min=min_threshold,
+            input_max=max_threshold,
+            range_given=True)
+      output_grad = gradient_checker_v2.compute_gradient(f, [input_tensor])
+      self.assertAllClose(output_grad[0], np.zeros([1, 4, 4]))
 
 
 @test_util.run_all_in_graph_and_eager_modes

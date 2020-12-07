@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/util.h"
 
+#include <limits>
 #include <list>
 
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/core/platform/bfloat16.h"
 
 namespace xla {
 namespace {
@@ -101,6 +103,35 @@ TEST(UtilTest, SanitizeFileName) {
   EXPECT_EQ(SanitizeFileName("abc"), "abc");
   EXPECT_EQ(SanitizeFileName("/\\[]"), "____");
   EXPECT_EQ(SanitizeFileName("/A\\B[C]"), "_A_B_C_");
+}
+
+TEST(UtilTest, RoundTripFpToString) {
+  EXPECT_EQ(RoundTripFpToString(std::numeric_limits<Eigen::half>::quiet_NaN()),
+            "nan");
+  EXPECT_EQ(RoundTripFpToString(-std::numeric_limits<Eigen::half>::quiet_NaN()),
+            "-nan");
+  EXPECT_EQ(RoundTripFpToString(
+                std::numeric_limits<tensorflow::bfloat16>::quiet_NaN()),
+            "nan");
+  EXPECT_EQ(RoundTripFpToString(
+                -std::numeric_limits<tensorflow::bfloat16>::quiet_NaN()),
+            "-nan");
+  EXPECT_EQ(RoundTripFpToString(std::numeric_limits<float>::quiet_NaN()),
+            "nan");
+  EXPECT_EQ(RoundTripFpToString(-std::numeric_limits<float>::quiet_NaN()),
+            "-nan");
+  EXPECT_EQ(RoundTripFpToString(std::numeric_limits<double>::quiet_NaN()),
+            "nan");
+  EXPECT_EQ(RoundTripFpToString(-std::numeric_limits<double>::quiet_NaN()),
+            "-nan");
+}
+
+TEST(UtilTest, SplitF64ToF32) {
+  // Overflowing the F32 exponent in SplitF64ToF32 should result in a pair of
+  // [∞,0].
+  EXPECT_EQ(SplitF64ToF32(std::numeric_limits<double>::max()).first,
+            std::numeric_limits<float>::infinity());
+  EXPECT_EQ(SplitF64ToF32(std::numeric_limits<double>::max()).second, 0.0f);
 }
 
 }  // namespace

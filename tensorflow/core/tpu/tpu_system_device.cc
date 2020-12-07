@@ -15,13 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/graph/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/tpu/virtual_device.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform.h"
 
 namespace tensorflow {
+namespace tpu {
 namespace {
 
 class TpuSystemDeviceFactory : public DeviceFactory {
@@ -76,4 +76,5 @@ void RegisterTpuSystemDevice() {
   REGISTER_LOCAL_DEVICE_FACTORY(DEVICE_TPU_SYSTEM, TpuSystemDeviceFactory);
 }
 
+}  // namespace tpu
 }  // namespace tensorflow

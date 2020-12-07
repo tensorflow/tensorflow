@@ -40,8 +40,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   //   everything still works fine when variable ops aren't used.
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 0);
 
-  const TfLiteTensor* input_resource_id_tensor =
-      GetInput(context, node, kInputVariableId);
+  const TfLiteTensor* input_resource_id_tensor;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputVariableId,
+                                          &input_resource_id_tensor));
   TF_LITE_ENSURE_EQ(context, input_resource_id_tensor->type, kTfLiteInt32);
   TF_LITE_ENSURE_EQ(context, NumElements(input_resource_id_tensor), 1);
 
@@ -51,9 +52,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   Subgraph* subgraph = reinterpret_cast<Subgraph*>(context->impl_);
 
-  const TfLiteTensor* input_resource_id_tensor =
-      GetInput(context, node, kInputVariableId);
-  const TfLiteTensor* input_value_tensor = GetInput(context, node, kInputValue);
+  const TfLiteTensor* input_resource_id_tensor;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputVariableId,
+                                          &input_resource_id_tensor));
+  const TfLiteTensor* input_value_tensor;
+  TF_LITE_ENSURE_OK(
+      context, GetInputSafe(context, node, kInputValue, &input_value_tensor));
 
   int resource_id = input_resource_id_tensor->data.i32[0];
   auto& resources = subgraph->resources();

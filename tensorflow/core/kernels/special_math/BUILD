@@ -1,7 +1,4 @@
-load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_kernel_library",
-)
+load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 
 # Implementation of Special Functions kernels.
 
@@ -20,7 +17,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:math_grad",
-        "//tensorflow/core/kernels:bounds_check",
+        "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:fill_functor",
         "//third_party/eigen3",

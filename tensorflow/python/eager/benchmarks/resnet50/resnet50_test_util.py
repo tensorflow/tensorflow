@@ -29,8 +29,10 @@ def device_and_data_format():
   return ('/cpu:0', 'channels_last')
 
 
-def random_batch(batch_size, data_format):
+def random_batch(batch_size, data_format, seed=None):
   """Create synthetic resnet50 images and labels for testing."""
+  if seed:
+    tf.random.set_seed(seed)
   shape = (3, 224, 224) if data_format == 'channels_first' else (224, 224, 3)
   shape = (batch_size,) + shape
 

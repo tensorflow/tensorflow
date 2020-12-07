@@ -387,6 +387,9 @@ PyArray_Descr NPyBfloat16_Descr = {
     nullptr,                                              // fields
     nullptr,                                              // names
     &NPyBfloat16_ArrFuncs,                                // f
+    nullptr,                                              // metadata
+    nullptr,                                              // c_metadata
+    -1,                                                   // hash
 };
 
 // Registered numpy type ID. Global variable populated by the registration code.
@@ -426,10 +429,10 @@ int NPyBfloat16_Compare(const void* a, const void* b, void* arr) {
     return 1;
   }
   // NaNs sort to the end.
-  if (!std::isnan(x) && std::isnan(y)) {
+  if (!Eigen::numext::isnan(x) && Eigen::numext::isnan(y)) {
     return -1;
   }
-  if (std::isnan(x) && !std::isnan(y)) {
+  if (Eigen::numext::isnan(x) && !Eigen::numext::isnan(y)) {
     return 1;
   }
   return 0;

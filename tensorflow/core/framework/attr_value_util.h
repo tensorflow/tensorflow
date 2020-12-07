@@ -36,7 +36,7 @@ class NameAttrList;
 
 // A human-readable rendering of attr_value, that is more concise than a
 // text-format proto.
-string SummarizeAttrValue(const AttrValue& attr_value);
+std::string SummarizeAttrValue(const AttrValue& attr_value);
 
 // Generates an error if attr_value doesn't have the indicated attr type.
 Status AttrValueHasType(const AttrValue& attr_value, StringPiece type);
@@ -51,7 +51,7 @@ Status AttrValueHasType(const AttrValue& attr_value, StringPiece type);
 bool ParseAttrValue(StringPiece type, StringPiece text, AttrValue* out);
 
 // Sets *out based on the type of value.
-void SetAttrValue(const string& value, AttrValue* out);
+void SetAttrValue(const std::string& value, AttrValue* out);
 void SetAttrValue(const tstring& value, AttrValue* out);
 void SetAttrValue(const char* value, AttrValue* out);
 void SetAttrValue(StringPiece value, AttrValue* out);

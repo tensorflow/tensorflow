@@ -25,8 +25,9 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from tensorflow.python.eager import context
-from tensorflow.python.eager import profiler
+from tensorflow.python.eager.context import get_executor
 from tensorflow.python.platform import test
+from tensorflow.python.profiler import profiler_v2 as profiler
 
 
 class SubclassedKerasModel(tf.keras.Model):
@@ -84,17 +85,16 @@ def make_sequential_keras_model(initializer="ones"):
 
 
 def run_benchmark(func, num_iters, execution_mode=None):
-  ctx = context.context()
   with context.execution_mode(execution_mode):
     # call func to warm up
     func()
     if execution_mode == context.ASYNC:
-      ctx.executor.wait()
+      get_executor().wait()
     start = time.time()
     for _ in xrange(num_iters):
       func()
     if execution_mode == context.ASYNC:
-      ctx.executor.wait()
+      get_executor().wait()
     end = time.time()
 
     return end - start
@@ -108,12 +108,16 @@ class KerasComponentsBenchmarks(test.Benchmark):
     self.report_benchmark(
         iters=num_iters,
         wall_time=mean_us,
-        extras={
-            "examples_per_sec":
-                float("{0:.3f}".format(num_iters / total_time)),
-            "us_per_example":
-                float("{0:.3f}".format(total_time * 1e6 / num_iters))
-        })
+        metrics=[
+            {
+                "name": "exp_per_sec",
+                "value": float("{0:.3f}".format(num_iters / total_time))
+            },
+            {
+                "name": "us_per_exp",
+                "value": float("{0:.3f}".format(total_time * 1e6 / num_iters))
+            },
+        ])
 
   def benchmark_keras_model_subclassed(self):
     model = SubclassedKerasModel()
@@ -209,12 +213,11 @@ class KerasComponentsBenchmarks(test.Benchmark):
       self._benchmark_keras_model_fit(model)
 
   def benchmark_keras_model_functional_fit_graph_mode_with_profiler(self):
-    profiler.start()
+    profiler.start("")
     with context.graph_mode():
       model = make_keras_model(initializer="glorot_uniform")
       self._benchmark_keras_model_fit(model)
-    result = profiler.stop()
-    assert result is not None
+    profiler.stop(save=False)
 
   def benchmark_keras_model_functional_fit_run_model_eagerly(self):
     model = make_keras_model(initializer="glorot_uniform")
@@ -222,11 +225,10 @@ class KerasComponentsBenchmarks(test.Benchmark):
 
   def benchmark_keras_model_functional_fit_run_model_eagerly_with_profiler(
       self):
-    profiler.start()
+    profiler.start("")
     model = make_keras_model(initializer="glorot_uniform")
     self._benchmark_keras_model_fit(model, run_eagerly=True)
-    result = profiler.stop()
-    assert result is not None
+    profiler.stop(save=False)
 
   def benchmark_keras_model_sequential_fit(self):
     model = make_sequential_keras_model(initializer="glorot_uniform")

@@ -588,10 +588,10 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       sess.run(variables.global_variables_initializer())
 
       run_options = config_pb2.RunOptions(output_partition_graphs=True)
-      debug_utils.watch_graph_with_blacklists(
+      debug_utils.watch_graph_with_denylists(
           run_options,
           sess.graph,
-          node_name_regex_blacklist="(.*rnn/while/.*|.*TensorArray.*)",
+          node_name_regex_denylist="(.*rnn/while/.*|.*TensorArray.*)",
           debug_urls=self._debug_urls())
       # b/36870549: Nodes with these name patterns need to be excluded from
       # tfdbg in order to prevent MSAN warnings of uninitialized Tensors

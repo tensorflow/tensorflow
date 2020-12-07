@@ -452,7 +452,7 @@ Status PredicateInt32Inputs(const Scope& root, Node* n,
   root.graph()->AddControlEdge(predicate_as_control.node(),
                                identity_n.operation.node());
 
-  for (int i = 0; i < int32_inputs.size(); i++) {
+  for (int i = 0, end = int32_inputs.size(); i < end; i++) {
     TF_RETURN_IF_ERROR(root.graph()->UpdateEdge(identity_n[i].node(), i, n,
                                                 int32_inputs_input_idxs[i]));
   }

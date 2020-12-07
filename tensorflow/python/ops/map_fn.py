@@ -38,8 +38,14 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
+
+
+np_arrays = lazy_loader.LazyLoader(
+    "np_arrays", globals(),
+    "tensorflow.python.ops.numpy_ops.np_arrays")
 
 
 @tf_export(v1=["map_fn"])
@@ -233,7 +239,7 @@ def map_fn(fn,
            [2, 3, 4]], dtype=int32)>
 
   In some cases, `tf.vectorized_map` can be used to automatically convert a
-  function to a vectorized eqivalent.
+  function to a vectorized equivalent.
 
   #### Eager execution
 
@@ -419,7 +425,10 @@ def map_fn(fn,
     ]
 
     # Check that inputs are not scalars.
-    elems_static_shape = elems_flat[0].shape
+    first_elem = elems_flat[0]
+    if isinstance(first_elem, np_arrays.ndarray):
+      first_elem = first_elem.data
+    elems_static_shape = first_elem.shape
     if elems_static_shape.ndims is not None and elems_static_shape.ndims < 1:
       if len(elems_flat) == 1:
         raise ValueError("elems must be a 1+ dimensional Tensor, not a scalar")
@@ -436,7 +445,7 @@ def map_fn(fn,
         tensor_shape.dimension_value(
             elems_batchable[0].get_shape().with_rank_at_least(1)[0]))
     for tensor in elems_batchable[1:]:
-      n_static.merge_with(
+      n_static.assert_is_compatible_with(
           tensor_shape.Dimension(
               tensor_shape.dimension_value(
                   tensor.get_shape().with_rank_at_least(1)[0])))
@@ -517,7 +526,8 @@ def map_fn(fn,
       varscope.set_caching_device(None)
 
     result_flat = _result_batchable_to_flat(result_batchable,
-                                            result_flat_signature)
+                                            result_flat_signature,
+                                            n_static)
     result = result_unflatten(result_flat)
     return result
 
@@ -599,7 +609,8 @@ def _result_value_flat_to_batchable(result_value_flat, result_flat_signature):
   return result_value_batchable
 
 
-def _result_batchable_to_flat(result_batchable, result_flat_signature):
+def _result_batchable_to_flat(result_batchable, result_flat_signature,
+                              batch_size):
   """Converts result_batchable -> result_flat."""
   result_flat = []
   i = 0
@@ -607,7 +618,7 @@ def _result_batchable_to_flat(result_batchable, result_flat_signature):
     # pylint: disable=protected-access
     num_tensors = len(spec._flat_tensor_specs)
     result_flat.append(
-        spec._batch(None)._from_compatible_tensor_list(
+        spec._batch(batch_size)._from_compatible_tensor_list(
             result_batchable[i:i + num_tensors]))
     i += num_tensors
   assert i == len(result_batchable)

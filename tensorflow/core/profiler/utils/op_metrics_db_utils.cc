@@ -106,16 +106,18 @@ OpMetricsDb CreateTfMetricsDbFromDeviceOpMetricsDb(
   OpMetricsDb tf_op_metrics_db;
   DeviceTfOpMetricsDbBuilder builder(&tf_op_metrics_db);
   for (const auto& device_op_metrics : device_op_metrics_db.metrics_db()) {
-    if (!device_op_metrics.provenance().empty()) {
-      TfOp tf_op = ParseTfOpFullname(device_op_metrics.provenance());
-      builder.UpdateTfOpMetricsWithDeviceOpMetrics(tf_op.name, tf_op.type,
-                                                   device_op_metrics);
-    } else {
-      DCHECK(IsIdleOp(device_op_metrics));
+    if (IsIdleOp(device_op_metrics)) {
       if (with_idle) {
         builder.UpdateTfOpMetricsWithDeviceOpMetrics(kIdle, kIdle,
                                                      device_op_metrics);
       }
+    } else if (device_op_metrics.provenance().empty()) {
+      builder.UpdateTfOpMetricsWithDeviceOpMetrics(
+          device_op_metrics.name(), kUnknownOp, device_op_metrics);
+    } else {
+      TfOp tf_op = ParseTfOpFullname(device_op_metrics.provenance());
+      builder.UpdateTfOpMetricsWithDeviceOpMetrics(tf_op.name, tf_op.type,
+                                                   device_op_metrics);
     }
   }
   tf_op_metrics_db.set_total_op_time_ps(

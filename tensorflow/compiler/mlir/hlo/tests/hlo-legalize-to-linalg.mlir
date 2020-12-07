@@ -1,6 +1,6 @@
-// RUN: mlir-hlo-opt %s -hlo-legalize-to-linalg -split-input-file | FileCheck %s
+// RUN: mlir-hlo-opt %s -hlo-legalize-to-linalg -split-input-file | FILECHECK_OPTS="" FileCheck %s
 
-// CHECK: #map0 = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK: #map = affine_map<(d0, d1) -> (d0, d1)>
 // CHECK-LABEL: func @float_add
 func @float_add(%lhs: tensor<2x2xf32>,
                 %rhs: tensor<2x2xf32>) -> tensor<2x2xf32> {
@@ -152,6 +152,16 @@ func @float_ceil(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
 
 // -----
 
+// CHECK-LABEL: func @floor
+func @floor(%input: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  // CHECK: linalg.generic
+  // CHECK: floorf
+  %0 = "mhlo.floor"(%input) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  return %0 : tensor<2x2xf32>
+}
+
+// -----
+
 // CHECK-LABEL: func @float_neg
 func @float_neg(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: linalg.generic
@@ -239,6 +249,20 @@ func @copy(%input: tensor<2x4x8xf32>) -> tensor<2x4x8xf32> {
   return %0 : tensor<2x4x8xf32>
 }
 // CHECK: return [[ARG]] : tensor<2x4x8xf32>
+
+// -----
+
+// CHECK-LABEL: func @is_finte
+func @is_finte(%input: tensor<2x2xf32>) -> tensor<2x2xi1> {
+  %0 = "mhlo.is_finite"(%input) : (tensor<2x2xf32>) -> tensor<2x2xi1>
+  return %0 : tensor<2x2xi1>
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32
+// CHECK-NEXT:   %[[POS_INF:.+]] = constant 0x7F800000 : f32
+// CHECK-NEXT:   %[[ABS_X:.+]] = absf %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   %[[RESULT:.+]] = cmpf "one", %[[ABS_X]], %[[POS_INF]] : f32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i1
 
 // -----
 
@@ -370,6 +394,40 @@ func @reshape_2D_4D(%arg0: tensor<12x42xi32>) -> tensor<12x1x42x1xi32> {
   return %0 : tensor<12x1x42x1xi32>
 }
 // CHECK: linalg.tensor_reshape %{{.*}} [#[[RESHAPE_MAP1]], #[[RESHAPE_MAP2]]]
+
+// -----
+
+// CHECK-DAG: #[[RESHAPE_MAP1:.*]] = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
+// CHECK-DAG: #[[RESHAPE_MAP2:.*]] = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+// CHECK-LABEL: func @reshape_3D_4D
+func @reshape_3D_4D(%arg0: tensor<1x49x16xf32>) -> tensor<1x784x1x1xf32> {
+  %0 = "mhlo.reshape"(%arg0) : (tensor<1x49x16xf32>) -> tensor<1x784x1x1xf32>
+  return %0 : tensor<1x784x1x1xf32>
+}
+// CHECK: linalg.tensor_reshape %{{.*}} [#[[RESHAPE_MAP1]]]
+// CHECK: linalg.tensor_reshape %{{.*}} [#[[RESHAPE_MAP2]]]
+
+// -----
+
+// CHECK-DAG: #[[MAP:.*]] = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+// CHECK-LABEL: func @reshape1_4D_4D
+func @reshape1_4D_4D(%arg0: tensor<4x512x1x1xi32>) -> tensor<1x4x1x512xi32> {
+  %0 = "mhlo.reshape"(%arg0) : (tensor<4x512x1x1xi32>) -> tensor<1x4x1x512xi32>
+  return %0 : tensor<1x4x1x512xi32>
+}
+// CHECK: linalg.tensor_reshape %{{.*}} [#[[MAP]]]
+// CHECK: linalg.tensor_reshape %{{.*}} [#[[MAP]]]
+
+// -----
+
+// CHECK-DAG: #[[MAP:.*]] = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+// CHECK-LABEL: func @reshape2_4D_4D
+func @reshape2_4D_4D(%arg0: tensor<4x1x1x1024xi32>) -> tensor<4x1024x1x1xi32> {
+  %0 = "mhlo.reshape"(%arg0) : (tensor<4x1x1x1024xi32>) -> tensor<4x1024x1x1xi32>
+  return %0 : tensor<4x1024x1x1xi32>
+}
+// CHECK: linalg.tensor_reshape %{{.*}} [#[[MAP]]]
+// CHECK: linalg.tensor_reshape %{{.*}} [#[[MAP]]]
 
 // -----
 
@@ -557,3 +615,18 @@ func @reverse(%input: tensor<2x3xf32>) -> tensor<2x3xf32> {
 }
 // CHECK: linalg.generic
 // CHECK-SAME: indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
+
+// -----
+
+// CHECK: #[[RESULT_MAP:.*]] = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK-LABEL: func @iota
+func @iota() -> tensor<7x10xf32> {
+  %result = "mhlo.iota"() {iota_dimension = 1 : i64} : () -> (tensor<7x10xf32>)
+  return %result : tensor<7x10xf32>
+}
+// CHECK: linalg.indexed_generic
+// CHECK-SAME: indexing_maps = [#[[RESULT_MAP]]]
+// CHECK-NEXT: ^bb0(%[[D0:.*]]: index, %[[D1:.*]]: index):
+// CHECK-NEXT:   %[[INT_CAST:.*]] = index_cast %[[D1]] : index to i32
+// CHECK-NEXT:   %[[FLOAT_CAST:.*]] = sitofp %[[INT_CAST]] : i32 to f32
+// CHECK-NEXT:   linalg.yield %[[FLOAT_CAST]] : f32

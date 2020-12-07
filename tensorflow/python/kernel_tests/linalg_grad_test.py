@@ -63,6 +63,9 @@ def _GetMatrixUnaryFunctorGradientTest(functor_, dtype_, shape_, **kwargs_):
 
   @test_util.enable_control_flow_v2
   @test_util.run_in_graph_and_eager_modes(use_gpu=True)
+  @test_util.run_without_tensor_float_32(
+      'Tests `tf.linalg.expm`, which call matmul. Additionally, calls ops '
+      'which do matmul in their gradient, such as MatrixSolve.')
   def Test(self):
 
     def RandomInput():
@@ -102,6 +105,16 @@ def _GetMatrixBinaryFunctorGradientTest(functor_,
                                         **kwargs_):
 
   @test_util.run_in_graph_and_eager_modes(use_gpu=True)
+  @test_util.run_without_tensor_float_32(
+      'Tests `tf.linalg.lstsq`, which call matmul. Additionally, calls ops '
+      'which do matmul in their gradient, such as MatrixSolveLs.')
+  # TODO(b/164254522): With TensorFloat-32, some tests fails with extremely high
+  # absolute and relative differences when calling assertAllClose. For example,
+  # the test test_MatrixSolveLsGradient_float32_10_10_1e-06 of class
+  # MatrixBinaryFunctorGradientTest fails with a max absolute difference of
+  # 0.883 and a max relative difference of 736892. We should consider disabling
+  # TensorFloat-32 within `tf.linalg.lstsq and perhaps other linear algebra
+  # functions, even if TensorFloat-32 is allowed globally.
   def Test(self):
 
     def RandomInput():
@@ -229,10 +242,14 @@ if __name__ == '__main__':
         _AddTest(MatrixUnaryFunctorGradientTest, 'MatrixInverseGradient', name,
                  _GetMatrixUnaryFunctorGradientTest(linalg_ops.matrix_inverse,
                                                     dtype, shape))
-        _AddTest(MatrixUnaryFunctorGradientTest, 'MatrixExponentialGradient',
-                 name,
-                 _GetMatrixUnaryFunctorGradientTest(
-                     linalg_impl.matrix_exponential, dtype, shape))
+        if not test_lib.is_built_with_rocm():
+          # TODO(rocm) :
+          # re-enable this test when upstream issues are resolved
+          # see commit msg for details
+          _AddTest(
+              MatrixUnaryFunctorGradientTest, 'MatrixExponentialGradient', name,
+              _GetMatrixUnaryFunctorGradientTest(linalg_impl.matrix_exponential,
+                                                 dtype, shape))
         _AddTest(
             MatrixUnaryFunctorGradientTest, 'MatrixDeterminantGradient', name,
             _GetMatrixUnaryFunctorGradientTest(linalg_ops.matrix_determinant,

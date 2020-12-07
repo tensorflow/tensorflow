@@ -39,9 +39,6 @@ std::shared_ptr<RamFileBlockCache::Block> RamFileBlockCache::Lookup(
   auto entry = block_map_.find(key);
   if (entry != block_map_.end()) {
     if (BlockNotStale(entry->second)) {
-      if (cache_stats_ != nullptr) {
-        cache_stats_->RecordCacheHitBlockSize(entry->second->data.size());
-      }
       return entry->second;
     } else {
       // Remove the stale block and continue.
@@ -136,12 +133,9 @@ void RamFileBlockCache::MaybeFetch(const Key& key,
         block->mu.Unlock();  // Release the lock while making the API call.
         block->data.clear();
         block->data.resize(block_size_, 0);
-        size_t bytes_transferred;
-        block_fetcher_(key.first, key.second, block_size_, block->data.data(),
-                       &bytes_transferred, status);
-        if (cache_stats_ != nullptr) {
-          cache_stats_->RecordCacheMissBlockSize(bytes_transferred);
-        }
+        int64_t bytes_transferred;
+        bytes_transferred = block_fetcher_(key.first, key.second, block_size_,
+                                           block->data.data(), status);
         block->mu.Lock();  // Reacquire the lock immediately afterwards
         if (TF_GetCode(status) == TF_OK) {
           block->data.resize(bytes_transferred, 0);
@@ -171,18 +165,16 @@ void RamFileBlockCache::MaybeFetch(const Key& key,
       "Control flow should never reach the end of RamFileBlockCache::Fetch.");
 }
 
-void RamFileBlockCache::Read(const std::string& filename, size_t offset,
-                             size_t n, char* buffer, size_t* bytes_transferred,
-                             TF_Status* status) {
-  *bytes_transferred = 0;
+int64_t RamFileBlockCache::Read(const std::string& filename, size_t offset,
+                                size_t n, char* buffer, TF_Status* status) {
   if (n == 0) {
-    return TF_SetStatus(status, TF_OK, "");
+    TF_SetStatus(status, TF_OK, "");
+    return 0;
   }
   if (!IsCacheEnabled() || (n > max_bytes_)) {
     // The cache is effectively disabled, so we pass the read through to the
     // fetcher without breaking it up into blocks.
-    return block_fetcher_(filename, offset, n, buffer, bytes_transferred,
-                          status);
+    return block_fetcher_(filename, offset, n, buffer, status);
   }
   // Calculate the block-aligned start and end of the read.
   size_t start = block_size_ * (offset / block_size_);
@@ -202,20 +194,20 @@ void RamFileBlockCache::Read(const std::string& filename, size_t offset,
       abort();
     }
     MaybeFetch(key, block, status);
-    if (TF_GetCode(status) != TF_OK) return;
+    if (TF_GetCode(status) != TF_OK) return -1;
     UpdateLRU(key, block, status);
-    if (TF_GetCode(status) != TF_OK) return;
+    if (TF_GetCode(status) != TF_OK) return -1;
     // Copy the relevant portion of the block into the result buffer.
     const auto& data = block->data;
     if (offset >= pos + data.size()) {
       // The requested offset is at or beyond the end of the file. This can
       // happen if `offset` is not block-aligned, and the read returns the last
       // block in the file, which does not extend all the way out to `offset`.
-      *bytes_transferred = total_bytes_transferred;
       std::stringstream os;
       os << "EOF at offset " << offset << " in file " << filename
          << " at position " << pos << " with data size " << data.size();
-      return TF_SetStatus(status, TF_OUT_OF_RANGE, std::move(os).str().c_str());
+      TF_SetStatus(status, TF_OUT_OF_RANGE, std::move(os).str().c_str());
+      return total_bytes_transferred;
     }
     auto begin = data.begin();
     if (offset > pos) {
@@ -237,8 +229,8 @@ void RamFileBlockCache::Read(const std::string& filename, size_t offset,
       break;
     }
   }
-  *bytes_transferred = total_bytes_transferred;
-  return TF_SetStatus(status, TF_OK, "");
+  TF_SetStatus(status, TF_OK, "");
+  return total_bytes_transferred;
 }
 
 bool RamFileBlockCache::ValidateAndUpdateFileSignature(

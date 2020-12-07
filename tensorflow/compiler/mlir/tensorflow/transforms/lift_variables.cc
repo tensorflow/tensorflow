@@ -28,7 +28,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/UseDefLists.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -176,7 +176,48 @@ LogicalResult LiftVariables(ModuleOp module, Session* session) {
 
   if (resource_names.empty()) return success();
 
-  return LiftVariablesFromSession(module, session, resource_names);
+  if (failed(LiftVariablesFromSession(module, session, resource_names)))
+    return failure();
+
+  // Now that we have all global tensors created, we set the corresponding
+  // bound_inputs' types correctly.
+  SymbolTable symbol_table(module);
+  for (auto func : module.getOps<FuncOp>()) {
+    for (auto arg : func.getArguments()) {
+      unsigned arg_number = arg.getArgNumber();
+      auto global_tensor = LookupBoundInputOfType<GlobalTensorOp>(
+          func, arg_number, symbol_table);
+      if (!global_tensor) continue;
+
+      auto arg_type = arg.getType().cast<RankedTensorType>();
+      assert(arg_type.getRank() == 0);
+      llvm::ArrayRef<TensorType> underlying_type =
+          arg_type.getElementType().cast<TF::ResourceType>().getSubtypes();
+
+      // If the arg type already matches the global_tensor type, we don't need
+      // to do anything.
+      if (!underlying_type.empty() &&
+          underlying_type[0] == global_tensor.type()) {
+        assert(underlying_type.size() == 1);
+        continue;
+      }
+
+      // Otherwise, set this argument's type to the global_tensor's type.
+      auto new_arg_type = mlir::RankedTensorType::get(
+          /*shape=*/{},
+          mlir::TF::ResourceType::get(
+              /*subtypes=*/{global_tensor.type().cast<TensorType>()},
+              module.getContext()));
+
+      arg.setType(new_arg_type);
+    }
+
+    // Update the function type.
+    func.setType(mlir::FunctionType::get(func.getArgumentTypes(),
+                                         func.getType().getResults(),
+                                         module.getContext()));
+  }
+  return success();
 }
 
 }  // namespace tf_saved_model

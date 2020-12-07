@@ -22,6 +22,7 @@ from __future__ import division
 from __future__ import print_function
 
 import inspect
+import linecache
 import re
 import sys
 import textwrap
@@ -183,7 +184,6 @@ def _without_context(node, lines, minl, maxl):
   if end_col_offset is not None:
     # This is only available in 3.8.
     code_lines[-1] = code_lines[-1][:end_col_offset]
-  code_block = '\n'.join(lines[minl - 1:maxl])
 
   col_offset = getattr(node, 'col_offset', None)
   if col_offset is None:
@@ -195,7 +195,7 @@ def _without_context(node, lines, minl, maxl):
   if col_offset is not None:
     code_lines[0] = code_lines[0][col_offset:]
 
-  code_block = '\n'.join(code_lines)
+  code_block = '\n'.join([c.rstrip() for c in code_lines])
 
   return node, code_block
 
@@ -247,9 +247,15 @@ def _parse_lambda(lam):
   # potential multi-line definition.
 
   mod = inspect.getmodule(lam)
+  f = inspect.getsourcefile(lam)
   def_line = lam.__code__.co_firstlineno
-  source = inspect.getsource(mod)
-  lines = source.split('\n')
+
+  # This method is more robust that just calling inspect.getsource(mod), as it
+  # works in interactive shells, where getsource would fail. This is the
+  # same procedure followed by inspect for non-modules:
+  # https://github.com/python/cpython/blob/3.8/Lib/inspect.py#L772
+  lines = linecache.getlines(f, mod.__dict__)
+  source = ''.join(lines)
 
   # Narrow down to the last node starting before our definition node.
   all_nodes = parse(source, preamble_len=0, single_node=False)
@@ -333,7 +339,7 @@ def parse(src, preamble_len=0, single_node=True):
     nodes = nodes[preamble_len:]
   if single_node:
     if len(nodes) != 1:
-      raise ValueError('expected exactly one node node, found {}'.format(nodes))
+      raise ValueError('expected exactly one node, found {}'.format(nodes))
     return nodes[0]
   return nodes
 
@@ -364,7 +370,7 @@ def unparse(node, indentation=None, include_encoding_marker=True):
     node: The code to compile, as an AST object.
     indentation: Unused, deprecated. The returning code will always be indented
       at 4 spaces.
-    include_encoding_marker: Bool, thether to include a comment on the first
+    include_encoding_marker: Bool, whether to include a comment on the first
       line to explicitly specify UTF-8 encoding.
 
   Returns:

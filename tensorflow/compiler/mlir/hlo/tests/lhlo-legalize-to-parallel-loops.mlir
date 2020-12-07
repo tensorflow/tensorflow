@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt %s -lhlo-legalize-to-parallel-loops -canonicalize -split-input-file | FileCheck %s
+// RUN: mlir-hlo-opt %s -lhlo-legalize-to-parallel-loops -canonicalize -split-input-file | FILECHECK_OPTS="" FileCheck %s
 
 func @reduce(%arg: memref<100x10x5xf32>,
              %init: memref<f32>,

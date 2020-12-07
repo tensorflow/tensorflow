@@ -251,7 +251,7 @@ class PyFuncTest(PyFuncTestBase):
       y, = script_ops.py_func(read_object_array, [],
                               [dtypes.string])
       z, = script_ops.py_func(read_and_return_strings, [x, y], [dtypes.string])
-      self.assertListEqual(list(z.eval()), [b"hello there", b"hi ya"])
+      self.assertListEqual(list(self.evaluate(z)), [b"hello there", b"hi ya"])
 
   @test_util.run_v1_only("b/120545219")
   def testStringPadding(self):
@@ -308,7 +308,7 @@ class PyFuncTest(PyFuncTestBase):
         return correct
 
       z, = script_ops.py_func(unicode_string, [], [dtypes.string])
-      self.assertEqual(z.eval(), correct.encode("utf8"))
+      self.assertEqual(self.evaluate(z), correct.encode("utf8"))
 
   @test_util.run_v1_only("b/120545219")
   def testBadNumpyReturnType(self):

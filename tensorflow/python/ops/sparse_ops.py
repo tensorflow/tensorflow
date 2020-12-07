@@ -47,6 +47,7 @@ from tensorflow.python.ops.gen_sparse_ops import *
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
+from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import get_canonical_name_for_symbol
@@ -109,6 +110,15 @@ def from_dense(tensor, name=None):
 
   Only elements not equal to zero will be present in the result. The resulting
   `SparseTensor` has the same dtype and shape as the input.
+
+  >>> sp = tf.sparse.from_dense([0, 0, 3, 0, 1])
+  >>> sp.shape.as_list()
+  [5]
+  >>> sp.values.numpy()
+  array([3, 1], dtype=int32)
+  >>> sp.indices.numpy()
+  array([[2],
+         [4]])
 
   Args:
     tensor: A dense `Tensor` to be converted to a `SparseTensor`.
@@ -1205,7 +1215,9 @@ def sparse_to_dense(sparse_indices,
 @tf_export("sparse.reduce_max", v1=[])
 def sparse_reduce_max_v2(
     sp_input, axis=None, keepdims=None, output_is_sparse=False, name=None):
-  """Computes the max of elements across dimensions of a SparseTensor.
+  """Computes `tf.sparse.maximum` of elements across dimensions of a SparseTensor.
+
+  This is the reduction operation for the elementwise `tf.sparse.maximum` op.
 
   This Op takes a SparseTensor and is the sparse counterpart to
   `tf.reduce_max()`.  In particular, this Op also returns a dense `Tensor`
@@ -1231,21 +1243,32 @@ def sparse_reduce_max_v2(
 
   For example:
 
-  ```python
-  # 'x' represents [[1, ?, 2]
-  #                 [?, 3, ?]]
-  # where ? is implicitly-zero.
-  tf.sparse.reduce_max(x) ==> 3
-  tf.sparse.reduce_max(x, 0) ==> [1, 3, 2]
-  tf.sparse.reduce_max(x, 1) ==> [2, 3]  # Can also use -1 as the axis.
-  tf.sparse.reduce_max(x, 1, keepdims=True) ==> [[2], [3]]
-  tf.sparse.reduce_max(x, [0, 1]) ==> 3
+    # 'x' represents [[1, ?, 2]
+    #                 [?, 3, ?]]
+    # where ? is implicitly-zero.
 
-  # 'y' represents [[-7, ?]
-  #                 [ 4, 3]
-  #                 [ ?, ?]
-  tf.sparse.reduce_max(x, 1) ==> [-7, 4, 0]
-  ```
+    >>> x = tf.sparse.SparseTensor([[0, 0], [0, 2], [1, 1]], [1, 2, 3], [2, 3])
+    >>> tf.sparse.reduce_max(x)
+    <tf.Tensor: shape=(), dtype=int32, numpy=3>
+    >>> tf.sparse.reduce_max(x, 0)
+    <tf.Tensor: shape=(3,), dtype=int32, numpy=array([1, 3, 2], dtype=int32)>
+    >>> tf.sparse.reduce_max(x, 1)
+    <tf.Tensor: shape=(2,), dtype=int32, numpy=array([2, 3], dtype=int32)>
+    >>> tf.sparse.reduce_max(x, 1, keepdims=True)
+    <tf.Tensor: shape=(2, 1), dtype=int32, numpy=
+    array([[2],
+           [3]], dtype=int32)>
+    >>> tf.sparse.reduce_max(x, [0, 1])
+    <tf.Tensor: shape=(), dtype=int32, numpy=3>
+
+    # 'y' represents [[-7, ?]
+    #                 [ 4, 3]
+    #                 [ ?, ?]
+
+    >>> y = tf.sparse.SparseTensor([[0, 0,], [1, 0], [1, 1]], [-7, 4, 3],
+    ... [3, 2])
+    >>> tf.sparse.reduce_max(y, 1)
+    <tf.Tensor: shape=(3,), dtype=int32, numpy=array([-7,  4,  0], dtype=int32)>
 
   Args:
     sp_input: The SparseTensor to reduce. Should have numeric type.
@@ -1293,7 +1316,9 @@ def sparse_reduce_max_v2(
     "reduction_axes")
 def sparse_reduce_max(sp_input, axis=None, keepdims=None,
                       reduction_axes=None, keep_dims=None):
-  """Computes the max of elements across dimensions of a SparseTensor.
+  """Computes `tf.sparse.maximum` of elements across dimensions of a SparseTensor.
+
+  This is the reduction operation for the elementwise `tf.sparse.maximum` op.
 
   This Op takes a SparseTensor and is the sparse counterpart to
   `tf.reduce_max()`.  In particular, this Op also returns a dense `Tensor`
@@ -1318,21 +1343,32 @@ def sparse_reduce_max(sp_input, axis=None, keepdims=None,
 
   For example:
 
-  ```python
-  # 'x' represents [[1, ?, 2]
-  #                 [?, 3, ?]]
-  # where ? is implicitly-zero.
-  tf.sparse.reduce_max(x) ==> 3
-  tf.sparse.reduce_max(x, 0) ==> [1, 3, 2]
-  tf.sparse.reduce_max(x, 1) ==> [2, 3]  # Can also use -1 as the axis.
-  tf.sparse.reduce_max(x, 1, keepdims=True) ==> [[2], [3]]
-  tf.sparse.reduce_max(x, [0, 1]) ==> 3
+    # 'x' represents [[1, ?, 2]
+    #                 [?, 3, ?]]
+    # where ? is implicitly-zero.
 
-  # 'y' represents [[-7, ?]
-  #                 [ 4, 3]
-  #                 [ ?, ?]
-  tf.sparse.reduce_max(x, 1) ==> [-7, 4, 0]
-  ```
+    >>> x = tf.sparse.SparseTensor([[0, 0], [0, 2], [1, 1]], [1, 2, 3], [2, 3])
+    >>> tf.sparse.reduce_max(x)
+    <tf.Tensor: shape=(), dtype=int32, numpy=3>
+    >>> tf.sparse.reduce_max(x, 0)
+    <tf.Tensor: shape=(3,), dtype=int32, numpy=array([1, 3, 2], dtype=int32)>
+    >>> tf.sparse.reduce_max(x, 1)
+    <tf.Tensor: shape=(2,), dtype=int32, numpy=array([2, 3], dtype=int32)>
+    >>> tf.sparse.reduce_max(x, 1, keepdims=True)
+    <tf.Tensor: shape=(2, 1), dtype=int32, numpy=
+    array([[2],
+           [3]], dtype=int32)>
+    >>> tf.sparse.reduce_max(x, [0, 1])
+    <tf.Tensor: shape=(), dtype=int32, numpy=3>
+
+    # 'y' represents [[-7, ?]
+    #                 [ 4, 3]
+    #                 [ ?, ?]
+
+    >>> y = tf.sparse.SparseTensor([[0, 0,], [1, 0], [1, 1]], [-7, 4, 3],
+    ... [3, 2])
+    >>> tf.sparse.reduce_max(y, 1)
+    <tf.Tensor: shape=(3,), dtype=int32, numpy=array([-7,  4,  0], dtype=int32)>
 
   Args:
     sp_input: The SparseTensor to reduce. Should have numeric type.
@@ -1413,7 +1449,9 @@ def sparse_reduce_max_sparse(sp_input,
 @tf_export("sparse.reduce_sum", v1=[])
 def sparse_reduce_sum_v2(
     sp_input, axis=None, keepdims=None, output_is_sparse=False, name=None):
-  """Computes the sum of elements across dimensions of a SparseTensor.
+  """Computes `tf.sparse.add` of elements across dimensions of a SparseTensor.
+
+  This is the reduction operation for the elementwise `tf.sparse.add` op.
 
   This Op takes a SparseTensor and is the sparse counterpart to
   `tf.reduce_sum()`.  In particular, this Op also returns a dense `Tensor`
@@ -1433,16 +1471,23 @@ def sparse_reduce_sum_v2(
 
   For example:
 
-  ```python
-  # 'x' represents [[1, ?, 1]
-  #                 [?, 1, ?]]
-  # where ? is implicitly-zero.
-  tf.sparse.reduce_sum(x) ==> 3
-  tf.sparse.reduce_sum(x, 0) ==> [1, 1, 1]
-  tf.sparse.reduce_sum(x, 1) ==> [2, 1]  # Can also use -1 as the axis.
-  tf.sparse.reduce_sum(x, 1, keepdims=True) ==> [[2], [1]]
-  tf.sparse.reduce_sum(x, [0, 1]) ==> 3
-  ```
+    # 'x' represents [[1, ?, 1]
+    #                 [?, 1, ?]]
+    # where ? is implicitly-zero.
+
+    >>> x = tf.sparse.SparseTensor([[0, 0], [0, 2], [1, 1]], [1, 1, 1], [2, 3])
+    >>> tf.sparse.reduce_sum(x)
+    <tf.Tensor: shape=(), dtype=int32, numpy=3>
+    >>> tf.sparse.reduce_sum(x, 0)
+    <tf.Tensor: shape=(3,), dtype=int32, numpy=array([1, 1, 1], dtype=int32)>
+    >>> tf.sparse.reduce_sum(x, 1)  # Can also use -1 as the axis
+    <tf.Tensor: shape=(2,), dtype=int32, numpy=array([2, 1], dtype=int32)>
+    >>> tf.sparse.reduce_sum(x, 1, keepdims=True)
+    <tf.Tensor: shape=(2, 1), dtype=int32, numpy=
+    array([[2],
+           [1]], dtype=int32)>
+    >>> tf.sparse.reduce_sum(x, [0, 1])
+    <tf.Tensor: shape=(), dtype=int32, numpy=3>
 
   Args:
     sp_input: The SparseTensor to reduce. Should have numeric type.
@@ -1489,7 +1534,9 @@ def sparse_reduce_sum_v2(
     "reduction_axes")
 def sparse_reduce_sum(sp_input, axis=None, keepdims=None,
                       reduction_axes=None, keep_dims=None):
-  """Computes the sum of elements across dimensions of a SparseTensor.
+  """Computes `tf.sparse.add` of elements across dimensions of a SparseTensor.
+
+  This is the reduction operation for the elementwise `tf.sparse.add` op.
 
   This Op takes a SparseTensor and is the sparse counterpart to
   `tf.reduce_sum()`.  In particular, this Op also returns a dense `Tensor`
@@ -1506,16 +1553,23 @@ def sparse_reduce_sum(sp_input, axis=None, keepdims=None,
 
   For example:
 
-  ```python
-  # 'x' represents [[1, ?, 1]
-  #                 [?, 1, ?]]
-  # where ? is implicitly-zero.
-  tf.sparse.reduce_sum(x) ==> 3
-  tf.sparse.reduce_sum(x, 0) ==> [1, 1, 1]
-  tf.sparse.reduce_sum(x, 1) ==> [2, 1]  # Can also use -1 as the axis.
-  tf.sparse.reduce_sum(x, 1, keepdims=True) ==> [[2], [1]]
-  tf.sparse.reduce_sum(x, [0, 1]) ==> 3
-  ```
+    # 'x' represents [[1, ?, 1]
+    #                 [?, 1, ?]]
+    # where ? is implicitly-zero.
+
+    >>> x = tf.sparse.SparseTensor([[0, 0], [0, 2], [1, 1]], [1, 1, 1], [2, 3])
+    >>> tf.sparse.reduce_sum(x)
+    <tf.Tensor: shape=(), dtype=int32, numpy=3>
+    >>> tf.sparse.reduce_sum(x, 0)
+    <tf.Tensor: shape=(3,), dtype=int32, numpy=array([1, 1, 1], dtype=int32)>
+    >>> tf.sparse.reduce_sum(x, 1)  # Can also use -1 as the axis
+    <tf.Tensor: shape=(2,), dtype=int32, numpy=array([2, 1], dtype=int32)>
+    >>> tf.sparse.reduce_sum(x, 1, keepdims=True)
+    <tf.Tensor: shape=(2, 1), dtype=int32, numpy=
+    array([[2],
+           [1]], dtype=int32)>
+    >>> tf.sparse.reduce_sum(x, [0, 1])
+    <tf.Tensor: shape=(), dtype=int32, numpy=3>
 
   Args:
     sp_input: The SparseTensor to reduce. Should have numeric type.
@@ -1601,23 +1655,24 @@ def sparse_tensor_to_dense(sp_input,
                            name=None):
   """Converts a `SparseTensor` into a dense tensor.
 
-  This op is a convenience wrapper around `sparse_to_dense` for `SparseTensor`s.
+  For this sparse tensor with three non-empty values:
 
-  For example, if `sp_input` has shape `[3, 5]` and non-empty string values:
+  >>> sp_input = tf.SparseTensor(
+  ...   dense_shape=[3, 5],
+  ...   values=[7, 8, 9],
+  ...   indices =[[0, 1],
+  ...             [0, 3],
+  ...             [2, 0]])
 
-      [0, 1]: a
-      [0, 3]: b
-      [2, 0]: c
+  The output will be a dense `[3, 5]` tensor with values:
 
-  and `default_value` is `x`, then the output will be a dense `[3, 5]`
-  string tensor with values:
+  >>> tf.sparse.to_dense(sp_input).numpy()
+  array([[0, 7, 0, 8, 0],
+         [0, 0, 0, 0, 0],
+         [9, 0, 0, 0, 0]], dtype=int32)
 
-      [[x a x b x]
-       [x x x x x]
-       [c x x x x]]
-
-  Indices must be without repeats.  This is only
-  tested if `validate_indices` is `True`.
+  Note: Indices must be without repeats.  This is only tested if
+  `validate_indices` is `True`.
 
   Args:
     sp_input: The input `SparseTensor`.
@@ -1904,7 +1959,7 @@ def sparse_retain(sp_input, to_retain):
   retain_shape = to_retain.get_shape()
   retain_shape.assert_has_rank(1)
   if sp_input.values.get_shape().dims is not None:
-    sp_input.values.get_shape().dims[0].merge_with(
+    sp_input.values.get_shape().dims[0].assert_is_compatible_with(
         tensor_shape.dimension_at_index(retain_shape, 0))
 
   where_true = array_ops.reshape(array_ops.where_v2(to_retain), [-1])
@@ -1992,7 +2047,7 @@ def sparse_reset_shape(sp_input, new_shape=None):
     # For cases when shape is known during graph construction, this catches the
     # error before the sparse_tensor.SparseTensor catches it.
     if output_shape_tensor.get_shape().rank is not None:
-      output_shape_tensor.get_shape().dims[0].merge_with(
+      output_shape_tensor.get_shape().dims[0].assert_is_compatible_with(
           in_shape.get_shape().dims[0])
 
     output_shape_tensor_const = tensor_util.constant_value(output_shape_tensor)
@@ -2640,14 +2695,22 @@ def sparse_maximum(sp_a, sp_b, name=None):
   """Returns the element-wise max of two SparseTensors.
 
   Assumes the two SparseTensors have the same shape, i.e., no broadcasting.
+
   Example:
 
-  ```python
-  sp_zero = sparse_tensor.SparseTensor([[0]], [0], [7])
-  sp_one = sparse_tensor.SparseTensor([[1]], [1], [7])
-  res = tf.sparse.maximum(sp_zero, sp_one).eval()
-  # "res" should be equal to SparseTensor([[0], [1]], [0, 1], [7]).
-  ```
+    >>> sp_zero = tf.sparse.SparseTensor([[0]], [0], [7])
+    >>> sp_one = tf.sparse.SparseTensor([[1]], [1], [7])
+    >>> res = tf.sparse.maximum(sp_zero, sp_one)
+    >>> res.indices
+    <tf.Tensor: shape=(2, 1), dtype=int64, numpy=
+    array([[0],
+           [1]])>
+    >>> res.values
+    <tf.Tensor: shape=(2,), dtype=int32, numpy=array([0, 1], dtype=int32)>
+    >>> res.dense_shape
+    <tf.Tensor: shape=(1,), dtype=int64, numpy=array([7])>
+
+  The reduction version of this elementwise operation is `tf.sparse.reduce_max`
 
   Args:
     sp_a: a `SparseTensor` operand whose dtype is real, and indices
@@ -2678,14 +2741,20 @@ def sparse_minimum(sp_a, sp_b, name=None):
   """Returns the element-wise min of two SparseTensors.
 
   Assumes the two SparseTensors have the same shape, i.e., no broadcasting.
+
   Example:
 
-  ```python
-  sp_zero = sparse_tensor.SparseTensor([[0]], [0], [7])
-  sp_one = sparse_tensor.SparseTensor([[1]], [1], [7])
-  res = tf.sparse.minimum(sp_zero, sp_one).eval()
-  # "res" should be equal to SparseTensor([[0], [1]], [0, 0], [7]).
-  ```
+    >>> sp_zero = tf.sparse.SparseTensor([[0]], [0], [7])
+    >>> sp_one = tf.sparse.SparseTensor([[1]], [1], [7])
+    >>> res = tf.sparse.minimum(sp_zero, sp_one)
+    >>> res.indices
+    <tf.Tensor: shape=(2, 1), dtype=int64, numpy=
+    array([[0],
+           [1]])>
+    >>> res.values
+    <tf.Tensor: shape=(2,), dtype=int32, numpy=array([0, 0], dtype=int32)>
+    >>> res.dense_shape
+    <tf.Tensor: shape=(1,), dtype=int64, numpy=array([7])>
 
   Args:
     sp_a: a `SparseTensor` operand whose dtype is real, and indices
@@ -2770,6 +2839,119 @@ def sparse_transpose(sp_input, perm=None, name=None):
         transposed_indices, sp_input.values, transposed_dense_shape)
     transposed_st = sparse_reorder(transposed_st)
     return transposed_st
+
+
+@tf_export("sparse.map_values", v1=[])
+@dispatch.add_dispatch_support
+def map_values(op, *args, **kwargs):
+  """Applies `op` to the `.values` tensor of one or more `SparseTensor`s.
+
+  Replaces any `SparseTensor` in `args` or `kwargs` with its `values`
+  tensor (which contains the non-default values for the SparseTensor),
+  and then calls `op`.  Returns a `SparseTensor` that is constructed
+  from the input `SparseTensor`s' `indices`, `dense_shape`, and the
+  value returned by the `op`.
+
+  If the input arguments contain multiple `SparseTensor`s, then they must have
+  equal `indices` and dense shapes.
+
+  Examples:
+
+  >>> s = tf.sparse.from_dense([[1, 2, 0],
+  ...                           [0, 4, 0],
+  ...                           [1, 0, 0]])
+  >>> tf.sparse.to_dense(tf.sparse.map_values(tf.ones_like, s)).numpy()
+  array([[1, 1, 0],
+         [0, 1, 0],
+         [1, 0, 0]], dtype=int32)
+
+  >>> tf.sparse.to_dense(tf.sparse.map_values(tf.multiply, s, s)).numpy()
+  array([[ 1,  4,  0],
+         [ 0, 16,  0],
+         [ 1,  0,  0]], dtype=int32)
+
+  >>> tf.sparse.to_dense(tf.sparse.map_values(tf.add, s, 5)).numpy()
+  array([[6, 7, 0],
+         [0, 9, 0],
+         [6, 0, 0]], dtype=int32)
+
+  Note: even though `tf.add(0, 5) != 0`, implicit zeros
+  will remain unchanged. However, if the sparse tensor contains any explict
+  zeros, these will be affected by the mapping!
+
+  Args:
+    op: The operation that should be applied to the SparseTensor `values`. `op`
+      is typically an element-wise operation (such as math_ops.add), but any
+      operation that preserves the shape can be used.
+    *args: Arguments for `op`.
+    **kwargs: Keyword arguments for `op`.
+
+  Returns:
+    A `SparseTensor` whose `indices` and `dense_shape` matches the `indices`
+    and `dense_shape` of all input `SparseTensor`s.
+  Raises:
+    ValueError: If args contains no `SparseTensor`, or if the `indices`
+      or `dense_shape`s of the input `SparseTensor`s are not equal.
+  """
+  sparse_list = []
+  inner_args = _replace_sparse_with_values(args, sparse_list)
+  inner_kwargs = _replace_sparse_with_values(kwargs, sparse_list)
+  if not sparse_list:
+    raise ValueError("No SparseTensor in argument list of map_values")
+
+  with ops.control_dependencies(_assert_sparse_compatible(sparse_list)):
+    # Delegate to op, and then compose the result from the transformed values
+    # and the known indices/dense shape. Since we ensure that indices and shape
+    # are identical, we can just use the first one.
+    return sparse_tensor.SparseTensor(sparse_list[0].indices,
+                                      op(*inner_args, **inner_kwargs),
+                                      sparse_list[0].dense_shape)
+
+
+def _assert_sparse_compatible(sparse_tensors):
+  """Check that all of `sparse_tensors` have same `indices` and `dense_shape`.
+
+  Args:
+    sparse_tensors: A list of sparse tensors.
+
+  Returns:
+    An op to be used as a control dependency.
+  """
+  checks = []
+  first = sparse_tensors[0]
+  for t in sparse_tensors[1:]:
+    checks.append(
+        check_ops.assert_equal(
+            first.dense_shape, t.dense_shape, message="Mismatched shapes!"))
+    checks.append(
+        check_ops.assert_equal(
+            first.indices, t.indices, message="Mismatched indices!"))
+  return checks
+
+
+def _replace_sparse_with_values(value, sparse_list):
+  """Replace `SparseTensor`s with their values in `value`
+
+  Each `SparseTensor` in `value` is replaced by its `values` tensor, and
+  collects all `SparseTensor`s in `sparse_list`.
+
+  Args:
+    value: A structure of `Tensor`s and `SparseTensor`s
+    sparse_list: A list. Output parameter that collects all `SparseTensor`s in
+      `value`.
+
+  Returns:
+    `value` with each SparseTensor replaced by its `.value` attribute.
+  """
+  flat_vals = nest.flatten(value, expand_composites=False)
+  new_vals = []
+  for v in flat_vals:
+    if isinstance(v, sparse_tensor.SparseTensor):
+      sparse_list.append(v)
+      new_vals.append(v.values)
+    else:
+      new_vals.append(v)
+  return nest.pack_sequence_as(value, new_vals, expand_composites=False)
 
 
 def _add_sparse_to_tensors_map(sp_input,

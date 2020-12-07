@@ -848,10 +848,6 @@ class GradientTape(object):
     self._watch_accessed_variables = watch_accessed_variables
     self._watched_variables = ()
     self._recording = False
-    self._created_eagerly = context.executing_eagerly()
-    if self._created_eagerly:
-      context.ensure_initialized()
-      context.context().start_step()
 
   def __enter__(self):
     """Enters a context inside which operations are recorded on this tape."""
@@ -881,15 +877,6 @@ class GradientTape(object):
       raise ValueError("Tape is not recording.")
     tape.pop_tape(self._tape)
     self._recording = False
-
-  def __del__(self):
-    if self._created_eagerly:
-      try:
-        context.context().end_step()
-      except AttributeError:
-        pass
-      except TypeError:
-        pass
 
   def watch(self, tensor):
     """Ensures that `tensor` is being traced by this tape.
@@ -997,6 +984,9 @@ class GradientTape(object):
                unconnected_gradients=UnconnectedGradients.NONE):
     """Computes the gradient using operations recorded in context of this tape.
 
+    Note: Unless you set `persistent=True` a GradientTape can only be used to
+    compute one set of gradients (or jacobians).
+
     Args:
       target: a list or nested structure of Tensors or Variables to be
         differentiated.
@@ -1015,14 +1005,14 @@ class GradientTape(object):
       the structure of `sources`.
 
     Raises:
-      RuntimeError: if called inside the context of the tape, or if called more
-       than once on a non-persistent tape.
-      ValueError: if the target is a variable or if unconnected gradients is
+      RuntimeError: If called on a used, non-persistent tape.
+      RuntimeError: If called inside the context of the tape.
+      ValueError: If the target is a variable or if unconnected gradients is
        called with an unknown value.
     """
     if self._tape is None:
-      raise RuntimeError("GradientTape.gradient can only be called once on "
-                         "non-persistent tapes.")
+      raise RuntimeError("A non-persistent GradientTape can only be used to"
+                         "compute one set of gradients (or jacobians)")
     if self._recording:
       if not self._persistent:
         self._pop_tape()
@@ -1088,7 +1078,11 @@ class GradientTape(object):
       self._tape = None
 
     if rewrap_as_ndarray:
-      flat_grad = nest.map_structure(np_arrays.tensor_to_ndarray, flat_grad)
+      def _tensor_to_ndarray(x):
+        if x is not None:
+          return np_arrays.tensor_to_ndarray(x)
+        return None
+      flat_grad = nest.map_structure(_tensor_to_ndarray, flat_grad)
 
     grad = nest.pack_sequence_as(sources, flat_grad)
     return grad
@@ -1101,7 +1095,16 @@ class GradientTape(object):
                experimental_use_pfor=True):
     """Computes the jacobian using operations recorded in context of this tape.
 
-    See[wikipedia article](http://en.wikipedia.org/wiki/jacobian_matrix_and_determinant)
+    Note: Unless you set `persistent=True` a GradientTape can only be used to
+    compute one set of gradients (or jacobians).
+
+    Note: By default the jacobian implementation uses parallel for (pfor), which
+    creates a tf.function under the hood for each jacobian call. For better
+    performance, and to avoid recompilation and vectorization rewrites on each
+    call, enclose GradientTape code in @tf.function.
+
+    See[wikipedia
+    article](http://en.wikipedia.org/wiki/jacobian_matrix_and_determinant)
     for the definition of a Jacobian.
 
     Example usage:
@@ -1139,10 +1142,15 @@ class GradientTape(object):
 
 
     Raises:
+      RuntimeError: If called on a used, non-persistent tape.
       RuntimeError: If called on a non-persistent tape with eager execution
         enabled and without enabling experimental_use_pfor.
       ValueError: If vectorization of jacobian computation fails.
     """
+    if self._tape is None:
+      raise RuntimeError("A non-persistent GradientTape can only be used to"
+                         "compute one set of gradients (or jacobians)")
+
     flat_sources = nest.flatten(sources)
     rewrap_as_ndarray = False
     if isinstance(target, np_arrays.ndarray):
@@ -1225,6 +1233,15 @@ class GradientTape(object):
     are lower dimensional and avoid a bunch of redundant zeros which would
     result in the jacobian computation given the independence assumption.
 
+    Note: Unless you set `persistent=True` a GradientTape can only be used to
+    compute one set of gradients (or jacobians).
+
+    Note: By default the batch_jacobian implementation uses parallel for (pfor),
+    which creates a tf.function under the hood for each batch_jacobian call.
+    For better performance, and to avoid recompilation and vectorization
+    rewrites on each call, enclose GradientTape code in @tf.function.
+
+
     Example usage:
 
     ```python
@@ -1255,11 +1272,21 @@ class GradientTape(object):
       per-example jacobians.
 
     Raises:
+      RuntimeError: If called on a used, non-persistent tape.
       RuntimeError: If called on a non-persistent tape with eager execution
         enabled and without enabling experimental_use_pfor.
       ValueError: If vectorization of jacobian computation fails or if first
         dimension of `target` and `source` do not match.
     """
+    if self._tape is None:
+      raise RuntimeError("A non-persistent GradientTape can only be used to"
+                         "compute one set of gradients (or jacobians)")
+    rewrap_as_ndarray = False
+    if isinstance(target, np_arrays.ndarray):
+      target = target.data
+      rewrap_as_ndarray = True
+    if isinstance(source, np_arrays.ndarray):
+      source = source.data
     target_shape = target.shape
     if target_shape.rank is None:
       dim = tensor_shape.Dimension(None)
@@ -1317,9 +1344,16 @@ class GradientTape(object):
                                  parallel_iterations=parallel_iterations)
     new_shape = array_ops.concat([target_shape, source_shape[1:]], axis=0)
     if output is None:
-      return array_ops.zeros(new_shape)
+      output = array_ops.zeros(new_shape)
+      if rewrap_as_ndarray:
+        output = np_arrays.tensor_to_ndarray(output)
+      return output
     else:
       output = array_ops.reshape(output,
                                  [target_row_size, batch_size, -1])
       output = array_ops.transpose(output, [1, 0, 2])
-      return array_ops.reshape(output, new_shape)
+
+      output = array_ops.reshape(output, new_shape)
+      if rewrap_as_ndarray:
+        output = np_arrays.tensor_to_ndarray(output)
+      return output

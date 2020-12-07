@@ -33,8 +33,8 @@ namespace {
 
 TEST(DerivedTimelineTest, EmptySpaceTest) {
   XSpace space;
-  EventGroupNameMap event_group_name_map;
-  GenerateDerivedTimeLines(event_group_name_map, &space);
+  GroupMetadataMap group_metadata_map;
+  GenerateDerivedTimeLines(group_metadata_map, &space);
   EXPECT_EQ(space.planes_size(), 0);
 }
 
@@ -43,7 +43,7 @@ TEST(DerivedTimelineTest, HloModuleNameTest) {
   const absl::string_view kHloModuleName = "hlo_module";
   const absl::string_view kKernelDetails = "kernel_details";
   XSpace space;
-  EventGroupNameMap event_group_name_map;
+  GroupMetadataMap group_metadata_map;
   XPlane* plane = GetOrCreateGpuXPlane(&space, /*device_ordinal=*/0);
   XPlaneBuilder plane_builder(plane);
   auto line_builder = plane_builder.GetOrCreateLine(0);
@@ -53,7 +53,7 @@ TEST(DerivedTimelineTest, HloModuleNameTest) {
   CreateXEvent(&plane_builder, &line_builder, "op2", 200, 300,
                {{StatType::kHloModule, kHloModuleName},
                 {StatType::kKernelDetails, kKernelDetails}});
-  GenerateDerivedTimeLines(event_group_name_map, &space);
+  GenerateDerivedTimeLines(group_metadata_map, &space);
   XPlaneVisitor plane_visitor = CreateTfXPlaneVisitor(plane);
   // Only the hlo module line is added and other empty lines are removed at the
   // end.
@@ -73,17 +73,17 @@ TEST(DerivedTimelineTest, TfOpLineTest) {
   const absl::string_view kTfOpName = "mul:Mul";
   const absl::string_view kKernelDetails = "kernel_details";
   XSpace space;
-  EventGroupNameMap event_group_name_map;
+  GroupMetadataMap group_metadata_map;
   XPlane* plane = GetOrCreateGpuXPlane(&space, /*device_ordinal=*/0);
   XPlaneBuilder plane_builder(plane);
   auto line_builder = plane_builder.GetOrCreateLine(0);
   CreateXEvent(&plane_builder, &line_builder, "op1", 0, 100,
-               {{StatType::kLevel0, kTfOpName},
+               {{StatType::kTfOp, kTfOpName},
                 {StatType::kKernelDetails, kKernelDetails}});
   CreateXEvent(&plane_builder, &line_builder, "op2", 200, 300,
-               {{StatType::kLevel0, kTfOpName},
+               {{StatType::kTfOp, kTfOpName},
                 {StatType::kKernelDetails, kKernelDetails}});
-  GenerateDerivedTimeLines(event_group_name_map, &space);
+  GenerateDerivedTimeLines(group_metadata_map, &space);
   XPlaneVisitor plane_visitor = CreateTfXPlaneVisitor(plane);
   // Only the tf op line is added and other empty lines are removed at the end.
   EXPECT_EQ(plane_visitor.NumLines(), 2);
@@ -108,19 +108,20 @@ TEST(DerivedTimelineTest, DependencyTest) {
   const absl::string_view kTfOpName = "mul:Mul";
   const absl::string_view kKernelDetails = "kernel_details";
   XSpace space;
-  EventGroupNameMap event_group_name_map({{0, "train 0"}, {1, "train 1"}});
+  GroupMetadataMap group_metadata_map(
+      {{0, {"train 0", ""}}, {1, {"train 1", ""}}});
   XPlane* plane = GetOrCreateGpuXPlane(&space, /*device_ordinal=*/0);
   XPlaneBuilder plane_builder(plane);
   auto line_builder = plane_builder.GetOrCreateLine(0);
   CreateXEvent(&plane_builder, &line_builder, "op1", 0, 100,
                {{StatType::kGroupId, kFirstGroupId},
-                {StatType::kLevel0, kTfOpName},
+                {StatType::kTfOp, kTfOpName},
                 {StatType::kKernelDetails, kKernelDetails}});
   CreateXEvent(&plane_builder, &line_builder, "op2", 200, 300,
                {{StatType::kGroupId, kSecondGroupId},
-                {StatType::kLevel0, kTfOpName},
+                {StatType::kTfOp, kTfOpName},
                 {StatType::kKernelDetails, kKernelDetails}});
-  GenerateDerivedTimeLines(event_group_name_map, &space);
+  GenerateDerivedTimeLines(group_metadata_map, &space);
   XPlaneVisitor plane_visitor = CreateTfXPlaneVisitor(plane);
   // The step line and the TF op line are added.
   EXPECT_EQ(plane_visitor.NumLines(), 3);
@@ -137,17 +138,17 @@ TEST(DerivedTimelineTest, TfOpNameScopeTest) {
   const absl::string_view kTfOpName = "scope1/scope2/mul:Mul";
   const absl::string_view kKernelDetails = "kernel_details";
   XSpace space;
-  EventGroupNameMap event_group_name_map;
+  GroupMetadataMap group_metadata_map;
   XPlane* plane = GetOrCreateGpuXPlane(&space, /*device_ordinal=*/0);
   XPlaneBuilder plane_builder(plane);
   auto line_builder = plane_builder.GetOrCreateLine(0);
   CreateXEvent(&plane_builder, &line_builder, "op1", 0, 100,
-               {{StatType::kLevel0, kTfOpName},
+               {{StatType::kTfOp, kTfOpName},
                 {StatType::kKernelDetails, kKernelDetails}});
   CreateXEvent(&plane_builder, &line_builder, "op2", 200, 300,
-               {{StatType::kLevel0, kTfOpName},
+               {{StatType::kTfOp, kTfOpName},
                 {StatType::kKernelDetails, kKernelDetails}});
-  GenerateDerivedTimeLines(event_group_name_map, &space);
+  GenerateDerivedTimeLines(group_metadata_map, &space);
   XPlaneVisitor plane_visitor = CreateTfXPlaneVisitor(plane);
   // The TF name scope line and the TF op line are added.
   EXPECT_EQ(plane_visitor.NumLines(), 3);

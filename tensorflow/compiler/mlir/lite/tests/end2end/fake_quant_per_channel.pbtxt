@@ -459,11 +459,13 @@ node {
 # CHECK-LABEL: {
 # CHECK:   version: 3,
 # CHECK:   operator_codes: [ {
-# CHECK:     builtin_code: CONV_2D,
-# CHECK:     version: 3
+# CHECK:     deprecated_builtin_code: 3,
+# CHECK:     version: 3,
+# CHECK:     builtin_code: CONV_2D
 # CHECK:   }, {
-# CHECK:     builtin_code: RESHAPE,
+# CHECK:     deprecated_builtin_code: 22,
 # CHECK:     version: 1
+# CHECK:     builtin_code: RESHAPE
 # CHECK:   } ],
 # CHECK:   subgraphs: [ {
 # CHECK:     tensors: [ {

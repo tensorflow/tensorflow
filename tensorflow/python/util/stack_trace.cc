@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/python/util/stack_trace.h"
 
+#include "tensorflow/core/platform/str_util.h"
+#include "tensorflow/core/platform/stringpiece.h"
+
 namespace {
 
 // Returns C string from a Python string object. Handles Python2/3 strings.
@@ -31,22 +34,46 @@ const char* GetPythonString(PyObject* o) {
   return PyBytes_AsString(o);
 #endif
 }
+
 }  // namespace
 
 namespace tensorflow {
-std::string StackTrace::ToString() const {
-  DCheckPyGilState();
 
-  std::ostringstream result;
-  for (int i = size_ - 1; i >= 0; --i) {
-    result << "  File \"" << PyUnicode_AsUTF8(code_objs_[i]->co_filename)
-           << "\", line "
-           << PyCode_Addr2Line(code_objs_[i], last_instructions_[i]) << ", in "
-           << GetPythonString(code_objs_[i]->co_name)
-           << "\n    <source line unimplemented>\n";
-    // TODO(kkb): Add source code line.  See tf_stack.cc's
-    // FrameSummary::line() function.
+std::vector<StackFrame> StackTrace::ToStackFrames(
+    const StackTraceMap& mapper, const StackTraceFilter& filtered) const {
+  DCheckPyGilStateForStackTrace();
+  std::vector<StackFrame> result;
+  result.reserve(code_objs_.size());
+
+  for (int i = code_objs_.size() - 1; i >= 0; --i) {
+    const char* file_name = GetPythonString(code_objs_[i]->co_filename);
+    const int line_number =
+        PyCode_Addr2Line(code_objs_[i], last_instructions_[i]);
+
+    if (!result.empty() && filtered.count(file_name)) {
+      continue;  // Never filter the innermost frame.
+    }
+
+    auto it = mapper.find(std::make_pair(file_name, line_number));
+
+    if (it != mapper.end()) {
+      result.push_back(it->second);
+    } else {
+      result.emplace_back(StackFrame{file_name, line_number,
+                                     GetPythonString(code_objs_[i]->co_name)});
+    }
   }
-  return result.str();
+
+  return result;
 }
+
+StackTrace* StackTraceManager::Get(int id) {
+  DCheckPyGilStateForStackTrace();
+  if (next_id_ - id > kStackTraceCircularBufferSize) return nullptr;
+
+  return &stack_traces_[id & (kStackTraceCircularBufferSize - 1)];
+}
+
+StackTraceManager* const stack_trace_manager = new StackTraceManager();
+
 }  // namespace tensorflow

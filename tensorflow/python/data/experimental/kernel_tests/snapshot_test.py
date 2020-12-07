@@ -133,6 +133,27 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
     self.assertDatasetProduces(dataset2, expected)
 
   @combinations.generate(test_base.default_test_combinations())
+  def testReadSnapshotDatasetAutoWriteSnappyRead(self):
+    self.createTFRecords()
+    filenames = self._test_filenames
+    expected = [
+        b"Record %d of file %d" % (r, f)  # pylint:disable=g-complex-comprehension
+        for f in range(0, 10)
+        for r in range(0, 100)
+    ]
+
+    dataset = core_readers._TFRecordDataset(filenames)
+    dataset = dataset.apply(
+        snapshot.snapshot(self._snapshot_dir, compression="AUTO"))
+    self.assertDatasetProduces(dataset, expected)
+
+    self.removeTFRecords()
+    dataset2 = core_readers._TFRecordDataset(filenames)
+    dataset2 = dataset2.apply(
+        snapshot.snapshot(self._snapshot_dir, compression="SNAPPY"))
+    self.assertDatasetProduces(dataset2, expected)
+
+  @combinations.generate(test_base.default_test_combinations())
   def testReadSnapshotDatasetCustomShardFn(self):
     self.createTFRecords()
     filenames = self._test_filenames
@@ -304,10 +325,60 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
 
     dataset = dataset_ops.Dataset.zip((dataset1, dataset2, dataset3, dataset4))
     dataset = dataset.apply(snapshot.snapshot(self._snapshot_dir))
-    next1 = self.getNext(dataset)
-    for i in range(0, 1000):
-      self.assertEqual((i, i + 1000, i + 2000, i + 3000),
-                       self.evaluate(next1()))
+
+    expected = list(
+        zip(
+            range(0, 1000), range(1000, 2000), range(2000, 3000),
+            range(3000, 4000)))
+    self.assertDatasetProduces(dataset, expected)
+    self.assertSnapshotDirectoryContains(
+        self._snapshot_dir,
+        num_fingerprints=1,
+        num_runs_per_fingerprint=1,
+        num_snapshot_shards_per_run=multiprocessing.cpu_count())
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testWriteSnapshotShuffleSameFingerprint(self):
+
+    def make_dataset():
+      dataset = dataset_ops.Dataset.range(1000)
+      dataset = dataset.shuffle(1000)
+      dataset = dataset.apply(snapshot.snapshot(self._snapshot_dir))
+      return dataset
+
+    dataset1 = make_dataset()
+    self.assertDatasetProducesSet(dataset1, list(range(1000)))
+    dataset2 = make_dataset()
+    self.assertDatasetProducesSet(dataset2, list(range(1000)))
+    self.assertSnapshotDirectoryContains(
+        self._snapshot_dir,
+        num_fingerprints=1,
+        num_runs_per_fingerprint=1,
+        num_snapshot_shards_per_run=multiprocessing.cpu_count())
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testReadUsingFlatMap(self):
+    dataset = dataset_ops.Dataset.range(1000)
+    dataset = dataset.apply(snapshot.snapshot(self._snapshot_dir))
+    self.assertDatasetProduces(dataset, list(range(1000)))
+    flat_map = dataset_ops.Dataset.from_tensors(dataset).flat_map(lambda x: x)
+    self.assertDatasetProduces(flat_map, list(range(1000)))
+    self.assertSnapshotDirectoryContains(
+        self._snapshot_dir,
+        num_fingerprints=1,
+        num_runs_per_fingerprint=1,
+        num_snapshot_shards_per_run=multiprocessing.cpu_count())
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testReadOptimizableUsingFlatMap(self):
+    dataset = dataset_ops.Dataset.range(100)
+    # Will be optimized into ShuffleAndRepeat.
+    dataset = dataset.shuffle(10)
+    dataset = dataset.repeat(2)
+    dataset = dataset.apply(snapshot.snapshot(self._snapshot_dir))
+    self.assertDatasetProducesSet(dataset, 2 * list(range(100)))
+    flat_map = dataset_ops.Dataset.from_tensors(dataset).flat_map(lambda x: x)
+    self.assertDatasetProducesSet(flat_map, 2 * list(range(100)))
     self.assertSnapshotDirectoryContains(
         self._snapshot_dir,
         num_fingerprints=1,

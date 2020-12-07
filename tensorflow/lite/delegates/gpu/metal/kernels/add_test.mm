@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/kernels/test_util.h"
 #include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
-using ::tflite::gpu::AddAttributes;
+using ::tflite::gpu::ElementwiseAttributes;
 using ::tflite::gpu::BHWC;
 using ::tflite::gpu::DataType;
 using ::tflite::gpu::Linear;
@@ -61,7 +61,7 @@ using ::tflite::gpu::metal::SingleOpModel;
   output.ref = 2;
   output.shape = BHWC(1, 2, 2, 1);
 
-  AddAttributes attr;
+  ElementwiseAttributes attr;
   SingleOpModel model({ToString(OperationType::ADD), std::move(attr)}, {augend, addend}, {output});
   XCTAssertTrue(model.PopulateTensor(0, {-2.0, 0.2, 0.7, 0.8}));
   XCTAssertTrue(model.PopulateTensor(1, {0.1, 0.2, 0.3, 0.5}));
@@ -72,7 +72,7 @@ using ::tflite::gpu::metal::SingleOpModel;
 }
 
 - (void)testInputTensorAndScalar {
-  AddAttributes attr;
+  ElementwiseAttributes attr;
   attr.param = 0.1f;
   TensorRef<BHWC> input, output;
   input.type = DataType::FLOAT32;
@@ -97,7 +97,7 @@ using ::tflite::gpu::metal::SingleOpModel;
   input.ref = 0;
   input.shape = BHWC(1, 2, 2, 2);
 
-  AddAttributes attr;
+  ElementwiseAttributes attr;
   Tensor<Linear, DataType::FLOAT32> tensor;
   tensor.shape.v = 2;
   tensor.id = 1;

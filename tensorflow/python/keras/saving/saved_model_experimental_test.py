@@ -31,13 +31,13 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.framework import test_util
+from tensorflow.python.keras import optimizer_v1
 from tensorflow.python.keras.engine import training as model_lib
 from tensorflow.python.keras.optimizer_v2 import adadelta
 from tensorflow.python.keras.optimizer_v2 import rmsprop
 from tensorflow.python.keras.saving import saved_model_experimental as keras_saved_model
+from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.keras.utils import mode_keys
-from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import loader_impl
@@ -45,8 +45,6 @@ from tensorflow.python.saved_model import model_utils
 from tensorflow.python.training import training as training_module
 
 
-@test_util.run_v1_only(
-    'keras.experimental.load_from_saved_model is supported only in V1.')
 class TestModelSavingandLoading(parameterized.TestCase, test.TestCase):
 
   def _save_model_dir(self, dirname='saved_model'):
@@ -212,8 +210,8 @@ class LayerWithLearningPhase(keras.engine.base_layer.Layer):
   def call(self, x, training=None):
     if training is None:
       training = keras.backend.learning_phase()
-    output = tf_utils.smart_cond(
-        training, lambda: x * 0, lambda: array_ops.identity(x))
+    output = control_flow_util.smart_cond(training, lambda: x * 0,
+                                          lambda: array_ops.identity(x))
     if not context.executing_eagerly():
       output._uses_learning_phase = True  # pylint: disable=protected-access
     return output
@@ -280,8 +278,13 @@ def load_model(sess, path, mode):
   return inputs, outputs, meta_graph_def
 
 
-@test_util.run_v1_only(
-    'keras.experimental.export_saved_model is supported only in V1.')
+def get_train_op(meta_graph_def):
+  graph = ops.get_default_graph()
+  signature_def = meta_graph_def.signature_def['__saved_model_train_op']
+  op_name = signature_def.outputs['__saved_model_train_op'].name
+  return graph.as_graph_element(op_name)
+
+
 class TestModelSavedModelExport(test.TestCase, parameterized.TestCase):
 
   def _save_model_dir(self, dirname='saved_model'):
@@ -406,7 +409,7 @@ class TestModelSavedModelExport(test.TestCase, parameterized.TestCase):
         self.assertIn('predictions/' + output_name, outputs)
 
         # Train for a step
-        train_op = loader_impl.get_train_op(meta_graph_def)
+        train_op = get_train_op(meta_graph_def)
         train_outputs, _ = sess.run(
             [outputs, train_op], {inputs[input_name]: input_arr,
                                   inputs[target_name]: target_arr})
@@ -463,7 +466,7 @@ class TestModelSavedModelExport(test.TestCase, parameterized.TestCase):
       x = keras.layers.Dense(2)(inputs)
       x = keras.layers.Dense(3)(x)
       clone = keras.models.Model(inputs, x)
-      clone.compile(loss='mse', optimizer=keras.optimizers.RMSprop(lr=0.0001))
+      clone.compile(loss='mse', optimizer=optimizer_v1.RMSprop(lr=0.0001))
       clone.train_on_batch(input_arr, target_arr)
 
     keras_saved_model._assert_same_non_optimizer_objects(
@@ -492,7 +495,7 @@ class TestModelSavedModelExport(test.TestCase, parameterized.TestCase):
       x = keras.layers.Dense(4)(x)
       x = keras.layers.Dense(3)(x)
       clone = keras.models.Model(inputs, x)
-      clone.compile(loss='mse', optimizer=keras.optimizers.RMSprop(lr=0.0001))
+      clone.compile(loss='mse', optimizer=optimizer_v1.RMSprop(lr=0.0001))
       clone.train_on_batch(input_arr, target_arr)
 
   def testSaveSequentialModelWithoutInputShapes(self):

@@ -148,20 +148,6 @@ class HostExecutor : public internal::StreamExecutorInterface {
     return true;
   }
 
-  SharedMemoryConfig GetDeviceSharedMemoryConfig() override {
-    LOG(INFO) << "Shared memory configuration is unsupported for host "
-              << "executors.";
-    return SharedMemoryConfig::kDefault;
-  }
-
-  port::Status SetDeviceSharedMemoryConfig(SharedMemoryConfig config) override {
-    std::string error_msg{
-        "Shared memory configuration is unsupported for host "
-        "executors."};
-    LOG(INFO) << error_msg;
-    return port::Status(port::error::UNIMPLEMENTED, error_msg);
-  }
-
   bool SupportsBlas() const override;
   blas::BlasSupport *CreateBlas() override;
 

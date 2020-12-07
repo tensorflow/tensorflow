@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_CUSTOM_PARSERS_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_CUSTOM_PARSERS_H_
 
-#include <string>
+#include <stdint.h>
 
 #include "absl/strings/string_view.h"
 #include "absl/types/any.h"
@@ -27,9 +27,9 @@ namespace gpu {
 
 // Matches the custom operation by the string name and parses attributes stored
 // as flexbuffers.
-absl::Status ParseCustomAttributes(absl::string_view op_name, const void* data,
-                                   uint32_t data_size, absl::any* attr,
-                                   BHWC* output_shape);
+absl::Status ParseCustomAttributes(absl::string_view op_name, int version,
+                                   const void* data, uint32_t data_size,
+                                   absl::any* attr, BHWC* output_shape);
 
 }  // namespace gpu
 }  // namespace tflite

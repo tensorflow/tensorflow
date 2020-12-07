@@ -144,6 +144,35 @@ class SquareLinearOperatorBlockDiagTest(
     self.assertTrue(operator.is_non_singular)
     self.assertFalse(operator.is_self_adjoint)
 
+  def test_is_x_parameters(self):
+    matrix = [[1., 0.], [1., 1.]]
+    sub_operator = linalg.LinearOperatorFullMatrix(matrix)
+    operator = block_diag.LinearOperatorBlockDiag(
+        [sub_operator],
+        is_positive_definite=True,
+        is_non_singular=True,
+        is_self_adjoint=False)
+    self.assertEqual(
+        operator.parameters,
+        {
+            "name": None,
+            "is_square": True,
+            "is_positive_definite": True,
+            "is_self_adjoint": False,
+            "is_non_singular": True,
+            "operators": [sub_operator],
+        })
+    self.assertEqual(
+        sub_operator.parameters,
+        {
+            "is_non_singular": None,
+            "is_positive_definite": None,
+            "is_self_adjoint": None,
+            "is_square": None,
+            "matrix": matrix,
+            "name": "LinearOperatorFullMatrix",
+        })
+
   def test_block_diag_adjoint_type(self):
     matrix = [[1., 0.], [0., 1.]]
     operator = block_diag.LinearOperatorBlockDiag(

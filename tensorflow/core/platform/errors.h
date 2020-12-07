@@ -44,7 +44,7 @@ namespace internal {
 // Eventually absl::strings will have native support for this and we will be
 // able to completely remove PrepareForStrCat().
 template <typename T>
-typename std::enable_if<!std::is_constructible<strings::AlphaNum, T>::value,
+typename std::enable_if<!std::is_convertible<T, strings::AlphaNum>::value,
                         std::string>::type
 PrepareForStrCat(const T& t) {
   std::stringstream ss;
@@ -62,9 +62,11 @@ inline const strings::AlphaNum& PrepareForStrCat(const strings::AlphaNum& a) {
 // to be several layers of additional context.
 template <typename... Args>
 void AppendToMessage(::tensorflow::Status* status, Args... args) {
+  std::vector<StackFrame> stack_trace = status->stack_trace();
   *status = ::tensorflow::Status(
       status->code(),
-      ::tensorflow::strings::StrCat(status->error_message(), "\n\t", args...));
+      ::tensorflow::strings::StrCat(status->error_message(), "\n\t", args...),
+      std::move(stack_trace));
 }
 
 // For propagating errors when calling a function.

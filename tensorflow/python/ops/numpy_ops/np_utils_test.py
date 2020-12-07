@@ -18,25 +18,84 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
+
 from tensorflow.python.ops.numpy_ops import np_utils
 from tensorflow.python.platform import test
 
 
-class UtilsTest(test.TestCase):
+class UtilsTest(test.TestCase, parameterized.TestCase):
+
+  def setUp(self):
+    super(UtilsTest, self).setUp()
+    self._old_np_doc_form = np_utils.get_np_doc_form()
+    self._old_is_sig_mismatch_an_error = np_utils.is_sig_mismatch_an_error()
+
+  def tearDown(self):
+    np_utils.set_np_doc_form(self._old_np_doc_form)
+    np_utils.set_is_sig_mismatch_an_error(self._old_is_sig_mismatch_an_error)
+    super(UtilsTest, self).tearDown()
 
   # pylint: disable=unused-argument
-  def testNpDoc(self):
-
+  def testNpDocInlined(self):
     def np_fun(x):
       """np_fun docstring."""
       return
-
+    np_utils.set_np_doc_form('inlined')
     @np_utils.np_doc(None, np_fun=np_fun)
     def f():
       """f docstring."""
       return
+    expected = """TensorFlow variant of NumPy's `np_fun`.
 
-    expected = """TensorFlow variant of `numpy.np_fun`.
+Unsupported arguments: `x`.
+
+f docstring.
+
+Documentation for `numpy.np_fun`:
+
+np_fun docstring."""
+    self.assertEqual(expected, f.__doc__)
+
+  @parameterized.named_parameters([
+      (version, version, link) for version, link in  # pylint: disable=g-complex-comprehension
+      [('dev',
+        'https://numpy.org/devdocs/reference/generated/numpy.np_fun.html'),
+       ('stable',
+        'https://numpy.org/doc/stable/reference/generated/numpy.np_fun.html'),
+       ('1.16',
+        'https://numpy.org/doc/1.16/reference/generated/numpy.np_fun.html')
+      ]])
+  def testNpDocLink(self, version, link):
+    def np_fun(x):
+      """np_fun docstring."""
+      return
+    np_utils.set_np_doc_form(version)
+    @np_utils.np_doc(None, np_fun=np_fun)
+    def f():
+      """f docstring."""
+      return
+    expected = """TensorFlow variant of NumPy's `np_fun`.
+
+Unsupported arguments: `x`.
+
+f docstring.
+
+See the NumPy documentation for [`numpy.np_fun`](%s)."""
+    expected = expected % (link)
+    self.assertEqual(expected, f.__doc__)
+
+  @parameterized.parameters([None, 1, 'a', '1a', '1.1a', '1.1.1a'])
+  def testNpDocInvalid(self, invalid_flag):
+    def np_fun(x):
+      """np_fun docstring."""
+      return
+    np_utils.set_np_doc_form(invalid_flag)
+    @np_utils.np_doc(None, np_fun=np_fun)
+    def f():
+      """f docstring."""
+      return
+    expected = """TensorFlow variant of NumPy's `np_fun`.
 
 Unsupported arguments: `x`.
 
@@ -46,12 +105,12 @@ f docstring.
     self.assertEqual(expected, f.__doc__)
 
   def testNpDocName(self):
-
+    np_utils.set_np_doc_form('inlined')
     @np_utils.np_doc('foo')
     def f():
       """f docstring."""
       return
-    expected = """TensorFlow variant of `numpy.foo`.
+    expected = """TensorFlow variant of NumPy's `foo`.
 
 f docstring.
 
@@ -64,7 +123,6 @@ f docstring.
     if not np_utils._supports_signature():
       self.skipTest('inspect.signature not supported')
 
-    old_flag = np_utils.is_sig_mismatch_an_error()
     np_utils.set_is_sig_mismatch_an_error(True)
 
     def np_fun(x, y=1, **kwargs):
@@ -86,11 +144,8 @@ f docstring.
       def f3(x, y):
         return
 
-    np_utils.set_is_sig_mismatch_an_error(old_flag)
-
   def testSigMismatchIsNotError(self):
     """Tests that signature mismatch is not an error (when configured so)."""
-    old_flag = np_utils.is_sig_mismatch_an_error()
     np_utils.set_is_sig_mismatch_an_error(False)
 
     def np_fun(x, y=1, **kwargs):
@@ -109,8 +164,6 @@ f docstring.
     @np_utils.np_doc(None, np_fun=np_fun)
     def f3(x, y):
       return
-
-    np_utils.set_is_sig_mismatch_an_error(old_flag)
 
   # pylint: enable=unused-variable
 

@@ -5,15 +5,16 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 package(
     default_visibility = [
-        # TODO(scottzhu): Remove non-keras deps from TF.
-        "//tensorflow/lite/experimental/tf_runtime:__pkg__",
-        "//tensorflow/tools/docs:__pkg__",
         "//tensorflow/python/keras:__subpackages__",
     ],
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
+filegroup(
+    name = "all_py_srcs",
+    srcs = glob(["*.py"]),
+    visibility = ["//tensorflow/python/keras/google/private_tf_api_test:__pkg__"],
+)
 
 py_library(
     name = "preprocessing",
@@ -25,6 +26,7 @@ py_library(
         ":sequence",
         ":text",
         ":timeseries",
+        "//tensorflow/python/keras/utils:all_utils",
     ],
 )
 

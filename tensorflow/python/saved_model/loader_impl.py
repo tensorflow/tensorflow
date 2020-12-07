@@ -73,7 +73,8 @@ def parse_saved_model(export_dir):
   """Reads the savedmodel.pb or savedmodel.pbtxt file containing `SavedModel`.
 
   Args:
-    export_dir: Directory containing the SavedModel file.
+    export_dir: String or Pathlike, path to the directory containing the
+    SavedModel file.
 
   Returns:
     A `SavedModel` protocol buffer.
@@ -83,11 +84,11 @@ def parse_saved_model(export_dir):
   """
   # Build the path to the SavedModel in pbtxt format.
   path_to_pbtxt = os.path.join(
-      compat.as_bytes(export_dir),
+      compat.as_bytes(compat.path_to_str(export_dir)),
       compat.as_bytes(constants.SAVED_MODEL_FILENAME_PBTXT))
   # Build the path to the SavedModel in pb format.
   path_to_pb = os.path.join(
-      compat.as_bytes(export_dir),
+      compat.as_bytes(compat.path_to_str(export_dir)),
       compat.as_bytes(constants.SAVED_MODEL_FILENAME_PB))
 
   # Parse the SavedModel protocol buffer.

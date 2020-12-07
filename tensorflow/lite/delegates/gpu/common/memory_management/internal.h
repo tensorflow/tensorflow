@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_MEMORY_MANAGEMENT_INTERNAL_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_MEMORY_MANAGEMENT_INTERNAL_H_
 
-#include <cstdint>
+#include <stddef.h>
+
 #include <limits>
-#include <memory>
 #include <vector>
 
 #include "absl/memory/memory.h"

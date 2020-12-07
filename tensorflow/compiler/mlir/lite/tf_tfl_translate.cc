@@ -24,11 +24,11 @@ limitations under the License.
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "mlir/IR/AsmState.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/init_mlir.h"
@@ -143,6 +143,11 @@ int main(int argc, char **argv) {
   mlir::SourceMgrDiagnosticHandler sourceMgrHandler(source_mgr, &context);
 
   StatusOr<mlir::OwningModuleRef> module;
+  std::unordered_set<std::string> tags;
+
+  tensorflow::GraphImportConfig specs;
+  specs.upgrade_legacy = upgrade_legacy;
+  specs.prune_unused_nodes = true;
 
   // TODO(b/147435528): We need to test the e2e behavior once the graph freezing
   // inside mlir is done.
@@ -157,8 +162,7 @@ int main(int argc, char **argv) {
       module = tensorflow::errors::InvalidArgument(
           "Importing saved model should not have input_mlir set");
 
-    std::unordered_set<std::string> tags =
-        absl::StrSplit(saved_model_tags, ',');
+    tags = absl::StrSplit(saved_model_tags, ',');
     std::vector<std::string> exported_names_vector =
         absl::StrSplit(saved_model_exported_names, ',', absl::SkipEmpty());
     absl::Span<std::string> exported_names(exported_names_vector);
@@ -167,13 +171,12 @@ int main(int argc, char **argv) {
       llvm::errs() << "There should be only one exported name";
       return kTrFailure;
     }
-
+    std::vector<std::string> extra_opdefs(custom_opdefs.begin(),
+                                          custom_opdefs.end());
     module = tensorflow::ImportSavedModel(input_file_name, saved_model_version,
-                                          tags, exported_names, &context);
+                                          tags, extra_opdefs, exported_names,
+                                          specs, &context);
   } else {
-    tensorflow::GraphImportConfig specs;
-    specs.upgrade_legacy = upgrade_legacy;
-    specs.prune_unused_nodes = true;
     module = tensorflow::LoadFromGraphdefOrMlirSource(
         input_file_name, input_mlir, use_splatted_constant, custom_opdefs,
         specs, debug_info_file, input_arrays, input_dtypes, input_shapes,
@@ -184,7 +187,7 @@ int main(int argc, char **argv) {
   // message. So we can just return here.
   if (!module.ok()) return kTrFailure;
 
-  mlir::PassManager pm(&context);
+  mlir::PassManager pm(&context, mlir::OpPassManager::Nesting::Implicit);
   mlir::applyPassManagerCLOptions(pm);
 
   // Set the quantization specifications from the command line flags.
@@ -238,7 +241,8 @@ int main(int argc, char **argv) {
   std::string result;
   auto status = tensorflow::ConvertTFExecutorToTFLOrFlatbuffer(
       module.ValueOrDie().get(), output_mlir, emit_builtin_tflite_ops,
-      emit_select_tf_ops, emit_custom_ops, quant_specs, &result, &pm);
+      emit_select_tf_ops, emit_custom_ops,
+      /*select_user_tf_ops=*/{}, quant_specs, tags, &result, &pm);
   if (!status.ok()) return kTrFailure;
 
   std::string error_msg;

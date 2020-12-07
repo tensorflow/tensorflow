@@ -67,7 +67,7 @@ void CalculateDiscreteFourierTransform(float* time_series, int time_series_size,
 // of the current sample window are weighted more heavily than those at the end.
 void CalculatePeriodicHann(int window_length, float* window_function) {
   for (int i = 0; i < window_length; ++i) {
-    window_function[i] = 0.5 - 0.5 * std::cos((2 * kPi * i) / window_length);
+    window_function[i] = 0.5f - 0.5f * std::cos((2 * kPi * i) / window_length);
   }
 }
 
@@ -136,7 +136,7 @@ TfLiteStatus GenerateSimpleFeatures(tflite::ErrorReporter* error_reporter,
     // Quantize the result into eight bits, effectively multiplying by two.
     // The 127.5 constant here has to match the features_max value defined in
     // tensorflow/examples/speech_commands/input_data.py, and this also assumes
-    // that features_min is zero. It it wasn't, we'd have to subtract it first.
+    // that features_min is zero. If it wasn't, we'd have to subtract it first.
     int quantized_average = roundf(average * (255.0f / 127.5f));
     if (quantized_average < 0) {
       quantized_average = 0;

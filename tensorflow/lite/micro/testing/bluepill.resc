@@ -22,7 +22,7 @@ machine LoadPlatformDescription @platforms/cpus/stm32f103.repl
 machine LoadPlatformDescriptionFromString "uartSemihosting: UART.SemihostingUart @ cpu"
 showAnalyzer cpu.uartSemihosting Antmicro.Renode.Analyzers.LoggingUartAnalyzer
 
-logFile @/tmp/renode_bluepill_log.txt
+logFile $logfile
 
 macro reset
 """

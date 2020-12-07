@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
+#include "tensorflow/stream_executor/tpu/tpu_topology.h"
 
 namespace tpu {
 class TpuCore;
@@ -53,6 +54,10 @@ class TpuExecutorInterface
   }
 
   virtual TpuPlatformInterface& platform() { LOG(FATAL) << "Unimplemented."; }
+
+  virtual TpuCoreLocationExternal GetCoreLocationExternal() const {
+    LOG(FATAL) << "Unimplemented.";
+  }
 };
 
 }  // namespace tpu

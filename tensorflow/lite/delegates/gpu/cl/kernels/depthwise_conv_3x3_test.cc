@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/cl/kernels/depthwise_conv_3x3.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/depthwise_conv_3x3.h"
 
 #include <vector>
 
@@ -56,11 +56,12 @@ TEST_F(OpenCLOperationTest, DepthwiseConv3x3SimpleWeights) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      DepthwiseConv3x3 operation;
-      ASSERT_OK(
-          CreateDepthwiseConv3x3(creation_context_, op_def, attr, &operation));
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 2, 2, 2), &dst_tensor));
+      DepthwiseConv3x3 operation =
+          CreateDepthwiseConv3x3(creation_context_.GetGpuInfo(), op_def, attr);
+      ASSERT_OK(ExecuteGPUOperation(
+          src_tensor, creation_context_,
+          absl::make_unique<DepthwiseConv3x3>(std::move(operation)),
+          BHWC(1, 2, 2, 2), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
                   Pointwise(FloatNear(eps), {6.0f, 16.0f, 8.0f, 16.0f, 10.0f,
                                              16.0f, 12.0f, 16.0f}));
@@ -93,11 +94,12 @@ TEST_F(OpenCLOperationTest, DepthwiseConv3x3) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      DepthwiseConv3x3 operation;
-      ASSERT_OK(
-          CreateDepthwiseConv3x3(creation_context_, op_def, attr, &operation));
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 2, 2, 2), &dst_tensor));
+      DepthwiseConv3x3 operation =
+          CreateDepthwiseConv3x3(creation_context_.GetGpuInfo(), op_def, attr);
+      ASSERT_OK(ExecuteGPUOperation(
+          src_tensor, creation_context_,
+          absl::make_unique<DepthwiseConv3x3>(std::move(operation)),
+          BHWC(1, 2, 2, 2), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
                   Pointwise(FloatNear(eps), {40.5f, 67.5f, 16.5f, 35.5f, 40.5f,
                                              67.5f, 16.5f, 35.5f}));

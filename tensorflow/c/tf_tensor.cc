@@ -288,7 +288,7 @@ TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src, Status* status) {
   if (!tensor.CopyFrom(src, src.shape())) {
     return nullptr;
   }
-  return new TF_Tensor{new tensorflow::TensorInterface(tensor)};
+  return new TF_Tensor{new tensorflow::TensorInterface(std::move(tensor))};
 }
 
 Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst) {

@@ -360,12 +360,12 @@ void BenchmarkPerformanceOptions::Run() {
 }
 
 void BenchmarkPerformanceOptions::Run(int argc, char** argv) {
-  // We first parse flags for single-option runs to get information like
-  // parameters of the input model etc.
-  if (single_option_run_->ParseFlags(&argc, argv) != kTfLiteOk) return;
-
-  // Now, we parse flags that are specified for this particular binary.
+  // Parse flags that are supported by this particular binary first.
   if (!ParseFlags(&argc, argv)) return;
+
+  // Then parse flags for single-option runs to get information like parameters
+  // of the input model etc.
+  if (single_option_run_->ParseFlags(&argc, argv) != kTfLiteOk) return;
 
   // Now, the remaining are unrecognized flags and we simply print them out.
   for (int i = 1; i < argc; ++i) {

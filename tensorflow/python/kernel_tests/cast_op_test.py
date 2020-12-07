@@ -25,7 +25,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -168,16 +168,20 @@ class CastOpTest(test.TestCase):
       self.evaluate(variables.global_variables_initializer())
       self.assertEqual(1.0, self.evaluate(cast))
 
-  @test_util.run_deprecated_v1
   def testGradients(self):
     t = [dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128]
     for src_t in t:
       for dst_t in t:
         with self.cached_session():
           x = constant_op.constant(1.0, src_t)
-          z = array_ops.identity(x)
-          y = math_ops.cast(z, dst_t)
-          err = gradient_checker.compute_gradient_error(x, [], y, [])
+
+          def cast(x, dst_t=dst_t):
+            x = array_ops.identity(x)
+            x = math_ops.cast(x, dst_t)
+            return x
+
+          err = gradient_checker_v2.max_error(
+              *gradient_checker_v2.compute_gradient(cast, [x]))
           self.assertLess(err, 1e-3)
 
 

@@ -36,6 +36,7 @@ import traceback
 
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import,g-bad-import-order,g-import-not-at-top
+from tensorflow.python import pywrap_tensorflow as _pywrap_tensorflow
 
 from tensorflow.python.eager import context
 
@@ -56,6 +57,7 @@ from tensorflow.python.ops import image_ops as image
 from tensorflow.python.ops import manip_ops as manip
 from tensorflow.python.ops import metrics
 from tensorflow.python.ops import nn
+from tensorflow.python.ops import numpy_ops
 from tensorflow.python.ops import ragged
 from tensorflow.python.ops import sets
 from tensorflow.python.ops import stateful_random_ops
@@ -100,7 +102,7 @@ from tensorflow.python.platform import flags
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.platform import resource_loader
-from tensorflow.python.platform import sysconfig
+from tensorflow.python.platform import sysconfig as sysconfig_lib
 from tensorflow.python.platform import test
 
 from tensorflow.python.compat import v2_compat

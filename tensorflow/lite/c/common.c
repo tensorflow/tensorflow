@@ -203,10 +203,14 @@ const char* TfLiteTypeGetName(TfLiteType type) {
       return "INT8";
     case kTfLiteInt64:
       return "INT64";
+    case kTfLiteUInt64:
+      return "UINT64";
     case kTfLiteBool:
       return "BOOL";
     case kTfLiteComplex64:
       return "COMPLEX64";
+    case kTfLiteComplex128:
+      return "COMPLEX128";
     case kTfLiteString:
       return "STRING";
     case kTfLiteFloat16:

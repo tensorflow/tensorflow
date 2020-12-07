@@ -23,7 +23,11 @@ namespace {
 
 constexpr char kNodeName[] = "lmdb_dataset";
 constexpr char kIteratorPrefix[] = "Iterator";
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+constexpr char kDataFileName[] = "data_bigendian.mdb";
+#else
 constexpr char kDataFileName[] = "data.mdb";
+#endif
 constexpr char kDataFileLoc[] = "core/lib/lmdb/testdata";
 
 class LMDBDatasetParams : public DatasetParams {
@@ -179,16 +183,17 @@ TEST_F(LMDBDatasetOpTest, InvalidPathInMiddle) {
 
   bool end_of_sequence = false;
   std::vector<Tensor> out_tensors;
-  std::vector<Tensor> next;
 
   // First 10 rows should be ok
   for (int i = 0; i < 10; ++i) {
+    std::vector<Tensor> next;
     TF_ASSERT_OK(
         iterator_->GetNext(iterator_ctx_.get(), &next, &end_of_sequence));
     EXPECT_FALSE(end_of_sequence);
   }
 
   // Next read operation should raise an error
+  std::vector<Tensor> next;
   Status get_next_status =
       iterator_->GetNext(iterator_ctx_.get(), &next, &end_of_sequence);
   EXPECT_EQ(get_next_status.code(), error::INVALID_ARGUMENT);

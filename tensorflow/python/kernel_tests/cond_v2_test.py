@@ -33,7 +33,9 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables
@@ -145,7 +147,7 @@ class CondV2Test(test.TestCase):
   def testExternalControlDependencies(self):
     with ops.Graph().as_default(), self.test_session():
       v = variables.Variable(1.0)
-      v.initializer.run()
+      self.evaluate(v.initializer)
       op = v.assign_add(1.0)
 
       def true_branch():
@@ -959,6 +961,42 @@ class CondV2Test(test.TestCase):
 
       self.assertAllEqual(fn_with_cond(), 12.0)
 
+  def _CheckIteratedCosGradients(self, func):
+
+    def _grad(f):
+      def _grad_function(primal):
+        with backprop.GradientTape() as tape:
+          tape.watch(primal)
+          primal_out = f(primal)
+        return tape.gradient(primal_out, primal)
+      return _grad_function
+
+    f = func
+    one = constant_op.constant(1.)
+    for expected in [math_ops.cos,
+                     lambda x: -math_ops.sin(x),
+                     lambda x: -math_ops.cos(x),
+                     math_ops.sin,
+                     math_ops.cos]:
+      self.assertAllClose(expected(one), def_function.function(f)(one))
+      f = _grad(f)
+
+  def testIteratedGradientsCond(self):
+    def _func(x):
+      return cond_v2.cond_v2(
+          constant_op.constant(True),
+          lambda: math_ops.cos(array_ops.identity(x)),
+          lambda: math_ops.sin(array_ops.identity(x)))
+    self._CheckIteratedCosGradients(_func)
+
+  def testIteratedGradientsCase(self):
+    def _func(x):
+      return cond_v2.indexed_case(
+          constant_op.constant(1),
+          [lambda: math_ops.sin(array_ops.identity(x)),
+           lambda: math_ops.cos(array_ops.identity(x))])
+    self._CheckIteratedCosGradients(_func)
+
   def testLowering(self):
     with ops.Graph().as_default() as g:
       with self.session(graph=g) as sess:
@@ -1235,6 +1273,48 @@ class CondV2Test(test.TestCase):
     self.assertEqual(len(if_op.outputs), 1)
     # pylint: enable=g-deprecated-assert
 
+  def testIsControlFlowGraph(self):
+    x = constant_op.constant(1.0, name="x")
+
+    @def_function.function
+    def f(c):
+
+      def then_branch():
+        i = x + 1
+        self.assertTrue(i.graph.is_control_flow_graph)
+        return i
+
+      def else_branch():
+        i = x + 1
+        self.assertTrue(i.graph.is_control_flow_graph)
+        return i
+
+      return cond_v2.cond_v2(c, then_branch, else_branch)
+
+    i = f(constant_op.constant(True))
+    self.assertEqual(self.evaluate(i), 2.0)
+
+    i = f(constant_op.constant(False))
+    self.assertEqual(self.evaluate(i), 2.0)
+
+  def testGradientOfMixedOptionals(self):
+
+    @def_function.function
+    def f(c):
+      x = constant_op.constant(1., name="x")
+
+      def then_branch():
+        return x ** 2., gen_dataset_ops.optional_from_value(
+            [constant_op.constant(1)])
+
+      def else_branch():
+        return x ** 3., gen_dataset_ops.optional_from_value(
+            [constant_op.constant(1.)])
+
+      y, _ = cond_v2.cond_v2(c, then_branch, else_branch)
+      return gradients_impl.gradients(y, x)
+    self.assertAllClose([2.], f(constant_op.constant(True)))
+
 
 class CondV2CollectionTest(test.TestCase):
 
@@ -1252,7 +1332,7 @@ class CondV2CollectionTest(test.TestCase):
           return math_ops.add(x_const, y_const)
 
         cnd = cond_v2.cond_v2(constant_op.constant(True), fn, fn)
-        self.assertEqual(cnd.eval(), 7)
+        self.assertEqual(self.evaluate(cnd), 7)
 
   def testCollectionTensorValueAccessInCond(self):
     """Read tensors from collections inside of cond_v2 & use them."""
@@ -1269,7 +1349,7 @@ class CondV2CollectionTest(test.TestCase):
           return math_ops.add(x_read, y_read)
 
         cnd = cond_v2.cond_v2(math_ops.less(x, y), fn, fn)
-        self.assertEqual(cnd.eval(), 7)
+        self.assertEqual(self.evaluate(cnd), 7)
 
   def testCollectionIntValueWriteInCond(self):
     """Make sure Int writes to collections work inside of cond_v2."""
@@ -1287,7 +1367,7 @@ class CondV2CollectionTest(test.TestCase):
           return math_ops.mul(x, z)
 
         cnd = cond_v2.cond_v2(constant_op.constant(True), true_fn, false_fn)
-        self.assertEqual(cnd.eval(), 14)
+        self.assertEqual(self.evaluate(cnd), 14)
 
         read_z_collection = ops.get_collection("z")
         self.assertEqual(read_z_collection, [7])
@@ -1361,11 +1441,11 @@ class CondV2ContainerTest(test.TestCase):
         with ops.container("l1"):
           cnd_true = cond_v2.cond_v2(
               constant_op.constant(True), true_fn, false_fn)
-          self.assertEqual(cnd_true.eval(), 2)
+          self.assertEqual(self.evaluate(cnd_true), 2)
 
           cnd_false = cond_v2.cond_v2(
               constant_op.constant(False), true_fn, false_fn)
-          self.assertEqual(cnd_false.eval(), 6)
+          self.assertEqual(self.evaluate(cnd_false), 6)
 
           v4 = variables.Variable([3])
           q4 = data_flow_ops.FIFOQueue(1, dtypes.float32)
@@ -1379,6 +1459,15 @@ class CondV2ContainerTest(test.TestCase):
 
 
 class CondV2ColocationGroupAndDeviceTest(test.TestCase):
+
+  def setUp(self):
+    super(CondV2ColocationGroupAndDeviceTest, self).setUp()
+    cpus = context.context().list_physical_devices("CPU")
+    context.context().set_logical_device_configuration(
+        cpus[0], [
+            context.LogicalDeviceConfiguration(),
+            context.LogicalDeviceConfiguration()
+        ])
 
   def testColocateWithBeforeCond(self):
     with ops.Graph().as_default() as g:
@@ -1455,31 +1544,64 @@ class CondV2ColocationGroupAndDeviceTest(test.TestCase):
         self.assertTrue(len(run_metadata.partition_graphs) >= 2)
 
   def testDeviceBeforeCond(self):
-    with ops.Graph().as_default() as g:
-      with self.session(graph=g):
+    with context.eager_mode():
+      def fn():
+        cpu_zero_op = test_ops.device_placement_op()
+        self.assertEqual("/device:CPU:0", cpu_zero_op.device)
+        with ops.device("CPU:1"):
+          cpu_one_op = test_ops.device_placement_op()
+          self.assertEqual("/device:CPU:1", cpu_one_op.device)
+        return cpu_zero_op, cpu_one_op
 
-        def fn():
-          self.assertEqual("", constant_op.constant(3.0).op.device)
-          return test_ops.device_placement_op()
-
+      @def_function.function
+      def _cond_wrapper():
         with ops.device("/device:CPU:0"):
-          self.assertIn(
-              compat.as_bytes("CPU:0"),
-              self.evaluate(cond_v2.cond_v2(constant_op.constant(True),
-                                            fn, fn)))
+          return cond_v2.cond_v2(constant_op.constant(True), fn, fn)
 
-        def fn2():
-          self.assertEqual("", constant_op.constant(3.0).op.device)
-          return test_ops.device_placement_op()
+      zero_expected, one_expected = self.evaluate(_cond_wrapper())
+      self.assertIn(compat.as_bytes("CPU:0"), zero_expected)
+      self.assertIn(compat.as_bytes("CPU:1"), one_expected)
 
-        if test_util.is_gpu_available():
-          with ops.device("/device:GPU:0"):
-            self.assertIn(
-                compat.as_bytes("GPU:0"),
-                self.evaluate(cond_v2.cond_v2(constant_op.constant(True),
-                                              fn2, fn2)))
-        else:
-          self.skipTest("Test requires a GPU to check GPU device placement.")
+      def fn2():
+        self.assertEqual("/device:GPU:0", constant_op.constant(3.0).op.device)
+        return test_ops.device_placement_op()
+
+      @def_function.function
+      def _cond_wrapper2():
+        with ops.device("/device:GPU:0"):
+          return cond_v2.cond_v2(constant_op.constant(True), fn2, fn2)
+
+      if test_util.is_gpu_available():
+        self.assertIn(compat.as_bytes("GPU:0"),
+                      self.evaluate(_cond_wrapper2()))
+      else:
+        self.skipTest("Test requires a GPU to check GPU device placement.")
+
+  def testColocationBeforeCond(self):
+    with context.eager_mode():
+
+      def _fn():
+        result = test_ops.device_placement_op()
+        self.assertIn("colocation_test_op",
+                      result.op.colocation_groups()[0].decode())
+        return result
+
+      @def_function.function(autograph=False)
+      def _cond_wrapper():
+        with ops.device("/device:CPU:0"):
+          op_on_cpu_0 = test_ops.device_placement_op(name="colocation_test_op")
+        with ops.device("/device:CPU:1"):
+          op_on_cpu_1 = test_ops.device_placement_op(
+              name="colocation_test_op_1")
+        condition = constant_op.constant(True)
+        with ops.colocate_with(op_on_cpu_0.op):
+          zero_expected = cond_v2.cond_v2(condition, _fn, _fn)
+        with ops.colocate_with(op_on_cpu_1.op):
+          one_expected = cond_v2.cond_v2(condition, _fn, _fn)
+        return zero_expected, one_expected
+      zero_expected, one_expected = self.evaluate(_cond_wrapper())
+      self.assertIn(compat.as_bytes("CPU:0"), zero_expected)
+      self.assertIn(compat.as_bytes("CPU:1"), one_expected)
 
   def testDeviceInAndOutOfCond(self):
     with ops.Graph().as_default() as g:
@@ -1519,7 +1641,43 @@ class CondV2ColocationGroupAndDeviceTest(test.TestCase):
         run_metadata = config_pb2.RunMetadata()
         sess.run(out_cond_2, options=run_options, run_metadata=run_metadata)
 
-        self.assertTrue(len(run_metadata.partition_graphs) >= 2)
+        self.assertGreaterEqual(len(run_metadata.partition_graphs), 2)
+
+
+class CaseTest(test.TestCase):
+
+  def testCase(self):
+
+    def branch1(x):
+      logging_ops.print_v2("1")
+      return x
+
+    def branch2(x):
+      return x + 1
+
+    with ops.Graph().as_default():
+      x = array_ops.constant(1)
+      output = cond_v2.indexed_case(
+          array_ops.constant(0), [lambda: branch1(x), lambda: branch2(x)])
+      cond_op = output.op.inputs[0].op
+      self.assertEqual(cond_op.type, "Case")
+      self.assertEqual(1., self.evaluate(output))
+
+  def testStatelessCase(self):
+
+    def branch1(x):
+      return x + 1
+
+    def branch2(x):
+      return x + 2
+
+    with ops.Graph().as_default():
+      x = array_ops.constant(1)
+      output = cond_v2.indexed_case(
+          array_ops.constant(0), [lambda: branch1(x), lambda: branch2(x)])
+      cond_op = output.op.inputs[0].op
+      self.assertEqual(cond_op.type, "StatelessCase")
+      self.assertEqual(2., self.evaluate(output))
 
 
 def _cond(pred, true_fn, false_fn, name):

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/cl/kernels/reshape.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/reshape.h"
 
 #include <vector>
 
@@ -45,9 +45,11 @@ TEST_F(OpenCLOperationTest, Reshape) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      Reshape operation = CreateReshape(op_def);
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 3, 1, 2), &dst_tensor));
+      GPUOperation operation = CreateReshape(op_def);
+      ASSERT_OK(ExecuteGPUOperation(
+          src_tensor, creation_context_,
+          absl::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 3, 1, 2), &dst_tensor));
       EXPECT_THAT(
           dst_tensor.data,
           Pointwise(FloatNear(0.0f), {half(0.5f), half(-1.1f), half(-2.2f),

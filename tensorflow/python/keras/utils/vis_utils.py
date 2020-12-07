@@ -206,7 +206,7 @@ def model_to_dot(model,
     if show_shapes:
 
       def format_shape(shape):
-        return str(shape).replace(str(None), '?')
+        return str(shape).replace(str(None), 'None')
 
       try:
         outputlabels = format_shape(layer.output_shape)

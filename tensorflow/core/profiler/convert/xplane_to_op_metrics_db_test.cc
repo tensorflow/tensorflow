@@ -31,7 +31,7 @@ namespace tensorflow {
 namespace profiler {
 namespace {
 
-void AddTensorFlowOpEvent(absl::string_view tf_op_fullname,
+void AddTensorFlowOpEvent(std::string&& tf_op_fullname,
                           int64 start_timestamp_ns, int64 duration_ns,
                           bool on_device, absl::string_view kernel_name,
                           XPlaneBuilder* plane, XLineBuilder* line) {
@@ -40,8 +40,9 @@ void AddTensorFlowOpEvent(absl::string_view tf_op_fullname,
   event.SetTimestampNs(start_timestamp_ns);
   event.SetDurationNs(duration_ns);
   if (!on_device) return;
-  event.ParseAndAddStatValue(*plane->GetOrCreateStatMetadata("level 0"),
-                             tf_op_fullname);
+  event.AddStatValue(
+      *plane->GetOrCreateStatMetadata("level 0"),
+      *plane->GetOrCreateStatMetadata(std::move(tf_op_fullname)));
 }
 
 TEST(ConvertXPlaneToOpMetricsDb, HostOpMetricsDb) {
@@ -131,9 +132,7 @@ TEST(ConvertXPlaneToOpMetricsDb, DeviceOpMetricsDb) {
                        kKernel3DurationNs, /*on_device=*/true, kKernel3,
                        &device_plane, &stream2);
 
-  OpMetricsDb op_metrics = ConvertDeviceTraceXPlaneToOpMetricsDb(
-      *xplane, /*peak_tera_flops_per_second=*/0,
-      /*peak_hbm_bw_giga_bytes_per_second=*/0);
+  OpMetricsDb op_metrics = ConvertDeviceTraceXPlaneToOpMetricsDb(*xplane);
 
   // kernel1, kernel2, kernel3, Idle.
   EXPECT_EQ(4, op_metrics.metrics_db_size());

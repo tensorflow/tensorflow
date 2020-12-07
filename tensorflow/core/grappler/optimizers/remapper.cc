@@ -29,10 +29,15 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/env_var.h"
+#include "tensorflow/core/util/util.h"
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cudnn/cudnn.h"
 #endif  // GOOGLE_CUDA
+
+#ifdef INTEL_MKL
+#include "tensorflow/core/graph/mkl_graph_util.h"
+#endif  // INTEL_MKL
 
 namespace tensorflow {
 namespace grappler {
@@ -302,6 +307,9 @@ bool IsCpuCompatible(const RemapperContext& ctx, const Pattern& matched) {
     return IsCpuCompatibleConv2D(&node);
   } else if (IsDepthwiseConv2dNative(node)) {
 #ifdef INTEL_MKL
+    if (DisableMKL()) {
+      return false;
+    }
     return IsCpuCompatibleDepthwiseConv2dNative(&node);
 #else
     return false;
@@ -361,7 +369,12 @@ bool IsDeviceCompatible(const RemapperContext& ctx, Pattern& matched) {
 }
 
 bool IsSupportedActivation(const NodeDef& node) {
-  return IsRelu(node) || IsRelu6(node) || IsElu(node);
+#ifdef INTEL_MKL
+  return IsRelu(node) || IsRelu6(node) || IsElu(node) || IsLeakyRelu(node) ||
+         IsTanh(node);
+#else
+  return IsRelu(node) || IsRelu6(node) || IsElu(node) || IsLeakyRelu(node);
+#endif
 }
 
 inline bool HasControlFaninOrFanout(const utils::MutableNodeView& node_view) {
@@ -449,6 +462,17 @@ bool FindContractionWithBiasAndActivation(
       !HaveSameDataType(node_def, bias_add_node_def) ||
       IsInPreserveSet(ctx, bias_add_node_def))
     return false;
+
+  // Get the contraction node
+  const auto* contraction_node_view =
+      bias_add_node_view->GetRegularFanin(0).node_view();
+  const auto* contraction_node_def = contraction_node_view->node();
+
+  // Currently, only matmul + bias + tanh is enable
+  if (!IsMatMul(*contraction_node_def) && IsTanh(*node_def)) return false;
+
+  // Currently, only conv + bias + leakyrelu is enabled
+  if (!IsConv2D(*contraction_node_def) && IsLeakyRelu(*node_def)) return false;
 
   // Check that data type and data format are supported on assigned device.
   const ContractionWithBiasAddAndActivation pattern{base.contraction,
@@ -640,6 +664,7 @@ bool IsAddWithNoBroadcast(const RemapperContext& ctx, const NodeDef& node) {
 bool FindContractionWithBiasAddAndAdd(const RemapperContext& ctx,
                                       const utils::MutableNodeView& node_view,
                                       ContractionWithBiasAddAndAdd* matched) {
+  if (DisableMKL()) return false;
   // Fusion with AddN is supported only when it has two inputs.
   // TODO(lyandy): Forward controls for patterns with control dependencies.
   if (HasControlFaninOrFanout(node_view) || node_view.NumRegularFanins() != 2)
@@ -690,6 +715,7 @@ bool FindContractionWithBiasAddAndAdd(const RemapperContext& ctx,
 bool FindContractionWithBiasAndAddActivation(
     const RemapperContext& ctx, int node_index,
     ContractionWithBiasAndAddActivation* matched) {
+  if (DisableMKL()) return false;
   const auto* node_view = ctx.graph_view.GetNode(node_index);
   // TODO(lyandy): Forward controls for patterns with control dependencies.
   if (HasControlFaninOrFanout(*node_view)) return false;
@@ -698,6 +724,9 @@ bool FindContractionWithBiasAndAddActivation(
   const auto* node_def = node_view->node();
   if (node_def == nullptr) return false;
   if (!IsSupportedActivation(*node_def)) return false;
+
+  // Currently, Contraction + Bias + Add + Tanh pattern is not supported
+  if (IsTanh(*node_def)) return false;
 
 #ifdef ENABLE_INTEL_MKL_BFLOAT16
   // MKL activation op only supports float and bfloat16 data types.
@@ -718,6 +747,16 @@ bool FindContractionWithBiasAndAddActivation(
   if (!FindContractionWithBiasAddAndAdd(ctx, *add_node_view, &base)) {
     return false;
   }
+
+  // Get the contraction node
+  const auto* bias_add_node_view =
+      add_node_view->GetRegularFanin(base.port_id).node_view();
+  const auto* contraction_node_view =
+      bias_add_node_view->GetRegularFanin(0).node_view();
+  const auto* contraction_node_def = contraction_node_view->node();
+
+  // Currently, only conv + bias + add + leakyrelu is enabled
+  if (!IsConv2D(*contraction_node_def) && IsLeakyRelu(*node_def)) return false;
 
   // We successfully found a Conv2D+BiasAdd+AddN+activation pattern.
   const ContractionWithBiasAndAddActivation pattern{
@@ -805,6 +844,8 @@ bool FindFusedBatchNormEx(const RemapperContext& ctx, int node_index,
 #ifndef ENABLE_MKLDNN_V1
     // We fuse FusedBatchNorm on GPU or MKL CPU.
     if (!NodeIsOnGpu(fused_batch_norm_node_def)) return false;
+#else
+    if (DisableMKL()) return false;
 #endif
 
     DataType t_dtype = GetDataTypeFromAttr(*fused_batch_norm_node_def, "T");
@@ -919,7 +960,8 @@ bool FindFusedBatchNormEx(const RemapperContext& ctx, int node_index,
   return false;
 }
 
-void CopyConv2DAttributes(const NodeDef& conv2d, NodeDef* fused_conv2d) {
+void CopyConv2DAttributes(const NodeDef& conv2d, NodeDef* fused_conv2d,
+                          const NodeDef* activation = nullptr) {
   DCHECK(IsConv2D(conv2d)) << "Input node must be a Conv2D";
 
   auto* attr = fused_conv2d->mutable_attr();
@@ -932,10 +974,16 @@ void CopyConv2DAttributes(const NodeDef& conv2d, NodeDef* fused_conv2d) {
   (*attr)["dilations"] = src_attr.at("dilations");
   (*attr)["data_format"] = src_attr.at("data_format");
   (*attr)["use_cudnn_on_gpu"] = src_attr.at("use_cudnn_on_gpu");
+  // Copy LeakyRelu's attr alpha to FusedConv2D's attr leakyrelu_alpha
+  if (activation != nullptr && IsLeakyRelu(*activation)) {
+    auto& activation_attr = activation->attr();
+    (*attr)["leakyrelu_alpha"] = activation_attr.at("alpha");
+  }
 }
 
 void CopyDepthwiseConv2dNativeAttributes(const NodeDef& dw_conv2d,
-                                         NodeDef* fused_dw_conv2d) {
+                                         NodeDef* fused_dw_conv2d,
+                                         const NodeDef* activation = nullptr) {
   DCHECK(IsDepthwiseConv2dNative(dw_conv2d))
       << "Input node must be a DepthwiseConv2dNative";
 
@@ -947,6 +995,11 @@ void CopyDepthwiseConv2dNativeAttributes(const NodeDef& dw_conv2d,
   (*attr)["padding"] = src_attr.at("padding");
   (*attr)["dilations"] = src_attr.at("dilations");
   (*attr)["data_format"] = src_attr.at("data_format");
+  // Copy LeakyRelu's attr alpha to FusedDepthwiseConv2d's attr leakyrelu_alpha
+  if (activation != nullptr && IsLeakyRelu(*activation)) {
+    auto& activation_attr = activation->attr();
+    (*attr)["leakyrelu_alpha"] = activation_attr.at("alpha");
+  }
 }
 
 void CopyFusedBatchNormAttributes(const NodeDef& fused_batch_norm,
@@ -1049,6 +1102,7 @@ Status AddFusedContractionNode(
   const NodeDef& contraction = graph->node(matched.contraction);
   const NodeDef& bias_add = graph->node(matched.bias_add);
   const NodeDef& activation = graph->node(matched.activation);
+
   VLOG(2) << "Fuse " << contraction.op() << " with BiasAdd and "
           << activation.op() << ":"
           << " activation=" << activation.name()
@@ -1064,7 +1118,8 @@ Status AddFusedContractionNode(
 
   if (IsConv2D(contraction)) {
     fused_op.set_op(kFusedConv2D);
-    CopyConv2DAttributes(contraction, &fused_op);
+    // leaky relu has a special attribute alpha
+    CopyConv2DAttributes(contraction, &fused_op, &activation);
   } else if (IsDepthwiseConv2dNative(contraction)) {
     fused_op.set_op(kFusedDepthwiseConv2dNative);
     CopyDepthwiseConv2dNativeAttributes(contraction, &fused_op);
@@ -1202,7 +1257,7 @@ Status AddFusedConv2DNode(RemapperContext* ctx,
   fused_conv2d.add_input(fused_batch_norm.input(3));  // 4: mean
   fused_conv2d.add_input(fused_batch_norm.input(4));  // 5: variance
 
-  CopyConv2DAttributes(contraction, &fused_conv2d);
+  CopyConv2DAttributes(contraction, &fused_conv2d, &activation);
   SetFusedOpAttributes(&fused_conv2d, {"FusedBatchNorm", activation.op()},
                        /*num_args=*/4, /*epsilon=*/matched.epsilon);
 
@@ -1284,7 +1339,7 @@ Status AddFusedContractionNode(
   fused_conv2d.add_input(add.input(1 - matched.port_id));
 
   CopyConv2DAttributes(contraction, &fused_conv2d);
-  SetFusedOpAttributes(&fused_conv2d, {"BiasAdd", "Add", "Relu"}, 2);
+  SetFusedOpAttributes(&fused_conv2d, {"BiasAdd", "Add", activation.op()}, 2);
 
   utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
   Status status;
@@ -1385,29 +1440,41 @@ Status AddBatchNormNodes(RemapperContext* ctx, const FusedBatchNorm& matched) {
   utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
   Status status;
 
-  if (fused_node.attr().at(kDataFormat).s() == "NCHW") {
+  string x_format = fused_node.attr().at(kDataFormat).s();
+  if (x_format == "NCHW" or x_format == "NCDHW") {
     // Need to reshape the last 4 inputs
     NodeDef new_shape;
     const string new_shape_name =
-        AddPrefixToNodeName("NCHWShape", fused_node.name());
+        AddPrefixToNodeName(x_format + "Shape", fused_node.name());
     new_shape.set_name(new_shape_name);
     new_shape.set_op("Const");
     new_shape.set_device(fused_node.device());
     *new_shape.add_input() = AsControlDependency(scale);
     (*new_shape.mutable_attr())["dtype"].set_type(DT_INT32);
-    Tensor t(DT_INT32, {4});
-    t.flat<int32>()(0) = 1;
-    t.flat<int32>()(1) = -1;
-    t.flat<int32>()(2) = 1;
-    t.flat<int32>()(3) = 1;
-    t.AsProtoTensorContent(
-        (*new_shape.mutable_attr())["value"].mutable_tensor());
+    if (x_format == "NCHW") {
+      Tensor t(DT_INT32, {4});
+      t.flat<int32>()(0) = 1;
+      t.flat<int32>()(1) = -1;
+      t.flat<int32>()(2) = 1;
+      t.flat<int32>()(3) = 1;
+      t.AsProtoTensorContent(
+          (*new_shape.mutable_attr())["value"].mutable_tensor());
+    } else {
+      Tensor t(DT_INT32, {5});
+      t.flat<int32>()(0) = 1;
+      t.flat<int32>()(1) = -1;
+      t.flat<int32>()(2) = 1;
+      t.flat<int32>()(3) = 1;
+      t.flat<int32>()(4) = 1;
+      t.AsProtoTensorContent(
+          (*new_shape.mutable_attr())["value"].mutable_tensor());
+    }
     mutation->AddNode(std::move(new_shape), &status);
     TF_RETURN_IF_ERROR(status);
 
     NodeDef reshaped_scale;
     reshaped_scale.set_name(
-        AddPrefixToNodeName("NCHWShapedScale", fused_node.name()));
+        AddPrefixToNodeName(x_format + "ShapedScale", fused_node.name()));
     reshaped_scale.set_op("Reshape");
     reshaped_scale.set_device(fused_node.device());
     *reshaped_scale.add_input() = scale;
@@ -1420,7 +1487,7 @@ Status AddBatchNormNodes(RemapperContext* ctx, const FusedBatchNorm& matched) {
 
     NodeDef reshaped_offset;
     reshaped_offset.set_name(
-        AddPrefixToNodeName("NCHWShapedOffset", fused_node.name()));
+        AddPrefixToNodeName(x_format + "ShapedOffset", fused_node.name()));
     reshaped_offset.set_op("Reshape");
     reshaped_offset.set_device(fused_node.device());
     *reshaped_offset.add_input() = offset;
@@ -1433,7 +1500,7 @@ Status AddBatchNormNodes(RemapperContext* ctx, const FusedBatchNorm& matched) {
 
     NodeDef reshaped_mean;
     reshaped_mean.set_name(
-        AddPrefixToNodeName("NCHWShapedMean", fused_node.name()));
+        AddPrefixToNodeName(x_format + "ShapedMean", fused_node.name()));
     reshaped_mean.set_op("Reshape");
     reshaped_mean.set_device(fused_node.device());
     *reshaped_mean.add_input() = mean;
@@ -1446,7 +1513,7 @@ Status AddBatchNormNodes(RemapperContext* ctx, const FusedBatchNorm& matched) {
 
     NodeDef reshaped_variance;
     reshaped_variance.set_name(
-        AddPrefixToNodeName("NCHWShapedVariance", fused_node.name()));
+        AddPrefixToNodeName(x_format + "ShapedVariance", fused_node.name()));
     reshaped_variance.set_op("Reshape");
     reshaped_variance.set_device(fused_node.device());
     *reshaped_variance.add_input() = variance;

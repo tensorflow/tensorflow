@@ -22,9 +22,9 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_set.h"
@@ -203,6 +203,48 @@ TEST(DeviceUtilTest, GetGpuDeviceMetadata) {
   DeviceNameUtils::ParseFullName(gpu1, &parsed_name);
   auto meta_1 = devices.GetGpuDeviceMetadata(parsed_name);
   ASSERT_FALSE(meta_1.hasValue());
+}
+
+TEST(DeviceUtilTest, GetDeviceOrdinalFromDeviceString) {
+  const std::string tpu0 = "/job:worker/replica:0/task:0/device:TPU:0";
+  const std::string tpu1 = "/job:worker/replica:0/task:0/device:TPU:1";
+
+  mlir::MLIRContext context;
+  auto unknown_loc = mlir::UnknownLoc::get(&context);
+
+  int64_t device_ordinal0 = -1;
+  mlir::LogicalResult result0 =
+      GetDeviceOrdinalFromDeviceString(unknown_loc, tpu0, &device_ordinal0);
+  EXPECT_TRUE(mlir::succeeded(result0));
+  EXPECT_EQ(device_ordinal0, 0);
+
+  int64_t device_ordinal1 = -1;
+  mlir::LogicalResult result1 =
+      GetDeviceOrdinalFromDeviceString(unknown_loc, tpu1, &device_ordinal1);
+  EXPECT_TRUE(mlir::succeeded(result1));
+  EXPECT_EQ(device_ordinal1, 1);
+}
+
+TEST(DeviceUtilTest, GetDeviceOrdinalFromDeviceStringInvalid) {
+  mlir::MLIRContext context;
+  auto unknown_loc = mlir::UnknownLoc::get(&context);
+
+  int64_t device_ordinal = -1;
+  mlir::LogicalResult result = GetDeviceOrdinalFromDeviceString(
+      unknown_loc, "bad_device", &device_ordinal);
+  EXPECT_TRUE(mlir::failed(result));
+}
+
+TEST(DeviceUtilTest, GetDeviceOrdinalFromDeviceStringNoId) {
+  const std::string tpu_no_id = "/job:worker/replica:0/task:0/device:TPU";
+
+  mlir::MLIRContext context;
+  auto unknown_loc = mlir::UnknownLoc::get(&context);
+
+  int64_t device_ordinal = -1;
+  mlir::LogicalResult result =
+      GetDeviceOrdinalFromDeviceString(unknown_loc, tpu_no_id, &device_ordinal);
+  EXPECT_TRUE(mlir::failed(result));
 }
 
 }  // anonymous namespace
