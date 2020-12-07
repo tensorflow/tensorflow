@@ -274,6 +274,9 @@ void CreateConvertMlirToXlaHloPipeline(
         custom_legalization_passes) {
   pm.addPass(mlir::TF::CreateTFFunctionalControlFlowToRegions());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+  // Run shape inference pass before tensorlist decomposition to get buffer
+  // shape of uninitialized TensorLists.
+  pm.addPass(mlir::TF::CreateTFShapeInferencePass());
   pm.addPass(mlir::TF::CreateTensorListOpsDecompositionPass());
   pm.addPass(mlir::TF::CreateStackOpsDecompositionPass());
   pm.addPass(mlir::TF::CreateTensorArrayOpsDecompositionPass());
