@@ -594,7 +594,7 @@ XLA_TEST_F(CollectiveOpsTest, CollectivePermute_Simple) {
                                      results[3]));
 }
 
-XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_GPU(AllToAll_EmptyReplicaGroups)) {
+XLA_TEST_F(CollectiveOpsTest, AllToAll_EmptyReplicaGroups) {
   const char* const kModuleStr = R"(
   HloModule test
   ENTRY test_computation {
@@ -635,7 +635,7 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_GPU(AllToAll_EmptyReplicaGroups)) {
                                          results[3]);
 }
 
-XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_GPU(AllToAll_OrderedReplicaGroups)) {
+XLA_TEST_F(CollectiveOpsTest, AllToAll_OrderedReplicaGroups) {
   const char* const kModuleStr = R"(
   HloModule test
   ENTRY test_computation {
@@ -676,7 +676,7 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_GPU(AllToAll_OrderedReplicaGroups)) {
                                          results[3]);
 }
 
-XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_GPU(AllToAll_TwoReplicaGroups)) {
+XLA_TEST_F(CollectiveOpsTest, AllToAll_TwoReplicaGroups) {
   const char* const kModuleStr = R"(
   HloModule test
   ENTRY test_computation {
@@ -705,6 +705,37 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_GPU(AllToAll_TwoReplicaGroups)) {
   LiteralTestUtil::ExpectR1Equal<uint32>({22, 27, 21, 26}, results[1]);
   LiteralTestUtil::ExpectR1Equal<uint32>({12, 17, 11, 16}, results[2]);
   LiteralTestUtil::ExpectR1Equal<uint32>({13, 18, 10, 15}, results[3]);
+}
+
+XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllToAll_SplitDimension)) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    id = u32[] replica-id()
+    id2 = u32[4, 2] broadcast(id), dimensions={}
+    a0 = u32[4, 2] constant({{10, 15}, {20, 25}, {30, 35}, {40, 45}})
+    a1 = u32[4, 2] add(id2, a0)
+    all2all = u32[4, 2] all-to-all(a1), replica_groups={{0,1,2,3}}, dimensions={0}
+    ROOT out = u32[8] reshape(all2all)
+  }
+  )";
+  const int64 kNumReplicas = 4;
+  auto config = GetModuleConfigForTest(kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                          ExecuteReplicated(std::move(module), {}, kNumReplicas,
+                                            /*use_threads=*/true));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  LiteralTestUtil::ExpectR1Equal<uint32>({10, 15, 11, 16, 12, 17, 13, 18},
+                                         results[0]);
+  LiteralTestUtil::ExpectR1Equal<uint32>({20, 25, 21, 26, 22, 27, 23, 28},
+                                         results[1]);
+  LiteralTestUtil::ExpectR1Equal<uint32>({30, 35, 31, 36, 32, 37, 33, 38},
+                                         results[2]);
+  LiteralTestUtil::ExpectR1Equal<uint32>({40, 45, 41, 46, 42, 47, 43, 48},
+                                         results[3]);
 }
 
 XLA_TEST_F(CollectiveOpsTest, AllReduce_TupleAllReduce) {

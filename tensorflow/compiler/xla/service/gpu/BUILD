@@ -260,6 +260,7 @@ cc_library(
         ":ir_emission_utils",
         ":launch_dimensions",
         ":nccl_all_reduce_thunk",
+        ":nccl_all_to_all_thunk",
         ":parallel_loop_emitter",
         ":target_util",
         ":thunk",
@@ -489,6 +490,46 @@ tf_cuda_library(
         ["dummy_all_reduce_thunk.cc"],
     ),
     hdrs = ["nccl_all_reduce_thunk.h"],
+    deps = [
+        ":buffer_allocations",
+        ":gpu_executable_run_options",
+        ":hlo_execution_profiler",
+        ":nccl_collective_thunk",
+        ":thunk",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/strings:str_format",
+        "//tensorflow/compiler/xla/service:buffer_assignment",
+        "//tensorflow/compiler/xla/service:collective_ops_utils",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_casting_utils",
+        "//tensorflow/compiler/xla/service:pattern_matcher",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/core:lib",
+    ] + if_nccl([
+        ":virtual_nccl",
+        ":virtual_nccl_utils",
+        ":virtual_rccl",
+    ]),
+)
+
+# First level of nested select. NCCL requires both if_cuda and if_nccl.
+filegroup(
+    name = "nccl_all_to_all_thunk_src",
+    srcs = if_nccl(
+        ["nccl_all_to_all_thunk.cc"],
+        ["dummy_all_to_all_thunk.cc"],
+    ),
+)
+
+tf_cuda_library(
+    name = "nccl_all_to_all_thunk",
+    srcs = if_cuda_or_rocm(
+        [":nccl_all_to_all_thunk_src"],
+        ["dummy_all_to_all_thunk.cc"],
+    ),
+    hdrs = ["nccl_all_to_all_thunk.h"],
     deps = [
         ":buffer_allocations",
         ":gpu_executable_run_options",

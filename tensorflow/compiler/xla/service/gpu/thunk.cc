@@ -52,6 +52,8 @@ absl::string_view ThunkKindToString(Thunk::Kind kind) {
       return "kCustomCall";
     case Thunk::kNcclAllReduce:
       return "kNcclAllReduce";
+    case Thunk::kNcclAllToAll:
+      return "kNcclAllToAll";
     case Thunk::kFft:
       return "kFft";
     case Thunk::kGemm:

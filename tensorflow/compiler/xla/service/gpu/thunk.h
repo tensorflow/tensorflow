@@ -60,6 +60,7 @@ class Thunk {
     kMemset32BitValue,
     kMemzero,
     kNcclAllReduce,
+    kNcclAllToAll,
     kOutfeed,
     kReplicaId,
     kSequential,
