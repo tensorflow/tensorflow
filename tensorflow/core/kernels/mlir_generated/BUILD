@@ -282,7 +282,7 @@ gen_kernel_library(
         "f32",
         "f64",
     ],
-    unroll_factors = "4",
+    unroll_factors = "1",
 )
 
 gen_kernel_library(
@@ -327,7 +327,7 @@ gen_kernel_library(
         "f32",
         "f64",
     ],
-    unroll_factors = "4",
+    unroll_factors = "1",
 )
 
 gen_kernel_library(
