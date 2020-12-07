@@ -328,7 +328,7 @@ tfr.func @Foo_unnamed_attr(%arg0: !tfr.tensor<A>,
 
 // -----
 
-// expected-error@+1 {{tfr.tensor_list argument should be before non tensor arguments}}
+// expected-error@+1 {{tfr.tensor/tfr.tensor_list argument should be before non tensor arguments}}
 tfr.func @Foo_invalid_arg_order(%arg0: !tfr.tensor<A>,
               %arg2: i32 {tfr.name = "A"},
               %arg1: !tfr.tensor_list<A>,
@@ -339,14 +339,25 @@ tfr.func @Foo_invalid_arg_order(%arg0: !tfr.tensor<A>,
 
 // -----
 
+tfr.func @Foo_valid_arg_order0(
+              %arg1: !tfr.tensor_list,
+              %arg0: !tfr.tensor<T>,
+              %arg2: i32 {tfr.name = "A"},
+              %arg3: vector<1xi32> {tfr.name = "C"}) ->
+    (!tfr.tensor, !tfr.tensor_list) attributes {T}{
+  tfr.return %arg0, %arg1 : !tfr.tensor<T>, !tfr.tensor_list
+}
+
+// -----
+
 // expected-error@+1 {{tfr.tensor argument should be before tfr.tensor_list argument.}}
 tfr.func @Foo_invalid_arg_order0(
               %arg1: !tfr.tensor_list,
-              %arg0: !tfr.tensor,
+              %arg0: !tfr.tensor<T>,
               %arg2: i32 {tfr.name = "A"},
               %arg3: vector<1xi32> {tfr.name = "C"}) ->
     (!tfr.tensor, !tfr.tensor_list) {
-  tfr.return %arg0, %arg1 : !tfr.tensor, !tfr.tensor_list
+  tfr.return %arg0, %arg1 : !tfr.tensor<T>, !tfr.tensor_list
 }
 
 // -----
