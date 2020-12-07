@@ -40,17 +40,17 @@ Status BiasAddGradModel(AbstractContext* ctx,
   GradientRegistry registry;
   TF_RETURN_IF_ERROR(registry.Register("BiasAdd", BiasAddRegisterer));
 
-  Tape tape(/*persistent=*/false);
-  tape.Watch(inputs[0]);  // Watch A.
-  tape.Watch(inputs[1]);  // Watch Bias.
+  auto tape = std::make_unique<Tape>(/*persistent=*/false);
+  tape->Watch(inputs[0]);  // Watch A.
+  tape->Watch(inputs[1]);  // Watch Bias.
   std::vector<AbstractTensorHandle*> temp_outputs(1);
-  AbstractContextPtr tape_ctx(new TapeContext(ctx, &tape, registry));
+  AbstractContextPtr tape_ctx(new TapeContext(ctx, tape.get(), registry));
   TF_RETURN_IF_ERROR(ops::BiasAdd(tape_ctx.get(), inputs,
                                   absl::MakeSpan(temp_outputs), "BiasAddGrad"));
 
-  TF_RETURN_IF_ERROR(tape.ComputeGradient(ctx, /*targets=*/temp_outputs,
-                                          /*sources=*/inputs,
-                                          /*output_gradients=*/{}, outputs));
+  TF_RETURN_IF_ERROR(tape->ComputeGradient(ctx, /*targets=*/temp_outputs,
+                                           /*sources=*/inputs,
+                                           /*output_gradients=*/{}, outputs));
   for (auto temp_output : temp_outputs) {
     temp_output->Unref();
   }
