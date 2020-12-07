@@ -411,6 +411,22 @@ def TFR_TFRFuncOp : TFR_Op<"func", [HasParent<"ModuleOp">,
     // Hooks for the input/output type enumeration in FunctionLike .
     unsigned getNumFuncArguments() { return getType().getNumInputs(); }
     unsigned getNumFuncResults() { return getType().getNumResults(); }
+
+    // Get the names of all defined attributes, including both derived and
+    // non-derived ones.
+    llvm::StringSet<> getDefinedAttributeNames() {
+      llvm::StringSet<> all_attrs;
+      for (auto& attr : getAttrs()) {
+        all_attrs.insert(attr.first.strref());
+      }
+      for (const auto& operand : llvm::enumerate(getType().getInputs())) {
+        if (auto attr_name = getArgAttrOfType<StringAttr>(
+            operand.index(), kAttrArgumentNameAttr)) {
+          all_attrs.insert(attr_name.getValue());
+        }
+      }
+      return all_attrs;
+    }
   }];
 
   let verifier = [{ return Verify(*this); }];

@@ -15,11 +15,58 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tfr/utils/utils.h"
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
-#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "llvm/ADT/StringSet.h"
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tfr/ir/tfr_ops.h"
 
 namespace mlir {
 namespace TFR {
+namespace {
+
+// TODO(b/174692018): Use the official allowlist of the unregistered attrs.
+const llvm::StringSet<>& GetAllowedAttributes() {
+  static auto* const ops = new llvm::StringSet<>({"device", "_tpu_replicate"});
+  return *ops;
+}
+
+void CollectAllowedAttrs(CallOp src, NamedAttrList* attrs) {
+  for (auto& attr : src->getAttrs()) {
+    if (GetAllowedAttributes().contains(attr.first.strref())) {
+      attrs->append(attr);
+    }
+  }
+}
+
+// Adds `attrs` to all the operations between `begin` and `end` in the same
+// block. Does not include `end`.
+void AddAttributesInSameBlock(Block::iterator begin, Block::iterator end,
+                              const NamedAttrList& attrs) {
+  for (Block::iterator it = begin; it != end; ++it) {
+    for (auto& attr : attrs) {
+      it->setAttr(attr.first, attr.second);
+    }
+  }
+}
+
+// Adds `attrs` to all the operations between `begin` and `end`. Does not
+// include `end`. The operations might be across multiple  blocks.
+void AddAttributes(Block::iterator begin, Block::iterator end,
+                   const NamedAttrList& attrs) {
+  if (begin->getBlock() == end->getBlock()) {
+    AddAttributesInSameBlock(begin, end, attrs);
+  } else {
+    Region::iterator begin_block = Region::iterator(begin->getBlock());
+    Region::iterator end_block = Region::iterator(end->getBlock());
+    AddAttributesInSameBlock(begin, begin_block->end(), attrs);
+    for (Region::iterator it = ++begin_block; it != end_block; ++it) {
+      AddAttributesInSameBlock(it->begin(), it->end(), attrs);
+    }
+  }
+}
+
+}  // namespace
 
 std::string GetComposeFuncName(StringRef tf_op_name) {
   std::string compose_func_name;
@@ -72,6 +119,60 @@ std::string GetTFOpName(StringRef compose_func_name) {
     return {};
   }
   return tf_op_name;
+}
+
+LogicalResult ValidateAttrs(Operation* src, const StringSet<>& registered) {
+  for (auto& attr : src->getAttrs()) {
+    StringRef attr_name = attr.first.strref();
+    if (!registered.contains(attr_name) &&
+        !GetAllowedAttributes().contains(attr_name)) {
+      src->emitError("Denied unregistered attribute was found: " + attr_name);
+      return failure();
+    }
+  }
+  return success();
+}
+
+LogicalResult CopyAllowedUnregisteredAttrs(Operation* src, CallOp dst,
+                                           const StringSet<>& registered) {
+  for (auto& attr : src->getAttrs()) {
+    StringRef attr_name = attr.first.strref();
+    // Skip the registered attribute.
+    if (registered.contains(attr_name)) continue;
+
+    // Unregistered attribute.
+    if (GetAllowedAttributes().contains(attr_name)) {
+      dst.setAttr(attr.first, attr.second);
+    } else {
+      src->emitError("Denied unregistered attribute was found: " + attr_name);
+      return failure();
+    }
+  }
+  return success();
+}
+
+LogicalResult CopyNonSymbolRefAttrs(CallOp src, Operation* dst) {
+  NamedAttrList attrs;
+  CollectAllowedAttrs(src, &attrs);
+
+  for (auto& attr : attrs) {
+    dst->setAttr(attr.first, attr.second);
+  }
+
+  return success();
+}
+
+void PropagateAttrsToOperations(CallOp src, Block::iterator begin,
+                                Block::iterator end) {
+  // Find all the attributes in the call op. These attributes are not in the
+  // op definition, so needs to be propagated to all the target ops.
+  NamedAttrList attrs;
+  CollectAllowedAttrs(src, &attrs);
+
+  // Add all the attributes to the operations in the range.
+  if (!attrs.empty()) {
+    AddAttributes(begin, end, attrs);
+  }
 }
 
 }  // namespace TFR
