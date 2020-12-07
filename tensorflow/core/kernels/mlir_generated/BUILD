@@ -352,6 +352,7 @@ gen_kernel_library(
     # unroll_factors = "4",
 )
 
+# Kernels that support all floating-point types.
 [
     gen_kernel_library(
         name = name,
@@ -366,15 +367,32 @@ gen_kernel_library(
     )
     for name in [
         "ceil",
-        "cos",
         "exp",
         "floor",
         "is_finite",
         "log",
         "neg",
         "rsqrt",
-        "sin",
         "sqrt",
         "tanh",
+    ]
+]
+
+# Kernels that support all floating-point types but cannot be vectorized.
+[
+    gen_kernel_library(
+        name = name,
+        generate_unranked = True,
+        tile_size = "256",
+        types = [
+            "f16",
+            "f32",
+            "f64",
+        ],
+        unroll_factors = "1",
+    )
+    for name in [
+        "cos",
+        "sin",
     ]
 ]
