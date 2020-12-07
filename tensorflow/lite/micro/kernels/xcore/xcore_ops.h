@@ -18,17 +18,15 @@ constexpr const char* Conv2D_Deep_OpCode = "XC_conv2d_deep";
 constexpr const char* Conv2D_1x1_OpCode = "XC_conv2d_1x1";
 constexpr const char* Conv2D_Depthwise_OpCode = "XC_conv2d_depthwise";
 constexpr const char* Add_8_OpCode = "XC_add_8";
+constexpr const char* Pad_OpCode = "XC_pad";
 
 // Binarized ops
 constexpr const char* Bsign_8_OpCode = "XC_bsign_8";
+constexpr const char* BConv2d_Bitpacked_OpCode = "XC_bconv2d_bin";
 constexpr const char* BConv2d_Bitpacked_DeepIn_OpCode = "XC_bconv2d_bin_DI";
-
-// Under development
-constexpr const char* Pad_OpCode = "XC_pad";
 constexpr const char* BConv2d_Int8_OpCode = "XC_bconv2d_int8";
 constexpr const char* BConv2d_Int8_DeepIn_DeepOut_OpCode =
     "XC_bconv2d_int8_DIDO";
-constexpr const char* BConv2d_Bitpacked_OpCode = "XC_bconv2d_bin";
 
 // Currently unused, may be deprecated
 constexpr const char* Requantize_16_to_8_OpCode = "XC_requantize_16_to_8";
@@ -70,6 +68,8 @@ TfLiteRegistration* Register_Lookup_8();
 TfLiteRegistration* Register_BSign_8();
 TfLiteRegistration* Register_BConv2D_Bitpacked_Deepin();
 TfLiteRegistration* Register_BConv2D_Bitpacked();
+TfLiteRegistration* Register_BConv2D_Int8_Deepin_Deepout();
+TfLiteRegistration* Register_BConv2D_Int8();
 
 // Under development
 TfLiteRegistration* Register_Pad();
