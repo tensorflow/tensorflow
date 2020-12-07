@@ -64,7 +64,6 @@ inline void Div(const ArithmeticParams& params,
                 const RuntimeShape& output_shape, uint8* output_data) {
   TFLITE_DCHECK_LE(params.quantized_activation_min,
                    params.quantized_activation_max);
-  ruy::profiler::ScopeLabel label("Div/8bit");
   const int flat_size =
       MatchingElementsSize(input1_shape, input2_shape, output_shape);
 

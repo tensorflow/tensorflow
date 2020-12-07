@@ -25,7 +25,6 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <type_traits>
-#include <vector>
 
 #include "third_party/eigen3/Eigen/Core"
 #include "fixedpoint/fixedpoint.h"
