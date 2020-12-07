@@ -53,8 +53,8 @@ cc_library(
 alias(
     name = "tensorrt_lib",
     actual = select({
-        "//tensorflow:oss": ":tensorrt_stub",
-        "//conditions:default": "@local_config_tensorrt//:tensorrt",
+        "@local_config_tensorrt//:use_static_tensorrt": "@local_config_tensorrt//:tensorrt",
+        "//conditions:default": ":tensorrt_stub",
     }),
     visibility = ["//visibility:private"],
 )
@@ -595,6 +595,10 @@ cc_library(
     srcs = ["utils/py_utils.cc"],
     hdrs = ["utils/py_utils.h"],
     copts = tf_copts(),
+    defines = select({
+        "@local_config_tensorrt//:use_static_tensorrt": ["TF_OSS_TENSORRT_STATIC=1"],
+        "//conditions:default": [],
+    }),
     deps = if_tensorrt([
         ":common_utils",
         ":tensorrt_lib",

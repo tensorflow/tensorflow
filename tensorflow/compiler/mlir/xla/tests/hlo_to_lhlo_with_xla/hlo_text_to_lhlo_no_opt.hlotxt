@@ -169,3 +169,52 @@ ENTRY main {
   backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":1,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"batch_size\":\"1\",\"selected_algorithm\":\"0\"}"
 }
 
+// -----
+
+HloModule GemmBias
+
+// CHECK-LABEL: func @main
+// CHECK: "lmhlo_gpu.gemm_bias"
+// CHECK-SAME: algorithm = 0 : i64
+// CHECK-SAME: alpha_imag = 0.000000e+00 : f64
+// CHECK-SAME: alpha_real = 1.000000e+00 : f64
+// CHECK-SAME: batch_size = 1 : i64
+// CHECK-SAME: beta = 1.000000e+00 : f64
+// CHECK-SAME: lhs_batching_dimensions = dense<> : tensor<0xi64>
+// CHECK-SAME: lhs_contracting_dimensions = dense<1> : tensor<1xi64>
+// CHECK-SAME: rhs_batching_dimensions = dense<> : tensor<0xi64>
+// CHECK-SAME: rhs_contracting_dimensions = dense<0> : tensor<1xi64>
+// CHECK: (memref<1x1xf32>, memref<1x4xf32>, memref<1x4xf32>, memref<1x4xf32>)
+ENTRY main {
+  %A = f32[1,1]{1,0} parameter(0)
+  %B = f32[1,4]{1,0} parameter(1)
+  %C = f32[1,4]{1,0} parameter(2)
+  ROOT %sgemm_add = f32[1,4]{1,0} custom-call(f32[1,1]{0,1} %A, f32[1,4]{1,0} %B, f32[1,4]{1,0} %C),
+                                  custom_call_target="__cublas$gemm",
+  backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":1,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"batch_size\":\"1\",\"selected_algorithm\":\"0\"}"
+}
+
+// -----
+
+HloModule AllReduce
+
+// Test all-reduce
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+// CHECK-LABEL: func @test_all_reduce
+// CHECK-SAME:  ([[INPUT:%.*]]: memref<8xf32>
+%test_all_reduce {
+  input = f32[8] parameter(0)
+  // CHECK:  "lmhlo.all_reduce"([[INPUT]], {{.*}})
+  // CHECK:  ^bb0([[ARG0:%.*]]: tensor<f32>, [[ARG1:%.*]]: tensor<f32>):
+  // CHECK:    [[ADD:%.*]] = mhlo.add [[ARG0]], [[ARG1]]
+  // CHECK:    "mhlo.return"([[ADD]]) : (tensor<f32>) -> ()
+  // CHECK:  }) {
+  // CHECK-SAME:  channel_id = {handle = 1 : i64, type = 0 : i64}
+  // CHECK-SAME:  replica_groups = dense<{{\[\[}}0, 1, 2, 3], [5, 6, 7, 8]]> : tensor<2x4xi64>
+  ROOT result = f32[8] all-reduce(input), channel_id=1, replica_groups={{0,1,2,3}, {5,6,7,8}}, to_apply=add
+}

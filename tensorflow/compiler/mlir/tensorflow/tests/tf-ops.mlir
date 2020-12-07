@@ -4055,3 +4055,35 @@ func @testAddWithRef(%arg0: tensor<!tf.f64ref>, %arg1: tensor<f64>) -> tensor<f6
   %0 = "tf.Add"(%arg0, %arg1) : (tensor<!tf.f64ref>, tensor<f64>) -> tensor<f64>
   return %0 : tensor<f64>
 }
+
+// -----
+
+func @testInvalidTPUExecuteAndUpdateVariables(%arg0: tensor<!tf.resource<tensor<i32>>>, %arg1: tensor<3x!tf.string>) {
+  // expected-error@below {{requires 'device_var_reads_indices' to be the same size as number of resource handles in 'args' (1), but got 2}}
+  "tf.TPUExecuteAndUpdateVariables"(%arg0, %arg1) {device_var_reads_indices = [0, 1], device_var_updates_indices = [0]} : (tensor<!tf.resource<tensor<i32>>>, tensor<3x!tf.string>) -> ()
+  return
+}
+
+// -----
+
+func @testInvalidTPUExecuteAndUpdateVariables(%arg0: tensor<!tf.resource<tensor<i32>>>, %arg1: tensor<3x!tf.string>) {
+  // expected-error@below {{requires 'device_var_updates_indices' to be the same size as number of resource handles in 'args' (1), but got 2}}
+  "tf.TPUExecuteAndUpdateVariables"(%arg0, %arg1) {device_var_reads_indices = [0], device_var_updates_indices = [0, 1]} : (tensor<!tf.resource<tensor<i32>>>, tensor<3x!tf.string>) -> ()
+  return
+}
+
+// -----
+
+func @testInvalidTPUExecuteAndUpdateVariables(%arg0: tensor<!tf.resource<tensor<i32>>>, %arg1: tensor<3x!tf.string>) {
+  // expected-error@below {{requires 'device_var_reads_indices' to contain values of at least 0, but got -1 at index 0}}
+  "tf.TPUExecuteAndUpdateVariables"(%arg0, %arg1) {device_var_reads_indices = [-1], device_var_updates_indices = [0]} : (tensor<!tf.resource<tensor<i32>>>, tensor<3x!tf.string>) -> ()
+  return
+}
+
+// -----
+
+func @testInvalidTPUExecuteAndUpdateVariables(%arg0: tensor<!tf.resource<tensor<i32>>>, %arg1: tensor<3x!tf.string>) {
+  // expected-error@below {{requires 'device_var_updates_indices' to contain values of at least -1, but got -2 at index 0}}
+  "tf.TPUExecuteAndUpdateVariables"(%arg0, %arg1) {device_var_reads_indices = [0], device_var_updates_indices = [-2]} : (tensor<!tf.resource<tensor<i32>>>, tensor<3x!tf.string>) -> ()
+  return
+}

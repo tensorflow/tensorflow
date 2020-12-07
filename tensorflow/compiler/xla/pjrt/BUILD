@@ -238,9 +238,9 @@ cc_library(
 )
 
 cc_library(
-    name = "nvidia_gpu_device",
-    srcs = ["nvidia_gpu_device.cc"],
-    hdrs = ["nvidia_gpu_device.h"],
+    name = "gpu_device",
+    srcs = ["gpu_device.cc"],
+    hdrs = ["gpu_device.h"],
     deps = [
         ":pjrt_client",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -258,7 +258,7 @@ cc_library(
     ] + if_nccl([":nccl_plugin"]),
 )
 
-# We actually wish we could write if_cuda(if_nccl(...)) in :nvidia_gpu_device,
+# We actually wish we could write if_cuda(if_nccl(...)) in :gpu_device,
 # but Bazel does not allow nested selects. We can work around the problem using
 # an intermediate library.
 cc_library(
@@ -277,7 +277,7 @@ tf_cc_test(
         "notap",
     ],
     deps = [
-        ":nvidia_gpu_device",
+        ":gpu_device",
         ":pjrt_client",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/client:executable_build_options",

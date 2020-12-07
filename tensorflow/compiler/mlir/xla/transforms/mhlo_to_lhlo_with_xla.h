@@ -72,6 +72,16 @@ class LhloDialectEmitter : public ::xla::DfsHloVisitorWithDefault {
   ::xla::StatusOr<GetGlobalMemrefOp> EmitConstant(
       const ::xla::HloInstruction* instr);
 
+  ::xla::StatusOr<lmhlo::CompareOp> EmitCompareOp(::xla::HloInstruction* instr);
+
+  ::xla::StatusOr<lmhlo::MapOp> EmitMapOp(::xla::HloInstruction* instr);
+
+  ::xla::StatusOr<lmhlo::ReducePrecisionOp> EmitReducePrecisionOp(
+      ::xla::HloInstruction* instr);
+
+  ::xla::StatusOr<lmhlo::AllReduceOp> EmitAllReduceOp(
+      ::xla::HloInstruction* instr);
+
   ::xla::Status CreateOperands(::xla::HloInstruction* instr,
                                SmallVectorImpl<Value>& operands,
                                size_t& num_arguments, size_t& num_results);

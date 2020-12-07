@@ -2026,7 +2026,7 @@ xla_test(
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_runner",
-        "//tensorflow/compiler/xla/service/gpu:nccl_all_reduce_thunk",
+        "//tensorflow/compiler/xla/service/gpu:nccl_test_utils",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",

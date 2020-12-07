@@ -58,6 +58,7 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
 #include "mlir/Parser.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -1948,6 +1949,105 @@ ResourceHandleValueAndId SummaryWriterOp::GetResourceHandleValueAndId(
 }
 
 //===----------------------------------------------------------------------===//
+// TPUExecuteOp
+//===----------------------------------------------------------------------===//
+
+void TPUExecuteOp::getEffects(
+    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+        &effects) {
+  effects.reserve(args().size() + 1);
+
+  // There may be some TPU Embedding ops in the computation, so this effect is
+  // added conservatively.
+  effects.emplace_back(MemoryEffects::Write::get(),
+                       ResourceEffects::TPUEmbedding::get());
+
+  for (Value value : args()) {
+    if (value.getType()
+            .cast<TensorType>()
+            .getElementType()
+            .isa<ResourceType>()) {
+      // Conservatively mark resource handles as read and write, as without
+      // analyzing TPUCompile, there is not sufficient information to determine
+      // effects on resources. For the MLIR bridge, this op will never be
+      // populated with resource handles and tf.TPUExecuteAndUpdateVariables is
+      // used instead.
+      effects.emplace_back(MemoryEffects::Read::get(), value,
+                           ResourceEffects::Variable::get());
+      effects.emplace_back(MemoryEffects::Write::get(), value,
+                           ResourceEffects::Variable::get());
+    }
+  }
+}
+
+//===----------------------------------------------------------------------===//
+// TPUExecuteAndUpdateVariablesOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(TPUExecuteAndUpdateVariablesOp op) {
+  int num_resource_args = 0;
+  for (Type arg_type : op.args().getTypes())
+    if (arg_type.cast<TensorType>().getElementType().isa<ResourceType>())
+      ++num_resource_args;
+
+  auto check_attr = [&](ArrayAttr indices, llvm::StringRef name,
+                        int min) -> LogicalResult {
+    if (indices.size() != num_resource_args)
+      return op.emitOpError()
+             << "requires '" << name
+             << "' to be the same size as number of resource handles in 'args' "
+                "("
+             << num_resource_args << "), but got " << indices.size();
+
+    for (auto entry : llvm::enumerate(indices.getValue())) {
+      auto int_attr = entry.value().cast<IntegerAttr>();
+      if (int_attr.getInt() < min)
+        return op.emitOpError()
+               << "requires '" << name << "' to contain values of at least "
+               << min << ", but got " << int_attr.getInt() << " at index "
+               << entry.index();
+    }
+
+    return success();
+  };
+
+  return failure(
+      failed(check_attr(op.device_var_reads_indices(),
+                        /*name=*/"device_var_reads_indices", /*min=*/0)) ||
+      failed(check_attr(op.device_var_updates_indices(),
+                        /*name=*/"device_var_updates_indices", /*min=*/-1)));
+}
+
+void TPUExecuteAndUpdateVariablesOp::getEffects(
+    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+        &effects) {
+  effects.reserve(device_var_reads_indices().size() + 1);
+
+  // There may be some TPU Embedding ops in the computation, so this effect is
+  // added conservatively.
+  effects.emplace_back(MemoryEffects::Write::get(),
+                       ResourceEffects::TPUEmbedding::get());
+  auto resource_handles = llvm::make_filter_range(args(), [](Value value) {
+    return value.getType()
+        .cast<TensorType>()
+        .getElementType()
+        .isa<ResourceType>();
+  });
+
+  for (auto &entry : llvm::enumerate(resource_handles)) {
+    Value value = entry.value();
+    effects.emplace_back(MemoryEffects::Read::get(), value,
+                         ResourceEffects::Variable::get());
+    if (device_var_updates_indices()
+            .getValue()[entry.index()]
+            .cast<IntegerAttr>()
+            .getInt() >= 0)
+      effects.emplace_back(MemoryEffects::Write::get(), value,
+                           ResourceEffects::Variable::get());
+  }
+}
+
+//===----------------------------------------------------------------------===//
 // TensorListReserveOp
 //===----------------------------------------------------------------------===//
 
@@ -2494,6 +2594,15 @@ struct EraseDeadVarIsInitializedOp
 void VarIsInitializedOp::getCanonicalizationPatterns(
     OwningRewritePatternList &patterns, MLIRContext *context) {
   patterns.insert<EraseDeadVarIsInitializedOp>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// VariableOp
+//===----------------------------------------------------------------------===//
+
+void VariableOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                             MLIRContext *context) {
+  results.insert<VariableToVariableV2>(context);
 }
 
 //===----------------------------------------------------------------------===//

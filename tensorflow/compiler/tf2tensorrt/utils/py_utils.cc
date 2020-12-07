@@ -26,6 +26,10 @@ namespace tensorrt {
 
 bool IsGoogleTensorRTEnabled() {
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
+#if TF_OSS_TENSORRT_STATIC
+  LOG(INFO) << "TensorRT libraries are statically linked, skip dlopen check";
+  return true;
+#else
   auto handle_or = se::internal::DsoLoader::TryDlopenTensorRTLibraries();
   if (!handle_or.ok()) {
     LOG_WARNING_WITH_PREFIX
@@ -36,6 +40,7 @@ bool IsGoogleTensorRTEnabled() {
   } else {
     return true;
   }
+#endif
 #else
   return false;
 #endif

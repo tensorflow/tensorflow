@@ -229,10 +229,7 @@ class Delegate {
     return absl::NotFoundError("Couldn't find tensor: " + std::to_string(tensor_index));
   }
 
-  void SetCommandEncoder(
-      id<MTLComputeCommandEncoder> encoder,
-      std::function<id<MTLComputeCommandEncoder>(bool is_last)> control_encoder) {
-    control_encoder_ = control_encoder;
+  void SetCommandEncoder(id<MTLComputeCommandEncoder> encoder) {
     external_command_encoder_ = encoder;
   }
 
@@ -494,9 +491,6 @@ class Delegate {
          encodeWithEncoder:encoder
         inputOutputBuffers:bphwc4_buffers_
               encoderBlock:^(bool isLast) {
-                if (control_encoder_ != nullptr) {
-                  return control_encoder_(isLast);
-                }
                 if (external_command_encoder_ != nil ||
                     options_.wait_type == TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypePassive) {
                   return encoder;
@@ -627,7 +621,6 @@ class Delegate {
   std::vector<BufferDescriptor> graph_outputs_;
 
   id<MTLComputeCommandEncoder> external_command_encoder_ = nil;
-  std::function<id<MTLComputeCommandEncoder>(bool is_last)> control_encoder_;
   id<MTLCommandQueue> command_queue_;
   std::unique_ptr<GpuAlarmClock> gpu_alarm_clock_;
   id<MTLComputePipelineState> signal_program_;
@@ -720,11 +713,10 @@ bool TFLGpuDelegateBindMetalBufferToTensor(TfLiteDelegate* delegate, int tensor_
 // Note: This function is not exposed in `metal_delegate.h`, but it's exposed in
 // `metal_delegate_internal.h`.
 bool TFLGpuDelegateSetCommandEncoder(
-    TfLiteDelegate* delegate, id<MTLComputeCommandEncoder> encoder,
-    std::function<id<MTLComputeCommandEncoder>(bool is_last)> control_encoder) {
+    TfLiteDelegate* delegate, id<MTLComputeCommandEncoder> encoder) {
   auto* metal_delegate = ::tflite::gpu::metal::GetMetalDelegate(delegate);
   if (!metal_delegate) return false;
-  metal_delegate->SetCommandEncoder(encoder, control_encoder);
+  metal_delegate->SetCommandEncoder(encoder);
   return true;
 }
 

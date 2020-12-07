@@ -565,6 +565,48 @@ PyObject* CheckGetTensorArgs(Interpreter* interpreter_, int tensor_index,
 
 }  // namespace
 
+PyObject* InterpreterWrapper::GetSignatureDefs() const {
+  PyObject* result = PyDict_New();
+  for (const auto& sig_def_name : interpreter_->signature_def_names()) {
+    PyObject* signature_def = PyDict_New();
+    PyObject* inputs = PyDict_New();
+    PyObject* outputs = PyDict_New();
+    const auto& signature_def_inputs =
+        interpreter_->signature_inputs(sig_def_name->c_str());
+    const auto& signature_def_outputs =
+        interpreter_->signature_outputs(sig_def_name->c_str());
+    for (const auto& input : signature_def_inputs) {
+      PyDict_SetItemString(inputs, input.first.c_str(),
+                           PyLong_FromLong(input.second));
+    }
+    for (const auto& output : signature_def_outputs) {
+      PyDict_SetItemString(outputs, output.first.c_str(),
+                           PyLong_FromLong(output.second));
+    }
+
+    PyDict_SetItemString(signature_def, "inputs", inputs);
+    PyDict_SetItemString(signature_def, "outputs", outputs);
+    PyDict_SetItemString(result, sig_def_name->c_str(), signature_def);
+  }
+  return result;
+}
+
+PyObject* InterpreterWrapper::GetOutputTensorFromSignatureDefName(
+    const char* output_name, const char* method_name) const {
+  const auto& outputs = interpreter_->signature_outputs(method_name);
+  const auto& output = outputs.find(output_name);
+  if (output == outputs.end()) return nullptr;
+  return GetTensor(output->second);
+}
+
+PyObject* InterpreterWrapper::SetInputTensorFromSignatureDefName(
+    const char* input_name, const char* method_name, PyObject* value) {
+  const auto& inputs = interpreter_->signature_inputs(method_name);
+  const auto& input = inputs.find(input_name);
+  if (input == inputs.end()) return nullptr;
+  return SetTensor(input->second, value);
+}
+
 PyObject* InterpreterWrapper::GetTensor(int i) const {
   // Sanity check accessor
   TfLiteTensor* tensor = nullptr;

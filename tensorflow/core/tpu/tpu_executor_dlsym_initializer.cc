@@ -45,8 +45,8 @@ Status InitializeTpuLibrary(void* library_handle) {
   // supporting library providing the necessary APIs.
   if (s.ok()) {
     void (*initialize_fn)();
-    initialize_fn = reinterpret_cast<decltype(initialize_fn)>(
-        dlsym(library_handle, "TfTpu_Initialize"));
+    initialize_fn = reinterpret_cast<decltype(initialize_fn)>(dlsym(
+        library_handle, "TfTpu_Initialize", /*argc=*/0, /*argv=*/nullptr));
     (*initialize_fn)();
 
     RegisterTpuPlatform();

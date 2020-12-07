@@ -37,17 +37,17 @@ namespace {
 
 class AddGradientFunction : public GradientFunction {
  public:
-  Status Compute(Context* ctx, const IncomingGradients& grad_inputs,
-                 vector<AbstractTensorHandle*>* grad_outputs) override {
-    grad_outputs->resize(2);
+  Status Compute(AbstractContext* ctx,
+                 absl::Span<AbstractTensorHandle* const> grad_outputs,
+                 absl::Span<AbstractTensorHandle*> grad_inputs) override {
     // TODO(b/161805092): Support broadcasting.
 
-    DCHECK(grad_inputs[0]);
-    (*grad_outputs)[0] = grad_inputs[0];
-    (*grad_outputs)[1] = grad_inputs[0];
+    DCHECK(grad_outputs[0]);
+    grad_inputs[0] = grad_outputs[0];
+    grad_inputs[1] = grad_outputs[0];
 
-    (*grad_outputs)[0]->Ref();
-    (*grad_outputs)[1]->Ref();
+    grad_inputs[0]->Ref();
+    grad_inputs[1]->Ref();
     return Status::OK();
   }
   ~AddGradientFunction() override {}
@@ -58,18 +58,18 @@ class ExpGradientFunction : public GradientFunction {
   explicit ExpGradientFunction(AbstractTensorHandle* exp) : exp_(exp) {
     exp->Ref();
   }
-  Status Compute(Context* ctx, const IncomingGradients& grad_inputs,
-                 vector<AbstractTensorHandle*>* grad_outputs) override {
+  Status Compute(AbstractContext* ctx,
+                 absl::Span<AbstractTensorHandle* const> grad_outputs,
+                 absl::Span<AbstractTensorHandle*> grad_inputs) override {
     vector<AbstractTensorHandle*> conj_outputs(1);
     std::string name = "Conj_Exp_Grad";
-    TF_RETURN_IF_ERROR(Conj(ctx->ctx, {exp_.get()},
-                            absl::MakeSpan(conj_outputs), name.c_str()));
+    TF_RETURN_IF_ERROR(
+        Conj(ctx, {exp_.get()}, absl::MakeSpan(conj_outputs), name.c_str()));
     AbstractTensorHandlePtr conj_output_releaser(conj_outputs[0]);
-    grad_outputs->resize(1);
 
     name = "Mul_Exp_Grad";
-    TF_RETURN_IF_ERROR(Mul(ctx->ctx, {conj_outputs[0], grad_inputs[0]},
-                           absl::MakeSpan(*grad_outputs), name.c_str()));
+    TF_RETURN_IF_ERROR(Mul(ctx, {conj_outputs[0], grad_outputs[0]}, grad_inputs,
+                           name.c_str()));
     return Status::OK();
   }
   ~ExpGradientFunction() override {}
@@ -83,12 +83,12 @@ class SqrtGradientFunction : public GradientFunction {
   explicit SqrtGradientFunction(AbstractTensorHandle* sqrt) : sqrt_(sqrt) {
     sqrt->Ref();
   }
-  Status Compute(Context* ctx, const IncomingGradients& grad_inputs,
-                 vector<AbstractTensorHandle*>* grad_outputs) override {
+  Status Compute(AbstractContext* ctx,
+                 absl::Span<AbstractTensorHandle* const> grad_outputs,
+                 absl::Span<AbstractTensorHandle*> grad_inputs) override {
     std::string name = "Sqrt_Grad";
-    grad_outputs->resize(1);
-    TF_RETURN_IF_ERROR(SqrtGrad(ctx->ctx, {sqrt_.get(), grad_inputs[0]},
-                                absl::MakeSpan(*grad_outputs), name.c_str()));
+    TF_RETURN_IF_ERROR(SqrtGrad(ctx, {sqrt_.get(), grad_outputs[0]},
+                                absl::MakeSpan(grad_inputs), name.c_str()));
     return Status::OK();
   }
   ~SqrtGradientFunction() override {}
@@ -101,10 +101,17 @@ class MatMulGradientFunction : public GradientFunction {
  public:
   explicit MatMulGradientFunction(vector<AbstractTensorHandle*> f_inputs,
                                   AttrBuilder f_attrs)
-      : forward_inputs(f_inputs), forward_attrs(f_attrs) {}
+      : forward_inputs_(f_inputs), forward_attrs_(f_attrs) {
+    for (auto input : forward_inputs_) {
+      if (input) {
+        input->Ref();
+      }
+    }
+  }
 
-  Status Compute(Context* ctx, const IncomingGradients& grad_inputs,
-                 vector<AbstractTensorHandle*>* grad_outputs) override {
+  Status Compute(AbstractContext* ctx,
+                 absl::Span<AbstractTensorHandle* const> grad_outputs,
+                 absl::Span<AbstractTensorHandle*> grad_inputs) override {
     /* Given upstream grad U and a matmul op A*B, the gradients are:
      *
      *    dA = U * B.T
@@ -112,29 +119,28 @@ class MatMulGradientFunction : public GradientFunction {
      *
      *    where A.T means `transpose(A)`
      */
-    AbstractTensorHandle* upstream_grad = grad_inputs[0];
-    grad_outputs->resize(2);
+    AbstractTensorHandle* upstream_grad = grad_outputs[0];
 
     // Get transpose attrs
     bool t_a;
-    TF_RETURN_IF_ERROR(forward_attrs.Get("transpose_a", &t_a));
+    TF_RETURN_IF_ERROR(forward_attrs_.Get("transpose_a", &t_a));
 
     bool t_b;
-    TF_RETURN_IF_ERROR(forward_attrs.Get("transpose_b", &t_b));
+    TF_RETURN_IF_ERROR(forward_attrs_.Get("transpose_b", &t_b));
 
     // Conj each input
     vector<AbstractTensorHandle*> conj_outputs(1);
     std::string name = "Conj_A_MatMul_Grad";
-    TF_RETURN_IF_ERROR(Conj(ctx->ctx, {forward_inputs[0]},
+    TF_RETURN_IF_ERROR(Conj(ctx, {forward_inputs_[0]},
                             absl::MakeSpan(conj_outputs), name.c_str()));
 
-    AbstractTensorHandle* A = conj_outputs[0];
+    AbstractTensorHandlePtr A(conj_outputs[0]);
 
     name = "Conj_B_MatMul_Grad";
-    TF_RETURN_IF_ERROR(Conj(ctx->ctx, {forward_inputs[1]},
+    TF_RETURN_IF_ERROR(Conj(ctx, {forward_inputs_[1]},
                             absl::MakeSpan(conj_outputs), name.c_str()));
 
-    AbstractTensorHandle* B = conj_outputs[0];
+    AbstractTensorHandlePtr B(conj_outputs[0]);
 
     // Calc Grad
     vector<AbstractTensorHandle*> matmul_A_outputs(1);
@@ -142,50 +148,50 @@ class MatMulGradientFunction : public GradientFunction {
     std::string name_grad_A = "MatMul_Grad_A";
     std::string name_grad_B = "MatMul_Grad_B";
     if (!t_a && !t_b) {
-      TF_RETURN_IF_ERROR(MatMul(ctx->ctx, {upstream_grad, B},
+      TF_RETURN_IF_ERROR(MatMul(ctx, {upstream_grad, B.get()},
                                 absl::MakeSpan(matmul_A_outputs),
                                 name_grad_A.c_str(),
                                 /*transpose_a = */ false,
                                 /*transpose_b = */ true));
 
-      TF_RETURN_IF_ERROR(MatMul(ctx->ctx, {A, upstream_grad},
+      TF_RETURN_IF_ERROR(MatMul(ctx, {A.get(), upstream_grad},
                                 absl::MakeSpan(matmul_B_outputs),
                                 name_grad_B.c_str(),
                                 /*transpose_a = */ true,
                                 /*transpose_b = */ false));
     } else if (!t_a && t_b) {
-      TF_RETURN_IF_ERROR(MatMul(ctx->ctx, {upstream_grad, B},
+      TF_RETURN_IF_ERROR(MatMul(ctx, {upstream_grad, B.get()},
                                 absl::MakeSpan(matmul_A_outputs),
                                 name_grad_A.c_str(),
                                 /*transpose_a = */ false,
                                 /*transpose_b = */ false));
 
-      TF_RETURN_IF_ERROR(MatMul(ctx->ctx, {upstream_grad, A},
+      TF_RETURN_IF_ERROR(MatMul(ctx, {upstream_grad, A.get()},
                                 absl::MakeSpan(matmul_B_outputs),
                                 name_grad_B.c_str(),
                                 /*transpose_a = */ true,
                                 /*transpose_b = */ false));
 
     } else if (t_a && !t_b) {
-      TF_RETURN_IF_ERROR(MatMul(ctx->ctx, {B, upstream_grad},
+      TF_RETURN_IF_ERROR(MatMul(ctx, {B.get(), upstream_grad},
                                 absl::MakeSpan(matmul_A_outputs),
                                 name_grad_A.c_str(),
                                 /*transpose_a = */ false,
                                 /*transpose_b = */ true));
 
-      TF_RETURN_IF_ERROR(MatMul(ctx->ctx, {A, upstream_grad},
+      TF_RETURN_IF_ERROR(MatMul(ctx, {A.get(), upstream_grad},
                                 absl::MakeSpan(matmul_B_outputs),
                                 name_grad_B.c_str(),
                                 /*transpose_a = */ false,
                                 /*transpose_b = */ false));
     } else {  // t_a && t_b
-      TF_RETURN_IF_ERROR(MatMul(ctx->ctx, {B, upstream_grad},
+      TF_RETURN_IF_ERROR(MatMul(ctx, {B.get(), upstream_grad},
                                 absl::MakeSpan(matmul_A_outputs),
                                 name_grad_A.c_str(),
                                 /*transpose_a = */ true,
                                 /*transpose_b = */ true));
 
-      TF_RETURN_IF_ERROR(MatMul(ctx->ctx, {upstream_grad, A},
+      TF_RETURN_IF_ERROR(MatMul(ctx, {upstream_grad, A.get()},
                                 absl::MakeSpan(matmul_B_outputs),
                                 name_grad_B.c_str(),
                                 /*transpose_a = */ true,
@@ -193,33 +199,40 @@ class MatMulGradientFunction : public GradientFunction {
     }
 
     // Gradient for A
-    (*grad_outputs)[0] = matmul_A_outputs[0];
+    grad_inputs[0] = matmul_A_outputs[0];
 
     // Gradient for B
-    (*grad_outputs)[1] = matmul_B_outputs[0];
+    grad_inputs[1] = matmul_B_outputs[0];
     return Status::OK();
   }
-  ~MatMulGradientFunction() override {}
+  ~MatMulGradientFunction() override {
+    for (auto input : forward_inputs_) {
+      if (input) {
+        input->Unref();
+      }
+    }
+  }
 
  private:
-  vector<AbstractTensorHandle*> forward_inputs;
-  AttrBuilder forward_attrs;
+  // TODO(b/174778737): Only hold needed inputs.
+  vector<AbstractTensorHandle*> forward_inputs_;
+  AttrBuilder forward_attrs_;
 };
 
 class NegGradientFunction : public GradientFunction {
  public:
-  Status Compute(Context* ctx, const IncomingGradients& grad_inputs,
-                 vector<AbstractTensorHandle*>* grad_outputs) override {
+  Status Compute(AbstractContext* ctx,
+                 absl::Span<AbstractTensorHandle* const> grad_outputs,
+                 absl::Span<AbstractTensorHandle*> grad_inputs) override {
     /* Given upstream grad U and a Neg op Y = -X, the gradients are:
      *
      *    dX =  -U
      *
      */
 
-    grad_outputs->resize(1);
     std::string name = "Neg_Grad";
-    TF_RETURN_IF_ERROR(ops::Neg(ctx->ctx, {grad_inputs[0]},
-                                absl::MakeSpan(*grad_outputs), name.c_str()));
+    TF_RETURN_IF_ERROR(
+        ops::Neg(ctx, {grad_outputs[0]}, grad_inputs, name.c_str()));
     return Status::OK();
   }
   ~NegGradientFunction() override {}
@@ -227,8 +240,9 @@ class NegGradientFunction : public GradientFunction {
 
 class SubGradientFunction : public GradientFunction {
  public:
-  Status Compute(Context* ctx, const IncomingGradients& grad_inputs,
-                 vector<AbstractTensorHandle*>* grad_outputs) override {
+  Status Compute(AbstractContext* ctx,
+                 absl::Span<AbstractTensorHandle* const> grad_outputs,
+                 absl::Span<AbstractTensorHandle*> grad_inputs) override {
     /* Given upstream grad U and a Sub op A-B, the gradients are:
      *
      *    dA =  U
@@ -236,20 +250,16 @@ class SubGradientFunction : public GradientFunction {
      *
      */
 
-    grad_outputs->resize(2);
-
     // Grad for A
-    DCHECK(grad_inputs[0]);
-    (*grad_outputs)[0] = grad_inputs[0];
-    (*grad_outputs)[0]->Ref();
+    DCHECK(grad_outputs[0]);
+    grad_inputs[0] = grad_outputs[0];
+    grad_inputs[0]->Ref();
 
     // Grad for B
     // negate the upstream grad
-    std::vector<AbstractTensorHandle*> neg_outputs(1);
     std::string name = "Neg_Sub_Grad_B";
-    TF_RETURN_IF_ERROR(ops::Neg(ctx->ctx, {grad_inputs[0]},
-                                absl::MakeSpan(neg_outputs), name.c_str()));
-    (*grad_outputs)[1] = neg_outputs[0];
+    TF_RETURN_IF_ERROR(ops::Neg(ctx, {grad_outputs[0]},
+                                grad_inputs.subspan(1, 1), name.c_str()));
 
     return Status::OK();
   }
@@ -259,10 +269,17 @@ class SubGradientFunction : public GradientFunction {
 class MulGradientFunction : public GradientFunction {
  public:
   explicit MulGradientFunction(vector<AbstractTensorHandle*> f_inputs)
-      : forward_inputs(f_inputs) {}
+      : forward_inputs_(f_inputs) {
+    for (auto input : forward_inputs_) {
+      if (input) {
+        input->Ref();
+      }
+    }
+  }
 
-  Status Compute(Context* ctx, const IncomingGradients& grad_inputs,
-                 vector<AbstractTensorHandle*>* grad_outputs) override {
+  Status Compute(AbstractContext* ctx,
+                 absl::Span<AbstractTensorHandle* const> grad_outputs,
+                 absl::Span<AbstractTensorHandle*> grad_inputs) override {
     /* Given upstream grad U and a mul op A*B, the gradients are:
      *
      *    dA = U * B
@@ -270,36 +287,46 @@ class MulGradientFunction : public GradientFunction {
      *
      */
 
-    AbstractTensorHandle* upstream_grad = grad_inputs[0];
-    grad_outputs->resize(2);
-    std::vector<AbstractTensorHandle*> mul_outputs(1);
+    AbstractTensorHandle* upstream_grad = grad_outputs[0];
 
     // Gradient for A
     std::string name = "Mul_Grad_A";
-    TF_RETURN_IF_ERROR(Mul(ctx->ctx, {upstream_grad, forward_inputs[1]},
-                           absl::MakeSpan(mul_outputs), name.c_str()));
-    (*grad_outputs)[0] = mul_outputs[0];
+    TF_RETURN_IF_ERROR(Mul(ctx, {upstream_grad, forward_inputs_[1]},
+                           grad_inputs.subspan(0, 1), name.c_str()));
 
     // Gradient for B
     name = "Mul_Grad_B";
-    TF_RETURN_IF_ERROR(Mul(ctx->ctx, {forward_inputs[0], upstream_grad},
-                           absl::MakeSpan(mul_outputs), name.c_str()));
-    (*grad_outputs)[1] = mul_outputs[0];
+    TF_RETURN_IF_ERROR(Mul(ctx, {forward_inputs_[0], upstream_grad},
+                           grad_inputs.subspan(1, 1), name.c_str()));
     return Status::OK();
   }
-  ~MulGradientFunction() override {}
+  ~MulGradientFunction() override {
+    for (auto input : forward_inputs_) {
+      if (input) {
+        input->Unref();
+      }
+    }
+  }
 
  private:
-  vector<AbstractTensorHandle*> forward_inputs;
+  // TODO(b/174778737): Only hold needed inputs.
+  vector<AbstractTensorHandle*> forward_inputs_;
 };
 
 class Log1pGradientFunction : public GradientFunction {
  public:
   explicit Log1pGradientFunction(vector<AbstractTensorHandle*> f_inputs)
-      : forward_inputs(f_inputs) {}
+      : forward_inputs_(f_inputs) {
+    for (auto input : forward_inputs_) {
+      if (input) {
+        input->Ref();
+      }
+    }
+  }
 
-  Status Compute(Context* ctx, const IncomingGradients& grad_inputs,
-                 vector<AbstractTensorHandle*>* grad_outputs) override {
+  Status Compute(AbstractContext* ctx,
+                 absl::Span<AbstractTensorHandle* const> grad_outputs,
+                 absl::Span<AbstractTensorHandle*> grad_inputs) override {
     // TODO(vnvo2409): Add control dependency
     /* Given upstream grad U and a Log1p op: Y = log(1 + X), the gradients are:
      *
@@ -307,56 +334,72 @@ class Log1pGradientFunction : public GradientFunction {
      *
      */
 
-    AbstractTensorHandle* upstream_grad = grad_inputs[0];
-    AbstractTensorHandle* X = forward_inputs[0];
+    AbstractTensorHandle* upstream_grad = grad_outputs[0];
+    AbstractTensorHandle* X = forward_inputs_[0];
 
-    grad_outputs->resize(1);
     vector<AbstractTensorHandle*> temp_outputs(1);
 
     // Calculate conjugate of X
     std::string name = "Conj_Log1p_Grad_X";
     TF_RETURN_IF_ERROR(
-        Conj(ctx->ctx, {X}, absl::MakeSpan(temp_outputs), name.c_str()));
+        Conj(ctx, {X}, absl::MakeSpan(temp_outputs), name.c_str()));
 
-    AbstractTensorHandle* Conj_X = temp_outputs[0];
+    AbstractTensorHandlePtr Conj_X(temp_outputs[0]);
 
     // Creates Ones
     name = "OnesLike_Log1p_Grad_X";
-    TF_RETURN_IF_ERROR(OnesLike(ctx->ctx, {Conj_X},
+    TF_RETURN_IF_ERROR(OnesLike(ctx, {Conj_X.get()},
                                 absl::MakeSpan(temp_outputs), name.c_str()));
 
-    AbstractTensorHandle* Ones_X = temp_outputs[0];
+    AbstractTensorHandlePtr Ones_X(temp_outputs[0]);
 
     name = "Add_Log1p_Grad_X";
     // Calculate 1 + Conj(X)
-    TF_RETURN_IF_ERROR(Add(ctx->ctx, {Ones_X, Conj_X},
+    TF_RETURN_IF_ERROR(Add(ctx, {Ones_X.get(), Conj_X.get()},
                            absl::MakeSpan(temp_outputs), name.c_str()));
 
-    AbstractTensorHandle* Conj_XP1 = temp_outputs[0];
+    AbstractTensorHandlePtr Conj_XP1(temp_outputs[0]);
 
     name = "Div_Log1p_Grad_X";
     // Calculate U / (1 + Conj(X))
-    TF_RETURN_IF_ERROR(Div(ctx->ctx, {upstream_grad, Conj_XP1},
-                           absl::MakeSpan(temp_outputs), name.c_str()));
-
-    (*grad_outputs)[0] = temp_outputs[0];
+    TF_RETURN_IF_ERROR(
+        Div(ctx, {upstream_grad, Conj_XP1.get()}, grad_inputs, name.c_str()));
 
     return Status::OK();
   }
-  ~Log1pGradientFunction() override {}
+  ~Log1pGradientFunction() override {
+    for (auto input : forward_inputs_) {
+      if (input) {
+        input->Unref();
+      }
+    }
+  }
 
  private:
-  vector<AbstractTensorHandle*> forward_inputs;
+  // TODO(b/174778737): Only hold needed inputs.
+  vector<AbstractTensorHandle*> forward_inputs_;
 };
 
 class DivNoNanGradientFunction : public GradientFunction {
  public:
   explicit DivNoNanGradientFunction(vector<AbstractTensorHandle*> f_inputs,
                                     vector<AbstractTensorHandle*> f_outputs)
-      : forward_inputs(f_inputs), forward_outputs(f_outputs) {}
+      : forward_inputs_(f_inputs), forward_outputs_(f_outputs) {
+    for (auto input : forward_inputs_) {
+      if (input) {
+        input->Ref();
+      }
+    }
+    for (auto output : forward_outputs_) {
+      if (output) {
+        output->Ref();
+      }
+    }
+  }
 
-  Status Compute(Context* ctx, const IncomingGradients& grad_inputs,
-                 vector<AbstractTensorHandle*>* grad_outputs) override {
+  Status Compute(AbstractContext* ctx,
+                 absl::Span<AbstractTensorHandle* const> grad_outputs,
+                 absl::Span<AbstractTensorHandle*> grad_inputs) override {
     // TODO(vnvo2409): Add shape broadcasting
     /* Given upstream grad U and a Div op: Z = X/Y, the gradients are:
      *
@@ -365,126 +408,88 @@ class DivNoNanGradientFunction : public GradientFunction {
      *
      */
 
-    AbstractTensorHandle* upstream_grad = grad_inputs[0];
-    AbstractTensorHandle* Y = forward_inputs[1];
-    AbstractTensorHandle* Z = forward_outputs[0];
-
-    grad_outputs->resize(2);
-    vector<AbstractTensorHandle*> temp_outputs(1);
+    AbstractTensorHandle* upstream_grad = grad_outputs[0];
+    AbstractTensorHandle* Y = forward_inputs_[1];
+    AbstractTensorHandle* Z = forward_outputs_[0];
 
     // Calculate dX =  U / Y
     std::string name = "Div_Grad_X";
-    TF_RETURN_IF_ERROR(DivNoNan(ctx->ctx, {upstream_grad, Y},
-                                absl::MakeSpan(temp_outputs), name.c_str()));
+    TF_RETURN_IF_ERROR(DivNoNan(ctx, {upstream_grad, Y},
+                                grad_inputs.subspan(0, 1), name.c_str()));
 
-    (*grad_outputs)[0] = temp_outputs[0];
-
+    vector<AbstractTensorHandle*> temp_outputs(1);
     // Calculate dY = -U*Z / Y
     name = "Neg_Div_Grad_Y";
-    TF_RETURN_IF_ERROR(Neg(ctx->ctx, {upstream_grad},
-                           absl::MakeSpan(temp_outputs), name.c_str()));  // -U
-    AbstractTensorHandle* MinusU = temp_outputs[0];
+    TF_RETURN_IF_ERROR(Neg(ctx, {upstream_grad}, absl::MakeSpan(temp_outputs),
+                           name.c_str()));  // -U
+    AbstractTensorHandlePtr MinusU(temp_outputs[0]);
 
     name = "Mul_Div_Grad_Y";
-    TF_RETURN_IF_ERROR(Mul(ctx->ctx, {MinusU, Z}, absl::MakeSpan(temp_outputs),
+    TF_RETURN_IF_ERROR(Mul(ctx, {MinusU.get(), Z}, absl::MakeSpan(temp_outputs),
                            name.c_str()));  // -U*Z
-    AbstractTensorHandle* UZ = temp_outputs[0];
+    AbstractTensorHandlePtr UZ(temp_outputs[0]);
 
     name = "Div_Grad_Y";
-    TF_RETURN_IF_ERROR(DivNoNan(ctx->ctx, {UZ, Y}, absl::MakeSpan(temp_outputs),
+    TF_RETURN_IF_ERROR(DivNoNan(ctx, {UZ.get(), Y}, grad_inputs.subspan(1, 1),
                                 name.c_str()));  // -U*Z / Y
 
-    (*grad_outputs)[1] = temp_outputs[0];
     return Status::OK();
   }
-  ~DivNoNanGradientFunction() override {}
+  ~DivNoNanGradientFunction() override {
+    for (auto input : forward_inputs_) {
+      if (input) {
+        input->Unref();
+      }
+    }
+    for (auto output : forward_outputs_) {
+      if (output) {
+        output->Unref();
+      }
+    }
+  }
 
  private:
-  vector<AbstractTensorHandle*> forward_inputs;
-  vector<AbstractTensorHandle*> forward_outputs;
+  // TODO(b/174778737): Only hold needed inputs and outputs.
+  vector<AbstractTensorHandle*> forward_inputs_;
+  vector<AbstractTensorHandle*> forward_outputs_;
 };
 
 }  // namespace
 
-BackwardFunction* AddRegisterer(const ForwardOperation& op) {
-  auto gradient_function = new AddGradientFunction;
-  // For ops with a single output, the gradient function is not called if there
-  // is no incoming gradient. So we do not need to worry about creating zeros
-  // grads in this case.
-  auto default_gradients = new PassThroughDefaultGradients(op);
-  return new BackwardFunction(gradient_function, default_gradients);
+GradientFunction* AddRegisterer(const ForwardOperation& op) {
+  return new AddGradientFunction;
 }
 
-BackwardFunction* ExpRegisterer(const ForwardOperation& op) {
-  auto gradient_function = new ExpGradientFunction(op.outputs[0]);
-  // For ops with a single output, the gradient function is not called if there
-  // is no incoming gradient. So we do not need to worry about creating zeros
-  // grads in this case.
-  auto default_gradients = new PassThroughDefaultGradients(op);
-  return new BackwardFunction(gradient_function, default_gradients);
+GradientFunction* ExpRegisterer(const ForwardOperation& op) {
+  return new ExpGradientFunction(op.outputs[0]);
 }
 
-BackwardFunction* MatMulRegisterer(const ForwardOperation& op) {
-  auto gradient_function = new MatMulGradientFunction(op.inputs, op.attrs);
-  // For ops with a single output, the gradient function is not called if there
-  // is no incoming gradient. So we do not need to worry about creating zeros
-  // grads in this case.
-  auto default_gradients = new PassThroughDefaultGradients(op);
-  return new BackwardFunction(gradient_function, default_gradients);
+GradientFunction* MatMulRegisterer(const ForwardOperation& op) {
+  return new MatMulGradientFunction(op.inputs, op.attrs);
 }
 
-BackwardFunction* SqrtRegisterer(const ForwardOperation& op) {
-  auto gradient_function = new SqrtGradientFunction(op.outputs[0]);
-  // For ops with a single output, the gradient function is not called if there
-  // is no incoming gradient. So we do not need to worry about creating zeros
-  // grads in this case.
-  auto default_gradients = new PassThroughDefaultGradients(op);
-  return new BackwardFunction(gradient_function, default_gradients);
+GradientFunction* SqrtRegisterer(const ForwardOperation& op) {
+  return new SqrtGradientFunction(op.outputs[0]);
 }
 
-BackwardFunction* NegRegisterer(const ForwardOperation& op) {
-  auto gradient_function = new NegGradientFunction;
-  // For ops with a single output, the gradient function is not called if there
-  // is no incoming gradient. So we do not need to worry about creating zeros
-  // grads in this case.
-  auto default_gradients = new PassThroughDefaultGradients(op);
-  return new BackwardFunction(gradient_function, default_gradients);
+GradientFunction* NegRegisterer(const ForwardOperation& op) {
+  return new NegGradientFunction;
 }
 
-BackwardFunction* SubRegisterer(const ForwardOperation& op) {
-  // For ops with a single output, the gradient function is not called if there
-  // is no incoming gradient. So we do not need to worry about creating zeros
-  // grads in this case.
-  auto gradient_function = new SubGradientFunction;
-  auto default_gradients = new PassThroughDefaultGradients(op);
-  return new BackwardFunction(gradient_function, default_gradients);
+GradientFunction* SubRegisterer(const ForwardOperation& op) {
+  return new SubGradientFunction;
 }
 
-BackwardFunction* MulRegisterer(const ForwardOperation& op) {
-  // For ops with a single output, the gradient function is not called if there
-  // is no incoming gradient. So we do not need to worry about creating zeros
-  // grads in this case.
-  auto gradient_function = new MulGradientFunction(op.inputs);
-  auto default_gradients = new PassThroughDefaultGradients(op);
-  return new BackwardFunction(gradient_function, default_gradients);
+GradientFunction* MulRegisterer(const ForwardOperation& op) {
+  return new MulGradientFunction(op.inputs);
 }
 
-BackwardFunction* Log1pRegisterer(const ForwardOperation& op) {
-  // For ops with a single output, the gradient function is not called if there
-  // is no incoming gradient. So we do not need to worry about creating zeros
-  // grads in this case.
-  auto gradient_function = new Log1pGradientFunction(op.inputs);
-  auto default_gradients = new PassThroughDefaultGradients(op);
-  return new BackwardFunction(gradient_function, default_gradients);
+GradientFunction* Log1pRegisterer(const ForwardOperation& op) {
+  return new Log1pGradientFunction(op.inputs);
 }
 
-BackwardFunction* DivNoNanRegisterer(const ForwardOperation& op) {
-  // For ops with a single output, the gradient function is not called if there
-  // is no incoming gradient. So we do not need to worry about creating zeros
-  // grads in this case.
-  auto gradient_function = new DivNoNanGradientFunction(op.inputs, op.outputs);
-  auto default_gradients = new PassThroughDefaultGradients(op);
-  return new BackwardFunction(gradient_function, default_gradients);
+GradientFunction* DivNoNanRegisterer(const ForwardOperation& op) {
+  return new DivNoNanGradientFunction(op.inputs, op.outputs);
 }
 
 }  // namespace gradients

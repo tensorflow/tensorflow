@@ -77,6 +77,11 @@ void TfLiteInterpreterOptionsSetUseNNAPI(TfLiteInterpreterOptions* options,
   options->use_nnapi = enable;
 }
 
+void TfLiteInterpreterOptionsSetEnableDelegateFallback(
+    TfLiteInterpreterOptions* options, bool enable) {
+  options->enable_delegate_fallback = enable;
+}
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

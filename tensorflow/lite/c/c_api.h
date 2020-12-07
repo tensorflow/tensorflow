@@ -177,9 +177,34 @@ TFL_CAPI_EXPORT extern TfLiteStatus TfLiteInterpreterAllocateTensors(
 
 // Runs inference for the loaded graph.
 //
+// Before calling this function, the caller should first invoke
+// TfLiteInterpreterAllocateTensors() and should also set the values for the
+// input tensors.  After successfully calling this function, the values for the
+// output tensors will be set.
+//
 // NOTE: It is possible that the interpreter is not in a ready state to
-// evaluate (e.g., if a ResizeInputTensor() has been performed without a call to
+// evaluate (e.g., if AllocateTensors() hasn't been called, or if a
+// ResizeInputTensor() has been performed without a subsequent call to
 // AllocateTensors()).
+//
+//   If the (experimental!) delegate fallback option was enabled in the
+//   interpreter options, then the interpreter will automatically fall back to
+//   not using any delegates if execution with delegates fails. For details, see
+//   TfLiteInterpreterOptionsSetEnableDelegateFallback in c_api_experimental.h.
+//
+// Returns one of the following status codes:
+//  - kTfLiteOk: Success. Output is valid.
+//  - kTfLiteDelegateError: Execution with delegates failed, due to a problem
+//    with the delegate(s). If fallback was not enabled, output is invalid.
+//    If fallback was enabled, this return value indicates that fallback
+//    succeeded, the output is valid, and all delegates previously applied to
+//    the interpreter have been undone.
+//  - kTfLiteApplicationError: Same as for kTfLiteDelegateError, except that
+//    the problem was not with the delegate itself, but rather was
+//    due to an incompatibility between the delegate(s) and the
+//    interpreter or model.
+//  - kTfLiteError: Unexpected/runtime failure. Output is invalid.
+
 TFL_CAPI_EXPORT extern TfLiteStatus TfLiteInterpreterInvoke(
     TfLiteInterpreter* interpreter);
 

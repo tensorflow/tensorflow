@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/conv.h"
 #include "tensorflow/lite/kernels/internal/reference/dequantize.h"
 #include "tensorflow/lite/kernels/internal/reference/div.h"
+#include "tensorflow/lite/kernels/internal/reference/fill.h"
 #include "tensorflow/lite/kernels/internal/reference/floor.h"
 #include "tensorflow/lite/kernels/internal/reference/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/reference/hard_swish.h"
@@ -2329,16 +2330,6 @@ inline void BroadcastPow4DSlow(const RuntimeShape& unextended_input1_shape,
         }
       }
     }
-  }
-}
-
-template <typename T>
-void Fill(const RuntimeShape& value_shape, const T* value_data,
-          const RuntimeShape& output_shape, T* output_data) {
-  TFLITE_DCHECK_EQ(value_shape.DimensionsCount(), 0);
-  const int flat_size = output_shape.FlatSize();
-  for (int i = 0; i < flat_size; ++i) {
-    output_data[i] = *value_data;
   }
 }
 

@@ -14132,7 +14132,7 @@ libraries.
   );
 }
 
-def TF_TPUExecuteOp : TF_Op<"TPUExecute", []> {
+def TF_TPUExecuteOp : TF_Op<"TPUExecute", [DeclareOpInterfaceMethods<MemoryEffectsOpInterface>]> {
   let summary = "Op that loads and executes a TPU program on a TPU device.";
 
   let description = [{
@@ -14152,7 +14152,7 @@ For the internal use of the distributed TPU compiler.
   TF_DerivedResultTypeListAttr Tresults = TF_DerivedResultTypeListAttr<0>;
 }
 
-def TF_TPUExecuteAndUpdateVariablesOp : TF_Op<"TPUExecuteAndUpdateVariables", []> {
+def TF_TPUExecuteAndUpdateVariablesOp : TF_Op<"TPUExecuteAndUpdateVariables", [DeclareOpInterfaceMethods<MemoryEffectsOpInterface>]> {
   let summary = [{
 Op that executes a program with optional in-place variable updates.
   }];
@@ -14181,6 +14181,8 @@ output. For the internal use of the distributed TPU compiler.
 
   TF_DerivedOperandTypeListAttr Targs = TF_DerivedOperandTypeListAttr<0>;
   TF_DerivedResultTypeListAttr Tresults = TF_DerivedResultTypeListAttr<0>;
+
+  let verifier = [{ return Verify(*this); }];
 }
 
 def TF_TPUGetLayoutOp : TF_Op<"TPUGetLayoutOp", [NoSideEffect]> {
@@ -15729,6 +15731,24 @@ Checks whether a resource handle-based variable has been initialized.
   let hasCanonicalizer = 1;
 }
 
+def TF_VariableOp : TF_Op<"Variable", []> {
+  let summary = "Use VariableV2 instead.";
+
+  let arguments = (ins
+    TF_ShapeAttr:$shape,
+    StrAttr:$container,
+    StrAttr:$shared_name
+  );
+
+  let results = (outs
+    TF_Tensor:$ref
+  );
+
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+
+  let hasCanonicalizer = 1;
+}
+
 def TF_VariableShapeOp : TF_Op<"VariableShape", []> {
   let summary = "Returns the shape of the variable pointed to by `resource`.";
 
@@ -16206,7 +16226,7 @@ https://www.tensorflow.org/performance/xla/operation_semantics#reducewindow .
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_XlaReplicaIdOp : TF_Op<"XlaReplicaId", [NoSideEffect]> {
+def TF_XlaReplicaIdOp : TF_Op<"XlaReplicaId", [NoSideEffect, TF_NoConstantFold]> {
   let summary = "Replica ID.";
 
   let arguments = (ins);
@@ -16214,6 +16234,9 @@ def TF_XlaReplicaIdOp : TF_Op<"XlaReplicaId", [NoSideEffect]> {
   let results = (outs
     TF_Int32Tensor:$id
   );
+
+  // Constant folding is disabled for this op as it is a runtime op and can't
+  // constant folded at the compile time.
 }
 
 def TF_XlaScatterOp : TF_Op<"XlaScatter", [NoSideEffect]> {

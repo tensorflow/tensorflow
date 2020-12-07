@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.h"
 #include "mlir-hlo/Dialect/mhlo/IR/infer_fusibility_op_interface.h"
+#include "mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_enums.h"
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_structs.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Dialect.h"

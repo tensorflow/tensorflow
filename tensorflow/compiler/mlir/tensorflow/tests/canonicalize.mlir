@@ -1301,3 +1301,15 @@ func @testMatrixSetDiagV2(%arg0: tensor<3x3xi64>, %arg1: tensor<3xi64>, %arg2: t
   // CHECK-SAME: {align = "LEFT_LEFT"}
 }
 
+// CHECK-LABEL: @testVariableToVariableV2
+func @testVariableToVariableV2() {
+  // CHECK-NOT: "tf.Variable"
+
+  %0 = "tf.Const"() { value = dense<1> : tensor<i32> } : () -> tensor<i32>
+  // CHECK: "tf.VariableV2"
+  %1 = "tf.Variable"() {container = "", dtype = i32, shared_name = "var", shape = #tf.shape<>} : () -> tensor<!tf.int32ref>
+  %2 = "tf.Assign"(%1, %0) : (tensor<!tf.int32ref>, tensor<i32>) -> (tensor<!tf.int32ref>)
+
+  return
+}
+

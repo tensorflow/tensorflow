@@ -581,6 +581,18 @@ func @main(%arg0: tensor<i32>) -> () {
 
 // Tests that the pass reports error on unknown element shape.
 
+func @main()  -> () {
+  %elem_shape = "tf.Const"() {value = dense<[-1, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
+  %max_size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
+  // expected-error @+1 {{unknown tensor list element shape}}
+  %tl = "tf.EmptyTensorList"(%elem_shape, %max_size) : (tensor<2xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<?x1xf32>>>
+  return
+}
+
+// -----
+
+// Tests that the pass reports error on unknown element shape.
+
 func @main(%arg0: tensor<*xi32>)  -> () {
   %max_size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
   // expected-error @+1 {{unknown tensor list element shape}}

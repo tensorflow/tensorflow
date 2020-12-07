@@ -160,6 +160,7 @@ bool ImplementedAsLibraryCall(const HloInstruction& hlo);
 // Returns true if either the dimensions being reduced or the dimensions being
 // kept are contiguous in the input of the reduce instruction.
 bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce);
+bool IsReductionFromOrToContiguousDimensions(mlir::Operation* reduce);
 
 // Returns whether unnested_hlo is an input fusion whose root is either a slice
 // or a tuple of slices. If verify_no_strides is true, returns false unless all
@@ -187,6 +188,8 @@ struct ReductionDimensions {
 // dimensions to reduce or the dimensions to keep are consecutive.
 ReductionDimensions GetReductionKindAndContiguousComponents(
     const HloInstruction& reduce);
+ReductionDimensions GetReductionKindAndContiguousComponents(
+    mlir::Operation* reduce);
 
 // Get tiling per thread for the given reduction in dimensions [D, H, W] per
 // thread.
@@ -223,6 +226,8 @@ llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b);
 // `first_reduce`.
 bool IsFusedReductionOutputConsistent(const HloInstruction* inst,
                                       const HloInstruction* first_reduce);
+bool IsFusedReductionOutputConsistent(mlir::mhlo::ReduceOp inst,
+                                      mlir::mhlo::ReduceOp first_reduce);
 
 inline bool AreFusedReductionOutputsConsistent(
     absl::Span<const HloInstruction* const> output_instructions,

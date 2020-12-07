@@ -30,8 +30,10 @@ limitations under the License.
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_generated_ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td"
 include "mlir/Interfaces/CallInterfaces.td"
+include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/LoopLikeInterface.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/IR/OpBase.td"
 
 class TF_TensorListInitOp<string mnemonic> : TF_Op<mnemonic, [NoSideEffect]> {
@@ -352,7 +354,8 @@ else_branch: A function that takes 'inputs' and returns a list of
 }
 
 def TF_YieldOp : TF_Op<"Yield",
-      [Terminator, ParentOneOf<["CaseRegionOp", "IfRegionOp", "WhileRegionOp"]>]> {
+      [NoSideEffect, ReturnLike, Terminator,
+       ParentOneOf<["CaseRegionOp", "IfRegionOp", "WhileRegionOp"]>]> {
   let summary = "Yield operation";
 
   let description = [{
