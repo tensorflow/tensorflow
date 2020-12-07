@@ -32,8 +32,10 @@ struct BConv2DArguments {
   nn_image_params_t y;
   nn_window_params_t k;
 
-  bnn_b32_t *Y_bitpacked;
-  int8_t *Y_int8;
+  union {
+    bnn_b32_t *Y_bitpacked;
+    int8_t *Y_int8;
+  };
 
   // for bitpacked only
   const int32_t *thresholds;
@@ -63,8 +65,8 @@ ATTRIBUTE_THREAD_FUNCTION void bconv2d_bitpacked_deepin_thread_worker(
   auto *td = static_cast<BConv2DThreadData *>(context);
   auto *job = td->job;
   while (job) {
-    bconv2d_bin_DI_valid(td->args->Y_bitpacked, (bnn_b256_t *)td->args->X,
-                         (bnn_b256_t *)td->args->K, td->args->thresholds,
+    bconv2d_bin_DI_valid(td->args->Y_bitpacked, (const bnn_b256_t *)td->args->X,
+                         (const bnn_b256_t *)td->args->K, td->args->thresholds,
                          &td->args->x, &td->args->y, &td->args->k, job->left,
                          job->top, job->cols, job->rows);
     job = job->next;
@@ -89,10 +91,11 @@ ATTRIBUTE_THREAD_FUNCTION void bconv2d_int8_deepin_deepout_thread_worker(
   auto *job = td->job;
   while (job) {
     bconv2d_int8_DIDO_valid(
-        td->args->Y_int8, (bnn_b256_t *)td->args->X, (bnn_b256_t *)td->args->K,
-        td->args->post_act_mult, td->args->post_act_bias, td->args->accu_shr,
-        td->args->bias_multiplier, td->args->final_shr, &td->args->x,
-        &td->args->y, &td->args->k, job->left, job->top, job->cols, job->rows);
+        td->args->Y_int8, (const bnn_b256_t *)td->args->X,
+        (const bnn_b256_t *)td->args->K, td->args->post_act_mult,
+        td->args->post_act_bias, td->args->accu_shr, td->args->bias_multiplier,
+        td->args->final_shr, &td->args->x, &td->args->y, &td->args->k,
+        job->left, job->top, job->cols, job->rows);
     job = job->next;
   }
 }
@@ -337,8 +340,8 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
       kernel_type == BConv2DKernelType::INT8) {
     int thread_scratch_size =
         4 * (op_data->args.k.shape.height * op_data->args.k.shape.width *
-                 op_data->args.x.channels / 32 +
-             8);
+                 op_data->args.x.channels / XS1_ALL_BITS_SIZE +
+             XS3_VPU_VREG_WIDTH_WORDS);
     for (int thread_idx = 0; thread_idx < op_data->n_threads; thread_idx++) {
       TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
           context, thread_scratch_size,
