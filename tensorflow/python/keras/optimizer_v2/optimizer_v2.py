@@ -1004,7 +1004,7 @@ class OptimizerV2(trackable.Trackable):
       lr_t = math_ops.cast(lr_t(local_step), var_dtype)
     if self._initial_decay > 0.:
       local_step = math_ops.cast(self.iterations, var_dtype)
-      decay_t = self._get_hyper("decay", var_dtype)
+      decay_t = math_ops.cast(self._initial_decay, var_dtype)
       lr_t = lr_t / (1. + decay_t * local_step)
     return lr_t
 
