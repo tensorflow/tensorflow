@@ -66,12 +66,6 @@ void RemoveIf(protobuf::RepeatedPtrField<T>* array, Pred&& pred) {
   array->DeleteSubrange(i, array->size() - i);
 }
 
-// Creates a Timespan from an XEvent.
-// WARNING: This should only be used when comparing events from the same XLine.
-Timespan XEventTimespan(const XEvent& event) {
-  return Timespan(event.offset_ps(), event.duration_ps());
-}
-
 }  // namespace
 
 const XPlane* FindPlaneWithName(const XSpace& space, absl::string_view name) {

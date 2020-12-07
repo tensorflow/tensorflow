@@ -22,10 +22,17 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/core/profiler/utils/timespan.h"
 #include "tensorflow/core/profiler/utils/trace_utils.h"
 
 namespace tensorflow {
 namespace profiler {
+
+// Returns a Timespan from an XEvent.
+// WARNING: This should only be used when comparing events from the same XLine.
+inline Timespan XEventTimespan(const XEvent& event) {
+  return Timespan(event.offset_ps(), event.duration_ps());
+}
 
 // Returns the plane with the given name or nullptr if not found.
 const XPlane* FindPlaneWithName(const XSpace& space, absl::string_view name);
