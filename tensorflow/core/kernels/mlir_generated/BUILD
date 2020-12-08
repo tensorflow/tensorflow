@@ -289,7 +289,7 @@ gen_kernel_library(
     generate_unranked = True,
     tile_size = "256",
     types = ["i1"],
-    unroll_factors = "4",
+    unroll_factors = "1",
 )
 
 gen_kernel_library(
