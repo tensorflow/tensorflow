@@ -342,11 +342,7 @@ StatusOr<std::unique_ptr<Literal>> OutfeedReceiverImpl::ReceiveRawFromOutfeed(
     const PjRtDevice* device, const Shape& shape) {
   std::shared_ptr<Literal> literal_shared;
 
-  TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                      device->GetLocalDeviceState());
-  TF_ASSIGN_OR_RETURN(Literal literal,
-                      local_device->client()->TransferFromOutfeedLocal(
-                          shape, local_device->device_ordinal()));
+  TF_ASSIGN_OR_RETURN(Literal literal, device->TransferFromOutfeed(shape));
 
   return absl::make_unique<Literal>(std::move(literal));
 }
@@ -413,8 +409,9 @@ Status OutfeedReceiverImpl::SendShutdownOutfeedHeader(int device_idx) {
                       devices_[device_idx]->client()->Compile(
                           computation, std::move(compile_options)));
   ExecuteOptions execute_options;
-  TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<PjRtBuffer>> output_buffers,
-                      executable->Execute({}, execute_options));
+  TF_ASSIGN_OR_RETURN(
+      std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers,
+      executable->Execute({{}}, execute_options));
   return Status::OK();
 }
 

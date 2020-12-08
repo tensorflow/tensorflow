@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFR_IR_TFR_OPS_H_
 #define TENSORFLOW_COMPILER_MLIR_TFR_IR_TFR_OPS_H_
 
+#include "llvm/ADT/StringSet.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project

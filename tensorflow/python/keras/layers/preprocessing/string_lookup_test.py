@@ -202,6 +202,12 @@ class StringLookupVocabularyTest(keras_parameterized.TestCase,
     self.assertAllEqual(expected_vocab, layer_vocab)
     self.assertIsInstance(layer_vocab[0], six.text_type)
 
+    inverse_layer = get_layer_class()(vocabulary=layer.get_vocabulary(),
+                                      invert=True)
+    layer_vocab = inverse_layer.get_vocabulary()
+    self.assertAllEqual(expected_vocab, layer_vocab)
+    self.assertIsInstance(layer_vocab[0], six.text_type)
+
   def test_int_output_explicit_vocab_from_file(self):
     vocab_list = ["earth", "wind", "and", "fire"]
     vocab_path = self._write_to_temp_file("vocab_file", vocab_list)

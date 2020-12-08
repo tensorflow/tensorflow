@@ -26,8 +26,8 @@ static const char kCpuPlatformName[] = "cpu";
 
 CpuDevice::CpuDevice(int id,
                      std::unique_ptr<LocalDeviceState> local_device_state)
-    : PjRtDevice(id, std::move(local_device_state),
-                 /*device_kind=*/kCpuPlatformName) {}
+    : PjRtStreamExecutorDevice(id, std::move(local_device_state),
+                               /*device_kind=*/kCpuPlatformName) {}
 
 StatusOr<std::unique_ptr<PjRtClient>> GetCpuClient(bool asynchronous) {
   TF_ASSIGN_OR_RETURN(se::Platform * platform,

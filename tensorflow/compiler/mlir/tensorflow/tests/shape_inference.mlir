@@ -479,6 +479,218 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     return
   }
 
+  // CHECK-LABEL: single_mutation_same_element_shape
+  func @single_mutation_same_element_shape() {
+    %elem_shape = "tf.Const"() {value = dense<[-1, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
+    %size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
+    %elem = "tf._SomeOp"() : () -> tensor<16x1xf32>
+    // CHECK: EmptyTensorList
+    // CHECK-SAME: tensor<!tf.variant<tensor<16x1xf32>>>
+    %tl_0 = "tf.EmptyTensorList"(%elem_shape, %size) : (tensor<2xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<?x1xf32>>>
+    %tl_1 = "tf.TensorListPushBack"(%tl_0, %elem) : (tensor<!tf.variant<tensor<?x1xf32>>>, tensor<16x1xf32>) -> tensor<!tf.variant<tensor<?x1xf32>>>
+    %tl_2 = "tf.TensorListPushBack"(%tl_1, %elem) : (tensor<!tf.variant<tensor<?x1xf32>>>, tensor<16x1xf32>) -> tensor<!tf.variant<tensor<?x1xf32>>>
+    %stack = "tf.TensorListStack"(%tl_2, %elem_shape) {num_elements = -1 : i64} : (tensor<!tf.variant<tensor<?x1xf32>>>, tensor<2xi32>) -> tensor<*xf32>
+    return
+  }
+
+  // CHECK-LABEL: single_mutation_multiple_element_shape
+  func @single_mutation_multiple_element_shape() {
+    %elem_shape = "tf.Const"() {value = dense<[-1, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
+    %size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
+    %elem_0 = "tf._SomeOp"() : () -> tensor<16x1xf32>
+    %elem_1 = "tf._SomeOtherOp"() : () -> tensor<8x1xf32>
+    // CHECK: EmptyTensorList
+    // CHECK-SAME: tensor<!tf.variant<tensor<?x1xf32>>>
+    %tl_0 = "tf.EmptyTensorList"(%elem_shape, %size) : (tensor<2xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<?x1xf32>>>
+    %tl_1 = "tf.TensorListPushBack"(%tl_0, %elem_0) : (tensor<!tf.variant<tensor<?x1xf32>>>, tensor<16x1xf32>) -> tensor<!tf.variant<tensor<?x1xf32>>>
+    %tl_2 = "tf.TensorListPushBack"(%tl_1, %elem_1) : (tensor<!tf.variant<tensor<?x1xf32>>>, tensor<8x1xf32>) -> tensor<!tf.variant<tensor<?x1xf32>>>
+    return
+  }
+
+  // CHECK-LABEL: single_mutation_dynamic_element_shape
+  func @single_mutation_dynamic_element_shape() {
+    %elem_shape = "tf.Const"() {value = dense<[-1, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
+    %size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
+    %elem_0 = "tf._SomeOp"() : () -> tensor<16x1xf32>
+    %elem_1 = "tf._SomeOtherOp"() : () -> tensor<?x1xf32>
+    // CHECK: EmptyTensorList
+    // CHECK-SAME: tensor<!tf.variant<tensor<?x1xf32>>>
+    %tl_0 = "tf.EmptyTensorList"(%elem_shape, %size) : (tensor<2xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<?x1xf32>>>
+    %tl_1 = "tf.TensorListPushBack"(%tl_0, %elem_0) : (tensor<!tf.variant<tensor<?x1xf32>>>, tensor<16x1xf32>) -> tensor<!tf.variant<tensor<?x1xf32>>>
+    %tl_2 = "tf.TensorListPushBack"(%tl_1, %elem_1) : (tensor<!tf.variant<tensor<?x1xf32>>>, tensor<?x1xf32>) -> tensor<!tf.variant<tensor<?x1xf32>>>
+    return
+  }
+
+  // CHECK-LABEL: multiple_mutation_same_element_shape
+  func @multiple_mutation_same_element_shape() {
+    %elem_shape = "tf.Const"() {value = dense<[-1, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
+    %size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
+    %elem_0 = "tf._SomeOp"() : () -> tensor<16x1xf32>
+    %elem_1 = "tf._SomeOtherOp"() : () -> tensor<16x1xf32>
+    // CHECK: EmptyTensorList
+    // CHECK-SAME: tensor<!tf.variant<tensor<16x1xf32>>>
+    %tl_0 = "tf.EmptyTensorList"(%elem_shape, %size) : (tensor<2xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<?x1xf32>>>
+    %tl_1 = "tf.TensorListPushBack"(%tl_0, %elem_0) : (tensor<!tf.variant<tensor<?x1xf32>>>, tensor<16x1xf32>) -> tensor<!tf.variant<tensor<?x1xf32>>>
+    %resize = "tf.Const"() {value = dense<20> : tensor<i32>} : () -> tensor<i32>
+    %tl_2 = "tf.TensorListResize"(%tl_0, %resize) : (tensor<!tf.variant<tensor<?x1xf32>>>, tensor<i32>) -> tensor<!tf.variant<tensor<?x1xf32>>>
+    return
+  }
+
+  // CHECK-LABEL: multiple_mutation_multiple_element_shape
+  func @multiple_mutation_multiple_element_shape() {
+    %elem_shape = "tf.Const"() {value = dense<[-1, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
+    %size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
+    %elem_0 = "tf._SomeOp"() : () -> tensor<16x1xf32>
+    // CHECK: EmptyTensorList
+    // CHECK-SAME: tensor<!tf.variant<tensor<?x1xf32>>>
+    %tl_0 = "tf.EmptyTensorList"(%elem_shape, %size) : (tensor<2xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<?x1xf32>>>
+    %tl_1 = "tf.TensorListPushBack"(%tl_0, %elem_0) : (tensor<!tf.variant<tensor<?x1xf32>>>, tensor<16x1xf32>) -> tensor<!tf.variant<tensor<?x1xf32>>>
+    %tl_2 = "tf.TensorListPushBack"(%tl_1, %elem_0) : (tensor<!tf.variant<tensor<?x1xf32>>>, tensor<16x1xf32>) -> tensor<!tf.variant<tensor<?x1xf32>>>
+    %zero = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+    %elem_1 = "tf._SomeOtherOp"() : () -> tensor<8x1xf32>
+    %tl_3 = "tf.TensorListSetItem"(%tl_1, %zero, %elem_1) : (tensor<!tf.variant<tensor<?x1xf32>>>, tensor<i32>, tensor<8x1xf32>) -> tensor<!tf.variant<tensor<?x1xf32>>>
+    return
+  }
+
+  // CHECK-LABEL: multiple_mutation_dynamic_element_shape
+  func @multiple_mutation_dynamic_element_shape() {
+    %elem_shape = "tf.Const"() {value = dense<[-1, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
+    %size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
+    %elem_0 = "tf._SomeOp"() : () -> tensor<16x1xf32>
+    // CHECK: EmptyTensorList
+    // CHECK-SAME: tensor<!tf.variant<tensor<?x1xf32>>>
+    %tl_0 = "tf.EmptyTensorList"(%elem_shape, %size) : (tensor<2xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<?x1xf32>>>
+    %tl_1 = "tf.TensorListPushBack"(%tl_0, %elem_0) : (tensor<!tf.variant<tensor<?x1xf32>>>, tensor<16x1xf32>) -> tensor<!tf.variant<tensor<?x1xf32>>>
+    %tl_2 = "tf.TensorListPushBack"(%tl_1, %elem_0) : (tensor<!tf.variant<tensor<?x1xf32>>>, tensor<16x1xf32>) -> tensor<!tf.variant<tensor<?x1xf32>>>
+    %zero = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+    %elem_1 = "tf._SomeOtherOp"() : () -> tensor<?x1xf32>
+    %tl_3 = "tf.TensorListSetItem"(%tl_1, %zero, %elem_1) : (tensor<!tf.variant<tensor<?x1xf32>>>, tensor<i32>, tensor<?x1xf32>) -> tensor<!tf.variant<tensor<?x1xf32>>>
+    return
+  }
+
+  // CHECK-LABEL: infer_subtype_from_scatter
+  func @infer_subtype_from_scatter() {
+    %elem_shape = "tf.Const"() {value = dense<[-1, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
+    %size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
+    %tensors = "tf._SomeOp"() : () -> tensor<3x16x1xf32>
+    %indices = "tf.Const"() {value = dense<[2, 5, 9]> : tensor<3xi32>} : () -> tensor<3xi32>
+    // CHECK: TensorListReserve
+    // CHECK-SAME: tensor<!tf.variant<tensor<16x1xf32>>>
+    %tl_0 = "tf.TensorListReserve"(%elem_shape, %size) : (tensor<2xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<?x1xf32>>>
+    %tl_1 = "tf.TensorListScatterIntoExistingList"(%tl_0, %tensors, %indices) : (tensor<!tf.variant<tensor<?x1xf32>>>, tensor<3x16x1xf32>, tensor<3xi32>) -> tensor<!tf.variant<tensor<?x1xf32>>>
+    return
+  }
+
+  // CHECK-LABEL: tensorlist_from_tensor
+  func @tensorlist_from_tensor() {
+    %elem_shape = "tf.Const"() {value = dense<[-1, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
+    %tensors = "tf._SomeOp"() : () -> tensor<10x16x1xf32>
+    // CHECK: TensorListFromTensor
+    // CHECK-SAME: tensor<!tf.variant<tensor<16x1xf32>>>
+    %tl = "tf.TensorListFromTensor"(%tensors, %elem_shape) : (tensor<10x16x1xf32>, tensor<2xi32>) -> tensor<!tf.variant<tensor<?x1xf32>>>
+    return
+  }
+
+  // CHECK-LABEL: infer_subtype_from_write_while
+  func @infer_subtype_from_write_while() {
+    %zero = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+    %one = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+    %elem_shape = "tf.Const"() {value = dense<[-1, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
+    %size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
+    // CHECK: TensorListReserve
+    // CHECK-SAME: tensor<!tf.variant<tensor<16x1xf32>>>
+    %tl = "tf.TensorListReserve"(%elem_shape, %size) : (tensor<2xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<?x1xf32>>>
+    %while:2 = "tf.WhileRegion"(%zero, %tl) ({
+      ^bb0(%barg0: tensor<i32>, %barg1: tensor<!tf.variant<tensor<?x1xf32>>>): // no predeceessors
+        %cond = "tf.Less"(%barg0, %size) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+        "tf.Yield"(%cond) : (tensor<i1>) -> ()
+    }, {
+      ^bb0(%barg0: tensor<i32>, %barg1: tensor<!tf.variant<tensor<?x1xf32>>>): // no predeceessors
+      %index = "tf.AddV2"(%barg0, %one) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+      %elem = "tf._SomeOp"() : () -> tensor<16x1xf32>
+      %tl_loop = "tf.TensorListSetItem"(%barg1, %index, %elem) : (tensor<!tf.variant<tensor<?x1xf32>>>, tensor<i32>, tensor<16x1xf32>) -> tensor<!tf.variant<tensor<?x1xf32>>>
+      "tf.Yield"(%index, %tl_loop) : (tensor<i32>, tensor<!tf.variant<tensor<?x1xf32>>>) -> ()
+    }) {is_stateless = false} : (tensor<i32>, tensor<!tf.variant<tensor<?x1xf32>>>) -> (tensor<i32>, tensor<!tf.variant<tensor<?x1xf32>>>)
+    return
+  }
+
+  // CHECK-LABEL: tensor_list_if_region_yield_multiple_elem_shape
+  func @tensor_list_if_region_yield_multiple_elem_shape(%arg0: tensor<i1>) -> () {
+    %zero = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+    %one = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+    %elem_shape = "tf.Const"() {value = dense<[-1, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
+    %size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
+    // CHECK: TensorListReserve
+    // CHECK-SAME: tensor<!tf.variant<tensor<?x1xf32>>>
+    %tl_0 = "tf.TensorListReserve"(%elem_shape, %size) : (tensor<2xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<?x1xf32>>>
+    %elem_0 = "tf.SomeOp"() : () -> tensor<16x1xf32>
+    %elem_1 = "tf.SomeOp"() : () -> tensor<16x1xf32>
+    %elem_2 = "tf.SomeOp"() : () -> tensor<8x1xf32>
+    %tl_1 = "tf.IfRegion"(%arg0) ({
+      %tl_true = "tf.TensorListSetItem"(%tl_0, %zero, %elem_0) : (tensor<!tf.variant<tensor<?x1xf32>>>, tensor<i32>, tensor<16x1xf32>) -> tensor<!tf.variant<tensor<?x1xf32>>>
+      "tf.Yield"(%tl_true) : (tensor<!tf.variant<tensor<?x1xf32>>>) -> ()
+    }, {
+      %tl_false = "tf.TensorListSetItem"(%tl_0, %zero, %elem_1) : (tensor<!tf.variant<tensor<?x1xf32>>>, tensor<i32>, tensor<16x1xf32>) -> tensor<!tf.variant<tensor<?x1xf32>>>
+      "tf.Yield"(%tl_false) : (tensor<!tf.variant<tensor<?x1xf32>>>) -> ()
+    }) {is_stateless = false} : (tensor<i1>) -> tensor<!tf.variant<tensor<?x1xf32>>>
+    %tl_2 = "tf.TensorListSetItem"(%tl_1, %one, %elem_2) : (tensor<!tf.variant<tensor<?x1xf32>>>, tensor<i32>, tensor<8x1xf32>) -> tensor<!tf.variant<tensor<?x1xf32>>>
+    return
+  }
+
+  // CHECK-LABEL: while_result_multiple_element_shape
+  func @while_result_multiple_element_shape() {
+    %zero = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+    %one = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+    %elem_shape = "tf.Const"() {value = dense<[-1, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
+    %size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
+    // CHECK: TensorListReserve
+    // CHECK-SAME: tensor<!tf.variant<tensor<?x1xf32>>>
+    %tl = "tf.TensorListReserve"(%elem_shape, %size) : (tensor<2xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<?x1xf32>>>
+    %while:2 = "tf.WhileRegion"(%zero, %tl) ({
+      ^bb0(%barg0: tensor<i32>, %barg1: tensor<!tf.variant<tensor<?x1xf32>>>): // no predeceessors
+        %cond = "tf.Less"(%barg0, %size) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+        "tf.Yield"(%cond) : (tensor<i1>) -> ()
+    }, {
+      ^bb0(%barg0: tensor<i32>, %barg1: tensor<!tf.variant<tensor<?x1xf32>>>): // no predeceessors
+      %index = "tf.AddV2"(%barg0, %one) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+      %elem_0 = "tf._SomeOp"() : () -> tensor<16x1xf32>
+      %tl_loop = "tf.TensorListSetItem"(%barg1, %index, %elem_0) : (tensor<!tf.variant<tensor<?x1xf32>>>, tensor<i32>, tensor<16x1xf32>) -> tensor<!tf.variant<tensor<?x1xf32>>>
+      "tf.Yield"(%index, %tl_loop) : (tensor<i32>, tensor<!tf.variant<tensor<?x1xf32>>>) -> ()
+    }) {is_stateless = false} : (tensor<i32>, tensor<!tf.variant<tensor<?x1xf32>>>) -> (tensor<i32>, tensor<!tf.variant<tensor<?x1xf32>>>)
+    %elem_1 = "tf._SomeOtherOp"() : () -> tensor<8x1xf32>
+    %tl_set_item = "tf.TensorListSetItem"(%while#1, %one, %elem_1) : (tensor<!tf.variant<tensor<?x1xf32>>>, tensor<i32>, tensor<8x1xf32>) -> tensor<!tf.variant<tensor<?x1xf32>>>
+    return
+  }
+
+  // CHECK-LABEL: do_not_refine_tensorlist_with_unknown_user
+  func @do_not_refine_tensorlist_with_unknown_user() {
+    %elem_shape = "tf.Const"() {value = dense<[-1, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
+    %size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
+    %elem = "tf._SomeOp"() : () -> tensor<16x1xf32>
+    // CHECK: EmptyTensorList
+    // CHECK-SAME: tensor<!tf.variant<tensor<?x1xf32>>>
+    %tl_0 = "tf.EmptyTensorList"(%elem_shape, %size) : (tensor<2xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<?x1xf32>>>
+    %tl_1 = "tf.TensorListPushBack"(%tl_0, %elem) : (tensor<!tf.variant<tensor<?x1xf32>>>, tensor<16x1xf32>) -> tensor<!tf.variant<tensor<?x1xf32>>>
+    "tf.UnknownTensorListUser"(%tl_1) : (tensor<!tf.variant<tensor<?x1xf32>>>) -> ()
+    return
+  }
+
+  // CHECK-LABEL: replace_tensor_list_element_shape
+  func @replace_tensor_list_element_shape() {
+    // CHECK: %[[ELEMENT_SHAPE:.*]] = "tf.Const"() {value = dense<[-1, 1]> : tensor<2xi32>}
+    %elem_shape = "tf.Const"() {value = dense<[-1, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
+    %size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
+    %elem = "tf._SomeOp"() : () -> tensor<16x1xf32>
+    // CHECK: EmptyTensorList
+    // CHECK-SAME: tensor<!tf.variant<tensor<16x1xf32>>>
+    %tl_0 = "tf.EmptyTensorList"(%elem_shape, %size) : (tensor<2xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<?x1xf32>>>
+    %tl_1 = "tf.TensorListPushBack"(%tl_0, %elem) : (tensor<!tf.variant<tensor<?x1xf32>>>, tensor<16x1xf32>) -> tensor<!tf.variant<tensor<?x1xf32>>>
+    %shape = "tf.TensorListElementShape"(%tl_1) : (tensor<!tf.variant<tensor<?x1xf32>>>) -> tensor<?xi32>
+    // CHECK: "tf._SomeOtherOp"(%[[ELEMENT_SHAPE]])
+    "tf._SomeOtherOp"(%shape) : (tensor<?xi32>) -> ()
+    return
+  }
+
   // CHECK-LABEL: do_not_unrefine_fully_defined_subtypes
   func @do_not_unrefine_fully_defined_subtypes() {
     %elem_shape = "tf.Const"() {value = dense<[-1, 1]> : tensor<2xi32>} : () -> tensor<2xi32>

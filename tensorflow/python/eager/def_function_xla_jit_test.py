@@ -153,6 +153,9 @@ class DefFunctionTest(xla_test.XLATestCase):
   @test_util.disable_mlir_bridge('TODO(b/162272821): MLIR bridge returns'
                                  ' wrong status type')
   def testUnsupportedOps(self):
+    if 'tpu' in self.device.lower():
+      self.skipTest('XLA TPU supports tf.unique')
+
     with ops.device('device:{}:0'.format(self.device)):
 
       def fn(x):
@@ -243,6 +246,8 @@ class DefFunctionTest(xla_test.XLATestCase):
   @test_util.disable_mlir_bridge('TODO(b/162272821): MLIR bridge returns '
                                  ' wrong status type')
   def testMethodCompilationUnsupportedFunc(self):
+    if 'tpu' in self.device.lower():
+      self.skipTest('XLA TPU supports tf.unique')
 
     with ops.device('device:{}:0'.format(self.device)):
 

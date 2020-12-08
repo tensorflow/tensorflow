@@ -114,21 +114,22 @@ limitations under the License.
 
 namespace xla {
 
-PjRtPlatformId PjRtDevice::platform_id() const {
+PjRtPlatformId PjRtStreamExecutorDevice::platform_id() const {
   return client_->platform_id();
 }
-const std::string& PjRtDevice::platform_name() const {
+const std::string& PjRtStreamExecutorDevice::platform_name() const {
   return client_->platform_name();
 }
 
-StatusOr<LocalDeviceState*> PjRtDevice::GetLocalDeviceState() const {
+StatusOr<LocalDeviceState*> PjRtStreamExecutorDevice::GetLocalDeviceState()
+    const {
   if (local_device_state_) {
     return local_device_state_.get();
   }
   return InvalidArgument("Device %s is not a local device.", DebugString());
 }
 
-std::string PjRtDevice::DebugString() const {
+std::string PjRtStreamExecutorDevice::DebugString() const {
   return absl::StrCat(platform_name(), ":", id());
 }
 
@@ -153,14 +154,15 @@ StatusOr<DeviceAssignment> DevicesToDeviceAssignment(
           devices[replica].size(), replica, devices[0].size());
     }
     for (int partition = 0; partition < devices[replica].size(); ++partition) {
-      if (devices[0][0]->platform_id() !=
-          devices[replica][partition]->platform_id()) {
+      if (devices[0][0]->client()->platform_id() !=
+          devices[replica][partition]->client()->platform_id()) {
         return InvalidArgument(
             "Device assignment passed to Compile() must have devices of a "
             "single kind, got %s for replica 0 partition 0 and %s for replica "
             "%d partition %d.",
-            devices[0][0]->platform_name(),
-            devices[replica][partition]->platform_name(), replica, partition);
+            devices[0][0]->client()->platform_name(),
+            devices[replica][partition]->client()->platform_name(), replica,
+            partition);
       }
       xla_assignment(replica, partition) = devices[replica][partition]->id();
     }
@@ -215,15 +217,16 @@ PjRtClient::PjRtClient(
     CHECK(id_to_device_.insert({device->id(), device.get()}).second)
         << "Duplicate device id: " << device->id();
 
-    if (device->IsLocalDevice()) {
-      int idx = device->local_device_id();
+    if (device->IsAddressable()) {
+      int idx = device->local_hardware_id();
       if (idx >= local_devices_.size()) {
         local_devices_.resize(idx + 1);
       }
       CHECK(local_devices_[idx] == nullptr) << idx;
       local_devices_[idx] = device.get();
     }
-    device->SetClient(this);
+    tensorflow::down_cast<PjRtStreamExecutorDevice*>(device.get())
+        ->SetClient(this);
   }
   for (int idx = 0; idx < local_devices_.size(); ++idx) {
     CHECK(local_devices_[idx] != nullptr) << idx;
@@ -554,7 +557,8 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtClient::BufferFromHostBuffer(
     return InvalidArgument("Use BufferFromHostLiteral to transfer a tuple");
   }
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                      device->GetLocalDeviceState());
+                      tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
+                          ->GetLocalDeviceState());
   int64 size = ShapeUtil::ByteSizeOf(shape);
 
   TransferManager* transfer_manager = client()->backend().transfer_manager();
@@ -721,7 +725,8 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtClient::CreateUninitializedBuffer(
   VLOG(2) << "PjRtClient::CreateUninitializedBuffer: shape: "
           << shape.ToString() << " device: " << device->DebugString();
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                      device->GetLocalDeviceState());
+                      tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
+                          ->GetLocalDeviceState());
 
   TransferManager* transfer_manager = client()->backend().transfer_manager();
   TF_ASSIGN_OR_RETURN(Shape compact_shape,
@@ -739,7 +744,8 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtClient::BufferFromHostLiteral(
   VLOG(2) << "PjRtClient::BufferFromHostLiteral: shape: "
           << literal.shape().ToString() << " device: " << device->DebugString();
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                      device->GetLocalDeviceState());
+                      tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
+                          ->GetLocalDeviceState());
 
   TransferManager* transfer_manager = client()->backend().transfer_manager();
   TF_ASSIGN_OR_RETURN(
@@ -801,7 +807,9 @@ void PjRtClient::MakeCrossHostReceiveBuffers(
     return;
   }
 
-  auto local_device_or = device->GetLocalDeviceState();
+  auto local_device_or =
+      tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
+          ->GetLocalDeviceState();
   if (!local_device_or.ok()) {
     notifier(local_device_or.status());
     return;
@@ -828,27 +836,29 @@ void PjRtClient::MakeCrossHostReceiveBuffers(
 }
 
 // Transfer the given literal to the infeed queue of the given local device.
-Status PjRtDevice::TransferToInfeed(const LiteralSlice& literal) const {
+Status PjRtStreamExecutorDevice::TransferToInfeed(
+    const LiteralSlice& literal) const {
   // Only support infeed to local device.
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device, GetLocalDeviceState());
   return local_device->client()->TransferToInfeedLocal(
       literal, local_device->device_ordinal());
 }
 
-StatusOr<Literal> PjRtDevice::TransferFromOutfeed(const Shape& shape) const {
+StatusOr<Literal> PjRtStreamExecutorDevice::TransferFromOutfeed(
+    const Shape& shape) const {
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device, GetLocalDeviceState());
   return local_device->client()->TransferFromOutfeedLocal(
       shape, local_device->device_ordinal());
 }
 
-StatusOr<PjRtDevice*> PjRtClient::LookupLocalDevice(int local_device_id) const {
+StatusOr<PjRtDevice*> PjRtClient::LookupAddressableDevice(int device_id) const {
   for (auto* device : local_devices_) {
-    if (local_device_id == device->local_device_id()) {
+    if (device_id == device->local_hardware_id()) {
       return device;
     }
   }
-  return InvalidArgument("No matching device found for local_device_id %d",
-                         local_device_id);
+  return InvalidArgument("No matching device found for device_id %d",
+                         device_id);
 }
 
 PjRtBuffer::PjRtBuffer(Shape on_host_shape, Shape on_device_shape,
@@ -919,7 +929,9 @@ StatusOr<std::shared_ptr<TrackedDeviceBuffer>> PjRtBuffer::Release(
     // the final set of usage events.
     events = device_buffer->LockUseAndTransferUsageEvents();
   }
-  LocalDeviceState* local_device_state = device_->local_device_state();
+  LocalDeviceState* local_device_state =
+      tensorflow::down_cast<PjRtStreamExecutorDevice*>(device_)
+          ->local_device_state();
   if (wait_for_operations_to_complete) {
     // Block the host until all usage events have completed. Usage events
     // dominate definition events, so this also waits for the buffer to be
@@ -1080,7 +1092,9 @@ PjRtBuffer::CopyToHostAsyncInternal(bool discard_cached_copy,
   }
   ScopedHold device_buffer(this, ScopedHold::kUsage);
   std::shared_ptr<HostValue> host_value;
-  LocalDeviceState* local_device = device_->local_device_state();
+  LocalDeviceState* local_device =
+      tensorflow::down_cast<PjRtStreamExecutorDevice*>(device_)
+          ->local_device_state();
   se::Stream* stream = local_device->GetDeviceToHostStream();
   const xla::Layout& host_layout =
       layout.has_value() ? layout.value() : on_host_shape_.layout();
@@ -1241,8 +1255,9 @@ PjRtBuffer::CopyToDeviceHelper(
       // StallStreamOnError only makes sure the destination device is ok, so
       // make sure that the src buffer remains valid until after any transfers
       // have completed.
-      device_->local_device_state()->ThenRelease(transfer_stream,
-                                                 src_device_buffer);
+      tensorflow::down_cast<PjRtStreamExecutorDevice*>(device_)
+          ->local_device_state()
+          ->ThenRelease(transfer_stream, src_device_buffer);
     }
     return copy_event_or.status();
   }
@@ -1268,11 +1283,15 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBuffer::CopyToDevice(
         PjRtClient::HostBufferSemantics::kZeroCopy, nullptr, dst_device);
   }
 
-  TF_ASSIGN_OR_RETURN(LocalDeviceState * dst_local_device,
-                      dst_device->GetLocalDeviceState());
+  TF_ASSIGN_OR_RETURN(
+      LocalDeviceState * dst_local_device,
+      tensorflow::down_cast<PjRtStreamExecutorDevice*>(dst_device)
+          ->GetLocalDeviceState());
   LocalDeviceState* transfer_local_device =
-      client_->EnqueueD2DTransfersOnSrcStream() ? device_->local_device_state()
-                                                : dst_local_device;
+      client_->EnqueueD2DTransfersOnSrcStream()
+          ? tensorflow::down_cast<PjRtStreamExecutorDevice*>(device_)
+                ->local_device_state()
+          : dst_local_device;
   CHECK_EQ(dst_local_device->allocation_model(),
            transfer_local_device->allocation_model());
 
@@ -1310,7 +1329,9 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBuffer::CopyToDevice(
   // alternative is to ensure, before freeing the buffer, that the compute
   // stream is synchronized past the transfer, but it seems better to hold onto
   // the buffer too long than to stall the compute stream.
-  RecordUsage(std::move(src_device_buffer), device_->local_device_state(),
+  RecordUsage(std::move(src_device_buffer),
+              tensorflow::down_cast<PjRtStreamExecutorDevice*>(device_)
+                  ->local_device_state(),
               transfer_local_device, event, transfer_stream,
               /*prefer_to_retain_reference=*/true);
 
@@ -1332,7 +1353,9 @@ Status PjRtBuffer::BlockHostUntilReady() {
     }
     device_buffer = device_buffer_;
   }
-  LocalDeviceState* local_device_state = device_->local_device_state();
+  LocalDeviceState* local_device_state =
+      tensorflow::down_cast<PjRtStreamExecutorDevice*>(device_)
+          ->local_device_state();
   std::unique_ptr<se::Stream> stream;
   for (auto& event : device_buffer->definition_events()) {
     if (!event->IsComplete()) {
@@ -1458,13 +1481,14 @@ PjRtStreamExecutorExecutable::PjRtStreamExecutorExecutable(
     std::vector<std::unique_ptr<LocalExecutable>> executables,
     bool parameter_is_tupled_arguments,
     std::shared_ptr<DeviceAssignment> device_assignment,
-    std::vector<std::pair<int, int>> local_logical_device_ids,
-    std::vector<PjRtDevice*> local_devices, PjRtClient* client)
+    std::vector<LogicalDeviceIds> addressable_device_logical_ids,
+    std::vector<PjRtDevice*> addressable_devices, PjRtClient* client)
     : client_(client),
       device_assignment_(std::move(device_assignment)),
       parameter_is_tupled_arguments_(parameter_is_tupled_arguments),
-      local_logical_device_ids_(std::move(local_logical_device_ids)),
-      local_devices_(std::move(local_devices)) {
+      addressable_device_logical_ids_(
+          std::move(addressable_device_logical_ids)),
+      addressable_devices_(std::move(addressable_devices)) {
   executables_.reserve(executables.size());
   for (auto& executable : executables) {
     executables_.emplace_back(std::move(executable));
@@ -1475,13 +1499,13 @@ PjRtStreamExecutorExecutable::PjRtStreamExecutorExecutable(
     // This must go after `executables_` is initialized.
     VLOG(1) << "PjRtStreamExecutorExecutable portable single-core";
     num_partitions = 1;
-    CHECK(local_devices_.empty());
+    CHECK(addressable_devices_.empty());
   } else {
     // This must go after `executables_` is initialized.
     VLOG(1) << "PjRtStreamExecutorExecutable device_assignment:\n"
             << device_assignment_->ToString();
-    CHECK_GE(local_devices_.size(), 1) << device_assignment_->ToString();
-    CHECK_LE(local_devices_.size(), client_->local_device_count())
+    CHECK_GE(addressable_devices_.size(), 1) << device_assignment_->ToString();
+    CHECK_LE(addressable_devices_.size(), client_->local_device_count())
         << "Inconsistent local device count.";
     num_partitions = device_assignment_->computation_count();
   }
@@ -1627,7 +1651,9 @@ StatusOr<ScopedShapedBuffer> PjRtStreamExecutorExecutable::EnqueueExecution(
     int executable_idx, const RunId& run_id, const ExecuteOptions& options,
     PjRtDevice* device, std::vector<PjRtBuffer::ScopedHold>* device_buffers,
     std::shared_ptr<DeviceAssignment> device_assignment) const {
-  int device_ordinal = device->local_device_state()->device_ordinal();
+  int device_ordinal = tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
+                           ->local_device_state()
+                           ->device_ordinal();
   LocalDeviceState* device_state = &client_->device_state(device_ordinal);
   tensorflow::profiler::TraceMeConsumer activity(
       "LocalExecutable::Execute", tensorflow::profiler::ContextType::kPjRt,
@@ -1807,13 +1833,15 @@ PjRtStreamExecutorExecutable::ExecuteHelper(
     CHECK(device_assignment_ == nullptr);
     CHECK_EQ(replica, 0);
     CHECK_EQ(partition, 0);
-    CHECK(local_devices_.empty());
+    CHECK(addressable_devices_.empty());
     device_assignment = std::make_shared<DeviceAssignment>(1, 1);
     (*device_assignment)(0, 0) = device->id();
   }
 
   CHECK_EQ(device->host_id(), client_->host_id());
-  int device_ordinal = device->local_device_state()->device_ordinal();
+  int device_ordinal = tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
+                           ->local_device_state()
+                           ->device_ordinal();
   tensorflow::profiler::TraceMe traceme("LocalExecutable::Execute");
   VLOG(3) << "Replica " << replica << ", partition " << partition
           << " mapped to device ordinal for execution: " << device_ordinal;
@@ -1875,95 +1903,55 @@ PjRtStreamExecutorExecutable::ExecuteHelper(
   return outputs;
 }
 
-StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-PjRtStreamExecutorExecutable::Execute(
-    absl::Span<PjRtBuffer* const> argument_handles,
-    const ExecuteOptions& options) const {
-  if (num_replicas() != 1) {
-    return InvalidArgument(
-        "Attempted to execute computation with %d replicas using Execute()",
-        num_replicas());
-  }
-  if (num_partitions() != 1) {
-    return InvalidArgument(
-        "Attempted to execute computation with %d partitions using Execute()",
-        num_partitions());
-  }
-  VLOG(1) << "Executing computation " << name();
-  return ExecuteHelper(argument_handles, /*replica=*/0, /*partition=*/0,
-                       RunId(), options);
-}
-
-StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-PjRtStreamExecutorExecutable::ExecuteOnLocalDevice(
-    absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-    const ExecuteOptions& options) const {
-  if (device_assignment_ == nullptr) {
-    VLOG(1) << "Executing portable single-core program on "
-            << device->DebugString();
-    return ExecuteHelper(argument_handles,
-                         /*replica=*/0,
-                         /*partition=*/0, RunId(), options, device);
-  }
-  for (int i = 0; i < local_devices_.size(); ++i) {
-    if (local_devices_[i] == device) {
-      VLOG(1) << "Executing computation " << name();
-      return ExecuteHelper(argument_handles,
-                           /*replica=*/local_logical_device_ids_[i].first,
-                           /*partition=*/local_logical_device_ids_[i].second,
-                           RunId(), options);
-    }
-  }
-  return InvalidArgument(
-      "Attempted to execute on device id %d which is not a local device",
-      device->id());
-}
-
 StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
-PjRtStreamExecutorExecutable::ExecuteOnLocalDevices(
+PjRtStreamExecutorExecutable::Execute(
     absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
     const ExecuteOptions& options) const {
-  CHECK(device_assignment_ != nullptr);
+  if (device_assignment_ == nullptr) {
+    return InvalidArgument("Execute expects a non-null device_assignment");
+  }
 
   RunId run_id;
   tensorflow::profiler::TraceMeProducer activity(
-      "LocalExecutable::ExecuteOnLocalDevices",
+      "PjRtStreamExecutorExecutable::Execute",
       tensorflow::profiler::ContextType::kPjRt, run_id.ToInt());
 
-  const int num_local_devices = local_devices_.size();
+  const int num_addressable_devices = addressable_devices_.size();
 
-  if (argument_handles.size() != num_local_devices) {
+  if (argument_handles.size() != num_addressable_devices) {
     return InvalidArgument(
         "Attempted to execute with %d argument lists when local device "
         "count is %d (total replica count: %d, partition count: %d)",
-        argument_handles.size(), num_local_devices, num_replicas(),
+        argument_handles.size(), num_addressable_devices, num_replicas(),
         num_partitions());
   }
 
   VLOG(1) << "Executing computation " << name()
           << "; num_replicas=" << num_replicas()
           << " num_partitions=" << num_partitions()
-          << " num_local_devices=" << num_local_devices;
+          << " num_addressable_devices=" << num_addressable_devices;
   std::vector<StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>> results(
-      num_local_devices);
-  if (num_local_devices == 1) {
+      num_addressable_devices);
+  if (num_addressable_devices == 1) {
     // Fast-path if there is only one device — run the computation on the
     // current thread.
-    const int replica = local_logical_device_ids_[0].first;
-    const int partition = local_logical_device_ids_[0].second;
+    const int replica = addressable_device_logical_ids_[0].replica;
+    const int partition = addressable_device_logical_ids_[0].partition;
     results[0] =
         ExecuteHelper(argument_handles[0], replica, partition, run_id, options);
   } else {
     absl::Mutex mu;
-    int running = num_local_devices;
+    int running = num_addressable_devices;
     int failed = 0;
     Status first_failure_status;
 
-    for (int i = 0; i < num_local_devices; ++i) {
-      const int replica = local_logical_device_ids_[i].first;
-      const int partition = local_logical_device_ids_[i].second;
-      PjRtDevice* device = local_devices_[i];
-      const LocalDeviceState& device_state = *device->local_device_state();
+    for (int i = 0; i < num_addressable_devices; ++i) {
+      const int replica = addressable_device_logical_ids_[i].replica;
+      const int partition = addressable_device_logical_ids_[i].partition;
+      PjRtDevice* device = addressable_devices_[i];
+      const LocalDeviceState& device_state =
+          *tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
+               ->local_device_state();
       device_state.execute_thread()->Schedule([&, replica, partition, i] {
         results[i] = ExecuteHelper(argument_handles[i], replica, partition,
                                    run_id, options);
@@ -2008,10 +1996,10 @@ PjRtStreamExecutorExecutable::ExecuteOnLocalDevices(
   VLOG(1) << "Replicated execution complete.";
 
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> wrapped_results(
-      num_local_devices);
-  for (int i = 0; i < num_local_devices; ++i) {
-    const int replica = local_logical_device_ids_[i].first;
-    const int partition = local_logical_device_ids_[i].second;
+      num_addressable_devices);
+  for (int i = 0; i < num_addressable_devices; ++i) {
+    const int replica = addressable_device_logical_ids_[i].replica;
+    const int partition = addressable_device_logical_ids_[i].partition;
     auto& statusor = results[i];
     if (!statusor.ok()) {
       return AppendStatus(
@@ -2024,6 +2012,52 @@ PjRtStreamExecutorExecutable::ExecuteOnLocalDevices(
     wrapped_results[i] = std::move(statusor.ValueOrDie());
   }
   return wrapped_results;
+}
+
+StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+PjRtStreamExecutorExecutable::ExecuteSharded(
+    absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
+    const ExecuteOptions& options) const {
+  if (device_assignment_ == nullptr) {
+    return InvalidArgument("ExecuteShard expects a non-null device_assignment");
+  }
+  for (int i = 0; i < addressable_devices_.size(); ++i) {
+    if (addressable_devices_[i] == device) {
+      VLOG(1) << "ExecuteShard executes computation " << name()
+              << " on assigned replica/partition on device "
+              << device->DebugString();
+      return ExecuteHelper(
+          argument_handles, addressable_device_logical_ids_[i].replica,
+          addressable_device_logical_ids_[i].partition, RunId(), options);
+    }
+  }
+  return InvalidArgument(
+      "ExecuteShard attempted to execute on device id %d which is not "
+      "addressable by this client",
+      device->id());
+}
+
+StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+PjRtStreamExecutorExecutable::ExecutePortable(
+    absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
+    const ExecuteOptions& options) const {
+  if (device_assignment_ != nullptr) {
+    return InvalidArgument("ExecutePortable gets a non-portable executable");
+  }
+  if (num_replicas() != 1 || num_partitions() != 1) {
+    return InvalidArgument(
+        "ExecutePortable expects a single-core executable but gets "
+        "one with %d replica %d partition",
+        num_replicas(), num_partitions());
+  }
+  if (device == nullptr) {
+    return InvalidArgument("ExecutePortable expects a device to be specified");
+  }
+  VLOG(1) << "ExecutePortable executes single-core portable executable "
+          << name();
+  return ExecuteHelper(argument_handles,
+                       /*replica=*/0,
+                       /*partition=*/0, RunId(), options, device);
 }
 
 StatusOr<std::vector<std::shared_ptr<HloModule>>>
@@ -2220,9 +2254,12 @@ StatusOr<std::unique_ptr<PjRtExecutable>> PjRtClient::Compile(
   TF_RETURN_IF_ERROR(assign_layouts(sharded_shapes.second, &result_layout));
   build_options.set_result_layout(result_layout);
 
-  std::vector<std::pair<int, int>> local_logical_device_ids;
-  std::vector<PjRtDevice*> local_devices;
+  // Find devices that are addressable by this client/task.
+  std::vector<PjRtExecutable::LogicalDeviceIds> addressable_device_logical_ids;
+  std::vector<PjRtDevice*> addressable_devices;
   if (device_assignment != nullptr) {
+    addressable_device_logical_ids.reserve(num_replicas * num_partitions);
+    addressable_devices.reserve(num_replicas * num_partitions);
     for (int replica = 0; replica < num_replicas; ++replica) {
       for (int partition = 0; partition < num_partitions; ++partition) {
         int device_id = (*device_assignment)(replica, partition);
@@ -2231,11 +2268,14 @@ StatusOr<std::unique_ptr<PjRtExecutable>> PjRtClient::Compile(
           VLOG(3) << "Non-local device: " << device_id;
           continue;
         }
-        local_logical_device_ids.emplace_back(replica, partition);
-        local_devices.push_back(device);
+        PjRtExecutable::LogicalDeviceIds logica_device_ids;
+        logica_device_ids.replica = replica;
+        logica_device_ids.partition = partition;
+        addressable_device_logical_ids.push_back(std::move(logica_device_ids));
+        addressable_devices.push_back(device);
       }
     }
-    if (local_devices.empty()) {
+    if (addressable_devices.empty()) {
       return InvalidArgument(
           "Device assignment (%s) does not have any local devices.",
           device_assignment->ToString());
@@ -2243,7 +2283,10 @@ StatusOr<std::unique_ptr<PjRtExecutable>> PjRtClient::Compile(
 
     if (build_options.device_ordinal() < 0) {
       build_options.set_device_ordinal(
-          local_devices.front()->local_device_state()->device_ordinal());
+          tensorflow::down_cast<PjRtStreamExecutorDevice*>(
+              addressable_devices.front())
+              ->local_device_state()
+              ->device_ordinal());
     }
   }
 
@@ -2253,8 +2296,8 @@ StatusOr<std::unique_ptr<PjRtExecutable>> PjRtClient::Compile(
 
   auto executable = absl::make_unique<PjRtStreamExecutorExecutable>(
       std::move(local_executables), options.parameter_is_tupled_arguments,
-      std::move(device_assignment), std::move(local_logical_device_ids),
-      std::move(local_devices), this);
+      std::move(device_assignment), std::move(addressable_device_logical_ids),
+      std::move(addressable_devices), this);
   TF_RETURN_IF_ERROR(
       executable->SetUpDonation(options.parameter_is_tupled_arguments));
   return std::unique_ptr<PjRtExecutable>(std::move(executable));

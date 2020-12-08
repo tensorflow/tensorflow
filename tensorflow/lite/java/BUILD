@@ -146,6 +146,16 @@ java_library(
     ],
 )
 
+java_library(
+    name = "tensorflowlite_flex_javalib",
+    srcs = ["//tensorflow/lite/delegates/flex/java/src/main/java/org/tensorflow/lite/flex:flex_delegate"],
+    javacopts = JAVACOPTS,
+    deps = [
+        "//tensorflow/lite/java:tensorflowlite_javalib",
+        "@org_checkerframework_qual",
+    ],
+)
+
 java_test(
     name = "TensorFlowLiteTest",
     size = "small",

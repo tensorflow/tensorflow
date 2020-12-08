@@ -188,12 +188,12 @@ DecodeDriverMemcpy(CUpti_CallbackId cbid, const void *params) {
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpy: {
       const auto *p = reinterpret_cast<const cuMemcpy_params *>(params);
-      return std::make_tuple(p->ByteCount, CuptiTracerEventType::Unsupported,
+      return std::make_tuple(p->ByteCount, CuptiTracerEventType::MemcpyOther,
                              false);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpyAsync: {
       const auto *p = reinterpret_cast<const cuMemcpyAsync_params *>(params);
-      return std::make_tuple(p->ByteCount, CuptiTracerEventType::Unsupported,
+      return std::make_tuple(p->ByteCount, CuptiTracerEventType::MemcpyOther,
                              true);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpy2D_v2: {
@@ -384,7 +384,7 @@ void AddCudaMallocEventUponApiExit(CuptiTraceCollector *collector,
   event.context_id = cbdata->contextUid;
   event.correlation_id = cbdata->correlationId;
   event.memalloc_info.num_bytes = params->bytesize;
-  VLOG(3) << "Cuda Malloc/Free observed: " << params->bytesize;
+  VLOG(3) << "cudaMalloc observed: " << params->bytesize;
   collector->AddEvent(std::move(event));
 }
 
@@ -402,6 +402,7 @@ void AddGenericEventUponApiExit(CuptiTraceCollector *collector,
   event.device_id = device_id;
   event.context_id = cbdata->contextUid;
   event.correlation_id = cbdata->correlationId;
+  VLOG(3) << "Observed generic event " << cbdata->functionName;
   collector->AddEvent(std::move(event));
 }
 

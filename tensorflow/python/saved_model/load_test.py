@@ -798,6 +798,39 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertIsNotNone(imported_gradient)
     self.assertAllClose(imported_gradient, 2.)
 
+  def test_nested_fn_backprop(self, cycles):
+    weight = variables.Variable(2., trainable=True)
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(dtype=dtypes.float32, shape=(None, None))])
+    def g(x):
+      weight.read_value()  # Just get the tape to watch the variable
+      handle = array_ops.identity(weight.handle)
+      @def_function.function
+      def launder_var_handle():
+        return array_ops.identity(handle)
+      return x + resource_variable_ops.read_variable_op(
+          launder_var_handle(), dtypes.float32)
+
+    root = tracking.AutoTrackable()
+    root.weight = weight
+    root.g = g
+    imported = cycle(root, cycles)
+    def get_gradient(obj, persistent):
+      with backprop.GradientTape(persistent=persistent) as t:
+        x = constant_op.constant([[1., 2., 3.], [1., -2, 3.]])
+        y = obj.g(x)
+        self.assertAllClose(y, obj.weight + x)
+        loss = math_ops.reduce_sum(y)
+        return t.gradient(loss, obj.weight)
+
+    imported_gradient = get_gradient(imported, persistent=False)
+    original_gradient = get_gradient(root, persistent=False)
+    self.assertIsNotNone(original_gradient)
+    self.assertAllClose(original_gradient, 6.)
+    self.assertIsNotNone(imported_gradient)
+    self.assertAllClose(imported_gradient, 6.)
+
   def test_restored_func_with_captured_var_backprop_float32(self, cycles):
     self._test_restored_func_with_captured_var_backprop(cycles, dtypes.float32)
 

@@ -1172,12 +1172,14 @@ class ModelCheckpoint(Callback):
   ```
 
   Arguments:
-      filepath: string or `PathLike`, path to save the model file. `filepath`
+      filepath: string or `PathLike`, path to save the model file. e.g.
+        filepath = os.path.join(working_dir, 'ckpt', file_name). `filepath`
         can contain named formatting options, which will be filled the value of
         `epoch` and keys in `logs` (passed in `on_epoch_end`). For example: if
         `filepath` is `weights.{epoch:02d}-{val_loss:.2f}.hdf5`, then the model
         checkpoints will be saved with the epoch number and the validation loss
-        in the filename.
+        in the filename. The directory of the filepath should not be reused by
+        any other callbacks to avoid conflicts.
       monitor: The metric name to monitor. Typically the metrics are set by the
         `Model.compile` method. Note:
 
@@ -1573,7 +1575,7 @@ class BackupAndRestore(Callback):
   ...     if epoch == 4:
   ...       raise RuntimeError('Interrupting!')
   >>> callback = tf.keras.callbacks.experimental.BackupAndRestore(
-  ... backup_dir="/tmp")
+  ... backup_dir="/tmp/backup")
   >>> model = tf.keras.models.Sequential([tf.keras.layers.Dense(10)])
   >>> model.compile(tf.keras.optimizers.SGD(), loss='mse')
   >>> try:
@@ -1590,11 +1592,13 @@ class BackupAndRestore(Callback):
   6
 
   Arguments:
-      backup_dir: String, path to save the model file. This is the directory in
-        which the system stores temporary files to recover the model from jobs
-        terminated unexpectedly. The directory cannot be reused elsewhere to
-        store other checkpoints, e.g. by BackupAndRestore callback of another
-        training, or by another callback (ModelCheckpoint) of the same training.
+      backup_dir: String, path to store the checkpoint.
+        e.g. backup_dir = os.path.join(working_dir, 'backup')
+        This is the directory in which the system stores temporary files to
+        recover the model from jobs terminated unexpectedly. The directory
+        cannot be reused elsewhere to store other files, e.g. by
+        BackupAndRestore callback of another training, or by another callback
+        (ModelCheckpoint) of the same training.
   """
 
   def __init__(self, backup_dir):
@@ -1991,7 +1995,8 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
 
   Arguments:
       log_dir: the path of the directory where to save the log files to be
-        parsed by TensorBoard.
+        parsed by TensorBoard. e.g. log_dir = os.path.join(working_dir, 'logs')
+        This directory should not be reused by any other callbacks.
       histogram_freq: frequency (in epochs) at which to compute activation and
         weight histograms for the layers of the model. If set to 0, histograms
         won't be computed. Validation data (or split) must be specified for

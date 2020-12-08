@@ -35,13 +35,11 @@ limitations under the License.
 namespace {
 
 using PersonDetectionOpResolver = tflite::AllOpsResolver;
-using PersonDetectionBenchmarkRunner = MicroBenchmarkRunner<uint8_t>;
-
-constexpr int kRandomSeed = 42;
+using PersonDetectionBenchmarkRunner = MicroBenchmarkRunner<int8_t>;
 
 // Create an area of memory to use for input, output, and intermediate arrays.
 // Align arena to 16 bytes to avoid alignment warnings on certain platforms.
-constexpr int kTensorArenaSize = 95 * 1024;
+constexpr int kTensorArenaSize = 135 * 1024;
 alignas(16) uint8_t tensor_arena[kTensorArenaSize];
 
 uint8_t op_resolver_buffer[sizeof(PersonDetectionOpResolver)];
@@ -52,9 +50,9 @@ PersonDetectionBenchmarkRunner* benchmark_runner = nullptr;
 // issues on Sparkfun. Use new since static variables within a method
 // are automatically surrounded by locking, which breaks bluepill and stm32f4.
 void CreateBenchmarkRunner() {
-  // We allocate PersonDetectionOpResolver from a global buffer because the
-  // object's lifetime must exceed that of the PersonDetectionBenchmarkRunner
-  // object.
+  // We allocate PersonDetectionOpResolver from a global buffer
+  // because the object's lifetime must exceed that of the
+  // PersonDetectionBenchmarkRunner object.
   benchmark_runner = new (benchmark_runner_buffer)
       PersonDetectionBenchmarkRunner(g_person_detect_model_data,
                                      new (op_resolver_buffer)
@@ -62,24 +60,20 @@ void CreateBenchmarkRunner() {
                                      tensor_arena, kTensorArenaSize);
 }
 
-void PersonDetectionTenIterationsWithRandomInput() {
-  benchmark_runner->SetRandomInput(kRandomSeed);
-  for (int i = 0; i < 10; i++) {
-    benchmark_runner->RunSingleIteration();
-  }
+void InitializeBenchmarkRunner() {
+  CreateBenchmarkRunner();
+  benchmark_runner->SetInput(reinterpret_cast<const int8_t*>(g_person_data));
 }
 
 void PersonDetectionTenIerationsWithPerson() {
-  // TODO(b/152644476): Add a way to run more than a single deterministic input.
-  benchmark_runner->SetInput(g_person_data);
+  benchmark_runner->SetInput(reinterpret_cast<const int8_t*>(g_person_data));
   for (int i = 0; i < 10; i++) {
     benchmark_runner->RunSingleIteration();
   }
 }
 
 void PersonDetectionTenIerationsWithoutPerson() {
-  // TODO(b/152644476): Add a way to run more than a single deterministic input.
-  benchmark_runner->SetInput(g_no_person_data);
+  benchmark_runner->SetInput(reinterpret_cast<const int8_t*>(g_no_person_data));
   for (int i = 0; i < 10; i++) {
     benchmark_runner->RunSingleIteration();
   }
@@ -89,8 +83,8 @@ void PersonDetectionTenIerationsWithoutPerson() {
 
 TF_LITE_MICRO_BENCHMARKS_BEGIN
 
-TF_LITE_MICRO_BENCHMARK(CreateBenchmarkRunner());
-TF_LITE_MICRO_BENCHMARK(PersonDetectionTenIterationsWithRandomInput());
+TF_LITE_MICRO_BENCHMARK(InitializeBenchmarkRunner());
+TF_LITE_MICRO_BENCHMARK(benchmark_runner->RunSingleIteration());
 TF_LITE_MICRO_BENCHMARK(PersonDetectionTenIerationsWithPerson());
 TF_LITE_MICRO_BENCHMARK(PersonDetectionTenIerationsWithoutPerson());
 

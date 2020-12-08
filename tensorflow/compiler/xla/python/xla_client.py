@@ -83,7 +83,7 @@ def _gpu_backend_factory(distributed_client=None, node_id=0):
     config.memory_fraction = float(memory_fraction)
   config.preallocate = preallocate not in ('0', 'false', 'False')
 
-  return _xla.get_nvidia_gpu_client(
+  return _xla.get_gpu_client(
       asynchronous=True,
       allocator_config=config,
       distributed_client=distributed_client,

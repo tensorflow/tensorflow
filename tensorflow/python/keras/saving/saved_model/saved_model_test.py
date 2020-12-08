@@ -18,7 +18,7 @@
 These should ensure that all layer properties are correctly assigned after
 loading from the SavedModel.
 
-Tests that focus on the model structure should go in revive_test.py
+Tests that focus on the model structure should go in revive_structure_test.py
 """
 from __future__ import absolute_import
 from __future__ import division

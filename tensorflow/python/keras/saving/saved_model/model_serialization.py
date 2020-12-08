@@ -36,6 +36,7 @@ class ModelSavedModelSaver(layer_serialization.LayerSavedModelSaver):
     # Network stateful property is dependent on the child layers.
     metadata.pop('stateful')
     metadata['is_graph_network'] = self.obj._is_graph_network  # pylint: disable=protected-access
+    metadata['save_spec'] = self.obj._get_save_spec(dynamic_batch=False)  # pylint: disable=protected-access
 
     metadata.update(
         saving_utils.model_metadata(

@@ -57,8 +57,8 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
   logic but is not intended to be exported as part of the Keras API.
 
   If desired, the user can call this layer's `adapt()` method on a data set,
-  which will analyze the data set, determine the frequency of individual string
-  values, and create a vocabulary from them. This vocabulary can have
+  which will analyze the data set, determine the frequency of individual
+  hashable values, and create a vocabulary from them. This vocabulary can have
   unlimited size or be capped, depending on the configuration options for this
   layer; if there are more unique values in the input than the maximum
   vocabulary size, the most frequent terms will be used to create the
@@ -394,7 +394,7 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     layer, this method will either replace it
 
     Arguments:
-      vocab: An array of string tokens.
+      vocab: An array of hashable tokens.
 
     Raises:
       ValueError: If there are too many inputs, the inputs do not match, or

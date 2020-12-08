@@ -63,6 +63,8 @@ class LhloDialectEmitter : public ::xla::DfsHloVisitorWithDefault {
       ::xla::HloCustomCallInstruction* custom_call);
   ::xla::StatusOr<Operation*> EmitGemm(
       ::xla::HloCustomCallInstruction* custom_call);
+  ::xla::StatusOr<Operation*> EmitDnnConvolution(
+      ::xla::HloCustomCallInstruction* custom_call);
 
   ::xla::StatusOr<lmhlo::ReduceOp> EmitReduceOp(::xla::HloInstruction* instr);
   ::xla::StatusOr<GetGlobalMemrefOp> EmitConstant(
@@ -71,6 +73,16 @@ class LhloDialectEmitter : public ::xla::DfsHloVisitorWithDefault {
   }
   ::xla::StatusOr<GetGlobalMemrefOp> EmitConstant(
       const ::xla::HloInstruction* instr);
+
+  ::xla::StatusOr<lmhlo::CompareOp> EmitCompareOp(::xla::HloInstruction* instr);
+
+  ::xla::StatusOr<lmhlo::MapOp> EmitMapOp(::xla::HloInstruction* instr);
+
+  ::xla::StatusOr<lmhlo::ReducePrecisionOp> EmitReducePrecisionOp(
+      ::xla::HloInstruction* instr);
+
+  ::xla::StatusOr<lmhlo::AllReduceOp> EmitAllReduceOp(
+      ::xla::HloInstruction* instr);
 
   ::xla::Status CreateOperands(::xla::HloInstruction* instr,
                                SmallVectorImpl<Value>& operands,

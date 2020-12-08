@@ -92,19 +92,11 @@ def LHLOGPU_BatchNormTrainingOp : LHLOGPU_Op<"batch_norm_training">,
 // LMHLO ops representing convolution library functions.
 //===----------------------------------------------------------------------===//
 
-def GpuConvolutionAttributes {
+class GpuConvolutionAttributes<dag extraAttribs> {
   dag attributes = !con(
     ConvolutionAttributes.attributes,
     (ins F64Attr:$result_scale),
-    (ins ConvolutionBackendConfigAttr:$backend_config));
-}
-
-def GpuFusedConvolutionAttributes {
-  dag attributes = !con(
-    ConvolutionAttributes.attributes,
-    (ins F64Attr:$result_scale,
-         ActivationAttr:$activation_mode,
-         F64Attr:$side_input_scale),
+    extraAttribs,
     (ins ConvolutionBackendConfigAttr:$backend_config));
 }
 
@@ -114,8 +106,8 @@ def LHLOGPU_ConvForwardOp : LHLOGPU_Op<"conv_forward"> {
        Arg<LHLO_Buffer, "", [MemRead]>:$input,
        Arg<LHLO_Buffer, "", [MemRead]>:$filter,
        Arg<LHLO_Buffer, "", [MemWrite]>:$output,
-       Arg<UntypedBuffer, "", [MemWrite]>:$scratch),
-     GpuConvolutionAttributes.attributes);
+       Arg<LHLO_Buffer, "", [MemWrite]>:$scratch),
+     GpuConvolutionAttributes<(ins)>.attributes);
 }
 
 def LHLOGPU_ConvBackwardInputOp : LHLOGPU_Op<"conv_backwardinput"> {
@@ -124,8 +116,8 @@ def LHLOGPU_ConvBackwardInputOp : LHLOGPU_Op<"conv_backwardinput"> {
        Arg<LHLO_Buffer, "", [MemRead]>:$d_output,
        Arg<LHLO_Buffer, "", [MemRead]>:$filter,
        Arg<LHLO_Buffer, "", [MemWrite]>:$d_input,
-       Arg<UntypedBuffer, "", [MemWrite]>:$scratch),
-     GpuConvolutionAttributes.attributes);
+       Arg<LHLO_Buffer, "", [MemWrite]>:$scratch),
+     GpuConvolutionAttributes<(ins)>.attributes);
 }
 
 def LHLOGPU_ConvBackwardFilterOp : LHLOGPU_Op<"conv_backwardfilter"> {
@@ -134,14 +126,27 @@ def LHLOGPU_ConvBackwardFilterOp : LHLOGPU_Op<"conv_backwardfilter"> {
        Arg<LHLO_Buffer, "", [MemRead]>:$input,
        Arg<LHLO_Buffer, "", [MemRead]>:$d_output,
        Arg<LHLO_Buffer, "", [MemWrite]>:$d_filter,
-       Arg<UntypedBuffer, "", [MemWrite]>:$scratch),
-     GpuConvolutionAttributes.attributes);
+       Arg<LHLO_Buffer, "", [MemWrite]>:$scratch),
+     GpuConvolutionAttributes<(ins)>.attributes);
+}
+
+// output = activation(result_scale * conv(input, filter) + bias)
+def LHLOGPU_ConvForwardFusedOp : LHLOGPU_Op<"conv_forward_fused"> {
+  let arguments = !con(
+    (ins
+       Arg<LHLO_Buffer, "", [MemRead]>:$input,
+       Arg<LHLO_Buffer, "", [MemRead]>:$filter,
+       Arg<LHLO_Buffer, "", [MemRead]>:$bias,
+       Arg<LHLO_Buffer, "", [MemWrite]>:$output,
+       Arg<LHLO_Buffer, "", [MemWrite]>:$scratch),
+     GpuConvolutionAttributes<(ins
+         ActivationAttr:$activation_mode)>.attributes);
 }
 
 // output = activation(result_scale * conv(input, filter) +
 //                     side_input * side_input_scale +
 //                     bias)
-def LHLOGPU_ConvForwardFusedOp : LHLOGPU_Op<"conv_forward_fused"> {
+def LHLOGPU_ConvForwardFusedSideInputOp : LHLOGPU_Op<"conv_forward_fused_with_side_input"> {
   let arguments = !con(
     (ins
        Arg<LHLO_Buffer, "", [MemRead]>:$input,
@@ -149,8 +154,10 @@ def LHLOGPU_ConvForwardFusedOp : LHLOGPU_Op<"conv_forward_fused"> {
        Arg<LHLO_Buffer, "", [MemRead]>:$bias,
        Arg<LHLO_Buffer, "", [MemRead]>:$side_input,
        Arg<LHLO_Buffer, "", [MemWrite]>:$output,
-       Arg<UntypedBuffer, "", [MemWrite]>:$scratch),
-     GpuFusedConvolutionAttributes.attributes);
+       Arg<LHLO_Buffer, "", [MemWrite]>:$scratch),
+     GpuConvolutionAttributes<(ins
+         ActivationAttr:$activation_mode,
+         F64Attr:$side_input_scale)>.attributes);
 }
 
 //===----------------------------------------------------------------------===//

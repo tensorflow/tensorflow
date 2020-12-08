@@ -620,6 +620,11 @@ message ConfigProto {
     // The XLA fusion autotuner can improve performance by executing a heuristic
     // search on the compiler parameters.
     int64 xla_fusion_autotuner_thresh = 15;
+
+    // Whether runtime execution uses TFRT.
+    bool use_tfrt = 18;
+
+    // Next: 19
   }
 
   Experimental experimental = 16;

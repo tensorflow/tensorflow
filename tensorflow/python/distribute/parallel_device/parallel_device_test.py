@@ -20,6 +20,8 @@ from __future__ import print_function
 import os
 import threading
 
+from absl.testing import parameterized
+
 from tensorflow.python.distribute.parallel_device import parallel_device
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -31,6 +33,7 @@ from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -119,7 +122,7 @@ class _VirtualDeviceTestCase(test.TestCase):
     self.assertIn(self.device_type + ":1", self.device.components[1])
 
 
-class ParallelDeviceTests(_VirtualDeviceTestCase):
+class ParallelDeviceTests(_VirtualDeviceTestCase, parameterized.TestCase):
 
   def test_register_parallel_device(self):
     with self.device:
@@ -190,6 +193,47 @@ class ParallelDeviceTests(_VirtualDeviceTestCase):
     finally:
       context._reset_context()
       config.set_synchronous_execution(previous)
+
+  @parameterized.named_parameters(
+      [("RunFunctionsEagerly", True),
+       ("", False)])
+  def test_cond(self, run_functions_eagerly):
+    try:
+      def_function.run_functions_eagerly(run_functions_eagerly)
+      with self.device:
+        pred = self.device.pack([True, False])
+        capture = self.device.pack([[1.], [2.]])
+        result = control_flow_ops.cond(
+            pred,
+            def_function.function(lambda: capture * 2.),
+            def_function.function(lambda: capture * 4.))
+      self.assertAllClose(
+          [[2.], [8.]], self.device.unpack(result))
+    finally:
+      def_function.run_functions_eagerly(False)
+
+  def test_cond_with_variable(self):
+    with self.device:
+      pred = self.device.pack([True, False])
+      capture = self.device.pack([[1.], [2.]])
+      v = None
+      @def_function.function
+      def true_branch():
+        nonlocal v
+        if v is None:
+          v = variables.Variable(constant_op.constant(2.))
+        return v * capture
+      result = control_flow_ops.cond(
+          pred, true_branch, def_function.function(lambda: capture * 4.))
+    self.assertAllClose(
+        [[2.], [8.]], self.device.unpack(result))
+    self.assertAllClose(
+        [2., 2.], self.device.unpack(v))
+    # There are two unique variable handles with separate storage.
+    h1, _ = self.device.unpack(v.handle)
+    gen_resource_variable_ops.assign_variable_op(h1, constant_op.constant(3.))
+    self.assertAllClose(
+        [3., 2.], self.device.unpack(v))
 
   def test_collective_in_function(self):
     if self.device_type == "TPU":

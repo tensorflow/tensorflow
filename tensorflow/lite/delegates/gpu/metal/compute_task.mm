@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/common.h"
-#include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
 using ::tflite::gpu::AlignByN;
 using ::tflite::gpu::BHWC;
@@ -34,7 +33,7 @@ using ::tflite::gpu::HalfBits;
 using ::tflite::gpu::metal::ComputeTaskDescriptorPtr;
 using ::tflite::gpu::metal::CreateComputeProgram;
 using ::tflite::gpu::metal::DispatchParamsFunction;
-using ::tflite::gpu::metal::RuntimeOptions;
+using ::tflite::gpu::CalculationsPrecision;
 using ::tflite::gpu::metal::UniformsFunction;
 using ::tflite::gpu::uint3;
 using ::tflite::gpu::ValueId;
@@ -72,11 +71,11 @@ struct UniformBuffer {
 }
 
 - (absl::Status)compileWithDevice:(id<MTLDevice>)device
-                   taskDescriptor:(ComputeTaskDescriptorPtr)desc
-                   runtimeOptions:(const RuntimeOptions&)options {
-  size_t offset = desc->input_buffers.size() + desc->uniform_buffers.size()
-                  + desc->immutable_buffers.size() + 1;
-  RETURN_IF_ERROR(_metal_args.Init(device, offset, &desc->args, &desc->shader_source));
+                   taskDescriptor:(const tflite::gpu::metal::NodeDescriptor&)desc
+                        precision:(CalculationsPrecision)precision; {
+  size_t offset = desc.task->src_tensors_names.size() + desc.task->uniform_buffers.size()
+                  + desc.task->immutable_buffers.size() + 1;
+  RETURN_IF_ERROR(_metal_args.Init(device, offset, &desc.task->args, &desc.task->shader_source));
   NSString* barrier;
   // simdgroup_barrier is supported on macOS 10.13+ and Metal shading language version 2.0
   if (@available(macOS 10.13, iOS 10.0, tvOS 10.0, *)) {
@@ -90,13 +89,13 @@ struct UniformBuffer {
   NSString* toAccumulatorType2 = @"";
   NSString* toAccumulatorType3 = @"";
   NSString* toAccumulatorType4 = @"";
-  if (options.storage_precision == RuntimeOptions::Precision::FP32) {
+  if (precision == CalculationsPrecision::F32) {
     storageType = @"float";
     accumulatorType = @"float";
   } else {
     // FP16
     storageType = @"half";
-    if (options.accumulator_precision == RuntimeOptions::Precision::FP32) {
+    if (precision == CalculationsPrecision::F32_F16) {
       accumulatorType = @"float";
       toAccumulatorType = @"float";
       toAccumulatorType2 = @"float2";
@@ -122,24 +121,23 @@ struct UniformBuffer {
     @"SIMDGROUP_BARRIER" : barrier,
   };
 
-  NSString* code = [NSString stringWithCString:desc->shader_source.c_str()
+  NSString* code = [NSString stringWithCString:desc.task->shader_source.c_str()
                                       encoding:[NSString defaultCStringEncoding]];
   id<MTLComputePipelineState> program;
   RETURN_IF_ERROR(CreateComputeProgram(device, code, @"ComputeFunction", macros, &program));
   if (!program) {
     return absl::InternalError("Unknown shader compilation error");
   }
-  for (auto& buffer : desc->input_buffers) {
-    _inputBuffers.emplace_back(InputBuffer{buffer.id, nil});
+  for (auto& id : desc.src_tensors_ids) {
+    _inputBuffers.emplace_back(InputBuffer{id, nil});
   }
-  for (auto& uniform : desc->uniform_buffers) {
+  for (auto& uniform : desc.task->uniform_buffers) {
     _uniformBuffers.emplace_back(UniformBuffer{{}, uniform.data_function});
   }
-  _outputBuffers.emplace_back(OutputBuffer{desc->output_buffer.id, nil});
-  for (auto& immutable : desc->immutable_buffers) {
-    int padding =
-        4 * (options.storage_precision == RuntimeOptions::Precision::FP32 ? sizeof(float)
-                                                                          : sizeof(HalfBits));
+  _outputBuffers.emplace_back(OutputBuffer{desc.dst_tensors_ids[0], nil});
+  const bool f32_storage = precision == CalculationsPrecision::F32;
+  for (auto& immutable : desc.task->immutable_buffers) {
+    int padding = 4 * (f32_storage ? sizeof(float) : sizeof(HalfBits));
     int paddedSize = AlignByN(immutable.data.size(), padding);
     immutable.data.resize(paddedSize);
     id<MTLBuffer> metalBuffer = [device newBufferWithBytes:immutable.data.data()
@@ -147,7 +145,7 @@ struct UniformBuffer {
                                                    options:MTLResourceStorageModeShared];
     _immutableBuffers.emplace_back(metalBuffer);
   }
-  _resizeFunction = desc->resize_function;
+  _resizeFunction = desc.task->resize_function;
   _program = program;
   return absl::OkStatus();
 }

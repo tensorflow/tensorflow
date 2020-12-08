@@ -482,6 +482,15 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::NotOp>(Location loc,
 }
 
 template <>
+inline Value MapLhloOpToStdScalarOp<lmhlo::OrOp>(Location loc,
+                                                 ArrayRef<Type> result_types,
+                                                 ArrayRef<Value> args,
+                                                 OpBuilder* b) {
+  return MapLhloOpToStdScalarOpImpl<IntegerType, ::mlir::OrOp>{}(
+      loc, result_types, args, b);
+}
+
+template <>
 inline Value MapLhloOpToStdScalarOp<lmhlo::RsqrtOp>(Location loc,
                                                     ArrayRef<Type> result_types,
                                                     ArrayRef<Value> args,
@@ -496,6 +505,30 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::SelectOp>(
     OpBuilder* b) {
   return MapLhloOpToStdScalarOpImpl<::mlir::SelectOp>{}(loc, result_types, args,
                                                         b);
+}
+
+template <>
+inline Value MapLhloOpToStdScalarOp<lmhlo::ShiftLeftOp>(
+    Location loc, ArrayRef<Type> result_types, ArrayRef<Value> args,
+    OpBuilder* b) {
+  return MapLhloOpToStdScalarOpImpl<IntegerType, mlir::ShiftLeftOp>{}(
+      loc, result_types, args, b);
+}
+
+template <>
+inline Value MapLhloOpToStdScalarOp<lmhlo::ShiftRightArithmeticOp>(
+    Location loc, ArrayRef<Type> result_types, ArrayRef<Value> args,
+    OpBuilder* b) {
+  return MapLhloOpToStdScalarOpImpl<IntegerType, mlir::SignedShiftRightOp>{}(
+      loc, result_types, args, b);
+}
+
+template <>
+inline Value MapLhloOpToStdScalarOp<lmhlo::ShiftRightLogicalOp>(
+    Location loc, ArrayRef<Type> result_types, ArrayRef<Value> args,
+    OpBuilder* b) {
+  return MapLhloOpToStdScalarOpImpl<IntegerType, mlir::UnsignedShiftRightOp>{}(
+      loc, result_types, args, b);
 }
 
 template <>
@@ -553,6 +586,15 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::TanhOp>(Location loc,
                                                    ArrayRef<Value> args,
                                                    OpBuilder* b) {
   return MapLhloOpToStdScalarOpImpl<FloatType, ::mlir::TanhOp>{}(
+      loc, result_types, args, b);
+}
+
+template <>
+inline Value MapLhloOpToStdScalarOp<lmhlo::XorOp>(Location loc,
+                                                  ArrayRef<Type> result_types,
+                                                  ArrayRef<Value> args,
+                                                  OpBuilder* b) {
+  return MapLhloOpToStdScalarOpImpl<IntegerType, ::mlir::XOrOp>{}(
       loc, result_types, args, b);
 }
 
