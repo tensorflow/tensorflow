@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <atomic>
 
+#include "absl/strings/str_split.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -31,7 +32,13 @@ static std::atomic<int> log_counter(0);
 BridgeLoggerConfig::BridgeLoggerConfig(bool print_module_scope,
                                        bool print_after_only_on_change)
     : mlir::PassManager::IRPrinterConfig(print_module_scope,
-                                         print_after_only_on_change) {}
+                                         print_after_only_on_change) {
+  const char* log_pass_patterns = getenv("MLIR_BRIDGE_LOG_PASS_PATTERNS");
+  if (log_pass_patterns) {
+    log_pass_patterns_ =
+        absl::StrSplit(log_pass_patterns, ',', absl::SkipWhitespace());
+  }
+}
 
 // Logs op to file with name of format
 // `<log_counter>_mlir_bridge_<pass_name>_<file_suffix>.mlir`.
@@ -53,13 +60,30 @@ inline static void Log(BridgeLoggerConfig::PrintCallbackFn print_callback,
 void BridgeLoggerConfig::printBeforeIfEnabled(mlir::Pass* pass,
                                               mlir::Operation* operation,
                                               PrintCallbackFn print_callback) {
-  Log(print_callback, pass, operation, "before");
+  if (should_print(pass)) Log(print_callback, pass, operation, "before");
 }
 
 void BridgeLoggerConfig::printAfterIfEnabled(mlir::Pass* pass,
                                              mlir::Operation* operation,
                                              PrintCallbackFn print_callback) {
-  Log(print_callback, pass, operation, "after");
+  if (should_print(pass)) Log(print_callback, pass, operation, "after");
+}
+
+bool BridgeLoggerConfig::should_print(mlir::Pass* pass) {
+  if (log_pass_patterns_.empty()) return true;
+
+  std::string pass_name = pass->getName().str();
+  for (const auto& pattern : log_pass_patterns_) {
+    if (pass_name.find(pattern) != std::string::npos) {
+      // pattern matches pass
+      return true;
+    }
+  }
+  // no pattern matches pass
+  VLOG(2) << "Not logging pass " << pass_name
+          << " because it does not match any pattern in "
+             "MLIR_BRIDGE_LOG_PASS_PATTERNS";
+  return false;
 }
 
 void BridgeTimingConfig::printTiming(PrintCallbackFn printCallback) {
