@@ -31,6 +31,36 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
+GrapplerItem::OptimizationOptions CreateOptOptionsForEager(
+    bool log_device_placement, ConfigProto* config_proto) {
+  // In Eager mode we always inline all functions into the top-level
+  // function body graph, to get a single executable graph, that could be
+  // optimized across function boundaries (e.g. prune unused inputs and outputs
+  // in a function call chain). This is required to mimic graph mode execution,
+  // with aggressive pruning of nodes not in the transitive fanin of fetches.
+  config_proto->mutable_graph_options()
+      ->mutable_optimizer_options()
+      ->set_do_function_inlining(true);
+
+  config_proto->set_log_device_placement(log_device_placement);
+
+  GrapplerItem::OptimizationOptions optimization_options;
+  // Tensorflow 2.0 in eager mode with automatic control dependencies will
+  // prune all nodes that are not in the transitive fanin of the fetch nodes.
+  // However because the function will be executed via FunctionLibraryRuntime,
+  // and current function implementation does not prune stateful and dataset
+  // ops, we rely on Grappler to do the correct graph pruning.
+  optimization_options.allow_pruning_stateful_and_dataset_ops = true;
+
+  optimization_options.is_eager_mode = true;
+
+  // All the nested function calls will be executed and optimized via
+  // PartitionedCallOp, there is no need to optimize functions now.
+  optimization_options.optimize_function_library = false;
+
+  return optimization_options;
+}
+
 GrapplerItem GrapplerItem::WithGraph(GraphDef&& graph_def) const {
   GrapplerItem item;
   item.id = id;
