@@ -1301,6 +1301,9 @@ absl::optional<HloSharding> GetShardingFromUser(
       return hlo_sharding_util::ReshapeSharding(
           user.shape(), instruction.shape(), user.sharding());
     }
+    case HloOpcode::kPad: {
+      return user.sharding();
+    }
     case HloOpcode::kSlice: {
       return user.sharding();
     }

@@ -514,6 +514,26 @@ ENTRY %pad {
               op::Sharding("{devices=[2,2]0,1,2,3}"));
 }
 
+TEST_F(ShardingPropagationTest, PadBackwardPass) {
+  const char* const hlo_string = R"(
+HloModule module
+ENTRY %pad {
+  %input = f32[11,17]{1,0} parameter(0)
+  %copy = f32[11,17]{1,0} copy(%input)
+  %pad_value = f32[] parameter(1)
+  %pad = f32[27,51]{1,0} pad(%copy, %pad_value), padding=2_4_1x1_1_2,
+    sharding={devices=[2,2]0,1,2,3}
+  ROOT %result = f32[27,51]{1,0} copy(%pad)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          ShardingPropagation().Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(FindInstruction(module.get(), "copy"),
+              op::Sharding("{devices=[2,2]0,1,2,3}"));
+}
+
 TEST_F(ShardingPropagationTest, PartialReplicatedPadForwardPass) {
   const char* const hlo_string = R"(
 HloModule module
