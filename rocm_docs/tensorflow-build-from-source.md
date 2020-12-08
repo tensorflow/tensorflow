@@ -11,9 +11,9 @@ Follow steps at [Basic Installation](https://github.com/ROCmSoftwarePlatform/ten
 *NOTE*: ROCm install instructions recommend a purge and reinstall of ROCm rather than upgrading from previous release.
 For details of the ROCm instructions, please refer to the [ROCm QuickStart Installation Guide](https://rocmdocs.amd.com/en/latest/Installation_Guide/Installation-Guide.html).
 
-To build with ROCm3.9, set the following environment variables, and add those environment variables at the end of ~/.bashrc 
+To build with ROCm3.10, set the following environment variables, and add those environment variables at the end of ~/.bashrc 
 ```
-export ROCM_PATH=/opt/rocm-3.9.0
+export ROCM_PATH=/opt/rocm-3.10.0
 export HCC_HOME=$ROCM_PATH/hcc
 export HIP_PATH=$ROCM_PATH/hip
 export PATH=$HCC_HOME/bin:$HIP_PATH/bin:$PATH
