@@ -173,8 +173,7 @@ endef
 
 
 define generate_ceva_bx1_project
-ifeq ($(TARGET), ceva)
-ifeq ($(TARGET_ARCH), bx1)
+ifeq ($(TARGET), ceva_bx1)
 
 $(PRJDIR)$(3)/$(1)/Makefile: tensorflow/lite/micro/tools/make/templates/ceva_bx1/ceva_app_makefile.tpl
 	@mkdir -p $$(dir $$@)
@@ -200,7 +199,6 @@ $(PRJDIR)$(3)/$(1)/%: tensorflow/lite/micro/tools/make/templates/ceva_bx1/%.tpl
 
 $(foreach var,$(CEVA_TARGET_FILES_DIRS),$(eval $(call path_changing_copy_file,$(PRJDIR)$(3)/$(1),$(var))))
 
-endif
 endif
 endef
 

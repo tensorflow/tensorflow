@@ -693,8 +693,7 @@ The following instructions will help you build and deploy the sample to the
     To your installation location. For example: TARGET_TOOLCHAIN_ROOT :=
     /home/myuser/work/CEVA-ToolBox/V18/BX
 4.  Generate the Makefile for the project: /tensorflow$ make -f
-    tensorflow/lite/micro/tools/make/Makefile TARGET=ceva TARGET_ARCH=bx1
-    generate_micro_speech_make_project
+    tensorflow/lite/micro/tools/make/Makefile TARGET=ceva_bx1 generate_micro_speech_make_project
 5.  Build the project:
     /tensorflow/lite/micro/tools/make/gen/ceva_bx1/prj/micro_speech/make$ make
 6.  This should build the project and create a file called micro_speech.elf.

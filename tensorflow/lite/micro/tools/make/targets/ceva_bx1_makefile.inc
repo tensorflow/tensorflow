@@ -1,7 +1,6 @@
 
-ifeq ($(TARGET), ceva)
-ifeq ($(TARGET_ARCH), bx1)
- #TARGET_ARCH := 
+ifeq ($(TARGET), ceva_bx1)
+TARGET_ARCH := bx
 CXXFLAGS := -std=c++11 -DTF_LITE_STATIC_MEMORY
 CCFLAGS  := -std=c11   -DTF_LITE_STATIC_MEMORY
 
@@ -45,5 +44,4 @@ CCFLAGS  := -std=c11   -DTF_LITE_STATIC_MEMORY
 #	-lc++ -lc++abi -lc -lcompiler-rt
     
 
-endif
 endif
