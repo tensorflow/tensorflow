@@ -33,17 +33,23 @@ static const uint8 dummy_tensor[] = {0, 0, 0, 0, 0, 0, 0, 0};
 static const TensorShape dummy_shape({8});
 
 TEST_F(MklDequantizeOpTest, small) {
-  TF_ASSERT_OK(NodeDefBuilder("dequantize_op", "_MklDequantize")
-                   .Input(FakeInput(DT_QUINT8))
-                   .Input(FakeInput(DT_FLOAT))
-                   .Input(FakeInput(DT_FLOAT))
-                   .Input(FakeInput(DT_UINT8))  // MKL second tensor
-                   .Input(FakeInput(DT_UINT8))  // MKL second tensor
-                   .Input(FakeInput(DT_UINT8))  // MKL second tensor
-                   .Attr("T", DataTypeToEnum<quint8>::v())
-                   .Attr("mode", "SCALED")
-                   .Attr("_kernel", "QuantizedMklOp")
-                   .Finalize(node_def()));
+  NodeDefBuilder builder =
+      NodeDefBuilder("dequantize_op", NativeFormatEnabled()
+                                          ? "_MklNativeDequantize"
+                                          : "_MklDequantize")
+          .Input(FakeInput(DT_QUINT8))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Attr("T", DataTypeToEnum<quint8>::v())
+          .Attr("mode", "SCALED")
+          .Attr("_kernel", "QuantizedMklOp");
+  if (!NativeFormatEnabled()) {
+    // Add MKL metadata tensors
+    builder.Input(FakeInput(DT_UINT8))
+        .Input(FakeInput(DT_UINT8))
+        .Input(FakeInput(DT_UINT8));
+  }
+  TF_ASSERT_OK(builder.Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
   AddInputFromArray<quint8>(TensorShape({1, 2, 2, 2}),
                             {0, 10, 50, 40, 25, 115, 190, 255});
@@ -51,9 +57,11 @@ TEST_F(MklDequantizeOpTest, small) {
   AddInputFromArray<float>(TensorShape({1}), {0});
   // max_range = 200
   AddInputFromArray<float>(TensorShape({1}), {200.0f});
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  if (!NativeFormatEnabled()) {
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  }
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 2, 2, 2}));
   test::FillValues<float>(&expected,
