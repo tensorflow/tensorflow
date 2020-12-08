@@ -306,8 +306,8 @@ Status BuildDistributedDevices(
 GpuDevice::GpuDevice(int id,
                      std::unique_ptr<LocalDeviceState> local_device_state,
                      std::string device_kind, int node_id)
-    : PjRtDevice(id, std::move(local_device_state), std::move(device_kind),
-                 node_id) {}
+    : PjRtStreamExecutorDevice(id, std::move(local_device_state),
+                               std::move(device_kind), node_id) {}
 
 StatusOr<std::unique_ptr<PjRtClient>> GetGpuClient(
     bool asynchronous, const GpuAllocatorConfig& allocator_config,

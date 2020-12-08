@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
@@ -67,16 +68,56 @@ class PjRtClient;
 
 class PjRtDevice {
  public:
-  explicit PjRtDevice(int id,
-                      std::unique_ptr<LocalDeviceState> local_device_state,
-                      std::string device_kind, int host_id = 0)
+  virtual ~PjRtDevice() {}
+
+  // Return the client that owns this device.
+  virtual PjRtClient* client() const = 0;
+
+  // Whether client can issue command to this device.
+  virtual bool IsAddressable() const = 0;
+
+  // The ID of this device. IDs are unique among devices of this type
+  // (e.g. CPUs, GPUs). On multi-host platforms, this will be unique across all
+  // hosts' devices.  This is the ID that should be used in a DeviceAssignment.
+  virtual int id() const = 0;
+
+  // The task ID of this device according to TpuTopology. This is not the same
+  // as PjRtClient::host_id() in a multi-task setting, where each client can see
+  // devices from all tasks, but only a subset of them are addressable and have
+  // the same task_id as the client.
+  virtual int host_id() const = 0;
+
+  // Opaque hardware ID, e.g., the CUDA device number, useful for identifying
+  // which GPU when interacting with non-JAX code. In general, not guaranteed to
+  // be dense, and -1 if undefined.
+  virtual int local_hardware_id() const = 0;
+
+  // A vendor-dependent string that uniquely identifies the kind of device,
+  // e.g., "Tesla V100-SXM2-16GB". May be used to determine whether two GPUs are
+  // compatible compilation.
+  virtual const std::string& device_kind() const = 0;
+
+  virtual std::string DebugString() const = 0;
+
+  // Transfer the given literal to the infeed queue.
+  virtual Status TransferToInfeed(const LiteralSlice& literal) const = 0;
+
+  // Transfer and return a value of the given shape from the outfeed queue.
+  virtual StatusOr<Literal> TransferFromOutfeed(const Shape& shape) const = 0;
+};
+
+class PjRtStreamExecutorDevice : public PjRtDevice {
+ public:
+  explicit PjRtStreamExecutorDevice(
+      int id, std::unique_ptr<LocalDeviceState> local_device_state,
+      std::string device_kind, int host_id = 0)
       : id_(id),
-        local_device_id_(
+        device_ordinal_(
             local_device_state ? local_device_state->device_ordinal() : -1),
         local_device_state_(std::move(local_device_state)),
         host_id_(host_id),
         device_kind_(std::move(device_kind)) {}
-  virtual ~PjRtDevice() {}
+  ~PjRtStreamExecutorDevice() override {}
 
   // Must set client exactly once.
   void SetClient(PjRtClient* client) {
@@ -84,14 +125,25 @@ class PjRtDevice {
     client_ = client;
   }
 
+  // Task ID. This is always 0 on single-task setup.
+  int host_id() const override { return host_id_; }
+
+  // Return `platform_id` from client.
+  PjRtPlatformId platform_id() const;
+
+  // Return `platform_name` from client.
+  const std::string& platform_name() const;
+
+  PjRtClient* client() const override { return client_; }
+
   // The ID of this device. IDs are unique among devices of this type
   // (e.g. CPUs, GPUs). On multi-host platforms, this will be unique across all
   // hosts' devices.  This is the ID that should be used in a DeviceAssignment.
-  int id() const { return id_; }
+  int id() const override { return id_; }
 
-  bool IsLocalDevice() const { return local_device_id_ != -1; }
+  bool IsAddressable() const override { return device_ordinal_ != -1; }
 
-  int local_device_id() const { return local_device_id_; }
+  int local_hardware_id() const override { return device_ordinal_; }
 
   // If this is a device local to this host, returns a LocalDeviceState object
   // that can be used to manipulate the device. Returns nullptr if the device is
@@ -105,32 +157,21 @@ class PjRtDevice {
   // is not local to this host.
   StatusOr<LocalDeviceState*> GetLocalDeviceState() const;
 
-  // The ID of this device's host. This is always 0 on single-host platforms.
-  int host_id() const { return host_id_; }
-
-  // Return `platform_id` from client.
-  PjRtPlatformId platform_id() const;
-
-  // Return `platform_name` from client.
-  const std::string& platform_name() const;
-
   // A vendor-dependent string that uniquely identifies the kind of device.
-  const std::string& device_kind() const { return device_kind_; }
+  const std::string& device_kind() const override { return device_kind_; }
 
-  virtual std::string DebugString() const;
-
-  PjRtClient* client() const { return client_; }
+  std::string DebugString() const override;
 
   // Transfer the given literal to the infeed queue of the given localdevice.
-  virtual Status TransferToInfeed(const LiteralSlice& literal) const;
+  Status TransferToInfeed(const LiteralSlice& literal) const override;
 
   // Transfer and return a value of the given shape from the outfeed of the
   // given device.
-  virtual StatusOr<Literal> TransferFromOutfeed(const Shape& shape) const;
+  StatusOr<Literal> TransferFromOutfeed(const Shape& shape) const override;
 
  private:
   const int id_;
-  const int local_device_id_;  // -1 means not local.
+  const int device_ordinal_;  // -1 means not local.
   const std::unique_ptr<LocalDeviceState> local_device_state_;
   const int host_id_;
   const std::string device_kind_;
@@ -196,9 +237,7 @@ class PjRtClient {
   const std::vector<std::unique_ptr<PjRtDevice>>& devices() const {
     return devices_;
   }
-  const std::vector<PjRtDevice*>& local_devices() const {
-    return local_devices_;
-  }
+  absl::Span<PjRtDevice* const> local_devices() const { return local_devices_; }
   const std::map<int, PjRtDevice*>& id_to_device() const {
     return id_to_device_;
   }
@@ -207,11 +246,13 @@ class PjRtClient {
   const std::string& platform_name() const { return platform_name_; }
 
   LocalDeviceState& device_state(int device_ordinal) const {
-    return *local_devices_.at(device_ordinal)->local_device_state();
+    return *tensorflow::down_cast<PjRtStreamExecutorDevice*>(
+                local_devices_.at(device_ordinal))
+                ->local_device_state();
   }
 
-  // Return a local PjRtDevice for a given `local_device_id`.
-  virtual StatusOr<PjRtDevice*> LookupLocalDevice(int local_device_id) const;
+  // Return an addressable PjRtDevice for a given `device_id`.
+  virtual StatusOr<PjRtDevice*> LookupAddressableDevice(int device_id) const;
 
   LocalClient* client() const { return client_; }
   se::DeviceMemoryAllocator* allocator() const { return allocator_; }
@@ -791,6 +832,7 @@ class PjRtExecutable {
   virtual absl::Span<const LogicalDeviceIds> addressable_device_logical_ids()
       const = 0;
 
+  // An addressable_device is one which the client can issue commands to.
   // addressable_devices()[i] is the Device to which
   // addressable_device_logical_ids()[i] is assigned.
   virtual absl::Span<PjRtDevice* const> addressable_devices() const = 0;

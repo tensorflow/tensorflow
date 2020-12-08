@@ -149,7 +149,10 @@ PYBIND11_MODULE(xla_extension, m) {
       .def_property_readonly("host_id", &PjRtDevice::host_id,
                              "Integer ID of this device's host.\n\n"
                              "This is always 0 except on multi-host platforms.")
-      .def_property_readonly("platform", &PjRtDevice::platform_name)
+      .def_property_readonly("platform",
+                             [](const PjRtDevice& device) {
+                               return device.client()->platform_name();
+                             })
       .def_property_readonly("device_kind", &PjRtDevice::device_kind)
       .def_property_readonly(
           "client",
@@ -381,10 +384,10 @@ PYBIND11_MODULE(xla_extension, m) {
            [](PyExecutable* exec) {
              auto span = exec->addressable_device_logical_ids();
              // Not on dispatch critical path, so ok to have heap allocation.
-             std::vector<std::pair<int, int>> addressable_device_logical_ids;
-             addressable_device_logical_ids.reserve(span.size());
+             std::vector<std::pair<int, int>> addressable_device_logic_ids;
+             addressable_device_logic_ids.reserve(span.size());
              for (const auto& logical_device_id : span) {
-               addressable_device_logical_ids.push_back(std::make_pair(
+               addressable_device_logic_ids.push_back(std::make_pair(
                    logical_device_id.replica, logical_device_id.partition));
              }
            })

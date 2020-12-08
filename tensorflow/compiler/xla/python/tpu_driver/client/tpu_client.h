@@ -32,13 +32,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/threadpool.h"
 
 namespace xla {
 
 constexpr char kTpuPlatform[] = "tpu";
 
-class TpuDevice : public PjRtDevice {
+class TpuDevice : public PjRtStreamExecutorDevice {
  public:
   TpuDevice(int id, int host_id, const std::array<int, 3>& coords,
             int core_on_chip);
@@ -298,9 +299,8 @@ class PyTpuExecutable {
     return device_assignment_;
   }
 
-  const std::vector<std::pair<int, int>>& addressable_device_logical_ids()
-      const {
-    return addressable_device_logical_ids_;
+  const std::vector<std::pair<int, int>>& local_logical_device_ids() const {
+    return local_logical_device_ids_;
   }
 
   const std::vector<std::shared_ptr<PjRtDevice>>& local_devices() const {
@@ -341,14 +341,16 @@ class PyTpuExecutable {
 
   // The replica and partition indices of device_assignment_ to be run by this
   // client. On single-host platforms without partitioning, this is all replicas
-  // (i.e. addressable_device_logical_ids_[i] = (i, 0)), but this may not be the
-  // case on multi-host platforms. If there are 4 replicas and 2 partitions on a
-  // single host platform, size of addressable_device_logical_ids_ is 4*2 = 8.
-  std::vector<std::pair<int, int>> addressable_device_logical_ids_;
+  // (i.e. local_logical_device_ids_[i] = (i, 0)), but this may not be the case
+  // on multi-host platforms.
+  // If there are 4 replicas and 2 partitions on a single host platform, size of
+  // local_logical_device_ids_ is 4*2 = 8.
+  std::vector<std::pair<int, int>> local_logical_device_ids_;
 
-  // local_devices_[i] is the Device to which addressable_device_logical_ids_[i]
-  // is assigned. shared_ptrs instead of unique_ptrs to play well with the
-  // Python bindings (see xla.cc).
+  // local_devices_[i] is the Device to which local_logical_device_ids_[i] is
+  // assigned.
+  // shared_ptrs instead of unique_ptrs to play well with the Python bindings
+  // (see xla.cc).
   std::vector<std::shared_ptr<PjRtDevice>> local_devices_;
 
   xla::Shape result_shape_;

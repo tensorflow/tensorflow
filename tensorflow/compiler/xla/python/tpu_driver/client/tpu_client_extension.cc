@@ -186,7 +186,7 @@ PYBIND11_MODULE(tpu_client_extension, m) {
 
   py::class_<PyTpuExecutable>(m, "TpuExecutable")
       .def("local_logical_device_ids",
-           &PyTpuExecutable::addressable_device_logical_ids)
+           &PyTpuExecutable::local_logical_device_ids)
       .def("local_devices", &PyTpuExecutable::local_devices)
       .def_property_readonly("client", &PyTpuExecutable::client)
       .def("size_of_generated_code_in_bytes",

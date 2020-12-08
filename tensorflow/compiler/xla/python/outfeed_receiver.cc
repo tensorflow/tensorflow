@@ -342,11 +342,7 @@ StatusOr<std::unique_ptr<Literal>> OutfeedReceiverImpl::ReceiveRawFromOutfeed(
     const PjRtDevice* device, const Shape& shape) {
   std::shared_ptr<Literal> literal_shared;
 
-  TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                      device->GetLocalDeviceState());
-  TF_ASSIGN_OR_RETURN(Literal literal,
-                      local_device->client()->TransferFromOutfeedLocal(
-                          shape, local_device->device_ordinal()));
+  TF_ASSIGN_OR_RETURN(Literal literal, device->TransferFromOutfeed(shape));
 
   return absl::make_unique<Literal>(std::move(literal));
 }
