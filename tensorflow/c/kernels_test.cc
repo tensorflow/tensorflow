@@ -181,7 +181,6 @@ ATTR_TEST_REGISTER_OP(Type, type);
 
 // Helper macros for the TF_OpKernelConstruction_GetAttr* tests.
 #define EXPECT_TF_SIZE(attr_name, expected_list_size, expected_total_size) \
-  \ 
   do {                                                                     \
     int32_t list_size, total_size;                                         \
     TF_OpKernelConstruction_GetAttrSize(ctx, attr_name, &list_size,        \
