@@ -267,7 +267,7 @@ TEST_F(TestKernelAttr, StringList) {
     }
 
     TF_Status* status = TF_NewStatus();
-    std::unique_ptr<void*[]> values(new void*[list.size()]);
+    std::unique_ptr<char*[]> values(new char*[list.size()]);
     std::unique_ptr<size_t[]> lens(new size_t[list.size()]);
     std::unique_ptr<char[]> storage(new char[list_total_size]);
     EXPECT_TF_SIZE(/*attr_name*/ "Attr", /*expected_list_size*/ list.size(),
