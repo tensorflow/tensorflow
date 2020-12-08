@@ -40,7 +40,7 @@ ATTRIBUTE_THREAD_FUNCTION void add_thread_worker(void* context) {
 }
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  auto* op = reinterpret_cast<AddOpData*>(
+  AddOpData* op = reinterpret_cast<AddOpData*>(
       context->AllocatePersistentBuffer(context, sizeof(AddOpData)));
   op->stack_scratch_index = -1;
   op->stack_size = 0;
@@ -58,14 +58,14 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   const TfLiteTensor* bss = GetInput(context, node, 2);
 
-  auto* op = reinterpret_cast<AddOpData*>(node->user_data);
+  AddOpData* op = reinterpret_cast<AddOpData*>(node->user_data);
 
-  op->params.input[0].shr = reinterpret_cast<int32_t>(bss->data.i32[0]);
-  op->params.input[0].multiplier = reinterpret_cast<int32_t>(bss->data.i32[1]);
-  op->params.input[1].shr = reinterpret_cast<int32_t>(bss->data.i32[2]);
-  op->params.input[1].multiplier = reinterpret_cast<int32_t>(bss->data.i32[3]);
-  op->params.output.bias = reinterpret_cast<int32_t>(bss->data.i32[4]);
-  op->params.output.shr = reinterpret_cast<int32_t>(bss->data.i32[5]);
+  op->params.input[0].shr = bss->data.i32[0];
+  op->params.input[0].multiplier = bss->data.i32[1];
+  op->params.input[1].shr = bss->data.i32[2];
+  op->params.input[1].multiplier = bss->data.i32[3];
+  op->params.output.bias = bss->data.i32[4];
+  op->params.output.shr = bss->data.i32[5];
 
   // allocate the stack for thread workers
   GET_THREAD_FUNCTION_STACKSIZE(op->stack_size, add_thread_worker);
@@ -82,7 +82,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input1 = GetInput(context, node, 1);
   TfLiteTensor* output = GetOutput(context, node, 0);
 
-  auto* op = reinterpret_cast<AddOpData*>(node->user_data);
+  AddOpData* op = reinterpret_cast<AddOpData*>(node->user_data);
   Dispatcher* dispatcher = GetDispatcher();
 
   // initialize the dispatcher
@@ -95,17 +95,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   int n_th = 1;
   // int n_th = op->execution_plan.GetNumThreads();
   AddThreadData thread_data[n_th];
-
-  // printf("QQQ input0=");
-  // for (int i = 0; i < input0->bytes; i++) {
-  //   printf("%d ", (int)input0->data.int8[i]);
-  // }
-  // printf("\n");
-  // printf("QQQ input1=");
-  // for (int i = 0; i < input1->bytes; i++) {
-  //   printf("%d ", (int)input1->data.int8[i]);
-  // }
-  // printf("\n");
 
   // create tasks
   // for (int i_sl = 0; i_sl < op->execution_plan.slices.GetSize(); i_sl++) {
