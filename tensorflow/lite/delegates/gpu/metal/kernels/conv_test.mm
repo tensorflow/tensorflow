@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/test_util.h"
-#include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
 using ::tflite::gpu::Axis;
 using ::tflite::gpu::BHWC;
@@ -286,9 +285,6 @@ using ::tflite::gpu::metal::SingleOpModel;
   }
 
   id<MTLDevice> device = MTLCreateSystemDefaultDevice();
-  tflite::gpu::metal::RuntimeOptions options;
-  options.storage_precision = tflite::gpu::metal::RuntimeOptions::Precision::FP32;
-  options.accumulator_precision = tflite::gpu::metal::RuntimeOptions::Precision::FP32;
 
   std::map<ValueId, TensorFloat32> inputs_v0;
   inputs_v0[0] = src_tensor;

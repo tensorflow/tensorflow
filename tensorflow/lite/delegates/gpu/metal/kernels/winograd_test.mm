@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/test_util.h"
-#include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 #include "tensorflow/lite/delegates/gpu/common/winograd_util.h"
 
 using ::tflite::gpu::BHWC;
@@ -151,10 +150,6 @@ using ::tflite::gpu::metal::CompareVectors;
     }
   }
 
-  tflite::gpu::metal::RuntimeOptions options;
-  options.storage_precision = tflite::gpu::metal::RuntimeOptions::Precision::FP32;
-  options.accumulator_precision = tflite::gpu::metal::RuntimeOptions::Precision::FP32;
-
   tflite::gpu::metal::Winograd4x4To36Attributes attr;
   attr.padding.prepended = tflite::gpu::HW(1, 1);
   attr.padding.appended = tflite::gpu::HW(1, 1);
@@ -229,10 +224,6 @@ using ::tflite::gpu::metal::CompareVectors;
   attr.biases.shape = tflite::gpu::Linear(1);
   attr.biases.data.resize(1, 0.0f);
 
-  tflite::gpu::metal::RuntimeOptions options;
-  options.storage_precision = tflite::gpu::metal::RuntimeOptions::Precision::FP32;
-  options.accumulator_precision = tflite::gpu::metal::RuntimeOptions::Precision::FP32;
-
   tflite::gpu::OperationDef op_def;
   op_def.precision = tflite::gpu::CalculationsPrecision::F32;
   tflite::gpu::TensorDescriptor tensor_descriptor = tflite::gpu::TensorDescriptor{
@@ -303,10 +294,6 @@ using ::tflite::gpu::metal::CompareVectors;
   attr.output_shape = BHWC(1, 4, 4, 1);
   attr.biases.shape = tflite::gpu::Linear(1);
   attr.biases.data.resize(1, 0.0f);
-
-  tflite::gpu::metal::RuntimeOptions options;
-  options.storage_precision = tflite::gpu::metal::RuntimeOptions::Precision::FP32;
-  options.accumulator_precision = tflite::gpu::metal::RuntimeOptions::Precision::FP32;
 
   tflite::gpu::OperationDef op_def;
   op_def.precision = tflite::gpu::CalculationsPrecision::F32;
