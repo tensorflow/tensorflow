@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/graph/mkl_graph_util.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -30,17 +31,23 @@ static const uint8 dummy_tensor[] = {0, 0, 0, 0, 0, 0, 0, 0};
 static const TensorShape dummy_shape({8});
 
 TEST_F(MklQuantizeV2OpTest, small_uint8) {
-  TF_ASSERT_OK(NodeDefBuilder("quantize_op", "_MklQuantizeV2")
-                   .Input(FakeInput(DT_FLOAT))
-                   .Input(FakeInput(DT_FLOAT))
-                   .Input(FakeInput(DT_FLOAT))
-                   .Input(FakeInput(DT_UINT8))  // MKL second tensor
-                   .Input(FakeInput(DT_UINT8))  // MKL second tensor
-                   .Input(FakeInput(DT_UINT8))  // MKL second tensor
-                   .Attr("T", DataTypeToEnum<quint8>::v())
-                   .Attr("mode", "SCALED")
-                   .Attr("_kernel", "QuantizedMklOp")
-                   .Finalize(node_def()));
+  NodeDefBuilder builder =
+      NodeDefBuilder("quantize_op", NativeFormatEnabled()
+                                        ? "_MklNativeQuantizeV2"
+                                        : "_MklQuantizeV2")
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Attr("T", DataTypeToEnum<quint8>::v())
+          .Attr("mode", "SCALED")
+          .Attr("_kernel", "QuantizedMklOp");
+  if (!NativeFormatEnabled()) {
+    // Add MKL metadata tensors
+    builder.Input(FakeInput(DT_UINT8))
+        .Input(FakeInput(DT_UINT8))
+        .Input(FakeInput(DT_UINT8));
+  }
+  TF_ASSERT_OK(builder.Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
   AddInputFromArray<float>(TensorShape({8}),
                            {0.0, 1.0, 1.25, 1.75, 127.0, 255.0, 500.0, 2.0});
@@ -48,9 +55,11 @@ TEST_F(MklQuantizeV2OpTest, small_uint8) {
   AddInputFromArray<float>(TensorShape({1}), {0});
   // max_range = 255
   AddInputFromArray<float>(TensorShape({1}), {255.0f});
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  if (!NativeFormatEnabled()) {
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  }
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_QUINT8, TensorShape({8}));
   Tensor expected_min(allocator(), DT_FLOAT, TensorShape({}));
@@ -65,25 +74,33 @@ TEST_F(MklQuantizeV2OpTest, small_uint8) {
   test::ExpectTensorEqual<float>(expected_max, *GetOutput(2));
 }
 TEST_F(MklQuantizeV2OpTest, small_int8) {
-  TF_ASSERT_OK(NodeDefBuilder("quantize_op", "_MklQuantizeV2")
-                   .Input(FakeInput(DT_FLOAT))
-                   .Input(FakeInput(DT_FLOAT))
-                   .Input(FakeInput(DT_FLOAT))
-                   .Input(FakeInput(DT_UINT8))  // MKL second tensor
-                   .Input(FakeInput(DT_UINT8))  // MKL second tensor
-                   .Input(FakeInput(DT_UINT8))  // MKL second tensor
-                   .Attr("T", DataTypeToEnum<qint8>::v())
-                   .Attr("mode", "SCALED")
-                   .Attr("_kernel", "QuantizedMklOp")
-                   .Finalize(node_def()));
+  NodeDefBuilder builder =
+      NodeDefBuilder("quantize_op", NativeFormatEnabled()
+                                        ? "_MklNativeQuantizeV2"
+                                        : "_MklQuantizeV2")
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Attr("T", DataTypeToEnum<qint8>::v())
+          .Attr("mode", "SCALED")
+          .Attr("_kernel", "QuantizedMklOp");
+  if (!NativeFormatEnabled()) {
+    // Add MKL metadata tensors
+    builder.Input(FakeInput(DT_UINT8))
+        .Input(FakeInput(DT_UINT8))
+        .Input(FakeInput(DT_UINT8));
+  }
+  TF_ASSERT_OK(builder.Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
   AddInputFromArray<float>(TensorShape({8}), {0.0, -1.0, 1.25, -1.75, -24.5,
                                               -255.0, -80.315, 256.0});
   AddInputFromArray<float>(TensorShape({1}), {-50.0});
   AddInputFromArray<float>(TensorShape({1}), {127.0});
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  if (!NativeFormatEnabled()) {
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  }
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_QINT8, TensorShape({8}));
   Tensor expected_min(allocator(), DT_FLOAT, TensorShape({}));
@@ -97,25 +114,33 @@ TEST_F(MklQuantizeV2OpTest, small_int8) {
 }
 
 TEST_F(MklQuantizeV2OpTest, small_minfirst) {
-  TF_ASSERT_OK(NodeDefBuilder("quantize_op", "_MklQuantizeV2")
-                   .Input(FakeInput(DT_FLOAT))
-                   .Input(FakeInput(DT_FLOAT))
-                   .Input(FakeInput(DT_FLOAT))
-                   .Input(FakeInput(DT_UINT8))  // MKL second tensor
-                   .Input(FakeInput(DT_UINT8))  // MKL second tensor
-                   .Input(FakeInput(DT_UINT8))  // MKL second tensor
-                   .Attr("T", DataTypeToEnum<quint8>::v())
-                   .Attr("mode", "MIN_FIRST")
-                   .Attr("_kernel", "QuantizedMklOp")
-                   .Finalize(node_def()));
+  NodeDefBuilder builder =
+      NodeDefBuilder("quantize_op", NativeFormatEnabled()
+                                        ? "_MklNativeQuantizeV2"
+                                        : "_MklQuantizeV2")
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Attr("T", DataTypeToEnum<quint8>::v())
+          .Attr("mode", "MIN_FIRST")
+          .Attr("_kernel", "QuantizedMklOp");
+  if (!NativeFormatEnabled()) {
+    // Add MKL metadata tensors
+    builder.Input(FakeInput(DT_UINT8))
+        .Input(FakeInput(DT_UINT8))
+        .Input(FakeInput(DT_UINT8));
+  }
+  TF_ASSERT_OK(builder.Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
   AddInputFromArray<float>(TensorShape({8}),
                            {1.0, 1.25, 1.75, 2, 3.15, 127.0, 255.0, 500.0});
   AddInputFromArray<float>(TensorShape({1}), {0});
   AddInputFromArray<float>(TensorShape({1}), {255.0f});
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  if (!NativeFormatEnabled()) {
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  }
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_QUINT8, TensorShape({8}));
   test::FillValues<quint8>(&expected, {1, 1, 2, 2, 3, 127, 255, 255});
@@ -127,25 +152,33 @@ TEST_F(MklQuantizeV2OpTest, small_minfirst) {
 }
 
 TEST_F(MklQuantizeV2OpTest, small_minfirst_uint) {
-  TF_ASSERT_OK(NodeDefBuilder("quantize_op", "_MklQuantizeV2")
-                   .Input(FakeInput(DT_FLOAT))
-                   .Input(FakeInput(DT_FLOAT))
-                   .Input(FakeInput(DT_FLOAT))
-                   .Input(FakeInput(DT_UINT8))  // MKL second tensor
-                   .Input(FakeInput(DT_UINT8))  // MKL second tensor
-                   .Input(FakeInput(DT_UINT8))  // MKL second tensor
-                   .Attr("T", DataTypeToEnum<quint8>::v())
-                   .Attr("mode", "MIN_FIRST")
-                   .Attr("_kernel", "QuantizedMklOp")
-                   .Finalize(node_def()));
+  NodeDefBuilder builder =
+      NodeDefBuilder("quantize_op", NativeFormatEnabled()
+                                        ? "_MklNativeQuantizeV2"
+                                        : "_MklQuantizeV2")
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Attr("T", DataTypeToEnum<quint8>::v())
+          .Attr("mode", "MIN_FIRST")
+          .Attr("_kernel", "QuantizedMklOp");
+  if (!NativeFormatEnabled()) {
+    // Add MKL metadata tensors
+    builder.Input(FakeInput(DT_UINT8))
+        .Input(FakeInput(DT_UINT8))
+        .Input(FakeInput(DT_UINT8));
+  }
+  TF_ASSERT_OK(builder.Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
   AddInputFromArray<float>(TensorShape({8}),
                            {0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8});
   AddInputFromArray<float>(TensorShape({1}), {0.1});
   AddInputFromArray<float>(TensorShape({1}), {0.8});
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  if (!NativeFormatEnabled()) {
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  }
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_QUINT8, TensorShape({8}));
   test::FillValues<quint8>(&expected, {32, 64, 96, 128, 159, 191, 223, 255});
@@ -157,25 +190,33 @@ TEST_F(MklQuantizeV2OpTest, small_minfirst_uint) {
 }
 
 TEST_F(MklQuantizeV2OpTest, small_minfirst_int) {
-  TF_ASSERT_OK(NodeDefBuilder("quantize_op", "_MklQuantizeV2")
-                   .Input(FakeInput(DT_FLOAT))
-                   .Input(FakeInput(DT_FLOAT))
-                   .Input(FakeInput(DT_FLOAT))
-                   .Input(FakeInput(DT_UINT8))  // MKL second tensor
-                   .Input(FakeInput(DT_UINT8))  // MKL second tensor
-                   .Input(FakeInput(DT_UINT8))  // MKL second tensor
-                   .Attr("T", DataTypeToEnum<quint8>::v())
-                   .Attr("mode", "MIN_FIRST")
-                   .Attr("_kernel", "QuantizedMklOp")
-                   .Finalize(node_def()));
+  NodeDefBuilder builder =
+      NodeDefBuilder("quantize_op", NativeFormatEnabled()
+                                        ? "_MklNativeQuantizeV2"
+                                        : "_MklQuantizeV2")
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Attr("T", DataTypeToEnum<quint8>::v())
+          .Attr("mode", "MIN_FIRST")
+          .Attr("_kernel", "QuantizedMklOp");
+  if (!NativeFormatEnabled()) {
+    // Add MKL metadata tensors
+    builder.Input(FakeInput(DT_UINT8))
+        .Input(FakeInput(DT_UINT8))
+        .Input(FakeInput(DT_UINT8));
+  }
+  TF_ASSERT_OK(builder.Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
   AddInputFromArray<float>(TensorShape({8}),
                            {-0.1, -0.2, -0.3, -0.4, -0.5, -0.6, -0.7, -0.8});
   AddInputFromArray<float>(TensorShape({1}), {-0.8});
   AddInputFromArray<float>(TensorShape({1}), {-0.1});
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  if (!NativeFormatEnabled()) {
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  }
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_QUINT8, TensorShape({8}));
   test::FillValues<quint8>(&expected, {223, 191, 159, 128, 96, 64, 32, 0});
