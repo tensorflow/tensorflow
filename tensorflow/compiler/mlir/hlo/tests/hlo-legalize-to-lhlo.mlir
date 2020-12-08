@@ -316,6 +316,20 @@ func @abs(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
 
 // -----
 
+// CHECK-LABEL: func @and
+func @and(%operand0: memref<2x2xi32>, %operand1: memref<2x2xi32>,
+          %result: memref<2x2xi32>) {
+  %tensor_operand0 = tensor_load %operand0 : memref<2x2xi32>
+  %tensor_operand1 = tensor_load %operand1 : memref<2x2xi32>
+  %tensor_result = "mhlo.and"(%tensor_operand0, %tensor_operand1)
+      : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
+  // CHECK: "lmhlo.and"(%{{.*}}, %{{.*}}, %{{.*}})
+  tensor_store %tensor_result, %result : memref<2x2xi32>
+  return
+}
+
+// -----
+
 // CHECK-LABEL: func @ceil
 func @ceil(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
   %tensor_operand = tensor_load %operand : memref<2x2xf32>
@@ -383,6 +397,20 @@ func @not(%operand: memref<2x2xi32>, %result: memref<2x2xi32>) {
   %tensor_result = "mhlo.not"(%tensor_operand)
       : (tensor<2x2xi32>) -> tensor<2x2xi32>
   // CHECK: "lmhlo.not"(%{{.*}}, %{{.*}})
+  tensor_store %tensor_result, %result : memref<2x2xi32>
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @or
+func @or(%operand0: memref<2x2xi32>, %operand1: memref<2x2xi32>,
+         %result: memref<2x2xi32>) {
+  %tensor_operand0 = tensor_load %operand0 : memref<2x2xi32>
+  %tensor_operand1 = tensor_load %operand1 : memref<2x2xi32>
+  %tensor_result = "mhlo.or"(%tensor_operand0, %tensor_operand1)
+      : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
+  // CHECK: "lmhlo.or"(%{{.*}}, %{{.*}}, %{{.*}})
   tensor_store %tensor_result, %result : memref<2x2xi32>
   return
 }
@@ -480,13 +508,28 @@ func @tanh(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
 // -----
 
 // CHECK-LABEL: func @remainder
-func @remainder(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>, %result: memref<2x2xf32>) {
+func @remainder(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>,
+                %result: memref<2x2xf32>) {
   %tensor_lhs = tensor_load %lhs : memref<2x2xf32>
   %tensor_rhs = tensor_load %rhs : memref<2x2xf32>
   %tensor_result = "mhlo.remainder"(%tensor_lhs, %tensor_rhs)
       : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
   // CHECK: "lmhlo.remainder"(%{{.*}}, %{{.*}}, %{{.*}})
   tensor_store %tensor_result, %result : memref<2x2xf32>
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @xor
+func @xor(%operand0: memref<2x2xi32>, %operand1: memref<2x2xi32>,
+          %result: memref<2x2xi32>) {
+  %tensor_operand0 = tensor_load %operand0 : memref<2x2xi32>
+  %tensor_operand1 = tensor_load %operand1 : memref<2x2xi32>
+  %tensor_result = "mhlo.xor"(%tensor_operand0, %tensor_operand1)
+      : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
+  // CHECK: "lmhlo.xor"(%{{.*}}, %{{.*}})
+  tensor_store %tensor_result, %result : memref<2x2xi32>
   return
 }
 

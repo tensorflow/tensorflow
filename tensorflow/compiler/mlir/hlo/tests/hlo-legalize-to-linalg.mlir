@@ -194,6 +194,30 @@ func @integer_and(%lhs: tensor<2x2xi32>,
 
 // -----
 
+// CHECK-LABEL: func @integer_or
+func @integer_or(%lhs: tensor<2x2xi32>,
+                  %rhs: tensor<2x2xi32>) -> tensor<2x2xi32> {
+  // CHECK: linalg.generic
+  // CHECK: or
+  %0 = "mhlo.or"(%lhs, %rhs) : (tensor<2x2xi32>,
+                                    tensor<2x2xi32>) -> tensor<2x2xi32>
+  return %0 : tensor<2x2xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @integer_xor
+func @integer_xor(%lhs: tensor<2x2xi32>,
+                  %rhs: tensor<2x2xi32>) -> tensor<2x2xi32> {
+  // CHECK: linalg.generic
+  // CHECK: xor
+  %0 = "mhlo.xor"(%lhs, %rhs) : (tensor<2x2xi32>,
+                                    tensor<2x2xi32>) -> tensor<2x2xi32>
+  return %0 : tensor<2x2xi32>
+}
+
+// -----
+
 // CHECK-LABEL: func @float_cmp
 func @float_cmp(%lhs: tensor<2x2xf32>,
                 %rhs: tensor<2x2xf32>) -> (tensor<2x2xi1>) {
