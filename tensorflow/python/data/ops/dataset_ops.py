@@ -1774,6 +1774,11 @@ name=None))
     in general precludes the possibility of executing user-defined
     transformations in parallel (because of Python GIL).
 
+    The order of elements yielded by this transformation is
+    deterministic, as long as `map_func` is a pure function and
+    `deterministic=True`. If `map_func` contains any stateful operations, the
+    order in which that state is accessed is undefined.
+
     Performance can often be improved by setting `num_parallel_calls` so that
     `map` will use multiple threads to process elements. If deterministic order
     isn't required, it can also improve performance to set
@@ -1792,11 +1797,10 @@ name=None))
         `tf.data.AUTOTUNE` is used, then the number of parallel
         calls is set dynamically based on available CPU.
       deterministic: (Optional.) A boolean controlling whether determinism
-        should be traded for performance by allowing elements to be produced out
+        should be traded for performance by allowing elements to be yielded out
         of order.  If `deterministic` is `None`, the
         `tf.data.Options.experimental_deterministic` dataset option (`True` by
-        default) is used to decide whether to produce elements
-        deterministically.
+        default) is used to decide whether to run deterministically.
 
     Returns:
       Dataset: A `Dataset`.
@@ -1925,8 +1929,7 @@ name=None))
         should be traded for performance by allowing elements to be produced out
         of order.  If `deterministic` is `None`, the
         `tf.data.Options.experimental_deterministic` dataset option (`True` by
-        default) is used to decide whether to produce elements
-        deterministically.
+        default) is used to decide whether to run deterministically.
 
     Returns:
       Dataset: A `Dataset`.
