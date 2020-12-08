@@ -3,7 +3,6 @@
 #ifndef XCORE_PROFILER_H_
 #define XCORE_PROFILER_H_
 
-#include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/micro/compatibility.h"
 
@@ -17,7 +16,7 @@ namespace xcore {
 
 class XCoreProfiler : public tflite::Profiler {
  public:
-  explicit XCoreProfiler(tflite::ErrorReporter* reporter);
+  explicit XCoreProfiler();
   ~XCoreProfiler() override = default;
 
   // AddEvent is unused for TFLu.
@@ -42,7 +41,6 @@ class XCoreProfiler : public tflite::Profiler {
   uint32_t GetNumTimes();
 
  private:
-  tflite::ErrorReporter* reporter_;
   const char* event_tag_;
   uint32_t event_start_time_;
   uint32_t event_count_;

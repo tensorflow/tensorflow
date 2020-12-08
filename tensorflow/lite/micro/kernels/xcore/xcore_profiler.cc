@@ -12,8 +12,7 @@ namespace tflite {
 namespace micro {
 namespace xcore {
 
-XCoreProfiler::XCoreProfiler(tflite::ErrorReporter* reporter)
-    : reporter_(reporter), event_count_(0) {}
+XCoreProfiler::XCoreProfiler() : event_count_(0) {}
 
 void XCoreProfiler::Reset() { event_count_ = 0; }
 
