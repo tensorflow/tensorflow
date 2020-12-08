@@ -37,40 +37,22 @@ cc_library(
     alwayslink = 1,
 )
 
-# This includes all ops. If you want a smaller binary, you should copy and
-# modify builtin_ops_jni.cc.  You should then link your binary against both
-# ":native_framework_only" and your own version of ":native_builtin_ops".
+# This includes all ops. If you want a smaller binary, you should use
+# tflite_custom_cc_library or tflite_custom_android_library rules.
 cc_library(
     name = "native",
-    srcs = [
-        "builtin_ops_jni.cc",
-    ],
-    hdrs = ["op_resolver.h"],
     copts = tflite_copts(),
     deps = [
         ":native_framework_only",
+        "//tensorflow/lite:create_op_resolver_with_builtin_ops",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/core/api",
-        "//tensorflow/lite/kernels:builtin_ops",
     ],
     alwayslink = 1,
-)
-
-# TODO(b/153652701): Generate this target to give CreateOpResolver a custom namespace.
-cc_library(
-    name = "selected_ops_jni",
-    srcs = ["selected_ops_jni.cc"],
-    hdrs = ["op_resolver.h"],
-    copts = tflite_copts(),
-    deps = [
-        "//tensorflow/lite:framework",
-    ],
 )
 
 exports_files(
     [
         "exported_symbols.lds",
         "version_script.lds",
-        "op_resolver.h",
     ],
 )
