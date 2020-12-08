@@ -357,8 +357,9 @@ int SelectDetectionsAboveScoreThreshold(const float* values, int size,
   int counter = 0;
   for (int i = 0; i < size; i++) {
     if (values[i] >= threshold) {
-      keep_values[counter++] = values[i];
-      keep_indices[i] = i;
+      keep_values[counter] = values[i];
+      keep_indices[counter] = i;
+      counter++;
     }
   }
   return counter;
