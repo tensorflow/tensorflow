@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/platform/threadpool.h"
 
 namespace xla {
 
@@ -165,6 +166,9 @@ class Compiler {
     // given algorithm over those buffers, to see which variant is fastest.  Any
     // space allocated will be deallocated before the compilation returns.
     se::DeviceMemoryAllocator* device_allocator = nullptr;
+
+    // An optional thread pool for parallel compilation.
+    tensorflow::thread::ThreadPool* thread_pool = nullptr;
   };
 
   virtual ~Compiler() {}

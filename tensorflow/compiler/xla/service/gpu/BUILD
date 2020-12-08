@@ -1452,7 +1452,11 @@ cc_library(
         "//tensorflow/stream_executor:stream_executor_headers",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:AsmParser",
+        "@llvm-project//llvm:BitReader",
+        "@llvm-project//llvm:BitWriter",
         "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:TransformUtils",
         "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
         "@llvm-project//mlir:IR",
     ],
@@ -1517,7 +1521,7 @@ cc_library(
         "//tensorflow/stream_executor:stream_executor_headers",
         "//tensorflow/stream_executor/cuda:cuda_diagnostics",
         "//tensorflow/stream_executor/gpu:asm_compiler",
-    ]),
+    ]) + ["//tensorflow/stream_executor/gpu:gpu_driver_header"],
 )
 
 cc_library(
